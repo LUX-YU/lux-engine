@@ -125,6 +125,17 @@ bool executableContractMatches(const lux::script::ScriptArtifact &artifact, cons
 }
 } // namespace
 
+lux::cxx::expected<std::uint32_t, EScriptCoroutineError> detail::prepareCppEventImport(
+    const CppStaticContract& contract, const lux::script::ScriptEventSourceDescription& source) noexcept
+{
+    if (!validContract(contract)) return lux::cxx::unexpected(EScriptCoroutineError::INVALID_CONTEXT);
+    const auto found = std::ranges::find_if(contract.events, [&](const auto& entry) noexcept {
+        return entry.matches(source);
+    });
+    if (found == contract.events.end()) return lux::cxx::unexpected(EScriptCoroutineError::RESULT_MISMATCH);
+    return static_cast<std::uint32_t>(found - contract.events.begin());
+}
+
 CppStaticDescriptionResult materializeCppStaticScript(const CppStaticContract &contract) noexcept
 {
     if (!validContract(contract))
@@ -239,6 +250,7 @@ struct CppStaticScriptBackend::State final
         lux::script::ScriptArtifactContentId identity;
         DescriptorIndex* descriptor{};
         std::vector<std::uint32_t> capability_slots;
+        std::vector<std::uint32_t> event_slots;
         std::size_t references{};
         std::size_t previous{InvalidAssociation};
         std::size_t next{InvalidAssociation};
@@ -252,6 +264,7 @@ struct CppStaticScriptBackend::State final
         std::size_t object_slot{(std::numeric_limits<std::size_t>::max)()};
         std::uint32_t slot{};
         std::span<const PreparedScriptApiCapability> capabilities;
+        std::span<const PreparedScriptEventAdmission> events;
         const lux::script::ScriptArtifact* artifact{};
         ArtifactAssociation* association{};
         std::size_t active_coroutines{};
@@ -546,6 +559,21 @@ struct CppStaticScriptBackend::State final
         free_continuations.push_back(slot);
     }
 
+    [[nodiscard]] static bool resolveEvent(void* opaque, std::uint32_t slot, const CppStaticContract* layout,
+        std::uint32_t local, ScriptEventAdmissionHandle& result) noexcept
+    {
+        auto& self = *static_cast<State*>(opaque);
+        if (slot >= self.instances.size()) return false;
+        const auto& instance = self.instances[slot];
+        const bool invalid_layout = instance.descriptor == nullptr || instance.association == nullptr ||
+            instance.descriptor->descriptor != layout || local >= instance.association->event_slots.size();
+        if (invalid_layout) return false;
+        const auto actual = instance.association->event_slots[local];
+        if (actual >= instance.events.size()) return false;
+        result = instance.events[actual].admission;
+        return true;
+    }
+
     void destroyCoroutine(CoroutineContinuation &continuation) noexcept
     {
         if (!continuation.active)
@@ -568,7 +596,7 @@ struct CppStaticScriptBackend::State final
         continuation.instance = std::addressof(instance);
         continuation.context = CppStaticCoroutineAccess::context(
             this, instance.slot, &State::findAbility, &State::resolveAbility, descriptor.coroutine_frames, {0U},
-            descriptor.frame_limit, descriptor.frame_alignment);
+            descriptor.frame_limit, descriptor.frame_alignment, &State::resolveEvent);
         continuation.slot = static_cast<std::uint32_t>(slot);
         continuation.active = true;
         ++descriptor.active_coroutines;
@@ -662,6 +690,7 @@ struct CppStaticScriptBackend::State final
         try
         {
             std::vector<std::uint32_t> imports;
+            std::vector<std::uint32_t> events;
             imports.reserve(descriptor.descriptor->abilities.size());
             const auto& requirements = artifact.description().api_requirements;
             for (const auto& expected : descriptor.descriptor->abilities)
@@ -670,6 +699,15 @@ struct CppStaticScriptBackend::State final
                     return requirement.contract.name() == expected.contract.name();
                 });
                 imports.push_back(static_cast<std::uint32_t>(found - requirements.begin()));
+            }
+            const auto& event_requirements = artifact.description().event_requirements;
+            events.reserve(descriptor.descriptor->events.size());
+            for (const auto& expected : descriptor.descriptor->events)
+            {
+                const auto found = std::ranges::find_if(event_requirements, [&](const auto& entry) noexcept {
+                    return expected.matches(entry);
+                });
+                events.push_back(static_cast<std::uint32_t>(found - event_requirements.begin()));
             }
             if (!free_associations.empty())
             {
@@ -684,7 +722,8 @@ struct CppStaticScriptBackend::State final
                 auto& previous = artifact_associations[slot];
                 unlinkInactiveAssociation(slot);
                 artifact_index.erase(previous.identity);
-                association_import_bytes -= previous.capability_slots.capacity() * sizeof(std::uint32_t);
+                association_import_bytes -= (previous.capability_slots.capacity() + previous.event_slots.capacity()) *
+                    sizeof(std::uint32_t);
                 previous = {};
             }
             artifact_index.emplace(identity, slot);
@@ -692,8 +731,10 @@ struct CppStaticScriptBackend::State final
             entry.identity = identity;
             entry.descriptor = &descriptor;
             entry.capability_slots = std::move(imports);
+            entry.event_slots = std::move(events);
             entry.references = 1U;
-            association_import_bytes += entry.capability_slots.capacity() * sizeof(std::uint32_t);
+            association_import_bytes += (entry.capability_slots.capacity() + entry.event_slots.capacity()) *
+                sizeof(std::uint32_t);
             ++active_associations;
             return &entry;
         }
@@ -734,6 +775,7 @@ struct CppStaticScriptBackend::State final
         instance->object = nullptr;
         instance->slot = static_cast<std::uint32_t>(instance_slot);
         instance->capabilities = context.capabilities;
+        instance->events = context.events;
         instance->artifact = &artifact;
         instance->association = *association;
         if (descriptor.object.size != 0U)
@@ -778,6 +820,13 @@ struct CppStaticScriptBackend::State final
             invalid_capabilities = prepared.contract.hash() != expected.contract.hash() ||
                 prepared.contract.name() != expected.contract.name() ||
                 prepared.schema_hash != expected.expected_schema_hash || prepared.dispatch == nullptr;
+        }
+        invalid_capabilities = invalid_capabilities || context.events.size() != descriptor.events.size();
+        for (std::size_t local{}; !invalid_capabilities && local < descriptor.events.size(); ++local)
+        {
+            const auto actual = instance->association->event_slots[local];
+            const auto* source = context.events[actual].source;
+            invalid_capabilities = source == nullptr || !descriptor.events[local].matches(*source);
         }
         if (invalid_capabilities)
         {

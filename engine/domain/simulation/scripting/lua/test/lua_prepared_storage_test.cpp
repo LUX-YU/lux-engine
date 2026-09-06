@@ -220,11 +220,12 @@ int main(int argc, char**)
             assert(storage_backend);
             const auto runtime = storage_backend->descriptor();
             const auto initial_bytes = storage_backend->stats().prepared_binding_bytes;
+            const PreparedScriptEventAdmission prepared_event{&event, {}, {}, {}};
             std::vector<ScriptBackendInstance> instances(population);
             const auto create = [&](std::size_t index, std::uint32_t generation) {
                 const auto result = runtime.createInstance(runtime.context,
                     {{}, SimulationScriptScope{}, nullptr,
-                        {static_cast<std::uint32_t>(index + 1U), generation}, {&capability, 1U}, {&event, 1U}},
+                        {static_cast<std::uint32_t>(index + 1U), generation}, {&capability, 1U}, {&prepared_event, 1U}},
                     content, instances[index]);
                 assert(result == EScriptBackendResult::SUCCESS);
             };

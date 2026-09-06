@@ -87,6 +87,7 @@ namespace
     {
         std::int32_t resumed_value{};
         std::size_t resumes{};
+        ScriptEventAdmissionHandle event;
     };
 
     struct Continuation final
@@ -127,7 +128,7 @@ namespace
         ScriptBackendContinuation& continuation
     ) noexcept
     {
-        auto waiting = step.event_waits.wait({kSystem, kReady, EEventRoute::SIMULATION_BROADCAST});
+        auto waiting = step.event_waits.wait(static_cast<BackendState*>(context)->event);
         if (!waiting)
             return ScriptStepResult::failed(1);
         auto* stored = new (std::nothrow) Continuation{static_cast<BackendState*>(context)};
@@ -147,12 +148,13 @@ namespace
 
     EScriptBackendResult createInstance(
         void* context,
-        const ScriptInstanceCreateContext&,
+        const ScriptInstanceCreateContext& create,
         const lux::script::ScriptArtifact&,
         ScriptBackendInstance& output
     ) noexcept
     {
         output.value = context;
+        if (!create.events.empty()) static_cast<BackendState*>(context)->event = create.events.front().admission;
         return EScriptBackendResult::SUCCESS;
     }
 

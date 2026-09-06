@@ -1277,6 +1277,7 @@ int main(int argc, char** argv)
     auto mismatched_descriptor = mismatched_backend.descriptor();
     ScriptBackendInstance mismatched_instance;
     const auto& mismatched_events = mismatched_artifact->description().event_requirements;
+    const std::array mismatched_admissions{PreparedScriptEventAdmission{&mismatched_events.front(), {}, {}, {}}};
     assert(mismatched_descriptor.createInstance(
         mismatched_descriptor.context,
         ScriptInstanceCreateContext{
@@ -1285,7 +1286,7 @@ int main(int argc, char** argv)
             nullptr,
             {1U, 1U},
             {},
-            mismatched_events
+            mismatched_admissions
         },
         *mismatched_artifact,
         mismatched_instance

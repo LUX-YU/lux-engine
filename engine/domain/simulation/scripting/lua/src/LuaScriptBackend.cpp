@@ -188,6 +188,7 @@ namespace lux::simulation::script
         struct PreparedEventSource final
         {
             const lux::script::ScriptEventSourceDescription* source{};
+            ScriptEventAdmissionHandle admission;
         };
 
         template <class Value>
@@ -879,7 +880,9 @@ namespace lux::simulation::script
             for (std::size_t local_slot{}; local_slot < requirements.size(); ++local_slot)
             {
                 const auto& requirement = requirements[local_slot];
-                const auto resolved = std::ranges::find(context.events, requirement);
+                const auto resolved = std::ranges::find_if(context.events, [&](const auto& entry) noexcept {
+                    return entry.source != nullptr && *entry.source == requirement;
+                });
                 if (resolved == context.events.end())
                 {
                     prepared_events.release(instance.prepared_events);
@@ -892,7 +895,7 @@ namespace lux::simulation::script
                     return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                 }
                 *prepared_events.at(instance.prepared_events, local_slot) = {
-                    std::addressof(event_sources[ordinal])
+                    std::addressof(event_sources[ordinal]), resolved->admission
                 };
             }
             return EScriptBackendResult::SUCCESS;
@@ -1492,17 +1495,10 @@ namespace lux::simulation::script
 
         [[nodiscard]] static EventWaitAdmission admitEventWait(
             ScriptStepContext& step,
-            const lux::script::ScriptEventSourceDescription& source
+            ScriptEventAdmissionHandle source
         ) noexcept
         {
-            const auto route = source.route == lux::script::EScriptEventRoute::SIMULATION_BROADCAST
-                ? EEventRoute::SIMULATION_BROADCAST
-                : EEventRoute::ENTITY_TARGETED;
-            const auto waiting = step.event_waits.wait({
-                lux::system::SystemInstanceId{source.system_id},
-                EventPointId{source.event_id},
-                route
-            });
+            const auto waiting = step.event_waits.wait(source);
             if (!waiting)
             {
                 return {
@@ -1552,8 +1548,7 @@ namespace lux::simulation::script
                     "Script did not declare this Event source"
                 );
             }
-            const auto& source = *prepared->source;
-            const auto admission = admitEventWait(*execution->step, source);
+            const auto admission = admitEventWait(*execution->step, prepared->admission);
             if (admission.failure != 0)
             {
                 return abilityFailure(

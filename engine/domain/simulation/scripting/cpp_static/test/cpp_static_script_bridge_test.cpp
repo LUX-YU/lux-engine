@@ -57,7 +57,7 @@ lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError> cre
 void discardAwaitable(void *, ScriptInstanceId, ScriptAwaitableId) noexcept {}
 
 lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> waitEvent(void *, ScriptInstanceId,
-                                                                       ScriptEventWaitRequest) noexcept
+                                                                       ScriptEventAdmissionHandle) noexcept
 {
     return ScriptAwaitableId{2U, 1U};
 }
@@ -148,11 +148,11 @@ int main()
     using namespace lux::simulation::script::generated;
     const std::array<lux::script::ScriptSymbolId, 4> symbols{101U, 102U, 104U, 105U};
     const auto event_source = test::BridgeEvent.materialize();
-    auto typed_event = CppScriptEventSource<std::int32_t>::create(event_source);
+    auto typed_event = CppScriptEventSource<std::int32_t>::create(Bridge, event_source);
     assert(typed_event);
     test::coroutine_event_source = std::move(*typed_event);
     using DelayTraits = lux::script::ScriptAbilityTraits<DelayAbility>;
-    const std::array event_requirements{event_source};
+    const std::array event_requirements{PreparedScriptEventAdmission{&event_source, {}, {}, {}}};
     auto projected = materializeCppStaticScript(Bridge);
     assert(projected);
     assert(projected->exports.size() == 12U);

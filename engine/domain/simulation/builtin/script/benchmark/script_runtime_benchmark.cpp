@@ -465,6 +465,7 @@ namespace
         std::size_t serial{};
         std::uint64_t value{};
         bool entity_scope{};
+        ScriptEventAdmissionHandle event;
         std::optional<lux::script::ScriptAbilityCpp<benchmark::ValueAbility>> ability;
         std::optional<lux::script::ScriptAbilityStarter<DelayAbility>> delay;
     };
@@ -558,6 +559,9 @@ namespace
         };
         if (!object)
             return EScriptBackendResult::ALLOCATION_FAILURE;
+        for (const auto& event : context.events)
+            if (event.source != nullptr && event.source->event_id ==
+                (object->entity_scope ? kTargetEvent.value : kEvent.value)) object->event = event.admission;
         for (const auto& capability : context.capabilities)
         {
             const lux::script::ScriptAbilityBinding value_binding{
@@ -736,14 +740,7 @@ namespace
         }
         else if (state.mode == EScenarioMode::EVENT_WAIT)
         {
-            const auto route = object.entity_scope
-                ? EEventRoute::ENTITY_TARGETED
-                : EEventRoute::SIMULATION_BROADCAST;
-            const auto waiting = step.event_waits.wait({
-                kSystem,
-                route == EEventRoute::SIMULATION_BROADCAST ? kEvent : kTargetEvent,
-                route
-            });
+            const auto waiting = step.event_waits.wait(object.event);
             if (!waiting)
                 return ScriptStepResult::failed(8);
             result = ScriptStepResult::suspended(*waiting);

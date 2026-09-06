@@ -1,5 +1,6 @@
 #include <lux/engine/simulation/scripting/ScriptSignatureCompatibility.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/simulation/script/ExternalCompletionRing.hpp>
 #include <lux/engine/simulation/detail/DenseEntityHandlerStorage.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
@@ -199,7 +200,8 @@ namespace lux::simulation::script
             ScriptInstanceId retiring_instance;
             ScriptContinuationId retiring_continuations;
             std::vector<PreparedScriptApiCapability> capabilities;
-            std::vector<lux::script::ScriptEventSourceDescription> event_sources;
+            std::vector<PreparedScriptEventAdmission> event_sources;
+            std::uint64_t event_layout_epoch{};
             ResolvedScriptArtifact artifact;
             const ScriptBackendDescriptor* backend{};
             ScriptBackendInstance backend_instance;
@@ -322,6 +324,8 @@ namespace lux::simulation::script
             ScriptStepError error;
             bool resume_enqueued{};
             bool external_completion{};
+            bool release_pending{};
+            std::uint32_t write_pins{};
             ScriptAwaitableId instance_previous;
             ScriptAwaitableId instance_next;
             EventWaiterId event_waiter;
@@ -370,14 +374,13 @@ namespace lux::simulation::script
             EventWaiterId route_next;
             EventWaiterId instance_previous;
             EventWaiterId instance_next;
-            ScriptOwnedResumeValue payload;
         };
 
         using InstanceStorage = lux::cxx::SlotMap<InstanceRecord, InstanceTag>;
         using InstanceKey = typename InstanceStorage::key_type;
         using ContinuationStorage = lux::cxx::SlotMap<ContinuationRecord, ContinuationTag>;
         using ContinuationKey = typename ContinuationStorage::key_type;
-        using AwaitableStorage = lux::cxx::SlotMap<AwaitableRecord, AwaitableTag>;
+        using AwaitableStorage = lux::cxx::StableSlotMap<AwaitableRecord, AwaitableTag>;
         using AwaitableKey = typename AwaitableStorage::key_type;
         using EventWaiterStorage = lux::cxx::SlotMap<EventWaiterRecord, EventWaiterTag>;
         using EventWaiterKey = typename EventWaiterStorage::key_type;
@@ -697,6 +700,14 @@ namespace lux::simulation::script
         std::size_t instance_cleanup_continuation_visits{};
         std::size_t endpoint_dispatch_depth{};
         std::size_t user_invocation_depth{};
+        ScriptEventAdmissionScope event_admission_scope;
+        std::uint64_t next_event_layout_epoch{};
+        std::uint64_t completion_capability_constructions{};
+        std::uint64_t event_route_claim_lookups{};
+        std::uint64_t event_payload_copy_bytes{};
+        std::size_t pending_awaitable_releases{};
+        std::size_t result_write_pins{};
+        std::size_t active_claimed_waiters{};
         std::uint64_t sync_invocations{};
         std::uint64_t step_invocations{};
         std::uint64_t backend_resume_calls{};
@@ -1057,7 +1068,7 @@ namespace lux::simulation::script
             return id;
         }
 
-        [[nodiscard]] lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError> createAwaitable(
+        [[nodiscard]] lux::cxx::expected<ScriptAwaitableId, EScriptAwaitableCreateError> createAwaitableRecord(
             ScriptInstanceId instance,
             std::optional<PreparedResumeType> result_type,
             bool external_completion = true
@@ -1083,7 +1094,7 @@ namespace lux::simulation::script
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::STOPPING);
             if (awaitables.size() >= limits.awaitable_capacity)
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::CAPACITY_EXCEEDED);
-            auto inserted = awaitables.tryEmplace(AwaitableRecord{
+            auto inserted = awaitables.tryEmplacePrepared(AwaitableRecord{
                 {},
                 instance,
                 {},
@@ -1097,7 +1108,16 @@ namespace lux::simulation::script
             if (!inserted)
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::ALLOCATION_FAILURE);
             const auto id = awaitableId(*inserted);
-            auto& record = awaitables[*inserted];
+            auto& record = *awaitables.find(*inserted);
+            if (!external_completion && record.result_type)
+            {
+                record.value.type = *record.result_type;
+                if (!record.value.bytes.resize(record.result_type->size, record.result_type->alignment))
+                {
+                    static_cast<void>(awaitables.erase(*inserted));
+                    return lux::cxx::unexpected(EScriptAwaitableCreateError::ALLOCATION_FAILURE);
+                }
+            }
             record.id = id;
             record.instance_next = owner->first_awaitable;
             if (record.instance_next.valid())
@@ -1110,6 +1130,17 @@ namespace lux::simulation::script
             owner->first_awaitable = id;
             if (external_completion)
                 ingress->completions.open(id, record.result_type);
+            return id;
+        }
+
+        [[nodiscard]] lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError> createAwaitable(
+            ScriptInstanceId instance, std::optional<PreparedResumeType> result_type
+        ) noexcept
+        {
+            const auto created = createAwaitableRecord(instance, result_type);
+            if (!created) return lux::cxx::unexpected(created.error());
+            const auto id = *created;
+            ++completion_capability_constructions;
             return ScriptAwaitableRegistration{id,
                                                ScriptAwaitableCompletion{std::static_pointer_cast<void>(ingress),
                                                                          ingress.get(),
@@ -1167,22 +1198,30 @@ namespace lux::simulation::script
             auto* record = awaitables.find(awaitableKey(awaitable));
             if (record == nullptr || record->instance != instance)
                 return lux::cxx::unexpected(EScriptAwaitableCompletionError::INVALID_ID);
-            if (record->state != EScriptAwaitableState::PENDING)
-                return lux::cxx::unexpected(EScriptAwaitableCompletionError::ALREADY_TERMINAL);
-            if (!validAwaitableOutcome(*record, state, value, error))
-                return lux::cxx::unexpected(EScriptAwaitableCompletionError::INVALID_VALUE);
-            if (record->continuation.valid() && resumes.count >= resumes.records.size())
-                return lux::cxx::unexpected(EScriptAwaitableCompletionError::RESUME_QUEUE_FULL);
+            return finishAwaitableOwner(*record, state, &value, error);
+        }
 
-            record->state = state;
-            record->value = std::move(value);
-            record->error = error;
-            if (record->external_completion)
-                ingress->completions.close(awaitable);
-            if (record->continuation.valid())
+        [[nodiscard]] lux::cxx::expected<void, EScriptAwaitableCompletionError> finishAwaitableOwner(
+            AwaitableRecord& record, EScriptAwaitableState state, ScriptOwnedResumeValue* supplied,
+            ScriptStepError error
+        ) noexcept
+        {
+            if (stopping) return lux::cxx::unexpected(EScriptAwaitableCompletionError::STOPPING);
+            if (record.state != EScriptAwaitableState::PENDING || record.release_pending)
+                return lux::cxx::unexpected(EScriptAwaitableCompletionError::ALREADY_TERMINAL);
+            if (!validAwaitableOutcome(record, state, supplied ? *supplied : record.value, error))
+                return lux::cxx::unexpected(EScriptAwaitableCompletionError::INVALID_VALUE);
+            if (record.continuation.valid() && resumes.count >= resumes.records.size())
+                return lux::cxx::unexpected(EScriptAwaitableCompletionError::RESUME_QUEUE_FULL);
+            record.state = state;
+            if (supplied != nullptr) record.value = std::move(*supplied);
+            record.error = error;
+            if (record.external_completion)
+                ingress->completions.close(record.id);
+            if (record.continuation.valid())
             {
-                static_cast<void>(resumes.push({record->instance, record->continuation, record->id}));
-                record->resume_enqueued = true;
+                static_cast<void>(resumes.push({record.instance, record.continuation, record.id}));
+                record.resume_enqueued = true;
             }
             return {};
         }
@@ -1407,6 +1446,8 @@ namespace lux::simulation::script
                 return;
             if (waiter->state == EEventWaiterState::ACTIVE)
                 unlinkEventWaiterRoute(*waiter);
+            else
+                --active_claimed_waiters;
             unlinkEventWaiterOwnership(*waiter);
             if (clear_awaitable)
                 clearAwaitableEventWaiter(waiter->instance, waiter->awaitable, waiter->id);
@@ -1415,7 +1456,7 @@ namespace lux::simulation::script
 
         [[nodiscard]] lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> waitEvent(
             ScriptInstanceId instance,
-            ScriptEventWaitRequest request
+            ScriptEventAdmissionHandle admission
         ) noexcept
         {
             if (stopping || prepare_state != EPrepareState::PREPARED)
@@ -1426,22 +1467,17 @@ namespace lux::simulation::script
             auto& mount = mounts[owner->mount_slot];
             if (mount.state != EMountState::ACTIVE || mount.instance != instance)
                 return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
-            const auto declared = std::ranges::find_if(mount.event_sources, [&](const auto& source) noexcept {
-                return source.system_id == request.system.value && source.event_id == request.event.value &&
-                    static_cast<std::uint8_t>(source.route) == static_cast<std::uint8_t>(request.route);
-            });
-            if (declared == mount.event_sources.end())
+            const bool invalid_source = admission.scope_ != event_admission_scope || admission.instance_ != instance ||
+                admission.layout_epoch_ != mount.event_layout_epoch ||
+                admission.local_slot_ >= mount.event_sources.size();
+            if (invalid_source)
                 return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
-
-            const auto endpoint_slot = findEventEndpoint({request.system, request.event});
-            if (!endpoint_slot)
-                return lux::cxx::unexpected(EScriptEventWaitError::ENDPOINT_NOT_FOUND);
-            auto& bucket = events[*endpoint_slot];
-            if (bucket.endpoint->route != request.route)
-                return lux::cxx::unexpected(EScriptEventWaitError::ROUTE_MISMATCH);
+            const auto& prepared = mount.event_sources[admission.local_slot_];
+            const auto endpoint_slot = prepared.endpoint_slot;
+            auto& bucket = events[endpoint_slot];
 
             ecs::Entity target{ecs::NullEntity};
-            if (request.route == EEventRoute::ENTITY_TARGETED)
+            if (bucket.endpoint->route == EEventRoute::ENTITY_TARGETED)
             {
                 const auto* entity_scope = std::get_if<EntityScriptScope>(&mount.scope);
                 if (entity_scope == nullptr || entity_scope->self == ecs::NullEntity ||
@@ -1452,36 +1488,17 @@ namespace lux::simulation::script
                 target = entity_scope->self;
             }
 
-            const auto& projection = bucket.endpoint->payload_projection;
-            if (projection.copy == nullptr)
-                return lux::cxx::unexpected(EScriptEventWaitError::PAYLOAD_NOT_OWNABLE);
-            if (projection.owned_layout.size > limits.max_resume_payload_bytes)
-                return lux::cxx::unexpected(EScriptEventWaitError::PAYLOAD_TOO_LARGE);
-            if (event_waiters.size() >= limits.event_wait_capacity)
+            const auto reserved_waiters = event_waiters.size() - active_claimed_waiters + claimed_event_waiters.size();
+            if (reserved_waiters >= limits.event_wait_capacity)
                 return lux::cxx::unexpected(EScriptEventWaitError::WAITER_CAPACITY_EXCEEDED);
             if (event_wait_sequence == std::numeric_limits<std::uint64_t>::max())
                 return lux::cxx::unexpected(EScriptEventWaitError::SEQUENCE_EXHAUSTED);
 
-            std::optional<PreparedResumeType> payload_type;
-            ScriptOwnedResumeValue payload;
-            try
-            {
-                payload_type.emplace(projection.owned_layout.type_id, projection.owned_layout.abi_kind,
-                    projection.owned_layout.size, projection.owned_layout.alignment);
-                payload.type = *payload_type;
-                if (!payload.bytes.resize(projection.owned_layout.size, projection.owned_layout.alignment))
-                    return lux::cxx::unexpected(EScriptEventWaitError::ALLOCATION_FAILURE);
-            }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(EScriptEventWaitError::ALLOCATION_FAILURE);
-            }
-
-            auto awaitable = createAwaitable(instance, std::move(payload_type), false);
+            auto awaitable = createAwaitableRecord(instance, prepared.payload, false);
             if (!awaitable)
                 return lux::cxx::unexpected(eventWaitError(awaitable.error()));
 
-            const EventRouteKey route_key{*endpoint_slot, target};
+            const EventRouteKey route_key{endpoint_slot, target};
             bool inserted_route{};
             try
             {
@@ -1490,29 +1507,28 @@ namespace lux::simulation::script
             }
             catch (const std::bad_alloc&)
             {
-                discardAwaitable(instance, awaitable->id);
+                discardAwaitable(instance, *awaitable);
                 return lux::cxx::unexpected(EScriptEventWaitError::ALLOCATION_FAILURE);
             }
 
             auto inserted = event_waiters.tryEmplace(EventWaiterRecord{
                 {},
                 instance,
-                awaitable->id,
-                *endpoint_slot,
+                *awaitable,
+                endpoint_slot,
                 target,
                 ++event_wait_sequence,
                 EEventWaiterState::ACTIVE,
                 {},
                 {},
                 {},
-                {},
-                std::move(payload)
+                {}
             });
             if (!inserted)
             {
                 if (inserted_route)
                     event_wait_routes.erase(route_key);
-                discardAwaitable(instance, awaitable->id);
+                discardAwaitable(instance, *awaitable);
                 return lux::cxx::unexpected(EScriptEventWaitError::ALLOCATION_FAILURE);
             }
 
@@ -1533,21 +1549,21 @@ namespace lux::simulation::script
             if (waiter.instance_next.valid())
                 event_waiters[eventWaiterKey(waiter.instance_next)].instance_previous = id;
             owner->first_event_waiter = id;
-            auto* record = awaitables.find(awaitableKey(awaitable->id));
+            auto* record = awaitables.find(awaitableKey(*awaitable));
             if (record == nullptr || record->instance != instance)
                 std::terminate();
             record->event_waiter = id;
             event_waiter_high_water = (std::max)(event_waiter_high_water, event_waiters.size());
-            return awaitable->id;
+            return *awaitable;
         }
 
         [[nodiscard]] static lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> waitEventErased(
             void* context,
             ScriptInstanceId instance,
-            ScriptEventWaitRequest request
+            ScriptEventAdmissionHandle admission
         ) noexcept
         {
-            return static_cast<State*>(context)->waitEvent(instance, request);
+            return static_cast<State*>(context)->waitEvent(instance, admission);
         }
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> attachWaiter(
@@ -1607,11 +1623,41 @@ namespace lux::simulation::script
             auto* record = awaitables.find(awaitableKey(id));
             if (record == nullptr)
                 return false;
+            if (record->release_pending) return true;
             unlinkAwaitableOwnership(*record);
             if (record->external_completion)
                 ingress->completions.close(id);
+            if (record->write_pins != 0U)
+            {
+                record->state = EScriptAwaitableState::CANCELLED;
+                record->release_pending = true;
+                ++pending_awaitable_releases;
+                return true;
+            }
             return awaitables.erase(awaitableKey(id));
         }
+
+        struct ResultWritePin final
+        {
+            State& owner;
+            AwaitableRecord& record;
+            ResultWritePin(State& state, AwaitableRecord& value) noexcept : owner(state), record(value)
+            {
+                ++record.write_pins;
+                ++owner.result_write_pins;
+            }
+            ~ResultWritePin() noexcept
+            {
+                --record.write_pins;
+                --owner.result_write_pins;
+                if (record.write_pins == 0U && record.release_pending)
+                {
+                    const auto key = awaitableKey(record.id);
+                    --owner.pending_awaitable_releases;
+                    static_cast<void>(owner.awaitables.erase(key));
+                }
+            }
+        };
 
         [[nodiscard]] std::optional<AwaitableOutcome> takeAwaitable(ResumeRecord resume) noexcept
         {
@@ -2141,6 +2187,7 @@ namespace lux::simulation::script
 
         void claimEventWaiters(EventBucket& bucket, ecs::Entity target, std::uint64_t cutoff) noexcept
         {
+            ++event_route_claim_lookups;
             auto route = event_wait_routes.find(EventRouteKey{bucket.slot, target});
             if (route == event_wait_routes.end())
                 return;
@@ -2155,13 +2202,22 @@ namespace lux::simulation::script
                 if (waiter->sequence > cutoff)
                     break;
                 const auto next = waiter->route_next;
-                unlinkEventWaiterRoute(*waiter);
+                waiter->route_previous = {};
+                waiter->route_next = {};
                 waiter->state = EEventWaiterState::CLAIMED;
+                ++active_claimed_waiters;
                 if (claimed_event_waiters.size() >= claimed_event_waiters.capacity())
                     std::terminate();
                 claimed_event_waiters.push_back(current);
                 current = next;
             }
+            if (current.valid())
+            {
+                route->second.first = current;
+                event_waiters[eventWaiterKey(current)].route_previous = {};
+            }
+            else
+                event_wait_routes.erase(route);
         }
 
         void failEventWaiter(ScriptInstanceId instance, EScriptSystemError error) noexcept
@@ -2195,29 +2251,35 @@ namespace lux::simulation::script
             }
 
             auto& bucket = events[waiter->bucket_slot];
+            auto* record = awaitables.find(awaitableKey(awaitable));
+            if (record == nullptr || record->instance != instance || record->release_pending)
+            {
+                eraseEventWaiter(id);
+                return;
+            }
+            ResultWritePin pin(*this, *record);
             const bool is_invalid_frame = frame.arg_count != 1U || frame.args == nullptr;
-            const bool copied = !is_invalid_frame && bucket.endpoint->payload_projection.copy(
-                bucket.endpoint->context,
-                frame.args[0],
-                waiter->payload.bytes.span()
-            );
-            if (!copied)
+            bool copied{};
+            {
+                UserInvocationScope invocation(*this);
+                copied = !is_invalid_frame && bucket.endpoint->payload_projection.copy(
+                    bucket.endpoint->context, frame.args[0], record->value.bytes.span());
+            }
+            const auto* current_owner = instances.find(instanceKey(instance));
+            const bool still_live = !stopping && !record->release_pending && current_owner != nullptr &&
+                current_owner->mount_slot < mounts.size() &&
+                mounts[current_owner->mount_slot].instance == instance &&
+                mounts[current_owner->mount_slot].state == EMountState::ACTIVE;
+            if (!copied || !still_live)
             {
                 eraseEventWaiter(id);
                 discardAwaitable(instance, awaitable);
-                failEventWaiter(instance, EScriptSystemError::INVOCATION_FAILURE);
+                if (still_live) failEventWaiter(instance, EScriptSystemError::INVOCATION_FAILURE);
                 return;
             }
-
-            auto payload = std::move(waiter->payload);
+            event_payload_copy_bytes += record->value.bytes.size();
             eraseEventWaiter(id);
-            const auto completed = completeAwaitableOwner(
-                instance,
-                awaitable,
-                EScriptAwaitableState::READY,
-                std::move(payload),
-                {}
-            );
+            const auto completed = finishAwaitableOwner(*record, EScriptAwaitableState::READY, nullptr, {});
             if (completed)
                 return;
 
@@ -2673,6 +2735,12 @@ namespace lux::simulation::script
                 const auto& event_requirements = mount.artifact.artifact->description().event_requirements;
                 mount.event_sources.clear();
                 mount.event_sources.reserve(event_requirements.size());
+                if (next_event_layout_epoch == (std::numeric_limits<std::uint64_t>::max)())
+                {
+                    releaseMount(mount_slot, EMountState::INACTIVE, false);
+                    return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
+                }
+                mount.event_layout_epoch = ++next_event_layout_epoch;
                 for (const auto& requirement : event_requirements)
                 {
                     if (requirement.payload.size > limits.max_resume_payload_bytes)
@@ -2699,7 +2767,9 @@ namespace lux::simulation::script
                         releaseMount(mount_slot, EMountState::INACTIVE, false);
                         return lux::cxx::unexpected(EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH);
                     }
-                    mount.event_sources.push_back(requirement);
+                    mount.event_sources.push_back({&requirement, {}, *endpoint_slot,
+                        {requirement.payload.type_id, requirement.payload.abi_kind,
+                            requirement.payload.size, requirement.payload.alignment}});
                 }
             }
             catch (const std::bad_alloc&)
@@ -2716,6 +2786,14 @@ namespace lux::simulation::script
                 return lux::cxx::unexpected(error);
             }
             mount.instance = *instance;
+            for (std::uint32_t local{}; local < mount.event_sources.size(); ++local)
+            {
+                auto& admission = mount.event_sources[local].admission;
+                admission.scope_ = event_admission_scope;
+                admission.instance_ = mount.instance;
+                admission.layout_epoch_ = mount.event_layout_epoch;
+                admission.local_slot_ = local;
+            }
 
             const ScriptInstanceCreateContext create_context{mount.authored->asset,
                                                              mount.scope,
@@ -3159,6 +3237,8 @@ namespace lux::simulation::script
         try
         {
             auto state = std::make_unique<State>();
+            static lux::cxx::ScopeIdSource<ScriptEventAdmissionScopeTag> event_scope_source;
+            state->event_admission_scope = event_scope_source.acquire();
             state->simulation = std::addressof(simulation);
             state->description = std::addressof(description);
             state->registry = std::addressof(registry);
@@ -3300,7 +3380,9 @@ namespace lux::simulation::script
             state->awaitables.reserve(limits.awaitable_capacity);
             state->resumes.prepare(limits.resume_queue_capacity);
             state->ingress = std::make_shared<State::AwaitableIngress>();
-            state->ingress->completions.prepare(limits.external_completion_capacity, limits.awaitable_capacity);
+            // Stable slots are page-rounded; tickets are indexed by physical SlotKey, not by the
+            // configured concurrent-admission limit. The logical limit remains checked on admission.
+            state->ingress->completions.prepare(limits.external_completion_capacity, state->awaitables.capacity());
             return ScriptSystem(std::move(state));
         }
         catch (const std::bad_alloc&)
@@ -3613,7 +3695,7 @@ namespace lux::simulation::script
 
         state_->stopping = true;
         state_->ingress->completions.stop();
-        if (state_->user_invocation_depth != 0U)
+        if (state_->user_invocation_depth != 0U || state_->result_write_pins != 0U)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         state_->next_step_waits.clear();
         state_->next_step_first = {};
@@ -3679,7 +3761,7 @@ namespace lux::simulation::script
     {
         if (!state_ || !state_->ingress)
             return 0U;
-        return state_->awaitables.size();
+        return state_->awaitables.size() - state_->pending_awaitable_releases;
     }
 
     ScriptRuntimeStats ScriptSystem::stats() const noexcept
@@ -3703,7 +3785,18 @@ namespace lux::simulation::script
         result.instance_cleanup_event_waiter_visits = state_->instance_cleanup_event_waiter_visits;
         result.instance_cleanup_awaitable_visits = state_->instance_cleanup_awaitable_visits;
         result.instance_cleanup_continuation_visits = state_->instance_cleanup_continuation_visits;
-        result.active_awaitables = state_->awaitables.size();
+        result.active_awaitables = state_->awaitables.size() - state_->pending_awaitable_releases;
+        result.event_route_claim_lookups = state_->event_route_claim_lookups;
+        result.event_payload_copy_bytes = state_->event_payload_copy_bytes;
+        result.completion_capability_constructions = state_->completion_capability_constructions;
+        result.result_write_pins = state_->result_write_pins;
+        result.deferred_awaitable_releases = state_->pending_awaitable_releases;
+        result.awaitable_record_bytes = sizeof(State::AwaitableRecord);
+        result.event_waiter_record_bytes = sizeof(State::EventWaiterRecord);
+        result.awaitable_reserved_slots = state_->awaitables.capacity();
+        result.awaitable_storage_bytes = state_->awaitables.storageBytes();
+        result.external_ticket_storage_bytes = state_->ingress->completions.ticket_capacity *
+            sizeof(detail::ExternalCompletionRing::Ticket);
         result.resume_queue_depth = state_->resumes.count;
         result.resume_queue_high_water = state_->resumes.high_water;
         result.external_completion_queue_depth = state_->ingress->completions.count.load(std::memory_order_relaxed);

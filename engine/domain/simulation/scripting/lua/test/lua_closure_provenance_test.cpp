@@ -224,9 +224,10 @@ void testEventProvenance()
     const std::array artifacts{&first_artifact, &second_artifact};
     for (std::size_t index{}; index < instances.size(); ++index)
     {
+        const PreparedScriptEventAdmission event{&sources[index], {}, {}, {}};
         assert(runtime.createInstance(runtime.context,
             {assetId(static_cast<std::uint8_t>(index + 1U)), SimulationScriptScope{}, nullptr,
-                {static_cast<std::uint32_t>(index + 1U), 1U}, {}, {&sources[index], 1U}},
+                {static_cast<std::uint32_t>(index + 1U), 1U}, {}, {&event, 1U}},
             *artifacts[index], instances[index]) == EScriptBackendResult::SUCCESS);
     }
     ScriptBackendPreparedMethod save;
@@ -240,7 +241,7 @@ void testEventProvenance()
         EScriptBackendResult::SUCCESS);
     std::size_t registrations{};
     ScriptStepContext step{{2U, 1U}, &registrations, nullptr, nullptr,
-        [](void* context, ScriptInstanceId, ScriptEventWaitRequest) noexcept
+        [](void* context, ScriptInstanceId, ScriptEventAdmissionHandle) noexcept
             -> lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> {
             ++*static_cast<std::size_t*>(context);
             return ScriptAwaitableId{1U, 1U};
@@ -313,7 +314,7 @@ void testNestedScopes()
         static ScriptStepContext context(Nested& self) noexcept
         {
             return {{2U, 1U}, &self, nullptr, nullptr,
-                [](void* opaque, ScriptInstanceId, ScriptEventWaitRequest) noexcept
+                [](void* opaque, ScriptInstanceId, ScriptEventAdmissionHandle) noexcept
                     -> lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> {
                     ++static_cast<Nested*>(opaque)->waits;
                     return ScriptAwaitableId{1U, 1U};
@@ -346,11 +347,12 @@ void testNestedScopes()
         &inner_calls, &inner_dispatch, 1U, beta.bindings};
     const auto runtime = backend->descriptor();
     ScriptBackendInstance outer_instance, inner_instance;
+    const PreparedScriptEventAdmission prepared_event{&event, {}, {}, {}};
     assert(runtime.createInstance(runtime.context,
         {assetId(11U), SimulationScriptScope{}, nullptr, {1U, 1U}, {&outer_capability, 1U}, {}},
         outer, outer_instance) == EScriptBackendResult::SUCCESS);
     assert(runtime.createInstance(runtime.context,
-        {assetId(12U), SimulationScriptScope{}, nullptr, {2U, 1U}, {&inner_capability, 1U}, {&event, 1U}},
+        {assetId(12U), SimulationScriptScope{}, nullptr, {2U, 1U}, {&inner_capability, 1U}, {&prepared_event, 1U}},
         *inner, inner_instance) == EScriptBackendResult::SUCCESS);
     ScriptBackendPreparedMethod outer_method;
     assert(runtime.prepareMethod(runtime.context, outer_instance, outer.description().exports[1], outer_method) ==

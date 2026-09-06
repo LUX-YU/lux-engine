@@ -199,3 +199,20 @@ No final production/qualification candidate, optimization speedup, framework fre
   remains supported. Stable/non-nil UUID validation and retained identity across changed contents are tested.
 - Full isolated final install/relocation and paired performance remain pending. The development consumer
   used current v3d + codegen-toolchain SDKs, not a final qualification prefix.
+- I05 development replaces raw runtime Event requests with instance/layout/runtime-scoped prepared handles.
+  Native imports, Lua local slots and C++ descriptor-bound typed source tokens resolve only during preparation.
+  Normal Event admission no longer searches semantic requirements or endpoint identities.
+- Awaitable is the only Event result owner. Stable-slot backing plus a short write pin keeps inline/spilled bytes
+  valid across copy callbacks that cancel an instance or erase a different record; deferred releases finish on unpin.
+  Event-only admission constructs no external completion capability/lease. Claim performs one route lookup per
+  occurrence and preserves callback/cutoff ordering. Outstanding claim scratch also participates in admission
+  backpressure so reentrant cancellation/re-registration cannot overflow it.
+- First shared regression exposed physical stable-slot indexes exceeding the external ticket array's old logical
+  count. Ticket storage now covers the actual page-rounded slot capacity; logical concurrent admission is unchanged.
+  Reserved slots, backing bytes and ticket bytes are explicit metrics, including small-population page padding.
+- Developer all + 46/46 focused tests pass (`v3d/i05-complete-tests.log`, 40.91 seconds), including LuaJIT on/off,
+  Scene 0/2/4 workers, continuation, C++ and Event pin/cancellation/provenance tests. A separate race-only Event
+  test skips the 10k/50k/100k one-time structure cases for later 100x stress. Toolchain closure is still running.
+- I05 Toolchain all + 34/34 focused C++/continuation/Event/FlowForge tests pass (41.52 seconds).
+  The one remaining direct-backend negative fixture was migrated to prepared Event entries; no runtime fallback remains.
+  lux-cxx dependency is now `af25d29` (prepared stable insertion and exact backing-capacity accounting).

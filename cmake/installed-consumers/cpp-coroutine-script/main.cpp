@@ -189,7 +189,7 @@ int main()
     );
     if (!event_source)
         return 7;
-    auto typed_event = CppScriptEventSource<std::int32_t>::create(*event_source);
+    auto typed_event = CppScriptEventSource<std::int32_t>::create(generated::CoroutineBehavior, *event_source);
     if (!typed_event)
         return 8;
     installed_consumer::pulse_event = std::move(*typed_event);

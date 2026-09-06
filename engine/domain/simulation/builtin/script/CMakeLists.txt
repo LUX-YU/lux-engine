@@ -200,6 +200,7 @@ add_test(
     NAME simulation_script_event_wait_test
     COMMAND simulation_script_event_wait_test
 )
+add_test(NAME simulation_script_event_wait_race_test COMMAND simulation_script_event_wait_test --race-only)
 
 add_executable(
     simulation_script_lifecycle_test

@@ -7,6 +7,7 @@
 #include <lux/engine/system/SystemInstanceId.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/cxx/container/ScopeId.hpp>
 
 #include <algorithm>
 #include <array>
@@ -548,6 +549,35 @@ namespace lux::simulation::script
         STOPPING,
     };
 
+    class ScriptSystem;
+    struct ScriptEventAdmissionScopeTag;
+    using ScriptEventAdmissionScope = lux::cxx::ScopeId<ScriptEventAdmissionScopeTag>;
+
+    class ScriptEventAdmissionHandle final
+    {
+    public:
+        ScriptEventAdmissionHandle() noexcept = default;
+        [[nodiscard]] explicit operator bool() const noexcept
+        {
+            return scope_.isValid() && instance_.valid() && layout_epoch_ != 0U;
+        }
+    private:
+        ScriptEventAdmissionScope scope_;
+        ScriptInstanceId instance_;
+        std::uint64_t layout_epoch_{};
+        std::uint32_t local_slot_{};
+        friend class ScriptSystem;
+    };
+
+    // Borrowed only by a backend instance, for the incarnation's prepared lifetime. Never serialized.
+    struct PreparedScriptEventAdmission final
+    {
+        const lux::script::ScriptEventSourceDescription* source{};
+        ScriptEventAdmissionHandle admission;
+        std::uint32_t endpoint_slot{};
+        PreparedResumeType payload;
+    };
+
     class ScriptEventWaitFactory final
     {
     public:
@@ -558,18 +588,18 @@ namespace lux::simulation::script
         ScriptEventWaitFactory& operator=(ScriptEventWaitFactory&&) = delete;
 
         [[nodiscard]] lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> wait(
-            ScriptEventWaitRequest request
+            ScriptEventAdmissionHandle admission
         ) const noexcept
         {
             if (wait_ == nullptr)
                 return lux::cxx::unexpected<EScriptEventWaitError>(EScriptEventWaitError::STOPPING);
-            return wait_(context_, instance_, request);
+            return wait_(context_, instance_, admission);
         }
 
         using WaitFn = lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> (*)(
             void*,
             ScriptInstanceId,
-            ScriptEventWaitRequest
+            ScriptEventAdmissionHandle
         ) noexcept;
 
     private:

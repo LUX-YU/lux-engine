@@ -190,7 +190,7 @@ namespace lux::simulation::script
         ScriptBehavior* behavior{};
         ScriptInstanceId instance;
         std::span<const PreparedScriptApiCapability> capabilities;
-        std::span<const lux::script::ScriptEventSourceDescription> events;
+        std::span<const PreparedScriptEventAdmission> events;
     };
 
     struct BoundScriptStepCall final

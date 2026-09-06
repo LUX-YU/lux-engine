@@ -38,7 +38,7 @@ namespace lux::simulation::script
         {
             struct PreparedEvent final
             {
-                const lux::script::ScriptEventSourceDescription* source{};
+                ScriptEventAdmissionHandle admission;
                 const lux_script_event_wait_import_desc* import{};
             };
 
@@ -340,11 +340,12 @@ namespace lux::simulation::script
                 for (const auto& import : imports)
                 {
                     const auto found = std::ranges::find_if(context.events, [&](const auto& source) noexcept {
-                        return source.system_id == import.system_id && source.event_id == import.event_id;
+                        return source.source != nullptr && source.source->system_id == import.system_id &&
+                            source.source->event_id == import.event_id;
                     });
-                    if (found == context.events.end() || !scriptEventImportMatches(import, *found))
+                    if (found == context.events.end() || !scriptEventImportMatches(import, *found->source))
                         return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
-                    instance.events.push_back({std::addressof(*found), std::addressof(import)});
+                    instance.events.push_back({found->admission, std::addressof(import)});
                 }
                 return EScriptBackendResult::SUCCESS;
             }
@@ -387,17 +388,9 @@ namespace lux::simulation::script
             if (ordinal >= adapter.call->instance->events.size())
                 return -1;
             const auto& prepared = adapter.call->instance->events[ordinal];
-            if (prepared.source == nullptr || prepared.import == nullptr)
+            if (prepared.import == nullptr)
                 return -1;
-            const auto& source = *prepared.source;
-            const auto route = source.route == lux::script::EScriptEventRoute::SIMULATION_BROADCAST
-                ? EEventRoute::SIMULATION_BROADCAST
-                : EEventRoute::ENTITY_TARGETED;
-            const auto result = adapter.context->event_waits.wait({
-                lux::system::SystemInstanceId{source.system_id},
-                EventPointId{source.event_id},
-                route
-            });
+            const auto result = adapter.context->event_waits.wait(prepared.admission);
             if (!result)
                 return -1000 - static_cast<std::int32_t>(result.error());
             if (adapter.continuation != nullptr)

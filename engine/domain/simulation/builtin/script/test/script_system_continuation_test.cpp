@@ -213,6 +213,7 @@ namespace
 
     struct BackendState final
     {
+        ScriptEventAdmissionHandle event;
         bool enable_step{};
         bool enable_ability_async{};
         bool eager_first{};
@@ -264,6 +265,7 @@ namespace
         if (instance == nullptr)
             return EScriptBackendResult::ALLOCATION_FAILURE;
         instance->owner = &state;
+        if (!create.events.empty()) state.event = create.events.front().admission;
         ++state.capability_bind_scans;
         if (!create.capabilities.empty())
         {
@@ -1155,8 +1157,8 @@ int main()
         Harness harness{false, 1U, false, false, true};
         harness.backend_state.enable_step = true;
         harness.backend_state.expected_payload_size = sizeof(LargePayload);
-        harness.backend_state.custom_step = [](BackendState&, ScriptStepContext& step) noexcept {
-            const auto waiting = step.event_waits.wait({kSystem, kLargeEvent, EEventRoute::SIMULATION_BROADCAST});
+        harness.backend_state.custom_step = [](BackendState& state, ScriptStepContext& step) noexcept {
+            const auto waiting = step.event_waits.wait(state.event);
             assert(waiting);
             return ScriptStepResult::suspended(*waiting);
         };

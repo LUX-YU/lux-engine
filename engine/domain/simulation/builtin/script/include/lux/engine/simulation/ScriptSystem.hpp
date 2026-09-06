@@ -79,6 +79,16 @@ namespace lux::simulation::script
         std::uint64_t backend_resume_calls{};
         std::uint64_t suspensions_admitted{};
         std::uint64_t event_occurrences{};
+        std::uint64_t event_route_claim_lookups{};
+        std::uint64_t event_payload_copy_bytes{};
+        std::uint64_t completion_capability_constructions{};
+        std::size_t result_write_pins{};
+        std::size_t deferred_awaitable_releases{};
+        std::size_t awaitable_record_bytes{};
+        std::size_t event_waiter_record_bytes{};
+        std::size_t awaitable_reserved_slots{};
+        std::size_t awaitable_storage_bytes{};
+        std::size_t external_ticket_storage_bytes{};
     };
 
     namespace detail

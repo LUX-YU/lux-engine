@@ -190,6 +190,7 @@ namespace
     {
         BackendState* owner{};
         ecs::Entity self{ecs::NullEntity};
+        ScriptEventAdmissionHandle event;
     };
 
     struct PreparedCall final
@@ -206,6 +207,9 @@ namespace
     struct BackendState final
     {
         ScriptEventWaitRequest wait_request;
+        ScriptEventAdmissionHandle first_admission;
+        ScriptEventAdmissionHandle override_admission;
+        bool override_source{};
         ECallbackAction callback_action{ECallbackAction::NONE};
         ecs::Registry* registry{};
         std::size_t callback_calls{};
@@ -249,11 +253,12 @@ namespace
 
     [[nodiscard]] ScriptStepResult beginWait(
         BackendState& state,
+        ScriptEventAdmissionHandle event,
         ScriptStepContext& context,
         ScriptBackendContinuation& output
     ) noexcept
     {
-        const auto waiting = context.event_waits.wait(state.wait_request);
+        const auto waiting = context.event_waits.wait(state.override_source ? state.override_admission : event);
         if (!waiting)
         {
             state.wait_error = waiting.error();
@@ -281,7 +286,7 @@ namespace
         assert(frame.arg_count == 1U && frame.args != nullptr);
         ++state.step_calls;
         if (call.symbol == kStartSymbol)
-            return beginWait(state, context, output);
+            return beginWait(state, call.instance->event, context, output);
         if (call.symbol != kCallbackSymbol)
             return ScriptStepResult::failed(1200);
 
@@ -301,7 +306,7 @@ namespace
             state.nested_dispatch(state.nested_context, 72);
         }
         if (state.callback_action == ECallbackAction::WAIT_ONCE && state.wait_once_count++ == 0U)
-            return beginWait(state, context, output);
+            return beginWait(state, call.instance->event, context, output);
         return ScriptStepResult::completed();
     }
 
@@ -322,6 +327,14 @@ namespace
             return EScriptBackendResult::ALLOCATION_FAILURE;
         instance->owner = static_cast<BackendState*>(context);
         ++instance->owner->instance_creates;
+        for (const auto& entry : create.events)
+        {
+            const auto& request = instance->owner->wait_request;
+            if (entry.source != nullptr && entry.source->system_id == request.system.value &&
+                entry.source->event_id == request.event.value)
+                instance->event = entry.admission;
+        }
+        if (!instance->owner->first_admission) instance->owner->first_admission = instance->event;
         if (const auto* entity = std::get_if<EntityScriptScope>(&create.scope))
             instance->self = entity->self;
         output.value = instance;
@@ -382,6 +395,8 @@ namespace
         {
             void* lane_context{};
             ScriptEventLane lane{};
+            void* copy_context{};
+            bool (*copy_probe)(void*, std::span<std::byte>) noexcept{};
 
             [[nodiscard]] ScriptEventEndpointDescriptor descriptor() noexcept
             {
@@ -438,7 +453,7 @@ namespace
             }
 
             static bool copyPayload(
-                void*,
+                void* context,
                 const lux_script_value_slot& input,
                 std::span<std::byte> output
             ) noexcept
@@ -448,6 +463,8 @@ namespace
                 {
                     return false;
                 }
+                auto& self = *static_cast<ImmediateBroadcastEndpoint*>(context);
+                if (self.copy_probe != nullptr && !self.copy_probe(self.copy_context, output)) return false;
                 std::memcpy(output.data(), input.data, output.size());
                 return true;
             }
@@ -1034,12 +1051,14 @@ namespace
         assert(deliverEndpoint(harness.broadcast_start_bridge) == count);
         const auto before = harness.system->stats();
         assert(before.active_event_waiters == count);
+        assert(before.completion_capability_constructions == 0U);
         assert(harness.broadcast_wait_bridge->connectionCount() == 1U);
         for (std::size_t index{}; index < 4U; ++index)
             assert(harness.system->executeStablePoint());
         const auto after = harness.system->stats();
         assert(after.active_event_waiters == count);
         assert(after.event_waiter_dispatch_visits == before.event_waiter_dispatch_visits);
+        assert(after.event_route_claim_lookups == before.event_route_claim_lookups);
         assert(after.instance_cleanup_event_waiter_visits == before.instance_cleanup_event_waiter_visits);
         assert(after.instance_cleanup_awaitable_visits == before.instance_cleanup_awaitable_visits);
         assert(after.instance_cleanup_continuation_visits == before.instance_cleanup_continuation_visits);
@@ -1085,9 +1104,185 @@ namespace
         assert(after.instance_cleanup_awaitable_visits - before.instance_cleanup_awaitable_visits == 1U);
         assert(after.instance_cleanup_continuation_visits - before.instance_cleanup_continuation_visits == 1U);
     }
+
+    void testPreparedAdmissionProvenance()
+    {
+        Harness first{{}};
+        Harness second{{}};
+        second.backend_state.override_source = true;
+        second.backend_state.override_admission = first.backend_state.first_admission;
+        second.recordBroadcastStart(1);
+        assert(deliverEndpoint(second.broadcast_start_bridge) == 1U);
+        assert(second.backend_state.wait_error == EScriptEventWaitError::UNDECLARED_SOURCE);
+        assert(second.system->activeAwaitableCount() == 0U && second.backend_state.resumes == 0U);
+        first.recordBroadcastStart(1);
+        assert(deliverEndpoint(first.broadcast_start_bridge) == 1U);
+        first.recordBroadcastWait(9);
+        assert(deliverEndpoint(first.broadcast_wait_bridge) == 1U);
+        assert(first.system->executeStablePoint());
+        assert(first.backend_state.resume_values == std::vector<std::int32_t>{9});
+
+        Harness reincarnation{{.entity_scope = true}};
+        const auto old = reincarnation.backend_state.first_admission;
+        reincarnation.registry.destroy(reincarnation.entity);
+        reincarnation.entity = ecs::NullEntity;
+        assert(reincarnation.system->processLifecycle());
+        reincarnation.entity = reincarnation.registry.create();
+        assert(reincarnation.system->processLifecycle());
+        reincarnation.backend_state.override_source = true;
+        reincarnation.backend_state.override_admission = old;
+        reincarnation.recordTargetedStart(reincarnation.entity, 1);
+        assert(deliverEndpoint(reincarnation.targeted_start_bridge) == 1U);
+        assert(reincarnation.backend_state.wait_error == EScriptEventWaitError::UNDECLARED_SOURCE);
+        assert(reincarnation.system->activeAwaitableCount() == 0U);
+    }
+
+    void testCopyRetirementPin()
+    {
+        Harness harness{{.entity_scope = true, .immediate_wait_endpoint = true}};
+        harness.recordTargetedStart(harness.entity, 1);
+        assert(deliverEndpoint(harness.targeted_start_bridge) == 1U);
+        harness.immediate_wait.copy_context = &harness;
+        harness.immediate_wait.copy_probe = [](void* context, std::span<std::byte> output) noexcept {
+            auto& value = *static_cast<Harness*>(context);
+            value.registry.destroy(value.entity);
+            value.entity = ecs::NullEntity;
+            const auto pinned = value.system->stats();
+            assert(pinned.result_write_pins == 1U && pinned.deferred_awaitable_releases == 1U);
+            assert(pinned.active_awaitables == 0U);
+            std::memset(output.data(), 0x5A, output.size());
+            return true;
+        };
+        harness.emitImmediateWait(31);
+        const auto completed = harness.system->stats();
+        assert(completed.result_write_pins == 0U && completed.deferred_awaitable_releases == 0U);
+        assert(completed.active_awaitables == 0U && completed.active_event_waiters == 0U);
+        assert(harness.system->executeStablePoint());
+        assert(harness.backend_state.resumes == 0U && harness.backend_state.continuation_destroys == 1U);
+    }
+
+    void testCopyOtherRecordRemoval()
+    {
+        HarnessOptions options;
+        options.ownership_pair = true;
+        options.immediate_wait_endpoint = true;
+        options.limits.instance_capacity = 2U;
+        Harness harness{options};
+        harness.recordBroadcastStartSecond(1);
+        assert(deliverEndpoint(harness.broadcast_start_second_bridge) == 1U);
+        harness.recordBroadcastStart(1);
+        assert(deliverEndpoint(harness.broadcast_start_bridge) == 1U);
+        struct CopyContext final { Harness* harness; unsigned calls{}; } context{&harness};
+        harness.immediate_wait.copy_context = &context;
+        harness.immediate_wait.copy_probe = [](void* opaque, std::span<std::byte> output) noexcept {
+            auto& context = *static_cast<CopyContext*>(opaque);
+            if (++context.calls == 2U)
+            {
+                auto& value = *context.harness;
+                value.backend_state.callback_action = ECallbackAction::FAIL;
+                value.recordBroadcastFaultSecond(1);
+                assert(deliverEndpoint(value.broadcast_fault_second_bridge) == 1U);
+                assert(value.system->stats().result_write_pins == 1U);
+                // Erasing the earlier record must not relocate the current inline result.
+                std::memset(output.data(), 0x6B, output.size());
+            }
+            return true;
+        };
+        const auto before = harness.system->stats();
+        harness.emitImmediateWait(73);
+        const auto after = harness.system->stats();
+        assert(after.event_route_claim_lookups - before.event_route_claim_lookups == 2U);
+        assert(after.event_payload_copy_bytes - before.event_payload_copy_bytes == 8U);
+        assert(after.completion_capability_constructions == 0U && context.calls == 2U);
+        assert(harness.backend_state.resumes == 0U);
+        assert(harness.system->executeStablePoint());
+        assert(harness.backend_state.resume_values == std::vector<std::int32_t>{73});
+        assert(harness.system->activeAwaitableCount() == 0U && harness.backend_state.continuation_destroys == 2U);
+    }
+
+    void testCopyShutdownAndFailure()
+    {
+        for (bool stop : {false, true})
+        {
+            Harness harness{{.immediate_wait_endpoint = true}};
+            harness.recordBroadcastStart(1);
+            assert(deliverEndpoint(harness.broadcast_start_bridge) == 1U);
+            struct CopyContext final { Harness* harness; bool stop; } context{&harness, stop};
+            harness.immediate_wait.copy_context = &context;
+            harness.immediate_wait.copy_probe = [](void* opaque, std::span<std::byte> output) noexcept {
+                auto& context = *static_cast<CopyContext*>(opaque);
+                if (context.stop)
+                {
+                    const auto stopped = context.harness->system->shutdown();
+                    assert(!stopped && stopped.error() == EScriptSystemError::ENDPOINT_BUSY);
+                }
+                std::memset(output.data(), 0x7C, output.size());
+                return context.stop;
+            };
+            harness.emitImmediateWait(41);
+            const auto stats = harness.system->stats();
+            assert(stats.result_write_pins == 0U && stats.deferred_awaitable_releases == 0U);
+            assert(stats.active_awaitables == 0U && stats.active_event_waiters == 0U);
+            assert(harness.backend_state.resumes == 0U);
+            assert(harness.system->shutdown());
+        }
+    }
+
+    void testCopyNestedAdmission()
+    {
+        HarnessOptions options;
+        options.ownership_pair = true;
+        options.immediate_wait_endpoint = true;
+        options.limits.instance_capacity = 2U;
+        Harness harness{options};
+        harness.recordBroadcastStart(1);
+        assert(deliverEndpoint(harness.broadcast_start_bridge) == 1U);
+        struct Probe final { Harness* harness; bool used{}; } probe{&harness};
+        harness.immediate_wait.copy_context = &probe;
+        harness.immediate_wait.copy_probe = [](void* opaque, std::span<std::byte> output) noexcept {
+            auto& probe = *static_cast<Probe*>(opaque);
+            if (!std::exchange(probe.used, true))
+            {
+                auto& value = *probe.harness;
+                const auto capacity = value.system->stats().awaitable_reserved_slots;
+                for (unsigned i{}; i < 3U; ++i) value.recordBroadcastStartSecond(1);
+                assert(deliverEndpoint(value.broadcast_start_second_bridge) == 3U);
+                assert(value.system->stats().awaitable_reserved_slots == capacity);
+            }
+            std::memset(output.data(), 0x31, output.size());
+            return true;
+        };
+        harness.emitImmediateWait(81);
+        assert(harness.system->stats().active_event_waiters == 3U);
+        assert(harness.system->executeStablePoint());
+        assert(harness.backend_state.resume_values == std::vector<std::int32_t>{81});
+        harness.emitImmediateWait(82);
+        assert(harness.system->executeStablePoint());
+        assert(harness.backend_state.resume_values == std::vector<std::int32_t>({81, 82, 82, 82}));
+
+        options.limits.event_wait_capacity = 1U;
+        Harness pressure{options};
+        pressure.recordBroadcastStartSecond(1);
+        assert(deliverEndpoint(pressure.broadcast_start_second_bridge) == 1U);
+        pressure.immediate_wait.copy_context = &pressure;
+        pressure.immediate_wait.copy_probe = [](void* opaque, std::span<std::byte> output) noexcept {
+            auto& value = *static_cast<Harness*>(opaque);
+            value.backend_state.callback_action = ECallbackAction::FAIL;
+            value.recordBroadcastFaultSecond(1);
+            assert(deliverEndpoint(value.broadcast_fault_second_bridge) == 1U);
+            value.recordBroadcastStart(1);
+            assert(deliverEndpoint(value.broadcast_start_bridge) == 1U);
+            assert(value.backend_state.wait_error == EScriptEventWaitError::WAITER_CAPACITY_EXCEEDED);
+            std::memset(output.data(), 0x32, output.size());
+            return true;
+        };
+        pressure.emitImmediateWait(83);
+        assert(pressure.backend_state.resumes == 0U && pressure.system->stats().active_awaitables == 0U);
+        assert(pressure.system->shutdown());
+    }
 }
 
-int main()
+int main(int argc, char**)
 {
     testBroadcastSemantics();
     testRegistrationCutoff();
@@ -1101,9 +1296,17 @@ int main()
     testArtifactSchemaDriftFailsBeforeInstanceCreation();
     testNestedDispatch();
     testShutdownWithPendingWaiter();
-    testIdleWaiterComplexity(10'000U);
-    testIdleWaiterComplexity(50'000U);
-    testIdleWaiterComplexity(100'000U);
-    testOutputSensitiveRetirement();
+    if (argc == 1)
+    {
+        testIdleWaiterComplexity(10'000U);
+        testIdleWaiterComplexity(50'000U);
+        testIdleWaiterComplexity(100'000U);
+        testOutputSensitiveRetirement();
+    }
+    testPreparedAdmissionProvenance();
+    testCopyRetirementPin();
+    testCopyOtherRecordRemoval();
+    testCopyShutdownAndFailure();
+    testCopyNestedAdmission();
     return 0;
 }

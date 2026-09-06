@@ -45,6 +45,14 @@ namespace lux::simulation::script
         RESULT_MISMATCH,
     };
 
+    struct CppStaticContract;
+    namespace detail
+    {
+        [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC
+        lux::cxx::expected<std::uint32_t, EScriptCoroutineError> prepareCppEventImport(
+            const CppStaticContract& contract, const lux::script::ScriptEventSourceDescription& source) noexcept;
+    }
+
     template <class Payload>
     class CppScriptEventSource final
     {
@@ -53,7 +61,7 @@ namespace lux::simulation::script
         static_assert(std::is_trivially_copyable_v<Payload>);
 
         [[nodiscard]] static lux::cxx::expected<CppScriptEventSource, EScriptCoroutineError> create(
-            lux::script::ScriptEventSourceDescription description
+            const CppStaticContract& contract, const lux::script::ScriptEventSourceDescription& description
         ) noexcept
         {
             using Traits = lux::semantic::TypeTraits<Payload>;
@@ -62,25 +70,22 @@ namespace lux::simulation::script
                 description.payload.canonical_name != Traits::CanonicalName ||
                 description.payload.abi_kind != Traits::AbiKind || description.payload.size != Traits::Size ||
                 description.payload.alignment != Traits::Alignment;
-            return is_mismatch
-                ? lux::cxx::unexpected<EScriptCoroutineError>(EScriptCoroutineError::RESULT_MISMATCH)
-                : lux::cxx::expected<CppScriptEventSource, EScriptCoroutineError>{
-                    CppScriptEventSource(std::move(description))
-                };
-        }
-
-        [[nodiscard]] const lux::script::ScriptEventSourceDescription& description() const noexcept
-        {
-            return description_;
+            if (is_mismatch)
+                return lux::cxx::unexpected<EScriptCoroutineError>(EScriptCoroutineError::RESULT_MISMATCH);
+            const auto slot = detail::prepareCppEventImport(contract, description);
+            if (!slot) return lux::cxx::unexpected<EScriptCoroutineError>(slot.error());
+            return CppScriptEventSource(&contract, *slot);
         }
 
     private:
-        explicit CppScriptEventSource(lux::script::ScriptEventSourceDescription description) noexcept
-            : description_(std::move(description))
+        CppScriptEventSource(const CppStaticContract* layout, std::uint32_t slot) noexcept
+            : layout_(layout), local_slot_(slot)
         {
         }
 
-        lux::script::ScriptEventSourceDescription description_;
+        const CppStaticContract* layout_{};
+        std::uint32_t local_slot_{};
+        friend class ScriptCoroutineContext;
     };
 
     class ScriptCoroutine;
@@ -110,6 +115,8 @@ namespace lux::simulation::script
             std::uint32_t,
             detail::ScriptCoroutineAbilityAccess&
         ) noexcept;
+        using ResolveEventFn = bool (*)(void*, std::uint32_t, const CppStaticContract*, std::uint32_t,
+            ScriptEventAdmissionHandle&) noexcept;
 
         template <class Result, class Invoker>
         [[nodiscard]] auto invokeAbility(std::uint32_t ability_slot, Invoker&& invoker) noexcept;
@@ -143,12 +150,14 @@ namespace lux::simulation::script
             detail::BoundedClassStorage& frame_storage,
             detail::BoundedClassStorage::ClassHandle frame_class,
             std::size_t frame_limit,
-            std::size_t alignment_limit
+            std::size_t alignment_limit,
+            ResolveEventFn resolve_event
         ) noexcept
             : backend_(backend),
               instance_slot_(instance_slot),
               find_ability_(find_ability),
               resolve_ability_(resolve_ability),
+              resolve_event_(resolve_event),
               frame_storage_(std::addressof(frame_storage)), frame_class_(frame_class),
               frame_limit_(frame_limit), alignment_limit_(alignment_limit)
         {
@@ -213,6 +222,7 @@ namespace lux::simulation::script
         std::uint32_t instance_slot_{};
         FindAbilityFn find_ability_{};
         ResolveAbilityFn resolve_ability_{};
+        ResolveEventFn resolve_event_{};
         detail::BoundedClassStorage* frame_storage_{};
         detail::BoundedClassStorage::ClassHandle frame_class_;
         std::size_t frame_limit_{};
@@ -471,15 +481,13 @@ namespace lux::simulation::script
     template <class Payload>
     auto ScriptCoroutineContext::wait(const CppScriptEventSource<Payload>& source) noexcept
     {
-        const auto request = ScriptEventWaitRequest{
-            lux::system::SystemInstanceId{source.description().system_id},
-            EventPointId{source.description().event_id},
-            source.description().route == lux::script::EScriptEventRoute::SIMULATION_BROADCAST
-                ? EEventRoute::SIMULATION_BROADCAST
-                : EEventRoute::ENTITY_TARGETED
-        };
-        return makeAwaiter<Payload>([request](ScriptCoroutineContext&, ScriptStepContext& step) noexcept {
-            const auto waiting = step.event_waits.wait(request);
+        return makeAwaiter<Payload>([layout = source.layout_, slot = source.local_slot_](
+            ScriptCoroutineContext& context, ScriptStepContext& step) noexcept {
+            ScriptEventAdmissionHandle admission;
+            if (context.resolve_event_ == nullptr ||
+                !context.resolve_event_(context.backend_, context.instance_slot_, layout, slot, admission))
+                return ScriptStepResult::failed(-1);
+            const auto waiting = step.event_waits.wait(admission);
             return waiting ? ScriptStepResult::suspended(*waiting) : ScriptStepResult::failed(-1);
         });
     }
@@ -571,11 +579,12 @@ namespace lux::simulation::script
             detail::BoundedClassStorage& frame_storage,
             detail::BoundedClassStorage::ClassHandle frame_class,
             std::size_t frame_limit,
-            std::size_t alignment_limit
+            std::size_t alignment_limit,
+            ScriptCoroutineContext::ResolveEventFn resolve_event
         ) noexcept
         {
             return {backend, instance_slot, find_ability, resolve_ability, frame_storage,
-                frame_class, frame_limit, alignment_limit};
+                frame_class, frame_limit, alignment_limit, resolve_event};
         }
 
         [[nodiscard]] static constexpr std::size_t frameOverhead(std::size_t alignment) noexcept

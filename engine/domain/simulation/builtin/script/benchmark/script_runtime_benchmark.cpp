@@ -1905,53 +1905,67 @@ namespace
             &CppCoroutineBenchmarkHarness::createAwaitable,
             &CppCoroutineBenchmarkHarness::discardAwaitable
         };
-        rows.push_back(measureRow("micro-cpp-coroutine-start", "cpp-static", options.size, 0U, [&] {
-            for (std::size_t index{}; index < options.size; ++index)
-            {
-                const auto result = harness.call.invoke(
-                    harness.call.context,
-                    frame,
-                    step,
-                    continuations[index]
-                );
-                if (result.state != EScriptStepState::SUSPENDED || !continuations[index])
-                    throw std::runtime_error("C++ coroutine benchmark start failed");
-                awaitables[index] = result.waiting_on;
-            }
-            const auto stats = harness.backend->stats();
-            return Row{
-                .suspensions = options.size,
-                .continuations = stats.active_frames,
-                .payload_bytes = stats.frame_storage_bytes,
-                .queue_high_water = stats.frame_high_water,
-                .checksum = cpp_coroutine_checksum
-            };
-        }));
-        rows.push_back(measureRow("micro-cpp-coroutine-resume", "cpp-static", options.size, 0U, [&] {
-            for (std::size_t index{}; index < options.size; ++index)
-            {
-                const ScriptResumePacket packet{
-                    awaitables[index],
-                    EScriptAwaitableState::READY,
-                    nullptr,
-                    {}
+        for (std::size_t iteration{}; iteration < options.warmups + options.frames; ++iteration)
+        {
+            const auto first_row = rows.size();
+            const auto before_checksum = cpp_coroutine_checksum;
+            rows.push_back(measureRow("micro-cpp-coroutine-start", "cpp-static", options.size, iteration, [&] {
+                for (std::size_t index{}; index < options.size; ++index)
+                {
+                    const auto result = harness.call.invoke(
+                        harness.call.context,
+                        frame,
+                        step,
+                        continuations[index]
+                    );
+                    if (result.state != EScriptStepState::SUSPENDED || !continuations[index])
+                        throw std::runtime_error("C++ coroutine benchmark start failed");
+                    awaitables[index] = result.waiting_on;
+                }
+                const auto stats = harness.backend->stats();
+                return Row{
+                    .suspensions = options.size,
+                    .continuations = stats.active_frames,
+                    .payload_bytes = stats.frame_storage_bytes,
+                    .queue_high_water = stats.frame_high_water,
+                    .checksum = cpp_coroutine_checksum
                 };
-                const auto result = continuations[index].resume(continuations[index].state, step, packet);
-                if (result.state != EScriptStepState::COMPLETED)
-                    throw std::runtime_error("C++ coroutine benchmark resume failed");
-                continuations[index].destroy(continuations[index].state);
-            }
-            const auto stats = harness.backend->stats();
-            return Row{
-                .resumes = options.size,
-                .continuations = stats.active_frames,
-                .payload_bytes = stats.frame_storage_bytes,
-                .queue_high_water = stats.frame_high_water,
-                .checksum = cpp_coroutine_checksum
-            };
-        }));
-        if (cpp_coroutine_checksum < options.size || harness.backend->stats().heap_frame_allocations != 0U)
-            throw std::runtime_error("C++ coroutine benchmark observation mismatch");
+            }));
+            rows.push_back(measureRow("micro-cpp-coroutine-resume", "cpp-static", options.size, iteration, [&] {
+                for (std::size_t index{}; index < options.size; ++index)
+                {
+                    const ScriptResumePacket packet{
+                        awaitables[index],
+                        EScriptAwaitableState::READY,
+                        nullptr,
+                        {}
+                    };
+                    const auto result = continuations[index].resume(continuations[index].state, step, packet);
+                    if (result.state != EScriptStepState::COMPLETED)
+                        throw std::runtime_error("C++ coroutine benchmark resume failed");
+                    continuations[index].destroy(continuations[index].state);
+                }
+                const auto stats = harness.backend->stats();
+                return Row{
+                    .resumes = options.size,
+                    .continuations = stats.active_frames,
+                    .payload_bytes = stats.frame_storage_bytes,
+                    .queue_high_water = stats.frame_high_water,
+                    .checksum = cpp_coroutine_checksum
+                };
+            }));
+            const auto final_stats = harness.backend->stats();
+            const bool is_incomplete = cpp_coroutine_checksum - before_checksum != options.size;
+            const bool has_live_frames = final_stats.active_frames != 0U;
+            const bool has_heap_frames = final_stats.heap_frame_allocations != 0U;
+            if (is_incomplete || has_live_frames || has_heap_frames)
+                throw std::runtime_error("C++ coroutine benchmark observation mismatch");
+            if (iteration < options.warmups)
+                rows.resize(first_row);
+            else
+                for (auto index = first_row; index < rows.size(); ++index)
+                    rows[index].sample = iteration - options.warmups;
+        }
     }
 
     template <class Harness>

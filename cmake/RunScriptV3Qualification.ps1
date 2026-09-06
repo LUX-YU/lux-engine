@@ -6,12 +6,14 @@ param(
     [Parameter(Mandatory=$true)][string]$ToolsetPrefix,
     [Parameter(Mandatory=$true)][string]$FoundationPrefix,
     [string]$Lua54Prefix = '',
-    [string[]]$Profiles = @('developer', 'toolchain', 'physics-off', 'lua-off', 'lua54')
+    [string]$FixtureRoot = '',
+    [string[]]$Profiles = @('toolchain', 'developer', 'physics-off', 'lua-off', 'lua54')
 )
 $ErrorActionPreference = 'Stop'
 & 'D:/Development/Mircosoft/VisualStudio/Common7/Tools/Launch-VsDevShell.ps1' -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
 $source_path = (Resolve-Path -LiteralPath $SourceDir).Path
 $sha = (& git -C $source_path rev-parse HEAD).Trim()
+if (!$FixtureRoot) { $FixtureRoot = Join-Path $BuildRoot 't/engine/toolchain' }
 $results = @()
 $manifest_path = Join-Path $BuildRoot 'qualification.json'
 if (Test-Path -LiteralPath $manifest_path) {
@@ -40,6 +42,23 @@ foreach ($profile in $Profiles) {
             '-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake',
             "-DCMAKE_PREFIX_PATH=$ToolsetPrefix;$CxxPrefix;$FoundationPrefix", "-DCMAKE_INSTALL_PREFIX=$prefix",
             '-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF','-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF')
+        if ($lua -eq 'ON') {
+            $fixtures = @{
+                LUX_LUA_PORTABILITY_ARTIFACT = "$FixtureRoot/lua/lua_portability_fixture.lxsa"
+            }
+            if ($physics -eq 'ON') {
+                $fixtures.LUX_PHYSICS2D_LUA_ARTIFACT = "$FixtureRoot/physics2d/physics2d_lua_fixture.lxsa"
+                $fixtures.LUX_PHYSICS2D_FLOWFORGE_ARTIFACT = "$FixtureRoot/physics2d/physics2d_flowforge_fixture.lxsa"
+            }
+            foreach ($key in $fixtures.Keys) {
+                if (!(Test-Path -LiteralPath $fixtures[$key])) { throw "Build the toolchain fixtures first: $($fixtures[$key])" }
+                $arguments += "-D$key=$($fixtures[$key])"
+            }
+            $record.fixture_sha256 = @{}
+            foreach ($key in $fixtures.Keys) {
+                $record.fixture_sha256[$key] = (Get-FileHash -LiteralPath $fixtures[$key] -Algorithm SHA256).Hash
+            }
+        }
         if ($profile -eq 'lua54') {
             if (!$Lua54Prefix -or !(Test-Path -LiteralPath "$Lua54Prefix/include/lua.h") -or
                 !(Test-Path -LiteralPath "$Lua54Prefix/lib/lua.lib")) { throw 'Lua54Prefix must identify the installed Lua54 dependency' }
@@ -51,6 +70,11 @@ foreach ($profile in $Profiles) {
         if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
         & cmake --build $build --target all -j 4 -- -k 0 *> "$build/all.log"
         if ($LASTEXITCODE -ne 0) { throw 'all build failed; no old executable was run' }
+        if ($profile -eq 'toolchain') {
+            & cmake --build $build --target all lua_portability_fixture lua_runtime_benchmark_fixture `
+                physics2d_lua_fixture physics2d_flowforge_fixture -j 4 -- -k 0 *> "$build/cross-profile-fixtures.log"
+            if ($LASTEXITCODE -ne 0) { throw 'cross-profile fixture generation failed' }
+        }
         $test_args = @('--test-dir',$build,'-C','RelWithDebInfo','--output-on-failure')
         if ($profile -notin @('developer','toolchain')) {
             $test_args += @('-R','(script|scene|simulation|physics|artifact|semantic|architecture)')

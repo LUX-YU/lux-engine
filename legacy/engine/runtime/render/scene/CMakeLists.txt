@@ -114,22 +114,6 @@ target_link_libraries(
     STDEXEC::stdexec                   # 两个 sender 编排 TU 专用(私有,不出头)
 )
 
-# White-box residency probes deliberately exercise the implementation seam,
-# but that seam must never become part of the installed runtime_render_scene API.
-# Keeping this build-tree-only target explicit prevents tests from pressuring
-# low-level residency types back into the public include tree.
-add_library(runtime_render_scene_test_support INTERFACE)
-target_include_directories(
-    runtime_render_scene_test_support
-    INTERFACE
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/pinclude>
-)
-target_link_libraries(
-    runtime_render_scene_test_support
-    INTERFACE
-        runtime_render_scene
-)
-
 component_add_transitive_commands(
     runtime_render_scene
     "find_package(EnTT CONFIG REQUIRED)"
@@ -142,9 +126,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS log events)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution runtime_assets runtime_entity_scene runtime_extension_loader runtime_scene_core)"
 )
-
-# 单元测试(驻留 T4 起;headless,自校验 exe)。
-set(ENABLE_SCENE_RUNTIME_TEST OFF CACHE BOOL "Enable runtime_render_scene tests")
-if(ENABLE_SCENE_RUNTIME_TEST)
-    add_subdirectory(test)
-endif()

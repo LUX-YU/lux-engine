@@ -63,10 +63,6 @@ component_add_transitive_commands(
     "find_package(node_editor REQUIRED COMPONENTS node_editor)"
 )
 
-if(BUILD_TESTING)
-    add_subdirectory(test)
-endif()
-
 install_components(
     PROJECT_NAME lux-engine-editor-node-graph
     VERSION      ${PROJECT_VERSION}

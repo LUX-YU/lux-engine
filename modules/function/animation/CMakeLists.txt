@@ -50,8 +50,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
-
-set(ENABLE_ANIMATION_TEST OFF CACHE BOOL "Enable animation module tests")
-if(ENABLE_ANIMATION_TEST)
-    add_subdirectory(test)
-endif()

@@ -53,26 +53,6 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
-add_executable(
-    game_launch_manifest_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/launch_manifest_test.cpp
-)
-target_link_libraries(
-    game_launch_manifest_test
-    PRIVATE lux::game::deployment
-)
-if(MSVC)
-    target_compile_options(game_launch_manifest_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(game_launch_manifest_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  game_launch_manifest_test
-    LAYER   RUNTIME
-    PRODUCT TEST
-    ROLE    DOMAIN
-)
-
 install_components(
     PROJECT_NAME lux-game
     VERSION      0.0.1

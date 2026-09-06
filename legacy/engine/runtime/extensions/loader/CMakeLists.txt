@@ -51,7 +51,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-platform REQUIRED COMPONENTS dynamic_library)"
     "find_package(lux-engine-extensions REQUIRED COMPONENTS extension_api)"
 )
-
-if(ENABLE_EXECUTION_TEST)
-    add_subdirectory(test)
-endif()

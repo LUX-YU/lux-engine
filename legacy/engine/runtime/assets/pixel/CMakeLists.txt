@@ -59,33 +59,3 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    DOMAIN
 )
-
-add_executable(
-    infinite2d_headless_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/infinite2d_headless_main.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/infinite2d_headless_test.cpp
-)
-target_link_libraries(
-    infinite2d_headless_test
-    PRIVATE
-        lux::engine::runtime::runtime_pixel_assets
-        lux::engine::runtime::runtime_execution
-        lux::engine::runtime::runtime_tilemap_prepare
-        lux::engine::ecs::pixel_streaming
-        lux::engine::ecs::tilemap_streaming
-        lux::engine::core::serialization
-        lux::engine::ecs::component_archive
-        lux::engine::ecs::tilemap
-        lux::engine::resource::asset
-)
-if(MSVC)
-    target_compile_options(infinite2d_headless_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(infinite2d_headless_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  infinite2d_headless_test
-    LAYER   RUNTIME
-    PRODUCT TEST
-    ROLE    INTEGRATION
-)

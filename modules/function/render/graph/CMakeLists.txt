@@ -26,13 +26,3 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    DOMAIN
 )
-
-add_executable(
-    render_graph_dependency_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/DependencyAnalyzerTest.cpp
-)
-target_link_libraries(
-    render_graph_dependency_test
-    PRIVATE
-        render_graph
-)

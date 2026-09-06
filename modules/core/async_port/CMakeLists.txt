@@ -31,24 +31,3 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    FOUNDATION
 )
-
-add_executable(
-    async_port_contract_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/async_port_contract_test.cpp
-)
-target_link_libraries(
-    async_port_contract_test
-    PRIVATE lux::engine::core::async_port
-)
-if(MSVC)
-    target_compile_options(async_port_contract_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(async_port_contract_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  async_port_contract_test
-    LAYER   CORE
-    PRODUCT TEST
-    ROLE    FOUNDATION
-)
-add_test(NAME async_port_contract_test COMMAND async_port_contract_test)

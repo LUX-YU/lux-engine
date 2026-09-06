@@ -55,23 +55,3 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    DOMAIN
 )
-
-add_executable(
-    spatial2d_interest_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/spatial2d_interest_test.cpp
-)
-target_link_libraries(
-    spatial2d_interest_test
-    PRIVATE lux::engine::ecs::spatial2d_streaming
-)
-if(MSVC)
-    target_compile_options(spatial2d_interest_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(spatial2d_interest_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  spatial2d_interest_test
-    LAYER   ECS
-    PRODUCT TEST
-    ROLE    DOMAIN
-)

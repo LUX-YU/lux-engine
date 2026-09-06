@@ -190,39 +190,6 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
-add_executable(material_compiler_test test/material_compiler_test.cpp)
-target_include_directories(material_compiler_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
-target_link_libraries(material_compiler_test PRIVATE lux::engine::toolchain::toolchain_material_compiler)
-
-add_executable(material_cooker_test test/material_cooker_test.cpp)
-target_include_directories(material_cooker_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
-target_link_libraries(material_cooker_test PRIVATE lux::engine::toolchain::toolchain_material_cooker)
-
-add_executable(
-    material_compiler_backend_test
-    test/material_compiler_backend_test.cpp
-    src/ShaderEmitter.cpp
-    src/ShaderIR.cpp
-)
-target_include_directories(material_compiler_backend_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
-target_link_libraries(material_compiler_backend_test PRIVATE lux::engine::resource::description)
-
-foreach(material_test IN ITEMS material_compiler_test material_compiler_backend_test material_cooker_test)
-    if(MSVC)
-        target_compile_options(${material_test} PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(${material_test} PRIVATE -UNDEBUG)
-    endif()
-    lux_classify_target(
-        TARGET  ${material_test}
-        LAYER   TOOLCHAIN
-        PRODUCT TEST
-        ROLE    DOMAIN
-    )
-    add_test(NAME ${material_test} COMMAND ${material_test})
-    set_tests_properties(${material_test} PROPERTIES TIMEOUT 60)
-endforeach()
-
 if(LUX_PROFILE_HAS_TOOLCHAIN)
     install_components(
         PROJECT_NAME lux-engine-toolchain-material

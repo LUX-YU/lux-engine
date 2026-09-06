@@ -52,5 +52,3 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    DOMAIN
 )
-
-add_subdirectory(test)

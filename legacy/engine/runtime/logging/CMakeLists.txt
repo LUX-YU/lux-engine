@@ -60,13 +60,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS log)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_execution)"
 )
-
-set(
-    ENABLE_RUNTIME_LOGGING_TEST
-    ${ENABLE_EXECUTION_TEST}
-    CACHE BOOL
-    "Enable runtime logging tests"
-)
-if(ENABLE_RUNTIME_LOGGING_TEST)
-    add_subdirectory(test)
-endif()

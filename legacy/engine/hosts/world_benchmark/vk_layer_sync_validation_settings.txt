@@ -1,8 +1,0 @@
-# Full Synchronization Validation log for lux_world_benchmark. The engine's
-# bounded structured error channel intentionally records only a fingerprint;
-# this preset preserves the originating command/resource hazard for diagnosis.
-khronos_validation.debug_action = VK_DBG_LAYER_ACTION_LOG_MSG
-khronos_validation.log_filename = lux-world-benchmark-sync-validation.log
-khronos_validation.report_flags = error,warn
-khronos_validation.enable_message_limit = false
-khronos_validation.enables = VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT

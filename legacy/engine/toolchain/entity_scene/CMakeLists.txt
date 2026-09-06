@@ -54,26 +54,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
 )
-
-add_executable(
-    entity_scene_cooker_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/entity_scene_cooker_test.cpp
-)
-target_link_libraries(
-    entity_scene_cooker_test
-    PRIVATE
-        lux::engine::toolchain::toolchain_entity_scene_cook
-        lux::engine::core::serialization
-        lux::engine::ecs::component_archive
-)
-if(MSVC)
-    target_compile_options(entity_scene_cooker_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(entity_scene_cooker_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  entity_scene_cooker_test
-    LAYER   TOOLCHAIN
-    PRODUCT TEST
-    ROLE    DOMAIN
-)

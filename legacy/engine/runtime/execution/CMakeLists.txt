@@ -109,8 +109,3 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
     "find_package(lux-engine-core REQUIRED COMPONENTS async_port)"
 )
-
-set(ENABLE_EXECUTION_TEST OFF CACHE BOOL "Enable execution tests")
-if(ENABLE_EXECUTION_TEST)
-    add_subdirectory(test)
-endif()

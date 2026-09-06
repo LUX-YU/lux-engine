@@ -33,20 +33,6 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
-foreach(test_target IN ITEMS builtin_asset_ids_test content_public_link_test)
-    add_executable(
-        ${test_target}
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/${test_target}.cpp
-    )
-    target_link_libraries(${test_target} PRIVATE lux::engine::content)
-    lux_classify_target(
-        TARGET  ${test_target}
-        LAYER   RUNTIME
-        PRODUCT TEST
-        ROLE    DOMAIN
-    )
-endforeach()
-
 install_components(
     PROJECT_NAME lux-engine-content
     VERSION      0.0.1

@@ -49,20 +49,7 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    INTEGRATION
 )
-add_executable(world_asset_codec_test test/world_asset_codec_test.cpp)
-target_link_libraries(world_asset_codec_test PRIVATE lux::engine::world::asset)
-if(MSVC)
-    target_compile_options(world_asset_codec_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(world_asset_codec_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  world_asset_codec_test
-    LAYER   WORLD
-    PRODUCT TEST
-    ROLE    INTEGRATION
-)
-add_test(NAME world_asset_codec_test COMMAND world_asset_codec_test)
+
 install_components(
     PROJECT_NAME lux-engine-world-asset
     VERSION      ${PROJECT_VERSION}

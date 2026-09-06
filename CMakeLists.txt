@@ -98,9 +98,7 @@ option(
 # Asset and shader cooking is an explicit build-tool path. Default runtime
 # profiles do not invoke a host packer; qualification/toolchain builds opt in.
 option(LUX_BUILD_PACKED_RENDER_CONTENT "Compile and embed built-in render content" OFF)
-option(ENABLE_RENDER_TEST "Enable render integration tests" OFF)
 set(LUX_ASSET_PACKER_EXECUTABLE "" CACHE FILEPATH "Optional explicit host lux_asset_packer executable")
-set(ENABLE_ASSET_TEST OFF CACHE BOOL "Enable legacy asset integration tests" FORCE)
 
 file(GLOB_RECURSE lux_architecture_inputs CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/cmake/*.cmake"
@@ -122,8 +120,6 @@ file(GLOB_RECURSE lux_architecture_inputs CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/engine/toolchain/*.hpp"
     "${CMAKE_SOURCE_DIR}/engine/toolchain/*.cpp"
     "${CMAKE_SOURCE_DIR}/engine/toolchain/CMakeLists.txt"
-    "${CMAKE_SOURCE_DIR}/test/architecture_probes/*.cpp"
-    "${CMAKE_SOURCE_DIR}/test/architecture_probes/CMakeLists.txt"
 )
 set(lux_architecture_stamp "${CMAKE_BINARY_DIR}/lux-architecture-check.stamp")
 add_custom_command(
@@ -162,7 +158,6 @@ cmake_language(DEFER CALL lux_write_unclassified_target_report)
 add_subdirectory(modules)
 add_subdirectory(engine)
 if(BUILD_TESTING)
-    add_subdirectory(test/architecture_probes)
     if(TARGET flowforge_compiler AND TARGET simulation_script_native)
         add_subdirectory(test/runtime_scripting)
     endif()

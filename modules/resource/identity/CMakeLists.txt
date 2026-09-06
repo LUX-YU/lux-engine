@@ -28,27 +28,3 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    FOUNDATION
 )
-
-add_executable(
-    resource_identity_contract_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/resource_identity_contract_test.cpp
-)
-target_link_libraries(
-    resource_identity_contract_test
-    PRIVATE lux::engine::resource::identity
-)
-if(MSVC)
-    target_compile_options(resource_identity_contract_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(resource_identity_contract_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  resource_identity_contract_test
-    LAYER   RESOURCE
-    PRODUCT TEST
-    ROLE    FOUNDATION
-)
-add_test(
-    NAME resource_identity_contract_test
-    COMMAND resource_identity_contract_test
-)

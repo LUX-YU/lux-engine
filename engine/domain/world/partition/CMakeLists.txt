@@ -40,42 +40,6 @@ component_add_transitive_commands(
 )
 lux_classify_target(TARGET world_partition LAYER WORLD PRODUCT RUNTIME ROLE FOUNDATION)
 
-add_executable(world_partition_test test/world_partition_test.cpp)
-target_include_directories(world_partition_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
-target_link_libraries(world_partition_test PRIVATE lux::engine::world::partition)
-if(MSVC)
-    target_compile_options(world_partition_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(world_partition_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(TARGET world_partition_test LAYER WORLD PRODUCT TEST ROLE FOUNDATION)
-add_test(NAME world_partition_test COMMAND world_partition_test)
-
-add_executable(world_partition_benchmark test/world_partition_benchmark.cpp)
-target_link_libraries(
-    world_partition_benchmark
-    PRIVATE
-        lux::engine::world::partition
-        lux::engine::world::description
-)
-execute_process(
-    COMMAND git rev-parse HEAD
-    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-    OUTPUT_VARIABLE LUX_WORLD_BENCHMARK_GIT_COMMIT
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_QUIET
-)
-if(LUX_WORLD_BENCHMARK_GIT_COMMIT STREQUAL "")
-    set(LUX_WORLD_BENCHMARK_GIT_COMMIT "unknown")
-endif()
-target_compile_definitions(
-    world_partition_benchmark
-    PRIVATE
-        LUX_BENCHMARK_GIT_COMMIT="${LUX_WORLD_BENCHMARK_GIT_COMMIT}"
-        LUX_BENCHMARK_BUILD_TYPE="${CMAKE_BUILD_TYPE}"
-)
-lux_classify_target(TARGET world_partition_benchmark LAYER WORLD PRODUCT TEST ROLE FOUNDATION)
-
 install_components(
     PROJECT_NAME lux-engine-world-partition
     VERSION      ${PROJECT_VERSION}

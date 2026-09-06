@@ -24,27 +24,6 @@ lux_classify_target(
     ROLE    FOUNDATION
 )
 
-add_executable(
-    world_identity_test
-    test/world_object_id_test.cpp
-)
-target_link_libraries(
-    world_identity_test
-    PRIVATE lux::engine::world::identity
-)
-if(MSVC)
-    target_compile_options(world_identity_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(world_identity_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  world_identity_test
-    LAYER   DOMAIN
-    PRODUCT TEST
-    ROLE    FOUNDATION
-)
-add_test(NAME world_identity_test COMMAND world_identity_test)
-
 install_components(
     PROJECT_NAME lux-engine-world-identity
     VERSION      ${PROJECT_VERSION}

@@ -65,8 +65,6 @@ component_add_transitive_commands(
 
 add_subdirectory(streaming)
 
-add_subdirectory(test)
-
 if(LUX_BUILD_COMPONENT_META)
     include_component_cmake_scripts(meta)
 

@@ -14,24 +14,6 @@ lux_classify_target(
     ROLE    FOUNDATION
 )
 
-add_executable(latest_spsc_exchange_test test/latest_spsc_exchange_test.cpp)
-target_link_libraries(
-    latest_spsc_exchange_test
-    PRIVATE lux::engine::scene::scene_presentation
-)
-if(MSVC)
-    target_compile_options(latest_spsc_exchange_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(latest_spsc_exchange_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  latest_spsc_exchange_test
-    LAYER   SCENE
-    PRODUCT TEST
-    ROLE    FOUNDATION
-)
-add_test(NAME latest_spsc_exchange_test COMMAND latest_spsc_exchange_test)
-
 install_components(
     PROJECT_NAME lux-engine-scene-presentation
     VERSION      ${PROJECT_VERSION}

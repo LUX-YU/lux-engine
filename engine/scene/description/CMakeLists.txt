@@ -38,16 +38,6 @@ component_add_transitive_commands(
 )
 lux_classify_target(TARGET scene_description LAYER SCENE PRODUCT RUNTIME ROLE FOUNDATION)
 
-add_executable(scene_description_test test/scene_description_test.cpp)
-target_link_libraries(scene_description_test PRIVATE lux::engine::scene::scene_description)
-if(MSVC)
-    target_compile_options(scene_description_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(scene_description_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(TARGET scene_description_test LAYER SCENE PRODUCT TEST ROLE FOUNDATION)
-add_test(NAME scene_description_test COMMAND scene_description_test)
-
 install_components(
     PROJECT_NAME lux-engine-scene-description
     VERSION      ${PROJECT_VERSION}

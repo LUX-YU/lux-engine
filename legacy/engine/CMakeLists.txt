@@ -71,14 +71,6 @@ if(LUX_PROFILE_HAS_REFERENCE_PLAYER AND
     add_subdirectory(hosts/player)
 endif()
 
-# Developer-only deterministic World runner. It reuses the installed Player
-# composition but remains a TEST product and never enters a deployment.
-if(LUX_BUILD_PROFILE STREQUAL "DEVELOPER" AND
-   NOT LUX_TARGET_OS STREQUAL "ANDROID" AND
-   EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/hosts/world_benchmark/CMakeLists.txt)
-    add_subdirectory(hosts/world_benchmark)
-endif()
-
 set(_lux_host_components "")
 foreach(_host_component IN ITEMS game_application player_host)
     if(TARGET ${_host_component})

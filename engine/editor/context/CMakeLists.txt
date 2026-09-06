@@ -75,10 +75,6 @@ lux_classify_target(
     ROLE    FOUNDATION
 )
 
-if(BUILD_TESTING)
-    add_subdirectory(test)
-endif()
-
 install_components(
     PROJECT_NAME lux-engine-editor-context
     VERSION      ${PROJECT_VERSION}

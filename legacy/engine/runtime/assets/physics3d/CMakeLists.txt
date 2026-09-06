@@ -56,27 +56,3 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    DOMAIN
 )
-
-add_executable(
-    static_collider3d_system_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/static_collider3d_system_test.cpp
-)
-target_link_libraries(
-    static_collider3d_system_test
-    PRIVATE
-        lux::engine::runtime::runtime_physics3d_prepare
-        lux::engine::runtime::runtime_entity_scene
-        lux::engine::ecs::physics3d_streaming
-        stduuid
-)
-if(MSVC)
-    target_compile_options(static_collider3d_system_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(static_collider3d_system_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  static_collider3d_system_test
-    LAYER   RUNTIME
-    PRODUCT TEST
-    ROLE    INTEGRATION
-)

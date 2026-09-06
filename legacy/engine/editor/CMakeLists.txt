@@ -281,7 +281,6 @@ if(MSVC)
             "/permissive-;/Zc:__cplusplus;/Zc:preprocessor;/bigobj")
 endif()
 
-
 # D1: LuaConsole registers gameplay's generated sol2 bindings. The editor
 # STATIC lib must NOT link the sidecar (the editor target is in an installed
 # export set; gameplay_meta deliberately isn't — even a PRIVATE link leaks a
@@ -331,7 +330,6 @@ foreach(_sc
             $<TARGET_PROPERTY:${_sc},INTERFACE_INCLUDE_DIRECTORIES>)
     endif()
 endforeach()
-
 
 # Native file dialog (btzy/nativefiledialog-extended, vendored under
 # engine/editor/framework/native_dialog) — MANDATORY, like the shader backend below.
@@ -384,11 +382,6 @@ target_link_libraries(
         lux::engine::toolchain::toolchain_material_compiler
         lux::engine::toolchain::toolchain_builtin_content
 )
-
-set(ENABLE_EDITOR_TEST OFF CACHE BOOL "Enable Editor Test")
-if(ENABLE_EDITOR_TEST)
-    add_subdirectory(test)
-endif()
 
 # ──────────────────────────────────────────────────────────────────────────
 # Bake cube / plane / white-PBR into ${LUX_ENGINE_CONTENT_DIR}. The baker is

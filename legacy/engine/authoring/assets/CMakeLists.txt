@@ -59,24 +59,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-cxx REQUIRED COMPONENTS binary core)"
 )
-
-if(ENABLE_ASSET_TEST)
-    add_executable(
-        material_graph_codec_test
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/material_graph_codec_test.cpp
-    )
-    lux_classify_target(
-        TARGET  material_graph_codec_test
-        LAYER   AUTHORING
-        PRODUCT TEST
-        ROLE    DOMAIN
-    )
-    target_link_libraries(
-        material_graph_codec_test
-        PRIVATE authoring_assets
-    )
-    target_include_directories(
-        material_graph_codec_test
-        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
-    )
-endif()

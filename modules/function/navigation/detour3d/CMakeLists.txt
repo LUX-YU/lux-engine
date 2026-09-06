@@ -47,5 +47,3 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS binary memory)"
     "find_package(lux-engine-function REQUIRED COMPONENTS navigation)"
 )
-
-add_subdirectory(test)

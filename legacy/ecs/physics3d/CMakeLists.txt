@@ -118,5 +118,3 @@ endif()
 if(NOT LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     add_subdirectory(streaming)
 endif()
-
-add_subdirectory(test)

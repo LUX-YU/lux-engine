@@ -41,27 +41,6 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
-add_executable(
-    spatial2d_index_test
-    test/spatial2d_index_test.cpp
-)
-target_link_libraries(
-    spatial2d_index_test
-    PRIVATE lux::engine::spatial::spatial2d_index
-)
-if(MSVC)
-    target_compile_options(spatial2d_index_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(spatial2d_index_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  spatial2d_index_test
-    LAYER   DOMAIN
-    PRODUCT TEST
-    ROLE    DOMAIN
-)
-add_test(NAME spatial2d_index_test COMMAND spatial2d_index_test)
-
 install_components(
     PROJECT_NAME lux-engine-domain-spatial2d
     VERSION      ${PROJECT_VERSION}

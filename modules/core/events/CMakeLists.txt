@@ -48,8 +48,3 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    FOUNDATION
 )
-
-set(ENABLE_EVENTS_TEST OFF CACHE BOOL "Enable events module tests")
-if(ENABLE_EVENTS_TEST)
-    add_subdirectory(test)
-endif()

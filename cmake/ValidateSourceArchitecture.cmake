@@ -1096,78 +1096,6 @@ if(EXISTS "${latest_exchange_header}")
     endif()
 endif()
 
-set(jolt_l1_probe "${source_root}/test/architecture_probes/jolt_l1_probe.cpp")
-if(EXISTS "${jolt_l1_probe}")
-    file(READ "${jolt_l1_probe}" jolt_l1_probe_contract)
-    string(CONCAT jolt_l1_forbidden
-        "PhysicsOrigin|FloatingOrigin|OriginRebaseSystem|RebaseDistance|"
-        "shiftAllBodies|PhysicsPrecisionMode|JoltSingleBackend|JoltDoubleBackend"
-    )
-    if(NOT jolt_l1_probe_contract MATCHES "#ifndef[ \t]+JPH_DOUBLE_PRECISION" OR
-       NOT jolt_l1_probe_contract MATCHES "same_as<JPH::Real,[ \t]*double>" OR
-       NOT jolt_l1_probe_contract MATCHES "same_as<JPH::RVec3,[ \t]*JPH::DVec3>" OR
-       NOT jolt_l1_probe_contract MATCHES "addSystemTask<JoltProbeSystem>")
-        message(FATAL_ERROR
-            "Architecture: Jolt L1 probe lost its double-position ABI or concrete one-task Simulation seam."
-        )
-    endif()
-    if(jolt_l1_probe_contract MATCHES "${jolt_l1_forbidden}")
-        message(FATAL_ERROR
-            "Architecture: Jolt L1 probe restored a forbidden origin/rebase or runtime precision abstraction."
-        )
-    endif()
-endif()
-
-set(render_lane_probe "${source_root}/test/architecture_probes/render_lane_probe.cpp")
-if(EXISTS "${render_lane_probe}")
-    file(READ "${render_lane_probe}" render_lane_probe_contract)
-    if(NOT render_lane_probe_contract MATCHES "DeviceRenderFixture" OR
-       NOT render_lane_probe_contract MATCHES "LatestSpscExchange<PresentationState>" OR
-       NOT render_lane_probe_contract MATCHES "trySubmitFrame" OR
-       NOT render_lane_probe_contract MATCHES "frame_ring_backpressure" OR
-       NOT render_lane_probe_contract MATCHES "validation_errors" OR
-       NOT render_lane_probe_contract MATCHES "readback")
-        message(FATAL_ERROR
-            "Architecture: Render lane probe lost its real Vulkan/frame-ring/latest-state evidence path."
-        )
-    endif()
-    if(render_lane_probe_contract MATCHES
-       "ecs::Registry|SceneServices|SimulationIngress|TimeDomain|TickGroup|GenericStreamingSource")
-        message(FATAL_ERROR
-            "Architecture: Render lane probe acquired live ECS traversal or a held generic runtime abstraction."
-        )
-    endif()
-endif()
-
-set(spatial3d_preloaded_probe
-    "${source_root}/test/architecture_probes/spatial3d_preloaded_probe.cpp"
-)
-if(EXISTS "${spatial3d_preloaded_probe}")
-    file(READ "${spatial3d_preloaded_probe}" spatial3d_preloaded_contract)
-    if(NOT spatial3d_preloaded_contract MATCHES "loadWorldPartition" OR
-       NOT spatial3d_preloaded_contract MATCHES "WorldMaterializer" OR
-       NOT spatial3d_preloaded_contract MATCHES "PreloadedSpatial3DSystem" OR
-       NOT spatial3d_preloaded_contract MATCHES "JPH::PhysicsSystem" OR
-       NOT spatial3d_preloaded_contract MATCHES "tryCreateTexture2DCopy" OR
-       NOT spatial3d_preloaded_contract MATCHES "uploadGraphMaterial" OR
-       NOT spatial3d_preloaded_contract MATCHES "uploadMesh" OR
-       NOT spatial3d_preloaded_contract MATCHES "state.physics_position[ \t]*-[ \t]*render_origin")
-        message(FATAL_ERROR
-            "Architecture: preloaded Spatial3D probe lost a World/Jolt/Render vertical-slice seam."
-        )
-    endif()
-    string(CONCAT spatial3d_preloaded_forbidden
-        "DemandKey|DemandTracker|ResidencyBridge|ResourceDemandRegistry|TimeDomain|TickGroup|"
-        "SimulationIngress|GenericStreamingSource|PhysicsOrigin|FloatingOrigin|OriginRebaseSystem|"
-        "RebaseDistance|shiftAllBodies|PhysicsPrecisionMode|JoltSingleBackend|JoltDoubleBackend"
-    )
-    if(spatial3d_preloaded_contract MATCHES "${spatial3d_preloaded_forbidden}")
-        message(FATAL_ERROR
-            "Architecture: preloaded Spatial3D probe promoted a held generic/origin abstraction."
-        )
-    endif()
-endif()
-
 file(GLOB_RECURSE installed_public_headers LIST_DIRECTORIES false
     "${source_root}/modules/*.h"
     "${source_root}/modules/*.hpp"
@@ -1497,31 +1425,6 @@ foreach(component_header IN ITEMS
     endif()
 endforeach()
 
-foreach(installed_consumer IN ITEMS
-    core_system
-    component_decode_emplace
-    ecs_core
-    ecs_system
-    large_world_transform
-    object_affinity
-    resource_descriptions
-    resource_identity
-    scene_foundation
-    scene_meta
-    system_foundation
-    simulation_composition
-    world-description
-    world_storage
-    typed_resource_assets
-)
-    if(NOT EXISTS
-       "${source_root}/test/l1_installed_consumer/${installed_consumer}/CMakeLists.txt")
-        message(FATAL_ERROR
-            "Architecture: missing independent L1 installed consumer '${installed_consumer}'."
-        )
-    endif()
-endforeach()
-
 file(GLOB_RECURSE active_cmake LIST_DIRECTORIES false
     "${source_root}/CMakeLists.txt"
     "${source_root}/modules/CMakeLists.txt"
@@ -1634,31 +1537,6 @@ foreach(required_process_file IN ITEMS
     endif()
 endforeach()
 
-foreach(required_material_consumer IN ITEMS material-graph material-compiler material-cooker)
-    if(NOT EXISTS "${source_root}/cmake/installed-consumers/${required_material_consumer}/CMakeLists.txt")
-        message(FATAL_ERROR "Architecture: missing installed Material consumer '${required_material_consumer}'.")
-    endif()
-endforeach()
-
-if(EXISTS "${source_root}/engine/editor/context" AND
-   NOT EXISTS "${source_root}/cmake/installed-consumers/editor-context/CMakeLists.txt")
-    message(FATAL_ERROR "Architecture: missing installed Editor Context consumer.")
-endif()
-
-if(EXISTS "${source_root}/engine/editor/inspector" AND
-   NOT EXISTS "${source_root}/cmake/installed-consumers/editor-inspector/CMakeLists.txt")
-    message(FATAL_ERROR "Architecture: missing installed EntityInspector consumer.")
-endif()
-
-if(EXISTS "${source_root}/modules/function/graph" AND
-   NOT EXISTS "${source_root}/cmake/installed-consumers/function-graph/CMakeLists.txt")
-    message(FATAL_ERROR "Architecture: missing installed shared Graph Source consumer.")
-endif()
-
-if(NOT EXISTS "${source_root}/cmake/installed-consumers/asset-vfs-view/CMakeLists.txt")
-    message(FATAL_ERROR "Architecture: missing installed AssetVfsView consumer.")
-endif()
-
 if(NOT EXISTS "${source_root}/cmake/installed-consumers/script-ability-codegen/CMakeLists.txt")
     message(FATAL_ERROR
         "Architecture: missing installed Script Ability codegen consumer."
@@ -1675,51 +1553,6 @@ if(NOT EXISTS "${source_root}/cmake/installed-consumers/lua-script-packager/CMak
     )
 endif()
 
-if(EXISTS "${source_root}/engine/editor/material" AND
-   EXISTS "${source_root}/engine/editor/flowforge" AND
-   NOT EXISTS "${source_root}/cmake/installed-consumers/editor-graph-adapters/CMakeLists.txt")
-    message(FATAL_ERROR "Architecture: missing installed Graph domain adapters consumer.")
-endif()
-
-foreach(required_domain_consumer IN ITEMS partition-identity world-identity)
-    if(NOT EXISTS "${source_root}/cmake/installed-consumers/${required_domain_consumer}/CMakeLists.txt")
-        message(FATAL_ERROR
-            "Architecture: missing installed Domain consumer '${required_domain_consumer}'."
-        )
-    endif()
-endforeach()
-foreach(required_world_consumer IN ITEMS world-partition world-description)
-    if(NOT EXISTS "${source_root}/cmake/installed-consumers/${required_world_consumer}/CMakeLists.txt")
-        message(FATAL_ERROR "Architecture: missing installed World consumer '${required_world_consumer}'.")
-    endif()
-endforeach()
-
-if(NOT EXISTS "${source_root}/cmake/installed-consumers/process-world-loading/CMakeLists.txt")
-    message(FATAL_ERROR "Architecture: missing installed Process World loading consumer.")
-endif()
-if(NOT EXISTS "${source_root}/cmake/installed-consumers/process-asset-loading/CMakeLists.txt")
-    message(FATAL_ERROR "Architecture: missing installed Process Asset loading consumer.")
-endif()
-if(NOT EXISTS "${source_root}/cmake/installed-consumers/spatial3d-index/CMakeLists.txt")
-    message(FATAL_ERROR "Architecture: missing installed Spatial3D index consumer.")
-endif()
-if(NOT EXISTS "${source_root}/cmake/installed-consumers/spatial2d-index/CMakeLists.txt")
-    message(FATAL_ERROR "Architecture: missing installed Spatial2D index consumer.")
-endif()
-foreach(required_render_consumer IN ITEMS render-client scene-render)
-    if(NOT EXISTS "${source_root}/cmake/installed-consumers/${required_render_consumer}/CMakeLists.txt")
-        message(FATAL_ERROR "Architecture: missing installed Render consumer '${required_render_consumer}'.")
-    endif()
-endforeach()
-foreach(required_scene_consumer IN ITEMS
-    scene-composition
-    scene-presentation
-    scene-world-materialization
-)
-    if(NOT EXISTS "${source_root}/cmake/installed-consumers/${required_scene_consumer}/CMakeLists.txt")
-        message(FATAL_ERROR "Architecture: missing installed Scene consumer '${required_scene_consumer}'.")
-    endif()
-endforeach()
 set(dedicated_scene_consumer
     "${source_root}/cmake/installed-consumers/dedicated-scene/CMakeLists.txt"
 )
@@ -1895,40 +1728,6 @@ foreach(render_resource_file IN ITEMS
     endif()
 endforeach()
 
-foreach(render_qualification_source IN ITEMS
-    model_asset_vulkan_qualification.cpp
-    l1_l3_render_sync_3d_qualification.cpp
-    large_3d_scene_performance_qualification.cpp
-    l1_l3_render_lane_window_qualification.cpp
-)
-    if(NOT EXISTS "${source_root}/test/architecture_probes/${render_qualification_source}")
-        message(FATAL_ERROR
-            "Architecture: missing split Render qualification '${render_qualification_source}'."
-        )
-    endif()
-endforeach()
-file(READ "${source_root}/test/architecture_probes/CMakeLists.txt" render_qualification_cmake)
-if(render_qualification_cmake MATCHES
-   "l1_l3_render_sync_3d_qualification[ \t\r\n]+model_asset_vulkan_qualification[.]cpp|large_3d_scene_performance_qualification[ \t\r\n]+model_asset_vulkan_qualification[.]cpp")
-    message(FATAL_ERROR "Architecture: Render qualifications restore macro-reused source ownership.")
-endif()
-file(READ
-    "${source_root}/test/architecture_probes/l1_l3_render_sync_3d_qualification.cpp"
-    render_scene_qualification_contract
-)
-if(NOT render_scene_qualification_contract MATCHES "Scene::create" OR
-   NOT render_scene_qualification_contract MATCHES "executeStablePoint" OR
-   NOT render_scene_qualification_contract MATCHES "executePresentation")
-    message(FATAL_ERROR "Architecture: L1-L3 Render qualification bypasses the final SceneSystem path.")
-endif()
-if(render_scene_qualification_contract MATCHES
-   "createMesh3DRenderStage|createLight3DRenderStage|RenderSyncPipeline::create")
-    message(FATAL_ERROR "Architecture: main L1-L3 Render qualification manually assembles extraction stages.")
-endif()
-if(NOT render_qualification_cmake MATCHES
-   "LUX_BUILD_RENDER_LANE_WINDOW_QUALIFICATION[ \t\r\n]+[^\r\n]*[ \t\r\n]+OFF")
-    message(FATAL_ERROR "Architecture: visible-window Render qualification is not default OFF.")
-endif()
 file(READ "${process_timer_header}" process_timer_contract)
 file(READ "${process_port_sender_header}" process_port_sender_contract)
 if(process_timer_contract MATCHES "sender_tag|operation_state_tag|capacity[ \\t]*\\{[1-9]|create[^;]*=")

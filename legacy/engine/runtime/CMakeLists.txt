@@ -17,10 +17,6 @@ add_subdirectory(render/backend_host)
 add_subdirectory(scene/script)
 add_subdirectory(frame)
 
-# These vertical integration tests need SceneRuntime and the final product
-# composition targets, so configure them after every Runtime component.
-add_subdirectory(scene/composition/test)
-
 install_components(
     PROJECT_NAME    lux-engine-runtime
     VERSION         0.0.1

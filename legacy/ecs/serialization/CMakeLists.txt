@@ -49,23 +49,3 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    DOMAIN
 )
-
-add_executable(
-    ecs_component_archive_contract_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/component_archive_contract_test.cpp
-)
-target_link_libraries(
-    ecs_component_archive_contract_test
-    PRIVATE lux::engine::ecs::component_archive
-)
-if(MSVC)
-    target_compile_options(ecs_component_archive_contract_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(ecs_component_archive_contract_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  ecs_component_archive_contract_test
-    LAYER   ECS
-    PRODUCT TEST
-    ROLE    DOMAIN
-)

@@ -81,26 +81,3 @@ lux_classify_target(
     PRODUCT BUILD_TOOL
     ROLE    DOMAIN
 )
-
-if(BUILD_TESTING)
-    add_executable(
-        toolchain_texture_cooker_test
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/TextureCookerTest.cpp
-    )
-    target_link_libraries(
-        toolchain_texture_cooker_test
-        PRIVATE lux::engine::toolchain::toolchain_texture_cooker
-    )
-    if(MSVC)
-        target_compile_options(toolchain_texture_cooker_test PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(toolchain_texture_cooker_test PRIVATE -UNDEBUG)
-    endif()
-    lux_classify_target(
-        TARGET  toolchain_texture_cooker_test
-        LAYER   TOOLCHAIN
-        PRODUCT TEST
-        ROLE    DOMAIN
-    )
-    add_test(NAME toolchain_texture_cooker_test COMMAND toolchain_texture_cooker_test)
-endif()

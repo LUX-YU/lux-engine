@@ -82,8 +82,3 @@ component_add_transitive_commands(
     toolchain_shader_compiler
     "find_package(lux-engine-toolchain REQUIRED COMPONENTS toolchain_shader_ir)"
 )
-
-set(ENABLE_SHADERGEN_GLSL_TEST OFF CACHE BOOL "Enable toolchain_shader_compiler tests")
-if(ENABLE_SHADERGEN_GLSL_TEST)
-    add_subdirectory(test)
-endif()

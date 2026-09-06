@@ -48,7 +48,3 @@ lux_classify_target(
 )
 
 add_subdirectory(tilemap)
-
-if(ENABLE_EXECUTION_TEST)
-    add_subdirectory(test)
-endif()

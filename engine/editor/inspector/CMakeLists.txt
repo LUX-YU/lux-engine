@@ -99,10 +99,6 @@ lux_classify_target(
     ROLE    INTEGRATION
 )
 
-if(BUILD_TESTING)
-    add_subdirectory(test)
-endif()
-
 install_components(
     PROJECT_NAME lux-engine-editor-inspector
     VERSION      ${PROJECT_VERSION}

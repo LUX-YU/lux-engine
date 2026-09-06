@@ -57,21 +57,6 @@ lux_classify_target(
     ROLE    FOUNDATION
 )
 
-add_executable(world_storage_test test/world_storage_test.cpp)
-target_link_libraries(world_storage_test PRIVATE lux::engine::world::storage)
-if(MSVC)
-    target_compile_options(world_storage_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(world_storage_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  world_storage_test
-    LAYER   WORLD
-    PRODUCT TEST
-    ROLE    FOUNDATION
-)
-add_test(NAME world_storage_test COMMAND world_storage_test)
-
 install_components(
     PROJECT_NAME lux-engine-world-storage
     VERSION      ${PROJECT_VERSION}

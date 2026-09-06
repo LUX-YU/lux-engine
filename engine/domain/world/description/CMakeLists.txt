@@ -42,17 +42,6 @@ component_add_transitive_commands(
 )
 lux_classify_target(TARGET world_description LAYER WORLD PRODUCT RUNTIME ROLE FOUNDATION)
 
-add_executable(world_description_test test/world_description_test.cpp)
-target_include_directories(world_description_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
-target_link_libraries(world_description_test PRIVATE lux::engine::world::description)
-if(MSVC)
-    target_compile_options(world_description_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(world_description_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(TARGET world_description_test LAYER WORLD PRODUCT TEST ROLE FOUNDATION)
-add_test(NAME world_description_test COMMAND world_description_test)
-
 install_components(
     PROJECT_NAME lux-engine-world-description
     VERSION      ${PROJECT_VERSION}

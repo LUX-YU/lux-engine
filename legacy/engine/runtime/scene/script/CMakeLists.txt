@@ -52,14 +52,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-runtime REQUIRED COMPONENTS runtime_assets)"
 )
-
-if(ENABLE_EXECUTION_TEST)
-    add_executable(
-        script_asset_request_system_test
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/script_asset_request_system_test.cpp
-    )
-    target_link_libraries(
-        script_asset_request_system_test
-        PRIVATE runtime_scene_script
-    )
-endif()

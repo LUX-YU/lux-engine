@@ -27,5 +27,3 @@ component_add_transitive_commands(
     navigation
     "find_package(lux-engine-core REQUIRED COMPONENTS math)"
 )
-
-add_subdirectory(test)

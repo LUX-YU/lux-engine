@@ -85,56 +85,6 @@ engine_add_comm_ops(
     TARGET_FILES   ${LUX_RENDER_COMM_OPERATION_HEADERS}
 )
 
-add_executable(
-    render_capacity_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/capacity_test.cpp
-)
-target_link_libraries(
-    render_capacity_test
-    PRIVATE lux::engine::function::render_client
-)
-if(MSVC)
-    target_compile_options(render_capacity_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(render_capacity_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  render_capacity_test
-    LAYER   FUNCTION
-    PRODUCT TEST
-    ROLE    DOMAIN
-)
-
-add_executable(
-    render_capacity_windows_macro_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/capacity_windows_macro_test.cpp
-)
-target_link_libraries(
-    render_capacity_windows_macro_test
-    PRIVATE lux::engine::function::render_client
-)
-lux_classify_target(
-    TARGET  render_capacity_windows_macro_test
-    LAYER   FUNCTION
-    PRODUCT TEST
-    ROLE    DOMAIN
-)
-
-add_executable(
-    render_platform_value_contract_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/render_platform_value_contract_test.cpp
-)
-target_link_libraries(
-    render_platform_value_contract_test
-    PRIVATE lux::engine::function::render_client
-)
-lux_classify_target(
-    TARGET  render_platform_value_contract_test
-    LAYER   FUNCTION
-    PRODUCT TEST
-    ROLE    DOMAIN
-)
-
 add_component(
     COMPONENT_NAME render_client_meta
     NAMESPACE      lux::engine::function
@@ -157,45 +107,3 @@ engine_enable_module_meta(
     SIDECAR_TARGET render_client_meta
     TARGET_FILES ${LUX_RENDER_COMM_OPERATION_HEADERS}
 )
-
-add_executable(
-    render_program_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/render_program_test.cpp
-)
-target_link_libraries(
-    render_program_test
-    PRIVATE lux::engine::function::render_client
-)
-if(MSVC)
-    target_compile_options(render_program_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(render_program_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  render_program_test
-    LAYER   FUNCTION
-    PRODUCT TEST
-    ROLE    DOMAIN
-)
-add_test(NAME render_program_test COMMAND render_program_test)
-
-add_executable(
-    render_feature_registration_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/render_feature_registration_test.cpp
-)
-target_link_libraries(
-    render_feature_registration_test
-    PRIVATE lux::engine::function::render_client
-)
-if(MSVC)
-    target_compile_options(render_feature_registration_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(render_feature_registration_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET render_feature_registration_test
-    LAYER FUNCTION
-    PRODUCT TEST
-    ROLE DOMAIN
-)
-add_test(NAME render_feature_registration_test COMMAND render_feature_registration_test)

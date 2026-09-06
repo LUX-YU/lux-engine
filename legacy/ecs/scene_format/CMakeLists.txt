@@ -60,23 +60,3 @@ lux_classify_target(
 )
 
 add_subdirectory(spatial3d)
-
-add_executable(
-    scene_format_contract_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/scene_format_contract_test.cpp
-)
-target_link_libraries(
-    scene_format_contract_test
-    PRIVATE lux::engine::ecs::scene_format
-)
-if(MSVC)
-    target_compile_options(scene_format_contract_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(scene_format_contract_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  scene_format_contract_test
-    LAYER   ECS
-    PRODUCT TEST
-    ROLE    DOMAIN
-)

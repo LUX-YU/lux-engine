@@ -68,23 +68,3 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    DOMAIN
 )
-
-add_executable(
-    section_residency_planner_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/section_residency_planner_test.cpp
-)
-target_link_libraries(
-    section_residency_planner_test
-    PRIVATE lux::engine::ecs::entity_scene
-)
-if(MSVC)
-    target_compile_options(section_residency_planner_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(section_residency_planner_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  section_residency_planner_test
-    LAYER   ECS
-    PRODUCT TEST
-    ROLE    DOMAIN
-)

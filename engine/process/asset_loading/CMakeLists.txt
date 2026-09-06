@@ -42,28 +42,6 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
-foreach(test_name IN ITEMS process_asset_loading_test process_vfs_asset_read_endpoint_test)
-    if(test_name STREQUAL "process_asset_loading_test")
-        set(test_source test/process_asset_loading_test.cpp)
-    else()
-        set(test_source test/vfs_asset_read_endpoint_test.cpp)
-    endif()
-    add_executable(${test_name} ${test_source})
-    target_link_libraries(${test_name} PRIVATE lux::engine::process::asset_loading)
-    if(MSVC)
-        target_compile_options(${test_name} PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(${test_name} PRIVATE -UNDEBUG)
-    endif()
-    lux_classify_target(
-        TARGET  ${test_name}
-        LAYER   PROCESS
-        PRODUCT TEST
-        ROLE    DOMAIN
-    )
-    add_test(NAME ${test_name} COMMAND ${test_name})
-endforeach()
-
 install_components(
     PROJECT_NAME lux-engine-process-asset-loading
     VERSION      ${PROJECT_VERSION}

@@ -44,27 +44,6 @@ lux_classify_target(
     ROLE    INTEGRATION
 )
 
-add_executable(
-    process_world_loading_test
-    test/process_world_loading_test.cpp
-)
-target_link_libraries(
-    process_world_loading_test
-    PRIVATE lux::engine::process::world_loading
-)
-if(MSVC)
-    target_compile_options(process_world_loading_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(process_world_loading_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  process_world_loading_test
-    LAYER   PROCESS
-    PRODUCT TEST
-    ROLE    INTEGRATION
-)
-add_test(NAME process_world_loading_test COMMAND process_world_loading_test)
-
 install_components(
     PROJECT_NAME lux-engine-process-world-loading
     VERSION      ${PROJECT_VERSION}

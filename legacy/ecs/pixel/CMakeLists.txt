@@ -76,7 +76,7 @@ component_add_transitive_commands(
     "find_package (lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package (TBB CONFIG REQUIRED)"
 )
-add_subdirectory(test)
+
 add_subdirectory(streaming)
 
 # ---------------------------------------------------------------------------

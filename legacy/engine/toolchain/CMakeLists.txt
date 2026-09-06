@@ -5,7 +5,6 @@ add_subdirectory(asset)
 add_subdirectory(flowforge)
 add_subdirectory(entity_scene)
 add_subdirectory(spatial3d_scene)
-add_subdirectory(spatial3d_benchmark)
 add_subdirectory(game_export)
 
 set(LUX_TOOLCHAIN_COMPONENTS

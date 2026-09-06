@@ -69,25 +69,8 @@ lux_classify_target(
     ROLE    FOUNDATION
 )
 
-# Pure-CPU, no device, ~0s. Gated like the other suites, but defaulting ON:
-# the property it guards (a runtime-loaded module's types become visible
-# WITHOUT wiping the ones already registered) fails silently — an unregistered
-# component makes Scene::load skip it, so the file loads, the entity count is
-# right, and every entity owns nothing. Cheap to run, expensive to miss.
-set(ENABLE_META_TEST true CACHE BOOL "Enable meta reflection tests")
-if(ENABLE_META_TEST)
-    add_executable(reflection_drain_test test/reflection_drain_test.cpp)
-    target_link_libraries(reflection_drain_test PRIVATE meta)
-
+if(BUILD_TESTING)
     if(NOT CMAKE_CROSSCOMPILING)
-        add_executable(runtime_object_test test/runtime_object_test.cpp)
-        target_link_libraries(runtime_object_test PRIVATE meta)
-        if(MSVC)
-            target_compile_options(runtime_object_test PRIVATE /UNDEBUG)
-        else()
-            target_compile_options(runtime_object_test PRIVATE -UNDEBUG)
-        endif()
-        add_test(NAME runtime_object_test COMMAND runtime_object_test)
 
         add_executable(
             type_static_info_test

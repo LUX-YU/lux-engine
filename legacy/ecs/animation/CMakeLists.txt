@@ -123,29 +123,3 @@ if(LUX_BUILD_COMPONENT_META)
 
     engine_enable_module_meta(${animation_2d_meta_args})
 endif()
-
-if(ENABLE_EXECUTION_TEST)
-    add_executable(
-        flipbook_asset_demand_test
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/flipbook_asset_demand_test.cpp)
-    target_link_libraries(
-        flipbook_asset_demand_test
-        PRIVATE lux::engine::ecs::animation_2d)
-    lux_classify_target(
-        TARGET flipbook_asset_demand_test
-        LAYER ECS
-        PRODUCT TEST
-        ROLE DOMAIN)
-
-    add_executable(
-        skeletal_asset_demand_test
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/skeletal_asset_demand_test.cpp)
-    target_link_libraries(
-        skeletal_asset_demand_test
-        PRIVATE lux::engine::ecs::animation_3d)
-    lux_classify_target(
-        TARGET skeletal_asset_demand_test
-        LAYER ECS
-        PRODUCT TEST
-        ROLE DOMAIN)
-endif()

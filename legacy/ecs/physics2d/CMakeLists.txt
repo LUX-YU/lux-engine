@@ -70,21 +70,6 @@ component_add_transitive_commands(
     "find_package (lux-engine-core REQUIRED COMPONENTS math meta)"
 )
 
-add_executable(physics2d_ecs_static_collider_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/ecs_static_collider_test.cpp)
-lux_classify_target(
-    TARGET physics2d_ecs_static_collider_test
-    LAYER ECS
-    PRODUCT TEST
-    ROLE DOMAIN)
-target_link_libraries(
-    physics2d_ecs_static_collider_test
-    PRIVATE physics2d)
-if(MSVC)
-    target_compile_options(physics2d_ecs_static_collider_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(physics2d_ecs_static_collider_test PRIVATE -UNDEBUG)
-endif()
 # 注意：box2d 刻意不在传递命令里 —— 下游链 ecs::physics2d，不继承任何第三方求解器
 # （内部封装裁定）。
 

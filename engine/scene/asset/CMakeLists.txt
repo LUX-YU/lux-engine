@@ -37,20 +37,7 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    INTEGRATION
 )
-add_executable(scene_asset_test test/scene_asset_test.cpp)
-target_link_libraries(scene_asset_test PRIVATE lux::engine::scene::scene_asset)
-if(MSVC)
-    target_compile_options(scene_asset_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(scene_asset_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  scene_asset_test
-    LAYER   SCENE
-    PRODUCT TEST
-    ROLE    INTEGRATION
-)
-add_test(NAME scene_asset_test COMMAND scene_asset_test)
+
 install_components(
     PROJECT_NAME lux-engine-scene-asset
     VERSION      ${PROJECT_VERSION}

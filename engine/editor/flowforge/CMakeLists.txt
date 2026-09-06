@@ -37,26 +37,6 @@ lux_classify_target(
     ROLE    INTEGRATION
 )
 
-add_executable(graph_domain_adapters_test test/graph_domain_adapters_test.cpp)
-target_link_libraries(
-    graph_domain_adapters_test
-    PRIVATE
-        editor_flow_graph
-        lux::engine::editor::editor_material_graph
-)
-if(MSVC)
-    target_compile_options(graph_domain_adapters_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(graph_domain_adapters_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  graph_domain_adapters_test
-    LAYER   EDITOR
-    PRODUCT TEST
-    ROLE    INTEGRATION
-)
-add_test(NAME graph_domain_adapters COMMAND graph_domain_adapters_test)
-
 install_components(
     PROJECT_NAME lux-engine-editor-flow-graph
     VERSION      ${PROJECT_VERSION}

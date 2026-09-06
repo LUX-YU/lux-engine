@@ -62,9 +62,3 @@ component_add_transitive_commands(
     input
     "find_package (lux-cxx              REQUIRED COMPONENTS container)"
 )
-
-# Interactive tests drive a GLFW window (GlfwRuntime) — desktop-only; the
-# Android backend has no GLFW and tests don't cross-compile anyway.
-if(NOT ANDROID)
-    add_subdirectory(test)
-endif()

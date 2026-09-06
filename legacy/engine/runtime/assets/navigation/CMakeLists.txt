@@ -55,26 +55,3 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    DOMAIN
 )
-
-add_executable(
-    spatial3d_navigation_adapter_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/spatial3d_navigation_adapter_test.cpp
-)
-target_link_libraries(
-    spatial3d_navigation_adapter_test
-    PRIVATE
-        lux::engine::runtime::runtime_navigation3d_prepare
-        lux::engine::runtime::runtime_entity_scene
-        lux::engine::ecs::navigation3d_streaming
-)
-if(MSVC)
-    target_compile_options(spatial3d_navigation_adapter_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(spatial3d_navigation_adapter_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  spatial3d_navigation_adapter_test
-    LAYER   RUNTIME
-    PRODUCT TEST
-    ROLE    INTEGRATION
-)

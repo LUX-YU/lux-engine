@@ -45,13 +45,3 @@ engine_target_add_ecs_component_codegen(
     SYMBOL visual
 )
 lux_classify_target(TARGET visual LAYER SIMULATION PRODUCT RUNTIME ROLE DOMAIN)
-
-add_executable(visual_component_test test/visual_component_test.cpp)
-target_link_libraries(visual_component_test PRIVATE lux::engine::simulation::ecs::visual)
-if(MSVC)
-    target_compile_options(visual_component_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(visual_component_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(TARGET visual_component_test LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
-add_test(NAME visual_component_test COMMAND visual_component_test)

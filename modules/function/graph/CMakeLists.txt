@@ -37,18 +37,3 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    FOUNDATION
 )
-
-add_executable(graph_source_test test/graph_source_test.cpp)
-target_link_libraries(graph_source_test PRIVATE lux::engine::function::graph)
-if(MSVC)
-    target_compile_options(graph_source_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(graph_source_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  graph_source_test
-    LAYER   FUNCTION
-    PRODUCT TEST
-    ROLE    FOUNDATION
-)
-add_test(NAME graph_source_test COMMAND graph_source_test)

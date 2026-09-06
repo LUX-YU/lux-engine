@@ -152,33 +152,3 @@ install(
     RUNTIME DESTINATION bin
     COMPONENT lux_toolchain
 )
-
-if(TARGET lux_player AND TARGET render_features)
-    add_executable(
-        game_export_smoke
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/game_export_smoke.cpp
-    )
-    lux_classify_target(
-        TARGET  game_export_smoke
-        LAYER   TOOLCHAIN
-        PRODUCT TEST
-        ROLE    COMPOSITION
-    )
-    target_link_libraries(
-        game_export_smoke
-        PRIVATE
-            lux::engine::toolchain::toolchain_game_export
-            lux::engine::authoring::authoring_world
-            lux::engine::ecs::scene_format
-            lux::engine::scene::scene
-            lux::engine::function::render_standard_content
-    )
-    lux_link_game_export_component_meta(game_export_smoke)
-    target_compile_definitions(
-        game_export_smoke
-        PRIVATE
-            "LUX_GAME_EXPORT_TEST_ASSET=\"${CMAKE_BINARY_DIR}/assets/shaders/canvas2d/group_composite.frag.luxasset\""
-            "LUX_GAME_EXPORT_TEST_RUNTIME_ROOT=\"${CMAKE_BINARY_DIR}\""
-    )
-    add_dependencies(game_export_smoke lux_player render_features)
-endif()

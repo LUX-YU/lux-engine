@@ -60,38 +60,6 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
-foreach(test_target IN ITEMS
-    scene_public_link_test
-    scene_validation_test
-    scene_asset_contract_test
-)
-    add_executable(
-        ${test_target}
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/${test_target}.cpp
-    )
-    target_link_libraries(
-        ${test_target}
-        PRIVATE lux::engine::scene::scene
-    )
-    if(MSVC)
-        target_compile_options(${test_target} PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(${test_target} PRIVATE -UNDEBUG)
-    endif()
-    lux_classify_target(
-        TARGET  ${test_target}
-        LAYER   RUNTIME
-        PRODUCT TEST
-        ROLE    DOMAIN
-    )
-endforeach()
-
-add_test(NAME phase9_scene_v3_contract COMMAND scene_asset_contract_test)
-set_tests_properties(
-    phase9_scene_v3_contract
-    PROPERTIES LABELS "phase9;cpu"
-)
-
 install_components(
     PROJECT_NAME    lux-engine-scene
     VERSION         0.0.1

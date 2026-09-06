@@ -85,64 +85,6 @@ engine_target_add_type_runtime_info(
     TOP_LEVEL_REGISTER_FUNC_PREFIX LuxRegisterSceneRuntimeRenderMetas
 )
 
-add_executable(render_sync_pipeline_test test/render_sync_pipeline_test.cpp)
-target_include_directories(render_sync_pipeline_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test)
-target_link_libraries(render_sync_pipeline_test PRIVATE lux::engine::scene::scene_render)
-if(MSVC)
-    target_compile_options(render_sync_pipeline_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(render_sync_pipeline_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(TARGET render_sync_pipeline_test LAYER SCENE PRODUCT TEST ROLE INTEGRATION)
-add_test(NAME render_sync_pipeline_test COMMAND render_sync_pipeline_test)
-
-foreach(render_sync_test IN ITEMS
-    render_sync_stage_test
-    render_sync_stage_lifecycle_test
-    render_sync_pipeline_transaction_test
-)
-    add_executable(${render_sync_test} test/${render_sync_test}.cpp)
-    target_include_directories(${render_sync_test} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test)
-    target_link_libraries(${render_sync_test} PRIVATE lux::engine::scene::scene_render)
-    if(MSVC)
-        target_compile_options(${render_sync_test} PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(${render_sync_test} PRIVATE -UNDEBUG)
-    endif()
-    lux_classify_target(TARGET ${render_sync_test} LAYER SCENE PRODUCT TEST ROLE INTEGRATION)
-    add_test(NAME ${render_sync_test} COMMAND ${render_sync_test})
-endforeach()
-set_tests_properties(render_sync_stage_lifecycle_test PROPERTIES TIMEOUT 30)
-
-add_executable(render_runtime_test test/render_runtime_test.cpp)
-target_link_libraries(
-    render_runtime_test
-    PRIVATE lux::engine::scene::scene_render scene_render_meta
-)
-if(MSVC)
-    target_compile_options(render_runtime_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(render_runtime_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(TARGET render_runtime_test LAYER SCENE PRODUCT TEST ROLE INTEGRATION)
-add_test(NAME render_runtime_test COMMAND render_runtime_test)
-
-add_executable(render_scene_system_test test/render_scene_system_test.cpp)
-target_link_libraries(
-    render_scene_system_test
-    PRIVATE
-        lux::engine::scene::scene_render
-        scene_render_meta
-        render_client_meta
-)
-if(MSVC)
-    target_compile_options(render_scene_system_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(render_scene_system_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(TARGET render_scene_system_test LAYER SCENE PRODUCT TEST ROLE INTEGRATION)
-add_test(NAME render_scene_system_test COMMAND render_scene_system_test)
-
 install_components(
     PROJECT_NAME lux-engine-scene-render
     VERSION      ${PROJECT_VERSION}

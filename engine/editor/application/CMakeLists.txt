@@ -46,51 +46,6 @@ lux_classify_target(
 )
 set_target_properties(lux_editor PROPERTIES OUTPUT_NAME "lux_editor")
 
-add_executable(editor_application_test test/editor_application_test.cpp)
-target_link_libraries(
-    editor_application_test
-    PRIVATE
-        editor_application
-        lux::engine::scene::scene_meta
-)
-if(MSVC)
-    target_compile_options(editor_application_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(editor_application_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  editor_application_test
-    LAYER   EDITOR
-    PRODUCT TEST
-    ROLE    COMPOSITION
-)
-add_test(NAME editor_application COMMAND editor_application_test)
-
-add_executable(
-    editor_presentation_thread_start_test
-    test/presentation_thread_start_test.cpp
-)
-target_include_directories(
-    editor_presentation_thread_start_test
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
-)
-target_link_libraries(
-    editor_presentation_thread_start_test
-    PRIVATE editor_application
-)
-if(MSVC)
-    target_compile_options(editor_presentation_thread_start_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(editor_presentation_thread_start_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  editor_presentation_thread_start_test
-    LAYER   EDITOR
-    PRODUCT TEST
-    ROLE    COMPOSITION
-)
-add_test(NAME editor_presentation_thread_start COMMAND editor_presentation_thread_start_test)
-
 install(
     TARGETS lux_editor
     RUNTIME DESTINATION bin

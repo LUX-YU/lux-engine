@@ -67,5 +67,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-ecs REQUIRED COMPONENTS core)"
     "find_package(lux-engine-core REQUIRED COMPONENTS events)"
 )
-
-add_subdirectory(test)

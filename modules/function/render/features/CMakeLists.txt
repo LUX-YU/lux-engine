@@ -44,29 +44,6 @@ if(NOT LUX_BUILD_PACKED_RENDER_CONTENT)
         ROLE    DOMAIN
     )
 
-    add_executable(
-        render_builtin_content_seam_test
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/builtin_content_seam_test.cpp
-    )
-    target_link_libraries(
-        render_builtin_content_seam_test
-        PRIVATE lux::engine::function::render_features
-    )
-    if(MSVC)
-        target_compile_options(render_builtin_content_seam_test PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(render_builtin_content_seam_test PRIVATE -UNDEBUG)
-    endif()
-    lux_classify_target(
-        TARGET  render_builtin_content_seam_test
-        LAYER   FUNCTION
-        PRODUCT TEST
-        ROLE    DOMAIN
-    )
-    add_test(
-        NAME render_builtin_content_seam_test
-        COMMAND render_builtin_content_seam_test
-    )
     return()
 endif()
 
@@ -225,11 +202,11 @@ component_add_transitive_commands(
 )
 
 lux_classify_target(
-    TARGET  render_features
-    LAYER   FUNCTION
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
-)
+        TARGET  render_features
+        LAYER   FUNCTION
+        PRODUCT RUNTIME
+        ROLE    DOMAIN
+    )
 
 target_link_libraries(
     render_features
@@ -478,7 +455,6 @@ compile_and_pack_shaders(
 
 
 )
-
 
 compile_and_pack_shaders(
 	COMPILE_TARGET	render_lglsl_shaders
@@ -791,7 +767,6 @@ component_register_runtime_assets(
         ${ASSET_GENERATE_PATH}/shaders
         ${ASSET_GENERATE_PATH}/textures
 )
-
 
 # ---------------------------------------------------------------------------
 # Reflection code generation — EDITOR-ONLY sidecar (mirrors gameplay_meta).

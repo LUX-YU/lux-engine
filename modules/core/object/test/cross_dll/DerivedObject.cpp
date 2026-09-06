@@ -1,1 +1,0 @@
-#include "DerivedObject.hpp"

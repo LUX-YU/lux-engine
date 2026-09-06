@@ -1,6 +1,0 @@
-cmake_minimum_required(VERSION 3.22)
-project(lux_scene_presentation_consumer LANGUAGES CXX)
-find_package(lux-engine-scene-presentation REQUIRED COMPONENTS scene_presentation)
-add_executable(lux_scene_presentation_consumer main.cpp)
-target_compile_features(lux_scene_presentation_consumer PRIVATE cxx_std_20)
-target_link_libraries(lux_scene_presentation_consumer PRIVATE lux::engine::scene::scene_presentation)

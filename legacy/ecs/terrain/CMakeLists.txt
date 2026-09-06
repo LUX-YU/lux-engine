@@ -52,20 +52,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS math meta serialization)"
 )
 
-add_executable(
-    terrain_tile_codec_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/terrain_tile_codec_test.cpp)
-target_link_libraries(
-    terrain_tile_codec_test
-    PRIVATE lux::cxx::algorithm terrain_components)
-if(MSVC)
-    target_compile_options(terrain_tile_codec_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(terrain_tile_codec_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET terrain_tile_codec_test LAYER ECS PRODUCT TEST ROLE DOMAIN)
-
 if(LUX_BUILD_COMPONENT_META)
     include_component_cmake_scripts(meta)
 

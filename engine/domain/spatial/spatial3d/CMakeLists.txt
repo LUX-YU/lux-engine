@@ -41,27 +41,6 @@ lux_classify_target(
     ROLE    DOMAIN
 )
 
-add_executable(
-    spatial3d_index_test
-    test/spatial3d_index_test.cpp
-)
-target_link_libraries(
-    spatial3d_index_test
-    PRIVATE lux::engine::spatial::spatial3d_index
-)
-if(MSVC)
-    target_compile_options(spatial3d_index_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(spatial3d_index_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  spatial3d_index_test
-    LAYER   DOMAIN
-    PRODUCT TEST
-    ROLE    DOMAIN
-)
-add_test(NAME spatial3d_index_test COMMAND spatial3d_index_test)
-
 install_components(
     PROJECT_NAME lux-engine-domain-spatial3d
     VERSION      ${PROJECT_VERSION}

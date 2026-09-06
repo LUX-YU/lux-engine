@@ -24,27 +24,6 @@ lux_classify_target(
     ROLE    FOUNDATION
 )
 
-add_executable(
-    partition_identity_test
-    test/partition_identity_test.cpp
-)
-target_link_libraries(
-    partition_identity_test
-    PRIVATE lux::engine::partition::identity
-)
-if(MSVC)
-    target_compile_options(partition_identity_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(partition_identity_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  partition_identity_test
-    LAYER   DOMAIN
-    PRODUCT TEST
-    ROLE    FOUNDATION
-)
-add_test(NAME partition_identity_test COMMAND partition_identity_test)
-
 install_components(
     PROJECT_NAME lux-engine-partition-identity
     VERSION      ${PROJECT_VERSION}

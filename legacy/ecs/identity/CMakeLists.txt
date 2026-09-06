@@ -36,23 +36,3 @@ lux_classify_target(
     PRODUCT RUNTIME
     ROLE    FOUNDATION
 )
-
-add_executable(
-    ecs_identity_contract_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/identity_contract_test.cpp
-)
-target_link_libraries(
-    ecs_identity_contract_test
-    PRIVATE lux::engine::ecs::identity
-)
-if(MSVC)
-    target_compile_options(ecs_identity_contract_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(ecs_identity_contract_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  ecs_identity_contract_test
-    LAYER   ECS
-    PRODUCT TEST
-    ROLE    FOUNDATION
-)

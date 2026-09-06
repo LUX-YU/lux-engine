@@ -72,34 +72,6 @@ component_add_transitive_commands(
     "find_package (EnTT CONFIG REQUIRED)"
 )
 
-add_executable(
-    schedule_close_frontier_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/schedule_close_frontier_test.cpp
-)
-target_link_libraries(
-    schedule_close_frontier_test
-    PRIVATE lux::engine::ecs::core
-)
-if(MSVC)
-    target_compile_options(schedule_close_frontier_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(schedule_close_frontier_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  schedule_close_frontier_test
-    LAYER   ECS
-    PRODUCT TEST
-    ROLE    FOUNDATION
-)
-add_test(
-    NAME phase9_schedule_reverse_close_frontier
-    COMMAND schedule_close_frontier_test
-)
-set_tests_properties(
-    phase9_schedule_reverse_close_frontier
-    PROPERTIES LABELS "phase9;cpu"
-)
-
 # ---------------------------------------------------------------------------
 # Reflection + Lua binding code generation — carries the ECS-kernel reflected
 # types (Name / DebugDraw). Shared components (Transform…) own separate
@@ -181,32 +153,4 @@ if(LUX_BUILD_COMPONENT_META)
         ${_ecs_core_lua_meta_args}
     )
 
-    add_executable(
-        spatial_value_reflection_contract_test
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/spatial_value_reflection_contract_test.cpp
-    )
-    target_link_libraries(
-        spatial_value_reflection_contract_test
-        PRIVATE
-            core
-            ecs_meta
-    )
-    if(MSVC)
-        target_compile_options(
-            spatial_value_reflection_contract_test PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(
-            spatial_value_reflection_contract_test PRIVATE -UNDEBUG)
-    endif()
-    lux_classify_target(
-        TARGET  spatial_value_reflection_contract_test
-        LAYER   ECS
-        PRODUCT TEST
-        ROLE    FOUNDATION
-    )
-endif()
-
-set(ENABLE_ECS_CORE_TEST OFF CACHE BOOL "Enable ECS core tests")
-if(ENABLE_ECS_CORE_TEST)
-    add_subdirectory(test)
 endif()

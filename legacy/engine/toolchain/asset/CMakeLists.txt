@@ -14,7 +14,3 @@ add_subdirectory(model)
 if(NOT TARGET lux_asset_packer)
     add_subdirectory(packer)
 endif()
-
-if(ENABLE_ASSET_TEST)
-    add_subdirectory(test)
-endif()

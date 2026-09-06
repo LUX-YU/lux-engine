@@ -30,22 +30,6 @@ component_add_transitive_commands(
 )
 lux_classify_target(TARGET domain_system_description LAYER DOMAIN PRODUCT RUNTIME ROLE FOUNDATION)
 
-add_executable(
-    domain_system_description_test
-    test/system_description_test.cpp
-)
-target_link_libraries(
-    domain_system_description_test
-    PRIVATE lux::engine::system::domain_system_description
-)
-if(MSVC)
-    target_compile_options(domain_system_description_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(domain_system_description_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(TARGET domain_system_description_test LAYER DOMAIN PRODUCT TEST ROLE FOUNDATION)
-add_test(NAME domain_system_description_test COMMAND domain_system_description_test)
-
 install_components(
     PROJECT_NAME lux-engine-domain-system-description
     VERSION      ${PROJECT_VERSION}

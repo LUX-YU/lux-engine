@@ -1,6 +1,7 @@
 #include "CppBenchmarkScripts.hpp"
 #include "CppBenchmarkScripts.CppLifecycle.script.generated.hpp"
 #include "CppBenchmarkScripts.CppCoroutineBenchmark.script.generated.hpp"
+#include "CppBenchmarkScripts.CppUpdate.script.generated.hpp"
 #include "../../../system/test/HookInvocationTestAccess.hpp"
 using lux::simulation::test::dispatchHookForTest;
 #include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
@@ -225,6 +226,7 @@ namespace
             std::string_view{"micro-async"},
             std::string_view{"micro-lifecycle"},
             std::string_view{"scene-update-heavy"},
+            std::string_view{"scene-cpp-update-heavy"},
             std::string_view{"scene-gameplay-mixed"},
             std::string_view{"scene-suspended-idle"},
             std::string_view{"scene-resume-storm"},
@@ -798,11 +800,13 @@ namespace
             bool entity_scope = false,
             bool prepare_now = true,
             std::size_t event_requirements = 1U,
-            bool shared_target = false
+            bool shared_target = false,
+            const ScriptBackendDescriptor* supplied_backend = nullptr,
+            const lux::script::ScriptArtifact* supplied_artifact = nullptr
         )
             : simulation_description(scriptDescription(event_requirements - 1U)),
               backend_state{.mode = mode}, entity_scope(entity_scope), multi_flight_target(shared_target),
-              waiter_count(count)
+              waiter_count(count), external_artifact(supplied_artifact)
         {
             auto clock_simulation = Simulation::create(registry, emptyDescription(), empty_system_types);
             if (!clock_simulation)
@@ -935,6 +939,7 @@ namespace
                 &releaseMethod,
                 &destroyInstance
             };
+            if (supplied_backend != nullptr) backend = *supplied_backend;
 
             std::array<ScriptApiCapabilityPublication, 1U> publications{};
             std::span<const ScriptApiCapabilityPublication> capability_span;
@@ -1005,7 +1010,8 @@ namespace
             auto& self = *static_cast<RuntimeHarness*>(opaque);
             if (requested != assetId())
                 return false;
-            output.artifact = std::addressof(*self.artifact);
+            output.artifact = self.external_artifact != nullptr
+                ? self.external_artifact : std::addressof(*self.artifact);
             return true;
         }
 
@@ -1148,6 +1154,7 @@ namespace
         std::vector<std::unique_ptr<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>>> extra_endpoints;
         bool multi_flight_target{};
         std::size_t waiter_count{};
+        const lux::script::ScriptArtifact* external_artifact{};
         BackendState backend_state;
         ScriptBackendDescriptor backend;
         ValueProvider value_provider;
@@ -2742,6 +2749,40 @@ namespace
             throw std::runtime_error("Lua churn benchmark observation mismatch");
     }
 #endif
+    void runCppObjectFrames(const Options& options, std::vector<Row>& rows)
+    {
+        auto description = materializeCppStaticScript(generated::CppUpdate);
+        if (!description) throw std::runtime_error("C++ update contract");
+        auto artifact = lux::script::ScriptArtifact::create(std::move(*description), {});
+        const std::array pools{CppStaticScriptPoolDescription{&generated::CppUpdate, options.size, 0U, 0U,
+            alignof(std::max_align_t), options.size * 3U}};
+        auto backend = CppStaticScriptBackend::create(pools);
+        if (!backend || !artifact) throw std::runtime_error("C++ update backend");
+        const auto descriptor = backend->descriptor();
+        lux::simulation::benchmark::cpp_update_checksum = 0U;
+        RuntimeHarness harness{options.size, EScenarioMode::SYNC, options.resume_budget, true, true, 1U, false,
+            &descriptor, &*artifact};
+        for (std::size_t frame{}; frame < options.warmups + options.frames; ++frame)
+        {
+            auto row = measureRow("scene-cpp-update-heavy", "cpp-static", options.size, frame, [&] {
+                static_cast<void>(dispatchHookForTest(harness.hook));
+                harness.advance(std::chrono::milliseconds{16});
+                harness.stablePoint();
+                Row result;
+                result.active_instances = harness.system->activeInstanceCount();
+                result.calls = options.size;
+                return result;
+            });
+            if (frame >= options.warmups)
+            {
+                row.sample = frame - options.warmups;
+                rows.push_back(std::move(row));
+            }
+        }
+        if (!harness.system->shutdown() || lux::simulation::benchmark::cpp_update_checksum !=
+            options.size * (options.warmups + options.frames)) throw std::runtime_error("C++ update observation");
+        if (!rows.empty()) rows.back().checksum = lux::simulation::benchmark::cpp_update_checksum;
+    }
 } // namespace
 
 int main(int argc, char** argv)
@@ -2761,6 +2802,8 @@ int main(int argc, char** argv)
             runAsyncPhases(*options, rows);
         else if (options->group == "micro-lifecycle")
             runLifecycle(*options, rows);
+        else if (options->group == "scene-cpp-update-heavy")
+            runCppObjectFrames(*options, rows);
         else if (options->group == "scene-update-heavy")
             runObjectFrames(*options, rows, EScenarioMode::SYNC, options->group);
         else if (options->group == "scene-gameplay-mixed")

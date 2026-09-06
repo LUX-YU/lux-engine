@@ -18,7 +18,7 @@ get_target_property(physics_includes lux::engine::physics2d::physics2d_simulatio
 find_file(physics_declaration lux/engine/physics2d/abilities/PhysicsQuery2D.hpp
     PATHS ${physics_includes} NO_DEFAULT_PATH REQUIRED)
 add_library(physics_schema_declaration STATIC SchemaDeclaration.cpp)
-target_compile_features(physics_schema_declaration PRIVATE cxx_std_20)
+target_compile_features(physics_schema_declaration PUBLIC cxx_std_20)
 target_include_directories(physics_schema_declaration PUBLIC ${physics_includes})
 target_link_libraries(physics_schema_declaration PUBLIC lux::engine::function::script_core)
 lux_script_abilities(TARGET physics_schema_declaration SOURCES "${physics_declaration}"

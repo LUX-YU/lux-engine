@@ -108,6 +108,7 @@ namespace lux::simulation
         SimulationHookCallbacks hook_callbacks;
         std::size_t stable_hook_count{};
         std::size_t script_hook_count{};
+        SimulationGraphPreparationStats graph_preparation_stats;
         bool sealed{};
         bool stopped{};
         bool executing{};
@@ -823,10 +824,14 @@ namespace lux::simulation
             std::vector<std::vector<std::size_t>> before(count);
             std::vector<std::vector<std::size_t>> after(count);
             const auto resolve = [&](SimulationExecutionPoint point) noexcept {
-                const auto found = std::ranges::find_if(pending, [point](const auto& item) noexcept {
-                    return item.point == point;
-                });
-                return static_cast<std::size_t>(found - pending.begin());
+                const auto found = std::ranges::lower_bound(pending, point,
+                    [&](const auto& left, const auto& right) noexcept {
+                        ++impl->graph_preparation_stats.identity_comparisons;
+                        return std::tie(left.system, left.kind, left.point) <
+                            std::tie(right.system, right.kind, right.point);
+                    }, [](const auto& item) noexcept { return item.point; });
+                return found != pending.end() && found->point == point
+                    ? static_cast<std::size_t>(found - pending.begin()) : count;
             };
             for (const auto& endpoint : impl->script_hooks)
             {
@@ -884,26 +889,58 @@ namespace lux::simulation
             if (execution_order.size() != count)
                 return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::DEPENDENCY_CYCLE));
 
-            std::vector<bool> visited(count);
+            struct HookReachability final
+            {
+                std::vector<bool> ancestors;
+                std::vector<bool> descendants;
+            };
+            std::vector<std::unique_ptr<HookReachability>> reachability(count);
             std::vector<std::size_t> search;
             search.reserve(count);
+            impl->graph_preparation_stats.reachability_storage_bytes =
+                reachability.capacity() * sizeof(std::unique_ptr<HookReachability>) +
+                search.capacity() * sizeof(std::size_t);
+            const auto cached_reachability = [&](std::size_t hook) -> const HookReachability& {
+                auto& cached = reachability[hook];
+                if (cached) return *cached;
+                cached = std::make_unique<HookReachability>();
+                cached->ancestors.resize(count);
+                cached->descendants.resize(count);
+                const auto walk = [&](const auto& edges, auto& visited) {
+                    ++impl->graph_preparation_stats.reachability_walks;
+                    search.clear();
+                    visited[hook] = true;
+                    search.push_back(hook);
+                    while (!search.empty())
+                    {
+                        const auto item = search.back();
+                        search.pop_back();
+                        ++impl->graph_preparation_stats.reachability_node_visits;
+                        for (auto next : edges[item])
+                        {
+                            ++impl->graph_preparation_stats.reachability_edge_visits;
+                            if (!visited[next])
+                            {
+                                visited[next] = true;
+                                search.push_back(next);
+                            }
+                        }
+                    }
+                };
+                walk(before, cached->ancestors);
+                walk(after, cached->descendants);
+                impl->graph_preparation_stats.reachability_storage_bytes += sizeof(HookReachability) +
+                    (cached->ancestors.capacity() + cached->descendants.capacity() + 7U) / 8U;
+                return *cached;
+            };
             const auto reaches = [&](std::size_t from, std::size_t target) {
-                std::fill(visited.begin(), visited.end(), false);
-                search.clear();
-                search.push_back(from);
-                while (!search.empty())
+                if (from == target) return true;
+                if (pending[target].point.kind == ESimulationExecutionPoint::HOOK)
                 {
-                    const auto item = search.back();
-                    search.pop_back();
-                    if (item == target)
-                        return true;
-                    if (visited[item])
-                        continue;
-                    visited[item] = true;
-                    for (auto next : after[item])
-                        if (!visited[next])
-                            search.push_back(next);
+                    return cached_reachability(target).ancestors[from];
                 }
+                if (pending[from].point.kind == ESimulationExecutionPoint::HOOK)
+                    return cached_reachability(from).descendants[target];
                 return false;
             };
             for (std::size_t hook{}; hook < count; ++hook)
@@ -1234,6 +1271,10 @@ namespace lux::simulation
 
     std::size_t Simulation::taskCount() const noexcept { return impl_->graph.taskCount(); }
     std::size_t Simulation::dependencyCount() const noexcept { return impl_->graph.dependencyCount(); }
+    SimulationGraphPreparationStats Simulation::graphPreparationStats() const noexcept
+    {
+        return impl_->graph_preparation_stats;
+    }
 
     lux::cxx::expected<SimulationHookConnection, SimulationSystemBuildFailure>
     Simulation::bindHookCallbacks(SimulationHookCallbacks callbacks) noexcept

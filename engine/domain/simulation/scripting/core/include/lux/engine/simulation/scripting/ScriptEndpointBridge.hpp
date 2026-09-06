@@ -48,11 +48,8 @@ namespace lux::simulation::script
         void *context{};
         EndpointConnectResult (*connect)(void *, void *, ScriptEventLane) noexcept {};
         EEndpointMutationError (*disconnect)(void *, EndpointConnectionToken) noexcept {};
-        bool (*seal)(void*) noexcept{};
         std::size_t (*consume)(void*) noexcept{};
         bool (*failed)(void*) noexcept{};
-        void (*reset)(void*) noexcept{};
-        void (*discard)(void*) noexcept{};
         void* channel_context{};
         bool (*connected)(void*) noexcept{};
     };
@@ -255,11 +252,9 @@ namespace lux::simulation::script
                 lux::semantic::makeType<Payload>(lux::semantic::EValuePass::CONST_REF),
                 {detail::eventPayloadLayout<Payload>(), payload_copy_ != nullptr ? &copyPayload : nullptr},
                 this, &connect, &disconnect,
-                [](void* context) noexcept { return self(context).channel_->seal(); },
                 &consume,
                 [](void* context) noexcept { return self(context).channel_->failed(); },
-                [](void* context) noexcept { self(context).channel_->reset(); },
-                [](void* context) noexcept { self(context).channel_->discard(); }, channel_,
+                channel_,
                 [](void* context) noexcept { return self(context).lane_ != nullptr; }};
         }
 

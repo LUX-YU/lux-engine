@@ -216,3 +216,16 @@ No final production/qualification candidate, optimization speedup, framework fre
 - I05 Toolchain all + 34/34 focused C++/continuation/Event/FlowForge tests pass (41.52 seconds).
   The one remaining direct-backend negative fixture was migrated to prepared Event entries; no runtime fallback remains.
   lux-cxx dependency is now `af25d29` (prepared stable insertion and exact backing-capacity accounting).
+- I06 development: per-VM four-shape safe wrapper factory cache, known host-table capacity hints, and
+  VM-neutral typed numeric range/conversion definitions visible at composition callsites. Provenance and
+  VM C API access remain behind the existing narrow DLL boundary; no entire State/VM headers were exposed.
+  Argument count is returned by the existing invocation access check instead of another DLL call.
+  Existing prototype-cache lifetime policy is unchanged; factory closures capture no prototype/provider authority.
+- Cold graph construction binary-searches the sorted execution points and lazily caches two reachability
+  walks per needed Hook. Region tests assert four walks for two Hooks. Statistics cover traversal and backing
+  memory; this is not a claim that all graph-building subalgorithms are linear.
+- Removed redundant seal/reset/discard functions from the Script endpoint adapter; Simulation-owned Channel
+  lifecycle remains intact. Standalone tests borrow their concrete typed Channel via the existing owner association.
+  Removed retired reflection-era CppStatic runtime error values.
+- I06 Developer all + 21/21 focused Hook/Lua/Event/Scene tests pass (`v3d/i06-tests.log`, 2.75 seconds).
+  No final correctness/performance qualification or freeze claim is made yet.

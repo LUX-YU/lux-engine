@@ -37,6 +37,15 @@ namespace lux::simulation
         ecs::EcsCommandFailure ecs_command;
     };
 
+    struct SimulationGraphPreparationStats final
+    {
+        std::uint64_t identity_comparisons{};
+        std::uint64_t reachability_walks{};
+        std::uint64_t reachability_node_visits{};
+        std::uint64_t reachability_edge_visits{};
+        std::size_t reachability_storage_bytes{};
+    };
+
     struct SimulationHookCallbacks final
     {
         void* context{};
@@ -110,6 +119,7 @@ namespace lux::simulation
         [[nodiscard]] const SimulationClock& clock() const noexcept;
         [[nodiscard]] std::size_t taskCount() const noexcept;
         [[nodiscard]] std::size_t dependencyCount() const noexcept;
+        [[nodiscard]] SimulationGraphPreparationStats graphPreparationStats() const noexcept;
 
         // The connection must be released while paused and before this Simulation is destroyed.
         [[nodiscard]] lux::cxx::expected<SimulationHookConnection, SimulationSystemBuildFailure>

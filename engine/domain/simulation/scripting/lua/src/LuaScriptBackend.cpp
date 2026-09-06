@@ -459,6 +459,8 @@ namespace lux::simulation::script
 
         ~State()
         {
+            for (const auto factory : wrapper_factories)
+                if (factory != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, factory);
             for (auto& continuation : continuations)
             {
                 if (continuation.active && continuation.thread_ref != LUA_NOREF)
@@ -533,7 +535,7 @@ namespace lux::simulation::script
                 if (first_method == ability_methods.size())
                     return false;
                 const auto* ability = ability_methods[first_method].ability;
-                lua_newtable(state);
+                lua_createtable(state, 0, static_cast<int>(ability->methods.size()));
                 const auto ability_index = lua_gettop(state);
                 auto ordinal = first_method;
                 while (ordinal < ability_methods.size() && ability_methods[ordinal].ability == ability)
@@ -567,20 +569,37 @@ namespace lux::simulation::script
         [[nodiscard]] bool wrapAbility(bool is_async, bool has_result) noexcept
         {
             // Raise/yield in Lua only, after the typed C++ thunk (and its noexcept frames) has returned.
-            constexpr std::string_view prefix =
-                "return function(start) return function(...) local ok,value=start(...); "
-                "if not ok then error(value,0) end; ";
-            const auto suffix = is_async ? "return coroutine.yield() end end" :
-                has_result ? "return value end end" : "end end";
-            std::array<char, 256U> wrapper{};
-            const auto suffix_size = std::strlen(suffix);
-            std::memcpy(wrapper.data(), prefix.data(), prefix.size());
-            std::memcpy(wrapper.data() + prefix.size(), suffix, suffix_size);
-            if (luaL_loadbufferx(state, wrapper.data(), prefix.size() + suffix_size, "lux.Ability.wrapper", "t") !=
-                    LUA_OK || lua_pcall(state, 0, 1, 0) != LUA_OK)
-                return false;
+            if (!pushWrapperFactory(is_async ? 2U : has_result ? 1U : 0U)) return false;
             lua_insert(state, -2);
-            return lua_pcall(state, 1, 1, 0) == LUA_OK;
+            if (lua_pcall(state, 1, 1, 0) != LUA_OK) return false;
+            ++wrapper_closures_created;
+            return true;
+        }
+
+        [[nodiscard]] bool pushWrapperFactory(std::size_t shape) noexcept
+        {
+            static constexpr std::array<std::string_view, 4U> sources{
+                "return function(start) return function(...) local ok,value=start(...); "
+                "if not ok then error(value,0) end end end",
+                "return function(start) return function(...) local ok,value=start(...); "
+                "if not ok then error(value,0) end; return value end end",
+                "return function(start) return function(...) local ok,value=start(...); "
+                "if not ok then error(value,0) end; return coroutine.yield() end end",
+                "return function(start) return function() local ok,message=start(); "
+                "if not ok then error(message,0) end; return coroutine.yield() end end"
+            };
+            if (shape >= sources.size()) return false;
+            if (wrapper_factories[shape] == LUA_NOREF)
+            {
+                const auto source = sources[shape];
+                const char* name = shape == 3U ? "lux.Event.wrapper" : "lux.Ability.wrapper";
+                if (luaL_loadbufferx(state, source.data(), source.size(), name, "t") != LUA_OK ||
+                    lua_pcall(state, 0, 1, 0) != LUA_OK || !lua_isfunction(state, -1)) return false;
+                wrapper_factories[shape] = luaL_ref(state, LUA_REGISTRYINDEX);
+                ++wrapper_factory_compilations;
+            }
+            lua_rawgeti(state, LUA_REGISTRYINDEX, wrapper_factories[shape]);
+            return true;
         }
 
         [[nodiscard]] bool appendArtifactEvents(
@@ -591,18 +610,17 @@ namespace lux::simulation::script
         {
             if (artifact.description().event_requirements.empty())
                 return true;
-            static constexpr std::string_view wrapper_source =
-                "return function(start) return function() local ok,message=start(); "
-                "if not ok then error(message,0) end; return coroutine.yield() end end";
-            lua_newtable(state);
+            std::size_t groups{};
+            std::string_view previous;
+            for (const auto& source : artifact.description().event_requirements)
+            {
+                if (source.system_name == previous) continue;
+                ++groups;
+                previous = source.system_name;
+            }
+            lua_createtable(state, 0, static_cast<int>(groups));
             const auto event_index = lua_gettop(state);
-            if (luaL_loadbufferx(
-                    state,
-                    wrapper_source.data(),
-                    wrapper_source.size(),
-                    "lux.Event.wrapper",
-                    "t"
-                ) != LUA_OK || lua_pcall(state, 0, 1, 0) != LUA_OK || !lua_isfunction(state, -1))
+            if (!pushWrapperFactory(3U))
             {
                 return false;
             }
@@ -639,6 +657,7 @@ namespace lux::simulation::script
                 lua_pushcclosure(state, &State::invokeEventWait, 3);
                 if (lua_pcall(state, 1, 1, 0) != LUA_OK)
                     return false;
+                ++wrapper_closures_created;
                 lua_settable(state, system_index);
                 prototype.event_ordinals.push_back(static_cast<std::uint32_t>(found - event_sources.begin()));
             }
@@ -660,13 +679,13 @@ namespace lux::simulation::script
             const lux::script::ScriptArtifact& artifact
         ) noexcept
         {
-            lua_newtable(state);
+            lua_createtable(state, 0, 1);
             const auto environment_index = lua_gettop(state);
-            lua_newtable(state);
+            lua_createtable(state, 0, 1);
             lux::script::lua::detail::pushLuaGlobalEnvironment(state);
             lua_setfield(state, -2, "__index");
             lua_setmetatable(state, environment_index);
-            lua_newtable(state);
+            lua_createtable(state, 0, static_cast<int>(artifact.description().api_requirements.size() + 2U));
             const auto lux_index = lua_gettop(state);
             // A full userdata is retained by the environment and every closure. An old reachable closure
             // therefore prevents reuse of its layout identity, independently of C++ prototype storage.
@@ -1005,27 +1024,7 @@ namespace lux::simulation::script
             if (lua_type(state, index) != LUA_TNUMBER)
                 return false;
             const auto value = lua_tonumber(state, index);
-            if constexpr (std::is_integral_v<Type>)
-            {
-                if (!std::isfinite(value) || std::trunc(value) != value ||
-                    value < static_cast<lua_Number>(
-                        std::numeric_limits<Type>::lowest()) ||
-                    value > static_cast<lua_Number>(
-                        std::numeric_limits<Type>::max()))
-                {
-                    return false;
-                }
-            }
-            else if (!std::isfinite(value) ||
-                     value < -static_cast<lua_Number>(
-                         std::numeric_limits<Type>::max()) ||
-                     value > static_cast<lua_Number>(
-                         std::numeric_limits<Type>::max()))
-            {
-                return false;
-            }
-            result = static_cast<Type>(value);
-            return true;
+            return detail::checkedLuaNumber(value, result);
         }
 
         static int patchComponent(lua_State* state) noexcept
@@ -1153,7 +1152,7 @@ namespace lux::simulation::script
             self.free_instances.pop_back();
             instance->active = true;
 
-            lua_newtable(self.state);
+            lua_createtable(self.state, 0, instance->entity_scope ? 3 : 0);
             const auto instance_index = lua_gettop(self.state);
             lua_rawgeti(self.state, LUA_REGISTRYINDEX, prototype->table_ref);
             const auto prototype_index = lua_gettop(self.state);
@@ -2006,6 +2005,9 @@ namespace lux::simulation::script
         std::size_t vm_coroutine_creations{};
         std::size_t vm_coroutine_resumes{};
         std::size_t vm_coroutine_releases{};
+        std::array<int, 4U> wrapper_factories{LUA_NOREF, LUA_NOREF, LUA_NOREF, LUA_NOREF};
+        std::uint64_t wrapper_factory_compilations{};
+        std::uint64_t wrapper_closures_created{};
     };
 
     bool detail::LuaAbilityProjectionAccess::current(
@@ -2036,7 +2038,7 @@ namespace lux::simulation::script
             prepared->context,
             prepared->dispatch,
             owner->active_execution->step,
-            static_cast<std::uint32_t>(local_slot)
+            static_cast<std::uint32_t>(local_slot), lua_gettop(state)
         };
         return true;
     }
@@ -2087,11 +2089,6 @@ namespace lux::simulation::script
         return results + 1;
     }
 
-    int detail::LuaAbilityProjectionAccess::argumentCount(lua_State* state) noexcept
-    {
-        return lua_gettop(state);
-    }
-
     bool detail::LuaAbilityProjectionAccess::read(lua_State* state, int index, bool& value) noexcept
     {
         if (!lua_isboolean(state, index))
@@ -2100,24 +2097,11 @@ namespace lux::simulation::script
         return true;
     }
 
-    bool detail::LuaAbilityProjectionAccess::read(lua_State* state, int index, std::int32_t& value) noexcept
+    bool detail::LuaAbilityProjectionAccess::number(lua_State* state, int index, double& value) noexcept
     {
-        return LuaScriptBackend::State::readStrictNumber(state, index, value);
-    }
-
-    bool detail::LuaAbilityProjectionAccess::read(lua_State* state, int index, std::uint32_t& value) noexcept
-    {
-        return LuaScriptBackend::State::readStrictNumber(state, index, value);
-    }
-
-    bool detail::LuaAbilityProjectionAccess::read(lua_State* state, int index, float& value) noexcept
-    {
-        return LuaScriptBackend::State::readStrictNumber(state, index, value);
-    }
-
-    bool detail::LuaAbilityProjectionAccess::read(lua_State* state, int index, double& value) noexcept
-    {
-        return LuaScriptBackend::State::readStrictNumber(state, index, value);
+        if (lua_type(state, index) != LUA_TNUMBER) return false;
+        value = lua_tonumber(state, index);
+        return true;
     }
 
     void detail::LuaAbilityProjectionAccess::push(lua_State* state, bool value) noexcept
@@ -2154,7 +2138,9 @@ namespace lux::simulation::script
         const bool has_invalid_capacity = config.instance_capacity == 0U ||
             config.prepared_call_capacity == 0U || config.continuation_capacity == 0U ||
             config.execution_depth_capacity == 0U || config.ability_catalog_method_capacity == 0U ||
-            config.event_catalog_capacity == 0U;
+            config.event_catalog_capacity == 0U ||
+            config.ability_catalog_method_capacity > static_cast<std::size_t>((std::numeric_limits<int>::max)()) - 2U ||
+            config.event_catalog_capacity > static_cast<std::size_t>((std::numeric_limits<int>::max)()) - 2U;
         if (has_invalid_capacity)
             return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
         for (std::size_t index{}; index < config.components.size(); ++index)
@@ -2398,7 +2384,10 @@ namespace lux::simulation::script
             state_->vm_coroutine_releases,
             state_->vm_allocations.stats,
             abilities.acquire_steps + events.acquire_steps,
-            abilities.release_steps + events.release_steps
+            abilities.release_steps + events.release_steps,
+            state_->wrapper_factory_compilations,
+            state_->wrapper_closures_created,
+            state_->prototypes.size()
         };
     }
 

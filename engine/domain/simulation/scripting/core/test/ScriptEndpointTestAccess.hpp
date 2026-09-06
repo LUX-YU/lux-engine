@@ -4,20 +4,23 @@
 
 namespace lux::simulation::script::test
 {
-    // Focused runtime tests only. Production delivery is compiled by Simulation composition.
+    // The concrete standalone fixture owns this Channel. Production lifetime is managed only by Simulation.
+    template <class Route, class Payload>
+    std::size_t deliverTypedEndpoint(ScriptEventEndpoint<Route, Payload>& endpoint) noexcept
+    {
+        const auto descriptor = endpoint.descriptor();
+        auto* channel = static_cast<HookChannel<Route, Payload>*>(descriptor.channel_context);
+        if (channel == nullptr || !channel->seal())
+            return 0U;
+        const auto calls = descriptor.consume(descriptor.context);
+        channel->reset();
+        return calls;
+    }
+
     template <class Endpoint>
     std::size_t deliverEndpoint(Endpoint& endpoint) noexcept
     {
-        const auto descriptor = [&]() noexcept {
-            if constexpr (requires { endpoint.descriptor(); })
-                return endpoint.descriptor();
-            else
-                return endpoint->descriptor();
-        }();
-        if (!descriptor.seal(descriptor.context))
-            return 0U;
-        const auto calls = descriptor.consume(descriptor.context);
-        descriptor.reset(descriptor.context);
-        return calls;
+        if constexpr (requires { endpoint.descriptor(); }) return deliverTypedEndpoint(endpoint);
+        else return deliverTypedEndpoint(*endpoint);
     }
 }

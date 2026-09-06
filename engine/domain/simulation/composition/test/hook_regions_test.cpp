@@ -262,6 +262,9 @@ namespace
             return;
         }
         assert(simulation);
+        const auto graph_stats = simulation->graphPreparationStats();
+        assert(graph_stats.reachability_walks == 4U);
+        assert(graph_stats.reachability_storage_bytes != 0U);
         const auto event = simulation->scriptEventEndpoints().front();
         assert(event.connect(event.context, &state, [](void* context, ecs::Entity, lux_script_call_frame&) noexcept {
             auto& state = *static_cast<State*>(context);

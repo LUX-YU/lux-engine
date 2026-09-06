@@ -6,6 +6,8 @@
 #include <lux/engine/simulation/scripting/lua/visibility.h>
 
 #include <cstdint>
+#include <cmath>
+#include <limits>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -28,7 +30,29 @@ namespace lux::simulation::script::detail
         const void* dispatch{};
         ScriptStepContext* step{};
         std::uint32_t local_slot{};
+        int argument_count{};
     };
+
+    template <class Type>
+    [[nodiscard]] bool checkedLuaNumber(double value, Type& result) noexcept
+    {
+        if (!std::isfinite(value)) return false;
+        if constexpr (std::is_integral_v<Type>)
+        {
+            const bool invalid = std::trunc(value) != value ||
+                value < static_cast<double>((std::numeric_limits<Type>::lowest)()) ||
+                value > static_cast<double>((std::numeric_limits<Type>::max)());
+            if (invalid) return false;
+        }
+        else
+        {
+            const bool invalid = value < -static_cast<double>((std::numeric_limits<Type>::max)()) ||
+                value > static_cast<double>((std::numeric_limits<Type>::max)());
+            if (invalid) return false;
+        }
+        result = static_cast<Type>(value);
+        return true;
+    }
 
     struct LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC LuaAbilityProjectionAccess final
     {
@@ -40,17 +64,28 @@ namespace lux::simulation::script::detail
             ScriptStepResult result,
             std::uint32_t local_slot
         ) noexcept;
-        [[nodiscard]] static int argumentCount(lua_State* state) noexcept;
         [[nodiscard]] static bool read(lua_State* state, int index, bool& value) noexcept;
-        [[nodiscard]] static bool read(lua_State* state, int index, std::int32_t& value) noexcept;
-        [[nodiscard]] static bool read(lua_State* state, int index, std::uint32_t& value) noexcept;
-        [[nodiscard]] static bool read(lua_State* state, int index, float& value) noexcept;
-        [[nodiscard]] static bool read(lua_State* state, int index, double& value) noexcept;
+        [[nodiscard]] static bool read(lua_State* state, int index, std::int32_t& value) noexcept
+        { return readNumeric(state, index, value); }
+        [[nodiscard]] static bool read(lua_State* state, int index, std::uint32_t& value) noexcept
+        { return readNumeric(state, index, value); }
+        [[nodiscard]] static bool read(lua_State* state, int index, float& value) noexcept
+        { return readNumeric(state, index, value); }
+        [[nodiscard]] static bool read(lua_State* state, int index, double& value) noexcept
+        { return readNumeric(state, index, value); }
         static void push(lua_State* state, bool value) noexcept;
         static void push(lua_State* state, std::int32_t value) noexcept;
         static void push(lua_State* state, std::uint32_t value) noexcept;
         static void push(lua_State* state, float value) noexcept;
         static void push(lua_State* state, double value) noexcept;
+    private:
+        [[nodiscard]] static bool number(lua_State* state, int index, double& value) noexcept;
+        template <class Type>
+        [[nodiscard]] static bool readNumeric(lua_State* state, int index, Type& result) noexcept
+        {
+            double value{};
+            return number(state, index, value) && checkedLuaNumber(value, result);
+        }
     };
 
     template <class... Arguments, std::size_t... Index>
@@ -82,7 +117,7 @@ namespace lux::simulation::script::detail
         LuaPreparedAbilityAccess access;
         if (!LuaAbilityProjectionAccess::current(state, access))
             return LuaAbilityProjectionAccess::fail(state, -1, "invalid prepared Script Ability");
-        if (LuaAbilityProjectionAccess::argumentCount(state) != static_cast<int>(sizeof...(Arguments)))
+        if (access.argument_count != static_cast<int>(sizeof...(Arguments)))
             return LuaAbilityProjectionAccess::fail(state, -3, "Script Ability argument count mismatch");
         std::tuple<std::remove_cvref_t<Arguments>...> values;
         if (!readLuaAbilityArguments<Arguments...>(state, values, std::index_sequence_for<Arguments...>{}))
@@ -118,7 +153,7 @@ namespace lux::simulation::script::detail
         LuaPreparedAbilityAccess access;
         if (!LuaAbilityProjectionAccess::current(state, access) || access.step == nullptr)
             return LuaAbilityProjectionAccess::fail(state, -1, "async Script Ability requires coroutine execution");
-        if (LuaAbilityProjectionAccess::argumentCount(state) != static_cast<int>(sizeof...(Arguments)))
+        if (access.argument_count != static_cast<int>(sizeof...(Arguments)))
             return LuaAbilityProjectionAccess::fail(state, -3, "Script Ability argument count mismatch");
         std::tuple<std::remove_cvref_t<Arguments>...> values;
         if (!readLuaAbilityArguments<Arguments...>(state, values, std::index_sequence_for<Arguments...>{}))

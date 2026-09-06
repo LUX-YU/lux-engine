@@ -1,6 +1,9 @@
-# ScriptSystem SR-1：源码映射、所有权与实施契约
+# ScriptSystem：SR-1 设计与 SR-2 实施记录
 
-日期：2026-09-06。状态：SR-1 文档交付，等待独立审阅；SR-2 未开始。
+日期：2026-09-06。SR-1 已获用户审阅批准；SR-2 实现及验收记录见 §12。
+
+下述 SR-1 只读核查与设计历史保留其原始时点含义；“本轮未构建”等历史陈述不适用于
+§12 的 SR-2 执行记录。§8 是获批迁移边界与开工契约，§12 是实际实现和新证据。
 
 本轮依据用户批准的《SR-1：ScriptSystem 源码映射与重构设计计划》执行。附件
 《LUX ScriptSystem 结构性重构：LLM 实施主指令》v1.0 的六组件、准备辅助、Entity
@@ -648,7 +651,7 @@ p50/p95/必要 p99 按 workload 报告，不平均多个 p95。诊断探针与�
 [agents]: ../AGENTS.md
 [system]: ../engine/domain/simulation/builtin/script/src/ScriptSystem.cpp
 [description]: ../engine/scene/integration/script_description/include/lux/engine/scene/script/ScriptSystemDescription.hpp
-[codec]: ../engine/domain/simulation/builtin/script/src/ScriptSystemDescriptionCodec.cpp
+[codec]: ../engine/scene/integration/script_description/src/ScriptSystemDescriptionCodec.cpp
 [scene]: ../engine/scene/integration/script/src/ScriptRuntimeSystem.cpp
 [scene-header]: ../engine/scene/integration/script/include/lux/engine/scene/ScriptRuntimeSystem.hpp
 [simulation]: ../engine/domain/simulation/composition/src/Simulation.cpp
@@ -758,5 +761,112 @@ checkout。sr2-probes-1 的 initial/failures/signatures/incarnations/pending-fat
 六组逐事件轨迹完全相等；双方 v1 编码字节相等。五组独立进程小规模装配测量保留原始数据，
 有实际新增交接开销，不据此宣称所有路径无性能变化。
 
-最终 clean commit 的构建、安装、consumer、配对性能结果及原始日志清单在验收完成后补记。
+最终 clean commit 的新证据见下文 §12.4—12.6。
 仅 RelWithDebInfo；未改 modules 公共头，三前缀同步规则未触发；未进行 Android 构建。
+
+
+### 12.4 最终候选与验收（2026-09-07）
+
+生产实现、迁移测试和安装消费者固定在 `feaa7550bd819b0bcb928d477fb45e40ff9282b1`。
+独立 clone 为 `E:/SyncForder/CodeRepos/lux-engine-sr2-candidate`，该 checkout 干净；先通过
+ValidateTrackedSnapshot，再配置独立 `build/RelWithDebInfo/sr2-candidate/{t,d}` 和
+`install/sr2-candidate/{t,d}`。后续提交只补诊断驱动和本文，不改变已资格化的生产或测试树。
+基线仍为独立 clone 的 `54de8af521887c4e5aaf0041b45422a817694005`，不是历史 q2/d。
+
+| 本次实际检查 | 基线 | 候选 | 结论 |
+|---|---:|---:|---|
+| Toolchain 全量 CTest | 106/106 | 106/106 | 无新增正确性失败 |
+| Developer 全量 CTest | 112/118 | 112/118 | 同六个历史 Scene Lua 失败 |
+| all、第二轮 no-op、安装 | 两配置成功 | 两配置成功 | `-j 4 -- -k 0`，构建与测试串行 |
+| 候选安装消费者 | — | 14/14 | 每项构建、运行、第二轮 no-op；authoring 另有独立重载 |
+| 生命周期轨迹 | 六组 | 逐项相等 | 初始/失败/签名/再物化/pending-fatal/跨批次 Hook |
+| Event 与重入轨迹 | 八组 | 逐项相等 | 退休再建、登记截止、嵌套派发、来源资格、四类 copy 重入 |
+| v1 编码 | 288 字节 | 完全相等 | 固定 golden 与旧字节 decode 都通过 |
+
+六个失败注册名为 `scene_script_lua_runtime_test`、`scene_script_lua_runtime_workers_0`、
+`scene_script_lua_runtime_workers_2`、`scene_script_lua_runtime_workers_4`、
+`scene_script_lua_runtime_interpreter_test`、`scene_script_lua_runtime_interpreter_workers_4`。
+两侧均为退出码 `0xc0000409`，同一 `activeContinuationCount() == 0U` 断言；原文件 487 行、
+候选 489 行。没有削弱或排除该断言；Developer 的资格状态明确保留 FAILED，不能写成全绿。
+
+14 个安装消费者：cpp-generated-script、physics2d-script、system-event-await-runtime、
+flowforge-compiler、lua-script-packager、scene-script-runtime、script-ability-codegen、
+system-hook-script-binding、cpp-coroutine-script、script-static-ability-specialization、
+script-ability-ipo、script-authoring、script-runtime-input、script-description。
+两个新增消费者的实际 Ninja 链接清单确认：direct runtime 不含 World/Scene/Process 库；
+description leaf 不含 Process、scene_script_runtime 或 scene_composition。新前缀没有旧描述头。
+抽取的 100 个脚本/Simulation/Physics/FlowForge 安装 DLL 均与各自本次构建 DLL 哈希相等。
+
+### 12.5 窄性能与分配诊断
+
+六场景各五对独立进程，交替 baseline/candidate 顺序；size=10,000、seed=1592598566、
+worker=0。普通场景 60 warmup + 300 测量帧。Event fan-out 保留原基准的一次 occurrence
+交付 + 五次 drain，warmups/frames 参数不改变这个固定工作量。恢复预算普通场景 2,000，
+Lua Event 按原实现固定为 size=10,000；FlowForge 按原实现用 2,000。LuaJIT 的实际 VM/JIT
+信息保留在 CSV。基线与候选均使用其资格化 EXE 的独立副本，通过 PATH 加载各自安装 DLL。
+复制后的 EXE 与资格构建哈希相等；没有从旧 q2/d 取测量程序。
+
+以下为五个进程内样本中位数的中位数；fan-out 列是每进程一次交付与五次 drain 的耗时总和。
+百分比为两侧中位数之比，完整的每对百分比与原始样本另存 results.json；不是统计显著性结论。
+
+| 场景 | 基线 | 候选 | 观测变化 |
+|---|---:|---:|---:|
+| C++ update / 帧 | 54.10 µs | 51.60 µs | -4.62% |
+| Event fan-out / 一次交付与排空 | 2,043.30 µs | 2,188.40 µs | +7.10% |
+| Lua update / 帧 | 223.30 µs | 223.00 µs | -0.13% |
+| Lua Event / 帧 | 5,654.40 µs | 5,748.95 µs | +1.67% |
+| FlowForge update / 帧 | 87.60 µs | 92.10 µs | +5.14% |
+| FlowForge Event / 帧 | 790.65 µs | 787.35 µs | -0.42% |
+
+60 个性能进程与 12 个独立诊断进程全部退出 0；36 对逐行业务记录一致，核对 calls、
+resumes、suspensions、checksum、active instances、continuation/awaitable/waiter、队列余量、
+外部容量失败及各格式实际提供的 completed/started 等字段。FlowForge Event 末帧的预算积压
+保留原工作量和 shutdown 取消语义，没有为了让 backlog 为零改变工作负载。所有原业务退出
+检查仍执行。基线没有失败场景被用作有效性能参照。
+
+装配诊断同样五对独立进程：固定 8 个配置，最初 1 个已解析，迟到 7 个，重建 16 次 warmup
+后计时 128 次。首次 create+prepare 中位数 121.1→126.0 µs；迟到一批 5.1→7.2 µs；
+128 次重建合计 66.6→82.6 µs（每次约增加 0.125 µs）。两边均 creates=destroys=152，
+prepares=releases=456。新增容量测试另验证 64 次重建超过配置容量后 backing 不增长。
+这些结果包含明确交接成本，不能宣称“零开销”或“所有路径无性能回退”。
+
+性能进程关闭分配计数；诊断在独立进程开启。装配诊断 executable-local new 次数两边均为
+prepare=5、late=33、128 次 rebuild=535（包含 fixture/backend 对象）。C++ update、fan-out、
+Lua update/Event 的计时区域 executable-local new 计数均为 0。Lua update 末快照累计
+allocations/reallocations 为 80,239/19，Lua Event 为 160,242/21，两侧相等；Event 的 GC frees
+为 60,153 与 74,585，反映该次采样的 GC 进度差异，不把累计快照跨帧求和。
+
+FlowForge 原基准没有分配计数列，因此另加四个独立诊断进程（update/Event 各 baseline、
+candidate）：1 warmup + 3 测量帧，原规模/seed/预算；executable-local new 均为每帧 0，
+对应业务行与计数完全相等。该诊断复制匹配资格构建的内部 DelayAbility native projection，
+其头文件哈希和生成后的源码均留存；它不是新增 SDK 公共头，也不计入 14 项 installed consumers。
+该补充驱动在 `cmake/RunScriptSR2FlowAllocations.py`，原始输出在 `sr2-flow-allocations-final`。
+
+限制：Windows 的 EXE operator new 不能覆盖所有 DLL 分配，不能把这些数字当作整个 runtime
+堆分配量；stats backing 字节也只覆盖声明的数组。五对样本未控制 CPU 频率/系统后台负载，
+Event fan-out 每对变化约 -13.29%～+12.37%，应结合原始样本审阅，不以单一百分比断言因果。
+此处完成 SR-2 的窄回归，不替代 SR-6 性能/完整 closure qualification，也未做 Android。
+
+### 12.6 原始证据、迭代记录与交付边界
+
+证据根：`E:/SyncForder/CodeRepos/build/RelWithDebInfo/`。
+
+- `sr2-baseline/qualification.json`、`sr2-candidate/qualification.json`：两侧身份、全量构建、
+  CTest、第二轮 no-op、安装与 fixture 哈希；各 t/d 保留原日志和实际编译数据库。
+- `sr2-consumers-final/consumers.json`：14 项安装验证及各项 configure/build/run/reload/no-op 日志。
+- `sr2-probes-final-2/manifest.json`：六组 lifecycle、八组 Event 轨迹和 wire 相等；源 fixture 的
+  诊断副本、生成后的 C++、编译命令、原始 trace、字节与五对测量输出都保留。
+- `sr2-measurements-final/runs.json`、`business-comparisons.json`：72 进程的完整命令、EXE/fixture
+  哈希、退出码、行数、耗时与逐对业务比较；每进程 CSV 与 stderr/stdout 单独保留。
+- `sr2-flow-allocations-final/manifest.json`：四次补充分配诊断、对应业务比较、内部 projection 身份。
+- `sr2-evidence/identity.json`、`installed-link-closure.json`、`results.json`：依赖/安装身份，
+  实际链接闭包清单及汇总。`SR2-raw-evidence.zip` 汇集原始日志，`raw-files.json` 列明文件哈希。
+
+工作树迭代日志 `sr2-work` 和 `sr2-consumers-work-*` 保留此前发现的迁移遗漏及修复证据。
+`sr2-probes-final` 的失败是诊断导出变量与固定 golden 局部变量重名，修正在驱动中，生产代码
+没有因此改变；有效最终运行是 `sr2-probes-final-2`。`sr2-flow-allocations` 首次诊断缺少
+内部生成头，驱动随后明确复制匹配资格构建的 projection，并在新目录完成验证。未用失败尝试
+的二进制冒充最终证据。
+
+用户原有测量脚本修改、两个未跟踪文件及 main 的五项修改未纳入本阶段提交；lux-cxx 和
+有效安装依赖未升级。阶段交付停在 SR-2，等待独立审阅，不自动实施 SR-3/4/5。

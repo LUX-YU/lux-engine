@@ -490,7 +490,7 @@ namespace
             std::optional<ScriptSystem> source{std::move(*second)};
             assert(destination.prepare() && source->prepare());
             const auto before = source->queryMountStatus({1U});
-            assert(before);
+            assert(before && *before);
             auto* const host = incoming.backend_state.hosts.front();
             const auto prepared = incoming.backend_state.prepared_locations;
             assert(dispatchHookForTest(old.hook) == 1U);
@@ -512,7 +512,8 @@ namespace
             assert(trace == expected);
             assert(incoming.backend_state.begins == 1U && incoming.backend_state.ends == 0U);
             const auto after = destination.queryMountStatus({1U});
-            assert(after && after->instance == before->instance && after->state == EScriptMountState::ACTIVE);
+            assert(after && *after && (*after)->instance == (*before)->instance &&
+                (*after)->state == EScriptMountState::ACTIVE);
             assert(host == incoming.backend_state.hosts.front() && host->isAttached());
             assert(prepared == incoming.backend_state.prepared_locations && incoming.backend_state.prepares == 3U);
             assert(source->activeInstanceCount() == 0U && source->shutdown());

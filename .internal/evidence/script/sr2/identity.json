@@ -1,0 +1,1912 @@
+{
+  "repositories": {
+    "lux-engine-sr2-baseline": {
+      "head": "54de8af521887c4e5aaf0041b45422a817694005",
+      "status": ""
+    },
+    "lux-engine-sr2-candidate": {
+      "head": "feaa7550bd819b0bcb928d477fb45e40ff9282b1",
+      "status": ""
+    },
+    "lux-engine-deep-optimization": {
+      "head": "1a7fbd60f47a115b7b01528075550b77c1a3c194",
+      "status": " M cmake/RunScriptV3Measurements.ps1\n?? cmake/RunScriptV3Stress.ps1\n?? semantic-architecture-debt.txt\n"
+    },
+    "lux-engine": {
+      "head": "a577c49409e2519029693fbe780fe8ce3ab2dc1e",
+      "status": " M .gitignore\n M engine/domain/simulation/builtin/script/include/lux/engine/simulation/ScriptSystem.hpp\n M engine/domain/simulation/scripting/cpp_static/include/lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp\n M engine/domain/world/partition/include/lux/engine/world/WorldPartition.hpp\n M modules/resource/description/include/lux/engine/description/Script.hpp\n"
+    },
+    "lux-cxx-v3r": {
+      "head": "3100f54d0743c5ed94a4ccf5943df04e933de255",
+      "status": ""
+    },
+    "lux-cmake-toolset-s6-relocation": {
+      "head": "99c3d0480d1db816779b1dfa7f3c06cb7d39a94f",
+      "status": ""
+    }
+  },
+  "files": {
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\description.dll": {
+      "bytes": 138240,
+      "sha256": "23a8e673ac1987e2812f41bc255acf8d646b2e1f056531fdfcbbc54cf7de1d07"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_domain_system_description.dll": {
+      "bytes": 59904,
+      "sha256": "9edb29ce278b918a009a591f15ed4a523c8f03e2bf08180ae9b03ce49ed52fd3"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_function_script_artifact.dll": {
+      "bytes": 236032,
+      "sha256": "d04a3fc9323899fe650af1e0722b2472a5d01f01e0ea02e08fa7de7f8c901855"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_function_script_core.dll": {
+      "bytes": 34304,
+      "sha256": "78034d74f50bc43cbc939ba0fc065437c1ca3b078b07f185ce4e69a7e584092d"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_function_script_lua.dll": {
+      "bytes": 50688,
+      "sha256": "fa2d617f661d72f257ef3fdc2b51baeaa5a351c9d48f18e32ae98282ebd54c28"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_function_script_native.dll": {
+      "bytes": 143360,
+      "sha256": "9db92cdcbb7d28941c224c255534da840e7840a429465d0a003549b5107f8bd9"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_physics2d_simulation.dll": {
+      "bytes": 359424,
+      "sha256": "f0a6855353aad9261b2580aa769f87c77fe795dfb8c97277a461c91c1af6f87a"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_scene_description.dll": {
+      "bytes": 193024,
+      "sha256": "56722c632e4d20a8b9b2964d531fca163f22966d1236088f1617a2dd8483760f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_scene_script_runtime.dll": {
+      "bytes": 177152,
+      "sha256": "0affa723fe5a557ad2ba32ab514726000531cf13fda8202b391cf868bfaffed3"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_asset.dll": {
+      "bytes": 257024,
+      "sha256": "ab2033c2029fabec798b49ad901a41a7754501671d53387975a9a12e3d6b229c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_composition.dll": {
+      "bytes": 529408,
+      "sha256": "76adde442463edadba18a5e6f0ee4fa1c780742e9374f64f049e1e3eabda5a0a"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_description.dll": {
+      "bytes": 403968,
+      "sha256": "71a92ab176ff230dfc063fa7139f041cc6242cac53d11d98b432f72c0c32792f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_ecs_core.dll": {
+      "bytes": 105472,
+      "sha256": "0512bcd461b96b29aaaa11ffc4ff77c01f16dae58336bd8ddf583b36bb3a694d"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_ecs_hierarchy.dll": {
+      "bytes": 218624,
+      "sha256": "c5da11b1b64d5d3eed029e0932078edd1688835869647edfd88d73b6dbf311b6"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_ecs_schema.dll": {
+      "bytes": 100864,
+      "sha256": "653c1ae3388d0e54210ffcd974187b876bb367ac77fe404a7efdcbc6f832a67e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_ecs_snapshot.dll": {
+      "bytes": 173568,
+      "sha256": "c93fbd6c38ac7bb2a16002f2f0ce6b0667d05e6f77e349867410b3b406f4fc9d"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_ecs_transform.dll": {
+      "bytes": 310784,
+      "sha256": "3b24c167bb449c27d30773a5fc2e37f714be6e70d75538f7e61aba89a7521e8e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_ecs_visual.dll": {
+      "bytes": 237568,
+      "sha256": "a345f1d5137eca0a9c9abb84e3c676be86485a73c587937ca5d266999ff47dd0"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_script.dll": {
+      "bytes": 964608,
+      "sha256": "32581f0b351bb016bf042ad35140c186d1377a9ee9653415a2e439be0f48eb31"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_script_cpp_static.dll": {
+      "bytes": 292352,
+      "sha256": "07a35bc37cfc35cc027af8acf3b56264862ef65c957cc8d934ee24b814c7bdd5"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_script_lua.dll": {
+      "bytes": 323072,
+      "sha256": "300db5b38a8630eb1483063749201d1bb2602f1b0e9cef2f5a425f82dd607619"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_script_native.dll": {
+      "bytes": 193536,
+      "sha256": "9b35a3f5703d3c83e66c4c77d6cf0f43dab975f3afafc61c6f1645c15bb2a045"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_system.dll": {
+      "bytes": 86016,
+      "sha256": "11c30b3bca9c4414e7fcf57e58bb29a0c6b3536e3bff5f55a38afa80963ddaae"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_transform_system.dll": {
+      "bytes": 497152,
+      "sha256": "e7f32155f66a220be332f133e467e2fb3312e07a807eab02b9a063f8c31efae6"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_world_description.dll": {
+      "bytes": 338432,
+      "sha256": "bac12fe539331cd08a79465602829a8cfc4731dd24f506829a5cff54c0de4426"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\description.lib": {
+      "bytes": 15402,
+      "sha256": "5020c2daa60817b9f32bdf6fd2805b3f213034187b38999f35e33c66e62302e8"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_domain_system_description.lib": {
+      "bytes": 3488,
+      "sha256": "5932e76da16a09766d4e2eaf8ca85e1eb4add9f1c015b9b6b614e1d4bbfd17ca"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_function_flowforge.lib": {
+      "bytes": 8942320,
+      "sha256": "1a03691564d812f96b242d8b504faa5a716acfd7238881e61230d9ae8fa391e3"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_function_script_artifact.lib": {
+      "bytes": 18358,
+      "sha256": "4f4bc5064936f843b1cc8554ce4c5fdc2b6ea53ea8b6db43a7ef170ed6db798c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_function_script_core.lib": {
+      "bytes": 2276,
+      "sha256": "769379ca08a0b31c5fe685a26bfb9fa0616c5c8542be8cba1b3885382556ad06"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_function_script_lua.lib": {
+      "bytes": 9788,
+      "sha256": "0b6da6765ce37d03131659df818fbb07b8abe62cd5ec691e5c20b4d85d8371dd"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_function_script_native.lib": {
+      "bytes": 14268,
+      "sha256": "710c43dea20b3b172ca9d46fc5409dc960053041d50e8e7ce3f4d8490988b494"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_physics2d_simulation.lib": {
+      "bytes": 9778,
+      "sha256": "0ecb3319ccdfce90c09f16823617a111f989bf8d9aff92d2e2a22f514123b865"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_scene_description.lib": {
+      "bytes": 33898,
+      "sha256": "76612dd24714046592e7198066d831c8c05452c56d48ba73e39e7fea1f80ec6e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_scene_script_runtime.lib": {
+      "bytes": 14152,
+      "sha256": "ab1937b641e7336ec02d73256cc87551bf5c3e0c92dba8fc515e0047c6c23b2b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_asset.lib": {
+      "bytes": 13510,
+      "sha256": "0c8cfde1510dcbca2015e69b543bdff13e17e2475d346fc972cdb2ef299cbb4b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_composition.lib": {
+      "bytes": 32828,
+      "sha256": "e4c1d046c3f695263b80dbd985478094f1955ffb963ff00de3d6d75d2ceb36ff"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_description.lib": {
+      "bytes": 70596,
+      "sha256": "df07c42517e4317ef3e9d1cfa4b6d5a89b21ea9136e32d57f16798ba35a4c980"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_ecs_core.lib": {
+      "bytes": 20666,
+      "sha256": "e0693634ce82912d559d6edd5e49b01148402a055935ad0e00e99124ea0d75e7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_ecs_hierarchy.lib": {
+      "bytes": 35484,
+      "sha256": "67d34fdfd70db9e8822b05f35f0ff18b36474966bb4c01719609a3b2f08729e5"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_ecs_schema.lib": {
+      "bytes": 12556,
+      "sha256": "3ff38b0ddb5311ff94370810742f6a9c7a55f3400223571077b2ca2380779339"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_ecs_snapshot.lib": {
+      "bytes": 15766,
+      "sha256": "3511d966e6abd1c61d16fd7190c371b5a66c510e7b3afc2b0a2a974777490bff"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_ecs_transform.lib": {
+      "bytes": 3316,
+      "sha256": "e265ec5a2a4282047280fa83ff9b1526e914164f7639e9e420f5a20bea5c6118"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_ecs_visual.lib": {
+      "bytes": 3246,
+      "sha256": "67eee1c0227f9cfefd627a71d4dfbe926e03964a0c9ebd1a7f0ecc3d1c2aa04b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_script.lib": {
+      "bytes": 35852,
+      "sha256": "82d32bc281d14faae44fb5dca483c0c32426bb4fe0ead8c4a8a8d5a07219fd25"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_script_cpp_static.lib": {
+      "bytes": 21424,
+      "sha256": "b13e81b6cd4f4c2719c38d784e03f9bb2ab1b781aed685f00bbb854e94464bab"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_script_lua.lib": {
+      "bytes": 19184,
+      "sha256": "33cbc8acc7b842f4be3504eb83de555fc938bf201aeb8723ef94ba593d119535"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_script_native.lib": {
+      "bytes": 8114,
+      "sha256": "7a7ef61475e0c2ee839cd504bcb3b4d6f1b317a3523fe0f0a64ee1a91b3dae7f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_system.lib": {
+      "bytes": 7552,
+      "sha256": "67d370bf57f9684d8f2f2049885d0df0a3b2feff316c8a645ff19915e54c9323"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_simulation_transform_system.lib": {
+      "bytes": 16620,
+      "sha256": "e74de7285f25130ef89c91b1ce035cdc06698b711db08965cdb4fbe981e58885"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\lib\\lux_engine_world_description.lib": {
+      "bytes": 18986,
+      "sha256": "4b972036c29da83493533b7304dd3aa644b0f6522ef789dbc62d9a13c035956f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\description\\Script.hpp": {
+      "bytes": 13081,
+      "sha256": "5bfe24d95ad3f02cc8d12533aadeb2879637d59dec0f9236afa4ea6824cc813f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\scene\\SceneDescription.hpp": {
+      "bytes": 5791,
+      "sha256": "bddcf67d5bb1516e66cb95f96ede69c2fb52b1ab4fa1535cb5f6867f334048d0"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\scene\\SceneDescriptionBuilder.hpp": {
+      "bytes": 3591,
+      "sha256": "a2e7a99a87d50ad48d2567111ad391af28223222a351486369359a4d877411c6"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\scene\\ScriptRuntimeSystem.hpp": {
+      "bytes": 4610,
+      "sha256": "11c54f6b5c8536473cc57582d81568f0dc9caf8649614bc425ac7574ca41dfcc"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\ScriptBindingAuthoring.hpp": {
+      "bytes": 2528,
+      "sha256": "59dd79c67b07251ed107d7daecc9b6014ccb21a3f910f1485378c7e15260c2a3"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\ScriptSystem.hpp": {
+      "bytes": 7918,
+      "sha256": "c9a534b43dbe368e2687f37d79bce8f0a8198833cb9cba1985856d14b4bec3eb"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\ScriptSystemDescription.hpp": {
+      "bytes": 4208,
+      "sha256": "13fa3451755ee5e9c895621d15d5a19959fa81586cf4ce268171eca88881c16c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\ScriptSystemDescriptionCodec.hpp": {
+      "bytes": 1701,
+      "sha256": "2fd5593d025bf5583007085f8b7c2008d3fbed4a5e57082b9bcdec338cf83480"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\SimulationDescription.hpp": {
+      "bytes": 13590,
+      "sha256": "e8aa220293b4affff4064bde83b443fc0a2b415fa06a6e8453fc324c64f30614"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\SimulationDescriptionBuilder.hpp": {
+      "bytes": 4559,
+      "sha256": "3b91a9bd3583e7bbb887c1738d6db5436bd6f37daa6b2a395f72d5e822f32d0c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\SimulationSystemDescription.hpp": {
+      "bytes": 2632,
+      "sha256": "bd9f56f65face4fca97f547403c760c6a81d7d6cbb532a026b01061c2608e518"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\system\\SystemTypeDescription.hpp": {
+      "bytes": 1828,
+      "sha256": "3f5f2a809ce3a5ca3a2858db9a5cb5124ceb411343062f7a32d008f6690dffef"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\world\\WorldDescription.hpp": {
+      "bytes": 3053,
+      "sha256": "19eb9d2cff530e30ee290d38beb5880c49ca071cd12fa7af93d0709da3e3ab40"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\world\\WorldDescriptionBuilder.hpp": {
+      "bytes": 2821,
+      "sha256": "abd479fc91b0355b39b13d5f0eb7ebb34755a0c39861bc0875fa1193dcbe2bdb"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\flowforge\\script\\ScriptAbilityCatalog.hpp": {
+      "bytes": 3821,
+      "sha256": "6f248e3e777976b264393652873b26136f7f506c1691acfa02e679eaaa47aa50"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\flowforge\\script\\ScriptAbilityNode.hpp": {
+      "bytes": 2902,
+      "sha256": "fd17686c6bb9cbbe37949797293a5d568f9ea49bc4528152b4fc2497f2d26f62"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\flowforge\\script\\ScriptEventAwaitNode.hpp": {
+      "bytes": 1074,
+      "sha256": "2266d14c494eb8d53b3e9be948552c2259766040337dd96dda939c8fec322e44"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\flowforge\\script\\ScriptGraph.hpp": {
+      "bytes": 1006,
+      "sha256": "b004e84c9c584a7fae3ed0b64a889e6ccfcbc4366e8e48d8fbe41bb714804265"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\BoundScriptCall.hpp": {
+      "bytes": 510,
+      "sha256": "6f60a51286cec0a7d5e5d71d46264f3682663187e1dbfca7155ef01238f7c3e5"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\ScriptAbility.hpp": {
+      "bytes": 17384,
+      "sha256": "773e32dca2ea69c5e1b38edcfff86f146346a773be4480278fd70322bc912ced"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\ScriptAbilityAnnotations.hpp": {
+      "bytes": 632,
+      "sha256": "e1b5b99d3207b82abafe96f03f7017891b491a7f83fc6f07621bd9e26b47c71b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\ScriptAbilityAsync.hpp": {
+      "bytes": 4810,
+      "sha256": "f08e9967d2285b88c17f23c331240bcaa08867f9f6bc7c88c5a4bb8af79ef7fd"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\ScriptAbilityCompletionAdapter.hpp": {
+      "bytes": 803,
+      "sha256": "cac707d75f2361c1ff6d060a5f07387b379741726258a7cab1306945395a6089"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\ScriptAbilityOperation.hpp": {
+      "bytes": 784,
+      "sha256": "c9f36fc7f9c9e8c9521713f0791d932d7c940cecbe69ff50e38887dce3ae4044"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\ScriptApi.hpp": {
+      "bytes": 699,
+      "sha256": "6569483668eb8090556ed49827bfc0d973f3a3ad046c66bbb9a83f08d3841c8b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\ScriptBindingHint.hpp": {
+      "bytes": 727,
+      "sha256": "5c11ebdbb4a9d812dba02d7e157bdcf6063da527d9f8441068b358d58c3ea38e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\ScriptEvent.hpp": {
+      "bytes": 5060,
+      "sha256": "17c46277f5f7cb074c80910391c6c236ab2729735182ad055fc4dce99cf88f38"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\ScriptEventSchema.hpp": {
+      "bytes": 4637,
+      "sha256": "e96cba40dbea88313113759630486318594346cac2d04036219d492d89b694e7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\ScriptResult.hpp": {
+      "bytes": 951,
+      "sha256": "facc1eaac716b5b570136dca5a40d50b4f646c2530caad8e4839ba0ee4e7d873"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\ScriptSemanticSchema.hpp": {
+      "bytes": 2147,
+      "sha256": "04c8b06c0fa7061c080761dec077deb349781ec6b3edfddbb8b1c1200ca2e20b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\ScriptSymbol.hpp": {
+      "bytes": 172,
+      "sha256": "160c2494d179d870dc8de23745fbcee21cd9a34e3d1dea0c969f13b1155f538f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\render\\client\\core\\FeatureDescriptor.hpp": {
+      "bytes": 5593,
+      "sha256": "df33708084ed5becc32b7eeb143127d2ae4d604b1a20dce62116485fefb9474a"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\render\\client\\resources\\lighting\\LightDescriptor.hpp": {
+      "bytes": 5716,
+      "sha256": "ffcdc3f04a902095ec621f8b9311ab2552340f439c7275b1baee0203b571eeee"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\abi\\lux_script_abi.h": {
+      "bytes": 10868,
+      "sha256": "531a4113250806479a16722d44be68e87f02946357dcb1c9548db40b3f0b6e80"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\artifact\\ScriptArtifact.hpp": {
+      "bytes": 5074,
+      "sha256": "a1ff3c9518476b7edd22cafbcfc56430e6b6d9c20e2ff0183020a647022e4f7f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\lua\\ScriptAbilityLua.hpp": {
+      "bytes": 1270,
+      "sha256": "9d3c6211d0f68ed5d41b1d91b3f933d2256c6692b5bf40bff53cc7da5fe594b0"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\function\\script\\native\\ScriptAbilityNative.hpp": {
+      "bytes": 1205,
+      "sha256": "e7f91d7747a140210264d58696d590649d16fd528423ab41e50f4c4eb97592de"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\gapi\\vk\\Descriptor.hpp": {
+      "bytes": 11968,
+      "sha256": "6e1ddad9d9852d1d9dc2d59bddf15c5e1e6118a07165d9cd40fb47b8aa88b512"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\object\\detail\\SignalDescriptor.hpp": {
+      "bytes": 1869,
+      "sha256": "ee584cfb699687ea9ec7b8641fcaa24a332301c69f52c90c21615e30b795be3f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\render\\core\\DescriptorSetLayoutContract.hpp": {
+      "bytes": 6533,
+      "sha256": "b7aea54dc0e75036e12d98d8c6159fcc69b79871ea9e65db85705caf741a0c15"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptAbilityInvocation.hpp": {
+      "bytes": 5472,
+      "sha256": "9289bfd31eaeade508af5a91c8dbe7af4fb1902a5d0ce5281bcc196ce5aa5b8c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptApiCapability.hpp": {
+      "bytes": 1338,
+      "sha256": "0c2ea389e3de403f18a42a0781536e98579f9e881da63185fc6f2b8b8a6c55e9"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptBackend.hpp": {
+      "bytes": 7007,
+      "sha256": "70e94365f7caa10f53f81c18c7527fe7fafa3882bae037ee7408b1776f8e1e58"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptContractValidation.hpp": {
+      "bytes": 3766,
+      "sha256": "615236964edbca4529a1d98def20d701f64fe7cf981aa4953d359a4f0fce96e0"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptEndpointBridge.hpp": {
+      "bytes": 13599,
+      "sha256": "87c37b526e2cbfebffca54a996b2d51f65397aff12aaea093d87d06c0a132b88"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptEventSource.hpp": {
+      "bytes": 7061,
+      "sha256": "05a94fdac395fe23927e763357b5544437fa4bd0fb456bd715a85d3f802a0206"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptLifecycle.hpp": {
+      "bytes": 937,
+      "sha256": "150f828308e45282d70f531f5c22b3d63bb08e9d71b103ca21cf0b1a22400e34"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptRuntime.hpp": {
+      "bytes": 23528,
+      "sha256": "a4af3b0edb747967df5d7c912aa2d567b7513a8a6d534219cfb966d8e26398fd"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptSignatureCompatibility.hpp": {
+      "bytes": 1769,
+      "sha256": "ee5e2b2bc89ab999dc568c7a8e950e5e842cecdb1dd866398111ef6ba021e255"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptTimeEndpoint.hpp": {
+      "bytes": 1073,
+      "sha256": "378a1149e48039c1339a7d8892e261b302aee2b666c93056d57417c36995e160"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\CppStaticScriptBridge.hpp": {
+      "bytes": 2738,
+      "sha256": "5c2bc02045dcabaea99b70085a8fcedf4cca0921d72822ac5fe13ba5d5f122f1"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\CppStaticScriptContract.hpp": {
+      "bytes": 13961,
+      "sha256": "55039a210c49eb9049b3781739c84f942dd9bc946ac7463dc9bfb6ba343bf625"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\ScriptCoroutine.hpp": {
+      "bytes": 23035,
+      "sha256": "3aa7fbe946f10f12441b89ad755436c5ce70236411580cae8696082928b4e668"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\ScriptDelayCoroutine.hpp": {
+      "bytes": 201,
+      "sha256": "1fcfd0d8cbbbeea9af1038a2217a1dd40a52831b952c1d712163db67ddb6a4ff"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\lua\\LuaScriptAbilityProjection.hpp": {
+      "bytes": 7765,
+      "sha256": "23010f718ab21b4aca706ed4c030bdc6783ec03a833ce15fe919dbe650db6160"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\lua\\LuaScriptBackend.hpp": {
+      "bytes": 5891,
+      "sha256": "24bd6baaff085de2c46fb019548289c9d07b8c04794860901bab984195dec0c1"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\native\\NativeScriptAbilityProjection.hpp": {
+      "bytes": 1631,
+      "sha256": "a6422ca7f5e3f405f30f1010559c8e40cae17eb5ed06e9be9f39db028cd2b997"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\include\\lux\\engine\\simulation\\scripting\\native\\NativeScriptBackend.hpp": {
+      "bytes": 4372,
+      "sha256": "50155b4ab402e3fae45bf61b5e8b72ba89a11957ce33beccb64716f332a9d148"
+    },
+    "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr2-baseline\\d\\bin\\script_runtime_benchmark.exe": {
+      "bytes": 1219584,
+      "sha256": "9247152adba1e3604f467fc9d969cb179693d6209807c95797e88b4c5b53b228"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\description.dll": {
+      "bytes": 138240,
+      "sha256": "8ea6595b1297f8e9be8650c815457484a9a4d5fbfb5460eaa7b87ee2755b783e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_domain_system_description.dll": {
+      "bytes": 59904,
+      "sha256": "be44735e063391436f0bb8a3b71bf68403dd4684d3dc8c089ccba59fd5170f4f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_flowforge_compiler.dll": {
+      "bytes": 56795136,
+      "sha256": "b04a3401a8b1d1133bb2456d0fbc2a8acdf8be634b34dbdb7449efd72a473e6b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_function_script_artifact.dll": {
+      "bytes": 236032,
+      "sha256": "4795f9ffc9110c103c0afe8478d2bd9b42360342270de686ed63a4429936fb8a"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_function_script_core.dll": {
+      "bytes": 34304,
+      "sha256": "da1a1cd88fc70532cca15daaf4a121d60cc17ff3d0cd726acd7d507fae34afb6"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_function_script_native.dll": {
+      "bytes": 143360,
+      "sha256": "e60fdac28790ccc593839ca74feffae1cff851a90f8a8c82420a73448e4a3310"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_physics2d_simulation.dll": {
+      "bytes": 359424,
+      "sha256": "8e33a8f47e1f3f6b6d47cdbffe54da47ee534dfd05927c791bb65c8f1b472b16"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_scene_description.dll": {
+      "bytes": 193024,
+      "sha256": "60e523b1ccec0c629bc8433f8e21eb60dd3d113dd278a58d7949941986f07605"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_scene_script_runtime.dll": {
+      "bytes": 177152,
+      "sha256": "1a5d19f04335b16bf93b580f74a890d84b02313ff1da8588b1ed2c619825df4d"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_asset.dll": {
+      "bytes": 257024,
+      "sha256": "74adfeab8c27c2135d2cec58fe28cf67d88d001a7f884f7dc115cc7fec155898"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_composition.dll": {
+      "bytes": 529408,
+      "sha256": "20eafdc08c35b730d371df45ba0bd2ce9fc7df0fa7717350ca235e3f34a4dd01"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_description.dll": {
+      "bytes": 403968,
+      "sha256": "82964e18c0b36f88098706dabd9df7c97f0355fe459475e0b0920c37d83a715a"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_ecs_core.dll": {
+      "bytes": 105472,
+      "sha256": "b66007c099e51cc349fe303d10d1f63a5bbd657159369c52730fa541da00a310"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_ecs_hierarchy.dll": {
+      "bytes": 218624,
+      "sha256": "7a4d721e222a93952f932d4f858e60b48c0e4fd9ce238d5fa273b54c09a2b87d"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_ecs_schema.dll": {
+      "bytes": 100864,
+      "sha256": "74c2404f8eb7b10e05b0550d2de5ee8c7f1ebba2086c4276f0e2276f01c54695"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_ecs_snapshot.dll": {
+      "bytes": 173568,
+      "sha256": "d97f6411f2aeb18fc6ff8465777817249ab1191dce03878b81a79ad59c6df2ce"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_ecs_transform.dll": {
+      "bytes": 310784,
+      "sha256": "2d589d1577896db7d6f6fea7f36b237344eb28afed931af25f0a94ca06895aec"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_ecs_visual.dll": {
+      "bytes": 237568,
+      "sha256": "7fb8c0412339f1a6f5031d8ed78c0e0dc4f22a690396d239482caee57edec5f6"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_script.dll": {
+      "bytes": 964608,
+      "sha256": "c60eb459eff79e92a8a81989320dd0bf95b1f477b01abf5b28a33ad906bb7f05"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_script_cpp_static.dll": {
+      "bytes": 292352,
+      "sha256": "8abb59d3692174831b5025fc6c9fac90d35ec4c62cb262b7725725355d17037c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_script_native.dll": {
+      "bytes": 193536,
+      "sha256": "5acf4eb1b8bfc8e640c06d9b878a2bdb10cabdd45a383bb7fec4df5f46687273"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_system.dll": {
+      "bytes": 86016,
+      "sha256": "a810b822dc7d33219b075d3b498f480710496d8af4807991336b214706a72743"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_transform_system.dll": {
+      "bytes": 497152,
+      "sha256": "14f0599d4586ef129dc4ced7472558b3cdf94e75e5516896c21f4bfc7f4b6773"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_world_description.dll": {
+      "bytes": 338432,
+      "sha256": "aca904fdac65a7d309dc84a71ddec3520d9059885302b1496bb7d2dd2adce8a3"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\description.lib": {
+      "bytes": 15402,
+      "sha256": "5020c2daa60817b9f32bdf6fd2805b3f213034187b38999f35e33c66e62302e8"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_domain_system_description.lib": {
+      "bytes": 3488,
+      "sha256": "5932e76da16a09766d4e2eaf8ca85e1eb4add9f1c015b9b6b614e1d4bbfd17ca"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_flowforge_compiler.lib": {
+      "bytes": 4072,
+      "sha256": "b25ce2e4a048e658c8646b82891d1e8e919f466cca8c965c71adbb0a897d7256"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_function_flowforge.lib": {
+      "bytes": 8942320,
+      "sha256": "0aacfc9734a67bb2b91b581ae10341ccb8ca217ed60af961bebeb04aa30ddff9"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_function_script_artifact.lib": {
+      "bytes": 18358,
+      "sha256": "4f4bc5064936f843b1cc8554ce4c5fdc2b6ea53ea8b6db43a7ef170ed6db798c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_function_script_core.lib": {
+      "bytes": 2276,
+      "sha256": "769379ca08a0b31c5fe685a26bfb9fa0616c5c8542be8cba1b3885382556ad06"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_function_script_native.lib": {
+      "bytes": 14268,
+      "sha256": "710c43dea20b3b172ca9d46fc5409dc960053041d50e8e7ce3f4d8490988b494"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_physics2d_simulation.lib": {
+      "bytes": 9778,
+      "sha256": "0ecb3319ccdfce90c09f16823617a111f989bf8d9aff92d2e2a22f514123b865"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_scene_description.lib": {
+      "bytes": 33898,
+      "sha256": "76612dd24714046592e7198066d831c8c05452c56d48ba73e39e7fea1f80ec6e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_scene_script_runtime.lib": {
+      "bytes": 14152,
+      "sha256": "ab1937b641e7336ec02d73256cc87551bf5c3e0c92dba8fc515e0047c6c23b2b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_simulation_asset.lib": {
+      "bytes": 13510,
+      "sha256": "0c8cfde1510dcbca2015e69b543bdff13e17e2475d346fc972cdb2ef299cbb4b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_simulation_composition.lib": {
+      "bytes": 32828,
+      "sha256": "e4c1d046c3f695263b80dbd985478094f1955ffb963ff00de3d6d75d2ceb36ff"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_simulation_description.lib": {
+      "bytes": 70596,
+      "sha256": "df07c42517e4317ef3e9d1cfa4b6d5a89b21ea9136e32d57f16798ba35a4c980"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_simulation_ecs_core.lib": {
+      "bytes": 20666,
+      "sha256": "e0693634ce82912d559d6edd5e49b01148402a055935ad0e00e99124ea0d75e7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_simulation_ecs_hierarchy.lib": {
+      "bytes": 35484,
+      "sha256": "67d34fdfd70db9e8822b05f35f0ff18b36474966bb4c01719609a3b2f08729e5"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_simulation_ecs_schema.lib": {
+      "bytes": 12556,
+      "sha256": "3ff38b0ddb5311ff94370810742f6a9c7a55f3400223571077b2ca2380779339"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_simulation_ecs_snapshot.lib": {
+      "bytes": 15766,
+      "sha256": "3511d966e6abd1c61d16fd7190c371b5a66c510e7b3afc2b0a2a974777490bff"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_simulation_ecs_transform.lib": {
+      "bytes": 3316,
+      "sha256": "e265ec5a2a4282047280fa83ff9b1526e914164f7639e9e420f5a20bea5c6118"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_simulation_ecs_visual.lib": {
+      "bytes": 3246,
+      "sha256": "67eee1c0227f9cfefd627a71d4dfbe926e03964a0c9ebd1a7f0ecc3d1c2aa04b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_simulation_script.lib": {
+      "bytes": 35852,
+      "sha256": "82d32bc281d14faae44fb5dca483c0c32426bb4fe0ead8c4a8a8d5a07219fd25"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_simulation_script_cpp_static.lib": {
+      "bytes": 21424,
+      "sha256": "b13e81b6cd4f4c2719c38d784e03f9bb2ab1b781aed685f00bbb854e94464bab"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_simulation_script_native.lib": {
+      "bytes": 8114,
+      "sha256": "7a7ef61475e0c2ee839cd504bcb3b4d6f1b317a3523fe0f0a64ee1a91b3dae7f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_simulation_system.lib": {
+      "bytes": 7552,
+      "sha256": "67d370bf57f9684d8f2f2049885d0df0a3b2feff316c8a645ff19915e54c9323"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_simulation_transform_system.lib": {
+      "bytes": 16620,
+      "sha256": "e74de7285f25130ef89c91b1ce035cdc06698b711db08965cdb4fbe981e58885"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\lib\\lux_engine_world_description.lib": {
+      "bytes": 18986,
+      "sha256": "4b972036c29da83493533b7304dd3aa644b0f6522ef789dbc62d9a13c035956f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\description\\Script.hpp": {
+      "bytes": 13081,
+      "sha256": "5bfe24d95ad3f02cc8d12533aadeb2879637d59dec0f9236afa4ea6824cc813f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\material\\ImportedMaterialDescription.hpp": {
+      "bytes": 1364,
+      "sha256": "855047bcbbd08bca1866c573171d9f1824334431234cc332e19db867fa6e3df7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\scene\\SceneDescription.hpp": {
+      "bytes": 5791,
+      "sha256": "bddcf67d5bb1516e66cb95f96ede69c2fb52b1ab4fa1535cb5f6867f334048d0"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\scene\\SceneDescriptionBuilder.hpp": {
+      "bytes": 3591,
+      "sha256": "a2e7a99a87d50ad48d2567111ad391af28223222a351486369359a4d877411c6"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\scene\\ScriptRuntimeSystem.hpp": {
+      "bytes": 4610,
+      "sha256": "11c54f6b5c8536473cc57582d81568f0dc9caf8649614bc425ac7574ca41dfcc"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\ScriptBindingAuthoring.hpp": {
+      "bytes": 2528,
+      "sha256": "59dd79c67b07251ed107d7daecc9b6014ccb21a3f910f1485378c7e15260c2a3"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\ScriptSystem.hpp": {
+      "bytes": 7918,
+      "sha256": "c9a534b43dbe368e2687f37d79bce8f0a8198833cb9cba1985856d14b4bec3eb"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\ScriptSystemDescription.hpp": {
+      "bytes": 4208,
+      "sha256": "13fa3451755ee5e9c895621d15d5a19959fa81586cf4ce268171eca88881c16c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\ScriptSystemDescriptionCodec.hpp": {
+      "bytes": 1701,
+      "sha256": "2fd5593d025bf5583007085f8b7c2008d3fbed4a5e57082b9bcdec338cf83480"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\SimulationDescription.hpp": {
+      "bytes": 13590,
+      "sha256": "e8aa220293b4affff4064bde83b443fc0a2b415fa06a6e8453fc324c64f30614"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\SimulationDescriptionBuilder.hpp": {
+      "bytes": 4559,
+      "sha256": "3b91a9bd3583e7bbb887c1738d6db5436bd6f37daa6b2a395f72d5e822f32d0c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\SimulationSystemDescription.hpp": {
+      "bytes": 2632,
+      "sha256": "bd9f56f65face4fca97f547403c760c6a81d7d6cbb532a026b01061c2608e518"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\system\\SystemTypeDescription.hpp": {
+      "bytes": 1828,
+      "sha256": "3f5f2a809ce3a5ca3a2858db9a5cb5124ceb411343062f7a32d008f6690dffef"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\world\\WorldDescription.hpp": {
+      "bytes": 3053,
+      "sha256": "19eb9d2cff530e30ee290d38beb5880c49ca071cd12fa7af93d0709da3e3ab40"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\world\\WorldDescriptionBuilder.hpp": {
+      "bytes": 2821,
+      "sha256": "abd479fc91b0355b39b13d5f0eb7ebb34755a0c39861bc0875fa1193dcbe2bdb"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\flowforge\\script\\ScriptAbilityCatalog.hpp": {
+      "bytes": 3821,
+      "sha256": "6f248e3e777976b264393652873b26136f7f506c1691acfa02e679eaaa47aa50"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\flowforge\\script\\ScriptAbilityNode.hpp": {
+      "bytes": 2902,
+      "sha256": "fd17686c6bb9cbbe37949797293a5d568f9ea49bc4528152b4fc2497f2d26f62"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\flowforge\\script\\ScriptEventAwaitNode.hpp": {
+      "bytes": 1074,
+      "sha256": "2266d14c494eb8d53b3e9be948552c2259766040337dd96dda939c8fec322e44"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\flowforge\\script\\ScriptGraph.hpp": {
+      "bytes": 1006,
+      "sha256": "b004e84c9c584a7fae3ed0b64a889e6ccfcbc4366e8e48d8fbe41bb714804265"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\BoundScriptCall.hpp": {
+      "bytes": 510,
+      "sha256": "6f60a51286cec0a7d5e5d71d46264f3682663187e1dbfca7155ef01238f7c3e5"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\ScriptAbility.hpp": {
+      "bytes": 17384,
+      "sha256": "773e32dca2ea69c5e1b38edcfff86f146346a773be4480278fd70322bc912ced"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\ScriptAbilityAnnotations.hpp": {
+      "bytes": 632,
+      "sha256": "e1b5b99d3207b82abafe96f03f7017891b491a7f83fc6f07621bd9e26b47c71b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\ScriptAbilityAsync.hpp": {
+      "bytes": 4810,
+      "sha256": "f08e9967d2285b88c17f23c331240bcaa08867f9f6bc7c88c5a4bb8af79ef7fd"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\ScriptAbilityCompletionAdapter.hpp": {
+      "bytes": 803,
+      "sha256": "cac707d75f2361c1ff6d060a5f07387b379741726258a7cab1306945395a6089"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\ScriptAbilityOperation.hpp": {
+      "bytes": 784,
+      "sha256": "c9f36fc7f9c9e8c9521713f0791d932d7c940cecbe69ff50e38887dce3ae4044"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\ScriptApi.hpp": {
+      "bytes": 699,
+      "sha256": "6569483668eb8090556ed49827bfc0d973f3a3ad046c66bbb9a83f08d3841c8b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\ScriptBindingHint.hpp": {
+      "bytes": 727,
+      "sha256": "5c11ebdbb4a9d812dba02d7e157bdcf6063da527d9f8441068b358d58c3ea38e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\ScriptEvent.hpp": {
+      "bytes": 5060,
+      "sha256": "17c46277f5f7cb074c80910391c6c236ab2729735182ad055fc4dce99cf88f38"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\ScriptEventSchema.hpp": {
+      "bytes": 4637,
+      "sha256": "e96cba40dbea88313113759630486318594346cac2d04036219d492d89b694e7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\ScriptResult.hpp": {
+      "bytes": 951,
+      "sha256": "facc1eaac716b5b570136dca5a40d50b4f646c2530caad8e4839ba0ee4e7d873"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\ScriptSemanticSchema.hpp": {
+      "bytes": 2147,
+      "sha256": "04c8b06c0fa7061c080761dec077deb349781ec6b3edfddbb8b1c1200ca2e20b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\ScriptSymbol.hpp": {
+      "bytes": 172,
+      "sha256": "160c2494d179d870dc8de23745fbcee21cd9a34e3d1dea0c969f13b1155f538f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\render\\client\\core\\FeatureDescriptor.hpp": {
+      "bytes": 5593,
+      "sha256": "df33708084ed5becc32b7eeb143127d2ae4d604b1a20dce62116485fefb9474a"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\render\\client\\resources\\lighting\\LightDescriptor.hpp": {
+      "bytes": 5716,
+      "sha256": "ffcdc3f04a902095ec621f8b9311ab2552340f439c7275b1baee0203b571eeee"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\abi\\lux_script_abi.h": {
+      "bytes": 10868,
+      "sha256": "531a4113250806479a16722d44be68e87f02946357dcb1c9548db40b3f0b6e80"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\artifact\\ScriptArtifact.hpp": {
+      "bytes": 5074,
+      "sha256": "a1ff3c9518476b7edd22cafbcfc56430e6b6d9c20e2ff0183020a647022e4f7f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\function\\script\\native\\ScriptAbilityNative.hpp": {
+      "bytes": 1205,
+      "sha256": "e7f91d7747a140210264d58696d590649d16fd528423ab41e50f4c4eb97592de"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\object\\detail\\SignalDescriptor.hpp": {
+      "bytes": 1869,
+      "sha256": "ee584cfb699687ea9ec7b8641fcaa24a332301c69f52c90c21615e30b795be3f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptAbilityInvocation.hpp": {
+      "bytes": 5472,
+      "sha256": "9289bfd31eaeade508af5a91c8dbe7af4fb1902a5d0ce5281bcc196ce5aa5b8c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptApiCapability.hpp": {
+      "bytes": 1338,
+      "sha256": "0c2ea389e3de403f18a42a0781536e98579f9e881da63185fc6f2b8b8a6c55e9"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptBackend.hpp": {
+      "bytes": 7007,
+      "sha256": "70e94365f7caa10f53f81c18c7527fe7fafa3882bae037ee7408b1776f8e1e58"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptContractValidation.hpp": {
+      "bytes": 3766,
+      "sha256": "615236964edbca4529a1d98def20d701f64fe7cf981aa4953d359a4f0fce96e0"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptEndpointBridge.hpp": {
+      "bytes": 13599,
+      "sha256": "87c37b526e2cbfebffca54a996b2d51f65397aff12aaea093d87d06c0a132b88"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptEventSource.hpp": {
+      "bytes": 7061,
+      "sha256": "05a94fdac395fe23927e763357b5544437fa4bd0fb456bd715a85d3f802a0206"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptLifecycle.hpp": {
+      "bytes": 937,
+      "sha256": "150f828308e45282d70f531f5c22b3d63bb08e9d71b103ca21cf0b1a22400e34"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptRuntime.hpp": {
+      "bytes": 23528,
+      "sha256": "a4af3b0edb747967df5d7c912aa2d567b7513a8a6d534219cfb966d8e26398fd"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptSignatureCompatibility.hpp": {
+      "bytes": 1769,
+      "sha256": "ee5e2b2bc89ab999dc568c7a8e950e5e842cecdb1dd866398111ef6ba021e255"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptTimeEndpoint.hpp": {
+      "bytes": 1073,
+      "sha256": "378a1149e48039c1339a7d8892e261b302aee2b666c93056d57417c36995e160"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\CppStaticScriptBridge.hpp": {
+      "bytes": 2738,
+      "sha256": "5c2bc02045dcabaea99b70085a8fcedf4cca0921d72822ac5fe13ba5d5f122f1"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\CppStaticScriptContract.hpp": {
+      "bytes": 13961,
+      "sha256": "55039a210c49eb9049b3781739c84f942dd9bc946ac7463dc9bfb6ba343bf625"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\ScriptCoroutine.hpp": {
+      "bytes": 23035,
+      "sha256": "3aa7fbe946f10f12441b89ad755436c5ce70236411580cae8696082928b4e668"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\ScriptDelayCoroutine.hpp": {
+      "bytes": 201,
+      "sha256": "1fcfd0d8cbbbeea9af1038a2217a1dd40a52831b952c1d712163db67ddb6a4ff"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\native\\NativeScriptAbilityProjection.hpp": {
+      "bytes": 1631,
+      "sha256": "a6422ca7f5e3f405f30f1010559c8e40cae17eb5ed06e9be9f39db028cd2b997"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\include\\lux\\engine\\simulation\\scripting\\native\\NativeScriptBackend.hpp": {
+      "bytes": 4372,
+      "sha256": "50155b4ab402e3fae45bf61b5e8b72ba89a11957ce33beccb64716f332a9d148"
+    },
+    "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr2-baseline\\t\\bin\\script_runtime_benchmark.exe": {
+      "bytes": 1115648,
+      "sha256": "2091bfd1a5430af9dbfb927dfe9d5a291e76b82e25176906dde12e8135deeffc"
+    },
+    "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr2-baseline\\t\\bin\\flowforge_script_runtime_benchmark.exe": {
+      "bytes": 886784,
+      "sha256": "6dd2ddb621768cce3c74a1b5b3dec2335dab777fe9d4b53a1844293e2597a384"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\description.dll": {
+      "bytes": 138240,
+      "sha256": "bf70cb26129031315f8d4e1c3a150539e27b9dce489b0aacdb801ecf76fac56e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_domain_system_description.dll": {
+      "bytes": 59904,
+      "sha256": "d0aa15714db6a4abee3d1682460a8f28abfe80ab225c0bb2af62fb61dc31c4c7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_function_script_artifact.dll": {
+      "bytes": 236032,
+      "sha256": "8ea2423015fc0311881fc78a00d258cee9a7938ebbe907329564ab42633b741f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_function_script_core.dll": {
+      "bytes": 34304,
+      "sha256": "9213e77812061f7f6f25d230c42f811626ec847feb4648ff2eba276e5e2cdc41"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_function_script_lua.dll": {
+      "bytes": 50688,
+      "sha256": "6eba116f352348bee883614cc8cb2a1e05a25a54ce5adc6b966724284e6b7f04"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_function_script_native.dll": {
+      "bytes": 143360,
+      "sha256": "69a7ce25146340665a2768ecf16350e28f73c6386122d324966adf3d24804ea8"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_physics2d_simulation.dll": {
+      "bytes": 359424,
+      "sha256": "7be1720de3dd89fbc72f3d7d04088b0742dca9feb58eeab22b06c888951dd91d"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_scene_description.dll": {
+      "bytes": 193024,
+      "sha256": "8bad41a9e17558954cdb941f2bc3caaaa873510f3b22adbebdb4d5be87202064"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_scene_script_description.dll": {
+      "bytes": 192000,
+      "sha256": "e6bb69edc63ebf0f579ba3a857b3769d3db499b2afdbd34e0225b7365aa0d2cf"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_scene_script_runtime.dll": {
+      "bytes": 233472,
+      "sha256": "7890a48c0ad33b2c6737bf9cf28fd9546a534d97511915c1b9684e57707afa30"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_asset.dll": {
+      "bytes": 257024,
+      "sha256": "21540cdf9f4924a08725fc6ceb0a21ae219d1ea605291c1eb1b129eec22ae3b2"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_composition.dll": {
+      "bytes": 529408,
+      "sha256": "3d2d2332180190c6aa3698ba5f4ec65ec6c9d4ab03f1d2a43d21f56983223221"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_description.dll": {
+      "bytes": 403968,
+      "sha256": "dba38883ac6a1ecf20ccafd3bf9b562be2f56c407a885f7d788c0fecf5d4d992"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_ecs_core.dll": {
+      "bytes": 105472,
+      "sha256": "f39e9c81e308f9aa3ca25457d5158a386c22d01417a415bee7c105ad45bac056"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_ecs_hierarchy.dll": {
+      "bytes": 218624,
+      "sha256": "d3cbcff7f5d1916da149d2711d7146fac9bc02436174b603bae432e4f779aab5"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_ecs_schema.dll": {
+      "bytes": 100864,
+      "sha256": "8e37c8aa6cd25ed0ee507ef535f04e019632bd6e4da57c73553b9c17a1716751"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_ecs_snapshot.dll": {
+      "bytes": 173568,
+      "sha256": "8aec67da16f2efa36bc3e90861c8af1ecb250fdd27bec41b4094e28a8b87e8c9"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_ecs_transform.dll": {
+      "bytes": 310784,
+      "sha256": "ad4692f9e5130c096cc97811af4bca3e5e7e10ecb0c2dd4f5bde4eed43162350"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_ecs_visual.dll": {
+      "bytes": 237568,
+      "sha256": "42f4464aad89e092b4b69c159b776fda7193a654ca8afffc7cbd6e66966f2ccc"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_script.dll": {
+      "bytes": 907264,
+      "sha256": "9b479f95fb7463728ac8642ab44cfd8338d7180d1a970af56fbbae09d22260fa"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_script_cpp_static.dll": {
+      "bytes": 292352,
+      "sha256": "c9474e9248bfaefd32f2340d938d890e92df40092c5711745956852777d2fb2f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_script_lua.dll": {
+      "bytes": 323072,
+      "sha256": "078db8a12df1f04f9e859df961f8fe84003aff39ed53d6fa189c61ff1d7e5d84"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_script_native.dll": {
+      "bytes": 193536,
+      "sha256": "ca4ef1e2f462052f9ecf4e8ba4ac3f7a549b0b091be0c3f03392eec948385821"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_system.dll": {
+      "bytes": 86016,
+      "sha256": "4648e5873da1e0594c49ecb25e4a50839412b99f5fc20c0bd428e5c64ff8443a"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_transform_system.dll": {
+      "bytes": 497152,
+      "sha256": "f8a26527ccaaee59914cf1bd9ce8d2c5b244b758cfb6ec88c5fd60af1554f48b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_world_description.dll": {
+      "bytes": 338432,
+      "sha256": "794927c8df8774671e91e960e8ab9aa4630b863ed59f45584fb493871ad30bb7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\description.lib": {
+      "bytes": 15402,
+      "sha256": "5020c2daa60817b9f32bdf6fd2805b3f213034187b38999f35e33c66e62302e8"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_domain_system_description.lib": {
+      "bytes": 3488,
+      "sha256": "5932e76da16a09766d4e2eaf8ca85e1eb4add9f1c015b9b6b614e1d4bbfd17ca"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_function_flowforge.lib": {
+      "bytes": 8942500,
+      "sha256": "822d5c1d0b3512f5fe3563ee70bade6f56c0dd1ec9baa1bdeba4f742910094d2"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_function_script_artifact.lib": {
+      "bytes": 18358,
+      "sha256": "4f4bc5064936f843b1cc8554ce4c5fdc2b6ea53ea8b6db43a7ef170ed6db798c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_function_script_core.lib": {
+      "bytes": 2276,
+      "sha256": "769379ca08a0b31c5fe685a26bfb9fa0616c5c8542be8cba1b3885382556ad06"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_function_script_lua.lib": {
+      "bytes": 9788,
+      "sha256": "0b6da6765ce37d03131659df818fbb07b8abe62cd5ec691e5c20b4d85d8371dd"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_function_script_native.lib": {
+      "bytes": 14268,
+      "sha256": "710c43dea20b3b172ca9d46fc5409dc960053041d50e8e7ce3f4d8490988b494"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_physics2d_simulation.lib": {
+      "bytes": 9778,
+      "sha256": "0ecb3319ccdfce90c09f16823617a111f989bf8d9aff92d2e2a22f514123b865"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_scene_description.lib": {
+      "bytes": 33898,
+      "sha256": "76612dd24714046592e7198066d831c8c05452c56d48ba73e39e7fea1f80ec6e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_scene_script_description.lib": {
+      "bytes": 18660,
+      "sha256": "e6ad5378cbc652a7279a4079d78ede3f377dec3415d45f7f1dd59cd5a0556049"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_scene_script_runtime.lib": {
+      "bytes": 15596,
+      "sha256": "0751c44f60a75c425efe958cdc28abb7c717a250558d3efab9d2341efedb0252"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_asset.lib": {
+      "bytes": 13510,
+      "sha256": "0c8cfde1510dcbca2015e69b543bdff13e17e2475d346fc972cdb2ef299cbb4b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_composition.lib": {
+      "bytes": 32828,
+      "sha256": "e4c1d046c3f695263b80dbd985478094f1955ffb963ff00de3d6d75d2ceb36ff"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_description.lib": {
+      "bytes": 70596,
+      "sha256": "df07c42517e4317ef3e9d1cfa4b6d5a89b21ea9136e32d57f16798ba35a4c980"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_ecs_core.lib": {
+      "bytes": 20666,
+      "sha256": "e0693634ce82912d559d6edd5e49b01148402a055935ad0e00e99124ea0d75e7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_ecs_hierarchy.lib": {
+      "bytes": 35484,
+      "sha256": "67d34fdfd70db9e8822b05f35f0ff18b36474966bb4c01719609a3b2f08729e5"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_ecs_schema.lib": {
+      "bytes": 12556,
+      "sha256": "3ff38b0ddb5311ff94370810742f6a9c7a55f3400223571077b2ca2380779339"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_ecs_snapshot.lib": {
+      "bytes": 15766,
+      "sha256": "3511d966e6abd1c61d16fd7190c371b5a66c510e7b3afc2b0a2a974777490bff"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_ecs_transform.lib": {
+      "bytes": 3316,
+      "sha256": "e265ec5a2a4282047280fa83ff9b1526e914164f7639e9e420f5a20bea5c6118"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_ecs_visual.lib": {
+      "bytes": 3246,
+      "sha256": "67eee1c0227f9cfefd627a71d4dfbe926e03964a0c9ebd1a7f0ecc3d1c2aa04b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_script.lib": {
+      "bytes": 26948,
+      "sha256": "3e845356088f77e83fec8f5acb4b5af5c7b73c6412e71599ed4b38dbb6c74e1b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_script_cpp_static.lib": {
+      "bytes": 21424,
+      "sha256": "b13e81b6cd4f4c2719c38d784e03f9bb2ab1b781aed685f00bbb854e94464bab"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_script_lua.lib": {
+      "bytes": 19184,
+      "sha256": "33cbc8acc7b842f4be3504eb83de555fc938bf201aeb8723ef94ba593d119535"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_script_native.lib": {
+      "bytes": 8114,
+      "sha256": "7a7ef61475e0c2ee839cd504bcb3b4d6f1b317a3523fe0f0a64ee1a91b3dae7f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_system.lib": {
+      "bytes": 7552,
+      "sha256": "67d370bf57f9684d8f2f2049885d0df0a3b2feff316c8a645ff19915e54c9323"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_simulation_transform_system.lib": {
+      "bytes": 16620,
+      "sha256": "e74de7285f25130ef89c91b1ce035cdc06698b711db08965cdb4fbe981e58885"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\lib\\lux_engine_world_description.lib": {
+      "bytes": 18986,
+      "sha256": "4b972036c29da83493533b7304dd3aa644b0f6522ef789dbc62d9a13c035956f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\description\\Script.hpp": {
+      "bytes": 13081,
+      "sha256": "5bfe24d95ad3f02cc8d12533aadeb2879637d59dec0f9236afa4ea6824cc813f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\scene\\SceneDescription.hpp": {
+      "bytes": 5791,
+      "sha256": "bddcf67d5bb1516e66cb95f96ede69c2fb52b1ab4fa1535cb5f6867f334048d0"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\scene\\SceneDescriptionBuilder.hpp": {
+      "bytes": 3591,
+      "sha256": "a2e7a99a87d50ad48d2567111ad391af28223222a351486369359a4d877411c6"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\scene\\ScriptRuntimeSystem.hpp": {
+      "bytes": 5021,
+      "sha256": "427e02fd198cec7e8791b47d98325d463cc00e474e72c4f374630ef78a226681"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\ScriptBinding.hpp": {
+      "bytes": 1412,
+      "sha256": "99dafa5c1ab79ecf81f099270eeeb7aab05b93f1d4648716644b653351aa9fb0"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\ScriptBindingAuthoring.hpp": {
+      "bytes": 2518,
+      "sha256": "9f2eaa2ae1fba5e72f12be0675977e2059a330b1ac6e6fd3f62d0692bb898e70"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\ScriptRuntimeInput.hpp": {
+      "bytes": 1259,
+      "sha256": "e190e22a164b49bd2a41367360d502f883c1ab9ce51e9582e59a3ddd9976142b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\ScriptSystem.hpp": {
+      "bytes": 10111,
+      "sha256": "abfc840f8471017d78d311a9239a8c7b3ced0fc78e2ec71968817d6f6475d68e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\SimulationDescription.hpp": {
+      "bytes": 13590,
+      "sha256": "e8aa220293b4affff4064bde83b443fc0a2b415fa06a6e8453fc324c64f30614"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\SimulationDescriptionBuilder.hpp": {
+      "bytes": 4559,
+      "sha256": "3b91a9bd3583e7bbb887c1738d6db5436bd6f37daa6b2a395f72d5e822f32d0c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\SimulationSystemDescription.hpp": {
+      "bytes": 2632,
+      "sha256": "bd9f56f65face4fca97f547403c760c6a81d7d6cbb532a026b01061c2608e518"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\system\\SystemTypeDescription.hpp": {
+      "bytes": 1828,
+      "sha256": "3f5f2a809ce3a5ca3a2858db9a5cb5124ceb411343062f7a32d008f6690dffef"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\world\\WorldDescription.hpp": {
+      "bytes": 3053,
+      "sha256": "19eb9d2cff530e30ee290d38beb5880c49ca071cd12fa7af93d0709da3e3ab40"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\world\\WorldDescriptionBuilder.hpp": {
+      "bytes": 2821,
+      "sha256": "abd479fc91b0355b39b13d5f0eb7ebb34755a0c39861bc0875fa1193dcbe2bdb"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\flowforge\\script\\ScriptAbilityCatalog.hpp": {
+      "bytes": 3821,
+      "sha256": "6f248e3e777976b264393652873b26136f7f506c1691acfa02e679eaaa47aa50"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\flowforge\\script\\ScriptAbilityNode.hpp": {
+      "bytes": 2902,
+      "sha256": "fd17686c6bb9cbbe37949797293a5d568f9ea49bc4528152b4fc2497f2d26f62"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\flowforge\\script\\ScriptEventAwaitNode.hpp": {
+      "bytes": 1074,
+      "sha256": "2266d14c494eb8d53b3e9be948552c2259766040337dd96dda939c8fec322e44"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\flowforge\\script\\ScriptGraph.hpp": {
+      "bytes": 1006,
+      "sha256": "b004e84c9c584a7fae3ed0b64a889e6ccfcbc4366e8e48d8fbe41bb714804265"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\BoundScriptCall.hpp": {
+      "bytes": 510,
+      "sha256": "6f60a51286cec0a7d5e5d71d46264f3682663187e1dbfca7155ef01238f7c3e5"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\ScriptAbility.hpp": {
+      "bytes": 17384,
+      "sha256": "773e32dca2ea69c5e1b38edcfff86f146346a773be4480278fd70322bc912ced"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\ScriptAbilityAnnotations.hpp": {
+      "bytes": 632,
+      "sha256": "e1b5b99d3207b82abafe96f03f7017891b491a7f83fc6f07621bd9e26b47c71b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\ScriptAbilityAsync.hpp": {
+      "bytes": 4810,
+      "sha256": "f08e9967d2285b88c17f23c331240bcaa08867f9f6bc7c88c5a4bb8af79ef7fd"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\ScriptAbilityCompletionAdapter.hpp": {
+      "bytes": 803,
+      "sha256": "cac707d75f2361c1ff6d060a5f07387b379741726258a7cab1306945395a6089"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\ScriptAbilityOperation.hpp": {
+      "bytes": 784,
+      "sha256": "c9f36fc7f9c9e8c9521713f0791d932d7c940cecbe69ff50e38887dce3ae4044"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\ScriptApi.hpp": {
+      "bytes": 699,
+      "sha256": "6569483668eb8090556ed49827bfc0d973f3a3ad046c66bbb9a83f08d3841c8b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\ScriptBindingHint.hpp": {
+      "bytes": 727,
+      "sha256": "5c11ebdbb4a9d812dba02d7e157bdcf6063da527d9f8441068b358d58c3ea38e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\ScriptEvent.hpp": {
+      "bytes": 5060,
+      "sha256": "17c46277f5f7cb074c80910391c6c236ab2729735182ad055fc4dce99cf88f38"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\ScriptEventSchema.hpp": {
+      "bytes": 4637,
+      "sha256": "e96cba40dbea88313113759630486318594346cac2d04036219d492d89b694e7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\ScriptResult.hpp": {
+      "bytes": 951,
+      "sha256": "facc1eaac716b5b570136dca5a40d50b4f646c2530caad8e4839ba0ee4e7d873"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\ScriptSemanticSchema.hpp": {
+      "bytes": 2147,
+      "sha256": "04c8b06c0fa7061c080761dec077deb349781ec6b3edfddbb8b1c1200ca2e20b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\ScriptSymbol.hpp": {
+      "bytes": 172,
+      "sha256": "160c2494d179d870dc8de23745fbcee21cd9a34e3d1dea0c969f13b1155f538f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\render\\client\\core\\FeatureDescriptor.hpp": {
+      "bytes": 5593,
+      "sha256": "df33708084ed5becc32b7eeb143127d2ae4d604b1a20dce62116485fefb9474a"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\render\\client\\resources\\lighting\\LightDescriptor.hpp": {
+      "bytes": 5716,
+      "sha256": "ffcdc3f04a902095ec621f8b9311ab2552340f439c7275b1baee0203b571eeee"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\abi\\lux_script_abi.h": {
+      "bytes": 10868,
+      "sha256": "531a4113250806479a16722d44be68e87f02946357dcb1c9548db40b3f0b6e80"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\artifact\\ScriptArtifact.hpp": {
+      "bytes": 5074,
+      "sha256": "a1ff3c9518476b7edd22cafbcfc56430e6b6d9c20e2ff0183020a647022e4f7f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\lua\\ScriptAbilityLua.hpp": {
+      "bytes": 1270,
+      "sha256": "9d3c6211d0f68ed5d41b1d91b3f933d2256c6692b5bf40bff53cc7da5fe594b0"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\function\\script\\native\\ScriptAbilityNative.hpp": {
+      "bytes": 1205,
+      "sha256": "e7f91d7747a140210264d58696d590649d16fd528423ab41e50f4c4eb97592de"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\gapi\\vk\\Descriptor.hpp": {
+      "bytes": 11968,
+      "sha256": "6e1ddad9d9852d1d9dc2d59bddf15c5e1e6118a07165d9cd40fb47b8aa88b512"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\object\\detail\\SignalDescriptor.hpp": {
+      "bytes": 1869,
+      "sha256": "ee584cfb699687ea9ec7b8641fcaa24a332301c69f52c90c21615e30b795be3f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\render\\core\\DescriptorSetLayoutContract.hpp": {
+      "bytes": 6533,
+      "sha256": "b7aea54dc0e75036e12d98d8c6159fcc69b79871ea9e65db85705caf741a0c15"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\scene\\script\\ScriptRuntimeAssembly.hpp": {
+      "bytes": 1088,
+      "sha256": "d16bb22a11a38cfdf0697e835dd632da81fd09e7a7a803a533bcd93a34f33c8e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\scene\\script\\ScriptSystemDescription.hpp": {
+      "bytes": 3368,
+      "sha256": "617f06c0c0696360516c16074e6081b47e54ebf51c64124004b052f0cdd1acd7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\scene\\script\\ScriptSystemDescriptionCodec.hpp": {
+      "bytes": 2168,
+      "sha256": "8bc8edc6e6228c490c70ac8e7f74f57dfbd3b8e33f534c72f03aa58b8c680a9f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptAbilityInvocation.hpp": {
+      "bytes": 5472,
+      "sha256": "9289bfd31eaeade508af5a91c8dbe7af4fb1902a5d0ce5281bcc196ce5aa5b8c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptApiCapability.hpp": {
+      "bytes": 1338,
+      "sha256": "0c2ea389e3de403f18a42a0781536e98579f9e881da63185fc6f2b8b8a6c55e9"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptBackend.hpp": {
+      "bytes": 7007,
+      "sha256": "70e94365f7caa10f53f81c18c7527fe7fafa3882bae037ee7408b1776f8e1e58"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptContractValidation.hpp": {
+      "bytes": 3766,
+      "sha256": "615236964edbca4529a1d98def20d701f64fe7cf981aa4953d359a4f0fce96e0"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptEndpointBridge.hpp": {
+      "bytes": 13599,
+      "sha256": "87c37b526e2cbfebffca54a996b2d51f65397aff12aaea093d87d06c0a132b88"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptEventSource.hpp": {
+      "bytes": 7061,
+      "sha256": "05a94fdac395fe23927e763357b5544437fa4bd0fb456bd715a85d3f802a0206"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptLifecycle.hpp": {
+      "bytes": 937,
+      "sha256": "150f828308e45282d70f531f5c22b3d63bb08e9d71b103ca21cf0b1a22400e34"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptRuntime.hpp": {
+      "bytes": 23528,
+      "sha256": "a4af3b0edb747967df5d7c912aa2d567b7513a8a6d534219cfb966d8e26398fd"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptSignatureCompatibility.hpp": {
+      "bytes": 1769,
+      "sha256": "ee5e2b2bc89ab999dc568c7a8e950e5e842cecdb1dd866398111ef6ba021e255"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\ScriptTimeEndpoint.hpp": {
+      "bytes": 1073,
+      "sha256": "378a1149e48039c1339a7d8892e261b302aee2b666c93056d57417c36995e160"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\CppStaticScriptBridge.hpp": {
+      "bytes": 2738,
+      "sha256": "5c2bc02045dcabaea99b70085a8fcedf4cca0921d72822ac5fe13ba5d5f122f1"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\CppStaticScriptContract.hpp": {
+      "bytes": 13961,
+      "sha256": "55039a210c49eb9049b3781739c84f942dd9bc946ac7463dc9bfb6ba343bf625"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\ScriptCoroutine.hpp": {
+      "bytes": 23035,
+      "sha256": "3aa7fbe946f10f12441b89ad755436c5ce70236411580cae8696082928b4e668"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\ScriptDelayCoroutine.hpp": {
+      "bytes": 201,
+      "sha256": "1fcfd0d8cbbbeea9af1038a2217a1dd40a52831b952c1d712163db67ddb6a4ff"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\lua\\LuaScriptAbilityProjection.hpp": {
+      "bytes": 7765,
+      "sha256": "23010f718ab21b4aca706ed4c030bdc6783ec03a833ce15fe919dbe650db6160"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\lua\\LuaScriptBackend.hpp": {
+      "bytes": 5891,
+      "sha256": "24bd6baaff085de2c46fb019548289c9d07b8c04794860901bab984195dec0c1"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\native\\NativeScriptAbilityProjection.hpp": {
+      "bytes": 1631,
+      "sha256": "a6422ca7f5e3f405f30f1010559c8e40cae17eb5ed06e9be9f39db028cd2b997"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\include\\lux\\engine\\simulation\\scripting\\native\\NativeScriptBackend.hpp": {
+      "bytes": 4372,
+      "sha256": "50155b4ab402e3fae45bf61b5e8b72ba89a11957ce33beccb64716f332a9d148"
+    },
+    "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr2-candidate\\d\\bin\\script_runtime_benchmark.exe": {
+      "bytes": 1229312,
+      "sha256": "4f06bca86fc486f40baee1fda38e93ca83d97c8e37b1f6c500ee6846e4e0fde2"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\description.dll": {
+      "bytes": 138240,
+      "sha256": "7bb08413a609eb8de29ad2033c0ed9dcb58ffb2dfa439dbe4f76a3dfc0d5f7d5"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_domain_system_description.dll": {
+      "bytes": 59904,
+      "sha256": "27d008f287af60c397f5f4393be05ec6a16ab230ecf80373db8e52a74512f251"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_flowforge_compiler.dll": {
+      "bytes": 56795136,
+      "sha256": "1906335ea95674994ee852b143abd05ee537d2a7a30bd2ba493e7509a2cd1586"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_function_script_artifact.dll": {
+      "bytes": 236032,
+      "sha256": "228ee209ae42685bd2f08b36118eb18be251322771335d69671e74697e694fe6"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_function_script_core.dll": {
+      "bytes": 34304,
+      "sha256": "b34d3b6407a3f424b0075f21b7a8420920f657eb2b9b554934c6efad26daced2"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_function_script_native.dll": {
+      "bytes": 143360,
+      "sha256": "dcb25918eac3ccc077196c2e3b286bfc9d79d1f1728735181e67da0df19920b6"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_physics2d_simulation.dll": {
+      "bytes": 359424,
+      "sha256": "80790dc17a4a97d6669bcc53a89db5d49f659e2f144a208d394306af02777283"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_scene_description.dll": {
+      "bytes": 193024,
+      "sha256": "f013f4ac0e95e135d47a099ab224df703323824c4381847eb9c010496296d79e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_scene_script_description.dll": {
+      "bytes": 192000,
+      "sha256": "d299ecfcf1675e0355fe38e99e10d30feb4fea9550e734c0eff9c79993f3649b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_scene_script_runtime.dll": {
+      "bytes": 233472,
+      "sha256": "98c3973c02e74715e999b5d0da52a10a44cb767a484f4422a72d2270ad434a9b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_asset.dll": {
+      "bytes": 257024,
+      "sha256": "041865c16c9e3ef53ff73205d48839397f328934eceb6198f55787a0632975b8"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_composition.dll": {
+      "bytes": 529408,
+      "sha256": "059b772552d8b4fcf9774fc81e2ca1a12ff7b58c88de358da4696974787ac7fa"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_description.dll": {
+      "bytes": 403968,
+      "sha256": "853fcf4fbdbe8e3dd85356071564631fdfa20f9e2367c9da504eac5a8589427f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_ecs_core.dll": {
+      "bytes": 105472,
+      "sha256": "95df46e2d6c7cde6885bc7566ee3fcac14d2cdda70296b5a84ab23180aad3e00"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_ecs_hierarchy.dll": {
+      "bytes": 218624,
+      "sha256": "4d71ec4879b8a174252a6fc43d0a023d5b6d5755aab9aff003f079e443f01177"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_ecs_schema.dll": {
+      "bytes": 100864,
+      "sha256": "1a4842cdc0781f0f304e9f9681021ca4f42e05b2c5322e7b86ca1ad183191d8d"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_ecs_snapshot.dll": {
+      "bytes": 173568,
+      "sha256": "444638024ce56039c850adb0c516669dee5b37041a1565ce0188461bb163ca78"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_ecs_transform.dll": {
+      "bytes": 310784,
+      "sha256": "aa7eff62c69ef2c7a4260e7eecac7af78d667ed61df3a11c408005c6c9436e00"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_ecs_visual.dll": {
+      "bytes": 237568,
+      "sha256": "48a6a5ebe4fa22713aa4ae637c64aa3020564e4f581b87705d25b1606d602e75"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_script.dll": {
+      "bytes": 907264,
+      "sha256": "1a6221db656271ad5a41d7f97acc5b301e5cd6d4113662caef7caa291d7b5be1"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_script_cpp_static.dll": {
+      "bytes": 292352,
+      "sha256": "5a759f1a7f4bdbc016fee668a4b80287d3eda7aeaafc161a76085ceb1748b08d"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_script_native.dll": {
+      "bytes": 193536,
+      "sha256": "d8ddc4496e986ccfea0a3057baac4edd5681ac7c94988ab81ecef4f97b9b51d7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_system.dll": {
+      "bytes": 86016,
+      "sha256": "34ce561b7a9f3b97005227a2201c3294d2a180492fd296ab91339830525bf8e9"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_transform_system.dll": {
+      "bytes": 497152,
+      "sha256": "ab89f8c428933413876a19780acde8b1b4d928d85b1a71105349ef4679f3c049"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_world_description.dll": {
+      "bytes": 338432,
+      "sha256": "703de4e9a55d3d17d163698fe7afe678ff4f599022142988b8ac161da5444426"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\description.lib": {
+      "bytes": 15402,
+      "sha256": "5020c2daa60817b9f32bdf6fd2805b3f213034187b38999f35e33c66e62302e8"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_domain_system_description.lib": {
+      "bytes": 3488,
+      "sha256": "5932e76da16a09766d4e2eaf8ca85e1eb4add9f1c015b9b6b614e1d4bbfd17ca"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_flowforge_compiler.lib": {
+      "bytes": 4072,
+      "sha256": "b25ce2e4a048e658c8646b82891d1e8e919f466cca8c965c71adbb0a897d7256"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_function_flowforge.lib": {
+      "bytes": 8942500,
+      "sha256": "0797903be713cff9205c06770c448d44904dfc35a7ab52ea2399a4c613f593ac"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_function_script_artifact.lib": {
+      "bytes": 18358,
+      "sha256": "4f4bc5064936f843b1cc8554ce4c5fdc2b6ea53ea8b6db43a7ef170ed6db798c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_function_script_core.lib": {
+      "bytes": 2276,
+      "sha256": "769379ca08a0b31c5fe685a26bfb9fa0616c5c8542be8cba1b3885382556ad06"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_function_script_native.lib": {
+      "bytes": 14268,
+      "sha256": "710c43dea20b3b172ca9d46fc5409dc960053041d50e8e7ce3f4d8490988b494"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_physics2d_simulation.lib": {
+      "bytes": 9778,
+      "sha256": "0ecb3319ccdfce90c09f16823617a111f989bf8d9aff92d2e2a22f514123b865"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_scene_description.lib": {
+      "bytes": 33898,
+      "sha256": "76612dd24714046592e7198066d831c8c05452c56d48ba73e39e7fea1f80ec6e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_scene_script_description.lib": {
+      "bytes": 18660,
+      "sha256": "e6ad5378cbc652a7279a4079d78ede3f377dec3415d45f7f1dd59cd5a0556049"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_scene_script_runtime.lib": {
+      "bytes": 15596,
+      "sha256": "0751c44f60a75c425efe958cdc28abb7c717a250558d3efab9d2341efedb0252"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_simulation_asset.lib": {
+      "bytes": 13510,
+      "sha256": "0c8cfde1510dcbca2015e69b543bdff13e17e2475d346fc972cdb2ef299cbb4b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_simulation_composition.lib": {
+      "bytes": 32828,
+      "sha256": "e4c1d046c3f695263b80dbd985478094f1955ffb963ff00de3d6d75d2ceb36ff"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_simulation_description.lib": {
+      "bytes": 70596,
+      "sha256": "df07c42517e4317ef3e9d1cfa4b6d5a89b21ea9136e32d57f16798ba35a4c980"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_simulation_ecs_core.lib": {
+      "bytes": 20666,
+      "sha256": "e0693634ce82912d559d6edd5e49b01148402a055935ad0e00e99124ea0d75e7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_simulation_ecs_hierarchy.lib": {
+      "bytes": 35484,
+      "sha256": "67d34fdfd70db9e8822b05f35f0ff18b36474966bb4c01719609a3b2f08729e5"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_simulation_ecs_schema.lib": {
+      "bytes": 12556,
+      "sha256": "3ff38b0ddb5311ff94370810742f6a9c7a55f3400223571077b2ca2380779339"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_simulation_ecs_snapshot.lib": {
+      "bytes": 15766,
+      "sha256": "3511d966e6abd1c61d16fd7190c371b5a66c510e7b3afc2b0a2a974777490bff"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_simulation_ecs_transform.lib": {
+      "bytes": 3316,
+      "sha256": "e265ec5a2a4282047280fa83ff9b1526e914164f7639e9e420f5a20bea5c6118"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_simulation_ecs_visual.lib": {
+      "bytes": 3246,
+      "sha256": "67eee1c0227f9cfefd627a71d4dfbe926e03964a0c9ebd1a7f0ecc3d1c2aa04b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_simulation_script.lib": {
+      "bytes": 26948,
+      "sha256": "3e845356088f77e83fec8f5acb4b5af5c7b73c6412e71599ed4b38dbb6c74e1b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_simulation_script_cpp_static.lib": {
+      "bytes": 21424,
+      "sha256": "b13e81b6cd4f4c2719c38d784e03f9bb2ab1b781aed685f00bbb854e94464bab"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_simulation_script_native.lib": {
+      "bytes": 8114,
+      "sha256": "7a7ef61475e0c2ee839cd504bcb3b4d6f1b317a3523fe0f0a64ee1a91b3dae7f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_simulation_system.lib": {
+      "bytes": 7552,
+      "sha256": "67d370bf57f9684d8f2f2049885d0df0a3b2feff316c8a645ff19915e54c9323"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_simulation_transform_system.lib": {
+      "bytes": 16620,
+      "sha256": "e74de7285f25130ef89c91b1ce035cdc06698b711db08965cdb4fbe981e58885"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\lib\\lux_engine_world_description.lib": {
+      "bytes": 18986,
+      "sha256": "4b972036c29da83493533b7304dd3aa644b0f6522ef789dbc62d9a13c035956f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\description\\Script.hpp": {
+      "bytes": 13081,
+      "sha256": "5bfe24d95ad3f02cc8d12533aadeb2879637d59dec0f9236afa4ea6824cc813f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\material\\ImportedMaterialDescription.hpp": {
+      "bytes": 1364,
+      "sha256": "855047bcbbd08bca1866c573171d9f1824334431234cc332e19db867fa6e3df7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\scene\\SceneDescription.hpp": {
+      "bytes": 5791,
+      "sha256": "bddcf67d5bb1516e66cb95f96ede69c2fb52b1ab4fa1535cb5f6867f334048d0"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\scene\\SceneDescriptionBuilder.hpp": {
+      "bytes": 3591,
+      "sha256": "a2e7a99a87d50ad48d2567111ad391af28223222a351486369359a4d877411c6"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\scene\\ScriptRuntimeSystem.hpp": {
+      "bytes": 5021,
+      "sha256": "427e02fd198cec7e8791b47d98325d463cc00e474e72c4f374630ef78a226681"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\ScriptBinding.hpp": {
+      "bytes": 1412,
+      "sha256": "99dafa5c1ab79ecf81f099270eeeb7aab05b93f1d4648716644b653351aa9fb0"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\ScriptBindingAuthoring.hpp": {
+      "bytes": 2518,
+      "sha256": "9f2eaa2ae1fba5e72f12be0675977e2059a330b1ac6e6fd3f62d0692bb898e70"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\ScriptRuntimeInput.hpp": {
+      "bytes": 1259,
+      "sha256": "e190e22a164b49bd2a41367360d502f883c1ab9ce51e9582e59a3ddd9976142b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\ScriptSystem.hpp": {
+      "bytes": 10111,
+      "sha256": "abfc840f8471017d78d311a9239a8c7b3ced0fc78e2ec71968817d6f6475d68e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\SimulationDescription.hpp": {
+      "bytes": 13590,
+      "sha256": "e8aa220293b4affff4064bde83b443fc0a2b415fa06a6e8453fc324c64f30614"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\SimulationDescriptionBuilder.hpp": {
+      "bytes": 4559,
+      "sha256": "3b91a9bd3583e7bbb887c1738d6db5436bd6f37daa6b2a395f72d5e822f32d0c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\SimulationSystemDescription.hpp": {
+      "bytes": 2632,
+      "sha256": "bd9f56f65face4fca97f547403c760c6a81d7d6cbb532a026b01061c2608e518"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\system\\SystemTypeDescription.hpp": {
+      "bytes": 1828,
+      "sha256": "3f5f2a809ce3a5ca3a2858db9a5cb5124ceb411343062f7a32d008f6690dffef"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\world\\WorldDescription.hpp": {
+      "bytes": 3053,
+      "sha256": "19eb9d2cff530e30ee290d38beb5880c49ca071cd12fa7af93d0709da3e3ab40"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\world\\WorldDescriptionBuilder.hpp": {
+      "bytes": 2821,
+      "sha256": "abd479fc91b0355b39b13d5f0eb7ebb34755a0c39861bc0875fa1193dcbe2bdb"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\flowforge\\script\\ScriptAbilityCatalog.hpp": {
+      "bytes": 3821,
+      "sha256": "6f248e3e777976b264393652873b26136f7f506c1691acfa02e679eaaa47aa50"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\flowforge\\script\\ScriptAbilityNode.hpp": {
+      "bytes": 2902,
+      "sha256": "fd17686c6bb9cbbe37949797293a5d568f9ea49bc4528152b4fc2497f2d26f62"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\flowforge\\script\\ScriptEventAwaitNode.hpp": {
+      "bytes": 1074,
+      "sha256": "2266d14c494eb8d53b3e9be948552c2259766040337dd96dda939c8fec322e44"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\flowforge\\script\\ScriptGraph.hpp": {
+      "bytes": 1006,
+      "sha256": "b004e84c9c584a7fae3ed0b64a889e6ccfcbc4366e8e48d8fbe41bb714804265"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\BoundScriptCall.hpp": {
+      "bytes": 510,
+      "sha256": "6f60a51286cec0a7d5e5d71d46264f3682663187e1dbfca7155ef01238f7c3e5"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\ScriptAbility.hpp": {
+      "bytes": 17384,
+      "sha256": "773e32dca2ea69c5e1b38edcfff86f146346a773be4480278fd70322bc912ced"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\ScriptAbilityAnnotations.hpp": {
+      "bytes": 632,
+      "sha256": "e1b5b99d3207b82abafe96f03f7017891b491a7f83fc6f07621bd9e26b47c71b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\ScriptAbilityAsync.hpp": {
+      "bytes": 4810,
+      "sha256": "f08e9967d2285b88c17f23c331240bcaa08867f9f6bc7c88c5a4bb8af79ef7fd"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\ScriptAbilityCompletionAdapter.hpp": {
+      "bytes": 803,
+      "sha256": "cac707d75f2361c1ff6d060a5f07387b379741726258a7cab1306945395a6089"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\ScriptAbilityOperation.hpp": {
+      "bytes": 784,
+      "sha256": "c9f36fc7f9c9e8c9521713f0791d932d7c940cecbe69ff50e38887dce3ae4044"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\ScriptApi.hpp": {
+      "bytes": 699,
+      "sha256": "6569483668eb8090556ed49827bfc0d973f3a3ad046c66bbb9a83f08d3841c8b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\ScriptBindingHint.hpp": {
+      "bytes": 727,
+      "sha256": "5c11ebdbb4a9d812dba02d7e157bdcf6063da527d9f8441068b358d58c3ea38e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\ScriptEvent.hpp": {
+      "bytes": 5060,
+      "sha256": "17c46277f5f7cb074c80910391c6c236ab2729735182ad055fc4dce99cf88f38"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\ScriptEventSchema.hpp": {
+      "bytes": 4637,
+      "sha256": "e96cba40dbea88313113759630486318594346cac2d04036219d492d89b694e7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\ScriptResult.hpp": {
+      "bytes": 951,
+      "sha256": "facc1eaac716b5b570136dca5a40d50b4f646c2530caad8e4839ba0ee4e7d873"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\ScriptSemanticSchema.hpp": {
+      "bytes": 2147,
+      "sha256": "04c8b06c0fa7061c080761dec077deb349781ec6b3edfddbb8b1c1200ca2e20b"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\ScriptSymbol.hpp": {
+      "bytes": 172,
+      "sha256": "160c2494d179d870dc8de23745fbcee21cd9a34e3d1dea0c969f13b1155f538f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\render\\client\\core\\FeatureDescriptor.hpp": {
+      "bytes": 5593,
+      "sha256": "df33708084ed5becc32b7eeb143127d2ae4d604b1a20dce62116485fefb9474a"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\render\\client\\resources\\lighting\\LightDescriptor.hpp": {
+      "bytes": 5716,
+      "sha256": "ffcdc3f04a902095ec621f8b9311ab2552340f439c7275b1baee0203b571eeee"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\abi\\lux_script_abi.h": {
+      "bytes": 10868,
+      "sha256": "531a4113250806479a16722d44be68e87f02946357dcb1c9548db40b3f0b6e80"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\artifact\\ScriptArtifact.hpp": {
+      "bytes": 5074,
+      "sha256": "a1ff3c9518476b7edd22cafbcfc56430e6b6d9c20e2ff0183020a647022e4f7f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\function\\script\\native\\ScriptAbilityNative.hpp": {
+      "bytes": 1205,
+      "sha256": "e7f91d7747a140210264d58696d590649d16fd528423ab41e50f4c4eb97592de"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\object\\detail\\SignalDescriptor.hpp": {
+      "bytes": 1869,
+      "sha256": "ee584cfb699687ea9ec7b8641fcaa24a332301c69f52c90c21615e30b795be3f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\scene\\script\\ScriptRuntimeAssembly.hpp": {
+      "bytes": 1088,
+      "sha256": "d16bb22a11a38cfdf0697e835dd632da81fd09e7a7a803a533bcd93a34f33c8e"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\scene\\script\\ScriptSystemDescription.hpp": {
+      "bytes": 3368,
+      "sha256": "617f06c0c0696360516c16074e6081b47e54ebf51c64124004b052f0cdd1acd7"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\scene\\script\\ScriptSystemDescriptionCodec.hpp": {
+      "bytes": 2168,
+      "sha256": "8bc8edc6e6228c490c70ac8e7f74f57dfbd3b8e33f534c72f03aa58b8c680a9f"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptAbilityInvocation.hpp": {
+      "bytes": 5472,
+      "sha256": "9289bfd31eaeade508af5a91c8dbe7af4fb1902a5d0ce5281bcc196ce5aa5b8c"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptApiCapability.hpp": {
+      "bytes": 1338,
+      "sha256": "0c2ea389e3de403f18a42a0781536e98579f9e881da63185fc6f2b8b8a6c55e9"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptBackend.hpp": {
+      "bytes": 7007,
+      "sha256": "70e94365f7caa10f53f81c18c7527fe7fafa3882bae037ee7408b1776f8e1e58"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptContractValidation.hpp": {
+      "bytes": 3766,
+      "sha256": "615236964edbca4529a1d98def20d701f64fe7cf981aa4953d359a4f0fce96e0"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptEndpointBridge.hpp": {
+      "bytes": 13599,
+      "sha256": "87c37b526e2cbfebffca54a996b2d51f65397aff12aaea093d87d06c0a132b88"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptEventSource.hpp": {
+      "bytes": 7061,
+      "sha256": "05a94fdac395fe23927e763357b5544437fa4bd0fb456bd715a85d3f802a0206"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptLifecycle.hpp": {
+      "bytes": 937,
+      "sha256": "150f828308e45282d70f531f5c22b3d63bb08e9d71b103ca21cf0b1a22400e34"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptRuntime.hpp": {
+      "bytes": 23528,
+      "sha256": "a4af3b0edb747967df5d7c912aa2d567b7513a8a6d534219cfb966d8e26398fd"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptSignatureCompatibility.hpp": {
+      "bytes": 1769,
+      "sha256": "ee5e2b2bc89ab999dc568c7a8e950e5e842cecdb1dd866398111ef6ba021e255"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\ScriptTimeEndpoint.hpp": {
+      "bytes": 1073,
+      "sha256": "378a1149e48039c1339a7d8892e261b302aee2b666c93056d57417c36995e160"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\CppStaticScriptBridge.hpp": {
+      "bytes": 2738,
+      "sha256": "5c2bc02045dcabaea99b70085a8fcedf4cca0921d72822ac5fe13ba5d5f122f1"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\CppStaticScriptContract.hpp": {
+      "bytes": 13961,
+      "sha256": "55039a210c49eb9049b3781739c84f942dd9bc946ac7463dc9bfb6ba343bf625"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\ScriptCoroutine.hpp": {
+      "bytes": 23035,
+      "sha256": "3aa7fbe946f10f12441b89ad755436c5ce70236411580cae8696082928b4e668"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\cpp_static\\ScriptDelayCoroutine.hpp": {
+      "bytes": 201,
+      "sha256": "1fcfd0d8cbbbeea9af1038a2217a1dd40a52831b952c1d712163db67ddb6a4ff"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\native\\NativeScriptAbilityProjection.hpp": {
+      "bytes": 1631,
+      "sha256": "a6422ca7f5e3f405f30f1010559c8e40cae17eb5ed06e9be9f39db028cd2b997"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\include\\lux\\engine\\simulation\\scripting\\native\\NativeScriptBackend.hpp": {
+      "bytes": 4372,
+      "sha256": "50155b4ab402e3fae45bf61b5e8b72ba89a11957ce33beccb64716f332a9d148"
+    },
+    "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr2-candidate\\t\\bin\\script_runtime_benchmark.exe": {
+      "bytes": 1124864,
+      "sha256": "b555bb9b5cdfb4a0acc1a6ca5ffb2a5d332c29598797c519cdbcdd72a933bb74"
+    },
+    "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr2-candidate\\t\\bin\\flowforge_script_runtime_benchmark.exe": {
+      "bytes": 897024,
+      "sha256": "4d1463b152179dab90904f9d0afc1460bed4ae26f2e5664497139f90018265c1"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\q2\\c\\bin\\lux_meta_generator.exe": {
+      "bytes": 1466880,
+      "sha256": "313e8d6708f78a84fc8e4fb4b264d1bc8eb055ec8d77a7dbc42db1540600f980"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\q2\\c\\bin\\reflection_generator.dll": {
+      "bytes": 712704,
+      "sha256": "cc2acad0095ba988506d89bb8c388d9c64de17c637026a58ab4487373e8df7fe"
+    },
+    "E:\\SyncForder\\CodeRepos\\install\\q2\\c\\include\\lux\\cxx\\container\\StableSlotMap.hpp": {
+      "bytes": 14863,
+      "sha256": "a612e3d5f1a5b0628c0b1c027e5f22781f7cfd357684b8cb453842ab2ffc43fa"
+    },
+    "E:\\SyncForder\\CodeRepos\\lux-cxx-v3r\\container\\include\\lux\\cxx\\container\\StableSlotMap.hpp": {
+      "bytes": 14863,
+      "sha256": "a612e3d5f1a5b0628c0b1c027e5f22781f7cfd357684b8cb453842ab2ffc43fa"
+    }
+  },
+  "installed_vs_built_dll": {
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_domain_system_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_function_script_artifact.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_function_script_core.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_function_script_lua.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_function_script_native.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_physics2d_simulation.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_scene_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_scene_script_runtime.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_asset.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_composition.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_ecs_core.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_ecs_hierarchy.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_ecs_schema.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_ecs_snapshot.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_ecs_transform.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_ecs_visual.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_script.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_script_cpp_static.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_script_lua.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_script_native.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_system.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_simulation_transform_system.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\d\\bin\\lux_engine_world_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_domain_system_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_flowforge_compiler.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_function_script_artifact.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_function_script_core.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_function_script_native.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_physics2d_simulation.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_scene_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_scene_script_runtime.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_asset.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_composition.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_ecs_core.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_ecs_hierarchy.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_ecs_schema.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_ecs_snapshot.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_ecs_transform.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_ecs_visual.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_script.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_script_cpp_static.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_script_native.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_system.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_simulation_transform_system.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-baseline\\t\\bin\\lux_engine_world_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_domain_system_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_function_script_artifact.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_function_script_core.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_function_script_lua.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_function_script_native.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_physics2d_simulation.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_scene_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_scene_script_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_scene_script_runtime.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_asset.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_composition.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_ecs_core.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_ecs_hierarchy.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_ecs_schema.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_ecs_snapshot.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_ecs_transform.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_ecs_visual.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_script.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_script_cpp_static.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_script_lua.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_script_native.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_system.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_simulation_transform_system.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\d\\bin\\lux_engine_world_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_domain_system_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_flowforge_compiler.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_function_script_artifact.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_function_script_core.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_function_script_native.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_physics2d_simulation.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_scene_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_scene_script_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_scene_script_runtime.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_asset.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_composition.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_description.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_ecs_core.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_ecs_hierarchy.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_ecs_schema.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_ecs_snapshot.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_ecs_transform.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_ecs_visual.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_script.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_script_cpp_static.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_script_native.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_system.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_simulation_transform_system.dll": true,
+    "E:\\SyncForder\\CodeRepos\\install\\sr2-candidate\\t\\bin\\lux_engine_world_description.dll": true
+  },
+  "old_description_headers_absent": true,
+  "production_qualification_commit": "feaa7550bd819b0bcb928d477fb45e40ff9282b1",
+  "delivery_commit": "1a7fbd60f47a115b7b01528075550b77c1a3c194",
+  "post_qualification_production_diff": ""
+}

@@ -22,7 +22,10 @@ def main():
     parser.add_argument('--prefix', action='append', required=True)
     parser.add_argument('--consumers', required=True)
     parser.add_argument('--output', required=True)
+    parser.add_argument('--archive-name', default='SR3-raw-evidence.zip')
     args = parser.parse_args()
+    if Path(args.archive_name).name != args.archive_name or not args.archive_name.endswith('.zip'):
+        parser.error('archive-name must be a plain ZIP filename')
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=False)
     identities = {'sources': [], 'prefixes': [], 'installed_private_headers': []}
@@ -87,7 +90,7 @@ def main():
     index = [{'path': name, 'source': str(path), 'size': path.stat().st_size, 'sha256': digest(path)}
              for name, path in sorted(entries.items())]
     (output / 'raw-files.json').write_text(json.dumps(index, indent=2), encoding='utf-8')
-    archive = output / 'SR3-raw-evidence.zip'
+    archive = output / args.archive_name
     with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as bundle:
         for name, path in sorted(entries.items()):
             bundle.write(path, name)

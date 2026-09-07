@@ -28,4 +28,10 @@
 计数关闭时日志中的 0 不是“零分配”；旧 benchmark 没有的错误字段继续记 null。
 Lua Ability 残余和生成 record 推送新增成本尚待审阅接受，不宣称性能等价或全部成本已收口。
 
-固定提交下载与远端重新取得后的校验将在推送后补入本索引。
+固定提交 `ee4322d1b3e46607b19b555d37c959cc64e91c14`：
+[下载 ZIP](https://github.com/LUX-YU/lux-engine/raw/ee4322d1b3e46607b19b555d37c959cc64e91c14/.internal/evidence/script/sr5/final/SR5-raw-evidence.zip) ·
+[查看文件索引](https://github.com/LUX-YU/lux-engine/blob/ee4322d1b3e46607b19b555d37c959cc64e91c14/.internal/evidence/script/sr5/final/raw-files.json)。
+
+[remote-verification.json](remote-verification.json) 记录新的 bare 仓库从 GitHub 实际 fetch 后，通过远端取得的
+提交重新读取 ZIP 和索引，核对 ZIP 哈希及全部 1,763 项文件哈希通过。该校验未借用原工作库的本地对象。
+原 ZIP 保持不变；本索引和校验记录的后续提交不改变候选生产身份或给旧证据改标签。

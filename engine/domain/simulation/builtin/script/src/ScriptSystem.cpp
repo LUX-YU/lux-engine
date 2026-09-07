@@ -1853,7 +1853,11 @@ namespace lux::simulation::script
                 ++sync_invocations;
                 return method.backend.synchronous.invoke(&frame);
             }();
-            if (!access->current() || stopping || status == 0)
+            const bool still_current = access->current();
+            if (status == 0)
+                return;
+            // Revoking new calls must not discard an error returned by this protected incarnation.
+            if (!still_current && !access->sameIncarnation())
                 return;
             faultInvocation(handler.mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE, status);
         }

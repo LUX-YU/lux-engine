@@ -777,15 +777,18 @@ namespace
         }
     }
 
-    void testProtectedReentry()
+    void testProtectedReentry(bool synchronous_failure = false)
     {
         constexpr std::array points{EReentryPoint::CREATE, EReentryPoint::PREPARE, EReentryPoint::INVOKE,
             EReentryPoint::CONTINUATION_DESTROY, EReentryPoint::RELEASE_METHOD,
             EReentryPoint::BACKEND_DESTROY, EReentryPoint::LEASE_RELEASE};
         for (const auto point : points)
         {
+            if (synchronous_failure && point != EReentryPoint::INVOKE)
+                continue;
             Harness harness{2U, true, true, true, false, false, true};
             auto& state = harness.backend_state;
+            state.fail_tick_serial = synchronous_failure ? 1U : 0U;
             const bool constructing = point == EReentryPoint::CREATE || point == EReentryPoint::PREPARE;
             auto& other = harness.description[constructing ? 0U : 1U];
             other.bindings.push_back({kTick, HookScriptTarget{kSystem, kReentryHook}});
@@ -818,6 +821,12 @@ namespace
             {
                 assert(dispatchHookForTest(harness.hook) == 1U);
                 assert(state.destroys == 0U && state.releases == 0U);
+                if (synchronous_failure)
+                {
+                    assert(system.failures().size() == 1U);
+                    assert(system.failures()[0].error == EScriptSystemError::INVOCATION_FAILURE);
+                    assert(system.failures()[0].status == 32 && system.failures()[0].mount == ScriptMountId{1U});
+                }
             }
             else
             {
@@ -1009,5 +1018,6 @@ int main()
     testIncarnationAndPendingContinuation();
     testPendingDoesNotMaskFatal();
     testProtectedReentry();
+    testProtectedReentry(true);
     return 0;
 }

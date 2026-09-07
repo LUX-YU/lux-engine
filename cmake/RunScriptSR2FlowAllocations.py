@@ -75,7 +75,7 @@ target_link_libraries(sr2_flow_allocations PRIVATE lux::engine::flowforge::flowf
     lux::engine::simulation::simulation_composition lux::engine::simulation::simulation_script
     lux::engine::simulation::simulation_script_native lux::engine::core::task)
 '''
-        if variant == "candidate":
+        if (source_root / "engine/scene/integration/script_description").is_dir():
             cmake += '''find_package(lux-engine-scene-script-description REQUIRED COMPONENTS scene_script_description)
 target_link_libraries(sr2_flow_allocations PRIVATE lux::engine::scene::scene_script_description)
 '''

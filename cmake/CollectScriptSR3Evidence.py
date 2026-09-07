@@ -70,7 +70,7 @@ def main():
                 continue
             relative = path.relative_to(root)
             diagnostic = any(part in {'scale', 'probes', 'flow-allocations', 'source'} for part in relative.parts)
-            selected = path.suffix.lower() in {'.log', '.csv', '.json', '.xml', '.patch', '.diff'} or (
+            selected = path.suffix.lower() in {'.log', '.csv', '.json', '.xml', '.patch', '.diff', '.py', '.ps1'} or (
                 path.name in {'CMakeCache.txt', 'CMakeLists.txt', 'build.ninja', 'rules.ninja'}) or (
                 diagnostic and path.suffix.lower() in {'.cpp', '.hpp', '.cmake', '.txt'}) or (
                 path.name == 'v1.bin' and path.stat().st_size == 288)

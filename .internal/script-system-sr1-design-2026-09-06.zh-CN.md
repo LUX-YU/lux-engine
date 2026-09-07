@@ -1002,3 +1002,21 @@ binding 在 Instances 内直接检查权威状态与完整 incarnation，避免�
 `sr3-work/hot-access-*` 只是带实际 DLL 哈希的工作树诊断，EXE 的旧编译 stamp 不充当新提交身份；
 前两次诊断脚本错误假定 CSV 有 errors/failures 列而失败，第三次起使用实际 calls/active/queue 列。
 最终性能结论将使用下一 clean commit 的完整安装配对结果，不以这些迭代样本宣称消除了全部回退。
+
+### 13.6 收尾边界修正与资格重跑
+
+`6ac051dd` 完成两 profile 全量构建、Toolchain 107/107、Developer 113/119（仍为相同六个
+Scene Lua）、14 consumers、六组 lifecycle/八组 Event 逐项计数对拍和 wire golden。阶段原始
+安装身份与日志先单独归档，再推进候选，不覆盖这次证据。
+
+最后补查发现，同步调用在自行退休并请求 shutdown 后返回错误时，初版 post-call 权限判断
+提前返回，会吞掉旧路径应记录的错误。新增 `testProtectedReentry(true)`，修前在 failures.size
+断言失败（CTest 8、0xc0000409），修后要求仍记录 INVOCATION_FAILURE/status 32/mount 1。
+`Invocation::sameIncarnation` 只允许受本票据保护的当前/退休 incarnation 接受这个已经产生的
+错误结果，不重新授予调用或挂起权限；清理资格、EndPlay、prepared/backend/lease 释放顺序不变。
+新用例与原六项窄测试通过。修前/修后的 all 构建、测试及测试补丁保存在 sr3-work。
+
+FlowForge 补充分配驱动此前只对名为 candidate 的输入链接 L3 描述 leaf，导致新的 SR-2 参照
+链接失败。修正为按实际源码中描述 leaf 的存在判断，两侧都使用既有 L3 安装目标；失败日志保留，
+不把驱动失败归类为引擎回退。固定 8145598c 参照不变，修正候选在原独立 clean clone 中重新
+配置并执行 target all、全部 CTest、no-op、安装与新目录的联合验证；此前从零构建证据另包保留。

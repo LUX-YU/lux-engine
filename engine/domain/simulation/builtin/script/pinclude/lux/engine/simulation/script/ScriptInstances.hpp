@@ -80,6 +80,7 @@ namespace lux::simulation::script::detail
             Invocation& operator=(Invocation&&) = delete;
             ~Invocation() noexcept;
             [[nodiscard]] bool current() const noexcept;
+            [[nodiscard]] bool sameIncarnation() const noexcept;
             [[nodiscard]] const ScriptPreparedMethod& method() const noexcept;
             [[nodiscard]] ScriptInstanceId instance() const noexcept { return instance_; }
         private:
@@ -314,6 +315,13 @@ namespace lux::simulation::script::detail
     inline const ScriptPreparedMethod& ScriptInstances::Invocation::method() const noexcept
     {
         return owner_->methods_[method_];
+    }
+    inline bool ScriptInstances::Invocation::sameIncarnation() const noexcept
+    {
+        if (owner_ == nullptr)
+            return false;
+        const auto& mount = owner_->mounts_[mount_slot_];
+        return mount.instance == instance_ || mount.retiring_instance == instance_;
     }
     inline bool ScriptInstances::valid(ScriptInstanceId instance) const noexcept
     {

@@ -2,6 +2,7 @@
 
 #include <lux/engine/simulation/script/ScriptBindings.hpp>
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
+#include <lux/engine/simulation/scripting/ScriptRuntimeAccess.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
 #include <entt/container/dense_map.hpp>
 #include <limits>
@@ -252,6 +253,7 @@ namespace lux::simulation::script::detail
         using IdentityStorage = lux::cxx::SlotMap<std::uint32_t, IdentityTag>;
         using IdentityKey = IdentityStorage::key_type;
         [[nodiscard]] static IdentityKey key(ScriptInstanceId id) noexcept;
+        [[nodiscard]] const std::uint32_t* findActiveSlot(ScriptInstanceId instance) const noexcept;
         void markStatus(std::uint32_t slot) noexcept;
         void deactivate(Mount& mount) noexcept;
         void resetMountRuntime(Mount& mount) noexcept;
@@ -339,11 +341,17 @@ namespace lux::simulation::script::detail
     {
         return identities_.find(key(instance));
     }
-    inline bool ScriptInstances::active(ScriptInstanceId instance) const noexcept
+    inline const std::uint32_t* ScriptInstances::findActiveSlot(ScriptInstanceId instance) const noexcept
     {
         const auto* slot = identities_.find(key(instance));
-        return slot != nullptr && invocation_states_[*slot].state == EScriptMountState::ACTIVE &&
-            invocation_states_[*slot].instance == instance;
+        if (slot == nullptr)
+            return nullptr;
+        const auto& state = invocation_states_[*slot];
+        return state.state == EScriptMountState::ACTIVE && state.instance == instance ? slot : nullptr;
+    }
+    inline bool ScriptInstances::active(ScriptInstanceId instance) const noexcept
+    {
+        return findActiveSlot(instance) != nullptr;
     }
     inline ScriptInstances::Invocation
     ScriptInstances::invokeAccess(ScriptMethodReference method) noexcept
@@ -363,12 +371,31 @@ namespace lux::simulation::script::detail
     }
     inline ScriptInstances::Invocation ScriptInstances::resumeAccess(ScriptInstanceId instance) noexcept
     {
-        if (!active(instance))
+        const auto* slot = findActiveSlot(instance);
+        if (slot == nullptr)
             return {};
-        return Invocation{*this, instance, nullptr, invocation_states_[*identities_.find(key(instance))]};
+        // No allocation or user code between validation and acquiring the protection ticket.
+        return Invocation{*this, instance, nullptr, invocation_states_[*slot]};
     }
     inline lux::script::ScriptSymbolId ScriptInstances::methodSymbol(std::uint32_t slot) const noexcept
     {
         return methods_[slot].symbol;
     }
+    inline lux::cxx::expected<ScriptEventSourceAccess, EScriptEventWaitError>
+    ScriptInstances::eventSource(
+        ScriptInstanceId instance, ScriptEventAdmissionHandle handle
+    ) const noexcept
+    {
+        const auto* slot = findActiveSlot(instance);
+        if (slot == nullptr)
+            return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
+        const auto& mount = mounts_[*slot];
+        const auto local = ScriptRuntimeAccess::matchAdmission(handle, event_scope_, instance,
+            mount.event_layout_epoch, mount.event_sources.size());
+        if (!local)
+            return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
+        const auto& source = mount.event_sources[*local];
+        return ScriptEventSourceAccess{source.endpoint_slot, source.payload, mount.scope};
+    }
+
 }

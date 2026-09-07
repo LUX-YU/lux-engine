@@ -25,10 +25,13 @@ def main():
     for name in ("baseline", "candidate", "output"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--performance-frames", type=int, default=300)
+    parser.add_argument("--short-path-frames", type=int)
     parser.add_argument("--affinity-mask", type=lambda value: int(value, 0))
     args = parser.parse_args()
     if args.performance_frames <= 0:
         parser.error("performance frames must be positive")
+    if args.short_path_frames is not None and args.short_path_frames <= 0:
+        parser.error("short path frames must be positive")
     if args.affinity_mask is not None:
         kernel = ctypes.WinDLL("kernel32", use_last_error=True)
         kernel.GetCurrentProcess.restype = ctypes.c_void_p
@@ -53,7 +56,9 @@ def main():
                 "lifecycle_begins", "lifecycle_ends", "checksum", "workers", "errors", "failures",
                 "frame", "started", "completed")
     for name, group, tool, lua in cases:
-        for mode, pairs, warmups, frames in (("performance", 5, 60, args.performance_frames), ("diagnostic", 1, 1, 3)):
+        count = args.short_path_frames if args.short_path_frames and name in ("cpp-update", "flow-update") else (
+            args.performance_frames)
+        for mode, pairs, warmups, frames in (("performance", 5, 60, count), ("diagnostic", 1, 1, 3)):
             for pair in range(pairs):
                 observations = {}
                 for variant in (("baseline", "candidate") if pair % 2 == 0 else ("candidate", "baseline")):

@@ -29,13 +29,19 @@ def main():
     p.add_argument('--bin', required=True)
     p.add_argument('--output', required=True)
     p.add_argument('--flow', action='store_true')
+    p.add_argument('--event', action='store_true')
+    p.add_argument('--frames', type=int, default=30000)
     args = p.parse_args()
     root = Path(args.output)
     root.mkdir(parents=True, exist_ok=False)
     binary = Path(args.bin)
     exe = binary / ('flowforge_script_runtime_benchmark.exe' if args.flow else 'script_runtime_benchmark.exe')
-    cmd = [str(exe), '--group', 'scene-flowforge-update-heavy' if args.flow else 'scene-cpp-update-heavy',
-           '--mode', 'performance', '--size', '10000', '--warmups', '60', '--frames', '30000',
+    group = 'scene-flowforge-event' if args.event else (
+        'scene-flowforge-update-heavy' if args.flow else 'scene-cpp-update-heavy')
+    if args.event and not args.flow:
+        p.error('--event requires --flow')
+    cmd = [str(exe), '--group', group,
+           '--mode', 'performance', '--size', '10000', '--warmups', '60', '--frames', str(args.frames),
            '--seed', '1592598566', '--resume-budget', '2000', '--output', str(root / 'work.csv')]
     if not args.flow:
         cmd += ['--workers', '0']
@@ -94,7 +100,13 @@ def main():
                             info, name = ModuleInfo(), c.create_unicode_buffer(4096)
                             if ps.GetModuleInformation(int(process._handle), handle, c.byref(info), c.sizeof(info)):
                                 ps.GetModuleFileNameExW(int(process._handle), handle, name, len(name))
-                                modules[info.base] = dict(path=name.value, base=info.base, size=info.size)
+                                if info.base not in modules:
+                                    module = dict(path=name.value, base=info.base, size=info.size)
+                                    try:
+                                        module['sha256'] = hashlib.sha256(Path(name.value).read_bytes()).hexdigest()
+                                    except OSError as error:
+                                        module['identity_error'] = str(error)
+                                    modules[info.base] = module
                 time.sleep(0.001)
         finally:
             k.CloseHandle(thread)
@@ -116,7 +128,8 @@ def main():
         resolved.append(dict(module=path, rva=hex(offset), count=count, symbol=symbol))
     for module in modules.values():
         path = Path(module['path'])
-        module['sha256'] = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+        if 'sha256' not in module:
+            module['sha256'] = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
         if module['sha256'] is None:
             module['limitation'] = 'Temporary generated module removed by process shutdown'
     (root / 'samples.json').write_text(json.dumps(dict(command=cmd, exit_code=exit_code, tid=tid,

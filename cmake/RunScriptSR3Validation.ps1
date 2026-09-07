@@ -6,7 +6,8 @@ param(
     [Parameter(Mandatory=$true)][string]$OutputRoot,
     [Parameter(Mandatory=$true)][string]$Python,
     [string]$Dependencies = 'E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo',
-    [switch]$ScaleOnly
+    [switch]$ScaleOnly,
+    [switch]$SkipMeasurements
 )
 $ErrorActionPreference = 'Stop'
 if (Test-Path -LiteralPath $OutputRoot) { throw 'A fresh evidence directory is required.' }
@@ -30,13 +31,15 @@ if ($consumers.Count -ne 14 -or @($consumers | Where-Object status -ne 'PASS').C
 }
 & $Python -B "$PSScriptRoot/RunScriptSR2Probes.py" @common --output "$OutputRoot/probes" *> "$OutputRoot/probes-driver.log"
 if ($LASTEXITCODE -ne 0) { throw 'Lifecycle/Event/wire replay failed.' }
-& $Python -B "$PSScriptRoot/RunScriptSR2Measurements.py" --baseline $BaselineInstall --candidate $CandidateInstall `
-    --output "$OutputRoot/measurements" *> "$OutputRoot/measurements-driver.log"
-if ($LASTEXITCODE -ne 0) { throw 'Paired runtime measurements failed.' }
+if (!$SkipMeasurements) {
+    & $Python -B "$PSScriptRoot/RunScriptSR2Measurements.py" --baseline $BaselineInstall --candidate $CandidateInstall `
+        --output "$OutputRoot/measurements" *> "$OutputRoot/measurements-driver.log"
+    if ($LASTEXITCODE -ne 0) { throw 'Paired runtime measurements failed.' }
+}
 $flow = @('--baseline-source', $BaselineSource, '--candidate-source', $CandidateSource,
     '--baseline-prefix', "$BaselineInstall/t", '--candidate-prefix', "$CandidateInstall/t",
     '--dependencies', $Dependencies)
 & $Python -B "$PSScriptRoot/RunScriptSR2FlowAllocations.py" @flow --output "$OutputRoot/flow-allocations" `
     *> "$OutputRoot/flow-allocations-driver.log"
 if ($LASTEXITCODE -ne 0) { throw 'FlowForge allocation diagnostics failed.' }
-Write-Output 'SR-3 installed validation and paired measurements completed.'
+Write-Output "SR-3 installed validation completed; SkipMeasurements=$SkipMeasurements."

@@ -751,19 +751,5 @@ namespace lux::simulation::script::detail
             markStatus(slot);
         }
     }
-    lux::cxx::expected<ScriptEventSourceAccess, EScriptEventWaitError> ScriptInstances::eventSource(
-        ScriptInstanceId instance, ScriptEventAdmissionHandle handle
-    ) const noexcept
-    {
-        const auto* slot = identities_.find(key(instance));
-        if (slot == nullptr || !active(instance))
-            return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
-        const auto& mount = mounts_[*slot];
-        const auto local = ScriptRuntimeAccess::matchAdmission(handle, event_scope_, instance,
-            mount.event_layout_epoch, mount.event_sources.size());
-        if (!local)
-            return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
-        const auto& source = mount.event_sources[*local];
-        return ScriptEventSourceAccess{source.endpoint_slot, source.payload, mount.scope};
-    }
+
 }

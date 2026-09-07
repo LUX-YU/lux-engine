@@ -1649,33 +1649,34 @@ namespace lux::simulation::script
             recordFailure(error, slot, symbol, status);
         }
 
-        [[nodiscard]] bool beginSuspension(std::uint32_t mount_slot, std::uint32_t method_slot,
-                                           const PreparedMethod& method,
-                                           ScriptBackendContinuation backend_continuation,
-                                           ScriptStepResult result,
-                                           bool hook_single_flight) noexcept
+        [[nodiscard]] bool beginSuspension(
+            std::uint32_t mount_slot, std::uint32_t method_slot, ScriptInstanceId instance_id,
+            const PreparedMethod& method, ScriptBackendContinuation backend_continuation,
+            ScriptStepResult result, bool hook_single_flight
+        ) noexcept
         {
-            const auto mount = instance_owner.view(mount_slot);
+            // The caller just revalidated its Invocation after backend code; no user code
+            // intervenes before this helper. Keep that protected full identity, not a cold mount snapshot.
             if (!result.valid() || result.state != EScriptStepState::SUSPENDED || !backend_continuation)
             {
                 if (backend_continuation)
                     backend_continuation.destroy(backend_continuation.state);
-                discardAwaitable(mount.instance, result.waiting_on);
+                discardAwaitable(instance_id, result.waiting_on);
                 faultInvocation(mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE);
                 return false;
             }
-            auto* instance = findExecutionInstance(mount.instance);
+            auto* instance = findExecutionInstance(instance_id);
             if (instance == nullptr)
             {
                 backend_continuation.destroy(backend_continuation.state);
-                discardAwaitable(mount.instance, result.waiting_on);
+                discardAwaitable(instance_id, result.waiting_on);
                 faultInvocation(mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE);
                 return false;
             }
             if (instance->active_continuations >= limits.continuation_capacity_per_instance)
             {
                 backend_continuation.destroy(backend_continuation.state);
-                discardAwaitable(mount.instance, result.waiting_on);
+                discardAwaitable(instance_id, result.waiting_on);
                 faultInvocation(
                     mount_slot,
                     method.symbol,
@@ -1686,13 +1687,13 @@ namespace lux::simulation::script
             if (continuations.size() >= limits.continuation_capacity)
             {
                 backend_continuation.destroy(backend_continuation.state);
-                discardAwaitable(mount.instance, result.waiting_on);
+                discardAwaitable(instance_id, result.waiting_on);
                 faultInvocation(mount_slot, method.symbol, EScriptSystemError::CONTINUATION_CAPACITY_EXCEEDED);
                 return false;
             }
             auto inserted = continuations.tryEmplace(
                 ContinuationRecord{{},
-                                   mount.instance,
+                                   instance_id,
                                    backend_continuation,
                                    result.waiting_on,
                                    method_slot,
@@ -1700,7 +1701,7 @@ namespace lux::simulation::script
             if (!inserted)
             {
                 backend_continuation.destroy(backend_continuation.state);
-                discardAwaitable(mount.instance, result.waiting_on);
+                discardAwaitable(instance_id, result.waiting_on);
                 faultInvocation(mount_slot, method.symbol, EScriptSystemError::ALLOCATION_FAILURE);
                 return false;
             }
@@ -1717,16 +1718,16 @@ namespace lux::simulation::script
             }
             instance->first_continuation = id;
             ++instance->active_continuations;
-            auto attached = attachWaiter(result.waiting_on, mount.instance, id);
+            auto attached = attachWaiter(result.waiting_on, instance_id, id);
             if (!attached)
             {
                 destroyContinuation(id);
-                discardAwaitable(mount.instance, result.waiting_on);
+                discardAwaitable(instance_id, result.waiting_on);
                 faultInvocation(mount_slot, method.symbol, attached.error());
                 return false;
             }
             if (hook_single_flight)
-                active_hooks[method_slot] = {mount.instance, id};
+                active_hooks[method_slot] = {instance_id, id};
             ++suspensions_admitted;
             return true;
         }
@@ -1836,7 +1837,8 @@ namespace lux::simulation::script
                 if (result.state == EScriptStepState::SUSPENDED)
                 {
                     static_cast<void>(beginSuspension(
-                        handler.mount_slot, handler.method_slot, method, continuation, result, hook_invocation
+                        handler.mount_slot, handler.method_slot, access.instance(),
+                        method, continuation, result, hook_invocation
                     ));
                     return;
                 }

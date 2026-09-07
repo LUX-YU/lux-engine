@@ -1,0 +1,44 @@
+{
+  "origin": "git@github.com:LUX-YU/lux-engine.git",
+  "retrieval": "fresh SSH clone, git show from fixed remote commit",
+  "commit": "07488c1eb8491e57bdfe9a0973e1a9682bac1de8",
+  "utc": "2026-09-07T02:33:16.145044+00:00",
+  "archives": [
+    {
+      "path": ".internal/evidence/script/sr2/SR2-raw-evidence.zip",
+      "archive_entries": 738,
+      "verified_file_hashes": 737,
+      "bytes": 1512316,
+      "sha256": "b80eef0639b910db42545dd71794f2be8f6f9ddd3dad0e7f87cccf0bb0a31deb",
+      "compiled_binaries": false,
+      "download": "https://github.com/LUX-YU/lux-engine/raw/07488c1eb8491e57bdfe9a0973e1a9682bac1de8/.internal/evidence/script/sr2/SR2-raw-evidence.zip"
+    },
+    {
+      "path": ".internal/evidence/script/sr3-gate/SR2-correction-evidence.zip",
+      "archive_entries": 25,
+      "verified_file_hashes": 25,
+      "bytes": 68191,
+      "sha256": "dbc3794a6beade51549e312d8c288a1b31462f53160b453d9f216d4c6dd963ac",
+      "compiled_binaries": false,
+      "download": "https://github.com/LUX-YU/lux-engine/raw/07488c1eb8491e57bdfe9a0973e1a9682bac1de8/.internal/evidence/script/sr3-gate/SR2-correction-evidence.zip"
+    },
+    {
+      "path": ".internal/evidence/script/sr3/iterations/SR3-raw-evidence.zip",
+      "archive_entries": 2118,
+      "verified_file_hashes": 2118,
+      "bytes": 3999269,
+      "sha256": "74f7e0180be1efc02c6060839e8f83ea58900ade14ba61eba881391f4e9fe0ef",
+      "compiled_binaries": false,
+      "download": "https://github.com/LUX-YU/lux-engine/raw/07488c1eb8491e57bdfe9a0973e1a9682bac1de8/.internal/evidence/script/sr3/iterations/SR3-raw-evidence.zip"
+    },
+    {
+      "path": ".internal/evidence/script/sr3/final/SR3-raw-evidence.zip",
+      "archive_entries": 1501,
+      "verified_file_hashes": 1501,
+      "bytes": 2930879,
+      "sha256": "4fb6bb7ce42de5a78c818d9bf4832d786ced31c57569c9431f0b11a08e721a71",
+      "compiled_binaries": false,
+      "download": "https://github.com/LUX-YU/lux-engine/raw/07488c1eb8491e57bdfe9a0973e1a9682bac1de8/.internal/evidence/script/sr3/final/SR3-raw-evidence.zip"
+    }
+  ]
+}

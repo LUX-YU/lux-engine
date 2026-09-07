@@ -33,4 +33,13 @@
 EXE-local new 不覆盖全部 DLL 堆分配；FlowForge 补充诊断的 CSV stamp 为 unknown，身份由
 其源码、qualified native projection、RelWithDebInfo 构建命令及 EXE 哈希关联。
 
-固定提交下载入口和远端取回校验记录在推送后的索引提交补齐。本阶段停止于 SR-3，等待独立审阅。
+固定提交下载入口：
+
+- [最终 ZIP @ 07488c1e](https://github.com/LUX-YU/lux-engine/raw/07488c1eb8491e57bdfe9a0973e1a9682bac1de8/.internal/evidence/script/sr3/final/SR3-raw-evidence.zip)
+- [迭代 ZIP @ 07488c1e](https://github.com/LUX-YU/lux-engine/raw/07488c1eb8491e57bdfe9a0973e1a9682bac1de8/.internal/evidence/script/sr3/iterations/SR3-raw-evidence.zip)
+
+从 GitHub 经 SSH 新建独立 clone，按固定提交取回上述两包及原 SR-2、修正门槛包：四个 ZIP
+完整性和共 4,381 项文件哈希全部匹配，无编译二进制。详见[远端取回记录](remote-verification.json)。
+原 SR-2 索引中的 ee80710d 固定入口及原 production identity 保持不变。
+
+本阶段停止于 SR-3，等待独立审阅。

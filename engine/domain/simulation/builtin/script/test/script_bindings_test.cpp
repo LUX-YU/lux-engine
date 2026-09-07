@@ -88,6 +88,11 @@ int main()
         {&dispatch, &Dispatch::hook, &Dispatch::event, &Dispatch::invoke}, 64U));
     const std::array placements{ScriptMountPlacement{0U, false}};
     const auto bytes = bindings.backingBytes();
+    const std::array rejected_inputs{inputs[0], inputs[0]};
+    const std::array rejected_placements{placements[0], ScriptMountPlacement{1U, false}};
+    const auto rejected_batch = bindings.reserveBatch(rejected_inputs, rejected_placements);
+    assert(!rejected_batch && rejected_batch.error() == EScriptSystemError::INVALID_INPUT);
+    assert(bindings.methodCount() == 0U && bindings.backingBytes() == bytes);
     {
         auto ticket = bindings.reserveBatch(inputs, placements);
         assert(ticket);
@@ -101,7 +106,7 @@ int main()
     assert(method_count == 4U); // Two fixed lifecycle slots plus the two bound methods.
     assert(bindings.connect());
     assert(bindings.connect());
-    const ScriptInstanceId instance{0U, 1U};
+    const ScriptInstanceId instance{1U, 1U};
     const auto rejected = bindings.publish(0U, instance, ecs::NullEntity);
     assert(!rejected && rejected.error() == EScriptSystemError::SCOPE_MISMATCH);
     assert(lux::simulation::test::dispatchHookForTest(hook));

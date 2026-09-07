@@ -135,6 +135,8 @@ namespace
         std::vector<std::size_t> end_normal_dispatches;
         std::vector<ScriptAwaitableCompletion> completions;
         std::vector<ScriptBehavior*> hosts;
+        bool capture_prepared_locations{};
+        std::vector<ScriptBackendPreparedMethod*> prepared_locations;
         EReentryPoint reentry_point{EReentryPoint::NONE};
         ScriptSystem* reentry_system{};
         Registry* reentry_registry{};
@@ -261,6 +263,8 @@ namespace
         if (call == nullptr)
             return EScriptBackendResult::ALLOCATION_FAILURE;
         ++state.prepares;
+        if (state.capture_prepared_locations)
+            state.prepared_locations.push_back(&output);
         output = {
             call,
             lux::script::BoundScriptCall{&invokePrepared, call},
@@ -570,6 +574,47 @@ namespace
         assert(!closed && closed.error() == EScriptSystemError::SHUT_DOWN);
     }
 
+    void testMixedReassociationRollback()
+    {
+        Harness harness{3U, true, true, true};
+        harness.backend_state.capture_prepared_locations = true;
+        auto created = harness.create(1U);
+        assert(created && created->prepare());
+        auto& system = *created;
+        std::array<ScriptMountStatus, 3U> changes;
+        assert(system.collectMountStatusChanges(changes));
+        harness.registry.destroy(harness.entities[0]);
+        assert(system.processLifecycle());
+        assert(system.collectMountStatusChanges(changes));
+        const auto before = **system.queryMountStatus({1U});
+        const auto resources = system.stats();
+        harness.entities[0] = harness.registry.create();
+        harness.description[0].scope = EntityScriptScope{harness.entities[0]};
+        auto rejected = harness.description;
+        rejected.back().bindings[0].symbol = lux::script::InvalidScriptSymbolId;
+        const auto result = system.mountResolvedBatch(rejected);
+        assert(!result && result.error() == EScriptSystemError::INVALID_INPUT);
+        const auto after = **system.queryMountStatus({1U});
+        assert(after.revision == before.revision && after.submission == before.submission);
+        assert(after.reclaimed && after.state == EScriptMountState::INACTIVE);
+        assert(!*system.queryMountStatus({2U}) && !*system.queryMountStatus({3U}));
+        assert(system.collectMountStatusChanges({})->remaining == 0U);
+        assert(system.stats().pending_mounts == 0U && system.stats().configured_mounts == 1U);
+        assert(system.stats().binding_backing_bytes == resources.binding_backing_bytes);
+        assert(harness.backend_state.creates == 1U && harness.backend_state.destroys == 1U);
+        assert(system.mountResolvedBatch(harness.description));
+        assert(system.processLifecycle());
+        assert(system.activeInstanceCount() == 3U && harness.backend_state.creates == 4U);
+        assert(harness.backend_state.hosts[0] == harness.backend_state.hosts[1]);
+        for (std::size_t method{}; method < 3U; ++method)
+            assert(harness.backend_state.prepared_locations[method] ==
+                harness.backend_state.prepared_locations[method + 3U]);
+        assert(dispatchHookForTest(harness.hook) && harness.backend_state.tick_calls == 3U);
+        assert(system.shutdown());
+        assert(harness.backend_state.destroys == 4U && harness.backend_state.ends == 4U);
+        assert(harness.backend_state.prepares == 12U && harness.backend_state.releases == 12U);
+    }
+
     void testResolvedInputExpiryAndReuse()
     {
         Harness harness{2U, true, true, true};
@@ -590,7 +635,12 @@ namespace
         {
             harness.entities[0] = harness.registry.create();
             harness.description[0].scope = EntityScriptScope{harness.entities[0]};
+            const auto assembly_before = system.stats();
             assert(system.mountResolvedBatch(std::span{harness.description}.first(1U)));
+            const auto assembly_after = system.stats();
+            assert(assembly_after.assembly_configuration_slot_visits ==
+                assembly_before.assembly_configuration_slot_visits + 1U);
+            assert(assembly_after.assembly_endpoint_count_visits == assembly_before.assembly_endpoint_count_visits);
             assert(system.processLifecycle());
             assert(system.activeInstanceCount() == 1U);
             const auto current = system.stats();
@@ -951,6 +1001,7 @@ int main()
     testResolvedPreparationFailures();
     testOwnedRuntimeInput();
     testResolvedBatchProtocol();
+    testMixedReassociationRollback();
     testResolvedInputExpiryAndReuse();
     testInitialLifecycle();
     testOptionalAndFailureLifecycle();

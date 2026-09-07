@@ -187,6 +187,7 @@ namespace lux::simulation::script::detail
         std::span<const ScriptRuntimeMount> staged_inputs_;
         std::span<const ScriptMountPlacement> staged_placements_;
         bool reservation_active_{};
+        bool staged_new_configurations_{};
         std::uint64_t assembly_endpoint_count_visits_{};
     };
 }

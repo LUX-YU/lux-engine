@@ -110,8 +110,7 @@ namespace lux::simulation::script::detail
         batch_ids_.clear();
         batch_slots_.clear();
         batch_entities_.clear();
-        std::fill(reserved_mounts_.begin(), reserved_mounts_.end(), 0U);
-        assembly_configuration_slot_visits_ += reserved_mounts_.size();
+        bool has_new_configuration{};
         for (const auto& input : inputs)
         {
             batch_ids_.push_back(input.id.value);
@@ -143,6 +142,12 @@ namespace lux::simulation::script::detail
             }
             else
             {
+                if (!has_new_configuration)
+                {
+                    std::fill(reserved_mounts_.begin(), reserved_mounts_.end(), 0U);
+                    assembly_configuration_slot_visits_ += reserved_mounts_.size();
+                    has_new_configuration = true;
+                }
                 if (slot == kInvalidPreparedMethod)
                 {
                     if (!initial)

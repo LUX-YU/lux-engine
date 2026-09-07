@@ -4,6 +4,7 @@
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
 #include <entt/container/dense_map.hpp>
+#include <limits>
 
 namespace lux::simulation::script::detail
 {
@@ -141,10 +142,15 @@ namespace lux::simulation::script::detail
         class Retirement final
         {
         public:
+            Retirement(const Retirement&) = delete;
+            Retirement& operator=(const Retirement&) = delete;
+            Retirement(Retirement&&) noexcept = default;
+            Retirement& operator=(Retirement&&) noexcept = default;
             [[nodiscard]] std::uint32_t slot() const noexcept { return slot_; }
             [[nodiscard]] ScriptInstanceId instance() const noexcept { return instance_; }
         private:
             friend class ScriptInstances;
+            Retirement() = default;
             std::uint32_t slot_{};
             ScriptInstanceId instance_;
             std::uint64_t epoch_{};

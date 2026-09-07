@@ -30,6 +30,7 @@ namespace lux::simulation::script::detail
         staged_inputs_ = {};
         staged_placements_ = {};
         reservation_active_ = false;
+        staged_new_configurations_ = false;
     }
 
     std::optional<std::uint32_t> ScriptBindings::findHook(HookScriptTarget target) const noexcept
@@ -135,9 +136,7 @@ namespace lux::simulation::script::detail
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         if (inputs.size() != placements.size())
             return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-        std::copy(hook_counts_.begin(), hook_counts_.end(), hook_reservations_.begin());
-        std::copy(event_counts_.begin(), event_counts_.end(), event_reservations_.begin());
-        assembly_endpoint_count_visits_ += hook_counts_.size() + event_counts_.size();
+        bool has_new_configuration{};
         auto binding_count = bindings_.size();
         auto method_count = symbols_.size();
         for (std::size_t item{}; item < inputs.size(); ++item)
@@ -153,6 +152,13 @@ namespace lux::simulation::script::detail
                         input.bindings.end(), descriptions_.begin() + config.first))
                     return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
                 continue;
+            }
+            if (!has_new_configuration)
+            {
+                std::copy(hook_counts_.begin(), hook_counts_.end(), hook_reservations_.begin());
+                std::copy(event_counts_.begin(), event_counts_.end(), event_reservations_.begin());
+                assembly_endpoint_count_visits_ += hook_counts_.size() + event_counts_.size();
+                has_new_configuration = true;
             }
             if (input.bindings.size() > binding_capacity_ - binding_count)
                 return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
@@ -198,6 +204,7 @@ namespace lux::simulation::script::detail
         }
         staged_inputs_ = inputs;
         staged_placements_ = placements;
+        staged_new_configurations_ = has_new_configuration;
         reservation_active_ = true;
         return BatchTicket{*this};
     }
@@ -206,9 +213,12 @@ namespace lux::simulation::script::detail
     {
         if (ticket.owner_ != this || !reservation_active_)
             std::terminate();
-        std::copy(hook_reservations_.begin(), hook_reservations_.end(), hook_counts_.begin());
-        std::copy(event_reservations_.begin(), event_reservations_.end(), event_counts_.begin());
-        assembly_endpoint_count_visits_ += hook_counts_.size() + event_counts_.size();
+        if (staged_new_configurations_)
+        {
+            std::copy(hook_reservations_.begin(), hook_reservations_.end(), hook_counts_.begin());
+            std::copy(event_reservations_.begin(), event_reservations_.end(), event_counts_.begin());
+            assembly_endpoint_count_visits_ += hook_counts_.size() + event_counts_.size();
+        }
         for (std::size_t index{}; index < staged_inputs_.size(); ++index)
         {
             const auto placement = staged_placements_[index];

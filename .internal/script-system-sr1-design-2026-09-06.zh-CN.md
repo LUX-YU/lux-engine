@@ -960,3 +960,29 @@ continuation/frontier 加新绑定测试已通过工作树全量构建与窄回�
 规模诊断使用 `assembly_configuration_slot_visits`（预检槽位检查与预留标记清零项数）和
 `assembly_endpoint_count_visits`（预留/提交时复制的端点计数项数）。两者是累计装配工作，包含拒绝的
 预检，不是资源计数；不包含二分查找比较、Hash 查找或脚本业务调用，不能解释为全指令计数。
+
+### 13.4 规模预检与混合批次回归
+
+`0cf053b9` 的独立 clone 完成 Toolchain 107/107、Developer 113/119（仅原六项 Scene Lua），
+两侧全量构建、no-op 与安装成功。以 `8145598c` 为参照，`sr3-scale-before/scale` 的 24 个独立
+进程均通过业务计数。每种规模使用同样 16 warmup + 128 次单实例重建，其余实例保持 ACTIVE；
+每配置一个 Hook，最后逐 Hook 调用一次，核对宿主地址复用、资源 backing 稳定与全部析构闭环。
+
+五次计时的中位总耗时（128 次，纳秒）：SR-2 的 8/8192 为 74,600/346,600，初版 SR-3 为
+97,100/375,200。初版 SR-3 装配计数为 1,152/1,048,704 个预检槽位，2,048/2,097,152 个端点
+计数项。计时与 EXE-local 分配诊断分进程；这是可重放实测，不把旧 feaa7550 结果改标签。
+
+据此仅在第一次遇到新增配置时清零槽位预留并复制端点目录计数；若整批全部为已知配置，跳过
+这两类与总容量相关的工作。ID/Entity/冻结形状/冲突/背压、批次去重、提交与 dirty 顺序均保留；
+混合批次仍执行完整原子预检，失败不更改已有状态或资源。新增 `testMixedReassociationRollback`
+使用“已知重关联、新配置、新配置失败”的次序，检查 revision/submission/反馈不变、两个新 ID
+仍未知、原资源已回收；重试完整合法批次后 3 实例 ACTIVE，累计 4 create/destroy、12 prepare/release。
+此用例也记录 backend 收到的 prepared 输出地址，确认后续布局追加及再物化复用原三处地址。
+`testResolvedInputExpiryAndReuse` 的 64 次复用增加每次仅 1 个预检槽位、0 个端点目录复制的断言。
+
+原断言的入口映射：initial/optional/failure/incarnation 仍通过 ScriptSystem 公共生命周期驱动，
+其宿主、资格与释放操作转到 Instances construction/beginPlay/claimRetirement/endPlay/finishRetirement；
+artifact/backend/capability/event 契约验证转到 Preparer prepareMount；Hook/Event callback 注册与撤销
+转到 Bindings publish/withdraw/visit，event wait 的 claim/copy/complete、结果/恢复仍在原执行区。
+query/collect 对应 Instances query/collect，System 不再修改 unconsumed_result 或快照字段。旧
+continuation/pin/frontier 的业务断言不改，新增测试补充 owner 边界而不替换这些断言。

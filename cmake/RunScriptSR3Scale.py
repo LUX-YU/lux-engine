@@ -1,5 +1,6 @@
 """Installed SR-2/SR-3 scale replay; run from a VS development shell, no concurrent builds/tests."""
 import argparse
+import csv
 import hashlib
 import json
 import os
@@ -47,7 +48,7 @@ int main(int argc, char** argv)
     const auto plan = planScriptRuntimeCapacity(harness.description);
     assert(plan);
     auto created = ScriptSystem::create(*simulation, *plan, harness.description, harness.registry, harness.clock,
-        ScriptRuntimeLimits{count + 8U, 16U, 16U, 8U, 16U, 16U, 64U, 16U, 16U, 16U, 16U, 16U},
+        ScriptRuntimeLimits{32U, count + 8U, 16U, 8U, 16U, 16U, 64U, 16U, 16U, 16U, 16U, 16U},
         {&harness, &Harness::resolveArtifact}, {}, std::span{&harness.backend, 1U}, endpoints, {});
     assert(created && created->prepare());
     auto& system = *created;
@@ -88,6 +89,8 @@ int main(int argc, char** argv)
     // All other configurations remained active; binding reconstruction preserved exactly one call per Hook.
     for (auto& hook : hooks) assert(dispatchHookForTest(*hook));
     assert(harness.backend_state.tick_calls == count);
+    for (std::size_t index{count}; index < count + 144U; ++index)
+        assert(harness.backend_state.hosts[index] == harness.backend_state.hosts[0]);
     assert(system.shutdown());
     assert(harness.backend_state.creates == count + 144U);
     assert(harness.backend_state.destroys == count + 144U);
@@ -112,7 +115,7 @@ def main():
     args = parser.parse_args()
     root = Path(args.output)
     root.mkdir(parents=True, exist_ok=False)
-    variants, manifest = {}, []
+    variants, manifest, records = {}, [], []
     for variant in ('baseline', 'candidate'):
         source_root = Path(getattr(args, variant + '_source'))
         prefix = getattr(args, variant + '_prefix')
@@ -120,7 +123,8 @@ def main():
         directory.mkdir()
         fixture = source_root / 'engine/domain/simulation/builtin/script/test/script_system_lifecycle_test.cpp'
         INSTRUMENTATION_HITS.clear()
-        source = truncate_main(instrument(fixture.read_text(encoding='utf-8-sig'), True), 'int main(int argc')
+        source = '#include <string>\n' + truncate_main(
+            instrument(fixture.read_text(encoding='utf-8-sig'), True), 'int main(int argc')
         stats = source_root / 'engine/domain/simulation/builtin/script/include/lux/engine/simulation/ScriptSystem.hpp'
         counters = 'assembly_configuration_slot_visits' in stats.read_text(encoding='utf-8-sig')
         main_source = MAIN.replace('COUNTERS', '''
@@ -162,13 +166,27 @@ target_link_libraries(script_scale PRIVATE lux::engine::simulation::simulation_s
             'fixture_sha256': hashlib.sha256(fixture.read_bytes()).hexdigest(),
             'generated_sha256': hashlib.sha256(source.encode()).hexdigest(),
             'exe_sha256': hashlib.sha256(exe.read_bytes()).hexdigest(), 'prefix': prefix, 'counters': counters})
+    def execute(variant, size, mode, log):
+        exe, env = variants[variant]
+        run([str(exe), str(size), mode], log, env)
+        rows = list(csv.DictReader(log.read_text().splitlines()[1:]))
+        if len(rows) != 1:
+            raise RuntimeError('Missing or duplicate scale business row: ' + str(log))
+        row = {key: int(value) for key, value in rows[0].items()}
+        expected = {'configs': size, 'endpoints': size, 'warmup': 16, 'rebuilds': 128,
+                    'creates': size + 144, 'destroys': size + 144, 'ticks': size, 'errors': 0, 'backlog': 0,
+                    'diagnostics': int(mode == 'diagnostics')}
+        if any(row[key] != value for key, value in expected.items()) or row['elapsed_ns'] <= 0:
+            raise RuntimeError('Invalid scale business result: ' + str(log))
+        records.append({'variant': variant, 'log': log.name, **row})
+        (root / 'runs.json').write_text(json.dumps(records, indent=2))
+
     for size in (8, 8192):
         for pair in range(5):
             for variant in (('baseline', 'candidate') if pair % 2 == 0 else ('candidate', 'baseline')):
-                exe, env = variants[variant]
-                run([str(exe), str(size), 'timing'], root / f'{variant}-{size}-{pair}.csv.log', env)
-        for variant, (exe, env) in variants.items():
-            run([str(exe), str(size), 'diagnostics'], root / f'{variant}-{size}-diagnostics.csv.log', env)
+                execute(variant, size, 'timing', root / f'{variant}-{size}-{pair}.csv.log')
+        for variant in variants:
+            execute(variant, size, 'diagnostics', root / f'{variant}-{size}-diagnostics.csv.log')
     (root / 'manifest.json').write_text(json.dumps(manifest, indent=2))
 
 

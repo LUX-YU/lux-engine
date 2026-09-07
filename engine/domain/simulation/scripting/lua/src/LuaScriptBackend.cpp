@@ -2038,8 +2038,14 @@ namespace lux::simulation::script
             prepared->context,
             prepared->dispatch,
             owner->active_execution->step,
-            static_cast<std::uint32_t>(local_slot), lua_gettop(state), owner->active_execution, instance->behavior, {}
+            static_cast<std::uint32_t>(local_slot), lua_gettop(state), owner->active_execution, instance->behavior, {},
+            instance->behavior && instance->behavior->hasInvocationAuthority()
         };
+        if (result.has_core_authority)
+        {
+            result.validity = result.behavior->captureInvocation();
+            if (!result.validity.valid()) return false;
+        }
         return true;
     }
 
@@ -2047,9 +2053,10 @@ namespace lux::simulation::script
         lua_State* state, const LuaPreparedAbilityAccess& original
     ) noexcept
     {
-        if (!original.validity.valid()) return false;
+        if (original.has_core_authority && !original.validity.valid()) return false;
         LuaPreparedAbilityAccess current_access;
         return current(state, current_access) && current_access.execution == original.execution &&
+            current_access.has_core_authority == original.has_core_authority &&
             current_access.behavior == original.behavior && current_access.context == original.context &&
             current_access.dispatch == original.dispatch && current_access.local_slot == original.local_slot;
     }

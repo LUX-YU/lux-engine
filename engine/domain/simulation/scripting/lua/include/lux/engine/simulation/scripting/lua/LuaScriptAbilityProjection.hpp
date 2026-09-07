@@ -37,6 +37,7 @@ namespace lux::simulation::script::detail
         const void* execution{};
         const ScriptBehavior* behavior{};
         ScriptInvocationValidity validity;
+        bool has_core_authority{};
     };
 
     template <class Type>
@@ -136,8 +137,7 @@ namespace lux::simulation::script::detail
             return LuaAbilityProjectionAccess::fail(state, -3, "Script Ability argument count mismatch");
         constexpr bool can_reenter = !((LuaValueScalar<std::remove_cvref_t<Arguments>> &&
             !LuaValueCodec<std::remove_cvref_t<Arguments>, Policy>::custom) && ...);
-        if constexpr (can_reenter)
-            access.validity = access.behavior ? access.behavior->captureInvocation() : ScriptInvocationValidity{};
+        // current() admits every entry. Parameter reentry only determines whether that admission must be rechecked.
         std::optional<LuaValueFailure> failure;
         // This inner frame is gone before error formatting and the wrapper's success/error/yield protocol.
         const auto status = [&]() noexcept -> int {

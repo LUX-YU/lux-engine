@@ -186,6 +186,37 @@ static void admissionCase(LuaScriptBackend& backend, std::string_view name)
     assert(runtime.system->activeContinuationCount() == 0);
     std::fprintf(stderr, "ADMISSION_PASS %.*s endplay=1 backlog=0\n", static_cast<int>(name.size()), name.data());
 }
+static void standaloneCase(LuaScriptBackend& backend)
+{
+    const auto script = artifact("assert(lux.Values.scalarProbe(7)==8);"
+        "assert(lux.Values.zeroArgumentProbe()==42); assert(math.abs(lux.Values.angle(90)-90)<0.001)");
+    Provider provider;
+    const auto binding = lux::script::bindScriptAbility<LuaValueTestAbility>(provider);
+    const auto published = publishScriptAbility(binding);
+    const PreparedScriptApiCapability capability{lux::script::ScriptApiContractId{published.contract.name()},
+        published.schema_hash, published.context, published.dispatch, published.schema_version, published.methods};
+    std::array<std::uint8_t, 16> bytes{};
+    bytes[0] = 99;
+    const auto descriptor = backend.descriptor();
+    ScriptBehavior behavior;
+    assert(!behavior.hasInvocationAuthority());
+    for (auto* host : {static_cast<ScriptBehavior*>(nullptr), &behavior})
+    {
+        ScriptBackendInstance instance;
+        assert(descriptor.createInstance(descriptor.context,
+            {lux::asset::AssetId{bytes}, SimulationScriptScope{}, host, {}, std::span{&capability, 1}},
+            script, instance) == EScriptBackendResult::SUCCESS);
+        ScriptBackendPreparedMethod tick;
+        assert(descriptor.prepareMethod(descriptor.context, instance, script.description().exports[0], tick) ==
+            EScriptBackendResult::SUCCESS);
+        lux_script_call_frame frame{nullptr, 0, 0, nullptr, 0, 0, nullptr, tick.synchronous.context};
+        assert(tick.synchronous.invoke(&frame) == 0);
+        descriptor.releaseMethod(descriptor.context, instance, tick);
+        descriptor.destroyInstance(descriptor.context, instance);
+    }
+    assert(provider.scalar_calls == 2 && provider.zero_calls == 2 && provider.angles == 2);
+    std::puts("ADMISSION_STANDALONE null-host unbound-host scalar=2 zero=2 custom=2 PASS");
+}
 int main(int argc, char** argv)
 {
     static_assert(!std::is_default_constructible_v<ValueToken>);
@@ -316,5 +347,6 @@ int main(int argc, char** argv)
     }
     for (const auto* name : {"retire-scalar", "retire-zero", "stop-scalar", "stop-zero", "input-recovery"})
         admissionCase(backend, name);
+    standaloneCase(backend);
     std::puts("VALUE_RUNTIME generated-pose enum override provider-count lifecycle reentry retire shutdown PASS");
 }

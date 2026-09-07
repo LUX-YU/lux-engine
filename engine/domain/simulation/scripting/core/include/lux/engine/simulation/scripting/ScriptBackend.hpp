@@ -102,6 +102,8 @@ namespace lux::simulation::script
     {
       public:
         [[nodiscard]] bool isAttached() const noexcept { return api_ != nullptr; }
+        // Configuration, not current permission: an installed but invalid authority is never standalone.
+        [[nodiscard]] bool hasInvocationAuthority() const noexcept { return capture_invocation_ != nullptr; }
         [[nodiscard]] ScriptInvocationValidity captureInvocation() const noexcept
         { return capture_invocation_ ? capture_invocation_(invocation_context_) : ScriptInvocationValidity{}; }
 

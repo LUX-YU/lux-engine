@@ -8,7 +8,8 @@ param(
     [Parameter(Mandatory=$true)][string]$PhysicsFlowArtifact,
     [Parameter(Mandatory=$true)][string]$OutputRoot,
     [string[]]$Only = @(),
-    [int]$Pairs = 5
+    [int]$Pairs = 5,
+    [ValidateRange(1,100000)][int]$ScalarFrames = 30
 )
 $ErrorActionPreference = 'Stop'
 & 'D:/Development/Mircosoft/VisualStudio/Common7/Tools/Launch-VsDevShell.ps1' -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
@@ -75,6 +76,7 @@ foreach ($case in $cases) {
             if (Test-Path -LiteralPath $csv) { throw "Refusing to overwrite existing run $csv" }
             $warmups = if ($case.micro) { 5 } else { 1000 }
             $frames = if ($case.micro) { 30 } else { 5000 }
+            if ($case.name -eq 'lua-ability-10k') { $frames = $ScalarFrames }
             $arguments = @('--group',$case.group,'--mode','performance','--size',"$($case.size)",
                 '--warmups',"$warmups",'--frames',"$frames",'--output',$csv)
             if (!$case.physics) { $arguments += @('--seed','1592598566','--resume-budget','2000') }

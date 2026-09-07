@@ -80,6 +80,7 @@ static lux::script::ScriptArtifact artifact(std::string_view tick)
 }
 struct Runtime
 {
+    LuaScriptBackend& backend;
     SimulationDescription sim = simulation();
     lux::script::ScriptArtifact script;
     lux::asset::AssetId asset;
@@ -92,7 +93,8 @@ struct Runtime
     decltype(lux::script::bindScriptAbility<LuaValueTestAbility>(provider)) binding;
     std::optional<ScriptSystem> system;
     Runtime(LuaScriptBackend& backend, std::uint8_t id, std::string_view tick)
-        : script(artifact(tick)), binding(lux::script::bindScriptAbility<LuaValueTestAbility>(provider))
+        : backend(backend), script(artifact(tick)),
+          binding(lux::script::bindScriptAbility<LuaValueTestAbility>(provider))
     {
         std::array<std::uint8_t, 16> bytes{};
         static std::uint8_t incarnation{};
@@ -147,11 +149,13 @@ static void retire() noexcept
     assert(!outer->registry.valid(outer->entity));
     const auto status = outer->system->queryMountStatus({1});
     assert(!status && status.error() == EScriptSystemError::ENDPOINT_BUSY);
+    assert(outer->backend.stats().prepared_ability_slots >= AbilityTraits::Methods.size());
 }
 static void closeDuringRead() noexcept
 {
     value_reentry = nullptr;
     assert(!outer->system->shutdown()); // Existing protection retains resources; new call admission is stopped.
+    assert(outer->backend.stats().prepared_ability_slots >= AbilityTraits::Methods.size());
 }
 static constexpr std::string_view pose_tick =
     "local p=lux.Values.echo({key=7,velocity={x=1.5,y=2.25},mode=3});"
@@ -184,6 +188,7 @@ static void admissionCase(LuaScriptBackend& backend, std::string_view name)
     assert(runtime.system->shutdown());
     assert(runtime.provider.angles == 2); // Only BeginPlay + the one qualified EndPlay.
     assert(runtime.system->activeContinuationCount() == 0);
+    assert(backend.stats().prepared_ability_slots == 0);
     std::fprintf(stderr, "ADMISSION_PASS %.*s endplay=1 backlog=0\n", static_cast<int>(name.size()), name.data());
 }
 static void standaloneCase(LuaScriptBackend& backend)

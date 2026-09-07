@@ -2034,18 +2034,20 @@ namespace lux::simulation::script
         );
         if (prepared == nullptr || prepared->context == nullptr || prepared->dispatch == nullptr)
             return false;
-        result = {
-            prepared->context,
-            prepared->dispatch,
-            owner->active_execution->step,
-            static_cast<std::uint32_t>(local_slot), lua_gettop(state), owner->active_execution, instance->behavior, {},
-            instance->behavior && instance->behavior->hasInvocationAuthority()
-        };
+        result.context = prepared->context;
+        result.dispatch = prepared->dispatch;
+        result.step = owner->active_execution->step;
+        result.local_slot = static_cast<std::uint32_t>(local_slot);
+        result.argument_count = lua_gettop(state);
+        result.execution = owner->active_execution;
+        result.behavior = instance->behavior;
+        result.has_core_authority = result.behavior && result.behavior->hasInvocationAuthority();
         if (result.has_core_authority)
         {
             result.validity = result.behavior->captureInvocation();
             if (!result.validity.valid()) return false;
         }
+        else result.validity = {};
         return true;
     }
 

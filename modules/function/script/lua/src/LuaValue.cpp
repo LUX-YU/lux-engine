@@ -43,7 +43,7 @@ namespace lux::script::lua
                 int (*execute)(lua_State *, Operation &);
                 std::string_view key;
                 std::span<const std::string_view> keys;
-                LuaValueFailure failure;
+                LuaValueFailure *failure{};
                 bool success{true};
                 int count{};
             };
@@ -132,7 +132,7 @@ namespace lux::script::lua
                 {
                     if (++count > operation.keys.size() || lua_type(state, -2) != LUA_TSTRING)
                     {
-                        operation.failure.code = ELuaValueError::UNKNOWN_FIELD;
+                        operation.failure->code = ELuaValueError::UNKNOWN_FIELD;
                         operation.success = false;
                         return 0;
                     }
@@ -144,7 +144,7 @@ namespace lux::script::lua
                             found = true;
                     if (!found)
                     {
-                        operation.failure.code = ELuaValueError::UNKNOWN_FIELD;
+                        operation.failure->code = ELuaValueError::UNKNOWN_FIELD;
                         operation.success = false;
                         return 0;
                     }
@@ -157,8 +157,8 @@ namespace lux::script::lua
                     lua_rawget(state, 2);
                     if (lua_isnil(state, -1))
                     {
-                        operation.failure.code = ELuaValueError::MISSING_FIELD;
-                        operation.failure.prepend(key);
+                        operation.failure->code = ELuaValueError::MISSING_FIELD;
+                        operation.failure->prepend(key);
                         operation.success = false;
                         return 0;
                     }
@@ -241,13 +241,15 @@ namespace lux::script::lua
         LuaValueResult<void> LuaValueAccess::shape(lua_State *state, int index,
                                                    std::span<const std::string_view> keys) noexcept
         {
+            LuaValueFailure failure;
             Operation operation{checkShape};
             operation.keys = keys;
+            operation.failure = &failure;
             if (run(state, operation, index, 0, 0))
                 return {};
             if (operation.success)
-                operation.failure.code = ELuaValueError::VM_FAILURE;
-            return lux::cxx::unexpected(operation.failure);
+                failure.code = ELuaValueError::VM_FAILURE;
+            return lux::cxx::unexpected(failure);
         }
         bool LuaValueAccess::field(lua_State *state, int index, std::string_view key) noexcept
         {

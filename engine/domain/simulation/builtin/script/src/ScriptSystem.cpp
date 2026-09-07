@@ -1,7 +1,7 @@
 #include <lux/engine/simulation/scripting/ScriptSignatureCompatibility.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/engine/simulation/script/ScriptBindings.hpp>
+#include <lux/engine/simulation/script/ScriptPreparer.hpp>
 #include <lux/engine/simulation/script/ExternalCompletionRing.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
 #include "DelayAbility.ability.generated.hpp"
@@ -34,8 +34,7 @@ namespace lux::simulation::script
 {
     namespace
     {
-        constexpr std::size_t kBackendKindCount{7U};
-        constexpr std::uint32_t kInvalidMethodSlot = std::numeric_limits<std::uint32_t>::max();
+        constexpr auto kInvalidMethodSlot = detail::kInvalidPreparedMethod;
 
         enum class EPrepareState : std::uint8_t
         {
@@ -46,23 +45,15 @@ namespace lux::simulation::script
             SHUT_DOWN,
         };
 
-        [[nodiscard]] constexpr std::size_t backendIndex(lux::rdesc::Script::Kind kind) noexcept
-        {
-            return static_cast<std::size_t>(kind);
-        }
-
-        [[nodiscard]] EScriptSystemError backendError(EScriptBackendResult result) noexcept
-        {
-            if (result == EScriptBackendResult::CAPACITY_EXCEEDED)
-                return EScriptSystemError::CAPACITY_EXCEEDED;
-            if (result == EScriptBackendResult::ALLOCATION_FAILURE)
-                return EScriptSystemError::ALLOCATION_FAILURE;
-            return EScriptSystemError::BACKEND_FAILURE;
-        }
     }
 
     struct ScriptSystem::State final
     {
+        struct ExecutionPort final
+        {
+            State* owner{};
+        };
+        ExecutionPort execution_port{this};
         struct DelayProvider;
 
         struct NextStepWaitTag;
@@ -124,55 +115,9 @@ namespace lux::simulation::script
 
         using Handler = detail::ScriptMethodReference;
 
-        struct PreparedMethod final
-        {
-            lux::script::ScriptSymbolId symbol{};
-            ScriptBackendPreparedMethod backend;
-            ScriptContinuationId active_hook;
-            bool used_by_binding{};
-        };
+        using PreparedMethod = detail::ScriptPreparedMethod;
+        using RetirementRecord = detail::ScriptInstances::Retirement;
 
-        struct RuntimeMount final
-        {
-            ScriptMountId id;
-            lux::asset::AssetId asset;
-            bool entity_scope{};
-            std::optional<ScriptInstanceScope> pending_scope;
-            ScriptMountStatus status;
-            bool unconsumed_result{};
-            std::uint64_t admission_order{};
-            std::size_t method_first{};
-            std::size_t method_count{};
-            std::uint32_t begin_play_method{kInvalidMethodSlot};
-            std::uint32_t end_play_method{kInvalidMethodSlot};
-            ScriptInstanceScope scope;
-            ScriptBehavior behavior;
-            ScriptInstanceId instance;
-            ScriptInstanceId retiring_instance;
-            ScriptContinuationId retiring_continuations;
-            std::vector<PreparedScriptApiCapability> capabilities;
-            std::vector<PreparedScriptEventAdmission> event_sources;
-            std::uint64_t event_layout_epoch{};
-            ResolvedScriptArtifact artifact;
-            const ScriptBackendDescriptor* backend{};
-            ScriptBackendInstance backend_instance;
-            ecs::Entity entity{ecs::NullEntity};
-            EScriptMountState state{EScriptMountState::INACTIVE};
-            bool active_counted{};
-            bool retirement_queued{};
-            bool gameplay_lifetime_started{};
-            EScriptEndPlayReason pending_end_reason{EScriptEndPlayReason::OBJECT_UNMATERIALIZED};
-        };
-
-        struct RetirementRecord final
-        {
-            std::uint32_t mount_slot{};
-            EScriptEndPlayReason reason{EScriptEndPlayReason::OBJECT_UNMATERIALIZED};
-            EScriptMountState final_state{EScriptMountState::INACTIVE};
-            bool invoke_end_play{};
-        };
-
-        struct InstanceTag;
         struct ContinuationTag;
         struct AwaitableTag;
         struct EventWaiterTag;
@@ -190,7 +135,7 @@ namespace lux::simulation::script
             friend constexpr bool operator==(EventWaiterId, EventWaiterId) noexcept = default;
         };
 
-        struct InstanceRecord final
+        struct ExecutionInstance final
         {
             ScriptInstanceId id;
             std::uint32_t mount_slot{};
@@ -198,6 +143,7 @@ namespace lux::simulation::script
             ScriptContinuationId first_continuation;
             ScriptAwaitableId first_awaitable;
             EventWaiterId first_event_waiter;
+            bool admission_revoked{};
         };
 
         struct ContinuationRecord final
@@ -327,8 +273,6 @@ namespace lux::simulation::script
             EventWaiterId instance_next;
         };
 
-        using InstanceStorage = lux::cxx::SlotMap<InstanceRecord, InstanceTag>;
-        using InstanceKey = typename InstanceStorage::key_type;
         using ContinuationStorage = lux::cxx::SlotMap<ContinuationRecord, ContinuationTag>;
         using ContinuationKey = typename ContinuationStorage::key_type;
         using AwaitableStorage = lux::cxx::StableSlotMap<AwaitableRecord, AwaitableTag>;
@@ -336,16 +280,6 @@ namespace lux::simulation::script
         using EventWaiterStorage = lux::cxx::SlotMap<EventWaiterRecord, EventWaiterTag>;
         using EventWaiterKey = typename EventWaiterStorage::key_type;
         using EventRouteIndex = entt::dense_map<EventRouteKey, EventRouteHead, EventRouteKeyHash>;
-
-        [[nodiscard]] static constexpr ScriptInstanceId instanceId(InstanceKey key) noexcept
-        {
-            return {key.index + 1U, key.gen};
-        }
-
-        [[nodiscard]] static constexpr InstanceKey instanceKey(ScriptInstanceId id) noexcept
-        {
-            return id.valid() ? InstanceKey{id.slot - 1U, id.generation} : InstanceKey::invalid();
-        }
 
         [[nodiscard]] static constexpr ScriptContinuationId continuationId(ContinuationKey key) noexcept
         {
@@ -580,30 +514,21 @@ namespace lux::simulation::script
         };
 
         const SimulationDescription* simulation{};
-        ScriptRuntimeCapacityPlan capacity;
         ecs::Registry* registry{};
         const SimulationClock* clock{};
         ScriptRuntimeLimits limits;
-        ScriptArtifactResolver artifacts;
-        ScriptHostApi host;
         ScriptRealDelayEndpoint real_delay;
-        std::array<ScriptBackendDescriptor, kBackendKindCount> backends;
+        detail::ScriptPreparer preparer;
+        detail::ScriptInstances instance_owner;
         detail::ScriptBindings binding_owner;
-        std::vector<PreparedScriptApiCapability> published_capabilities;
-        std::vector<RuntimeMount> mounts;
-        std::size_t configured_mounts{};
-        std::size_t pending_mounts{};
-        std::uint64_t admission_sequence{};
-        std::vector<std::pair<std::uint64_t, std::uint32_t>> mount_index;
-        std::vector<std::uint64_t> batch_ids;
-        std::vector<detail::ScriptMountPlacement> batch_slots;
-        std::vector<std::uint8_t> reserved_mounts;
-        std::vector<ecs::Entity> batch_entities;
-        entt::dense_map<ecs::Entity, std::uint32_t> entity_associations;
-        SparseMountQueue status_changes;
-        std::vector<PreparedMethod> methods;
         std::vector<ScriptSystemFailure> failures;
-        InstanceStorage instances;
+        std::vector<ExecutionInstance> execution_instances;
+        struct HookFlight final
+        {
+            ScriptInstanceId instance;
+            ScriptContinuationId continuation;
+        };
+        std::vector<HookFlight> active_hooks;
         ContinuationStorage continuations;
         AwaitableStorage awaitables;
         ResumeRing resumes;
@@ -634,9 +559,6 @@ namespace lux::simulation::script
         std::size_t instance_cleanup_awaitable_visits{};
         std::size_t instance_cleanup_continuation_visits{};
         std::size_t endpoint_dispatch_depth{};
-        std::size_t user_invocation_depth{};
-        ScriptEventAdmissionScope event_admission_scope;
-        std::uint64_t next_event_layout_epoch{};
         std::uint64_t completion_capability_constructions{};
         std::uint64_t event_route_claim_lookups{};
         std::uint64_t event_payload_copy_bytes{};
@@ -651,15 +573,12 @@ namespace lux::simulation::script
 
         struct UserInvocationScope final
         {
-            explicit UserInvocationScope(State& state) noexcept : owner(state) { ++owner.user_invocation_depth; }
-            ~UserInvocationScope() noexcept { --owner.user_invocation_depth; }
-            State& owner;
+            explicit UserInvocationScope(State& state) noexcept : protection(state.instance_owner) {}
+            detail::ScriptInstances::Protection protection;
         };
         entt::connection constructed;
         entt::connection updated;
         entt::connection destroyed;
-        std::size_t active_mount_count{};
-        bool suppress_attachment_signal{};
         bool stopping{};
         EPrepareState prepare_state{EPrepareState::CREATED};
 #if defined(LUX_SCRIPT_OWNER_AFFINITY_PROBE)
@@ -713,27 +632,30 @@ namespace lux::simulation::script
             bool entered_{};
         };
 
-        [[nodiscard]] const ScriptBackendDescriptor* backend(lux::rdesc::Script::Kind kind) const noexcept
+        [[nodiscard]] ExecutionInstance* executionRecord(ScriptInstanceId id) noexcept
         {
-            const auto index = backendIndex(kind);
-            if (index >= backends.size() || backends[index].kind != kind)
+            if (!id.valid() || id.slot > execution_instances.size())
                 return nullptr;
-            return std::addressof(backends[index]);
+            auto& record = execution_instances[id.slot - 1U];
+            return record.id == id ? &record : nullptr;
         }
 
-        [[nodiscard]] const PreparedScriptApiCapability* capability(
-            const lux::script::ScriptApiContractId& contract) const noexcept
+        [[nodiscard]] ExecutionInstance* findExecutionInstance(ScriptInstanceId id) noexcept
         {
-            const auto found =
-                std::find_if(published_capabilities.begin(),
-                             published_capabilities.end(),
-                             [&contract](const auto& value) noexcept { return value.contract == contract; });
-            return found != published_capabilities.end() ? std::addressof(*found) : nullptr;
+            return instance_owner.valid(id) ? executionRecord(id) : nullptr;
+        }
+
+        [[nodiscard]] const ExecutionInstance* findExecutionInstance(ScriptInstanceId id) const noexcept
+        {
+            if (!instance_owner.valid(id) || id.slot > execution_instances.size())
+                return nullptr;
+            const auto& record = execution_instances[id.slot - 1U];
+            return record.id == id ? &record : nullptr;
         }
 
         [[nodiscard]] bool validInstance(ScriptInstanceId instance) const noexcept
         {
-            return instances.find(instanceKey(instance)) != nullptr;
+            return instance_owner.valid(instance);
         }
 
         [[nodiscard]] lux::script::ScriptAbilityStartResult startNextStep(
@@ -980,26 +902,13 @@ namespace lux::simulation::script
             }
         }
 
-        [[nodiscard]] lux::cxx::expected<ScriptInstanceId, EScriptSystemError> createInstanceRecord(
-            std::uint32_t mount_slot) noexcept
-        {
-            if (instances.size() >= limits.instance_capacity)
-                return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-            auto inserted = instances.tryEmplace(InstanceRecord{{}, mount_slot, 0U});
-            if (!inserted)
-                return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
-            const auto id = instanceId(*inserted);
-            instances[*inserted].id = id;
-            return id;
-        }
-
         [[nodiscard]] lux::cxx::expected<ScriptAwaitableId, EScriptAwaitableCreateError> createAwaitableRecord(
             ScriptInstanceId instance,
             std::optional<PreparedResumeType> result_type,
             bool external_completion = true
         ) noexcept
         {
-            auto* owner = instances.find(instanceKey(instance));
+            auto* owner = findExecutionInstance(instance);
             if (owner == nullptr)
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::INVALID_INSTANCE);
             const bool is_invalid_result_type = result_type &&
@@ -1076,7 +985,7 @@ namespace lux::simulation::script
                                                                          &AwaitableIngress::completeAbilityErased,
                                                                          &AwaitableIngress::failAbilityErased,
                                                                          &AwaitableIngress::activeAbilityErased,
-                                                                         this,
+                                                                         &execution_port,
                                                                          &State::completeAbilityOwnerErased,
                                                                          &State::failAbilityOwnerErased}};
         }
@@ -1086,7 +995,7 @@ namespace lux::simulation::script
                               ScriptInstanceId instance,
                               std::optional<PreparedResumeType> result_type) noexcept
         {
-            return static_cast<State*>(context)->createAwaitable(instance, std::move(result_type));
+            return static_cast<ExecutionPort*>(context)->owner->createAwaitable(instance, std::move(result_type));
         }
 
         [[nodiscard]] bool validAwaitableOutcome(
@@ -1161,7 +1070,7 @@ namespace lux::simulation::script
             std::uint32_t size
         ) noexcept
         {
-            auto& owner = *static_cast<State*>(context);
+            auto& owner = *static_cast<ExecutionPort*>(context)->owner;
             const auto instance = AwaitableIngress::unpackInstance(instance_value);
             const auto awaitable = AwaitableIngress::unpackAwaitable(awaitable_value);
             const auto* record = owner.awaitables.find(awaitableKey(awaitable));
@@ -1205,7 +1114,7 @@ namespace lux::simulation::script
             lux::script::ScriptAbilityOperationError error
         ) noexcept
         {
-            auto& owner = *static_cast<State*>(context);
+            auto& owner = *static_cast<ExecutionPort*>(context)->owner;
             const auto completed = owner.completeAwaitableOwner(
                 AwaitableIngress::unpackInstance(instance_value),
                 AwaitableIngress::unpackAwaitable(awaitable_value),
@@ -1334,7 +1243,7 @@ namespace lux::simulation::script
 
         void unlinkEventWaiterOwnership(EventWaiterRecord& waiter) noexcept
         {
-            auto* owner = instances.find(instanceKey(waiter.instance));
+            auto* owner = findExecutionInstance(waiter.instance);
             if (waiter.instance_previous.valid())
             {
                 auto* previous = event_waiters.find(eventWaiterKey(waiter.instance_previous));
@@ -1386,31 +1295,21 @@ namespace lux::simulation::script
         {
             if (stopping || prepare_state != EPrepareState::PREPARED)
                 return lux::cxx::unexpected(EScriptEventWaitError::STOPPING);
-            auto* owner = instances.find(instanceKey(instance));
-            if (owner == nullptr || owner->mount_slot >= mounts.size())
+            auto* owner = findExecutionInstance(instance);
+            if (owner == nullptr)
                 return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
-            auto& mount = mounts[owner->mount_slot];
-            if (mount.state != EScriptMountState::ACTIVE || mount.instance != instance)
-                return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
-            const bool invalid_source = admission.scope_ != event_admission_scope || admission.instance_ != instance ||
-                admission.layout_epoch_ != mount.event_layout_epoch ||
-                admission.local_slot_ >= mount.event_sources.size();
-            if (invalid_source)
-                return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
-            const auto& prepared = mount.event_sources[admission.local_slot_];
-            const auto endpoint_slot = prepared.endpoint_slot;
+            const auto source = instance_owner.eventSource(instance, admission);
+            if (!source)
+                return lux::cxx::unexpected(source.error());
+            const auto endpoint_slot = source->endpoint;
             const auto& endpoint = binding_owner.eventEndpoint(endpoint_slot);
-
             ecs::Entity target{ecs::NullEntity};
             if (endpoint.route == EEventRoute::ENTITY_TARGETED)
             {
-                const auto* entity_scope = std::get_if<EntityScriptScope>(&mount.scope);
-                if (entity_scope == nullptr || entity_scope->self == ecs::NullEntity ||
-                    !registry->valid(entity_scope->self))
-                {
+                const auto* entity = std::get_if<EntityScriptScope>(&source->scope);
+                if (entity == nullptr || entity->self == ecs::NullEntity || !registry->valid(entity->self))
                     return lux::cxx::unexpected(EScriptEventWaitError::SCOPE_MISMATCH);
-                }
-                target = entity_scope->self;
+                target = entity->self;
             }
 
             const auto reserved_waiters = event_waiters.size() - active_claimed_waiters + claimed_event_waiters.size();
@@ -1419,7 +1318,7 @@ namespace lux::simulation::script
             if (event_wait_sequence == std::numeric_limits<std::uint64_t>::max())
                 return lux::cxx::unexpected(EScriptEventWaitError::SEQUENCE_EXHAUSTED);
 
-            auto awaitable = createAwaitableRecord(instance, prepared.payload, false);
+            auto awaitable = createAwaitableRecord(instance, source->payload, false);
             if (!awaitable)
                 return lux::cxx::unexpected(eventWaitError(awaitable.error()));
 
@@ -1488,7 +1387,7 @@ namespace lux::simulation::script
             ScriptEventAdmissionHandle admission
         ) noexcept
         {
-            return static_cast<State*>(context)->waitEvent(instance, admission);
+            return static_cast<ExecutionPort*>(context)->owner->waitEvent(instance, admission);
         }
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> attachWaiter(
@@ -1522,7 +1421,7 @@ namespace lux::simulation::script
 
         void unlinkAwaitableOwnership(AwaitableRecord& record) noexcept
         {
-            auto* owner = instances.find(instanceKey(record.instance));
+            auto* owner = findExecutionInstance(record.instance);
             if (record.instance_previous.valid())
             {
                 auto* previous = awaitables.find(awaitableKey(record.instance_previous));
@@ -1649,7 +1548,7 @@ namespace lux::simulation::script
             ScriptAwaitableId awaitable
         ) noexcept
         {
-            static_cast<State*>(context)->discardAwaitable(instance, awaitable);
+            static_cast<ExecutionPort*>(context)->owner->discardAwaitable(instance, awaitable);
         }
 
         [[nodiscard]] std::optional<ResumeRecord> popResume() noexcept
@@ -1659,11 +1558,11 @@ namespace lux::simulation::script
 
         void clearActiveHook(const ContinuationRecord& continuation) noexcept
         {
-            if (!continuation.hook_single_flight || continuation.method_slot >= methods.size())
+            if (!continuation.hook_single_flight || continuation.method_slot >= active_hooks.size())
                 return;
-            auto& method = methods[continuation.method_slot];
-            if (method.active_hook == continuation.id)
-                method.active_hook = {};
+            auto& flight = active_hooks[continuation.method_slot];
+            if (flight.instance == continuation.instance && flight.continuation == continuation.id)
+                flight = {};
         }
 
         void destroyContinuation(ScriptContinuationId id) noexcept
@@ -1672,7 +1571,7 @@ namespace lux::simulation::script
             if (stored == nullptr)
                 return;
             const auto continuation = *stored;
-            if (auto* instance = instances.find(instanceKey(continuation.instance)); instance != nullptr)
+            if (auto* instance = findExecutionInstance(continuation.instance); instance != nullptr)
             {
                 if (instance->active_continuations == 0U)
                     std::terminate();
@@ -1694,6 +1593,7 @@ namespace lux::simulation::script
             }
             clearActiveHook(continuation);
             static_cast<void>(continuations.erase(continuationKey(id)));
+            UserInvocationScope cleanup(*this);
             continuation.backend.destroy(continuation.backend.state);
         }
 
@@ -1712,72 +1612,64 @@ namespace lux::simulation::script
             }
         }
 
-        void invalidateAdmission(RuntimeMount& mount) noexcept
+        void invalidateAdmission(ScriptInstanceId instance) noexcept
         {
-            const auto instance = mount.instance;
             if (!instance.valid())
                 return;
-            const auto* record = instances.find(instanceKey(instance));
-            if (record == nullptr)
-                std::terminate();
+            auto* record = executionRecord(instance);
+            if (record == nullptr || record->admission_revoked)
+                return;
+            record->admission_revoked = true;
             const auto first_awaitable = record->first_awaitable;
-            const auto first_continuation = record->first_continuation;
             const auto first_event_waiter = record->first_event_waiter;
-            static_cast<void>(instances.erase(instanceKey(instance)));
-            mount.retiring_instance = instance;
-            mount.retiring_continuations = first_continuation;
-            mount.instance = {};
+            UserInvocationScope cleanup(*this);
             cancelEventWaiters(instance, first_event_waiter);
             cancelAwaitables(instance, first_awaitable);
         }
 
-        void invalidateInstance(RuntimeMount& mount) noexcept
+        void invalidateInstance(std::uint32_t slot) noexcept
         {
-            invalidateAdmission(mount);
-            if (mount.retiring_instance.valid())
-            {
-                destroyContinuations(mount.retiring_instance, mount.retiring_continuations);
-                mount.retiring_instance = {};
-                mount.retiring_continuations = {};
-            }
+            const auto retired = instance_owner.view(slot).retiring_instance;
+            invalidateAdmission(retired);
+            auto* record = executionRecord(retired);
+            if (record == nullptr)
+                return;
+            const auto first = record->first_continuation;
+            *record = {}; // Claim execution teardown before entering a continuation destructor.
+            UserInvocationScope cleanup(*this);
+            destroyContinuations(retired, first);
         }
 
-        void faultInvocation(RuntimeMount& mount,
-                             lux::script::ScriptSymbolId symbol,
-                             EScriptSystemError error,
-                             std::int32_t status = 0) noexcept
+        void faultInvocation(std::uint32_t slot, lux::script::ScriptSymbolId symbol,
+            EScriptSystemError error, std::int32_t status = 0) noexcept
         {
-            mount.state = EScriptMountState::FAULTED;
-            markStatus(mount);
-            mount.pending_end_reason = EScriptEndPlayReason::FAULTED;
-            deactivate(mount);
-            invalidateAdmission(mount);
-            if (endpoint_dispatch_depth == 0U)
-                removeMountBindings(mount);
-            queueRetirement(static_cast<std::uint32_t>(std::addressof(mount) - mounts.data()));
-            recordFailure(error, mount, symbol, status);
+            invalidateAdmission(instance_owner.fault(slot));
+            binding_owner.withdraw(slot);
+            queueRetirement(slot);
+            recordFailure(error, slot, symbol, status);
         }
 
-        [[nodiscard]] bool beginSuspension(RuntimeMount& mount,
-                                           PreparedMethod& method,
+        [[nodiscard]] bool beginSuspension(std::uint32_t mount_slot, std::uint32_t method_slot,
+                                           const PreparedMethod& method,
                                            ScriptBackendContinuation backend_continuation,
                                            ScriptStepResult result,
                                            bool hook_single_flight) noexcept
         {
+            const auto mount = instance_owner.view(mount_slot);
             if (!result.valid() || result.state != EScriptStepState::SUSPENDED || !backend_continuation)
             {
                 if (backend_continuation)
                     backend_continuation.destroy(backend_continuation.state);
                 discardAwaitable(mount.instance, result.waiting_on);
-                faultInvocation(mount, method.symbol, EScriptSystemError::INVOCATION_FAILURE);
+                faultInvocation(mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE);
                 return false;
             }
-            auto* instance = instances.find(instanceKey(mount.instance));
+            auto* instance = findExecutionInstance(mount.instance);
             if (instance == nullptr)
             {
                 backend_continuation.destroy(backend_continuation.state);
                 discardAwaitable(mount.instance, result.waiting_on);
-                faultInvocation(mount, method.symbol, EScriptSystemError::INVOCATION_FAILURE);
+                faultInvocation(mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE);
                 return false;
             }
             if (instance->active_continuations >= limits.continuation_capacity_per_instance)
@@ -1785,7 +1677,7 @@ namespace lux::simulation::script
                 backend_continuation.destroy(backend_continuation.state);
                 discardAwaitable(mount.instance, result.waiting_on);
                 faultInvocation(
-                    mount,
+                    mount_slot,
                     method.symbol,
                     EScriptSystemError::INSTANCE_CONTINUATION_CAPACITY_EXCEEDED
                 );
@@ -1795,7 +1687,7 @@ namespace lux::simulation::script
             {
                 backend_continuation.destroy(backend_continuation.state);
                 discardAwaitable(mount.instance, result.waiting_on);
-                faultInvocation(mount, method.symbol, EScriptSystemError::CONTINUATION_CAPACITY_EXCEEDED);
+                faultInvocation(mount_slot, method.symbol, EScriptSystemError::CONTINUATION_CAPACITY_EXCEEDED);
                 return false;
             }
             auto inserted = continuations.tryEmplace(
@@ -1803,13 +1695,13 @@ namespace lux::simulation::script
                                    mount.instance,
                                    backend_continuation,
                                    result.waiting_on,
-                                   static_cast<std::uint32_t>(std::addressof(method) - methods.data()),
+                                   method_slot,
                                    hook_single_flight});
             if (!inserted)
             {
                 backend_continuation.destroy(backend_continuation.state);
                 discardAwaitable(mount.instance, result.waiting_on);
-                faultInvocation(mount, method.symbol, EScriptSystemError::ALLOCATION_FAILURE);
+                faultInvocation(mount_slot, method.symbol, EScriptSystemError::ALLOCATION_FAILURE);
                 return false;
             }
             const auto id = continuationId(*inserted);
@@ -1830,95 +1722,26 @@ namespace lux::simulation::script
             {
                 destroyContinuation(id);
                 discardAwaitable(mount.instance, result.waiting_on);
-                faultInvocation(mount, method.symbol, attached.error());
+                faultInvocation(mount_slot, method.symbol, attached.error());
                 return false;
             }
             if (hook_single_flight)
-                method.active_hook = id;
+                active_hooks[method_slot] = {mount.instance, id};
             ++suspensions_admitted;
             return true;
-        }
-
-        [[nodiscard]] std::optional<std::uint32_t> findEventEndpoint(EventScriptTarget target) const noexcept
-        {
-            return binding_owner.findEvent(target);
-        }
-
-        [[nodiscard]] bool eventRequirementMatches(
-            const lux::script::ScriptEventSourceDescription& requirement,
-            const SimulationEventView& described,
-            const ScriptEventEndpointDescriptor& endpoint
-        ) const noexcept
-        {
-            if (!described)
-                return false;
-            const auto expected_route = described.route() == EEventRoute::SIMULATION_BROADCAST
-                ? lux::script::EScriptEventRoute::SIMULATION_BROADCAST
-                : lux::script::EScriptEventRoute::ENTITY_TARGETED;
-            const auto& owned = endpoint.payload_projection.owned_layout;
-            const auto delivery = described.dispatchHook();
-            const bool is_delivery_mismatch = requirement.delivery_hook_id != delivery.id().value ||
-                requirement.delivery_schema_hash != delivery.contractHash() ||
-                requirement.delivery_schema_version != delivery.contractVersion();
-            if (is_delivery_mismatch)
-                return false;
-            return endpoint.system.value == requirement.system_id &&
-                endpoint.event.value == requirement.event_id && expected_route == requirement.route &&
-                endpoint.route == described.route() && described.payloadType() == requirement.payload.type_id &&
-                described.payloadSchemaName() == requirement.payload.canonical_name &&
-                described.payloadSchemaHash() == requirement.payload_schema_hash &&
-                described.payloadSchemaVersion() == requirement.payload_schema_version &&
-                endpoint.payload_type.type_id == requirement.payload.type_id &&
-                endpoint.payload_type.canonical_name == requirement.payload.canonical_name &&
-                endpoint.payload_type.pass == lux::semantic::EValuePass::CONST_REF &&
-                owned.type_id == requirement.payload.type_id &&
-                owned.canonical_name == requirement.payload.canonical_name &&
-                owned.abi_kind == requirement.payload.abi_kind && owned.size == requirement.payload.size &&
-                owned.alignment == requirement.payload.alignment && endpoint.payload_projection.copy != nullptr;
-        }
-
-        [[nodiscard]] std::optional<std::uint32_t> findMount(ScriptMountId id) const noexcept
-        {
-            const auto found = std::lower_bound(mount_index.begin(), mount_index.end(), id.value,
-                [](const auto& entry, std::uint64_t value) noexcept { return entry.first < value; });
-            if (found == mount_index.end() || found->first != id.value)
-                return std::nullopt;
-            return found->second;
-        }
-
-        void markStatus(RuntimeMount& mount) noexcept
-        {
-            if (!mount.id.valid())
-                return;
-            ++mount.status.revision;
-            mount.status.state = mount.state;
-            mount.status.instance = mount.instance;
-            if (mount.state != EScriptMountState::INACTIVE)
-                mount.status.scope = mount.scope;
-            const auto slot = static_cast<std::uint32_t>(std::addressof(mount) - mounts.data());
-            if (!status_changes.insert(slot))
-                std::terminate(); // Prepared one-entry-per-configuration backing is an internal invariant.
         }
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> buildLayout() noexcept
         {
             try
             {
-                mounts.resize(capacity.mount_capacity);
-                methods.reserve(capacity.method_capacity);
-                mount_index.reserve(capacity.enabled_mount_capacity);
-                batch_ids.reserve(capacity.enabled_mount_capacity);
-                batch_slots.reserve(capacity.enabled_mount_capacity);
-                reserved_mounts.resize(capacity.mount_capacity);
-                batch_entities.reserve(capacity.enabled_mount_capacity);
-                entity_associations.reserve(capacity.enabled_mount_capacity * 2U);
-                dirty_current.prepare(mounts.size());
-                dirty_processing.prepare(mounts.size());
-                status_changes.prepare(mounts.size());
-                retirement_queue.reserve(mounts.size());
-                lifecycle_candidates.reserve(mounts.size());
-                lifecycle_initialized.reserve(mounts.size());
-                lifecycle_retirements.reserve(mounts.size());
+                const auto count = instance_owner.capacity();
+                dirty_current.prepare(count);
+                dirty_processing.prepare(count);
+                retirement_queue.reserve(count);
+                lifecycle_candidates.reserve(count);
+                lifecycle_initialized.reserve(count);
+                lifecycle_retirements.reserve(count);
                 return {};
             }
             catch (const std::bad_alloc&)
@@ -1932,171 +1755,50 @@ namespace lux::simulation::script
         {
             if (inputs.empty())
                 return {};
-            if (inputs.size() > capacity.enabled_mount_capacity)
-                return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-            batch_ids.clear();
-            batch_slots.clear();
-            std::fill(reserved_mounts.begin(), reserved_mounts.end(), 0U);
-            std::uint32_t next_slot{};
-            batch_entities.clear();
-            for (const auto& input : inputs)
-            {
-                batch_ids.push_back(input.id.value);
-                if (const auto* entity = std::get_if<EntityScriptScope>(&input.scope))
-                    batch_entities.push_back(entity->self);
-            }
-            std::sort(batch_ids.begin(), batch_ids.end());
-            std::sort(batch_entities.begin(), batch_entities.end());
-            const bool duplicate_id = std::adjacent_find(batch_ids.begin(), batch_ids.end()) != batch_ids.end();
-            const bool duplicate_entity =
-                std::adjacent_find(batch_entities.begin(), batch_entities.end()) != batch_entities.end();
-            if (duplicate_id || duplicate_entity)
-                return lux::cxx::unexpected(EScriptSystemError::SCOPE_MISMATCH);
-
-            auto mount_count = configured_mounts;
-            for (const auto& input : inputs)
-            {
-                const bool invalid_identity = !input.id.valid() || input.asset.isNull();
-                const bool invalid_scope = input.scope.valueless_by_exception();
-                if (invalid_identity || invalid_scope)
-                    return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-                const auto existing = findMount(input.id);
-                auto slot = input.configuration_index;
-                if (existing)
-                {
-                    if (slot != kInvalidMethodSlot && slot != *existing)
-                        return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-                    slot = *existing;
-                }
-                else
-                {
-                    if (slot == kInvalidMethodSlot)
-                    {
-                        if (prepare_state != EPrepareState::CREATED)
-                            return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-                        while (next_slot < mounts.size() &&
-                            (mounts[next_slot].id.valid() || reserved_mounts[next_slot] != 0U))
-                            ++next_slot;
-                        slot = next_slot;
-                    }
-                    if (slot >= mounts.size() || mounts[slot].id.valid() || reserved_mounts[slot] != 0U)
-                        return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-                    reserved_mounts[slot] = 1U;
-                }
-                batch_slots.push_back({slot, existing.has_value()});
-                if (const auto* entity = std::get_if<EntityScriptScope>(&input.scope))
-                {
-                    if (entity->self == ecs::NullEntity || !registry->valid(entity->self))
-                        return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-                    if (registry->all_of<detail::ScriptAttachment>(entity->self))
-                        return lux::cxx::unexpected(EScriptSystemError::SCOPE_MISMATCH);
-                    if (entity_associations.contains(entity->self))
-                        return lux::cxx::unexpected(EScriptSystemError::SCOPE_MISMATCH);
-                }
-                if (existing)
-                {
-                    const auto& mount = mounts[*existing];
-                    const bool invalid_shape = mount.asset != input.asset ||
-                        mount.entity_scope != std::holds_alternative<EntityScriptScope>(input.scope);
-                    if (invalid_shape || !binding_owner.matches(*existing, input.bindings))
-                        return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-                    if (mount.state == EScriptMountState::FAULTED ||
-                        std::holds_alternative<SimulationScriptScope>(input.scope))
-                        return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-                    if (mount.pending_scope || mount.unconsumed_result ||
-                        (mount.state != EScriptMountState::INACTIVE && mount.state != EScriptMountState::RETIRING))
-                        return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
-                    continue;
-                }
-                if (++mount_count > capacity.enabled_mount_capacity)
-                    return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-            }
-            auto binding_ticket = binding_owner.reserveBatch(inputs, batch_slots);
+            auto instance_ticket = instance_owner.reserveBatch(inputs, binding_owner,
+                prepare_state == EPrepareState::CREATED);
+            if (!instance_ticket)
+                return lux::cxx::unexpected(instance_ticket.error());
+            auto binding_ticket = binding_owner.reserveBatch(inputs, instance_ticket->placements());
             if (!binding_ticket)
                 return lux::cxx::unexpected(binding_ticket.error());
+            const auto placements = instance_ticket->placements();
             binding_owner.commitBatch(std::move(*binding_ticket));
-            // Everything below uses prepared backing and non-throwing value copies. No user callback or allocation.
-            for (std::size_t index{}; index < inputs.size(); ++index)
-            {
-                const auto& input = inputs[index];
-                const auto existing = findMount(input.id);
-                const auto slot = batch_slots[index].slot;
-                if (!existing)
-                    ++configured_mounts;
-                auto& mount = mounts[slot];
-                if (!existing)
-                {
-                    mount.id = input.id;
-                    mount.asset = input.asset;
-                    mount.entity_scope = std::holds_alternative<EntityScriptScope>(input.scope);
-                    const auto layout = binding_owner.layout(slot);
-                    mount.method_first = layout.method_first;
-                    mount.method_count = layout.method_count;
-                    mount.status.id = input.id;
-                    while (methods.size() < layout.method_first + layout.method_count)
-                    {
-                        const auto method_slot = methods.size();
-                        methods.push_back({binding_owner.methodSymbol(method_slot), {}, {},
-                            binding_owner.methodUsedByBinding(method_slot)});
-                    }
-                    const auto position = std::lower_bound(mount_index.begin(), mount_index.end(), input.id.value,
-                        [](const auto& entry, std::uint64_t value) noexcept { return entry.first < value; });
-                    mount_index.insert(position, {input.id.value, slot});
-                }
-                mount.admission_order = ++admission_sequence;
-                mount.pending_scope = input.scope;
-                ++pending_mounts;
-                if (const auto* entity = std::get_if<EntityScriptScope>(&input.scope))
-                    entity_associations.emplace(entity->self, slot);
-                ++mount.status.submission;
-                mount.status.submission_state = EScriptMountSubmissionState::ACCEPTED;
-                mount.status.submitted_scope = input.scope;
-                markStatus(mount);
-                if (prepare_state == EPrepareState::PREPARED)
-                    queueDirty(slot);
-            }
+            instance_owner.commitBatch(std::move(*instance_ticket), binding_owner);
+            if (prepare_state == EPrepareState::PREPARED)
+                for (const auto placement : placements)
+                    queueDirty(placement.slot);
             return {};
         }
 
-        void recordFailure(EScriptSystemError error,
-                           RuntimeMount& mount,
-                           lux::script::ScriptSymbolId symbol = 0U,
-                           std::int32_t status = 0) noexcept
+        void recordFailure(EScriptSystemError error, std::uint32_t slot,
+            lux::script::ScriptSymbolId symbol = lux::script::InvalidScriptSymbolId, std::int32_t status = 0) noexcept
         {
-            mount.status.submission_error = error;
-            if (failures.size() < limits.failure_capacity)
-                failures.push_back({error, mount.id, symbol, status});
+            instance_owner.recordError(slot, error);
+            if (failures.size() < failures.capacity())
+                failures.push_back({error, instance_owner.view(slot).id, symbol, status});
         }
 
-        void deactivate(RuntimeMount& mount) noexcept
+        void queueRetirement(std::uint32_t slot) noexcept
         {
-            if (!mount.active_counted)
+            if (!instance_owner.queueRetirement(slot))
                 return;
-            mount.active_counted = false;
-            --active_mount_count;
-        }
-
-        void queueRetirement(std::uint32_t mount_slot) noexcept
-        {
-            auto& mount = mounts[mount_slot];
-            if (mount.retirement_queued)
-                return;
-            if (retirement_queue.size() >= retirement_queue.capacity())
+            if (retirement_queue.size() == retirement_queue.capacity())
                 std::terminate();
-
-            mount.retirement_queued = true;
-            retirement_queue.push_back(mount_slot);
+            retirement_queue.push_back(slot);
         }
 
         void invoke(Handler handler, lux_script_call_frame& frame, bool hook_invocation) noexcept
         {
-            auto& mount = mounts[handler.mount_slot];
-            if (stopping || mount.state != EScriptMountState::ACTIVE || mount.instance != handler.instance)
+            if (stopping)
                 return;
-
-            auto& method = methods[handler.method_slot];
-            if (hook_invocation && method.active_hook.valid() &&
-                continuations.find(continuationKey(method.active_hook)) != nullptr)
+            auto access = instance_owner.invokeAccess(handler);
+            if (!access)
+                return;
+            const auto& method = access->method();
+            const auto flight = active_hooks[handler.method_slot];
+            if (hook_invocation && flight.instance == handler.instance && flight.continuation.valid() &&
+                continuations.find(continuationKey(flight.continuation)) != nullptr)
             {
                 return;
             }
@@ -2104,8 +1806,8 @@ namespace lux::simulation::script
             {
                 ScriptBackendContinuation continuation;
                 ScriptStepContext context{
-                    mount.instance,
-                    this,
+                    handler.instance,
+                    &execution_port,
                     &State::createAwaitableErased,
                     &State::discardAwaitableErased,
                     &State::waitEventErased
@@ -2116,7 +1818,7 @@ namespace lux::simulation::script
                     return method.backend.resumable.invoke(
                         method.backend.resumable.context, frame, context, continuation);
                 }();
-                if (mount.state != EScriptMountState::ACTIVE || stopping)
+                if (!access->current() || stopping)
                 {
                     if (continuation)
                         continuation.destroy(continuation.state);
@@ -2128,18 +1830,22 @@ namespace lux::simulation::script
                     if (continuation)
                     {
                         continuation.destroy(continuation.state);
-                        faultInvocation(mount, method.symbol, EScriptSystemError::INVOCATION_FAILURE);
+                        faultInvocation(handler.mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE);
                     }
                     return;
                 }
                 if (result.state == EScriptStepState::SUSPENDED)
                 {
-                    static_cast<void>(beginSuspension(mount, method, continuation, result, hook_invocation));
+                    static_cast<void>(beginSuspension(
+                        handler.mount_slot, handler.method_slot, method, continuation, result, hook_invocation
+                    ));
                     return;
                 }
                 if (continuation)
                     continuation.destroy(continuation.state);
-                faultInvocation(mount, method.symbol, EScriptSystemError::INVOCATION_FAILURE, result.error.status);
+                faultInvocation(
+                    handler.mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE, result.error.status
+                );
                 return;
             }
 
@@ -2151,7 +1857,7 @@ namespace lux::simulation::script
             }();
             if (status == 0)
                 return;
-            faultInvocation(mount, method.symbol, EScriptSystemError::INVOCATION_FAILURE, status);
+            faultInvocation(handler.mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE, status);
         }
 
         struct BindingPort final
@@ -2213,13 +1919,9 @@ namespace lux::simulation::script
 
         void failEventWaiter(ScriptInstanceId instance, EScriptSystemError error) noexcept
         {
-            auto* owner = instances.find(instanceKey(instance));
-            if (owner == nullptr || owner->mount_slot >= mounts.size())
-                return;
-            auto& mount = mounts[owner->mount_slot];
-            if (mount.instance != instance || mount.state != EScriptMountState::ACTIVE)
-                return;
-            faultInvocation(mount, lux::script::InvalidScriptSymbolId, error);
+            const auto* owner = findExecutionInstance(instance);
+            if (owner != nullptr && instance_owner.active(instance))
+                faultInvocation(owner->mount_slot, lux::script::InvalidScriptSymbolId, error);
         }
 
         void completeClaimedEventWaiter(EventWaiterId id, lux_script_call_frame& frame) noexcept
@@ -2230,10 +1932,7 @@ namespace lux::simulation::script
 
             const auto instance = waiter->instance;
             const auto awaitable = waiter->awaitable;
-            const auto* owner = instances.find(instanceKey(instance));
-            const bool is_live = owner != nullptr && owner->mount_slot < mounts.size() &&
-                mounts[owner->mount_slot].instance == instance &&
-                mounts[owner->mount_slot].state == EScriptMountState::ACTIVE;
+            const bool is_live = instance_owner.active(instance);
             if (!is_live)
             {
                 eraseEventWaiter(id);
@@ -2256,11 +1955,7 @@ namespace lux::simulation::script
                 copied = !is_invalid_frame && endpoint.payload_projection.copy(
                     endpoint.context, frame.args[0], record->value.bytes.span());
             }
-            const auto* current_owner = instances.find(instanceKey(instance));
-            const bool still_live = !stopping && !record->release_pending && current_owner != nullptr &&
-                current_owner->mount_slot < mounts.size() &&
-                mounts[current_owner->mount_slot].instance == instance &&
-                mounts[current_owner->mount_slot].state == EScriptMountState::ACTIVE;
+            const bool still_live = !stopping && !record->release_pending && instance_owner.active(instance);
             if (!copied || !still_live)
             {
                 eraseEventWaiter(id);
@@ -2313,517 +2008,78 @@ namespace lux::simulation::script
             --owner.endpoint_dispatch_depth;
         }
 
-        void removeMountBindings(RuntimeMount& mount) noexcept
+        [[nodiscard]] bool ownsAttachment(std::uint32_t slot, ecs::Entity entity) const noexcept
         {
-            binding_owner.withdraw(static_cast<std::uint32_t>(std::addressof(mount) - mounts.data()));
+            return instance_owner.ownsAttachment(slot, entity);
         }
 
-        [[nodiscard]] bool ownsAttachment(std::uint32_t mount_slot, ecs::Entity entity) const noexcept
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> beginPlayMount(std::uint32_t slot) noexcept
         {
-            return entity != ecs::NullEntity && registry->valid(entity) &&
-                   registry->all_of<detail::ScriptAttachment>(entity) &&
-                   registry->get<detail::ScriptAttachment>(entity).mount_slot == mount_slot;
+            const auto result = instance_owner.beginPlay(slot);
+            if (result)
+                return {};
+            const auto error = result.error();
+            recordFailure(error.error, slot, error.symbol, error.status);
+            return lux::cxx::unexpected(error.error);
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> projectAttachment(std::uint32_t mount_slot,
-                                                                                     ecs::Entity entity) noexcept
+        [[nodiscard]] RetirementRecord beginRetirement(std::uint32_t slot, EScriptEndPlayReason reason,
+            EScriptMountState final_state, bool remove_attachment) noexcept
         {
-            if (registry->all_of<detail::ScriptAttachment>(entity))
-            {
-                const auto& attachment = registry->get<detail::ScriptAttachment>(entity);
-                return attachment.mount_slot == mount_slot
-                           ? lux::cxx::expected<void, EScriptSystemError>{}
-                           : lux::cxx::expected<void, EScriptSystemError>(
-                                 lux::cxx::unexpected(EScriptSystemError::SCOPE_MISMATCH));
-            }
-
-            suppress_attachment_signal = true;
-            try
-            {
-                registry->emplace<detail::ScriptAttachment>(entity, mount_slot);
-            }
-            catch (const std::bad_alloc&)
-            {
-                suppress_attachment_signal = false;
-                return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
-            }
-            suppress_attachment_signal = false;
-            return {};
-        }
-
-        [[nodiscard]] static bool validBeginPlaySignature(const lux::rdesc::ScriptFunction& function) noexcept
-        {
-            return function.args.empty() && function.returns.empty();
-        }
-
-        [[nodiscard]] static bool validEndPlaySignature(const lux::rdesc::ScriptFunction& function) noexcept
-        {
-            if (function.args.size() != 1U || !function.returns.empty())
-                return false;
-            const auto& argument = function.args.front();
-            using Traits = lux::semantic::TypeTraits<EScriptEndPlayReason>;
-            return argument.canonical_name == Traits::CanonicalName &&
-                argument.type_id == lux::semantic::typeId(Traits::CanonicalName) &&
-                argument.pass == lux::semantic::EValuePass::VALUE && argument.abi_kind == Traits::AbiKind &&
-                argument.size == Traits::Size && argument.alignment == Traits::Alignment;
-        }
-
-        [[nodiscard]] lux::cxx::expected<std::uint32_t, EScriptSystemError> claimLifecycleMethod(
-            RuntimeMount& mount,
-            lux::script::ScriptSymbolId symbol
-        ) noexcept
-        {
-            if (symbol == lux::script::InvalidScriptSymbolId)
-                return kInvalidMethodSlot;
-            const auto method_end = mount.method_first + mount.method_count;
-            for (std::size_t slot{mount.method_first}; slot < method_end; ++slot)
-            {
-                if (methods[slot].symbol == symbol)
-                    return static_cast<std::uint32_t>(slot);
-            }
-            for (std::size_t slot{mount.method_first}; slot < method_end; ++slot)
-            {
-                if (methods[slot].symbol == lux::script::InvalidScriptSymbolId)
-                {
-                    methods[slot].symbol = symbol;
-                    return static_cast<std::uint32_t>(slot);
-                }
-            }
-            return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-        }
-
-        [[nodiscard]] int invokeLifecycle(
-            PreparedMethod& method,
-            const EScriptEndPlayReason* reason = nullptr
-        ) noexcept
-        {
-            lux_script_call_frame frame{};
-            lux_script_value_slot argument{};
-            if (reason != nullptr)
-            {
-                argument = lux::simulation::script::detail::argumentSlot(*reason);
-                frame.args = std::addressof(argument);
-                frame.arg_count = 1U;
-            }
-            frame.user_context = method.backend.synchronous.context;
-            UserInvocationScope scope(*this);
-            return method.backend.synchronous.invoke(&frame);
-        }
-
-        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> beginPlayMount(std::uint32_t mount_slot) noexcept
-        {
-            auto& mount = mounts[mount_slot];
-            if (mount.state != EScriptMountState::INITIALIZED)
-                return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-            if (mount.begin_play_method != kInvalidMethodSlot)
-            {
-                auto& method = methods[mount.begin_play_method];
-                const int status = invokeLifecycle(method);
-                if (status != 0)
-                {
-                    recordFailure(EScriptSystemError::INVOCATION_FAILURE, mount, method.symbol, status);
-                    return lux::cxx::unexpected(EScriptSystemError::INVOCATION_FAILURE);
-                }
-            }
-            mount.gameplay_lifetime_started = true;
-            return {};
-        }
-
-        void endPlayMount(RuntimeMount& mount, EScriptEndPlayReason reason) noexcept
-        {
-            if (mount.end_play_method == kInvalidMethodSlot)
-                return;
-            auto& method = methods[mount.end_play_method];
-            const int status = invokeLifecycle(method, std::addressof(reason));
-            if (status != 0)
-                recordFailure(EScriptSystemError::INVOCATION_FAILURE, mount, method.symbol, status);
-        }
-
-        void removeOwnedAttachment(std::uint32_t mount_slot, ecs::Entity entity) noexcept
-        {
-            if (!ownsAttachment(mount_slot, entity))
-                return;
-            suppress_attachment_signal = true;
-            registry->remove<detail::ScriptAttachment>(entity);
-            suppress_attachment_signal = false;
-        }
-
-        void resetMountRuntime(RuntimeMount& mount) noexcept
-        {
-            if (mount.entity != ecs::NullEntity)
-                entity_associations.erase(mount.entity);
-            const auto method_end = mount.method_first + mount.method_count;
-            for (std::size_t slot{mount.method_first}; slot < method_end; ++slot)
-            {
-                if (!methods[slot].used_by_binding)
-                    methods[slot] = {};
-            }
-            mount.scope = SimulationScriptScope{};
-            mount.behavior = {};
-            mount.instance = {};
-            mount.begin_play_method = kInvalidMethodSlot;
-            mount.end_play_method = kInvalidMethodSlot;
-            mount.capabilities.clear();
-            mount.event_sources.clear();
-            mount.artifact = {};
-            mount.backend = nullptr;
-            mount.backend_instance = {};
-            mount.entity = ecs::NullEntity;
-            mount.retirement_queued = false;
-            mount.gameplay_lifetime_started = false;
-            mount.pending_end_reason = EScriptEndPlayReason::OBJECT_UNMATERIALIZED;
-            mount.status.reclaimed = true;
-        }
-
-        [[nodiscard]] RetirementRecord beginRetirement(
-            std::uint32_t mount_slot,
-            EScriptEndPlayReason reason,
-            EScriptMountState final_state,
-            bool remove_attachment
-        ) noexcept
-        {
-            auto& mount = mounts[mount_slot];
-            const bool invoke_end_play = mount.gameplay_lifetime_started;
-            mount.gameplay_lifetime_started = false;
-            mount.status.retired_instance = mount.instance.valid() ? mount.instance : mount.retiring_instance;
-            mount.state = EScriptMountState::RETIRING;
-            markStatus(mount);
-            deactivate(mount);
-            removeMountBindings(mount);
+            auto retirement = instance_owner.claimRetirement(slot, reason, final_state);
+            binding_owner.withdraw(slot);
             if (remove_attachment)
-                removeOwnedAttachment(mount_slot, mount.entity);
-            invalidateInstance(mount);
-            return {mount_slot, reason, final_state, invoke_end_play};
+                instance_owner.removeAttachment(slot);
+            invalidateInstance(slot);
+            return retirement;
         }
 
         void finishRetirement(const RetirementRecord& retirement) noexcept
         {
-            auto& mount = mounts[retirement.mount_slot];
-            UserInvocationScope cleanup(*this);
-            if (retirement.invoke_end_play)
-                endPlayMount(mount, retirement.reason);
-            if (mount.backend != nullptr && mount.backend_instance)
+            const auto ended = instance_owner.endPlay(retirement);
+            if (!ended)
             {
-                const auto method_end = mount.method_first + mount.method_count;
-                for (std::size_t index{method_end}; index > mount.method_first; --index)
-                {
-                    auto& method = methods[index - 1U];
-                    if (!method.backend)
-                        continue;
-                    mount.backend->releaseMethod(
-                        mount.backend->context,
-                        mount.backend_instance,
-                        method.backend
-                    );
-                    method.backend = {};
-                }
-                mount.backend->destroyInstance(mount.backend->context, mount.backend_instance);
+                const auto error = ended.error();
+                recordFailure(error.error, retirement.slot(), error.symbol, error.status);
             }
-            mount.capabilities.clear();
-            mount.event_sources.clear();
-            if (mount.artifact.lease != nullptr && mount.artifact.release != nullptr)
-                mount.artifact.release(mount.artifact.lease);
-
-            resetMountRuntime(mount);
-            mount.state = retirement.final_state;
-            if (mount.state == EScriptMountState::FAULTED)
-            {
-                mount.status.submission_state = EScriptMountSubmissionState::REJECTED;
-                mount.unconsumed_result = true;
-            }
-            markStatus(mount);
+            instance_owner.finishRetirement(retirement);
         }
 
-        void releaseMount(
-            std::uint32_t mount_slot,
-            EScriptMountState final_state,
-            bool remove_attachment,
-            EScriptEndPlayReason reason = EScriptEndPlayReason::OBJECT_UNMATERIALIZED
-        ) noexcept
+        void releaseMount(std::uint32_t slot, EScriptMountState final_state, bool remove_attachment,
+            EScriptEndPlayReason reason = EScriptEndPlayReason::OBJECT_UNMATERIALIZED) noexcept
         {
-            finishRetirement(beginRetirement(mount_slot, reason, final_state, remove_attachment));
+            finishRetirement(beginRetirement(slot, reason, final_state, remove_attachment));
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> initializeMount(
-            std::uint32_t mount_slot) noexcept
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> initializeMount(std::uint32_t slot) noexcept
         {
-            auto& mount = mounts[mount_slot];
-            if (!mount.id.valid() || !mount.pending_scope || mount.state == EScriptMountState::FAULTED)
-                return {};
-            if (mount.state == EScriptMountState::ACTIVE || mount.state == EScriptMountState::INITIALIZED)
-                return {};
-
-            mount.scope = *mount.pending_scope;
-            mount.pending_scope.reset();
-            --pending_mounts;
-            if (const auto* entity = std::get_if<EntityScriptScope>(&mount.scope))
-            {
-                const bool invalid_entity = entity->self == ecs::NullEntity || !registry->valid(entity->self);
-                const bool occupied = !invalid_entity && registry->all_of<detail::ScriptAttachment>(entity->self);
-                if (invalid_entity || occupied)
-                {
-                    entity_associations.erase(entity->self);
-                    mount.state = EScriptMountState::INACTIVE;
-                    mount.status.submission_state = EScriptMountSubmissionState::REJECTED;
-                    mount.status.submission_error = occupied ? EScriptSystemError::SCOPE_MISMATCH :
-                        EScriptSystemError::INVALID_INPUT;
-                    mount.unconsumed_result = true;
-                    markStatus(mount);
-                    return {};
-                }
-                mount.entity = entity->self;
-            }
-            else
-                mount.entity = ecs::NullEntity;
-            mount.state = EScriptMountState::CONSTRUCTING;
-            mount.status.reclaimed = false;
-            markStatus(mount);
-            mount.behavior.attach(mount.scope, host);
-
-            if (!artifacts.resolve(artifacts.context, mount.asset, mount.artifact))
-            {
-                resetMountRuntime(mount);
-                mount.state = EScriptMountState::INACTIVE;
-                return lux::cxx::unexpected(EScriptSystemError::ASSET_NOT_RESIDENT);
-            }
-            if (mount.artifact.artifact == nullptr)
-            {
-                releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                return lux::cxx::unexpected(EScriptSystemError::INVALID_ASSET);
-            }
-
-            mount.backend = backend(mount.artifact.artifact->description().kind());
-            if (mount.backend == nullptr)
-            {
-                releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                return lux::cxx::unexpected(EScriptSystemError::BACKEND_NOT_AVAILABLE);
-            }
-
-            const auto lifecycle = mount.artifact.artifact->description().lifecycle;
-            const auto begin_method = claimLifecycleMethod(mount, lifecycle.begin_play);
-            const auto end_method = claimLifecycleMethod(mount, lifecycle.end_play);
-            if (!begin_method || !end_method)
-            {
-                const auto error = !begin_method ? begin_method.error() : end_method.error();
-                releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                return lux::cxx::unexpected(error);
-            }
-            mount.begin_play_method = *begin_method;
-            mount.end_play_method = *end_method;
-            if (mount.begin_play_method != kInvalidMethodSlot)
-            {
-                const auto* function = mount.artifact.artifact->findExport(lifecycle.begin_play);
-                if (function == nullptr || !validBeginPlaySignature(*function))
-                {
-                    releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                    return lux::cxx::unexpected(EScriptSystemError::SIGNATURE_MISMATCH);
-                }
-            }
-            if (mount.end_play_method != kInvalidMethodSlot)
-            {
-                const auto* function = mount.artifact.artifact->findExport(lifecycle.end_play);
-                if (function == nullptr || !validEndPlaySignature(*function))
-                {
-                    releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                    return lux::cxx::unexpected(EScriptSystemError::SIGNATURE_MISMATCH);
-                }
-            }
-
-            try
-            {
-                const auto& requirements = mount.artifact.artifact->description().api_requirements;
-                mount.capabilities.clear();
-                mount.capabilities.reserve(requirements.size());
-                for (const auto& requirement : requirements)
-                {
-                    const auto* resolved = capability(requirement.contract);
-                    if (resolved == nullptr)
-                    {
-                        releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                        return lux::cxx::unexpected(EScriptSystemError::SCRIPT_CAPABILITY_NOT_FOUND);
-                    }
-                    if (resolved->schema_hash != requirement.expected_schema_hash)
-                    {
-                        releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                        return lux::cxx::unexpected(EScriptSystemError::SCRIPT_CAPABILITY_SCHEMA_MISMATCH);
-                    }
-                    for (const auto& method : resolved->methods)
-                    {
-                        if (method.kind != lux::script::EScriptApiMethodKind::ASYNC_OPERATION)
-                            continue;
-                        for (const auto& result : method.results)
-                        {
-                            const bool is_unsupported_result = result.size > limits.max_resume_payload_bytes ||
-                                !supportsExternalResumeLayout(result.size, result.alignment);
-                            if (is_unsupported_result)
-                            {
-                                releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                                return lux::cxx::unexpected(EScriptSystemError::SIGNATURE_MISMATCH);
-                            }
-                        }
-                    }
-                    mount.capabilities.push_back(*resolved);
-                }
-
-                const auto& event_requirements = mount.artifact.artifact->description().event_requirements;
-                mount.event_sources.clear();
-                mount.event_sources.reserve(event_requirements.size());
-                if (next_event_layout_epoch == (std::numeric_limits<std::uint64_t>::max)())
-                {
-                    releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                    return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-                }
-                mount.event_layout_epoch = ++next_event_layout_epoch;
-                for (const auto& requirement : event_requirements)
-                {
-                    if (requirement.payload.size > limits.max_resume_payload_bytes)
-                    {
-                        releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                        return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-                    }
-                    const auto endpoint_slot = findEventEndpoint({
-                        lux::system::SystemInstanceId{requirement.system_id},
-                        EventPointId{requirement.event_id}
-                    });
-                    if (!endpoint_slot)
-                    {
-                        releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                        return lux::cxx::unexpected(EScriptSystemError::SCRIPT_EVENT_NOT_FOUND);
-                    }
-                    const auto described = simulation->findEvent(
-                        lux::system::SystemInstanceId{requirement.system_id},
-                        EventPointId{requirement.event_id}
-                    );
-                    const auto& endpoint = binding_owner.eventEndpoint(*endpoint_slot);
-                    if (!eventRequirementMatches(requirement, described, endpoint))
-                    {
-                        releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                        return lux::cxx::unexpected(EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH);
-                    }
-                    mount.event_sources.push_back({&requirement, {}, *endpoint_slot,
-                        {requirement.payload.type_id, requirement.payload.abi_kind,
-                            requirement.payload.size, requirement.payload.alignment}});
-                }
-            }
-            catch (const std::bad_alloc&)
-            {
-                releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
-            }
-
-            auto instance = createInstanceRecord(mount_slot);
-            if (!instance)
-            {
-                const auto error = instance.error();
-                releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                return lux::cxx::unexpected(error);
-            }
-            mount.instance = *instance;
-            for (std::uint32_t local{}; local < mount.event_sources.size(); ++local)
-            {
-                auto& admission = mount.event_sources[local].admission;
-                admission.scope_ = event_admission_scope;
-                admission.instance_ = mount.instance;
-                admission.layout_epoch_ = mount.event_layout_epoch;
-                admission.local_slot_ = local;
-            }
-
-            const ScriptInstanceCreateContext create_context{mount.asset,
-                                                             mount.scope,
-                                                             std::addressof(mount.behavior),
-                                                             mount.instance,
-                                                             mount.capabilities,
-                                                             mount.event_sources};
-            const auto created = [&]() noexcept {
-                UserInvocationScope scope(*this);
-                return mount.backend->createInstance(mount.backend->context, create_context,
-                    *mount.artifact.artifact, mount.backend_instance);
-            }();
-            if (created != EScriptBackendResult::SUCCESS)
-            {
-                const auto error = backendError(created);
-                releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                return lux::cxx::unexpected(error);
-            }
-
-            const auto method_end = mount.method_first + mount.method_count;
-            for (std::size_t method_slot{mount.method_first}; method_slot < method_end; ++method_slot)
-            {
-                auto& method = methods[method_slot];
-                if (method.symbol == lux::script::InvalidScriptSymbolId)
-                    continue;
-                const auto* function = mount.artifact.artifact->findExport(method.symbol);
-                if (function == nullptr)
-                {
-                    releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                    return lux::cxx::unexpected(EScriptSystemError::SYMBOL_NOT_FOUND);
-                }
-
-                const auto prepared_method = mount.backend->prepareMethod(
-                    mount.backend->context,
-                    mount.backend_instance,
-                    *function,
-                    method.backend
-                );
-                if (prepared_method != EScriptBackendResult::SUCCESS || !method.backend)
-                {
-                    const auto error = backendError(prepared_method);
-                    releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                    return lux::cxx::unexpected(error);
-                }
-                const bool is_lifecycle = method_slot == mount.begin_play_method ||
-                    method_slot == mount.end_play_method;
-                const bool invalid_lifecycle_entry = is_lifecycle &&
-                    (!method.backend.synchronous || static_cast<bool>(method.backend.resumable));
-                if (invalid_lifecycle_entry)
-                {
-                    releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                    return lux::cxx::unexpected(EScriptSystemError::SIGNATURE_MISMATCH);
-                }
-            }
-
-            const auto validated = binding_owner.validateMethods(mount_slot, *mount.artifact.artifact);
-            if (!validated)
-            {
-                releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                return validated;
-            }
-
-            mount.state = EScriptMountState::INITIALIZED;
-            markStatus(mount);
+            const auto result = preparer.prepareMount(instance_owner, slot, binding_owner, *simulation, limits);
+            if (!result)
+                return result;
+            const auto mount = instance_owner.view(slot);
+            if (mount.state == EScriptMountState::INITIALIZED)
+                execution_instances[mount.instance.slot - 1U] = {mount.instance, slot};
             return {};
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> publishMount(std::uint32_t mount_slot) noexcept
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> publishMount(std::uint32_t slot) noexcept
         {
-            auto& mount = mounts[mount_slot];
+            const auto mount = instance_owner.view(slot);
             if (mount.state != EScriptMountState::INITIALIZED || !mount.gameplay_lifetime_started)
                 return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-            const auto bound = binding_owner.publish(mount_slot, mount.instance, mount.entity);
+            const auto bound = binding_owner.publish(slot, mount.instance, mount.entity);
             if (!bound)
-                return lux::cxx::unexpected(bound.error());
-            if (mount.entity != ecs::NullEntity)
+                return bound;
+            const auto projected = instance_owner.projectAttachment(slot);
+            if (!projected)
             {
-                const auto projected = projectAttachment(mount_slot, mount.entity);
-                if (!projected)
-                {
-                    removeMountBindings(mount);
-                    return lux::cxx::unexpected(projected.error());
-                }
+                binding_owner.withdraw(slot);
+                return projected;
             }
             return {};
         }
 
-        void activateMount(std::uint32_t mount_slot) noexcept
-        {
-            auto& mount = mounts[mount_slot];
-            mount.state = EScriptMountState::ACTIVE;
-            mount.status.submission_state = EScriptMountSubmissionState::ACTIVATED;
-            mount.unconsumed_result = true;
-            markStatus(mount);
-            mount.active_counted = true;
-            ++active_mount_count;
-        }
+        void activateMount(std::uint32_t slot) noexcept { instance_owner.activate(slot); }
 
         void queueDirty(std::uint32_t mount_slot) noexcept
         {
@@ -2836,28 +2092,18 @@ namespace lux::simulation::script
             ExecutionOwnerScope execution{*this};
             if (!execution)
                 return;
-            if (suppress_attachment_signal || !source.all_of<detail::ScriptAttachment>(entity))
+            if (&source != registry)
                 return;
-
-            const auto mount_slot = source.get<detail::ScriptAttachment>(entity).mount_slot;
-            if (mount_slot >= mounts.size())
+            const auto slot = instance_owner.observeAttachment(entity, destroying);
+            if (!slot)
                 return;
-            auto& mount = mounts[mount_slot];
-            if (mount.entity != entity)
-                return;
-
-            if (destroying && mount.state == EScriptMountState::ACTIVE)
+            const auto mount = instance_owner.view(*slot);
+            if (destroying && mount.state == EScriptMountState::RETIRING)
             {
-                mount.status.retired_instance = mount.instance.valid() ? mount.instance : mount.retiring_instance;
-            mount.state = EScriptMountState::RETIRING;
-            markStatus(mount);
-                mount.pending_end_reason = EScriptEndPlayReason::ENTITY_DESTROYED;
-                deactivate(mount);
-                invalidateAdmission(mount);
-                if (endpoint_dispatch_depth == 0U)
-                    removeMountBindings(mount);
+                invalidateAdmission(mount.retiring_instance);
+                binding_owner.withdraw(*slot);
             }
-            queueDirty(mount_slot);
+            queueDirty(*slot);
         }
 
         void onAttachmentConstructed(ecs::Registry& source, ecs::Entity entity) noexcept
@@ -2896,7 +2142,7 @@ namespace lux::simulation::script
         {
             if (stopping)
                 return {};
-            auto* instance = instances.find(instanceKey(resume.instance));
+            auto* instance = findExecutionInstance(resume.instance);
             auto* continuation = continuations.find(continuationKey(resume.continuation));
             if (instance == nullptr || continuation == nullptr || continuation->instance != resume.instance ||
                 continuation->waiting_on != resume.awaitable)
@@ -2906,13 +2152,8 @@ namespace lux::simulation::script
             auto outcome = takeAwaitable(resume);
             if (!outcome)
                 return {};
-            if (instance->mount_slot >= mounts.size())
-            {
-                destroyContinuation(resume.continuation);
-                return {};
-            }
-            auto& mount = mounts[instance->mount_slot];
-            if (mount.state != EScriptMountState::ACTIVE || mount.instance != resume.instance)
+            auto access = instance_owner.resumeAccess(resume.instance);
+            if (!access)
             {
                 destroyContinuation(resume.continuation);
                 return {};
@@ -2922,7 +2163,7 @@ namespace lux::simulation::script
             ScriptResumePacket packet{resume.awaitable, outcome->state, std::addressof(outcome->value), outcome->error};
             ScriptStepContext context{
                 resume.instance,
-                this,
+                &execution_port,
                 &State::createAwaitableErased,
                 &State::discardAwaitableErased,
                 &State::waitEventErased
@@ -2934,16 +2175,16 @@ namespace lux::simulation::script
             }();
 
             continuation = continuations.find(continuationKey(resume.continuation));
-            instance = instances.find(instanceKey(resume.instance));
-            if (continuation == nullptr || instance == nullptr || instance->mount_slot >= mounts.size())
+            instance = findExecutionInstance(resume.instance);
+            if (continuation == nullptr || instance == nullptr)
                 return {};
-            auto& current_mount = mounts[instance->mount_slot];
-            if (current_mount.instance != resume.instance || current_mount.state != EScriptMountState::ACTIVE)
+            if (!access->current())
             {
                 destroyContinuation(resume.continuation);
                 return {};
             }
-            auto& method = methods[continuation->method_slot];
+            const auto slot = instance->mount_slot;
+            const auto symbol = instance_owner.methodSymbol(continuation->method_slot);
             if (result.state == EScriptStepState::COMPLETED && result.valid())
             {
                 destroyContinuation(resume.continuation);
@@ -2961,13 +2202,13 @@ namespace lux::simulation::script
                 const auto error = attached.error();
                 destroyContinuation(resume.continuation);
                 discardAwaitable(resume.instance, result.waiting_on);
-                faultInvocation(current_mount, method.symbol, error);
+                faultInvocation(slot, symbol, error);
                 return lux::cxx::unexpected(error);
             }
 
             const auto status = result.error.status;
             destroyContinuation(resume.continuation);
-            faultInvocation(current_mount, method.symbol, EScriptSystemError::INVOCATION_FAILURE, status);
+            faultInvocation(slot, symbol, EScriptSystemError::INVOCATION_FAILURE, status);
             return lux::cxx::unexpected(EScriptSystemError::INVOCATION_FAILURE);
         }
 
@@ -2999,7 +2240,7 @@ namespace lux::simulation::script
             }
 
             releaseSignals();
-            for (std::size_t index{mounts.size()}; index > 0U; --index)
+            for (std::size_t index{instance_owner.capacity()}; index > 0U; --index)
             {
                 releaseMount(
                     static_cast<std::uint32_t>(index - 1U),
@@ -3008,17 +2249,7 @@ namespace lux::simulation::script
                     EScriptEndPlayReason::RUNTIME_STOPPED
                 );
             }
-            for (auto& mount : mounts)
-                if (mount.id.valid())
-                {
-                    if (!mount.pending_scope)
-                        ++pending_mounts;
-                    mount.pending_scope = mount.status.submitted_scope;
-                    if (const auto* entity = std::get_if<EntityScriptScope>(&*mount.pending_scope))
-                        entity_associations.emplace(entity->self,
-                            static_cast<std::uint32_t>(std::addressof(mount) - mounts.data()));
-                }
-            active_mount_count = 0U;
+            instance_owner.restorePendingAfterRollback();
             dirty_current.clear();
             dirty_processing.clear();
             retirement_queue.clear();
@@ -3140,28 +2371,10 @@ namespace lux::simulation::script
         if (planned_handlers != capacity.binding_capacity)
             return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
 
-        std::array<ScriptBackendDescriptor, kBackendKindCount> backend_table{};
-        for (const auto& backend : backends)
-        {
-            const auto index = backendIndex(backend.kind);
-            const bool is_invalid_kind =
-                backend.kind == lux::rdesc::Script::Kind::UNKNOWN || index >= backend_table.size();
-            const bool is_invalid_functions = backend.createInstance == nullptr || backend.prepareMethod == nullptr ||
-                                              backend.releaseMethod == nullptr || backend.destroyInstance == nullptr;
-            if (is_invalid_kind || is_invalid_functions)
-                return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-            if (backend_table[index].kind != lux::rdesc::Script::Kind::UNKNOWN)
-                return lux::cxx::unexpected(EScriptSystemError::DUPLICATE_BACKEND_KIND);
-            backend_table[index] = backend;
-        }
-
         try
         {
             auto state = std::make_unique<State>();
-            static lux::cxx::ScopeIdSource<ScriptEventAdmissionScopeTag> event_scope_source;
-            state->event_admission_scope = event_scope_source.acquire();
             state->simulation = std::addressof(simulation);
-            state->capacity = capacity;
             state->registry = std::addressof(registry);
             state->clock = std::addressof(clock);
             state->limits = limits;
@@ -3169,65 +2382,25 @@ namespace lux::simulation::script
             state->next_step_waits.reserve(limits.next_step_wait_capacity);
             state->simulation_delays.reserve(limits.simulation_delay_capacity);
 
-            std::vector<PreparedScriptApiCapability> published_capabilities;
-            published_capabilities.reserve(capabilities.size() + 1U);
-            for (const auto& capability : capabilities)
-            {
-                if (!capability.contract.isValid() || capability.schema_hash == 0U || capability.dispatch == nullptr)
-                    return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-                published_capabilities.push_back({lux::script::ScriptApiContractId{capability.contract.name()},
-                                                  capability.schema_hash,
-                                                  capability.context,
-                                                  capability.dispatch,
-                                                  capability.schema_version,
-                                                  capability.methods});
-            }
             const auto delay_binding = lux::script::bindScriptAbility<DelayAbility>(state->delay_provider);
             const auto delay_publication = publishScriptAbility(delay_binding);
-            if (!delay_publication.contract.isValid() || delay_publication.schema_hash == 0U ||
-                delay_publication.dispatch == nullptr)
-            {
-                return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-            }
-            published_capabilities.push_back({
-                lux::script::ScriptApiContractId{delay_publication.contract.name()},
-                delay_publication.schema_hash,
-                delay_publication.context,
-                delay_publication.dispatch,
-                delay_publication.schema_version,
-                delay_publication.methods
-            });
-            std::sort(published_capabilities.begin(),
-                      published_capabilities.end(),
-                      [](const auto& left, const auto& right) noexcept {
-                          return left.contract.hash() < right.contract.hash() ||
-                                 (left.contract.hash() == right.contract.hash() &&
-                                  left.contract.name() < right.contract.name());
-                      });
-            for (std::size_t index{1U}; index < published_capabilities.size(); ++index)
-            {
-                const auto& previous = published_capabilities[index - 1U].contract;
-                const auto& current = published_capabilities[index].contract;
-                if (previous.hash() != current.hash())
-                    continue;
-                const auto error = previous.name() == current.name()
-                                       ? EScriptSystemError::SCRIPT_CAPABILITY_AMBIGUOUS_PROVIDER
-                                       : EScriptSystemError::SCRIPT_CAPABILITY_ID_COLLISION;
-                return lux::cxx::unexpected(error);
-            }
-
-            state->artifacts = artifacts;
-            state->host = host;
+            const auto catalog = state->preparer.prepareCatalog(artifacts, backends, capabilities, delay_publication);
+            if (!catalog)
+                return lux::cxx::unexpected(catalog.error());
+            const auto instance_layout = state->instance_owner.prepare(
+                capacity, limits.instance_capacity, registry, host
+            );
+            if (!instance_layout)
+                return lux::cxx::unexpected(instance_layout.error());
             state->real_delay = real_delay;
-            state->backends = backend_table;
             const auto binding_layout = state->binding_owner.prepare(simulation, capacity, hooks, events,
                 {&state->binding_port, &State::invokeHookLane, &State::dispatchEvent, &State::invokeBinding},
                 limits.max_resume_payload_bytes);
             if (!binding_layout)
                 return lux::cxx::unexpected(binding_layout.error());
-            state->published_capabilities = std::move(published_capabilities);
             state->failures.reserve(limits.failure_capacity);
-            state->instances.reserve(limits.instance_capacity);
+            state->execution_instances.resize(state->instance_owner.identityCapacity());
+            state->active_hooks.resize(capacity.method_capacity);
             state->continuations.reserve(limits.continuation_capacity);
             state->event_waiters.reserve(limits.event_wait_capacity);
             state->event_wait_routes.reserve(limits.event_wait_capacity);
@@ -3291,7 +2464,7 @@ namespace lux::simulation::script
                 *state_);
 
         state_->lifecycle_initialized.clear();
-        for (std::size_t mount_slot{}; mount_slot < state_->mounts.size(); ++mount_slot)
+        for (std::size_t mount_slot{}; mount_slot < state_->instance_owner.capacity(); ++mount_slot)
         {
             auto initialized = state_->initializeMount(static_cast<std::uint32_t>(mount_slot));
             if (!initialized)
@@ -3299,7 +2472,7 @@ namespace lux::simulation::script
                 const auto rolled_back = state_->rollbackPrepare();
                 return rolled_back ? initialized : rolled_back;
             }
-            if (state_->mounts[mount_slot].state == EScriptMountState::INITIALIZED)
+            if (state_->instance_owner.view(mount_slot).state == EScriptMountState::INITIALIZED)
                 state_->lifecycle_initialized.push_back(static_cast<std::uint32_t>(mount_slot));
         }
 
@@ -3316,7 +2489,7 @@ namespace lux::simulation::script
 
         for (const auto mount_slot : state_->lifecycle_initialized)
         {
-            if (state_->mounts[mount_slot].state != EScriptMountState::INITIALIZED)
+            if (state_->instance_owner.view(mount_slot).state != EScriptMountState::INITIALIZED)
                 continue;
             const auto published = state_->publishMount(mount_slot);
             if (!published)
@@ -3333,7 +2506,7 @@ namespace lux::simulation::script
         }
         for (const auto mount_slot : state_->lifecycle_initialized)
         {
-            if (state_->mounts[mount_slot].state == EScriptMountState::INITIALIZED)
+            if (state_->instance_owner.view(mount_slot).state == EScriptMountState::INITIALIZED)
                 state_->activateMount(mount_slot);
         }
 
@@ -3358,7 +2531,7 @@ namespace lux::simulation::script
         State::ExecutionOwnerScope execution{*state_};
         if (!execution)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
-        if (state_->endpoint_dispatch_depth != 0U || state_->user_invocation_depth != 0U ||
+        if (state_->endpoint_dispatch_depth != 0U || state_->instance_owner.protectedCount() != 0U ||
             state_->result_write_pins != 0U || state_->active_claimed_waiters != 0U)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         if (state_->stopping)
@@ -3373,7 +2546,7 @@ namespace lux::simulation::script
         state_->lifecycle_candidates.clear();
         for (const auto mount_slot : state_->retirement_queue)
         {
-            auto& mount = state_->mounts[mount_slot];
+            const auto mount = state_->instance_owner.view(mount_slot);
             if (mount.state == EScriptMountState::FAULTED)
             {
                 state_->lifecycle_retirements.push_back(state_->beginRetirement(
@@ -3389,7 +2562,7 @@ namespace lux::simulation::script
         std::optional<EScriptSystemError> first_error;
         for (const auto mount_slot : state_->dirty_processing.values)
         {
-            auto& mount = state_->mounts[mount_slot];
+            const auto mount = state_->instance_owner.view(mount_slot);
             if (mount.state == EScriptMountState::FAULTED ||
                 (mount.state == EScriptMountState::RETIRING && mount.retirement_queued))
                 continue;
@@ -3424,7 +2597,8 @@ namespace lux::simulation::script
 
         std::sort(state_->lifecycle_candidates.begin(), state_->lifecycle_candidates.end(),
             [&](std::uint32_t left, std::uint32_t right) noexcept {
-                return state_->mounts[left].admission_order < state_->mounts[right].admission_order;
+                const auto first = state_->instance_owner.view(left).admission_order;
+                return first < state_->instance_owner.view(right).admission_order;
             });
         state_->lifecycle_initialized.clear();
         for (const auto mount_slot : state_->lifecycle_candidates)
@@ -3432,7 +2606,7 @@ namespace lux::simulation::script
             const auto initialized = state_->initializeMount(mount_slot);
             if (initialized)
             {
-                if (state_->mounts[mount_slot].state == EScriptMountState::INITIALIZED)
+                if (state_->instance_owner.view(mount_slot).state == EScriptMountState::INITIALIZED)
                     state_->lifecycle_initialized.push_back(mount_slot);
                 continue;
             }
@@ -3441,13 +2615,8 @@ namespace lux::simulation::script
             if (!first_error)
                 first_error = error;
 
-            auto& failed_mount = state_->mounts[mount_slot];
-            failed_mount.state = EScriptMountState::FAULTED;
-            failed_mount.status.submission_state = EScriptMountSubmissionState::REJECTED;
-            failed_mount.status.submission_error = error;
-            failed_mount.unconsumed_result = true;
-            state_->markStatus(failed_mount);
-            state_->recordFailure(error, failed_mount);
+            state_->instance_owner.reject(mount_slot, error);
+            state_->recordFailure(error, mount_slot);
         }
 
         for (const auto mount_slot : state_->lifecycle_initialized)
@@ -3462,7 +2631,7 @@ namespace lux::simulation::script
         }
         for (const auto mount_slot : state_->lifecycle_initialized)
         {
-            auto& mount = state_->mounts[mount_slot];
+            const auto mount = state_->instance_owner.view(mount_slot);
             if (mount.state != EScriptMountState::INITIALIZED || !mount.gameplay_lifetime_started)
                 continue;
             const auto published = state_->publishMount(mount_slot);
@@ -3475,15 +2644,15 @@ namespace lux::simulation::script
                     true,
                     EScriptEndPlayReason::FAULTED
                 );
-                state_->recordFailure(error, mount);
+                state_->recordFailure(error, mount_slot);
                 if (!first_error)
                     first_error = error;
             }
         }
         for (const auto mount_slot : state_->lifecycle_initialized)
         {
-            if (state_->mounts[mount_slot].state == EScriptMountState::INITIALIZED &&
-                state_->mounts[mount_slot].gameplay_lifetime_started)
+            if (state_->instance_owner.view(mount_slot).state == EScriptMountState::INITIALIZED &&
+                state_->instance_owner.view(mount_slot).gameplay_lifetime_started)
             {
                 state_->activateMount(mount_slot);
             }
@@ -3498,7 +2667,7 @@ namespace lux::simulation::script
         if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
         State::ExecutionOwnerScope execution{*state_};
-        if (!execution || state_->endpoint_dispatch_depth != 0U || state_->user_invocation_depth != 0U)
+        if (!execution || state_->endpoint_dispatch_depth != 0U || state_->instance_owner.protectedCount() != 0U)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         const auto step = state_->clock->snapshot().step_index;
         // Step zero is the standalone, not-yet-executing test/preparation boundary.
@@ -3534,7 +2703,7 @@ namespace lux::simulation::script
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
         State::ExecutionOwnerScope execution{*state_};
         const bool busy = !execution || state_->prepare_state != EPrepareState::PREPARED ||
-            state_->endpoint_dispatch_depth != 0U || state_->user_invocation_depth != 0U;
+            state_->endpoint_dispatch_depth != 0U || state_->instance_owner.protectedCount() != 0U;
         if (busy)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         return state_->acceptMounts(mounts);
@@ -3546,12 +2715,9 @@ namespace lux::simulation::script
         if (!state_)
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
         State::ExecutionOwnerScope execution{*state_};
-        if (!execution || state_->user_invocation_depth != 0U || state_->endpoint_dispatch_depth != 0U)
+        if (!execution || state_->instance_owner.protectedCount() != 0U || state_->endpoint_dispatch_depth != 0U)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
-        const auto slot = state_->findMount(id);
-        if (!slot)
-            return std::optional<ScriptMountStatus>{};
-        return std::optional<ScriptMountStatus>{state_->mounts[*slot].status};
+        return state_->instance_owner.query(id);
     }
 
     lux::cxx::expected<ScriptMountStatusCollection, EScriptSystemError>
@@ -3560,20 +2726,9 @@ namespace lux::simulation::script
         if (!state_)
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
         State::ExecutionOwnerScope execution{*state_};
-        if (!execution || state_->user_invocation_depth != 0U || state_->endpoint_dispatch_depth != 0U)
+        if (!execution || state_->instance_owner.protectedCount() != 0U || state_->endpoint_dispatch_depth != 0U)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
-        auto& changes = state_->status_changes;
-        const auto count = (std::min)(output.size(), changes.values.size());
-        for (std::size_t index{}; index < count; ++index)
-        {
-            const auto slot = changes.values[index];
-            auto& mount = state_->mounts[slot];
-            output[index] = mount.status;
-            mount.unconsumed_result = false;
-            changes.present[slot] = 0U;
-        }
-        changes.values.erase(changes.values.begin(), changes.values.begin() + count);
-        return ScriptMountStatusCollection{count, changes.values.size()};
+        return state_->instance_owner.collect(output);
     }
 
     void ScriptSystem::beginStableAdmission() noexcept
@@ -3596,7 +2751,7 @@ namespace lux::simulation::script
 
         state_->stopping = true;
         state_->ingress->completions.stop();
-        if (state_->user_invocation_depth != 0U || state_->result_write_pins != 0U)
+        if (state_->instance_owner.protectedCount() != 0U || state_->result_write_pins != 0U)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         state_->next_step_waits.clear();
         state_->next_step_first = {};
@@ -3611,10 +2766,10 @@ namespace lux::simulation::script
 
         state_->releaseSignals();
         state_->lifecycle_retirements.clear();
-        for (std::size_t index{}; index < state_->mounts.size(); ++index)
+        for (std::size_t index{}; index < state_->instance_owner.capacity(); ++index)
         {
-            auto& mount = state_->mounts[index];
-            if (mount.state == EScriptMountState::INACTIVE && !mount.backend_instance)
+            const auto mount = state_->instance_owner.view(index);
+            if (mount.state == EScriptMountState::INACTIVE && mount.reclaimed)
                 continue;
             const auto reason = mount.state == EScriptMountState::FAULTED
                 ? EScriptEndPlayReason::FAULTED
@@ -3640,30 +2795,19 @@ namespace lux::simulation::script
         state_->event_waiters.clear();
         state_->event_wait_routes.clear();
         state_->claimed_event_waiters.clear();
-        state_->instances.clear();
-        state_->published_capabilities.clear();
-        state_->entity_associations.clear();
+        state_->execution_instances.clear();
+        state_->active_hooks.clear();
+        state_->preparer.releaseCatalog();
         state_->awaitables.clear();
         state_->resumes.clear();
-        for (auto& mount : state_->mounts)
-        {
-            if (mount.pending_scope)
-            {
-                mount.pending_scope.reset();
-                --state_->pending_mounts;
-                mount.status.submission_state = EScriptMountSubmissionState::CANCELLED;
-                mount.status.submission_error = EScriptSystemError::SHUT_DOWN;
-                mount.unconsumed_result = true;
-                state_->markStatus(mount);
-            }
-        }
+        state_->instance_owner.finishShutdown();
         state_->prepare_state = EPrepareState::SHUT_DOWN;
         return {};
     }
 
     std::size_t ScriptSystem::activeInstanceCount() const noexcept
     {
-        return state_ ? state_->active_mount_count : 0U;
+        return state_ ? state_->instance_owner.activeCount() : 0U;
     }
 
     std::size_t ScriptSystem::activeContinuationCount() const noexcept
@@ -3686,14 +2830,9 @@ namespace lux::simulation::script
         State::ExecutionOwnerScope execution{*state_};
         if (!execution)
             return result;
-        result.configured_mounts = state_->configured_mounts;
-        result.pending_mounts = state_->pending_mounts;
-        result.mount_backing_bytes = state_->mounts.capacity() * sizeof(State::RuntimeMount);
-        result.method_backing_bytes = state_->methods.capacity() * sizeof(State::PreparedMethod);
+        state_->instance_owner.writeStats(result);
         result.binding_backing_bytes = state_->binding_owner.backingBytes();
-        result.mount_feedback_backing_bytes = state_->status_changes.values.capacity() * sizeof(std::uint32_t) +
-            state_->status_changes.present.capacity() * sizeof(std::uint8_t);
-        result.active_instances = state_->active_mount_count;
+        result.assembly_endpoint_count_visits = state_->binding_owner.assemblyEndpointCountVisits();
         result.sync_invocations = state_->sync_invocations;
         result.step_invocations = state_->step_invocations;
         result.backend_resume_calls = state_->backend_resume_calls;

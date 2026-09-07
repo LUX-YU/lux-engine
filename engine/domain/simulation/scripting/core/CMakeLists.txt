@@ -10,6 +10,10 @@ component_include_directories(
     INSTALL_TIME include
 )
 
+target_include_directories(simulation_scripting_core INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/sinclude>
+)
+
 target_link_libraries(
     simulation_scripting_core
     INTERFACE

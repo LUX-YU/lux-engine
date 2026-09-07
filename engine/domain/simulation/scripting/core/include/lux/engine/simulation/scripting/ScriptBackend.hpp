@@ -158,7 +158,7 @@ namespace lux::simulation::script
             api_ = &api;
         }
 
-        friend class ScriptSystem;
+        friend class detail::ScriptRuntimeAccess;
     };
 
     struct ScriptBackendInstance final

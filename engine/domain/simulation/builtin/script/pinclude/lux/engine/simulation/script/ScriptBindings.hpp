@@ -85,6 +85,10 @@ namespace lux::simulation::script::detail
         [[nodiscard]] bool methodUsedByBinding(std::size_t method_slot) const noexcept;
         [[nodiscard]] std::size_t methodCount() const noexcept { return symbols_.size(); }
         [[nodiscard]] std::size_t backingBytes() const noexcept;
+        [[nodiscard]] std::uint64_t assemblyEndpointCountVisits() const noexcept
+        {
+            return assembly_endpoint_count_visits_;
+        }
         [[nodiscard]] std::optional<std::uint32_t> findHook(HookScriptTarget target) const noexcept;
         [[nodiscard]] std::optional<std::uint32_t> findEvent(EventScriptTarget target) const noexcept;
         [[nodiscard]] const ScriptEventEndpointDescriptor& eventEndpoint(std::uint32_t slot) const noexcept;
@@ -183,5 +187,6 @@ namespace lux::simulation::script::detail
         std::span<const ScriptRuntimeMount> staged_inputs_;
         std::span<const ScriptMountPlacement> staged_placements_;
         bool reservation_active_{};
+        std::uint64_t assembly_endpoint_count_visits_{};
     };
 }

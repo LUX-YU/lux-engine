@@ -11,6 +11,149 @@ from pathlib import Path
 import subprocess
 
 
+LIFECYCLE_TRACE_COUNTS = {
+    "initial": {
+        "create": 3,
+        "prepare": 9,
+        "invoke": 9,
+        "release": 9,
+        "destroy": 3
+    },
+    "failures": {
+        "create": 8,
+        "prepare": 20,
+        "release": 20,
+        "destroy": 8,
+        "invoke": 10
+    },
+    "signatures": {
+        "signature-rejected": 2
+    },
+    "incarnations": {
+        "create": 4,
+        "prepare": 12,
+        "invoke": 8,
+        "continuation-destroy": 2,
+        "release": 12,
+        "destroy": 4
+    },
+    "pending-fatal": {
+        "create": 5,
+        "prepare": 15,
+        "invoke": 13,
+        "release": 15,
+        "destroy": 5
+    },
+    "cross-batch": {
+        "create": 4,
+        "prepare": 12,
+        "invoke": 18,
+        "release": 12,
+        "destroy": 4
+    }
+}
+
+EVENT_TRACE_COUNTS = {
+    "TargetedAndRetirement": {
+        "create": 2,
+        "step": 6,
+        "resume": 2,
+        "continuation-destroy": 3,
+        "release": 4,
+        "destroy": 2
+    },
+    "RegistrationCutoff": {
+        "create": 1,
+        "step": 3,
+        "resume": 2,
+        "continuation-destroy": 2,
+        "release": 2,
+        "destroy": 1
+    },
+    "NestedDispatch": {
+        "create": 1,
+        "step": 4,
+        "resume": 1,
+        "continuation-destroy": 1,
+        "release": 2,
+        "destroy": 1
+    },
+    "PreparedAdmissionProvenance": {
+        "create": 4,
+        "step": 3,
+        "resume": 1,
+        "continuation-destroy": 1,
+        "release": 4,
+        "destroy": 4
+    },
+    "CopyRetirementPin": {
+        "create": 1,
+        "step": 1,
+        "continuation-destroy": 1,
+        "release": 1,
+        "destroy": 1
+    },
+    "CopyOtherRecordRemoval": {
+        "create": 2,
+        "step": 3,
+        "continuation-destroy": 2,
+        "release": 3,
+        "destroy": 2,
+        "resume": 1
+    },
+    "CopyShutdownAndFailure": {
+        "create": 2,
+        "step": 2,
+        "continuation-destroy": 2,
+        "release": 2,
+        "destroy": 2
+    },
+    "CopyNestedAdmission": {
+        "create": 4,
+        "step": 7,
+        "resume": 4,
+        "continuation-destroy": 5,
+        "release": 6,
+        "destroy": 4
+    }
+}
+
+INSTRUMENTATION_HITS = []
+
+
+def replace_exact(source, old, new, count=1):
+    actual = source.count(old)
+    INSTRUMENTATION_HITS.append({"token": old, "expected": count, "actual": actual})
+    if actual != count:
+        raise RuntimeError(f"Instrumentation expected {count} hits, found {actual}: {old!r}")
+    return source.replace(old, new)
+
+
+def truncate_main(source, marker):
+    if source.count(marker) != 1:
+        raise RuntimeError("Expected exactly one fixture main: " + marker)
+    return source[:source.index(marker)]
+
+
+def check_trace(lines, expected):
+    cases = {}
+    current = None
+    for line in lines:
+        if line.startswith("CASE "):
+            current = line[5:]
+            if current in cases:
+                raise RuntimeError("Duplicate trace case: " + current)
+            cases[current] = {}
+        elif line:
+            if current is None:
+                raise RuntimeError("Business event outside a trace case: " + line)
+            event = line.split(",")[0]
+            cases[current][event] = cases[current].get(event, 0) + 1
+    if list(cases) != list(expected) or cases != expected:
+        raise RuntimeError("Trace coverage/count mismatch: " + json.dumps(cases))
+    return cases
+
+
 def run(command, log, env=None):
     with log.open("w", encoding="utf-8") as stream:
         stream.write(json.dumps(command) + "\n")
@@ -21,7 +164,7 @@ def run(command, log, env=None):
 
 
 def instrument(source, candidate):
-    source = source.replace('"../../../system/test/HookInvocationTestAccess.hpp"',
+    source = replace_exact(source,'"../../../system/test/HookInvocationTestAccess.hpp"',
                             '"HookInvocationTestAccess.hpp"')
     source = '''#include <cstdio>
 #include <chrono>
@@ -51,7 +194,7 @@ void* operator new(std::size_t size, std::align_val_t alignment)
 void operator delete(void* value, std::align_val_t) noexcept { _aligned_free(value); }
 void operator delete(void* value, std::size_t, std::align_val_t) noexcept { _aligned_free(value); }
 ''' + source
-    source = source.replace("namespace\n{", """namespace
+    source = replace_exact(source,"namespace\n{", """namespace
 {
     bool trace_enabled{};
     void trace(const char* event, std::size_t instance, std::uint64_t symbol = 0U) noexcept
@@ -61,30 +204,34 @@ void operator delete(void* value, std::size_t, std::align_val_t) noexcept { _ali
     }
 """, 1)
     if not candidate:
-        source = source.replace("        std::vector<ScriptAwaitableCompletion> completions;",
+        source = replace_exact(source,"        std::vector<ScriptAwaitableCompletion> completions;",
                                 "        std::vector<ScriptAwaitableCompletion> completions;\n"
                                 "        std::vector<ScriptBehavior*> hosts;")
-        source = source.replace("        const ScriptInstanceCreateContext&,",
+        source = replace_exact(source,"        const ScriptInstanceCreateContext&,",
                                 "        const ScriptInstanceCreateContext& create_context,")
-        source = source.replace("        ++state.creates;\n        output.value = instance;",
+        source = replace_exact(source,"        ++state.creates;\n        output.value = instance;",
                                 "        ++state.creates;\n        state.hosts.push_back(create_context.behavior);\n"
                                 "        output.value = instance;")
-    source = source.replace("        ++state.creates;", '        ++state.creates;\n        trace("create", state.creates);')
-    source = source.replace("        ++state.prepares;", '        ++state.prepares;\n'
+    source = replace_exact(source,"        ++state.creates;", '        ++state.creates;\n        trace("create", state.creates);')
+    source = replace_exact(source,"        ++state.prepares;", '        ++state.prepares;\n'
                             '        trace("prepare", static_cast<Instance*>(instance.value)->serial, function.symbol_id);')
-    source = source.replace("        ++static_cast<BackendState*>(context)->releases;",
+    source = replace_exact(source,"        ++static_cast<BackendState*>(context)->releases;",
                             '        trace("release", static_cast<PreparedCall*>(method.token)->instance->serial,\n'
                             '            static_cast<PreparedCall*>(method.token)->symbol);\n'
                             '        ++static_cast<BackendState*>(context)->releases;')
-    source = source.replace("        ++static_cast<BackendState*>(context)->destroys;",
+    source = replace_exact(source,"        ++static_cast<BackendState*>(context)->destroys;",
                             '        trace("destroy", static_cast<Instance*>(instance.value)->serial);\n'
                             '        ++static_cast<BackendState*>(context)->destroys;')
-    source = source.replace("        auto& state = *instance.owner;",
+    source = replace_exact(source,"        auto& state = *instance.owner;",
                             '        auto& state = *instance.owner;\n        trace("invoke", instance.serial, call.symbol);')
-    source = source.replace("        ++continuation->owner->continuation_destroys;",
+    source = replace_exact(source,"        ++continuation->owner->continuation_destroys;",
                             '        trace("continuation-destroy", continuation->instance->serial);\n'
                             '        ++continuation->owner->continuation_destroys;')
-    source = source[:source.index("int main()")]
+    for variable in ("begin_prepared", "end_prepared"):
+        assertion = f"        assert(!{variable} && {variable}.error() == EScriptSystemError::SIGNATURE_MISMATCH);"
+        source = replace_exact(source, assertion,
+            assertion + '\n        if (trace_enabled) std::puts("signature-rejected");')
+    source = truncate_main(source, "int main()")
     cross_batch = """
 void testCrossBatchOrder()
 {
@@ -108,13 +255,13 @@ void testCrossBatchOrder()
     assert(harness.backend_state.creates == 4U && harness.backend_state.destroys == 4U);
 }
 """
-    cross_batch = cross_batch.replace("INITIAL_CROSS_BATCH", """
+    cross_batch = replace_exact(cross_batch,"INITIAL_CROSS_BATCH", """
     std::swap(harness.description[1], harness.description[2]);
     auto created = harness.create(2U);
     std::swap(harness.description[1], harness.description[2]);
 """ if candidate else "auto created = harness.create();")
-    cross_batch = cross_batch.replace("SUBMIT_SECOND", "harness.submitEntity(system, 1U);" if candidate else "")
-    cross_batch = cross_batch.replace("SUBMIT_THIRD", "harness.submitEntity(system, 2U);" if candidate else "")
+    cross_batch = replace_exact(cross_batch,"SUBMIT_SECOND", "harness.submitEntity(system, 1U);" if candidate else "")
+    cross_batch = replace_exact(cross_batch,"SUBMIT_THIRD", "harness.submitEntity(system, 2U);" if candidate else "")
     source += cross_batch
     source += """
 int main(int argc, char** argv)
@@ -185,20 +332,20 @@ int main(int argc, char** argv)
     return 0;
 }
 """
-    source = source.replace("INITIAL_COUNT", "1U" if candidate else "")
-    source = source.replace("SUBMIT_LATE", """
+    source = replace_exact(source,"INITIAL_COUNT", "1U" if candidate else "")
+    source = replace_exact(source,"SUBMIT_LATE", """
     std::array<ScriptMountStatus, 8U> feedback;
     assert(system.collectMountStatusChanges(feedback));
     for (std::size_t index{1U}; index < 8U; ++index)
         harness.description[index].scope = EntityScriptScope{harness.entities[index]};
     assert(system.mountResolvedBatch(std::span{harness.description}.subspan(1U)));
 """ if candidate else "")
-    source = source.replace("SUBMIT_REPLACEMENT", "harness.submitEntity(system, 0U);" if candidate else "")
+    source = replace_exact(source,"SUBMIT_REPLACEMENT", "harness.submitEntity(system, 0U);" if candidate else "")
     return source
 
 
 def instrument_events(source):
-    source = source.replace('"../../../scripting/core/test/ScriptEndpointTestAccess.hpp"',
+    source = replace_exact(source,'"../../../scripting/core/test/ScriptEndpointTestAccess.hpp"',
                             '"ScriptEndpointTestAccess.hpp"')
     replacements = {
         "        ++continuation->owner->continuation_destroys;":
@@ -223,8 +370,8 @@ def instrument_events(source):
     for old, new in replacements.items():
         if old not in source:
             raise RuntimeError("Event trace instrumentation no longer matches fixture: " + old)
-        source = source.replace(old, new)
-    source = source[:source.index("int main(")]
+        source = replace_exact(source,old, new)
+    source = truncate_main(source, "int main(")
     source += "int main()\n{\n"
     for test in ("TargetedAndRetirement", "RegistrationCutoff", "NestedDispatch", "PreparedAdmissionProvenance",
                  "CopyRetirementPin", "CopyOtherRecordRemoval", "CopyShutdownAndFailure", "CopyNestedAdmission"):
@@ -248,7 +395,10 @@ def main():
         directory = root / variant
         directory.mkdir()
         original = source_root / "engine/domain/simulation/builtin/script/test/script_system_lifecycle_test.cpp"
-        probe = instrument(original.read_text(encoding="utf-8-sig"), variant == "candidate")
+        INSTRUMENTATION_HITS.clear()
+        original_text = original.read_text(encoding="utf-8-sig")
+        runtime_input = "std::vector<ScriptRuntimeMount>" in original_text
+        probe = instrument(original_text, runtime_input)
         (directory / "probe.cpp").write_text(probe, encoding="utf-8")
         helper = source_root / "engine/domain/simulation/system/test/HookInvocationTestAccess.hpp"
         (directory / helper.name).write_bytes(helper.read_bytes())
@@ -257,19 +407,20 @@ def main():
         event_helper = source_root / "engine/domain/simulation/scripting/core/test/ScriptEndpointTestAccess.hpp"
         (directory / event_helper.name).write_bytes(event_helper.read_bytes())
         wire_path = source_root / ("engine/scene/integration/script_description/test/script_system_description_test.cpp"
-                                   if variant == "candidate" else
+                                   if runtime_input else
                                    "engine/domain/simulation/builtin/script/test/script_system_description_test.cpp")
         golden_header = wire_path.parent / "ScriptSystemV1Golden.hpp"
         if golden_header.exists():
             (directory / golden_header.name).write_bytes(golden_header.read_bytes())
         wire = '#include <fstream>\n' + wire_path.read_text(encoding="utf-8-sig")
-        wire = wire.replace('int main()', 'int main(int argc, char** argv)')
-        wire = wire.replace('    assert(encoded);', '    assert(encoded);\n'
+        wire = replace_exact(wire,'int main()', 'int main(int argc, char** argv)')
+        wire = replace_exact(wire,'    assert(encoded);', '    assert(encoded);\n'
                             '    assert(argc == 2);\n'
                             '    std::ofstream wire_output(argv[1], std::ios::binary);\n'
                             '    wire_output.write(reinterpret_cast<const char*>(encoded->data()), encoded->size());\n'
                             '    assert(wire_output.good());\n')
         (directory / "wire.cpp").write_text(wire, encoding="utf-8")
+        (directory / "instrumentation.json").write_text(json.dumps(INSTRUMENTATION_HITS, indent=2))
         (directory / "CMakeLists.txt").write_text('''cmake_minimum_required(VERSION 3.22)
 project(sr2_probe LANGUAGES CXX)
 find_package(lux-cmake-toolset CONFIG REQUIRED)
@@ -287,7 +438,7 @@ target_link_libraries(sr2_events PRIVATE lux::engine::simulation::simulation_scr
             cmake.write("\nadd_executable(sr2_wire wire.cpp)\n"
                         "target_compile_features(sr2_wire PRIVATE cxx_std_20)\n"
                         "target_compile_options(sr2_wire PRIVATE /UNDEBUG)\n")
-            if variant == "candidate":
+            if runtime_input:
                 cmake.write("find_package(lux-engine-scene-script-description REQUIRED COMPONENTS scene_script_description)\n"
                             "target_link_libraries(sr2_wire PRIVATE lux::engine::scene::scene_script_description)\n")
             else:
@@ -321,14 +472,23 @@ target_link_libraries(sr2_events PRIVATE lux::engine::simulation::simulation_scr
     for variant, (exe, env) in variants.items():
         run([str(exe), "--allocations"], root / f"{variant}-allocations.csv.log", env)
     traces = [(root / variant / "trace.log").read_text().splitlines()[1:] for variant in variants]
+    lifecycle_coverage = [check_trace(trace, LIFECYCLE_TRACE_COUNTS) for trace in traces]
     identical = traces[0] == traces[1]
     event_traces = [(root / variant / "event-trace.log").read_text().splitlines()[1:] for variant in variants]
+    event_coverage = [check_trace(trace, EVENT_TRACE_COUNTS) for trace in event_traces]
     event_equal = event_traces[0] == event_traces[1]
-    wire_equal = (root / "baseline/v1.bin").read_bytes() == (root / "candidate/v1.bin").read_bytes()
+    wire_bytes = [(root / variant / "v1.bin").read_bytes() for variant in variants]
+    for data in wire_bytes:
+        if len(data) != 288 or hashlib.sha256(data).hexdigest() != (
+                "8002ffd5678f822d79949b4d0a36d1687613216af4b26b876f967fa24cc76e52"):
+            raise RuntimeError("Persistent v1 golden size/hash mismatch")
+    wire_equal = wire_bytes[0] == wire_bytes[1]
     if not wire_equal:
         raise RuntimeError("Persistent v1 wire bytes changed")
     (root / "manifest.json").write_text(json.dumps({"variants": manifest, "trace_equal": identical,
-                                                  "event_trace_equal": event_equal, "wire_equal": wire_equal}, indent=2))
+                                                  "event_trace_equal": event_equal, "wire_equal": wire_equal,
+                                                  "lifecycle_coverage": lifecycle_coverage,
+                                                  "event_coverage": event_coverage}, indent=2))
     if not identical:
         import difflib
         (root / "trace.diff").write_text("\n".join(difflib.unified_diff(*traces)))

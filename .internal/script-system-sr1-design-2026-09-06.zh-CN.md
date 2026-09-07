@@ -933,3 +933,30 @@ resolver、backend/provider 冷目录、契约验证和准备票据归 `ScriptPr
 endpoint C ABI context 通过私有操作 port 回调 System 的 occurrence/调用协调入口，不把完整
 State 或可写容器作为 callback context 交给 endpoint。Hook/Event 的 claim、普通 callback、
 claimed completion 顺序仍由 System 显式表达，Bindings 只拥有普通 handler 遍历与连接。
+
+### 13.3 已落实的 owner 与窄断言（联合资格前）
+
+`ScriptInstances` 私有 Mount/方法数组、identity SlotMap 与有界状态队列不再由 System 持有。
+System 只读 `ScriptMountView` 值；所有 construction、activation、fault、retirement、反馈消费
+通过 Instances 操作执行。`Construction` 是不可复制的准备票据，只有 Preparer 调用其有限
+装配操作；失败析构进入已领取的回滚路径。`Invocation`/`Protection` 覆盖整个用户调用及
+结果处理；Retirement 清理资格在调用外部析构前领取。外部释放前先清对应句柄，防重入重复释放。
+
+剩余 execution 数组按完整 ScriptInstanceId 匹配，独占 continuation/awaitable/waiter 链头；
+active_hooks 以实例身份加 continuation 身份匹配，prepared 条目仅保存如何调用。核心模块的
+`sinclude/ScriptRuntimeAccess.hpp` 仅提供宿主/admission 的内部操作，不安装；backend ABI 不变。
+
+新增 `testProtectedReentry` 覆盖 create、prepare、普通 invoke、continuation destroy、releaseMethod、
+backend destroy 和 lease release 七点。每点检查另一实例的不同 Hook 合法调用一次，原生命周期、
+query/collect/提交返回 busy，shutdown 保留 busy 与关闭准入；最终各 2 create/destroy、6 prepare/release、
+2 BeginPlay/EndPlay/lease，continuation 场景恰好 3 次销毁。第一次诊断误用同一 Hook 的递归 dispatch，
+被既有 HookPoint 保护拒绝；修正测试为另一 Hook，没有放松端点重入规则。旧 fixture 默认仍只有原 Hook。
+
+`simulation_script_bindings_test` 直接编译私有实现而不导出私有 API：准备票据丢弃不耗槽；第二个
+Event 发布失败撤销已发布 Hook；重复连接不重复注册；遍历内重复 withdraw 只 unlink 一次，busy
+断开保留真实 token；128 次回收重建后 Hook/Event 调用恰好 130 次。原六项 runtime/event/lifecycle/
+continuation/frontier 加新绑定测试已通过工作树全量构建与窄回归；这不代替后续 clean commit 资格。
+
+规模诊断使用 `assembly_configuration_slot_visits`（预检槽位检查与预留标记清零项数）和
+`assembly_endpoint_count_visits`（预留/提交时复制的端点计数项数）。两者是累计装配工作，包含拒绝的
+预检，不是资源计数；不包含二分查找比较、Hash 查找或脚本业务调用，不能解释为全指令计数。

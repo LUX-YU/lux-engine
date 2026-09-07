@@ -9,6 +9,7 @@ using lux::simulation::test::dispatchHookForTest;
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <new>
 #include <optional>
@@ -23,6 +24,7 @@ namespace
 
     inline constexpr lux::system::SystemInstanceId kSystem{0x7501U};
     inline constexpr HookPointId kHook{0x7502U};
+    inline constexpr HookPointId kReentryHook{0x7506U};
     inline constexpr lux::script::ScriptSymbolId kBegin{0x7503U};
     inline constexpr lux::script::ScriptSymbolId kTick{0x7504U};
     inline constexpr lux::script::ScriptSymbolId kEnd{0x7505U};
@@ -36,12 +38,13 @@ namespace
 
 
 
-    [[nodiscard]] SimulationDescription makeSimulation()
+    [[nodiscard]] SimulationDescription makeSimulation(bool enable_reentry = false)
     {
-        constexpr std::array hooks{makeHookPointSpec<void()>(kHook, "tick")};
+        constexpr std::array hooks{makeHookPointSpec<void()>(kHook, "tick"),
+            makeHookPointSpec<void()>(kReentryHook, "reentry")};
         const SimulationSystemDescription system{
             .type = {.canonical_name = "lux.test.script-lifecycle", .version = 1U},
-            .hooks = hooks
+            .hooks = std::span{hooks}.first(enable_reentry ? 2U : 1U)
         };
         SimulationDescriptionBuilder builder;
         assert(builder.addSystem(kSystem, "script-lifecycle", system));
@@ -103,6 +106,11 @@ namespace
         Instance* instance{};
     };
 
+    enum class EReentryPoint : std::uint8_t
+    {
+        NONE, CREATE, PREPARE, INVOKE, CONTINUATION_DESTROY, RELEASE_METHOD, BACKEND_DESTROY, LEASE_RELEASE
+    };
+
     struct BackendState final
     {
         std::size_t creates{};
@@ -127,7 +135,46 @@ namespace
         std::vector<std::size_t> end_normal_dispatches;
         std::vector<ScriptAwaitableCompletion> completions;
         std::vector<ScriptBehavior*> hosts;
+        EReentryPoint reentry_point{EReentryPoint::NONE};
+        ScriptSystem* reentry_system{};
+        Registry* reentry_registry{};
+        Entity reentry_entity{NullEntity};
+        std::size_t reentry_host{};
+        std::size_t reentry_calls{};
+        HookPoint<void()>* reentry_hook{};
     };
+
+    void reenter(BackendState& state, EReentryPoint point) noexcept
+    {
+        if (state.reentry_point != point)
+            return;
+        state.reentry_point = EReentryPoint::NONE;
+        ++state.reentry_calls;
+        auto& system = *state.reentry_system;
+        auto* host = state.hosts[state.reentry_host];
+        assert(host->isAttached() && host->self() == state.reentry_entity);
+        if (point == EReentryPoint::INVOKE)
+            state.reentry_registry->destroy(state.reentry_entity);
+        const auto destroys = state.destroys;
+        const auto releases = state.releases;
+        const auto calls = state.tick_calls;
+        assert(dispatchHookForTest(*state.reentry_hook) == 1U);
+        assert(state.tick_calls == calls + 1U); // A different active instance remains callable.
+        const auto lifecycle = system.processLifecycle();
+        assert(!lifecycle && lifecycle.error() == EScriptSystemError::ENDPOINT_BUSY);
+        const auto query = system.queryMountStatus({1U});
+        assert(!query && query.error() == EScriptSystemError::ENDPOINT_BUSY);
+        const auto collect = system.collectMountStatusChanges({});
+        assert(!collect && collect.error() == EScriptSystemError::ENDPOINT_BUSY);
+        const auto submit = system.mountResolvedBatch({});
+        assert(!submit && submit.error() == EScriptSystemError::ENDPOINT_BUSY);
+        const auto shutdown = system.shutdown();
+        assert(!shutdown && shutdown.error() == EScriptSystemError::ENDPOINT_BUSY);
+        assert(state.destroys == destroys && state.releases == releases);
+        assert(host->isAttached() && host->self() == state.reentry_entity);
+        const auto closed = system.mountResolvedBatch({});
+        assert(!closed && closed.error() == EScriptSystemError::SHUT_DOWN);
+    }
 
     int invokePrepared(lux_script_call_frame* frame) noexcept
     {
@@ -147,6 +194,7 @@ namespace
         if (call.symbol == kTick)
         {
             ++state.tick_calls;
+            reenter(state, EReentryPoint::INVOKE);
             if (state.fail_tick_serial == instance.serial)
                 return 32;
             ++instance.value;
@@ -185,6 +233,7 @@ namespace
         ++state.creates;
         state.hosts.push_back(create_context.behavior);
         output.value = instance;
+        reenter(state, EReentryPoint::CREATE);
         return EScriptBackendResult::SUCCESS;
     }
 
@@ -219,18 +268,21 @@ namespace
                 ? BoundScriptStepCall{call, &invokeAsync}
                 : BoundScriptStepCall{}
         };
+        reenter(state, EReentryPoint::PREPARE);
         return EScriptBackendResult::SUCCESS;
     }
 
     void releaseMethod(void* context, ScriptBackendInstance, ScriptBackendPreparedMethod method) noexcept
     {
         ++static_cast<BackendState*>(context)->releases;
+        reenter(*static_cast<BackendState*>(context), EReentryPoint::RELEASE_METHOD);
         delete static_cast<PreparedCall*>(method.token);
     }
 
     void destroyInstance(void* context, ScriptBackendInstance instance) noexcept
     {
         ++static_cast<BackendState*>(context)->destroys;
+        reenter(*static_cast<BackendState*>(context), EReentryPoint::BACKEND_DESTROY);
         delete static_cast<Instance*>(instance.value);
     }
 
@@ -246,6 +298,7 @@ namespace
     {
         auto* continuation = static_cast<Continuation*>(opaque);
         ++continuation->owner->continuation_destroys;
+        reenter(*continuation->owner, EReentryPoint::CONTINUATION_DESTROY);
         delete continuation;
     }
 
@@ -280,10 +333,12 @@ namespace
             bool begin,
             bool end,
             bool invalid_begin = false,
-            bool invalid_end = false
+            bool invalid_end = false,
+            bool enable_reentry = false
         )
-            : simulation(makeSimulation()), artifact(makeArtifact(begin, end, invalid_begin, invalid_end)),
-              entity_scope(entity_scope)
+            : simulation(makeSimulation(enable_reentry)),
+              artifact(makeArtifact(begin, end, invalid_begin, invalid_end)),
+              entity_scope(entity_scope), enable_reentry(enable_reentry)
         {
             std::vector<ScriptRuntimeMount> builder;
             for (std::size_t index{}; index < mount_count; ++index)
@@ -305,6 +360,12 @@ namespace
             assert(hook.prepare(1U) == EEndpointMutationError::NONE);
             bridge = std::make_unique<ScriptHookEndpoint<void()>>(kSystem, kHook, hook);
             endpoint = bridge->descriptor();
+            if (enable_reentry)
+            {
+                assert(reentry_hook.prepare(1U) == EEndpointMutationError::NONE);
+                reentry_bridge = std::make_unique<ScriptHookEndpoint<void()>>(kSystem, kReentryHook, reentry_hook);
+                reentry_endpoint = reentry_bridge->descriptor();
+            }
             backend_state.hook = std::addressof(hook);
             backend = {
                 lux::rdesc::Script::Kind::CPP_STATIC,
@@ -319,6 +380,7 @@ namespace
         [[nodiscard]] lux::cxx::expected<ScriptSystem,
             EScriptSystemError> create(std::size_t initial_count = 16U) noexcept
         {
+            const std::array endpoints{endpoint, reentry_endpoint};
             return ScriptSystem::create(
                 simulation,
                 *planScriptRuntimeCapacity(description),
@@ -329,7 +391,7 @@ namespace
                 {this, &resolveArtifact},
                 {},
                 std::span{&backend, 1U},
-                std::span{&endpoint, 1U},
+                std::span{endpoints}.first(enable_reentry ? 2U : 1U),
                 {}
             );
         }
@@ -353,7 +415,11 @@ namespace
                 return false;
             output.artifact = self.invalid_artifact ? nullptr : &self.artifact;
             output.lease = &self;
-            output.release = [](void* lease) noexcept { ++static_cast<Harness*>(lease)->leases_released; };
+            output.release = [](void* lease) noexcept {
+                auto& harness = *static_cast<Harness*>(lease);
+                ++harness.leases_released;
+                reenter(harness.backend_state, EReentryPoint::LEASE_RELEASE);
+            };
             ++self.leases_acquired;
             return true;
         }
@@ -372,6 +438,10 @@ namespace
         ScriptBackendDescriptor backend;
         std::vector<Entity> entities;
         bool entity_scope{};
+        bool enable_reentry{};
+        HookPoint<void()> reentry_hook;
+        std::unique_ptr<ScriptHookEndpoint<void()>> reentry_bridge;
+        ScriptHookEndpointDescriptor reentry_endpoint;
         bool invalid_artifact{};
         std::size_t leases_acquired{};
         std::size_t leases_released{};
@@ -657,6 +727,70 @@ namespace
         }
     }
 
+    void testProtectedReentry()
+    {
+        constexpr std::array points{EReentryPoint::CREATE, EReentryPoint::PREPARE, EReentryPoint::INVOKE,
+            EReentryPoint::CONTINUATION_DESTROY, EReentryPoint::RELEASE_METHOD,
+            EReentryPoint::BACKEND_DESTROY, EReentryPoint::LEASE_RELEASE};
+        for (const auto point : points)
+        {
+            Harness harness{2U, true, true, true, false, false, true};
+            auto& state = harness.backend_state;
+            const bool constructing = point == EReentryPoint::CREATE || point == EReentryPoint::PREPARE;
+            auto& other = harness.description[constructing ? 0U : 1U];
+            other.bindings.push_back({kTick, HookScriptTarget{kSystem, kReentryHook}});
+            state.reentry_hook = &harness.reentry_hook;
+            state.async_tick = point == EReentryPoint::CONTINUATION_DESTROY;
+            auto created = harness.create(constructing ? 1U : 2U);
+            assert(created && created->prepare());
+            auto& system = *created;
+            if (state.async_tick)
+            {
+                assert(dispatchHookForTest(harness.hook) == 1U);
+                assert(system.activeContinuationCount() == 2U);
+                assert(state.completions[1].ready());
+                assert(system.executeStablePoint());
+                assert(state.continuation_destroys == 1U);
+            }
+            state.reentry_system = &system;
+            state.reentry_registry = &harness.registry;
+            state.reentry_host = constructing ? 1U : 0U;
+            state.reentry_entity = harness.entities[state.reentry_host];
+            state.reentry_point = point;
+            std::printf("REENTRY_CASE,%u\n", static_cast<unsigned>(point));
+            std::fflush(stdout);
+            if (constructing)
+            {
+                assert(system.mountResolvedBatch(std::span{harness.description}.subspan(1U)));
+                assert(system.processLifecycle());
+            }
+            else if (point == EReentryPoint::INVOKE)
+            {
+                assert(dispatchHookForTest(harness.hook) == 1U);
+                assert(state.destroys == 0U && state.releases == 0U);
+            }
+            else
+            {
+                harness.registry.destroy(harness.entities[0]);
+                assert(system.processLifecycle());
+                assert(state.destroys == 1U && state.releases == 3U);
+            }
+            assert(state.reentry_calls == 1U);
+            assert(system.shutdown());
+            assert(state.creates == 2U && state.destroys == 2U);
+            assert(state.begins == 2U && state.ends == 2U);
+            assert(state.prepares == 6U && state.releases == 6U);
+            assert(harness.leases_acquired == 2U && harness.leases_released == 2U);
+            assert(state.continuation_destroys == (state.async_tick ? 3U : 0U));
+            assert(system.activeInstanceCount() == 0U && system.activeContinuationCount() == 0U);
+            assert(system.activeAwaitableCount() == 0U);
+            for (const auto* host : state.hosts)
+                assert(!host->isAttached());
+            std::printf("REENTRY_OK,%u,%zu,%zu,%zu,%zu\n", static_cast<unsigned>(point), state.reentry_calls,
+                state.creates, state.destroys, state.continuation_destroys);
+        }
+    }
+
     void testInitialLifecycle()
     {
         Harness harness{3U, false, true, true};
@@ -823,5 +957,6 @@ int main()
     testSignatureValidation();
     testIncarnationAndPendingContinuation();
     testPendingDoesNotMaskFatal();
+    testProtectedReentry();
     return 0;
 }

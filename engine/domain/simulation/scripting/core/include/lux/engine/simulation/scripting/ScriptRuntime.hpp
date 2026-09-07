@@ -552,6 +552,7 @@ namespace lux::simulation::script
     class ScriptSystem;
     struct ScriptEventAdmissionScopeTag;
     using ScriptEventAdmissionScope = lux::cxx::ScopeId<ScriptEventAdmissionScopeTag>;
+    namespace detail { class ScriptRuntimeAccess; }
 
     class ScriptEventAdmissionHandle final
     {
@@ -566,7 +567,7 @@ namespace lux::simulation::script
         ScriptInstanceId instance_;
         std::uint64_t layout_epoch_{};
         std::uint32_t local_slot_{};
-        friend class ScriptSystem;
+        friend class detail::ScriptRuntimeAccess;
     };
 
     // Borrowed only by a backend instance, for the incarnation's prepared lifetime. Never serialized.

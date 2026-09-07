@@ -137,6 +137,7 @@ namespace lux::simulation::script::detail
             return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
         std::copy(hook_counts_.begin(), hook_counts_.end(), hook_reservations_.begin());
         std::copy(event_counts_.begin(), event_counts_.end(), event_reservations_.begin());
+        assembly_endpoint_count_visits_ += hook_counts_.size() + event_counts_.size();
         auto binding_count = bindings_.size();
         auto method_count = symbols_.size();
         for (std::size_t item{}; item < inputs.size(); ++item)
@@ -207,6 +208,7 @@ namespace lux::simulation::script::detail
             std::terminate();
         std::copy(hook_reservations_.begin(), hook_reservations_.end(), hook_counts_.begin());
         std::copy(event_reservations_.begin(), event_reservations_.end(), event_counts_.begin());
+        assembly_endpoint_count_visits_ += hook_counts_.size() + event_counts_.size();
         for (std::size_t index{}; index < staged_inputs_.size(); ++index)
         {
             const auto placement = staged_placements_[index];
@@ -335,6 +337,11 @@ namespace lux::simulation::script::detail
             {
                 auto& bucket = events_[binding.bucket];
                 const bool broadcast = event_endpoints_[binding.bucket].route == EEventRoute::SIMULATION_BROADCAST;
+                if (!broadcast && entity == ecs::NullEntity)
+                {
+                    unlink(slot);
+                    return lux::cxx::unexpected(EScriptSystemError::SCOPE_MISMATCH);
+                }
                 const auto inserted = bucket.handlers.connect(entity, handler, broadcast);
                 if (inserted)
                     binding.registration = inserted.token;

@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cstdio>
 using namespace lux::script::lua;
+void runInstalledRuntime();
 int main()
 {
     auto* state = luaL_newstate();
@@ -22,4 +23,5 @@ int main()
     lua_close(state);
     std::printf("INSTALLED_VALUE fields=2 id=7 weight=2.5 representation=%llu rule=%u PASS\n",
         LuaValueCodec<Item>::representation(), ConsumerRuleRevision);
+    runInstalledRuntime();
 }

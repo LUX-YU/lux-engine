@@ -34,6 +34,10 @@ function Run-Probe([string]$Name, [bool]$Success, [bool]$Change, [bool]$Noop = $
         $business = Get-Content "$EvidenceRoot/$Name.run.log" -Raw
         if ($business -notmatch 'fields=2 id=7 weight=2.5 representation=(\d+) rule=1 PASS') { throw "$Name incomplete business row" }
         $representation = $Matches[1]
+        if ($business -notmatch 'INSTALLED_RUNTIME legal=2 rejected=2 begin=1 end=1 provider_ctor=1 provider_dtor=1 lease=1 release=1 backlog=0 PASS' -or
+            ([regex]::Matches($business, 'INSTALLED_RUNTIME phase=\d calls=\d failures=0 PASS')).Count -ne 4) {
+            throw "$Name missing installed provider execution or cleanup"
+        }
         if ($Name -in @('included-field','compile-macro') -and $representation -eq $script:lastRepresentation) {
             throw "$Name did not change the compiled representation"
         }

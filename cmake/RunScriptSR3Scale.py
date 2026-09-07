@@ -57,6 +57,7 @@ int main(int argc, char** argv)
     assert(system.activeInstanceCount() == count);
     using Clock = std::chrono::steady_clock;
     std::int64_t elapsed{};
+    std::array<std::int64_t, 128U> samples{};
     std::size_t allocations{};
     std::uint64_t slot_visits{}, endpoint_visits{};
     const auto backing = system.stats();
@@ -81,7 +82,8 @@ int main(int argc, char** argv)
         assert(system.failures().empty());
         if (iteration >= 16U)
         {
-            elapsed += std::chrono::duration_cast<std::chrono::nanoseconds>(after - before).count();
+            samples[iteration - 16U] = std::chrono::duration_cast<std::chrono::nanoseconds>(after - before).count();
+            elapsed += samples[iteration - 16U];
             allocations += allocation_count;
             COUNTERS
         }
@@ -98,12 +100,18 @@ int main(int argc, char** argv)
     assert(harness.backend_state.ends == count + 144U);
     assert(harness.backend_state.prepares == (count + 144U) * 3U);
     assert(harness.backend_state.releases == harness.backend_state.prepares);
+    std::sort(samples.begin(), samples.end());
     std::printf("configs,endpoints,warmup,rebuilds,elapsed_ns,diagnostics,exe_allocations,slot_visits,"
-        "endpoint_count_visits,counter_available,creates,destroys,ticks,errors,backlog\n");
-    std::printf("%zu,%zu,16,128,%lld,%d,%zu,%llu,%llu,COUNTER_AVAILABLE,%zu,%zu,%zu,0,0\n", count, count,
+        "endpoint_count_visits,counter_available,creates,destroys,ticks,errors,backlog,"
+        "p50_ns,p95_ns,p99_ns,mount_bytes,method_bytes,binding_bytes,feedback_bytes,awaitable_bytes\n");
+    std::printf("%zu,%zu,16,128,%lld,%d,%zu,%llu,%llu,COUNTER_AVAILABLE,%zu,%zu,%zu,0,0,"
+        "%lld,%lld,%lld,%zu,%zu,%zu,%zu,%zu\n", count, count,
         static_cast<long long>(elapsed), diagnostics, allocations,
         static_cast<unsigned long long>(slot_visits), static_cast<unsigned long long>(endpoint_visits),
-        harness.backend_state.creates, harness.backend_state.destroys, harness.backend_state.tick_calls);
+        harness.backend_state.creates, harness.backend_state.destroys, harness.backend_state.tick_calls,
+        static_cast<long long>(samples[63]), static_cast<long long>(samples[121]), static_cast<long long>(samples[126]),
+        backing.mount_backing_bytes, backing.method_backing_bytes, backing.binding_backing_bytes,
+        backing.mount_feedback_backing_bytes, backing.awaitable_storage_bytes);
 }
 '''
 
@@ -123,7 +131,7 @@ def main():
         directory.mkdir()
         fixture = source_root / 'engine/domain/simulation/builtin/script/test/script_system_lifecycle_test.cpp'
         INSTRUMENTATION_HITS.clear()
-        source = '#include <string>\n' + truncate_main(
+        source = '#include <string>\n#include <algorithm>\n' + truncate_main(
             instrument(fixture.read_text(encoding='utf-8-sig'), True), 'int main(int argc')
         stats = source_root / 'engine/domain/simulation/builtin/script/include/lux/engine/simulation/ScriptSystem.hpp'
         counters = 'assembly_configuration_slot_visits' in stats.read_text(encoding='utf-8-sig')

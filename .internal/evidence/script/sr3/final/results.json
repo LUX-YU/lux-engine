@@ -1,0 +1,1323 @@
+{
+  "reference_qualification": [
+    {
+      "source_sha": "8145598c18421d03da1dac21251200af3290e27d",
+      "profile": "toolchain",
+      "build_type": "RelWithDebInfo",
+      "build": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\t",
+      "prefix": "E:\\SyncForder\\CodeRepos\\install\\sr3-reference\\t",
+      "ctest_exit": 0,
+      "second_build_noop": true,
+      "install_exit": 0,
+      "status": "PASS",
+      "ctest_summary": [
+        "100% tests passed, 0 tests failed out of 106",
+        "Total Test time (real) =  69.64 sec"
+      ]
+    },
+    {
+      "source_sha": "8145598c18421d03da1dac21251200af3290e27d",
+      "profile": "developer",
+      "build_type": "RelWithDebInfo",
+      "build": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\d",
+      "prefix": "E:\\SyncForder\\CodeRepos\\install\\sr3-reference\\d",
+      "fixture_sha256": {
+        "LUX_PHYSICS2D_FLOWFORGE_ARTIFACT": "871A13B0F4FC12F17DFB113ECC8E3AD11A752277E374DF757D24877777DDE5D4",
+        "LUX_PHYSICS2D_LUA_ARTIFACT": "EA857E3ABD11A92AE2D442B9E708C261F62BE460F62FFE4F421689A816EC93D1",
+        "LUX_LUA_PORTABILITY_ARTIFACT": "D03C4A67CF102C2A404CA756A8CC3D11D4ECADE49CC9418DDB88CFEA147318EC"
+      },
+      "ctest_exit": 8,
+      "second_build_noop": true,
+      "install_exit": 0,
+      "status": "FAILED",
+      "ctest_summary": [
+        "95% tests passed, 6 tests failed out of 118",
+        "Total Test time (real) =  78.96 sec",
+        "The following tests FAILED:"
+      ]
+    }
+  ],
+  "reference_failed_tests": [
+    "scene_script_lua_runtime_test",
+    "scene_script_lua_runtime_workers_0",
+    "scene_script_lua_runtime_workers_2",
+    "scene_script_lua_runtime_workers_4",
+    "scene_script_lua_runtime_interpreter_test",
+    "scene_script_lua_runtime_interpreter_workers_4"
+  ],
+  "candidate_qualification": [
+    {
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "profile": "toolchain",
+      "build_type": "RelWithDebInfo",
+      "build": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\t",
+      "prefix": "E:\\SyncForder\\CodeRepos\\install\\sr3-final\\t",
+      "ctest_exit": 0,
+      "second_build_noop": true,
+      "install_exit": 0,
+      "status": "PASS",
+      "ctest_summary": [
+        "100% tests passed, 0 tests failed out of 107",
+        "Total Test time (real) =  45.50 sec"
+      ]
+    },
+    {
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "profile": "developer",
+      "build_type": "RelWithDebInfo",
+      "build": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\d",
+      "prefix": "E:\\SyncForder\\CodeRepos\\install\\sr3-final\\d",
+      "fixture_sha256": {
+        "LUX_PHYSICS2D_LUA_ARTIFACT": "EA857E3ABD11A92AE2D442B9E708C261F62BE460F62FFE4F421689A816EC93D1",
+        "LUX_PHYSICS2D_FLOWFORGE_ARTIFACT": "871A13B0F4FC12F17DFB113ECC8E3AD11A752277E374DF757D24877777DDE5D4",
+        "LUX_LUA_PORTABILITY_ARTIFACT": "D03C4A67CF102C2A404CA756A8CC3D11D4ECADE49CC9418DDB88CFEA147318EC"
+      },
+      "ctest_exit": 8,
+      "second_build_noop": true,
+      "install_exit": 0,
+      "status": "FAILED",
+      "ctest_summary": [
+        "95% tests passed, 6 tests failed out of 119",
+        "Total Test time (real) =  52.57 sec",
+        "The following tests FAILED:"
+      ]
+    }
+  ],
+  "candidate_failed_tests": [
+    "scene_script_lua_runtime_test",
+    "scene_script_lua_runtime_workers_0",
+    "scene_script_lua_runtime_workers_2",
+    "scene_script_lua_runtime_workers_4",
+    "scene_script_lua_runtime_interpreter_test",
+    "scene_script_lua_runtime_interpreter_workers_4"
+  ],
+  "installed_consumers": [
+    {
+      "consumer": "cpp-generated-script",
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "prefixes": "E:/SyncForder/CodeRepos/install/sr3-final/d;E:/SyncForder/CodeRepos/install/sr3-final/t;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+      "executable_sha256": "3E0D3EA834870636A9D28F2D732FA4DCCC79DD777B0BF5F17B0CA79593D1F92C",
+      "status": "PASS"
+    },
+    {
+      "consumer": "physics2d-script",
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "prefixes": "E:/SyncForder/CodeRepos/install/sr3-final/d;E:/SyncForder/CodeRepos/install/sr3-final/t;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+      "executable_sha256": "29DA708DE50046E6E5B969FF4E739DAFC55A8BDC96421CA596C9F19A05EFFDFE",
+      "status": "PASS"
+    },
+    {
+      "consumer": "system-event-await-runtime",
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "prefixes": "E:/SyncForder/CodeRepos/install/sr3-final/d;E:/SyncForder/CodeRepos/install/sr3-final/t;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+      "executable_sha256": "B32B1D937B127AF64046B2521C96AB5E4F0D72E1DF88CBF6AF43FE535876158A",
+      "status": "PASS"
+    },
+    {
+      "consumer": "flowforge-compiler",
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "prefixes": "E:/SyncForder/CodeRepos/install/sr3-final/d;E:/SyncForder/CodeRepos/install/sr3-final/t;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+      "executable_sha256": "2B2EFAC2852970C7F025D54BA63DFE511BB143AC955D903DBAD1CA3DAC35C343",
+      "status": "PASS"
+    },
+    {
+      "consumer": "lua-script-packager",
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "prefixes": "E:/SyncForder/CodeRepos/install/sr3-final/d;E:/SyncForder/CodeRepos/install/sr3-final/t;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+      "executable_sha256": "AC0EE5214FD699A2BF60CFDF6D20C744C5CA29268C93D0BBCB88C76D922131B9",
+      "status": "PASS"
+    },
+    {
+      "consumer": "scene-script-runtime",
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "prefixes": "E:/SyncForder/CodeRepos/install/sr3-final/d;E:/SyncForder/CodeRepos/install/sr3-final/t;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+      "executable_sha256": "3E864CDE3A9DF7F65F346E8BBE9B258B2DBE475C2D0403153F7D8838C38CDE7D",
+      "status": "PASS"
+    },
+    {
+      "consumer": "script-ability-codegen",
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "prefixes": "E:/SyncForder/CodeRepos/install/sr3-final/d;E:/SyncForder/CodeRepos/install/sr3-final/t;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+      "executable_sha256": "49A7F936F81DF047707D04B033E378B274C701FC110C7A2A878509B30F7BB19E",
+      "status": "PASS"
+    },
+    {
+      "consumer": "system-hook-script-binding",
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "prefixes": "E:/SyncForder/CodeRepos/install/sr3-final/d;E:/SyncForder/CodeRepos/install/sr3-final/t;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+      "executable_sha256": "C97DEBDDF31C4A9138038D829BBCF3AD03A0A0787613CC1C8F036D18ED07E1B7",
+      "status": "PASS"
+    },
+    {
+      "consumer": "cpp-coroutine-script",
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "prefixes": "E:/SyncForder/CodeRepos/install/sr3-final/d;E:/SyncForder/CodeRepos/install/sr3-final/t;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+      "executable_sha256": "043091E492C71ABFFFDFE223ADA9D61CFC1B35B9D608083F0C6208A9A25AC337",
+      "status": "PASS"
+    },
+    {
+      "consumer": "script-static-ability-specialization",
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "prefixes": "E:/SyncForder/CodeRepos/install/sr3-final/d;E:/SyncForder/CodeRepos/install/sr3-final/t;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+      "executable_sha256": "26B2F8209BAACA5D7F8CB357CCCFE487BCC06645F51123C3309AFB34B54A14F1",
+      "status": "PASS"
+    },
+    {
+      "consumer": "script-ability-ipo",
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "prefixes": "E:/SyncForder/CodeRepos/install/sr3-final/d;E:/SyncForder/CodeRepos/install/sr3-final/t;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+      "executable_sha256": "5BE11FAFDE4EE2844D37405F1BF4E196EFCC5875CAA304EB762A5E9632F17059",
+      "status": "PASS"
+    },
+    {
+      "consumer": "script-authoring",
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "prefixes": "E:/SyncForder/CodeRepos/install/sr3-final/d;E:/SyncForder/CodeRepos/install/sr3-final/t;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+      "executable_sha256": "4A41E8730EBF3CC97E41CF3A3B985FFA5F045B9402060EDC744DADF8DDF5C983",
+      "status": "PASS"
+    },
+    {
+      "consumer": "script-runtime-input",
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "prefixes": "E:/SyncForder/CodeRepos/install/sr3-final/d;E:/SyncForder/CodeRepos/install/sr3-final/t;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+      "executable_sha256": "B5DF4C193E789931D2F883897F5EA04A31F02771BFDFDB7D9CAACA41BB3CD523",
+      "status": "PASS"
+    },
+    {
+      "consumer": "script-description",
+      "source_sha": "3e2bcbd29580d2e744744b64149b7d8fedcc8950",
+      "prefixes": "E:/SyncForder/CodeRepos/install/sr3-final/d;E:/SyncForder/CodeRepos/install/sr3-final/t;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c;E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+      "executable_sha256": "BC6F3F28CD253801D39D31A9F8D06A5209780643555423C7B8DC255B5C9F2BAA",
+      "status": "PASS"
+    }
+  ],
+  "traces": {
+    "variants": [
+      {
+        "variant": "baseline",
+        "source": "E:\\SyncForder\\CodeRepos\\lux-engine-sr3-reference\\engine\\domain\\simulation\\builtin\\script\\test\\script_system_lifecycle_test.cpp",
+        "source_sha256": "e638418f0a540d302e2dd87c5bd1b99cb6aa8f2512361383e2c17c5084d7a408",
+        "driver_sha256": "0e7ce8fa550fbb021adf0c3a21d5ab1f24e395647bf270cacbd4649e47c9309c",
+        "executable_sha256": "f19bd06118e213c510742604bb909561238ef90fa6b1e87c38661a7ee150a839"
+      },
+      {
+        "variant": "candidate",
+        "source": "E:\\SyncForder\\CodeRepos\\lux-engine-sr3-final\\engine\\domain\\simulation\\builtin\\script\\test\\script_system_lifecycle_test.cpp",
+        "source_sha256": "24fef3a43b3b11118a5a77ca50c19a69806e47b61d4dc62f9fa5c583a18ed021",
+        "driver_sha256": "07fb44a6f3f3338c8a00efb62af0c70abe22eceea9ccbf230861ce4fe8e80272",
+        "executable_sha256": "aae4c9423d0482e5c8ed0108584c0ed8380b9ff54c207adbc671474e9350cc4d"
+      }
+    ],
+    "trace_equal": true,
+    "event_trace_equal": true,
+    "wire_equal": true,
+    "lifecycle_coverage": [
+      {
+        "initial": {
+          "create": 3,
+          "prepare": 9,
+          "invoke": 9,
+          "release": 9,
+          "destroy": 3
+        },
+        "failures": {
+          "create": 8,
+          "prepare": 20,
+          "release": 20,
+          "destroy": 8,
+          "invoke": 10
+        },
+        "signatures": {
+          "signature-rejected": 2
+        },
+        "incarnations": {
+          "create": 4,
+          "prepare": 12,
+          "invoke": 8,
+          "continuation-destroy": 2,
+          "release": 12,
+          "destroy": 4
+        },
+        "pending-fatal": {
+          "create": 5,
+          "prepare": 15,
+          "invoke": 13,
+          "release": 15,
+          "destroy": 5
+        },
+        "cross-batch": {
+          "create": 4,
+          "prepare": 12,
+          "invoke": 18,
+          "release": 12,
+          "destroy": 4
+        }
+      },
+      {
+        "initial": {
+          "create": 3,
+          "prepare": 9,
+          "invoke": 9,
+          "release": 9,
+          "destroy": 3
+        },
+        "failures": {
+          "create": 8,
+          "prepare": 20,
+          "release": 20,
+          "destroy": 8,
+          "invoke": 10
+        },
+        "signatures": {
+          "signature-rejected": 2
+        },
+        "incarnations": {
+          "create": 4,
+          "prepare": 12,
+          "invoke": 8,
+          "continuation-destroy": 2,
+          "release": 12,
+          "destroy": 4
+        },
+        "pending-fatal": {
+          "create": 5,
+          "prepare": 15,
+          "invoke": 13,
+          "release": 15,
+          "destroy": 5
+        },
+        "cross-batch": {
+          "create": 4,
+          "prepare": 12,
+          "invoke": 18,
+          "release": 12,
+          "destroy": 4
+        }
+      }
+    ],
+    "event_coverage": [
+      {
+        "TargetedAndRetirement": {
+          "create": 2,
+          "step": 6,
+          "resume": 2,
+          "continuation-destroy": 3,
+          "release": 4,
+          "destroy": 2
+        },
+        "RegistrationCutoff": {
+          "create": 1,
+          "step": 3,
+          "resume": 2,
+          "continuation-destroy": 2,
+          "release": 2,
+          "destroy": 1
+        },
+        "NestedDispatch": {
+          "create": 1,
+          "step": 4,
+          "resume": 1,
+          "continuation-destroy": 1,
+          "release": 2,
+          "destroy": 1
+        },
+        "PreparedAdmissionProvenance": {
+          "create": 4,
+          "step": 3,
+          "resume": 1,
+          "continuation-destroy": 1,
+          "release": 4,
+          "destroy": 4
+        },
+        "CopyRetirementPin": {
+          "create": 1,
+          "step": 1,
+          "continuation-destroy": 1,
+          "release": 1,
+          "destroy": 1
+        },
+        "CopyOtherRecordRemoval": {
+          "create": 2,
+          "step": 3,
+          "continuation-destroy": 2,
+          "release": 3,
+          "destroy": 2,
+          "resume": 1
+        },
+        "CopyShutdownAndFailure": {
+          "create": 2,
+          "step": 2,
+          "continuation-destroy": 2,
+          "release": 2,
+          "destroy": 2
+        },
+        "CopyNestedAdmission": {
+          "create": 4,
+          "step": 7,
+          "resume": 4,
+          "continuation-destroy": 5,
+          "release": 6,
+          "destroy": 4
+        }
+      },
+      {
+        "TargetedAndRetirement": {
+          "create": 2,
+          "step": 6,
+          "resume": 2,
+          "continuation-destroy": 3,
+          "release": 4,
+          "destroy": 2
+        },
+        "RegistrationCutoff": {
+          "create": 1,
+          "step": 3,
+          "resume": 2,
+          "continuation-destroy": 2,
+          "release": 2,
+          "destroy": 1
+        },
+        "NestedDispatch": {
+          "create": 1,
+          "step": 4,
+          "resume": 1,
+          "continuation-destroy": 1,
+          "release": 2,
+          "destroy": 1
+        },
+        "PreparedAdmissionProvenance": {
+          "create": 4,
+          "step": 3,
+          "resume": 1,
+          "continuation-destroy": 1,
+          "release": 4,
+          "destroy": 4
+        },
+        "CopyRetirementPin": {
+          "create": 1,
+          "step": 1,
+          "continuation-destroy": 1,
+          "release": 1,
+          "destroy": 1
+        },
+        "CopyOtherRecordRemoval": {
+          "create": 2,
+          "step": 3,
+          "continuation-destroy": 2,
+          "release": 3,
+          "destroy": 2,
+          "resume": 1
+        },
+        "CopyShutdownAndFailure": {
+          "create": 2,
+          "step": 2,
+          "continuation-destroy": 2,
+          "release": 2,
+          "destroy": 2
+        },
+        "CopyNestedAdmission": {
+          "create": 4,
+          "step": 7,
+          "resume": 4,
+          "continuation-destroy": 5,
+          "release": 6,
+          "destroy": 4
+        }
+      }
+    ]
+  },
+  "runtime_performance": [
+    {
+      "case": "cpp-update",
+      "total_ns": {
+        "paired_percent": [
+          65.76263895996024,
+          68.89887212375683,
+          83.13819043994965,
+          76.5566124352712,
+          50.40369005293228
+        ],
+        "median_percent": 68.89887212375683
+      },
+      "median_ns": {
+        "paired_percent": [
+          85.1690294438386,
+          25.943396226415103,
+          113.13506815365551,
+          87.20930232558139,
+          53.09446254071661
+        ],
+        "median_percent": 85.1690294438386
+      },
+      "diagnostics": [
+        {
+          "case": "cpp-update",
+          "mode": "diagnostic",
+          "pair": 0,
+          "variant": "baseline",
+          "command": [
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\baseline-bin\\script_runtime_benchmark.exe",
+            "--group",
+            "scene-cpp-update-heavy",
+            "--mode",
+            "diagnostic",
+            "--size",
+            "10000",
+            "--warmups",
+            "1",
+            "--frames",
+            "3",
+            "--seed",
+            "1592598566",
+            "--resume-budget",
+            "2000",
+            "--output",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\cpp-update-diagnostic-0-baseline.csv",
+            "--workers",
+            "0"
+          ],
+          "executable_sha256": "e4823624992d23de47a42be395af70d0a4bb8127e8fb5cdc459f3d171c858ab8",
+          "qualified_executable": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\d\\bin\\script_runtime_benchmark.exe",
+          "start_epoch": 1788747723.3167963,
+          "process_seconds": 0.027320146560668945,
+          "exit_code": 0,
+          "rows": 3,
+          "valid": true,
+          "effective_resume_budget": 2000,
+          "workload": "1 warmup frames then 3 measured frames",
+          "median_ns": 37900.0,
+          "total_ns": 117000.0,
+          "allocation_accounting": "1",
+          "measured_executable_allocations": 0,
+          "vm_final_cumulative": {
+            "vm_allocations": 0,
+            "vm_reallocations": 0,
+            "vm_frees": 0
+          }
+        },
+        {
+          "case": "cpp-update",
+          "mode": "diagnostic",
+          "pair": 0,
+          "variant": "candidate",
+          "command": [
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\candidate-bin\\script_runtime_benchmark.exe",
+            "--group",
+            "scene-cpp-update-heavy",
+            "--mode",
+            "diagnostic",
+            "--size",
+            "10000",
+            "--warmups",
+            "1",
+            "--frames",
+            "3",
+            "--seed",
+            "1592598566",
+            "--resume-budget",
+            "2000",
+            "--output",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\cpp-update-diagnostic-0-candidate.csv",
+            "--workers",
+            "0"
+          ],
+          "executable_sha256": "f17f5ba0e8e4e0617f5ebb47568ecb53e0acca0ad2dd8500625b8e3d8d25c111",
+          "qualified_executable": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\d\\bin\\script_runtime_benchmark.exe",
+          "start_epoch": 1788747723.3461387,
+          "process_seconds": 0.030168533325195312,
+          "exit_code": 0,
+          "rows": 3,
+          "valid": true,
+          "effective_resume_budget": 2000,
+          "workload": "1 warmup frames then 3 measured frames",
+          "median_ns": 92500.0,
+          "total_ns": 277700.0,
+          "allocation_accounting": "1",
+          "measured_executable_allocations": 0,
+          "vm_final_cumulative": {
+            "vm_allocations": 0,
+            "vm_reallocations": 0,
+            "vm_frees": 0
+          }
+        }
+      ]
+    },
+    {
+      "case": "event-fanout",
+      "total_ns": {
+        "paired_percent": [
+          -0.5832855230445633,
+          11.430343116990493,
+          3.8440307120991557,
+          18.289100486223653,
+          -0.46718164577455035
+        ],
+        "median_percent": 3.8440307120991557
+      },
+      "median_ns": {
+        "paired_percent": [
+          7.670454545454541,
+          17.03397612488522,
+          9.141090748509594,
+          20.762242410813215,
+          12.045847750865057
+        ],
+        "median_percent": 12.045847750865057
+      },
+      "diagnostics": [
+        {
+          "case": "event-fanout",
+          "mode": "diagnostic",
+          "pair": 0,
+          "variant": "baseline",
+          "command": [
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\baseline-bin\\script_runtime_benchmark.exe",
+            "--group",
+            "scene-event-fanout",
+            "--mode",
+            "diagnostic",
+            "--size",
+            "10000",
+            "--warmups",
+            "1",
+            "--frames",
+            "3",
+            "--seed",
+            "1592598566",
+            "--resume-budget",
+            "2000",
+            "--output",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\event-fanout-diagnostic-0-baseline.csv",
+            "--workers",
+            "0"
+          ],
+          "executable_sha256": "e4823624992d23de47a42be395af70d0a4bb8127e8fb5cdc459f3d171c858ab8",
+          "qualified_executable": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\d\\bin\\script_runtime_benchmark.exe",
+          "start_epoch": 1788747723.7561538,
+          "process_seconds": 0.033997535705566406,
+          "exit_code": 0,
+          "rows": 6,
+          "valid": true,
+          "effective_resume_budget": 2000,
+          "workload": "one occurrence plus five drains",
+          "median_ns": 217200.0,
+          "total_ns": 1987700.0,
+          "allocation_accounting": "1",
+          "measured_executable_allocations": 0,
+          "vm_final_cumulative": {
+            "vm_allocations": 0,
+            "vm_reallocations": 0,
+            "vm_frees": 0
+          }
+        },
+        {
+          "case": "event-fanout",
+          "mode": "diagnostic",
+          "pair": 0,
+          "variant": "candidate",
+          "command": [
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\candidate-bin\\script_runtime_benchmark.exe",
+            "--group",
+            "scene-event-fanout",
+            "--mode",
+            "diagnostic",
+            "--size",
+            "10000",
+            "--warmups",
+            "1",
+            "--frames",
+            "3",
+            "--seed",
+            "1592598566",
+            "--resume-budget",
+            "2000",
+            "--output",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\event-fanout-diagnostic-0-candidate.csv",
+            "--workers",
+            "0"
+          ],
+          "executable_sha256": "f17f5ba0e8e4e0617f5ebb47568ecb53e0acca0ad2dd8500625b8e3d8d25c111",
+          "qualified_executable": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\d\\bin\\script_runtime_benchmark.exe",
+          "start_epoch": 1788747723.7931633,
+          "process_seconds": 0.03347587585449219,
+          "exit_code": 0,
+          "rows": 6,
+          "valid": true,
+          "effective_resume_budget": 2000,
+          "workload": "one occurrence plus five drains",
+          "median_ns": 253200.0,
+          "total_ns": 2156500.0,
+          "allocation_accounting": "1",
+          "measured_executable_allocations": 0,
+          "vm_final_cumulative": {
+            "vm_allocations": 0,
+            "vm_reallocations": 0,
+            "vm_frees": 0
+          }
+        }
+      ]
+    },
+    {
+      "case": "flow-event",
+      "total_ns": {
+        "paired_percent": [
+          15.72510749679088,
+          14.69443384215985,
+          18.58813641533419,
+          17.751811693564967,
+          15.797637523317732
+        ],
+        "median_percent": 15.797637523317732
+      },
+      "median_ns": {
+        "paired_percent": [
+          12.231935098421488,
+          10.286141761735546,
+          17.82283884738527,
+          17.680620977907523,
+          16.747435332620043
+        ],
+        "median_percent": 16.747435332620043
+      },
+      "diagnostics": [
+        {
+          "case": "flow-event",
+          "mode": "diagnostic",
+          "pair": 0,
+          "variant": "baseline",
+          "command": [
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\baseline-bin\\flowforge_script_runtime_benchmark.exe",
+            "--group",
+            "scene-flowforge-event",
+            "--mode",
+            "diagnostic",
+            "--size",
+            "10000",
+            "--warmups",
+            "1",
+            "--frames",
+            "3",
+            "--seed",
+            "1592598566",
+            "--resume-budget",
+            "2000",
+            "--output",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\flow-event-diagnostic-0-baseline.csv"
+          ],
+          "executable_sha256": "b27fd809eb92d77da0a4082406e29215705b905e9238500f11b8c4bd7d53cd95",
+          "qualified_executable": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\t\\bin\\flowforge_script_runtime_benchmark.exe",
+          "start_epoch": 1788747753.6039467,
+          "process_seconds": 0.0855257511138916,
+          "exit_code": 0,
+          "rows": 3,
+          "valid": true,
+          "effective_resume_budget": 2000,
+          "workload": "1 warmup frames then 3 measured frames",
+          "median_ns": 781300.0,
+          "total_ns": 2378400.0,
+          "allocation_accounting": null,
+          "measured_executable_allocations": null,
+          "vm_final_cumulative": {
+            "vm_allocations": null,
+            "vm_reallocations": null,
+            "vm_frees": null
+          }
+        },
+        {
+          "case": "flow-event",
+          "mode": "diagnostic",
+          "pair": 0,
+          "variant": "candidate",
+          "command": [
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\candidate-bin\\flowforge_script_runtime_benchmark.exe",
+            "--group",
+            "scene-flowforge-event",
+            "--mode",
+            "diagnostic",
+            "--size",
+            "10000",
+            "--warmups",
+            "1",
+            "--frames",
+            "3",
+            "--seed",
+            "1592598566",
+            "--resume-budget",
+            "2000",
+            "--output",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\flow-event-diagnostic-0-candidate.csv"
+          ],
+          "executable_sha256": "69cd11cd8b81a9c519ef965e709f574db99ca680b393be8b881f8950682a0afd",
+          "qualified_executable": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\t\\bin\\flowforge_script_runtime_benchmark.exe",
+          "start_epoch": 1788747753.6934593,
+          "process_seconds": 0.08285093307495117,
+          "exit_code": 0,
+          "rows": 3,
+          "valid": true,
+          "effective_resume_budget": 2000,
+          "workload": "1 warmup frames then 3 measured frames",
+          "median_ns": 878700.0,
+          "total_ns": 2679700.0,
+          "allocation_accounting": null,
+          "measured_executable_allocations": null,
+          "vm_final_cumulative": {
+            "vm_allocations": null,
+            "vm_reallocations": null,
+            "vm_frees": null
+          }
+        }
+      ]
+    },
+    {
+      "case": "flow-update",
+      "total_ns": {
+        "paired_percent": [
+          31.464372777665627,
+          25.36355628361253,
+          21.775204392725158,
+          42.403435265670275,
+          24.72929459050284
+        ],
+        "median_percent": 25.36355628361253
+      },
+      "median_ns": {
+        "paired_percent": [
+          17.627494456762747,
+          18.821510297482845,
+          29.24263674614305,
+          67.22689075630252,
+          31.873198847262252
+        ],
+        "median_percent": 29.24263674614305
+      },
+      "diagnostics": [
+        {
+          "case": "flow-update",
+          "mode": "diagnostic",
+          "pair": 0,
+          "variant": "baseline",
+          "command": [
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\baseline-bin\\flowforge_script_runtime_benchmark.exe",
+            "--group",
+            "scene-flowforge-update-heavy",
+            "--mode",
+            "diagnostic",
+            "--size",
+            "10000",
+            "--warmups",
+            "1",
+            "--frames",
+            "3",
+            "--seed",
+            "1592598566",
+            "--resume-budget",
+            "2000",
+            "--output",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\flow-update-diagnostic-0-baseline.csv"
+          ],
+          "executable_sha256": "b27fd809eb92d77da0a4082406e29215705b905e9238500f11b8c4bd7d53cd95",
+          "qualified_executable": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\t\\bin\\flowforge_script_runtime_benchmark.exe",
+          "start_epoch": 1788747749.3240523,
+          "process_seconds": 0.07092142105102539,
+          "exit_code": 0,
+          "rows": 3,
+          "valid": true,
+          "effective_resume_budget": 2000,
+          "workload": "1 warmup frames then 3 measured frames",
+          "median_ns": 74600.0,
+          "total_ns": 227300.0,
+          "allocation_accounting": null,
+          "measured_executable_allocations": null,
+          "vm_final_cumulative": {
+            "vm_allocations": null,
+            "vm_reallocations": null,
+            "vm_frees": null
+          }
+        },
+        {
+          "case": "flow-update",
+          "mode": "diagnostic",
+          "pair": 0,
+          "variant": "candidate",
+          "command": [
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\candidate-bin\\flowforge_script_runtime_benchmark.exe",
+            "--group",
+            "scene-flowforge-update-heavy",
+            "--mode",
+            "diagnostic",
+            "--size",
+            "10000",
+            "--warmups",
+            "1",
+            "--frames",
+            "3",
+            "--seed",
+            "1592598566",
+            "--resume-budget",
+            "2000",
+            "--output",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\flow-update-diagnostic-0-candidate.csv"
+          ],
+          "executable_sha256": "69cd11cd8b81a9c519ef965e709f574db99ca680b393be8b881f8950682a0afd",
+          "qualified_executable": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\t\\bin\\flowforge_script_runtime_benchmark.exe",
+          "start_epoch": 1788747749.3979635,
+          "process_seconds": 0.07155919075012207,
+          "exit_code": 0,
+          "rows": 3,
+          "valid": true,
+          "effective_resume_budget": 2000,
+          "workload": "1 warmup frames then 3 measured frames",
+          "median_ns": 133500.0,
+          "total_ns": 412300.0,
+          "allocation_accounting": null,
+          "measured_executable_allocations": null,
+          "vm_final_cumulative": {
+            "vm_allocations": null,
+            "vm_reallocations": null,
+            "vm_frees": null
+          }
+        }
+      ]
+    },
+    {
+      "case": "lua-event",
+      "total_ns": {
+        "paired_percent": [
+          8.017277832898273,
+          11.450313621536923,
+          9.0912868325713,
+          7.72912101805856,
+          10.350674853635322
+        ],
+        "median_percent": 9.0912868325713
+      },
+      "median_ns": {
+        "paired_percent": [
+          5.574188541175817,
+          14.037452744483204,
+          10.677126801313076,
+          3.656983936359448,
+          13.968566932716552
+        ],
+        "median_percent": 10.677126801313076
+      },
+      "diagnostics": [
+        {
+          "case": "lua-event",
+          "mode": "diagnostic",
+          "pair": 0,
+          "variant": "baseline",
+          "command": [
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\baseline-bin\\script_runtime_benchmark.exe",
+            "--group",
+            "scene-lua-event",
+            "--mode",
+            "diagnostic",
+            "--size",
+            "10000",
+            "--warmups",
+            "1",
+            "--frames",
+            "3",
+            "--seed",
+            "1592598566",
+            "--resume-budget",
+            "2000",
+            "--output",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\lua-event-diagnostic-0-baseline.csv",
+            "--workers",
+            "0",
+            "--lua-artifact",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\t\\engine\\toolchain\\lua\\lua_runtime_benchmark_fixture.lxsa",
+            "--vm-accounting",
+            "on"
+          ],
+          "executable_sha256": "e4823624992d23de47a42be395af70d0a4bb8127e8fb5cdc459f3d171c858ab8",
+          "qualified_executable": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\d\\bin\\script_runtime_benchmark.exe",
+          "start_epoch": 1788747747.92795,
+          "process_seconds": 0.07321715354919434,
+          "exit_code": 0,
+          "rows": 3,
+          "valid": true,
+          "effective_resume_budget": 10000,
+          "workload": "1 warmup frames then 3 measured frames",
+          "fixture_sha256": "6779862ae0718c46cfcad9b04db79c32b549cb90c33461b57c1a302fda75fe72",
+          "median_ns": 5869000.0,
+          "total_ns": 18387500.0,
+          "allocation_accounting": "1",
+          "measured_executable_allocations": 0,
+          "vm_final_cumulative": {
+            "vm_allocations": 160242,
+            "vm_reallocations": 21,
+            "vm_frees": 60153
+          }
+        },
+        {
+          "case": "lua-event",
+          "mode": "diagnostic",
+          "pair": 0,
+          "variant": "candidate",
+          "command": [
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\candidate-bin\\script_runtime_benchmark.exe",
+            "--group",
+            "scene-lua-event",
+            "--mode",
+            "diagnostic",
+            "--size",
+            "10000",
+            "--warmups",
+            "1",
+            "--frames",
+            "3",
+            "--seed",
+            "1592598566",
+            "--resume-budget",
+            "2000",
+            "--output",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\lua-event-diagnostic-0-candidate.csv",
+            "--workers",
+            "0",
+            "--lua-artifact",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\t\\engine\\toolchain\\lua\\lua_runtime_benchmark_fixture.lxsa",
+            "--vm-accounting",
+            "on"
+          ],
+          "executable_sha256": "f17f5ba0e8e4e0617f5ebb47568ecb53e0acca0ad2dd8500625b8e3d8d25c111",
+          "qualified_executable": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\d\\bin\\script_runtime_benchmark.exe",
+          "start_epoch": 1788747748.0051532,
+          "process_seconds": 0.07994699478149414,
+          "exit_code": 0,
+          "rows": 3,
+          "valid": true,
+          "effective_resume_budget": 10000,
+          "workload": "1 warmup frames then 3 measured frames",
+          "fixture_sha256": "6779862ae0718c46cfcad9b04db79c32b549cb90c33461b57c1a302fda75fe72",
+          "median_ns": 6331500.0,
+          "total_ns": 21725400.0,
+          "allocation_accounting": "1",
+          "measured_executable_allocations": 0,
+          "vm_final_cumulative": {
+            "vm_allocations": 160242,
+            "vm_reallocations": 21,
+            "vm_frees": 60153
+          }
+        }
+      ]
+    },
+    {
+      "case": "lua-update",
+      "total_ns": {
+        "paired_percent": [
+          7.154340487673827,
+          1.2198511514444954,
+          8.551653429687246,
+          20.35525724914331,
+          4.20425769180135
+        ],
+        "median_percent": 7.154340487673827
+      },
+      "median_ns": {
+        "paired_percent": [
+          7.527362072816612,
+          6.592427616926511,
+          6.5227170490328445,
+          7.695709862892519,
+          10.634573304157557
+        ],
+        "median_percent": 7.527362072816612
+      },
+      "diagnostics": [
+        {
+          "case": "lua-update",
+          "mode": "diagnostic",
+          "pair": 0,
+          "variant": "baseline",
+          "command": [
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\baseline-bin\\script_runtime_benchmark.exe",
+            "--group",
+            "scene-lua-update-heavy",
+            "--mode",
+            "diagnostic",
+            "--size",
+            "10000",
+            "--warmups",
+            "1",
+            "--frames",
+            "3",
+            "--seed",
+            "1592598566",
+            "--resume-budget",
+            "2000",
+            "--output",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\lua-update-diagnostic-0-baseline.csv",
+            "--workers",
+            "0",
+            "--lua-artifact",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\t\\engine\\toolchain\\lua\\lua_runtime_benchmark_fixture.lxsa",
+            "--vm-accounting",
+            "on"
+          ],
+          "executable_sha256": "e4823624992d23de47a42be395af70d0a4bb8127e8fb5cdc459f3d171c858ab8",
+          "qualified_executable": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\d\\bin\\script_runtime_benchmark.exe",
+          "start_epoch": 1788747725.2797625,
+          "process_seconds": 0.04910612106323242,
+          "exit_code": 0,
+          "rows": 3,
+          "valid": true,
+          "effective_resume_budget": 2000,
+          "workload": "1 warmup frames then 3 measured frames",
+          "fixture_sha256": "6779862ae0718c46cfcad9b04db79c32b549cb90c33461b57c1a302fda75fe72",
+          "median_ns": 286700.0,
+          "total_ns": 884200.0,
+          "allocation_accounting": "1",
+          "measured_executable_allocations": 0,
+          "vm_final_cumulative": {
+            "vm_allocations": 80239,
+            "vm_reallocations": 19,
+            "vm_frees": 20151
+          }
+        },
+        {
+          "case": "lua-update",
+          "mode": "diagnostic",
+          "pair": 0,
+          "variant": "candidate",
+          "command": [
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\candidate-bin\\script_runtime_benchmark.exe",
+            "--group",
+            "scene-lua-update-heavy",
+            "--mode",
+            "diagnostic",
+            "--size",
+            "10000",
+            "--warmups",
+            "1",
+            "--frames",
+            "3",
+            "--seed",
+            "1592598566",
+            "--resume-budget",
+            "2000",
+            "--output",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-validation-final\\measurements\\lua-update-diagnostic-0-candidate.csv",
+            "--workers",
+            "0",
+            "--lua-artifact",
+            "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\t\\engine\\toolchain\\lua\\lua_runtime_benchmark_fixture.lxsa",
+            "--vm-accounting",
+            "on"
+          ],
+          "executable_sha256": "f17f5ba0e8e4e0617f5ebb47568ecb53e0acca0ad2dd8500625b8e3d8d25c111",
+          "qualified_executable": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\d\\bin\\script_runtime_benchmark.exe",
+          "start_epoch": 1788747725.3318808,
+          "process_seconds": 0.047769784927368164,
+          "exit_code": 0,
+          "rows": 3,
+          "valid": true,
+          "effective_resume_budget": 2000,
+          "workload": "1 warmup frames then 3 measured frames",
+          "fixture_sha256": "6779862ae0718c46cfcad9b04db79c32b549cb90c33461b57c1a302fda75fe72",
+          "median_ns": 347800.0,
+          "total_ns": 1059000.0,
+          "allocation_accounting": "1",
+          "measured_executable_allocations": 0,
+          "vm_final_cumulative": {
+            "vm_allocations": 80239,
+            "vm_reallocations": 19,
+            "vm_frees": 20151
+          }
+        }
+      ]
+    }
+  ],
+  "scale": [
+    {
+      "configs": 8,
+      "baseline": {
+        "samples_ns": [
+          74100,
+          75000,
+          77000,
+          77800,
+          76200
+        ],
+        "diagnostic": {
+          "variant": "baseline",
+          "log": "baseline-8-diagnostics.csv.log",
+          "configs": 8,
+          "endpoints": 8,
+          "warmup": 16,
+          "rebuilds": 128,
+          "elapsed_ns": 71700,
+          "diagnostics": 1,
+          "exe_allocations": 535,
+          "slot_visits": 0,
+          "endpoint_count_visits": 0,
+          "counter_available": 0,
+          "creates": 152,
+          "destroys": 152,
+          "ticks": 8,
+          "errors": 0,
+          "backlog": 0
+        },
+        "median_ns": 76200
+      },
+      "candidate": {
+        "samples_ns": [
+          91100,
+          91600,
+          87600,
+          91300,
+          92900
+        ],
+        "diagnostic": {
+          "variant": "candidate",
+          "log": "candidate-8-diagnostics.csv.log",
+          "configs": 8,
+          "endpoints": 8,
+          "warmup": 16,
+          "rebuilds": 128,
+          "elapsed_ns": 96100,
+          "diagnostics": 1,
+          "exe_allocations": 535,
+          "slot_visits": 128,
+          "endpoint_count_visits": 0,
+          "counter_available": 1,
+          "creates": 152,
+          "destroys": 152,
+          "ticks": 8,
+          "errors": 0,
+          "backlog": 0
+        },
+        "median_ns": 91300
+      }
+    },
+    {
+      "configs": 8192,
+      "baseline": {
+        "samples_ns": [
+          346800,
+          335800,
+          346900,
+          331800,
+          336900
+        ],
+        "diagnostic": {
+          "variant": "baseline",
+          "log": "baseline-8192-diagnostics.csv.log",
+          "configs": 8192,
+          "endpoints": 8192,
+          "warmup": 16,
+          "rebuilds": 128,
+          "elapsed_ns": 415200,
+          "diagnostics": 1,
+          "exe_allocations": 530,
+          "slot_visits": 0,
+          "endpoint_count_visits": 0,
+          "counter_available": 0,
+          "creates": 8336,
+          "destroys": 8336,
+          "ticks": 8192,
+          "errors": 0,
+          "backlog": 0
+        },
+        "median_ns": 336900
+      },
+      "candidate": {
+        "samples_ns": [
+          94900,
+          93400,
+          95200,
+          93000,
+          92900
+        ],
+        "diagnostic": {
+          "variant": "candidate",
+          "log": "candidate-8192-diagnostics.csv.log",
+          "configs": 8192,
+          "endpoints": 8192,
+          "warmup": 16,
+          "rebuilds": 128,
+          "elapsed_ns": 95600,
+          "diagnostics": 1,
+          "exe_allocations": 530,
+          "slot_visits": 128,
+          "endpoint_count_visits": 0,
+          "counter_available": 1,
+          "creates": 8336,
+          "destroys": 8336,
+          "ticks": 8192,
+          "errors": 0,
+          "backlog": 0
+        },
+        "median_ns": 93400
+      }
+    }
+  ],
+  "flow_allocations": [
+    {
+      "variant": "baseline",
+      "case": "scene-flowforge-update-heavy",
+      "executable_allocations": [
+        "0",
+        "0",
+        "0"
+      ],
+      "qualified_native_projection": {
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\t\\engine\\domain\\simulation\\builtin\\script\\generated\\simulation_script\\script_abilities\\DelayAbility.ability.generated.hpp": "7d632ece58359c8399d76272c6e9c50ef65121fee58c399c8c73c6b18f85e3da",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\t\\engine\\domain\\simulation\\builtin\\script\\generated\\simulation_script\\script_abilities\\DelayAbility.ability.lua.generated.hpp": "30091220d5558ff761a1a180e7d19c31a1437414e4cdb257397bfb0a544f8d8f",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\t\\engine\\domain\\simulation\\builtin\\script\\generated\\simulation_script\\script_abilities\\DelayAbility.ability.native.generated.hpp": "69e48d40b01850639460ca05e9d0dc8d43d20e30eadad351092b20433cedbe31"
+      },
+      "source_sha256": "e3b891da1cff385d10c16a384de76241bcb90bbbdc5d7a7ed291abe267fed5b7",
+      "executable_sha256": "1425e32775d5959170a9ab61cbb010b4b3a63a265a82a248b9a96d7788bbe9f4"
+    },
+    {
+      "variant": "baseline",
+      "case": "scene-flowforge-event",
+      "executable_allocations": [
+        "0",
+        "0",
+        "0"
+      ],
+      "qualified_native_projection": {
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\t\\engine\\domain\\simulation\\builtin\\script\\generated\\simulation_script\\script_abilities\\DelayAbility.ability.generated.hpp": "7d632ece58359c8399d76272c6e9c50ef65121fee58c399c8c73c6b18f85e3da",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\t\\engine\\domain\\simulation\\builtin\\script\\generated\\simulation_script\\script_abilities\\DelayAbility.ability.lua.generated.hpp": "30091220d5558ff761a1a180e7d19c31a1437414e4cdb257397bfb0a544f8d8f",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-reference\\t\\engine\\domain\\simulation\\builtin\\script\\generated\\simulation_script\\script_abilities\\DelayAbility.ability.native.generated.hpp": "69e48d40b01850639460ca05e9d0dc8d43d20e30eadad351092b20433cedbe31"
+      },
+      "source_sha256": "e3b891da1cff385d10c16a384de76241bcb90bbbdc5d7a7ed291abe267fed5b7",
+      "executable_sha256": "1425e32775d5959170a9ab61cbb010b4b3a63a265a82a248b9a96d7788bbe9f4"
+    },
+    {
+      "variant": "candidate",
+      "case": "scene-flowforge-update-heavy",
+      "executable_allocations": [
+        "0",
+        "0",
+        "0"
+      ],
+      "qualified_native_projection": {
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\t\\engine\\domain\\simulation\\builtin\\script\\generated\\simulation_script\\script_abilities\\DelayAbility.ability.generated.hpp": "7d632ece58359c8399d76272c6e9c50ef65121fee58c399c8c73c6b18f85e3da",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\t\\engine\\domain\\simulation\\builtin\\script\\generated\\simulation_script\\script_abilities\\DelayAbility.ability.lua.generated.hpp": "30091220d5558ff761a1a180e7d19c31a1437414e4cdb257397bfb0a544f8d8f",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\t\\engine\\domain\\simulation\\builtin\\script\\generated\\simulation_script\\script_abilities\\DelayAbility.ability.native.generated.hpp": "69e48d40b01850639460ca05e9d0dc8d43d20e30eadad351092b20433cedbe31"
+      },
+      "source_sha256": "e3b891da1cff385d10c16a384de76241bcb90bbbdc5d7a7ed291abe267fed5b7",
+      "executable_sha256": "84e15291d70dff1d1fc7a0fa0ee282dfc644b7f8c1a20bff7bcaeb3913ac7590"
+    },
+    {
+      "variant": "candidate",
+      "case": "scene-flowforge-event",
+      "executable_allocations": [
+        "0",
+        "0",
+        "0"
+      ],
+      "qualified_native_projection": {
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\t\\engine\\domain\\simulation\\builtin\\script\\generated\\simulation_script\\script_abilities\\DelayAbility.ability.generated.hpp": "7d632ece58359c8399d76272c6e9c50ef65121fee58c399c8c73c6b18f85e3da",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\t\\engine\\domain\\simulation\\builtin\\script\\generated\\simulation_script\\script_abilities\\DelayAbility.ability.lua.generated.hpp": "30091220d5558ff761a1a180e7d19c31a1437414e4cdb257397bfb0a544f8d8f",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr3-final\\t\\engine\\domain\\simulation\\builtin\\script\\generated\\simulation_script\\script_abilities\\DelayAbility.ability.native.generated.hpp": "69e48d40b01850639460ca05e9d0dc8d43d20e30eadad351092b20433cedbe31"
+      },
+      "source_sha256": "e3b891da1cff385d10c16a384de76241bcb90bbbdc5d7a7ed291abe267fed5b7",
+      "executable_sha256": "84e15291d70dff1d1fc7a0fa0ee282dfc644b7f8c1a20bff7bcaeb3913ac7590"
+    }
+  ]
+}

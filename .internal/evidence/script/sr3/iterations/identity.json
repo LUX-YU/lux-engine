@@ -1,0 +1,4621 @@
+{
+  "sources": [
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\lux-engine-sr3-reference",
+      "commit": "8145598c18421d03da1dac21251200af3290e27d",
+      "status": "",
+      "origin": "git@github.com:LUX-YU/lux-engine.git"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\lux-engine-sr3-candidate",
+      "commit": "0cf053b9a48bcc62bf415522e930650352ccb06c",
+      "status": "",
+      "origin": "E:/SyncForder/CodeRepos/lux-engine-deep-optimization"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\lux-engine-sr3-final",
+      "commit": "6ac051dd4c12e048b8d20f46042690464a811101",
+      "status": "",
+      "origin": "E:/SyncForder/CodeRepos/lux-engine-deep-optimization"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\lux-cxx-v3r",
+      "commit": "3100f54d0743c5ed94a4ccf5943df04e933de255",
+      "status": "",
+      "origin": "E:/SyncForder/CodeRepos/lux-cxx-script-codegen"
+    }
+  ],
+  "prefixes": [
+    {
+      "prefix": "E:\\SyncForder\\CodeRepos\\install\\sr3-reference\\d",
+      "files": [
+        {
+          "path": "bin/animation.dll",
+          "size": 185344,
+          "sha256": "3bcb0cf23fe06b7b4701ba363b8b264fe91270fef2e912c907c26d9265038bcf"
+        },
+        {
+          "path": "bin/description.dll",
+          "size": 138240,
+          "sha256": "32eba07ab13de5bb819c0e5a41ad624e158f9c5f035b9979836921d444f93174"
+        },
+        {
+          "path": "bin/dynamic_library.dll",
+          "size": 331776,
+          "sha256": "1fdbc16d65cefd1d0afa0d06ac6c21894ad72e2332d133f90111522e9c3a2478"
+        },
+        {
+          "path": "bin/filewatch.dll",
+          "size": 125952,
+          "sha256": "e569eca5f90f423108d7e20ecf54ee4abbbc1bbf8df4405c580a9b46a7d36c73"
+        },
+        {
+          "path": "bin/lux_engine_asset.dll",
+          "size": 1501184,
+          "sha256": "96f6c61b22aa4957c664c833560d89de9c432a9ba02dbb6e74d459763c4eebc6"
+        },
+        {
+          "path": "bin/lux_engine_core_events.dll",
+          "size": 64512,
+          "sha256": "60241cc269761e57670e90d28361e500d15af76772e3f58b66f61f89e75d26f3"
+        },
+        {
+          "path": "bin/lux_engine_core_log.dll",
+          "size": 556032,
+          "sha256": "de5e12b2d3e7bf39d8be228fbd9391eaf10746fe023a02f5b5216c096a59b108"
+        },
+        {
+          "path": "bin/lux_engine_core_meta.dll",
+          "size": 223232,
+          "sha256": "0c0303a5c822e4945a4727b21164ccfcd160288d5f5f160e7d9824576cf8da19"
+        },
+        {
+          "path": "bin/lux_engine_core_object.dll",
+          "size": 360448,
+          "sha256": "09ff92d79485b391249f0ed305aa5591882fdcc79fec953c9fe59bf618df2c18"
+        },
+        {
+          "path": "bin/lux_engine_core_serialization.dll",
+          "size": 34304,
+          "sha256": "4f4883e3b88d797c5bfcdaa55cd98277675b4cbe737c1b5a06325d081fe255c5"
+        },
+        {
+          "path": "bin/lux_engine_core_task.dll",
+          "size": 146944,
+          "sha256": "a6c8eada98f9740d8bc25f9ce7f4f0aeff8fecdab318214e85d3cca64a4ae715"
+        },
+        {
+          "path": "bin/lux_engine_domain_system_description.dll",
+          "size": 59904,
+          "sha256": "536b258d01dc58930d1662123edaa96e895e95501900ed5b2c28b336c988d4a0"
+        },
+        {
+          "path": "bin/lux_engine_domain_system_identity.dll",
+          "size": 44032,
+          "sha256": "8d7f98f7e053a6072bc00810338f8b596484ac9e92220bab8878127643363867"
+        },
+        {
+          "path": "bin/lux_engine_function_graph.dll",
+          "size": 163328,
+          "sha256": "8bb22669b57072401931efaf04e05b68af05d6ba69a45946d26a8f689affbb76"
+        },
+        {
+          "path": "bin/lux_engine_function_input.dll",
+          "size": 230912,
+          "sha256": "fc13c72ff08a9bc129d6f6adb84defdce6249b5c50cfce072546b6a8b54169b5"
+        },
+        {
+          "path": "bin/lux_engine_function_navigation_detour3d.dll",
+          "size": 473600,
+          "sha256": "e242b6fdb1bec668cd8c48c53cd14783adc21794fd858d53fd5788fb01fd2643"
+        },
+        {
+          "path": "bin/lux_engine_function_render_client_meta.dll",
+          "size": 201216,
+          "sha256": "063b47cf33140ad13846f790888bf89f39d5ec8b653be2ea8867a1144feb4d4e"
+        },
+        {
+          "path": "bin/lux_engine_function_render_standard_content.dll",
+          "size": 89088,
+          "sha256": "d358f638e0745e2b7972fb2f2d39aefe32f612296b3e37e9d7b1a693672c4fcb"
+        },
+        {
+          "path": "bin/lux_engine_function_script_artifact.dll",
+          "size": 236032,
+          "sha256": "8201138047e9158dfa4e70920f8acfa0d2187b1973b451f9834cf984424e4559"
+        },
+        {
+          "path": "bin/lux_engine_function_script_core.dll",
+          "size": 34304,
+          "sha256": "53d7588aa7d65096021a5ff440da2165d57a778e6510ddf29ca19896b6c6095c"
+        },
+        {
+          "path": "bin/lux_engine_function_script_lua.dll",
+          "size": 50688,
+          "sha256": "8d6461995261c2326c825b811a02438744ba16c79a98e975fdd0ba98c9490089"
+        },
+        {
+          "path": "bin/lux_engine_function_script_native.dll",
+          "size": 143360,
+          "sha256": "0043c0904e7123648a8b9be1928105d0c03bdf8f06209542df4fcaf09e76154c"
+        },
+        {
+          "path": "bin/lux_engine_physics2d_simulation.dll",
+          "size": 359424,
+          "sha256": "97c286955c0071e649b377e18cb6eec21d7c77359a1ba0446f0a916b21345244"
+        },
+        {
+          "path": "bin/lux_engine_process_asset_loading.dll",
+          "size": 153600,
+          "sha256": "7b83b10519c0bc5f7f6e6a53559af1104c45f180be5a51a1bd7551c658d15928"
+        },
+        {
+          "path": "bin/lux_engine_process_execution.dll",
+          "size": 132608,
+          "sha256": "b498e1471b061875b0ebf30830ee5e9f675e50a98ff8c782c9c2317945c56129"
+        },
+        {
+          "path": "bin/lux_engine_process_world_loading.dll",
+          "size": 90112,
+          "sha256": "9d18bb413f591dc9fbe0b1fa1465f3857b971885067efee43e9b55f44d923ee9"
+        },
+        {
+          "path": "bin/lux_engine_scene_asset.dll",
+          "size": 134144,
+          "sha256": "2014b75d396cbaea6141e6c13ac921683a83469c0621988569f617bfe065d40f"
+        },
+        {
+          "path": "bin/lux_engine_scene_composition.dll",
+          "size": 228864,
+          "sha256": "5062e77ce8a0f3dc228bc346f4642d63666ad70f55b10f569dea4a7201b71001"
+        },
+        {
+          "path": "bin/lux_engine_scene_description.dll",
+          "size": 193024,
+          "sha256": "64479d5b64c28276fd8038de4b585f196b0c57fc8aa746d02f4dc6a4fa311f1a"
+        },
+        {
+          "path": "bin/lux_engine_scene_meta.dll",
+          "size": 192000,
+          "sha256": "03e09b944f878b85ad3bceb436f669c21a631b839df3fa0fc79058f89887ddcb"
+        },
+        {
+          "path": "bin/lux_engine_scene_render.dll",
+          "size": 682496,
+          "sha256": "71456591d1a9deaad3a6cf188f7e01926b955ea992dee4390f08b8e48fab639a"
+        },
+        {
+          "path": "bin/lux_engine_scene_render_meta.dll",
+          "size": 111104,
+          "sha256": "f0c7c52c45c1f84c64448a9d0eaa4e8542ff39faf4ae7fe02246b899cd126e2c"
+        },
+        {
+          "path": "bin/lux_engine_scene_script_description.dll",
+          "size": 192000,
+          "sha256": "acaddece1b2bae7e059cc5359d67bc34922268efd75f4059f92dd6da330be6ab"
+        },
+        {
+          "path": "bin/lux_engine_scene_script_runtime.dll",
+          "size": 233472,
+          "sha256": "3af6278dc9dc00de93871c7569f4a5f61ff9234ee13c8ee72ff1953172798132"
+        },
+        {
+          "path": "bin/lux_engine_scene_world_materialization.dll",
+          "size": 93696,
+          "sha256": "03e1c4ebbfa606b74aceb63128d288164c1cfe128906f250b05bb984f03ccb70"
+        },
+        {
+          "path": "bin/lux_engine_simulation_asset.dll",
+          "size": 257024,
+          "sha256": "6c5a1d96dd13c50072c1a52abbefe93bf3387deb47a32a6976d162b7e2d9bdd3"
+        },
+        {
+          "path": "bin/lux_engine_simulation_composition.dll",
+          "size": 529408,
+          "sha256": "3f999f9ff268b181ab0938671f789605d5807cff8d7ad1e0a888d6f334244954"
+        },
+        {
+          "path": "bin/lux_engine_simulation_description.dll",
+          "size": 403968,
+          "sha256": "398df41b16a6bb2802230178ac16d05efd8a8002cdd1451efbf5796475a72c1c"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_core.dll",
+          "size": 105472,
+          "sha256": "c2d4362f97c2da3c58671e9854eb8009a1629ab2bdeda026c69f342b8c48581b"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_hierarchy.dll",
+          "size": 218624,
+          "sha256": "098083c7b7b51f4a77247f6504352772fdc19fb92d2383d46453954a1a934481"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_schema.dll",
+          "size": 100864,
+          "sha256": "85a218bfe388754df23042c1bd2596a069b01712ab7c125990bc623a3c3664cc"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_snapshot.dll",
+          "size": 173568,
+          "sha256": "96de09ba0a34773a15875da97cc58912a5e606e9757535907e15465da3d36001"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_transform.dll",
+          "size": 310784,
+          "sha256": "f46af994f6ac529f53184a2823c604ac06da4b6b40e6407fbba7371107e6484c"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_visual.dll",
+          "size": 237568,
+          "sha256": "d0c8ca81fae5e29c9b5cfaf6c910e09cacfece92c21d1b5b94f1c22acd1c68bc"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script.dll",
+          "size": 907264,
+          "sha256": "8f1b1bc7c4b8054041819846c81ba5be2fd4d8e2a0081c7581f71f86d451b50a"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_cpp_static.dll",
+          "size": 292352,
+          "sha256": "b6ddc718abc14bfcb75a8dd483bf07b79bcab44dd139c3f15872563170e8bc0b"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_lua.dll",
+          "size": 323072,
+          "sha256": "50d4ae066b3449b049ae2d6472130f4333a0c5e35bfc55a200a404b66c0038bf"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_native.dll",
+          "size": 193536,
+          "sha256": "4ca5a0f8438973144ddb58cadcc797f01626572a9088cf42f891ac1fbd32b73a"
+        },
+        {
+          "path": "bin/lux_engine_simulation_system.dll",
+          "size": 86016,
+          "sha256": "7871d6f5fa4d12f798ec5c517b0b80c904b55e4bb08ecc0c6cd6945ec80f42c8"
+        },
+        {
+          "path": "bin/lux_engine_simulation_transform_system.dll",
+          "size": 497152,
+          "sha256": "d023f41d54c66e380fb001d8ef528ca8f34a83532340026668e5afe2df905d16"
+        },
+        {
+          "path": "bin/lux_engine_spatial2d_index.dll",
+          "size": 74752,
+          "sha256": "b979b9f21e40464b1c9db5bac61c0405e6db6353448893f3147e29b3944846cb"
+        },
+        {
+          "path": "bin/lux_engine_spatial3d_index.dll",
+          "size": 73728,
+          "sha256": "7d11c1aa631b339cad74b4fc72fbab6e834a46b1baad2c6883150521bd12ba40"
+        },
+        {
+          "path": "bin/lux_engine_world_asset.dll",
+          "size": 128512,
+          "sha256": "ba5aba5c69c0a55ef243723e9219746fc55d06c1bca484e53319604835f216e4"
+        },
+        {
+          "path": "bin/lux_engine_world_description.dll",
+          "size": 338432,
+          "sha256": "b8d481acaf8743df48ccabe30c3f2b8825422c574b95ec38caf448823a37a85d"
+        },
+        {
+          "path": "bin/lux_engine_world_partition.dll",
+          "size": 182272,
+          "sha256": "246d741745cec75a330b651a9899b5df4c0e55ed8ebc622220fd151cac9ec459"
+        },
+        {
+          "path": "bin/lux_engine_world_storage.dll",
+          "size": 163840,
+          "sha256": "40dfc83e8b8e654cd64813d7506e5abdf030452f3e6545073b77d5bc48eca710"
+        },
+        {
+          "path": "bin/render_client.dll",
+          "size": 2793984,
+          "sha256": "9f908af1465a789f3c4dbc1c3776bc68c70beb1fe9ff5caf8407f10b72043064"
+        },
+        {
+          "path": "bin/render_features.dll",
+          "size": 35840,
+          "sha256": "b534d4fa7e6c75945a8346edf6f29c8f1251bf40cb6a3d427a2d92431f8f30d2"
+        },
+        {
+          "path": "bin/render_graph.dll",
+          "size": 342528,
+          "sha256": "536db0b30296cba6e32b6a8017b37210cb13228660683e208e03ce064a4c5019"
+        },
+        {
+          "path": "bin/render_vulkan.dll",
+          "size": 4792832,
+          "sha256": "fb978506fa9c01ed65e61e476c5a2f2c79de3ca52c311ac19e585d38c29844d5"
+        },
+        {
+          "path": "bin/ui.dll",
+          "size": 349696,
+          "sha256": "a1d62c5f15cbd2294a1f496ee2495a2ac03fd5ec047e5850621aba2e71c348a3"
+        },
+        {
+          "path": "bin/window.dll",
+          "size": 156672,
+          "sha256": "4b776e3554e5cb67df237ff151d9ba31b86238135e0b1068f034bd6221732c7f"
+        },
+        {
+          "path": "include/lux/engine/description/AnimationClip.hpp",
+          "size": 3453,
+          "sha256": "7fcf93c0eb166b800aff23e3ef6fbeac8a6e68127e857ca5c78bebbdc4370497"
+        },
+        {
+          "path": "include/lux/engine/description/Image.hpp",
+          "size": 2381,
+          "sha256": "a908a8e7f0bf6f6f7699e89dcff9ececf1bfb450c06478880018d0c81a4da593"
+        },
+        {
+          "path": "include/lux/engine/description/LayoutContract.hpp",
+          "size": 23626,
+          "sha256": "c9b0d5847abf523c06496748793aaf2d7099f0c93b1314e00336b1140211138a"
+        },
+        {
+          "path": "include/lux/engine/description/Material.hpp",
+          "size": 1581,
+          "sha256": "862e7c6ee80b74215af388ab34cbbe33d0bd5b19a9d1d0d75269290232a5babd"
+        },
+        {
+          "path": "include/lux/engine/description/MaterialEnums.hpp",
+          "size": 2497,
+          "sha256": "e104e4c89e5cd41f4597db6f5cc47846662cf32ee7f87f2bccb54749146aa7a7"
+        },
+        {
+          "path": "include/lux/engine/description/Mesh.hpp",
+          "size": 2128,
+          "sha256": "1b0e4ff8a1eae44752b8de8df3853b15402fe8359b8097f9499c2e66fdaa5716"
+        },
+        {
+          "path": "include/lux/engine/description/Model.hpp",
+          "size": 830,
+          "sha256": "43f11468a19af03508956e3cb59d1650344f201929825d9e35b9de3ef126eba6"
+        },
+        {
+          "path": "include/lux/engine/description/Script.hpp",
+          "size": 13081,
+          "sha256": "5bfe24d95ad3f02cc8d12533aadeb2879637d59dec0f9236afa4ea6824cc813f"
+        },
+        {
+          "path": "include/lux/engine/description/Shader.hpp",
+          "size": 1034,
+          "sha256": "c8d8d1700d87020240c36076c78ef1cdb73533f17befb4f9bea86a237f5084bc"
+        },
+        {
+          "path": "include/lux/engine/description/ShaderInfo.hpp",
+          "size": 7989,
+          "sha256": "a698e1e46c239d4fcf3f28fea2110a7ea88686888c64845b764f30f123072aca"
+        },
+        {
+          "path": "include/lux/engine/description/Skeleton.hpp",
+          "size": 3345,
+          "sha256": "c2a553d410cee247edecf7b646d910b7bcfa6d79d1823fd2cde855659883d441"
+        },
+        {
+          "path": "include/lux/engine/description/Texture.hpp",
+          "size": 8633,
+          "sha256": "de5841829cc9c7259eece051562d4f96d22a64f318141cd5de03cfc0516f8762"
+        },
+        {
+          "path": "include/lux/engine/description/TextureAtlas.hpp",
+          "size": 3537,
+          "sha256": "bb50a60027209314a087619c7c8c30f6b1bd2e2f0c0cedd4d1698ce4113ba97c"
+        },
+        {
+          "path": "include/lux/engine/description/Tilemap2D.hpp",
+          "size": 1268,
+          "sha256": "8627db01ec69f96762a1f5b8ccf8732d893a31f1121f7a57cf28b8c0d81f4789"
+        },
+        {
+          "path": "include/lux/engine/description/Vertex.hpp",
+          "size": 1404,
+          "sha256": "95fe80dd5b6bb15d0070a3e844826dd186af8ef23de27aaed2665d841976fcbf"
+        },
+        {
+          "path": "include/lux/engine/description/Visual.hpp",
+          "size": 1604,
+          "sha256": "ae3cd4098fcc2bd7198ff2c3314b182c75166ef483f9c6f3494af0b87cc51e6e"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptAbilityCatalog.hpp",
+          "size": 3821,
+          "sha256": "6f248e3e777976b264393652873b26136f7f506c1691acfa02e679eaaa47aa50"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptAbilityNode.hpp",
+          "size": 2902,
+          "sha256": "fd17686c6bb9cbbe37949797293a5d568f9ea49bc4528152b4fc2497f2d26f62"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptEventAwaitNode.hpp",
+          "size": 1074,
+          "sha256": "2266d14c494eb8d53b3e9be948552c2259766040337dd96dda939c8fec322e44"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptGraph.hpp",
+          "size": 1006,
+          "sha256": "b004e84c9c584a7fae3ed0b64a889e6ccfcbc4366e8e48d8fbe41bb714804265"
+        },
+        {
+          "path": "include/lux/engine/function/render/client/core/FeatureDescriptor.hpp",
+          "size": 5593,
+          "sha256": "df33708084ed5becc32b7eeb143127d2ae4d604b1a20dce62116485fefb9474a"
+        },
+        {
+          "path": "include/lux/engine/function/render/client/resources/lighting/LightDescriptor.hpp",
+          "size": 5716,
+          "sha256": "ffcdc3f04a902095ec621f8b9311ab2552340f439c7275b1baee0203b571eeee"
+        },
+        {
+          "path": "include/lux/engine/function/script/abi/lux_script_abi.h",
+          "size": 10868,
+          "sha256": "531a4113250806479a16722d44be68e87f02946357dcb1c9548db40b3f0b6e80"
+        },
+        {
+          "path": "include/lux/engine/function/script/artifact/ScriptArtifact.hpp",
+          "size": 5074,
+          "sha256": "a1ff3c9518476b7edd22cafbcfc56430e6b6d9c20e2ff0183020a647022e4f7f"
+        },
+        {
+          "path": "include/lux/engine/function/script/artifact/visibility.h",
+          "size": 1112,
+          "sha256": "433060f20f2680da9c77bced0bd63100915e33286722ee8353d5982a74733e93"
+        },
+        {
+          "path": "include/lux/engine/function/script/BoundScriptCall.hpp",
+          "size": 510,
+          "sha256": "6f60a51286cec0a7d5e5d71d46264f3682663187e1dbfca7155ef01238f7c3e5"
+        },
+        {
+          "path": "include/lux/engine/function/script/lua/Lua.hpp",
+          "size": 1277,
+          "sha256": "5459f3d78b1ff204f573e1b693c0a312c0e01bb6baa4a11987463df66cb4a301"
+        },
+        {
+          "path": "include/lux/engine/function/script/lua/LuaVm.hpp",
+          "size": 412,
+          "sha256": "94b0985034295d0c6e69f87c24f631a1f6aa56f3c2ba23b6219da403b937271a"
+        },
+        {
+          "path": "include/lux/engine/function/script/lua/ScriptAbilityLua.hpp",
+          "size": 1270,
+          "sha256": "9d3c6211d0f68ed5d41b1d91b3f933d2256c6692b5bf40bff53cc7da5fe594b0"
+        },
+        {
+          "path": "include/lux/engine/function/script/native/NativeModule.hpp",
+          "size": 2255,
+          "sha256": "f050ea98c0f15b119b7ab5efc85837d325840fa17a0a3ebaa244acff4354e1dd"
+        },
+        {
+          "path": "include/lux/engine/function/script/native/ScriptAbilityNative.hpp",
+          "size": 1205,
+          "sha256": "e7f91d7747a140210264d58696d590649d16fd528423ab41e50f4c4eb97592de"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbility.hpp",
+          "size": 17384,
+          "sha256": "773e32dca2ea69c5e1b38edcfff86f146346a773be4480278fd70322bc912ced"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityAnnotations.hpp",
+          "size": 632,
+          "sha256": "e1b5b99d3207b82abafe96f03f7017891b491a7f83fc6f07621bd9e26b47c71b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityAsync.hpp",
+          "size": 4810,
+          "sha256": "f08e9967d2285b88c17f23c331240bcaa08867f9f6bc7c88c5a4bb8af79ef7fd"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityCompletionAdapter.hpp",
+          "size": 803,
+          "sha256": "cac707d75f2361c1ff6d060a5f07387b379741726258a7cab1306945395a6089"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityOperation.hpp",
+          "size": 784,
+          "sha256": "c9f36fc7f9c9e8c9521713f0791d932d7c940cecbe69ff50e38887dce3ae4044"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptApi.hpp",
+          "size": 699,
+          "sha256": "6569483668eb8090556ed49827bfc0d973f3a3ad046c66bbb9a83f08d3841c8b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptBindingHint.hpp",
+          "size": 727,
+          "sha256": "5c11ebdbb4a9d812dba02d7e157bdcf6063da527d9f8441068b358d58c3ea38e"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptEvent.hpp",
+          "size": 5060,
+          "sha256": "17c46277f5f7cb074c80910391c6c236ab2729735182ad055fc4dce99cf88f38"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptEventSchema.hpp",
+          "size": 4637,
+          "sha256": "e96cba40dbea88313113759630486318594346cac2d04036219d492d89b694e7"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptResult.hpp",
+          "size": 951,
+          "sha256": "facc1eaac716b5b570136dca5a40d50b4f646c2530caad8e4839ba0ee4e7d873"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptSemanticSchema.hpp",
+          "size": 2147,
+          "sha256": "04c8b06c0fa7061c080761dec077deb349781ec6b3edfddbb8b1c1200ca2e20b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptSymbol.hpp",
+          "size": 172,
+          "sha256": "160c2494d179d870dc8de23745fbcee21cd9a34e3d1dea0c969f13b1155f538f"
+        },
+        {
+          "path": "include/lux/engine/gapi/vk/Descriptor.hpp",
+          "size": 11968,
+          "sha256": "6e1ddad9d9852d1d9dc2d59bddf15c5e1e6118a07165d9cd40fb47b8aa88b512"
+        },
+        {
+          "path": "include/lux/engine/object/detail/SignalDescriptor.hpp",
+          "size": 1869,
+          "sha256": "ee584cfb699687ea9ec7b8641fcaa24a332301c69f52c90c21615e30b795be3f"
+        },
+        {
+          "path": "include/lux/engine/render/core/DescriptorSetLayoutContract.hpp",
+          "size": 6533,
+          "sha256": "b7aea54dc0e75036e12d98d8c6159fcc69b79871ea9e65db85705caf741a0c15"
+        },
+        {
+          "path": "include/lux/engine/scene/description/visibility.h",
+          "size": 1211,
+          "sha256": "1819dac984e927bbbd26962e8829004eecc8c9c1367fcdd420fe16fe11f09843"
+        },
+        {
+          "path": "include/lux/engine/scene/SceneDescription.hpp",
+          "size": 5791,
+          "sha256": "bddcf67d5bb1516e66cb95f96ede69c2fb52b1ab4fa1535cb5f6867f334048d0"
+        },
+        {
+          "path": "include/lux/engine/scene/SceneDescriptionBuilder.hpp",
+          "size": 3591,
+          "sha256": "a2e7a99a87d50ad48d2567111ad391af28223222a351486369359a4d877411c6"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptRuntimeAssembly.hpp",
+          "size": 1088,
+          "sha256": "d16bb22a11a38cfdf0697e835dd632da81fd09e7a7a803a533bcd93a34f33c8e"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptSystemDescription.hpp",
+          "size": 3368,
+          "sha256": "617f06c0c0696360516c16074e6081b47e54ebf51c64124004b052f0cdd1acd7"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp",
+          "size": 2168,
+          "sha256": "8bc8edc6e6228c490c70ac8e7f74f57dfbd3b8e33f534c72f03aa58b8c680a9f"
+        },
+        {
+          "path": "include/lux/engine/scene/script_description/visibility.h",
+          "size": 1288,
+          "sha256": "559fb5679d6b9ed9e8ac33860275d8aa8a0eb0f856944a7219f1d05aa826c201"
+        },
+        {
+          "path": "include/lux/engine/scene/script_runtime/visibility.h",
+          "size": 1244,
+          "sha256": "24c7b02d5add1028fa2de14d949c51db638b1368a39144e9908428324a192d27"
+        },
+        {
+          "path": "include/lux/engine/scene/ScriptRuntimeSystem.hpp",
+          "size": 5021,
+          "sha256": "427e02fd198cec7e8791b47d98325d463cc00e474e72c4f374630ef78a226681"
+        },
+        {
+          "path": "include/lux/engine/simulation/description/visibility.h",
+          "size": 1266,
+          "sha256": "9442cc35cd1b332b977496a204a5288d7f9bcabe6078887a833c3c8c573be332"
+        },
+        {
+          "path": "include/lux/engine/simulation/script_system/visibility.h",
+          "size": 1211,
+          "sha256": "8c7437254098c3520f8bdd65514a7e817da06b48117b6bee1b9c0c9bf3be6e9c"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptBinding.hpp",
+          "size": 1412,
+          "sha256": "99dafa5c1ab79ecf81f099270eeeb7aab05b93f1d4648716644b653351aa9fb0"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptBindingAuthoring.hpp",
+          "size": 2518,
+          "sha256": "9f2eaa2ae1fba5e72f12be0675977e2059a330b1ac6e6fd3f62d0692bb898e70"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp",
+          "size": 2738,
+          "sha256": "5c2bc02045dcabaea99b70085a8fcedf4cca0921d72822ac5fe13ba5d5f122f1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/CppStaticScriptContract.hpp",
+          "size": 13961,
+          "sha256": "55039a210c49eb9049b3781739c84f942dd9bc946ac7463dc9bfb6ba343bf625"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/ScriptCoroutine.hpp",
+          "size": 23035,
+          "sha256": "3aa7fbe946f10f12441b89ad755436c5ce70236411580cae8696082928b4e668"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp",
+          "size": 201,
+          "sha256": "1fcfd0d8cbbbeea9af1038a2217a1dd40a52831b952c1d712163db67ddb6a4ff"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/visibility.h",
+          "size": 1332,
+          "sha256": "90f9e94a5751c0650f08d4b2840daec214e7c53d5f77bc2a3fbd3f26946acce3"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp",
+          "size": 17171,
+          "sha256": "08e936a29bbeafa13b971537d66ec5b09c495cad13637b9920305e98f63671d1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/lua/LuaScriptAbilityProjection.hpp",
+          "size": 7765,
+          "sha256": "23010f718ab21b4aca706ed4c030bdc6783ec03a833ce15fe919dbe650db6160"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp",
+          "size": 5891,
+          "sha256": "24bd6baaff085de2c46fb019548289c9d07b8c04794860901bab984195dec0c1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/lua/visibility.h",
+          "size": 1255,
+          "sha256": "d19ce292410b3d16622d151b4c5ee8c95f61a87628b637b8abe333c9b2a713c4"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/NativeScriptAbilityProjection.hpp",
+          "size": 1631,
+          "sha256": "a6422ca7f5e3f405f30f1010559c8e40cae17eb5ed06e9be9f39db028cd2b997"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/NativeScriptBackend.hpp",
+          "size": 4372,
+          "sha256": "50155b4ab402e3fae45bf61b5e8b72ba89a11957ce33beccb64716f332a9d148"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/visibility.h",
+          "size": 1288,
+          "sha256": "33c66ec4bdf7936e4f1014d1a6072b4ea388d3071939d5c6ad0c52587923c416"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp",
+          "size": 5472,
+          "sha256": "9289bfd31eaeade508af5a91c8dbe7af4fb1902a5d0ce5281bcc196ce5aa5b8c"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptApiCapability.hpp",
+          "size": 1338,
+          "sha256": "0c2ea389e3de403f18a42a0781536e98579f9e881da63185fc6f2b8b8a6c55e9"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptBackend.hpp",
+          "size": 7007,
+          "sha256": "70e94365f7caa10f53f81c18c7527fe7fafa3882bae037ee7408b1776f8e1e58"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptContractValidation.hpp",
+          "size": 3766,
+          "sha256": "615236964edbca4529a1d98def20d701f64fe7cf981aa4953d359a4f0fce96e0"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptEndpointBridge.hpp",
+          "size": 13599,
+          "sha256": "87c37b526e2cbfebffca54a996b2d51f65397aff12aaea093d87d06c0a132b88"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptEventSource.hpp",
+          "size": 7061,
+          "sha256": "05a94fdac395fe23927e763357b5544437fa4bd0fb456bd715a85d3f802a0206"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptLifecycle.hpp",
+          "size": 937,
+          "sha256": "150f828308e45282d70f531f5c22b3d63bb08e9d71b103ca21cf0b1a22400e34"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptRuntime.hpp",
+          "size": 23528,
+          "sha256": "a4af3b0edb747967df5d7c912aa2d567b7513a8a6d534219cfb966d8e26398fd"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptSignatureCompatibility.hpp",
+          "size": 1769,
+          "sha256": "ee5e2b2bc89ab999dc568c7a8e950e5e842cecdb1dd866398111ef6ba021e255"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptTimeEndpoint.hpp",
+          "size": 1073,
+          "sha256": "378a1149e48039c1339a7d8892e261b302aee2b666c93056d57417c36995e160"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptRuntimeInput.hpp",
+          "size": 1259,
+          "sha256": "e190e22a164b49bd2a41367360d502f883c1ab9ce51e9582e59a3ddd9976142b"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptSystem.hpp",
+          "size": 10111,
+          "sha256": "abfc840f8471017d78d311a9239a8c7b3ced0fc78e2ec71968817d6f6475d68e"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationDescription.hpp",
+          "size": 13590,
+          "sha256": "e8aa220293b4affff4064bde83b443fc0a2b415fa06a6e8453fc324c64f30614"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationDescriptionBuilder.hpp",
+          "size": 4559,
+          "sha256": "3b91a9bd3583e7bbb887c1738d6db5436bd6f37daa6b2a395f72d5e822f32d0c"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationSystemDescription.hpp",
+          "size": 2632,
+          "sha256": "bd9f56f65face4fca97f547403c760c6a81d7d6cbb532a026b01061c2608e518"
+        },
+        {
+          "path": "include/lux/engine/system/description/visibility.h",
+          "size": 1222,
+          "sha256": "d67164d9885254201da65179b12a94d3152bcff282ac4e0cca6e9a4fa11c6142"
+        },
+        {
+          "path": "include/lux/engine/system/SystemTypeDescription.hpp",
+          "size": 1828,
+          "sha256": "3f5f2a809ce3a5ca3a2858db9a5cb5124ceb411343062f7a32d008f6690dffef"
+        },
+        {
+          "path": "include/lux/engine/world/description/visibility.h",
+          "size": 1211,
+          "sha256": "5e108ba3c1eb377136c2ec393ad64796a6f26be84b3150c72137b2dea1d24858"
+        },
+        {
+          "path": "include/lux/engine/world/WorldDescription.hpp",
+          "size": 3053,
+          "sha256": "19eb9d2cff530e30ee290d38beb5880c49ca071cd12fa7af93d0709da3e3ab40"
+        },
+        {
+          "path": "include/lux/engine/world/WorldDescriptionBuilder.hpp",
+          "size": 2821,
+          "sha256": "abd479fc91b0355b39b13d5f0eb7ebb34755a0c39861bc0875fa1193dcbe2bdb"
+        }
+      ]
+    },
+    {
+      "prefix": "E:\\SyncForder\\CodeRepos\\install\\sr3-reference\\t",
+      "files": [
+        {
+          "path": "bin/animation.dll",
+          "size": 185344,
+          "sha256": "24133e79eebfd414181c858479a060e26eacae07a70cb418271d7f3c737ceeaa"
+        },
+        {
+          "path": "bin/assimp-vc143-mt.dll",
+          "size": 5505024,
+          "sha256": "11de8dbd01befb266aa18d0180b79a3f1626f6b79bf642397635ac9ce0d3ec5f"
+        },
+        {
+          "path": "bin/description.dll",
+          "size": 138240,
+          "sha256": "f2c580642409814e7147e11774aec0b4c4ce6dc0ea20af31f3edb3606ee3104f"
+        },
+        {
+          "path": "bin/dynamic_library.dll",
+          "size": 331776,
+          "sha256": "7f4c5d0ba3c83532d02f684f291c825dc366d7d7142d38bfdd5045a5a5f985f4"
+        },
+        {
+          "path": "bin/kubazip.dll",
+          "size": 80896,
+          "sha256": "7158629447cd3ada54dd0f555db814b5c79feed225eda908caf02c5eff12ff42"
+        },
+        {
+          "path": "bin/lux_asset_packer.exe",
+          "size": 2415616,
+          "sha256": "ac9145e8fccd512c08e5cff71e4e004127fb361375debad0ebe0e478544c05ed"
+        },
+        {
+          "path": "bin/lux_engine_asset.dll",
+          "size": 1501184,
+          "sha256": "10618fbb395e04e6e132fc65d03fc8305ccfd466a65188f0798f2d53958383ef"
+        },
+        {
+          "path": "bin/lux_engine_core_events.dll",
+          "size": 64512,
+          "sha256": "255da5fa7610547e5d823119e6723ed9d0ffd984cd2d7c291966b2ca66169c18"
+        },
+        {
+          "path": "bin/lux_engine_core_log.dll",
+          "size": 556032,
+          "sha256": "bced6e4c67d4ae9767a70dc4e732b57176d83e0064575a53c235ad7f1870e696"
+        },
+        {
+          "path": "bin/lux_engine_core_meta.dll",
+          "size": 223232,
+          "sha256": "6af6ca4e631536c9b384ed61690d8143ee910fd2b05de83d5531a978d3b77f13"
+        },
+        {
+          "path": "bin/lux_engine_core_object.dll",
+          "size": 360448,
+          "sha256": "5ed2a1957d46a907a07fbc51d8105d8de44ebd2357f1d57c5385f0c72dbaeea8"
+        },
+        {
+          "path": "bin/lux_engine_core_serialization.dll",
+          "size": 34304,
+          "sha256": "47734ba097fc1ec92d899fe04f2fa27f2d1322754bc8d4bc96fb9946ad5a6e0e"
+        },
+        {
+          "path": "bin/lux_engine_core_task.dll",
+          "size": 146944,
+          "sha256": "f0ca259c1be09a943639cd7ea8d04bfa34526fa1eacc442c9c96a16aab85e9bb"
+        },
+        {
+          "path": "bin/lux_engine_domain_system_description.dll",
+          "size": 59904,
+          "sha256": "d85eeef17502e8bbaaf7d52dc3c1cdfd1f835116ca2c3f66a2174a1d3b17247b"
+        },
+        {
+          "path": "bin/lux_engine_domain_system_identity.dll",
+          "size": 44032,
+          "sha256": "0db61351e357088d87529cd91e8b8d7f4567a9ab5fcfdad21d1ffe108bf59378"
+        },
+        {
+          "path": "bin/lux_engine_flowforge_compiler.dll",
+          "size": 56795136,
+          "sha256": "43738b88ed8f6030ab05e857659514c5e141c5e2645b225f60c18724ee0a8e92"
+        },
+        {
+          "path": "bin/lux_engine_function_graph.dll",
+          "size": 163328,
+          "sha256": "b770b9ab221f9948eec3f8b2bf9dbe939a5bbe76b3b69035ac76bbf9725b6ae9"
+        },
+        {
+          "path": "bin/lux_engine_function_material_graph.dll",
+          "size": 152576,
+          "sha256": "520c8aab7f8dc47736326db27b3b6e78d33cecd7c7cfb202493b3349535e9ea1"
+        },
+        {
+          "path": "bin/lux_engine_function_navigation_detour3d.dll",
+          "size": 473600,
+          "sha256": "e098fb586146033c44840ddf92137b79a113c9c2a5dfd3b105a8e41259950f73"
+        },
+        {
+          "path": "bin/lux_engine_function_render_client_meta.dll",
+          "size": 201216,
+          "sha256": "53ad677a39f70827783461ee2a65269e4e254cd729b2ccc6deb8f35a0ad3cfa0"
+        },
+        {
+          "path": "bin/lux_engine_function_render_standard_content.dll",
+          "size": 89088,
+          "sha256": "5764ba6bb29a5256a44ca41e02463420df9d03da3ecd389af3831207e0a084c1"
+        },
+        {
+          "path": "bin/lux_engine_function_script_artifact.dll",
+          "size": 236032,
+          "sha256": "cdcbdc50cf3d07ddb0d153754229055e53ae113b1ec0e0810303a14828de6cc1"
+        },
+        {
+          "path": "bin/lux_engine_function_script_core.dll",
+          "size": 34304,
+          "sha256": "a51020da15b13894969ba72340c443e73ff4616439c0d9e08a249caec6a7a845"
+        },
+        {
+          "path": "bin/lux_engine_function_script_native.dll",
+          "size": 143360,
+          "sha256": "de3d699adb54b0dfa6f421580ee32a7a6197c030f7d16c47b088226ec0845fad"
+        },
+        {
+          "path": "bin/lux_engine_physics2d_simulation.dll",
+          "size": 359424,
+          "sha256": "e8c043dbba31fcec4397acc599b0ab463d372e6a2f9603774580211b1592db26"
+        },
+        {
+          "path": "bin/lux_engine_process_asset_loading.dll",
+          "size": 153600,
+          "sha256": "d8d7d6d716bc8e611e75e57f949bfee76f587fa62b83b0e0265dc820c63aec4c"
+        },
+        {
+          "path": "bin/lux_engine_process_execution.dll",
+          "size": 132608,
+          "sha256": "efbab46658f201d912d00f71662f7871657e1d0d3fa50af61f7439d5766097b2"
+        },
+        {
+          "path": "bin/lux_engine_process_world_loading.dll",
+          "size": 90112,
+          "sha256": "6480ff5983a522621062ec3cc6bec959c67a7e8b406f0e27531e0088d5a3fa5d"
+        },
+        {
+          "path": "bin/lux_engine_scene_asset.dll",
+          "size": 134144,
+          "sha256": "035acd484734ded5281585e2d5f072ae8079d37c1ba7842003f5445c81c1bc57"
+        },
+        {
+          "path": "bin/lux_engine_scene_composition.dll",
+          "size": 228864,
+          "sha256": "be50b721dac3a81e59ecf15a15a9c574eb32135c257d8edfe69a93faa4d2bc62"
+        },
+        {
+          "path": "bin/lux_engine_scene_description.dll",
+          "size": 193024,
+          "sha256": "55397f41724c985c8226dee2b00fa0fa9d87cea70abf095e3f8d281b86cc4ef7"
+        },
+        {
+          "path": "bin/lux_engine_scene_meta.dll",
+          "size": 192000,
+          "sha256": "e5bf60b6cedfdad2ef4624b72c0618a6f87d1d616624963e1fd81a90372956c9"
+        },
+        {
+          "path": "bin/lux_engine_scene_render.dll",
+          "size": 682496,
+          "sha256": "c76049c7e5170be51404253fee7fa4981c564292279e214bd4cac3229073d86c"
+        },
+        {
+          "path": "bin/lux_engine_scene_render_meta.dll",
+          "size": 111104,
+          "sha256": "b2dfbadcfadeb111c1358d21d2f04024b2212510f3653e46660d9a96340280d7"
+        },
+        {
+          "path": "bin/lux_engine_scene_script_description.dll",
+          "size": 192000,
+          "sha256": "08a94d2e3d1fe972cb23983451083a8b67911be452d884ad6acf72a9453f2dea"
+        },
+        {
+          "path": "bin/lux_engine_scene_script_runtime.dll",
+          "size": 233472,
+          "sha256": "e638b64fff530237e524b41099d5d97eab30acc28d74dc18a545196862ada57c"
+        },
+        {
+          "path": "bin/lux_engine_scene_world_materialization.dll",
+          "size": 93696,
+          "sha256": "d7657ec3cc5781930352b40c78cec4efe2fcb1915ed64f1f49698946b91db467"
+        },
+        {
+          "path": "bin/lux_engine_simulation_asset.dll",
+          "size": 257024,
+          "sha256": "38b75390c7886c9dead66e7674760627adb43697f5e42d5ee99c4ae1ebda6500"
+        },
+        {
+          "path": "bin/lux_engine_simulation_composition.dll",
+          "size": 529408,
+          "sha256": "9f7d7668dfb9b85aa0858dca5b875baed6f862d124f64da5c6f7f8e253d32db3"
+        },
+        {
+          "path": "bin/lux_engine_simulation_description.dll",
+          "size": 403968,
+          "sha256": "def6eb52102c66f9e9fc9e97790a451ec3e8f3a96b4fefc4af0802b8a1984dc9"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_core.dll",
+          "size": 105472,
+          "sha256": "ad24d2ec7addbbc135bdc760181978dafc3b68637207f66f059c70d327b2735d"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_hierarchy.dll",
+          "size": 218624,
+          "sha256": "4dcacdc490d0669f6afe353abefc528edfe8f40a19eda199479ed52dd9c701cb"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_schema.dll",
+          "size": 100864,
+          "sha256": "ea8fe7b33873dc1892f7a5f715fa06225345ad056ffd1ed950838289dac830e4"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_snapshot.dll",
+          "size": 173568,
+          "sha256": "2d7e4238b673242bf91208dcac9d01770bdd21d26e5c420ce4288d99a9263dbe"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_transform.dll",
+          "size": 310784,
+          "sha256": "63a4d39ac0545ce25cfac8a95798cd727100f1f3f30e2300b2de6d99030f39ef"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_visual.dll",
+          "size": 237568,
+          "sha256": "98a6b35775552fa04731a57703dd7fb06b8f91225954f408cced7f3714bd352d"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script.dll",
+          "size": 907264,
+          "sha256": "01c92bfabd25faf5cab937ce065b60daed59b76a6bfb97aef967e2d788994c9d"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_cpp_static.dll",
+          "size": 292352,
+          "sha256": "df01e6b7daf2f3b012f23fbef5ebb46703fb067dcad70f49277d8acb4c8fa8ce"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_native.dll",
+          "size": 193536,
+          "sha256": "0ec066287f795030e3a33199bda41556c63120b3a08cc64b6fa3970273c0f612"
+        },
+        {
+          "path": "bin/lux_engine_simulation_system.dll",
+          "size": 86016,
+          "sha256": "60b09a9ef123807db98386297e5412af36065e557902d86d8b7ef5524d4dc220"
+        },
+        {
+          "path": "bin/lux_engine_simulation_transform_system.dll",
+          "size": 497152,
+          "sha256": "7cd66395457fc165f15e2192d5dd56a8f9f4b70a475bd39785fadc210973f988"
+        },
+        {
+          "path": "bin/lux_engine_spatial2d_index.dll",
+          "size": 74752,
+          "sha256": "86f94469cc1592a7da05c594118b040354ad3cf50012d10a4da8882950556d5a"
+        },
+        {
+          "path": "bin/lux_engine_spatial3d_index.dll",
+          "size": 73728,
+          "sha256": "b2323f49b0fe138094130fed192b5d47c4a63c53697d5212c07bf13f54081088"
+        },
+        {
+          "path": "bin/lux_engine_toolchain_material_compiler.dll",
+          "size": 9237504,
+          "sha256": "0d79e08aa3cf3fef467f100806da2f3bcba042ae2e1e488a7e04ecd613e19fbf"
+        },
+        {
+          "path": "bin/lux_engine_world_asset.dll",
+          "size": 128512,
+          "sha256": "35387a1e0012af37b19773d53bb9c23b9de13e7c7af3e593ae111dfab161732b"
+        },
+        {
+          "path": "bin/lux_engine_world_description.dll",
+          "size": 338432,
+          "sha256": "1fc257d2cf8084bbcd3c9bb8ca3aba772940257b6c65a3603373be4174d126c5"
+        },
+        {
+          "path": "bin/lux_engine_world_partition.dll",
+          "size": 182272,
+          "sha256": "8d77cdcda651954d40a6feec3cb97068c6d4472a178a943359b39579af16cad6"
+        },
+        {
+          "path": "bin/lux_engine_world_storage.dll",
+          "size": 163840,
+          "sha256": "6e6062a8d5a841ddf10654cae7d37881df651f7d414b82e2c2f7eb861f85bd6f"
+        },
+        {
+          "path": "bin/lux_shader_emitter.exe",
+          "size": 636416,
+          "sha256": "d92752721240a564ed8115f629d443101e1a39b31175cfc78c31dbfd23e44738"
+        },
+        {
+          "path": "bin/meshoptimizer.dll",
+          "size": 157184,
+          "sha256": "e3377b8181c7a552ce9e5dccb3d70902341dc542ef10d3cc95582183c2a49e8e"
+        },
+        {
+          "path": "bin/minizip.dll",
+          "size": 48128,
+          "sha256": "dc1b38c251b187c002dcc2f8ddb359de01489b3f658fb5d5ef9a98e1ebdb76c2"
+        },
+        {
+          "path": "bin/poly2tri.dll",
+          "size": 43520,
+          "sha256": "d44429919bf68ea01f11ae3e93661b90155bab62d2ad71883bf7d7e596c6e4c6"
+        },
+        {
+          "path": "bin/pugixml.dll",
+          "size": 200192,
+          "sha256": "055b00854212d0dc30af5b08e00602bff99d9e6de58e3e6729d7be72ff5197d0"
+        },
+        {
+          "path": "bin/render_client.dll",
+          "size": 2793984,
+          "sha256": "0f502bc831372491695f6647120872b5b045ff43a6b752ae1696776b9b89ddc4"
+        },
+        {
+          "path": "bin/zlib1.dll",
+          "size": 90624,
+          "sha256": "0a1bb1c50f0cafb3a6e3bc1f4b806d08e01d909227156203a4b5d0fba052e4d3"
+        },
+        {
+          "path": "include/lux/engine/description/AnimationClip.hpp",
+          "size": 3453,
+          "sha256": "7fcf93c0eb166b800aff23e3ef6fbeac8a6e68127e857ca5c78bebbdc4370497"
+        },
+        {
+          "path": "include/lux/engine/description/Image.hpp",
+          "size": 2381,
+          "sha256": "a908a8e7f0bf6f6f7699e89dcff9ececf1bfb450c06478880018d0c81a4da593"
+        },
+        {
+          "path": "include/lux/engine/description/LayoutContract.hpp",
+          "size": 23626,
+          "sha256": "c9b0d5847abf523c06496748793aaf2d7099f0c93b1314e00336b1140211138a"
+        },
+        {
+          "path": "include/lux/engine/description/Material.hpp",
+          "size": 1581,
+          "sha256": "862e7c6ee80b74215af388ab34cbbe33d0bd5b19a9d1d0d75269290232a5babd"
+        },
+        {
+          "path": "include/lux/engine/description/MaterialEnums.hpp",
+          "size": 2497,
+          "sha256": "e104e4c89e5cd41f4597db6f5cc47846662cf32ee7f87f2bccb54749146aa7a7"
+        },
+        {
+          "path": "include/lux/engine/description/Mesh.hpp",
+          "size": 2128,
+          "sha256": "1b0e4ff8a1eae44752b8de8df3853b15402fe8359b8097f9499c2e66fdaa5716"
+        },
+        {
+          "path": "include/lux/engine/description/Model.hpp",
+          "size": 830,
+          "sha256": "43f11468a19af03508956e3cb59d1650344f201929825d9e35b9de3ef126eba6"
+        },
+        {
+          "path": "include/lux/engine/description/Script.hpp",
+          "size": 13081,
+          "sha256": "5bfe24d95ad3f02cc8d12533aadeb2879637d59dec0f9236afa4ea6824cc813f"
+        },
+        {
+          "path": "include/lux/engine/description/Shader.hpp",
+          "size": 1034,
+          "sha256": "c8d8d1700d87020240c36076c78ef1cdb73533f17befb4f9bea86a237f5084bc"
+        },
+        {
+          "path": "include/lux/engine/description/ShaderInfo.hpp",
+          "size": 7989,
+          "sha256": "a698e1e46c239d4fcf3f28fea2110a7ea88686888c64845b764f30f123072aca"
+        },
+        {
+          "path": "include/lux/engine/description/Skeleton.hpp",
+          "size": 3345,
+          "sha256": "c2a553d410cee247edecf7b646d910b7bcfa6d79d1823fd2cde855659883d441"
+        },
+        {
+          "path": "include/lux/engine/description/Texture.hpp",
+          "size": 8633,
+          "sha256": "de5841829cc9c7259eece051562d4f96d22a64f318141cd5de03cfc0516f8762"
+        },
+        {
+          "path": "include/lux/engine/description/TextureAtlas.hpp",
+          "size": 3537,
+          "sha256": "bb50a60027209314a087619c7c8c30f6b1bd2e2f0c0cedd4d1698ce4113ba97c"
+        },
+        {
+          "path": "include/lux/engine/description/Tilemap2D.hpp",
+          "size": 1268,
+          "sha256": "8627db01ec69f96762a1f5b8ccf8732d893a31f1121f7a57cf28b8c0d81f4789"
+        },
+        {
+          "path": "include/lux/engine/description/Vertex.hpp",
+          "size": 1404,
+          "sha256": "95fe80dd5b6bb15d0070a3e844826dd186af8ef23de27aaed2665d841976fcbf"
+        },
+        {
+          "path": "include/lux/engine/description/Visual.hpp",
+          "size": 1604,
+          "sha256": "ae3cd4098fcc2bd7198ff2c3314b182c75166ef483f9c6f3494af0b87cc51e6e"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptAbilityCatalog.hpp",
+          "size": 3821,
+          "sha256": "6f248e3e777976b264393652873b26136f7f506c1691acfa02e679eaaa47aa50"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptAbilityNode.hpp",
+          "size": 2902,
+          "sha256": "fd17686c6bb9cbbe37949797293a5d568f9ea49bc4528152b4fc2497f2d26f62"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptEventAwaitNode.hpp",
+          "size": 1074,
+          "sha256": "2266d14c494eb8d53b3e9be948552c2259766040337dd96dda939c8fec322e44"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptGraph.hpp",
+          "size": 1006,
+          "sha256": "b004e84c9c584a7fae3ed0b64a889e6ccfcbc4366e8e48d8fbe41bb714804265"
+        },
+        {
+          "path": "include/lux/engine/function/render/client/core/FeatureDescriptor.hpp",
+          "size": 5593,
+          "sha256": "df33708084ed5becc32b7eeb143127d2ae4d604b1a20dce62116485fefb9474a"
+        },
+        {
+          "path": "include/lux/engine/function/render/client/resources/lighting/LightDescriptor.hpp",
+          "size": 5716,
+          "sha256": "ffcdc3f04a902095ec621f8b9311ab2552340f439c7275b1baee0203b571eeee"
+        },
+        {
+          "path": "include/lux/engine/function/script/abi/lux_script_abi.h",
+          "size": 10868,
+          "sha256": "531a4113250806479a16722d44be68e87f02946357dcb1c9548db40b3f0b6e80"
+        },
+        {
+          "path": "include/lux/engine/function/script/artifact/ScriptArtifact.hpp",
+          "size": 5074,
+          "sha256": "a1ff3c9518476b7edd22cafbcfc56430e6b6d9c20e2ff0183020a647022e4f7f"
+        },
+        {
+          "path": "include/lux/engine/function/script/artifact/visibility.h",
+          "size": 1112,
+          "sha256": "433060f20f2680da9c77bced0bd63100915e33286722ee8353d5982a74733e93"
+        },
+        {
+          "path": "include/lux/engine/function/script/BoundScriptCall.hpp",
+          "size": 510,
+          "sha256": "6f60a51286cec0a7d5e5d71d46264f3682663187e1dbfca7155ef01238f7c3e5"
+        },
+        {
+          "path": "include/lux/engine/function/script/native/NativeModule.hpp",
+          "size": 2255,
+          "sha256": "f050ea98c0f15b119b7ab5efc85837d325840fa17a0a3ebaa244acff4354e1dd"
+        },
+        {
+          "path": "include/lux/engine/function/script/native/ScriptAbilityNative.hpp",
+          "size": 1205,
+          "sha256": "e7f91d7747a140210264d58696d590649d16fd528423ab41e50f4c4eb97592de"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbility.hpp",
+          "size": 17384,
+          "sha256": "773e32dca2ea69c5e1b38edcfff86f146346a773be4480278fd70322bc912ced"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityAnnotations.hpp",
+          "size": 632,
+          "sha256": "e1b5b99d3207b82abafe96f03f7017891b491a7f83fc6f07621bd9e26b47c71b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityAsync.hpp",
+          "size": 4810,
+          "sha256": "f08e9967d2285b88c17f23c331240bcaa08867f9f6bc7c88c5a4bb8af79ef7fd"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityCompletionAdapter.hpp",
+          "size": 803,
+          "sha256": "cac707d75f2361c1ff6d060a5f07387b379741726258a7cab1306945395a6089"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityOperation.hpp",
+          "size": 784,
+          "sha256": "c9f36fc7f9c9e8c9521713f0791d932d7c940cecbe69ff50e38887dce3ae4044"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptApi.hpp",
+          "size": 699,
+          "sha256": "6569483668eb8090556ed49827bfc0d973f3a3ad046c66bbb9a83f08d3841c8b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptBindingHint.hpp",
+          "size": 727,
+          "sha256": "5c11ebdbb4a9d812dba02d7e157bdcf6063da527d9f8441068b358d58c3ea38e"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptEvent.hpp",
+          "size": 5060,
+          "sha256": "17c46277f5f7cb074c80910391c6c236ab2729735182ad055fc4dce99cf88f38"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptEventSchema.hpp",
+          "size": 4637,
+          "sha256": "e96cba40dbea88313113759630486318594346cac2d04036219d492d89b694e7"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptResult.hpp",
+          "size": 951,
+          "sha256": "facc1eaac716b5b570136dca5a40d50b4f646c2530caad8e4839ba0ee4e7d873"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptSemanticSchema.hpp",
+          "size": 2147,
+          "sha256": "04c8b06c0fa7061c080761dec077deb349781ec6b3edfddbb8b1c1200ca2e20b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptSymbol.hpp",
+          "size": 172,
+          "sha256": "160c2494d179d870dc8de23745fbcee21cd9a34e3d1dea0c969f13b1155f538f"
+        },
+        {
+          "path": "include/lux/engine/material/ImportedMaterialDescription.hpp",
+          "size": 1364,
+          "sha256": "855047bcbbd08bca1866c573171d9f1824334431234cc332e19db867fa6e3df7"
+        },
+        {
+          "path": "include/lux/engine/object/detail/SignalDescriptor.hpp",
+          "size": 1869,
+          "sha256": "ee584cfb699687ea9ec7b8641fcaa24a332301c69f52c90c21615e30b795be3f"
+        },
+        {
+          "path": "include/lux/engine/scene/description/visibility.h",
+          "size": 1211,
+          "sha256": "1819dac984e927bbbd26962e8829004eecc8c9c1367fcdd420fe16fe11f09843"
+        },
+        {
+          "path": "include/lux/engine/scene/SceneDescription.hpp",
+          "size": 5791,
+          "sha256": "bddcf67d5bb1516e66cb95f96ede69c2fb52b1ab4fa1535cb5f6867f334048d0"
+        },
+        {
+          "path": "include/lux/engine/scene/SceneDescriptionBuilder.hpp",
+          "size": 3591,
+          "sha256": "a2e7a99a87d50ad48d2567111ad391af28223222a351486369359a4d877411c6"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptRuntimeAssembly.hpp",
+          "size": 1088,
+          "sha256": "d16bb22a11a38cfdf0697e835dd632da81fd09e7a7a803a533bcd93a34f33c8e"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptSystemDescription.hpp",
+          "size": 3368,
+          "sha256": "617f06c0c0696360516c16074e6081b47e54ebf51c64124004b052f0cdd1acd7"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp",
+          "size": 2168,
+          "sha256": "8bc8edc6e6228c490c70ac8e7f74f57dfbd3b8e33f534c72f03aa58b8c680a9f"
+        },
+        {
+          "path": "include/lux/engine/scene/script_description/visibility.h",
+          "size": 1288,
+          "sha256": "559fb5679d6b9ed9e8ac33860275d8aa8a0eb0f856944a7219f1d05aa826c201"
+        },
+        {
+          "path": "include/lux/engine/scene/script_runtime/visibility.h",
+          "size": 1244,
+          "sha256": "24c7b02d5add1028fa2de14d949c51db638b1368a39144e9908428324a192d27"
+        },
+        {
+          "path": "include/lux/engine/scene/ScriptRuntimeSystem.hpp",
+          "size": 5021,
+          "sha256": "427e02fd198cec7e8791b47d98325d463cc00e474e72c4f374630ef78a226681"
+        },
+        {
+          "path": "include/lux/engine/simulation/description/visibility.h",
+          "size": 1266,
+          "sha256": "9442cc35cd1b332b977496a204a5288d7f9bcabe6078887a833c3c8c573be332"
+        },
+        {
+          "path": "include/lux/engine/simulation/script_system/visibility.h",
+          "size": 1211,
+          "sha256": "8c7437254098c3520f8bdd65514a7e817da06b48117b6bee1b9c0c9bf3be6e9c"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptBinding.hpp",
+          "size": 1412,
+          "sha256": "99dafa5c1ab79ecf81f099270eeeb7aab05b93f1d4648716644b653351aa9fb0"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptBindingAuthoring.hpp",
+          "size": 2518,
+          "sha256": "9f2eaa2ae1fba5e72f12be0675977e2059a330b1ac6e6fd3f62d0692bb898e70"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp",
+          "size": 2738,
+          "sha256": "5c2bc02045dcabaea99b70085a8fcedf4cca0921d72822ac5fe13ba5d5f122f1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/CppStaticScriptContract.hpp",
+          "size": 13961,
+          "sha256": "55039a210c49eb9049b3781739c84f942dd9bc946ac7463dc9bfb6ba343bf625"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/ScriptCoroutine.hpp",
+          "size": 23035,
+          "sha256": "3aa7fbe946f10f12441b89ad755436c5ce70236411580cae8696082928b4e668"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp",
+          "size": 201,
+          "sha256": "1fcfd0d8cbbbeea9af1038a2217a1dd40a52831b952c1d712163db67ddb6a4ff"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/visibility.h",
+          "size": 1332,
+          "sha256": "90f9e94a5751c0650f08d4b2840daec214e7c53d5f77bc2a3fbd3f26946acce3"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp",
+          "size": 17171,
+          "sha256": "08e936a29bbeafa13b971537d66ec5b09c495cad13637b9920305e98f63671d1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/NativeScriptAbilityProjection.hpp",
+          "size": 1631,
+          "sha256": "a6422ca7f5e3f405f30f1010559c8e40cae17eb5ed06e9be9f39db028cd2b997"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/NativeScriptBackend.hpp",
+          "size": 4372,
+          "sha256": "50155b4ab402e3fae45bf61b5e8b72ba89a11957ce33beccb64716f332a9d148"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/visibility.h",
+          "size": 1288,
+          "sha256": "33c66ec4bdf7936e4f1014d1a6072b4ea388d3071939d5c6ad0c52587923c416"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp",
+          "size": 5472,
+          "sha256": "9289bfd31eaeade508af5a91c8dbe7af4fb1902a5d0ce5281bcc196ce5aa5b8c"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptApiCapability.hpp",
+          "size": 1338,
+          "sha256": "0c2ea389e3de403f18a42a0781536e98579f9e881da63185fc6f2b8b8a6c55e9"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptBackend.hpp",
+          "size": 7007,
+          "sha256": "70e94365f7caa10f53f81c18c7527fe7fafa3882bae037ee7408b1776f8e1e58"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptContractValidation.hpp",
+          "size": 3766,
+          "sha256": "615236964edbca4529a1d98def20d701f64fe7cf981aa4953d359a4f0fce96e0"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptEndpointBridge.hpp",
+          "size": 13599,
+          "sha256": "87c37b526e2cbfebffca54a996b2d51f65397aff12aaea093d87d06c0a132b88"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptEventSource.hpp",
+          "size": 7061,
+          "sha256": "05a94fdac395fe23927e763357b5544437fa4bd0fb456bd715a85d3f802a0206"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptLifecycle.hpp",
+          "size": 937,
+          "sha256": "150f828308e45282d70f531f5c22b3d63bb08e9d71b103ca21cf0b1a22400e34"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptRuntime.hpp",
+          "size": 23528,
+          "sha256": "a4af3b0edb747967df5d7c912aa2d567b7513a8a6d534219cfb966d8e26398fd"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptSignatureCompatibility.hpp",
+          "size": 1769,
+          "sha256": "ee5e2b2bc89ab999dc568c7a8e950e5e842cecdb1dd866398111ef6ba021e255"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptTimeEndpoint.hpp",
+          "size": 1073,
+          "sha256": "378a1149e48039c1339a7d8892e261b302aee2b666c93056d57417c36995e160"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptRuntimeInput.hpp",
+          "size": 1259,
+          "sha256": "e190e22a164b49bd2a41367360d502f883c1ab9ce51e9582e59a3ddd9976142b"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptSystem.hpp",
+          "size": 10111,
+          "sha256": "abfc840f8471017d78d311a9239a8c7b3ced0fc78e2ec71968817d6f6475d68e"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationDescription.hpp",
+          "size": 13590,
+          "sha256": "e8aa220293b4affff4064bde83b443fc0a2b415fa06a6e8453fc324c64f30614"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationDescriptionBuilder.hpp",
+          "size": 4559,
+          "sha256": "3b91a9bd3583e7bbb887c1738d6db5436bd6f37daa6b2a395f72d5e822f32d0c"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationSystemDescription.hpp",
+          "size": 2632,
+          "sha256": "bd9f56f65face4fca97f547403c760c6a81d7d6cbb532a026b01061c2608e518"
+        },
+        {
+          "path": "include/lux/engine/system/description/visibility.h",
+          "size": 1222,
+          "sha256": "d67164d9885254201da65179b12a94d3152bcff282ac4e0cca6e9a4fa11c6142"
+        },
+        {
+          "path": "include/lux/engine/system/SystemTypeDescription.hpp",
+          "size": 1828,
+          "sha256": "3f5f2a809ce3a5ca3a2858db9a5cb5124ceb411343062f7a32d008f6690dffef"
+        },
+        {
+          "path": "include/lux/engine/world/description/visibility.h",
+          "size": 1211,
+          "sha256": "5e108ba3c1eb377136c2ec393ad64796a6f26be84b3150c72137b2dea1d24858"
+        },
+        {
+          "path": "include/lux/engine/world/WorldDescription.hpp",
+          "size": 3053,
+          "sha256": "19eb9d2cff530e30ee290d38beb5880c49ca071cd12fa7af93d0709da3e3ab40"
+        },
+        {
+          "path": "include/lux/engine/world/WorldDescriptionBuilder.hpp",
+          "size": 2821,
+          "sha256": "abd479fc91b0355b39b13d5f0eb7ebb34755a0c39861bc0875fa1193dcbe2bdb"
+        }
+      ]
+    },
+    {
+      "prefix": "E:\\SyncForder\\CodeRepos\\install\\sr3-candidate\\d",
+      "files": [
+        {
+          "path": "bin/animation.dll",
+          "size": 185344,
+          "sha256": "ea317f73b87e830914d76df970589ce97c25f3312096e173a54930797fdc6ffd"
+        },
+        {
+          "path": "bin/description.dll",
+          "size": 138240,
+          "sha256": "7037eaef678337d8a600472c8a85e72051b416f3480393bf8bbc8168623dd93d"
+        },
+        {
+          "path": "bin/dynamic_library.dll",
+          "size": 331776,
+          "sha256": "69af5f5a26127d8c28b1064c68c391951edd1813e6a6403a588db8c9bf8f98f1"
+        },
+        {
+          "path": "bin/filewatch.dll",
+          "size": 125952,
+          "sha256": "f28471166239bf43b39310cf908d6b5cc2da500819371dd3010f2aae0d8945af"
+        },
+        {
+          "path": "bin/lux_engine_asset.dll",
+          "size": 1501184,
+          "sha256": "9b99cecddaf7f5ed31a62aa6c6f3e1c979259f16764dd3320c966897235be033"
+        },
+        {
+          "path": "bin/lux_engine_core_events.dll",
+          "size": 64512,
+          "sha256": "0a235a25a498b7ad5007481c418e3eb52a61748f15978cb6d308255e2b26243d"
+        },
+        {
+          "path": "bin/lux_engine_core_log.dll",
+          "size": 556032,
+          "sha256": "a3615e4c13d73de6b9f37f2c674561e7f8a8fb08adea65b1b706602d181bf482"
+        },
+        {
+          "path": "bin/lux_engine_core_meta.dll",
+          "size": 223232,
+          "sha256": "ca5a57abd18d153e56a407a7c375eb73f4bc5973d0f2e6c1d2503962a7244fae"
+        },
+        {
+          "path": "bin/lux_engine_core_object.dll",
+          "size": 360448,
+          "sha256": "a49a87e7511a173c56171ced3240aa600d47c20af33b46df019f14ab21894586"
+        },
+        {
+          "path": "bin/lux_engine_core_serialization.dll",
+          "size": 34304,
+          "sha256": "17257a4567378e3943fe47b45bc6e0e89d0dcf87fd96a082f60710710398ce5a"
+        },
+        {
+          "path": "bin/lux_engine_core_task.dll",
+          "size": 146944,
+          "sha256": "7946a4ed8099172436473ce96c2cfd2d63a06cd49b0a3376947c31376b13a770"
+        },
+        {
+          "path": "bin/lux_engine_domain_system_description.dll",
+          "size": 59904,
+          "sha256": "5391a3e1bb000cfde7497ac6485df3e31df8d5a3ce8de2e4c83ed7b0b0d79606"
+        },
+        {
+          "path": "bin/lux_engine_domain_system_identity.dll",
+          "size": 44032,
+          "sha256": "e7865b35c0638a148892608734d3fc805e24e6543850e2620c70d4887d7d4748"
+        },
+        {
+          "path": "bin/lux_engine_function_graph.dll",
+          "size": 163328,
+          "sha256": "88d2bdb0ff2fb141c92dfc600108da544e6e0843f0d5fea828e70db7018606cc"
+        },
+        {
+          "path": "bin/lux_engine_function_input.dll",
+          "size": 230912,
+          "sha256": "0d0df3d1b1b24085aadd676c2d60f1827d0d7e03dce399126a7773f5aba841e4"
+        },
+        {
+          "path": "bin/lux_engine_function_navigation_detour3d.dll",
+          "size": 473600,
+          "sha256": "8ee5cd67dd9c60688b059bb1f9d0d3b463c747b3e4d24d750845bef16bb36bfa"
+        },
+        {
+          "path": "bin/lux_engine_function_render_client_meta.dll",
+          "size": 201216,
+          "sha256": "6538b5076153e28cd3d17dfb0d515b3ae5389d3f72bf3372c8bed2cd56a47219"
+        },
+        {
+          "path": "bin/lux_engine_function_render_standard_content.dll",
+          "size": 89088,
+          "sha256": "bf68733450e944939692af438bf76e9cf23fd36c7ee40e482f1d7300622b4080"
+        },
+        {
+          "path": "bin/lux_engine_function_script_artifact.dll",
+          "size": 236032,
+          "sha256": "2273536b9755617970d5f00be75464fb30b6146d4678f8f7ee4df7b247c9138f"
+        },
+        {
+          "path": "bin/lux_engine_function_script_core.dll",
+          "size": 34304,
+          "sha256": "ce1593206cf558838dffc813285b4eadb86572ad65fb94e7e3038dc990636ca8"
+        },
+        {
+          "path": "bin/lux_engine_function_script_lua.dll",
+          "size": 50688,
+          "sha256": "e3dd313fa68fea553f76a36279450af4991ee4561b8df4fe1002cd4aebfde3b3"
+        },
+        {
+          "path": "bin/lux_engine_function_script_native.dll",
+          "size": 143360,
+          "sha256": "629547ee72a071c4db104437f581c193bd7c0eb99a1574a57b2fbe71d5fee1ac"
+        },
+        {
+          "path": "bin/lux_engine_physics2d_simulation.dll",
+          "size": 359424,
+          "sha256": "6082dc044c032c6bbe9aa1a4346f5661db123155dfea52f77dccaae680795cb9"
+        },
+        {
+          "path": "bin/lux_engine_process_asset_loading.dll",
+          "size": 153600,
+          "sha256": "9843b88438a68ac96a9081c9de344caba46b3fc932fe5e5a79697f29f2a8f230"
+        },
+        {
+          "path": "bin/lux_engine_process_execution.dll",
+          "size": 132608,
+          "sha256": "efa5aaf75f84c501a6a81d9a3a707349aba6aa88d7d1cff0b4a8a674da8f714e"
+        },
+        {
+          "path": "bin/lux_engine_process_world_loading.dll",
+          "size": 90112,
+          "sha256": "3c9a143a1e009435d5071b8017204337618f22c45336d49a2e75509f9cfd8b6d"
+        },
+        {
+          "path": "bin/lux_engine_scene_asset.dll",
+          "size": 134144,
+          "sha256": "47ebf45b82d97a40a2c6a34faa7d2b8318ed51b8a2c8448fb14e1dbcd226befb"
+        },
+        {
+          "path": "bin/lux_engine_scene_composition.dll",
+          "size": 228864,
+          "sha256": "04a513a93eaf0d67c74c969e0641f018a455bfe29d40f468bf422fa005e5718c"
+        },
+        {
+          "path": "bin/lux_engine_scene_description.dll",
+          "size": 193024,
+          "sha256": "eb0c29ec528d127f30abbe5006da03448523d9bd0d679c2c9c9c9ccb245fa007"
+        },
+        {
+          "path": "bin/lux_engine_scene_meta.dll",
+          "size": 192000,
+          "sha256": "c27851b90030ded726f7407202066f3e71a30dc61d2f2724ef2798a0d6cf75a7"
+        },
+        {
+          "path": "bin/lux_engine_scene_render.dll",
+          "size": 682496,
+          "sha256": "65bae13ecddcbcb4353a70c016c13129f3730b2dbb5337a706eb3f718718a268"
+        },
+        {
+          "path": "bin/lux_engine_scene_render_meta.dll",
+          "size": 111104,
+          "sha256": "49db1357fa399dbfdb5673c1262b18bff4491d251b41683380ad526eed0ff65c"
+        },
+        {
+          "path": "bin/lux_engine_scene_script_description.dll",
+          "size": 192000,
+          "sha256": "5111761eaf7600ced06c7a145fdd58dc46d8d5e3404ac7ced7ac13ef04c9d51a"
+        },
+        {
+          "path": "bin/lux_engine_scene_script_runtime.dll",
+          "size": 233472,
+          "sha256": "e69ede0850fedcc51c1e6a53d8c47a234b63c61066ee679f50fa533b3a4fff1d"
+        },
+        {
+          "path": "bin/lux_engine_scene_world_materialization.dll",
+          "size": 93696,
+          "sha256": "ec6a1561668e53edbb244ddc2bb5317aed4ffcdfb265c3fc9802d180ec1ddf9e"
+        },
+        {
+          "path": "bin/lux_engine_simulation_asset.dll",
+          "size": 257024,
+          "sha256": "5504ecb212bc6e2f0183c100918adc4d926faa806277661c49064883aa545939"
+        },
+        {
+          "path": "bin/lux_engine_simulation_composition.dll",
+          "size": 529408,
+          "sha256": "0acd5fef2a9a8a791dafc4f83d1bee82a9433d8e7a4ff20a6ab89ea62b059cc1"
+        },
+        {
+          "path": "bin/lux_engine_simulation_description.dll",
+          "size": 403968,
+          "sha256": "41d6ae6e40193b3274c9a2b79f1e9ff601dd33f3ecfe5664c6cfb72d7f129712"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_core.dll",
+          "size": 105472,
+          "sha256": "1c7d3b0073becbaca1d7e0edaf7a0a708eb59ceef21ff04f8a56f84fe21fd286"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_hierarchy.dll",
+          "size": 218624,
+          "sha256": "a34f7fdcb25f38d9a65e8809193c6017f54347ad9756089b289c09839803b1a2"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_schema.dll",
+          "size": 100864,
+          "sha256": "3fc498e0d24ef71f9032558752d450352e4cc048b95345b985083b30920b0fe9"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_snapshot.dll",
+          "size": 173568,
+          "sha256": "8a6192aad5169a57e310ff0bd53cde64d9969a7622b2be17fc26fa2e9f8ac542"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_transform.dll",
+          "size": 310784,
+          "sha256": "5abbb86bfca84689f5978275c667c60a435ee5064ff74593f6b914aa9050f75d"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_visual.dll",
+          "size": 237568,
+          "sha256": "b90761684e63a7fcf8911196994c38a5f7faae7d161168d4a6c55764aaf47503"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script.dll",
+          "size": 949248,
+          "sha256": "86aabe8ae9ca561dbaa5b1d9b33457f0e3b15a357a887adc9b34f2833234510e"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_cpp_static.dll",
+          "size": 292352,
+          "sha256": "a2a6ec7aa3f8357cc283e9c28c565f44d18719f9ef4e00dac8f2afc76af74f39"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_lua.dll",
+          "size": 323072,
+          "sha256": "633712b2b39092328d846ae00c581c974911a8ca2d2a7fafb76811d4fe1194d6"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_native.dll",
+          "size": 193536,
+          "sha256": "fbb3a3d1f45541a58413454686b172e8ebced724d54187799818b64450fc89cd"
+        },
+        {
+          "path": "bin/lux_engine_simulation_system.dll",
+          "size": 86016,
+          "sha256": "c270e455f3f3753469c8c0ddb45c4dd4a70dd5c3ce65c5c71df9e6a3a1dfe015"
+        },
+        {
+          "path": "bin/lux_engine_simulation_transform_system.dll",
+          "size": 497152,
+          "sha256": "3fc14340d301b5507b497914b3352ef801e1372e1ce2f8792dc34bbb80bdb565"
+        },
+        {
+          "path": "bin/lux_engine_spatial2d_index.dll",
+          "size": 74752,
+          "sha256": "753e6acf4ce7f47ac4ebcd782011619e323a83fe1d884d70681c4e3b1cbf203b"
+        },
+        {
+          "path": "bin/lux_engine_spatial3d_index.dll",
+          "size": 73728,
+          "sha256": "6097173dfd183abb0d6b9494c557c185948286a2d0361567ee2335708b33e576"
+        },
+        {
+          "path": "bin/lux_engine_world_asset.dll",
+          "size": 128512,
+          "sha256": "25b94084bddb36044f9b45c06ce061538f2a7992a4cedf7c334bc4836883ca15"
+        },
+        {
+          "path": "bin/lux_engine_world_description.dll",
+          "size": 338432,
+          "sha256": "228e365317e8d3cce4c9e6fa88cc18e8afcfd13ba2984250da82e4ba10cbb021"
+        },
+        {
+          "path": "bin/lux_engine_world_partition.dll",
+          "size": 182272,
+          "sha256": "4a8a7e28b0611a5bd8e1eff0851c99caa25b51a0925d0637120dcf480b069201"
+        },
+        {
+          "path": "bin/lux_engine_world_storage.dll",
+          "size": 163840,
+          "sha256": "b3d00d66e7bcbcc0ba35b38d9aec85be68a71b3d5ef647d046281affcd3a106c"
+        },
+        {
+          "path": "bin/render_client.dll",
+          "size": 2793984,
+          "sha256": "fc079dc51f6b0c2c4929c197eb571a51a8367114ae2063956f28da2bf7090015"
+        },
+        {
+          "path": "bin/render_features.dll",
+          "size": 35840,
+          "sha256": "7c1ed9b6f58e42cff14864bcf8edfc81f832d0f8323dbe25fa6103ba4026c28e"
+        },
+        {
+          "path": "bin/render_graph.dll",
+          "size": 342528,
+          "sha256": "fc087a604687fd6e8f908f5a07d8190c026b32a08bb87d6496c3f800cdc15697"
+        },
+        {
+          "path": "bin/render_vulkan.dll",
+          "size": 4792832,
+          "sha256": "ac4fbcb5b4abbaa17b226280855da7e2397ced580f3682ca911297b1d03f4dbc"
+        },
+        {
+          "path": "bin/ui.dll",
+          "size": 349696,
+          "sha256": "aac75bce0ec55b8ec7f0f8790bd3219d8ffe829045ea10b5d50c51a17a64b9f3"
+        },
+        {
+          "path": "bin/window.dll",
+          "size": 156672,
+          "sha256": "8e33201a7325faada29adf1ec6bfb5551870bf149e75eb103b7ef911ff3f4bf9"
+        },
+        {
+          "path": "include/lux/engine/description/AnimationClip.hpp",
+          "size": 3453,
+          "sha256": "7fcf93c0eb166b800aff23e3ef6fbeac8a6e68127e857ca5c78bebbdc4370497"
+        },
+        {
+          "path": "include/lux/engine/description/Image.hpp",
+          "size": 2381,
+          "sha256": "a908a8e7f0bf6f6f7699e89dcff9ececf1bfb450c06478880018d0c81a4da593"
+        },
+        {
+          "path": "include/lux/engine/description/LayoutContract.hpp",
+          "size": 23626,
+          "sha256": "c9b0d5847abf523c06496748793aaf2d7099f0c93b1314e00336b1140211138a"
+        },
+        {
+          "path": "include/lux/engine/description/Material.hpp",
+          "size": 1581,
+          "sha256": "862e7c6ee80b74215af388ab34cbbe33d0bd5b19a9d1d0d75269290232a5babd"
+        },
+        {
+          "path": "include/lux/engine/description/MaterialEnums.hpp",
+          "size": 2497,
+          "sha256": "e104e4c89e5cd41f4597db6f5cc47846662cf32ee7f87f2bccb54749146aa7a7"
+        },
+        {
+          "path": "include/lux/engine/description/Mesh.hpp",
+          "size": 2128,
+          "sha256": "1b0e4ff8a1eae44752b8de8df3853b15402fe8359b8097f9499c2e66fdaa5716"
+        },
+        {
+          "path": "include/lux/engine/description/Model.hpp",
+          "size": 830,
+          "sha256": "43f11468a19af03508956e3cb59d1650344f201929825d9e35b9de3ef126eba6"
+        },
+        {
+          "path": "include/lux/engine/description/Script.hpp",
+          "size": 13081,
+          "sha256": "5bfe24d95ad3f02cc8d12533aadeb2879637d59dec0f9236afa4ea6824cc813f"
+        },
+        {
+          "path": "include/lux/engine/description/Shader.hpp",
+          "size": 1034,
+          "sha256": "c8d8d1700d87020240c36076c78ef1cdb73533f17befb4f9bea86a237f5084bc"
+        },
+        {
+          "path": "include/lux/engine/description/ShaderInfo.hpp",
+          "size": 7989,
+          "sha256": "a698e1e46c239d4fcf3f28fea2110a7ea88686888c64845b764f30f123072aca"
+        },
+        {
+          "path": "include/lux/engine/description/Skeleton.hpp",
+          "size": 3345,
+          "sha256": "c2a553d410cee247edecf7b646d910b7bcfa6d79d1823fd2cde855659883d441"
+        },
+        {
+          "path": "include/lux/engine/description/Texture.hpp",
+          "size": 8633,
+          "sha256": "de5841829cc9c7259eece051562d4f96d22a64f318141cd5de03cfc0516f8762"
+        },
+        {
+          "path": "include/lux/engine/description/TextureAtlas.hpp",
+          "size": 3537,
+          "sha256": "bb50a60027209314a087619c7c8c30f6b1bd2e2f0c0cedd4d1698ce4113ba97c"
+        },
+        {
+          "path": "include/lux/engine/description/Tilemap2D.hpp",
+          "size": 1268,
+          "sha256": "8627db01ec69f96762a1f5b8ccf8732d893a31f1121f7a57cf28b8c0d81f4789"
+        },
+        {
+          "path": "include/lux/engine/description/Vertex.hpp",
+          "size": 1404,
+          "sha256": "95fe80dd5b6bb15d0070a3e844826dd186af8ef23de27aaed2665d841976fcbf"
+        },
+        {
+          "path": "include/lux/engine/description/Visual.hpp",
+          "size": 1604,
+          "sha256": "ae3cd4098fcc2bd7198ff2c3314b182c75166ef483f9c6f3494af0b87cc51e6e"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptAbilityCatalog.hpp",
+          "size": 3821,
+          "sha256": "6f248e3e777976b264393652873b26136f7f506c1691acfa02e679eaaa47aa50"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptAbilityNode.hpp",
+          "size": 2902,
+          "sha256": "fd17686c6bb9cbbe37949797293a5d568f9ea49bc4528152b4fc2497f2d26f62"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptEventAwaitNode.hpp",
+          "size": 1074,
+          "sha256": "2266d14c494eb8d53b3e9be948552c2259766040337dd96dda939c8fec322e44"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptGraph.hpp",
+          "size": 1006,
+          "sha256": "b004e84c9c584a7fae3ed0b64a889e6ccfcbc4366e8e48d8fbe41bb714804265"
+        },
+        {
+          "path": "include/lux/engine/function/render/client/core/FeatureDescriptor.hpp",
+          "size": 5593,
+          "sha256": "df33708084ed5becc32b7eeb143127d2ae4d604b1a20dce62116485fefb9474a"
+        },
+        {
+          "path": "include/lux/engine/function/render/client/resources/lighting/LightDescriptor.hpp",
+          "size": 5716,
+          "sha256": "ffcdc3f04a902095ec621f8b9311ab2552340f439c7275b1baee0203b571eeee"
+        },
+        {
+          "path": "include/lux/engine/function/script/abi/lux_script_abi.h",
+          "size": 10868,
+          "sha256": "531a4113250806479a16722d44be68e87f02946357dcb1c9548db40b3f0b6e80"
+        },
+        {
+          "path": "include/lux/engine/function/script/artifact/ScriptArtifact.hpp",
+          "size": 5074,
+          "sha256": "a1ff3c9518476b7edd22cafbcfc56430e6b6d9c20e2ff0183020a647022e4f7f"
+        },
+        {
+          "path": "include/lux/engine/function/script/artifact/visibility.h",
+          "size": 1112,
+          "sha256": "433060f20f2680da9c77bced0bd63100915e33286722ee8353d5982a74733e93"
+        },
+        {
+          "path": "include/lux/engine/function/script/BoundScriptCall.hpp",
+          "size": 510,
+          "sha256": "6f60a51286cec0a7d5e5d71d46264f3682663187e1dbfca7155ef01238f7c3e5"
+        },
+        {
+          "path": "include/lux/engine/function/script/lua/Lua.hpp",
+          "size": 1277,
+          "sha256": "5459f3d78b1ff204f573e1b693c0a312c0e01bb6baa4a11987463df66cb4a301"
+        },
+        {
+          "path": "include/lux/engine/function/script/lua/LuaVm.hpp",
+          "size": 412,
+          "sha256": "94b0985034295d0c6e69f87c24f631a1f6aa56f3c2ba23b6219da403b937271a"
+        },
+        {
+          "path": "include/lux/engine/function/script/lua/ScriptAbilityLua.hpp",
+          "size": 1270,
+          "sha256": "9d3c6211d0f68ed5d41b1d91b3f933d2256c6692b5bf40bff53cc7da5fe594b0"
+        },
+        {
+          "path": "include/lux/engine/function/script/native/NativeModule.hpp",
+          "size": 2255,
+          "sha256": "f050ea98c0f15b119b7ab5efc85837d325840fa17a0a3ebaa244acff4354e1dd"
+        },
+        {
+          "path": "include/lux/engine/function/script/native/ScriptAbilityNative.hpp",
+          "size": 1205,
+          "sha256": "e7f91d7747a140210264d58696d590649d16fd528423ab41e50f4c4eb97592de"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbility.hpp",
+          "size": 17384,
+          "sha256": "773e32dca2ea69c5e1b38edcfff86f146346a773be4480278fd70322bc912ced"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityAnnotations.hpp",
+          "size": 632,
+          "sha256": "e1b5b99d3207b82abafe96f03f7017891b491a7f83fc6f07621bd9e26b47c71b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityAsync.hpp",
+          "size": 4810,
+          "sha256": "f08e9967d2285b88c17f23c331240bcaa08867f9f6bc7c88c5a4bb8af79ef7fd"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityCompletionAdapter.hpp",
+          "size": 803,
+          "sha256": "cac707d75f2361c1ff6d060a5f07387b379741726258a7cab1306945395a6089"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityOperation.hpp",
+          "size": 784,
+          "sha256": "c9f36fc7f9c9e8c9521713f0791d932d7c940cecbe69ff50e38887dce3ae4044"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptApi.hpp",
+          "size": 699,
+          "sha256": "6569483668eb8090556ed49827bfc0d973f3a3ad046c66bbb9a83f08d3841c8b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptBindingHint.hpp",
+          "size": 727,
+          "sha256": "5c11ebdbb4a9d812dba02d7e157bdcf6063da527d9f8441068b358d58c3ea38e"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptEvent.hpp",
+          "size": 5060,
+          "sha256": "17c46277f5f7cb074c80910391c6c236ab2729735182ad055fc4dce99cf88f38"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptEventSchema.hpp",
+          "size": 4637,
+          "sha256": "e96cba40dbea88313113759630486318594346cac2d04036219d492d89b694e7"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptResult.hpp",
+          "size": 951,
+          "sha256": "facc1eaac716b5b570136dca5a40d50b4f646c2530caad8e4839ba0ee4e7d873"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptSemanticSchema.hpp",
+          "size": 2147,
+          "sha256": "04c8b06c0fa7061c080761dec077deb349781ec6b3edfddbb8b1c1200ca2e20b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptSymbol.hpp",
+          "size": 172,
+          "sha256": "160c2494d179d870dc8de23745fbcee21cd9a34e3d1dea0c969f13b1155f538f"
+        },
+        {
+          "path": "include/lux/engine/gapi/vk/Descriptor.hpp",
+          "size": 11968,
+          "sha256": "6e1ddad9d9852d1d9dc2d59bddf15c5e1e6118a07165d9cd40fb47b8aa88b512"
+        },
+        {
+          "path": "include/lux/engine/object/detail/SignalDescriptor.hpp",
+          "size": 1869,
+          "sha256": "ee584cfb699687ea9ec7b8641fcaa24a332301c69f52c90c21615e30b795be3f"
+        },
+        {
+          "path": "include/lux/engine/render/core/DescriptorSetLayoutContract.hpp",
+          "size": 6533,
+          "sha256": "b7aea54dc0e75036e12d98d8c6159fcc69b79871ea9e65db85705caf741a0c15"
+        },
+        {
+          "path": "include/lux/engine/scene/description/visibility.h",
+          "size": 1211,
+          "sha256": "1819dac984e927bbbd26962e8829004eecc8c9c1367fcdd420fe16fe11f09843"
+        },
+        {
+          "path": "include/lux/engine/scene/SceneDescription.hpp",
+          "size": 5791,
+          "sha256": "bddcf67d5bb1516e66cb95f96ede69c2fb52b1ab4fa1535cb5f6867f334048d0"
+        },
+        {
+          "path": "include/lux/engine/scene/SceneDescriptionBuilder.hpp",
+          "size": 3591,
+          "sha256": "a2e7a99a87d50ad48d2567111ad391af28223222a351486369359a4d877411c6"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptRuntimeAssembly.hpp",
+          "size": 1088,
+          "sha256": "d16bb22a11a38cfdf0697e835dd632da81fd09e7a7a803a533bcd93a34f33c8e"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptSystemDescription.hpp",
+          "size": 3368,
+          "sha256": "617f06c0c0696360516c16074e6081b47e54ebf51c64124004b052f0cdd1acd7"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp",
+          "size": 2168,
+          "sha256": "8bc8edc6e6228c490c70ac8e7f74f57dfbd3b8e33f534c72f03aa58b8c680a9f"
+        },
+        {
+          "path": "include/lux/engine/scene/script_description/visibility.h",
+          "size": 1288,
+          "sha256": "559fb5679d6b9ed9e8ac33860275d8aa8a0eb0f856944a7219f1d05aa826c201"
+        },
+        {
+          "path": "include/lux/engine/scene/script_runtime/visibility.h",
+          "size": 1244,
+          "sha256": "24c7b02d5add1028fa2de14d949c51db638b1368a39144e9908428324a192d27"
+        },
+        {
+          "path": "include/lux/engine/scene/ScriptRuntimeSystem.hpp",
+          "size": 5021,
+          "sha256": "427e02fd198cec7e8791b47d98325d463cc00e474e72c4f374630ef78a226681"
+        },
+        {
+          "path": "include/lux/engine/simulation/description/visibility.h",
+          "size": 1266,
+          "sha256": "9442cc35cd1b332b977496a204a5288d7f9bcabe6078887a833c3c8c573be332"
+        },
+        {
+          "path": "include/lux/engine/simulation/script_system/visibility.h",
+          "size": 1211,
+          "sha256": "8c7437254098c3520f8bdd65514a7e817da06b48117b6bee1b9c0c9bf3be6e9c"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptBinding.hpp",
+          "size": 1412,
+          "sha256": "99dafa5c1ab79ecf81f099270eeeb7aab05b93f1d4648716644b653351aa9fb0"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptBindingAuthoring.hpp",
+          "size": 2518,
+          "sha256": "9f2eaa2ae1fba5e72f12be0675977e2059a330b1ac6e6fd3f62d0692bb898e70"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp",
+          "size": 2738,
+          "sha256": "5c2bc02045dcabaea99b70085a8fcedf4cca0921d72822ac5fe13ba5d5f122f1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/CppStaticScriptContract.hpp",
+          "size": 13961,
+          "sha256": "55039a210c49eb9049b3781739c84f942dd9bc946ac7463dc9bfb6ba343bf625"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/ScriptCoroutine.hpp",
+          "size": 23035,
+          "sha256": "3aa7fbe946f10f12441b89ad755436c5ce70236411580cae8696082928b4e668"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp",
+          "size": 201,
+          "sha256": "1fcfd0d8cbbbeea9af1038a2217a1dd40a52831b952c1d712163db67ddb6a4ff"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/visibility.h",
+          "size": 1332,
+          "sha256": "90f9e94a5751c0650f08d4b2840daec214e7c53d5f77bc2a3fbd3f26946acce3"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp",
+          "size": 17171,
+          "sha256": "08e936a29bbeafa13b971537d66ec5b09c495cad13637b9920305e98f63671d1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/lua/LuaScriptAbilityProjection.hpp",
+          "size": 7765,
+          "sha256": "23010f718ab21b4aca706ed4c030bdc6783ec03a833ce15fe919dbe650db6160"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp",
+          "size": 5891,
+          "sha256": "24bd6baaff085de2c46fb019548289c9d07b8c04794860901bab984195dec0c1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/lua/visibility.h",
+          "size": 1255,
+          "sha256": "d19ce292410b3d16622d151b4c5ee8c95f61a87628b637b8abe333c9b2a713c4"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/NativeScriptAbilityProjection.hpp",
+          "size": 1631,
+          "sha256": "a6422ca7f5e3f405f30f1010559c8e40cae17eb5ed06e9be9f39db028cd2b997"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/NativeScriptBackend.hpp",
+          "size": 4372,
+          "sha256": "50155b4ab402e3fae45bf61b5e8b72ba89a11957ce33beccb64716f332a9d148"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/visibility.h",
+          "size": 1288,
+          "sha256": "33c66ec4bdf7936e4f1014d1a6072b4ea388d3071939d5c6ad0c52587923c416"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp",
+          "size": 5472,
+          "sha256": "9289bfd31eaeade508af5a91c8dbe7af4fb1902a5d0ce5281bcc196ce5aa5b8c"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptApiCapability.hpp",
+          "size": 1338,
+          "sha256": "0c2ea389e3de403f18a42a0781536e98579f9e881da63185fc6f2b8b8a6c55e9"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptBackend.hpp",
+          "size": 7022,
+          "sha256": "a1ac5ede989ef236bdecdde7c20dfa4d9ec1b233fb425716febc010891f63c5c"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptContractValidation.hpp",
+          "size": 3766,
+          "sha256": "615236964edbca4529a1d98def20d701f64fe7cf981aa4953d359a4f0fce96e0"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptEndpointBridge.hpp",
+          "size": 13599,
+          "sha256": "87c37b526e2cbfebffca54a996b2d51f65397aff12aaea093d87d06c0a132b88"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptEventSource.hpp",
+          "size": 7061,
+          "sha256": "05a94fdac395fe23927e763357b5544437fa4bd0fb456bd715a85d3f802a0206"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptLifecycle.hpp",
+          "size": 937,
+          "sha256": "150f828308e45282d70f531f5c22b3d63bb08e9d71b103ca21cf0b1a22400e34"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptRuntime.hpp",
+          "size": 23596,
+          "sha256": "fa7f13b3d59fc9d4a53629d751e9fc18544b27bef530de3afa6f07207bff8398"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptSignatureCompatibility.hpp",
+          "size": 1769,
+          "sha256": "ee5e2b2bc89ab999dc568c7a8e950e5e842cecdb1dd866398111ef6ba021e255"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptTimeEndpoint.hpp",
+          "size": 1073,
+          "sha256": "378a1149e48039c1339a7d8892e261b302aee2b666c93056d57417c36995e160"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptRuntimeInput.hpp",
+          "size": 1259,
+          "sha256": "e190e22a164b49bd2a41367360d502f883c1ab9ce51e9582e59a3ddd9976142b"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptSystem.hpp",
+          "size": 10328,
+          "sha256": "ab5a6e4c810ae34f687e72cdd87b206b34fe68ac23fd14dc50a17379bf55ad8e"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationDescription.hpp",
+          "size": 13590,
+          "sha256": "e8aa220293b4affff4064bde83b443fc0a2b415fa06a6e8453fc324c64f30614"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationDescriptionBuilder.hpp",
+          "size": 4559,
+          "sha256": "3b91a9bd3583e7bbb887c1738d6db5436bd6f37daa6b2a395f72d5e822f32d0c"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationSystemDescription.hpp",
+          "size": 2632,
+          "sha256": "bd9f56f65face4fca97f547403c760c6a81d7d6cbb532a026b01061c2608e518"
+        },
+        {
+          "path": "include/lux/engine/system/description/visibility.h",
+          "size": 1222,
+          "sha256": "d67164d9885254201da65179b12a94d3152bcff282ac4e0cca6e9a4fa11c6142"
+        },
+        {
+          "path": "include/lux/engine/system/SystemTypeDescription.hpp",
+          "size": 1828,
+          "sha256": "3f5f2a809ce3a5ca3a2858db9a5cb5124ceb411343062f7a32d008f6690dffef"
+        },
+        {
+          "path": "include/lux/engine/world/description/visibility.h",
+          "size": 1211,
+          "sha256": "5e108ba3c1eb377136c2ec393ad64796a6f26be84b3150c72137b2dea1d24858"
+        },
+        {
+          "path": "include/lux/engine/world/WorldDescription.hpp",
+          "size": 3053,
+          "sha256": "19eb9d2cff530e30ee290d38beb5880c49ca071cd12fa7af93d0709da3e3ab40"
+        },
+        {
+          "path": "include/lux/engine/world/WorldDescriptionBuilder.hpp",
+          "size": 2821,
+          "sha256": "abd479fc91b0355b39b13d5f0eb7ebb34755a0c39861bc0875fa1193dcbe2bdb"
+        }
+      ]
+    },
+    {
+      "prefix": "E:\\SyncForder\\CodeRepos\\install\\sr3-candidate\\t",
+      "files": [
+        {
+          "path": "bin/animation.dll",
+          "size": 185344,
+          "sha256": "4bf4f320ee44d370929c0a7d4ec6aa986af1131b1d0bcee17c148d97ca58d802"
+        },
+        {
+          "path": "bin/assimp-vc143-mt.dll",
+          "size": 5505024,
+          "sha256": "11de8dbd01befb266aa18d0180b79a3f1626f6b79bf642397635ac9ce0d3ec5f"
+        },
+        {
+          "path": "bin/description.dll",
+          "size": 138240,
+          "sha256": "cd89d00ebbf922774e3707819635d9654cb3be9237bc651983c1efe29a5bde27"
+        },
+        {
+          "path": "bin/dynamic_library.dll",
+          "size": 331776,
+          "sha256": "15261c887319bea1233dffa54b2efa85ef2a03e06e4650b2a6d227050a6151aa"
+        },
+        {
+          "path": "bin/kubazip.dll",
+          "size": 80896,
+          "sha256": "7158629447cd3ada54dd0f555db814b5c79feed225eda908caf02c5eff12ff42"
+        },
+        {
+          "path": "bin/lux_asset_packer.exe",
+          "size": 2415616,
+          "sha256": "4292a163c3c8ddb817c89555052de82df12ff216a25e861999700b30f3d8a508"
+        },
+        {
+          "path": "bin/lux_engine_asset.dll",
+          "size": 1501184,
+          "sha256": "991a93a0b24b6ab3c88529d2f69d4ef94566d26276c580fcbb0f9ae9251ed605"
+        },
+        {
+          "path": "bin/lux_engine_core_events.dll",
+          "size": 64512,
+          "sha256": "ce7119466e3f0070dd38d480e63265dc7fd4ab172eb3255117693672f1b12bd9"
+        },
+        {
+          "path": "bin/lux_engine_core_log.dll",
+          "size": 556032,
+          "sha256": "4592ee92c67e959af288732d79e061fc00eec3aa0186f83e2e41b15e21ba0fb5"
+        },
+        {
+          "path": "bin/lux_engine_core_meta.dll",
+          "size": 223232,
+          "sha256": "a56222bf6c1cc90a23703d0ecff84cf85fb65ed2fb1478e6bdf2da63e1fd9431"
+        },
+        {
+          "path": "bin/lux_engine_core_object.dll",
+          "size": 360448,
+          "sha256": "5c3228898a18811b26d2429bf74adddf1300f4bc78a6a22e172317b9015c0d9a"
+        },
+        {
+          "path": "bin/lux_engine_core_serialization.dll",
+          "size": 34304,
+          "sha256": "67cf17d7c4852e4b39b9d92ee6d2209e28197f949bba571fb72f29dd8ecb4007"
+        },
+        {
+          "path": "bin/lux_engine_core_task.dll",
+          "size": 146944,
+          "sha256": "bdd35bc4ceab6b9ef4d76c11e6fa6b61138738c5e244a8cc4071e070173793e5"
+        },
+        {
+          "path": "bin/lux_engine_domain_system_description.dll",
+          "size": 59904,
+          "sha256": "cda3ef0eb173c9464ad42795d015e3e8ef40b9ed314540159589c12ad149d0ce"
+        },
+        {
+          "path": "bin/lux_engine_domain_system_identity.dll",
+          "size": 44032,
+          "sha256": "9467c249088f4dc135c8f5df9ee81a2b5c0a926c56f57e9c334157d065fd6421"
+        },
+        {
+          "path": "bin/lux_engine_flowforge_compiler.dll",
+          "size": 56795136,
+          "sha256": "6ed102d12f1a9d003462d9ea7f395172715906991f5131198586264d46bdef8d"
+        },
+        {
+          "path": "bin/lux_engine_function_graph.dll",
+          "size": 163328,
+          "sha256": "2809a68e61cf4246ed88439730e7cd3b69a5595cda21be0a896cc8dd7d8f1b58"
+        },
+        {
+          "path": "bin/lux_engine_function_material_graph.dll",
+          "size": 152576,
+          "sha256": "7d3beeafd1e7f2a4091008dccb83dc793ff1489a5090e441c69ea06364f4208d"
+        },
+        {
+          "path": "bin/lux_engine_function_navigation_detour3d.dll",
+          "size": 473600,
+          "sha256": "226ab9bcccaa5cf61327cf7ca8fc9d79ffb25426ce9c16708c428aee6b00dbb1"
+        },
+        {
+          "path": "bin/lux_engine_function_render_client_meta.dll",
+          "size": 201216,
+          "sha256": "cd433b7bf57ae210affd8a6b3f62cd1473a8276eb0b794a0af180305b02221b9"
+        },
+        {
+          "path": "bin/lux_engine_function_render_standard_content.dll",
+          "size": 89088,
+          "sha256": "499d04e7ff0bfac3335340fddc35aa18eb88b0858f368fce52c122ddd035cbda"
+        },
+        {
+          "path": "bin/lux_engine_function_script_artifact.dll",
+          "size": 236032,
+          "sha256": "851cf0cea09d17fd3596b7dcd12c8172618466ae5e84d22cda771067908babcc"
+        },
+        {
+          "path": "bin/lux_engine_function_script_core.dll",
+          "size": 34304,
+          "sha256": "28f60d7ad09f7d5e039bc8c5e07357b62ba05f9903dadcb009c92a8afcb4d97f"
+        },
+        {
+          "path": "bin/lux_engine_function_script_native.dll",
+          "size": 143360,
+          "sha256": "d090f9d2ad5581ebbe442de445ca332609d2516cab3b9919ee7d0391608b8575"
+        },
+        {
+          "path": "bin/lux_engine_physics2d_simulation.dll",
+          "size": 359424,
+          "sha256": "b4ca403fe0426d21d067acc4be7b3df751fe5f7c979decbee68a5d28e9971c84"
+        },
+        {
+          "path": "bin/lux_engine_process_asset_loading.dll",
+          "size": 153600,
+          "sha256": "15a81252317f3970eb5c96e7fe95ae388049ddb46db8cae4aa6ea1883487cce1"
+        },
+        {
+          "path": "bin/lux_engine_process_execution.dll",
+          "size": 132608,
+          "sha256": "863f4d8f69326a898f255bddbcdbc711b1151b0023a3e8cfe4fac43eede0983c"
+        },
+        {
+          "path": "bin/lux_engine_process_world_loading.dll",
+          "size": 90112,
+          "sha256": "95c5974f03a9d361c208c0d1e92a5d6222c021adbd55ca2c1af65d6f78c05d12"
+        },
+        {
+          "path": "bin/lux_engine_scene_asset.dll",
+          "size": 134144,
+          "sha256": "7fd22581828cc59dcabab0c0eebb4bd475126c48fd06b879acc816bf90a8272f"
+        },
+        {
+          "path": "bin/lux_engine_scene_composition.dll",
+          "size": 228864,
+          "sha256": "14d37f53442dbb392541fba953f5f2a482e42b9edab9946bb40eef2d880c555d"
+        },
+        {
+          "path": "bin/lux_engine_scene_description.dll",
+          "size": 193024,
+          "sha256": "0b0418051041d051a40a1d2b1f6855429a78660fb72f7a738c8be9f5129063e8"
+        },
+        {
+          "path": "bin/lux_engine_scene_meta.dll",
+          "size": 192000,
+          "sha256": "dfbad07af70d34c6d9e1deaf0ace61daf30cb8de5115e8c288befb438f32f8e3"
+        },
+        {
+          "path": "bin/lux_engine_scene_render.dll",
+          "size": 682496,
+          "sha256": "d69e5f0ea6bf7c5cf0e88341d9af90360be5f14514099597b23a5c66b901c3ca"
+        },
+        {
+          "path": "bin/lux_engine_scene_render_meta.dll",
+          "size": 111104,
+          "sha256": "21830755a3badb845b128f525bfd3324df788bb8e92ac6fd1f0f3f29f5e914eb"
+        },
+        {
+          "path": "bin/lux_engine_scene_script_description.dll",
+          "size": 192000,
+          "sha256": "afab5a428fa9463c9212938692f134f4279464f81a127c9b084f22cfd9b9d8e4"
+        },
+        {
+          "path": "bin/lux_engine_scene_script_runtime.dll",
+          "size": 233472,
+          "sha256": "90229b9173febd4d650407b47b2cf51e88b93fef8ab3e7f2c5eefa8b406c287d"
+        },
+        {
+          "path": "bin/lux_engine_scene_world_materialization.dll",
+          "size": 93696,
+          "sha256": "5b85034de716bd5a1ae5a978d2a81c2af5f36a911980145671e1c1b520599d86"
+        },
+        {
+          "path": "bin/lux_engine_simulation_asset.dll",
+          "size": 257024,
+          "sha256": "f16999f1104797075a6f928be4fa204415587e87b3c93dd68c100eb43d1bfda6"
+        },
+        {
+          "path": "bin/lux_engine_simulation_composition.dll",
+          "size": 529408,
+          "sha256": "70dbcb0c53fe78bc9b16d6fb8bd081b32d367d5e7d4c75084c7925474c85cd95"
+        },
+        {
+          "path": "bin/lux_engine_simulation_description.dll",
+          "size": 403968,
+          "sha256": "4e2c5e78467d74f387acc05510c6c3a04daa56fe189f37b206509273b6f00e1c"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_core.dll",
+          "size": 105472,
+          "sha256": "4e21eea74721ea98c62ae41b231c690925fb41dce55c043713341ee10db68e3a"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_hierarchy.dll",
+          "size": 218624,
+          "sha256": "ed07bffa9504cdfbe6e221b0bd1a6c0b305c04433802ea754331b33da530a7ee"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_schema.dll",
+          "size": 100864,
+          "sha256": "531d2688045c6254938f2c8e7de909f9c84bb16cf26a7ad347c66fcec544ea86"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_snapshot.dll",
+          "size": 173568,
+          "sha256": "7444288ccfa1f436ec1bcf787e749734dedcca2bd8336dd5cc2dc9ac0f8ecfd8"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_transform.dll",
+          "size": 310784,
+          "sha256": "b282cb0926d417ae313f8712e349b9ffad83717f3e0c96da8399ac8433164768"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_visual.dll",
+          "size": 237568,
+          "sha256": "f4cc025b00fa7266f3cee1bfcbcd8aab548c5eb15a1e00f73787b2ae50ef7c2d"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script.dll",
+          "size": 949248,
+          "sha256": "8f186071c8bae6d39763359b49c7b8a304c92bd909e39109bcdbf3e8244232ee"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_cpp_static.dll",
+          "size": 292352,
+          "sha256": "2a122d5b65e9e05ac204b68fea7f6361a2e15f04611738af7ff4834de2924fb4"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_native.dll",
+          "size": 193536,
+          "sha256": "ca84b612d002b973f7d1362a781b9cc9a7da6c5510c7c81f6a44c2f65f5c650d"
+        },
+        {
+          "path": "bin/lux_engine_simulation_system.dll",
+          "size": 86016,
+          "sha256": "12de03668b365fb20ebd23a9fec7e9935f476ad0fb070cd52456aecc99950ba8"
+        },
+        {
+          "path": "bin/lux_engine_simulation_transform_system.dll",
+          "size": 497152,
+          "sha256": "3a9d6eb05f26f91ba22824f140e4d0fcc8a44308c770c207208ef0b4a47d8f29"
+        },
+        {
+          "path": "bin/lux_engine_spatial2d_index.dll",
+          "size": 74752,
+          "sha256": "e65aca8aac5f86451b9f8df9a6e46b72b6b29e89cb072317a17a9f2576ada55e"
+        },
+        {
+          "path": "bin/lux_engine_spatial3d_index.dll",
+          "size": 73728,
+          "sha256": "f02fa9b0762c82a8671430adaf1c1cf58cc6ff4c42821c7aa6b6976317090b6f"
+        },
+        {
+          "path": "bin/lux_engine_toolchain_material_compiler.dll",
+          "size": 9237504,
+          "sha256": "6e02441209a4c92a99ab8a23dfcf5856a80bb203e0dcb95e8cd94a9118f92573"
+        },
+        {
+          "path": "bin/lux_engine_world_asset.dll",
+          "size": 128512,
+          "sha256": "89fd2f9e287e6c42bec444c019b0b8663b354a8e454b0b6f5fe0a54a9d6f0c63"
+        },
+        {
+          "path": "bin/lux_engine_world_description.dll",
+          "size": 338432,
+          "sha256": "eb170554bf98603d12aa6564b6a5c6aedc4b09b1646eb536dfbd544f1709b784"
+        },
+        {
+          "path": "bin/lux_engine_world_partition.dll",
+          "size": 182272,
+          "sha256": "8b78001bfdb13bd8ecd928a8a70564ae268dafe06069179ee13d758001297da4"
+        },
+        {
+          "path": "bin/lux_engine_world_storage.dll",
+          "size": 163840,
+          "sha256": "67dbae58d585429fa6d03130fcb14ecd03dd4d80a31a21bba536a5d346d2f726"
+        },
+        {
+          "path": "bin/lux_shader_emitter.exe",
+          "size": 636416,
+          "sha256": "eca65586929d3ff4d56ed9e79e22ddfbb460d140bb106299f4b522b229c4fdbd"
+        },
+        {
+          "path": "bin/meshoptimizer.dll",
+          "size": 157184,
+          "sha256": "e3377b8181c7a552ce9e5dccb3d70902341dc542ef10d3cc95582183c2a49e8e"
+        },
+        {
+          "path": "bin/minizip.dll",
+          "size": 48128,
+          "sha256": "dc1b38c251b187c002dcc2f8ddb359de01489b3f658fb5d5ef9a98e1ebdb76c2"
+        },
+        {
+          "path": "bin/poly2tri.dll",
+          "size": 43520,
+          "sha256": "d44429919bf68ea01f11ae3e93661b90155bab62d2ad71883bf7d7e596c6e4c6"
+        },
+        {
+          "path": "bin/pugixml.dll",
+          "size": 200192,
+          "sha256": "055b00854212d0dc30af5b08e00602bff99d9e6de58e3e6729d7be72ff5197d0"
+        },
+        {
+          "path": "bin/render_client.dll",
+          "size": 2793984,
+          "sha256": "d47f71171ff27a6ba0890e9186acb7bafd267a70eb3e557558693765745ea458"
+        },
+        {
+          "path": "bin/zlib1.dll",
+          "size": 90624,
+          "sha256": "0a1bb1c50f0cafb3a6e3bc1f4b806d08e01d909227156203a4b5d0fba052e4d3"
+        },
+        {
+          "path": "include/lux/engine/description/AnimationClip.hpp",
+          "size": 3453,
+          "sha256": "7fcf93c0eb166b800aff23e3ef6fbeac8a6e68127e857ca5c78bebbdc4370497"
+        },
+        {
+          "path": "include/lux/engine/description/Image.hpp",
+          "size": 2381,
+          "sha256": "a908a8e7f0bf6f6f7699e89dcff9ececf1bfb450c06478880018d0c81a4da593"
+        },
+        {
+          "path": "include/lux/engine/description/LayoutContract.hpp",
+          "size": 23626,
+          "sha256": "c9b0d5847abf523c06496748793aaf2d7099f0c93b1314e00336b1140211138a"
+        },
+        {
+          "path": "include/lux/engine/description/Material.hpp",
+          "size": 1581,
+          "sha256": "862e7c6ee80b74215af388ab34cbbe33d0bd5b19a9d1d0d75269290232a5babd"
+        },
+        {
+          "path": "include/lux/engine/description/MaterialEnums.hpp",
+          "size": 2497,
+          "sha256": "e104e4c89e5cd41f4597db6f5cc47846662cf32ee7f87f2bccb54749146aa7a7"
+        },
+        {
+          "path": "include/lux/engine/description/Mesh.hpp",
+          "size": 2128,
+          "sha256": "1b0e4ff8a1eae44752b8de8df3853b15402fe8359b8097f9499c2e66fdaa5716"
+        },
+        {
+          "path": "include/lux/engine/description/Model.hpp",
+          "size": 830,
+          "sha256": "43f11468a19af03508956e3cb59d1650344f201929825d9e35b9de3ef126eba6"
+        },
+        {
+          "path": "include/lux/engine/description/Script.hpp",
+          "size": 13081,
+          "sha256": "5bfe24d95ad3f02cc8d12533aadeb2879637d59dec0f9236afa4ea6824cc813f"
+        },
+        {
+          "path": "include/lux/engine/description/Shader.hpp",
+          "size": 1034,
+          "sha256": "c8d8d1700d87020240c36076c78ef1cdb73533f17befb4f9bea86a237f5084bc"
+        },
+        {
+          "path": "include/lux/engine/description/ShaderInfo.hpp",
+          "size": 7989,
+          "sha256": "a698e1e46c239d4fcf3f28fea2110a7ea88686888c64845b764f30f123072aca"
+        },
+        {
+          "path": "include/lux/engine/description/Skeleton.hpp",
+          "size": 3345,
+          "sha256": "c2a553d410cee247edecf7b646d910b7bcfa6d79d1823fd2cde855659883d441"
+        },
+        {
+          "path": "include/lux/engine/description/Texture.hpp",
+          "size": 8633,
+          "sha256": "de5841829cc9c7259eece051562d4f96d22a64f318141cd5de03cfc0516f8762"
+        },
+        {
+          "path": "include/lux/engine/description/TextureAtlas.hpp",
+          "size": 3537,
+          "sha256": "bb50a60027209314a087619c7c8c30f6b1bd2e2f0c0cedd4d1698ce4113ba97c"
+        },
+        {
+          "path": "include/lux/engine/description/Tilemap2D.hpp",
+          "size": 1268,
+          "sha256": "8627db01ec69f96762a1f5b8ccf8732d893a31f1121f7a57cf28b8c0d81f4789"
+        },
+        {
+          "path": "include/lux/engine/description/Vertex.hpp",
+          "size": 1404,
+          "sha256": "95fe80dd5b6bb15d0070a3e844826dd186af8ef23de27aaed2665d841976fcbf"
+        },
+        {
+          "path": "include/lux/engine/description/Visual.hpp",
+          "size": 1604,
+          "sha256": "ae3cd4098fcc2bd7198ff2c3314b182c75166ef483f9c6f3494af0b87cc51e6e"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptAbilityCatalog.hpp",
+          "size": 3821,
+          "sha256": "6f248e3e777976b264393652873b26136f7f506c1691acfa02e679eaaa47aa50"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptAbilityNode.hpp",
+          "size": 2902,
+          "sha256": "fd17686c6bb9cbbe37949797293a5d568f9ea49bc4528152b4fc2497f2d26f62"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptEventAwaitNode.hpp",
+          "size": 1074,
+          "sha256": "2266d14c494eb8d53b3e9be948552c2259766040337dd96dda939c8fec322e44"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptGraph.hpp",
+          "size": 1006,
+          "sha256": "b004e84c9c584a7fae3ed0b64a889e6ccfcbc4366e8e48d8fbe41bb714804265"
+        },
+        {
+          "path": "include/lux/engine/function/render/client/core/FeatureDescriptor.hpp",
+          "size": 5593,
+          "sha256": "df33708084ed5becc32b7eeb143127d2ae4d604b1a20dce62116485fefb9474a"
+        },
+        {
+          "path": "include/lux/engine/function/render/client/resources/lighting/LightDescriptor.hpp",
+          "size": 5716,
+          "sha256": "ffcdc3f04a902095ec621f8b9311ab2552340f439c7275b1baee0203b571eeee"
+        },
+        {
+          "path": "include/lux/engine/function/script/abi/lux_script_abi.h",
+          "size": 10868,
+          "sha256": "531a4113250806479a16722d44be68e87f02946357dcb1c9548db40b3f0b6e80"
+        },
+        {
+          "path": "include/lux/engine/function/script/artifact/ScriptArtifact.hpp",
+          "size": 5074,
+          "sha256": "a1ff3c9518476b7edd22cafbcfc56430e6b6d9c20e2ff0183020a647022e4f7f"
+        },
+        {
+          "path": "include/lux/engine/function/script/artifact/visibility.h",
+          "size": 1112,
+          "sha256": "433060f20f2680da9c77bced0bd63100915e33286722ee8353d5982a74733e93"
+        },
+        {
+          "path": "include/lux/engine/function/script/BoundScriptCall.hpp",
+          "size": 510,
+          "sha256": "6f60a51286cec0a7d5e5d71d46264f3682663187e1dbfca7155ef01238f7c3e5"
+        },
+        {
+          "path": "include/lux/engine/function/script/native/NativeModule.hpp",
+          "size": 2255,
+          "sha256": "f050ea98c0f15b119b7ab5efc85837d325840fa17a0a3ebaa244acff4354e1dd"
+        },
+        {
+          "path": "include/lux/engine/function/script/native/ScriptAbilityNative.hpp",
+          "size": 1205,
+          "sha256": "e7f91d7747a140210264d58696d590649d16fd528423ab41e50f4c4eb97592de"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbility.hpp",
+          "size": 17384,
+          "sha256": "773e32dca2ea69c5e1b38edcfff86f146346a773be4480278fd70322bc912ced"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityAnnotations.hpp",
+          "size": 632,
+          "sha256": "e1b5b99d3207b82abafe96f03f7017891b491a7f83fc6f07621bd9e26b47c71b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityAsync.hpp",
+          "size": 4810,
+          "sha256": "f08e9967d2285b88c17f23c331240bcaa08867f9f6bc7c88c5a4bb8af79ef7fd"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityCompletionAdapter.hpp",
+          "size": 803,
+          "sha256": "cac707d75f2361c1ff6d060a5f07387b379741726258a7cab1306945395a6089"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityOperation.hpp",
+          "size": 784,
+          "sha256": "c9f36fc7f9c9e8c9521713f0791d932d7c940cecbe69ff50e38887dce3ae4044"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptApi.hpp",
+          "size": 699,
+          "sha256": "6569483668eb8090556ed49827bfc0d973f3a3ad046c66bbb9a83f08d3841c8b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptBindingHint.hpp",
+          "size": 727,
+          "sha256": "5c11ebdbb4a9d812dba02d7e157bdcf6063da527d9f8441068b358d58c3ea38e"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptEvent.hpp",
+          "size": 5060,
+          "sha256": "17c46277f5f7cb074c80910391c6c236ab2729735182ad055fc4dce99cf88f38"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptEventSchema.hpp",
+          "size": 4637,
+          "sha256": "e96cba40dbea88313113759630486318594346cac2d04036219d492d89b694e7"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptResult.hpp",
+          "size": 951,
+          "sha256": "facc1eaac716b5b570136dca5a40d50b4f646c2530caad8e4839ba0ee4e7d873"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptSemanticSchema.hpp",
+          "size": 2147,
+          "sha256": "04c8b06c0fa7061c080761dec077deb349781ec6b3edfddbb8b1c1200ca2e20b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptSymbol.hpp",
+          "size": 172,
+          "sha256": "160c2494d179d870dc8de23745fbcee21cd9a34e3d1dea0c969f13b1155f538f"
+        },
+        {
+          "path": "include/lux/engine/material/ImportedMaterialDescription.hpp",
+          "size": 1364,
+          "sha256": "855047bcbbd08bca1866c573171d9f1824334431234cc332e19db867fa6e3df7"
+        },
+        {
+          "path": "include/lux/engine/object/detail/SignalDescriptor.hpp",
+          "size": 1869,
+          "sha256": "ee584cfb699687ea9ec7b8641fcaa24a332301c69f52c90c21615e30b795be3f"
+        },
+        {
+          "path": "include/lux/engine/scene/description/visibility.h",
+          "size": 1211,
+          "sha256": "1819dac984e927bbbd26962e8829004eecc8c9c1367fcdd420fe16fe11f09843"
+        },
+        {
+          "path": "include/lux/engine/scene/SceneDescription.hpp",
+          "size": 5791,
+          "sha256": "bddcf67d5bb1516e66cb95f96ede69c2fb52b1ab4fa1535cb5f6867f334048d0"
+        },
+        {
+          "path": "include/lux/engine/scene/SceneDescriptionBuilder.hpp",
+          "size": 3591,
+          "sha256": "a2e7a99a87d50ad48d2567111ad391af28223222a351486369359a4d877411c6"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptRuntimeAssembly.hpp",
+          "size": 1088,
+          "sha256": "d16bb22a11a38cfdf0697e835dd632da81fd09e7a7a803a533bcd93a34f33c8e"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptSystemDescription.hpp",
+          "size": 3368,
+          "sha256": "617f06c0c0696360516c16074e6081b47e54ebf51c64124004b052f0cdd1acd7"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp",
+          "size": 2168,
+          "sha256": "8bc8edc6e6228c490c70ac8e7f74f57dfbd3b8e33f534c72f03aa58b8c680a9f"
+        },
+        {
+          "path": "include/lux/engine/scene/script_description/visibility.h",
+          "size": 1288,
+          "sha256": "559fb5679d6b9ed9e8ac33860275d8aa8a0eb0f856944a7219f1d05aa826c201"
+        },
+        {
+          "path": "include/lux/engine/scene/script_runtime/visibility.h",
+          "size": 1244,
+          "sha256": "24c7b02d5add1028fa2de14d949c51db638b1368a39144e9908428324a192d27"
+        },
+        {
+          "path": "include/lux/engine/scene/ScriptRuntimeSystem.hpp",
+          "size": 5021,
+          "sha256": "427e02fd198cec7e8791b47d98325d463cc00e474e72c4f374630ef78a226681"
+        },
+        {
+          "path": "include/lux/engine/simulation/description/visibility.h",
+          "size": 1266,
+          "sha256": "9442cc35cd1b332b977496a204a5288d7f9bcabe6078887a833c3c8c573be332"
+        },
+        {
+          "path": "include/lux/engine/simulation/script_system/visibility.h",
+          "size": 1211,
+          "sha256": "8c7437254098c3520f8bdd65514a7e817da06b48117b6bee1b9c0c9bf3be6e9c"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptBinding.hpp",
+          "size": 1412,
+          "sha256": "99dafa5c1ab79ecf81f099270eeeb7aab05b93f1d4648716644b653351aa9fb0"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptBindingAuthoring.hpp",
+          "size": 2518,
+          "sha256": "9f2eaa2ae1fba5e72f12be0675977e2059a330b1ac6e6fd3f62d0692bb898e70"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp",
+          "size": 2738,
+          "sha256": "5c2bc02045dcabaea99b70085a8fcedf4cca0921d72822ac5fe13ba5d5f122f1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/CppStaticScriptContract.hpp",
+          "size": 13961,
+          "sha256": "55039a210c49eb9049b3781739c84f942dd9bc946ac7463dc9bfb6ba343bf625"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/ScriptCoroutine.hpp",
+          "size": 23035,
+          "sha256": "3aa7fbe946f10f12441b89ad755436c5ce70236411580cae8696082928b4e668"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp",
+          "size": 201,
+          "sha256": "1fcfd0d8cbbbeea9af1038a2217a1dd40a52831b952c1d712163db67ddb6a4ff"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/visibility.h",
+          "size": 1332,
+          "sha256": "90f9e94a5751c0650f08d4b2840daec214e7c53d5f77bc2a3fbd3f26946acce3"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp",
+          "size": 17171,
+          "sha256": "08e936a29bbeafa13b971537d66ec5b09c495cad13637b9920305e98f63671d1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/NativeScriptAbilityProjection.hpp",
+          "size": 1631,
+          "sha256": "a6422ca7f5e3f405f30f1010559c8e40cae17eb5ed06e9be9f39db028cd2b997"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/NativeScriptBackend.hpp",
+          "size": 4372,
+          "sha256": "50155b4ab402e3fae45bf61b5e8b72ba89a11957ce33beccb64716f332a9d148"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/visibility.h",
+          "size": 1288,
+          "sha256": "33c66ec4bdf7936e4f1014d1a6072b4ea388d3071939d5c6ad0c52587923c416"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp",
+          "size": 5472,
+          "sha256": "9289bfd31eaeade508af5a91c8dbe7af4fb1902a5d0ce5281bcc196ce5aa5b8c"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptApiCapability.hpp",
+          "size": 1338,
+          "sha256": "0c2ea389e3de403f18a42a0781536e98579f9e881da63185fc6f2b8b8a6c55e9"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptBackend.hpp",
+          "size": 7022,
+          "sha256": "a1ac5ede989ef236bdecdde7c20dfa4d9ec1b233fb425716febc010891f63c5c"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptContractValidation.hpp",
+          "size": 3766,
+          "sha256": "615236964edbca4529a1d98def20d701f64fe7cf981aa4953d359a4f0fce96e0"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptEndpointBridge.hpp",
+          "size": 13599,
+          "sha256": "87c37b526e2cbfebffca54a996b2d51f65397aff12aaea093d87d06c0a132b88"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptEventSource.hpp",
+          "size": 7061,
+          "sha256": "05a94fdac395fe23927e763357b5544437fa4bd0fb456bd715a85d3f802a0206"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptLifecycle.hpp",
+          "size": 937,
+          "sha256": "150f828308e45282d70f531f5c22b3d63bb08e9d71b103ca21cf0b1a22400e34"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptRuntime.hpp",
+          "size": 23596,
+          "sha256": "fa7f13b3d59fc9d4a53629d751e9fc18544b27bef530de3afa6f07207bff8398"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptSignatureCompatibility.hpp",
+          "size": 1769,
+          "sha256": "ee5e2b2bc89ab999dc568c7a8e950e5e842cecdb1dd866398111ef6ba021e255"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptTimeEndpoint.hpp",
+          "size": 1073,
+          "sha256": "378a1149e48039c1339a7d8892e261b302aee2b666c93056d57417c36995e160"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptRuntimeInput.hpp",
+          "size": 1259,
+          "sha256": "e190e22a164b49bd2a41367360d502f883c1ab9ce51e9582e59a3ddd9976142b"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptSystem.hpp",
+          "size": 10328,
+          "sha256": "ab5a6e4c810ae34f687e72cdd87b206b34fe68ac23fd14dc50a17379bf55ad8e"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationDescription.hpp",
+          "size": 13590,
+          "sha256": "e8aa220293b4affff4064bde83b443fc0a2b415fa06a6e8453fc324c64f30614"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationDescriptionBuilder.hpp",
+          "size": 4559,
+          "sha256": "3b91a9bd3583e7bbb887c1738d6db5436bd6f37daa6b2a395f72d5e822f32d0c"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationSystemDescription.hpp",
+          "size": 2632,
+          "sha256": "bd9f56f65face4fca97f547403c760c6a81d7d6cbb532a026b01061c2608e518"
+        },
+        {
+          "path": "include/lux/engine/system/description/visibility.h",
+          "size": 1222,
+          "sha256": "d67164d9885254201da65179b12a94d3152bcff282ac4e0cca6e9a4fa11c6142"
+        },
+        {
+          "path": "include/lux/engine/system/SystemTypeDescription.hpp",
+          "size": 1828,
+          "sha256": "3f5f2a809ce3a5ca3a2858db9a5cb5124ceb411343062f7a32d008f6690dffef"
+        },
+        {
+          "path": "include/lux/engine/world/description/visibility.h",
+          "size": 1211,
+          "sha256": "5e108ba3c1eb377136c2ec393ad64796a6f26be84b3150c72137b2dea1d24858"
+        },
+        {
+          "path": "include/lux/engine/world/WorldDescription.hpp",
+          "size": 3053,
+          "sha256": "19eb9d2cff530e30ee290d38beb5880c49ca071cd12fa7af93d0709da3e3ab40"
+        },
+        {
+          "path": "include/lux/engine/world/WorldDescriptionBuilder.hpp",
+          "size": 2821,
+          "sha256": "abd479fc91b0355b39b13d5f0eb7ebb34755a0c39861bc0875fa1193dcbe2bdb"
+        }
+      ]
+    },
+    {
+      "prefix": "E:\\SyncForder\\CodeRepos\\install\\sr3-final\\d",
+      "files": [
+        {
+          "path": "bin/animation.dll",
+          "size": 185344,
+          "sha256": "22d89022d77827814ead41bd91eb5ddd4bcd5f28d6140cef9b430a500a7bdff7"
+        },
+        {
+          "path": "bin/description.dll",
+          "size": 138240,
+          "sha256": "a77c7cba57446270917a324c6942938dfc518f4eec01e3321aa479685410c6fd"
+        },
+        {
+          "path": "bin/dynamic_library.dll",
+          "size": 331776,
+          "sha256": "90eb25d86783538fc371cb015a61b226039421df8b124fd0b462864857791c30"
+        },
+        {
+          "path": "bin/filewatch.dll",
+          "size": 125952,
+          "sha256": "67893b36a8800b2c6c2c9894c76afc1fb05ce6e0cd130fb884d6154023353710"
+        },
+        {
+          "path": "bin/lux_engine_asset.dll",
+          "size": 1501184,
+          "sha256": "891ccd326d2012e63d488db620939824fe68b3e84e1e5be69d70bd292374648c"
+        },
+        {
+          "path": "bin/lux_engine_core_events.dll",
+          "size": 64512,
+          "sha256": "c88f4c25ca1b2df2f10c514884a80a8e8a84d3415c9d19521b127071646cbd02"
+        },
+        {
+          "path": "bin/lux_engine_core_log.dll",
+          "size": 556032,
+          "sha256": "b923c407f386d43dd2f89f75c255f09fb5186870ed63a988c035c66fc94c6af8"
+        },
+        {
+          "path": "bin/lux_engine_core_meta.dll",
+          "size": 223232,
+          "sha256": "57b32ac1d5ec62871f5fed4b32d7ccacf84debcbff5ef5239e361f1dc0ef4e20"
+        },
+        {
+          "path": "bin/lux_engine_core_object.dll",
+          "size": 360448,
+          "sha256": "81e8c10fa897a38a52348d6dcbb0a759f8f155f642ea8740b892ab2d8859e2ae"
+        },
+        {
+          "path": "bin/lux_engine_core_serialization.dll",
+          "size": 34304,
+          "sha256": "c3ae048bd51f453c5d955e6b3eb381f58c15416043c353843de41ee23964aa34"
+        },
+        {
+          "path": "bin/lux_engine_core_task.dll",
+          "size": 146944,
+          "sha256": "cdef2da39ef622d4540cf4575ebd826d2d5e667b8e5768fa011a0e0c5926b78e"
+        },
+        {
+          "path": "bin/lux_engine_domain_system_description.dll",
+          "size": 59904,
+          "sha256": "383a19d7b91834ffca43d0f4069b88fbc7ddd6fea84eec4cf8297467da741030"
+        },
+        {
+          "path": "bin/lux_engine_domain_system_identity.dll",
+          "size": 44032,
+          "sha256": "ab740a20b8894d6175e878a17b5c5a0264519691f6ff46127b444f323b44887c"
+        },
+        {
+          "path": "bin/lux_engine_function_graph.dll",
+          "size": 163328,
+          "sha256": "605954290c30897ba13d7577af57c63a6f3781090153393d49a13301ad85a68d"
+        },
+        {
+          "path": "bin/lux_engine_function_input.dll",
+          "size": 230912,
+          "sha256": "4fac5ba599f4db8960dfb58657114c3c58581ea6cbed5e206d92b880ae7efcc5"
+        },
+        {
+          "path": "bin/lux_engine_function_navigation_detour3d.dll",
+          "size": 473600,
+          "sha256": "f5078ddceb55bb89128b13da9d1758059bb268d206bd4cded6cc03475f1a56ca"
+        },
+        {
+          "path": "bin/lux_engine_function_render_client_meta.dll",
+          "size": 201216,
+          "sha256": "addbf24f4b02d6303f1db7004fef916994f5420a1e5ab5e3b147f479e3045151"
+        },
+        {
+          "path": "bin/lux_engine_function_render_standard_content.dll",
+          "size": 89088,
+          "sha256": "54fc27b6e1019b1ff5497196792cbc3174bb9a29befc47a229d49b78505b9205"
+        },
+        {
+          "path": "bin/lux_engine_function_script_artifact.dll",
+          "size": 236032,
+          "sha256": "16fb18cf7e4fc6dbc61eba53122b089289da53da1e6c3faf678a3f2c2d80a5d3"
+        },
+        {
+          "path": "bin/lux_engine_function_script_core.dll",
+          "size": 34304,
+          "sha256": "206df39b6fba1d01213db59b6bb5c30d6bb97ecfad090472c3aa9a57e047bf1b"
+        },
+        {
+          "path": "bin/lux_engine_function_script_lua.dll",
+          "size": 50688,
+          "sha256": "c8d2f10824232b3765dd66ff555c6407cc446e694b19c6618ece7758b67a5369"
+        },
+        {
+          "path": "bin/lux_engine_function_script_native.dll",
+          "size": 143360,
+          "sha256": "b21f85c0db9d85c00462a508c0a3b6cc00a4cb93cebaa50d6c7c8fc635268b34"
+        },
+        {
+          "path": "bin/lux_engine_physics2d_simulation.dll",
+          "size": 359424,
+          "sha256": "152f6dcdf29bd5987308590e0f08b787afeb1d6e651f39d806275d8a627c1d3f"
+        },
+        {
+          "path": "bin/lux_engine_process_asset_loading.dll",
+          "size": 153600,
+          "sha256": "c15c5c479ac2e77f2dc24661fe32383ade4b85aba9de84c01f22647e6210908d"
+        },
+        {
+          "path": "bin/lux_engine_process_execution.dll",
+          "size": 132608,
+          "sha256": "a96df6d0222148a176bdf84e24b38347dbd0a429f4bcb20bd16fa405714cb319"
+        },
+        {
+          "path": "bin/lux_engine_process_world_loading.dll",
+          "size": 90112,
+          "sha256": "ef098e0dd230be0db4ca9b628997e321e1e6186490520b013cefa00e1e95522f"
+        },
+        {
+          "path": "bin/lux_engine_scene_asset.dll",
+          "size": 134144,
+          "sha256": "ef757ec80c42958745aa30d4d8f61a670b0f70d5ca13af5b6f624ee48386f533"
+        },
+        {
+          "path": "bin/lux_engine_scene_composition.dll",
+          "size": 228864,
+          "sha256": "2d27f77f106525df5ecf6859237fe3881f02d28f29313d2b19fe8be5eeeb918a"
+        },
+        {
+          "path": "bin/lux_engine_scene_description.dll",
+          "size": 193024,
+          "sha256": "d3303109645559fc8fcb772bd364ec4cf85c7081123bba33c9ef00b42039ffc8"
+        },
+        {
+          "path": "bin/lux_engine_scene_meta.dll",
+          "size": 192000,
+          "sha256": "970798e66d137105063a2e4b602627d6c944038e3d5a16106379ec05e0205eb5"
+        },
+        {
+          "path": "bin/lux_engine_scene_render.dll",
+          "size": 682496,
+          "sha256": "4ba54e387934d19772650314a70204a4eac2b314e87aa9ae31fddb74925f326c"
+        },
+        {
+          "path": "bin/lux_engine_scene_render_meta.dll",
+          "size": 111104,
+          "sha256": "c3bba0908e191a5abc20af490007f00c28baa3117446f04d2fd9dd314236a44e"
+        },
+        {
+          "path": "bin/lux_engine_scene_script_description.dll",
+          "size": 192000,
+          "sha256": "288a8714a4f8cd626534b97fe9837b6d8a5d58a3912dc39a914c4d43e700878e"
+        },
+        {
+          "path": "bin/lux_engine_scene_script_runtime.dll",
+          "size": 233472,
+          "sha256": "825182053178f3d6c51512b65756170231a755a5b4de9a83685a859dd8b01e3f"
+        },
+        {
+          "path": "bin/lux_engine_scene_world_materialization.dll",
+          "size": 93696,
+          "sha256": "8af29b3c38d851997c82132ab6a2f7dc1f1185f7e6283aa562e59d699a844ceb"
+        },
+        {
+          "path": "bin/lux_engine_simulation_asset.dll",
+          "size": 257024,
+          "sha256": "969e3e3de36170720639328f726daa77474f43a6fd75b7f47d057f3cb45b6f62"
+        },
+        {
+          "path": "bin/lux_engine_simulation_composition.dll",
+          "size": 529408,
+          "sha256": "73844c1c9c6e7e8740b9813d3d0d71ad89eddcdc5b8b0a6becfd070e4185bbb5"
+        },
+        {
+          "path": "bin/lux_engine_simulation_description.dll",
+          "size": 403968,
+          "sha256": "ec6fde62f2c26366e82426629f60529ec12748c0e009abb52923e63f549d6eb5"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_core.dll",
+          "size": 105472,
+          "sha256": "0ea772ac29ec2f46501d203437b10c0b8a1ed9594c492ace4fa5da53ba08ce4a"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_hierarchy.dll",
+          "size": 218624,
+          "sha256": "ec9c19c41895a7069df227ed6ef0e905a06af2e8dee58a0c6157714d7aa967f8"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_schema.dll",
+          "size": 100864,
+          "sha256": "5c2843589141e50f7833a07e1bb79d4e813df93a17782fdd45027deb756c5b25"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_snapshot.dll",
+          "size": 173568,
+          "sha256": "ae4395d9dc5f22a37c015d2158c669b7fe1f24b8df183299b15db25517b54153"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_transform.dll",
+          "size": 310784,
+          "sha256": "2ed12cea02812b3b10c182ffcaae5d21d5c69f33d7c92820b3df4e59fc19ec81"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_visual.dll",
+          "size": 237568,
+          "sha256": "a66ee16984d07eaa6ac5b10cf268c8303dbfb85f3c446a33709d364ba9873b90"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script.dll",
+          "size": 950784,
+          "sha256": "6bf67330f6e926afa9093fd2df8cb3edd6254b5df9dbaf314ac5d2c0edf7a336"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_cpp_static.dll",
+          "size": 292352,
+          "sha256": "a799f86b4d1bfb20d334d7116a78f912d4fb742a84e9d9fb489ca1eccdbb065e"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_lua.dll",
+          "size": 323072,
+          "sha256": "38c45227b9648afeb9fd3f16d1e71a74aa6d4e3e2ec61be3d336745253515d7a"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_native.dll",
+          "size": 193536,
+          "sha256": "7a62fb9f1209455982c5223a1ad00bf60c813a2454f3680f2af4badbe05070be"
+        },
+        {
+          "path": "bin/lux_engine_simulation_system.dll",
+          "size": 86016,
+          "sha256": "51a9e1f76a0735bbf087e97b12987336cbb4ea350058a6c23352f5db2f96ff4d"
+        },
+        {
+          "path": "bin/lux_engine_simulation_transform_system.dll",
+          "size": 497152,
+          "sha256": "04eb1d99f8c5c3d82bb0969e38bfb63c704ec82e742ed3608dbc82a2ac9f537f"
+        },
+        {
+          "path": "bin/lux_engine_spatial2d_index.dll",
+          "size": 74752,
+          "sha256": "102381538c2f963afa5f1302922c8bb1f0e49192b7fe413534b17d0a6c42a58b"
+        },
+        {
+          "path": "bin/lux_engine_spatial3d_index.dll",
+          "size": 73728,
+          "sha256": "cc7f085c754b51f50c4ff1b12f57dbab6ad094fd2f71f8bbd249ab07bfa5b7ea"
+        },
+        {
+          "path": "bin/lux_engine_world_asset.dll",
+          "size": 128512,
+          "sha256": "33f61a4d4dd353d0ae270513bedd2184557fd52adbbb58c65b654d6c30ad1496"
+        },
+        {
+          "path": "bin/lux_engine_world_description.dll",
+          "size": 338432,
+          "sha256": "d1c39d85879415a0a054548917eadd6458a5fd82769e2426caa7798f9fb10f01"
+        },
+        {
+          "path": "bin/lux_engine_world_partition.dll",
+          "size": 182272,
+          "sha256": "8c45f66a5ba99b708c72971f752ceed710c56399aec67ebb19fea3532a4915c4"
+        },
+        {
+          "path": "bin/lux_engine_world_storage.dll",
+          "size": 163840,
+          "sha256": "5cae9b3333f346b322bd1a13bd5f8e1d41b9e01adecf194757d32eb335c83879"
+        },
+        {
+          "path": "bin/render_client.dll",
+          "size": 2793984,
+          "sha256": "3895952adb0ff3321736404f6bebc1e726711f2c2f9825d821ca0dd77061c501"
+        },
+        {
+          "path": "bin/render_features.dll",
+          "size": 35840,
+          "sha256": "55d0acb879b00052cfaa54b2cda11026a040f3c3ba60bbcf56fbbadf7cc53ef6"
+        },
+        {
+          "path": "bin/render_graph.dll",
+          "size": 342528,
+          "sha256": "aa580830b86064406a624ff144616bbcc42a290b8d8c2be64a6dd6711758bee3"
+        },
+        {
+          "path": "bin/render_vulkan.dll",
+          "size": 4792320,
+          "sha256": "d506714db62728ff785d34eb4f3a7579c8e2bc2a4989d95a82932365d3c7dfd7"
+        },
+        {
+          "path": "bin/ui.dll",
+          "size": 349696,
+          "sha256": "0e4dba5bec44dc20881dff443fe4848c26a072ea1fe991749e92b7be279cf832"
+        },
+        {
+          "path": "bin/window.dll",
+          "size": 156672,
+          "sha256": "f797116f4bf27f8396668976dc24f3a2d67d5eedcb714976fe513f565d328466"
+        },
+        {
+          "path": "include/lux/engine/description/AnimationClip.hpp",
+          "size": 3453,
+          "sha256": "7fcf93c0eb166b800aff23e3ef6fbeac8a6e68127e857ca5c78bebbdc4370497"
+        },
+        {
+          "path": "include/lux/engine/description/Image.hpp",
+          "size": 2381,
+          "sha256": "a908a8e7f0bf6f6f7699e89dcff9ececf1bfb450c06478880018d0c81a4da593"
+        },
+        {
+          "path": "include/lux/engine/description/LayoutContract.hpp",
+          "size": 23626,
+          "sha256": "c9b0d5847abf523c06496748793aaf2d7099f0c93b1314e00336b1140211138a"
+        },
+        {
+          "path": "include/lux/engine/description/Material.hpp",
+          "size": 1581,
+          "sha256": "862e7c6ee80b74215af388ab34cbbe33d0bd5b19a9d1d0d75269290232a5babd"
+        },
+        {
+          "path": "include/lux/engine/description/MaterialEnums.hpp",
+          "size": 2497,
+          "sha256": "e104e4c89e5cd41f4597db6f5cc47846662cf32ee7f87f2bccb54749146aa7a7"
+        },
+        {
+          "path": "include/lux/engine/description/Mesh.hpp",
+          "size": 2128,
+          "sha256": "1b0e4ff8a1eae44752b8de8df3853b15402fe8359b8097f9499c2e66fdaa5716"
+        },
+        {
+          "path": "include/lux/engine/description/Model.hpp",
+          "size": 830,
+          "sha256": "43f11468a19af03508956e3cb59d1650344f201929825d9e35b9de3ef126eba6"
+        },
+        {
+          "path": "include/lux/engine/description/Script.hpp",
+          "size": 13081,
+          "sha256": "5bfe24d95ad3f02cc8d12533aadeb2879637d59dec0f9236afa4ea6824cc813f"
+        },
+        {
+          "path": "include/lux/engine/description/Shader.hpp",
+          "size": 1034,
+          "sha256": "c8d8d1700d87020240c36076c78ef1cdb73533f17befb4f9bea86a237f5084bc"
+        },
+        {
+          "path": "include/lux/engine/description/ShaderInfo.hpp",
+          "size": 7989,
+          "sha256": "a698e1e46c239d4fcf3f28fea2110a7ea88686888c64845b764f30f123072aca"
+        },
+        {
+          "path": "include/lux/engine/description/Skeleton.hpp",
+          "size": 3345,
+          "sha256": "c2a553d410cee247edecf7b646d910b7bcfa6d79d1823fd2cde855659883d441"
+        },
+        {
+          "path": "include/lux/engine/description/Texture.hpp",
+          "size": 8633,
+          "sha256": "de5841829cc9c7259eece051562d4f96d22a64f318141cd5de03cfc0516f8762"
+        },
+        {
+          "path": "include/lux/engine/description/TextureAtlas.hpp",
+          "size": 3537,
+          "sha256": "bb50a60027209314a087619c7c8c30f6b1bd2e2f0c0cedd4d1698ce4113ba97c"
+        },
+        {
+          "path": "include/lux/engine/description/Tilemap2D.hpp",
+          "size": 1268,
+          "sha256": "8627db01ec69f96762a1f5b8ccf8732d893a31f1121f7a57cf28b8c0d81f4789"
+        },
+        {
+          "path": "include/lux/engine/description/Vertex.hpp",
+          "size": 1404,
+          "sha256": "95fe80dd5b6bb15d0070a3e844826dd186af8ef23de27aaed2665d841976fcbf"
+        },
+        {
+          "path": "include/lux/engine/description/Visual.hpp",
+          "size": 1604,
+          "sha256": "ae3cd4098fcc2bd7198ff2c3314b182c75166ef483f9c6f3494af0b87cc51e6e"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptAbilityCatalog.hpp",
+          "size": 3821,
+          "sha256": "6f248e3e777976b264393652873b26136f7f506c1691acfa02e679eaaa47aa50"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptAbilityNode.hpp",
+          "size": 2902,
+          "sha256": "fd17686c6bb9cbbe37949797293a5d568f9ea49bc4528152b4fc2497f2d26f62"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptEventAwaitNode.hpp",
+          "size": 1074,
+          "sha256": "2266d14c494eb8d53b3e9be948552c2259766040337dd96dda939c8fec322e44"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptGraph.hpp",
+          "size": 1006,
+          "sha256": "b004e84c9c584a7fae3ed0b64a889e6ccfcbc4366e8e48d8fbe41bb714804265"
+        },
+        {
+          "path": "include/lux/engine/function/render/client/core/FeatureDescriptor.hpp",
+          "size": 5593,
+          "sha256": "df33708084ed5becc32b7eeb143127d2ae4d604b1a20dce62116485fefb9474a"
+        },
+        {
+          "path": "include/lux/engine/function/render/client/resources/lighting/LightDescriptor.hpp",
+          "size": 5716,
+          "sha256": "ffcdc3f04a902095ec621f8b9311ab2552340f439c7275b1baee0203b571eeee"
+        },
+        {
+          "path": "include/lux/engine/function/script/abi/lux_script_abi.h",
+          "size": 10868,
+          "sha256": "531a4113250806479a16722d44be68e87f02946357dcb1c9548db40b3f0b6e80"
+        },
+        {
+          "path": "include/lux/engine/function/script/artifact/ScriptArtifact.hpp",
+          "size": 5074,
+          "sha256": "a1ff3c9518476b7edd22cafbcfc56430e6b6d9c20e2ff0183020a647022e4f7f"
+        },
+        {
+          "path": "include/lux/engine/function/script/artifact/visibility.h",
+          "size": 1112,
+          "sha256": "433060f20f2680da9c77bced0bd63100915e33286722ee8353d5982a74733e93"
+        },
+        {
+          "path": "include/lux/engine/function/script/BoundScriptCall.hpp",
+          "size": 510,
+          "sha256": "6f60a51286cec0a7d5e5d71d46264f3682663187e1dbfca7155ef01238f7c3e5"
+        },
+        {
+          "path": "include/lux/engine/function/script/lua/Lua.hpp",
+          "size": 1277,
+          "sha256": "5459f3d78b1ff204f573e1b693c0a312c0e01bb6baa4a11987463df66cb4a301"
+        },
+        {
+          "path": "include/lux/engine/function/script/lua/LuaVm.hpp",
+          "size": 412,
+          "sha256": "94b0985034295d0c6e69f87c24f631a1f6aa56f3c2ba23b6219da403b937271a"
+        },
+        {
+          "path": "include/lux/engine/function/script/lua/ScriptAbilityLua.hpp",
+          "size": 1270,
+          "sha256": "9d3c6211d0f68ed5d41b1d91b3f933d2256c6692b5bf40bff53cc7da5fe594b0"
+        },
+        {
+          "path": "include/lux/engine/function/script/native/NativeModule.hpp",
+          "size": 2255,
+          "sha256": "f050ea98c0f15b119b7ab5efc85837d325840fa17a0a3ebaa244acff4354e1dd"
+        },
+        {
+          "path": "include/lux/engine/function/script/native/ScriptAbilityNative.hpp",
+          "size": 1205,
+          "sha256": "e7f91d7747a140210264d58696d590649d16fd528423ab41e50f4c4eb97592de"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbility.hpp",
+          "size": 17384,
+          "sha256": "773e32dca2ea69c5e1b38edcfff86f146346a773be4480278fd70322bc912ced"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityAnnotations.hpp",
+          "size": 632,
+          "sha256": "e1b5b99d3207b82abafe96f03f7017891b491a7f83fc6f07621bd9e26b47c71b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityAsync.hpp",
+          "size": 4810,
+          "sha256": "f08e9967d2285b88c17f23c331240bcaa08867f9f6bc7c88c5a4bb8af79ef7fd"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityCompletionAdapter.hpp",
+          "size": 803,
+          "sha256": "cac707d75f2361c1ff6d060a5f07387b379741726258a7cab1306945395a6089"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityOperation.hpp",
+          "size": 784,
+          "sha256": "c9f36fc7f9c9e8c9521713f0791d932d7c940cecbe69ff50e38887dce3ae4044"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptApi.hpp",
+          "size": 699,
+          "sha256": "6569483668eb8090556ed49827bfc0d973f3a3ad046c66bbb9a83f08d3841c8b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptBindingHint.hpp",
+          "size": 727,
+          "sha256": "5c11ebdbb4a9d812dba02d7e157bdcf6063da527d9f8441068b358d58c3ea38e"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptEvent.hpp",
+          "size": 5060,
+          "sha256": "17c46277f5f7cb074c80910391c6c236ab2729735182ad055fc4dce99cf88f38"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptEventSchema.hpp",
+          "size": 4637,
+          "sha256": "e96cba40dbea88313113759630486318594346cac2d04036219d492d89b694e7"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptResult.hpp",
+          "size": 951,
+          "sha256": "facc1eaac716b5b570136dca5a40d50b4f646c2530caad8e4839ba0ee4e7d873"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptSemanticSchema.hpp",
+          "size": 2147,
+          "sha256": "04c8b06c0fa7061c080761dec077deb349781ec6b3edfddbb8b1c1200ca2e20b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptSymbol.hpp",
+          "size": 172,
+          "sha256": "160c2494d179d870dc8de23745fbcee21cd9a34e3d1dea0c969f13b1155f538f"
+        },
+        {
+          "path": "include/lux/engine/gapi/vk/Descriptor.hpp",
+          "size": 11968,
+          "sha256": "6e1ddad9d9852d1d9dc2d59bddf15c5e1e6118a07165d9cd40fb47b8aa88b512"
+        },
+        {
+          "path": "include/lux/engine/object/detail/SignalDescriptor.hpp",
+          "size": 1869,
+          "sha256": "ee584cfb699687ea9ec7b8641fcaa24a332301c69f52c90c21615e30b795be3f"
+        },
+        {
+          "path": "include/lux/engine/render/core/DescriptorSetLayoutContract.hpp",
+          "size": 6533,
+          "sha256": "b7aea54dc0e75036e12d98d8c6159fcc69b79871ea9e65db85705caf741a0c15"
+        },
+        {
+          "path": "include/lux/engine/scene/description/visibility.h",
+          "size": 1211,
+          "sha256": "1819dac984e927bbbd26962e8829004eecc8c9c1367fcdd420fe16fe11f09843"
+        },
+        {
+          "path": "include/lux/engine/scene/SceneDescription.hpp",
+          "size": 5791,
+          "sha256": "bddcf67d5bb1516e66cb95f96ede69c2fb52b1ab4fa1535cb5f6867f334048d0"
+        },
+        {
+          "path": "include/lux/engine/scene/SceneDescriptionBuilder.hpp",
+          "size": 3591,
+          "sha256": "a2e7a99a87d50ad48d2567111ad391af28223222a351486369359a4d877411c6"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptRuntimeAssembly.hpp",
+          "size": 1088,
+          "sha256": "d16bb22a11a38cfdf0697e835dd632da81fd09e7a7a803a533bcd93a34f33c8e"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptSystemDescription.hpp",
+          "size": 3368,
+          "sha256": "617f06c0c0696360516c16074e6081b47e54ebf51c64124004b052f0cdd1acd7"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp",
+          "size": 2168,
+          "sha256": "8bc8edc6e6228c490c70ac8e7f74f57dfbd3b8e33f534c72f03aa58b8c680a9f"
+        },
+        {
+          "path": "include/lux/engine/scene/script_description/visibility.h",
+          "size": 1288,
+          "sha256": "559fb5679d6b9ed9e8ac33860275d8aa8a0eb0f856944a7219f1d05aa826c201"
+        },
+        {
+          "path": "include/lux/engine/scene/script_runtime/visibility.h",
+          "size": 1244,
+          "sha256": "24c7b02d5add1028fa2de14d949c51db638b1368a39144e9908428324a192d27"
+        },
+        {
+          "path": "include/lux/engine/scene/ScriptRuntimeSystem.hpp",
+          "size": 5021,
+          "sha256": "427e02fd198cec7e8791b47d98325d463cc00e474e72c4f374630ef78a226681"
+        },
+        {
+          "path": "include/lux/engine/simulation/description/visibility.h",
+          "size": 1266,
+          "sha256": "9442cc35cd1b332b977496a204a5288d7f9bcabe6078887a833c3c8c573be332"
+        },
+        {
+          "path": "include/lux/engine/simulation/script_system/visibility.h",
+          "size": 1211,
+          "sha256": "8c7437254098c3520f8bdd65514a7e817da06b48117b6bee1b9c0c9bf3be6e9c"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptBinding.hpp",
+          "size": 1412,
+          "sha256": "99dafa5c1ab79ecf81f099270eeeb7aab05b93f1d4648716644b653351aa9fb0"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptBindingAuthoring.hpp",
+          "size": 2518,
+          "sha256": "9f2eaa2ae1fba5e72f12be0675977e2059a330b1ac6e6fd3f62d0692bb898e70"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp",
+          "size": 2738,
+          "sha256": "5c2bc02045dcabaea99b70085a8fcedf4cca0921d72822ac5fe13ba5d5f122f1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/CppStaticScriptContract.hpp",
+          "size": 13961,
+          "sha256": "55039a210c49eb9049b3781739c84f942dd9bc946ac7463dc9bfb6ba343bf625"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/ScriptCoroutine.hpp",
+          "size": 23035,
+          "sha256": "3aa7fbe946f10f12441b89ad755436c5ce70236411580cae8696082928b4e668"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp",
+          "size": 201,
+          "sha256": "1fcfd0d8cbbbeea9af1038a2217a1dd40a52831b952c1d712163db67ddb6a4ff"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/visibility.h",
+          "size": 1332,
+          "sha256": "90f9e94a5751c0650f08d4b2840daec214e7c53d5f77bc2a3fbd3f26946acce3"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp",
+          "size": 17171,
+          "sha256": "08e936a29bbeafa13b971537d66ec5b09c495cad13637b9920305e98f63671d1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/lua/LuaScriptAbilityProjection.hpp",
+          "size": 7765,
+          "sha256": "23010f718ab21b4aca706ed4c030bdc6783ec03a833ce15fe919dbe650db6160"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp",
+          "size": 5891,
+          "sha256": "24bd6baaff085de2c46fb019548289c9d07b8c04794860901bab984195dec0c1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/lua/visibility.h",
+          "size": 1255,
+          "sha256": "d19ce292410b3d16622d151b4c5ee8c95f61a87628b637b8abe333c9b2a713c4"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/NativeScriptAbilityProjection.hpp",
+          "size": 1631,
+          "sha256": "a6422ca7f5e3f405f30f1010559c8e40cae17eb5ed06e9be9f39db028cd2b997"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/NativeScriptBackend.hpp",
+          "size": 4372,
+          "sha256": "50155b4ab402e3fae45bf61b5e8b72ba89a11957ce33beccb64716f332a9d148"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/visibility.h",
+          "size": 1288,
+          "sha256": "33c66ec4bdf7936e4f1014d1a6072b4ea388d3071939d5c6ad0c52587923c416"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp",
+          "size": 5472,
+          "sha256": "9289bfd31eaeade508af5a91c8dbe7af4fb1902a5d0ce5281bcc196ce5aa5b8c"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptApiCapability.hpp",
+          "size": 1338,
+          "sha256": "0c2ea389e3de403f18a42a0781536e98579f9e881da63185fc6f2b8b8a6c55e9"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptBackend.hpp",
+          "size": 7022,
+          "sha256": "a1ac5ede989ef236bdecdde7c20dfa4d9ec1b233fb425716febc010891f63c5c"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptContractValidation.hpp",
+          "size": 3766,
+          "sha256": "615236964edbca4529a1d98def20d701f64fe7cf981aa4953d359a4f0fce96e0"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptEndpointBridge.hpp",
+          "size": 13599,
+          "sha256": "87c37b526e2cbfebffca54a996b2d51f65397aff12aaea093d87d06c0a132b88"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptEventSource.hpp",
+          "size": 7061,
+          "sha256": "05a94fdac395fe23927e763357b5544437fa4bd0fb456bd715a85d3f802a0206"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptLifecycle.hpp",
+          "size": 937,
+          "sha256": "150f828308e45282d70f531f5c22b3d63bb08e9d71b103ca21cf0b1a22400e34"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptRuntime.hpp",
+          "size": 23596,
+          "sha256": "fa7f13b3d59fc9d4a53629d751e9fc18544b27bef530de3afa6f07207bff8398"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptSignatureCompatibility.hpp",
+          "size": 1769,
+          "sha256": "ee5e2b2bc89ab999dc568c7a8e950e5e842cecdb1dd866398111ef6ba021e255"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptTimeEndpoint.hpp",
+          "size": 1073,
+          "sha256": "378a1149e48039c1339a7d8892e261b302aee2b666c93056d57417c36995e160"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptRuntimeInput.hpp",
+          "size": 1259,
+          "sha256": "e190e22a164b49bd2a41367360d502f883c1ab9ce51e9582e59a3ddd9976142b"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptSystem.hpp",
+          "size": 10328,
+          "sha256": "ab5a6e4c810ae34f687e72cdd87b206b34fe68ac23fd14dc50a17379bf55ad8e"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationDescription.hpp",
+          "size": 13590,
+          "sha256": "e8aa220293b4affff4064bde83b443fc0a2b415fa06a6e8453fc324c64f30614"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationDescriptionBuilder.hpp",
+          "size": 4559,
+          "sha256": "3b91a9bd3583e7bbb887c1738d6db5436bd6f37daa6b2a395f72d5e822f32d0c"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationSystemDescription.hpp",
+          "size": 2632,
+          "sha256": "bd9f56f65face4fca97f547403c760c6a81d7d6cbb532a026b01061c2608e518"
+        },
+        {
+          "path": "include/lux/engine/system/description/visibility.h",
+          "size": 1222,
+          "sha256": "d67164d9885254201da65179b12a94d3152bcff282ac4e0cca6e9a4fa11c6142"
+        },
+        {
+          "path": "include/lux/engine/system/SystemTypeDescription.hpp",
+          "size": 1828,
+          "sha256": "3f5f2a809ce3a5ca3a2858db9a5cb5124ceb411343062f7a32d008f6690dffef"
+        },
+        {
+          "path": "include/lux/engine/world/description/visibility.h",
+          "size": 1211,
+          "sha256": "5e108ba3c1eb377136c2ec393ad64796a6f26be84b3150c72137b2dea1d24858"
+        },
+        {
+          "path": "include/lux/engine/world/WorldDescription.hpp",
+          "size": 3053,
+          "sha256": "19eb9d2cff530e30ee290d38beb5880c49ca071cd12fa7af93d0709da3e3ab40"
+        },
+        {
+          "path": "include/lux/engine/world/WorldDescriptionBuilder.hpp",
+          "size": 2821,
+          "sha256": "abd479fc91b0355b39b13d5f0eb7ebb34755a0c39861bc0875fa1193dcbe2bdb"
+        }
+      ]
+    },
+    {
+      "prefix": "E:\\SyncForder\\CodeRepos\\install\\sr3-final\\t",
+      "files": [
+        {
+          "path": "bin/animation.dll",
+          "size": 185344,
+          "sha256": "0fd11a589a4b4083944df94f07ff2d2b24792a2b1050379c89782a8e7844cb7e"
+        },
+        {
+          "path": "bin/assimp-vc143-mt.dll",
+          "size": 5505024,
+          "sha256": "11de8dbd01befb266aa18d0180b79a3f1626f6b79bf642397635ac9ce0d3ec5f"
+        },
+        {
+          "path": "bin/description.dll",
+          "size": 138240,
+          "sha256": "b5d567bc7296cb1a03803e7b0ccb66249d4a2b98f246b7d6aa69202fa0c3aee8"
+        },
+        {
+          "path": "bin/dynamic_library.dll",
+          "size": 331776,
+          "sha256": "e374a7c7a70b154233526dbc4b879f02fff86703c67340b9f345be4097fde781"
+        },
+        {
+          "path": "bin/kubazip.dll",
+          "size": 80896,
+          "sha256": "7158629447cd3ada54dd0f555db814b5c79feed225eda908caf02c5eff12ff42"
+        },
+        {
+          "path": "bin/lux_asset_packer.exe",
+          "size": 2415616,
+          "sha256": "c8b08c899c0c0f18c10df501e70a540a3966331a7f64a3cd5c140db0fe133861"
+        },
+        {
+          "path": "bin/lux_engine_asset.dll",
+          "size": 1501184,
+          "sha256": "a6bd7d712b5228be1471c0a4265d0a593a98b24755c4b07712239a48408c482e"
+        },
+        {
+          "path": "bin/lux_engine_core_events.dll",
+          "size": 64512,
+          "sha256": "e9c44553b6b3ffffad6c7a01fbc84d09eb0501d8555ff8a07c61b47ed7b78f6c"
+        },
+        {
+          "path": "bin/lux_engine_core_log.dll",
+          "size": 556032,
+          "sha256": "643567c8ade67fa8d45faeee3b190ff3205be0e5079a132753bd56329a6c05a0"
+        },
+        {
+          "path": "bin/lux_engine_core_meta.dll",
+          "size": 223232,
+          "sha256": "d29ba7768bd91c12ef8e2555d5439353c35e463889325c554a7f1098ef652e7f"
+        },
+        {
+          "path": "bin/lux_engine_core_object.dll",
+          "size": 360448,
+          "sha256": "c731f888098708022fb39d4a88606e9cc09a1b0995a52040b856e912c6a754f3"
+        },
+        {
+          "path": "bin/lux_engine_core_serialization.dll",
+          "size": 34304,
+          "sha256": "317ae6867184c4635d9f20b926da764b16c02de5fa7b55b12eef1eb836298b66"
+        },
+        {
+          "path": "bin/lux_engine_core_task.dll",
+          "size": 146944,
+          "sha256": "c802013ed82ad598dbc261c75621cae25179920928704d77892aed9c8edd9e53"
+        },
+        {
+          "path": "bin/lux_engine_domain_system_description.dll",
+          "size": 59904,
+          "sha256": "b9e429f98c68331b8818eab56d8fa5a1a024c9658727aff201459c51bab3e744"
+        },
+        {
+          "path": "bin/lux_engine_domain_system_identity.dll",
+          "size": 44032,
+          "sha256": "5ef8fff3d3b9c3df962abbd0b89b26abcf11eb5fdb7b4aee19439f504f800955"
+        },
+        {
+          "path": "bin/lux_engine_flowforge_compiler.dll",
+          "size": 56795136,
+          "sha256": "b6e1321dae6f80297605395348a1b59c2d058c6cdb8512abaaf62ec5d30ec2eb"
+        },
+        {
+          "path": "bin/lux_engine_function_graph.dll",
+          "size": 163328,
+          "sha256": "ac243776992d985df6db5e4b6012630170fd6b5823616af35b2388bd060c6cba"
+        },
+        {
+          "path": "bin/lux_engine_function_material_graph.dll",
+          "size": 152576,
+          "sha256": "387685f81285e85540bd7f3b4993f7a173abb529f2f7dd283cfe4f19fe27c033"
+        },
+        {
+          "path": "bin/lux_engine_function_navigation_detour3d.dll",
+          "size": 473600,
+          "sha256": "936f19f873b5adc11a1bd27975dbe6af8955e3c338fbae0636b6f18385af022a"
+        },
+        {
+          "path": "bin/lux_engine_function_render_client_meta.dll",
+          "size": 201216,
+          "sha256": "5a359e2107dc132577a9902210b317b5c5de6aad9bc6a34c0a949fff188df1cb"
+        },
+        {
+          "path": "bin/lux_engine_function_render_standard_content.dll",
+          "size": 89088,
+          "sha256": "cd5c4c525f749b2605cb4590069142c8d650d4b10b37288215cee535706e410c"
+        },
+        {
+          "path": "bin/lux_engine_function_script_artifact.dll",
+          "size": 236032,
+          "sha256": "76d7b94e203e8c932ebd9226137f5a0d1fdb78f77c1636e93664d2a6e41b6232"
+        },
+        {
+          "path": "bin/lux_engine_function_script_core.dll",
+          "size": 34304,
+          "sha256": "d9ff48ecfc24161e3654d110d2533dd75a6f23e1828131f5dbd5f00f8f5daed7"
+        },
+        {
+          "path": "bin/lux_engine_function_script_native.dll",
+          "size": 143360,
+          "sha256": "bb51e2b6e94d35bfd5c90887fa698f9f1aed34cba7fa2fa5903adb49fd69aca5"
+        },
+        {
+          "path": "bin/lux_engine_physics2d_simulation.dll",
+          "size": 359424,
+          "sha256": "6e27ab9ca4e2445c2eda93c11376776d73eb865d822a964b27582d39908fd3e8"
+        },
+        {
+          "path": "bin/lux_engine_process_asset_loading.dll",
+          "size": 153600,
+          "sha256": "f8bf2acc2c3528b29c97b982a729a5ca45f3bec7b84976bd660e6cdc1872083f"
+        },
+        {
+          "path": "bin/lux_engine_process_execution.dll",
+          "size": 132608,
+          "sha256": "a910d54c68cf6154859ff68be37c72598188acac7dd14dee31de73c8813b7649"
+        },
+        {
+          "path": "bin/lux_engine_process_world_loading.dll",
+          "size": 90112,
+          "sha256": "4aaab411f0dd5d57fdd746b9b26b8a12add0b978711496e5e2a7ac93073f02db"
+        },
+        {
+          "path": "bin/lux_engine_scene_asset.dll",
+          "size": 134144,
+          "sha256": "f20574cd476321d88dea5ae1be7d3763c060a63ecca9b9ec111c27297e397f6c"
+        },
+        {
+          "path": "bin/lux_engine_scene_composition.dll",
+          "size": 228864,
+          "sha256": "b50e4bea00a11f7fbd4e73774a363b7e903a54f8d5b3c63b082375c56689e145"
+        },
+        {
+          "path": "bin/lux_engine_scene_description.dll",
+          "size": 193024,
+          "sha256": "a4a8121c9adf4245ff8714ee04e9cb501ac1ad233f7fb9aa9d0d21c257abd08f"
+        },
+        {
+          "path": "bin/lux_engine_scene_meta.dll",
+          "size": 192000,
+          "sha256": "0eb51b2c5f262ab37d68ce1eb88e511a2bfe6f9f2043a9b5ebafd500898afbf5"
+        },
+        {
+          "path": "bin/lux_engine_scene_render.dll",
+          "size": 682496,
+          "sha256": "b85d6ce2a9e0f8efe76c9e8aceb5ab0d6292105c5740684bac892a06db9581a4"
+        },
+        {
+          "path": "bin/lux_engine_scene_render_meta.dll",
+          "size": 111104,
+          "sha256": "b08dbc63e4c682a397262dbf09b3c157878dec3b07518b8cb2e651d0816de5ac"
+        },
+        {
+          "path": "bin/lux_engine_scene_script_description.dll",
+          "size": 192000,
+          "sha256": "3f52a8323bae9b50d9f07d93a9d099eb5eb66945891658644867a8e80d9f4401"
+        },
+        {
+          "path": "bin/lux_engine_scene_script_runtime.dll",
+          "size": 233472,
+          "sha256": "3181a6d45fe22ebff6c9cf9d1f80e07cfba263e1efe354ff895b7e2183a6ace4"
+        },
+        {
+          "path": "bin/lux_engine_scene_world_materialization.dll",
+          "size": 93696,
+          "sha256": "f7a01100ad110b6d16d0ccda5bbe558c6e611d23d59d472d0a7f47dd32e9a37b"
+        },
+        {
+          "path": "bin/lux_engine_simulation_asset.dll",
+          "size": 257024,
+          "sha256": "1c7eca7be041df7c4d4aa19b2358c86bb0565c374f087df8c500c14da856574f"
+        },
+        {
+          "path": "bin/lux_engine_simulation_composition.dll",
+          "size": 529408,
+          "sha256": "fa8414e9b45daf3be05104c0e9e02e1282a8e0169ecb9abc74269eae4e812660"
+        },
+        {
+          "path": "bin/lux_engine_simulation_description.dll",
+          "size": 403968,
+          "sha256": "dcd81918b703c29522b76d069fcd76657a2a23308cc56780a5cf295002811175"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_core.dll",
+          "size": 105472,
+          "sha256": "7eddbfaee1b41f8c6f6a9a911776032d2c4e4a54dd877cb84c7100f353c2d868"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_hierarchy.dll",
+          "size": 218624,
+          "sha256": "6d21344cda231054ab8202dc8b4be92d53e93afca71c7cfda756d5863171375e"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_schema.dll",
+          "size": 100864,
+          "sha256": "a90459aa1688aa38b40b19128de168fe3c6d2176df48b29e2df4fe0aa3bf8fdb"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_snapshot.dll",
+          "size": 173568,
+          "sha256": "4b8668ba0a3e5627267cdbc74992e2a6e8d206fae40dd4599ef1202b72943fbf"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_transform.dll",
+          "size": 310784,
+          "sha256": "2ba63e20ff12a56457de089a42e51d22cfd74c7a8aa01366d78cbcc05be82c1f"
+        },
+        {
+          "path": "bin/lux_engine_simulation_ecs_visual.dll",
+          "size": 237568,
+          "sha256": "11797929eaeeeb6a6f88cc4d5c1328ed6f15d2370f995167ad2e038ea03cd2f8"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script.dll",
+          "size": 950784,
+          "sha256": "47b7ce5750256e4cceded2e253c87c0992fb74843dcc7d53acd701924d4a79c6"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_cpp_static.dll",
+          "size": 292352,
+          "sha256": "3c4f3ada94fd90809d3636fa7390958ecf097d6ab9cfca1573c8b60b8cff9c4e"
+        },
+        {
+          "path": "bin/lux_engine_simulation_script_native.dll",
+          "size": 193536,
+          "sha256": "46b42d8a9ca1b3419e2f6bb103d056e687595f9206a4fb93c80c6bd5f4939c51"
+        },
+        {
+          "path": "bin/lux_engine_simulation_system.dll",
+          "size": 86016,
+          "sha256": "e1a185f47722e6cc764c7b8d94eae8f4ab4243d2b0dfe03c1ac6a18b7092d761"
+        },
+        {
+          "path": "bin/lux_engine_simulation_transform_system.dll",
+          "size": 497152,
+          "sha256": "85ac27f9cbff0742e31674f4d5039b54f9e6b66f04ca2712a41159546493c905"
+        },
+        {
+          "path": "bin/lux_engine_spatial2d_index.dll",
+          "size": 74752,
+          "sha256": "746b0df79bb2377faaf2463db00b069f83d38ef7d141c8c3b7f174a96a498d1b"
+        },
+        {
+          "path": "bin/lux_engine_spatial3d_index.dll",
+          "size": 73728,
+          "sha256": "6ece0fe912253b7bcab7c03a5d6c639052034a8230383c1551761d57acaf1620"
+        },
+        {
+          "path": "bin/lux_engine_toolchain_material_compiler.dll",
+          "size": 9237504,
+          "sha256": "511809a0da7532c62ef6c4cf615ca1c27fe9498095d8813851859d32715264a2"
+        },
+        {
+          "path": "bin/lux_engine_world_asset.dll",
+          "size": 128512,
+          "sha256": "3dff608c7d919302e448fd4ad6b80e3bd8307fe01ddaa0415bfece2fbc963898"
+        },
+        {
+          "path": "bin/lux_engine_world_description.dll",
+          "size": 338432,
+          "sha256": "ae2dad609fb2c4f43768da4d35af5edd71364c5566c6acff553512e04f50c7a4"
+        },
+        {
+          "path": "bin/lux_engine_world_partition.dll",
+          "size": 182272,
+          "sha256": "9e3ec3e1d970682663a80eeef718f88b3c46ac18c04e7ae5d763cef0d71b15a0"
+        },
+        {
+          "path": "bin/lux_engine_world_storage.dll",
+          "size": 163840,
+          "sha256": "0479e4bd0e879dd7ece3ad6a4a357804a6fbec713a49a75924797171e1d9bff8"
+        },
+        {
+          "path": "bin/lux_shader_emitter.exe",
+          "size": 636416,
+          "sha256": "25dd229a534cc52ca65043864c99a8768ca8b8d3bbf07904ec7b8cb652970910"
+        },
+        {
+          "path": "bin/meshoptimizer.dll",
+          "size": 157184,
+          "sha256": "e3377b8181c7a552ce9e5dccb3d70902341dc542ef10d3cc95582183c2a49e8e"
+        },
+        {
+          "path": "bin/minizip.dll",
+          "size": 48128,
+          "sha256": "dc1b38c251b187c002dcc2f8ddb359de01489b3f658fb5d5ef9a98e1ebdb76c2"
+        },
+        {
+          "path": "bin/poly2tri.dll",
+          "size": 43520,
+          "sha256": "d44429919bf68ea01f11ae3e93661b90155bab62d2ad71883bf7d7e596c6e4c6"
+        },
+        {
+          "path": "bin/pugixml.dll",
+          "size": 200192,
+          "sha256": "055b00854212d0dc30af5b08e00602bff99d9e6de58e3e6729d7be72ff5197d0"
+        },
+        {
+          "path": "bin/render_client.dll",
+          "size": 2793984,
+          "sha256": "b9f7dd54e505a909fc7a9bb3ced79fc88a25fad46893ae81ae37e8f37d60d8ea"
+        },
+        {
+          "path": "bin/zlib1.dll",
+          "size": 90624,
+          "sha256": "0a1bb1c50f0cafb3a6e3bc1f4b806d08e01d909227156203a4b5d0fba052e4d3"
+        },
+        {
+          "path": "include/lux/engine/description/AnimationClip.hpp",
+          "size": 3453,
+          "sha256": "7fcf93c0eb166b800aff23e3ef6fbeac8a6e68127e857ca5c78bebbdc4370497"
+        },
+        {
+          "path": "include/lux/engine/description/Image.hpp",
+          "size": 2381,
+          "sha256": "a908a8e7f0bf6f6f7699e89dcff9ececf1bfb450c06478880018d0c81a4da593"
+        },
+        {
+          "path": "include/lux/engine/description/LayoutContract.hpp",
+          "size": 23626,
+          "sha256": "c9b0d5847abf523c06496748793aaf2d7099f0c93b1314e00336b1140211138a"
+        },
+        {
+          "path": "include/lux/engine/description/Material.hpp",
+          "size": 1581,
+          "sha256": "862e7c6ee80b74215af388ab34cbbe33d0bd5b19a9d1d0d75269290232a5babd"
+        },
+        {
+          "path": "include/lux/engine/description/MaterialEnums.hpp",
+          "size": 2497,
+          "sha256": "e104e4c89e5cd41f4597db6f5cc47846662cf32ee7f87f2bccb54749146aa7a7"
+        },
+        {
+          "path": "include/lux/engine/description/Mesh.hpp",
+          "size": 2128,
+          "sha256": "1b0e4ff8a1eae44752b8de8df3853b15402fe8359b8097f9499c2e66fdaa5716"
+        },
+        {
+          "path": "include/lux/engine/description/Model.hpp",
+          "size": 830,
+          "sha256": "43f11468a19af03508956e3cb59d1650344f201929825d9e35b9de3ef126eba6"
+        },
+        {
+          "path": "include/lux/engine/description/Script.hpp",
+          "size": 13081,
+          "sha256": "5bfe24d95ad3f02cc8d12533aadeb2879637d59dec0f9236afa4ea6824cc813f"
+        },
+        {
+          "path": "include/lux/engine/description/Shader.hpp",
+          "size": 1034,
+          "sha256": "c8d8d1700d87020240c36076c78ef1cdb73533f17befb4f9bea86a237f5084bc"
+        },
+        {
+          "path": "include/lux/engine/description/ShaderInfo.hpp",
+          "size": 7989,
+          "sha256": "a698e1e46c239d4fcf3f28fea2110a7ea88686888c64845b764f30f123072aca"
+        },
+        {
+          "path": "include/lux/engine/description/Skeleton.hpp",
+          "size": 3345,
+          "sha256": "c2a553d410cee247edecf7b646d910b7bcfa6d79d1823fd2cde855659883d441"
+        },
+        {
+          "path": "include/lux/engine/description/Texture.hpp",
+          "size": 8633,
+          "sha256": "de5841829cc9c7259eece051562d4f96d22a64f318141cd5de03cfc0516f8762"
+        },
+        {
+          "path": "include/lux/engine/description/TextureAtlas.hpp",
+          "size": 3537,
+          "sha256": "bb50a60027209314a087619c7c8c30f6b1bd2e2f0c0cedd4d1698ce4113ba97c"
+        },
+        {
+          "path": "include/lux/engine/description/Tilemap2D.hpp",
+          "size": 1268,
+          "sha256": "8627db01ec69f96762a1f5b8ccf8732d893a31f1121f7a57cf28b8c0d81f4789"
+        },
+        {
+          "path": "include/lux/engine/description/Vertex.hpp",
+          "size": 1404,
+          "sha256": "95fe80dd5b6bb15d0070a3e844826dd186af8ef23de27aaed2665d841976fcbf"
+        },
+        {
+          "path": "include/lux/engine/description/Visual.hpp",
+          "size": 1604,
+          "sha256": "ae3cd4098fcc2bd7198ff2c3314b182c75166ef483f9c6f3494af0b87cc51e6e"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptAbilityCatalog.hpp",
+          "size": 3821,
+          "sha256": "6f248e3e777976b264393652873b26136f7f506c1691acfa02e679eaaa47aa50"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptAbilityNode.hpp",
+          "size": 2902,
+          "sha256": "fd17686c6bb9cbbe37949797293a5d568f9ea49bc4528152b4fc2497f2d26f62"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptEventAwaitNode.hpp",
+          "size": 1074,
+          "sha256": "2266d14c494eb8d53b3e9be948552c2259766040337dd96dda939c8fec322e44"
+        },
+        {
+          "path": "include/lux/engine/flowforge/script/ScriptGraph.hpp",
+          "size": 1006,
+          "sha256": "b004e84c9c584a7fae3ed0b64a889e6ccfcbc4366e8e48d8fbe41bb714804265"
+        },
+        {
+          "path": "include/lux/engine/function/render/client/core/FeatureDescriptor.hpp",
+          "size": 5593,
+          "sha256": "df33708084ed5becc32b7eeb143127d2ae4d604b1a20dce62116485fefb9474a"
+        },
+        {
+          "path": "include/lux/engine/function/render/client/resources/lighting/LightDescriptor.hpp",
+          "size": 5716,
+          "sha256": "ffcdc3f04a902095ec621f8b9311ab2552340f439c7275b1baee0203b571eeee"
+        },
+        {
+          "path": "include/lux/engine/function/script/abi/lux_script_abi.h",
+          "size": 10868,
+          "sha256": "531a4113250806479a16722d44be68e87f02946357dcb1c9548db40b3f0b6e80"
+        },
+        {
+          "path": "include/lux/engine/function/script/artifact/ScriptArtifact.hpp",
+          "size": 5074,
+          "sha256": "a1ff3c9518476b7edd22cafbcfc56430e6b6d9c20e2ff0183020a647022e4f7f"
+        },
+        {
+          "path": "include/lux/engine/function/script/artifact/visibility.h",
+          "size": 1112,
+          "sha256": "433060f20f2680da9c77bced0bd63100915e33286722ee8353d5982a74733e93"
+        },
+        {
+          "path": "include/lux/engine/function/script/BoundScriptCall.hpp",
+          "size": 510,
+          "sha256": "6f60a51286cec0a7d5e5d71d46264f3682663187e1dbfca7155ef01238f7c3e5"
+        },
+        {
+          "path": "include/lux/engine/function/script/native/NativeModule.hpp",
+          "size": 2255,
+          "sha256": "f050ea98c0f15b119b7ab5efc85837d325840fa17a0a3ebaa244acff4354e1dd"
+        },
+        {
+          "path": "include/lux/engine/function/script/native/ScriptAbilityNative.hpp",
+          "size": 1205,
+          "sha256": "e7f91d7747a140210264d58696d590649d16fd528423ab41e50f4c4eb97592de"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbility.hpp",
+          "size": 17384,
+          "sha256": "773e32dca2ea69c5e1b38edcfff86f146346a773be4480278fd70322bc912ced"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityAnnotations.hpp",
+          "size": 632,
+          "sha256": "e1b5b99d3207b82abafe96f03f7017891b491a7f83fc6f07621bd9e26b47c71b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityAsync.hpp",
+          "size": 4810,
+          "sha256": "f08e9967d2285b88c17f23c331240bcaa08867f9f6bc7c88c5a4bb8af79ef7fd"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityCompletionAdapter.hpp",
+          "size": 803,
+          "sha256": "cac707d75f2361c1ff6d060a5f07387b379741726258a7cab1306945395a6089"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptAbilityOperation.hpp",
+          "size": 784,
+          "sha256": "c9f36fc7f9c9e8c9521713f0791d932d7c940cecbe69ff50e38887dce3ae4044"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptApi.hpp",
+          "size": 699,
+          "sha256": "6569483668eb8090556ed49827bfc0d973f3a3ad046c66bbb9a83f08d3841c8b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptBindingHint.hpp",
+          "size": 727,
+          "sha256": "5c11ebdbb4a9d812dba02d7e157bdcf6063da527d9f8441068b358d58c3ea38e"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptEvent.hpp",
+          "size": 5060,
+          "sha256": "17c46277f5f7cb074c80910391c6c236ab2729735182ad055fc4dce99cf88f38"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptEventSchema.hpp",
+          "size": 4637,
+          "sha256": "e96cba40dbea88313113759630486318594346cac2d04036219d492d89b694e7"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptResult.hpp",
+          "size": 951,
+          "sha256": "facc1eaac716b5b570136dca5a40d50b4f646c2530caad8e4839ba0ee4e7d873"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptSemanticSchema.hpp",
+          "size": 2147,
+          "sha256": "04c8b06c0fa7061c080761dec077deb349781ec6b3edfddbb8b1c1200ca2e20b"
+        },
+        {
+          "path": "include/lux/engine/function/script/ScriptSymbol.hpp",
+          "size": 172,
+          "sha256": "160c2494d179d870dc8de23745fbcee21cd9a34e3d1dea0c969f13b1155f538f"
+        },
+        {
+          "path": "include/lux/engine/material/ImportedMaterialDescription.hpp",
+          "size": 1364,
+          "sha256": "855047bcbbd08bca1866c573171d9f1824334431234cc332e19db867fa6e3df7"
+        },
+        {
+          "path": "include/lux/engine/object/detail/SignalDescriptor.hpp",
+          "size": 1869,
+          "sha256": "ee584cfb699687ea9ec7b8641fcaa24a332301c69f52c90c21615e30b795be3f"
+        },
+        {
+          "path": "include/lux/engine/scene/description/visibility.h",
+          "size": 1211,
+          "sha256": "1819dac984e927bbbd26962e8829004eecc8c9c1367fcdd420fe16fe11f09843"
+        },
+        {
+          "path": "include/lux/engine/scene/SceneDescription.hpp",
+          "size": 5791,
+          "sha256": "bddcf67d5bb1516e66cb95f96ede69c2fb52b1ab4fa1535cb5f6867f334048d0"
+        },
+        {
+          "path": "include/lux/engine/scene/SceneDescriptionBuilder.hpp",
+          "size": 3591,
+          "sha256": "a2e7a99a87d50ad48d2567111ad391af28223222a351486369359a4d877411c6"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptRuntimeAssembly.hpp",
+          "size": 1088,
+          "sha256": "d16bb22a11a38cfdf0697e835dd632da81fd09e7a7a803a533bcd93a34f33c8e"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptSystemDescription.hpp",
+          "size": 3368,
+          "sha256": "617f06c0c0696360516c16074e6081b47e54ebf51c64124004b052f0cdd1acd7"
+        },
+        {
+          "path": "include/lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp",
+          "size": 2168,
+          "sha256": "8bc8edc6e6228c490c70ac8e7f74f57dfbd3b8e33f534c72f03aa58b8c680a9f"
+        },
+        {
+          "path": "include/lux/engine/scene/script_description/visibility.h",
+          "size": 1288,
+          "sha256": "559fb5679d6b9ed9e8ac33860275d8aa8a0eb0f856944a7219f1d05aa826c201"
+        },
+        {
+          "path": "include/lux/engine/scene/script_runtime/visibility.h",
+          "size": 1244,
+          "sha256": "24c7b02d5add1028fa2de14d949c51db638b1368a39144e9908428324a192d27"
+        },
+        {
+          "path": "include/lux/engine/scene/ScriptRuntimeSystem.hpp",
+          "size": 5021,
+          "sha256": "427e02fd198cec7e8791b47d98325d463cc00e474e72c4f374630ef78a226681"
+        },
+        {
+          "path": "include/lux/engine/simulation/description/visibility.h",
+          "size": 1266,
+          "sha256": "9442cc35cd1b332b977496a204a5288d7f9bcabe6078887a833c3c8c573be332"
+        },
+        {
+          "path": "include/lux/engine/simulation/script_system/visibility.h",
+          "size": 1211,
+          "sha256": "8c7437254098c3520f8bdd65514a7e817da06b48117b6bee1b9c0c9bf3be6e9c"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptBinding.hpp",
+          "size": 1412,
+          "sha256": "99dafa5c1ab79ecf81f099270eeeb7aab05b93f1d4648716644b653351aa9fb0"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptBindingAuthoring.hpp",
+          "size": 2518,
+          "sha256": "9f2eaa2ae1fba5e72f12be0675977e2059a330b1ac6e6fd3f62d0692bb898e70"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp",
+          "size": 2738,
+          "sha256": "5c2bc02045dcabaea99b70085a8fcedf4cca0921d72822ac5fe13ba5d5f122f1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/CppStaticScriptContract.hpp",
+          "size": 13961,
+          "sha256": "55039a210c49eb9049b3781739c84f942dd9bc946ac7463dc9bfb6ba343bf625"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/ScriptCoroutine.hpp",
+          "size": 23035,
+          "sha256": "3aa7fbe946f10f12441b89ad755436c5ce70236411580cae8696082928b4e668"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp",
+          "size": 201,
+          "sha256": "1fcfd0d8cbbbeea9af1038a2217a1dd40a52831b952c1d712163db67ddb6a4ff"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/cpp_static/visibility.h",
+          "size": 1332,
+          "sha256": "90f9e94a5751c0650f08d4b2840daec214e7c53d5f77bc2a3fbd3f26946acce3"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp",
+          "size": 17171,
+          "sha256": "08e936a29bbeafa13b971537d66ec5b09c495cad13637b9920305e98f63671d1"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/NativeScriptAbilityProjection.hpp",
+          "size": 1631,
+          "sha256": "a6422ca7f5e3f405f30f1010559c8e40cae17eb5ed06e9be9f39db028cd2b997"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/NativeScriptBackend.hpp",
+          "size": 4372,
+          "sha256": "50155b4ab402e3fae45bf61b5e8b72ba89a11957ce33beccb64716f332a9d148"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/native/visibility.h",
+          "size": 1288,
+          "sha256": "33c66ec4bdf7936e4f1014d1a6072b4ea388d3071939d5c6ad0c52587923c416"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp",
+          "size": 5472,
+          "sha256": "9289bfd31eaeade508af5a91c8dbe7af4fb1902a5d0ce5281bcc196ce5aa5b8c"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptApiCapability.hpp",
+          "size": 1338,
+          "sha256": "0c2ea389e3de403f18a42a0781536e98579f9e881da63185fc6f2b8b8a6c55e9"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptBackend.hpp",
+          "size": 7022,
+          "sha256": "a1ac5ede989ef236bdecdde7c20dfa4d9ec1b233fb425716febc010891f63c5c"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptContractValidation.hpp",
+          "size": 3766,
+          "sha256": "615236964edbca4529a1d98def20d701f64fe7cf981aa4953d359a4f0fce96e0"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptEndpointBridge.hpp",
+          "size": 13599,
+          "sha256": "87c37b526e2cbfebffca54a996b2d51f65397aff12aaea093d87d06c0a132b88"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptEventSource.hpp",
+          "size": 7061,
+          "sha256": "05a94fdac395fe23927e763357b5544437fa4bd0fb456bd715a85d3f802a0206"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptLifecycle.hpp",
+          "size": 937,
+          "sha256": "150f828308e45282d70f531f5c22b3d63bb08e9d71b103ca21cf0b1a22400e34"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptRuntime.hpp",
+          "size": 23596,
+          "sha256": "fa7f13b3d59fc9d4a53629d751e9fc18544b27bef530de3afa6f07207bff8398"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptSignatureCompatibility.hpp",
+          "size": 1769,
+          "sha256": "ee5e2b2bc89ab999dc568c7a8e950e5e842cecdb1dd866398111ef6ba021e255"
+        },
+        {
+          "path": "include/lux/engine/simulation/scripting/ScriptTimeEndpoint.hpp",
+          "size": 1073,
+          "sha256": "378a1149e48039c1339a7d8892e261b302aee2b666c93056d57417c36995e160"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptRuntimeInput.hpp",
+          "size": 1259,
+          "sha256": "e190e22a164b49bd2a41367360d502f883c1ab9ce51e9582e59a3ddd9976142b"
+        },
+        {
+          "path": "include/lux/engine/simulation/ScriptSystem.hpp",
+          "size": 10328,
+          "sha256": "ab5a6e4c810ae34f687e72cdd87b206b34fe68ac23fd14dc50a17379bf55ad8e"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationDescription.hpp",
+          "size": 13590,
+          "sha256": "e8aa220293b4affff4064bde83b443fc0a2b415fa06a6e8453fc324c64f30614"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationDescriptionBuilder.hpp",
+          "size": 4559,
+          "sha256": "3b91a9bd3583e7bbb887c1738d6db5436bd6f37daa6b2a395f72d5e822f32d0c"
+        },
+        {
+          "path": "include/lux/engine/simulation/SimulationSystemDescription.hpp",
+          "size": 2632,
+          "sha256": "bd9f56f65face4fca97f547403c760c6a81d7d6cbb532a026b01061c2608e518"
+        },
+        {
+          "path": "include/lux/engine/system/description/visibility.h",
+          "size": 1222,
+          "sha256": "d67164d9885254201da65179b12a94d3152bcff282ac4e0cca6e9a4fa11c6142"
+        },
+        {
+          "path": "include/lux/engine/system/SystemTypeDescription.hpp",
+          "size": 1828,
+          "sha256": "3f5f2a809ce3a5ca3a2858db9a5cb5124ceb411343062f7a32d008f6690dffef"
+        },
+        {
+          "path": "include/lux/engine/world/description/visibility.h",
+          "size": 1211,
+          "sha256": "5e108ba3c1eb377136c2ec393ad64796a6f26be84b3150c72137b2dea1d24858"
+        },
+        {
+          "path": "include/lux/engine/world/WorldDescription.hpp",
+          "size": 3053,
+          "sha256": "19eb9d2cff530e30ee290d38beb5880c49ca071cd12fa7af93d0709da3e3ab40"
+        },
+        {
+          "path": "include/lux/engine/world/WorldDescriptionBuilder.hpp",
+          "size": 2821,
+          "sha256": "abd479fc91b0355b39b13d5f0eb7ebb34755a0c39861bc0875fa1193dcbe2bdb"
+        }
+      ]
+    },
+    {
+      "prefix": "E:\\SyncForder\\CodeRepos\\install\\q2\\c",
+      "files": [
+        {
+          "path": "bin/lux_meta_generator.exe",
+          "size": 1466880,
+          "sha256": "313e8d6708f78a84fc8e4fb4b264d1bc8eb055ec8d77a7dbc42db1540600f980"
+        },
+        {
+          "path": "bin/reflection_generator.dll",
+          "size": 712704,
+          "sha256": "cc2acad0095ba988506d89bb8c388d9c64de17c637026a58ab4487373e8df7fe"
+        },
+        {
+          "path": "bin/reflection_parser.dll",
+          "size": 534528,
+          "sha256": "ad0560b3ad07f2e6584d82c0b962d83b6b45ee69cfd57ebfc8188c127408d334"
+        },
+        {
+          "path": "bin/reflection_runtime.dll",
+          "size": 721408,
+          "sha256": "ac11fd99294d7466b76a94f8258a6849f2772a7565eafcf3345f86f5351afbe2"
+        },
+        {
+          "path": "include/lux/cxx/event/Subscription.hpp",
+          "size": 3198,
+          "sha256": "0391de1452bb3cdb97a776939367d2150ff4a12cb5847748cb5d173abce8be94"
+        }
+      ]
+    }
+  ],
+  "installed_private_headers": []
+}

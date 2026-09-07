@@ -1,0 +1,68 @@
+{
+  "flow_diagnostics": [
+    {
+      "case": "scene-flowforge-update-heavy",
+      "business_equal": true,
+      "rows_per_variant": 3,
+      "sha256": [
+        "fa5221ab6b638247ea2558d3a84b159e9a89955b79b7f85e443caaf7c7a3e841",
+        "e0ddb807df713dc5fe4c27890b2bd4355bfdcbed8207325c463ce311b7f79713"
+      ],
+      "fields": [
+        "scenario",
+        "backend",
+        "size",
+        "seed",
+        "frame",
+        "active_instances",
+        "calls",
+        "continuations",
+        "awaitables",
+        "event_waiters",
+        "event_dispatch_visits",
+        "queue_depth",
+        "queue_high_water",
+        "continuation_frame_bytes",
+        "artifact_bytes",
+        "checksum",
+        "started",
+        "resumes",
+        "suspensions",
+        "completed",
+        "phase"
+      ]
+    },
+    {
+      "case": "scene-flowforge-event",
+      "business_equal": true,
+      "rows_per_variant": 3,
+      "sha256": [
+        "08c702f803d0f9a1ab30434efc20fb4eff818585a1d6051619ebbf374b9a835f",
+        "c360457e8c5703ab552764aad9210d76595a668257910aa4edfc5e3f957bd279"
+      ],
+      "fields": [
+        "scenario",
+        "backend",
+        "size",
+        "seed",
+        "frame",
+        "active_instances",
+        "calls",
+        "continuations",
+        "awaitables",
+        "event_waiters",
+        "event_dispatch_visits",
+        "queue_depth",
+        "queue_high_water",
+        "continuation_frame_bytes",
+        "artifact_bytes",
+        "checksum",
+        "started",
+        "resumes",
+        "suspensions",
+        "completed",
+        "phase"
+      ]
+    }
+  ]
+}

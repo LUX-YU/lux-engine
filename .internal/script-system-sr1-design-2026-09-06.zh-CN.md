@@ -1020,3 +1020,84 @@ FlowForge 补充分配驱动此前只对名为 candidate 的输入链接 L3 描�
 链接失败。修正为按实际源码中描述 leaf 的存在判断，两侧都使用既有 L3 安装目标；失败日志保留，
 不把驱动失败归类为引擎回退。固定 8145598c 参照不变，修正候选在原独立 clean clone 中重新
 配置并执行 target all、全部 CTest、no-op、安装与新目录的联合验证；此前从零构建证据另包保留。
+
+## 14. SR-3 最终交付（2026-09-07）
+
+生产代码身份：`3e2bcbd29580d2e744744b64149b7d8fedcc8950`；修正 SR-2 参照固定为
+`8145598c18421d03da1dac21251200af3290e27d`。独立 clone 分别为 lux-engine-sr3-reference 和
+lux-engine-sr3-final，后者从 6ac051dd 的从零构建推进到 clean 3e2bcbd2 后重新配置/target all；
+这两次实际资格记录及各自原始日志分包保存。后续文档/证据提交不改变这个生产代码身份。
+依赖仍为 lux-cxx 3100f54d、install/q2/c；无升级，无 reset/clean/stash/rebase，原测量脚本、
+两个未跟踪文件和 main 的五项修改保持原状。
+
+### 14.1 结果与断言入口
+
+| 验证 | 修正 SR-2 | 最终 SR-3 | 原始证据 |
+|---|---:|---:|---|
+| Toolchain 全部 CTest | 106/106 | 107/107 | qualification.json 与 t/ctest.log |
+| Developer 全部 CTest | 112/118 | 113/119 | qualification.json 与 d/ctest.log |
+| 全量 all、第二轮 no-op、安装 | 两 profile 成功 | 两 profile 成功 | all/second-build/install.log；均 RelWithDebInfo、-j 4 -- -k 0，串行 |
+| 实际安装 consumers | 独立参照 SDK | 14/14 | consumers/consumers.json 与各 run/reload/no-op 日志 |
+| Lifecycle / Event 轨迹 | 六组 / 八组 | 完整顺序及业务计数相等 | probes/manifest.json、每组 CASE、插桩 exact-hit 清单 |
+| Wire v1 | 288 bytes | 完全相等 | SHA-256 8002ffd5678f822d79949b4d0a36d1687613216af4b26b876f967fa24cc76e52 |
+| 窄测量 | 五对/场景 | 72 个运行时进程、24 个规模进程及冷期配对有效 | measurements/runs.json、scale/runs.json、probes/*.csv.log |
+| FlowForge 额外分配诊断 | 两进程 | 两进程，业务行一致 | flow-allocations/manifest.json；原驱动链接失败另包保留 |
+
+Developer 的六项失败名称完全相同：scene_script_lua_runtime_test、workers_0、workers_2、
+workers_4、interpreter_test、interpreter_workers_4（后五项均带 scene_script_lua_runtime_ 前缀）。
+均为原 `activeContinuationCount() == 0U` 断言与 0xc0000409，CTest 返回 8；没有新增功能测试
+失败，也没有将这六项标成通过。C01—C13 的旧断言保留，SR-4 的未覆盖项目仍按 §9 登记。
+
+| 原断言/新增补充 | SR-3 实际入口 | 本阶段确认的业务结果 |
+|---|---|---|
+| InitialLifecycle / OptionalAndFailureLifecycle | Preparer prepareMount → Instances beginPlay/claimRetirement/endPlay/finishRetirement | 初批先全部 create 再 BeginPlay；失败实例不补 EndPlay；原析构次数/顺序保留 |
+| ResolvedBatchProtocol / InputExpiryAndReuse | Instances reserveBatch/commitBatch/query/collect + Bindings 预留票据 | 查询不消费、部分消费、RETIRING 与替代 ACCEPTED 并存；64 次复用 backing 不增长 |
+| MixedReassociationRollback | 两 owner 局部预留后统一提交 | 混合失败整批不提交、revision/反馈不变；合法重试 3 active，4 create/destroy、12 prepare/release；宿主及 prepared 输出地址复用 |
+| ProtectedReentry 七点及同步失败补充 | Instances Protection/Invocation/Retirement；System 执行区销毁 | 另一实例合法调用一次；busy 不假成功；2 create/destroy、6 prepare/release、2 lease；同步退休错误 32 不丢失 |
+| 私有 Bindings fixture | publish/withdraw/visit/connect/disconnect | 部分 publish 回滚；失败/丢弃预留不耗槽；128 次重建后恰好 130 callbacks；busy 保留 token |
+| SyncAndContinuation / AsyncAbilityInvocation / CapacityAndCancellation | System execution_instances、active_hooks；Instances 调用票据 | 原挂起、完成、取消、配额归还断言保留；链头与方法 single-flight 不在 Instances prepared 数据中 |
+| RegistrationCutoff / NestedDispatch / PreparedAdmissionProvenance | Bindings 普通遍历 + 原 State claim/complete 与 Instances eventSource | 每 occurrence 顺序与完整 admission 身份验证保持；八组 event trace 精确相等 |
+| CopyRetirementPin / OtherRecordRemoval / ShutdownAndFailure / NestedAdmission | 原 ResultWritePin 与执行存储，Instances 资源保护 | 原 pin/deferred/copy bytes/backing/最终释放业务断言不变 |
+| ResumeBudget / ingress frontier / Scene runtime | 原 stable point、pop/resume 与 Scene drain/frontier 入口 | 原步号、stale pop 预算和接纳位置不变；未增恢复点或独立 tick |
+
+最终安装扫描未发现 ScriptInstances、ScriptBindings、ScriptPreparer 或 ScriptRuntimeAccess 头。
+两个直接消费者的实际 link line 验证 runtime 无 World/Scene/Process，描述 leaf 无 Scene runtime /
+composition/Process。身份索引包含安装头、生成器/工具 DLL、运行 DLL、share 模板和 CMake 包文件
+哈希；编译命令、生成的诊断源码与 native projection 哈希可追溯。
+
+### 14.2 性能结果与限制
+
+下表为固定完整工作量总耗时的五对比值中位数（正数为变慢）；同时保留每进程中位耗时指标，
+不以 Event fan-out 的短 drain 代替 occurrence 加五次 drain 的总成本。全部业务行相等，采样
+保持原 workload/seed/capacity/VM/worker/warmup/resume budget；未通过删安全检查或减工作量掩盖成本。
+
+| 场景 | 最终总耗时变化 | 五对范围 |
+|---|---:|---:|
+| C++ update | +68.90% | +50.40% ～ +83.14% |
+| 普通 Event fan-out | +3.84% | -0.58% ～ +18.29% |
+| FlowForge update | +25.36% | +21.78% ～ +42.40% |
+| FlowForge Event | +15.80% | +14.69% ～ +18.59% |
+| Lua update | +7.15% | +1.22% ～ +20.36% |
+| Lua Event | +9.09% | +7.73% ～ +11.45% |
+
+因此**本阶段没有达到性能等价**。初版较大回退经过私有内联、直接权威槽位校验与 callback 遍历
+后收窄，但剩余成本仍须独立审阅，尤其是 C++/FlowForge update。单独内联并没有消除回退；不能
+仅凭这些采样把全部变化归因到某一个调用或组件。CPU 频率、后台负载与内存布局未被隔离。
+
+单配置重建（16 warmup + 128 次计时、每配置一个 Hook）：8 配置的参照/候选中位总耗时为
+76,200/91,300 ns（+19.82%），8,192 配置为 336,900/93,400 ns（-72.28%）。候选两种规模都只
+触及 128 个预检槽位、复制 0 个端点目录计数项；未把仍存在的 ID 二分比较误报为常数指令数。
+反复重建保留所有其他 active 实例，最终逐 Hook 业务计数正确，资源 backing 固定，全部释放。
+
+另一个八配置/共享 Hook 的冷期驱动，五次中位数 prepare 为 123,600→132,200 ns，late 为
+7,100→10,300 ns，128 remount 为 78,900→99,700 ns；两侧均 152 create/destroy、456 prepare/release。
+EXE-local 的 prepare/late/remount 分配计数均为 5/33/535，两种规模的重建分配为 535/530，双方
+相等。运行时 C++/Event/Lua 和额外 FlowForge 诊断的 EXE new 计数均为零；Lua 的 VM 计数单独
+保存在诊断 CSV。EXE 计数包含 fixture 观测结构，不能代表所有 Windows DLL 的堆分配。
+
+### 14.3 归档与停止点
+
+[SR-3 证据入口](evidence/script/sr3/README.md) 提供迭代包、最终包、逐文件索引、安装身份、
+实际结果及固定提交下载链接。原 SR-2 包及修正门槛包沿用 §13.1 链接，未替换或改标签。
+本次停在 SR-3，交付独立审阅；不进入 SR-4/5/6，没有 Android 构建、backend ABI 扩展、多脚本、
+热重载、动态挂载产品 API 或新的调度/恢复机会。性能残余回退和六项历史 Scene Lua 失败均未隐去。

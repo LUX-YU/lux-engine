@@ -42,7 +42,7 @@ def main():
             if 'include' in relative.parts and path.name in private:
                 identities['installed_private_headers'].append(str(path))
             if ('bin' in relative.parts and path.suffix.lower() in {'.dll', '.exe'}) or (
-                    'include' in relative.parts and 'script' in str(relative).lower()):
+                    'include' in relative.parts or 'share' in relative.parts or 'cmake' in relative.parts):
                 files.append({'path': relative.as_posix(), 'size': path.stat().st_size, 'sha256': digest(path)})
         identities['prefixes'].append({'prefix': str(prefix), 'files': files})
     if identities['installed_private_headers']:

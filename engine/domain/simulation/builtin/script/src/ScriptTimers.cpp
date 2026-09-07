@@ -13,8 +13,14 @@ namespace lux::simulation::script::detail
         real_delay_ = real_delay;
         next_capacity_ = limits.next_step_wait_capacity;
         delay_capacity_ = limits.simulation_delay_capacity;
-        waits_.reserve(next_capacity_ + delay_capacity_);
-        heap_.reserve(delay_capacity_);
+        // One Timer source per owned awaitable bounds simultaneous physical storage. Keep both
+        // logical limits unchanged, and avoid imposing a new combined-capacity input restriction.
+        const auto next_slots = (std::min)(next_capacity_, limits.awaitable_capacity);
+        const auto delay_slots = (std::min)(delay_capacity_, limits.awaitable_capacity);
+        const auto slots = next_slots > limits.awaitable_capacity - delay_slots ? limits.awaitable_capacity :
+            next_slots + delay_slots;
+        waits_.reserve(slots);
+        heap_.reserve(delay_slots);
         instances_.resize(instance_capacity);
     }
 

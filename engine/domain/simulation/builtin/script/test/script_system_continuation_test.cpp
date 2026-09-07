@@ -17,6 +17,7 @@ using lux::simulation::script::test::deliverEndpoint;
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <new>
 #include <optional>
@@ -720,6 +721,13 @@ namespace
             assert(backend.continuation_destroys == 34U && backend.creates == backend.destroys);
             assert(backend.resume_calls == 1U);
         }
+        Harness bounded{false};
+        auto oversized = limits();
+        oversized.next_step_wait_capacity = (std::numeric_limits<std::size_t>::max)();
+        oversized.simulation_delay_capacity = oversized.next_step_wait_capacity;
+        // Physical Timer storage is bounded by the shared result capacity; summing logical caps must not overflow.
+        auto bounded_runtime = bounded.create(oversized, {});
+        assert(bounded_runtime && bounded_runtime->prepare() && bounded_runtime->shutdown());
     }
 
     void testCapabilities()

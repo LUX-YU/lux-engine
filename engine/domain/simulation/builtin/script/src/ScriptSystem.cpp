@@ -457,10 +457,7 @@ namespace lux::simulation::script
                                     limits.resumes_per_stable_point == 0U || limits.next_step_wait_capacity == 0U ||
                                     limits.simulation_delay_capacity == 0U || limits.event_wait_capacity == 0U ||
                                     limits.external_completion_capacity == 0U;
-        const auto timer_slot_limit = std::numeric_limits<std::uint32_t>::max();
-        const bool invalid_timer_capacity = limits.simulation_delay_capacity >= timer_slot_limit ||
-            limits.next_step_wait_capacity >= timer_slot_limit - limits.simulation_delay_capacity;
-        if (invalid_limits || invalid_timer_capacity || artifacts.resolve == nullptr)
+        if (invalid_limits || artifacts.resolve == nullptr)
             return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
 
         const bool invalid_capacity = capacity.enabled_mount_capacity > capacity.mount_capacity ||

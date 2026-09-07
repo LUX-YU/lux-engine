@@ -82,3 +82,4 @@ NextStep 在 step 3 resume 后登记 simulation delay，实测 MSVC ceil 为 2 n
 G03 物理差异：以前已撤权限 NextStep 可留到 step 到期，模拟 delay 可留到到期/满容量扫描；现在 cancel/terminal 即返还。
 对应 next_step_waits/simulation_delay_waits 反映实际来源存储，因此旧实例取消后的计数下降是本次显式修复。
 ResumeRing 中旧通知仍按原协议保留，stale pop 仍消耗预算；不得把来源物理回收扩展为通知越过预算。
+Timer backing 以唯一 awaitable owner 的同时存活上界 min(next_limit + delay_limit, awaitable_limit) 预留；先 clamp 后防溢出相加，两个逻辑来源上限保持原值。移除初版引入的 combined-capacity 拒绝，避免结构迁移新增输入限制。新增超大逻辑容量/小结果容量的工厂回归。

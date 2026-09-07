@@ -231,7 +231,10 @@ void operator delete(void* value, std::size_t, std::align_val_t) noexcept { _ali
         assertion = f"        assert(!{variable} && {variable}.error() == EScriptSystemError::SIGNATURE_MISMATCH);"
         source = replace_exact(source, assertion,
             assertion + '\n        if (trace_enabled) std::puts("signature-rejected");')
-    source = truncate_main(source, "int main()")
+    markers = [marker for marker in ("int main()", "int main(int argc, char** argv)") if source.count(marker)]
+    if len(markers) != 1:
+        raise RuntimeError("Expected exactly one supported lifecycle fixture entry")
+    source = truncate_main(source, markers[0])
     cross_batch = """
 void testCrossBatchOrder()
 {

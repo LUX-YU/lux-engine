@@ -8,6 +8,7 @@
 #include <lux/engine/simulation/scripting/lua/visibility.h>
 
 #include <cstdint>
+#include <charconv>
 #include <cmath>
 #include <limits>
 #include <tuple>
@@ -98,7 +99,7 @@ namespace lux::simulation::script::detail
     template <class Policy, class... Arguments, std::size_t... Index>
     [[nodiscard]] bool readLuaAbilityArguments(lua_State* state,
         lux::script::lua::LuaValueSlots<std::remove_cvref_t<Arguments>...>& values,
-        std::index_sequence<Index...>, lux::script::lua::LuaValueFailure* failure = nullptr) noexcept
+        std::index_sequence<Index...>, std::optional<lux::script::lua::LuaValueFailure>* failure = nullptr) noexcept
     {
         bool success = true;
         (([&]() noexcept {
@@ -110,7 +111,14 @@ namespace lux::simulation::script::detail
             else
             {
                 success = false;
-                if (failure) *failure = value.error();
+                if (failure)
+                {
+                    failure->emplace(value.error());
+                    std::array<char, 32> name{'a', 'r', 'g', '['};
+                    const auto converted = std::to_chars(name.data() + 4, name.data() + name.size() - 1, Index + 1);
+                    *converted.ptr = ']';
+                    failure->value().prepend({name.data(), static_cast<std::size_t>(converted.ptr - name.data() + 1)});
+                }
             }
         }()), ...);
         return success;
@@ -130,7 +138,7 @@ namespace lux::simulation::script::detail
             !LuaValueCodec<std::remove_cvref_t<Arguments>, Policy>::custom) && ...);
         if constexpr (can_reenter)
             access.validity = access.behavior ? access.behavior->captureInvocation() : ScriptInvocationValidity{};
-        LuaValueFailure failure;
+        std::optional<LuaValueFailure> failure;
         // This inner frame is gone before error formatting and the wrapper's success/error/yield protocol.
         const auto status = [&]() noexcept -> int {
             LuaValueSlots<std::remove_cvref_t<Arguments>...> values;
@@ -157,7 +165,8 @@ namespace lux::simulation::script::detail
                 const auto written = LuaValueCodec<Value, Policy>::push(output, result);
                 if (!written || ValueAccess::top(state) != base + 1)
                 {
-                    if (!written) failure = written.error();
+                    failure = written ? LuaValueFailure{ELuaValueError::CONSTRUCTION} : written.error();
+                    failure->prepend("result");
                     ValueAccess::restoreScratch(state, base);
                     return -5;
                 }
@@ -166,11 +175,14 @@ namespace lux::simulation::script::detail
         }();
         if (status < 0)
         {
-            if (failure.path.back() != '\0') failure.truncated = true;
-            failure.path.back() = '\0';
-            return LuaAbilityProjectionAccess::fail(
-                state, status, failure.path[0] ? failure.path.data() : "Script Ability conversion or authority failure"
-            );
+            if (failure)
+            {
+                if (failure->path.back() != '\0') failure->truncated = true;
+                failure->path.back() = '\0';
+            }
+            const bool has_path = failure && failure->path[0];
+            const auto* message = has_path ? failure->path.data() : "Script Ability conversion or authority failure";
+            return LuaAbilityProjectionAccess::fail(state, status, message);
         }
         return LuaAbilityProjectionAccess::succeed(state, status);
     }

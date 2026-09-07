@@ -2287,7 +2287,7 @@ namespace lux::simulation::script
                     projection.results.size() != method.results.size();
                 if (wrong_signature)
                     return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
-                std::size_t frame_bytes{};
+                std::size_t frame_bytes = sizeof(std::optional<lux::script::lua::LuaValueFailure>);
                 for (std::size_t i{}; i < method.parameters.size(); ++i)
                 {
                     const auto& value = method.parameters[i].value;
@@ -2300,6 +2300,9 @@ namespace lux::simulation::script
                     if (mismatch || invalid_async)
                         return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
                     frame_bytes += operation.frame_bytes;
+                    if (operation.alignment > (65536 - frame_bytes) / 2)
+                        return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
+                    frame_bytes += 2 * operation.alignment; // Conservative inter-slot and final tuple padding.
                 }
                 for (std::size_t i{}; i < method.results.size(); ++i)
                 {
@@ -2315,6 +2318,9 @@ namespace lux::simulation::script
                     if (mismatch || invalid_async)
                         return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
                     frame_bytes += operation.frame_bytes;
+                    if (operation.alignment > (65536 - frame_bytes) / 2)
+                        return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
+                    frame_bytes += 2 * operation.alignment; // Conservative inter-slot and final tuple padding.
                 }
             }
             const bool has_method_count_overflow = ability_method_count >

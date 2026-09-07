@@ -60,6 +60,10 @@ try {
     Run-Probe 'custom-rule' $true $false
     [IO.File]::WriteAllText($InstalledTemplate, $templateText + "`n// SR-5 isolated installed-template invalidation probe`n")
     Run-Probe 'installed-template' $true $true
+    $wideFields = (0..63 | ForEach-Object { "std::int32_t field$_;" }) -join "`n"
+    [IO.File]::WriteAllText("$source/Values.hpp", $originals['Values.hpp'] +
+        "`nstruct LUX_META(luxlua::value) WideValue {`n$wideFields`n};`n")
+    Run-Probe 'maximum-64-fields' $true $true
     foreach ($negative in @('duplicate','private','capacity','union')) {
         $text = $originals['Values.hpp']
         switch ($negative) {

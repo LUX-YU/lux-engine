@@ -120,7 +120,7 @@ namespace lux::script::lua
       public:
         // Trusted adapter entry; codecs only receive the resulting restricted reader.
         LuaValueReader(lua_State *state, int index, std::size_t depth = 0) noexcept
-            : state_(state), index_(detail::LuaValueAccess::absolute(state, index)), depth_(depth)
+            : state_(state), index_(index > 0 ? index : detail::LuaValueAccess::absolute(state, index)), depth_(depth)
         {
         }
         [[nodiscard]] LuaValueResult<bool> boolean() const noexcept
@@ -257,7 +257,8 @@ namespace lux::script::lua
         };
         static consteval std::size_t storageSize() noexcept
         {
-            constexpr std::size_t base = sizeof(LuaValueResult<Value>) + sizeof(std::optional<Value>);
+            constexpr std::size_t base =
+                sizeof(LuaValueResult<Value>) + sizeof(std::optional<Value>) + 2 * sizeof(LuaValueFailure);
             std::size_t extra{};
             if constexpr (requires { Rule::template storageFor<Policy>(); })
                 extra = Rule::template storageFor<Policy>();
@@ -343,7 +344,7 @@ namespace lux::script::lua
         const auto base = detail::LuaValueAccess::top(state_);
         if (!detail::LuaValueAccess::field(state_, index_, name))
             return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::VM_FAILURE});
-        LuaValueReader child{state_, -1, depth_ + 1};
+        LuaValueReader child{state_, base + 1, depth_ + 1};
         auto value = LuaValueCodec<T, Policy>::read(child);
         detail::LuaValueAccess::restoreScratch(state_, base);
         if (!value)

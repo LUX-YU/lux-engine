@@ -2,6 +2,7 @@
 #include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/script/ScriptBindings.hpp>
+#include <lux/engine/simulation/script/ScriptInstances.hpp>
 
 #include <array>
 #include <cassert>
@@ -53,6 +54,73 @@ namespace
             assert(self.bindings->connect());
         }
     };
+    // Owner-level admission test; lifecycle_test exercises actual prepared calls and foreign reentry.
+    void testInvocationAuthority(const ScriptRuntimeCapacityPlan& capacity, const ScriptBindings& bindings,
+        std::span<const ScriptRuntimeMount> inputs, ecs::Registry& registry)
+    {
+        ScriptInstances instances;
+        assert(instances.prepare(capacity, 1U, registry, {}));
+        auto batch = instances.reserveBatch(inputs, bindings, true);
+        assert(batch);
+        instances.commitBatch(std::move(*batch), bindings);
+        auto construction = instances.beginConstruction(0U);
+        assert(construction && *construction);
+        assert((*construction)->allocateIdentity());
+        (*construction)->commit();
+        instances.activate(0U);
+        const auto id = instances.view(0U).instance;
+        const auto layout = bindings.layout(0U);
+        const ScriptMethodReference reference{0U, static_cast<std::uint32_t>(layout.method_first), id};
+        assert(!instances.invokeAccess({1U, reference.method_slot, id}));
+        assert(!instances.invokeAccess({0U, reference.method_slot, {}}));
+        assert(!instances.invokeAccess({0U, reference.method_slot, {id.slot, id.generation + 1U}}));
+        assert(!instances.invokeAccess({0U,
+            static_cast<std::uint32_t>(layout.method_first + layout.method_count), id}));
+        assert(instances.protectedCount() == 0U);
+        const ScriptPreparedMethod* address{};
+        {
+            auto access = instances.invokeAccess(reference);
+            assert(access && access.current() && instances.protectedCount() == 1U);
+            address = &access.method();
+            assert(address->symbol == lux::script::ScriptSymbolId{1U});
+            auto moved = std::move(access);
+            assert(!access && moved.current() && instances.protectedCount() == 1U);
+            assert(instances.revoke(0U) == id);
+            assert(!moved.current() && moved.sameIncarnation());
+            assert(!instances.invokeAccess(reference) && !instances.resumeAccess(id));
+            assert(&moved.method() == address && instances.protectedCount() == 1U);
+        }
+        assert(instances.protectedCount() == 0U);
+        auto retired = instances.claimRetirement(0U, EScriptEndPlayReason::OBJECT_UNMATERIALIZED,
+            EScriptMountState::INACTIVE);
+        assert(instances.endPlay(retired));
+        instances.finishRetirement(retired);
+        assert(instances.query(inputs[0].id)->reclaimed);
+        std::array<ScriptMountStatus, 1U> changes;
+        static_cast<void>(instances.collect(changes));
+        auto replacement = inputs[0];
+        replacement.scope = EntityScriptScope{registry.create()};
+        auto next_batch = instances.reserveBatch(std::span{&replacement, 1U}, bindings, false);
+        assert(next_batch);
+        instances.commitBatch(std::move(*next_batch), bindings);
+        auto next = instances.beginConstruction(0U);
+        assert(next && *next && (*next)->allocateIdentity());
+        (*next)->commit();
+        instances.activate(0U);
+        const auto next_id = instances.view(0U).instance;
+        assert(next_id.slot == id.slot && next_id.generation != id.generation);
+        assert(!instances.invokeAccess(reference) && !instances.resumeAccess(id));
+        {
+            auto access = instances.invokeAccess({0U, reference.method_slot, next_id});
+            assert(access && access.current() && &access.method() == address);
+        }
+        static_cast<void>(instances.revoke(0U));
+        auto final = instances.claimRetirement(0U, EScriptEndPlayReason::OBJECT_UNMATERIALIZED,
+            EScriptMountState::INACTIVE);
+        instances.finishRetirement(final);
+        assert(instances.protectedCount() == 0U && instances.activeCount() == 0U);
+        std::puts("INVOCATION_AUTHORITY_OK,bounds=2,identity=2,move_pin=1,retired_denied=1,reused_denied=1,stable=1");
+    }
 }
 
 int main()
@@ -137,6 +205,7 @@ int main()
     assert(dispatch.calls == 129U);
     bindings.withdraw(0U);
     assert(bindings.disconnect());
+    testInvocationAuthority(*capacity, bindings, inputs, registry);
     assert(bindings.disconnect());
     assert(bindings.connect());
     assert(bindings.publish(0U, instance, entity));

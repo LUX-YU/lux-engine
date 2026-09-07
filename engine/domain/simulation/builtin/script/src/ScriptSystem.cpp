@@ -1795,7 +1795,7 @@ namespace lux::simulation::script
             auto access = instance_owner.invokeAccess(handler);
             if (!access)
                 return;
-            const auto& method = access->method();
+            const auto& method = access.method();
             if (method.backend.resumable)
             {
                 const auto flight = active_hooks[handler.method_slot];
@@ -1817,7 +1817,7 @@ namespace lux::simulation::script
                     return method.backend.resumable.invoke(
                         method.backend.resumable.context, frame, context, continuation);
                 }();
-                if (!access->current() || stopping)
+                if (!access.current() || stopping)
                 {
                     if (continuation)
                         continuation.destroy(continuation.state);
@@ -1853,11 +1853,11 @@ namespace lux::simulation::script
                 ++sync_invocations;
                 return method.backend.synchronous.invoke(&frame);
             }();
-            const bool still_current = access->current();
+            const bool still_current = access.current();
             if (status == 0)
                 return;
             // Revoking new calls must not discard an error returned by this protected incarnation.
-            if (!still_current && !access->sameIncarnation())
+            if (!still_current && !access.sameIncarnation())
                 return;
             faultInvocation(handler.mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE, status);
         }
@@ -2177,7 +2177,7 @@ namespace lux::simulation::script
             instance = findExecutionInstance(resume.instance);
             if (continuation == nullptr || instance == nullptr)
                 return {};
-            if (!access->current())
+            if (!access.current())
             {
                 destroyContinuation(resume.continuation);
                 return {};

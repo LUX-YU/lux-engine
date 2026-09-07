@@ -50,7 +50,9 @@ target_link_libraries(
 
 find_package(lux-cxx REQUIRED COMPONENTS container)
 
-add_executable(simulation_script_bindings_test test/script_bindings_test.cpp src/ScriptBindings.cpp)
+add_executable(simulation_script_bindings_test
+    test/script_bindings_test.cpp src/ScriptBindings.cpp src/ScriptInstances.cpp
+)
 target_include_directories(simulation_script_bindings_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
 target_link_libraries(simulation_script_bindings_test PRIVATE simulation_script lux::cxx::container)
 if(MSVC)

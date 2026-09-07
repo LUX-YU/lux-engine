@@ -5,6 +5,7 @@ Neither mode claims to intercept allocations made inside every Windows DLL.
 """
 import argparse
 import csv
+import ctypes
 import hashlib
 import json
 import os
@@ -23,7 +24,17 @@ def main():
     parser = argparse.ArgumentParser()
     for name in ("baseline", "candidate", "output"):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument("--performance-frames", type=int, default=300)
+    parser.add_argument("--affinity-mask", type=lambda value: int(value, 0))
     args = parser.parse_args()
+    if args.performance_frames <= 0:
+        parser.error("performance frames must be positive")
+    if args.affinity_mask is not None:
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel.SetProcessAffinityMask.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+        if not kernel.SetProcessAffinityMask(kernel.GetCurrentProcess(), args.affinity_mask):
+            raise ctypes.WinError(ctypes.get_last_error())
     root = Path(args.output)
     root.mkdir(parents=True, exist_ok=False)
     cases = (
@@ -42,7 +53,7 @@ def main():
                 "lifecycle_begins", "lifecycle_ends", "checksum", "workers", "errors", "failures",
                 "frame", "started", "completed")
     for name, group, tool, lua in cases:
-        for mode, pairs, warmups, frames in (("performance", 5, 60, 300), ("diagnostic", 1, 1, 3)):
+        for mode, pairs, warmups, frames in (("performance", 5, 60, args.performance_frames), ("diagnostic", 1, 1, 3)):
             for pair in range(pairs):
                 observations = {}
                 for variant in (("baseline", "candidate") if pair % 2 == 0 else ("candidate", "baseline")):
@@ -90,6 +101,7 @@ def main():
                                   process_seconds=time.time() - started, exit_code=result.returncode,
                                   rows=len(rows), valid=valid)
                     record["effective_resume_budget"] = 10000 if name == "lua-event" else 2000
+                    record["inherited_affinity_mask"] = args.affinity_mask
                     record["workload"] = "one occurrence plus five drains" if name == "event-fanout" else (
                         f"{warmups} warmup frames then {frames} measured frames")
                     if lua:

@@ -857,6 +857,7 @@ namespace lux::simulation::script
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
 
         state_->stopping = true;
+        state_->instance_owner.stopInvocations();
         state_->execution_owner.stop();
         state_->timer_owner.stop();
         state_->ingress.stop();

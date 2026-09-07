@@ -8,6 +8,24 @@ namespace lux::simulation::script::detail
     class ScriptRuntimeAccess final
     {
     public:
+        static void bindInvocation(ScriptBehavior& behavior, const void* context,
+            ScriptInvocationValidity (*capture)(const void*) noexcept) noexcept
+        {
+            behavior.invocation_context_ = context;
+            behavior.capture_invocation_ = capture;
+        }
+        [[nodiscard]] static ScriptInvocationValidity invocation(const void* context, ScriptInstanceId instance,
+            std::uint64_t epoch, std::uint8_t category,
+            bool (*check)(const void*, ScriptInstanceId, std::uint64_t, std::uint8_t) noexcept) noexcept
+        {
+            ScriptInvocationValidity result;
+            result.context_ = context;
+            result.instance_ = instance;
+            result.epoch_ = epoch;
+            result.category_ = category;
+            result.check_ = check;
+            return result;
+        }
         static void attach(ScriptBehavior& behavior, ScriptInstanceScope scope, const ScriptHostApi& host) noexcept
         {
             behavior.attach(scope, host);

@@ -1,3 +1,4 @@
+#include "CollisionValue.lua.value.generated.hpp"
 #include "LuaUnsupportedIntegerAbility.hpp"
 #include "LuaUnsupportedIntegerAbility.ability.generated.hpp"
 #include "LuaUnsupportedIntegerAbility.ability.lua.generated.hpp"
@@ -68,27 +69,9 @@ namespace
         };
     }
 
-    struct CollisionEvent final
-    {
-        std::int32_t body{};
-        float impulse{};
-    };
 
-    bool pushCollisionEvent(
-        void*,
-        void* opaque_state,
-        const void* opaque_value
-    ) noexcept
-    {
-        auto* state = static_cast<lua_State*>(opaque_state);
-        const auto& value = *static_cast<const CollisionEvent*>(opaque_value);
-        lua_createtable(state, 0, 2);
-        lua_pushinteger(state, value.body);
-        lua_setfield(state, -2, "body");
-        lua_pushnumber(state, value.impulse);
-        lua_setfield(state, -2, "impulse");
-        return true;
-    }
+
+
 
     lux_script_call_frame makeFrame(
         std::int32_t delta,
@@ -347,13 +330,7 @@ int main()
     health_binding.name.clear();
     health_binding.canonical_name.clear();
 
-    const LuaRecordMarshaller collision_marshaller{
-        lux::semantic::typeId("lux.physics.CollisionEvent"),
-        "lux.physics.CollisionEvent",
-        sizeof(CollisionEvent),
-        alignof(CollisionEvent),
-        nullptr,
-        &pushCollisionEvent};
+    constexpr auto collision_marshaller = lux::script::lua::makeLuaValueOperation<CollisionEvent>();
     auto created_backend = LuaScriptBackend::create(
         {
             .instance_capacity = 4U,
@@ -361,7 +338,7 @@ int main()
             .continuation_capacity = 4U,
             .execution_depth_capacity = 8U,
             .ability_catalog_method_capacity = 1U,
-            .record_marshallers = std::span{&collision_marshaller, 1U}
+            .values = std::span{&collision_marshaller, 1U}
         }
     );
     assert(created_backend);

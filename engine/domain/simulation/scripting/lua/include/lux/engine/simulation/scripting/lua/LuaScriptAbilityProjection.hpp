@@ -2,6 +2,8 @@
 
 #include <lux/engine/function/script/ScriptAbilityAsync.hpp>
 #include <lux/engine/function/script/lua/ScriptAbilityLua.hpp>
+#include <lux/engine/function/script/lua/LuaValue.hpp>
+#include <lux/engine/simulation/scripting/ScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
 #include <lux/engine/simulation/scripting/lua/visibility.h>
 
@@ -31,6 +33,9 @@ namespace lux::simulation::script::detail
         ScriptStepContext* step{};
         std::uint32_t local_slot{};
         int argument_count{};
+        const void* execution{};
+        const ScriptBehavior* behavior{};
+        ScriptInvocationValidity validity;
     };
 
     template <class Type>
@@ -57,6 +62,7 @@ namespace lux::simulation::script::detail
     struct LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC LuaAbilityProjectionAccess final
     {
         [[nodiscard]] static bool current(lua_State* state, LuaPreparedAbilityAccess& result) noexcept;
+        [[nodiscard]] static bool revalidate(lua_State* state, const LuaPreparedAbilityAccess& original) noexcept;
         [[nodiscard]] static int fail(lua_State* state, std::int32_t status, const char* message) noexcept;
         [[nodiscard]] static int succeed(lua_State* state, int results) noexcept;
         [[nodiscard]] static int suspend(
@@ -88,87 +94,124 @@ namespace lux::simulation::script::detail
         }
     };
 
-    template <class... Arguments, std::size_t... Index>
-    [[nodiscard]] bool readLuaAbilityArguments(
-        lua_State* state,
-        std::tuple<std::remove_cvref_t<Arguments>...>& values,
-        std::index_sequence<Index...>
-    ) noexcept
+
+    template <class Policy, class... Arguments, std::size_t... Index>
+    [[nodiscard]] bool readLuaAbilityArguments(lua_State* state,
+        lux::script::lua::LuaValueSlots<std::remove_cvref_t<Arguments>...>& values,
+        std::index_sequence<Index...>, lux::script::lua::LuaValueFailure* failure = nullptr) noexcept
     {
-        if constexpr ((LuaAbilityScalar<Arguments> && ...))
-        {
-            return (
-                LuaAbilityProjectionAccess::read(
-                    state,
-                    static_cast<int>(Index + 1U),
-                    std::get<Index>(values)
-                ) && ...
-            );
-        }
-        else
-        {
-            return false;
-        }
+        bool success = true;
+        (([&]() noexcept {
+            if (!success) return;
+            using T = std::remove_cvref_t<Arguments>;
+            lux::script::lua::LuaValueReader input{state, static_cast<int>(Index + 1)};
+            auto value = lux::script::lua::LuaValueCodec<T, Policy>::read(input);
+            if (value) values.template put<Index>(std::move(*value));
+            else
+            {
+                success = false;
+                if (failure) *failure = value.error();
+            }
+        }()), ...);
+        return success;
     }
 
-    template <class Result, class... Arguments, class Invoke>
-    [[nodiscard]] int invokeLuaAbility(lua_State* state, Invoke invoke) noexcept
+    template <class Policy, class Result, class... Arguments, class Invoke>
+    [[nodiscard]] int invokeLuaValueAbility(lua_State* state, Invoke invoke) noexcept
     {
+        using namespace lux::script::lua;
+        using ValueAccess = lux::script::lua::detail::LuaValueAccess;
         LuaPreparedAbilityAccess access;
         if (!LuaAbilityProjectionAccess::current(state, access))
             return LuaAbilityProjectionAccess::fail(state, -1, "invalid prepared Script Ability");
         if (access.argument_count != static_cast<int>(sizeof...(Arguments)))
             return LuaAbilityProjectionAccess::fail(state, -3, "Script Ability argument count mismatch");
-        std::tuple<std::remove_cvref_t<Arguments>...> values;
-        if (!readLuaAbilityArguments<Arguments...>(state, values, std::index_sequence_for<Arguments...>{}))
-            return LuaAbilityProjectionAccess::fail(state, -3, "Script Ability argument type mismatch");
-        if constexpr (std::is_void_v<Result>)
-        {
-            std::apply([&](auto&... arguments) noexcept { invoke(access, arguments...); }, values);
-            return LuaAbilityProjectionAccess::succeed(state, 0);
-        }
-        else
-        {
-            using Value = std::remove_cvref_t<Result>;
-            static_assert(std::is_trivially_copyable_v<Value>);
-            const Value result = std::apply(
-                [&](auto&... arguments) noexcept -> Result { return invoke(access, arguments...); },
-                values
-            );
-            if constexpr (LuaAbilityScalar<Value>)
+        constexpr bool can_reenter = !((LuaValueScalar<std::remove_cvref_t<Arguments>> &&
+            !LuaValueCodec<std::remove_cvref_t<Arguments>, Policy>::custom) && ...);
+        if constexpr (can_reenter)
+            access.validity = access.behavior ? access.behavior->captureInvocation() : ScriptInvocationValidity{};
+        LuaValueFailure failure;
+        // This inner frame is gone before error formatting and the wrapper's success/error/yield protocol.
+        const auto status = [&]() noexcept -> int {
+            LuaValueSlots<std::remove_cvref_t<Arguments>...> values;
+            if (!readLuaAbilityArguments<Policy, Arguments...>(
+                state, values, std::index_sequence_for<Arguments...>{}, &failure
+            ))
+                return -3;
+            if constexpr (can_reenter)
+                if (!LuaAbilityProjectionAccess::revalidate(state, access)) return -1;
+            if constexpr (std::is_void_v<Result>)
             {
-                LuaAbilityProjectionAccess::push(state, result);
-                return LuaAbilityProjectionAccess::succeed(state, 1);
+                values.apply([&](auto&... arguments) noexcept { invoke(access, arguments...); });
+                return 0;
             }
             else
             {
-                return LuaAbilityProjectionAccess::fail(state, -5, "unsupported Script Ability result");
+                using Value = std::remove_cvref_t<Result>;
+                static_assert(std::is_trivially_copyable_v<Value>);
+                const Value result = values.apply([&](auto&... arguments) noexcept -> Result {
+                    return invoke(access, arguments...);
+                });
+                LuaValueWriter output{state};
+                const auto base = ValueAccess::top(state);
+                const auto written = LuaValueCodec<Value, Policy>::push(output, result);
+                if (!written || ValueAccess::top(state) != base + 1)
+                {
+                    if (!written) failure = written.error();
+                    ValueAccess::restoreScratch(state, base);
+                    return -5;
+                }
+                return 1;
             }
-        }
+        }();
+        if (status < 0)
+            return LuaAbilityProjectionAccess::fail(
+                state, status, failure.path[0] ? failure.path.data() : "Script Ability conversion or authority failure"
+            );
+        return LuaAbilityProjectionAccess::succeed(state, status);
     }
 
-    template <class Result, class... Arguments, class Start>
-    [[nodiscard]] int startLuaAbility(lua_State* state, Start start) noexcept
+    template <class Result, class... Arguments, class Invoke>
+    [[nodiscard]] int invokeLuaAbility(lua_State* state, Invoke invoke) noexcept
+    { return invokeLuaValueAbility<lux::script::lua::LuaValuePolicy, Result, Arguments...>(state, invoke); }
+
+    template <class Policy, class Result, class... Arguments, class Start>
+    [[nodiscard]] int startLuaValueAbility(lua_State* state, Start start) noexcept
     {
+        using namespace lux::script::lua;
+        using ValueAccess = lux::script::lua::detail::LuaValueAccess;
         LuaPreparedAbilityAccess access;
         if (!LuaAbilityProjectionAccess::current(state, access) || access.step == nullptr)
             return LuaAbilityProjectionAccess::fail(state, -1, "async Script Ability requires coroutine execution");
         if (access.argument_count != static_cast<int>(sizeof...(Arguments)))
             return LuaAbilityProjectionAccess::fail(state, -3, "Script Ability argument count mismatch");
-        std::tuple<std::remove_cvref_t<Arguments>...> values;
-        if (!readLuaAbilityArguments<Arguments...>(state, values, std::index_sequence_for<Arguments...>{}))
-            return LuaAbilityProjectionAccess::fail(state, -3, "Script Ability argument type mismatch");
-        const auto result = invokeScriptAbilityAsync<Result>(
-            *access.step,
-            [&](lux::script::ScriptAbilityCompletion<Result> completion) noexcept {
-                return std::apply(
-                    [&](auto&... arguments) noexcept {
-                        return start(access, arguments..., std::move(completion));
-                    },
-                    values
+        // New record/enum async protocols are not part of SR-5's first batch.
+        if constexpr (!((LuaValueScalar<std::remove_cvref_t<Arguments>> &&
+            !LuaValueCodec<std::remove_cvref_t<Arguments>, Policy>::custom) && ...))
+            return LuaAbilityProjectionAccess::fail(state, -5, "unsupported async Ability value");
+        else
+        {
+            ScriptStepResult result;
+            const auto converted = [&]() noexcept {
+                LuaValueSlots<std::remove_cvref_t<Arguments>...> values;
+                const bool read = readLuaAbilityArguments<Policy, Arguments...>(
+                    state, values, std::index_sequence_for<Arguments...>{}
                 );
-            }
-        );
-        return LuaAbilityProjectionAccess::suspend(state, result, access.local_slot);
+                if (!read)
+                    return false;
+                result = invokeScriptAbilityAsync<Result>(*access.step,
+                    [&](lux::script::ScriptAbilityCompletion<Result> completion) noexcept {
+                        return values.apply([&](auto&... arguments) noexcept {
+                            return start(access, arguments..., std::move(completion));
+                        });
+                    });
+                return true;
+            }();
+            if (!converted) return LuaAbilityProjectionAccess::fail(state, -3, "Script Ability argument type mismatch");
+            return LuaAbilityProjectionAccess::suspend(state, result, access.local_slot);
+        }
     }
+    template <class Result, class... Arguments, class Start>
+    [[nodiscard]] int startLuaAbility(lua_State* state, Start start) noexcept
+    { return startLuaValueAbility<lux::script::lua::LuaValuePolicy, Result, Arguments...>(state, start); }
 }

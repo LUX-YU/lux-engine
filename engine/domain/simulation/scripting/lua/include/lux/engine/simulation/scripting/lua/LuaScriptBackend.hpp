@@ -31,27 +31,13 @@ namespace lux::simulation::script
         std::size_t alignment{};
     };
 
-    struct LuaRecordMarshaller final
-    {
-        std::uint64_t semantic_type{};
-        std::string canonical_name;
-        std::size_t size{};
-        std::size_t alignment{};
-        void* context{};
-        bool (*push)(
-            void* context,
-            void* lua_state,
-            const void* value
-        ) noexcept{};
-    };
-
     enum class ELuaScriptBindingBackendError : std::uint8_t
     {
         INVALID_CAPACITY,
         INVALID_COMPONENT_CONTRACT,
         DUPLICATE_COMPONENT_NAME,
-        INVALID_RECORD_MARSHALLER,
-        DUPLICATE_RECORD_MARSHALLER,
+        INVALID_VALUE_OPERATION,
+        DUPLICATE_VALUE_OPERATION,
         INVALID_ABILITY_CONTRIBUTION,
         DUPLICATE_ABILITY_CONTRACT,
         DUPLICATE_ABILITY_NAME,
@@ -93,7 +79,7 @@ namespace lux::simulation::script
         std::size_t ability_catalog_method_capacity{};
         std::size_t prepared_ability_capacity{};
         std::span<const LuaComponentBinding> components;
-        std::span<const LuaRecordMarshaller> record_marshallers;
+        std::span<const lux::script::lua::LuaValueOperation> values;
         std::span<const lux::script::lua::ScriptAbilityLuaContribution> abilities;
         lux::script::lua::ELuaExecutionPolicy execution_policy{
             lux::script::lua::ELuaExecutionPolicy::DEFAULT

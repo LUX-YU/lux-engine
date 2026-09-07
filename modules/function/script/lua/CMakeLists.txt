@@ -69,6 +69,7 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Lua.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/LuaVm.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/LuaValue.cpp
 )
 
 component_include_directories(
@@ -127,6 +128,7 @@ component_add_transitive_commands(
 component_add_cmake_scripts(
     script_lua
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_lua_codegen.cmake
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_lua_values.cmake
 )
 
 install(

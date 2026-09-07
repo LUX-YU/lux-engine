@@ -183,6 +183,7 @@ namespace lux::simulation::script::detail
         [[nodiscard]] std::optional<std::uint32_t> findMount(ScriptMountId id) const noexcept;
         [[nodiscard]] bool valid(ScriptInstanceId instance) const noexcept;
         [[nodiscard]] bool active(ScriptInstanceId instance) const noexcept;
+        void stopInvocations() noexcept { accepting_invocations_ = false; }
         [[nodiscard]] std::size_t protectedCount() const noexcept { return protection_count_; }
         [[nodiscard]] std::size_t activeCount() const noexcept { return active_count_; }
         [[nodiscard]] lux::script::ScriptSymbolId methodSymbol(std::uint32_t slot) const noexcept;
@@ -223,6 +224,8 @@ namespace lux::simulation::script::detail
         };
         struct Mount final
         {
+            ScriptInstances* owner{};
+            bool lifecycle_call{};
             InvocationState* invocation{};
             ScriptMountId id;
             lux::asset::AssetId asset;
@@ -262,10 +265,12 @@ namespace lux::simulation::script::detail
         void discardReservation() noexcept;
         [[nodiscard]] lux::cxx::expected<std::uint32_t, EScriptSystemError>
         claimMethod(Mount& mount, lux::script::ScriptSymbolId symbol) noexcept;
-        [[nodiscard]] int invokeLifecycle(std::uint32_t method, const EScriptEndPlayReason* reason) noexcept;
+        [[nodiscard]] int
+        invokeLifecycle(std::uint32_t slot, std::uint32_t method, const EScriptEndPlayReason* reason) noexcept;
 
         ecs::Registry* registry_{};
         ScriptHostApi host_;
+        bool accepting_invocations_{true};
         IdentityStorage identities_;
         std::vector<Mount> mounts_;
         std::vector<InvocationState> invocation_states_;

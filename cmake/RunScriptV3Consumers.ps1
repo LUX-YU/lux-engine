@@ -26,7 +26,8 @@ $target_names = @{
     'script-ability-ipo'='lux_script_ability_ipo_consumer';
     'script-authoring'='lux_script_authoring_consumer';
     'script-runtime-input'='lux_script_runtime_input_consumer';
-    'script-description'='lux_script_description_consumer'
+    'script-description'='lux_script_description_consumer';
+    'script-lua-values'='lux_script_lua_values_consumer'
 }
 $bins = @($PrefixPath.Split(';') | ForEach-Object { Join-Path $_ 'bin' })
 $clean_path = @($env:PATH.Split(';') | Where-Object {

@@ -227,3 +227,43 @@ if(TARGET script_native_collision_fixture)
         COMMAND simulation_script_collision_event_test
     )
 endif()
+
+# SR-5 fixtures have one generated value owner shared by their real consumers.
+include_component_cmake_scripts(script_lua)
+add_library(simulation_script_lua_value_fixtures STATIC test/lua_value_fixtures.cpp)
+target_link_libraries(simulation_script_lua_value_fixtures PUBLIC lux::engine::simulation::simulation_script_lua)
+target_include_directories(simulation_script_lua_value_fixtures PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/test)
+lux_script_lua_values(TARGET simulation_script_lua_value_fixtures
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test/CollisionValue.hpp ${CMAKE_CURRENT_SOURCE_DIR}/test/LuaValueTestTypes.hpp
+    RULE_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/test/LuaValueTestRules.hpp)
+lux_classify_target(TARGET simulation_script_lua_value_fixtures LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
+target_link_libraries(simulation_script_lua_test PRIVATE simulation_script_lua_value_fixtures)
+if(TARGET simulation_script_collision_event_test)
+    target_link_libraries(simulation_script_collision_event_test PRIVATE simulation_script_lua_value_fixtures)
+endif()
+add_executable(simulation_script_lua_value_boundary_test
+    ${PROJECT_SOURCE_DIR}/modules/function/script/lua/test/lua_value_test.cpp)
+target_link_libraries(simulation_script_lua_value_boundary_test PRIVATE lux::engine::function::script_lua
+    lux::engine::function::script_lua_vm)
+if(MSVC)
+    target_compile_options(simulation_script_lua_value_boundary_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_script_lua_value_boundary_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(TARGET simulation_script_lua_value_boundary_test LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
+add_test(NAME simulation_script_lua_value_boundary_test COMMAND simulation_script_lua_value_boundary_test)
+
+add_executable(simulation_script_lua_value_runtime_test test/lua_value_runtime_test.cpp)
+target_link_libraries(simulation_script_lua_value_runtime_test PRIVATE simulation_script_lua_value_fixtures)
+lux_script_abilities(TARGET simulation_script_lua_value_runtime_test
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test/LuaValueTestAbility.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/LuaPushOnlyAbility.hpp)
+if(MSVC)
+    target_compile_options(simulation_script_lua_value_runtime_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_script_lua_value_runtime_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(TARGET simulation_script_lua_value_runtime_test LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
+add_test(NAME simulation_script_lua_value_runtime_test COMMAND simulation_script_lua_value_runtime_test)
+add_test(NAME simulation_script_lua_value_runtime_interpreter_test
+    COMMAND simulation_script_lua_value_runtime_test --interpreter-only)

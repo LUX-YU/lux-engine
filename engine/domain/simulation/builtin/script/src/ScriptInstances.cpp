@@ -460,6 +460,30 @@ namespace lux::simulation::script::detail
         mount.status.reclaimed = false;
         markStatus(slot);
         ScriptRuntimeAccess::attach(mount.behavior, mount.scope, host_);
+        mount.owner = this;
+        ScriptRuntimeAccess::bindInvocation(mount.behavior, &mount, [](const void* context) noexcept {
+            const auto& current = *static_cast<const Mount*>(context);
+            const auto state = current.invocation->state;
+            const bool lifecycle = current.lifecycle_call &&
+                (state == EScriptMountState::INITIALIZED || state == EScriptMountState::RETIRING);
+            if (state != EScriptMountState::ACTIVE && !lifecycle) return ScriptInvocationValidity{};
+            const auto instance = state == EScriptMountState::RETIRING ?
+                current.invocation->retiring_instance : current.invocation->instance;
+            if (!instance.valid() || (state == EScriptMountState::ACTIVE && !current.owner->accepting_invocations_))
+                return ScriptInvocationValidity{};
+            return ScriptRuntimeAccess::invocation(context, instance, current.retirement_epoch,
+                static_cast<std::uint8_t>(state),
+                [](const void* data, ScriptInstanceId id, std::uint64_t epoch, std::uint8_t category) noexcept {
+                    const auto& value = *static_cast<const Mount*>(data);
+                    const auto expected = static_cast<EScriptMountState>(category);
+                    if (value.invocation->state != expected || value.retirement_epoch != epoch) return false;
+                    if (expected == EScriptMountState::ACTIVE)
+                      return id.valid() && value.owner->accepting_invocations_ && value.invocation->instance == id;
+                    const auto actual = expected == EScriptMountState::RETIRING ?
+                        value.invocation->retiring_instance : value.invocation->instance;
+                    return value.lifecycle_call && actual == id;
+                });
+        });
         return std::optional{Construction{*this, slot}};
     }
 
@@ -535,7 +559,9 @@ namespace lux::simulation::script::detail
         result.final_state_ = final_state;
         return result;
     }
-    int ScriptInstances::invokeLifecycle(std::uint32_t method, const EScriptEndPlayReason* reason) noexcept
+    int ScriptInstances::invokeLifecycle(
+        std::uint32_t slot, std::uint32_t method, const EScriptEndPlayReason* reason
+    ) noexcept
     {
         lux_script_call_frame frame{};
         lux_script_value_slot argument{};
@@ -548,7 +574,11 @@ namespace lux::simulation::script::detail
         const auto call = methods_[method].backend.synchronous;
         frame.user_context = call.context;
         Protection protection{*this};
-        return call.invoke(&frame);
+        auto& mount = mounts_[slot];
+        mount.lifecycle_call = true;
+        const auto result = call.invoke(&frame);
+        mount.lifecycle_call = false;
+        return result;
     }
     ScriptInstances::LifecycleResult ScriptInstances::beginPlay(std::uint32_t slot) noexcept
     {
@@ -558,7 +588,7 @@ namespace lux::simulation::script::detail
         if (mount.begin_play_method != kInvalidPreparedMethod)
         {
             const auto method = mount.begin_play_method;
-            const auto status = invokeLifecycle(method, nullptr);
+            const auto status = invokeLifecycle(slot, method, nullptr);
             if (status != 0)
                 return lux::cxx::unexpected(ScriptLifecycleCallError{
                     EScriptSystemError::INVOCATION_FAILURE, methods_[method].symbol, status});
@@ -574,7 +604,7 @@ namespace lux::simulation::script::detail
         if (!std::exchange(mount.end_play_claimed, false) || mount.end_play_method == kInvalidPreparedMethod)
             return {};
         const auto method = mount.end_play_method;
-        const auto status = invokeLifecycle(method, &retirement.reason_);
+        const auto status = invokeLifecycle(retirement.slot_, method, &retirement.reason_);
         if (status != 0)
             return lux::cxx::unexpected(ScriptLifecycleCallError{
                 EScriptSystemError::INVOCATION_FAILURE, methods_[method].symbol, status});

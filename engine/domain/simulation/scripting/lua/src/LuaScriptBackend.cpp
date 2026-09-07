@@ -124,6 +124,7 @@ namespace lux::simulation::script
 
         struct Instance final
         {
+            ScriptBehavior* behavior{};
             State* owner{};
             lux::asset::AssetId asset;
             int table_ref{LUA_NOREF};
@@ -160,7 +161,7 @@ namespace lux::simulation::script
         {
             lux::rdesc::ScriptFunction signature;
             int function_ref{LUA_NOREF};
-            std::vector<const LuaRecordMarshaller*> argument_marshallers;
+            std::vector<const lux::script::lua::LuaValueOperation*> argument_operations;
         };
 
         struct PreparedCall final
@@ -187,6 +188,7 @@ namespace lux::simulation::script
 
         struct PreparedEventSource final
         {
+            const lux::script::lua::LuaValueOperation* operation{};
             const lux::script::ScriptEventSourceDescription* source{};
             ScriptEventAdmissionHandle admission;
         };
@@ -403,6 +405,7 @@ namespace lux::simulation::script
             {
                 return;
             }
+            if (!lux::script::lua::detail::LuaValueAccess::initialize(state)) return;
             vm_configured = true;
             prototypes.reserve(config.instance_capacity);
             components.assign(
@@ -412,15 +415,15 @@ namespace lux::simulation::script
             component_index.reserve(components.size());
             for (std::size_t index{}; index < components.size(); ++index)
                 component_index.emplace(components[index].name, index);
-            record_marshallers.assign(
-                config.record_marshallers.begin(),
-                config.record_marshallers.end()
+            value_operations.assign(
+                config.values.begin(),
+                config.values.end()
             );
-            record_marshaller_index.reserve(record_marshallers.size());
-            for (std::size_t index{}; index < record_marshallers.size(); ++index)
+            value_operation_index.reserve(value_operations.size());
+            for (std::size_t index{}; index < value_operations.size(); ++index)
             {
-                record_marshaller_index.emplace(
-                    record_marshallers[index].semantic_type,
+                value_operation_index.emplace(
+                    value_operations[index].semantic_type,
                     index
                 );
             }
@@ -914,22 +917,29 @@ namespace lux::simulation::script
                     return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                 }
                 *prepared_events.at(instance.prepared_events, local_slot) = {
+                    eventOperation(event_sources[ordinal].payload.type_id),
                     std::addressof(event_sources[ordinal]), resolved->admission
                 };
             }
             return EScriptBackendResult::SUCCESS;
         }
 
-        [[nodiscard]] const LuaRecordMarshaller* recordMarshaller(
+        [[nodiscard]] const lux::script::lua::LuaValueOperation* eventOperation(std::uint64_t type) const noexcept
+        {
+            const auto found = value_operation_index.find(type);
+            return found == value_operation_index.end() ? nullptr : &value_operations[found->second];
+        }
+
+        [[nodiscard]] const lux::script::lua::LuaValueOperation* recordOperation(
             const lux::rdesc::ScriptValueType& type
         ) const noexcept
         {
             if (type.pass != lux::semantic::EValuePass::CONST_REF)
                 return nullptr;
-            const auto found = record_marshaller_index.find(type.type_id);
-            if (found == record_marshaller_index.end())
+            const auto found = value_operation_index.find(type.type_id);
+            if (found == value_operation_index.end())
                 return nullptr;
-            const auto& marshaller = record_marshallers[found->second];
+            const auto& marshaller = value_operations[found->second];
             return marshaller.canonical_name == type.canonical_name
                 ? std::addressof(marshaller)
                 : nullptr;
@@ -1127,7 +1137,7 @@ namespace lux::simulation::script
             const auto instance_slot = self.free_instances.back();
             auto* instance = std::addressof(self.instances[instance_slot]);
             *instance = Instance{
-                std::addressof(self),
+                context.behavior, std::addressof(self),
                 context.asset,
                 LUA_NOREF,
                 std::holds_alternative<EntityScriptScope>(context.scope),
@@ -1151,6 +1161,7 @@ namespace lux::simulation::script
             }
             self.free_instances.pop_back();
             instance->active = true;
+            instance->behavior = context.behavior;
 
             lua_createtable(self.state, 0, instance->entity_scope ? 3 : 0);
             const auto instance_index = lua_gettop(self.state);
@@ -1219,16 +1230,16 @@ namespace lux::simulation::script
             {
                 if (self.function_bindings.size() >= self.prepared_calls.size())
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
-                std::vector<const LuaRecordMarshaller*> argument_marshallers;
+                std::vector<const lux::script::lua::LuaValueOperation*> argument_operations;
                 try
                 {
-                    argument_marshallers.reserve(function.args.size());
+                    argument_operations.reserve(function.args.size());
                     for (const auto& argument : function.args)
                     {
-                        const auto* record = self.recordMarshaller(argument);
+                        const auto* record = self.recordOperation(argument);
                         if (!self.supportedType(argument) && !record)
                             return EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE;
-                        argument_marshallers.push_back(record);
+                        argument_operations.push_back(record);
                     }
                     for (const auto& return_type : function.returns)
                     {
@@ -1261,7 +1272,7 @@ namespace lux::simulation::script
                     self.function_bindings.push_back(LuaFunctionBinding{
                         function,
                         function_ref,
-                        std::move(argument_marshallers)
+                        std::move(argument_operations)
                     });
                     if (!self.function_index.emplace(key, binding_index).second)
                     {
@@ -1315,7 +1326,7 @@ namespace lux::simulation::script
         static bool pushArgument(
             lua_State* state,
             const lux_script_value_slot& value,
-            const LuaRecordMarshaller* record
+            const lux::script::lua::LuaValueOperation* record
         ) noexcept
         {
             if (!value.data)
@@ -1331,7 +1342,6 @@ namespace lux::simulation::script
                     value.size == record->size &&
                     address % record->alignment == 0U;
                 return valid_layout && record->push && record->push(
-                    record->context,
                     state,
                     value.data
                 );
@@ -1481,9 +1491,7 @@ namespace lux::simulation::script
         {
             if (continuation != nullptr)
                 continuation->failure_status = status;
-            lua_pushboolean(state, false);
-            lua_pushstring(state, message);
-            return 2;
+            return lux::script::lua::detail::LuaValueAccess::failure(state, message);
         }
 
         struct EventWaitAdmission final
@@ -1586,8 +1594,8 @@ namespace lux::simulation::script
             }
             for (std::uint32_t index{}; index < frame->arg_count; ++index)
             {
-                const auto* record = index < call.function->argument_marshallers.size()
-                    ? call.function->argument_marshallers[index]
+                const auto* record = index < call.function->argument_operations.size()
+                    ? call.function->argument_operations[index]
                     : nullptr;
                 if (!pushArgument(self.state, frame->args[index], record))
                 {
@@ -1723,18 +1731,10 @@ namespace lux::simulation::script
                     return false;
                 if (expected.abi_kind == LUX_SCRIPT_VK_STRUCT_REF)
                 {
-                    const auto found = continuation.owner->record_marshaller_index.find(expected.type_id);
-                    if (found == continuation.owner->record_marshaller_index.end())
+                    const bool pushed = prepared->operation &&
+                        prepared->operation->push(continuation.thread, packet.value->bytes.data());
+                    if (!pushed)
                         return false;
-                    const auto& marshaller = continuation.owner->record_marshallers[found->second];
-                    if (!marshaller.push(
-                            marshaller.context,
-                            continuation.thread,
-                            packet.value->bytes.data()
-                        ))
-                    {
-                        return false;
-                    }
                 }
                 else if (!pushComponentValue(
                              continuation.thread,
@@ -1892,8 +1892,8 @@ namespace lux::simulation::script
             }
             for (std::uint32_t index{}; index < frame.arg_count; ++index)
             {
-                const auto* record = index < call.function->argument_marshallers.size()
-                    ? call.function->argument_marshallers[index]
+                const auto* record = index < call.function->argument_operations.size()
+                    ? call.function->argument_operations[index]
                     : nullptr;
                 if (!pushArgument(continuation->thread, frame.args[index], record))
                 {
@@ -1984,9 +1984,9 @@ namespace lux::simulation::script
         std::unordered_map<lux::asset::AssetId, Prototype> prototypes;
         std::vector<LuaComponentBinding> components;
         std::unordered_map<std::string_view, std::size_t> component_index;
-        std::vector<LuaRecordMarshaller> record_marshallers;
+        std::vector<lux::script::lua::LuaValueOperation> value_operations;
         std::unordered_map<std::uint64_t, std::size_t>
-            record_marshaller_index;
+            value_operation_index;
         std::vector<Instance> instances;
         std::vector<std::size_t> free_instances;
         std::vector<LuaFunctionBinding> function_bindings;
@@ -2038,9 +2038,20 @@ namespace lux::simulation::script
             prepared->context,
             prepared->dispatch,
             owner->active_execution->step,
-            static_cast<std::uint32_t>(local_slot), lua_gettop(state)
+            static_cast<std::uint32_t>(local_slot), lua_gettop(state), owner->active_execution, instance->behavior, {}
         };
         return true;
+    }
+
+    bool detail::LuaAbilityProjectionAccess::revalidate(
+        lua_State* state, const LuaPreparedAbilityAccess& original
+    ) noexcept
+    {
+        if (!original.validity.valid()) return false;
+        LuaPreparedAbilityAccess current_access;
+        return current(state, current_access) && current_access.execution == original.execution &&
+            current_access.behavior == original.behavior && current_access.context == original.context &&
+            current_access.dispatch == original.dispatch && current_access.local_slot == original.local_slot;
     }
 
     int detail::LuaAbilityProjectionAccess::fail(
@@ -2187,9 +2198,9 @@ namespace lux::simulation::script
                 }
             }
         }
-        for (std::size_t index{}; index < config.record_marshallers.size(); ++index)
+        for (std::size_t index{}; index < config.values.size(); ++index)
         {
-            const auto& marshaller = config.record_marshallers[index];
+            const auto& marshaller = config.values[index];
             const bool power_of_two_alignment = marshaller.alignment != 0U &&
                 (marshaller.alignment & (marshaller.alignment - 1U)) == 0U;
             const bool valid_identity = marshaller.semantic_type != 0U &&
@@ -2198,25 +2209,46 @@ namespace lux::simulation::script
                     marshaller.canonical_name
                 );
             if (!valid_identity || marshaller.size == 0U ||
-                !power_of_two_alignment || !marshaller.push)
+                !power_of_two_alignment || !marshaller.push || !marshaller.writable ||
+                marshaller.frame_bytes > 65536 || marshaller.representation == 0 || marshaller.policy == 0)
             {
                 return lux::cxx::unexpected(
-                    ELuaScriptBindingBackendError::INVALID_RECORD_MARSHALLER
+                    ELuaScriptBindingBackendError::INVALID_VALUE_OPERATION
                 );
             }
             for (std::size_t previous{}; previous < index; ++previous)
             {
-                const auto& candidate = config.record_marshallers[previous];
+                const auto& candidate = config.values[previous];
                 if (candidate.semantic_type == marshaller.semantic_type ||
                     candidate.canonical_name == marshaller.canonical_name)
                 {
                     return lux::cxx::unexpected(
                         ELuaScriptBindingBackendError::
-                            DUPLICATE_RECORD_MARSHALLER
+                            DUPLICATE_VALUE_OPERATION
                     );
                 }
             }
         }
+        const auto consistent = [](const auto& left, const auto& right) noexcept {
+            if (left.policy != right.policy) return false;
+            if (left.semantic_type != right.semantic_type) return true;
+            return left.canonical_name == right.canonical_name && left.size == right.size &&
+                left.alignment == right.alignment && left.representation == right.representation &&
+                left.readable == right.readable && left.writable == right.writable;
+        };
+        const auto each_operation = [&](auto&& visit) noexcept {
+            for (const auto& value : config.values) if (!visit(value)) return false;
+            for (const auto& ability : config.abilities)
+                for (const auto& method : ability.methods)
+                {
+                    for (const auto& value : method.parameters) if (!visit(value)) return false;
+                    for (const auto& value : method.results) if (!visit(value)) return false;
+                }
+            return true;
+        };
+        if (!each_operation([&](const auto& left) noexcept {
+            return each_operation([&](const auto& right) noexcept { return consistent(left, right); });
+        })) return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_VALUE_OPERATION);
         std::size_t ability_method_count{};
         for (std::size_t ability_index{}; ability_index < config.abilities.size(); ++ability_index)
         {
@@ -2251,18 +2283,38 @@ namespace lux::simulation::script
                     if (contribution.description->methods[previous].name == method.name)
                         return lux::cxx::unexpected(ELuaScriptBindingBackendError::DUPLICATE_ABILITY_METHOD);
                 }
-                for (const auto& parameter : method.parameters)
+                const bool wrong_signature = projection.parameters.size() != method.parameters.size() ||
+                    projection.results.size() != method.results.size();
+                if (wrong_signature)
+                    return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
+                std::size_t frame_bytes{};
+                for (std::size_t i{}; i < method.parameters.size(); ++i)
                 {
-                    if (!State::supportedType(parameter.value))
+                    const auto& value = method.parameters[i].value;
+                    const auto& operation = projection.parameters[i];
+                    const bool mismatch = !operation.readable || operation.semantic_type != value.type_id ||
+                        operation.canonical_name != value.canonical_name || operation.size != value.size ||
+                        operation.alignment != value.alignment || operation.frame_bytes > 65536 - frame_bytes;
+                    const bool invalid_async = method.kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION &&
+                        (!State::supportedType(value) || !operation.native_scalar);
+                    if (mismatch || invalid_async)
                         return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
+                    frame_bytes += operation.frame_bytes;
                 }
-                for (const auto& result : method.results)
+                for (std::size_t i{}; i < method.results.size(); ++i)
                 {
-                    const bool is_invalid_async = method.kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION &&
-                        (result.pass != lux::semantic::EValuePass::VALUE ||
-                         result.lifetime != lux::script::EScriptAbilityValueLifetime::AWAITABLE);
-                    if (!State::supportedType(result) || is_invalid_async)
+                    const auto& value = method.results[i];
+                    const auto& operation = projection.results[i];
+                    const bool mismatch = !operation.writable || operation.semantic_type != value.type_id ||
+                        operation.canonical_name != value.canonical_name || operation.size != value.size ||
+                        operation.alignment != value.alignment || operation.frame_bytes > 65536 - frame_bytes;
+                    const bool invalid_async = method.kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION &&
+                        (!State::supportedType(value) || !operation.native_scalar ||
+                            value.pass != lux::semantic::EValuePass::VALUE ||
+                         value.lifetime != lux::script::EScriptAbilityValueLifetime::AWAITABLE);
+                    if (mismatch || invalid_async)
                         return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
+                    frame_bytes += operation.frame_bytes;
                 }
             }
             const bool has_method_count_overflow = ability_method_count >
@@ -2303,7 +2355,7 @@ namespace lux::simulation::script
             if (is_invalid_source)
                 return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_EVENT_SOURCE);
             if (source.payload.abi_kind == LUX_SCRIPT_VK_STRUCT_REF &&
-                std::ranges::none_of(config.record_marshallers, [&](const auto& marshaller) noexcept {
+                std::ranges::none_of(config.values, [&](const auto& marshaller) noexcept {
                     return marshaller.semantic_type == source.payload.type_id &&
                         marshaller.canonical_name == source.payload.canonical_name &&
                         marshaller.size == source.payload.size && marshaller.alignment == source.payload.alignment;

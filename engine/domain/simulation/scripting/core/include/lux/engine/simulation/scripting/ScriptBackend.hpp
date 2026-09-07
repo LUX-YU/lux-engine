@@ -83,10 +83,27 @@ namespace lux::simulation::script
         ) noexcept{};
     };
 
+    // Read-only borrowed qualification. Valid only within the protected backend call that captured it.
+    class ScriptInvocationValidity final
+    {
+    public:
+        [[nodiscard]] bool valid() const noexcept
+        { return check_ && check_(context_, instance_, epoch_, category_); }
+    private:
+        const void* context_{};
+        ScriptInstanceId instance_;
+        std::uint64_t epoch_{};
+        std::uint8_t category_{};
+        bool (*check_)(const void*, ScriptInstanceId, std::uint64_t, std::uint8_t) noexcept{};
+        friend class detail::ScriptRuntimeAccess;
+    };
+
     class ScriptBehavior final
     {
       public:
         [[nodiscard]] bool isAttached() const noexcept { return api_ != nullptr; }
+        [[nodiscard]] ScriptInvocationValidity captureInvocation() const noexcept
+        { return capture_invocation_ ? capture_invocation_(invocation_context_) : ScriptInvocationValidity{}; }
 
         [[nodiscard]] bool hasSelf() const noexcept
         {
@@ -148,6 +165,8 @@ namespace lux::simulation::script
       private:
         ScriptInstanceScope scope_;
         const ScriptHostApi* api_{};
+        const void* invocation_context_{};
+        ScriptInvocationValidity (*capture_invocation_)(const void*) noexcept{};
 
         void attach(
             ScriptInstanceScope scope,

@@ -2739,6 +2739,7 @@ namespace lux::simulation::script
             mount.retirement_queued = false;
             mount.gameplay_lifetime_started = false;
             mount.pending_end_reason = EScriptEndPlayReason::OBJECT_UNMATERIALIZED;
+            mount.status.reclaimed = true;
         }
 
         [[nodiscard]] RetirementRecord beginRetirement(
@@ -2792,7 +2793,6 @@ namespace lux::simulation::script
 
             resetMountRuntime(mount);
             mount.state = retirement.final_state;
-            mount.status.reclaimed = true;
             if (mount.state == EScriptMountState::FAULTED)
             {
                 mount.status.submission_state = EScriptMountSubmissionState::REJECTED;

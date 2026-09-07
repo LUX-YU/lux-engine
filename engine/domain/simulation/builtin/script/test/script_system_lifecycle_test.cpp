@@ -117,6 +117,8 @@ namespace
         std::size_t continuation_destroys{};
         std::size_t fail_begin_serial{};
         std::size_t fail_tick_serial{};
+        std::size_t fail_prepare_ordinal{};
+        bool fail_create{};
         bool fail_end{};
         bool async_tick{};
         HookPoint<void()>* hook{};
@@ -175,6 +177,8 @@ namespace
     ) noexcept
     {
         auto& state = *static_cast<BackendState*>(context);
+        if (state.fail_create)
+            return EScriptBackendResult::CONSTRUCTION_FAILURE;
         auto* instance = new (std::nothrow) Instance{&state, state.creates + 1U, 0U};
         if (instance == nullptr)
             return EScriptBackendResult::ALLOCATION_FAILURE;
@@ -199,6 +203,8 @@ namespace
     ) noexcept
     {
         auto& state = *static_cast<BackendState*>(context);
+        if (state.fail_prepare_ordinal == state.prepares + 1U)
+            return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
         auto* call = new (std::nothrow) PreparedCall{
             static_cast<Instance*>(instance.value),
             function.symbol_id
@@ -345,7 +351,10 @@ namespace
             auto& self = *static_cast<Harness*>(context);
             if (requested != assetId())
                 return false;
-            output.artifact = &self.artifact;
+            output.artifact = self.invalid_artifact ? nullptr : &self.artifact;
+            output.lease = &self;
+            output.release = [](void* lease) noexcept { ++static_cast<Harness*>(lease)->leases_released; };
+            ++self.leases_acquired;
             return true;
         }
 
@@ -363,6 +372,9 @@ namespace
         ScriptBackendDescriptor backend;
         std::vector<Entity> entities;
         bool entity_scope{};
+        bool invalid_artifact{};
+        std::size_t leases_acquired{};
+        std::size_t leases_released{};
     };
 
     void testPendingDoesNotMaskFatal()
@@ -538,6 +550,113 @@ namespace
         assert(harness.backend_state.creates == 65U && harness.backend_state.destroys == 65U);
     }
 
+    void testResolvedAssetFailure(bool mixed_batch)
+    {
+        Harness harness{mixed_batch ? 2U : 1U, true, true, true};
+        std::array<std::uint8_t, 16U> missing_bytes{};
+        missing_bytes[0] = 0x76U;
+        harness.description[0].asset = lux::asset::AssetId{missing_bytes};
+        auto created = harness.create(0U);
+        assert(created && created->prepare());
+        auto& system = *created;
+        assert(system.mountResolvedBatch(harness.description));
+        const auto accepted = system.queryMountStatus({1U});
+        assert(accepted && *accepted);
+        assert((**accepted).submission_state == EScriptMountSubmissionState::ACCEPTED);
+        assert(harness.backend_state.creates == 0U);
+
+        const auto processed = system.processLifecycle();
+        assert(!processed && processed.error() == EScriptSystemError::ASSET_NOT_RESIDENT);
+        const auto failed = system.queryMountStatus({1U});
+        assert(failed && *failed);
+        assert((**failed).state == EScriptMountState::FAULTED);
+        assert((**failed).submission_state == EScriptMountSubmissionState::REJECTED);
+        assert((**failed).submission_error == EScriptSystemError::ASSET_NOT_RESIDENT);
+        assert((**failed).reclaimed);
+        assert(!(**failed).instance.valid());
+        assert(system.stats().pending_mounts == 0U);
+        const auto successes = mixed_batch ? 1U : 0U;
+        assert(system.activeInstanceCount() == successes);
+        assert(harness.backend_state.creates == successes && harness.backend_state.begins == successes);
+        assert(harness.backend_state.ends == 0U && harness.backend_state.destroys == 0U);
+        assert(harness.backend_state.releases == 0U && harness.backend_state.continuation_destroys == 0U);
+        assert(harness.backend_state.prepares == 3U * successes);
+        assert(harness.leases_acquired == successes && harness.leases_released == 0U);
+        const auto repeated = system.queryMountStatus({1U});
+        assert(repeated && *repeated && (**repeated).revision == (**failed).revision);
+        const auto zero = system.collectMountStatusChanges({});
+        assert(zero && zero->written == 0U && zero->remaining == harness.description.size());
+        std::array<ScriptMountStatus, 1U> output;
+        const auto partial = system.collectMountStatusChanges(output);
+        assert(partial && partial->written == 1U && partial->remaining == successes);
+        assert(output[0].id.value == 1U && output[0].reclaimed);
+        assert(output[0].submission_state == EScriptMountSubmissionState::REJECTED);
+        if (mixed_batch)
+        {
+            const auto normal = system.queryMountStatus({2U});
+            assert(normal && *normal && (**normal).state == EScriptMountState::ACTIVE);
+            const auto remaining = system.collectMountStatusChanges(output);
+            assert(remaining && remaining->written == 1U && remaining->remaining == 0U);
+            assert(output[0].id.value == 2U);
+            assert(dispatchHookForTest(harness.hook) == 1U && harness.backend_state.tick_calls == 1U);
+        }
+        const auto empty = system.collectMountStatusChanges(output);
+        assert(empty && empty->written == 0U && empty->remaining == 0U);
+        assert(system.processLifecycle());
+        assert(harness.backend_state.creates == successes);
+        const auto still_failed = system.queryMountStatus({1U});
+        assert(still_failed && *still_failed && (**still_failed).state == EScriptMountState::FAULTED);
+        assert((**still_failed).reclaimed);
+        assert(system.shutdown());
+        assert(system.activeInstanceCount() == 0U);
+        assert(harness.backend_state.ends == successes && harness.backend_state.destroys == successes);
+        assert(harness.backend_state.releases == harness.backend_state.prepares);
+        assert(harness.backend_state.continuation_destroys == 0U);
+        assert(harness.leases_acquired == harness.leases_released);
+    }
+
+    void testResolvedPreparationFailures()
+    {
+        for (std::size_t failure{}; failure < 5U; ++failure)
+        {
+            Harness harness{1U, true, true, true};
+            harness.invalid_artifact = failure == 0U;
+            if (failure == 1U)
+                harness.backend.kind = lux::rdesc::Script::Kind::LUA_SOURCE;
+            harness.backend_state.fail_create = failure == 2U;
+            harness.backend_state.fail_prepare_ordinal = failure == 3U ? 2U : 0U;
+            harness.backend_state.fail_begin_serial = failure == 4U ? 1U : 0U;
+            auto created = harness.create(0U);
+            assert(created && created->prepare());
+            auto& system = *created;
+            assert(system.mountResolvedBatch(harness.description));
+            const auto processed = system.processLifecycle();
+            constexpr std::array expected_errors{
+                EScriptSystemError::INVALID_ASSET, EScriptSystemError::BACKEND_NOT_AVAILABLE,
+                EScriptSystemError::BACKEND_FAILURE, EScriptSystemError::BACKEND_FAILURE,
+                EScriptSystemError::INVOCATION_FAILURE
+            };
+            assert(!processed && processed.error() == expected_errors[failure]);
+            const auto status = system.queryMountStatus({1U});
+            assert(status && *status && (**status).state == EScriptMountState::FAULTED);
+            assert((**status).submission_state == EScriptMountSubmissionState::REJECTED);
+            assert((**status).submission_error == expected_errors[failure] && (**status).reclaimed);
+            assert(system.stats().pending_mounts == 0U && system.activeInstanceCount() == 0U);
+            const auto expected_creates = failure >= 3U ? 1U : 0U;
+            const auto expected_prepares = failure == 3U ? 1U : failure == 4U ? 3U : 0U;
+            assert(harness.backend_state.creates == expected_creates);
+            assert(harness.backend_state.destroys == expected_creates);
+            assert(harness.backend_state.prepares == expected_prepares);
+            assert(harness.backend_state.releases == expected_prepares);
+            assert(harness.backend_state.begins == 0U && harness.backend_state.ends == 0U);
+            assert(harness.leases_acquired == 1U && harness.leases_released == 1U);
+            assert(system.processLifecycle() && system.shutdown());
+            assert(harness.backend_state.destroys == expected_creates);
+            assert(harness.backend_state.releases == expected_prepares);
+            assert(harness.backend_state.ends == 0U && harness.leases_released == 1U);
+        }
+    }
+
     void testInitialLifecycle()
     {
         Harness harness{3U, false, true, true};
@@ -693,6 +812,9 @@ namespace
 
 int main()
 {
+    testResolvedAssetFailure(true);
+    testResolvedAssetFailure(false);
+    testResolvedPreparationFailures();
     testOwnedRuntimeInput();
     testResolvedBatchProtocol();
     testResolvedInputExpiryAndReuse();

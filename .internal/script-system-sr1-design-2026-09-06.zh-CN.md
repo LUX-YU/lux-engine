@@ -870,3 +870,36 @@ Event fan-out 每对变化约 -13.29%～+12.37%，应结合原始样本审阅，
 
 用户原有测量脚本修改、两个未跟踪文件及 main 的五项修改未纳入本阶段提交；lux-cxx 和
 有效安装依赖未升级。阶段交付停在 SR-2，等待独立审阅，不自动实施 SR-3/4/5。
+
+## 13. SR-2 审阅收口与 SR-3 开工记录（2026-09-07）
+
+本节依据后续 SR-3 批准更新阶段边界，不改写 §12 的历史身份和结果。
+起点为 `1a7fbd60f47a115b7b01528075550b77c1a3c194`；lux-cxx 仍为
+`3100f54d0743c5ed94a4ccf5943df04e933de255`，使用 `install/q2/c`。
+
+### 13.1 资源结束状态修正
+
+`reclaimed` 描述当前实例资源有效期是否结束，与是否 FAULTED、是否已有替代输入独立。
+从 CONSTRUCTING 开始设为 false；只有 `resetMountRuntime()` 完成宿主、prepared 关联、backend
+关联与 artifact 关联清空时设回 true。该函数有两个调用者：正常/故障退休的
+`finishRetirement()`，以及 resolver 返回 false 且未取得任何资源的 `initializeMount()`。
+`finishRetirement()` 仍先完成 prepared/backend/lease 的实际释放再调用 reset；没有在 query
+中修饰快照，也没有把未结束保护窗口的 FAULTED 实例提前标为回收。
+
+新增真实 runtime 断言对应关系：
+
+| 新入口/用例 | 保留与补充的断言 |
+|---|---|
+| `testResolvedAssetFailure(false)` | 空输入 prepare；整批接受；lifecycle 返回 ASSET_NOT_RESIDENT；FAULTED/REJECTED、精确错误、reclaimed=true；pending/active/backend/prepared/BeginPlay/EndPlay/析构/lease 均为零 |
+| `testResolvedAssetFailure(true)` | 失败配置在前；同批正常配置仍 ACTIVE；first_error 不遮蔽正常初始化；正常配置 1 create/BeginPlay、3 prepare、一次 Tick；关闭恰好 1 EndPlay/destroy、3 release、1 lease release |
+| 上述两个用例的 query/collect | 重复 query revision 不变；零容量不消费；首次变脏顺序输出失败配置；部分缓冲区保留正常配置；消费完输出为零；后续 lifecycle 不自动重启故障配置 |
+| `testResolvedPreparationFailures()` | invalid artifact、backend 缺失、backend 构造失败、第二个 method 准备失败、BeginPlay 失败；依次断言 INVALID_ASSET/BACKEND_NOT_AVAILABLE/BACKEND_FAILURE/BACKEND_FAILURE/INVOCATION_FAILURE；全部 FAULTED/REJECTED/reclaimed |
+| 同上资源断言 | 五种情况 create/destroy 为 0/0/0/1/1，prepare/release 为 0/0/0/1/3；均不进入 gameplay lifetime、不补 EndPlay；每次 resolver 成功取得的 lease 恰好释放一次；再次 lifecycle/shutdown 不重复释放 |
+
+修前分别把单失败、混合批次用例置于 main 首项，全量构建后运行 lifecycle CTest，两次都在
+`(**failed).reclaimed` 断言失败（进程 `0xc0000409`，CTest 8）。原 fixture 副本、补丁和日志
+分别保存，不靠测试名字推定混合分支已执行。修后同一 fixture 执行两个场景及五个准备失败点。
+迭代目录为 `build/RelWithDebInfo/sr3-gate`；归档及固定提交入口见同阶段证据索引。
+
+原始 SR-2 包原样补交到 [仓库证据目录](evidence/script/sr2/README.md)。后续验证另行归档，
+不将 feaa7550 的旧性能结果改为修正后 SR-2 参照。

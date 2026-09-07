@@ -1147,3 +1147,19 @@ Flow 使用匹配源码和计时后保留错误观察，旧 CSV errors/failures 
 
 **准确结论是“有限假设未能解释残余”，持续 Event 成本未收口。** 推荐保留现有运行时与新增验证，
 由用户/独立审阅方决定是否接受已量化的性能债务；不称性能等价，不称必要安全成本，不自动扩大微优化或进入下一阶段。
+
+
+## 17. SR-4 明确授权后的实施交付
+
+2026-09-07 用户接受已量化 Event 差距为待复核阶段债务，明确授权 SR-4，更新 §16 的停止条件；
+不将历史差距改写为性能等价或必要安全成本。保留 99c1d095 生产和 8a6e6ef4 观察，未恢复已撤销实验。
+
+四个私有 owner ScriptExecution、ScriptEventWaits、ScriptTimers、ScriptCompletionIngress 已实际迁移，
+System 保留跨组件顺序，Instances/Bindings/Preparer 权威不变。完整操作与失败闭环见
+[SR-4 所有权映射](script-system-sr4-implementation-2026-09-07.zh-CN.md)，实际提交、原断言对应、
+G03取消、六项Lua根因、107/107与119/119验证、14消费者和性能限制见
+[SR-4 交付报告](script-system-sr4-closeout-2026-09-07.zh-CN.md)。
+
+最终验证快照1750ce85：E0→E1 Flow Event配对中位−2.27%，H0→E1旧债务+11.14%；
+另列Lua Update+1.52%与首次prepare约+10微秒的小幅新增成本，未宣称性能全部收口。
+停止于SR-4，等待独立审阅；不进入SR-5/6、不合并main、不冻结框架。

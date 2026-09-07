@@ -1,0 +1,778 @@
+{
+  "statistical_unit": "Five independent process pairs; per-frame p50/p95 are descriptive, not independent trials",
+  "per_operation_limit": "Whole measured batch amortization, not isolated invocation/resume cost",
+  "qualification_commit": "1750ce854967a382ee89accf3a3534a0628396cc",
+  "performance": [
+    {
+      "comparison": "e0-e1",
+      "case": "cpp-update",
+      "median_percent": -0.8395284975266204,
+      "range_percent": [
+        -14.250430300693184,
+        3.148437714317076
+      ],
+      "median_baseline_ns": 145812000.0,
+      "median_candidate_ns": 142093600.0,
+      "median_delta_ns": -1223800.0,
+      "paired_percent": [
+        -14.250430300693184,
+        -0.8395284975266204,
+        0.06897863705541685,
+        3.148437714317076,
+        -4.833612058613346
+      ],
+      "paired_ns": [
+        -22726800.0,
+        -1223800.0,
+        97900.0,
+        4590800.0,
+        -7217100.0
+      ],
+      "work": {
+        "script_calls": 30000000,
+        "provider_calls": 0,
+        "resumes": 0,
+        "occurrences": 0,
+        "callback_attempts": 30000000,
+        "completed_business": 30000000,
+        "hook_occurrences": 3000,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "effective_resume_budget": 2000,
+      "whole_batch_ns_per_actual_operation": {
+        "script_calls": 4.736453333333333,
+        "callback_attempts": 4.736453333333333,
+        "completed_business": 4.736453333333333,
+        "hook_occurrences": 47364.53333333333
+      }
+    },
+    {
+      "comparison": "e0-e1",
+      "case": "event-fanout",
+      "median_percent": -0.42125086728119765,
+      "range_percent": [
+        -20.766577232656193,
+        28.751656766972665
+      ],
+      "median_baseline_ns": 2206800.0,
+      "median_candidate_ns": 2067200.0,
+      "median_delta_ns": -8500.0,
+      "paired_percent": [
+        -16.51689659536768,
+        22.58473808229109,
+        -0.42125086728119765,
+        -20.766577232656193,
+        28.751656766972665
+      ],
+      "paired_ns": [
+        -391500.0,
+        498400.0,
+        -8500.0,
+        -541800.0,
+        585700.0
+      ],
+      "work": {
+        "script_calls": 0,
+        "provider_calls": 0,
+        "resumes": 10000,
+        "occurrences": 1,
+        "callback_attempts": 0,
+        "completed_business": 10000,
+        "hook_occurrences": 0,
+        "normalization_note": "One occurrence plus five drains; initial waiter registration is outside this batch.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "effective_resume_budget": 2000,
+      "whole_batch_ns_per_actual_operation": {
+        "resumes": 206.72,
+        "occurrences": 2067200.0,
+        "completed_business": 206.72
+      }
+    },
+    {
+      "comparison": "e0-e1",
+      "case": "flow-event",
+      "median_percent": -2.2722573560914228,
+      "range_percent": [
+        -3.128819028737151,
+        -0.8482241015000835
+      ],
+      "median_baseline_ns": 2964913900.0,
+      "median_candidate_ns": 2909522800.0,
+      "median_delta_ns": -67982000.0,
+      "paired_percent": [
+        -2.811444128294671,
+        -1.3062133102752171,
+        -3.128819028737151,
+        -2.2722573560914228,
+        -0.8482241015000835
+      ],
+      "paired_ns": [
+        -83156200.0,
+        -38728100.0,
+        -93163900.0,
+        -67982000.0,
+        -24890400.0
+      ],
+      "work": {
+        "script_calls": 6000000,
+        "provider_calls": 6000000,
+        "resumes": 6000000,
+        "occurrences": 3000,
+        "callback_attempts": 30000000,
+        "completed_business": 6000000,
+        "hook_occurrences": 3000,
+        "normalization_note": "Flow event keeps 8,000 queued operations; completed_business is verified provider-call/resume delta. Its legacy completed column is sequence-only and remains zero.",
+        "final_backlog": {
+          "queue_depth": 8000,
+          "continuations": 8000,
+          "awaitables": 8000,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "effective_resume_budget": 2000,
+      "whole_batch_ns_per_actual_operation": {
+        "script_calls": 484.92046666666664,
+        "provider_calls": 484.92046666666664,
+        "resumes": 484.92046666666664,
+        "occurrences": 969840.9333333333,
+        "callback_attempts": 96.98409333333333,
+        "completed_business": 484.92046666666664,
+        "hook_occurrences": 969840.9333333333
+      }
+    },
+    {
+      "comparison": "e0-e1",
+      "case": "flow-update",
+      "median_percent": -0.6037669746643992,
+      "range_percent": [
+        -2.702516790490239,
+        1.9480925214985456
+      ],
+      "median_baseline_ns": 278584300.0,
+      "median_candidate_ns": 277385400.0,
+      "median_delta_ns": -1682000.0,
+      "paired_percent": [
+        1.9480925214985456,
+        1.6397154602143305,
+        -2.702516790490239,
+        -0.6037669746643992,
+        -1.4547031921617215
+      ],
+      "paired_ns": [
+        5362600.0,
+        4685300.0,
+        -7464700.0,
+        -1682000.0,
+        -4094700.0
+      ],
+      "work": {
+        "script_calls": 30000000,
+        "provider_calls": 60000000,
+        "resumes": 0,
+        "occurrences": 0,
+        "callback_attempts": 30000000,
+        "completed_business": 30000000,
+        "hook_occurrences": 3000,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "effective_resume_budget": 2000,
+      "whole_batch_ns_per_actual_operation": {
+        "script_calls": 9.24618,
+        "provider_calls": 4.62309,
+        "callback_attempts": 9.24618,
+        "completed_business": 9.24618,
+        "hook_occurrences": 92461.8
+      }
+    },
+    {
+      "comparison": "e0-e1",
+      "case": "lua-event",
+      "median_percent": -1.8792473657110675,
+      "range_percent": [
+        -3.9253217341000957,
+        -1.7193137186638507
+      ],
+      "median_baseline_ns": 1979490300.0,
+      "median_candidate_ns": 1940361900.0,
+      "median_delta_ns": -36807700.0,
+      "paired_percent": [
+        -3.068905503865005,
+        -1.7193137186638507,
+        -1.8253082624350325,
+        -3.9253217341000957,
+        -1.8792473657110675
+      ],
+      "paired_ns": [
+        -61433200.0,
+        -34001700.0,
+        -36131800.0,
+        -78168700.0,
+        -36807700.0
+      ],
+      "work": {
+        "script_calls": 3000000,
+        "provider_calls": 0,
+        "resumes": 3000000,
+        "occurrences": 300,
+        "callback_attempts": 3000000,
+        "completed_business": 3000000,
+        "hook_occurrences": 300,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "effective_resume_budget": 10000,
+      "whole_batch_ns_per_actual_operation": {
+        "script_calls": 646.7873,
+        "resumes": 646.7873,
+        "occurrences": 6467873.0,
+        "callback_attempts": 646.7873,
+        "completed_business": 646.7873,
+        "hook_occurrences": 6467873.0
+      }
+    },
+    {
+      "comparison": "e0-e1",
+      "case": "lua-update",
+      "median_percent": 1.5216920541351486,
+      "range_percent": [
+        0.5117405468874958,
+        4.928978964710984
+      ],
+      "median_baseline_ns": 76308200.0,
+      "median_candidate_ns": 77795800.0,
+      "median_delta_ns": 1173500.0,
+      "paired_percent": [
+        4.928978964710984,
+        1.5216920541351486,
+        1.164530124266272,
+        3.4711249434735247,
+        0.5117405468874958
+      ],
+      "paired_ns": [
+        3682800.0,
+        1173500.0,
+        889800.0,
+        2609800.0,
+        390500.0
+      ],
+      "work": {
+        "script_calls": 3000000,
+        "provider_calls": 0,
+        "resumes": 0,
+        "occurrences": 0,
+        "callback_attempts": 3000000,
+        "completed_business": 3000000,
+        "hook_occurrences": 300,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "effective_resume_budget": 2000,
+      "whole_batch_ns_per_actual_operation": {
+        "script_calls": 25.931933333333333,
+        "callback_attempts": 25.931933333333333,
+        "completed_business": 25.931933333333333,
+        "hook_occurrences": 259319.33333333334
+      }
+    },
+    {
+      "comparison": "h0-e1",
+      "case": "cpp-update",
+      "median_percent": -6.173179389123284,
+      "range_percent": [
+        -10.590989748546098,
+        9.828909531001106
+      ],
+      "median_baseline_ns": 158232100.0,
+      "median_candidate_ns": 144737300.0,
+      "median_delta_ns": -9440100.0,
+      "paired_percent": [
+        -9.901973114178475,
+        9.828909531001106,
+        2.0291303747106193,
+        -10.590989748546098,
+        -6.173179389123284
+      ],
+      "paired_ns": [
+        -15668100.0,
+        15678300.0,
+        2878500.0,
+        -17171500.0,
+        -9440100.0
+      ],
+      "work": {
+        "script_calls": 30000000,
+        "provider_calls": 0,
+        "resumes": 0,
+        "occurrences": 0,
+        "callback_attempts": 30000000,
+        "completed_business": 30000000,
+        "hook_occurrences": 3000,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "effective_resume_budget": 2000,
+      "whole_batch_ns_per_actual_operation": {
+        "script_calls": 4.824576666666666,
+        "callback_attempts": 4.824576666666666,
+        "completed_business": 4.824576666666666,
+        "hook_occurrences": 48245.76666666667
+      }
+    },
+    {
+      "comparison": "h0-e1",
+      "case": "event-fanout",
+      "median_percent": -7.809129346794375,
+      "range_percent": [
+        -33.89819461643746,
+        0.10127803231252397
+      ],
+      "median_baseline_ns": 2424000.0,
+      "median_candidate_ns": 2075600.0,
+      "median_delta_ns": -181000.0,
+      "paired_percent": [
+        0.10127803231252397,
+        -5.962719377929582,
+        -17.51650165016502,
+        -33.89819461643746,
+        -7.809129346794375
+      ],
+      "paired_ns": [
+        2100.0,
+        -164100.0,
+        -424600.0,
+        -1040200.0,
+        -181000.0
+      ],
+      "work": {
+        "script_calls": 0,
+        "provider_calls": 0,
+        "resumes": 10000,
+        "occurrences": 1,
+        "callback_attempts": 0,
+        "completed_business": 10000,
+        "hook_occurrences": 0,
+        "normalization_note": "One occurrence plus five drains; initial waiter registration is outside this batch.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "effective_resume_budget": 2000,
+      "whole_batch_ns_per_actual_operation": {
+        "resumes": 207.56,
+        "occurrences": 2075600.0,
+        "completed_business": 207.56
+      }
+    },
+    {
+      "comparison": "h0-e1",
+      "case": "flow-event",
+      "median_percent": 11.140207947253744,
+      "range_percent": [
+        8.39301530168819,
+        11.827063841632391
+      ],
+      "median_baseline_ns": 2590867400.0,
+      "median_candidate_ns": 2881103200.0,
+      "median_delta_ns": 287639200.0,
+      "paired_percent": [
+        8.39301530168819,
+        11.50621216662806,
+        11.140207947253744,
+        11.827063841632391,
+        10.416252444898477
+      ],
+      "paired_ns": [
+        221810600.0,
+        298110700.0,
+        287639200.0,
+        305235300.0,
+        271792400.0
+      ],
+      "work": {
+        "script_calls": 6000000,
+        "provider_calls": 6000000,
+        "resumes": 6000000,
+        "occurrences": 3000,
+        "callback_attempts": 30000000,
+        "completed_business": 6000000,
+        "hook_occurrences": 3000,
+        "normalization_note": "Flow event keeps 8,000 queued operations; completed_business is verified provider-call/resume delta. Its legacy completed column is sequence-only and remains zero.",
+        "final_backlog": {
+          "queue_depth": 8000,
+          "continuations": 8000,
+          "awaitables": 8000,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "effective_resume_budget": 2000,
+      "whole_batch_ns_per_actual_operation": {
+        "script_calls": 480.1838666666667,
+        "provider_calls": 480.1838666666667,
+        "resumes": 480.1838666666667,
+        "occurrences": 960367.7333333333,
+        "callback_attempts": 96.03677333333333,
+        "completed_business": 480.1838666666667,
+        "hook_occurrences": 960367.7333333333
+      }
+    },
+    {
+      "comparison": "h0-e1",
+      "case": "flow-update",
+      "median_percent": -3.151284399825194,
+      "range_percent": [
+        -12.637106069537651,
+        2.859196041435874
+      ],
+      "median_baseline_ns": 283973100.0,
+      "median_candidate_ns": 275846000.0,
+      "median_delta_ns": -8948800.0,
+      "paired_percent": [
+        -12.637106069537651,
+        -8.41940867013895,
+        2.859196041435874,
+        -3.151284399825194,
+        -2.803088922809349
+      ],
+      "paired_ns": [
+        -39809500.0,
+        -25413000.0,
+        7905800.0,
+        -8948800.0,
+        -7955200.0
+      ],
+      "work": {
+        "script_calls": 30000000,
+        "provider_calls": 60000000,
+        "resumes": 0,
+        "occurrences": 0,
+        "callback_attempts": 30000000,
+        "completed_business": 30000000,
+        "hook_occurrences": 3000,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "effective_resume_budget": 2000,
+      "whole_batch_ns_per_actual_operation": {
+        "script_calls": 9.194866666666666,
+        "provider_calls": 4.597433333333333,
+        "callback_attempts": 9.194866666666666,
+        "completed_business": 9.194866666666666,
+        "hook_occurrences": 91948.66666666667
+      }
+    },
+    {
+      "comparison": "h0-e1",
+      "case": "lua-event",
+      "median_percent": 2.733201017042508,
+      "range_percent": [
+        0.8388586807579257,
+        6.01854841985292
+      ],
+      "median_baseline_ns": 1861751100.0,
+      "median_candidate_ns": 1912636500.0,
+      "median_delta_ns": 50885400.0,
+      "paired_percent": [
+        1.4624805990064216,
+        0.8388586807579257,
+        4.169848603720583,
+        2.733201017042508,
+        6.01854841985292
+      ],
+      "paired_ns": [
+        27500200.0,
+        15886200.0,
+        76646400.0,
+        50885400.0,
+        110983700.0
+      ],
+      "work": {
+        "script_calls": 3000000,
+        "provider_calls": 0,
+        "resumes": 3000000,
+        "occurrences": 300,
+        "callback_attempts": 3000000,
+        "completed_business": 3000000,
+        "hook_occurrences": 300,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "effective_resume_budget": 10000,
+      "whole_batch_ns_per_actual_operation": {
+        "script_calls": 637.5455,
+        "resumes": 637.5455,
+        "occurrences": 6375455.0,
+        "callback_attempts": 637.5455,
+        "completed_business": 637.5455,
+        "hook_occurrences": 6375455.0
+      }
+    },
+    {
+      "comparison": "h0-e1",
+      "case": "lua-update",
+      "median_percent": -0.8710796983497304,
+      "range_percent": [
+        -6.694810828940367,
+        6.52301753840574
+      ],
+      "median_baseline_ns": 79005400.0,
+      "median_candidate_ns": 77510600.0,
+      "median_delta_ns": -688200.0,
+      "paired_percent": [
+        -0.8710796983497304,
+        -2.313529427333094,
+        6.52301753840574,
+        -6.694810828940367,
+        1.7838767745040451
+      ],
+      "paired_ns": [
+        -688200.0,
+        -1835700.0,
+        5035900.0,
+        -5509200.0,
+        1341800.0
+      ],
+      "work": {
+        "script_calls": 3000000,
+        "provider_calls": 0,
+        "resumes": 0,
+        "occurrences": 0,
+        "callback_attempts": 3000000,
+        "completed_business": 3000000,
+        "hook_occurrences": 300,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "effective_resume_budget": 2000,
+      "whole_batch_ns_per_actual_operation": {
+        "script_calls": 25.836866666666666,
+        "callback_attempts": 25.836866666666666,
+        "completed_business": 25.836866666666666,
+        "hook_occurrences": 258368.66666666666
+      }
+    }
+  ],
+  "cold": {
+    "prepare_ns": {
+      "baseline_median_ns": 136000,
+      "candidate_median_ns": 144200,
+      "paired_percent": [
+        3.89705882352942,
+        31.300514327700224,
+        7.750759878419444,
+        7.347538574577506,
+        7.611940298507469
+      ],
+      "median_percent": 7.611940298507469,
+      "paired_ns": [
+        5300,
+        42600,
+        10200,
+        10000,
+        10200
+      ]
+    },
+    "late_ns": {
+      "baseline_median_ns": 11600,
+      "candidate_median_ns": 11200,
+      "paired_percent": [
+        -5.1724137931034475,
+        3.6363636363636376,
+        -16.417910447761198,
+        -74.11273486430063,
+        4.716981132075482
+      ],
+      "median_percent": -5.1724137931034475,
+      "paired_ns": [
+        -600,
+        400,
+        -2200,
+        -35500,
+        500
+      ]
+    },
+    "remount_128_ns": {
+      "baseline_median_ns": 102700,
+      "candidate_median_ns": 102500,
+      "paired_percent": [
+        -4.875717017208414,
+        1.7874875868917561,
+        2.237354085603105,
+        -1.071080817916259,
+        0.8849557522123908
+      ],
+      "median_percent": 0.8849557522123908,
+      "paired_ns": [
+        -5100,
+        1800,
+        2300,
+        -1100,
+        900
+      ]
+    }
+  },
+  "scale": {
+    "8": {
+      "baseline_median_ns": 93100,
+      "candidate_median_ns": 91600,
+      "paired_percent": [
+        -1.1815252416756183,
+        -19.471365638766525,
+        1.5677491601343796,
+        6.208425720620836,
+        -1.8220793140407254
+      ],
+      "median_percent": -1.1815252416756183,
+      "paired_ns": [
+        -1100,
+        -22100,
+        1400,
+        5600,
+        -1700
+      ],
+      "rebuilds": 128,
+      "slot_visits": 128,
+      "endpoint_count_visits": 0
+    },
+    "8192": {
+      "baseline_median_ns": 96700,
+      "candidate_median_ns": 96600,
+      "paired_percent": [
+        3.05010893246187,
+        -0.3092783505154628,
+        -33.028169014084504,
+        -0.10341261633919352,
+        39.27083333333334
+      ],
+      "median_percent": -0.10341261633919352,
+      "paired_ns": [
+        2800,
+        -300,
+        -46900,
+        -100,
+        37700
+      ],
+      "rebuilds": 128,
+      "slot_visits": 128,
+      "endpoint_count_visits": 0
+    }
+  }
+}

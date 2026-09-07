@@ -1,0 +1,17 @@
+{
+  "utc": "2026-09-07T14:35:49.858922+00:00",
+  "origin": "git@github.com:LUX-YU/lux-engine.git",
+  "archive_commit": "c01ca39c5333590bb928efa5ee8a1bed28ed8fcd",
+  "repository_path": ".internal/evidence/script/sr4/final/SR4-raw-evidence.zip",
+  "transport_repo": "E:\\SyncForder\\CodeRepos\\lux-engine-sr3-remote-check",
+  "download_directory": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\sr4-remote-c01ca39c",
+  "method": "Fetch exact remote commit, then git show each blob into new files; validate ZIP against remotely read index",
+  "archive_sha256": "68f84e711e9ab8dbd52a54d8d294b79e6ff876a299049865c337297594db17e7",
+  "archive_bytes": 5475290,
+  "indexed_files": 1743,
+  "verified_files": 1743,
+  "compiled_binaries": 0,
+  "transport_status_sha256_before": "84332195ff884fcaf9653571c802dec0473ac1eb640c6976372596f7555815b8",
+  "transport_status_sha256_after": "84332195ff884fcaf9653571c802dec0473ac1eb640c6976372596f7555815b8",
+  "status": "PASS"
+}

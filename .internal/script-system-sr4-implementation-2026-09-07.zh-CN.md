@@ -7,7 +7,8 @@
 验证代码 E0=`8a6e6ef468f7eb60265678ab25116719b42a01a6`，H0=`8145598c18421d03da1dac21251200af3290e27d`。
 lux-cxx=`3100f54d0743c5ed94a4ccf5943df04e933de255`，toolset=`99c3d0480d1db816779b1dfa7f3c06cb7d39a94f`。
 114 个 cxx 安装头重新核对；main 五项和工作树测量脚本/两个未跟踪文件的哈希已固定，均不纳入提交。
-本文件先登记当前映射及内部契约，完成实施后补实际 SHA、验证与限制；当前不宣称阶段已完成。
+本文件记录完整迁移契约；最终验证快照为 `1750ce854967a382ee89accf3a3534a0628396cc`。
+实际结果、阶段债务与新增成本见[交付报告](script-system-sr4-closeout-2026-09-07.zh-CN.md)。
 
 ## 原 State → 正式 owner 与完整操作
 
@@ -59,7 +60,10 @@ NextStep 在 step 3 resume 后登记 simulation delay，实测 MSVC ceil 为 2 n
 - 首次未初始化 VS 环境的编译负例未命中业务诊断，判为无效环境试验；保留 split-ctest-1.log，不计候选功能回退。
 - 新增 testTimerSourceCancellation：NextStep/模拟 delay 各在 2 槽容量下 32 次显式 discard、32 次退休重建；
   不推进 step，另一实例始终有效，旧 completion 不可影响新代次，失败 starter 已登记来源亦回滚；最终销毁闭环。
-- 正在执行：最终窄测试、独立 clean tracked qualification、安装消费者、同量 E0/H0 配对与证据归档。
+- 最终 `1750ce85` 独立 clean clone：Toolchain 107/107、Developer 119/119，全部 all 构建、安装及第二轮 no work 通过。
+- 14/14 安装消费者、严格 6+8 轨迹、288 字节 wire、两种规模和两个参照的五组同量配对完成。
+- G03 修前同一新测试在 E0 物理来源计数处失败，E1 通过；所有原始失败、无效试验与中间快照日志保留。
+- 新增成本与历史债务分列于交付报告；停止 SR-4，等待独立审阅，不进入 SR-5/6。
 
 ## 非平凡操作的源码索引
 

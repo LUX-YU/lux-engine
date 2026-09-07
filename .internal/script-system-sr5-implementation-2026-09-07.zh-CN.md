@@ -51,7 +51,8 @@ Lua adapter 先取得 prepared context/dispatch/local slot 和原 ExecutionFrame
 在选中的同一 Rule 内判断 read/push；push-only override 不会从 generated table reader 补缺方向。
 普通 Ability 的要求方向在冷期通过 generated LuaValueOperation 与实际语义签名逐项核对，不按“是 struct”推定支持。
 
-表示指纹使用明确 Policy 名称/版本、Rule 名称/版本、方向集合和生成字段/依赖事实；不用地址、typeid hash 或临时编译器名字。
+表示指纹使用明确 Policy 名称/版本、Rule 名称/版本、方向集合、已声明 TypeTraits 的语义名、布局和生成字段/依赖事实；
+不用地址、typeid hash 或临时编译器名字。同布局、同字段而语义名不同的两类型有不同指纹，另有编译期负例。
 用户改变表示须更新声明版本，实现修改则经源文件依赖重建。它是声明契约比较，不证明任意函数行为等价或解决 ODR 违规。
 backend 冷期检查所有实际 contribution 与 erased push 目录的一致性；同一 semantic ID 的名称、布局、方向/表示冲突被拒绝。
 一个 backend 采用一种 policy，不建立全局可写规则注册器。
@@ -85,12 +86,19 @@ Lua54 可能具有关闭语义，因此这不是声称任意 lua_settop 都不�
 read 保留入口栈，push 成功 +1，失败恢复入口 scratch；不取 Lua 错误对象的任意 tostring metamethod。
 
 类型深度默认 32、每 record 导出字段上界 64；展开 typed 存储与根签名累加受 64 KiB 拒绝门槛约束，算术先检查剩余容量。
-费用包含 expected<T, Failure>、optional<T>、记录字段 Slots、目标 T 与错误临时存储，并递归使用所选 policy。
+费用包含 expected<T, Failure>、optional<T>、两个独立 Failure 临时区、记录字段 Slots 和目标 T，并递归使用所选 policy。
+签名还累计根 optional<Failure> 和各参数对齐余量；检查本层及合计容量，不能仅检查最大单参数。
 这是保守的 typed 值存储上界，不是编译器机器栈字节承诺；C trampoline/编译器调用帧另有固定层级开销。
 自定义规则如需要额外有限临时对象，以 storage/depth 声明；不允许隐藏无界递归或通用堆 fallback。
 typed 对象按当前调用在有限 native frame 分配，不每 Entity 预留所有类型最大空间，不使用热路径无限 heap fallback。
 既有 backend execution_depth_capacity 限制同时活动帧，嵌套调用拥有独立对象和根栈；用户规则不能 yield 或保存 Reader/Writer 跨挂起。
 Lua table 本身仍可能正常分配，不能将“无额外 C++ 对象堆”宣传为全路径零分配。
+
+失败路径按 `arg[N].field` 或 `result.field` 定位，固定 256 字节错误区有截断标记。
+adapter 对自定义规则返回的未终止错误数组也执行有界复制，不把它当成无界 C 字符串。
+错误对象仅在失败时构造；成功标量路径不再无条件初始化整块路径缓冲。
+Reader 已知正索引和 field 的 base+1 不重复调用 DLL absolute；未知/负索引仍走原规范化操作。
+这两项来自本轮初次测量和优化产物检查，不删除 raw 校验、构造回滚或调用资格检查。
 
 官方错误行为核对：[Lua 5.4 §4.4](https://www.lua.org/manual/5.4/manual.html#4.4)、
 [LuaJIT C++ 异常互操作](https://luajit.org/extensions.html)。实际 VM 构建和故障注入结果另外登记，不以文档替代运行证据。
@@ -112,7 +120,7 @@ Execution/EventWaits/Timers/Ingress 不含任何转换字段、Lua table 或转�
 
 边界先行：实际 LuaJIT 独立 all 已通过 strict shape、const 构造、非默认构造对象、反向清理、push-only 和 OOM 恢复/初始化失败。
 正式新测试：simulation_script_lua_value_boundary_test、simulation_script_lua_value_runtime_test 及解释执行变体。
-最终生成、安装、增量、Lua54、性能与全量测试结果在收口报告填入；当前段落不预报通过数字。
+最终生成、安装、增量、Lua54、性能与全量测试结果见同目录 SR-5 收口报告和原始归档。
 
 已发现的中间试验：规则头强制预包含造成目标类型重复；MSVC 对 fold 内 requires 的处理；
 const 返回 record 不满足既有 erased 输出赋值；源码行宽门禁。都保留原日志，修正测试/实现选择后重新构建。

@@ -30,6 +30,8 @@ def main():
     parser.add_argument("--baseline-flow-executable")
     parser.add_argument("--candidate-flow-executable")
     parser.add_argument("--affinity-mask", type=lambda value: int(value, 0))
+    parser.add_argument('--baseline-build', help='Qualified build root containing t and d')
+    parser.add_argument('--candidate-build', help='Qualified build root containing t and d')
     args = parser.parse_args()
     if args.performance_frames <= 0:
         parser.error("performance frames must be positive")
@@ -73,7 +75,9 @@ def main():
                 for variant in (("baseline", "candidate") if pair % 2 == 0 else ("candidate", "baseline")):
                     prefix = Path(getattr(args, variant))
                     binary = prefix / ("t/bin" if tool else "d/bin")
-                    build = prefix.parent.parent / "build/RelWithDebInfo" / prefix.name
+                    configured_build = getattr(args, variant + "_build")
+                    build = Path(configured_build) if configured_build else (
+                        prefix.parent.parent / "build/RelWithDebInfo" / prefix.name)
                     executable_name = "flowforge_script_runtime_benchmark.exe" if tool else "script_runtime_benchmark.exe"
                     original_exe = build / ("t/bin" if tool else "d/bin") / executable_name
                     observer = getattr(args, variant + "_flow_executable") if tool else None

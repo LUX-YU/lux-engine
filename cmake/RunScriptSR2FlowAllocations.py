@@ -16,6 +16,8 @@ def main():
     parser = argparse.ArgumentParser()
     for name in ("baseline-source", "candidate-source", "baseline-prefix", "candidate-prefix", "dependencies", "output"):
         parser.add_argument("--" + name, required=True)
+    parser.add_argument('--baseline-build', help='Qualified Toolchain profile build directory')
+    parser.add_argument('--candidate-build', help='Qualified Toolchain profile build directory')
     args = parser.parse_args()
     root = Path(args.output)
     root.mkdir(parents=True, exist_ok=False)
@@ -26,7 +28,10 @@ def main():
         directory = root / variant
         directory.mkdir()
         # This internal fixture includes the qualified native projection, which is not a public SDK header.
-        generated = prefix.parent.parent.parent / "build/RelWithDebInfo" / prefix.parent.name / prefix.name / (
+        configured_build = getattr(args, variant + "_build")
+        build = Path(configured_build) if configured_build else (
+            prefix.parent.parent.parent / "build/RelWithDebInfo" / prefix.parent.name / prefix.name)
+        generated = build / (
             "engine/domain/simulation/builtin/script/generated/simulation_script/script_abilities")
         generated_identity = {}
         for header in generated.glob("DelayAbility.*.hpp"):

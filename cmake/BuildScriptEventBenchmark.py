@@ -19,6 +19,7 @@ def main():
     parser = argparse.ArgumentParser()
     for name in ('source', 'runtime-source', 'prefix', 'dependencies', 'output'):
         parser.add_argument('--' + name, required=True)
+    parser.add_argument('--build-root', help='Qualified profile build directory, when not beside the install root')
     args = parser.parse_args()
     root = Path(args.output)
     root.mkdir(parents=True, exist_ok=False)
@@ -28,7 +29,9 @@ def main():
     if subprocess.check_output(['git', '-C', args.runtime_source, 'status', '--porcelain'], text=True).strip():
         raise RuntimeError('Runtime reference must be a clean tracked source')
     (root / 'probe.cpp').write_bytes(source.read_bytes())
-    generated = prefix.parent.parent.parent / 'build/RelWithDebInfo' / prefix.parent.name / prefix.name / (
+    build = Path(args.build_root) if args.build_root else (
+        prefix.parent.parent.parent / 'build/RelWithDebInfo' / prefix.parent.name / prefix.name)
+    generated = build / (
         'engine/domain/simulation/builtin/script/generated/simulation_script/script_abilities')
     headers = {}
     for header in generated.glob('DelayAbility.*.hpp'):

@@ -524,7 +524,9 @@ namespace
             if (suspended)
             {
                 const auto late = old_completion.ready();
-                assert(!late && late.error() == EScriptAwaitableCompletionError::INVALID_ID);
+                // Whole-runtime shutdown closes ingress before checking an individual ticket's generation.
+                assert(!late && late.error() == EScriptAwaitableCompletionError::STOPPING);
+                std::puts("MOVE_OLD_COMPLETION STOPPING");
                 assert(incoming.backend_state.completions.front().ready());
                 assert(destination.executeStablePoint());
                 assert(incoming.backend_state.resumes == 1U && old.backend_state.resumes == 0U);

@@ -1,0 +1,24 @@
+{
+  "remote": "git@github.com:LUX-YU/lux-engine.git",
+  "commit": "7129a486d01c741f714f2831693e8d777c351794",
+  "retrieval": "git fetch origin <fixed commit>, then git show <commit>:<path> into binary files; existing transport has no checkout and was not changed or qualified as a source tree.",
+  "archives": [
+    {
+      "path": ".internal/evidence/script/sr3-cost/investigation/SR3-raw-evidence.zip",
+      "size": 27991260,
+      "sha256": "e6a489a5e73fe5f5de7c4d2a108ce5f9e83f17ccf9e395c0229920ab9228345b",
+      "entries": 2269,
+      "matched_files": 2269,
+      "compiled_binaries": 0
+    },
+    {
+      "path": ".internal/evidence/script/sr3-cost/final/SR3-raw-evidence.zip",
+      "size": 10690313,
+      "sha256": "cb3d49cd184f5d4137fe519877a69ae92e0d8c56971c44fd3305c22e72e2d098",
+      "entries": 1396,
+      "matched_files": 1396,
+      "compiled_binaries": 0
+    }
+  ],
+  "all_matched": true
+}

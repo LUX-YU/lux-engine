@@ -1101,3 +1101,28 @@ EXE-local 的 prepare/late/remount 分配计数均为 5/33/535，两种规模的
 实际结果及固定提交下载链接。原 SR-2 包及修正门槛包沿用 §13.1 链接，未替换或改标签。
 本次停在 SR-3，交付独立审阅；不进入 SR-4/5/6，没有 Android 构建、backend ABI 扩展、多脚本、
 热重载、动态挂载产品 API 或新的调度/恢复机会。性能残余回退和六项历史 Scene Lua 失败均未隐去。
+
+## 15. SR-3 热路径成本修正与未收口结论（2026-09-07）
+
+本轮依据后续审阅任务，只在现有私有 owner 内修正准入数据访问及票据路径，未重做 SR-1/SR-2 或进入 SR-4。
+B0 固定修正 SR-2 `8145598c`，B1 固定已审阅 SR-3 `3e2bcbd2`；生产 B2 为
+`99c1d095fad6a728c3d808ff2d853ce84b59bfea`（含 `9406f72c` 的紧凑 authority/票据改动）。
+具体契约、消融、机器码和测试追踪见 [成本收口报告](script-system-sr3-cost-closeout-2026-09-07.zh-CN.md)，
+原始数据见 [本轮证据索引](evidence/script/sr3-cost/README.md)。原四个证据包及 §13/14 的历史身份保持不变。
+
+`ScriptInstances` 在固定 backing 中唯一拥有 40-byte InvocationState；冷 Mount 只关联该记录。Invocation
+借用稳定的 const prepared/authority，保持完整身份、ACTIVE 和方法范围验证，以及跨用户代码的原保护窗口。
+Event 来源/恢复准入复用无用户代码区间内的一次有效身份查找，挂起提交传入刚重验的完整身份；没有删除
+同一 incarnation 退休后的同步错误记录，也没有用 sameIncarnation 恢复调用权限。Bindings/Preparer 所有权不变。
+
+最终独立 clean clone 的 Toolchain 107/107、Developer 113/119；六个 Scene Lua 失败与 B0/B1 本轮复核相同。
+14 个 installed consumers、严格 6+8 轨迹、wire golden、七点重入/同步失败/Bindings/身份/pin/frontier/预算及
+8/8,192 配置回归通过，第二轮全量构建无工作。新机器码和采样、各产物及依赖安装身份已归档。
+
+完整同量 B0→B2 五对：C++ update 中位 -7.06%、FlowForge update -8.14%；FlowForge Event 仍 +13.17%
+（五对 +7.76%～+24.18%），Lua Event +3.02%，迟到和小规模重建仍有残余。FlowForge Event 的配对差中位约
+57.14 ns/实际 resume、0.1143 ms/本例帧；各批次总时间、全部配对分布、有效工作、backlog、单位成本和内存
+增加在专项报告中分别列出，未以减少业务量、扩大预算、单侧 LTO 或移除安全换取改善。
+
+**本轮实际代码与验证已交付，但 SR-3 成本仍未收口。** 部分开销已定位并修正，剩余不能证明全部属于必要
+安全成本，不自行决定接受。保留审阅方独立判断，停在 SR-3，不自动开始下一阶段。

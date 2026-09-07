@@ -73,9 +73,10 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--root', required=True)
     p.add_argument('--output', required=True)
+    p.add_argument('--comparisons', nargs='+', default=['b0-b1', 'b1-b2', 'b0-b2'])
     args = p.parse_args()
     reports = []
-    for comparison in ('b0-b1', 'b1-b2', 'b0-b2'):
+    for comparison in args.comparisons:
         directory = Path(args.root) / ('final-' + comparison)
         records = json.loads((directory / 'runs.json').read_text())
         equality = json.loads((directory / 'business-comparisons.json').read_text())

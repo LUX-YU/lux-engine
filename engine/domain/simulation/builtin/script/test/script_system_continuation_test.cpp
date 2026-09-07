@@ -659,6 +659,61 @@ namespace
         assert(endpoint_missing.backend_state.creates == 0U);
     }
 
+    void testSingleFlightIsolation()
+    {
+        Harness harness{false, 2U, false, true};
+        auto& state = harness.backend_state;
+        state.enable_step = true;
+        auto created = harness.create(limits(2U, 8U, 8U, 8U, 1U), {});
+        assert(created && created->prepare());
+        auto& system = *created;
+        assert(dispatchHookForTest(harness.hook) == 1U);
+        for (std::size_t count{}; count < 16U; ++count)
+            assert(dispatchHookForTest(harness.hook) == 1U);
+        assert(state.step_calls == 1U && state.completions.size() == 1U);
+        assert(system.activeContinuationCount() == 1U && system.activeAwaitableCount() == 1U);
+        assert(dispatchHookForTest(harness.hook_second) == 1U); // Different method of the same instance.
+        assert(dispatchHookForTest(harness.hook_third) == 1U); // Different instance.
+        assert(state.step_calls == 3U && state.completions.size() == 3U);
+        const auto old_completion = state.completions.front();
+        assert(old_completion.ready());
+        assert(system.executeStablePoint());
+        assert(state.resume_calls == 1U && state.continuation_destroys == 1U);
+        assert(dispatchHookForTest(harness.hook) == 1U);
+        assert(state.step_calls == 4U && system.activeContinuationCount() == 3U);
+        assert(!old_completion.ready());
+        assert(system.failures().empty() && system.shutdown());
+        assert(state.continuation_destroys == 4U && state.destroys == 2U);
+
+        Harness reused{false, 1U, true};
+        reused.backend_state.enable_step = true;
+        auto replacement = reused.create(limits(), {});
+        assert(replacement && replacement->prepare());
+        assert(dispatchHookForTest(reused.hook) == 1U);
+        const auto old_status = replacement->queryMountStatus(reused.description[0].id);
+        assert(old_status && old_status->has_value());
+        const auto old_id = (*old_status)->instance;
+        const auto retired_completion = reused.backend_state.completions.front();
+        reused.registry.destroy(reused.entity);
+        assert(replacement->processLifecycle());
+        std::array<ScriptMountStatus, 1U> feedback;
+        assert(replacement->collectMountStatusChanges(feedback));
+        reused.entity = reused.registry.create();
+        reused.description[0].scope = EntityScriptScope{reused.entity};
+        assert(replacement->mountResolvedBatch(reused.description));
+        assert(replacement->processLifecycle());
+        const auto new_status = replacement->queryMountStatus(reused.description[0].id);
+        assert(new_status && new_status->has_value());
+        const auto new_id = (*new_status)->instance;
+        assert(new_id.slot == old_id.slot && new_id.generation != old_id.generation);
+        assert(!retired_completion.ready());
+        assert(dispatchHookForTest(reused.hook) == 1U);
+        assert(reused.backend_state.step_calls == 2U && replacement->activeContinuationCount() == 1U);
+        assert(replacement->failures().empty() && replacement->shutdown());
+        assert(reused.backend_state.continuation_destroys == 2U && reused.backend_state.destroys == 2U);
+        std::puts("SINGLE_FLIGHT_OK,skipped=16,methods=2,instances=2,resume_budget=1,reused_generation=1");
+    }
+
     void testSyncAndContinuation()
     {
         Harness synchronous{false};
@@ -1145,6 +1200,7 @@ int main()
         assert(created->shutdown());
     }
     testCapabilities();
+    testSingleFlightIsolation();
     testSyncAndContinuation();
     testAsyncAbilityInvocation();
     testCapacityAndCancellation();

@@ -1080,7 +1080,26 @@ namespace
                 stats.suspensions_admitted != 3U * provider.calls || stats.backend_resume_calls != 3U * provider.calls ||
                 stats.active_awaitables != 0U || stats.active_event_waiters != 0U) return 34;
         }
-        return system->shutdown() ? 0 : 30;
+        // Observe integrity outside every measured interval. failures() contains retained records,
+        // not a total-error counter; a full bounded log may have omitted additional failures.
+        const auto retained = system->failures().size();
+        const auto stopped_at = system->stats();
+        std::printf("INTEGRITY,steady,retained=%zu,calls=%zu,checksum=%llu,queue=%zu,continuations=%zu,"
+            "awaitables=%zu,waiters=%zu\n", retained, provider.calls, static_cast<unsigned long long>(provider.checksum),
+            stopped_at.resume_queue_depth, stopped_at.active_continuations,
+            stopped_at.active_awaitables, stopped_at.active_event_waiters);
+        const bool closed = system->shutdown().has_value();
+        const auto final = system->stats();
+        const auto retained_after = system->failures().size();
+        std::printf("INTEGRITY,shutdown,retained=%zu,calls=%zu,checksum=%llu,queue=%zu,continuations=%zu,"
+            "awaitables=%zu,waiters=%zu\n", retained_after, provider.calls,
+            static_cast<unsigned long long>(provider.checksum),
+            final.resume_queue_depth, final.active_continuations, final.active_awaitables, final.active_event_waiters);
+        const bool released = final.active_instances == 0U && final.active_continuations == 0U &&
+            final.active_awaitables == 0U && final.active_event_waiters == 0U && final.resume_queue_depth == 0U;
+        if (retained != 0U || retained_after != 0U || !released)
+            return 35;
+        return closed ? 0 : 30;
     }
 }
 

@@ -26,12 +26,19 @@ def main():
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--performance-frames", type=int, default=300)
     parser.add_argument("--short-path-frames", type=int)
+    parser.add_argument("--event-frames", type=int)
+    parser.add_argument("--baseline-flow-executable")
+    parser.add_argument("--candidate-flow-executable")
     parser.add_argument("--affinity-mask", type=lambda value: int(value, 0))
     args = parser.parse_args()
     if args.performance_frames <= 0:
         parser.error("performance frames must be positive")
     if args.short_path_frames is not None and args.short_path_frames <= 0:
         parser.error("short path frames must be positive")
+    if args.event_frames is not None and args.event_frames <= 0:
+        parser.error("event frames must be positive")
+    if bool(args.baseline_flow_executable) != bool(args.candidate_flow_executable):
+        parser.error("Matched FlowForge observer executables must be supplied for both sides")
     if args.affinity_mask is not None:
         kernel = ctypes.WinDLL("kernel32", use_last_error=True)
         kernel.GetCurrentProcess.restype = ctypes.c_void_p
@@ -58,6 +65,8 @@ def main():
     for name, group, tool, lua in cases:
         count = args.short_path_frames if args.short_path_frames and name in ("cpp-update", "flow-update") else (
             args.performance_frames)
+        if name == "flow-event" and args.event_frames:
+            count = args.event_frames
         for mode, pairs, warmups, frames in (("performance", 5, 60, count), ("diagnostic", 1, 1, 3)):
             for pair in range(pairs):
                 observations = {}
@@ -67,6 +76,9 @@ def main():
                     build = prefix.parent.parent / "build/RelWithDebInfo" / prefix.name
                     executable_name = "flowforge_script_runtime_benchmark.exe" if tool else "script_runtime_benchmark.exe"
                     original_exe = build / ("t/bin" if tool else "d/bin") / executable_name
+                    observer = getattr(args, variant + "_flow_executable") if tool else None
+                    if observer:
+                        original_exe = Path(observer)
                     # Benchmark targets are not installed. Keep only their qualified EXE in a fresh directory,
                     # so Windows resolves engine DLLs from this variant's installed SDK through PATH.
                     exe = root / (variant + "-bin") / executable_name
@@ -107,6 +119,26 @@ def main():
                                   rows=len(rows), valid=valid)
                     record["effective_resume_budget"] = 10000 if name == "lua-event" else 2000
                     record["inherited_affinity_mask"] = args.affinity_mask
+                    if observer:
+                        integrity = {}
+                        for line in (root / (label + ".log")).read_text().splitlines():
+                            if line.startswith("INTEGRITY,"):
+                                parts = line.split(",")
+                                if parts[1] in integrity:
+                                    raise RuntimeError("Duplicate integrity snapshot")
+                                integrity[parts[1]] = {k: int(v) for k, v in
+                                                       (part.split("=") for part in parts[2:])}
+                        if set(integrity) != {"steady", "shutdown"}:
+                            raise RuntimeError("Missing out-of-timing integrity snapshots")
+                        if any(r["retained"] != 0 for r in integrity.values()) or any(
+                                integrity["shutdown"][k] != 0 for k in
+                                ("queue", "continuations", "awaitables", "waiters")):
+                            raise RuntimeError("Retained failure or unreclaimed execution resources")
+                        if any(integrity["steady"][k] != integrity["shutdown"][k]
+                               for k in ("calls", "checksum")):
+                            raise RuntimeError("Shutdown unexpectedly performed additional business work")
+                        record["integrity"] = integrity
+                        record["integrity_limit"] = "Retained bounded failure records, not a public total-error counter"
                     record["workload"] = "one occurrence plus five drains" if name == "event-fanout" else (
                         f"{warmups} warmup frames then {frames} measured frames")
                     if lua:

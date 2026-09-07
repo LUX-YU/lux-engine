@@ -1,0 +1,22 @@
+{
+  "script-runtime-input": {
+    "link_libraries": [
+      "LINK_LIBRARIES = E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_simulation_script.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_simulation_system.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_simulation_description.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_domain_system_description.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_domain_system_identity.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_simulation_ecs_core.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_function_script_artifact.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_asset.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_core_serialization.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\description.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_function_script_core.lib  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib"
+    ],
+    "forbidden_reachable": {
+      "lux_engine_world": false,
+      "lux_engine_scene": false,
+      "lux_engine_process": false
+    }
+  },
+  "script-description": {
+    "link_libraries": [
+      "LINK_LIBRARIES = E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_scene_script_description.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_simulation_script.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_simulation_system.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_simulation_description.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_domain_system_description.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_domain_system_identity.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_simulation_ecs_core.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_function_script_artifact.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_asset.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_core_serialization.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\description.lib  E:\\SyncForder\\CodeRepos\\install\\sr3-c2\\d\\lib\\lux_engine_function_script_core.lib  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib"
+    ],
+    "forbidden_reachable": {
+      "lux_engine_process": false,
+      "lux_engine_scene_script_runtime": false,
+      "lux_engine_scene_composition": false
+    }
+  }
+}

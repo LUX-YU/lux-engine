@@ -529,7 +529,17 @@ namespace lux::simulation::script
     ScriptSystem::ScriptSystem(std::unique_ptr<State> state) noexcept : state_(std::move(state)) {}
 
     ScriptSystem::ScriptSystem(ScriptSystem&&) noexcept = default;
-    ScriptSystem& ScriptSystem::operator=(ScriptSystem&&) noexcept = default;
+    ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept
+    {
+        if (this == &other)
+            return *this;
+        // Replacement has the same owner-boundary and noexcept failure policy as destruction.
+        // Keep both States owned until the old destination has completed its shutdown protocol.
+        if (state_ && state_->prepare_state != EPrepareState::SHUT_DOWN && !shutdown())
+            std::terminate();
+        state_ = std::move(other.state_);
+        return *this;
+    }
 
     ScriptSystem::~ScriptSystem() noexcept
     {

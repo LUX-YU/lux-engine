@@ -217,6 +217,12 @@ add_test(
     NAME simulation_script_lifecycle_test
     COMMAND simulation_script_lifecycle_test
 )
+add_test(
+    NAME simulation_script_move_busy_test
+    COMMAND ${CMAKE_COMMAND}
+        -DTEST_EXECUTABLE=$<TARGET_FILE:simulation_script_lifecycle_test>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/move_busy_test.cmake
+)
 
 add_library(
     script_benchmark_ability_contract STATIC

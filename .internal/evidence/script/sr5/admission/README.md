@@ -30,4 +30,9 @@
 旧benchmark缺失errors/failures保持null；provider负例由独立进程真实计数证明。最终成本未宣称等价或全部必要。
 总时间、按真实调用/完成摊销成本、backlog、配对差和百分比完整记录，frames不当作独立样本。
 
-归档以既有collector增量交付；固定提交下载链接和从远端重新取得后的核验记录在推送后补入本索引。
+固定归档提交 `f5c273384ef54a7a2b95d35c77077a305f1ced7e`：
+[下载ZIP](https://github.com/LUX-YU/lux-engine/raw/f5c273384ef54a7a2b95d35c77077a305f1ced7e/.internal/evidence/script/sr5/admission/SR5-admission-raw-evidence.zip) ·
+[查看文件索引](https://github.com/LUX-YU/lux-engine/blob/f5c273384ef54a7a2b95d35c77077a305f1ced7e/.internal/evidence/script/sr5/admission/raw-files.json)。
+
+[remote-verification.json](remote-verification.json) 记录从全新bare仓库实际fetch远端后重新读取归档与索引，ZIP和全部1,363项文件哈希校验通过；未借用本地工作库对象。
+后续文档提交不改变最终生产身份或归档内容。

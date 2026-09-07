@@ -1,0 +1,1509 @@
+{
+  "state": "Finite hypotheses did not explain the remaining cost; no production runtime change retained.",
+  "identities": {
+    "B0": "8145598c18421d03da1dac21251200af3290e27d",
+    "B2": "99c1d095fad6a728c3d808ff2d853ce84b59bfea",
+    "B3_validation": "8a6e6ef468f7eb60265678ab25116719b42a01a6",
+    "lux_cxx": "3100f54d0743c5ed94a4ccf5943df04e933de255"
+  },
+  "production_delta_from_B2": false,
+  "comparisons": [
+    {
+      "comparison": "b2-b3",
+      "case": "cpp-update",
+      "median_percent": -0.8694180083044234,
+      "range_percent": [
+        -5.645729101365715,
+        -0.3244138193569279
+      ],
+      "median_baseline_ns": 143177500.0,
+      "median_candidate_ns": 141782200.0,
+      "median_delta_ns": -1325000.0,
+      "denominator": "script_calls",
+      "operations": 30000000,
+      "baseline_ns_per_operation": 4.772583333333333,
+      "candidate_ns_per_operation": 4.726073333333333,
+      "effective_work": {
+        "script_calls": 30000000,
+        "provider_calls": 0,
+        "resumes": 0,
+        "occurrences": 0,
+        "callback_attempts": 30000000,
+        "completed_business": 30000000,
+        "hook_occurrences": 3000,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "paired_percent": [
+        -2.959682911071926,
+        -0.8694180083044234,
+        -0.5281489536193895,
+        -5.645729101365715,
+        -0.3244138193569279
+      ],
+      "paired_delta_ns": [
+        -4237600.0,
+        -1325000.0,
+        -750900.0,
+        -8483600.0,
+        -463600.0
+      ],
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 143177500.0,
+          "candidate_ns": 138939900.0
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 152400800.0,
+          "candidate_ns": 151075800.0
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 142175800.0,
+          "candidate_ns": 141424900.0
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 150265800.0,
+          "candidate_ns": 141782200.0
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 142903900.0,
+          "candidate_ns": 142440300.0
+        }
+      ]
+    },
+    {
+      "comparison": "b2-b3",
+      "case": "event-fanout",
+      "median_percent": -9.10302491821816,
+      "range_percent": [
+        -13.083863108607108,
+        9.672363974729414
+      ],
+      "median_baseline_ns": 2232700.0,
+      "median_candidate_ns": 2250700.0,
+      "median_delta_ns": -220400.0,
+      "denominator": "resumes",
+      "operations": 10000,
+      "baseline_ns_per_operation": 223.27,
+      "candidate_ns_per_operation": 225.07,
+      "effective_work": {
+        "script_calls": 0,
+        "provider_calls": 0,
+        "resumes": 10000,
+        "occurrences": 1,
+        "callback_attempts": 0,
+        "completed_business": 10000,
+        "hook_occurrences": 0,
+        "normalization_note": "One occurrence plus five drains; initial waiter registration is outside this batch.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "paired_percent": [
+        -9.871456084561292,
+        9.672363974729414,
+        5.679307805596467,
+        -13.083863108607108,
+        -9.10302491821816
+      ],
+      "paired_delta_ns": [
+        -220400.0,
+        197500.0,
+        123400.0,
+        -343700.0,
+        -225400.0
+      ],
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 2232700.0,
+          "candidate_ns": 2012300.0
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 2041900.0,
+          "candidate_ns": 2239400.0
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 2172800.0,
+          "candidate_ns": 2296200.0
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 2626900.0,
+          "candidate_ns": 2283200.0
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 2476100.0,
+          "candidate_ns": 2250700.0
+        }
+      ]
+    },
+    {
+      "comparison": "b2-b3",
+      "case": "flow-event",
+      "median_percent": 0.2984104489956563,
+      "range_percent": [
+        -0.49920765623441277,
+        0.8957433534904302
+      ],
+      "median_baseline_ns": 2998880800.0,
+      "median_candidate_ns": 3011057700.0,
+      "median_delta_ns": 8946000.0,
+      "denominator": "resumes",
+      "operations": 6000000,
+      "baseline_ns_per_operation": 499.81346666666667,
+      "candidate_ns_per_operation": 501.84295,
+      "effective_work": {
+        "script_calls": 6000000,
+        "provider_calls": 6000000,
+        "resumes": 6000000,
+        "occurrences": 3000,
+        "callback_attempts": 30000000,
+        "completed_business": 6000000,
+        "hook_occurrences": 3000,
+        "normalization_note": "Flow event keeps 8,000 queued operations; completed_business is verified provider-call/resume delta. Its legacy completed column is sequence-only and remains zero.",
+        "final_backlog": {
+          "queue_depth": 8000,
+          "continuations": 8000,
+          "awaitables": 8000,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "paired_percent": [
+        0.8957433534904302,
+        -0.33185824514277984,
+        -0.49920765623441277,
+        0.2984104489956563,
+        0.45081485066029714
+      ],
+      "paired_delta_ns": [
+        26731900.0,
+        -9974500.0,
+        -15176700.0,
+        8946000.0,
+        13519400.0
+      ],
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 2984325800.0,
+          "candidate_ns": 3011057700.0
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 3005650800.0,
+          "candidate_ns": 2995676300.0
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 3040157700.0,
+          "candidate_ns": 3024981000.0
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 2997884300.0,
+          "candidate_ns": 3006830300.0
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 2998880800.0,
+          "candidate_ns": 3012400200.0
+        }
+      ]
+    },
+    {
+      "comparison": "b2-b3",
+      "case": "flow-update",
+      "median_percent": -0.598240878138312,
+      "range_percent": [
+        -2.4754668415646774,
+        7.143232200402605
+      ],
+      "median_baseline_ns": 282831500.0,
+      "median_candidate_ns": 282283700.0,
+      "median_delta_ns": -1698900.0,
+      "denominator": "script_calls",
+      "operations": 30000000,
+      "baseline_ns_per_operation": 9.427716666666667,
+      "candidate_ns_per_operation": 9.409456666666667,
+      "effective_work": {
+        "script_calls": 30000000,
+        "provider_calls": 60000000,
+        "resumes": 0,
+        "occurrences": 0,
+        "callback_attempts": 30000000,
+        "completed_business": 30000000,
+        "hook_occurrences": 3000,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "paired_percent": [
+        -2.4754668415646774,
+        -1.8684914827754362,
+        5.124038557866628,
+        7.143232200402605,
+        -0.598240878138312
+      ],
+      "paired_delta_ns": [
+        -7001400.0,
+        -5322000.0,
+        14167900.0,
+        19725900.0,
+        -1698900.0
+      ],
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 282831500.0,
+          "candidate_ns": 275830100.0
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 284828700.0,
+          "candidate_ns": 279506700.0
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 276498700.0,
+          "candidate_ns": 290666600.0
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 276148100.0,
+          "candidate_ns": 295874000.0
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 283982600.0,
+          "candidate_ns": 282283700.0
+        }
+      ]
+    },
+    {
+      "comparison": "b2-b3",
+      "case": "lua-event",
+      "median_percent": 0.09992873790110046,
+      "range_percent": [
+        -3.9859270046996076,
+        1.4359171092539702
+      ],
+      "median_baseline_ns": 1987329200.0,
+      "median_candidate_ns": 1983143800.0,
+      "median_delta_ns": 1988700.0,
+      "denominator": "resumes",
+      "operations": 3000000,
+      "baseline_ns_per_operation": 662.4430666666667,
+      "candidate_ns_per_operation": 661.0479333333334,
+      "effective_work": {
+        "script_calls": 3000000,
+        "provider_calls": 0,
+        "resumes": 3000000,
+        "occurrences": 300,
+        "callback_attempts": 3000000,
+        "completed_business": 3000000,
+        "hook_occurrences": 300,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "paired_percent": [
+        1.4359171092539702,
+        0.10465048544963107,
+        -3.9859270046996076,
+        -0.11924831502373445,
+        0.09992873790110046
+      ],
+      "paired_delta_ns": [
+        28536400.0,
+        2073200.0,
+        -81027100.0,
+        -2364600.0,
+        1988700.0
+      ],
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 1987329200.0,
+          "candidate_ns": 2015865600.0
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 1981070600.0,
+          "candidate_ns": 1983143800.0
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 2032829500.0,
+          "candidate_ns": 1951802400.0
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 1982921100.0,
+          "candidate_ns": 1980556500.0
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 1990118200.0,
+          "candidate_ns": 1992106900.0
+        }
+      ]
+    },
+    {
+      "comparison": "b2-b3",
+      "case": "lua-update",
+      "median_percent": -2.5197219076195987,
+      "range_percent": [
+        -7.296675144336973,
+        3.9661843225257343
+      ],
+      "median_baseline_ns": 79691500.0,
+      "median_candidate_ns": 79528700.0,
+      "median_delta_ns": -2055700.0,
+      "denominator": "script_calls",
+      "operations": 3000000,
+      "baseline_ns_per_operation": 26.563833333333335,
+      "candidate_ns_per_operation": 26.509566666666668,
+      "effective_work": {
+        "script_calls": 3000000,
+        "provider_calls": 0,
+        "resumes": 0,
+        "occurrences": 0,
+        "callback_attempts": 3000000,
+        "completed_business": 3000000,
+        "hook_occurrences": 300,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "paired_percent": [
+        -0.5775089339469353,
+        -2.5197219076195987,
+        -7.296675144336973,
+        -4.133314092469087,
+        3.9661843225257343
+      ],
+      "paired_delta_ns": [
+        -447000.0,
+        -2055700.0,
+        -6288800.0,
+        -3293900.0,
+        3075300.0
+      ],
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 77401400.0,
+          "candidate_ns": 76954400.0
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 81584400.0,
+          "candidate_ns": 79528700.0
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 86187200.0,
+          "candidate_ns": 79898400.0
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 79691500.0,
+          "candidate_ns": 76397600.0
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 77538000.0,
+          "candidate_ns": 80613300.0
+        }
+      ]
+    },
+    {
+      "comparison": "b0-b3",
+      "case": "cpp-update",
+      "median_percent": -9.665137264568212,
+      "range_percent": [
+        -11.348190035744487,
+        -5.15832498533344
+      ],
+      "median_baseline_ns": 159149600.0,
+      "median_candidate_ns": 145609800.0,
+      "median_delta_ns": -15449200.0,
+      "denominator": "script_calls",
+      "operations": 30000000,
+      "baseline_ns_per_operation": 5.304986666666666,
+      "candidate_ns_per_operation": 4.85366,
+      "effective_work": {
+        "script_calls": 30000000,
+        "provider_calls": 0,
+        "resumes": 0,
+        "occurrences": 0,
+        "callback_attempts": 30000000,
+        "completed_business": 30000000,
+        "hook_occurrences": 3000,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "paired_percent": [
+        -5.15832498533344,
+        -11.348190035744487,
+        -7.481765584079381,
+        -10.180631474235014,
+        -9.665137264568212
+      ],
+      "paired_delta_ns": [
+        -8027700.0,
+        -18639300.0,
+        -11907200.0,
+        -16047200.0,
+        -15449200.0
+      ],
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 155626100.0,
+          "candidate_ns": 147598400.0
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 164249100.0,
+          "candidate_ns": 145609800.0
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 159149600.0,
+          "candidate_ns": 147242400.0
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 157624800.0,
+          "candidate_ns": 141577600.0
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 159844600.0,
+          "candidate_ns": 144395400.0
+        }
+      ]
+    },
+    {
+      "comparison": "b0-b3",
+      "case": "event-fanout",
+      "median_percent": 3.5666726651070624,
+      "range_percent": [
+        -11.595394736842103,
+        26.49433776464796
+      ],
+      "median_baseline_ns": 2432000.0,
+      "median_candidate_ns": 2526300.0,
+      "median_delta_ns": 99100.0,
+      "denominator": "resumes",
+      "operations": 10000,
+      "baseline_ns_per_operation": 243.2,
+      "candidate_ns_per_operation": 252.63,
+      "effective_work": {
+        "script_calls": 0,
+        "provider_calls": 0,
+        "resumes": 10000,
+        "occurrences": 1,
+        "callback_attempts": 0,
+        "completed_business": 10000,
+        "hook_occurrences": 0,
+        "normalization_note": "One occurrence plus five drains; initial waiter registration is outside this batch.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "paired_percent": [
+        -9.024451726745653,
+        3.5666726651070624,
+        26.49433776464796,
+        -11.595394736842103,
+        18.439356247144232
+      ],
+      "paired_delta_ns": [
+        -250600.0,
+        99100.0,
+        538100.0,
+        -282000.0,
+        363200.0
+      ],
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 2776900.0,
+          "candidate_ns": 2526300.0
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 2778500.0,
+          "candidate_ns": 2877600.0
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 2031000.0,
+          "candidate_ns": 2569100.0
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 2432000.0,
+          "candidate_ns": 2150000.0
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 1969700.0,
+          "candidate_ns": 2332900.0
+        }
+      ]
+    },
+    {
+      "comparison": "b0-b3",
+      "case": "flow-event",
+      "median_percent": 13.721988822308152,
+      "range_percent": [
+        9.992138198699084,
+        15.450635704816307
+      ],
+      "median_baseline_ns": 2627036100.0,
+      "median_candidate_ns": 2978597300.0,
+      "median_delta_ns": 360481600.0,
+      "denominator": "resumes",
+      "operations": 6000000,
+      "baseline_ns_per_operation": 437.83935,
+      "candidate_ns_per_operation": 496.43288333333334,
+      "effective_work": {
+        "script_calls": 6000000,
+        "provider_calls": 6000000,
+        "resumes": 6000000,
+        "occurrences": 3000,
+        "callback_attempts": 30000000,
+        "completed_business": 6000000,
+        "hook_occurrences": 3000,
+        "normalization_note": "Flow event keeps 8,000 queued operations; completed_business is verified provider-call/resume delta. Its legacy completed column is sequence-only and remains zero.",
+        "final_backlog": {
+          "queue_depth": 8000,
+          "continuations": 8000,
+          "awaitables": 8000,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "paired_percent": [
+        13.721988822308152,
+        9.992138198699084,
+        12.571708027591555,
+        15.450635704816307,
+        14.60375061796313
+      ],
+      "paired_delta_ns": [
+        360481600.0,
+        268658300.0,
+        332641800.0,
+        402536200.0,
+        374509300.0
+      ],
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 2627036100.0,
+          "candidate_ns": 2987517700.0
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 2688696800.0,
+          "candidate_ns": 2957355100.0
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 2645955500.0,
+          "candidate_ns": 2978597300.0
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 2605305100.0,
+          "candidate_ns": 3007841300.0
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 2564473400.0,
+          "candidate_ns": 2938982700.0
+        }
+      ]
+    },
+    {
+      "comparison": "b0-b3",
+      "case": "flow-update",
+      "median_percent": -3.111071796696818,
+      "range_percent": [
+        -12.21481036264629,
+        2.422007125351411
+      ],
+      "median_baseline_ns": 292796200.0,
+      "median_candidate_ns": 282213600.0,
+      "median_delta_ns": -9109100.0,
+      "denominator": "script_calls",
+      "operations": 30000000,
+      "baseline_ns_per_operation": 9.759873333333333,
+      "candidate_ns_per_operation": 9.40712,
+      "effective_work": {
+        "script_calls": 30000000,
+        "provider_calls": 60000000,
+        "resumes": 0,
+        "occurrences": 0,
+        "callback_attempts": 30000000,
+        "completed_business": 30000000,
+        "hook_occurrences": 3000,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "paired_percent": [
+        -12.21481036264629,
+        -2.883251127611519,
+        -3.111071796696818,
+        -6.866482732757873,
+        2.422007125351411
+      ],
+      "paired_delta_ns": [
+        -37962800.0,
+        -8378500.0,
+        -9109100.0,
+        -20507300.0,
+        7040300.0
+      ],
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 310793200.0,
+          "candidate_ns": 272830400.0
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 290592100.0,
+          "candidate_ns": 282213600.0
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 292796200.0,
+          "candidate_ns": 283687100.0
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 298658000.0,
+          "candidate_ns": 278150700.0
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 290680400.0,
+          "candidate_ns": 297720700.0
+        }
+      ]
+    },
+    {
+      "comparison": "b0-b3",
+      "case": "lua-event",
+      "median_percent": 6.657278666132216,
+      "range_percent": [
+        5.031695672586967,
+        8.422096744061424
+      ],
+      "median_baseline_ns": 1878065200.0,
+      "median_candidate_ns": 1993411700.0,
+      "median_delta_ns": 123648000.0,
+      "denominator": "resumes",
+      "operations": 3000000,
+      "baseline_ns_per_operation": 626.0217333333334,
+      "candidate_ns_per_operation": 664.4705666666666,
+      "effective_work": {
+        "script_calls": 3000000,
+        "provider_calls": 0,
+        "resumes": 3000000,
+        "occurrences": 300,
+        "callback_attempts": 3000000,
+        "completed_business": 3000000,
+        "hook_occurrences": 300,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "paired_percent": [
+        8.422096744061424,
+        7.435077333843365,
+        5.031695672586967,
+        6.657278666132216,
+        5.983953738653214
+      ],
+      "paired_delta_ns": [
+        156027200.0,
+        139635600.0,
+        94557200.0,
+        123648000.0,
+        112549900.0
+      ],
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 1852593300.0,
+          "candidate_ns": 2008620500.0
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 1878065200.0,
+          "candidate_ns": 2017700800.0
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 1879231300.0,
+          "candidate_ns": 1973788500.0
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 1857335500.0,
+          "candidate_ns": 1980983500.0
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 1880861800.0,
+          "candidate_ns": 1993411700.0
+        }
+      ]
+    },
+    {
+      "comparison": "b0-b3",
+      "case": "lua-update",
+      "median_percent": 1.741072751232453,
+      "range_percent": [
+        -5.721024201385894,
+        10.15537839192946
+      ],
+      "median_baseline_ns": 77630300.0,
+      "median_candidate_ns": 77510800.0,
+      "median_delta_ns": 1351600.0,
+      "denominator": "script_calls",
+      "operations": 3000000,
+      "baseline_ns_per_operation": 25.876766666666665,
+      "candidate_ns_per_operation": 25.836933333333334,
+      "effective_work": {
+        "script_calls": 3000000,
+        "provider_calls": 0,
+        "resumes": 0,
+        "occurrences": 0,
+        "callback_attempts": 3000000,
+        "completed_business": 3000000,
+        "hook_occurrences": 300,
+        "normalization_note": "Cumulative counters exclude all warmup operations; batch includes the whole frame.",
+        "final_backlog": {
+          "queue_depth": 0,
+          "external_queue_depth": 0,
+          "continuations": 0,
+          "awaitables": 0,
+          "event_waiters": 0
+        },
+        "errors": {
+          "errors": null,
+          "failures": null
+        },
+        "error_limit": "Legacy benchmark CSV does not export a ScriptSystem failure count; process exit and exact work counters are checked separately."
+      },
+      "paired_percent": [
+        -4.026336507904816,
+        4.4517112111977175,
+        -5.721024201385894,
+        1.741072751232453,
+        10.15537839192946
+      ],
+      "paired_delta_ns": [
+        -3227000.0,
+        3301300.0,
+        -4703500.0,
+        1351600.0,
+        7737200.0
+      ],
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 80147300.0,
+          "candidate_ns": 76920300.0
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 74158000.0,
+          "candidate_ns": 77459300.0
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 82214300.0,
+          "candidate_ns": 77510800.0
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 77630300.0,
+          "candidate_ns": 78981900.0
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 76188200.0,
+          "candidate_ns": 83925400.0
+        }
+      ]
+    }
+  ],
+  "cold": [
+    {
+      "comparison": "b0-b3",
+      "metrics": {
+        "prepare_ns": {
+          "baseline_ns": 122500,
+          "candidate_ns": 136500,
+          "paired_percent": [
+            10.236220472440948,
+            11.831442463533225,
+            6.530612244897949,
+            7.41049125728559,
+            15.092748735244509
+          ],
+          "median_percent": 10.236220472440948
+        },
+        "late_ns": {
+          "baseline_ns": 7000,
+          "candidate_ns": 11000,
+          "paired_percent": [
+            57.14285714285714,
+            50.70422535211267,
+            61.76470588235294,
+            52.77777777777777,
+            55.714285714285715
+          ],
+          "median_percent": 55.714285714285715
+        },
+        "remount_128_ns": {
+          "baseline_ns": 80600,
+          "candidate_ns": 101900,
+          "paired_percent": [
+            28.03970223325063,
+            27.441285537700864,
+            21.88995215311005,
+            27.70780856423174,
+            28.69897959183674
+          ],
+          "median_percent": 27.70780856423174
+        }
+      }
+    },
+    {
+      "comparison": "b2-b3",
+      "metrics": {
+        "prepare_ns": {
+          "baseline_ns": 134700,
+          "candidate_ns": 136400,
+          "paired_percent": [
+            1.6393442622950838,
+            6.161841128433565,
+            2.6697177726926036,
+            2.7877055039313703,
+            -15.910543130990417
+          ],
+          "median_percent": 2.6697177726926036
+        },
+        "late_ns": {
+          "baseline_ns": 11000,
+          "candidate_ns": 11400,
+          "paired_percent": [
+            5.35714285714286,
+            3.6363636363636376,
+            5.555555555555558,
+            2.7027027027026973,
+            6.363636363636371
+          ],
+          "median_percent": 5.35714285714286
+        },
+        "remount_128_ns": {
+          "baseline_ns": 103100,
+          "candidate_ns": 103000,
+          "paired_percent": [
+            -0.2952755905511806,
+            -0.7692307692307665,
+            -1.1650485436893177,
+            -2.274881516587679,
+            -0.09699321047527132
+          ],
+          "median_percent": -0.7692307692307665
+        }
+      }
+    }
+  ],
+  "scale": [
+    {
+      "comparison": "b0-b3",
+      "configs": 8,
+      "baseline_ns": 75200,
+      "candidate_ns": 95300,
+      "paired_percent": [
+        24.161073825503365,
+        25.229960578186606,
+        24.057217165149545,
+        31.756756756756754,
+        20.744680851063823
+      ],
+      "diagnostics": [
+        {
+          "variant": "baseline",
+          "log": "baseline-8-diagnostics.csv.log",
+          "configs": 8,
+          "endpoints": 8,
+          "warmup": 16,
+          "rebuilds": 128,
+          "elapsed_ns": 77200,
+          "diagnostics": 1,
+          "exe_allocations": 535,
+          "slot_visits": 0,
+          "endpoint_count_visits": 0,
+          "counter_available": 0,
+          "creates": 152,
+          "destroys": 152,
+          "ticks": 8,
+          "errors": 0,
+          "backlog": 0
+        },
+        {
+          "variant": "candidate",
+          "log": "candidate-8-diagnostics.csv.log",
+          "configs": 8,
+          "endpoints": 8,
+          "warmup": 16,
+          "rebuilds": 128,
+          "elapsed_ns": 91600,
+          "diagnostics": 1,
+          "exe_allocations": 535,
+          "slot_visits": 128,
+          "endpoint_count_visits": 0,
+          "counter_available": 1,
+          "creates": 152,
+          "destroys": 152,
+          "ticks": 8,
+          "errors": 0,
+          "backlog": 0
+        }
+      ]
+    },
+    {
+      "comparison": "b0-b3",
+      "configs": 8192,
+      "baseline_ns": 354900,
+      "candidate_ns": 96900,
+      "paired_percent": [
+        -73.90814313891237,
+        -70.75158466646543,
+        -75.80061983471074,
+        -69.9743370402053,
+        -67.86210731164859
+      ],
+      "diagnostics": [
+        {
+          "variant": "baseline",
+          "log": "baseline-8192-diagnostics.csv.log",
+          "configs": 8192,
+          "endpoints": 8192,
+          "warmup": 16,
+          "rebuilds": 128,
+          "elapsed_ns": 341400,
+          "diagnostics": 1,
+          "exe_allocations": 530,
+          "slot_visits": 0,
+          "endpoint_count_visits": 0,
+          "counter_available": 0,
+          "creates": 8336,
+          "destroys": 8336,
+          "ticks": 8192,
+          "errors": 0,
+          "backlog": 0
+        },
+        {
+          "variant": "candidate",
+          "log": "candidate-8192-diagnostics.csv.log",
+          "configs": 8192,
+          "endpoints": 8192,
+          "warmup": 16,
+          "rebuilds": 128,
+          "elapsed_ns": 91900,
+          "diagnostics": 1,
+          "exe_allocations": 530,
+          "slot_visits": 128,
+          "endpoint_count_visits": 0,
+          "counter_available": 1,
+          "creates": 8336,
+          "destroys": 8336,
+          "ticks": 8192,
+          "errors": 0,
+          "backlog": 0
+        }
+      ]
+    },
+    {
+      "comparison": "b2-b3",
+      "configs": 8,
+      "baseline_ns": 92200,
+      "candidate_ns": 91800,
+      "paired_percent": [
+        0.8676789587852562,
+        -0.4301075268817178,
+        0.990099009900991,
+        -0.6535947712418277,
+        -1.5037593984962405
+      ],
+      "diagnostics": [
+        {
+          "variant": "baseline",
+          "log": "baseline-8-diagnostics.csv.log",
+          "configs": 8,
+          "endpoints": 8,
+          "warmup": 16,
+          "rebuilds": 128,
+          "elapsed_ns": 91100,
+          "diagnostics": 1,
+          "exe_allocations": 535,
+          "slot_visits": 128,
+          "endpoint_count_visits": 0,
+          "counter_available": 1,
+          "creates": 152,
+          "destroys": 152,
+          "ticks": 8,
+          "errors": 0,
+          "backlog": 0
+        },
+        {
+          "variant": "candidate",
+          "log": "candidate-8-diagnostics.csv.log",
+          "configs": 8,
+          "endpoints": 8,
+          "warmup": 16,
+          "rebuilds": 128,
+          "elapsed_ns": 93000,
+          "diagnostics": 1,
+          "exe_allocations": 535,
+          "slot_visits": 128,
+          "endpoint_count_visits": 0,
+          "counter_available": 1,
+          "creates": 152,
+          "destroys": 152,
+          "ticks": 8,
+          "errors": 0,
+          "backlog": 0
+        }
+      ]
+    },
+    {
+      "comparison": "b2-b3",
+      "configs": 8192,
+      "baseline_ns": 94100,
+      "candidate_ns": 95700,
+      "paired_percent": [
+        -0.8290155440414559,
+        2.0191285866099973,
+        -3.597122302158273,
+        2.6567481402762994,
+        1.7148981779206762
+      ],
+      "diagnostics": [
+        {
+          "variant": "baseline",
+          "log": "baseline-8192-diagnostics.csv.log",
+          "configs": 8192,
+          "endpoints": 8192,
+          "warmup": 16,
+          "rebuilds": 128,
+          "elapsed_ns": 93500,
+          "diagnostics": 1,
+          "exe_allocations": 530,
+          "slot_visits": 128,
+          "endpoint_count_visits": 0,
+          "counter_available": 1,
+          "creates": 8336,
+          "destroys": 8336,
+          "ticks": 8192,
+          "errors": 0,
+          "backlog": 0
+        },
+        {
+          "variant": "candidate",
+          "log": "candidate-8192-diagnostics.csv.log",
+          "configs": 8192,
+          "endpoints": 8192,
+          "warmup": 16,
+          "rebuilds": 128,
+          "elapsed_ns": 93200,
+          "diagnostics": 1,
+          "exe_allocations": 530,
+          "slot_visits": 128,
+          "endpoint_count_visits": 0,
+          "counter_available": 1,
+          "creates": 8336,
+          "destroys": 8336,
+          "ticks": 8192,
+          "errors": 0,
+          "backlog": 0
+        }
+      ]
+    }
+  ],
+  "trials": [
+    {
+      "name": "gate-300",
+      "retained": false,
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 293562400,
+          "candidate_ns": 300398900,
+          "percent": 2.3288064139004083,
+          "delta_ns": 6836500
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 343054900,
+          "candidate_ns": 280937500,
+          "percent": -18.107130957756322,
+          "delta_ns": -62117400
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 295853800,
+          "candidate_ns": 291122100,
+          "percent": -1.5993372402179684,
+          "delta_ns": -4731700
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 290412400,
+          "candidate_ns": 292866000,
+          "percent": 0.844867505657465,
+          "delta_ns": 2453600
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 312185000,
+          "candidate_ns": 306449800,
+          "percent": -1.8371158127392428,
+          "delta_ns": -5735200
+        }
+      ],
+      "median_percent": -1.5993372402179684
+    },
+    {
+      "name": "gate-3000",
+      "retained": false,
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 2980985500,
+          "candidate_ns": 2913232900,
+          "percent": -2.272825547121915,
+          "delta_ns": -67752600
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 2978736000,
+          "candidate_ns": 3009891300,
+          "percent": 1.0459235058091654,
+          "delta_ns": 31155300
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 3008977100,
+          "candidate_ns": 3070103400,
+          "percent": 2.031464446838105,
+          "delta_ns": 61126300
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 3057268100,
+          "candidate_ns": 2941192200,
+          "percent": -3.7967196923292423,
+          "delta_ns": -116075900
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 3020866500,
+          "candidate_ns": 3050231100,
+          "percent": 0.9720588447056588,
+          "delta_ns": 29364600
+        }
+      ],
+      "median_percent": 0.9720588447056588
+    },
+    {
+      "name": "resume-3000",
+      "retained": false,
+      "pairs": [
+        {
+          "pair": 0,
+          "baseline_ns": 2945377500,
+          "candidate_ns": 2839248000,
+          "percent": -3.603256288879775,
+          "delta_ns": -106129500
+        },
+        {
+          "pair": 1,
+          "baseline_ns": 2866400400,
+          "candidate_ns": 2914721400,
+          "percent": 1.6857728599256383,
+          "delta_ns": 48321000
+        },
+        {
+          "pair": 2,
+          "baseline_ns": 2906823200,
+          "candidate_ns": 2877980000,
+          "percent": -0.9922584902996467,
+          "delta_ns": -28843200
+        },
+        {
+          "pair": 3,
+          "baseline_ns": 2909254900,
+          "candidate_ns": 2903149800,
+          "percent": -0.20985098280662529,
+          "delta_ns": -6105100
+        },
+        {
+          "pair": 4,
+          "baseline_ns": 2891210800,
+          "candidate_ns": 2876460400,
+          "percent": -0.5101807173658823,
+          "delta_ns": -14750400
+        }
+      ],
+      "median_percent": -0.5101807173658823
+    }
+  ],
+  "final_counts": {
+    "delta": {
+      "occ": 300,
+      "candidates": 3000000,
+      "hook_candidates": 3000000,
+      "event_candidates": 0,
+      "rejects": 0,
+      "tickets": 3000000,
+      "skips": 2400000,
+      "waits": 600000,
+      "claims": 600000,
+      "copies": 600000,
+      "copy_rejects": 0,
+      "terminals": 600000,
+      "pushes": 600000,
+      "pops": 600000,
+      "stale_pops": 0,
+      "destroys": 600000,
+      "unlinks": 600000,
+      "active_cancels": 0,
+      "errors": 0,
+      "resume_completed": 600000,
+      "resume_suspended": 0,
+      "resume_failed": 0,
+      "steps": 600000,
+      "sync": 0,
+      "resumes": 600000,
+      "queue": 0,
+      "continuations": 0,
+      "awaitables": 0,
+      "waiters": 0,
+      "retained": 0,
+      "capacity": 0,
+      "pins": 0
+    },
+    "after": {
+      "phase": "SNAPSHOT",
+      "occ": 360,
+      "candidates": 3600000,
+      "hook_candidates": 3600000,
+      "event_candidates": 0,
+      "rejects": 0,
+      "tickets": 3600000,
+      "skips": 2872000,
+      "waits": 728000,
+      "claims": 728000,
+      "copies": 728000,
+      "copy_rejects": 0,
+      "terminals": 728000,
+      "pushes": 728000,
+      "pops": 720000,
+      "stale_pops": 0,
+      "destroys": 720000,
+      "unlinks": 728000,
+      "active_cancels": 0,
+      "errors": 0,
+      "resume_completed": 720000,
+      "resume_suspended": 0,
+      "resume_failed": 0,
+      "steps": 728000,
+      "sync": 0,
+      "resumes": 720000,
+      "queue": 8000,
+      "continuations": 8000,
+      "awaitables": 8000,
+      "waiters": 0,
+      "retained": 0,
+      "capacity": 16,
+      "pins": 0
+    },
+    "final": {
+      "phase": "FINAL",
+      "occ": 360,
+      "candidates": 3600000,
+      "hook_candidates": 3600000,
+      "event_candidates": 0,
+      "rejects": 0,
+      "tickets": 3600000,
+      "skips": 2872000,
+      "waits": 728000,
+      "claims": 728000,
+      "copies": 728000,
+      "copy_rejects": 0,
+      "terminals": 728000,
+      "pushes": 728000,
+      "pops": 720000,
+      "stale_pops": 0,
+      "destroys": 728000,
+      "unlinks": 728000,
+      "active_cancels": 0,
+      "errors": 0,
+      "resume_completed": 720000,
+      "resume_suspended": 0,
+      "resume_failed": 0,
+      "steps": 728000,
+      "sync": 0,
+      "resumes": 720000,
+      "queue": 0,
+      "continuations": 0,
+      "awaitables": 0,
+      "waiters": 0,
+      "retained": 0,
+      "capacity": 16,
+      "pins": 0
+    },
+    "limitation": "Instrumented private copy, no public ABI additions. Timing invalid; counters include only changes between actual occurrence snapshots."
+  },
+  "invalid_trials": [
+    {
+      "path": "b2",
+      "reason": "First instrumented-copy command did not replace the Windows source path; no PATH records. Strict record validation failed. No timing or counter result accepted. Repeated as b2-valid with exact replacement-count assertion."
+    },
+    {
+      "path": "../gate-build.log",
+      "reason": "New test initially used expected<optional<ScriptMountStatus>> as one layer. Compile failed; fixed explicit two-layer checks, then full all build passed before tests or timing."
+    },
+    {
+      "path": "../../sr3-e-checks/flow-allocations",
+      "reason": "sr3-e-checks/flow-allocations used each historical fixture source. Counts retained but not used as the final matched-source comparison. Replaced by diagnostics/matched-flow-allocations; no timing from either allocation probe is a formal performance result."
+    }
+  ],
+  "limits": [
+    "Whole-frame cost per resume is amortized, not isolated resume latency.",
+    "Clock frequency and background load were not controlled. Process pairs are the statistical units.",
+    "Legacy errors/failures remain null. Flow observer reports retained failures outside timing, not a new total-error ABI.",
+    "Private branch counters are separate and their timing is invalid. EXE-local new is not all-DLL heap accounting."
+  ]
+}

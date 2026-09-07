@@ -11,7 +11,11 @@
 
 所有1,488项已本地解包逐项校验。无EXE/DLL/LIB/OBJ/PDB；唯一wire二进制是288字节golden数据。
 新的SR6未发布包使用既有collector后补入32项生成快照/诊断源码，最终哈希以上列为准，未触碰既有已发布包。
-固定提交下载及远端逐项复核记录在推送后补入本索引。
+固定归档提交：`10f69062cbd04fbeb6ff9939362009e7f794a2f8`。
+[固定归档下载](https://github.com/LUX-YU/lux-engine/raw/10f69062cbd04fbeb6ff9939362009e7f794a2f8/.internal/evidence/script/sr6/SR6-qualification-raw-evidence.zip)、
+[固定逐项索引](https://github.com/LUX-YU/lux-engine/blob/10f69062cbd04fbeb6ff9939362009e7f794a2f8/.internal/evidence/script/sr6/raw-files.json)。
+已使用新的bare仓库从GitHub取回该提交，重新读取归档和索引，1,488项大小及哈希全部匹配；
+[远端核验记录](remote-verification.json)在包外，避免用本地包冒充远端下载或循环重写归档身份。
 
 | 归档内路径 | 实际范围 |
 |---|---|

@@ -163,6 +163,14 @@ int main(int argc, char** argv)
         .abilities = std::span{&push_only, 1}});
     assert(!rejected && rejected.error() == ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
     const auto contribution = lux::script::lua::makeScriptAbilityLuaContribution<LuaValueTestAbility>();
+    auto incompatible = lux::script::lua::makeLuaValueOperation<ValuePose>();
+    ++incompatible.representation;
+    const auto conflict = LuaScriptBackend::create({.instance_capacity = 1, .prepared_call_capacity = 3,
+        .continuation_capacity = 1, .execution_depth_capacity = 2,
+        .ability_catalog_method_capacity = AbilityTraits::Methods.size(),
+        .values = std::span{&incompatible, 1}, .abilities = std::span{&contribution, 1}});
+    assert(!conflict && conflict.error() == ELuaScriptBindingBackendError::INVALID_VALUE_OPERATION);
+
     const auto policy = argc > 1 && std::string_view{argv[1]} == "--interpreter-only" ?
         lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY : lux::script::lua::ELuaExecutionPolicy::DEFAULT;
     auto created = LuaScriptBackend::create({
@@ -214,6 +222,12 @@ int main(int argc, char** argv)
     {
         Runtime factory_failure{backend, 1, "lux.Values.token(-1,2)"};
         assert(dispatchHookForTest(factory_failure.hook) == 1 && factory_failure.provider.tokens == 0);
+        assert(ValueToken::live == 0 && ValueToken::release_count == 2);
+    }
+    {
+        Runtime diagnostic{backend, 1,
+            "local ok,e=pcall(lux.Values.token,-2,1); assert(not ok and #e>=255)"};
+        assert(dispatchHookForTest(diagnostic.hook) == 1 && diagnostic.provider.tokens == 0);
         assert(ValueToken::live == 0 && ValueToken::release_count == 2);
     }
     for (const char* expression : {

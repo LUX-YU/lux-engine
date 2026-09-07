@@ -165,9 +165,13 @@ namespace lux::simulation::script::detail
             }
         }();
         if (status < 0)
+        {
+            if (failure.path.back() != '\0') failure.truncated = true;
+            failure.path.back() = '\0';
             return LuaAbilityProjectionAccess::fail(
                 state, status, failure.path[0] ? failure.path.data() : "Script Ability conversion or authority failure"
             );
+        }
         return LuaAbilityProjectionAccess::succeed(state, status);
     }
 

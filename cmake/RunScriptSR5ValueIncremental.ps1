@@ -8,6 +8,10 @@ $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 $build = Join-Path $ConsumerRoot 'build'
 $source = Join-Path $ConsumerRoot 'source'
+$prefixLine = @(Select-String -LiteralPath "$build/CMakeCache.txt" -Pattern '^CMAKE_PREFIX_PATH:')[0].Line
+$prefixes = $prefixLine.Substring($prefixLine.IndexOf('=') + 1).Split(';')
+$env:PATH = ((@($prefixes | ForEach-Object { "$_/bin" }) + @('D:/Development/vcpkg/installed/x64-windows/bin', $env:PATH)) -join ';')
+$lastRepresentation = $null
 $output = @(Get-ChildItem -LiteralPath $build -Recurse -Filter Values.lua.value.generated.hpp)
 if ($output.Count -ne 1) { throw 'Expected one actual generated value header' }
 $output = $output[0].FullName
@@ -24,6 +28,17 @@ function Run-Probe([string]$Name, [bool]$Success, [bool]$Change, [bool]$Noop = $
     if ($Noop -and $log -notmatch 'no work to do') { throw "$Name not a no-op" }
     if (!$Noop -and $Success -and $hit -ne 1) { throw "$Name expected exactly one value generation, got $hit" }
     if (!$Success -and $log -notmatch 'Lua value|Duplicate Lua|non-public Lua') { throw "$Name wrong negative failure" }
+    if ($Success -and $Name -in @('initial-noop','included-field','compile-macro','restored','final-noop')) {
+        & "$build/lux_script_lua_values_consumer.exe" *> "$EvidenceRoot/$Name.run.log"
+        if ($LASTEXITCODE) { throw "$Name installed execution failed" }
+        $business = Get-Content "$EvidenceRoot/$Name.run.log" -Raw
+        if ($business -notmatch 'fields=2 id=7 weight=2.5 representation=(\d+) rule=1 PASS') { throw "$Name incomplete business row" }
+        $representation = $Matches[1]
+        if ($Name -in @('included-field','compile-macro') -and $representation -eq $script:lastRepresentation) {
+            throw "$Name did not change the compiled representation"
+        }
+        $script:lastRepresentation = $representation
+    }
     Copy-Item -LiteralPath $output -Destination "$EvidenceRoot/$Name.generated.hpp"
     $results.Add(@{case=$Name;exit=$exitCode;before=$before;after=$after;generation_hits=$hit;expected_success=$Success})
     $results | ConvertTo-Json -Depth 4 | Set-Content "$EvidenceRoot/probes.json"

@@ -24,6 +24,12 @@ namespace lux::script::lua
         {
             auto id = input.number<std::int32_t>();
             if (!id) return lux::cxx::unexpected(id.error());
+            if (*id == -2)
+            {
+                LuaValueFailure failure{ELuaValueError::CONSTRUCTION};
+                failure.path.fill('x'); // An ill-terminated custom diagnostic must remain bounded at the adapter.
+                return lux::cxx::unexpected(failure);
+            }
             if (*id < 0) return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::CONSTRUCTION});
             return Token::create(*id); // Pure C++ factory; no Lua operations while constructing.
         }

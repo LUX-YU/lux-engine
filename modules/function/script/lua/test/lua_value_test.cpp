@@ -7,6 +7,27 @@
 #include <string>
 
 using namespace lux::script::lua;
+struct NamedA
+{
+    std::int32_t x;
+};
+struct NamedB
+{
+    std::int32_t x;
+};
+namespace lux::semantic
+{
+    template <> struct TypeTraits<NamedA>
+    {
+        inline static constexpr std::string_view CanonicalName = "test.semantic.a";
+        inline static constexpr std::uint8_t AbiKind = 10;
+    };
+    template <> struct TypeTraits<NamedB>
+    {
+        inline static constexpr std::string_view CanonicalName = "test.semantic.b";
+        inline static constexpr std::uint8_t AbiKind = 10;
+    };
+} // namespace lux::semantic
 struct Velocity
 {
     float x;
@@ -68,6 +89,12 @@ struct Resource
 };
 namespace lux::script::lua
 {
+    template <> struct LuaGeneratedValue<NamedA> : LuaRecordValue<NamedA, LuaValueField<&NamedA::x, "x">>
+    {
+    };
+    template <> struct LuaGeneratedValue<NamedB> : LuaRecordValue<NamedB, LuaValueField<&NamedB::x, "x">>
+    {
+    };
     template <int N>
     struct LuaGeneratedValue<Nested<N>> : LuaRecordValue<Nested<N>, LuaValueField<&Nested<N>::child, "child">>
     {
@@ -152,6 +179,7 @@ static void load(lua_State *state, const char *text)
 }
 int main()
 {
+    static_assert(LuaValueCodec<NamedA>::representation() != LuaValueCodec<NamedB>::representation());
     static_assert(!LuaValueCodec<Angle>::can_read && LuaValueCodec<Angle>::can_push);
     static_assert(!std::is_default_constructible_v<Resource>);
     static_assert(LuaValueCodec<Nested<31>>::depth == 32 && LuaValueCodec<Nested<31>>::bounded);

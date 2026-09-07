@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/core/semantic/SemanticType.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
 
 #include <array>
@@ -309,6 +310,10 @@ namespace lux::script::lua
                 text("unsupported");
             integer(can_read);
             integer(can_push);
+            integer(sizeof(Value));
+            integer(alignof(Value));
+            if constexpr (lux::semantic::TypeDeclared<Value>)
+                text(lux::semantic::TypeTraits<Value>::CanonicalName);
             if constexpr (requires { Rule::template fieldsFingerprint<Policy>(); })
                 integer(Rule::template fieldsFingerprint<Policy>());
             return hash;

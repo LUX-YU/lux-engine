@@ -23,8 +23,10 @@ BeginPlay 由 Instances 在 INITIALIZED 的受控 invokeLifecycle 窗口授权�
 逻辑退休后的旧普通快照不会因为允许 EndPlay 而变成生命周期快照。
 本轮增加 C++ ScriptBehavior 内部只读连接与 Lua prepared access 字段，相关宿主内部布局改变；generic backend descriptor 和 C ABI 操作表/签名不变。
 
-Lua adapter 先取得 prepared context/dispatch/local slot 和原 ExecutionFrame 令牌；可能重入的参数转换前捕获上述资格。
-转换结束后 `LuaAbilityProjectionAccess::revalidate` 同时检查原资格和原 frame/prepared 关联，才进入 provider。
+后续权限补正见 [SR-5 权限补正记录](script-system-sr5-admission-correction-2026-09-07.zh-CN.md)；原 C0 证据仍绑定 6086e4a4。
+当前 Lua adapter 每次在 current 中取得 prepared context/dispatch/local slot、原 ExecutionFrame 和本次有效资格，
+包括默认 scalar、零参数和原 async scalar。hasInvocationAuthority 区分 standalone 与已绑定但失效的 core，不能用无效 capture 放行。
+可能重入的转换结束后，`LuaAbilityProjectionAccess::revalidate` 再检查原资格和原 frame/prepared 关联，才进入 provider。
 不能从嵌套帧重取另一 provider。原 scalar 叶读取不执行用户规则或 GC，不伪称它曾存在已复现漏洞。
 用户提交尚未执行的结构命令不改变 Instances 权威；真正 Registry 销毁或关闭准入才使普通快照失效。
 

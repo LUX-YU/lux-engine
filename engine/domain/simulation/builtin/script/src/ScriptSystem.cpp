@@ -1,8 +1,8 @@
 #include <lux/engine/simulation/scripting/ScriptSignatureCompatibility.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
+#include <lux/engine/simulation/script/ScriptBindings.hpp>
 #include <lux/engine/simulation/script/ExternalCompletionRing.hpp>
-#include <lux/engine/simulation/detail/DenseEntityHandlerStorage.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
 #include "DelayAbility.ability.generated.hpp"
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
@@ -37,12 +37,6 @@ namespace lux::simulation::script
         constexpr std::size_t kBackendKindCount{7U};
         constexpr std::uint32_t kInvalidMethodSlot = std::numeric_limits<std::uint32_t>::max();
 
-        enum class EBindingKind : std::uint8_t
-        {
-            HOOK,
-            EVENT,
-        };
-
         enum class EPrepareState : std::uint8_t
         {
             CREATED,
@@ -50,24 +44,6 @@ namespace lux::simulation::script
             ROLLBACK_PENDING,
             PREPARED,
             SHUT_DOWN,
-        };
-
-        struct EndpointKey final
-        {
-            std::uint64_t system{};
-            std::uint64_t endpoint{};
-
-            friend bool operator==(EndpointKey, EndpointKey) noexcept = default;
-        };
-
-        struct EndpointKeyHash final
-        {
-            [[nodiscard]] std::size_t operator()(EndpointKey key) const noexcept
-            {
-                const auto system_hash = std::hash<std::uint64_t>{}(key.system);
-                const auto endpoint_hash = std::hash<std::uint64_t>{}(key.endpoint);
-                return system_hash ^ (endpoint_hash + 0x9e3779b9U + (system_hash << 6U) + (system_hash >> 2U));
-            }
         };
 
         [[nodiscard]] constexpr std::size_t backendIndex(lux::rdesc::Script::Kind kind) noexcept
@@ -146,18 +122,7 @@ namespace lux::simulation::script
             ) noexcept;
         };
 
-        struct HandlerTag;
-        struct Handler;
-        using HandlerStorage = lux::cxx::SlotMap<Handler, HandlerTag>;
-        using HandlerKey = typename HandlerStorage::key_type;
-
-        struct Handler final
-        {
-            std::uint32_t mount_slot{};
-            std::uint32_t method_slot{};
-        };
-
-        using EventHandlerStorage = lux::simulation::detail::DenseEntityHandlerStorage<Handler>;
+        using Handler = detail::ScriptMethodReference;
 
         struct PreparedMethod final
         {
@@ -165,14 +130,6 @@ namespace lux::simulation::script
             ScriptBackendPreparedMethod backend;
             ScriptContinuationId active_hook;
             bool used_by_binding{};
-        };
-
-        struct RuntimeBinding final
-        {
-            EBindingKind kind{EBindingKind::HOOK};
-            std::uint32_t bucket_slot{};
-            std::uint32_t method_slot{};
-            EndpointConnectionToken registration;
         };
 
         struct RuntimeMount final
@@ -184,8 +141,6 @@ namespace lux::simulation::script
             ScriptMountStatus status;
             bool unconsumed_result{};
             std::uint64_t admission_order{};
-            std::size_t binding_first{};
-            std::size_t binding_count{};
             std::size_t method_first{};
             std::size_t method_count{};
             std::uint32_t begin_play_method{kInvalidMethodSlot};
@@ -590,25 +545,6 @@ namespace lux::simulation::script
             }
         };
 
-        struct HookBucket final
-        {
-            State* owner{};
-            const ScriptHookEndpointDescriptor* endpoint{};
-            EndpointConnectionToken token;
-            HandlerStorage handlers;
-            std::size_t handler_capacity{};
-        };
-
-        struct EventBucket final
-        {
-            State* owner{};
-            const ScriptEventEndpointDescriptor* endpoint{};
-            std::uint32_t slot{};
-            EndpointConnectionToken token;
-            EventHandlerStorage handlers;
-            std::size_t handler_capacity{};
-        };
-
         struct SparseMountQueue final
         {
             std::vector<std::uint32_t> values;
@@ -652,31 +588,20 @@ namespace lux::simulation::script
         ScriptHostApi host;
         ScriptRealDelayEndpoint real_delay;
         std::array<ScriptBackendDescriptor, kBackendKindCount> backends;
-        std::vector<ScriptHookEndpointDescriptor> hook_endpoints;
-        std::vector<ScriptEventEndpointDescriptor> event_endpoints;
-        std::unordered_map<EndpointKey, std::uint32_t, EndpointKeyHash> hook_endpoint_index;
-        std::unordered_map<EndpointKey, std::uint32_t, EndpointKeyHash> event_endpoint_index;
+        detail::ScriptBindings binding_owner;
         std::vector<PreparedScriptApiCapability> published_capabilities;
         std::vector<RuntimeMount> mounts;
         std::size_t configured_mounts{};
         std::size_t pending_mounts{};
         std::uint64_t admission_sequence{};
-        std::vector<ScriptBindingDescription> binding_descriptions;
         std::vector<std::pair<std::uint64_t, std::uint32_t>> mount_index;
         std::vector<std::uint64_t> batch_ids;
-        std::vector<std::uint32_t> batch_slots;
+        std::vector<detail::ScriptMountPlacement> batch_slots;
         std::vector<std::uint8_t> reserved_mounts;
         std::vector<ecs::Entity> batch_entities;
         entt::dense_map<ecs::Entity, std::uint32_t> entity_associations;
-        std::vector<std::size_t> hook_reservations;
-        std::vector<std::size_t> hook_configured_counts;
-        std::vector<std::size_t> event_reservations;
-        std::vector<std::size_t> event_configured_counts;
         SparseMountQueue status_changes;
-        std::vector<RuntimeBinding> bindings;
         std::vector<PreparedMethod> methods;
-        std::vector<HookBucket> hooks;
-        std::vector<EventBucket> events;
         std::vector<ScriptSystemFailure> failures;
         InstanceStorage instances;
         ContinuationStorage continuations;
@@ -787,16 +712,6 @@ namespace lux::simulation::script
             State& owner_;
             bool entered_{};
         };
-
-        [[nodiscard]] static constexpr EndpointConnectionToken hookToken(HandlerKey key) noexcept
-        {
-            return {key.index, key.gen};
-        }
-
-        [[nodiscard]] static constexpr HandlerKey hookKey(EndpointConnectionToken token) noexcept
-        {
-            return {token.slot, token.generation};
-        }
 
         [[nodiscard]] const ScriptBackendDescriptor* backend(lux::rdesc::Script::Kind kind) const noexcept
         {
@@ -1484,10 +1399,10 @@ namespace lux::simulation::script
                 return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
             const auto& prepared = mount.event_sources[admission.local_slot_];
             const auto endpoint_slot = prepared.endpoint_slot;
-            auto& bucket = events[endpoint_slot];
+            const auto& endpoint = binding_owner.eventEndpoint(endpoint_slot);
 
             ecs::Entity target{ecs::NullEntity};
-            if (bucket.endpoint->route == EEventRoute::ENTITY_TARGETED)
+            if (endpoint.route == EEventRoute::ENTITY_TARGETED)
             {
                 const auto* entity_scope = std::get_if<EntityScriptScope>(&mount.scope);
                 if (entity_scope == nullptr || entity_scope->self == ecs::NullEntity ||
@@ -1924,16 +1839,9 @@ namespace lux::simulation::script
             return true;
         }
 
-        [[nodiscard]] std::optional<std::uint32_t> findHookEndpoint(HookScriptTarget target) const noexcept
-        {
-            const auto found = hook_endpoint_index.find({target.system.value, target.hook.value});
-            return found == hook_endpoint_index.end() ? std::nullopt : std::optional<std::uint32_t>{found->second};
-        }
-
         [[nodiscard]] std::optional<std::uint32_t> findEventEndpoint(EventScriptTarget target) const noexcept
         {
-            const auto found = event_endpoint_index.find({target.system.value, target.event.value});
-            return found == event_endpoint_index.end() ? std::nullopt : std::optional<std::uint32_t>{found->second};
+            return binding_owner.findEvent(target);
         }
 
         [[nodiscard]] bool eventRequirementMatches(
@@ -1997,8 +1905,6 @@ namespace lux::simulation::script
             try
             {
                 mounts.resize(capacity.mount_capacity);
-                bindings.reserve(capacity.binding_capacity);
-                binding_descriptions.reserve(capacity.binding_capacity);
                 methods.reserve(capacity.method_capacity);
                 mount_index.reserve(capacity.enabled_mount_capacity);
                 batch_ids.reserve(capacity.enabled_mount_capacity);
@@ -2006,51 +1912,6 @@ namespace lux::simulation::script
                 reserved_mounts.resize(capacity.mount_capacity);
                 batch_entities.reserve(capacity.enabled_mount_capacity);
                 entity_associations.reserve(capacity.enabled_mount_capacity * 2U);
-                hooks.resize(hook_endpoints.size());
-                hook_reservations.resize(hooks.size());
-                hook_configured_counts.resize(hooks.size());
-                for (std::size_t index{}; index < hooks.size(); ++index)
-                {
-                    hooks[index].owner = this;
-                    hooks[index].endpoint = std::addressof(hook_endpoints[index]);
-                }
-                events.resize(event_endpoints.size());
-                event_reservations.resize(events.size());
-                event_configured_counts.resize(events.size());
-                for (std::size_t index{}; index < events.size(); ++index)
-                {
-                    events[index].owner = this;
-                    events[index].endpoint = std::addressof(event_endpoints[index]);
-                    events[index].slot = static_cast<std::uint32_t>(index);
-                }
-                for (const auto& planned : capacity.endpoint_capacities)
-                {
-                    if (const auto* target = std::get_if<HookScriptTarget>(&planned.target))
-                    {
-                        const auto endpoint = findHookEndpoint(*target);
-                        if (!endpoint)
-                            return lux::cxx::unexpected(EScriptSystemError::SCRIPT_ENDPOINT_NOT_FOUND);
-                        if (hooks[*endpoint].handler_capacity != 0U || planned.handler_capacity == 0U)
-                            return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-                        hooks[*endpoint].handler_capacity = planned.handler_capacity;
-                    }
-                    else
-                    {
-                        const auto endpoint = findEventEndpoint(std::get<EventScriptTarget>(planned.target));
-                        if (!endpoint)
-                            return lux::cxx::unexpected(EScriptSystemError::SCRIPT_ENDPOINT_NOT_FOUND);
-                        if (events[*endpoint].handler_capacity != 0U || planned.handler_capacity == 0U)
-                            return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-                        events[*endpoint].handler_capacity = planned.handler_capacity;
-                    }
-                }
-                for (auto& bucket : hooks)
-                    bucket.handlers.reserve(bucket.handler_capacity);
-                for (auto& bucket : events)
-                {
-                    if (bucket.handlers.prepare(bucket.handler_capacity) == EEndpointMutationError::ALLOCATION_FAILURE)
-                        return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
-                }
                 dirty_current.prepare(mounts.size());
                 dirty_processing.prepare(mounts.size());
                 status_changes.prepare(mounts.size());
@@ -2092,11 +1953,7 @@ namespace lux::simulation::script
             if (duplicate_id || duplicate_entity)
                 return lux::cxx::unexpected(EScriptSystemError::SCOPE_MISMATCH);
 
-            std::copy(hook_configured_counts.begin(), hook_configured_counts.end(), hook_reservations.begin());
-            std::copy(event_configured_counts.begin(), event_configured_counts.end(), event_reservations.begin());
             auto mount_count = configured_mounts;
-            auto binding_count = bindings.size();
-            auto method_count = methods.size();
             for (const auto& input : inputs)
             {
                 const bool invalid_identity = !input.id.valid() || input.asset.isNull();
@@ -2126,7 +1983,7 @@ namespace lux::simulation::script
                         return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
                     reserved_mounts[slot] = 1U;
                 }
-                batch_slots.push_back(slot);
+                batch_slots.push_back({slot, existing.has_value()});
                 if (const auto* entity = std::get_if<EntityScriptScope>(&input.scope))
                 {
                     if (entity->self == ecs::NullEntity || !registry->valid(entity->self))
@@ -2140,10 +1997,8 @@ namespace lux::simulation::script
                 {
                     const auto& mount = mounts[*existing];
                     const bool invalid_shape = mount.asset != input.asset ||
-                        mount.entity_scope != std::holds_alternative<EntityScriptScope>(input.scope) ||
-                        mount.binding_count != input.bindings.size();
-                    if (invalid_shape || !std::equal(input.bindings.begin(), input.bindings.end(),
-                            binding_descriptions.begin() + mount.binding_first))
+                        mount.entity_scope != std::holds_alternative<EntityScriptScope>(input.scope);
+                    if (invalid_shape || !binding_owner.matches(*existing, input.bindings))
                         return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
                     if (mount.state == EScriptMountState::FAULTED ||
                         std::holds_alternative<SimulationScriptScope>(input.scope))
@@ -2153,57 +2008,19 @@ namespace lux::simulation::script
                         return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
                     continue;
                 }
-                if (++mount_count > capacity.enabled_mount_capacity ||
-                    input.bindings.size() > capacity.binding_capacity - binding_count)
+                if (++mount_count > capacity.enabled_mount_capacity)
                     return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-                binding_count += input.bindings.size();
-                std::size_t unique_methods{2U};
-                for (std::size_t index{}; index < input.bindings.size(); ++index)
-                {
-                    const auto& binding = input.bindings[index];
-                    if (binding.symbol == lux::script::InvalidScriptSymbolId || binding.target.valueless_by_exception())
-                        return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-                    bool seen_symbol{};
-                    for (std::size_t previous{}; previous < index; ++previous)
-                    {
-                        if (input.bindings[previous] == binding)
-                            return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-                        seen_symbol = seen_symbol || input.bindings[previous].symbol == binding.symbol;
-                    }
-                    unique_methods += !seen_symbol;
-                    if (const auto* target = std::get_if<HookScriptTarget>(&binding.target))
-                    {
-                        const auto endpoint = findHookEndpoint(*target);
-                        if (!endpoint)
-                            return lux::cxx::unexpected(EScriptSystemError::SCRIPT_ENDPOINT_NOT_FOUND);
-                        if (++hook_reservations[*endpoint] > hooks[*endpoint].handler_capacity)
-                            return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-                    }
-                    else
-                    {
-                        const auto endpoint = findEventEndpoint(std::get<EventScriptTarget>(binding.target));
-                        if (!endpoint)
-                            return lux::cxx::unexpected(EScriptSystemError::SCRIPT_ENDPOINT_NOT_FOUND);
-                        if (std::holds_alternative<SimulationScriptScope>(input.scope) &&
-                            events[*endpoint].endpoint->route == EEventRoute::ENTITY_TARGETED)
-                            return lux::cxx::unexpected(EScriptSystemError::SCOPE_MISMATCH);
-                        if (++event_reservations[*endpoint] > events[*endpoint].handler_capacity)
-                            return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-                    }
-                }
-                if (unique_methods > capacity.method_capacity - method_count)
-                    return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-                method_count += unique_methods;
             }
-
-            std::copy(hook_reservations.begin(), hook_reservations.end(), hook_configured_counts.begin());
-            std::copy(event_reservations.begin(), event_reservations.end(), event_configured_counts.begin());
+            auto binding_ticket = binding_owner.reserveBatch(inputs, batch_slots);
+            if (!binding_ticket)
+                return lux::cxx::unexpected(binding_ticket.error());
+            binding_owner.commitBatch(std::move(*binding_ticket));
             // Everything below uses prepared backing and non-throwing value copies. No user callback or allocation.
             for (std::size_t index{}; index < inputs.size(); ++index)
             {
                 const auto& input = inputs[index];
                 const auto existing = findMount(input.id);
-                const auto slot = batch_slots[index];
+                const auto slot = batch_slots[index].slot;
                 if (!existing)
                     ++configured_mounts;
                 auto& mount = mounts[slot];
@@ -2212,38 +2029,16 @@ namespace lux::simulation::script
                     mount.id = input.id;
                     mount.asset = input.asset;
                     mount.entity_scope = std::holds_alternative<EntityScriptScope>(input.scope);
-                    mount.binding_first = bindings.size();
-                    mount.method_first = methods.size();
+                    const auto layout = binding_owner.layout(slot);
+                    mount.method_first = layout.method_first;
+                    mount.method_count = layout.method_count;
                     mount.status.id = input.id;
-                    for (const auto& binding : input.bindings)
+                    while (methods.size() < layout.method_first + layout.method_count)
                     {
-                        RuntimeBinding runtime;
-                        auto method = std::find_if(methods.begin() + mount.method_first, methods.end(),
-                            [&](const auto& prepared) noexcept { return prepared.symbol == binding.symbol; });
-                        if (method == methods.end())
-                        {
-                            runtime.method_slot = static_cast<std::uint32_t>(methods.size());
-                            methods.push_back({binding.symbol, {}, {}, true});
-                        }
-                        else
-                            runtime.method_slot = static_cast<std::uint32_t>(method - methods.begin());
-                        if (const auto* target = std::get_if<HookScriptTarget>(&binding.target))
-                        {
-                            runtime.kind = EBindingKind::HOOK;
-                            runtime.bucket_slot = *findHookEndpoint(*target);
-                        }
-                        else
-                        {
-                            runtime.kind = EBindingKind::EVENT;
-                            runtime.bucket_slot = *findEventEndpoint(std::get<EventScriptTarget>(binding.target));
-                        }
-                        bindings.push_back(runtime);
-                        binding_descriptions.push_back(binding);
+                        const auto method_slot = methods.size();
+                        methods.push_back({binding_owner.methodSymbol(method_slot), {}, {},
+                            binding_owner.methodUsedByBinding(method_slot)});
                     }
-                    methods.push_back({});
-                    methods.push_back({});
-                    mount.binding_count = bindings.size() - mount.binding_first;
-                    mount.method_count = methods.size() - mount.method_first;
                     const auto position = std::lower_bound(mount_index.begin(), mount_index.end(), input.id.value,
                         [](const auto& entry, std::uint64_t value) noexcept { return entry.first < value; });
                     mount_index.insert(position, {input.id.value, slot});
@@ -2293,10 +2088,10 @@ namespace lux::simulation::script
             retirement_queue.push_back(mount_slot);
         }
 
-        void invoke(Handler& handler, lux_script_call_frame& frame, bool hook_invocation) noexcept
+        void invoke(Handler handler, lux_script_call_frame& frame, bool hook_invocation) noexcept
         {
             auto& mount = mounts[handler.mount_slot];
-            if (stopping || mount.state != EScriptMountState::ACTIVE)
+            if (stopping || mount.state != EScriptMountState::ACTIVE || mount.instance != handler.instance)
                 return;
 
             auto& method = methods[handler.method_slot];
@@ -2359,22 +2154,32 @@ namespace lux::simulation::script
             faultInvocation(mount, method.symbol, EScriptSystemError::INVOCATION_FAILURE, status);
         }
 
-        static void invokeHookLane(void* context, lux_script_call_frame& frame) noexcept
+        struct BindingPort final
         {
-            auto& bucket = *static_cast<HookBucket*>(context);
-            ExecutionOwnerScope execution{*bucket.owner};
-            if (!execution)
-                return;
-            ++bucket.owner->endpoint_dispatch_depth;
-            for (auto& handler : bucket.handlers.values())
-                bucket.owner->invoke(handler, frame, true);
-            --bucket.owner->endpoint_dispatch_depth;
+            State* owner{};
+        };
+        BindingPort binding_port{this};
+
+        static void invokeBinding(void* context, Handler handler, lux_script_call_frame& frame, bool hook) noexcept
+        {
+            static_cast<BindingPort*>(context)->owner->invoke(handler, frame, hook);
         }
 
-        void claimEventWaiters(EventBucket& bucket, ecs::Entity target, std::uint64_t cutoff) noexcept
+        static void invokeHookLane(void* context, std::uint32_t bucket, lux_script_call_frame& frame) noexcept
+        {
+            auto& owner = *static_cast<BindingPort*>(context)->owner;
+            ExecutionOwnerScope execution{owner};
+            if (!execution)
+                return;
+            ++owner.endpoint_dispatch_depth;
+            owner.binding_owner.visitHook(bucket, frame);
+            --owner.endpoint_dispatch_depth;
+        }
+
+        void claimEventWaiters(std::uint32_t bucket, ecs::Entity target, std::uint64_t cutoff) noexcept
         {
             ++event_route_claim_lookups;
-            auto route = event_wait_routes.find(EventRouteKey{bucket.slot, target});
+            auto route = event_wait_routes.find(EventRouteKey{bucket, target});
             if (route == event_wait_routes.end())
                 return;
 
@@ -2436,7 +2241,7 @@ namespace lux::simulation::script
                 return;
             }
 
-            auto& bucket = events[waiter->bucket_slot];
+            const auto& endpoint = binding_owner.eventEndpoint(waiter->bucket_slot);
             auto* record = awaitables.find(awaitableKey(awaitable));
             if (record == nullptr || record->instance != instance || record->release_pending)
             {
@@ -2448,8 +2253,8 @@ namespace lux::simulation::script
             bool copied{};
             {
                 UserInvocationScope invocation(*this);
-                copied = !is_invalid_frame && bucket.endpoint->payload_projection.copy(
-                    bucket.endpoint->context, frame.args[0], record->value.bytes.span());
+                copied = !is_invalid_frame && endpoint.payload_projection.copy(
+                    endpoint.context, frame.args[0], record->value.bytes.span());
             }
             const auto* current_owner = instances.find(instanceKey(instance));
             const bool still_live = !stopping && !record->release_pending && current_owner != nullptr &&
@@ -2485,10 +2290,11 @@ namespace lux::simulation::script
             }
         }
 
-        static void dispatchEvent(void* context, ecs::Entity entity, lux_script_call_frame& frame) noexcept
+        static void dispatchEvent(
+            void* context, std::uint32_t bucket, ecs::Entity entity, lux_script_call_frame& frame
+        ) noexcept
         {
-            auto& bucket = *static_cast<EventBucket*>(context);
-            auto& owner = *bucket.owner;
+            auto& owner = *static_cast<BindingPort*>(context)->owner;
             ExecutionOwnerScope execution{owner};
             if (!execution)
                 return;
@@ -2496,93 +2302,20 @@ namespace lux::simulation::script
             ++owner.event_occurrences;
             const auto cutoff = owner.event_wait_sequence;
             ++owner.endpoint_dispatch_depth;
-            const auto target = bucket.endpoint->route == EEventRoute::SIMULATION_BROADCAST
-                ? ecs::NullEntity
-                : entity;
+            const auto& endpoint = owner.binding_owner.eventEndpoint(bucket);
+            const auto target = endpoint.route == EEventRoute::SIMULATION_BROADCAST ? ecs::NullEntity : entity;
             owner.claimEventWaiters(bucket, target, cutoff);
             const auto claimed_end = owner.claimed_event_waiters.size();
-            const auto invoke = [&bucket, &frame](Handler& handler) noexcept {
-                bucket.owner->invoke(handler, frame, false);
-            };
-            if (bucket.endpoint->route == EEventRoute::SIMULATION_BROADCAST)
-                bucket.handlers.forEachAll(invoke);
-            else
-                bucket.handlers.forEachTarget(entity, invoke);
-
+            owner.binding_owner.visitEvent(bucket, entity, frame);
             for (std::size_t index{claimed_begin}; index < claimed_end; ++index)
                 owner.completeClaimedEventWaiter(owner.claimed_event_waiters[index], frame);
             owner.claimed_event_waiters.resize(claimed_begin);
             --owner.endpoint_dispatch_depth;
         }
 
-        [[nodiscard]] lux::cxx::expected<EndpointConnectionToken, EScriptSystemError> addEventHandler(
-            EventBucket& bucket,
-            std::uint32_t mount_slot,
-            std::uint32_t method_slot,
-            ecs::Entity target) noexcept
-        {
-            const bool is_broadcast = bucket.endpoint->route == EEventRoute::SIMULATION_BROADCAST;
-            if (!is_broadcast && target == ecs::NullEntity)
-                return lux::cxx::unexpected(EScriptSystemError::SCOPE_MISMATCH);
-
-            const auto inserted = bucket.handlers.connect(target, Handler{mount_slot, method_slot}, is_broadcast);
-            if (inserted)
-                return inserted.token;
-            const auto error = inserted.error == EEndpointMutationError::CAPACITY_EXCEEDED
-                                   ? EScriptSystemError::CAPACITY_EXCEEDED
-                                   : EScriptSystemError::ALLOCATION_FAILURE;
-            return lux::cxx::unexpected(error);
-        }
-
-        void removeEventHandler(EventBucket& bucket, EndpointConnectionToken token) noexcept
-        {
-            static_cast<void>(bucket.handlers.disconnect(token));
-        }
-
-        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> bindMount(std::uint32_t mount_slot) noexcept
-        {
-            auto& mount = mounts[mount_slot];
-            const auto binding_end = mount.binding_first + mount.binding_count;
-            for (std::size_t binding_slot{mount.binding_first}; binding_slot < binding_end; ++binding_slot)
-            {
-                auto& binding = bindings[binding_slot];
-                if (binding.kind == EBindingKind::HOOK)
-                {
-                    auto& bucket = hooks[binding.bucket_slot];
-                    if (bucket.handlers.size() >= bucket.handler_capacity)
-                        return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-
-                    const auto inserted = bucket.handlers.tryEmplace(Handler{mount_slot, binding.method_slot});
-                    if (!inserted)
-                        return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
-                    binding.registration = hookToken(*inserted);
-                    continue;
-                }
-
-                auto& bucket = events[binding.bucket_slot];
-                const auto inserted = addEventHandler(bucket, mount_slot, binding.method_slot, mount.entity);
-                if (!inserted)
-                    return lux::cxx::unexpected(inserted.error());
-                binding.registration = *inserted;
-            }
-            return {};
-        }
-
         void removeMountBindings(RuntimeMount& mount) noexcept
         {
-            const auto binding_end = mount.binding_first + mount.binding_count;
-            for (std::size_t binding_slot{mount.binding_first}; binding_slot < binding_end; ++binding_slot)
-            {
-                auto& binding = bindings[binding_slot];
-                if (!binding.registration.valid())
-                    continue;
-
-                if (binding.kind == EBindingKind::HOOK)
-                    hooks[binding.bucket_slot].handlers.erase(hookKey(binding.registration));
-                else
-                    removeEventHandler(events[binding.bucket_slot], binding.registration);
-                binding.registration = {};
-            }
+            binding_owner.withdraw(static_cast<std::uint32_t>(std::addressof(mount) - mounts.data()));
         }
 
         [[nodiscard]] bool ownsAttachment(std::uint32_t mount_slot, ecs::Entity entity) const noexcept
@@ -2961,7 +2694,7 @@ namespace lux::simulation::script
                         lux::system::SystemInstanceId{requirement.system_id},
                         EventPointId{requirement.event_id}
                     );
-                    const auto& endpoint = event_endpoints[*endpoint_slot];
+                    const auto& endpoint = binding_owner.eventEndpoint(*endpoint_slot);
                     if (!eventRequirementMatches(requirement, described, endpoint))
                     {
                         releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
@@ -3049,32 +2782,11 @@ namespace lux::simulation::script
                 }
             }
 
-            const auto binding_end = mount.binding_first + mount.binding_count;
-            for (std::size_t binding_slot{mount.binding_first}; binding_slot < binding_end; ++binding_slot)
+            const auto validated = binding_owner.validateMethods(mount_slot, *mount.artifact.artifact);
+            if (!validated)
             {
-                const auto& binding = bindings[binding_slot];
-                const auto* function = mount.artifact.artifact->findExport(methods[binding.method_slot].symbol);
-                const bool is_hook = binding.kind == EBindingKind::HOOK;
-                const bool is_signature_valid =
-                    is_hook ? sameScriptHookSignature(*function, hooks[binding.bucket_slot].endpoint->signature)
-                            : sameScriptEventSignature(*function, events[binding.bucket_slot].endpoint->payload_type);
-                if (!is_signature_valid)
-                {
-                    releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                    return lux::cxx::unexpected(EScriptSystemError::SIGNATURE_MISMATCH);
-                }
-
-                if (!is_hook)
-                {
-                    const auto& endpoint = *events[binding.bucket_slot].endpoint;
-                    const bool is_targeted = endpoint.route == EEventRoute::ENTITY_TARGETED;
-                    const bool has_entity_scope = std::holds_alternative<EntityScriptScope>(mount.scope);
-                    if (is_targeted && !has_entity_scope)
-                    {
-                        releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
-                        return lux::cxx::unexpected(EScriptSystemError::SCOPE_MISMATCH);
-                    }
-                }
+                releaseMount(mount_slot, EScriptMountState::INACTIVE, false);
+                return validated;
             }
 
             mount.state = EScriptMountState::INITIALIZED;
@@ -3087,7 +2799,7 @@ namespace lux::simulation::script
             auto& mount = mounts[mount_slot];
             if (mount.state != EScriptMountState::INITIALIZED || !mount.gameplay_lifetime_started)
                 return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-            const auto bound = bindMount(mount_slot);
+            const auto bound = binding_owner.publish(mount_slot, mount.instance, mount.entity);
             if (!bound)
                 return lux::cxx::unexpected(bound.error());
             if (mount.entity != ecs::NullEntity)
@@ -3165,66 +2877,12 @@ namespace lux::simulation::script
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> connectEndpoints() noexcept
         {
-            for (auto& bucket : hooks)
-            {
-                if (bucket.handler_capacity == 0U)
-                    continue;
-                const auto connected =
-                    bucket.endpoint->connect(bucket.endpoint->context, std::addressof(bucket), &State::invokeHookLane);
-                if (!connected)
-                    return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_CONNECTION_FAILURE);
-                bucket.token = connected.token;
-            }
-            for (auto& bucket : events)
-            {
-                const auto& projection = bucket.endpoint->payload_projection;
-                const bool supports_wait = projection.copy != nullptr &&
-                    projection.owned_layout.size <= limits.max_resume_payload_bytes;
-                if (bucket.handler_capacity == 0U && !supports_wait)
-                    continue;
-                const auto connected =
-                    bucket.endpoint->connect(bucket.endpoint->context, std::addressof(bucket), &State::dispatchEvent);
-                if (!connected)
-                    return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_CONNECTION_FAILURE);
-                bucket.token = connected.token;
-            }
-            return {};
+            return binding_owner.connect();
         }
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> disconnectEndpoints() noexcept
         {
-            bool busy{};
-            for (auto& bucket : hooks)
-            {
-                if (!bucket.token.valid())
-                    continue;
-                const auto error = bucket.endpoint->disconnect(bucket.endpoint->context, bucket.token);
-                if (error == EEndpointMutationError::DISPATCH_ACTIVE || error == EEndpointMutationError::WRITER_ACTIVE)
-                {
-                    busy = true;
-                    continue;
-                }
-                if (error != EEndpointMutationError::NONE && error != EEndpointMutationError::INVALID_TOKEN)
-                    return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_CONNECTION_FAILURE);
-                bucket.token = {};
-            }
-            for (auto& bucket : events)
-            {
-                if (!bucket.token.valid())
-                    continue;
-                const auto error = bucket.endpoint->disconnect(bucket.endpoint->context, bucket.token);
-                if (error == EEndpointMutationError::DISPATCH_ACTIVE || error == EEndpointMutationError::WRITER_ACTIVE)
-                {
-                    busy = true;
-                    continue;
-                }
-                if (error != EEndpointMutationError::NONE && error != EEndpointMutationError::INVALID_TOKEN)
-                    return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_CONNECTION_FAILURE);
-                bucket.token = {};
-            }
-            return busy ? lux::cxx::expected<void, EScriptSystemError>(
-                              lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY))
-                        : lux::cxx::expected<void, EScriptSystemError>{};
+            return binding_owner.disconnect();
         }
 
         void releaseSignals() noexcept
@@ -3558,80 +3216,15 @@ namespace lux::simulation::script
                 return lux::cxx::unexpected(error);
             }
 
-            std::unordered_map<EndpointKey, std::uint32_t, EndpointKeyHash> hook_endpoint_index;
-            std::unordered_map<EndpointKey, std::uint32_t, EndpointKeyHash> event_endpoint_index;
-            hook_endpoint_index.reserve(hooks.size());
-            event_endpoint_index.reserve(events.size());
-
-            for (std::size_t index{}; index < hooks.size(); ++index)
-            {
-                if (index >= std::numeric_limits<std::uint32_t>::max())
-                    return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-
-                const auto described = simulation.findHookPoint(hooks[index].system, hooks[index].hook);
-                const bool is_invalid_identity = !hooks[index].system.valid() || !hooks[index].hook.valid();
-                const bool is_invalid_functions = hooks[index].connect == nullptr || hooks[index].disconnect == nullptr;
-                const bool is_invalid_signature =
-                    !described || !described.scriptCapable() ||
-                    described.parameterCount() != hooks[index].signature.parameters.size() ||
-                    !hooks[index].signature.returns.empty();
-                if (is_invalid_identity || is_invalid_functions || is_invalid_signature)
-                    return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-
-                for (std::size_t parameter{}; parameter < described.parameterCount(); ++parameter)
-                {
-                    if (described.parameterAt(parameter) != hooks[index].signature.parameters[parameter])
-                        return lux::cxx::unexpected(EScriptSystemError::SIGNATURE_MISMATCH);
-                }
-                const auto inserted =
-                    hook_endpoint_index.emplace(EndpointKey{hooks[index].system.value, hooks[index].hook.value},
-                                                static_cast<std::uint32_t>(index));
-                if (!inserted.second)
-                    return lux::cxx::unexpected(EScriptSystemError::DUPLICATE_ENDPOINT);
-            }
-
-            for (std::size_t index{}; index < events.size(); ++index)
-            {
-                if (index >= std::numeric_limits<std::uint32_t>::max())
-                    return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
-
-                const auto described = simulation.findEvent(events[index].system, events[index].event);
-                const auto& owned = events[index].payload_projection.owned_layout;
-                const auto* builtin = lux::semantic::builtinLayout(owned.type_id);
-                const bool is_invalid_builtin = builtin != nullptr &&
-                    (builtin->canonical_name != owned.canonical_name || builtin->abi_kind != owned.abi_kind ||
-                     builtin->size != owned.size || builtin->alignment != owned.alignment);
-                const bool is_invalid_identity = !events[index].system.valid() || !events[index].event.valid();
-                const bool is_invalid_functions =
-                    events[index].connect == nullptr || events[index].disconnect == nullptr;
-                const bool is_invalid_signature =
-                    !described || !described.dispatchHook().scriptCapable() ||
-                    described.route() != events[index].route ||
-                    described.payloadType() != events[index].payload_type.type_id ||
-                    described.payloadSchemaName() != events[index].payload_type.canonical_name ||
-                    events[index].payload_type.pass != lux::semantic::EValuePass::CONST_REF ||
-                    owned.type_id != events[index].payload_type.type_id ||
-                    owned.canonical_name != events[index].payload_type.canonical_name || owned.abi_kind == 0U ||
-                    owned.size == 0U || owned.alignment == 0U ||
-                    (owned.alignment & (owned.alignment - 1U)) != 0U || is_invalid_builtin;
-                if (is_invalid_identity || is_invalid_functions || is_invalid_signature)
-                    return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
-
-                const auto inserted =
-                    event_endpoint_index.emplace(EndpointKey{events[index].system.value, events[index].event.value},
-                                                 static_cast<std::uint32_t>(index));
-                if (!inserted.second)
-                    return lux::cxx::unexpected(EScriptSystemError::DUPLICATE_ENDPOINT);
-            }
-
             state->artifacts = artifacts;
             state->host = host;
             state->real_delay = real_delay;
             state->backends = backend_table;
-            state->hook_endpoints.assign(hooks.begin(), hooks.end());
-            state->event_endpoints.assign(events.begin(), events.end());
-            state->hook_endpoint_index = std::move(hook_endpoint_index);
-            state->event_endpoint_index = std::move(event_endpoint_index);
+            const auto binding_layout = state->binding_owner.prepare(simulation, capacity, hooks, events,
+                {&state->binding_port, &State::invokeHookLane, &State::dispatchEvent, &State::invokeBinding},
+                limits.max_resume_payload_bytes);
+            if (!binding_layout)
+                return lux::cxx::unexpected(binding_layout.error());
             state->published_capabilities = std::move(published_capabilities);
             state->failures.reserve(limits.failure_capacity);
             state->instances.reserve(limits.instance_capacity);
@@ -4097,8 +3690,7 @@ namespace lux::simulation::script
         result.pending_mounts = state_->pending_mounts;
         result.mount_backing_bytes = state_->mounts.capacity() * sizeof(State::RuntimeMount);
         result.method_backing_bytes = state_->methods.capacity() * sizeof(State::PreparedMethod);
-        result.binding_backing_bytes = state_->bindings.capacity() * sizeof(State::RuntimeBinding) +
-            state_->binding_descriptions.capacity() * sizeof(ScriptBindingDescription);
+        result.binding_backing_bytes = state_->binding_owner.backingBytes();
         result.mount_feedback_backing_bytes = state_->status_changes.values.capacity() * sizeof(std::uint32_t) +
             state_->status_changes.present.capacity() * sizeof(std::uint8_t);
         result.active_instances = state_->active_mount_count;

@@ -903,3 +903,33 @@ Event fan-out 每对变化约 -13.29%～+12.37%，应结合原始样本审阅，
 
 原始 SR-2 包原样补交到 [仓库证据目录](evidence/script/sr2/README.md)。后续验证另行归档，
 不将 feaa7550 的旧性能结果改为修正后 SR-2 参照。
+
+### 13.2 SR-3 状态映射与接口实施约束
+
+SR-2 新增的配置槽位、ID 索引、Entity 关联（当前与已接受替代）、admission 序号、pending
+输入、revision、unconsumed_result 和 status_changes 全部归 `ScriptInstances`。System 的
+dirty/current/processing、退休候选及批次顺序继续由 System 拥有。冻结 bindings、各配置绑定
+范围与 method 引用、endpoint 目录及计数预留、handler/token 与延后 unlink 归 `ScriptBindings`。
+resolver、backend/provider 冷目录、契约验证和准备票据归 `ScriptPreparer`。prepared 存储与
+宿主稳定地址归 Instances，准备提交前由 Preparer 的票据承担回滚责任，提交后归 Instances。
+
+原 InstanceRecord 的 execution 链头/计数以及 retiring continuation 链移入剩余执行存储，
+以完整 ScriptInstanceId 关联。prepared method 不再持有 active_hook；single-flight 归执行区，
+不得因方法槽位在重建中复用而接受旧实例的 continuation。此次不建立 SR-4 owner。
+
+接口均限既有串行 owner 线程；不新增 tick、调度机会或跨线程消息。具体边界如下：
+
+| 接口族 | 权限、安全区域与借用 | 用户代码/重入 | 提交点、失败与后置状态 |
+|---|---|---|---|
+| Instances 批次预留 + Bindings `reserveBatch` | 原 mountResolvedBatch 安全边界；票据不可复制，输入仅借用到本次提交返回；不返回可写记录 | 不执行用户代码；已持预留票据时再次预留返回忙碌 | 分别只写自身预留 scratch；票据丢弃撤销本批；两方预检完成后进入不分配、不回调的 commit，已有状态与反馈在失败时不变 |
+| Bindings `layout`/`methodSymbol`/`matches`/`validateMethods` | 返回范围/符号值或验证结果；endpoint 只读借用有效至组件销毁 | 不执行脚本 | 冻结形状按同 ID 原配置判断；后续初始化可复用原 method 范围，不复用旧 prepared backend 对象 |
+| Bindings `publish`/`withdraw` | publish 需要已初始化实例身份；withdraw 可在当前调用中撤权限 | 遍历保护期间不移动/移除 handler；嵌套调用另一有效实例仍合法 | 发布失败撤销已发布部分；withdraw 立即禁止新调用，最后一个遍历保护退出后 unlink；每配置最多一个延后 unlink 位置 |
+| Bindings `connect`/`disconnect` | 初始 publish/activate 完成后连接，关闭/回滚时断开 | endpoint 可报告 dispatch/writer busy；保留真实 token | 已连接项不会重复连接；失败时保留可回滚的部分连接；只有 NONE/INVALID_TOKEN 确認后清 token，busy 不伪装为成功 |
+| Instances construction/invocation/lifecycle 票据 | 校验完整身份与当前权限；不可复制；仅暴露必要 host 借用和只读 prepared 调用入口 | 借用期间保持宿主、prepared 和其依赖有效；用户返回后重验身份；保护不是实例互斥锁 | 初始与增量初始化前重验 Entity；退休撤权限与物理释放分离；返回后不可继续使用无票据的宿主/存储指针 |
+| Preparer 准备移交 | 稳定宿主、prepared 槽及关联数组就位后才调用 backend | backend 及释放回调可重入；票据记录已取得资源与已领取清理资格 | 验证/构造/部分 prepare 失败只回滚已取得资源；成功 commit 移交一次；目录寿命覆盖所有保留其引用的实例 |
+| Instances 退休/回收 | System 先撤权限，再确认 invoke/resume/copy/claim/cleanup 保护结束 | 对外清理前领取一次资格；不以同安全点为由提前释放 | System 清执行区 → 有资格 EndPlay → prepared → backend → host 关联/lease；忙碌保留资源并允许既有重试 |
+| Instances query/collect | query 值快照不消费；collect 仅确认成功输出的项目 | 原查询安全边界；不执行用户代码 | 零容量不消费；首次变脏顺序；必要终态未消费则阻止同 ID 下一次提交；RETIRING 与替代 ACCEPTED 独立表达 |
+
+endpoint C ABI context 通过私有操作 port 回调 System 的 occurrence/调用协调入口，不把完整
+State 或可写容器作为 callback context 交给 endpoint。Hook/Event 的 claim、普通 callback、
+claimed completion 顺序仍由 System 显式表达，Bindings 只拥有普通 handler 遍历与连接。

@@ -11,6 +11,7 @@ add_component(
     OUTPUT_NAME    lux_engine_simulation_script
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptBindingAuthoring.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptBindings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptSystem.cpp
 )
 component_include_directories(

@@ -118,6 +118,19 @@ namespace lux::script
     {
         struct ScriptAbilityOwnerCompletionAccess final
         {
+            // Owner-only source association. A caller must match its own completion context;
+            // this returns value tokens, never the owner pointer or mutable completion authority.
+            [[nodiscard]] static bool matchOwner(const ScriptAbilityCompletion<void>& completion,
+                const void* owner, std::uint64_t& token_a, std::uint64_t& token_b) noexcept
+            {
+                const auto& erased = completion.completion_;
+                const bool matches = owner != nullptr && erased.owner_context_ == owner &&
+                    erased.owner_success_ != nullptr && erased.owner_failure_ != nullptr;
+                token_a = matches ? erased.token_a_ : 0U;
+                token_b = matches ? erased.token_b_ : 0U;
+                return matches;
+            }
+
             template <class Result>
             [[nodiscard]] static typename ScriptAbilityCompletion<Result>::CompletionResult success(
                 const ScriptAbilityCompletion<Result>& completion,

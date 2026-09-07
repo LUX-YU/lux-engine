@@ -1,0 +1,299 @@
+#include <lux/engine/simulation/script/ScriptTimers.hpp>
+#include <lux/engine/simulation/script/ScriptExecution.hpp>
+#include <cmath>
+#include <limits>
+
+namespace lux::simulation::script::detail
+{
+    void ScriptTimers::prepare(const SimulationClock& clock, ScriptRuntimeLimits limits,
+        ScriptRealDelayEndpoint real_delay, ScriptExecution& execution, std::size_t instance_capacity)
+    {
+        clock_ = &clock;
+        execution_ = &execution;
+        real_delay_ = real_delay;
+        next_capacity_ = limits.next_step_wait_capacity;
+        delay_capacity_ = limits.simulation_delay_capacity;
+        waits_.reserve(next_capacity_ + delay_capacity_);
+        heap_.reserve(delay_capacity_);
+        instances_.resize(instance_capacity);
+    }
+
+    void ScriptTimers::beginInstance(ScriptInstanceId instance) noexcept
+    {
+        auto& index = instances_[instance.slot - 1U];
+        if (index.first.valid())
+            std::terminate();
+        index = {instance, {}};
+    }
+
+    ScriptTimers::StartResult ScriptTimers::error(EScriptDelayStatus status) noexcept
+    {
+        return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{static_cast<std::int32_t>(status)});
+    }
+
+    ScriptTimers::StartResult ScriptTimers::nextStep(Completion completion) noexcept
+    {
+        if (stopping_ || !completion.active())
+            return error(EScriptDelayStatus::STOPPING);
+        const auto current = clock_->snapshot();
+        if (current.step_index == std::numeric_limits<std::uint64_t>::max())
+            return error(EScriptDelayStatus::DURATION_OVERFLOW);
+        if (next_count_ >= next_capacity_)
+            return error(EScriptDelayStatus::CAPACITY_EXCEEDED);
+        const auto association = execution_->timerAssociation(completion);
+        if (!association)
+            return error(EScriptDelayStatus::STOPPING);
+        return registerWait(ETimerKind::NEXT_STEP, *association, std::move(completion), {}, current.step_index + 1U);
+    }
+
+    ScriptTimers::StartResult ScriptTimers::seconds(double duration, Completion completion) noexcept
+    {
+        return simulationSeconds(duration, std::move(completion));
+    }
+
+    ScriptTimers::StartResult ScriptTimers::simulationSeconds(double duration, Completion completion) noexcept
+    {
+        if (stopping_ || !completion.active())
+            return error(EScriptDelayStatus::STOPPING);
+        if (!std::isfinite(duration) || duration < 0.0)
+            return error(EScriptDelayStatus::INVALID_DURATION);
+        const long double requested = static_cast<long double>(duration) * 1'000'000'000.0L;
+        const auto maximum = static_cast<long double>(std::numeric_limits<SimulationDuration::rep>::max());
+        if (requested > maximum)
+            return error(EScriptDelayStatus::DURATION_OVERFLOW);
+        const auto count = duration == 0.0 ? SimulationDuration::rep{} :
+            static_cast<SimulationDuration::rep>(std::ceil(requested));
+        const auto current = clock_->snapshot();
+        const bool step_overflow = current.step_index == std::numeric_limits<std::uint64_t>::max();
+        const bool deadline_overflow = count > 0 &&
+            current.elapsed.count() > std::numeric_limits<SimulationDuration::rep>::max() - count;
+        if (step_overflow || deadline_overflow)
+            return error(EScriptDelayStatus::DURATION_OVERFLOW);
+        if (heap_.size() >= delay_capacity_)
+            return error(EScriptDelayStatus::CAPACITY_EXCEEDED);
+        if (sequence_ == std::numeric_limits<std::uint64_t>::max())
+            return error(EScriptDelayStatus::DURATION_OVERFLOW);
+        const auto association = execution_->timerAssociation(completion);
+        if (!association)
+            return error(EScriptDelayStatus::STOPPING);
+        return registerWait(ETimerKind::SIMULATION_DELAY, *association, std::move(completion),
+            current.elapsed + SimulationDuration{count}, current.step_index + 1U);
+    }
+
+    ScriptTimers::StartResult ScriptTimers::realSeconds(double duration, Completion completion) noexcept
+    {
+        if (stopping_ || !completion.active() || !real_delay_)
+            return error(EScriptDelayStatus::STOPPING);
+        if (!std::isfinite(duration) || duration < 0.0)
+            return error(EScriptDelayStatus::INVALID_DURATION);
+        if (duration == 0.0)
+            return nextStep(std::move(completion));
+        const long double requested = static_cast<long double>(duration) * 1'000'000'000.0L;
+        const auto maximum = static_cast<long double>(std::numeric_limits<std::chrono::nanoseconds::rep>::max());
+        if (requested > maximum)
+            return error(EScriptDelayStatus::DURATION_OVERFLOW);
+        return real_delay_.invoke(std::chrono::nanoseconds{static_cast<std::chrono::nanoseconds::rep>(
+            std::ceil(requested))}, std::move(completion));
+    }
+
+    ScriptTimers::StartResult ScriptTimers::registerWait(ETimerKind kind, ScriptTimerAssociation association,
+        Completion completion, SimulationDuration deadline, std::uint64_t step) noexcept
+    {
+        auto& owner = instances_[association.instance.slot - 1U];
+        if (owner.id != association.instance)
+            return error(EScriptDelayStatus::STOPPING);
+        const auto inserted = waits_.tryEmplace(Wait{
+            {}, association, std::move(completion), kind, deadline, step,
+            kind == ETimerKind::SIMULATION_DELAY ? sequence_++ : 0U, 0U, {}, {}, {}, owner.first
+        });
+        if (!inserted)
+            return error(EScriptDelayStatus::ALLOCATION_FAILURE);
+        const ScriptSourceId id{inserted->index + 1U, inserted->gen};
+        auto& wait = waits_[*inserted];
+        wait.id = id;
+        if (owner.first.valid())
+            waits_[key(owner.first)].instance_previous = id;
+        owner.first = id;
+        if (kind == ETimerKind::NEXT_STEP)
+        {
+            wait.previous = next_last_;
+            if (next_last_.valid())
+                waits_[key(next_last_)].next = id;
+            else
+                next_first_ = id;
+            next_last_ = id;
+            ++next_count_;
+        }
+        else
+        {
+            wait.heap_index = heap_.size();
+            heap_.push_back(id); // Prepared capacity; admission checks the component's logical limit.
+            siftUp(wait.heap_index);
+        }
+        if (!execution_->attachTimer(association, id))
+        {
+            static_cast<void>(cancel(id));
+            return error(EScriptDelayStatus::STOPPING);
+        }
+        return {};
+    }
+
+    bool ScriptTimers::earlier(ScriptSourceId left, ScriptSourceId right) const noexcept
+    {
+        const auto& a = waits_[key(left)];
+        const auto& b = waits_[key(right)];
+        return a.deadline < b.deadline || (a.deadline == b.deadline && a.sequence < b.sequence);
+    }
+
+    void ScriptTimers::swapHeap(std::size_t left, std::size_t right) noexcept
+    {
+        std::swap(heap_[left], heap_[right]);
+        waits_[key(heap_[left])].heap_index = left;
+        waits_[key(heap_[right])].heap_index = right;
+    }
+
+    void ScriptTimers::siftUp(std::size_t index) noexcept
+    {
+        while (index != 0U && earlier(heap_[index], heap_[(index - 1U) / 2U]))
+        {
+            const auto parent = (index - 1U) / 2U;
+            swapHeap(index, parent);
+            index = parent;
+        }
+    }
+
+    void ScriptTimers::siftDown(std::size_t index) noexcept
+    {
+        for (;;)
+        {
+            auto child = index * 2U + 1U;
+            if (child >= heap_.size())
+                return;
+            if (child + 1U < heap_.size() && earlier(heap_[child + 1U], heap_[child]))
+                ++child;
+            if (!earlier(heap_[child], heap_[index]))
+                return;
+            swapHeap(index, child);
+            index = child;
+        }
+    }
+
+    void ScriptTimers::eraseHeap(std::size_t index) noexcept
+    {
+        const auto last = heap_.size() - 1U;
+        if (index != last)
+            swapHeap(index, last);
+        heap_.pop_back();
+        if (index >= heap_.size())
+            return;
+        if (index != 0U && earlier(heap_[index], heap_[(index - 1U) / 2U]))
+            siftUp(index);
+        else
+            siftDown(index);
+    }
+
+    std::optional<ScriptSourceCancellation> ScriptTimers::cancel(ScriptSourceId id) noexcept
+    {
+        auto* wait = waits_.find(key(id));
+        if (wait == nullptr)
+            return std::nullopt;
+        const auto association = wait->association;
+        if (wait->kind == ETimerKind::NEXT_STEP)
+        {
+            if (wait->previous.valid())
+                waits_[key(wait->previous)].next = wait->next;
+            else
+                next_first_ = wait->next;
+            if (wait->next.valid())
+                waits_[key(wait->next)].previous = wait->previous;
+            else
+                next_last_ = wait->previous;
+            --next_count_;
+        }
+        else
+            eraseHeap(wait->heap_index);
+        if (wait->instance_previous.valid())
+            waits_[key(wait->instance_previous)].instance_next = wait->instance_next;
+        else
+            instances_[association.instance.slot - 1U].first = wait->instance_next;
+        if (wait->instance_next.valid())
+            waits_[key(wait->instance_next)].instance_previous = wait->instance_previous;
+        static_cast<void>(waits_.erase(key(id)));
+        return ScriptSourceCancellation{association.instance, association.awaitable, {id, EScriptWaitSource::TIMER}};
+    }
+
+    std::optional<ScriptSourceCancellation> ScriptTimers::cancelNext(ScriptInstanceId instance) noexcept
+    {
+        if (!instance.valid() || instance.slot > instances_.size())
+            return std::nullopt;
+        const auto& owner = instances_[instance.slot - 1U];
+        return owner.id == instance && owner.first.valid() ? cancel(owner.first) : std::nullopt;
+    }
+
+    bool ScriptTimers::completeDue(ScriptSourceId id, bool& backpressured) noexcept
+    {
+        // Completion can detach its source synchronously. Keep the lease, never a SlotMap record borrow.
+        const auto completion = waits_[key(id)].completion;
+        const auto completed = lux::script::detail::ScriptAbilityOwnerCompletionAccess::success(completion);
+        backpressured = !completed && completed.error() == lux::script::EScriptAbilityCompletionError::BACKPRESSURE;
+        if (backpressured)
+            return true;
+        if (const auto removed = cancel(id))
+            execution_->detachSource(*removed);
+        if (completed)
+            return true;
+        return completed.error() == lux::script::EScriptAbilityCompletionError::STALE ||
+            completed.error() == lux::script::EScriptAbilityCompletionError::STOPPING ||
+            completed.error() == lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED;
+    }
+
+    bool ScriptTimers::promoteNextStep() noexcept
+    {
+        const auto current = clock_->snapshot();
+        while (next_first_.valid())
+        {
+            if (waits_[key(next_first_)].minimum_step > current.step_index)
+                return true;
+            bool backpressured{};
+            if (!completeDue(next_first_, backpressured))
+                return false;
+            if (backpressured)
+                return true;
+        }
+        return true;
+    }
+
+    bool ScriptTimers::promoteSimulationDelay() noexcept
+    {
+        const auto current = clock_->snapshot();
+        while (!heap_.empty())
+        {
+            const auto& wait = waits_[key(heap_.front())];
+            if (wait.deadline > current.elapsed || wait.minimum_step > current.step_index)
+                return true;
+            bool backpressured{};
+            if (!completeDue(heap_.front(), backpressured))
+                return false;
+            if (backpressured)
+                return true;
+        }
+        return true;
+    }
+
+    void ScriptTimers::shutdown() noexcept
+    {
+        if (!waits_.empty())
+            std::terminate();
+        heap_.clear();
+        instances_.clear();
+        next_first_ = {};
+        next_last_ = {};
+        next_count_ = 0U;
+    }
+
+    void ScriptTimers::writeStats(ScriptRuntimeStats& result) const noexcept
+    {
+        result.next_step_waits = next_count_;
+        result.simulation_delay_waits = heap_.size();
+    }
+}

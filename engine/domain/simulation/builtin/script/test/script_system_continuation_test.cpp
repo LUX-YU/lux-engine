@@ -3,6 +3,8 @@ using lux::simulation::test::dispatchHookForTest;
 #include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
 using lux::simulation::script::test::deliverEndpoint;
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
+#include <lux/engine/simulation/abilities/DelayAbility.hpp>
+#include "DelayAbility.ability.generated.hpp"
 #include "TestAbility.hpp"
 #include "TestAbility.ability.generated.hpp"
 
@@ -209,6 +211,11 @@ namespace
     struct BackendState final
     {
         ScriptEventAdmissionHandle event;
+        std::optional<lux::script::ScriptAbilityStarter<DelayAbility>> delay;
+        std::vector<lux::script::ScriptAbilityCompletion<void>> timer_completions;
+        bool simulation_timer{};
+        bool discard_timer{};
+        bool reject_after_timer{};
         bool enable_step{};
         bool enable_ability_async{};
         bool eager_first{};
@@ -262,7 +269,17 @@ namespace
         instance->owner = &state;
         if (!create.events.empty()) state.event = create.events.front().admission;
         ++state.capability_bind_scans;
-        if (!create.capabilities.empty())
+        const auto delay_id = lux::script::ScriptAbilityTraits<DelayAbility>::Description.id;
+        if (!create.capabilities.empty() && create.capabilities.front().contract.name() == delay_id.name())
+        {
+            const auto& capability = create.capabilities.front();
+            auto starter = lux::script::ScriptAbilityStarter<DelayAbility>::create({
+                &lux::script::ScriptAbilityTraits<DelayAbility>::Description, capability.context, capability.dispatch
+            });
+            assert(starter);
+            state.delay = std::move(*starter);
+        }
+        else if (!create.capabilities.empty())
         {
             assert(create.capabilities.size() == 1U);
             instance->provider = create.capabilities.front().context;
@@ -599,6 +616,110 @@ namespace
             awaitables,
             external_capacity
         };
+    }
+
+    void testTimerSourceCancellation()
+    {
+        for (const bool simulation_timer : {false, true})
+        {
+            Harness harness{false, 2U, false, true};
+            const auto other = harness.registry.create();
+            auto entity = harness.registry.create();
+            harness.description[0].scope = EntityScriptScope{entity};
+            harness.description[1].scope = EntityScriptScope{other};
+            auto source = harness.artifact.description();
+            const auto& delay = lux::script::ScriptAbilityTraits<DelayAbility>::Description;
+            source.api_requirements.push_back({lux::script::ScriptApiContractId{delay.id.name()}, delay.schema_hash});
+            auto artifact = lux::script::ScriptArtifact::create(std::move(source), {});
+            assert(artifact);
+            harness.artifact = std::move(*artifact);
+            auto& backend = harness.backend_state;
+            backend.enable_step = true;
+            backend.simulation_timer = simulation_timer;
+            backend.custom_step = [](BackendState& state, ScriptStepContext& context) noexcept {
+                auto result = invokeScriptAbilityAsync<void>(context,
+                    [&state](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
+                        state.timer_completions.push_back(completion);
+                        auto started = state.simulation_timer ? state.delay->simulationSeconds(1000.0, completion) :
+                            state.delay->nextStep(completion);
+                        if (started && state.reject_after_timer)
+                            return lux::script::ScriptAbilityStartResult{
+                                lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{87})};
+                        return started;
+                    });
+                if (state.discard_timer && result.state == EScriptStepState::SUSPENDED)
+                {
+                    context.awaitables.discard(result.waiting_on);
+                    // Idempotent cancellation cannot remove another source.
+                    context.awaitables.discard(result.waiting_on);
+                    return ScriptStepResult::completed();
+                }
+                return result;
+            };
+            auto configured = limits(2U, 4U, 4U);
+            configured.next_step_wait_capacity = 2U;
+            configured.simulation_delay_capacity = 2U;
+            auto created = harness.create(configured, {});
+            assert(created && created->prepare());
+            auto& system = *created;
+            const auto waits = [&]() noexcept {
+                const auto stats = system.stats();
+                return stats.next_step_waits + stats.simulation_delay_waits;
+            };
+            std::array<ScriptMountStatus, 2U> changes;
+            assert(system.collectMountStatusChanges(changes));
+            assert(dispatchHookForTest(harness.hook_third) == 1U);
+            assert(waits() == 1U && system.activeContinuationCount() == 1U);
+            const auto other_completion = backend.timer_completions.front();
+            backend.discard_timer = true;
+            for (std::size_t repeat{}; repeat < 32U; ++repeat)
+            {
+                assert(dispatchHookForTest(harness.hook) == 1U);
+                assert(waits() == 1U && system.activeAwaitableCount() == 1U);
+                assert(other_completion.active());
+                assert(!backend.timer_completions.back().active());
+            }
+            backend.discard_timer = false;
+            for (std::size_t repeat{}; repeat < 32U; ++repeat)
+            {
+                assert(dispatchHookForTest(harness.hook) == 1U);
+                assert(waits() == 2U && system.activeContinuationCount() == 2U);
+                const auto old_completion = backend.timer_completions.back();
+                harness.registry.destroy(entity);
+                // Physical Timer capacity is returned by logical retirement, without advancing the real step.
+                assert(waits() == 1U && system.activeAwaitableCount() == 1U);
+                assert(!old_completion.active() && other_completion.active());
+                assert(system.processLifecycle());
+                assert(backend.continuation_destroys == repeat + 1U);
+                assert(system.collectMountStatusChanges(changes));
+                entity = harness.registry.create();
+                harness.description[0].scope = EntityScriptScope{entity};
+                assert(system.mountResolvedBatch(std::span{harness.description.data(), 1U}));
+                assert(system.processLifecycle());
+                assert(system.collectMountStatusChanges(changes));
+                assert(waits() == 1U && system.activeInstanceCount() == 2U);
+                const auto stale = old_completion.success();
+                assert(!stale && stale.error() == lux::script::EScriptAbilityCompletionError::STALE);
+                assert(other_completion.active() && waits() == 1U);
+            }
+            assert(backend.resume_calls == 0U && system.failures().empty());
+            // An external terminal result also unlinks the Timer source before its deadline.
+            assert(other_completion.success());
+            assert(waits() == 1U && backend.resume_calls == 0U);
+            assert(system.executeStablePoint());
+            assert(waits() == 0U && backend.resume_calls == 1U);
+            assert(dispatchHookForTest(harness.hook_third) == 1U);
+            assert(waits() == 1U);
+            backend.reject_after_timer = true;
+            assert(dispatchHookForTest(harness.hook) == 1U);
+            assert(waits() == 1U && system.activeAwaitableCount() == 1U);
+            assert(system.failures().size() == 1U && system.failures().front().status == 87);
+            assert(system.processLifecycle());
+            assert(system.shutdown());
+            assert(waits() == 0U && system.activeAwaitableCount() == 0U);
+            assert(backend.continuation_destroys == 34U && backend.creates == backend.destroys);
+            assert(backend.resume_calls == 1U);
+        }
     }
 
     void testCapabilities()
@@ -1149,6 +1270,7 @@ void testExternalAdmission()
 
 int main()
 {
+    testTimerSourceCancellation();
     {
         Harness harness{false, 1U, true};
         harness.backend_state.enable_step = true;

@@ -31,7 +31,9 @@ def main():
         identities['sources'].append({'path': str(path), 'commit': git(path, 'rev-parse', 'HEAD'),
                                       'status': git(path, 'status', '--porcelain'),
                                       'origin': git(path, 'remote', 'get-url', 'origin')})
-    private = {'ScriptInstances.hpp', 'ScriptBindings.hpp', 'ScriptPreparer.hpp', 'ScriptRuntimeAccess.hpp'}
+    private = {'ScriptInstances.hpp', 'ScriptBindings.hpp', 'ScriptPreparer.hpp', 'ScriptRuntimeAccess.hpp',
+               'ScriptExecution.hpp', 'ScriptEventWaits.hpp', 'ScriptTimers.hpp',
+               'ScriptCompletionIngress.hpp', 'ScriptWaitSource.hpp'}
     for value in args.prefix:
         prefix = Path(value)
         files = []

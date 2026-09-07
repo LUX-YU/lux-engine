@@ -54,6 +54,7 @@ namespace lux::simulation::script::detail
     {
         struct InvocationState;
     public:
+        [[nodiscard]] bool validEntity(ecs::Entity entity) const noexcept;
         using Result = lux::cxx::expected<void, EScriptSystemError>;
         using LifecycleResult = lux::cxx::expected<void, ScriptLifecycleCallError>;
         ScriptInstances() = default;

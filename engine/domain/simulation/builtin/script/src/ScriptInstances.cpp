@@ -753,3 +753,11 @@ namespace lux::simulation::script::detail
     }
 
 }
+
+namespace lux::simulation::script::detail
+{
+    bool ScriptInstances::validEntity(ecs::Entity entity) const noexcept
+    {
+        return entity != ecs::NullEntity && registry_->valid(entity);
+    }
+}

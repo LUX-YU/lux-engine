@@ -14,6 +14,10 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptBindings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptInstances.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptPreparer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptExecution.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptEventWaits.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptTimers.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptCompletionIngress.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ScriptSystem.cpp
 )
 component_include_directories(

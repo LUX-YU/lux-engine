@@ -1,0 +1,20 @@
+[
+  {
+    "remote_commit": "ee80710d6c6a791781e9025ef5e07222853fb361",
+    "remote": "git@github.com:LUX-YU/lux-engine.git",
+    "retrieval": "new independent clone over SSH",
+    "archive": "sr2/SR2-raw-evidence.zip",
+    "sha256": "b80eef0639b910db42545dd71794f2be8f6f9ddd3dad0e7f87cccf0bb0a31deb",
+    "archive_entries": 738,
+    "verified_files": 737
+  },
+  {
+    "remote_commit": "ee80710d6c6a791781e9025ef5e07222853fb361",
+    "remote": "git@github.com:LUX-YU/lux-engine.git",
+    "retrieval": "new independent clone over SSH",
+    "archive": "sr3-gate/SR2-correction-evidence.zip",
+    "sha256": "dbc3794a6beade51549e312d8c288a1b31462f53160b453d9f216d4c6dd963ac",
+    "archive_entries": 25,
+    "verified_files": 25
+  }
+]

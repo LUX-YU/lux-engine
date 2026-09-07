@@ -16,4 +16,7 @@ ZIP SHA-256：`b80eef0639b910db42545dd71794f2be8f6f9ddd3dad0e7f87cccf0bb0a31deb`
 性能与分配诊断，以及失败尝试。压缩包内的绝对 Windows 路径记录当次执行身份；审阅者
 读取归档无需访问这些本地目录。六项 Scene Lua 失败保留在包内，不能将结果解读为全绿。
 
-固定提交下载入口及远端取回校验记录将在归档提交推送后补在本索引。
+固定提交下载入口：
+[SR2-raw-evidence.zip @ ee80710d](https://github.com/LUX-YU/lux-engine/raw/ee80710d6c6a791781e9025ef5e07222853fb361/.internal/evidence/script/sr2/SR2-raw-evidence.zip)。
+从 origin 经 SSH 新建独立 clone 取回归档后，重新检查 ZIP 完整性、738 个条目和 737 个
+文件哈希，全部匹配。[远端取回校验记录](remote-verification.json) 同时记录修正门槛包的校验。

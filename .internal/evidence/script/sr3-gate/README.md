@@ -15,3 +15,7 @@ CTest 通过。85 项受影响测试在 VS 环境下重跑，79 项通过，六�
 首次补充 fixture 的枚举拼写编译失败，以及未加载 VS 环境运行负向编译测试的失败均保留；
 有效结果分别是 `green-build-2`、`green-lifecycle`、`green-affected-vs`，没有删除失败日志。
 后续修正 SR-2 参照与 SR-3 候选的独立构建、安装和测量将另包交付。
+
+[固定提交下载入口 @ ee80710d](https://github.com/LUX-YU/lux-engine/raw/ee80710d6c6a791781e9025ef5e07222853fb361/.internal/evidence/script/sr3-gate/SR2-correction-evidence.zip)。
+从远端独立 clone 取回后，25 个文件的哈希及归档完整性均通过，见
+[取回校验记录](../sr2/remote-verification.json)。

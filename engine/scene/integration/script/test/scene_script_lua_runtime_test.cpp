@@ -26,6 +26,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <fstream>
 #include <limits>
 #include <memory>
@@ -456,9 +457,45 @@ int main(int argc, char** argv)
     auto executor = task::TaskExecutor::create({workers, 8U});
     assert(executor);
 
+#if defined(LUX_LUA_PORTABILITY_ARTIFACT)
+    struct ExpectedStep final
+    {
+        std::uint64_t step;
+        std::uint64_t resumes;
+        std::uint64_t suspensions;
+        std::size_t next_step;
+        std::size_t delay;
+        std::size_t external;
+        std::size_t active;
+        std::size_t writes;
+        std::int32_t value;
+    };
+    const auto check_step = [&](ExpectedStep expected) {
+        const auto time = (*scene)->simulation().clock().snapshot();
+        const auto stats = runtime->scriptSystem().stats();
+        assert(time.step_index == expected.step && time.elapsed == SimulationDuration{expected.step});
+        assert(stats.step_invocations == 1U && stats.backend_resume_calls == expected.resumes);
+        assert(stats.suspensions_admitted == expected.suspensions);
+        assert(stats.next_step_waits == expected.next_step && stats.simulation_delay_waits == expected.delay);
+        assert(stats.external_completion_queue_depth == expected.external && stats.resume_queue_depth == 0U);
+        assert(stats.active_continuations == expected.active && stats.active_awaitables == expected.active);
+        assert(runtime->scriptSystem().failures().empty());
+        assert(g_probe_system != nullptr && g_probe_system->async_starts == 1U);
+        assert(g_probe_system->reads == 0U && g_probe_system->writes == expected.writes);
+        assert(g_probe_system->value == expected.value && g_total_writes == expected.writes);
+        std::printf("LUA_STEP,step=%llu,resumes=%llu,suspensions=%llu,next=%zu,delay=%zu,external=%zu,"
+            "active=%zu,writes=%zu,value=%d\n", time.step_index, stats.backend_resume_calls,
+            stats.suspensions_admitted, stats.next_step_waits, stats.simulation_delay_waits,
+            stats.external_completion_queue_depth, stats.active_continuations, g_total_writes, g_probe_system->value);
+    };
+#endif
+
     assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
     assert(runtime->scriptSystem().activeContinuationCount() == 1U);
     assert(runtime->scriptSystem().failures().empty());
+#if defined(LUX_LUA_PORTABILITY_ARTIFACT)
+    check_step({1U, 0U, 1U, 0U, 0U, 1U, 1U, 1U, 1});
+#endif
     static_assert(std::is_const_v<std::remove_reference_t<decltype(runtime->scriptSystem())>>);
     std::barrier stats_ready{2};
     std::jthread observer([&](std::stop_token stop) {
@@ -478,20 +515,23 @@ int main(int argc, char** argv)
     assert(runtime->scriptSystem().activeContinuationCount() == 1U);
     assert(runtime->scriptSystem().failures().empty());
 #if defined(LUX_LUA_PORTABILITY_ARTIFACT)
-    assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
-    assert((*scene)->executeStablePoint());
-    assert(runtime->scriptSystem().activeContinuationCount() == 1U);
-    assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
-    assert((*scene)->executeStablePoint());
-    assert(runtime->scriptSystem().activeContinuationCount() == 1U);
-    assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
-    assert((*scene)->executeStablePoint());
-    assert(runtime->scriptSystem().activeContinuationCount() == 0U);
-    assert(runtime->scriptSystem().failures().empty());
-    assert(g_probe_system != nullptr);
-    assert(g_probe_system->reads == 0U);
-    assert(g_probe_system->async_starts == 1U);
-    assert(g_probe_system->value == 1234);
+    // The eager post is outside step 1's captured frontier. Step 2 admits it and registers NextStep;
+    // step 3 resumes and registers the packaged script's 2 ns delay at elapsed=3, deadline=5.
+    // Repeating the Scene stable boundary must not advance this sequence or capture a larger frontier.
+    check_step({1U, 0U, 1U, 0U, 0U, 1U, 1U, 1U, 1});
+    constexpr std::array expected_steps{
+        ExpectedStep{2U, 1U, 2U, 1U, 0U, 0U, 1U, 1U, 1},
+        ExpectedStep{3U, 2U, 3U, 0U, 1U, 0U, 1U, 1U, 1},
+        ExpectedStep{4U, 2U, 3U, 0U, 1U, 0U, 1U, 1U, 1},
+        ExpectedStep{5U, 3U, 3U, 0U, 0U, 0U, 0U, 2U, 1234}
+    };
+    for (const auto expected : expected_steps)
+    {
+        assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
+        check_step(expected);
+        assert((*scene)->executeStablePoint());
+        check_step(expected);
+    }
 #else
     assert(!(*scene)->simulation().execute(*executor, SimulationDuration{1}));
     const auto stable = (*scene)->executeStablePoint();

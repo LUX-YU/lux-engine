@@ -10,6 +10,9 @@ using lux::simulation::test::dispatchHookForTest;
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <exception>
 #include <memory>
 #include <new>
 #include <optional>
@@ -129,6 +132,10 @@ namespace
         bool fail_create{};
         bool fail_end{};
         bool async_tick{};
+        std::vector<int>* move_trace{};
+        int move_tag{};
+        ScriptSystem* move_destination{};
+        ScriptSystem* move_source{};
         HookPoint<void()>* hook{};
         std::vector<std::uint32_t> end_values;
         std::vector<EScriptEndPlayReason> end_reasons;
@@ -145,6 +152,12 @@ namespace
         std::size_t reentry_calls{};
         HookPoint<void()>* reentry_hook{};
     };
+
+    void recordMove(BackendState& state, int event) noexcept
+    {
+        if (state.move_trace)
+            state.move_trace->push_back(state.move_tag + event);
+    }
 
     void reenter(BackendState& state, EReentryPoint point) noexcept
     {
@@ -196,6 +209,8 @@ namespace
         if (call.symbol == kTick)
         {
             ++state.tick_calls;
+            if (state.move_source)
+                *state.move_destination = std::move(*state.move_source);
             reenter(state, EReentryPoint::INVOKE);
             if (state.fail_tick_serial == instance.serial)
                 return 32;
@@ -208,6 +223,7 @@ namespace
             assert(frame->args[0].kind == LUX_SCRIPT_VK_UINT32);
             const auto reason = *static_cast<const EScriptEndPlayReason*>(frame->args[0].data);
             ++state.ends;
+            recordMove(state, 2);
             state.end_values.push_back(instance.value);
             state.end_reasons.push_back(reason);
             const auto calls_before = state.tick_calls;
@@ -279,6 +295,7 @@ namespace
     void releaseMethod(void* context, ScriptBackendInstance, ScriptBackendPreparedMethod method) noexcept
     {
         ++static_cast<BackendState*>(context)->releases;
+        recordMove(*static_cast<BackendState*>(context), 3);
         reenter(*static_cast<BackendState*>(context), EReentryPoint::RELEASE_METHOD);
         delete static_cast<PreparedCall*>(method.token);
     }
@@ -286,6 +303,7 @@ namespace
     void destroyInstance(void* context, ScriptBackendInstance instance) noexcept
     {
         ++static_cast<BackendState*>(context)->destroys;
+        recordMove(*static_cast<BackendState*>(context), 4);
         reenter(*static_cast<BackendState*>(context), EReentryPoint::BACKEND_DESTROY);
         delete static_cast<Instance*>(instance.value);
     }
@@ -302,6 +320,7 @@ namespace
     {
         auto* continuation = static_cast<Continuation*>(opaque);
         ++continuation->owner->continuation_destroys;
+        recordMove(*continuation->owner, 1);
         reenter(*continuation->owner, EReentryPoint::CONTINUATION_DESTROY);
         delete continuation;
     }
@@ -422,6 +441,7 @@ namespace
             output.release = [](void* lease) noexcept {
                 auto& harness = *static_cast<Harness*>(lease);
                 ++harness.leases_released;
+                recordMove(harness.backend_state, 5);
                 reenter(harness.backend_state, EReentryPoint::LEASE_RELEASE);
             };
             ++self.leases_acquired;
@@ -450,6 +470,129 @@ namespace
         std::size_t leases_acquired{};
         std::size_t leases_released{};
     };
+
+    void testMoveReplacement(bool suspended)
+    {
+        Harness old{1U, true, true, true};
+        Harness incoming{1U, true, true, true};
+        std::vector<int> trace;
+        trace.reserve(32U);
+        old.backend_state.move_trace = incoming.backend_state.move_trace = &trace;
+        old.backend_state.move_tag = 100;
+        incoming.backend_state.move_tag = 200;
+        old.backend_state.async_tick = incoming.backend_state.async_tick = suspended;
+        incoming.backend_state.capture_prepared_locations = true;
+        {
+            auto first = old.create();
+            auto second = incoming.create();
+            assert(first && second);
+            auto destination = std::move(*first);
+            std::optional<ScriptSystem> source{std::move(*second)};
+            assert(destination.prepare() && source->prepare());
+            const auto before = source->queryMountStatus({1U});
+            assert(before);
+            auto* const host = incoming.backend_state.hosts.front();
+            const auto prepared = incoming.backend_state.prepared_locations;
+            assert(dispatchHookForTest(old.hook) == 1U);
+            assert(dispatchHookForTest(incoming.hook) == 1U);
+            assert(destination.activeContinuationCount() == (suspended ? 1U : 0U));
+            assert(destination.activeAwaitableCount() == (suspended ? 1U : 0U));
+            const auto old_completion = suspended ? old.backend_state.completions.front() : ScriptAwaitableCompletion{};
+            destination = std::move(*source);
+            std::printf("MOVE_REPLACEMENT suspended=%d old_end=%zu release=%zu destroy=%zu lease=%zu frame=%zu\n",
+                suspended, old.backend_state.ends, old.backend_state.releases, old.backend_state.destroys,
+                old.leases_released, old.backend_state.continuation_destroys);
+            std::fflush(stdout);
+            // This assertion precedes any use of a potentially dangling old endpoint in the failing baseline.
+            assert(old.backend_state.ends == 1U);
+            assert(old.backend_state.releases == 3U && old.backend_state.destroys == 1U && old.leases_released == 1U);
+            assert(old.backend_state.continuation_destroys == (suspended ? 1U : 0U));
+            const std::vector<int> expected = suspended ? std::vector<int>{101, 102, 103, 103, 103, 104, 105}
+                                                       : std::vector<int>{102, 103, 103, 103, 104, 105};
+            assert(trace == expected);
+            assert(incoming.backend_state.begins == 1U && incoming.backend_state.ends == 0U);
+            const auto after = destination.queryMountStatus({1U});
+            assert(after && after->instance == before->instance && after->state == EScriptMountState::ACTIVE);
+            assert(host == incoming.backend_state.hosts.front() && host->isAttached());
+            assert(prepared == incoming.backend_state.prepared_locations && incoming.backend_state.prepares == 3U);
+            assert(source->activeInstanceCount() == 0U && source->shutdown());
+            source.reset();
+            assert(incoming.backend_state.ends == 0U && incoming.backend_state.destroys == 0U);
+            assert(dispatchHookForTest(old.hook) == 0U);
+            old.registry.destroy(old.entities.front()); // Old signal connection must have been revoked.
+            if (suspended)
+            {
+                const auto late = old_completion.ready();
+                assert(!late && late.error() == EScriptAwaitableCompletionError::INVALID_ID);
+                assert(incoming.backend_state.completions.front().ready());
+                assert(destination.executeStablePoint());
+                assert(incoming.backend_state.resumes == 1U && old.backend_state.resumes == 0U);
+                assert(destination.activeContinuationCount() == 0U && destination.activeAwaitableCount() == 0U);
+            }
+            assert(dispatchHookForTest(incoming.hook) == 1U);
+            assert(incoming.backend_state.tick_calls == 2U);
+            assert(destination.activeContinuationCount() == (suspended ? 1U : 0U));
+            trace.clear();
+        } // Facade destruction closes transferred resources while both dependency owners are still alive.
+        assert(old.backend_state.ends == 1U && old.leases_released == 1U);
+        assert(incoming.backend_state.ends == 1U && incoming.backend_state.releases == 3U);
+        assert(incoming.backend_state.destroys == 1U && incoming.leases_released == 1U);
+        assert(incoming.backend_state.continuation_destroys == (suspended ? 2U : 0U));
+        const std::vector<int> expected = suspended ? std::vector<int>{201, 202, 203, 203, 203, 204, 205}
+                                                   : std::vector<int>{202, 203, 203, 203, 204, 205};
+        assert(trace == expected);
+        assert(dispatchHookForTest(incoming.hook) == 0U);
+        std::printf("MOVE_FINAL suspended=%d order=verified old=1 incoming=1\n", suspended);
+    }
+
+    void testMoveEmptyClosedAndSelf()
+    {
+        Harness old{1U, true, true, true};
+        Harness incoming{1U, true, true, true};
+        auto first = old.create();
+        auto second = incoming.create();
+        assert(first && second && first->prepare() && second->prepare());
+        auto original = std::move(*first); // first is an empty destination.
+        *first = std::move(*second);
+        assert(incoming.backend_state.begins == 1U && incoming.backend_state.ends == 0U);
+        auto* self = &*first;
+        *first = std::move(*self);
+        assert(dispatchHookForTest(incoming.hook) == 1U && incoming.backend_state.tick_calls == 1U);
+        assert(first->shutdown());
+        assert(incoming.backend_state.ends == 1U && incoming.leases_released == 1U);
+        *first = std::move(original); // Previously closed target does not repeat cleanup.
+        assert(incoming.backend_state.ends == 1U && incoming.leases_released == 1U);
+        assert(dispatchHookForTest(old.hook) == 1U && old.backend_state.tick_calls == 1U);
+        *first = std::move(*second); // Empty source still closes an active target.
+        assert(first->activeInstanceCount() == 0U && first->shutdown());
+        *first = std::move(*self); // Empty self-move.
+        assert(old.backend_state.ends == 1U && old.backend_state.releases == 3U && old.leases_released == 1U);
+        std::puts("MOVE_EMPTY_CLOSED_SELF old=1 incoming=1 verified");
+    }
+
+    BackendState* busy_old{};
+    BackendState* busy_incoming{};
+    void testMoveBusy()
+    {
+        Harness old{1U, true, true, true};
+        Harness incoming{1U, true, true, true};
+        auto first = old.create();
+        auto second = incoming.create();
+        assert(first && second && first->prepare() && second->prepare());
+        busy_old = &old.backend_state;
+        busy_incoming = &incoming.backend_state;
+        std::set_terminate([]() noexcept {
+            const bool retained = busy_old->ends == 0U && busy_old->destroys == 0U && busy_old->releases == 0U &&
+                busy_incoming->ends == 0U && busy_incoming->destroys == 0U && busy_incoming->begins == 1U;
+            std::fprintf(stderr, "MOVE_BUSY terminate retained=%d\n", retained);
+            std::fflush(stderr);
+            std::_Exit(retained ? 73 : 74);
+        });
+        old.backend_state.move_destination = &*first;
+        old.backend_state.move_source = &*second;
+        static_cast<void>(dispatchHookForTest(old.hook));
+        std::_Exit(75); // Returning from an illegal replacement is not success.
+    }
 
     void testPendingDoesNotMaskFatal()
     {
@@ -1003,8 +1146,15 @@ namespace
     }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+    if (argc == 2 && std::strcmp(argv[1], "--move-busy") == 0)
+        testMoveBusy();
+    testMoveReplacement(false);
+    testMoveReplacement(true);
+    testMoveEmptyClosedAndSelf();
+    if (argc == 2 && std::strcmp(argv[1], "--move-only") == 0)
+        return 0;
     testResolvedAssetFailure(true);
     testResolvedAssetFailure(false);
     testResolvedPreparationFailures();

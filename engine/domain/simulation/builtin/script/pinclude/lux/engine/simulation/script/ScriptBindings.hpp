@@ -35,7 +35,6 @@ namespace lux::simulation::script::detail
         void* context{};
         void (*hook)(void*, std::uint32_t, lux_script_call_frame&) noexcept{};
         void (*event)(void*, std::uint32_t, ecs::Entity, lux_script_call_frame&) noexcept{};
-        void (*invoke)(void*, ScriptMethodReference, lux_script_call_frame&, bool) noexcept{};
     };
 
     class ScriptBindings final
@@ -99,8 +98,27 @@ namespace lux::simulation::script::detail
         void withdraw(std::uint32_t slot) noexcept;
         [[nodiscard]] Result connect() noexcept;
         [[nodiscard]] Result disconnect() noexcept;
-        void visitHook(std::uint32_t bucket, lux_script_call_frame& frame) noexcept;
-        void visitEvent(std::uint32_t bucket, ecs::Entity entity, lux_script_call_frame& frame) noexcept;
+        template <class Invoke>
+        void visitHook(std::uint32_t bucket, Invoke&& invoke) noexcept
+        {
+            Traversal traversal{*this};
+            for (const auto& handler : hooks_[bucket].handlers.values())
+                if (configurations_[handler.mount_slot].published)
+                    invoke(handler);
+        }
+        template <class Invoke>
+        void visitEvent(std::uint32_t bucket, ecs::Entity entity, Invoke&& invoke) noexcept
+        {
+            Traversal traversal{*this};
+            const auto visit = [this, &invoke](const ScriptMethodReference& handler) noexcept {
+                if (configurations_[handler.mount_slot].published)
+                    invoke(handler);
+            };
+            if (event_endpoints_[bucket].route == EEventRoute::SIMULATION_BROADCAST)
+                events_[bucket].handlers.forEachAll(visit);
+            else
+                events_[bucket].handlers.forEachTarget(entity, visit);
+        }
 
     private:
         enum class EBindingKind : std::uint8_t { HOOK, EVENT };

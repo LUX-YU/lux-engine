@@ -9,35 +9,6 @@
 
 namespace lux::simulation::script::detail
 {
-    ScriptInstances::IdentityKey ScriptInstances::key(ScriptInstanceId id) noexcept
-    {
-        return id.valid() ? IdentityKey{id.slot - 1U, id.generation} : IdentityKey::invalid();
-    }
-
-    ScriptInstances::Protection::Protection(ScriptInstances& owner) noexcept : owner_(owner)
-    {
-        ++owner_.protection_count_;
-    }
-    ScriptInstances::Protection::~Protection() noexcept { --owner_.protection_count_; }
-
-    ScriptInstances::Invocation::Invocation(
-        ScriptInstances& owner, ScriptInstanceId instance, std::uint32_t method
-    ) noexcept : owner_(&owner), instance_(instance), method_(method)
-    {
-        ++owner_->protection_count_;
-    }
-    ScriptInstances::Invocation::Invocation(Invocation&& other) noexcept
-        : owner_(std::exchange(other.owner_, nullptr)), instance_(other.instance_), method_(other.method_) {}
-    ScriptInstances::Invocation::~Invocation() noexcept
-    {
-        if (owner_ != nullptr)
-            --owner_->protection_count_;
-    }
-    bool ScriptInstances::Invocation::current() const noexcept { return owner_ && owner_->active(instance_); }
-    const ScriptPreparedMethod& ScriptInstances::Invocation::method() const noexcept
-    {
-        return owner_->methods_[method_];
-    }
 
     ScriptInstances::BatchTicket::BatchTicket(BatchTicket&& other) noexcept
         : owner_(std::exchange(other.owner_, nullptr)) {}
@@ -258,35 +229,6 @@ namespace lux::simulation::script::detail
         return {mount.id, mount.asset, mount.scope, mount.instance, mount.retiring_instance, mount.entity, mount.state,
             mount.pending_end_reason, mount.admission_order, mount.pending_scope.has_value(), mount.retirement_queued,
             mount.gameplay_lifetime_started, mount.status.reclaimed};
-    }
-    bool ScriptInstances::valid(ScriptInstanceId instance) const noexcept { return identities_.find(key(instance)); }
-    bool ScriptInstances::active(ScriptInstanceId instance) const noexcept
-    {
-        const auto* slot = identities_.find(key(instance));
-        return slot != nullptr && mounts_[*slot].state == EScriptMountState::ACTIVE &&
-            mounts_[*slot].instance == instance;
-    }
-    std::optional<ScriptInstances::Invocation> ScriptInstances::invokeAccess(ScriptMethodReference method) noexcept
-    {
-        if (!active(method.instance))
-            return std::nullopt;
-        const auto slot = *identities_.find(key(method.instance));
-        const auto& mount = mounts_[slot];
-        const bool invalid_method = method.mount_slot != slot || method.method_slot < mount.method_first ||
-            method.method_slot >= mount.method_first + mount.method_count;
-        if (invalid_method)
-            return std::nullopt;
-        return Invocation{*this, method.instance, method.method_slot};
-    }
-    std::optional<ScriptInstances::Invocation> ScriptInstances::resumeAccess(ScriptInstanceId instance) noexcept
-    {
-        if (!active(instance))
-            return std::nullopt;
-        return Invocation{*this, instance, kInvalidPreparedMethod};
-    }
-    lux::script::ScriptSymbolId ScriptInstances::methodSymbol(std::uint32_t slot) const noexcept
-    {
-        return methods_[slot].symbol;
     }
 
     std::optional<ScriptMountStatus> ScriptInstances::query(ScriptMountId id) const noexcept

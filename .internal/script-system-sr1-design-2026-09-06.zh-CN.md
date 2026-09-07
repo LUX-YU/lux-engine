@@ -986,3 +986,19 @@ artifact/backend/capability/event 契约验证转到 Preparer prepareMount；Hoo
 转到 Bindings publish/withdraw/visit，event wait 的 claim/copy/complete、结果/恢复仍在原执行区。
 query/collect 对应 Instances query/collect，System 不再修改 unconsumed_result 或快照字段。旧
 continuation/pin/frontier 的业务断言不改，新增测试补充 owner 边界而不替换这些断言。
+
+### 13.5 调用热路径调查
+
+`sr3-measurements-owner` 的 72 进程及全部业务行相等，但初版 owner 的五对中位增幅为 C++ update
++244.11%、FlowForge update +111.50%、Lua update +43.88%。这些回退原样保留，没有通过更改工作量、
+关闭权限检查或删预算来隐藏。工作树进一步调查先将访问票据和短操作内联；随后让带固定配置槽位的
+binding 在 Instances 内直接检查权威状态与完整 incarnation，避免额外查一次 identity 目录。
+
+调用返回后仍重新校验借用的完整身份和权限；票据保护覆盖 backend 调用及结果处理，不再叠加一个
+作用相同的计数 guard。方法 single-flight 仍在执行区，只有能产生 continuation 的 resumable
+方法才访问该存储。Bindings 的受保护只读遍历接受短期 callback，不返回容器；删除每 handler
+中转的函数指针调用。所有状态读写仍在对应 owner 内，backend ABI、恢复点与预算不变。
+
+`sr3-work/hot-access-*` 只是带实际 DLL 哈希的工作树诊断，EXE 的旧编译 stamp 不充当新提交身份；
+前两次诊断脚本错误假定 CSV 有 errors/failures 列而失败，第三次起使用实际 calls/active/queue 列。
+最终性能结论将使用下一 clean commit 的完整安装配对结果，不以这些迭代样本宣称消除了全部回退。

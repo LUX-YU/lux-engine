@@ -1788,7 +1788,7 @@ namespace lux::simulation::script
             retirement_queue.push_back(slot);
         }
 
-        void invoke(Handler handler, lux_script_call_frame& frame, bool hook_invocation) noexcept
+        void invoke(const Handler& handler, lux_script_call_frame& frame, bool hook_invocation) noexcept
         {
             if (stopping)
                 return;
@@ -1796,14 +1796,14 @@ namespace lux::simulation::script
             if (!access)
                 return;
             const auto& method = access->method();
-            const auto flight = active_hooks[handler.method_slot];
-            if (hook_invocation && flight.instance == handler.instance && flight.continuation.valid() &&
-                continuations.find(continuationKey(flight.continuation)) != nullptr)
-            {
-                return;
-            }
             if (method.backend.resumable)
             {
+                const auto flight = active_hooks[handler.method_slot];
+                if (hook_invocation && flight.instance == handler.instance && flight.continuation.valid() &&
+                    continuations.find(continuationKey(flight.continuation)) != nullptr)
+                {
+                    return;
+                }
                 ScriptBackendContinuation continuation;
                 ScriptStepContext context{
                     handler.instance,
@@ -1813,7 +1813,6 @@ namespace lux::simulation::script
                     &State::waitEventErased
                 };
                 const auto result = [&]() noexcept {
-                    UserInvocationScope scope(*this);
                     ++step_invocations;
                     return method.backend.resumable.invoke(
                         method.backend.resumable.context, frame, context, continuation);
@@ -1851,11 +1850,10 @@ namespace lux::simulation::script
 
             frame.user_context = method.backend.synchronous.context;
             const auto status = [&]() noexcept {
-                UserInvocationScope scope(*this);
                 ++sync_invocations;
                 return method.backend.synchronous.invoke(&frame);
             }();
-            if (status == 0)
+            if (!access->current() || stopping || status == 0)
                 return;
             faultInvocation(handler.mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE, status);
         }
@@ -1866,11 +1864,6 @@ namespace lux::simulation::script
         };
         BindingPort binding_port{this};
 
-        static void invokeBinding(void* context, Handler handler, lux_script_call_frame& frame, bool hook) noexcept
-        {
-            static_cast<BindingPort*>(context)->owner->invoke(handler, frame, hook);
-        }
-
         static void invokeHookLane(void* context, std::uint32_t bucket, lux_script_call_frame& frame) noexcept
         {
             auto& owner = *static_cast<BindingPort*>(context)->owner;
@@ -1878,7 +1871,8 @@ namespace lux::simulation::script
             if (!execution)
                 return;
             ++owner.endpoint_dispatch_depth;
-            owner.binding_owner.visitHook(bucket, frame);
+            owner.binding_owner.visitHook(bucket,
+                [&](const Handler& handler) noexcept { owner.invoke(handler, frame, true); });
             --owner.endpoint_dispatch_depth;
         }
 
@@ -2001,7 +1995,8 @@ namespace lux::simulation::script
             const auto target = endpoint.route == EEventRoute::SIMULATION_BROADCAST ? ecs::NullEntity : entity;
             owner.claimEventWaiters(bucket, target, cutoff);
             const auto claimed_end = owner.claimed_event_waiters.size();
-            owner.binding_owner.visitEvent(bucket, entity, frame);
+            owner.binding_owner.visitEvent(bucket, entity,
+                [&](const Handler& handler) noexcept { owner.invoke(handler, frame, false); });
             for (std::size_t index{claimed_begin}; index < claimed_end; ++index)
                 owner.completeClaimedEventWaiter(owner.claimed_event_waiters[index], frame);
             owner.claimed_event_waiters.resize(claimed_begin);
@@ -2394,7 +2389,7 @@ namespace lux::simulation::script
                 return lux::cxx::unexpected(instance_layout.error());
             state->real_delay = real_delay;
             const auto binding_layout = state->binding_owner.prepare(simulation, capacity, hooks, events,
-                {&state->binding_port, &State::invokeHookLane, &State::dispatchEvent, &State::invokeBinding},
+                {&state->binding_port, &State::invokeHookLane, &State::dispatchEvent},
                 limits.max_resume_payload_bytes);
             if (!binding_layout)
                 return lux::cxx::unexpected(binding_layout.error());

@@ -415,27 +415,6 @@ namespace lux::simulation::script::detail
         pending_unlinks_.clear();
     }
 
-    void ScriptBindings::visitHook(std::uint32_t slot, lux_script_call_frame& frame) noexcept
-    {
-        Traversal traversal{*this};
-        for (const auto& handler : hooks_[slot].handlers.values())
-            if (configurations_[handler.mount_slot].published)
-                dispatch_.invoke(dispatch_.context, handler, frame, true);
-    }
-
-    void ScriptBindings::visitEvent(std::uint32_t slot, ecs::Entity entity, lux_script_call_frame& frame) noexcept
-    {
-        Traversal traversal{*this};
-        const auto invoke = [this, &frame](const ScriptMethodReference& handler) noexcept {
-            if (configurations_[handler.mount_slot].published)
-                dispatch_.invoke(dispatch_.context, handler, frame, false);
-        };
-        if (event_endpoints_[slot].route == EEventRoute::SIMULATION_BROADCAST)
-            events_[slot].handlers.forEachAll(invoke);
-        else
-            events_[slot].handlers.forEachTarget(entity, invoke);
-    }
-
     void ScriptBindings::hookEntry(void* context, lux_script_call_frame& frame) noexcept
     {
         const auto& bucket = *static_cast<HookBucket*>(context);

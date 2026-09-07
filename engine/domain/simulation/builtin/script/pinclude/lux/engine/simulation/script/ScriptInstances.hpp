@@ -5,6 +5,7 @@
 #include <lux/cxx/container/SlotMap.hpp>
 #include <entt/container/dense_map.hpp>
 #include <limits>
+#include <utility>
 
 namespace lux::simulation::script::detail
 {
@@ -83,10 +84,12 @@ namespace lux::simulation::script::detail
             [[nodiscard]] ScriptInstanceId instance() const noexcept { return instance_; }
         private:
             friend class ScriptInstances;
-            Invocation(ScriptInstances& owner, ScriptInstanceId instance, std::uint32_t method) noexcept;
+            Invocation(ScriptInstances& owner, ScriptInstanceId instance,
+                std::uint32_t method, std::uint32_t mount_slot) noexcept;
             ScriptInstances* owner_{};
             ScriptInstanceId instance_;
             std::uint32_t method_{kInvalidPreparedMethod};
+            std::uint32_t mount_slot_{};
         };
 
         class BatchTicket final
@@ -276,4 +279,76 @@ namespace lux::simulation::script::detail
         bool suppress_attachment_signal_{};
         bool reservation_active_{};
     };
+
+    // Inline access preserves owner-only writes without a cross-TU call per script invocation.
+    inline ScriptInstances::IdentityKey ScriptInstances::key(ScriptInstanceId id) noexcept
+    {
+        return id.valid() ? IdentityKey{id.slot - 1U, id.generation} : IdentityKey::invalid();
+    }
+    inline ScriptInstances::Protection::Protection(ScriptInstances& owner) noexcept : owner_(owner)
+    {
+        ++owner_.protection_count_;
+    }
+    inline ScriptInstances::Protection::~Protection() noexcept { --owner_.protection_count_; }
+    inline ScriptInstances::Invocation::Invocation(
+        ScriptInstances& owner, ScriptInstanceId instance, std::uint32_t method, std::uint32_t mount_slot
+    ) noexcept : owner_(&owner), instance_(instance), method_(method), mount_slot_(mount_slot)
+    {
+        ++owner_->protection_count_;
+    }
+    inline ScriptInstances::Invocation::Invocation(Invocation&& other) noexcept
+        : owner_(std::exchange(other.owner_, nullptr)), instance_(other.instance_), method_(other.method_),
+          mount_slot_(other.mount_slot_) {}
+    inline ScriptInstances::Invocation::~Invocation() noexcept
+    {
+        if (owner_ != nullptr)
+            --owner_->protection_count_;
+    }
+    inline bool ScriptInstances::Invocation::current() const noexcept
+    {
+        if (owner_ == nullptr)
+            return false;
+        const auto& mount = owner_->mounts_[mount_slot_];
+        return mount.state == EScriptMountState::ACTIVE && mount.instance == instance_;
+    }
+    inline const ScriptPreparedMethod& ScriptInstances::Invocation::method() const noexcept
+    {
+        return owner_->methods_[method_];
+    }
+    inline bool ScriptInstances::valid(ScriptInstanceId instance) const noexcept
+    {
+        return identities_.find(key(instance));
+    }
+    inline bool ScriptInstances::active(ScriptInstanceId instance) const noexcept
+    {
+        const auto* slot = identities_.find(key(instance));
+        return slot != nullptr && mounts_[*slot].state == EScriptMountState::ACTIVE &&
+            mounts_[*slot].instance == instance;
+    }
+    inline std::optional<ScriptInstances::Invocation>
+    ScriptInstances::invokeAccess(ScriptMethodReference method) noexcept
+    {
+        // A binding already carries the fixed configuration slot. Its authoritative full incarnation
+        // check also rejects revoked/reused identities; no second identity-directory lookup is needed.
+        if (method.mount_slot >= mounts_.size() || !method.instance.valid())
+            return std::nullopt;
+        const auto& mount = mounts_[method.mount_slot];
+        if (mount.state != EScriptMountState::ACTIVE || mount.instance != method.instance)
+            return std::nullopt;
+        const bool invalid_method = method.method_slot < mount.method_first ||
+            method.method_slot >= mount.method_first + mount.method_count;
+        if (invalid_method)
+            return std::nullopt;
+        return Invocation{*this, method.instance, method.method_slot, method.mount_slot};
+    }
+    inline std::optional<ScriptInstances::Invocation> ScriptInstances::resumeAccess(ScriptInstanceId instance) noexcept
+    {
+        if (!active(instance))
+            return std::nullopt;
+        return Invocation{*this, instance, kInvalidPreparedMethod, *identities_.find(key(instance))};
+    }
+    inline lux::script::ScriptSymbolId ScriptInstances::methodSymbol(std::uint32_t slot) const noexcept
+    {
+        return methods_[slot].symbol;
+    }
 }

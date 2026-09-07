@@ -24,12 +24,16 @@ namespace
         bool withdraw{};
         static void hook(void* context, std::uint32_t slot, lux_script_call_frame& frame) noexcept
         {
-            static_cast<Dispatch*>(context)->bindings->visitHook(slot, frame);
+            static_cast<Dispatch*>(context)->bindings->visitHook(slot, [&](auto reference) noexcept {
+                invoke(context, reference, frame, true);
+            });
         }
         static void event(void* context, std::uint32_t slot, ecs::Entity entity,
             lux_script_call_frame& frame) noexcept
         {
-            static_cast<Dispatch*>(context)->bindings->visitEvent(slot, entity, frame);
+            static_cast<Dispatch*>(context)->bindings->visitEvent(slot, entity, [&](auto reference) noexcept {
+                invoke(context, reference, frame, false);
+            });
         }
         static void invoke(void* context, ScriptMethodReference reference, lux_script_call_frame&, bool) noexcept
         {
@@ -85,7 +89,7 @@ int main()
     ScriptBindings bindings;
     Dispatch dispatch{&bindings, entity};
     assert(bindings.prepare(*simulation, *capacity, hook_endpoints, event_endpoints,
-        {&dispatch, &Dispatch::hook, &Dispatch::event, &Dispatch::invoke}, 64U));
+        {&dispatch, &Dispatch::hook, &Dispatch::event}, 64U));
     const std::array placements{ScriptMountPlacement{0U, false}};
     const auto bytes = bindings.backingBytes();
     const std::array rejected_inputs{inputs[0], inputs[0]};

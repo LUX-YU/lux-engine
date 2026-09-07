@@ -29,6 +29,7 @@ constexpr lux::script::ScriptSymbolId kTick{0x5A0103}, kBegin{0x5A0104}, kEnd{0x
 struct Provider
 {
     std::size_t poses{}, angles{}, tokens{};
+    std::size_t scalar_calls{}, zero_calls{};
     bool invalid_result{};
     ValuePose echo(const ValuePose& input) noexcept
     {
@@ -41,6 +42,8 @@ struct Provider
     { return input.id + static_cast<std::int32_t>(input.weight); }
     std::int32_t token(const ValueToken& input, std::int32_t next) noexcept
     { ++tokens; return input.value() + next; }
+    std::int32_t scalarProbe(std::int32_t value) noexcept { ++scalar_calls; return value + 1; }
+    std::int32_t zeroArgumentProbe() noexcept { ++zero_calls; return 42; }
 };
 static SimulationDescription simulation()
 {
@@ -153,6 +156,36 @@ static void closeDuringRead() noexcept
 static constexpr std::string_view pose_tick =
     "local p=lux.Values.echo({key=7,velocity={x=1.5,y=2.25},mode=3});"
     "assert(p.key==8 and p.velocity.x==3 and p.velocity.y==5.25 and p.mode==3)";
+static void admissionCase(LuaScriptBackend& backend, std::string_view name)
+{
+    const bool stopping = name.starts_with("stop-");
+    const bool retiring = name.starts_with("retire-");
+    const bool zero = name.ends_with("zero");
+    assert(stopping || retiring || name == "input-recovery");
+    const bool recovery = !stopping && !retiring;
+    const std::string prefix = recovery ? "assert(not pcall(lux.Values.angle,'bad'));" :
+        "assert(not pcall(lux.Values.angle,90));";
+    const std::string call = zero ? "lux.Values.zeroArgumentProbe" : "lux.Values.scalarProbe,7";
+    const std::string script = prefix + "local ok,v=pcall(" + call + ");"
+        "print('ADMISSION_LUA " + std::string{name} + " reached ok='..tostring(ok));" +
+        (recovery ? "assert(ok and v==8); assert(lux.Values.zeroArgumentProbe()==42)" : "assert(not ok)");
+    std::fprintf(stderr, "ADMISSION_BEGIN %.*s\n", static_cast<int>(name.size()), name.data());
+    Runtime runtime{backend, 1, script};
+    outer = &runtime;
+    value_reentry = stopping ? closeDuringRead : retiring ? retire : nullptr;
+    assert(dispatchHookForTest(runtime.hook) == 1);
+    std::fflush(stdout);
+    std::fprintf(stderr, "ADMISSION_COUNTS %.*s scalar=%zu zero=%zu angles=%zu failures=%zu\n",
+        static_cast<int>(name.size()), name.data(), runtime.provider.scalar_calls, runtime.provider.zero_calls,
+        runtime.provider.angles, runtime.system->failures().size());
+    assert(runtime.provider.scalar_calls == static_cast<std::size_t>(recovery));
+    assert(runtime.provider.zero_calls == static_cast<std::size_t>(recovery));
+    assert(runtime.system->failures().empty()); // The Lua function caught the rejected entry and completed.
+    assert(runtime.system->shutdown());
+    assert(runtime.provider.angles == 2); // Only BeginPlay + the one qualified EndPlay.
+    assert(runtime.system->activeContinuationCount() == 0);
+    std::fprintf(stderr, "ADMISSION_PASS %.*s endplay=1 backlog=0\n", static_cast<int>(name.size()), name.data());
+}
 int main(int argc, char** argv)
 {
     static_assert(!std::is_default_constructible_v<ValueToken>);
@@ -184,6 +217,11 @@ int main(int argc, char** argv)
         .prepared_ability_storage_bytes = 1024 * 1024});
     assert(created);
     auto backend = std::move(*created);
+    if (argc > 2 && std::string_view{argv[1]} == "--admission-case")
+    {
+        admissionCase(backend, argv[2]);
+        return 0;
+    }
     if (benchmark_mode)
     {
         const auto count = std::strtoull(argv[2], nullptr, 10);
@@ -276,5 +314,7 @@ int main(int argc, char** argv)
         assert(first.provider.angles == 1 && !first.system->failures().empty());
         assert(first.system->shutdown() && first.provider.angles == 2);
     }
+    for (const auto* name : {"retire-scalar", "retire-zero", "stop-scalar", "stop-zero", "input-recovery"})
+        admissionCase(backend, name);
     std::puts("VALUE_RUNTIME generated-pose enum override provider-count lifecycle reentry retire shutdown PASS");
 }

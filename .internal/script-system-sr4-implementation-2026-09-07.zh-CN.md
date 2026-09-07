@@ -83,3 +83,44 @@ G03 物理差异：以前已撤权限 NextStep 可留到 step 到期，模拟 de
 对应 next_step_waits/simulation_delay_waits 反映实际来源存储，因此旧实例取消后的计数下降是本次显式修复。
 ResumeRing 中旧通知仍按原协议保留，stale pop 仍消耗预算；不得把来源物理回收扩展为通知越过预算。
 Timer backing 以唯一 awaitable owner 的同时存活上界 min(next_limit + delay_limit, awaitable_limit) 预留；先 clamp 后防溢出相加，两个逻辑来源上限保持原值。移除初版引入的 combined-capacity 拒绝，避免结构迁移新增输入限制。新增超大逻辑容量/小结果容量的工厂回归。
+
+## 协议状态与失败闭环（实现复核）
+
+| 记录/阶段 | 唯一写 owner 与提交点 | 失败、重入和最后回收 |
+|---|---|---|
+| ExecutionInstance | Execution.beginInstance 以完整实例 ID 建立本地执行索引；不复制 ACTIVE authority | invalidateAdmission 先标记已撤资格；invalidateInstance 先清执行入口再进入 continuation destroy；其他实例继续按 Instances 票据访问 |
+| Awaitable 预留 | createAwaitableRecord 校验完整 ID、结果布局和逻辑容量，StableSlotMap/owned bytes 就位后链接实例 | 创建失败不构造 continuation；外部票据只在成功预留后 open；内部 Event 不构造运输 capability |
+| 来源登记 | EventWaits.registerWait 或 Timers.registerWait 提交有限关联，Execution 保存 kind+完整来源 ID | Event 失败撤新路由和结果；Timer 失败取消局部 slot/链/heap；starter 返回错误时 awaitables.discard 双向清理来源 |
+| PENDING→READY/FAILED | finishAwaitableOwner 验证类型/大小/错误，预检 ResumeRing 后才写最终值；只在 Execution | 环满仍 PENDING，来源保留以便原时机重试；终态先 detach 来源，再 close 外部权限和提交通知；重复完成不覆盖结果 |
+| 先终态后关联 | attachWaiter 在同一 full instance/awaitable/continuation 下关联；终态记录随后入 ResumeRing | 环满时不得丢通知或假成功；beginSuspension 销毁本次 backend continuation、discard 结果并报告既有错误 |
+| 先关联后终态 | finishAwaitableOwner 成功后仅向 ResumeRing 放三种完整 ID | 队列不拥有 payload；takeAwaitable 校验三个 ID 后转移唯一值，擦除旧记录，resume callback 仍受原保护 |
+| Event ACTIVE→CLAIMED | ClaimBatch 按 occurrence 的当前 sequence 截止登记范围，值快照不暴露可写 waiter | 取消 claimed 立即 unlink，但 claimed reservation 保留至 LIFO 批次退出；嵌套 occurrence 可登记/claim 自己的范围 |
+| Event projection copy | Execution ResultWritePin 锁定 StableSlotMap 中最终 owned bytes；copy 前/后验证权限与关联 | copy 取消/退休/关闭可使记录 CANCELLED+release_pending；最后一个 pin 才释放字节，已取消结果不得 READY |
+| Timer due | clock snapshot 比较 NextStep target，或 deadline/sequence+minimum_step；同 deadline 仍先登记先完成 | 源取消 O(1) NextStep / O(log n) heap，不扫描其他实例；到期完成前复制 completion lease，返回后重查 ID；环满条目原位保留 |
+| Ingress reserved/published | producer 的权限、lease 与 publication 只在原 ExternalCompletionRing 中变更 | 未 publish head 阻挡后项；close/post rendezvous 与容量错误仍由原 ring 给出；运输成功不表示最终结果接受 |
+| Ingress owner 接纳 | capture 固定 frontier/次数；peek 仅借用当前包至 ack，Execution 校验身份和值并提交最终结果 | 背压不 ack；同一 window 的尝试计数仍消耗；每次 resume pop（含 stale）后再次 drain 同一 frontier，绝不重新捕获 |
+| 停止/销毁 | System stop 关闭 Execution/Timers/Ingress 准入；Instances 撤权限后协调 source/continuation 清理 | invoke/resume/copy/claim/cleanup 忙碌继续返回 ENDPOINT_BUSY；资源仍受保护时不提前释放。最终依赖次序沿既有 Instances/Preparer 契约 |
+
+外部可执行代码边界仍只有 backend invoke/resume/destroy、prepared release、EndPlay/lease 清理、Event projection copy、
+真实外部 provider/transport callbacks 等原入口。新增来源取消只处理各自的 trivial 索引/队列和受控 completion lease，
+不执行脚本、不返回 writable authority，不增加调度机会。所有 owner 方法由原串行安全区域调用；只有 Transport producer
+入口允许其他线程，并完全避开 Registry/Instances/最终结果。System 的 FailurePort 仅提供一个故障操作函数，
+Bindings 的有限 callback port 保持原样；来源组件不获得 State 指针或“访问全 Runtime”的友元。
+
+## 旧断言→当前入口与补缺
+
+| 真实测试/驱动 | 当前入口及保留断言 |
+|---|---|
+| lifecycle fixture 的资产失败、反馈、替代输入、七点清理重入/status 32 | 原公开入口→Instances/Bindings/Preparer；Execution 只接受 full ID 的清理请求，保留 fault/lease/析构/忙碌断言 |
+| testSingleFlightIsolation、testSyncAndContinuation、testAsyncAbilityInvocation、testCapacityAndCancellation | Execution.invoke/beginSuspension/resumeOne/attachWaiter；保留不同方法/实例/代次、budget=1、eager/late/重复/失败及容量 |
+| testRegistrationCutoff、testNestedDispatch、testPreparedAdmissionProvenance | System occurrence 顺序→EventWaits ClaimBatch→Execution 完成；原 cutoff/嵌套/admission 断言不删除 |
+| testCopyRetirementPin、testCopyOtherRecordRemoval、testCopyShutdownAndFailure、testCopyNestedAdmission | Execution.ResultWritePin / source cancel；保留取消后不能 READY、字节稳定、清理与重入断言 |
+| testResumeBudget、ingress_frontier fixture | ResumeBatch/Ingress peek+ack，保留 stale pop、publication head、同 frontier、rendezvous/旧代次断言 |
+| 新 testSealedBatchAndOwnedResultAcrossSteps | 两个 occurrence 明确只 seal/consume 一次；callback 新 waiter 吃第二个值20而非第一个10；reset并写999后，真实 step1/2 按预算1仍读取10/20；重复同step不多恢复 |
+| 新 testTimerSourceCancellation | 2槽下32次 discard、32次退休重建，另一实例有效；外部终态、失败 starter 清理、旧 completion、超大逻辑上限防溢出；原 E0 在物理释放断言失败 |
+| 新 testTimerDeadlineOrderAndBackpressure | NextStep/零 delay/正 delay，同 deadline 注册次序；ResumeRing容量1迫使第二源保留，下一个真实step重试；同step不重试，原期限/预算不变 |
+| Scene Lua 六配置 | 实际 packaged bytecode 的 step1—5 表，完整调用/写入/结果/清理；原四步期望错误已独立修正 |
+| 既有 CppStatic/Lua/Native/FlowForge、Physics 与安装 consumers | 仍进入同一 Execution/来源协议，未改 backend ABI 或生成输入；14消费者、wire和链接闭包单列证据 |
+
+新真实 step 测试使用与已有 runtime benchmark 相同的空 Simulation 时钟 owner，调用 Simulation.execute 更新真实 clock；
+不访问私有 advance、不在生产增加 Hook/stable。测试中的显式 System.executeStablePoint 仍使用既有调用边界与步去重。

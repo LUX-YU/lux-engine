@@ -1,3 +1,6 @@
+#if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
+#include "ScriptTestClock.hpp"
+#endif
 #include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
 using lux::simulation::script::test::deliverEndpoint;
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -381,6 +384,8 @@ namespace
         ERequirementMutation requirement_mutation{ERequirementMutation::NONE};
         std::optional<EScriptSystemError> expected_prepare_error;
         std::size_t occurrence_capacity{8U};
+        const SimulationClock* clock_override{};
+        bool real_clock{};
         ScriptRuntimeLimits limits{32U, 1U, 16U, 16U, 16U, 16U, 64U, 16U, 16U, 16U, 16U, 16U};
     };
 
@@ -575,12 +580,19 @@ namespace
                 &destroyInstance
             };
 
+#if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
+            if (options.real_clock)
+            {
+                clock_owner.emplace(registry);
+                options.clock_override = &clock_owner->clock();
+            }
+#endif
             auto created = ScriptSystem::create(
                 simulation,
                 *planScriptRuntimeCapacity(description),
                 description,
                 registry,
-                clock,
+                options.clock_override ? *options.clock_override : clock,
                 options.limits,
                 {this, &resolveArtifact},
                 {},
@@ -718,6 +730,9 @@ namespace
         std::array<ScriptEventEndpointDescriptor, 6U> endpoints;
         BackendState backend_state;
         ScriptBackendDescriptor backend;
+#if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
+        std::optional<lux::simulation::script::test::ScriptTestClock> clock_owner;
+#endif
         std::unique_ptr<ScriptSystem> system;
     };
 
@@ -781,6 +796,50 @@ namespace
         assert(harness.system->executeStablePoint());
         assert(harness.backend_state.resume_values == std::vector<std::int32_t>({10, 20}));
     }
+
+#if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
+    void testSealedBatchAndOwnedResultAcrossSteps()
+    {
+        HarnessOptions options;
+        options.bind_callback = true;
+        options.callback_action = ECallbackAction::WAIT_ONCE;
+        options.occurrence_capacity = 2U;
+        options.real_clock = true;
+        options.limits.resumes_per_stable_point = 1U;
+        Harness harness{options};
+        auto& clock_owner = *harness.clock_owner;
+        harness.recordBroadcastStart(1);
+        assert(deliverEndpoint(harness.broadcast_start_bridge) == 1U);
+        harness.recordBroadcastWait(10);
+        harness.recordBroadcastWait(20);
+        assert(harness.broadcast_wait.seal());
+        const auto endpoint = harness.broadcast_wait_bridge->descriptor();
+        assert(endpoint.consume(endpoint.context) == 2U); // Exactly one sealed batch, two occurrences.
+        assert(harness.backend_state.callback_calls == 2U);
+        assert(harness.system->stats().active_event_waiters == 0U);
+        assert(harness.system->stats().resume_queue_depth == 2U);
+        assert(harness.backend_state.resume_values.empty());
+        harness.broadcast_wait.reset();
+        // Reuse/reset the Channel before either result is read; results must remain independently owned.
+        harness.recordBroadcastWait(999);
+        assert(deliverEndpoint(harness.broadcast_wait_bridge) == 1U);
+        for (std::uint64_t step{1U}; step <= 2U; ++step)
+        {
+            clock_owner.advance(SimulationDuration{1});
+            assert(clock_owner.clock().snapshot().step_index == step);
+            assert(harness.system->executeStablePoint());
+            const auto expected = step == 1U ? std::vector<std::int32_t>{10} : std::vector<std::int32_t>{10, 20};
+            assert(harness.backend_state.resume_values == expected);
+            assert(harness.system->stats().resume_queue_depth == 2U - step);
+            assert(harness.system->executeStablePoint());
+            assert(harness.backend_state.resume_values == expected); // Real-step deduplication preserves budget=1.
+            std::printf("SEALED_STEP,step=%llu,resumes=%llu,queue=%zu,last=%d\n", step,
+                static_cast<unsigned long long>(harness.backend_state.resumes),
+                harness.system->stats().resume_queue_depth, harness.backend_state.resume_values.back());
+        }
+        assert(harness.system->failures().empty() && harness.system->activeAwaitableCount() == 0U);
+    }
+#endif
 
     void testTargetedAndRetirement()
     {
@@ -1265,6 +1324,9 @@ int main(int argc, char**)
 {
     testBroadcastSemantics();
     testRegistrationCutoff();
+#if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
+    testSealedBatchAndOwnedResultAcrossSteps();
+#endif
     testTargetedAndRetirement();
     testTargetedScopeRejection();
     testCapacityFailure();

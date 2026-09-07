@@ -101,7 +101,7 @@ def main():
                     fixture = prefix / "t/share/lux-engine/lua/lua_runtime_benchmark_fixture.lxsa"
                     if lua:
                         # Qualification stores generated fixtures beside each profile's build, not in the SDK.
-                        fixture = prefix.parent.parent / "build/RelWithDebInfo" / prefix.name / (
+                        fixture = build / (
                             "t/engine/toolchain/lua/lua_runtime_benchmark_fixture.lxsa")
                         command += ["--lua-artifact", str(fixture)]
                         if mode == "diagnostic":

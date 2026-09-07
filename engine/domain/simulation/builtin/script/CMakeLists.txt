@@ -398,3 +398,8 @@ foreach(count IN ITEMS 1 4 16 64)
             EVENT_SCHEMA "${sequence_schema}" EVENT_NAMES ${event_names} ${final_event} DEPENDS script_sequence_schema)
     endforeach()
 endforeach()
+
+foreach(source_protocol_target IN ITEMS simulation_script_continuation_test simulation_script_event_wait_test)
+    target_compile_definitions(${source_protocol_target} PRIVATE LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK=1)
+    target_link_libraries(${source_protocol_target} PRIVATE lux::engine::simulation::simulation_composition)
+endforeach()

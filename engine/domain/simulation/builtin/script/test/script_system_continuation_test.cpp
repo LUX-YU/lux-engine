@@ -1,3 +1,6 @@
+#if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
+#include "ScriptTestClock.hpp"
+#endif
 #include "../../../system/test/HookInvocationTestAccess.hpp"
 using lux::simulation::test::dispatchHookForTest;
 #include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
@@ -14,6 +17,7 @@ using lux::simulation::script::test::deliverEndpoint;
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cstdio>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -215,6 +219,9 @@ namespace
         std::optional<lux::script::ScriptAbilityStarter<DelayAbility>> delay;
         std::vector<lux::script::ScriptAbilityCompletion<void>> timer_completions;
         bool simulation_timer{};
+        double timer_seconds{1000.0};
+        bool check_timer_errors{true};
+        std::vector<ScriptInstanceId> resumed_instances;
         bool discard_timer{};
         bool reject_after_timer{};
         bool enable_step{};
@@ -387,6 +394,8 @@ namespace
                 owner.saw_typed_result = true;
             }
         }
+        if (owner.delay)
+            owner.resumed_instances.push_back(context.instance);
         ++owner.resume_calls;
         owner.resume_thread = std::this_thread::get_id();
         ++owner.resume_depth;
@@ -538,14 +547,15 @@ namespace
         [[nodiscard]] lux::cxx::expected<ScriptSystem, EScriptSystemError> create(
             ScriptRuntimeLimits limits,
             std::span<const ScriptApiCapabilityPublication> capabilities,
-            bool include_endpoint = true) noexcept
+            bool include_endpoint = true,
+            const SimulationClock* clock_override = nullptr) noexcept
         {
             return ScriptSystem::create(
                 simulation,
                 *planScriptRuntimeCapacity(description),
                 description,
                 registry,
-                clock,
+                clock_override ? *clock_override : clock,
                 limits,
                 {this, &resolveArtifact},
                 capabilities,
@@ -619,6 +629,55 @@ namespace
         };
     }
 
+    void configureTimerHarness(Harness& harness)
+    {
+        auto source = harness.artifact.description();
+        const auto& delay = lux::script::ScriptAbilityTraits<DelayAbility>::Description;
+        source.api_requirements.push_back({lux::script::ScriptApiContractId{delay.id.name()}, delay.schema_hash});
+        auto artifact = lux::script::ScriptArtifact::create(std::move(source), {});
+        assert(artifact);
+        harness.artifact = std::move(*artifact);
+        auto& backend = harness.backend_state;
+        backend.enable_step = true;
+        backend.custom_step = [](BackendState& state, ScriptStepContext& context) noexcept {
+            if (std::exchange(state.check_timer_errors, false))
+            {
+                const std::array bad_durations{-1.0, std::numeric_limits<double>::quiet_NaN(),
+                    std::numeric_limits<double>::infinity(), (std::numeric_limits<double>::max)()};
+                for (std::size_t index{}; index < bad_durations.size(); ++index)
+                {
+                    const auto rejected = invokeScriptAbilityAsync<void>(context,
+                        [&](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
+                            return state.delay->simulationSeconds(bad_durations[index], std::move(completion));
+                        });
+                    const auto expected = index == 3U ? EScriptDelayStatus::DURATION_OVERFLOW :
+                        EScriptDelayStatus::INVALID_DURATION;
+                    assert(rejected.state == EScriptStepState::FAILED);
+                    assert(rejected.error.status == static_cast<std::int32_t>(expected));
+                }
+            }
+            auto result = invokeScriptAbilityAsync<void>(context,
+                [&state](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
+                    state.timer_completions.push_back(completion);
+                    auto started = state.simulation_timer
+                        ? state.delay->simulationSeconds(state.timer_seconds, completion)
+                        : state.delay->nextStep(completion);
+                    if (started && state.reject_after_timer)
+                        return lux::script::ScriptAbilityStartResult{
+                            lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{87})};
+                    return started;
+                });
+            if (state.discard_timer && result.state == EScriptStepState::SUSPENDED)
+            {
+                context.awaitables.discard(result.waiting_on);
+                // Idempotent cancellation cannot remove another source.
+                context.awaitables.discard(result.waiting_on);
+                return ScriptStepResult::completed();
+            }
+            return result;
+        };
+    }
+
     void testTimerSourceCancellation()
     {
         for (const bool simulation_timer : {false, true})
@@ -628,35 +687,9 @@ namespace
             auto entity = harness.registry.create();
             harness.description[0].scope = EntityScriptScope{entity};
             harness.description[1].scope = EntityScriptScope{other};
-            auto source = harness.artifact.description();
-            const auto& delay = lux::script::ScriptAbilityTraits<DelayAbility>::Description;
-            source.api_requirements.push_back({lux::script::ScriptApiContractId{delay.id.name()}, delay.schema_hash});
-            auto artifact = lux::script::ScriptArtifact::create(std::move(source), {});
-            assert(artifact);
-            harness.artifact = std::move(*artifact);
+            configureTimerHarness(harness);
             auto& backend = harness.backend_state;
-            backend.enable_step = true;
             backend.simulation_timer = simulation_timer;
-            backend.custom_step = [](BackendState& state, ScriptStepContext& context) noexcept {
-                auto result = invokeScriptAbilityAsync<void>(context,
-                    [&state](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
-                        state.timer_completions.push_back(completion);
-                        auto started = state.simulation_timer ? state.delay->simulationSeconds(1000.0, completion) :
-                            state.delay->nextStep(completion);
-                        if (started && state.reject_after_timer)
-                            return lux::script::ScriptAbilityStartResult{
-                                lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{87})};
-                        return started;
-                    });
-                if (state.discard_timer && result.state == EScriptStepState::SUSPENDED)
-                {
-                    context.awaitables.discard(result.waiting_on);
-                    // Idempotent cancellation cannot remove another source.
-                    context.awaitables.discard(result.waiting_on);
-                    return ScriptStepResult::completed();
-                }
-                return result;
-            };
             auto configured = limits(2U, 4U, 4U);
             configured.next_step_wait_capacity = 2U;
             configured.simulation_delay_capacity = 2U;
@@ -729,6 +762,54 @@ namespace
         auto bounded_runtime = bounded.create(oversized, {});
         assert(bounded_runtime && bounded_runtime->prepare() && bounded_runtime->shutdown());
     }
+
+#if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
+    void testTimerDeadlineOrderAndBackpressure()
+    {
+        for (const unsigned mode : {0U, 1U, 2U}) // NextStep, zero simulation delay, positive delay.
+        {
+            Harness harness{false, 2U, false, true};
+            lux::simulation::script::test::ScriptTestClock clock_owner{harness.registry};
+            configureTimerHarness(harness);
+            auto& backend = harness.backend_state;
+            backend.simulation_timer = mode != 0U;
+            backend.timer_seconds = mode == 2U ? 1.0 : 0.0;
+            auto configured = limits(2U, 4U, 4U, 1U, 1U);
+            auto created = harness.create(configured, {}, true, &clock_owner.clock());
+            assert(created && created->prepare());
+            auto& system = *created;
+            const auto first = (**system.queryMountStatus({1U})).instance;
+            const auto second = (**system.queryMountStatus({2U})).instance;
+            assert(dispatchHookForTest(harness.hook) == 1U);
+            assert(dispatchHookForTest(harness.hook_third) == 1U);
+            assert(system.stats().next_step_waits + system.stats().simulation_delay_waits == 2U);
+            assert(backend.step_calls == 2U);
+            if (mode == 2U)
+            {
+                clock_owner.advance(SimulationDuration{});
+                assert(system.executeStablePoint());
+                assert(backend.resume_calls == 0U && system.stats().simulation_delay_waits == 2U);
+            }
+            clock_owner.advance(mode == 2U ? SimulationDuration{1'000'000'000} : SimulationDuration{});
+            assert(system.executeStablePoint());
+            assert(backend.resumed_instances == std::vector<ScriptInstanceId>{first});
+            assert(system.stats().next_step_waits + system.stats().simulation_delay_waits == 1U);
+            assert(backend.timer_completions.back().active()); // Second source hit real ResumeRing backpressure.
+            assert(system.executeStablePoint());
+            assert(backend.resume_calls == 1U); // No Timer retry in a duplicate stable point or after a pop.
+            const auto due_step = clock_owner.clock().snapshot().step_index;
+            clock_owner.advance(SimulationDuration{});
+            assert(system.executeStablePoint());
+            assert(clock_owner.clock().snapshot().step_index == due_step + 1U);
+            assert(backend.resumed_instances == std::vector<ScriptInstanceId>({first, second}));
+            assert(system.stats().next_step_waits + system.stats().simulation_delay_waits == 0U);
+            assert(system.activeAwaitableCount() == 0U && system.failures().empty());
+            assert(system.shutdown() && backend.continuation_destroys == 2U);
+            std::printf("TIMER_RETRY,mode=%u,due_step=%llu,retry_step=%llu,resumes=2,waits=0\n",
+                mode, due_step, clock_owner.clock().snapshot().step_index);
+        }
+    }
+#endif
 
     void testCapabilities()
     {
@@ -1279,6 +1360,9 @@ void testExternalAdmission()
 int main()
 {
     testTimerSourceCancellation();
+#if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
+    testTimerDeadlineOrderAndBackpressure();
+#endif
     {
         Harness harness{false, 1U, true};
         harness.backend_state.enable_step = true;

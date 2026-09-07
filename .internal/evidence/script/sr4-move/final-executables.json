@@ -1,0 +1,32 @@
+{
+  "source": "cd7160ff47c8f8bf36a44f7fbbdeb813fabb018b",
+  "artifacts": [
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\m4\\t\\bin\\simulation_script_lifecycle_test.exe",
+      "sha256": "aae12759575756bb9d4f4f8d9b1928912142d5267e2ec900da579abe51a913dd",
+      "size": 370688
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\m4\\t\\bin\\lux_engine_simulation_script.dll",
+      "sha256": "ebac5bdb2c84014e90b6fd79698715c1466228c8d23e9bf3e0d422c4d4c104fd",
+      "size": 958976,
+      "installed_identical": "E:\\SyncForder\\CodeRepos\\install\\sr4-move\\t\\bin\\lux_engine_simulation_script.dll"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\m4\\d\\bin\\simulation_script_lifecycle_test.exe",
+      "sha256": "cba35d5acf421c9bf177b9d7a2bc87b24235082e94fe868d56e4ad246bb7ae4b",
+      "size": 370688
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\m4\\d\\bin\\lux_engine_simulation_script.dll",
+      "sha256": "a53751fff7fa9e9dfdc624215135d251723143dcf21cbf859764f33b0e126c91",
+      "size": 958976,
+      "installed_identical": "E:\\SyncForder\\CodeRepos\\install\\sr4-move\\d\\bin\\lux_engine_simulation_script.dll"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\m4\\d\\bin\\scene_script_lua_runtime_test.exe",
+      "sha256": "46adf5d01bf3e06a965b4e06b39f845d08715f9baf88ec01c8e2a1f0affd6f9a",
+      "size": 296960
+    }
+  ]
+}

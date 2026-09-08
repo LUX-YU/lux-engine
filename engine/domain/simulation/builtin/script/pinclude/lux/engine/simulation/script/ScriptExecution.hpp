@@ -593,7 +593,10 @@ namespace lux::simulation::script::detail
                 return;
             auto& flight = active_hooks_[continuation.method_slot];
             if (flight.instance == continuation.instance && flight.continuation == continuation.id)
+            {
                 flight = {};
+                binding_owner_.setMethodRunnable(continuation.method_slot, continuation.instance, true);
+            }
         }
         void destroyContinuation(ScriptContinuationId id) noexcept
         {
@@ -723,7 +726,10 @@ namespace lux::simulation::script::detail
                 return false;
             }
             if (hook_single_flight)
+            {
                 active_hooks_[method_slot] = {instance_id, id};
+                binding_owner_.setMethodRunnable(method_slot, instance_id, false);
+            }
             ++suspensions_admitted_;
             return true;
         }
@@ -935,12 +941,6 @@ namespace lux::simulation::script::detail
             if (!access.current())
                 return;
             const auto& method = access.method();
-            const auto flight = active_hooks_[handler.method_slot];
-            if (hook_invocation && flight.instance == handler.instance && flight.continuation.valid() &&
-                continuations_.find(continuationKey(flight.continuation)) != nullptr)
-            {
-                return;
-            }
             ScriptBackendContinuation continuation;
             ScriptStepContext context{
                 handler.instance,

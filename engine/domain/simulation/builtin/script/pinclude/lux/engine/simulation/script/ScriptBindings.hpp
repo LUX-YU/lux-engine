@@ -4,6 +4,8 @@
 #include <lux/engine/simulation/detail/DenseEntityHandlerStorage.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
 
+#include <bit>
+#include <limits>
 #include <optional>
 #include <unordered_map>
 #include <vector>
@@ -102,15 +104,25 @@ namespace lux::simulation::script::detail
 
         [[nodiscard]] Result publish(std::uint32_t slot, ScriptInstanceId instance, ecs::Entity entity) noexcept;
         void withdraw(std::uint32_t slot) noexcept;
+        void setMethodRunnable(std::uint32_t method, ScriptInstanceId instance, bool runnable) noexcept;
         [[nodiscard]] Result connect() noexcept;
         [[nodiscard]] Result disconnect() noexcept;
         template <class Invoke>
         void visitHook(std::uint32_t bucket, Invoke&& invoke) noexcept
         {
             Traversal traversal{*this};
-            for (const auto& handler : hooks_[bucket].handlers.values())
-                if (configurations_[handler.mount_slot].published)
-                    invoke(handler);
+            auto& lane = hooks_[bucket];
+            const auto& handlers = lane.handlers.values();
+            std::size_t cursor{};
+            while (cursor < handlers.size())
+            {
+                // Re-read after every user call, including nested dispatch. Never revisit a passed position.
+                const auto next = lane.runnable.count() == handlers.size() ? cursor : lane.runnable.next(cursor);
+                if (next >= handlers.size())
+                    break;
+                cursor = next + 1U;
+                invoke(handlers[next]);
+            }
         }
         template <class Invoke>
         void visitEvent(std::uint32_t bucket, ecs::Entity entity, Invoke&& invoke) noexcept
@@ -142,12 +154,71 @@ namespace lux::simulation::script::detail
         using HandlerStorage = lux::cxx::SlotMap<ScriptMethodReference, HandlerTag>;
         using HandlerKey = HandlerStorage::key_type;
         using EventHandlerStorage = lux::simulation::detail::DenseEntityHandlerStorage<ScriptMethodReference>;
+        class RunnableIndex final
+        {
+        public:
+            void prepare(std::size_t capacity)
+            {
+                while (capacity != 0U)
+                {
+                    capacity = (capacity + 63U) / 64U;
+                    levels_.emplace_back(capacity, 0U);
+                    if (capacity == 1U)
+                        break;
+                }
+            }
+            [[nodiscard]] std::size_t count() const noexcept { return count_; }
+            [[nodiscard]] bool test(std::size_t index) const noexcept
+            {
+                return (levels_[0][index / 64U] & (std::uint64_t{1U} << (index % 64U))) != 0U;
+            }
+            void set(std::size_t index, bool enabled) noexcept
+            {
+                if (test(index) == enabled)
+                    return;
+                if (enabled) ++count_; else --count_;
+                for (auto& level : levels_)
+                {
+                    auto& word = level[index / 64U];
+                    const auto old = word;
+                    const auto mask = std::uint64_t{1U} << (index % 64U);
+                    if (enabled) word |= mask; else word &= ~mask;
+                    if ((old == 0U) == (word == 0U))
+                        break;
+                    enabled = word != 0U;
+                    index /= 64U;
+                }
+            }
+            [[nodiscard]] std::size_t next(std::size_t index) const noexcept { return nextAt(0U, index); }
+            [[nodiscard]] std::size_t backingBytes() const noexcept
+            {
+                std::size_t bytes{};
+                for (const auto& level : levels_) bytes += level.capacity() * sizeof(std::uint64_t);
+                return bytes;
+            }
+        private:
+            [[nodiscard]] std::size_t nextAt(std::size_t depth, std::size_t index) const noexcept
+            {
+                constexpr auto end = (std::numeric_limits<std::size_t>::max)();
+                if (depth == levels_.size() || index / 64U >= levels_[depth].size())
+                    return end;
+                const auto& level = levels_[depth];
+                auto word = level[index / 64U] & (~std::uint64_t{} << (index % 64U));
+                if (word != 0U)
+                    return (index / 64U) * 64U + std::countr_zero(word);
+                const auto block = nextAt(depth + 1U, index / 64U + 1U);
+                return block == end ? end : block * 64U + std::countr_zero(level[block]);
+            }
+            std::vector<std::vector<std::uint64_t>> levels_;
+            std::size_t count_{};
+        };
         struct HookBucket final
         {
             ScriptBindings* owner{};
             std::uint32_t slot{};
             EndpointConnectionToken token;
             HandlerStorage handlers;
+            RunnableIndex runnable;
             std::size_t capacity{};
         };
         struct EventBucket final
@@ -164,6 +235,7 @@ namespace lux::simulation::script::detail
             std::uint32_t bucket{};
             std::uint32_t method{};
             EndpointConnectionToken registration;
+            std::uint32_t next_hook{(std::numeric_limits<std::uint32_t>::max)()};
         };
         struct Configuration final
         {
@@ -196,6 +268,7 @@ namespace lux::simulation::script::detail
         std::vector<EventBucket> events_;
         std::vector<Configuration> configurations_;
         std::vector<Binding> bindings_;
+        std::vector<std::uint32_t> method_hooks_;
         std::vector<ScriptBindingDescription> descriptions_;
         std::vector<lux::script::ScriptSymbolId> symbols_;
         std::vector<std::size_t> hook_counts_;

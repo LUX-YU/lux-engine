@@ -86,6 +86,22 @@ namespace
         assert(trace.size() == count);
         for (std::uint32_t index{}; index < count; ++index)
             assert(trace[index] == index);
+        for (std::uint32_t index{}; index < count; ++index)
+            bindings.setMethodRunnable(static_cast<std::uint32_t>(bindings.layout(index).method_first),
+                {index + 1U, 1U}, false);
+        std::size_t visits{};
+        bindings.visitHook(0U, [&](auto) noexcept { ++visits; });
+        assert(visits == 0U);
+        constexpr std::array<std::uint32_t, 5U> ready{0U, 63U, 64U, 4095U, 4096U};
+        for (const auto index : ready)
+            bindings.setMethodRunnable(static_cast<std::uint32_t>(bindings.layout(index).method_first),
+                {index + 1U, 1U}, true);
+        trace.clear();
+        bindings.visitHook(0U, [&](auto method) noexcept { trace.push_back(method.mount_slot); });
+        assert(std::equal(trace.begin(), trace.end(), ready.begin(), ready.end()));
+        for (std::uint32_t index{}; index < count; ++index)
+            bindings.setMethodRunnable(static_cast<std::uint32_t>(bindings.layout(index).method_first),
+                {index + 1U, 1U}, true);
         bindings.withdraw(1U); // The last registration takes the erased dense position.
         trace.clear();
         bindings.visitHook(0U, [&](auto method) noexcept { trace.push_back(method.mount_slot); });

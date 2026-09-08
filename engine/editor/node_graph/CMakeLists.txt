@@ -69,3 +69,8 @@ install_components(
     NAMESPACE    lux::engine::editor
     COMPONENTS   node_graph_editor
 )
+
+if(BUILD_TESTING)
+    add_subdirectory(test)
+endif()
+

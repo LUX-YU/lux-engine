@@ -105,3 +105,8 @@ install_components(
     NAMESPACE    lux::engine::editor
     COMPONENTS   editor_inspector
 )
+
+if(BUILD_TESTING)
+    add_subdirectory(test)
+endif()
+

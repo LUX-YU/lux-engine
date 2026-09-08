@@ -1,3 +1,4 @@
+add_subdirectory(editing)
 add_subdirectory(context)
 add_subdirectory(inspector)
 add_subdirectory(node_graph)

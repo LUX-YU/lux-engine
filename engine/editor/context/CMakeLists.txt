@@ -17,6 +17,8 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EditorContext.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EditorSelection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Toolset.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ActiveEditHistory.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/EditHistoryController.cpp
 )
 
 component_include_directories(
@@ -35,6 +37,7 @@ target_compile_definitions(editor_context PRIVATE LUX_EDITOR_CONTEXT_LIBRARY)
 target_link_libraries(
     editor_context
     PUBLIC
+        lux::engine::editor::editor_editing
         lux::cxx::compile_time
         lux::engine::function::ui
         lux::engine::resource::asset
@@ -47,6 +50,7 @@ target_link_libraries(
 
 component_add_transitive_commands(
     editor_context
+    "find_package(lux-engine-editor-editing REQUIRED COMPONENTS editor_editing)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
     "find_package(lux-engine-function REQUIRED COMPONENTS ui)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
@@ -62,9 +66,14 @@ engine_add_type_runtime_info(
     TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/EditorSelection.hpp
     REGISTER_FUNC_NAME lux_editor_selection
 )
+engine_add_type_runtime_info(
+    NAME editor_edit_history_meta
+    TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/EditHistoryController.hpp
+    REGISTER_FUNC_NAME lux_editor_edit_history
+)
 engine_target_add_type_runtime_info(
     TARGET editor_context
-    METAS editor_selection_meta
+    METAS editor_selection_meta editor_edit_history_meta
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen
 )
 
@@ -81,3 +90,7 @@ install_components(
     NAMESPACE    lux::engine::editor
     COMPONENTS   editor_context
 )
+
+if(BUILD_TESTING)
+    add_subdirectory(test)
+endif()

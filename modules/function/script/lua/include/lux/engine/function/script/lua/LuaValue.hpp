@@ -93,6 +93,16 @@ namespace lux::script::lua
 
     namespace detail
     {
+        enum class ELuaPlainKind : std::uint8_t { NUMBER, BOOLEAN, RECORD, INVALID_ENUM };
+        // Trivial staging only. No T, destructor, custom codec or callback enters the protected VM operation.
+        struct LuaPlainNode final
+        {
+            std::string_view field;
+            double number{};
+            std::uint32_t parent{};
+            std::uint32_t children{};
+            ELuaPlainKind kind{ELuaPlainKind::NUMBER};
+        };
         class LUX_FUNCTION_PUBLIC LuaValueAccess final
         {
           public:
@@ -106,6 +116,7 @@ namespace lux::script::lua
             [[nodiscard]] static bool pushNumber(lua_State *, double) noexcept;
             [[nodiscard]] static int failure(lua_State *, const char *) noexcept;
             [[nodiscard]] static bool table(lua_State *, int fields) noexcept;
+            [[nodiscard]] static LuaValueResult<void> plain(lua_State *, std::span<const LuaPlainNode>, std::size_t) noexcept;
             [[nodiscard]] static LuaValueResult<void> shape(lua_State *, int,
                                                             std::span<const std::string_view>) noexcept;
             [[nodiscard]] static bool field(lua_State *, int, std::string_view) noexcept;
@@ -179,6 +190,10 @@ namespace lux::script::lua
             if (!detail::LuaValueAccess::pushNumber(state_, static_cast<double>(value)))
                 return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::VM_FAILURE});
             return {};
+        }
+        [[nodiscard]] LuaValueResult<void> plain(std::span<const detail::LuaPlainNode> nodes) noexcept
+        {
+            return detail::LuaValueAccess::plain(state_, nodes, depth_);
         }
         template <class F> [[nodiscard]] LuaValueResult<void> record(std::size_t count, F &&fields) noexcept
         {
@@ -328,9 +343,39 @@ namespace lux::script::lua
             else
                 return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::UNSUPPORTED});
         }
+        static consteval std::size_t plainCount() noexcept
+        {
+            if constexpr (custom || !std::is_trivially_copyable_v<Value> || !std::is_trivially_destructible_v<Value>)
+                return 0;
+            else if constexpr (LuaValueScalar<Value>)
+                return 1;
+            else if constexpr (requires { Rule::template plainCount<Policy>(); })
+            {
+                if constexpr (std::is_enum_v<Value> || std::is_aggregate_v<Value>)
+                    return Rule::template plainCount<Policy>();
+                else return 0;
+            }
+            else return 0;
+        }
+        static void appendPlain(std::span<detail::LuaPlainNode> nodes, std::size_t &cursor,
+            std::uint32_t parent, std::string_view field, const Value &value) noexcept
+        {
+            if constexpr (LuaValueScalar<Value>)
+                nodes[cursor++] = {field, static_cast<double>(value), parent, 0U,
+                    std::is_same_v<Value, bool> ? detail::ELuaPlainKind::BOOLEAN : detail::ELuaPlainKind::NUMBER};
+            else Rule::template appendPlain<Policy>(nodes, cursor, parent, field, value);
+        }
         static LuaValueResult<void> push(LuaValueWriter &output, const Value &value) noexcept
         {
-            if constexpr (can_push && bounded && requires { Rule::template push<Policy>(output, value); })
+            if constexpr (can_push && bounded && plainCount() > 1U &&
+                plainCount() * sizeof(detail::LuaPlainNode) <= 65536U)
+            {
+                std::array<detail::LuaPlainNode, plainCount()> nodes{};
+                std::size_t cursor{};
+                appendPlain(nodes, cursor, 0U, {}, value);
+                return output.plain(nodes);
+            }
+            else if constexpr (can_push && bounded && requires { Rule::template push<Policy>(output, value); })
                 return Rule::template push<Policy>(output, value);
             else if constexpr (can_push && bounded)
                 return Rule::push(output, value);
@@ -403,6 +448,22 @@ namespace lux::script::lua
              }()),
              ...);
             return hash;
+        }
+        template <class Policy> static consteval std::size_t plainCount() noexcept
+        {
+            if constexpr (sizeof...(Field) > 64U ||
+                !((LuaValueCodec<typename Field::template Value<T>, Policy>::plainCount() != 0U) && ...))
+                return 0U;
+            else return 1U + (std::size_t{0U} + ... +
+                LuaValueCodec<typename Field::template Value<T>, Policy>::plainCount());
+        }
+        template <class Policy> static void appendPlain(std::span<detail::LuaPlainNode> nodes,
+            std::size_t &cursor, std::uint32_t parent, std::string_view field, const T &value) noexcept
+        {
+            const auto own = static_cast<std::uint32_t>(cursor);
+            nodes[cursor++] = {field, 0.0, parent, sizeof...(Field), detail::ELuaPlainKind::RECORD};
+            (LuaValueCodec<typename Field::template Value<T>, Policy>::appendPlain(
+                nodes, cursor, own, Field::name, value.*Field::member), ...);
         }
         using Slots = LuaValueSlots<typename Field::template Value<T>...>;
         template <class Policy> static consteval std::size_t storageFor() noexcept
@@ -479,6 +540,13 @@ namespace lux::script::lua
             return hash;
         }
         static constexpr bool valid(T value) noexcept { return ((value == Values) || ...); }
+        template <class Policy> static consteval std::size_t plainCount() noexcept { return 1U; }
+        template <class Policy> static void appendPlain(std::span<detail::LuaPlainNode> nodes,
+            std::size_t &cursor, std::uint32_t parent, std::string_view field, T value) noexcept
+        {
+            nodes[cursor++] = {field, static_cast<double>(static_cast<Underlying>(value)), parent, 0U,
+                valid(value) ? detail::ELuaPlainKind::NUMBER : detail::ELuaPlainKind::INVALID_ENUM};
+        }
         static LuaValueResult<T> read(LuaValueReader &input) noexcept
         {
             auto value = input.template number<Underlying>();

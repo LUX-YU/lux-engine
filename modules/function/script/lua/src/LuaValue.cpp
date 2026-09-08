@@ -46,6 +46,8 @@ namespace lux::script::lua
                 LuaValueFailure *failure{};
                 bool success{true};
                 int count{};
+                std::span<const LuaPlainNode> nodes;
+                std::size_t current{};
             };
             // These C trampolines have no owning C++ locals and deliberately are not noexcept:
             // the selected VM may use either longjmp or C++ unwinding to reach its own pcall.
@@ -118,6 +120,53 @@ namespace lux::script::lua
                 lua_pushvalue(state, 3);
                 lua_rawset(state, 2);
                 return 0;
+            }
+            // These recursive frames contain only trivial values. The VM can unwind/jump over them;
+            // owned typed results and the node array belong to the outer conversion frame.
+            bool pushPlain(lua_State *state, Operation &operation, std::size_t &cursor, std::size_t depth)
+            {
+                const auto index = cursor++;
+                operation.current = index;
+                const auto &node = operation.nodes[index];
+                if (node.kind == ELuaPlainKind::INVALID_ENUM)
+                {
+                    operation.failure->code = ELuaValueError::RANGE;
+                    return false;
+                }
+                if (!lua_checkstack(state, 3))
+                    return false;
+                if (node.kind == ELuaPlainKind::BOOLEAN)
+                    lua_pushboolean(state, node.number != 0.0);
+                else if (node.kind == ELuaPlainKind::NUMBER)
+                    lua_pushnumber(state, node.number);
+                else
+                {
+                    if (depth >= 32U || node.children > 64U)
+                    {
+                        operation.failure->code = ELuaValueError::CAPACITY;
+                        return false;
+                    }
+                    lua_createtable(state, 0, static_cast<int>(node.children));
+                    const int table = lua_gettop(state);
+                    for (std::uint32_t child{}; child < node.children; ++child)
+                    {
+                        const auto field = cursor;
+                        if (!pushPlain(state, operation, cursor, depth + 1U))
+                            return false;
+                        operation.current = field;
+                        const auto key = operation.nodes[field].field;
+                        lua_pushlstring(state, key.data(), key.size());
+                        lua_insert(state, -2);
+                        lua_rawset(state, table);
+                    }
+                }
+                return true;
+            }
+            int writePlain(lua_State *state, Operation &operation)
+            {
+                std::size_t cursor{};
+                operation.success = pushPlain(state, operation, cursor, static_cast<std::size_t>(operation.count));
+                return operation.success ? 1 : 0;
             }
             int checkShape(lua_State *state, Operation &operation)
             {
@@ -229,6 +278,22 @@ namespace lux::script::lua
             Operation operation{makeTable};
             operation.count = fields;
             return run(state, operation, 0, 0, 1);
+        }
+        LuaValueResult<void> LuaValueAccess::plain(
+            lua_State *state, std::span<const LuaPlainNode> nodes, std::size_t depth) noexcept
+        {
+            if (nodes.empty())
+                return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::CAPACITY});
+            LuaValueFailure failure{ELuaValueError::VM_FAILURE};
+            Operation operation{writePlain};
+            operation.failure = &failure;
+            operation.nodes = nodes;
+            operation.count = static_cast<int>(depth);
+            if (run(state, operation, 0, 0, 1))
+                return {};
+            for (auto index = operation.current; index != 0U; index = nodes[index].parent)
+                failure.prepend(nodes[index].field);
+            return lux::cxx::unexpected(failure);
         }
         int LuaValueAccess::failure(lua_State *state, const char *message) noexcept
         {

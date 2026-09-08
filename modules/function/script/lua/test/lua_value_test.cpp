@@ -177,6 +177,9 @@ static void load(lua_State *state, const char *text)
     lua_settop(state, 0);
     assert(luaL_loadstring(state, text) == 0 && lua_pcall(state, 0, 1, 0) == 0);
 }
+static std::size_t protected_calls{};
+static void countProtectedCall(lua_State*, lua_Debug*) { ++protected_calls; }
+
 int main()
 {
     static_assert(LuaValueCodec<NamedA>::representation() != LuaValueCodec<NamedB>::representation());
@@ -199,6 +202,14 @@ int main()
     assert(lua_gettop(state) == 1);
     LuaValueWriter writer{state};
     assert(LuaValueCodec<Pose>::push(writer, *pose) && lua_gettop(state) == 2);
+    static_assert(LuaValueCodec<Pose>::plainCount() == 6U);
+    static_assert(LuaValueCodec<Angle>::plainCount() == 0U);
+    static_assert(LuaValueCodec<Resource>::plainCount() == 0U);
+    lua_pop(state, 1);
+    lua_sethook(state, &countProtectedCall, LUA_MASKCALL, 0);
+    assert(LuaValueCodec<Pose>::push(writer, *pose) && lua_gettop(state) == 2);
+    lua_sethook(state, nullptr, 0, 0);
+    assert(protected_calls == 1U);
     lua_setglobal(state, "snapshot");
     assert(luaL_dostring(state, "assert(snapshot.renamed==7 and snapshot.velocity.x==1.5 and snapshot.mode==3)") == 0);
     for (const char *input :
@@ -231,6 +242,28 @@ int main()
         assert(Resource::live == 2);
     }
     assert(Resource::live == 0 && (Resource::released == std::vector<int>{2, 1}));
+    Resource::released.clear();
+    {
+        const int top = lua_gettop(state);
+        Pose invalid{7, {1.0f, 2.0}, static_cast<Mode>(8)};
+        const auto rejected = LuaValueCodec<Pose>::push(writer, invalid);
+        assert(!rejected && rejected.error().code == ELuaValueError::RANGE &&
+            std::string_view{rejected.error().path.data()} == "mode" && lua_gettop(state) == top);
+        LuaValueWriter deep{state, 32U};
+        const auto depth = LuaValueCodec<Pose>::push(deep, *pose);
+        assert(!depth && depth.error().code == ELuaValueError::CAPACITY && lua_gettop(state) == top);
+        LuaValueSlots<Resource> values;
+        values.put<0>(Resource{23});
+        allocator.deny = true;
+        const auto failed = LuaValueCodec<Pose>::push(writer, *pose);
+        allocator.deny = false;
+        assert(!failed && failed.error().code == ELuaValueError::VM_FAILURE &&
+            Resource::live == 1 && lua_gettop(state) == top);
+        assert(LuaValueCodec<Pose>::push(writer, *pose));
+        lua_settop(state, top);
+    }
+    assert(Resource::live == 0 && (Resource::released == std::vector<int>{23}));
+    std::puts("PLAIN_TREE_OK,nodes=6,pcall=1,enum_path=1,depth=1,oom=1,outer_owner=1,recovery=1");
     Resource::released.clear();
     load(state, "return 9");
     {

@@ -4,6 +4,7 @@
 #include <memory>
 namespace lux::editor::editing
 {
+    // Business-owned staged image. Preparation must not mutate live content, selection or memento.
     class LUX_EDITOR_EDITING_PUBLIC PreparedEdit
     {
     public:
@@ -19,7 +20,9 @@ namespace lux::editor::editing
 
     private:
         friend class EditHistory;
+        // Only prepared noexcept swaps/scalars: no allocations, callbacks, I/O or fallible model APIs.
         virtual void apply() noexcept = 0;
+        // Called after both content and history commit. Borrowed labels cannot be queued.
         virtual void publish(const CommitInfo&) noexcept = 0;
     };
     using PreparedEditPtr = std::unique_ptr<PreparedEdit>;

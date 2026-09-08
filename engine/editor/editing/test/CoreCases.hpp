@@ -53,6 +53,8 @@ namespace lux::editor::editing::test
                 assert(f.message[191] == '\0' && f.message_truncated && f.domain_code == 42U);
                 const auto e = makeEditFailure(EEditError::BUSY, 0U, std::string_view("a\0b", 3U));
                 assert(e.message[0] == 'a' && e.message[1] == '\0' && e.message_truncated);
+                const auto terminal = makeEditFailure(EEditError::BUSY, 0U, std::string_view("a\0", 2U));
+                assert(!terminal.message_truncated && terminal.message[1] == '\0');
             }
         );
 #if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
@@ -63,9 +65,12 @@ namespace lux::editor::editing::test
                 detail::editDiagnostics().allocation = allocationProbe;
                 for (fail_call = 1U; fail_call <= 4U; ++fail_call)
                 {
+                    const auto before = detail::allocationStatistics();
                     allocation_call = 0U;
                     expectError(EditHistory::create({kLimits}), EEditError::ALLOCATION_FAILURE);
                     assert(allocation_call == fail_call);
+                    assert(detail::allocationStatistics() == before);
+                    std::cout << "C04 allocation point " << fail_call << " retained no backing storage or objects\n";
                 }
                 detail::editDiagnostics() = {};
                 assert(EditHistory::create({kLimits}));

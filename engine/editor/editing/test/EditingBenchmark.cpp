@@ -143,6 +143,21 @@ int main(int argc, char** argv)
             assert(warm.history->redo());
         }
     }
+    {
+        RecordSession warm;
+        for (int i = 0; i < 100; ++i)
+        {
+            execute(warm, i % 2 == 0 ? warm.patch(1, {}, 7) : warm.patch(1, 7, {}));
+        }
+        for (int i = 0; i < 100; ++i)
+        {
+            assert(warm.history->undo());
+        }
+        for (int i = 0; i < 100; ++i)
+        {
+            assert(warm.history->redo());
+        }
+    }
     std::cout
         << "business,count,execute_ns,undo_ns,redo_ns,clear_ns,close_ns,checksum,applies,notices,operations_destroyed,"
            "plans_destroyed,metadata_bytes,retained_bytes,staging_bytes\n";

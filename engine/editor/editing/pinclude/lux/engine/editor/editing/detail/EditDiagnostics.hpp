@@ -32,6 +32,12 @@ namespace lux::editor::editing::detail
     struct EditHistoryTestAccess;
 
 #if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
+    struct EditAllocationStatistics final
+    {
+        std::size_t live_bytes{}, live_allocations{}, live_objects{};
+        bool operator==(const EditAllocationStatistics&) const noexcept = default;
+    };
+    LUX_EDITOR_EDITING_PUBLIC EditAllocationStatistics& allocationStatistics() noexcept;
     LUX_EDITOR_EDITING_PUBLIC EditDiagnostics& editDiagnostics() noexcept;
     struct LUX_EDITOR_EDITING_PUBLIC EditHistoryTestAccess final
     {
@@ -83,10 +89,19 @@ namespace lux::editor::editing::detail
         [[nodiscard]] T* allocate(std::size_t count)
         {
             allocationCheckpoint(Site, count * sizeof(T));
-            return std::allocator<T>{}.allocate(count);
+            auto* pointer = std::allocator<T>{}.allocate(count);
+#if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
+            allocationStatistics().live_bytes += count * sizeof(T);
+            ++allocationStatistics().live_allocations;
+#endif
+            return pointer;
         }
         void deallocate(T* pointer, std::size_t count) noexcept
         {
+#if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
+            allocationStatistics().live_bytes -= count * sizeof(T);
+            --allocationStatistics().live_allocations;
+#endif
             std::allocator<T>{}.deallocate(pointer, count);
         }
         template <class U> bool operator==(const EditAllocator<U, Site>&) const noexcept

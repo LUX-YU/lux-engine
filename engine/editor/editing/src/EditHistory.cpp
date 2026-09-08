@@ -63,6 +63,17 @@ namespace lux::editor::editing
         Retired retired;
         std::size_t cursor{}, retained_bytes{}, applied_bytes{};
 
+#if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
+        Impl() noexcept
+        {
+            ++detail::allocationStatistics().live_objects;
+        }
+        ~Impl() noexcept
+        {
+            --detail::allocationStatistics().live_objects;
+        }
+#endif
+
         [[nodiscard]] EditResult<void> check(bool query = false) const noexcept
         {
             if (owner != std::this_thread::get_id())
@@ -139,6 +150,11 @@ namespace lux::editor::editing
 #if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
     namespace detail
     {
+        EditAllocationStatistics& allocationStatistics() noexcept
+        {
+            static thread_local EditAllocationStatistics statistics;
+            return statistics;
+        }
         EditDiagnostics& editDiagnostics() noexcept
         {
             static thread_local EditDiagnostics diagnostics;
@@ -171,6 +187,9 @@ namespace lux::editor::editing
 
     EditHistory::EditHistory(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl))
     {
+#if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
+        ++detail::allocationStatistics().live_objects;
+#endif
     }
 
     EditHistory::CreateResult EditHistory::create(HistoryCreateInfo info) noexcept
@@ -233,6 +252,9 @@ namespace lux::editor::editing
         state.pending.reset();
         state.retireAll();
         state.collect();
+#if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
+        --detail::allocationStatistics().live_objects;
+#endif
     }
 
     HistoryId EditHistory::id() const noexcept

@@ -128,17 +128,23 @@ namespace lux::script::lua
                 const auto index = cursor++;
                 operation.current = index;
                 const auto &node = operation.nodes[index];
-                if (node.kind == ELuaPlainKind::INVALID_ENUM)
+                if (node.kind != ELuaPlainKind::RECORD)
                 {
-                    operation.failure->code = ELuaValueError::RANGE;
-                    return false;
+                    // Read each scalar at its original field point. Even an allocation/GC callback
+                    // during an earlier table operation must not observe an eagerly captured later value.
+                    const auto number = node.read(node.value);
+                    if (!number.valid)
+                    {
+                        operation.failure->code = ELuaValueError::RANGE;
+                        return false;
+                    }
+                    if (!lua_checkstack(state, 3))
+                        return false;
+                    if (node.kind == ELuaPlainKind::BOOLEAN)
+                        lua_pushboolean(state, number.value != 0.0);
+                    else
+                        lua_pushnumber(state, number.value);
                 }
-                if (!lua_checkstack(state, 3))
-                    return false;
-                if (node.kind == ELuaPlainKind::BOOLEAN)
-                    lua_pushboolean(state, node.number != 0.0);
-                else if (node.kind == ELuaPlainKind::NUMBER)
-                    lua_pushnumber(state, node.number);
                 else
                 {
                     if (depth >= 32U || node.children > 64U)
@@ -146,6 +152,8 @@ namespace lux::script::lua
                         operation.failure->code = ELuaValueError::CAPACITY;
                         return false;
                     }
+                    if (!lua_checkstack(state, 3))
+                        return false;
                     lua_createtable(state, 0, static_cast<int>(node.children));
                     const int table = lua_gettop(state);
                     for (std::uint32_t child{}; child < node.children; ++child)

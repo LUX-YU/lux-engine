@@ -93,12 +93,14 @@ namespace lux::script::lua
 
     namespace detail
     {
-        enum class ELuaPlainKind : std::uint8_t { NUMBER, BOOLEAN, RECORD, INVALID_ENUM };
+        enum class ELuaPlainKind : std::uint8_t { NUMBER, BOOLEAN, RECORD };
+        struct LuaPlainNumber final { double value{}; bool valid{true}; };
         // Trivial staging only. No T, destructor, custom codec or callback enters the protected VM operation.
         struct LuaPlainNode final
         {
             std::string_view field;
-            double number{};
+            const void* value{};
+            LuaPlainNumber (*read)(const void*) noexcept{};
             std::uint32_t parent{};
             std::uint32_t children{};
             ELuaPlainKind kind{ELuaPlainKind::NUMBER};
@@ -191,10 +193,6 @@ namespace lux::script::lua
                 return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::VM_FAILURE});
             return {};
         }
-        [[nodiscard]] LuaValueResult<void> plain(std::span<const detail::LuaPlainNode> nodes) noexcept
-        {
-            return detail::LuaValueAccess::plain(state_, nodes, depth_);
-        }
         template <class F> [[nodiscard]] LuaValueResult<void> record(std::size_t count, F &&fields) noexcept
         {
             if (depth_ >= 32 || count > 64)
@@ -216,6 +214,11 @@ namespace lux::script::lua
         lua_State *state_{};
         std::size_t depth_{};
         int table_{};
+        template <class, class> friend struct LuaValueCodec;
+        [[nodiscard]] LuaValueResult<void> plain(std::span<const detail::LuaPlainNode> nodes) noexcept
+        {
+            return detail::LuaValueAccess::plain(state_, nodes, depth_);
+        }
     };
 
     template <class T> struct LuaScalarValue
@@ -361,7 +364,9 @@ namespace lux::script::lua
             std::uint32_t parent, std::string_view field, const Value &value) noexcept
         {
             if constexpr (LuaValueScalar<Value>)
-                nodes[cursor++] = {field, static_cast<double>(value), parent, 0U,
+                nodes[cursor++] = {field, std::addressof(value), [](const void* pointer) noexcept {
+                    return detail::LuaPlainNumber{static_cast<double>(*static_cast<const Value*>(pointer)), true};
+                }, parent, 0U,
                     std::is_same_v<Value, bool> ? detail::ELuaPlainKind::BOOLEAN : detail::ELuaPlainKind::NUMBER};
             else Rule::template appendPlain<Policy>(nodes, cursor, parent, field, value);
         }
@@ -461,7 +466,7 @@ namespace lux::script::lua
             std::size_t &cursor, std::uint32_t parent, std::string_view field, const T &value) noexcept
         {
             const auto own = static_cast<std::uint32_t>(cursor);
-            nodes[cursor++] = {field, 0.0, parent, sizeof...(Field), detail::ELuaPlainKind::RECORD};
+            nodes[cursor++] = {field, nullptr, nullptr, parent, sizeof...(Field), detail::ELuaPlainKind::RECORD};
             (LuaValueCodec<typename Field::template Value<T>, Policy>::appendPlain(
                 nodes, cursor, own, Field::name, value.*Field::member), ...);
         }
@@ -542,10 +547,12 @@ namespace lux::script::lua
         static constexpr bool valid(T value) noexcept { return ((value == Values) || ...); }
         template <class Policy> static consteval std::size_t plainCount() noexcept { return 1U; }
         template <class Policy> static void appendPlain(std::span<detail::LuaPlainNode> nodes,
-            std::size_t &cursor, std::uint32_t parent, std::string_view field, T value) noexcept
+            std::size_t &cursor, std::uint32_t parent, std::string_view field, const T &value) noexcept
         {
-            nodes[cursor++] = {field, static_cast<double>(static_cast<Underlying>(value)), parent, 0U,
-                valid(value) ? detail::ELuaPlainKind::NUMBER : detail::ELuaPlainKind::INVALID_ENUM};
+            nodes[cursor++] = {field, std::addressof(value), [](const void* pointer) noexcept {
+                const auto current = *static_cast<const T*>(pointer);
+                return detail::LuaPlainNumber{static_cast<double>(static_cast<Underlying>(current)), valid(current)};
+            }, parent, 0U, detail::ELuaPlainKind::NUMBER};
         }
         static LuaValueResult<T> read(LuaValueReader &input) noexcept
         {

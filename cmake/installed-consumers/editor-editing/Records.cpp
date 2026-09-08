@@ -107,7 +107,7 @@ namespace consumer::records
         }
     };
 } // namespace consumer::records
-extern "C" ED1_EXPORT ConsumerReport runRecordsConsumer()
+extern "C" ED1_RECORDS_API ConsumerReport runRecordsConsumer()
 {
     consumer::records::Model model;
     auto made = EditHistory::create({{8U, 8192U, 8192U, 64U}, {&model, ConsumerState::notice}});

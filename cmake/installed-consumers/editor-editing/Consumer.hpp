@@ -4,9 +4,19 @@
 #include <string>
 
 #if defined(_WIN32)
-#define ED1_EXPORT __declspec(dllexport)
+#if defined(editing_consumer_Text_EXPORTS)
+#define ED1_TEXT_API __declspec(dllexport)
 #else
-#define ED1_EXPORT __attribute__((visibility("default")))
+#define ED1_TEXT_API __declspec(dllimport)
+#endif
+#if defined(editing_consumer_Records_EXPORTS)
+#define ED1_RECORDS_API __declspec(dllexport)
+#else
+#define ED1_RECORDS_API __declspec(dllimport)
+#endif
+#else
+#define ED1_TEXT_API __attribute__((visibility("default")))
+#define ED1_RECORDS_API __attribute__((visibility("default")))
 #endif
 struct ConsumerReport final
 {
@@ -22,5 +32,5 @@ struct ConsumerState
         ++static_cast<ConsumerState*>(object)->notices;
     }
 };
-extern "C" ConsumerReport runTextConsumer();
-extern "C" ConsumerReport runRecordsConsumer();
+extern "C" ED1_TEXT_API ConsumerReport runTextConsumer();
+extern "C" ED1_RECORDS_API ConsumerReport runRecordsConsumer();

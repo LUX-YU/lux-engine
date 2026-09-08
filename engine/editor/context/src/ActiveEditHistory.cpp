@@ -133,8 +133,7 @@ namespace lux::editor
     ActiveEditHistory::CreateResult ActiveEditHistory::create(std::size_t target_capacity) noexcept
     {
         const bool is_invalid_capacity =
-            target_capacity == 0U ||
-            target_capacity > (std::numeric_limits<std::size_t>::max)() / sizeof(Impl::Registration);
+            target_capacity == 0U || target_capacity > std::vector<Impl::Registration>{}.max_size();
         if (is_invalid_capacity)
         {
             return fail(EEditError::INVALID_LIMITS);

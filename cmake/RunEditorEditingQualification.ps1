@@ -81,7 +81,7 @@ foreach ($variant in @('core-a','core-b','context-b')) {
     if ($context) { $arguments += '-DED1_WITH_CONTEXT=ON' }
     Invoke-Logged "$variant-configure" 'cmake' $arguments
     Invoke-Logged "$variant-build" 'cmake' @('--build',$consumerBuild,'--target','all','-j','4','--','-k','0')
-    Invoke-Logged "$variant-run" "$consumerBuild/lux_editor_editing_consumer.exe" @()
+    Invoke-Logged "$variant-run" "$consumerBuild/lux_editor_editing_consumer.exe" @("$prefix/bin")
     if ($context) { Invoke-Logged 'context-signal-run' "$consumerBuild/lux_editor_editing_context_consumer.exe" @() }
     Invoke-Logged "$variant-second-build" 'cmake' @('--build',$consumerBuild,'--target','all','-j','4','--','-k','0')
     if (!(Select-String -LiteralPath "$OutputRoot/$variant-second-build.log" -SimpleMatch 'no work to do' -Quiet)) {

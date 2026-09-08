@@ -88,7 +88,7 @@ namespace consumer::text
         }
     };
 } // namespace consumer::text
-extern "C" ED1_EXPORT ConsumerReport runTextConsumer()
+extern "C" ED1_TEXT_API ConsumerReport runTextConsumer()
 {
     consumer::text::Model model;
     auto made = EditHistory::create({{8U, 8192U, 8192U, 64U}, {&model, ConsumerState::notice}, true});

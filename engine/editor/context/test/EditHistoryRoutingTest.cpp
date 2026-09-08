@@ -120,6 +120,9 @@ namespace
             []
             {
                 expectError(ActiveEditHistory::create(0U), EEditError::INVALID_LIMITS);
+                expectError(
+                    ActiveEditHistory::create((std::numeric_limits<std::size_t>::max)()), EEditError::INVALID_LIMITS
+                );
                 TextSession a, b;
                 Proxy duplicate(a);
                 auto r = route(1U);

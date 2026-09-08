@@ -1,7 +1,19 @@
 #include "Consumer.hpp"
+#include <filesystem>
 #include <iostream>
-int main()
+#if defined(_WIN32)
+#include <Windows.h>
+#endif
+int main(int argc, char** argv)
 {
+#if defined(_WIN32)
+    assert(argc == 2);
+    char path[32768]{};
+    const auto module = GetModuleHandleA("lux_engine_editor_editing.dll");
+    assert(module && GetModuleFileNameA(module, path, sizeof(path)));
+    assert(std::filesystem::equivalent(path, std::filesystem::path(argv[1]) / "lux_engine_editor_editing.dll"));
+    std::cout << "loaded_core=" << path << '\n';
+#endif
     const auto text = runTextConsumer();
     const auto records = runRecordsConsumer();
     const auto again = runTextConsumer();

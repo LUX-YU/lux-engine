@@ -364,7 +364,8 @@ namespace lux::simulation::script::detail
                 else if (const auto inserted = bucket.handlers.tryEmplace(handler))
                 {
                     binding.registration = {inserted->index, inserted->gen};
-                    bucket.runnable.set(bucket.handlers.size() - 1U, true);
+                    binding.handler_position = static_cast<std::uint32_t>(bucket.handlers.size() - 1U);
+                    bucket.runnable.set(binding.handler_position, true);
                 }
                 else
                 {
@@ -413,14 +414,29 @@ namespace lux::simulation::script::detail
             {
                 auto& bucket = hooks_[binding.bucket];
                 const HandlerKey key{binding.registration.slot, binding.registration.generation};
-                const auto* handler = bucket.handlers.find(key);
-                if (handler == nullptr)
-                    std::terminate();
-                const auto position = static_cast<std::size_t>(handler - bucket.handlers.values().data());
+                const auto position = binding.handler_position;
                 const auto last = bucket.handlers.size() - 1U;
                 const bool moved_runnable = bucket.runnable.test(last);
                 bucket.runnable.set(last, false);
                 bucket.runnable.set(position, position != last && moved_runnable);
+                if (position != last)
+                {
+                    // Only the last registration moves. Repair its cold reverse association before erase;
+                    // publication and unlink cannot execute user code or overlap a live traversal.
+                    const auto method = bucket.handlers.values()[last].method_slot;
+                    for (auto moved = method_hooks_[method]; moved != (std::numeric_limits<std::uint32_t>::max)();
+                         moved = bindings_[moved].next_hook)
+                    {
+                        auto& association = bindings_[moved];
+                        const bool is_moved = association.bucket == binding.bucket &&
+                            association.registration.valid() && association.handler_position == last;
+                        if (is_moved)
+                        {
+                            association.handler_position = position;
+                            break;
+                        }
+                    }
+                }
                 bucket.handlers.erase(key);
             }
             else
@@ -440,10 +456,7 @@ namespace lux::simulation::script::detail
             const auto& binding = bindings_[index];
             if (binding.kind != EBindingKind::HOOK || !binding.registration.valid())
                 continue;
-            auto& bucket = hooks_[binding.bucket];
-            const auto* handler = bucket.handlers.find({binding.registration.slot, binding.registration.generation});
-            if (handler != nullptr)
-                bucket.runnable.set(static_cast<std::size_t>(handler - bucket.handlers.values().data()), false);
+            hooks_[binding.bucket].runnable.set(binding.handler_position, false);
         }
         if (traversal_depth_ == 0U)
             unlink(slot);
@@ -463,11 +476,10 @@ namespace lux::simulation::script::detail
             if (!binding.registration.valid())
                 continue;
             auto& bucket = hooks_[binding.bucket];
-            const auto* handler = bucket.handlers.find({binding.registration.slot, binding.registration.generation});
-            if (handler == nullptr || handler->instance != instance)
+            const auto& handler = bucket.handlers.values()[binding.handler_position];
+            if (handler.instance != instance)
                 continue;
-            const auto position = static_cast<std::size_t>(handler - bucket.handlers.values().data());
-            bucket.runnable.set(position, runnable && configurations_[handler->mount_slot].published);
+            bucket.runnable.set(binding.handler_position, runnable && configurations_[handler.mount_slot].published);
         }
     }
 

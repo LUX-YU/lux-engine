@@ -109,6 +109,16 @@ namespace
         trace.clear();
         bindings.visitHook(0U, [&](auto method) noexcept { trace.push_back(method.mount_slot); });
         assert(trace.size() == count - 1U && trace[0] == 0U && trace[1] == count - 1U && trace[2] == 2U);
+        const auto moved_method = static_cast<std::uint32_t>(bindings.layout(count - 1U).method_first);
+        bindings.setMethodRunnable(moved_method, {static_cast<std::uint32_t>(count), 1U}, false);
+        trace.clear();
+        bindings.visitHook(0U, [&](auto method) noexcept { trace.push_back(method.mount_slot); });
+        assert(trace.size() == count - 2U && trace[0] == 0U && trace[1] == 2U);
+        bindings.setMethodRunnable(moved_method, {static_cast<std::uint32_t>(count), 2U}, true);
+        visits = 0U;
+        bindings.visitHook(0U, [&](auto) noexcept { ++visits; });
+        assert(visits == count - 2U); // Stale cleanup cannot enable the moved registration.
+        bindings.setMethodRunnable(moved_method, {static_cast<std::uint32_t>(count), 1U}, true);
         assert(bindings.publish(1U, {2U, 2U}, ecs::NullEntity));
         trace.clear();
         bindings.visitHook(0U, [&](auto method) noexcept {

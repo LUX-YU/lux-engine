@@ -8,8 +8,9 @@ namespace lux::editor::editing::test
 {
     template <class F> void check(const char* id, F body)
     {
+        std::cout << id << " BEGIN" << std::endl;
         body();
-        std::cout << id << " PASS\n";
+        std::cout << id << " PASS" << std::endl;
     }
     template <class T> void expectError(const EditResult<T>& result, EEditError expected)
     {

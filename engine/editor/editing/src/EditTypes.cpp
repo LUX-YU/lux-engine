@@ -18,7 +18,8 @@ namespace lux::editor::editing
         {
             std::memcpy(result.message.data(), message.data(), copied);
         }
-        result.message_truncated = copied < message.size();
+        const bool has_suffix = nul != std::string_view::npos && nul + 1U < message.size();
+        result.message_truncated = copied < length || has_suffix;
         return result;
     }
 

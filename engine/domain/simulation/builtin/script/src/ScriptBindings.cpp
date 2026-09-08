@@ -62,7 +62,6 @@ namespace lux::simulation::script::detail
         try
         {
             dispatch_ = dispatch;
-            max_resume_payload_ = max_resume_payload;
             binding_capacity_ = capacity.binding_capacity;
             method_capacity_ = capacity.method_capacity;
             hook_endpoints_.assign(hooks.begin(), hooks.end());
@@ -93,6 +92,9 @@ namespace lux::simulation::script::detail
             {
                 events_[index].owner = this;
                 events_[index].slot = static_cast<std::uint32_t>(index);
+                const auto& projection = event_endpoints_[index].payload_projection;
+                events_[index].supports_wait =
+                    projection.copy != nullptr && projection.owned_layout.size <= max_resume_payload;
             }
             for (const auto& planned : capacity.endpoint_capacities)
             {
@@ -511,10 +513,7 @@ namespace lux::simulation::script::detail
         for (auto& bucket : events_)
         {
             const auto& endpoint = event_endpoints_[bucket.slot];
-            const auto& projection = endpoint.payload_projection;
-            const bool supports_wait =
-                projection.copy != nullptr && projection.owned_layout.size <= max_resume_payload_;
-            if ((bucket.capacity == 0U && !supports_wait) || bucket.token.valid())
+            if ((bucket.capacity == 0U && !bucket.supports_wait) || bucket.token.valid())
                 continue;
             const auto result = endpoint.connect(endpoint.context, &bucket, &eventEntry);
             if (!result)

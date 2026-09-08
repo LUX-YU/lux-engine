@@ -361,6 +361,13 @@ int main(int argc, char** argv)
             "vm_accounting=%d vm_allocations=%llu\n",
             count, elapsed, runtime.provider.poses - 1000, runtime.system->activeContinuationCount(),
             vm_accounting, after.vm_allocations.allocations - before.vm_allocations.allocations);
+        assert(runtime.system->stats().invocation_failures == 0U);
+        assert(runtime.system->shutdown() && runtime.provider.angles == 2U);
+        const auto closed = runtime.system->stats();
+        const auto released = backend.stats();
+        assert(closed.invocation_failures == 0U && closed.active_instances == 0U);
+        assert(released.prepared_ability_slots == 0U && released.prepared_event_slots == 0U);
+        std::puts("VALUE_CLEANUP invocation_errors=0 begin=1 end=1 prepared=0 instances=0 PASS");
         return 0;
     }
     {

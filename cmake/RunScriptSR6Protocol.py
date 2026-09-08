@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 import subprocess
 
-from RunScriptSR2Probes import run, truncate_main
+from RunScriptSR2Probes import INSTRUMENTATION_HITS, copy_region_helpers, run, truncate_main, replace_exact
 
 MAIN = r'''
 int main()
@@ -80,7 +80,15 @@ def main():
         if hits[old] != 1:
             raise RuntimeError('Expected exactly one diagnostic insertion: ' + old)
         text = text.replace(old, new)
-    text = '#define LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK 1\n#include <algorithm>\n' + text + MAIN
+    main_source = MAIN
+    if copy_region_helpers(source_root, root):
+        main_source = replace_exact(main_source, 'deliverEndpoint(harness.broadcast_start_bridge)',
+                                    'deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge)')
+        main_source = replace_exact(main_source, 'deliverEndpoint(harness.broadcast_wait_bridge)',
+                                    'deliverRuntimeEvent(*harness.system, harness.broadcast_wait_bridge)')
+        main_source = replace_exact(main_source, 'harness.system->executeStablePoint()',
+                                    'executeRuntimeStablePoint(*harness.system)')
+    text = '#define LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK 1\n#include <algorithm>\n' + text + main_source
     (root / 'protocol.cpp').write_text(text)
     for relative in ('engine/domain/simulation/builtin/script/test/ScriptTestClock.hpp',
                      'engine/domain/simulation/scripting/core/test/ScriptEndpointTestAccess.hpp'):
@@ -118,6 +126,7 @@ target_link_libraries(sr6_protocol PRIVATE lux::engine::simulation::simulation_s
     assert log.count('DRAIN_COMPLETE calls=17 resumes=17 destroys=17 errors=0 backlog=0 before_shutdown=1 PASS') == 1
     result = {'source': subprocess.check_output(['git', '-C', str(source_root), 'rev-parse', 'HEAD'], text=True).strip(),
               'fixture_sha256': hashlib.sha256(fixture.read_bytes()).hexdigest(), 'insertion_hits': hits,
+              'region_insertion_hits': INSTRUMENTATION_HITS,
               'exe_sha256': hashlib.sha256(exe.read_bytes()).hexdigest(), 'ready_step': 0,
               'resume_step_delays': [v[1] for v in resumes], 'budget': 3, 'business_completed': 17,
               'drain_steps': 6, 'shutdown_cancellation_counted_as_completion': False}

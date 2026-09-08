@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 
-from RunScriptSR2Probes import INSTRUMENTATION_HITS, instrument, run, truncate_main
+from RunScriptSR2Probes import INSTRUMENTATION_HITS, copy_region_helpers, instrument, run, truncate_main, replace_exact
 
 
 MAIN = r'''
@@ -131,6 +131,7 @@ def main():
         directory.mkdir()
         fixture = source_root / 'engine/domain/simulation/builtin/script/test/script_system_lifecycle_test.cpp'
         INSTRUMENTATION_HITS.clear()
+        regions = copy_region_helpers(source_root, directory)
         source = '#include <string>\n#include <algorithm>\n' + truncate_main(
             instrument(fixture.read_text(encoding='utf-8-sig'), True), 'int main(int argc')
         stats = source_root / 'engine/domain/simulation/builtin/script/include/lux/engine/simulation/ScriptSystem.hpp'
@@ -141,6 +142,8 @@ def main():
             endpoint_visits += after_stats.assembly_endpoint_count_visits -
                 before_stats.assembly_endpoint_count_visits;
 ''' if counters else '')
+        if regions:
+            main_source = replace_exact(main_source, 'dispatchHookForTest(*hook)', 'dispatchRuntimeHook(system, *hook)')
         source += main_source.replace('COUNTER_AVAILABLE', '1' if counters else '0')
         (directory / 'scale.cpp').write_text(source, encoding='utf-8')
         helper = source_root / 'engine/domain/simulation/system/test/HookInvocationTestAccess.hpp'

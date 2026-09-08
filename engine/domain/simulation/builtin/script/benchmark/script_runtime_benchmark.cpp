@@ -1708,6 +1708,29 @@ namespace
         return result;
     }
 
+    void finishRuntimeBenchmark(ScriptSystem& system, const char* scenario)
+    {
+        const auto report = [&](const char* phase) {
+            const auto stats = system.stats();
+            std::printf("INTEGRITY,%s,%s,invocation_errors=%llu,retained=%zu,instances=%zu,continuations=%zu,"
+                "awaitables=%zu,waiters=%zu,queue=%zu,calls=%llu,resumes=%llu\n", scenario, phase,
+                static_cast<unsigned long long>(stats.invocation_failures), system.failures().size(),
+                stats.active_instances, stats.active_continuations, stats.active_awaitables, stats.active_event_waiters,
+                stats.resume_queue_depth,
+                static_cast<unsigned long long>(stats.sync_invocations + stats.step_invocations),
+                static_cast<unsigned long long>(stats.backend_resume_calls));
+            if (stats.invocation_failures != 0U || !system.failures().empty())
+                throw std::runtime_error("benchmark observed a runtime error outside the timing interval");
+            return stats;
+        };
+        static_cast<void>(report("steady"));
+        if (!system.shutdown()) throw std::runtime_error("benchmark shutdown busy or failed");
+        const auto final = report("shutdown");
+        if (final.active_instances != 0U || final.active_continuations != 0U || final.active_awaitables != 0U ||
+            final.active_event_waiters != 0U || final.resume_queue_depth != 0U)
+            throw std::runtime_error("benchmark shutdown did not reclaim execution resources");
+    }
+
     void appendRuntimeStats(Row& row, RuntimeHarness& harness)
     {
         const auto stats = harness.system->stats();
@@ -2459,6 +2482,8 @@ namespace
                 appendRuntimeStats(row, cancellation);
                 return row;
             }));
+            finishRuntimeBenchmark(*harness.system, "micro-event");
+            finishRuntimeBenchmark(*cancellation.system, "micro-event-cancel");
             if (iteration < options.warmups)
                 rows.resize(first_row);
             else
@@ -2518,6 +2543,7 @@ namespace
         const auto expected_frames = (options.size + options.resume_budget - 1U) / options.resume_budget;
         if (frame != expected_frames || harness.backend_state.resumes != options.size)
             throw std::runtime_error("Event fan-out benchmark violated the resume budget");
+        finishRuntimeBenchmark(*harness.system, "event-fanout");
     }
 
     void runEventSparse(const Options& options, std::vector<Row>& rows)
@@ -2716,6 +2742,7 @@ namespace
             throw std::runtime_error("Lua synchronous benchmark observation mismatch");
         if ((symbol == kTick || symbol == kLuaQuery) && harness.value_provider.calls == 0U)
             throw std::runtime_error("Lua Ability benchmark did not call the prepared provider");
+        finishRuntimeBenchmark(*harness.system, "lua-sync");
     }
 
     void runLuaCoroutineFrames(const Options& options, std::vector<Row>& rows)
@@ -2746,6 +2773,7 @@ namespace
         }
         if (harness.system->activeInstanceCount() != options.size)
             throw std::runtime_error("Lua coroutine scene benchmark lost instances");
+        finishRuntimeBenchmark(*harness.system, "lua-coroutine");
     }
 
     void runLuaCoroutineMicro(const Options& options, std::vector<Row>& rows)
@@ -2872,6 +2900,7 @@ namespace
             execute_cycle(frame, true);
         if (harness.system->activeContinuationCount() != 0U || harness.system->stats().active_event_waiters != 0U)
             throw std::runtime_error("Lua Event benchmark left pending runtime state");
+        finishRuntimeBenchmark(*harness.system, "lua-event");
     }
 
     void runLuaChurn(const Options& options, std::vector<Row>& rows)
@@ -2934,8 +2963,9 @@ namespace
                 rows.push_back(std::move(row));
             }
         }
-        if (!harness.system->shutdown() || lux::simulation::benchmark::cpp_update_checksum !=
+        if (lux::simulation::benchmark::cpp_update_checksum !=
             options.size * (options.warmups + options.frames)) throw std::runtime_error("C++ update observation");
+        finishRuntimeBenchmark(*harness.system, "cpp-update");
         if (!rows.empty()) rows.back().checksum = lux::simulation::benchmark::cpp_update_checksum;
     }
 

@@ -1027,6 +1027,14 @@ namespace
                   "continuation_frame_bytes,artifact_bytes,checksum,started,resumes,suspensions,completed,phase\n";
         const auto* exported = native_module->findFunction(event_mode ? kEventWaitSymbol : kTickSymbol);
         const auto frame_bytes = exported != nullptr && exported->step != nullptr ? exported->step->frame_size : 0U;
+        const auto initial_stats = system->stats();
+        std::printf("INTEGRITY,begin,calls=%zu,invocation_errors=%llu,started=%llu,resumes=%llu,suspensions=%llu,"
+            "queue=%zu,continuations=%zu,awaitables=%zu,waiters=%zu\n", provider.calls,
+            static_cast<unsigned long long>(initial_stats.invocation_failures),
+            static_cast<unsigned long long>(initial_stats.step_invocations),
+            static_cast<unsigned long long>(initial_stats.backend_resume_calls),
+            static_cast<unsigned long long>(initial_stats.suspensions_admitted), initial_stats.resume_queue_depth,
+            initial_stats.active_continuations, initial_stats.active_awaitables, initial_stats.active_event_waiters);
         bool draining{};
         const auto record = [&](std::size_t frame, std::uint64_t nanoseconds) {
             const auto stats = system->stats();
@@ -1099,6 +1107,14 @@ namespace
         // not a total-error counter; a full bounded log may have omitted additional failures.
         const auto retained = system->failures().size();
         const auto stopped_at = system->stats();
+        const auto storage = backend.stats();
+        std::printf("NATIVE_STORAGE,steady,backing=%zu,metadata=%zu,reserved=%zu,active=%zu,live=%zu,"
+            "occupied=%zu,high_water=%zu,capacity_failures=%zu,heap_frames=%zu\n",
+            storage.frame_storage_bytes, storage.frame_metadata_bytes, storage.frame_reserved_slots,
+            storage.active_frames, storage.frame_live_bytes, storage.frame_occupied_bytes, storage.frame_high_water,
+            storage.frame_capacity_failures, storage.heap_frame_allocations);
+        std::printf("ERRORS,steady,invocation_errors=%llu\n",
+            static_cast<unsigned long long>(stopped_at.invocation_failures));
         std::printf("INTEGRITY,steady,retained=%zu,calls=%zu,checksum=%llu,queue=%zu,continuations=%zu,"
             "awaitables=%zu,waiters=%zu\n", retained, provider.calls, static_cast<unsigned long long>(provider.checksum),
             stopped_at.resume_queue_depth, stopped_at.active_continuations,
@@ -1106,13 +1122,23 @@ namespace
         const bool closed = system->shutdown().has_value();
         const auto final = system->stats();
         const auto retained_after = system->failures().size();
+        const auto released_storage = backend.stats();
+        std::printf("NATIVE_STORAGE,shutdown,active=%zu,live=%zu,occupied=%zu,acquires=%llu,releases=%llu\n",
+            released_storage.active_frames, released_storage.frame_live_bytes, released_storage.frame_occupied_bytes,
+            static_cast<unsigned long long>(released_storage.frame_acquire_steps),
+            static_cast<unsigned long long>(released_storage.frame_release_steps));
+        std::printf("ERRORS,shutdown,invocation_errors=%llu\n",
+            static_cast<unsigned long long>(final.invocation_failures));
         std::printf("INTEGRITY,shutdown,retained=%zu,calls=%zu,checksum=%llu,queue=%zu,continuations=%zu,"
             "awaitables=%zu,waiters=%zu\n", retained_after, provider.calls,
             static_cast<unsigned long long>(provider.checksum),
             final.resume_queue_depth, final.active_continuations, final.active_awaitables, final.active_event_waiters);
         const bool released = final.active_instances == 0U && final.active_continuations == 0U &&
             final.active_awaitables == 0U && final.active_event_waiters == 0U && final.resume_queue_depth == 0U;
-        if (retained != 0U || retained_after != 0U || !released)
+        const bool frames_released = released_storage.active_frames == 0U &&
+            released_storage.frame_live_bytes == 0U && released_storage.frame_occupied_bytes == 0U;
+        if (retained != 0U || retained_after != 0U || stopped_at.invocation_failures != 0U ||
+            final.invocation_failures != 0U || !released || !frames_released || storage.frame_capacity_failures != 0U)
             return 35;
         return closed ? 0 : 30;
     }

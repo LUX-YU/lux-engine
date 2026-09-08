@@ -135,6 +135,25 @@ def truncate_main(source, marker):
     return source[:source.index(marker)]
 
 
+def copy_region_helpers(source_root, directory):
+    """Keep copied diagnostic fixtures on their snapshot's public region contract."""
+    region = source_root / 'engine/domain/simulation/builtin/script/test/ScriptRuntimeTestRegion.hpp'
+    if not region.exists():
+        return False
+    text = region.read_text(encoding='utf-8-sig')
+    for old, new in (
+        ('../../../system/test/HookInvocationTestAccess.hpp', 'HookInvocationTestAccess.hpp'),
+        ('../../../scripting/core/test/ScriptEndpointTestAccess.hpp', 'ScriptEndpointTestAccess.hpp')
+    ):
+        text = replace_exact(text, old, new)
+    (directory / region.name).write_text(text)
+    for path in ('engine/domain/simulation/system/test/HookInvocationTestAccess.hpp',
+                 'engine/domain/simulation/scripting/core/test/ScriptEndpointTestAccess.hpp'):
+        helper = source_root / path
+        (directory / helper.name).write_bytes(helper.read_bytes())
+    return True
+
+
 def check_trace(lines, expected):
     cases = {}
     current = None
@@ -194,7 +213,7 @@ void* operator new(std::size_t size, std::align_val_t alignment)
 void operator delete(void* value, std::align_val_t) noexcept { _aligned_free(value); }
 void operator delete(void* value, std::size_t, std::align_val_t) noexcept { _aligned_free(value); }
 ''' + source
-    source = replace_exact(source,"namespace\n{", """namespace
+    source = replace_exact(source,"namespace\n{\n    using namespace lux::simulation;", """namespace
 {
     bool trace_enabled{};
     void trace(const char* event, std::size_t instance, std::uint64_t symbol = 0U) noexcept
@@ -202,6 +221,7 @@ void operator delete(void* value, std::size_t, std::align_val_t) noexcept { _ali
         if (trace_enabled)
             std::printf("%s,%zu,%llu\\n", event, instance, static_cast<unsigned long long>(symbol));
     }
+    using namespace lux::simulation;
 """, 1)
     if not candidate:
         source = replace_exact(source,"        std::vector<ScriptAwaitableCompletion> completions;",
@@ -400,6 +420,7 @@ def main():
         original = source_root / "engine/domain/simulation/builtin/script/test/script_system_lifecycle_test.cpp"
         INSTRUMENTATION_HITS.clear()
         original_text = original.read_text(encoding="utf-8-sig")
+        copy_region_helpers(source_root, directory)
         runtime_input = "std::vector<ScriptRuntimeMount>" in original_text
         probe = instrument(original_text, runtime_input)
         (directory / "probe.cpp").write_text(probe, encoding="utf-8")

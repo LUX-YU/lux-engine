@@ -328,7 +328,7 @@ namespace lux::simulation::script
         void handleAttachmentSignal(ecs::Registry& source, ecs::Entity entity, bool destroying) noexcept
         {
             ExecutionOwnerScope execution{*this};
-            if (!execution || owner.stopping)
+            if (!execution)
                 return;
             if (&source != registry)
                 return;
@@ -577,7 +577,7 @@ namespace lux::simulation::script
         if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
         State::ExecutionOwnerScope execution{*state_};
-        if (!execution || owner.stopping)
+        if (!execution)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         if (state_->stopping)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
@@ -666,7 +666,7 @@ namespace lux::simulation::script
         if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
         State::ExecutionOwnerScope execution{*state_};
-        if (!execution || owner.stopping)
+        if (!execution)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         if (state_->region_active || state_->endpoint_dispatch_depth != 0U ||
             state_->instance_owner.protectedCount() != 0U ||
@@ -922,7 +922,7 @@ namespace lux::simulation::script
         if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return {};
         State::ExecutionOwnerScope execution{*state_};
-        if (!execution || owner.stopping)
+        if (!execution)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
 
         if (state_->region_active || state_->instance_owner.protectedCount() != 0U ||
@@ -1005,7 +1005,7 @@ namespace lux::simulation::script
         if (!state_)
             return result;
         State::ExecutionOwnerScope execution{*state_};
-        if (!execution || owner.stopping)
+        if (!execution)
             return result;
         state_->instance_owner.writeStats(result);
         result.binding_backing_bytes = state_->binding_owner.backingBytes();

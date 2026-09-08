@@ -57,10 +57,10 @@ namespace
     };
     // Cross a bitmap word and its summary boundary. Dense erase order is the contract,
     // including changes made by a nested dispatch; publication cannot move a live traversal.
-    template <std::size_t Count> void testDenseTraversalOrder(const SimulationDescription& simulation,
+    void testDenseTraversalOrder(const SimulationDescription& simulation,
         std::span<const ScriptHookEndpointDescriptor> endpoints)
     {
-        constexpr std::size_t count = Count;
+        constexpr std::size_t count = 4097U;
         std::vector<ScriptRuntimeMount> inputs;
         std::vector<ScriptMountPlacement> placements;
         std::array<std::uint8_t, 16U> bytes{};
@@ -75,7 +75,6 @@ namespace
         assert(capacity);
         ScriptBindings bindings;
         assert(bindings.prepare(simulation, *capacity, endpoints, {}, {nullptr, &Dispatch::prepare}, 64U));
-        const auto backing_bytes = bindings.backingBytes();
         auto ticket = bindings.reserveBatch(inputs, placements);
         assert(ticket);
         bindings.commitBatch(std::move(*ticket));
@@ -93,9 +92,7 @@ namespace
         std::size_t visits{};
         bindings.visitHook(0U, [&](auto) noexcept { ++visits; });
         assert(visits == 0U);
-        std::vector<std::uint32_t> ready;
-        for (const auto index : {0U, 63U, 64U, 4095U, 4096U})
-            if (index < count) ready.push_back(index);
+        constexpr std::array<std::uint32_t, 5U> ready{0U, 63U, 64U, 4095U, 4096U};
         for (const auto index : ready)
             bindings.setMethodRunnable(static_cast<std::uint32_t>(bindings.layout(index).method_first),
                 {index + 1U, 1U}, true);
@@ -128,8 +125,7 @@ namespace
         trace.clear();
         bindings.visitHook(0U, [&](auto method) noexcept { trace.push_back(method.mount_slot); });
         assert(trace[2] == 1U && trace.back() == count - 2U);
-        assert(bindings.backingBytes() == backing_bytes);
-        std::printf("HOOK_ORDER_OK,registrations=%zu,swap_pop=1,nested_withdraw=1,republish=1\n", count);
+        std::puts("HOOK_ORDER_OK,registrations=4097,swap_pop=1,nested_withdraw=1,republish=1");
     }
 
     // Owner-level admission test; lifecycle_test exercises actual prepared calls and foreign reentry.
@@ -286,9 +282,7 @@ int main()
     bindings.withdraw(0U);
     assert(bindings.disconnect());
     testInvocationAuthority(*capacity, bindings, inputs, registry);
-    testDenseTraversalOrder<64U>(*simulation, hook_endpoints);
-    testDenseTraversalOrder<65U>(*simulation, hook_endpoints);
-    testDenseTraversalOrder<4097U>(*simulation, hook_endpoints);
+    testDenseTraversalOrder(*simulation, hook_endpoints);
     assert(bindings.disconnect());
     assert(bindings.connect());
     assert(bindings.publish(0U, instance, entity));

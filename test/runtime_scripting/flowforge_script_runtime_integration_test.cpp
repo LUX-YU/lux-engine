@@ -170,24 +170,39 @@ namespace
     struct RuntimeBinding final
     {
         ScriptSystem* runtime{};
+        std::optional<ScriptSystem::ExecutionRegion> region;
         [[nodiscard]] auto bind(Simulation& simulation) noexcept
         {
             return simulation.bindHookCallbacks({this,
                 [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
-                    auto* runtime = static_cast<RuntimeBinding*>(context)->runtime;
+                    auto& host = *static_cast<RuntimeBinding*>(context);
+                    auto* runtime = host.runtime;
                     if (runtime == nullptr)
                         return true;
                     if (stable)
                         runtime->beginStableAdmission();
-                    return static_cast<bool>(runtime->processLifecycle());
+                    if (!runtime->processLifecycle()) return false;
+                    auto region = runtime->beginExecutionRegion();
+                    if (!region) return false;
+                    host.region.emplace(std::move(*region));
+                    return true;
                 },
                 [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
-                    auto* runtime = static_cast<RuntimeBinding*>(context)->runtime;
-                    return runtime == nullptr || !stable || static_cast<bool>(runtime->executeStablePoint());
+                    auto& host = *static_cast<RuntimeBinding*>(context);
+                    if (host.runtime == nullptr) return true;
+                    const bool result = !stable || static_cast<bool>(host.runtime->executeStablePoint());
+                    if (!host.region || !host.region->finish()) return false;
+                    host.region.reset();
+                    return result;
                 },
                 [](void* context, const SimulationClockSnapshot&) noexcept {
                     auto* runtime = static_cast<RuntimeBinding*>(context)->runtime;
                     return runtime == nullptr || static_cast<bool>(runtime->processLifecycle());
+                },
+                [](void* context, const SimulationClockSnapshot&) noexcept {
+                    auto& host = *static_cast<RuntimeBinding*>(context);
+                    if (host.region && !host.region->finish()) std::terminate();
+                    host.region.reset();
                 }});
         }
     };

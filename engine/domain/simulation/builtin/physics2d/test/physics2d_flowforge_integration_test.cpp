@@ -197,7 +197,8 @@ int main()
         simulation->scriptEventEndpoints()
     );
     assert(system && system->prepare());
-    auto connection = bindScriptRuntime(*simulation, *system);
+    ScriptRuntimeHookContext hook_context{*system};
+    auto connection = bindScriptRuntime(*simulation, hook_context);
     assert(connection && simulation->execute(*executor, SimulationDuration{}));
     assert(capture_provider.calls == 1U && capture_provider.value);
     assert(system->activeContinuationCount() == 0U);

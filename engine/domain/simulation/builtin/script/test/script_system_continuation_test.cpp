@@ -996,8 +996,15 @@ namespace
                 state.blocked_instances, after.hook_observation_enabled,
                 after.hook_candidates - before.hook_candidates, after.hook_handler_visits - before.hook_handler_visits);
             for (auto& completion : state.completions) assert(completion.ready());
-            assert(created->stats().resume_queue_depth == state.blocked_instances);
-            while (created->stats().resume_queue_depth != 0U) assert(executeRuntimeStablePoint(*created));
+            assert(created->stats().resume_queue_depth == 0U);
+            assert(created->stats().external_completion_queue_depth == state.blocked_instances);
+            for (std::size_t resumed{}; resumed < state.blocked_instances; ++resumed)
+            {
+                assert(executeRuntimeStablePoint(*created));
+                assert(state.resume_calls == resumed + 1U);
+                assert(created->stats().external_completion_queue_depth == 0U);
+                assert(created->stats().resume_queue_depth == state.blocked_instances - resumed - 1U);
+            }
             assert(state.resume_calls == state.blocked_instances &&
                 state.continuation_destroys == state.blocked_instances && created->failures().empty());
             assert(created->shutdown() && state.destroys == count);

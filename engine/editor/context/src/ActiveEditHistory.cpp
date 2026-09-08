@@ -399,10 +399,9 @@ namespace lux::editor
             {
                 std::abort();
             }
-            if (router && router->impl_->busy)
-            {
-                std::abort();
-            }
+            // Transferring the token does not mutate the source route. In particular,
+            // registerTarget returns its new token while its call guard is still live.
+            // The destination's reset below enforces admission when replacing a binding.
         }
         if (!reset())
         {

@@ -232,6 +232,8 @@ struct CppStaticScriptBackend::State final
         const CppStaticContract *descriptor{};
         ObjectSlab objects;
         std::vector<std::size_t> free_objects;
+        std::vector<detail::ScriptCoroutineAbilityAccess> prepared_abilities;
+        std::vector<std::size_t> free_ability_blocks;
         detail::BoundedClassStorage coroutine_frames;
         detail::BoundedClassStorage::ClassHandle argument_class;
         std::size_t frame_limit{};
@@ -264,6 +266,8 @@ struct CppStaticScriptBackend::State final
         std::size_t object_slot{(std::numeric_limits<std::size_t>::max)()};
         std::uint32_t slot{};
         std::span<const PreparedScriptApiCapability> capabilities;
+        std::span<const detail::ScriptCoroutineAbilityAccess> prepared_abilities;
+        std::size_t ability_block{};
         std::span<const PreparedScriptEventAdmission> events;
         const lux::script::ScriptArtifact* artifact{};
         ArtifactAssociation* association{};
@@ -367,6 +371,19 @@ struct CppStaticScriptBackend::State final
             DescriptorIndex index;
             index.descriptor = descriptor;
             index.instance_capacity = pool.instance_capacity;
+            const auto ability_count = descriptor->abilities.size();
+            if (ability_count != 0U)
+            {
+                if (pool.instance_capacity > (std::numeric_limits<std::size_t>::max)() / ability_count)
+                {
+                    valid = false;
+                    return;
+                }
+                index.prepared_abilities.resize(pool.instance_capacity * ability_count);
+                index.free_ability_blocks.reserve(pool.instance_capacity);
+                for (std::size_t slot = pool.instance_capacity; slot > 0U; --slot)
+                    index.free_ability_blocks.push_back(slot - 1U);
+            }
             index.coroutine_capacity = pool.coroutine_capacity;
             const bool has_coroutines = std::ranges::any_of(
                 descriptor->exports, [](const auto &entry) noexcept { return entry.start != nullptr; });
@@ -532,15 +549,11 @@ struct CppStaticScriptBackend::State final
         if (instance_slot >= self.instances.size())
             return false;
         const auto &instance = self.instances[instance_slot];
-        if (instance.descriptor == nullptr || instance.association == nullptr ||
-            ability_slot >= instance.association->capability_slots.size())
+        if (instance.descriptor == nullptr || ability_slot >= instance.prepared_abilities.size())
             return false;
-        const auto actual_slot = instance.association->capability_slots[ability_slot];
-        if (actual_slot >= instance.capabilities.size()) return false;
-        const auto &ability = instance.capabilities[actual_slot];
-        if (ability.context == nullptr || ability.dispatch == nullptr)
+        result = instance.prepared_abilities[ability_slot];
+        if (result.context == nullptr || result.dispatch == nullptr)
             return false;
-        result = {ability.context, ability.dispatch};
         return true;
     }
 
@@ -840,6 +853,20 @@ struct CppStaticScriptBackend::State final
             self.free_instances.push_back(instance_slot);
             return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
         }
+        if (!descriptor.abilities.empty())
+        {
+            const auto block = descriptor_index->free_ability_blocks.back();
+            descriptor_index->free_ability_blocks.pop_back();
+            auto entries = std::span{descriptor_index->prepared_abilities}.subspan(
+                block * descriptor.abilities.size(), descriptor.abilities.size());
+            for (std::size_t local{}; local < entries.size(); ++local)
+            {
+                const auto& capability = context.capabilities[instance->association->capability_slots[local]];
+                entries[local] = {capability.context, capability.dispatch};
+            }
+            instance->ability_block = block;
+            instance->prepared_abilities = entries;
+        }
         ++descriptor_index->active_instances;
         ++self.active_instances;
         result.value = instance;
@@ -911,6 +938,8 @@ struct CppStaticScriptBackend::State final
             instance->descriptor->descriptor->object.destroy(instance->object);
             instance->descriptor->free_objects.push_back(instance->object_slot);
         }
+        if (!instance->prepared_abilities.empty())
+            instance->descriptor->free_ability_blocks.push_back(instance->ability_block);
         --instance->descriptor->active_instances;
         self.releaseAssociation(*instance->association);
         const auto index = static_cast<std::size_t>(instance - self.instances.data());
@@ -990,6 +1019,9 @@ CppStaticScriptBackendStats CppStaticScriptBackend::stats() const noexcept
     result.artifact_index_bucket_count = state_->artifact_index.bucket_count();
     for (const auto &descriptor : state_->descriptor_indexes)
     {
+        result.prepared_method_storage_bytes += descriptor.prepared_abilities.capacity() *
+            sizeof(detail::ScriptCoroutineAbilityAccess) +
+            descriptor.free_ability_blocks.capacity() * sizeof(std::size_t);
         const auto stats = descriptor.coroutine_frames.stats();
         result.frame_storage_bytes += stats.arena_bytes;
         result.active_frames += descriptor.active_coroutines;

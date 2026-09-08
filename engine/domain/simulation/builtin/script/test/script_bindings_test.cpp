@@ -54,6 +54,63 @@ namespace
             assert(self.bindings->connect());
         }
     };
+    // Cross a bitmap word and its summary boundary. Dense erase order is the contract,
+    // including changes made by a nested dispatch; publication cannot move a live traversal.
+    void testDenseTraversalOrder(const SimulationDescription& simulation,
+        std::span<const ScriptHookEndpointDescriptor> endpoints)
+    {
+        constexpr std::size_t count = 4097U;
+        std::vector<ScriptRuntimeMount> inputs;
+        std::vector<ScriptMountPlacement> placements;
+        std::array<std::uint8_t, 16U> bytes{};
+        bytes.front() = 1U;
+        for (std::size_t index{}; index < count; ++index)
+        {
+            inputs.push_back({ScriptMountId{index + 1U}, lux::asset::AssetId{bytes}, SimulationScriptScope{},
+                {{lux::script::ScriptSymbolId{1U}, HookScriptTarget{kSystem, kHook}}}});
+            placements.push_back({static_cast<std::uint32_t>(index), false});
+        }
+        const auto capacity = planScriptRuntimeCapacity(inputs);
+        assert(capacity);
+        ScriptBindings bindings;
+        assert(bindings.prepare(simulation, *capacity, endpoints, {}, {}, 64U));
+        auto ticket = bindings.reserveBatch(inputs, placements);
+        assert(ticket);
+        bindings.commitBatch(std::move(*ticket));
+        for (std::uint32_t index{}; index < count; ++index)
+            assert(bindings.publish(index, {index + 1U, 1U}, ecs::NullEntity));
+        std::vector<std::uint32_t> trace;
+        trace.reserve(count);
+        bindings.visitHook(0U, [&](auto method) noexcept { trace.push_back(method.mount_slot); });
+        assert(trace.size() == count);
+        for (std::uint32_t index{}; index < count; ++index)
+            assert(trace[index] == index);
+        bindings.withdraw(1U); // The last registration takes the erased dense position.
+        trace.clear();
+        bindings.visitHook(0U, [&](auto method) noexcept { trace.push_back(method.mount_slot); });
+        assert(trace.size() == count - 1U && trace[0] == 0U && trace[1] == count - 1U && trace[2] == 2U);
+        assert(bindings.publish(1U, {2U, 2U}, ecs::NullEntity));
+        trace.clear();
+        bindings.visitHook(0U, [&](auto method) noexcept {
+            trace.push_back(method.mount_slot);
+            if (method.mount_slot == 0U)
+            {
+                bindings.withdraw(2U);
+                std::size_t nested{};
+                bindings.visitHook(0U, [&](auto inner) noexcept {
+                    assert(inner.mount_slot != 2U);
+                    ++nested;
+                });
+                assert(nested == count - 1U);
+            }
+        });
+        assert(trace.size() == count - 1U && trace[1] == count - 1U && trace.back() == 1U);
+        trace.clear();
+        bindings.visitHook(0U, [&](auto method) noexcept { trace.push_back(method.mount_slot); });
+        assert(trace[2] == 1U && trace.back() == count - 2U);
+        std::puts("HOOK_ORDER_OK,registrations=4097,swap_pop=1,nested_withdraw=1,republish=1");
+    }
+
     // Owner-level admission test; lifecycle_test exercises actual prepared calls and foreign reentry.
     void testInvocationAuthority(const ScriptRuntimeCapacityPlan& capacity, const ScriptBindings& bindings,
         std::span<const ScriptRuntimeMount> inputs, ecs::Registry& registry)
@@ -208,6 +265,7 @@ int main()
     bindings.withdraw(0U);
     assert(bindings.disconnect());
     testInvocationAuthority(*capacity, bindings, inputs, registry);
+    testDenseTraversalOrder(*simulation, hook_endpoints);
     assert(bindings.disconnect());
     assert(bindings.connect());
     assert(bindings.publish(0U, instance, entity));

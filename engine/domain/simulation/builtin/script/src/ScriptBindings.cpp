@@ -292,7 +292,8 @@ namespace lux::simulation::script::detail
     {
         std::size_t index_bytes = method_hooks_.capacity() * sizeof(std::uint32_t);
         for (const auto& bucket : hooks_) index_bytes += bucket.runnable.backingBytes();
-        return index_bytes + bindings_.capacity() * sizeof(Binding) + descriptions_.capacity() * sizeof(ScriptBindingDescription) +
+        return index_bytes + bindings_.capacity() * sizeof(Binding) +
+            descriptions_.capacity() * sizeof(ScriptBindingDescription) +
             configurations_.capacity() * sizeof(Configuration) +
             symbols_.capacity() * sizeof(lux::script::ScriptSymbolId);
     }

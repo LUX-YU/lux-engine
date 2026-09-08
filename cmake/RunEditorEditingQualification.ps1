@@ -26,7 +26,7 @@ function Invoke-Logged([string]$Name, [string]$Program, [string[]]$Arguments) {
 }
 function Save-Identity([string]$Name) {
     $binaries = Get-ChildItem -LiteralPath "$BuildDir/bin" -File | Where-Object {
-        $_.Name -match 'editor_edit|lux_engine_(editor|core_object|function_ui)' -and $_.Extension -in '.exe','.dll'
+        $_.Name -match 'editor_|node_graph|simulation_object|lux_engine_core_object|^ui\.dll$' -and $_.Extension -in '.exe','.dll'
     }
     $binaries | ForEach-Object {
         [ordered]@{name=$_.Name;bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash}
@@ -90,7 +90,7 @@ foreach ($variant in @('core-a','core-b','context-b')) {
     if (!$context) {
         $commands = [System.IO.File]::ReadAllText("$consumerBuild/compile_commands.json").Replace('\\','/')
         foreach ($forbidden in @($SourceDir,$BuildDir) + $(if ($variant -eq 'core-b') { @($prefixA) } else { @() })) {
-            if ($commands.IndexOf($forbidden,[StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            if ($commands.IndexOf($forbidden.TrimEnd('/') + '/',[StringComparison]::OrdinalIgnoreCase) -ge 0) {
                 throw "Consumer compile command contains a forbidden path: $forbidden"
             }
         }

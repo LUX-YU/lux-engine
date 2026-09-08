@@ -180,6 +180,7 @@ namespace lux::simulation::script::detail
         [[nodiscard]] const PreparedInvocation* prepareInvocation(ScriptMethodReference method) noexcept;
         [[nodiscard]] Invocation invokeAccess(ScriptMethodReference method) noexcept;
         [[nodiscard]] Invocation resumeAccess(ScriptInstanceId instance) noexcept;
+        [[nodiscard]] Invocation resumeAccess(ScriptInstanceId instance, std::uint32_t mount_slot) noexcept;
         [[nodiscard]] ScriptMountView view(std::uint32_t slot) const noexcept;
         [[nodiscard]] std::size_t capacity() const noexcept { return mounts_.size(); }
         [[nodiscard]] std::size_t identityCapacity() const noexcept { return identities_.capacity(); }
@@ -405,6 +406,16 @@ namespace lux::simulation::script::detail
             return {};
         // No allocation or user code between validation and acquiring the protection ticket.
         return Invocation{*this, instance, nullptr, invocation_states_[*slot]};
+    }
+    inline ScriptInstances::Invocation
+    ScriptInstances::resumeAccess(ScriptInstanceId instance, std::uint32_t mount_slot) noexcept
+    {
+        // Execution resolved and owns this stable configuration association. Recheck authority,
+        // not the identity directory. The ResumeBatch already holds physical reclamation protection.
+        const auto& authority = invocation_states_[mount_slot];
+        if (authority.state != EScriptMountState::ACTIVE || authority.instance != instance)
+            return {};
+        return Invocation{*this, instance, nullptr, authority};
     }
     inline lux::script::ScriptSymbolId ScriptInstances::methodSymbol(std::uint32_t slot) const noexcept
     {

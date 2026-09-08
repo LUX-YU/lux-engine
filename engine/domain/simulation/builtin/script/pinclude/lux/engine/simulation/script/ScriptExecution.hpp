@@ -27,6 +27,17 @@ namespace lux::simulation::script::detail
             bool admission_revoked{};
         };
 
+        // Short internal borrow: no directory lookup or writable Instances authority is exposed.
+        struct ExecutionAccess final
+        {
+            ExecutionInstance* record{};
+            ScriptInstanceId identity;
+            [[nodiscard]] bool current() const noexcept
+            {
+                return record != nullptr && record->id == identity && !record->admission_revoked;
+            }
+        };
+
         struct ContinuationRecord final
         {
             ScriptContinuationId id;
@@ -320,7 +331,7 @@ namespace lux::simulation::script::detail
             auto& owner = *static_cast<ScriptExecution*>(context);
             const auto instance = ScriptCompletionIngress::unpackInstance(instance_value);
             const auto awaitable = ScriptCompletionIngress::unpackAwaitable(awaitable_value);
-            const auto* record = owner.awaitables_.find(awaitableKey(awaitable));
+            auto* record = owner.awaitables_.find(awaitableKey(awaitable));
             if (record == nullptr || record->instance != instance)
                 return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::STALE);
 
@@ -341,13 +352,7 @@ namespace lux::simulation::script::detail
                 return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::INVALID_VALUE);
             }
 
-            const auto completed = owner.completeAwaitableOwner(
-                instance,
-                awaitable,
-                EScriptAwaitableState::READY,
-                std::move(value),
-                {}
-            );
+            const auto completed = owner.finishAwaitableOwner(*record, EScriptAwaitableState::READY, &value, {});
             return completed
                 ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
                 : lux::cxx::unexpected(ScriptCompletionIngress::abilityError(completed.error()));
@@ -470,9 +475,9 @@ namespace lux::simulation::script::detail
             ScriptStepError error;
         };
 
-        void unlinkAwaitableOwnership(AwaitableRecord& record) noexcept
+        void unlinkAwaitableOwnership(AwaitableRecord& record, ExecutionAccess access) noexcept
         {
-            auto* owner = findExecutionInstance(record.instance);
+            auto* owner = access.record;
             if (record.instance_previous.valid())
             {
                 auto* previous = awaitables_.find(awaitableKey(record.instance_previous));
@@ -497,9 +502,15 @@ namespace lux::simulation::script::detail
             auto* record = awaitables_.find(awaitableKey(id));
             if (record == nullptr)
                 return false;
+            return eraseAwaitableRecord(*record, {executionRecord(record->instance), record->instance});
+        }
+        [[nodiscard]] bool eraseAwaitableRecord(AwaitableRecord& value, ExecutionAccess access) noexcept
+        {
+            auto* record = &value;
+            const auto id = record->id;
             if (record->release_pending) return true;
             releaseSource(*record);
-            unlinkAwaitableOwnership(*record);
+            unlinkAwaitableOwnership(*record, access);
             if (record->external_completion)
                 ingress_.close(id);
             if (record->write_pins != 0U)
@@ -533,7 +544,7 @@ namespace lux::simulation::script::detail
             }
         };
 
-        [[nodiscard]] std::optional<AwaitableOutcome> takeAwaitable(ResumeRecord resume) noexcept
+        [[nodiscard]] std::optional<AwaitableOutcome> takeAwaitable(ResumeRecord resume, ExecutionAccess access) noexcept
         {
             auto* record = awaitables_.find(awaitableKey(resume.awaitable));
             if (record == nullptr || record->instance != resume.instance ||
@@ -543,7 +554,7 @@ namespace lux::simulation::script::detail
                 return std::nullopt;
             }
             AwaitableOutcome outcome{record->state, std::move(record->value), record->error};
-            static_cast<void>(eraseAwaitable(resume.awaitable));
+            static_cast<void>(eraseAwaitableRecord(*record, access));
             return outcome;
         }
         void cancelAwaitables(ScriptInstanceId instance, ScriptAwaitableId first) noexcept
@@ -555,7 +566,7 @@ namespace lux::simulation::script::detail
                 if (record == nullptr || record->instance != instance)
                     std::terminate();
                 const auto next = record->instance_next;
-                static_cast<void>(eraseAwaitable(current));
+                static_cast<void>(eraseAwaitableRecord(*record, {executionRecord(instance), instance}));
                 ++instance_cleanup_awaitable_visits_;
                 current = next;
             }
@@ -604,7 +615,7 @@ namespace lux::simulation::script::detail
             if (stored == nullptr)
                 return;
             const auto continuation = *stored;
-            if (auto* instance = findExecutionInstance(continuation.instance); instance != nullptr)
+            if (auto* instance = executionRecord(continuation.instance); instance != nullptr)
             {
                 if (instance->active_continuations == 0U)
                     std::terminate();
@@ -664,7 +675,7 @@ namespace lux::simulation::script::detail
                 faultInvocation(mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE);
                 return false;
             }
-            auto* instance = findExecutionInstance(instance_id);
+            auto* instance = executionRecord(instance_id);
             if (instance == nullptr)
             {
                 backend_continuation.destroy(backend_continuation.state);
@@ -750,10 +761,11 @@ namespace lux::simulation::script::detail
             {
                 return {};
             }
-            auto outcome = takeAwaitable(resume);
+            const ExecutionAccess execution{instance, resume.instance};
+            auto outcome = takeAwaitable(resume, execution);
             if (!outcome)
                 return {};
-            auto access = instance_owner_.resumeAccess(resume.instance);
+            auto access = instance_owner_.resumeAccess(resume.instance, instance->mount_slot);
             if (!access)
             {
                 destroyContinuation(resume.continuation);
@@ -775,10 +787,9 @@ namespace lux::simulation::script::detail
             }();
 
             continuation = continuations_.find(continuationKey(resume.continuation));
-            instance = findExecutionInstance(resume.instance);
-            if (continuation == nullptr || instance == nullptr)
+            if (continuation == nullptr)
                 return {};
-            if (!access.current())
+            if (!execution.current() || !access.current())
             {
                 destroyContinuation(resume.continuation);
                 return {};

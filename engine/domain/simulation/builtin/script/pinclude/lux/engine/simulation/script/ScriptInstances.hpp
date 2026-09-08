@@ -177,7 +177,8 @@ namespace lux::simulation::script::detail
         [[nodiscard]] lux::cxx::expected<std::optional<Construction>, EScriptSystemError>
         beginConstruction(std::uint32_t slot) noexcept;
         // Cold publication resolves immutable structure once; the returned record stays at a fixed address.
-        [[nodiscard]] const PreparedInvocation* prepareInvocation(ScriptMethodReference method, bool& resumable) noexcept;
+        [[nodiscard]] const PreparedInvocation*
+        prepareInvocation(ScriptMethodReference method, bool& resumable) noexcept;
         [[nodiscard]] Invocation invokeAccess(ScriptMethodReference method) noexcept;
         [[nodiscard]] Invocation resumeAccess(ScriptInstanceId instance) noexcept;
         [[nodiscard]] Invocation resumeAccess(ScriptInstanceId instance, std::uint32_t mount_slot) noexcept;

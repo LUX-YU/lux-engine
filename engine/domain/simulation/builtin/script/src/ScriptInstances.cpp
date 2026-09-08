@@ -10,7 +10,8 @@
 namespace lux::simulation::script::detail
 {
 
-    const PreparedInvocation* ScriptInstances::prepareInvocation(ScriptMethodReference reference, bool& resumable) noexcept
+    const PreparedInvocation*
+    ScriptInstances::prepareInvocation(ScriptMethodReference reference, bool& resumable) noexcept
     {
         if (reference.mount_slot >= invocation_states_.size() || !reference.instance.valid())
             return nullptr;

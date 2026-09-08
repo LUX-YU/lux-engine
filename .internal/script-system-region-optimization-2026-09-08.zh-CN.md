@@ -265,7 +265,8 @@ opt-in typed record、自定义方向、非默认构造和 const 成员规则不
 阶段间 `entry-event`、`flow-o2`、`flow-frame` 用于区分贡献，不能只拿较慢的中间候选证明最终收益。
 
 `performance/final` 是 13 个场景、5 对、130 个独立进程；交替先后，不与构建/VTune 并行。
-固定 10,000 实例、seed=1592598566、预算 2,000；Scene 1,000 warmup/5,000 frames，
+固定 10,000 实例、seed=1592598566，CLI 预算 2,000；Lua Event 既有夹具实际按 size 使用预算 10,000，
+其余相关积压场景为 2,000（两侧实际行为相同）。Scene 1,000 warmup/5,000 frames，
 scalar 5/1,500，Event 窄阶段 5/30。VM、实际 EXE/DLL/PDB、参数和退出码随 runs/identity 保存。
 没有锁频或指定核心亲和性，因此配对分布与尾部均保留；不能根据指令所在地址猜测 cache miss。
 

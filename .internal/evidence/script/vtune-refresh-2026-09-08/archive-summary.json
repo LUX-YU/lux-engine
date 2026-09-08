@@ -1,0 +1,10 @@
+{
+  "archive": "vtune-current-raw.zip",
+  "bytes": 24639728,
+  "sha256": "9e7406556868a9bbe7b3eeba456c32ad4288f7e62e0d7b9b4618082c7bd01334",
+  "entries": 1203,
+  "fresh_valid_samples": 18,
+  "production_changed": false,
+  "qualified_source": "402d5ca5ba0c2728bb4bdedda289f9eb36ce7e4e",
+  "all_items_verified": true
+}

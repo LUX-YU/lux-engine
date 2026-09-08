@@ -291,4 +291,6 @@ int main()
     bindings.withdraw(0U);
     assert(bindings.disconnect());
     std::printf("BINDINGS_OK,rollback=1,aborted_ticket=1,rebuilds=128,calls=%zu\n", dispatch.calls);
+    std::printf("HOT_LAYOUT prepared_invocation=%zu method_reference=%zu\n",
+        sizeof(PreparedInvocation), sizeof(ScriptMethodReference));
 }

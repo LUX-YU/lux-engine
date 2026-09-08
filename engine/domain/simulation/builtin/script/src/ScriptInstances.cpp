@@ -10,7 +10,7 @@
 namespace lux::simulation::script::detail
 {
 
-    const PreparedInvocation* ScriptInstances::prepareInvocation(ScriptMethodReference reference) noexcept
+    const PreparedInvocation* ScriptInstances::prepareInvocation(ScriptMethodReference reference, bool& resumable) noexcept
     {
         if (reference.mount_slot >= invocation_states_.size() || !reference.instance.valid())
             return nullptr;
@@ -26,8 +26,12 @@ namespace lux::simulation::script::detail
             return nullptr;
         auto& invocation = prepared_invocations_[reference.method_slot];
         invocation.authority_ = &authority;
-        invocation.method_ = &method;
         invocation.instance_ = reference.instance;
+        resumable = static_cast<bool>(method.backend.resumable);
+        if (resumable)
+            invocation.entry_.resumable = &method;
+        else
+            invocation.entry_.synchronous = method.backend.synchronous;
         return &invocation;
     }
 

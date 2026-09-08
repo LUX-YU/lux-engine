@@ -903,10 +903,11 @@ namespace lux::simulation::script::detail
         }
         [[nodiscard]] bool prepareInvocation(Handler& handler) noexcept
         {
-            handler.prepared = instance_owner_.prepareInvocation(handler);
+            bool resumable{};
+            handler.prepared = instance_owner_.prepareInvocation(handler, resumable);
             if (handler.prepared == nullptr)
                 return false;
-            handler.entry = handler.prepared->method().backend.resumable ? &invokeStepEntry : &invokeSyncEntry;
+            handler.entry = resumable ? &invokeStepEntry : &invokeSyncEntry;
             return true;
         }
         void invoke(const Handler& handler, lux_script_call_frame& frame, bool hook_invocation) noexcept
@@ -929,26 +930,26 @@ namespace lux::simulation::script::detail
             const auto& access = *handler.prepared;
             if (!access.current())
                 return;
-            const auto& method = access.method();
-
-            frame.user_context = method.backend.synchronous.context;
+            const auto& call = access.synchronous();
+            frame.user_context = call.context;
             const auto status = [&]() noexcept {
                 ++sync_invocations_;
-                return method.backend.synchronous.invoke(&frame);
+                return call.invoke(&frame);
             }();
             if (status == 0)
                 return;
             // Revoking new calls must not discard an error returned by this protected incarnation.
             if (!access.sameIncarnation())
                 return;
-            faultInvocation(handler.mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE, status);
+            faultInvocation(handler.mount_slot, instance_owner_.methodSymbol(handler.method_slot),
+                EScriptSystemError::INVOCATION_FAILURE, status);
         }
         void invokeStep(const Handler& handler, lux_script_call_frame& frame, bool hook_invocation) noexcept
         {
             const auto& access = *handler.prepared;
             if (!access.current())
                 return;
-            const auto& method = access.method();
+            const auto& method = access.resumableMethod();
             ScriptBackendContinuation continuation;
             ScriptStepContext context{
                 handler.instance,

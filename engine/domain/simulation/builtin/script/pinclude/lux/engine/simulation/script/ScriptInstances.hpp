@@ -177,7 +177,7 @@ namespace lux::simulation::script::detail
         [[nodiscard]] lux::cxx::expected<std::optional<Construction>, EScriptSystemError>
         beginConstruction(std::uint32_t slot) noexcept;
         // Cold publication resolves immutable structure once; the returned record stays at a fixed address.
-        [[nodiscard]] const PreparedInvocation* prepareInvocation(ScriptMethodReference method) noexcept;
+        [[nodiscard]] const PreparedInvocation* prepareInvocation(ScriptMethodReference method, bool& resumable) noexcept;
         [[nodiscard]] Invocation invokeAccess(ScriptMethodReference method) noexcept;
         [[nodiscard]] Invocation resumeAccess(ScriptInstanceId instance) noexcept;
         [[nodiscard]] Invocation resumeAccess(ScriptInstanceId instance, std::uint32_t mount_slot) noexcept;
@@ -319,13 +319,18 @@ namespace lux::simulation::script::detail
         {
             return authority_->instance == instance_ || authority_->retiring_instance == instance_;
         }
-        [[nodiscard]] const ScriptPreparedMethod& method() const noexcept { return *method_; }
+        [[nodiscard]] const ScriptPreparedMethod& resumableMethod() const noexcept { return *entry_.resumable; }
+        [[nodiscard]] const lux::script::BoundScriptCall& synchronous() const noexcept { return entry_.synchronous; }
         [[nodiscard]] ScriptInstanceId instance() const noexcept { return instance_; }
     private:
         friend class ScriptInstances;
         const ScriptInstances::InvocationState* authority_{};
-        const ScriptPreparedMethod* method_{};
         ScriptInstanceId instance_;
+        union Entry final
+        {
+            lux::script::BoundScriptCall synchronous{};
+            const ScriptPreparedMethod* resumable;
+        } entry_;
     };
 
     // Inline access preserves owner-only writes without a cross-TU call per script invocation.

@@ -1,0 +1,11 @@
+{
+  "archive": "direct-dispatch-raw.zip",
+  "sha256": "fde29f91b2fa9a224bed08d353698ae09886304c83bf58398cfdcae0e8b13004",
+  "bytes": 71284473,
+  "files": 5740,
+  "verified_all_items": true,
+  "compiled_binaries_in_archive": false,
+  "vtune_projects": 22,
+  "qualification_source": "bc2dbfe2270a4b6777207deceb1ad33b78a02920",
+  "performance_status": "UNCLOSED: confirmed first prepare and Hook/Event registration regressions"
+}

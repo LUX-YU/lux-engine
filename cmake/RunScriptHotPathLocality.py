@@ -38,6 +38,7 @@ def main():
             '        need(grouped || std::string_view{argv[3]} == "interleaved", "order");\n'
             '        constexpr std::size_t per_language = 256U, population = per_language * 3U;')
     replace('generated::CommonBehavior, 1U, 0U, 0U,', 'generated::CommonBehavior, per_language, 0U, 0U,')
+    replace('alignof(std::max_align_t), 1U}};', 'alignof(std::max_align_t), per_language}};')
     replace('LuaPreparedBlockClass{1U, 1U}', 'LuaPreparedBlockClass{1U, per_language}')
     replace('LuaScriptBackend::create({.instance_capacity = 1U, .prepared_call_capacity = 1U,',
             'LuaScriptBackend::create({.instance_capacity = per_language, .prepared_call_capacity = per_language,')
@@ -120,6 +121,7 @@ def main():
     exe = build / 'lux_script_authoring_consumer.exe'
     (root / 'identity.json').write_text(json.dumps(dict(
         source=subprocess.check_output(['git', '-C', args.source, 'rev-parse', 'HEAD'], text=True).strip(),
+        driver_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         generated_sha256=hashlib.sha256(text.encode()).hexdigest(),
         exe_sha256=hashlib.sha256(exe.read_bytes()).hexdigest()), indent=2))
     for pair in range(5):

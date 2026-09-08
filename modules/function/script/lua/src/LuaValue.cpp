@@ -127,6 +127,7 @@ namespace lux::script::lua
                     return 0;
                 }
                 std::size_t count{};
+                std::uint64_t seen{};
                 lua_pushnil(state);
                 while (lua_next(state, 2))
                 {
@@ -139,9 +140,16 @@ namespace lux::script::lua
                     std::size_t length{};
                     const char *key = lua_tolstring(state, -2, &length);
                     bool found{};
-                    for (const auto expected : operation.keys)
+                    for (std::size_t index{}; index < operation.keys.size(); ++index)
+                    {
+                        const auto expected = operation.keys[index];
                         if (expected.size() == length && std::memcmp(expected.data(), key, length) == 0)
+                        {
+                            seen |= std::uint64_t{1U} << index;
                             found = true;
+                            break;
+                        }
+                    }
                     if (!found)
                     {
                         operation.failure->code = ELuaValueError::UNKNOWN_FIELD;
@@ -151,18 +159,16 @@ namespace lux::script::lua
                     lua_pop(state, 1);
                 }
                 // Missing fields are identified in declaration order, independently of table iteration.
-                for (const auto key : operation.keys)
+                for (std::size_t index{}; index < operation.keys.size(); ++index)
                 {
-                    lua_pushlstring(state, key.data(), key.size());
-                    lua_rawget(state, 2);
-                    if (lua_isnil(state, -1))
+                    const auto key = operation.keys[index];
+                    if ((seen & (std::uint64_t{1U} << index)) == 0U)
                     {
                         operation.failure->code = ELuaValueError::MISSING_FIELD;
                         operation.failure->prepend(key);
                         operation.success = false;
                         return 0;
                     }
-                    lua_pop(state, 1);
                 }
                 return 0;
             }
@@ -241,6 +247,8 @@ namespace lux::script::lua
         LuaValueResult<void> LuaValueAccess::shape(lua_State *state, int index,
                                                    std::span<const std::string_view> keys) noexcept
         {
+            if (keys.size() > 64U)
+                return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::CAPACITY});
             LuaValueFailure failure;
             Operation operation{checkShape};
             operation.keys = keys;

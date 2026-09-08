@@ -4,6 +4,7 @@
 #include <lua.hpp>
 
 #include <cassert>
+#include <cstdio>
 #include <string_view>
 
 namespace
@@ -62,6 +63,57 @@ int main(int argc, char** argv)
     lua_settop(thread, 0);
     luaL_unref(state, LUA_REGISTRYINDEX, thread_ref);
     lua_gc(state, LUA_GCCOLLECT, 0);
+    // A script can retain coroutine.running() both directly and through a closure. Retiring the
+    // backend registry reference does not make that thread available for another invocation.
+    assert(luaL_loadstring(state, R"lua(
+        retained = {}
+        function remember()
+            local self = coroutine.running()
+            retained[#retained + 1] = self
+            retained_closure = function() return self end
+            coroutine.yield()
+            return 7
+        end
+    )lua") == LUA_OK);
+    assert(lua_pcall(state, 0, 0, 0) == LUA_OK);
+    auto* retained_thread = lua_newthread(state);
+    const auto retained_ref = luaL_ref(state, LUA_REGISTRYINDEX);
+    lua_getglobal(retained_thread, "remember");
+    assert(lux::script::lua::detail::resumeLuaVm(retained_thread, nullptr, 0).status == LUA_YIELD);
+    assert(lux::script::lua::detail::resumeLuaVm(retained_thread, nullptr, 0).status == LUA_OK);
+    lua_settop(retained_thread, 0);
+    luaL_unref(state, LUA_REGISTRYINDEX, retained_ref);
+    lua_gc(state, LUA_GCCOLLECT, 0);
+    assert(luaL_loadstring(state,
+        "assert(coroutine.status(retained[1]) == 'dead'); assert(retained_closure() == retained[1])") == LUA_OK);
+    assert(lua_pcall(state, 0, 0, 0) == LUA_OK);
+
+    auto* fresh_thread = lua_newthread(state);
+    const auto fresh_ref = luaL_ref(state, LUA_REGISTRYINDEX);
+    lua_getglobal(fresh_thread, "remember");
+    assert(lux::script::lua::detail::resumeLuaVm(fresh_thread, nullptr, 0).status == LUA_YIELD);
+    assert(luaL_loadstring(state,
+        "assert(retained[1] ~= retained[2]); assert(coroutine.status(retained[1]) == 'dead'); "
+        "assert(coroutine.status(retained[2]) == 'suspended')") == LUA_OK);
+    assert(lua_pcall(state, 0, 0, 0) == LUA_OK);
+    // Cancellation releases the backend reference, while Lua reachability still retains the thread.
+    lua_settop(fresh_thread, 0);
+    luaL_unref(state, LUA_REGISTRYINDEX, fresh_ref);
+    lua_gc(state, LUA_GCCOLLECT, 0);
+    assert(luaL_loadstring(state,
+        "assert(type(retained[2]) == 'thread'); assert(retained_closure() == retained[2]); "
+        "local t=coroutine.create(function() error('expected') end); "
+        "assert(not coroutine.resume(t)); assert(coroutine.status(t)=='dead')") == LUA_OK);
+    assert(lua_pcall(state, 0, 0, 0) == LUA_OK);
+#if !defined(LUX_SCRIPT_LUA_VM_LUAJIT)
+    assert(luaL_loadstring(state,
+        "closed=0; local t=coroutine.create(function() "
+        "local x <close> = setmetatable({}, {__close=function() closed=closed+1 end}); "
+        "coroutine.yield() end); assert(coroutine.resume(t)); assert(closed==0); "
+        "assert(coroutine.close(t)); assert(closed==1)") == LUA_OK);
+    assert(lua_pcall(state, 0, 0, 0) == LUA_OK);
+#endif
+    std::puts("THREAD_REUSE_REJECTED,retained_after_unref=1,closure=1,identity=1,dead=1,cancel=1,error=1");
     lua_close(state);
     return 0;
 }

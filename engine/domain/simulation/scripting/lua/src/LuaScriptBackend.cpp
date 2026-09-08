@@ -2067,12 +2067,23 @@ namespace lux::simulation::script
         lua_State* state, const LuaPreparedAbilityAccess& original
     ) noexcept
     {
-        if (original.has_core_authority && !original.validity.valid()) return false;
-        LuaPreparedAbilityAccess current_access;
-        return current(state, current_access) && current_access.execution == original.execution &&
-            current_access.has_core_authority == original.has_core_authority &&
-            current_access.behavior == original.behavior && current_access.context == original.context &&
-            current_access.dispatch == original.dispatch && current_access.local_slot == original.local_slot;
+        auto* owner = static_cast<LuaScriptBackend::State*>(lua_touserdata(state, lua_upvalueindex(1)));
+        if (owner == nullptr || owner->active_execution != original.execution)
+            return false;
+        const auto* frame = owner->active_execution;
+        if (frame == nullptr || frame->thread != state || frame->instance == nullptr)
+            return false;
+        const auto* instance = frame->instance;
+        const bool same_projection = lua_tointeger(state, lua_upvalueindex(2)) == original.local_slot &&
+            instance->prototype != nullptr &&
+            lua_touserdata(state, lua_upvalueindex(3)) == instance->prototype->layout_token;
+        if (!same_projection || instance->behavior != original.behavior)
+            return false;
+        // The still-active execution frame pins its immutable prepared layout and provider association.
+        // Reuse the ORIGINAL authority capture, including lifecycle privilege and retirement epoch.
+        const bool has_authority = original.behavior && original.behavior->hasInvocationAuthority();
+        return has_authority == original.has_core_authority &&
+            (!has_authority || original.validity.valid());
     }
 
     int detail::LuaAbilityProjectionAccess::fail(

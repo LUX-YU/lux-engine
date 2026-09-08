@@ -159,15 +159,12 @@ namespace lux::simulation::script::detail
             return record.id == id ? &record : nullptr;
         }
 
-        [[nodiscard]] lux::cxx::expected<ScriptAwaitableId, EScriptAwaitableCreateError> createAwaitableRecord(
-            ScriptInstanceId instance,
+        [[nodiscard]] lux::cxx::expected<AwaitableRecord*, EScriptAwaitableCreateError> reserveAwaitable(
+            ExecutionInstance& owner,
             std::optional<PreparedResumeType> result_type,
-            bool external_completion = true
+            bool external_completion
         ) noexcept
         {
-            auto* owner = findExecutionInstance(instance);
-            if (owner == nullptr)
-                return lux::cxx::unexpected(EScriptAwaitableCreateError::INVALID_INSTANCE);
             const bool is_invalid_result_type = result_type &&
                 (!result_type->valid() ||
                     result_type->size > limits_.max_resume_payload_bytes);
@@ -187,7 +184,7 @@ namespace lux::simulation::script::detail
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::CAPACITY_EXCEEDED);
             auto inserted = awaitables_.tryEmplacePrepared(AwaitableRecord{
                 {},
-                instance,
+                owner.id,
                 {},
                 EScriptAwaitableState::PENDING,
                 std::move(result_type),
@@ -210,7 +207,7 @@ namespace lux::simulation::script::detail
                 }
             }
             record.id = id;
-            record.instance_next = owner->first_awaitable;
+            record.instance_next = owner.first_awaitable;
             if (record.instance_next.valid())
             {
                 auto* next = awaitables_.find(awaitableKey(record.instance_next));
@@ -218,10 +215,21 @@ namespace lux::simulation::script::detail
                     std::terminate();
                 next->instance_previous = id;
             }
-            owner->first_awaitable = id;
+            owner.first_awaitable = id;
             if (external_completion)
                 ingress_.open(id, record.result_type);
-            return id;
+            return &record;
+        }
+        [[nodiscard]] lux::cxx::expected<ScriptAwaitableId, EScriptAwaitableCreateError> createAwaitableRecord(
+            ScriptInstanceId instance, std::optional<PreparedResumeType> result_type) noexcept
+        {
+            auto* owner = findExecutionInstance(instance);
+            if (owner == nullptr)
+                return lux::cxx::unexpected(EScriptAwaitableCreateError::INVALID_INSTANCE);
+            const auto record = reserveAwaitable(*owner, std::move(result_type), true);
+            if (!record)
+                return lux::cxx::unexpected(record.error());
+            return (*record)->id;
         }
         [[nodiscard]] lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError>
         createAwaitable(ScriptInstanceId instance, std::optional<PreparedResumeType> type) noexcept
@@ -389,10 +397,10 @@ namespace lux::simulation::script::detail
         {
             if (stopping_ || !prepared_)
                 return lux::cxx::unexpected(EScriptEventWaitError::STOPPING);
-            auto* owner = findExecutionInstance(instance);
+            auto* owner = executionRecord(instance);
             if (owner == nullptr)
                 return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
-            const auto source = instance_owner_.eventSource(instance, admission);
+            const auto source = instance_owner_.eventSource(instance, owner->mount_slot, admission);
             if (!source)
                 return lux::cxx::unexpected(source.error());
             const auto endpoint_slot = source->endpoint;
@@ -406,25 +414,25 @@ namespace lux::simulation::script::detail
                 target = entity->self;
             }
 
-            const auto reservation = event_owner_.preflight();
+            auto reservation = event_owner_.reserve(instance, endpoint_slot, target);
             if (!reservation)
                 return lux::cxx::unexpected(reservation.error());
 
-            auto awaitable = createAwaitableRecord(instance, source->payload, false);
+            // No user code or owner mutation can intervene before waiter commit. The authoritative
+            // incarnation/source check above covers result admission as well; storage has stable addresses.
+            auto awaitable = reserveAwaitable(*owner, source->payload, false);
             if (!awaitable)
                 return lux::cxx::unexpected(eventWaitError(awaitable.error()));
 
-            const auto registered = event_owner_.registerWait(instance, *awaitable, endpoint_slot, target);
+            auto& record = **awaitable;
+            const auto registered = event_owner_.registerWait(std::move(*reservation), record.id);
             if (!registered)
             {
-                discardAwaitable(instance, *awaitable);
+                discardAwaitable(instance, record.id);
                 return lux::cxx::unexpected(registered.error());
             }
-            auto* record = awaitables_.find(awaitableKey(*awaitable));
-            if (record == nullptr || record->instance != instance)
-                std::terminate();
-            record->source = {*registered, EScriptWaitSource::EVENT};
-            return *awaitable;
+            record.source = {*registered, EScriptWaitSource::EVENT};
+            return record.id;
         }
         [[nodiscard]] static lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> waitEventErased(
             void* context,

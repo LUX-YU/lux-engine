@@ -89,13 +89,26 @@ namespace lux::simulation::script::detail
             auto& result = instances_[instance.slot - 1U];
             return result.id == instance ? &result : nullptr;
         }
+        [[nodiscard]] EventRouteHead* findRoute(std::uint32_t endpoint, ecs::Entity target) noexcept
+        {
+            if (target == ecs::NullEntity)
+                return &broadcast_routes_[endpoint];
+            const auto route = routes_.find(EventRouteKey{endpoint, target});
+            return route == routes_.end() ? nullptr : &route->second;
+        }
+        void removeEmptyRoute(std::uint32_t endpoint, ecs::Entity target) noexcept
+        {
+            if (target == ecs::NullEntity)
+                broadcast_routes_[endpoint] = {};
+            else
+                routes_.erase(EventRouteKey{endpoint, target});
+        }
         void unlinkEventWaiterRoute(EventWaiterRecord& waiter) noexcept
         {
             if (waiter.state != EEventWaiterState::ACTIVE)
                 return;
-            const EventRouteKey key{waiter.bucket_slot, waiter.target};
-            auto route = routes_.find(key);
-            if (route == routes_.end())
+            auto* route = findRoute(waiter.bucket_slot, waiter.target);
+            if (route == nullptr)
                 std::terminate();
             if (waiter.route_previous.valid())
             {
@@ -106,7 +119,7 @@ namespace lux::simulation::script::detail
             }
             else
             {
-                route->second.first = waiter.route_next;
+                route->first = waiter.route_next;
             }
             if (waiter.route_next.valid())
             {
@@ -117,12 +130,12 @@ namespace lux::simulation::script::detail
             }
             else
             {
-                route->second.last = waiter.route_previous;
+                route->last = waiter.route_previous;
             }
             waiter.route_previous = {};
             waiter.route_next = {};
-            if (!route->second.first.valid())
-                routes_.erase(key);
+            if (!route->first.valid())
+                removeEmptyRoute(waiter.bucket_slot, waiter.target);
         }
         void unlinkEventWaiterOwnership(EventWaiterRecord& waiter) noexcept
         {
@@ -149,11 +162,11 @@ namespace lux::simulation::script::detail
         void claimEventWaiters(std::uint32_t bucket, ecs::Entity target, std::uint64_t cutoff) noexcept
         {
             ++claim_lookups_;
-            auto route = routes_.find(EventRouteKey{bucket, target});
-            if (route == routes_.end())
+            auto* route = findRoute(bucket, target);
+            if (route == nullptr)
                 return;
 
-            auto current = route->second.first;
+            auto current = route->first;
             while (current.valid())
             {
                 auto* waiter = waiters_.find(eventWaiterKey(current));
@@ -174,14 +187,35 @@ namespace lux::simulation::script::detail
             }
             if (current.valid())
             {
-                route->second.first = current;
+                route->first = current;
                 waiters_[eventWaiterKey(current)].route_previous = {};
             }
             else
-                routes_.erase(route);
+                removeEmptyRoute(bucket, target);
         }
 
     public:
+        // A synchronous owner-thread preflight. Between this and commit only result-storage admission
+        // may run: no user code, waiter mutation or region exit. No capacity is consumed before commit.
+        class Admission final
+        {
+        public:
+            Admission(const Admission&) = delete;
+            Admission& operator=(const Admission&) = delete;
+            Admission(Admission&& other) noexcept
+                : owner_(std::exchange(other.owner_, nullptr)), instance_(other.instance_),
+                  endpoint_(other.endpoint_), target_(other.target_) {}
+        private:
+            friend class ScriptEventWaits;
+            Admission(ScriptEventWaits& owner, InstanceIndex& instance, std::uint32_t endpoint,
+                ecs::Entity target) noexcept
+                : owner_(&owner), instance_(&instance), endpoint_(endpoint), target_(target) {}
+            ScriptEventWaits* owner_{};
+            InstanceIndex* instance_{};
+            std::uint32_t endpoint_{};
+            ecs::Entity target_{ecs::NullEntity};
+        };
+
         class ClaimBatch final
         {
         public:
@@ -210,7 +244,7 @@ namespace lux::simulation::script::detail
             std::size_t end_{};
         };
 
-        void prepare(std::size_t capacity, std::size_t instance_capacity);
+        void prepare(std::size_t capacity, std::size_t instance_capacity, std::size_t endpoint_count);
         void beginInstance(ScriptInstanceId instance) noexcept
         {
             auto& index = instances_[instance.slot - 1U];
@@ -218,28 +252,43 @@ namespace lux::simulation::script::detail
                 std::terminate();
             index = {instance, {}};
         }
-        [[nodiscard]] lux::cxx::expected<void, EScriptEventWaitError> preflight() const noexcept
+        [[nodiscard]] lux::cxx::expected<Admission, EScriptEventWaitError> reserve(
+            ScriptInstanceId instance, std::uint32_t endpoint, ecs::Entity target) noexcept
         {
+            auto* owner = instanceRecord(instance);
+            if (owner == nullptr)
+                return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
+            if (endpoint >= broadcast_routes_.size())
+                return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
             const auto reserved = waiters_.size() - active_claimed_ + claimed_.size();
             if (reserved >= capacity_)
                 return lux::cxx::unexpected(EScriptEventWaitError::WAITER_CAPACITY_EXCEEDED);
             if (sequence_ == std::numeric_limits<std::uint64_t>::max())
                 return lux::cxx::unexpected(EScriptEventWaitError::SEQUENCE_EXHAUSTED);
-            return {};
+            return Admission{*this, *owner, endpoint, target};
         }
         [[nodiscard]] lux::cxx::expected<ScriptSourceId, EScriptEventWaitError> registerWait(
-            ScriptInstanceId instance, ScriptAwaitableId awaitable, std::uint32_t endpoint, ecs::Entity target) noexcept
+            Admission&& admission, ScriptAwaitableId awaitable) noexcept
         {
-            auto* owner = instanceRecord(instance);
-            if (owner == nullptr)
-                return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
-            const auto checked = preflight();
-            if (!checked)
-                return lux::cxx::unexpected(checked.error());
+            if (std::exchange(admission.owner_, nullptr) != this)
+                std::terminate();
+            auto* owner = admission.instance_;
+            const auto instance = owner->id;
+            const auto endpoint = admission.endpoint_;
+            const auto target = admission.target_;
             const EventRouteKey key{endpoint, target};
-            const auto [unused, inserted_route] = routes_.try_emplace(key, EventRouteHead{});
+            EventRouteHead* route{};
+            bool inserted_route{};
+            if (target == ecs::NullEntity)
+                route = &broadcast_routes_[endpoint];
+            else
+            {
+                const auto inserted = routes_.try_emplace(key, EventRouteHead{});
+                route = &inserted.first->second;
+                inserted_route = inserted.second;
+            }
             const auto inserted = waiters_.tryEmplace(EventWaiterRecord{
-                {}, instance, awaitable, endpoint, target, ++sequence_, EEventWaiterState::ACTIVE, {}, {}, {}, {}
+                {}, instance, awaitable, endpoint, target, sequence_ + 1U, EEventWaiterState::ACTIVE, {}, {}, {}, {}
             });
             if (!inserted)
             {
@@ -247,16 +296,16 @@ namespace lux::simulation::script::detail
                     routes_.erase(key);
                 return lux::cxx::unexpected(EScriptEventWaitError::ALLOCATION_FAILURE);
             }
+            ++sequence_;
             const auto id = eventWaiterId(*inserted);
             auto& waiter = waiters_[*inserted];
             waiter.id = id;
-            auto route = routes_.find(key);
-            waiter.route_previous = route->second.last;
+            waiter.route_previous = route->last;
             if (waiter.route_previous.valid())
                 waiters_[eventWaiterKey(waiter.route_previous)].route_next = id;
             else
-                route->second.first = id;
-            route->second.last = id;
+                route->first = id;
+            route->last = id;
             waiter.instance_next = owner->first_event_waiter;
             if (waiter.instance_next.valid())
                 waiters_[eventWaiterKey(waiter.instance_next)].instance_previous = id;
@@ -316,6 +365,7 @@ namespace lux::simulation::script::detail
         }
         EventWaiterStorage waiters_;
         EventRouteIndex routes_;
+        std::vector<EventRouteHead> broadcast_routes_;
         std::vector<ScriptSourceId> claimed_;
         std::vector<InstanceIndex> instances_;
         std::size_t capacity_{};

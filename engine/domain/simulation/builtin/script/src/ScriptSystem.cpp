@@ -512,7 +512,9 @@ namespace lux::simulation::script
                 return lux::cxx::unexpected(instance_layout.error());
             state->execution_owner.prepare(limits, state->instance_owner.identityCapacity(), capacity.method_capacity,
                 {&state->failure_port, &State::faultErased});
-            state->event_owner.prepare(limits.event_wait_capacity, state->instance_owner.identityCapacity());
+            state->event_owner.prepare(
+                limits.event_wait_capacity, state->instance_owner.identityCapacity(), events.size()
+            );
             state->timer_owner.prepare(clock, limits, real_delay, state->execution_owner,
                 state->instance_owner.identityCapacity());
             state->ingress.prepare(

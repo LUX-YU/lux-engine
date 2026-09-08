@@ -2,13 +2,14 @@
 
 namespace lux::simulation::script::detail
 {
-    void ScriptEventWaits::prepare(std::size_t capacity, std::size_t instance_capacity)
+    void ScriptEventWaits::prepare(std::size_t capacity, std::size_t instance_capacity, std::size_t endpoint_count)
     {
         capacity_ = capacity;
         waiters_.reserve(capacity);
         // Every route has an ACTIVE waiter. Registration's physical reservation bound therefore
         // bounds both dense_map arrays and buckets after reserve; trivial key/value insertion cannot allocate.
         routes_.reserve(capacity);
+        broadcast_routes_.resize(endpoint_count);
         claimed_.reserve(capacity);
         instances_.resize(instance_capacity);
     }
@@ -18,6 +19,7 @@ namespace lux::simulation::script::detail
         if (!waiters_.empty() || !claimed_.empty())
             std::terminate();
         routes_.clear();
+        broadcast_routes_.clear();
         instances_.clear();
     }
 

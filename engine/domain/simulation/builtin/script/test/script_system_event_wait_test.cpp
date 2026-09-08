@@ -779,6 +779,30 @@ namespace
         assert(harness.backend_state.resumes == 2U);
     }
 
+    void testBroadcastRouteReuse()
+    {
+        Harness harness{{.bind_callback = true}};
+        constexpr std::size_t cycles{37U};
+        for (std::size_t cycle{}; cycle < cycles; ++cycle)
+        {
+            harness.recordBroadcastStart(1);
+            harness.recordBroadcastStart(2);
+            assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 2U);
+            assert(harness.system->stats().active_event_waiters == 2U);
+            harness.recordBroadcastWait(static_cast<std::int32_t>(cycle));
+            assert(deliverRuntimeEvent(*harness.system, harness.broadcast_wait_bridge) == 1U);
+            assert(executeRuntimeStablePoint(*harness.system));
+            assert(harness.system->stats().active_event_waiters == 0U);
+            assert(harness.system->activeAwaitableCount() == 0U);
+            assert(harness.backend_state.resumes == 2U * (cycle + 1U));
+            assert(harness.backend_state.resume_values[cycle * 2U] == static_cast<std::int32_t>(cycle));
+            assert(harness.backend_state.resume_values[cycle * 2U + 1U] == static_cast<std::int32_t>(cycle));
+        }
+        assert(harness.system->stats().event_waiter_high_water == 2U);
+        assert(harness.backend_state.callback_calls == cycles && harness.system->failures().empty());
+        std::puts("EVENT_REUSE cycles=37 waiters=74 resumes=74 callbacks=37 high_water=2 backlog=0");
+    }
+
     void testRegistrationCutoff()
     {
         Harness harness{{
@@ -1332,6 +1356,7 @@ int main(int argc, char**)
 {
     std::puts("EVENT_CASE testBroadcastSemantics()"); std::fflush(stdout);
     testBroadcastSemantics();
+    testBroadcastRouteReuse();
     std::puts("EVENT_CASE testRegistrationCutoff()"); std::fflush(stdout);
     testRegistrationCutoff();
 #if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)

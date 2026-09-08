@@ -27,6 +27,8 @@ namespace lux::simulation::script::detail
     class PreparedInvocation;
     class ScriptExecution;
 
+    enum class EScriptInvocationKind : std::uint8_t { INVALID, SYNCHRONOUS, RESUMABLE };
+
     struct ScriptMethodReference final
     {
         std::uint32_t mount_slot{};
@@ -40,7 +42,7 @@ namespace lux::simulation::script::detail
     struct ScriptBindingDispatch final
     {
         void* context{};
-        bool (*prepare)(void*, ScriptMethodReference&) noexcept{};
+        EScriptInvocationKind (*prepare)(void*, ScriptMethodReference&) noexcept{};
         void (*hook)(void*, std::uint32_t, lux_script_call_frame&) noexcept{};
         void (*event)(void*, std::uint32_t, ecs::Entity, lux_script_call_frame&) noexcept{};
     };
@@ -106,6 +108,10 @@ namespace lux::simulation::script::detail
         void withdraw(std::uint32_t slot) noexcept;
         void setMethodRunnable(std::uint32_t method, ScriptInstanceId instance, bool runnable) noexcept;
         void writeInvocationStats(ScriptRuntimeStats& output) const noexcept;
+        [[nodiscard]] bool synchronousHook(std::uint32_t bucket) const noexcept
+        {
+            return hooks_[bucket].resumable_count == 0U;
+        }
         [[nodiscard]] Result connect() noexcept;
         [[nodiscard]] Result disconnect() noexcept;
         template <class Invoke>
@@ -227,6 +233,7 @@ namespace lux::simulation::script::detail
             HandlerStorage handlers;
             RunnableIndex runnable;
             std::size_t capacity{};
+            std::size_t resumable_count{};
         };
         struct EventBucket final
         {
@@ -239,6 +246,7 @@ namespace lux::simulation::script::detail
         struct Binding final
         {
             EBindingKind kind{EBindingKind::HOOK};
+            bool resumable{};
             std::uint32_t bucket{};
             std::uint32_t method{};
             EndpointConnectionToken registration;

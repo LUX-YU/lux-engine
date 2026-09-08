@@ -345,11 +345,14 @@ namespace lux::simulation::script::detail
         {
             auto& binding = bindings_[index];
             ScriptMethodReference handler{slot, binding.method, instance};
-            if (dispatch_.prepare == nullptr || !dispatch_.prepare(dispatch_.context, handler))
+            const auto kind = dispatch_.prepare == nullptr ? EScriptInvocationKind::INVALID :
+                dispatch_.prepare(dispatch_.context, handler);
+            if (kind == EScriptInvocationKind::INVALID)
             {
                 unlink(slot);
                 return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
             }
+            binding.resumable = kind == EScriptInvocationKind::RESUMABLE;
             EScriptSystemError error{};
             bool failed{};
             if (binding.kind == EBindingKind::HOOK)
@@ -363,6 +366,7 @@ namespace lux::simulation::script::detail
                 else if (const auto inserted = bucket.handlers.tryEmplace(handler))
                 {
                     binding.registration = {inserted->index, inserted->gen};
+                    bucket.resumable_count += binding.resumable;
                     bucket.runnable.set(bucket.handlers.size() - 1U, true);
                 }
                 else
@@ -421,6 +425,7 @@ namespace lux::simulation::script::detail
                 bucket.runnable.set(last, false);
                 bucket.runnable.set(position, position != last && moved_runnable);
                 bucket.handlers.erase(key);
+                bucket.resumable_count -= binding.resumable;
             }
             else
                 static_cast<void>(events_[binding.bucket].handlers.disconnect(binding.registration));

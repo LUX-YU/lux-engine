@@ -209,7 +209,7 @@ namespace lux::simulation::script
             static_cast<FailurePort*>(context)->owner->faultInvocation(slot, symbol, error, status);
         }
         struct BindingPort final { State* owner{}; } binding_port{this};
-        static bool prepareBinding(void* context, Handler& handler) noexcept
+        static detail::EScriptInvocationKind prepareBinding(void* context, Handler& handler) noexcept
         {
             return static_cast<BindingPort*>(context)->owner->execution_owner.prepareInvocation(handler);
         }
@@ -223,8 +223,12 @@ namespace lux::simulation::script
                 std::terminate(); // Native caller violated the explicit execution-region contract.
             detail::ScriptInstances::Protection region{owner.instance_owner};
             ++owner.endpoint_dispatch_depth;
-            owner.binding_owner.visitHook(bucket,
-                [&](const Handler& handler) noexcept { owner.execution_owner.invoke(handler, frame, true); });
+            if (owner.binding_owner.synchronousHook(bucket))
+                owner.binding_owner.visitHook(bucket,
+                    [&](const Handler& handler) noexcept { owner.execution_owner.invokeSynchronous(handler, frame); });
+            else
+                owner.binding_owner.visitHook(bucket,
+                    [&](const Handler& handler) noexcept { owner.execution_owner.invoke(handler, frame, true); });
             --owner.endpoint_dispatch_depth;
         }
         static void dispatchEvent(void* context, std::uint32_t bucket, ecs::Entity entity,

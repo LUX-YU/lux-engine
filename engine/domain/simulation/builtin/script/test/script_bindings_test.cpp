@@ -23,7 +23,12 @@ namespace
         ecs::Entity entity{ecs::NullEntity};
         std::size_t calls{};
         bool withdraw{};
-        static bool prepare(void*, ScriptMethodReference&) noexcept { return true; }
+        bool resumable{};
+        static EScriptInvocationKind prepare(void* context, ScriptMethodReference&) noexcept
+        {
+            return context != nullptr && static_cast<Dispatch*>(context)->resumable ?
+                EScriptInvocationKind::RESUMABLE : EScriptInvocationKind::SYNCHRONOUS;
+        }
         static void hook(void* context, std::uint32_t slot, lux_script_call_frame& frame) noexcept
         {
             static_cast<Dispatch*>(context)->bindings->visitHook(slot, [&](auto reference) noexcept {
@@ -255,14 +260,18 @@ int main()
     assert(bindings.connect());
     assert(bindings.connect());
     const ScriptInstanceId instance{1U, 1U};
+    dispatch.resumable = true;
     const auto rejected = bindings.publish(0U, instance, ecs::NullEntity);
     assert(!rejected && rejected.error() == EScriptSystemError::SCOPE_MISMATCH);
+    assert(bindings.synchronousHook(0U)); // Partial rollback returned the cold shape count too.
     assert(lux::simulation::test::dispatchHookForTest(hook));
     assert(dispatch.calls == 0U);
     // The failed Event publication must have rolled back the preceding Hook registration.
     for (std::size_t iteration{}; iteration < 128U; ++iteration)
     {
+        dispatch.resumable = iteration % 2U != 0U;
         assert(bindings.publish(0U, instance, entity));
+        assert(bindings.synchronousHook(0U) == !dispatch.resumable);
         assert(!bindings.publish(0U, instance, entity));
         dispatch.withdraw = true;
         const auto before = dispatch.calls;
@@ -271,6 +280,7 @@ int main()
         assert(lux::simulation::test::dispatchHookForTest(hook));
         assert(dispatch.calls == before + 1U);
         assert(bindings.methodCount() == method_count);
+        assert(bindings.synchronousHook(0U));
     }
     assert(bindings.publish(0U, instance, entity));
     {
@@ -291,4 +301,6 @@ int main()
     bindings.withdraw(0U);
     assert(bindings.disconnect());
     std::printf("BINDINGS_OK,rollback=1,aborted_ticket=1,rebuilds=128,calls=%zu\n", dispatch.calls);
+    std::printf("HOT_LAYOUT prepared_invocation=%zu method_reference=%zu\n",
+        sizeof(PreparedInvocation), sizeof(ScriptMethodReference));
 }

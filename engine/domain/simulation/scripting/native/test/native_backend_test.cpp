@@ -659,6 +659,33 @@ int main()
     ScriptBackendInstance step_instance;
     std::array<std::uint8_t, 16U> step_id_bytes{};
     step_id_bytes[0] = 4U;
+    // Specialized entries must never silently accept a different publication at cold binding.
+    for (const bool wrong_context : {false, true})
+    {
+        auto contribution = AsyncContribution;
+        AsyncProvider foreign;
+        contribution.expected_context = wrong_context ? &foreign : &async_provider;
+        contribution.expected_dispatch = wrong_context ? &async_provider : &foreign;
+        NativeScriptBackend rejected{
+            NativeModuleResolver{&step_modules, &Provider::resolve},
+            NativeScriptBackendConfig{
+                .module_capacity = 1U, .instance_capacity = 1U, .prepared_call_capacity = 4U,
+                .continuation_capacity = 2U, .max_ability_imports_per_module = 2U,
+                .max_continuation_frame_bytes = 256U, .continuation_frame_storage_bytes = 5120U,
+                .abilities = std::span{&contribution, 1U},
+                .storage_populations = std::array{NativeScriptStoragePopulation{step_module.get(), 1U, 2U}},
+                .state_storage_bytes = 64U * 1024U * 1024U
+            }
+        };
+        assert(rejected);
+        const auto candidate = rejected.descriptor();
+        ScriptBackendInstance output;
+        assert(candidate.createInstance(candidate.context, ScriptInstanceCreateContext{
+            lux::asset::AssetId{step_id_bytes}, SimulationScriptScope{}, nullptr, {1U, 1U}, capabilities},
+            *step_artifact_result, output) == EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH);
+        assert(!output && !async_provider.completion);
+    }
+    std::puts("NATIVE_SPECIALIZATION_REJECTED,context=1,dispatch=1,provider=0");
     assert(step_descriptor.createInstance(
         step_descriptor.context,
         ScriptInstanceCreateContext{

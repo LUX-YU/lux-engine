@@ -280,6 +280,12 @@ namespace lux::simulation::script
                         return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                     }
 
+                    const bool mismatched_specialization = contribution->expected_dispatch != nullptr &&
+                        (contribution->expected_context != capability->context ||
+                         contribution->expected_dispatch != capability->dispatch);
+                    if (mismatched_specialization)
+                        return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+
                     const lux::script::ScriptAbilityErasedMethodBinding* method{};
                     for (const auto& candidate : capability->methods)
                     {

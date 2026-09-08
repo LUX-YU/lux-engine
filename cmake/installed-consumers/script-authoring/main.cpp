@@ -246,7 +246,12 @@ int main(int argc, char** argv)
             .continuation_capacity = 1U, .execution_depth_capacity = 8U, .ability_catalog_method_capacity = 1U,
             .prepared_ability_capacity = 1U, .abilities = lua_contributions,
             .prepared_ability_blocks = lua_blocks, .prepared_ability_storage_bytes = 4096U});
-        const std::array native_contributions{lux::script::native::makeScriptAbilityNativeContribution<Ability>()};
+        const auto& publication = simulation->scriptApiCapabilities().front();
+        auto& provider = *static_cast<Host*>(publication.context);
+        const auto native_contribution = lux::script::native::makeScriptAbilityNativeContribution<Ability>(
+            provider, lux::script::bindScriptAbility<Ability>(provider));
+        need(static_cast<bool>(native_contribution), "typed Native provider binding");
+        const std::array native_contributions{*native_contribution};
         const std::array populations{NativeScriptStoragePopulation{&*module, 1U, 0U}};
         NativeScriptBackend native_backend{{&sources, &Sources::native}, {.module_capacity = 1U,
             .instance_capacity = 1U, .prepared_call_capacity = 1U, .max_ability_imports_per_module = 1U,

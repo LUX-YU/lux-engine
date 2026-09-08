@@ -29,9 +29,18 @@ int main(int argc, char** argv)
     const auto dynamic = lux::script::ScriptAbilityCpp<Ability>::create(binding);
     const auto specialized = lux::script::ScriptAbilityStatic<Ability, Provider>::create(provider, binding);
     const auto native = lux::script::native::makeScriptAbilityNativeContribution<Ability>();
+    const auto bound_native = lux::script::native::makeScriptAbilityNativeContribution<Ability>(provider, binding);
+    Provider foreign;
+    assert(!lux::script::native::makeScriptAbilityNativeContribution<Ability>(foreign, binding));
+    auto invalid = binding;
+    invalid.dispatch = &foreign;
+    assert(!lux::script::native::makeScriptAbilityNativeContribution<Ability>(provider, invalid));
+    assert(bound_native && bound_native->expected_context == &provider);
     assert(dynamic && specialized && native.valid() && native.methods.size() == 1U);
     using NativeRead = std::int32_t (*)(void*, const void*, std::int32_t) noexcept;
     const auto native_read = reinterpret_cast<NativeRead>(native.methods.front().entry);
+    const auto bound_read = reinterpret_cast<NativeRead>(bound_native->methods.front().entry);
+    assert(bound_read(binding.context, binding.dispatch, 3) == 7);
     assert(provider.read(3) == 7);
     assert(dynamic->read(3) == 7);
     assert(specialized->read(3) == 7);
@@ -63,6 +72,9 @@ int main(int argc, char** argv)
     if (!measure("direct", [&](std::int32_t value) { return provider.read(value); }) ||
         !measure("typed-dynamic", [&](std::int32_t value) { return dynamic->read(value); }) ||
         !measure("typed-static-ipo", [&](std::int32_t value) { return specialized->read(value); }) ||
+        !measure("native-provider-specialized", [&](std::int32_t value) {
+            return bound_read(binding.context, binding.dispatch, value);
+        }) ||
         !measure("native-typed-entry", [&](std::int32_t value) {
             return native_read(binding.context, binding.dispatch, value);
         })) return 3;

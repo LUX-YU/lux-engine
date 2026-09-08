@@ -13,6 +13,9 @@ namespace lux::script::native
     struct ScriptAbilityNativeTraits<::{{ rec.fq_name }}> final
     {
         using AbilityTraits = ScriptAbilityTraits<::{{ rec.fq_name }}>;
+        template <class Provider>
+        struct Entries final
+        {
 {% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}
 {% if kind == "async_operation" %}        [[nodiscard]] static int {{ method.spelling }}(
             void* invocation,
@@ -22,7 +25,12 @@ namespace lux::script::native
             lux_script_async_token* waiting_on
         ) noexcept
         {
-            const auto& dispatch = *static_cast<const AbilityTraits::Dispatch*>(dispatch_value);
+            const auto& dispatch = [dispatch_value]() noexcept -> const AbilityTraits::Dispatch& {
+                if constexpr (std::is_void_v<Provider>)
+                    return *static_cast<const AbilityTraits::Dispatch*>(dispatch_value);
+                else
+                    return AbilityTraits::template ProviderDispatch<Provider>;
+            }();
             return lux::simulation::script::detail::startNativeAbility<{{ method.result_type_id }}>(
                 invocation,
                 waiting_on,
@@ -40,7 +48,12 @@ namespace lux::script::native
             std::remove_cvref_t<{{ type.id }}> {{ param.name }}{% endfor %}
         ) noexcept
         {
-            const auto& dispatch = *static_cast<const AbilityTraits::Dispatch*>(dispatch_value);
+            const auto& dispatch = [dispatch_value]() noexcept -> const AbilityTraits::Dispatch& {
+                if constexpr (std::is_void_v<Provider>)
+                    return *static_cast<const AbilityTraits::Dispatch*>(dispatch_value);
+                else
+                    return AbilityTraits::template ProviderDispatch<Provider>;
+            }();
 {% if method.result_type_id == "void" %}            dispatch.{{ method.spelling }}(provider{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %});
 {% else %}            return dispatch.{{ method.spelling }}(provider{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %});
 {% endif %}        }
@@ -52,5 +65,7 @@ namespace lux::script::native
                 reinterpret_cast<lux_script_ability_direct_entry_fn>(&{{ method.spelling }})
             }{% set emitted = true %}{% endif %}{% endfor %}
         };
+        };
+        inline static const auto& Methods = Entries<void>::Methods;
     };
 {% endfor %}} // namespace lux::script::native

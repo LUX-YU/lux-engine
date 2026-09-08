@@ -160,9 +160,12 @@ int main()
     auto script_description = std::optional{std::move(description_builder)};
     assert(script_description);
     Source source{std::addressof(*artifact), std::addressof(*module)};
+    const auto capture_native = lux::script::native::makeScriptAbilityNativeContribution<Physics2DCaptureAbility>(
+        capture_provider, capture_binding);
+    assert(capture_native);
     const std::array native_contributions{
         lux::script::native::makeScriptAbilityNativeContribution<PhysicsQuery2D>(),
-        lux::script::native::makeScriptAbilityNativeContribution<Physics2DCaptureAbility>()
+        *capture_native
     };
     NativeScriptBackend backend{{std::addressof(source), &Source::resolveModule},
                                 {.module_capacity = 1U,

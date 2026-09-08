@@ -1,0 +1,16 @@
+{
+  "utc": "2026-09-08T08:38:52.748255+00:00",
+  "origin": "git@github.com:LUX-YU/lux-engine.git",
+  "archive_commit": "b52569f2818abf3fd146bcd830eb897767aa9c95",
+  "method": "Fresh bare partial repository fetched from GitHub; read archive/index from remote Git objects, no local object alternates",
+  "bare_repository": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-region-opt\\evidence-remote.git",
+  "archive": "region-optimization-raw-evidence.zip",
+  "sha256": "e298cbb859fc77503f8d3b559be87c7336d128370b6dbe0bf8bc350cc283a035",
+  "bytes": 46184160,
+  "files": 3273,
+  "all_items_verified": true,
+  "index_sha256": "0fea216d3832e712fc59678b10271ecd6fdb806d5df5744a3cf969a8c928926a",
+  "local_archive_matches": true,
+  "qualification_source": "402d5ca5ba0c2728bb4bdedda289f9eb36ce7e4e",
+  "branch_observed": "2fef54eb1f3b345256241aad9787ffdc1c6c1b79\trefs/heads/codex/s6-deep-optimization"
+}

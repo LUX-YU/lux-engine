@@ -50,4 +50,6 @@
 固定归档提交：`b52569f2818abf3fd146bcd830eb897767aa9c95`。
 [固定下载](https://github.com/LUX-YU/lux-engine/raw/b52569f2818abf3fd146bcd830eb897767aa9c95/.internal/evidence/script/region-optimization/region-optimization-raw-evidence.zip)、
 [固定逐项索引](https://github.com/LUX-YU/lux-engine/blob/b52569f2818abf3fd146bcd830eb897767aa9c95/.internal/evidence/script/region-optimization/raw-files.json)。
-远端取回核验结果随后记录在包外，不循环改写归档哈希。
+已从 GitHub 通过全新 bare partial repository 取回固定提交，3,273 项大小/哈希全部匹配。
+[远端核验结果](remote-verification.json)、[原始命令日志](remote-verification.log)、[核验脚本](VerifyRemote.py)
+记录在包外，不循环改写归档哈希。

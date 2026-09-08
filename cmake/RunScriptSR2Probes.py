@@ -285,10 +285,14 @@ void testCrossBatchOrder()
 """ if candidate else "auto created = harness.create();")
     cross_batch = replace_exact(cross_batch,"SUBMIT_SECOND", "harness.submitEntity(system, 1U);" if candidate else "")
     cross_batch = replace_exact(cross_batch,"SUBMIT_THIRD", "harness.submitEntity(system, 2U);" if candidate else "")
+    if 'ScriptRuntimeTestRegion.hpp' in source:
+        cross_batch = replace_exact(cross_batch, 'dispatchHookForTest(harness.hook)',
+                                    'dispatchRuntimeHook(system, harness.hook)', 3)
     source += cross_batch
     source += """
 int main(int argc, char** argv)
 {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     if (argc == 1)
     {
         trace_enabled = true;
@@ -395,7 +399,7 @@ def instrument_events(source):
             raise RuntimeError("Event trace instrumentation no longer matches fixture: " + old)
         source = replace_exact(source,old, new)
     source = truncate_main(source, "int main(")
-    source += "int main()\n{\n"
+    source += "int main()\n{\n    std::setvbuf(stdout, nullptr, _IONBF, 0);\n"
     for test in ("TargetedAndRetirement", "RegistrationCutoff", "NestedDispatch", "PreparedAdmissionProvenance",
                  "CopyRetirementPin", "CopyOtherRecordRemoval", "CopyShutdownAndFailure", "CopyNestedAdmission"):
         source += f'    std::puts("CASE {test}"); test{test}();\n'

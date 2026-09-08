@@ -1,0 +1,18 @@
+{
+  "source_head": "95ef0b48a29fc3513b8ab95e9b91eb140853dcf5",
+  "source": "E:/lux-ed1-9905/s",
+  "build": "E:/lux-ed1-9905/q",
+  "cxx": "E:/SyncForder/CodeRepos/install/q2/c",
+  "toolset": "E:/SyncForder/CodeRepos/install/q2/toolset",
+  "platform": "E:/SyncForder/CodeRepos/install/RelWithDebInfo",
+  "compiler": "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\MSVC\\14.44.35207\\bin\\HostX64\\x64\\cl.exe",
+  "configuration": "RelWithDebInfo",
+  "profile": "EDITOR",
+  "diagnostic_tests": "PASS",
+  "normal_tests": "PASS",
+  "install": "PASS",
+  "relocation": "PASS",
+  "cost_processes": 10,
+  "gui": "NOT_TESTED",
+  "business_migration": "NOT_IMPLEMENTED_ED1_BOUNDARY"
+}

@@ -156,6 +156,8 @@ struct Allocation
 {
     bool deny{};
     std::size_t failed{};
+    void* observation_context{};
+    void (*observe_allocation)(void*) noexcept{};
     static void *allocate(void *context, void *pointer, std::size_t old_size, std::size_t size)
     {
         auto &self = *static_cast<Allocation *>(context);
@@ -169,6 +171,8 @@ struct Allocation
             ++self.failed;
             return nullptr;
         }
+        if (const auto callback = std::exchange(self.observe_allocation, nullptr))
+            callback(self.observation_context);
         return std::realloc(pointer, size);
     }
 };
@@ -265,6 +269,20 @@ int main()
     assert(Resource::live == 0 && (Resource::released == std::vector<int>{23}));
     std::puts("PLAIN_TREE_OK,nodes=6,pcall=1,enum_path=1,depth=1,oom=1,outer_owner=1,recovery=1");
     Resource::released.clear();
+    {
+        Velocity changing{1.0f, 2.0};
+        allocator.observation_context = &changing;
+        allocator.observe_allocation = [](void* context) noexcept {
+            static_cast<Velocity*>(context)->x = 17.0f;
+        };
+        const int top = lua_gettop(state);
+        assert(LuaValueCodec<Velocity>::push(writer, changing));
+        assert(allocator.observe_allocation == nullptr && changing.x == 17.0f);
+        lua_getfield(state, -1, "x");
+        assert(lua_tonumber(state, -1) == 17.0);
+        lua_settop(state, top);
+        std::puts("PLAIN_TREE_FIELD_ORDER_OK,allocation_callback=1,observed_x=17");
+    }
     load(state, "return 9");
     {
         LuaValueSlots<Resource, Resource> values;

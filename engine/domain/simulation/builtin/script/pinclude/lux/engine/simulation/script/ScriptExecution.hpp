@@ -753,8 +753,6 @@ namespace lux::simulation::script::detail
         }
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> resumeOne(ResumeRecord resume) noexcept
         {
-            if (stopping_)
-                return {};
             auto* instance = findExecutionInstance(resume.instance);
             auto* continuation = continuations_.find(continuationKey(resume.continuation));
             if (instance == nullptr || continuation == nullptr || continuation->instance != resume.instance ||
@@ -963,7 +961,7 @@ namespace lux::simulation::script::detail
                 return method.backend.resumable.invoke(
                     method.backend.resumable.context, frame, context, continuation);
             }();
-            if (!access.current() || stopping_)
+            if (!access.current())
             {
                 if (continuation)
                     continuation.destroy(continuation.state);
@@ -1124,7 +1122,7 @@ namespace lux::simulation::script::detail
         private:
             friend class ScriptExecution;
             ResumeBatch(ScriptExecution& owner, std::size_t budget) noexcept
-                : owner_(owner), region_(owner.instance_owner_), remaining_(budget) {}
+                : owner_(owner), region_(owner.instance_owner_), remaining_(owner.stopping_ ? 0U : budget) {}
             ScriptExecution& owner_;
             ScriptInstances::Protection region_;
             std::size_t remaining_{};

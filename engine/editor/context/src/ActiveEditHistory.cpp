@@ -15,7 +15,7 @@ namespace lux::editor
         struct ActiveEditHistoryControl final
         {
             const std::thread::id owner{std::this_thread::get_id()};
-            ActiveEditHistory* router{};
+            std::atomic<ActiveEditHistory*> router{};
         };
     } // namespace detail
     namespace
@@ -394,11 +394,12 @@ namespace lux::editor
         }
         if (const auto control = other.control_.lock(); control && other.handle_.valid())
         {
-            if (control->owner != std::this_thread::get_id())
+            const auto* router = control->router.load(std::memory_order_acquire);
+            if (router && control->owner != std::this_thread::get_id())
             {
                 std::abort();
             }
-            if (control->router && control->router->impl_->busy)
+            if (router && router->impl_->busy)
             {
                 std::abort();
             }
@@ -420,13 +421,14 @@ namespace lux::editor
         const auto control = control_.lock();
         if (control && handle_.valid())
         {
-            if (control->owner != std::this_thread::get_id())
+            auto* router = control->router.load(std::memory_order_acquire);
+            if (router && control->owner != std::this_thread::get_id())
             {
                 return fail(EEditError::WRONG_THREAD);
             }
-            if (control->router)
+            if (router)
             {
-                if (auto result = control->router->unregisterTarget(handle_); !result)
+                if (auto result = router->unregisterTarget(handle_); !result)
                 {
                     return result;
                 }

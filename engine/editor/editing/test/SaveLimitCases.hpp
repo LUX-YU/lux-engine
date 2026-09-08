@@ -23,16 +23,21 @@ namespace lux::editor::editing::test
             []
             {
                 auto limits = kLimits;
-                limits.max_retained_bytes = 240U;
+                TextSession sample;
+                change(sample, "A");
+                limits.max_retained_bytes = sample.history->entry(0U)->charged_bytes * 2U;
                 TextSession s("alpha", limits);
                 for (int i = 0; i < 3; ++i)
                 {
                     auto p = s.replace(0U, s.text(), std::to_string(i));
-                    static_cast<Operation*>(p.get())->charge = 100U;
+
                     execute(s, std::move(p));
                 }
                 const auto v = s.history->view()->snapshot;
-                assert(v.entry_count == 2U && v.charged_retained_bytes <= 240U && s.stats.operations_destroyed == 1U);
+                assert(
+                    v.entry_count == 2U && v.charged_retained_bytes <= limits.max_retained_bytes &&
+                    s.stats.operations_destroyed == 1U
+                );
             }
         );
         check(
@@ -40,17 +45,19 @@ namespace lux::editor::editing::test
             []
             {
                 auto limits = kLimits;
-                limits.max_retained_bytes = 240U;
+                TextSession sample;
+                change(sample, "A");
+                limits.max_retained_bytes = sample.history->entry(0U)->charged_bytes * 2U;
                 TextSession s("alpha", limits);
                 for (const auto value : {"A", "B"})
                 {
                     auto p = s.replace(0U, s.text(), value);
-                    static_cast<Operation*>(p.get())->charge = 100U;
+
                     execute(s, std::move(p));
                 }
                 assert(s.history->undo());
                 auto p = s.replace(0U, "A", "C");
-                static_cast<Operation*>(p.get())->charge = 100U;
+
                 execute(s, std::move(p));
                 assert(s.history->view()->snapshot.entry_count == 2U);
             }

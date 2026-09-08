@@ -36,7 +36,7 @@ namespace lux::editor::editing::test
                 for (std::size_t i = 0; i != 4; ++i)
                 {
                     auto limits = kLimits;
-                    auto* slots[] = {
+                    std::size_t* slots[] = {
                         &limits.max_entries,
                         &limits.max_retained_bytes,
                         &limits.max_staging_bytes,

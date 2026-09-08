@@ -225,9 +225,10 @@ int main()
     assert(pane.undoJournal().redo(context));
     assert(registry.get<ecs::Light3D>(entity).value == after_light);
 
-    assert((pane.undoJournal().begin<ecs::Parent, ecs::Entity>(
+    const auto begin_result_1 = pane.undoJournal().begin<ecs::Parent, ecs::Entity>(
         selection.current(), "entity", parent_a, inspector::applyParentRelation
-    )));
+    );
+    assert(begin_result_1);
     assert(inspector::applyParentRelation(registry, entity, parent_b));
     assert((pane.undoJournal().commit<ecs::Parent, ecs::Entity>(selection.current(), "entity", parent_b)));
     assert(registry.get<ecs::Parent>(entity).entity == parent_b);
@@ -236,9 +237,10 @@ int main()
     assert(pane.undoJournal().redo(context));
     assert(registry.get<ecs::Parent>(entity).entity == parent_b);
     pane.undoJournal().clear();
-    assert((pane.undoJournal().begin<ecs::Parent, ecs::Entity>(
+    const auto begin_result_2 = pane.undoJournal().begin<ecs::Parent, ecs::Entity>(
         selection.current(), "entity", parent_b, inspector::applyParentRelation
-    )));
+    );
+    assert(begin_result_2);
     assert(inspector::applyParentRelation(registry, entity, ecs::NullEntity));
     assert(!registry.all_of<ecs::Parent>(entity));
     assert((pane.undoJournal().commit<ecs::Parent, ecs::Entity>(selection.current(), "entity", ecs::NullEntity)));

@@ -34,11 +34,13 @@ namespace lux::editor::editing::test
         const auto base = data ? data->base : StateId{};
         const auto title = data ? data->title : std::string{};
         const auto charge = data ? data->charge : 0U;
+        const auto memento = data ? data->memento() : std::string{};
         expectError(session.history->execute(operation), code);
         assert(operation.get() == pointer && before == Snapshot(session));
         assert(model(session) == content && session.stats.notices == notices);
         if (data)
         {
+            assert(data->memento() == memento);
             assert(data->identity == identity && data->base == base && data->title == title && data->charge == charge);
         }
     }

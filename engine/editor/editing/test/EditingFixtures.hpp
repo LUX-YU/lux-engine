@@ -228,6 +228,11 @@ namespace lux::editor::editing::test
             return charge;
         }
 
+        [[nodiscard]] virtual std::string memento() const
+        {
+            return {};
+        }
+
     private:
         void metadata() const noexcept
         {
@@ -307,6 +312,10 @@ namespace lux::editor::editing::test
         const std::string old_, next_;
 
     public:
+        [[nodiscard]] std::string memento() const override
+        {
+            return std::to_string(offset_) + ':' + old_ + std::string(1U, '\0') + next_;
+        }
         Replace(TextSession& session, std::size_t offset, std::string old_text, std::string new_text)
             : Operation(session), model_(session), offset_(offset), old_(std::move(old_text)),
               next_(std::move(new_text))
@@ -455,6 +464,11 @@ namespace lux::editor::editing::test
         const std::optional<int> before_, after_, selection_before_;
 
     public:
+        [[nodiscard]] std::string memento() const override
+        {
+            const auto value = [](std::optional<int> item) { return item ? std::to_string(*item) : "none"; };
+            return std::to_string(key_) + ':' + value(before_) + ':' + value(after_) + ':' + value(selection_before_);
+        }
         Patch(RecordSession& session, int key, std::optional<int> before, std::optional<int> after)
             : Operation(session), model_(session), key_(key), before_(before), after_(after),
               selection_before_(session.selected_)

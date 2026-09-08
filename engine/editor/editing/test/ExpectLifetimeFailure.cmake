@@ -1,0 +1,5 @@
+execute_process(COMMAND "${PROBE}" "${MODE}" RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+if(NOT result STREQUAL "73" OR NOT error MATCHES "ED1_CONTRACT_HISTORY_LIFETIME")
+    message(FATAL_ERROR "Wrong lifetime failure: result=${result}; output=${output}; error=${error}")
+endif()
+message(STATUS "Expected HISTORY_LIFETIME contract reached: ${MODE}")

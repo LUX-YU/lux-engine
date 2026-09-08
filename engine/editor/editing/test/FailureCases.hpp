@@ -46,6 +46,7 @@ namespace lux::editor::editing::test
                 branch(s);
                 auto p = s.replace(0U, "B", "D");
                 static_cast<Operation*>(p.get())->title.assign(128U, 'L');
+                static_cast<Operation*>(p.get())->charge += 256U;
                 allocation_call = 0U;
                 fail_call = 1U;
                 detail::editDiagnostics().allocation = allocationProbe;

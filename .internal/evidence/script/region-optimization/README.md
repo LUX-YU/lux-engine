@@ -46,3 +46,8 @@
 正确性和安装通过不表示性能等价：FlowForge/Event 登记改善；Lua Update、typed 和 coroutine p99
 新增成本未全面收口。未授予所有残余为必要安全成本，也不取消原 SR-6 历史债务。
 原始 [VTune 入口证据](../vtune-2026-09-08/README.md) 保持原身份。
+
+固定归档提交：`b52569f2818abf3fd146bcd830eb897767aa9c95`。
+[固定下载](https://github.com/LUX-YU/lux-engine/raw/b52569f2818abf3fd146bcd830eb897767aa9c95/.internal/evidence/script/region-optimization/region-optimization-raw-evidence.zip)、
+[固定逐项索引](https://github.com/LUX-YU/lux-engine/blob/b52569f2818abf3fd146bcd830eb897767aa9c95/.internal/evidence/script/region-optimization/raw-files.json)。
+远端取回核验结果随后记录在包外，不循环改写归档哈希。

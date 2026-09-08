@@ -44,3 +44,13 @@
 软件样本包括启动/warmup/输出，不能用它们的总时间替代无采样配对。部分符号未知仍明确保留。
 
 [主报告：实现、所有权、旧断言对应、完整成本、实验决定与限制](../../../script-system-direct-dispatch-optimization-2026-09-08.zh-CN.md)。
+
+固定归档提交：`fa09feaea7599fd5cf54ee1bcd1cfcc70ec1e565`。
+[固定 ZIP 下载](https://github.com/LUX-YU/lux-engine/raw/fa09feaea7599fd5cf54ee1bcd1cfcc70ec1e565/.internal/evidence/script/direct-dispatch/direct-dispatch-raw.zip)、
+[固定逐项索引](https://github.com/LUX-YU/lux-engine/blob/fa09feaea7599fd5cf54ee1bcd1cfcc70ec1e565/.internal/evidence/script/direct-dispatch/raw-files.json)。
+已通过全新 bare partial repository 从 GitHub 重新取回，ZIP SHA 和 5,740 项大小/哈希全部匹配。
+[远端验证结果](remote-verification.json)、[实际命令日志](remote-verification.log)。
+归档内 `evidence-stage/VerifyRemote.py` 是实际运行版本；仓库旁的
+[可迁址重放脚本](VerifyRemote.py) 将其两个本地目录改为显式参数：
+`python VerifyRemote.py ARCHIVE_COMMIT SCRATCH_DIRECTORY EVIDENCE_DIRECTORY`。
+使用新的空 scratch 路径及现有本证据目录；该脚本不改归档内容。

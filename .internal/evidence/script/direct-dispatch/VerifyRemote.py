@@ -1,9 +1,10 @@
 """Fetch evidence from GitHub in a fresh bare partial repository and verify every archived item."""
 from pathlib import Path
 import datetime,hashlib,io,json,subprocess,sys,zipfile
-r=Path(__file__).resolve().parent;commit=sys.argv[1];repo=r/'evidence-remote.git';assert not repo.exists()
+if len(sys.argv)!=4:raise SystemExit('Usage: VerifyRemote.py ARCHIVE_COMMIT SCRATCH_DIRECTORY EVIDENCE_DIRECTORY')
+r=Path(sys.argv[2]).resolve();r.mkdir(parents=True,exist_ok=True);commit=sys.argv[1];repo=r/'evidence-remote.git';assert not repo.exists()
 origin='git@github.com:LUX-YU/lux-engine.git';prefix='.internal/evidence/script/direct-dispatch/'
-out=r.parent/'s5/source'/prefix;log=(r/'remote-verification.log').open('w')
+out=Path(sys.argv[3]).resolve();assert out.is_dir();log=(r/'remote-verification.log').open('w')
 def run(cmd):
  log.write(json.dumps(cmd)+'\n');log.flush();return subprocess.run(cmd,stdout=subprocess.PIPE,stderr=log,check=True).stdout
 run(['git','init','--bare',str(repo)]);run(['git','-C',str(repo),'remote','add','origin',origin])

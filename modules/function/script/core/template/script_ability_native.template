@@ -26,10 +26,12 @@ namespace lux::script::native
         ) noexcept
         {
             const auto& dispatch = [dispatch_value]() noexcept -> const AbilityTraits::Dispatch& {
-                if constexpr (std::is_void_v<Provider>)
+{% if receiver == "provider_instance" %}                if constexpr (std::is_void_v<Provider>)
                     return *static_cast<const AbilityTraits::Dispatch*>(dispatch_value);
                 else
                     return AbilityTraits::template ProviderDispatch<Provider>;
+{% else %}                return *static_cast<const AbilityTraits::Dispatch*>(dispatch_value);
+{% endif %}
             }();
             return lux::simulation::script::detail::startNativeAbility<{{ method.result_type_id }}>(
                 invocation,
@@ -49,10 +51,12 @@ namespace lux::script::native
         ) noexcept
         {
             const auto& dispatch = [dispatch_value]() noexcept -> const AbilityTraits::Dispatch& {
-                if constexpr (std::is_void_v<Provider>)
+{% if receiver == "provider_instance" %}                if constexpr (std::is_void_v<Provider>)
                     return *static_cast<const AbilityTraits::Dispatch*>(dispatch_value);
                 else
                     return AbilityTraits::template ProviderDispatch<Provider>;
+{% else %}                return *static_cast<const AbilityTraits::Dispatch*>(dispatch_value);
+{% endif %}
             }();
 {% if method.result_type_id == "void" %}            dispatch.{{ method.spelling }}(provider{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %});
 {% else %}            return dispatch.{{ method.spelling }}(provider{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %});

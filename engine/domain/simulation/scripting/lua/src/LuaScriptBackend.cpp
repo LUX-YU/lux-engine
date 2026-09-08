@@ -1229,6 +1229,12 @@ namespace lux::simulation::script
             if (self.free_prepared_calls.empty())
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
 
+            const auto stack_values = (std::max)(function.args.size(), function.returns.size());
+            if (stack_values > static_cast<std::size_t>((std::numeric_limits<int>::max)()) - 8U)
+                return EScriptBackendResult::CAPACITY_EXCEEDED;
+            if (!lua_checkstack(self.state, static_cast<int>(stack_values + 8U)))
+                return EScriptBackendResult::ALLOCATION_FAILURE;
+
             const FunctionKey key{instance->asset, function.symbol_id};
             const LuaFunctionBinding* function_binding{};
             const auto cached = self.function_index.find(key);

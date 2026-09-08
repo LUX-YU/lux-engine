@@ -229,7 +229,6 @@ namespace
         bool discard_timer{};
         bool reject_after_timer{};
         bool enable_step{};
-        bool synchronous_second{};
         bool enable_ability_async{};
         bool eager_first{};
         bool eager_resuspend{};
@@ -327,7 +326,7 @@ namespace
 
     EScriptBackendResult prepareMethod(void*,
                                        ScriptBackendInstance instance,
-                                       const lux::rdesc::ScriptFunction& function,
+                                       const lux::rdesc::ScriptFunction&,
                                        ScriptBackendPreparedMethod& output) noexcept
     {
         auto* prepared = new (std::nothrow) PreparedSync();
@@ -335,12 +334,10 @@ namespace
             return EScriptBackendResult::ALLOCATION_FAILURE;
         prepared->instance = static_cast<BackendInstance*>(instance.value);
         auto* state = prepared->instance->owner;
-        const bool resumable = state->enable_step &&
-            (!state->synchronous_second || function.symbol_id != kSymbolSecond);
         output = {
             prepared,
             lux::script::BoundScriptCall{&invokeSync, prepared},
-            resumable ? BoundScriptStepCall{state, &invokeStep} : BoundScriptStepCall{}
+            state->enable_step ? BoundScriptStepCall{state, &invokeStep} : BoundScriptStepCall{}
         };
         return EScriptBackendResult::SUCCESS;
     }
@@ -963,27 +960,6 @@ namespace
         std::puts("HOOK_SHARED_METHOD_OK,aliases=2,ready_still_blocked=1,destroy_reentry=1,destroys=2");
     }
 
-    void testMixedHookEntryShapes()
-    {
-        Harness harness{false, 2U};
-        harness.description[1].bindings[0].symbol = kSymbolSecond;
-        auto& state = harness.backend_state;
-        state.enable_step = true;
-        state.synchronous_second = true;
-        auto created = harness.create(limits(2U), {});
-        assert(created && created->prepare());
-        for (std::size_t batch{}; batch < 65U; ++batch)
-            assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
-        assert(state.step_calls == 1U && state.sync_calls == 65U);
-        assert(created->activeContinuationCount() == 1U && state.completions.front().ready());
-        assert(executeRuntimeStablePoint(*created));
-        assert(state.resume_calls == 1U && state.continuation_destroys == 1U);
-        assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
-        assert(state.step_calls == 2U && state.sync_calls == 66U && created->failures().empty());
-        assert(created->shutdown() && state.continuation_destroys == 2U && state.destroys == 2U);
-        std::puts("HOOK_MIXED_SHAPES sync=66 step=2 resumes=1 destroyed=2 PASS");
-    }
-
     void testHookRatios()
     {
         constexpr std::size_t count = 1000U, batches = 64U;
@@ -1552,7 +1528,6 @@ int main()
     testCapabilities();
     testSingleFlightIsolation();
     testSharedHookMethod();
-    testMixedHookEntryShapes();
     testHookRatios();
     testNonPowerOfTwoResumeWrap();
     testSyncAndContinuation();

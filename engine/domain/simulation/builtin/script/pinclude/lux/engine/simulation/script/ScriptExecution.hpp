@@ -901,24 +901,17 @@ namespace lux::simulation::script::detail
             UserInvocationScope cleanup(*this);
             destroyContinuations(retired, first);
         }
-        [[nodiscard]] EScriptInvocationKind prepareInvocation(Handler& handler) noexcept
+        [[nodiscard]] bool prepareInvocation(Handler& handler) noexcept
         {
             handler.prepared = instance_owner_.prepareInvocation(handler);
             if (handler.prepared == nullptr)
-                return EScriptInvocationKind::INVALID;
-            const bool resumable = static_cast<bool>(handler.prepared->method().backend.resumable);
-            handler.entry = resumable ? &invokeStepEntry : &invokeSyncEntry;
-            return resumable ? EScriptInvocationKind::RESUMABLE : EScriptInvocationKind::SYNCHRONOUS;
+                return false;
+            handler.entry = handler.prepared->method().backend.resumable ? &invokeStepEntry : &invokeSyncEntry;
+            return true;
         }
         void invoke(const Handler& handler, lux_script_call_frame& frame, bool hook_invocation) noexcept
         {
             handler.entry(*this, handler, frame, hook_invocation);
-        }
-        // The endpoint's cold shape summary covers the protected dispatch interval. No publication
-        // can add a resumable method here; mixed endpoints retain their per-handler bound adapter.
-        void invokeSynchronous(const Handler& handler, lux_script_call_frame& frame) noexcept
-        {
-            invokeSync(handler, frame);
         }
     private:
         static void invokeSyncEntry(ScriptExecution& owner, const Handler& handler,

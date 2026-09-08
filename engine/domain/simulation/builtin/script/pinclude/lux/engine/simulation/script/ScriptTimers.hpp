@@ -59,7 +59,7 @@ namespace lux::simulation::script::detail
             return id.valid() ? Key{id.slot - 1U, id.generation} : Key::invalid();
         }
         [[nodiscard]] static StartResult error(EScriptDelayStatus status) noexcept;
-        [[nodiscard]] StartResult registerWait(ETimerKind kind, ScriptTimerAssociation association,
+        [[nodiscard]] StartResult registerWait(ETimerKind kind, const ScriptTimerAdmission& admission,
             Completion completion, SimulationDuration deadline, std::uint64_t step) noexcept;
         [[nodiscard]] bool earlier(ScriptSourceId left, ScriptSourceId right) const noexcept;
         void swapHeap(std::size_t left, std::size_t right) noexcept;

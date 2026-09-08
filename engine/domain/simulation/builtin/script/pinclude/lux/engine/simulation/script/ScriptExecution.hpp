@@ -848,29 +848,25 @@ namespace lux::simulation::script::detail
         }
         [[nodiscard]] std::size_t physicalAwaitableCapacity() const noexcept { return awaitables_.capacity(); }
 
-        [[nodiscard]] std::optional<ScriptTimerAssociation> timerAssociation(
-            const lux::script::ScriptAbilityCompletion<void>& completion) const noexcept
+        [[nodiscard]] std::optional<ScriptTimerAdmission> timerAssociation(
+            const lux::script::ScriptAbilityCompletion<void>& completion) noexcept
         {
             std::uint64_t a{}, b{};
             if (!lux::script::detail::ScriptAbilityOwnerCompletionAccess::matchOwner(completion, this, a, b))
                 return std::nullopt;
             const auto instance = ScriptCompletionIngress::unpackInstance(a);
             const auto id = ScriptCompletionIngress::unpackAwaitable(b);
-            const auto* record = awaitables_.find(awaitableKey(id));
+            auto* record = awaitables_.find(awaitableKey(id));
             const bool matches = !stopping_ && instance_owner_.active(instance) && record != nullptr &&
                 record->instance == instance && record->state == EScriptAwaitableState::PENDING &&
                 !record->release_pending && record->source.kind == EScriptWaitSource::NONE;
-            return matches ? std::optional{ScriptTimerAssociation{instance, id}} : std::nullopt;
+            return matches ? std::optional{ScriptTimerAdmission{{instance, id}, record}} : std::nullopt;
         }
-        [[nodiscard]] bool attachTimer(ScriptTimerAssociation association, ScriptSourceId id) noexcept
+        void attachTimer(const ScriptTimerAdmission& admission, ScriptSourceId id) noexcept
         {
-            auto* record = awaitables_.find(awaitableKey(association.awaitable));
-            const bool matches = !stopping_ && record != nullptr && record->instance == association.instance &&
-                record->state == EScriptAwaitableState::PENDING && !record->release_pending &&
-                record->source.kind == EScriptWaitSource::NONE && instance_owner_.active(association.instance);
-            if (matches)
-                record->source = {id, EScriptWaitSource::TIMER};
-            return matches;
+            // Timer storage is distinct and preallocated. Registration executes no user code and
+            // cannot mutate awaitables or authority; source commit needs no second identity lookup.
+            static_cast<AwaitableRecord*>(admission.result_)->source = {id, EScriptWaitSource::TIMER};
         }
         void detachSource(ScriptSourceCancellation cancelled) noexcept
         {

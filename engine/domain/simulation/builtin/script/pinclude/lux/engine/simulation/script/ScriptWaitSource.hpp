@@ -38,4 +38,18 @@ namespace lux::simulation::script::detail
         ScriptInstanceId instance;
         ScriptAwaitableId awaitable;
     };
+
+    // Only for the synchronous no-user-code interval between source admission and commit.
+    // Timers retain the identity pair, never this transient borrow of Execution's result storage.
+    class ScriptTimerAdmission final
+    {
+    public:
+        [[nodiscard]] ScriptTimerAssociation association() const noexcept { return association_; }
+    private:
+        friend class ScriptExecution;
+        ScriptTimerAdmission(ScriptTimerAssociation association, void* result) noexcept
+            : association_(association), result_(result) {}
+        ScriptTimerAssociation association_;
+        void* result_{};
+    };
 }

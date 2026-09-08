@@ -102,9 +102,10 @@ namespace lux::simulation::script::detail
             std::ceil(requested))}, std::move(completion));
     }
 
-    ScriptTimers::StartResult ScriptTimers::registerWait(ETimerKind kind, ScriptTimerAssociation association,
+    ScriptTimers::StartResult ScriptTimers::registerWait(ETimerKind kind, const ScriptTimerAdmission& admission,
         Completion completion, SimulationDuration deadline, std::uint64_t step) noexcept
     {
+        const auto association = admission.association();
         auto& owner = instances_[association.instance.slot - 1U];
         if (owner.id != association.instance)
             return error(EScriptDelayStatus::STOPPING);
@@ -136,11 +137,7 @@ namespace lux::simulation::script::detail
             heap_.push_back(id); // Prepared capacity; admission checks the component's logical limit.
             siftUp(wait.heap_index);
         }
-        if (!execution_->attachTimer(association, id))
-        {
-            static_cast<void>(cancel(id));
-            return error(EScriptDelayStatus::STOPPING);
-        }
+        execution_->attachTimer(admission, id);
         return {};
     }
 

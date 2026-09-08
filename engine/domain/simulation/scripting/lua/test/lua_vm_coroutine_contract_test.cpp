@@ -105,7 +105,7 @@ int main(int argc, char** argv)
         "local t=coroutine.create(function() error('expected') end); "
         "assert(not coroutine.resume(t)); assert(coroutine.status(t)=='dead')") == LUA_OK);
     assert(lua_pcall(state, 0, 0, 0) == LUA_OK);
-#if !defined(LUX_SCRIPT_LUA_VM_LUAJIT)
+#if LUA_VERSION_NUM >= 504
     assert(luaL_loadstring(state,
         "closed=0; local t=coroutine.create(function() "
         "local x <close> = setmetatable({}, {__close=function() closed=closed+1 end}); "

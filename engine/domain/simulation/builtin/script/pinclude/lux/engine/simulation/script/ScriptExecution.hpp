@@ -544,7 +544,8 @@ namespace lux::simulation::script::detail
             }
         };
 
-        [[nodiscard]] std::optional<AwaitableOutcome> takeAwaitable(ResumeRecord resume, ExecutionAccess access) noexcept
+        [[nodiscard]] std::optional<AwaitableOutcome>
+        takeAwaitable(ResumeRecord resume, ExecutionAccess access) noexcept
         {
             auto* record = awaitables_.find(awaitableKey(resume.awaitable));
             if (record == nullptr || record->instance != resume.instance ||

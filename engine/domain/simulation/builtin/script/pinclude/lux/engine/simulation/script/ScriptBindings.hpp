@@ -243,7 +243,6 @@ namespace lux::simulation::script::detail
             std::uint32_t method{};
             EndpointConnectionToken registration;
             std::uint32_t next_hook{(std::numeric_limits<std::uint32_t>::max)()};
-            std::uint32_t handler_position{};
         };
         struct Configuration final
         {

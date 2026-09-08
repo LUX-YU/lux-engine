@@ -2963,9 +2963,9 @@ namespace
                 rows.push_back(std::move(row));
             }
         }
+        finishRuntimeBenchmark(*harness.system, "cpp-update");
         if (lux::simulation::benchmark::cpp_update_checksum !=
             options.size * (options.warmups + options.frames)) throw std::runtime_error("C++ update observation");
-        finishRuntimeBenchmark(*harness.system, "cpp-update");
         if (!rows.empty()) rows.back().checksum = lux::simulation::benchmark::cpp_update_checksum;
     }
 

@@ -30,3 +30,8 @@
 脚本中绝对路径用于绑定这次输入，跨机器重放应改参数并重新验证身份；不能假定任意旧 build 与此等价。
 旧性能债务、上一轮有/无优化的配对结果仍见原报告。采样百分比变化本身不证明性能变化。
 Lua Event 的实际恢复预算为 size=10,000，FlowForge Event 为 2,000；两者不是同量语言横比。
+
+固定归档提交：`67fc38d3db7d686fa79cae9ee846e8ee3709c156`。
+[固定下载](https://github.com/LUX-YU/lux-engine/raw/67fc38d3db7d686fa79cae9ee846e8ee3709c156/.internal/evidence/script/vtune-refresh-2026-09-08/vtune-current-raw.zip)。
+复用独立 bare 仓库从 GitHub 取回本次新归档，1,203 项逐项大小/哈希全部匹配；
+[核验结果](remote-verification.json)、[原始命令](remote-verification.log)在包外，原归档不改写。

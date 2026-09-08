@@ -288,6 +288,7 @@ namespace lux::simulation::script::detail
         std::uint64_t hook_handler_visits_{};
         std::size_t binding_capacity_{};
         std::size_t method_capacity_{};
+        std::size_t runnable_backing_bytes_{};
         std::size_t max_resume_payload_{};
         std::size_t traversal_depth_{};
         std::span<const ScriptRuntimeMount> staged_inputs_;

@@ -115,10 +115,12 @@ namespace lux::simulation::script::detail
                     events_[*endpoint].capacity = planned.handler_capacity;
                 }
             }
+            runnable_backing_bytes_ = 0U;
             for (auto& bucket : hooks_)
             {
                 bucket.handlers.reserve(bucket.capacity);
                 bucket.runnable.prepare(bucket.capacity);
+                runnable_backing_bytes_ += bucket.runnable.backingBytes();
             }
             for (auto& bucket : events_)
                 if (bucket.handlers.prepare(bucket.capacity) == EEndpointMutationError::ALLOCATION_FAILURE)
@@ -301,8 +303,7 @@ namespace lux::simulation::script::detail
 
     std::size_t ScriptBindings::backingBytes() const noexcept
     {
-        std::size_t index_bytes = method_hooks_.capacity() * sizeof(std::uint32_t);
-        for (const auto& bucket : hooks_) index_bytes += bucket.runnable.backingBytes();
+        const auto index_bytes = method_hooks_.capacity() * sizeof(std::uint32_t) + runnable_backing_bytes_;
         return index_bytes + bindings_.capacity() * sizeof(Binding) +
             descriptions_.capacity() * sizeof(ScriptBindingDescription) +
             configurations_.capacity() * sizeof(Configuration) +

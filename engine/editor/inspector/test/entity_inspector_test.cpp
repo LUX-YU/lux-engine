@@ -173,21 +173,17 @@ int main()
     assert(incomplete_pane.lastDrawStats().visible_components == 3U);
     assert(incomplete_pane.lastDrawStats().missing_bindings == 1U);
 
+    const auto apply_translation = inspector::applyPlainField<ecs::Transform3D, &ecs::Transform3D::translation>;
+    const auto apply_light = inspector::applyPlainField<ecs::Light3D, &ecs::Light3D::value>;
     TransformObserver observer;
     registry.on_update<ecs::Transform3D>().connect<&TransformObserver::updated>(observer);
     auto& transform = registry.get<ecs::Transform3D>(entity);
     const auto before_translation = transform.translation;
     const Eigen::Vector3d after_translation{2.0, 3.0, 4.0};
-    assert((
-        pane.undoJournal()
-            .begin<
-                ecs::Transform3D,
-                Eigen::
-                    Vector3d>(selection.current(), "translation", before_translation, inspector::applyPlainField<ecs::Transform3D, &ecs::Transform3D::translation>)
-    ));
-    assert((inspector::applyPlainField<ecs::Transform3D, &ecs::Transform3D::translation>(
-        registry, entity, after_translation
+    assert((pane.undoJournal().begin<ecs::Transform3D, Eigen::Vector3d>(
+        selection.current(), "translation", before_translation, apply_translation
     )));
+    assert((apply_translation(registry, entity, after_translation)));
     assert((pane.undoJournal().commit<ecs::Transform3D, Eigen::Vector3d>(
         selection.current(), "translation", after_translation
     )));
@@ -204,14 +200,10 @@ int main()
     auto after_light = before_light;
     after_light.type = lux::rdesc::ELightType::SPOT;
     std::string dynamic_field = "value";
-    assert((
-        pane.undoJournal()
-            .begin<
-                ecs::Light3D,
-                lux::rdesc::
-                    LightDescription>(selection.current(), dynamic_field, before_light, inspector::applyPlainField<ecs::Light3D, &ecs::Light3D::value>)
-    ));
-    assert((inspector::applyPlainField<ecs::Light3D, &ecs::Light3D::value>(registry, entity, after_light)));
+    assert((pane.undoJournal().begin<ecs::Light3D, lux::rdesc::LightDescription>(
+        selection.current(), dynamic_field, before_light, apply_light
+    )));
+    assert((apply_light(registry, entity, after_light)));
     dynamic_field.clear();
     dynamic_field.shrink_to_fit();
     const std::string commit_field = "value";
@@ -254,13 +246,9 @@ int main()
     assert(registry.get<ecs::Parent>(entity).entity == parent_b);
 
     pane.undoJournal().clear();
-    assert((
-        pane.undoJournal()
-            .begin<
-                ecs::Transform3D,
-                Eigen::
-                    Vector3d>(selection.current(), "translation", after_translation, inspector::applyPlainField<ecs::Transform3D, &ecs::Transform3D::translation>)
-    ));
+    assert((pane.undoJournal().begin<ecs::Transform3D, Eigen::Vector3d>(
+        selection.current(), "translation", after_translation, apply_translation
+    )));
     assert((pane.undoJournal().commit<ecs::Transform3D, Eigen::Vector3d>(
         selection.current(), "translation", after_translation
     )));

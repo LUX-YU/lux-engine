@@ -288,6 +288,17 @@ namespace lux::simulation::script::detail
         return symbols_[method_slot] != lux::script::InvalidScriptSymbolId;
     }
 
+    void ScriptBindings::writeInvocationStats(ScriptRuntimeStats& output) const noexcept
+    {
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+        output.hook_observation_enabled = true;
+        output.hook_candidates = hook_candidates_;
+        output.hook_handler_visits = hook_handler_visits_;
+#else
+        static_cast<void>(output);
+#endif
+    }
+
     std::size_t ScriptBindings::backingBytes() const noexcept
     {
         std::size_t index_bytes = method_hooks_.capacity() * sizeof(std::uint32_t);

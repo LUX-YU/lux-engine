@@ -255,6 +255,9 @@ namespace
         std::size_t expected_payload_size{};
         void* resume_probe_context{};
         void (*resume_probe)(void*) noexcept{};
+        void* destroy_probe_context{};
+        void (*destroy_probe)(void*) noexcept{};
+        std::size_t blocked_instances{};
     };
 
     int invokeSync(lux_script_call_frame* frame)
@@ -355,6 +358,8 @@ namespace
     {
         auto* continuation = static_cast<ContinuationState*>(value);
         ++continuation->owner->continuation_destroys;
+        if (const auto probe = std::exchange(continuation->owner->destroy_probe, nullptr))
+            probe(continuation->owner->destroy_probe_context);
         delete continuation;
     }
 
@@ -928,6 +933,77 @@ namespace
         std::puts("SINGLE_FLIGHT_OK,skipped=16,methods=2,instances=2,resume_budget=1,reused_generation=1");
     }
 
+    void testSharedHookMethod()
+    {
+        Harness harness{false};
+        harness.description[0].bindings.push_back({kSymbol, HookScriptTarget{kSystem, kHookSecond}});
+        auto& state = harness.backend_state;
+        state.enable_step = true;
+        auto created = harness.create(limits(), {});
+        assert(created && created->prepare());
+        assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
+        assert(dispatchRuntimeHook(*created, harness.hook_second) == 1U && state.step_calls == 1U);
+        assert(state.completions.front().ready());
+        assert(dispatchRuntimeHook(*created, harness.hook_second) == 1U && state.step_calls == 1U);
+        struct Probe { ScriptSystem* system; Harness* harness; } probe{&*created, &harness};
+        state.destroy_probe_context = &probe;
+        state.destroy_probe = [](void* context) noexcept {
+            const auto& value = *static_cast<Probe*>(context);
+            assert(dispatchRuntimeHook(*value.system, value.harness->hook_second) == 1U);
+            assert(value.harness->backend_state.step_calls == 2U);
+        };
+        assert(executeRuntimeStablePoint(*created));
+        assert(state.resume_calls == 1U && state.continuation_destroys == 1U);
+        assert(created->activeContinuationCount() == 1U && state.step_calls == 2U);
+        assert(dispatchRuntimeHook(*created, harness.hook) == 1U && state.step_calls == 2U);
+        assert(created->shutdown() && state.continuation_destroys == 2U && state.destroys == 1U);
+        std::puts("HOOK_SHARED_METHOD_OK,aliases=2,ready_still_blocked=1,destroy_reentry=1,destroys=2");
+    }
+
+    void testHookRatios()
+    {
+        constexpr std::size_t count = 1000U, batches = 64U;
+        for (const auto percent : {0U, 50U, 99U, 100U})
+        {
+            Harness harness{false, count};
+            auto& state = harness.backend_state;
+            state.enable_step = true;
+            state.blocked_instances = count * percent / 100U;
+            state.custom_step = [](BackendState& owner, ScriptStepContext& step) noexcept {
+                if (step.instance.slot > owner.blocked_instances)
+                    return ScriptStepResult::completed();
+                const auto awaiting = step.awaitables.create(std::nullopt);
+                assert(awaiting);
+                owner.completions.push_back(awaiting->completion);
+                return ScriptStepResult::suspended(awaiting->id);
+            };
+            auto created = harness.create(limits(count, count, count, count, 1U), {});
+            assert(created && created->prepare());
+            assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
+            const auto before = created->stats();
+            for (std::size_t batch{}; batch < batches; ++batch)
+                assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
+            const auto after = created->stats();
+            const auto starts = (count - state.blocked_instances) * batches;
+            assert(state.step_calls == count + starts && after.active_continuations == state.blocked_instances);
+            if (after.hook_observation_enabled)
+            {
+                assert(after.hook_candidates - before.hook_candidates == count * batches);
+                assert(after.hook_handler_visits - before.hook_handler_visits == starts);
+            }
+            std::printf("HOOK_RATIO percent=%u batches=%zu population=%zu new_calls=%zu resume=0 waiting=%zu "
+                "backlog=0 observed=%u candidates=%llu visits=%llu\n", percent, batches, count, starts,
+                state.blocked_instances, after.hook_observation_enabled,
+                after.hook_candidates - before.hook_candidates, after.hook_handler_visits - before.hook_handler_visits);
+            for (auto& completion : state.completions) assert(completion.ready());
+            assert(created->stats().resume_queue_depth == state.blocked_instances);
+            while (created->stats().resume_queue_depth != 0U) assert(executeRuntimeStablePoint(*created));
+            assert(state.resume_calls == state.blocked_instances &&
+                state.continuation_destroys == state.blocked_instances && created->failures().empty());
+            assert(created->shutdown() && state.destroys == count);
+        }
+    }
+
     void testNonPowerOfTwoResumeWrap()
     {
         Harness harness{false, 3U};
@@ -1444,6 +1520,8 @@ int main()
     }
     testCapabilities();
     testSingleFlightIsolation();
+    testSharedHookMethod();
+    testHookRatios();
     testNonPowerOfTwoResumeWrap();
     testSyncAndContinuation();
     testAsyncAbilityInvocation();

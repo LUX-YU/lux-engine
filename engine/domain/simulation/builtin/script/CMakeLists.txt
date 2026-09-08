@@ -52,6 +52,11 @@ target_link_libraries(
         lux::cxx::container
 )
 
+option(LUX_SCRIPT_HOTPATH_OBSERVATION "Count Script Hook candidate and visited records (diagnostics only)" OFF)
+if(LUX_SCRIPT_HOTPATH_OBSERVATION)
+    target_compile_definitions(simulation_script PRIVATE LUX_SCRIPT_HOTPATH_OBSERVATION=1)
+endif()
+
 find_package(lux-cxx REQUIRED COMPONENTS container)
 
 add_executable(simulation_script_bindings_test

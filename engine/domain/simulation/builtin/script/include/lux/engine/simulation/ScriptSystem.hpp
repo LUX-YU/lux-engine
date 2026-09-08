@@ -94,6 +94,9 @@ namespace lux::simulation::script
         // Cumulative assembly work, including rejected preflights; not instance resource counts.
         std::uint64_t assembly_configuration_slot_visits{};
         std::uint64_t assembly_endpoint_count_visits{};
+        bool hook_observation_enabled{};
+        std::uint64_t hook_candidates{};
+        std::uint64_t hook_handler_visits{};
     };
 
     namespace detail

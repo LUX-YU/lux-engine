@@ -1013,6 +1013,7 @@ namespace lux::simulation::script
         result.event_occurrences = state_->event_occurrences;
         result.invocation_failures = state_->invocation_failures;
         state_->execution_owner.writeStats(result);
+        state_->binding_owner.writeInvocationStats(result);
         state_->event_owner.writeStats(result);
         state_->timer_owner.writeStats(result);
         state_->ingress.writeStats(result);

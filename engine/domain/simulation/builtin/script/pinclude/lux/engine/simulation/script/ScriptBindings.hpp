@@ -105,6 +105,7 @@ namespace lux::simulation::script::detail
         [[nodiscard]] Result publish(std::uint32_t slot, ScriptInstanceId instance, ecs::Entity entity) noexcept;
         void withdraw(std::uint32_t slot) noexcept;
         void setMethodRunnable(std::uint32_t method, ScriptInstanceId instance, bool runnable) noexcept;
+        void writeInvocationStats(ScriptRuntimeStats& output) const noexcept;
         [[nodiscard]] Result connect() noexcept;
         [[nodiscard]] Result disconnect() noexcept;
         template <class Invoke>
@@ -113,6 +114,9 @@ namespace lux::simulation::script::detail
             Traversal traversal{*this};
             auto& lane = hooks_[bucket];
             const auto& handlers = lane.handlers.values();
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+            hook_candidates_ += handlers.size();
+#endif
             std::size_t cursor{};
             while (cursor < handlers.size())
             {
@@ -121,6 +125,9 @@ namespace lux::simulation::script::detail
                 if (next >= handlers.size())
                     break;
                 cursor = next + 1U;
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+                ++hook_handler_visits_;
+#endif
                 invoke(handlers[next]);
             }
         }
@@ -277,6 +284,8 @@ namespace lux::simulation::script::detail
         std::vector<std::size_t> event_reservations_;
         std::vector<std::uint32_t> pending_unlinks_;
         ScriptBindingDispatch dispatch_;
+        std::uint64_t hook_candidates_{};
+        std::uint64_t hook_handler_visits_{};
         std::size_t binding_capacity_{};
         std::size_t method_capacity_{};
         std::size_t max_resume_payload_{};

@@ -1059,10 +1059,13 @@ int main()
             &control_outcome
         ) == 0);
         ++control_resumes;
+        assert(control_host.starts == (std::min)(control_resumes + 1U, std::size_t{3U}));
     }
     assert(control_outcome.state == LUX_SCRIPT_STEP_COMPLETED);
-    assert(control_resumes >= 3U);
-    assert(control_provider.value == 99);
+    // The half-open loop [0, 2) suspends twice, followed by the final wait.
+    assert(control_resumes == 3U && control_host.starts == 3U);
+    assert(control_provider.value == 99 && control_provider.calls == 1U);
+    std::printf("FLOW_FRAME control bytes=%u starts=3 resumes=3 providers=1 value=99\n", control_step.frame_size);
     control_step.destroy(control_continuation);
     if (control_over_aligned)
         ::operator delete(control_continuation, std::align_val_t{control_step.frame_align});
@@ -1121,6 +1124,8 @@ int main()
     ) == 0);
     assert(result_outcome.state == LUX_SCRIPT_STEP_COMPLETED);
     assert(result_provider.value == resumed_value);
+    assert(result_host.starts == 1U && result_provider.calls == 1U);
+    std::printf("FLOW_FRAME result bytes=%u starts=1 resumes=1 providers=1 value=123\n", result_step.frame_size);
     result_step.destroy(result_continuation);
     if (result_over_aligned)
         ::operator delete(result_continuation, std::align_val_t{result_step.frame_align});
@@ -1179,6 +1184,8 @@ int main()
     ) == 0);
     assert(function_outcome.state == LUX_SCRIPT_STEP_COMPLETED);
     assert(function_provider.value == 55);
+    assert(function_host.starts == 1U && function_provider.calls == 1U);
+    std::printf("FLOW_FRAME function bytes=%u starts=1 resumes=1 providers=1 value=55\n", function_step.frame_size);
     function_step.destroy(function_continuation);
     if (function_over_aligned)
         ::operator delete(function_continuation, std::align_val_t{function_step.frame_align});

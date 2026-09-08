@@ -406,25 +406,24 @@ namespace lux::flowforge
             std::ranges::sort(awaits, {}, &AwaitSite::node_id);
 
             std::vector<llvm::PHINode*> phis;
-            std::vector<llvm::Instruction*> registers;
             for (auto& block : *target)
             {
                 for (auto& instruction : block)
                 {
                     if (auto* phi = llvm::dyn_cast<llvm::PHINode>(&instruction))
                         phis.push_back(phi);
-                    else if (!instruction.getType()->isVoidTy() && !llvm::isa<llvm::AllocaInst>(instruction) &&
-                             !instruction.isTerminator() && !instruction.use_empty())
-                        registers.push_back(&instruction);
                 }
             }
             auto* alloca_point = &*target->getEntryBlock().getFirstInsertionPt();
             for (auto* phi : phis)
                 llvm::DemotePHIToStack(phi, alloca_point);
-            for (auto* instruction : registers)
+            // Await results need an explicit destination for the incoming resume packet. Leave
+            // other SSA temporaries in registers: after adding resume edges, the dominance repair
+            // below spills only values whose uses actually cross a suspension boundary.
+            for (const auto& await : awaits)
             {
-                if (instruction->getParent() != nullptr && !instruction->use_empty())
-                    llvm::DemoteRegToStack(*instruction, false, alloca_point);
+                if (!await.call->getType()->isVoidTy() && !await.call->use_empty())
+                    llvm::DemoteRegToStack(*await.call, false, alloca_point);
             }
 
             auto& context = module.getContext();

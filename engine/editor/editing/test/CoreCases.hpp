@@ -229,12 +229,25 @@ namespace lux::editor::editing::test
             []
             {
                 TextSession s;
-                change(s, "A");
-                change(s, "B");
-                change(s, "C");
+                for (const auto* value : {"A", "B", "C"})
+                {
+                    auto p = s.replace(0U, s.text(), value);
+                    static_cast<Operation*>(p.get())->title = value;
+                    assert(s.history->execute(p));
+                }
                 const auto old = s.history->view()->snapshot.current;
                 assert(s.history->undo() && s.history->undo());
+                std::array<char, 2> destroyed{};
+                std::size_t destroyed_count{};
+                s.reclaimed = [&](std::string_view title)
+                {
+                    assert(destroyed_count < destroyed.size());
+                    destroyed[destroyed_count++] = title[0];
+                };
                 change(s, "D");
+                s.reclaimed = {};
+                assert(destroyed_count == 2U && destroyed[0] == 'C' && destroyed[1] == 'B');
+                std::cout << "C14 reclaimed C,B; retained A,D\n";
                 assert(s.stats.operations_destroyed == 2U && s.history->view()->snapshot.entry_count == 2U);
                 assert(s.history->view()->snapshot.current.serial > old.serial);
                 assert(s.history->undo() && s.text() == "A");

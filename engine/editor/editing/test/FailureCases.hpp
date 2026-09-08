@@ -110,9 +110,11 @@ namespace lux::editor::editing::test
             []
             {
                 TextSession s;
-                change(s, "B");
+                auto p = s.replace(0U, "alpha", "B");
+                const auto* operation = static_cast<Operation*>(p.get());
+                assert(s.history->execute(p));
                 s.fail_allocation = s.allocation_index + 1U;
-                replayFailure(s, [&] { return s.history->undo(); }, EEditError::ALLOCATION_FAILURE);
+                replayFailure(s, [&] { return s.history->undo(); }, EEditError::ALLOCATION_FAILURE, operation);
                 s.fail_allocation = 0U;
                 assert(s.history->undo() && s.text() == "alpha");
             }
@@ -122,9 +124,12 @@ namespace lux::editor::editing::test
             []
             {
                 TextSession s;
-                branch(s);
+                change(s, "B");
+                auto p = s.replace(0U, "B", "C");
+                const auto* operation = static_cast<Operation*>(p.get());
+                assert(s.history->execute(p) && s.history->undo());
                 s.fail_allocation = s.allocation_index + 2U;
-                replayFailure(s, [&] { return s.history->redo(); }, EEditError::ALLOCATION_FAILURE);
+                replayFailure(s, [&] { return s.history->redo(); }, EEditError::ALLOCATION_FAILURE, operation);
                 s.fail_allocation = 0U;
                 assert(s.history->redo() && s.text() == "C");
             }

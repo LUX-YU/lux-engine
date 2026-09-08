@@ -76,12 +76,17 @@ namespace lux::editor::editing::test
         change(session, "C");
         assert(session.history->undo());
     }
-    template <class F> void replayFailure(TextSession& session, F replay, EEditError code)
+    template <class F>
+    void replayFailure(TextSession& session, F replay, EEditError code, const Operation* operation = nullptr)
     {
         const Snapshot before(session);
         const auto text = session.text();
+        const auto memento = operation ? operation->memento() : std::string{};
+        writeSnapshot("replay.failure.before", session);
         expectError(replay(), code);
         assert(before == Snapshot(session) && text == session.text());
+        assert(!operation || operation->memento() == memento);
+        writeSnapshot("replay.failure.after", session);
     }
 #if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
     inline std::size_t allocation_call{}, fail_call{};

@@ -41,6 +41,7 @@ namespace lux::editor::editing::test
         Statistics stats;
         std::function<void(EStage)> callback;
         std::function<void(const HistoryNotice&)> observer;
+        std::function<void(std::string_view)> reclaimed;
         std::size_t fail_allocation{}, allocation_index{};
         bool reject_prepare{}, empty_plan{}, force_no_change{}, blocked{}, preview{};
         std::array<char, 257> published_label{};
@@ -206,6 +207,10 @@ namespace lux::editor::editing::test
         {
             ++session.stats.operations_destroyed;
             session.stage(EStage::OPERATION_DESTROY);
+            if (session.reclaimed)
+            {
+                session.reclaimed(title);
+            }
         }
         [[nodiscard]] HistoryId historyId() const noexcept override
         {

@@ -2,9 +2,26 @@
 #include "FailureCases.hpp"
 #include "SaveLimitCases.hpp"
 
-int main()
+int main(int argc, char** argv)
 {
     using namespace lux::editor::editing::test;
+#if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
+    if (argc == 2 && std::string_view(argv[1]) == "identity-exhaustion")
+    {
+        using namespace lux::editor::editing;
+        const auto before = detail::allocationStatistics();
+        detail::EditHistoryTestAccess::identityCounter((std::numeric_limits<std::uint64_t>::max)() - 1U);
+        {
+            auto last = EditHistory::create({kLimits});
+            assert(last && (*last)->id().value == (std::numeric_limits<std::uint64_t>::max)());
+            expectError(EditHistory::create({kLimits}), EEditError::ID_EXHAUSTED);
+        }
+        expectError(EditHistory::create({kLimits}), EEditError::ID_EXHAUSTED);
+        assert(before == detail::allocationStatistics());
+        std::cout << "L08 PASS issuer saturated without reuse or leaked factory resources\n";
+        return 0;
+    }
+#endif
     coreCases();
     failureCases();
     saveLimitCases();

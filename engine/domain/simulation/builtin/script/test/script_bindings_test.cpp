@@ -23,6 +23,7 @@ namespace
         ecs::Entity entity{ecs::NullEntity};
         std::size_t calls{};
         bool withdraw{};
+        static bool prepare(void*, ScriptMethodReference&) noexcept { return true; }
         static void hook(void* context, std::uint32_t slot, lux_script_call_frame& frame) noexcept
         {
             static_cast<Dispatch*>(context)->bindings->visitHook(slot, [&](auto reference) noexcept {
@@ -73,7 +74,7 @@ namespace
         const auto capacity = planScriptRuntimeCapacity(inputs);
         assert(capacity);
         ScriptBindings bindings;
-        assert(bindings.prepare(simulation, *capacity, endpoints, {}, {}, 64U));
+        assert(bindings.prepare(simulation, *capacity, endpoints, {}, {nullptr, &Dispatch::prepare}, 64U));
         auto ticket = bindings.reserveBatch(inputs, placements);
         assert(ticket);
         bindings.commitBatch(std::move(*ticket));
@@ -216,7 +217,7 @@ int main()
     ScriptBindings bindings;
     Dispatch dispatch{&bindings, entity};
     assert(bindings.prepare(*simulation, *capacity, hook_endpoints, event_endpoints,
-        {&dispatch, &Dispatch::hook, &Dispatch::event}, 64U));
+        {&dispatch, &Dispatch::prepare, &Dispatch::hook, &Dispatch::event}, 64U));
     const std::array placements{ScriptMountPlacement{0U, false}};
     const auto bytes = bindings.backingBytes();
     const std::array rejected_inputs{inputs[0], inputs[0]};

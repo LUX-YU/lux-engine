@@ -209,11 +209,15 @@ namespace lux::simulation::script
             static_cast<FailurePort*>(context)->owner->faultInvocation(slot, symbol, error, status);
         }
         struct BindingPort final { State* owner{}; } binding_port{this};
+        static bool prepareBinding(void* context, Handler& handler) noexcept
+        {
+            return static_cast<BindingPort*>(context)->owner->execution_owner.prepareInvocation(handler);
+        }
         static void invokeHookLane(void* context, std::uint32_t bucket, lux_script_call_frame& frame) noexcept
         {
             auto& owner = *static_cast<BindingPort*>(context)->owner;
             ExecutionOwnerScope execution{owner};
-            if (!execution)
+            if (!execution || owner.stopping)
                 return;
             if (!owner.region_active && owner.instance_owner.protectedCount() == 0U)
                 std::terminate(); // Native caller violated the explicit execution-region contract.
@@ -228,7 +232,7 @@ namespace lux::simulation::script
         {
             auto& owner = *static_cast<BindingPort*>(context)->owner;
             ExecutionOwnerScope execution{owner};
-            if (!execution)
+            if (!execution || owner.stopping)
                 return;
             if (!owner.region_active && owner.instance_owner.protectedCount() == 0U)
                 std::terminate();
@@ -324,7 +328,7 @@ namespace lux::simulation::script
         void handleAttachmentSignal(ecs::Registry& source, ecs::Entity entity, bool destroying) noexcept
         {
             ExecutionOwnerScope execution{*this};
-            if (!execution)
+            if (!execution || owner.stopping)
                 return;
             if (&source != registry)
                 return;
@@ -521,7 +525,7 @@ namespace lux::simulation::script
                 limits.external_completion_capacity, state->execution_owner.physicalAwaitableCapacity()
             );
             const auto binding_layout = state->binding_owner.prepare(simulation, capacity, hooks, events,
-                {&state->binding_port, &State::invokeHookLane, &State::dispatchEvent},
+                {&state->binding_port, &State::prepareBinding, &State::invokeHookLane, &State::dispatchEvent},
                 limits.max_resume_payload_bytes);
             if (!binding_layout)
                 return lux::cxx::unexpected(binding_layout.error());
@@ -573,7 +577,7 @@ namespace lux::simulation::script
         if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
         State::ExecutionOwnerScope execution{*state_};
-        if (!execution)
+        if (!execution || owner.stopping)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         if (state_->stopping)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
@@ -662,7 +666,7 @@ namespace lux::simulation::script
         if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
         State::ExecutionOwnerScope execution{*state_};
-        if (!execution)
+        if (!execution || owner.stopping)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         if (state_->region_active || state_->endpoint_dispatch_depth != 0U ||
             state_->instance_owner.protectedCount() != 0U ||
@@ -918,7 +922,7 @@ namespace lux::simulation::script
         if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return {};
         State::ExecutionOwnerScope execution{*state_};
-        if (!execution)
+        if (!execution || owner.stopping)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
 
         if (state_->region_active || state_->instance_owner.protectedCount() != 0U ||
@@ -1001,7 +1005,7 @@ namespace lux::simulation::script
         if (!state_)
             return result;
         State::ExecutionOwnerScope execution{*state_};
-        if (!execution)
+        if (!execution || owner.stopping)
             return result;
         state_->instance_owner.writeStats(result);
         result.binding_backing_bytes = state_->binding_owner.backingBytes();

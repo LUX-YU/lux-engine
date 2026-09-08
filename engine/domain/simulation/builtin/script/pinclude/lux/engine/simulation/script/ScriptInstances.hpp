@@ -52,6 +52,7 @@ namespace lux::simulation::script::detail
 
     class ScriptInstances final
     {
+        friend class PreparedInvocation;
         struct InvocationState;
     public:
         [[nodiscard]] bool validEntity(ecs::Entity entity) const noexcept;
@@ -175,6 +176,8 @@ namespace lux::simulation::script::detail
         void commitBatch(BatchTicket&& ticket, const ScriptBindings& bindings) noexcept;
         [[nodiscard]] lux::cxx::expected<std::optional<Construction>, EScriptSystemError>
         beginConstruction(std::uint32_t slot) noexcept;
+        // Cold publication resolves immutable structure once; the returned record stays at a fixed address.
+        [[nodiscard]] const PreparedInvocation* prepareInvocation(ScriptMethodReference method) noexcept;
         [[nodiscard]] Invocation invokeAccess(ScriptMethodReference method) noexcept;
         [[nodiscard]] Invocation resumeAccess(ScriptInstanceId instance) noexcept;
         [[nodiscard]] ScriptMountView view(std::uint32_t slot) const noexcept;
@@ -277,6 +280,7 @@ namespace lux::simulation::script::detail
         std::vector<Mount> mounts_;
         std::vector<InvocationState> invocation_states_;
         std::vector<ScriptPreparedMethod> methods_;
+        std::vector<PreparedInvocation> prepared_invocations_;
         std::vector<std::pair<std::uint64_t, std::uint32_t>> mount_index_;
         entt::dense_map<ecs::Entity, std::uint32_t> entity_associations_;
         std::uint64_t assembly_configuration_slot_visits_{};
@@ -298,6 +302,29 @@ namespace lux::simulation::script::detail
         std::uint64_t event_epoch_{};
         bool suppress_attachment_signal_{};
         bool reservation_active_{};
+    };
+
+    // Private, read-only capability. Only Instances can write authority or refresh the fixed record.
+    // Endpoint/ResumeBatch protection covers every borrow through backend return and cleanup.
+    class PreparedInvocation final
+    {
+    public:
+        PreparedInvocation() = default;
+        [[nodiscard]] bool current() const noexcept
+        {
+            return authority_->state == EScriptMountState::ACTIVE && authority_->instance == instance_;
+        }
+        [[nodiscard]] bool sameIncarnation() const noexcept
+        {
+            return authority_->instance == instance_ || authority_->retiring_instance == instance_;
+        }
+        [[nodiscard]] const ScriptPreparedMethod& method() const noexcept { return *method_; }
+        [[nodiscard]] ScriptInstanceId instance() const noexcept { return instance_; }
+    private:
+        friend class ScriptInstances;
+        const ScriptInstances::InvocationState* authority_{};
+        const ScriptPreparedMethod* method_{};
+        ScriptInstanceId instance_;
     };
 
     // Inline access preserves owner-only writes without a cross-TU call per script invocation.

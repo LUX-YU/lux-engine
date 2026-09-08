@@ -887,80 +887,105 @@ namespace lux::simulation::script::detail
             UserInvocationScope cleanup(*this);
             destroyContinuations(retired, first);
         }
+        [[nodiscard]] bool prepareInvocation(Handler& handler) noexcept
+        {
+            handler.prepared = instance_owner_.prepareInvocation(handler);
+            if (handler.prepared == nullptr)
+                return false;
+            handler.entry = handler.prepared->method().backend.resumable ? &invokeStepEntry : &invokeSyncEntry;
+            return true;
+        }
         void invoke(const Handler& handler, lux_script_call_frame& frame, bool hook_invocation) noexcept
         {
-            if (stopping_)
-                return;
-            auto access = instance_owner_.invokeAccess(handler);
-            if (!access)
+            handler.entry(*this, handler, frame, hook_invocation);
+        }
+    private:
+        static void invokeSyncEntry(ScriptExecution& owner, const Handler& handler,
+            lux_script_call_frame& frame, bool) noexcept
+        {
+            owner.invokeSync(handler, frame);
+        }
+        static void invokeStepEntry(ScriptExecution& owner, const Handler& handler,
+            lux_script_call_frame& frame, bool hook) noexcept
+        {
+            owner.invokeStep(handler, frame, hook);
+        }
+        void invokeSync(const Handler& handler, lux_script_call_frame& frame) noexcept
+        {
+            const auto& access = *handler.prepared;
+            if (!access.current())
                 return;
             const auto& method = access.method();
-            if (method.backend.resumable)
-            {
-                const auto flight = active_hooks_[handler.method_slot];
-                if (hook_invocation && flight.instance == handler.instance && flight.continuation.valid() &&
-                    continuations_.find(continuationKey(flight.continuation)) != nullptr)
-                {
-                    return;
-                }
-                ScriptBackendContinuation continuation;
-                ScriptStepContext context{
-                    handler.instance,
-                    this,
-                    &ScriptExecution::createAwaitableErased,
-                    &ScriptExecution::discardAwaitableErased,
-                    &ScriptExecution::waitEventErased
-                };
-                const auto result = [&]() noexcept {
-                    ++step_invocations_;
-                    return method.backend.resumable.invoke(
-                        method.backend.resumable.context, frame, context, continuation);
-                }();
-                if (!access.current() || stopping_)
-                {
-                    if (continuation)
-                        continuation.destroy(continuation.state);
-                    discardAwaitable(context.instance, result.waiting_on);
-                    return;
-                }
-                if (result.state == EScriptStepState::COMPLETED && result.valid())
-                {
-                    if (continuation)
-                    {
-                        continuation.destroy(continuation.state);
-                        faultInvocation(handler.mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE);
-                    }
-                    return;
-                }
-                if (result.state == EScriptStepState::SUSPENDED)
-                {
-                    static_cast<void>(beginSuspension(
-                        handler.mount_slot, handler.method_slot, access.instance(),
-                        method, continuation, result, hook_invocation
-                    ));
-                    return;
-                }
-                if (continuation)
-                    continuation.destroy(continuation.state);
-                faultInvocation(
-                    handler.mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE, result.error.status
-                );
-                return;
-            }
 
             frame.user_context = method.backend.synchronous.context;
             const auto status = [&]() noexcept {
                 ++sync_invocations_;
                 return method.backend.synchronous.invoke(&frame);
             }();
-            const bool still_current = access.current();
             if (status == 0)
                 return;
             // Revoking new calls must not discard an error returned by this protected incarnation.
-            if (!still_current && !access.sameIncarnation())
+            if (!access.sameIncarnation())
                 return;
             faultInvocation(handler.mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE, status);
         }
+        void invokeStep(const Handler& handler, lux_script_call_frame& frame, bool hook_invocation) noexcept
+        {
+            const auto& access = *handler.prepared;
+            if (!access.current())
+                return;
+            const auto& method = access.method();
+            const auto flight = active_hooks_[handler.method_slot];
+            if (hook_invocation && flight.instance == handler.instance && flight.continuation.valid() &&
+                continuations_.find(continuationKey(flight.continuation)) != nullptr)
+            {
+                return;
+            }
+            ScriptBackendContinuation continuation;
+            ScriptStepContext context{
+                handler.instance,
+                this,
+                &ScriptExecution::createAwaitableErased,
+                &ScriptExecution::discardAwaitableErased,
+                &ScriptExecution::waitEventErased
+            };
+            const auto result = [&]() noexcept {
+                ++step_invocations_;
+                return method.backend.resumable.invoke(
+                    method.backend.resumable.context, frame, context, continuation);
+            }();
+            if (!access.current() || stopping_)
+            {
+                if (continuation)
+                    continuation.destroy(continuation.state);
+                discardAwaitable(context.instance, result.waiting_on);
+                return;
+            }
+            if (result.state == EScriptStepState::COMPLETED && result.valid())
+            {
+                if (continuation)
+                {
+                    continuation.destroy(continuation.state);
+                    faultInvocation(handler.mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE);
+                }
+                return;
+            }
+            if (result.state == EScriptStepState::SUSPENDED)
+            {
+                static_cast<void>(beginSuspension(
+                    handler.mount_slot, handler.method_slot, access.instance(),
+                    method, continuation, result, hook_invocation
+                ));
+                return;
+            }
+            if (continuation)
+                continuation.destroy(continuation.state);
+            faultInvocation(
+                handler.mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE, result.error.status
+            );
+            return;
+        }
+    public:
         void completeClaimedEventWaiter(const ScriptClaimedEventWait& waiter, lux_script_call_frame& frame) noexcept
         {
             const auto id = waiter.id;

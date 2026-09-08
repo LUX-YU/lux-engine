@@ -10,6 +10,27 @@
 namespace lux::simulation::script::detail
 {
 
+    const PreparedInvocation* ScriptInstances::prepareInvocation(ScriptMethodReference reference) noexcept
+    {
+        if (reference.mount_slot >= invocation_states_.size() || !reference.instance.valid())
+            return nullptr;
+        const auto& authority = invocation_states_[reference.mount_slot];
+        const bool valid_state = authority.state == EScriptMountState::INITIALIZED ||
+            authority.state == EScriptMountState::ACTIVE;
+        const bool valid_method = reference.method_slot >= authority.method_first &&
+            reference.method_slot < authority.method_first + authority.method_count;
+        if (!valid_state || authority.instance != reference.instance || !valid_method)
+            return nullptr;
+        const auto& method = methods_[reference.method_slot];
+        if (!method.backend)
+            return nullptr;
+        auto& invocation = prepared_invocations_[reference.method_slot];
+        invocation.authority_ = &authority;
+        invocation.method_ = &method;
+        invocation.instance_ = reference.instance;
+        return &invocation;
+    }
+
     ScriptInstances::BatchTicket::BatchTicket(BatchTicket&& other) noexcept
         : owner_(std::exchange(other.owner_, nullptr)) {}
     ScriptInstances::BatchTicket::~BatchTicket() noexcept
@@ -45,6 +66,7 @@ namespace lux::simulation::script::detail
             for (std::size_t slot{}; slot < mounts_.size(); ++slot)
                 mounts_[slot].invocation = &invocation_states_[slot];
             methods_.reserve(capacity.method_capacity);
+            prepared_invocations_.resize(capacity.method_capacity);
             identities_.reserve(instance_capacity);
             mount_index_.reserve(enabled_capacity_);
             entity_associations_.reserve(enabled_capacity_ * 2U);
@@ -261,7 +283,8 @@ namespace lux::simulation::script::detail
         output.pending_mounts = pending_count_;
         output.active_instances = active_count_;
         output.mount_backing_bytes = mounts_.capacity() * sizeof(Mount) +
-            invocation_states_.capacity() * sizeof(InvocationState);
+            invocation_states_.capacity() * sizeof(InvocationState) +
+            prepared_invocations_.capacity() * sizeof(PreparedInvocation);
         output.method_backing_bytes = methods_.capacity() * sizeof(ScriptPreparedMethod);
         output.mount_feedback_backing_bytes = changes_.capacity() * sizeof(std::uint32_t) + changed_.capacity();
     }

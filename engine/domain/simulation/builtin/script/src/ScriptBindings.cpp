@@ -324,7 +324,12 @@ namespace lux::simulation::script::detail
         for (std::size_t index{config.first}; index < config.first + config.count; ++index)
         {
             auto& binding = bindings_[index];
-            const ScriptMethodReference handler{slot, binding.method, instance};
+            ScriptMethodReference handler{slot, binding.method, instance};
+            if (dispatch_.prepare == nullptr || !dispatch_.prepare(dispatch_.context, handler))
+            {
+                unlink(slot);
+                return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
+            }
             EScriptSystemError error{};
             bool failed{};
             if (binding.kind == EBindingKind::HOOK)

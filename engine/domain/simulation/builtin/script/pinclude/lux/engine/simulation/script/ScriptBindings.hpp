@@ -22,17 +22,23 @@ namespace lux::simulation::script::detail
         std::size_t method_count{};
     };
 
+    class PreparedInvocation;
+    class ScriptExecution;
+
     struct ScriptMethodReference final
     {
         std::uint32_t mount_slot{};
         std::uint32_t method_slot{};
         ScriptInstanceId instance;
+        const PreparedInvocation* prepared{};
+        void (*entry)(ScriptExecution&, const ScriptMethodReference&, lux_script_call_frame&, bool) noexcept{};
     };
 
     // The endpoint ABI borrows this operation port, never the runtime State or its containers.
     struct ScriptBindingDispatch final
     {
         void* context{};
+        bool (*prepare)(void*, ScriptMethodReference&) noexcept{};
         void (*hook)(void*, std::uint32_t, lux_script_call_frame&) noexcept{};
         void (*event)(void*, std::uint32_t, ecs::Entity, lux_script_call_frame&) noexcept{};
     };

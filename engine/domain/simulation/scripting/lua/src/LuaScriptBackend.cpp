@@ -1098,6 +1098,15 @@ namespace lux::simulation::script
             return 1;
         }
 
+        static int destroySelf(lua_State* state) noexcept
+        {
+            auto* handle = hostHandle(state);
+            const bool valid = handle && handle->alive && handle->host &&
+                handle->host->captureInvocation().valid();
+            lua_pushboolean(state, valid && handle->host->command(EScriptHostCommand::DESTROY_ENTITY));
+            return 1;
+        }
+
         static EScriptBackendResult createInstance(
             void* opaque,
             const ScriptInstanceCreateContext& context,
@@ -1163,7 +1172,7 @@ namespace lux::simulation::script
             instance->active = true;
             instance->behavior = context.behavior;
 
-            lua_createtable(self.state, 0, instance->entity_scope ? 3 : 0);
+            lua_createtable(self.state, 0, instance->entity_scope ? 4 : 0);
             const auto instance_index = lua_gettop(self.state);
             lua_rawgeti(self.state, LUA_REGISTRYINDEX, prototype->table_ref);
             const auto prototype_index = lua_gettop(self.state);
@@ -1195,6 +1204,9 @@ namespace lux::simulation::script
                 lua_pushvalue(self.state, handle_index);
                 lua_pushcclosure(self.state, &State::patchComponent, 1);
                 lua_setfield(self.state, instance_index, "patch_component");
+                lua_pushvalue(self.state, handle_index);
+                lua_pushcclosure(self.state, &State::destroySelf, 1);
+                lua_setfield(self.state, instance_index, "destroy");
                 lua_pop(self.state, 1);
             }
             const auto table_ref = luaL_ref(self.state, LUA_REGISTRYINDEX);

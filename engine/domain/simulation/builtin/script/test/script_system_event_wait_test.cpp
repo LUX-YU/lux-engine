@@ -1,3 +1,7 @@
+#include "ScriptRuntimeTestRegion.hpp"
+using lux::simulation::script::test::dispatchRuntimeHook;
+using lux::simulation::script::test::deliverRuntimeEvent;
+using lux::simulation::script::test::executeRuntimeStablePoint;
 #if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
 #include "ScriptTestClock.hpp"
 #endif
@@ -687,7 +691,7 @@ namespace
 
         void emitImmediateWait(std::int32_t payload) noexcept
         {
-            immediate_wait.emit(payload);
+            lux::simulation::script::test::inRuntimeRegion(*system, [&] { immediate_wait.emit(payload); });
         }
 
         void recordTargetedStart(ecs::Entity target, std::int32_t payload)
@@ -741,7 +745,7 @@ namespace
         {
             Harness callback_only{{.bind_start = false, .bind_callback = true}};
             callback_only.recordBroadcastWait(1);
-            assert(deliverEndpoint(callback_only.broadcast_wait_bridge) == 1U);
+            assert(deliverRuntimeEvent(*callback_only.system, callback_only.broadcast_wait_bridge) == 1U);
             assert(callback_only.backend_state.callback_calls == 1U);
             assert(callback_only.system->stats().active_event_waiters == 0U);
         }
@@ -749,7 +753,7 @@ namespace
         Harness harness{{.bind_callback = true}};
         harness.recordBroadcastStart(1);
         harness.recordBroadcastStart(2);
-        assert(deliverEndpoint(harness.broadcast_start_bridge) == 2U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 2U);
         auto waiting = harness.system->stats();
         assert(waiting.active_event_waiters == 2U);
         assert(waiting.event_waiter_high_water == 2U);
@@ -759,19 +763,19 @@ namespace
         std::int32_t payload{42};
         harness.recordBroadcastWait(payload);
         payload = 99;
-        assert(deliverEndpoint(harness.broadcast_wait_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_wait_bridge) == 1U);
         assert(harness.system->stats().event_waiter_dispatch_visits -
             waiting.event_waiter_dispatch_visits == 2U);
         assert(harness.backend_state.callback_calls == 1U);
         assert(harness.backend_state.resumes == 0U);
         assert(harness.system->stats().active_event_waiters == 0U);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resumes == 2U);
         assert(harness.backend_state.resume_values == std::vector<std::int32_t>({42, 42}));
 
         harness.recordBroadcastWait(7);
-        assert(deliverEndpoint(harness.broadcast_wait_bridge) == 1U);
-        assert(harness.system->executeStablePoint());
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_wait_bridge) == 1U);
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resumes == 2U);
     }
 
@@ -782,18 +786,18 @@ namespace
             .callback_action = ECallbackAction::WAIT_ONCE
         }};
         harness.recordBroadcastStart(1);
-        assert(deliverEndpoint(harness.broadcast_start_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 1U);
         harness.recordBroadcastWait(10);
-        assert(deliverEndpoint(harness.broadcast_wait_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_wait_bridge) == 1U);
         assert(harness.backend_state.callback_calls == 1U);
         assert(harness.system->stats().active_event_waiters == 1U);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resume_values == std::vector<std::int32_t>({10}));
 
         harness.recordBroadcastWait(20);
-        assert(deliverEndpoint(harness.broadcast_wait_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_wait_bridge) == 1U);
         assert(harness.system->stats().active_event_waiters == 0U);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resume_values == std::vector<std::int32_t>({10, 20}));
     }
 
@@ -809,12 +813,15 @@ namespace
         Harness harness{options};
         auto& clock_owner = *harness.clock_owner;
         harness.recordBroadcastStart(1);
-        assert(deliverEndpoint(harness.broadcast_start_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 1U);
         harness.recordBroadcastWait(10);
         harness.recordBroadcastWait(20);
         assert(harness.broadcast_wait.seal());
         const auto endpoint = harness.broadcast_wait_bridge->descriptor();
-        assert(endpoint.consume(endpoint.context) == 2U); // Exactly one sealed batch, two occurrences.
+        const auto consumed = lux::simulation::script::test::inRuntimeRegion(*harness.system, [&] {
+            return endpoint.consume(endpoint.context);
+        });
+        assert(consumed == 2U); // Exactly one sealed batch, two occurrences.
         assert(harness.backend_state.callback_calls == 2U);
         assert(harness.system->stats().active_event_waiters == 0U);
         assert(harness.system->stats().resume_queue_depth == 2U);
@@ -822,16 +829,16 @@ namespace
         harness.broadcast_wait.reset();
         // Reuse/reset the Channel before either result is read; results must remain independently owned.
         harness.recordBroadcastWait(999);
-        assert(deliverEndpoint(harness.broadcast_wait_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_wait_bridge) == 1U);
         for (std::uint64_t step{1U}; step <= 2U; ++step)
         {
             clock_owner.advance(SimulationDuration{1});
             assert(clock_owner.clock().snapshot().step_index == step);
-            assert(harness.system->executeStablePoint());
+            assert(executeRuntimeStablePoint(*harness.system));
             const auto expected = step == 1U ? std::vector<std::int32_t>{10} : std::vector<std::int32_t>{10, 20};
             assert(harness.backend_state.resume_values == expected);
             assert(harness.system->stats().resume_queue_depth == 2U - step);
-            assert(harness.system->executeStablePoint());
+            assert(executeRuntimeStablePoint(*harness.system));
             assert(harness.backend_state.resume_values == expected); // Real-step deduplication preserves budget=1.
             std::printf("SEALED_STEP,step=%llu,resumes=%llu,queue=%zu,last=%d\n", step,
                 static_cast<unsigned long long>(harness.backend_state.resumes),
@@ -851,37 +858,37 @@ namespace
         const auto old_entity = harness.entity;
         const auto other = harness.registry.create();
         harness.recordTargetedStart(old_entity, 1);
-        assert(deliverEndpoint(harness.targeted_start_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.targeted_start_bridge) == 1U);
         assert(harness.system->stats().active_event_waiters == 1U);
 
         harness.recordTargetedWait(other, 2);
         const auto visits_before_wrong_target = harness.system->stats().event_waiter_dispatch_visits;
-        assert(deliverEndpoint(harness.targeted_wait_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.targeted_wait_bridge) == 1U);
         assert(harness.system->stats().active_event_waiters == 1U);
         assert(harness.system->stats().event_waiter_dispatch_visits == visits_before_wrong_target);
         assert(harness.backend_state.callback_calls == 0U);
 
         harness.recordTargetedWait(old_entity, 3);
-        assert(deliverEndpoint(harness.targeted_wait_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.targeted_wait_bridge) == 1U);
         assert(harness.backend_state.callback_calls == 1U);
         assert(harness.backend_state.resumes == 0U);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resume_values == std::vector<std::int32_t>({3}));
 
         harness.backend_state.callback_action = ECallbackAction::DESTROY_SELF;
         harness.recordTargetedStart(old_entity, 4);
-        assert(deliverEndpoint(harness.targeted_start_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.targeted_start_bridge) == 1U);
         harness.recordTargetedWait(old_entity, 5);
-        assert(deliverEndpoint(harness.targeted_wait_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.targeted_wait_bridge) == 1U);
         assert(harness.backend_state.resumes == 1U);
         assert(harness.system->stats().active_event_waiters == 0U);
-        const auto retired = harness.system->executeStablePoint();
+        const auto retired = executeRuntimeStablePoint(*harness.system);
         assert(retired);
         assert(harness.system->activeInstanceCount() == 0U);
 
         harness.recordTargetedWait(old_entity, 6);
-        assert(deliverEndpoint(harness.targeted_wait_bridge) == 1U);
-        assert(harness.system->executeStablePoint());
+        assert(deliverRuntimeEvent(*harness.system, harness.targeted_wait_bridge) == 1U);
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resumes == 1U);
 
         harness.entity = harness.registry.create();
@@ -889,16 +896,16 @@ namespace
         assert(harness.system->collectMountStatusChanges(changes));
         harness.description[0].scope = EntityScriptScope{harness.entity};
         assert(harness.system->mountResolvedBatch(std::span{&harness.description[0], 1U}));
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         harness.backend_state.callback_action = ECallbackAction::NONE;
         harness.recordTargetedStart(harness.entity, 7);
-        assert(deliverEndpoint(harness.targeted_start_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.targeted_start_bridge) == 1U);
         harness.recordTargetedWait(old_entity, 8);
-        assert(deliverEndpoint(harness.targeted_wait_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.targeted_wait_bridge) == 1U);
         assert(harness.system->stats().active_event_waiters == 1U);
         harness.recordTargetedWait(harness.entity, 9);
-        assert(deliverEndpoint(harness.targeted_wait_bridge) == 1U);
-        assert(harness.system->executeStablePoint());
+        assert(deliverRuntimeEvent(*harness.system, harness.targeted_wait_bridge) == 1U);
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resume_values == std::vector<std::int32_t>({3, 9}));
     }
 
@@ -906,10 +913,10 @@ namespace
     {
         Harness harness{{.wait_route = EEventRoute::ENTITY_TARGETED}};
         harness.recordBroadcastStart(1);
-        assert(deliverEndpoint(harness.broadcast_start_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 1U);
         assert(harness.backend_state.wait_error == EScriptEventWaitError::SCOPE_MISMATCH);
         assert(harness.system->stats().active_event_waiters == 0U);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.system->activeInstanceCount() == 0U);
     }
 
@@ -921,10 +928,10 @@ namespace
         Harness harness{options};
         harness.recordBroadcastStart(1);
         harness.recordBroadcastStart(2);
-        assert(deliverEndpoint(harness.broadcast_start_bridge) == 2U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 2U);
         assert(harness.backend_state.wait_error == EScriptEventWaitError::WAITER_CAPACITY_EXCEEDED);
         assert(harness.system->stats().active_event_waiters == 0U);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.system->activeInstanceCount() == 0U);
         const auto stats = harness.system->stats();
         assert(stats.active_event_waiters == 0U);
@@ -940,9 +947,9 @@ namespace
         Harness harness{options};
         harness.recordBroadcastStart(1);
         harness.recordBroadcastStart(2);
-        assert(deliverEndpoint(harness.broadcast_start_bridge) == 2U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 2U);
         assert(harness.backend_state.wait_error == EScriptEventWaitError::AWAITABLE_CAPACITY_EXCEEDED);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         const auto stats = harness.system->stats();
         assert(stats.active_event_waiters == 0U);
         assert(stats.active_awaitables == 0U);
@@ -957,12 +964,12 @@ namespace
         Harness harness{options};
         harness.recordBroadcastStart(1);
         harness.recordBroadcastStart(2);
-        assert(deliverEndpoint(harness.broadcast_start_bridge) == 2U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 2U);
         harness.recordBroadcastWait(12);
-        assert(deliverEndpoint(harness.broadcast_wait_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_wait_bridge) == 1U);
         assert(!harness.system->failures().empty());
         assert(harness.system->failures().back().error == EScriptSystemError::RESUME_QUEUE_FULL);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resumes == 0U);
         assert(harness.system->activeInstanceCount() == 0U);
     }
@@ -976,16 +983,16 @@ namespace
         harness.recordBroadcastStart(1);
         harness.recordBroadcastStart(2);
         harness.recordBroadcastStart(3);
-        assert(deliverEndpoint(harness.broadcast_start_bridge) == 3U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 3U);
         harness.recordBroadcastWait(14);
-        assert(deliverEndpoint(harness.broadcast_wait_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_wait_bridge) == 1U);
         assert(harness.system->stats().resume_queue_depth == 3U);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resumes == 1U);
         assert(harness.system->stats().resume_queue_depth == 2U);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resumes == 2U);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resumes == 3U);
     }
 
@@ -1006,11 +1013,11 @@ namespace
         {
             Harness harness{{.fail_wait_copy = true}};
             harness.recordBroadcastStart(1);
-            assert(deliverEndpoint(harness.broadcast_start_bridge) == 1U);
+            assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 1U);
             harness.recordBroadcastWait(15);
-            assert(deliverEndpoint(harness.broadcast_wait_bridge) == 1U);
+            assert(deliverRuntimeEvent(*harness.system, harness.broadcast_wait_bridge) == 1U);
             assert(harness.system->stats().active_event_waiters == 0U);
-            assert(harness.system->executeStablePoint());
+            assert(executeRuntimeStablePoint(*harness.system));
             assert(harness.backend_state.resumes == 0U);
             assert(harness.system->activeInstanceCount() == 0U);
         }
@@ -1048,12 +1055,12 @@ namespace
             .immediate_wait_endpoint = true
         }};
         harness.recordBroadcastStart(1);
-        assert(deliverEndpoint(harness.broadcast_start_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 1U);
         harness.emitImmediateWait(16);
         assert(harness.backend_state.callback_calls == 3U);
         assert(harness.system->stats().active_event_waiters == 0U);
         assert(harness.backend_state.resumes == 0U);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resumes == 1U);
         assert(harness.backend_state.resume_values == std::vector<std::int32_t>({16}));
     }
@@ -1062,7 +1069,7 @@ namespace
     {
         Harness harness{{}};
         harness.recordBroadcastStart(1);
-        assert(deliverEndpoint(harness.broadcast_start_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 1U);
         assert(harness.system->stats().active_event_waiters == 1U);
         assert(harness.system->shutdown());
         const auto stats = harness.system->stats();
@@ -1070,7 +1077,7 @@ namespace
         assert(stats.active_awaitables == 0U);
         assert(stats.active_continuations == 0U);
         harness.recordBroadcastWait(17);
-        assert(deliverEndpoint(harness.broadcast_wait_bridge) == 0U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_wait_bridge) == 0U);
         assert(harness.backend_state.resumes == 0U);
     }
 
@@ -1082,13 +1089,13 @@ namespace
         Harness harness{options};
         for (std::size_t index{}; index < count; ++index)
             harness.recordBroadcastStart(static_cast<std::int32_t>(index));
-        assert(deliverEndpoint(harness.broadcast_start_bridge) == count);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == count);
         const auto before = harness.system->stats();
         assert(before.active_event_waiters == count);
         assert(before.completion_capability_constructions == 0U);
         assert(harness.broadcast_wait_bridge->connectionCount() == 1U);
         for (std::size_t index{}; index < 4U; ++index)
-            assert(harness.system->executeStablePoint());
+            assert(executeRuntimeStablePoint(*harness.system));
         const auto after = harness.system->stats();
         assert(after.active_event_waiters == count);
         assert(after.event_waiter_dispatch_visits == before.event_waiter_dispatch_visits);
@@ -1122,16 +1129,16 @@ namespace
         Harness harness{options};
         for (std::size_t index{}; index < kFirstInstanceWaiters; ++index)
             harness.recordBroadcastStart(static_cast<std::int32_t>(index));
-        assert(deliverEndpoint(harness.broadcast_start_bridge) == kFirstInstanceWaiters);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == kFirstInstanceWaiters);
         harness.recordBroadcastStartSecond(1);
-        assert(deliverEndpoint(harness.broadcast_start_second_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_second_bridge) == 1U);
         const auto before = harness.system->stats();
         assert(before.active_event_waiters == 100'000U);
 
         harness.backend_state.callback_action = ECallbackAction::FAIL;
         harness.recordBroadcastFaultSecond(1);
-        assert(deliverEndpoint(harness.broadcast_fault_second_bridge) == 1U);
-        assert(harness.system->executeStablePoint());
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_fault_second_bridge) == 1U);
+        assert(executeRuntimeStablePoint(*harness.system));
         const auto after = harness.system->stats();
         assert(after.active_event_waiters == kFirstInstanceWaiters);
         assert(after.instance_cleanup_event_waiter_visits - before.instance_cleanup_event_waiter_visits == 1U);
@@ -1146,14 +1153,14 @@ namespace
         second.backend_state.override_source = true;
         second.backend_state.override_admission = first.backend_state.first_admission;
         second.recordBroadcastStart(1);
-        assert(deliverEndpoint(second.broadcast_start_bridge) == 1U);
+        assert(deliverRuntimeEvent(*second.system, second.broadcast_start_bridge) == 1U);
         assert(second.backend_state.wait_error == EScriptEventWaitError::UNDECLARED_SOURCE);
         assert(second.system->activeAwaitableCount() == 0U && second.backend_state.resumes == 0U);
         first.recordBroadcastStart(1);
-        assert(deliverEndpoint(first.broadcast_start_bridge) == 1U);
+        assert(deliverRuntimeEvent(*first.system, first.broadcast_start_bridge) == 1U);
         first.recordBroadcastWait(9);
-        assert(deliverEndpoint(first.broadcast_wait_bridge) == 1U);
-        assert(first.system->executeStablePoint());
+        assert(deliverRuntimeEvent(*first.system, first.broadcast_wait_bridge) == 1U);
+        assert(executeRuntimeStablePoint(*first.system));
         assert(first.backend_state.resume_values == std::vector<std::int32_t>{9});
 
         Harness reincarnation{{.entity_scope = true}};
@@ -1170,7 +1177,7 @@ namespace
         reincarnation.backend_state.override_source = true;
         reincarnation.backend_state.override_admission = old;
         reincarnation.recordTargetedStart(reincarnation.entity, 1);
-        assert(deliverEndpoint(reincarnation.targeted_start_bridge) == 1U);
+        assert(deliverRuntimeEvent(*reincarnation.system, reincarnation.targeted_start_bridge) == 1U);
         assert(reincarnation.backend_state.wait_error == EScriptEventWaitError::UNDECLARED_SOURCE);
         assert(reincarnation.system->activeAwaitableCount() == 0U);
     }
@@ -1179,7 +1186,7 @@ namespace
     {
         Harness harness{{.entity_scope = true, .immediate_wait_endpoint = true}};
         harness.recordTargetedStart(harness.entity, 1);
-        assert(deliverEndpoint(harness.targeted_start_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.targeted_start_bridge) == 1U);
         harness.immediate_wait.copy_context = &harness;
         harness.immediate_wait.copy_probe = [](void* context, std::span<std::byte> output) noexcept {
             auto& value = *static_cast<Harness*>(context);
@@ -1195,7 +1202,7 @@ namespace
         const auto completed = harness.system->stats();
         assert(completed.result_write_pins == 0U && completed.deferred_awaitable_releases == 0U);
         assert(completed.active_awaitables == 0U && completed.active_event_waiters == 0U);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resumes == 0U && harness.backend_state.continuation_destroys == 1U);
     }
 
@@ -1207,9 +1214,9 @@ namespace
         options.limits.instance_capacity = 2U;
         Harness harness{options};
         harness.recordBroadcastStartSecond(1);
-        assert(deliverEndpoint(harness.broadcast_start_second_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_second_bridge) == 1U);
         harness.recordBroadcastStart(1);
-        assert(deliverEndpoint(harness.broadcast_start_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 1U);
         struct CopyContext final { Harness* harness; unsigned calls{}; } context{&harness};
         harness.immediate_wait.copy_context = &context;
         harness.immediate_wait.copy_probe = [](void* opaque, std::span<std::byte> output) noexcept {
@@ -1219,7 +1226,7 @@ namespace
                 auto& value = *context.harness;
                 value.backend_state.callback_action = ECallbackAction::FAIL;
                 value.recordBroadcastFaultSecond(1);
-                assert(deliverEndpoint(value.broadcast_fault_second_bridge) == 1U);
+                assert(deliverRuntimeEvent(*value.system, value.broadcast_fault_second_bridge) == 1U);
                 assert(value.system->stats().result_write_pins == 1U);
                 // Erasing the earlier record must not relocate the current inline result.
                 std::memset(output.data(), 0x6B, output.size());
@@ -1233,7 +1240,7 @@ namespace
         assert(after.event_payload_copy_bytes - before.event_payload_copy_bytes == 8U);
         assert(after.completion_capability_constructions == 0U && context.calls == 2U);
         assert(harness.backend_state.resumes == 0U);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resume_values == std::vector<std::int32_t>{73});
         assert(harness.system->activeAwaitableCount() == 0U && harness.backend_state.continuation_destroys == 2U);
     }
@@ -1244,7 +1251,7 @@ namespace
         {
             Harness harness{{.immediate_wait_endpoint = true}};
             harness.recordBroadcastStart(1);
-            assert(deliverEndpoint(harness.broadcast_start_bridge) == 1U);
+            assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 1U);
             struct CopyContext final { Harness* harness; bool stop; } context{&harness, stop};
             harness.immediate_wait.copy_context = &context;
             harness.immediate_wait.copy_probe = [](void* opaque, std::span<std::byte> output) noexcept {
@@ -1260,7 +1267,8 @@ namespace
             harness.emitImmediateWait(41);
             const auto stats = harness.system->stats();
             assert(stats.result_write_pins == 0U && stats.deferred_awaitable_releases == 0U);
-            assert(stats.active_awaitables == 0U && stats.active_event_waiters == 0U);
+            assert(stats.active_awaitables == (stop ? 1U : 0U) && stats.active_event_waiters == 0U);
+            assert(stats.resume_queue_depth == (stop ? 1U : 0U));
             assert(harness.backend_state.resumes == 0U);
             assert(harness.system->shutdown());
         }
@@ -1274,7 +1282,7 @@ namespace
         options.limits.instance_capacity = 2U;
         Harness harness{options};
         harness.recordBroadcastStart(1);
-        assert(deliverEndpoint(harness.broadcast_start_bridge) == 1U);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 1U);
         struct Probe final { Harness* harness; bool used{}; } probe{&harness};
         harness.immediate_wait.copy_context = &probe;
         harness.immediate_wait.copy_probe = [](void* opaque, std::span<std::byte> output) noexcept {
@@ -1284,7 +1292,7 @@ namespace
                 auto& value = *probe.harness;
                 const auto capacity = value.system->stats().awaitable_reserved_slots;
                 for (unsigned i{}; i < 3U; ++i) value.recordBroadcastStartSecond(1);
-                assert(deliverEndpoint(value.broadcast_start_second_bridge) == 3U);
+                assert(deliverRuntimeEvent(*value.system, value.broadcast_start_second_bridge) == 3U);
                 assert(value.system->stats().awaitable_reserved_slots == capacity);
             }
             std::memset(output.data(), 0x31, output.size());
@@ -1292,24 +1300,24 @@ namespace
         };
         harness.emitImmediateWait(81);
         assert(harness.system->stats().active_event_waiters == 3U);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resume_values == std::vector<std::int32_t>{81});
         harness.emitImmediateWait(82);
-        assert(harness.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*harness.system));
         assert(harness.backend_state.resume_values == std::vector<std::int32_t>({81, 82, 82, 82}));
 
         options.limits.event_wait_capacity = 1U;
         Harness pressure{options};
         pressure.recordBroadcastStartSecond(1);
-        assert(deliverEndpoint(pressure.broadcast_start_second_bridge) == 1U);
+        assert(deliverRuntimeEvent(*pressure.system, pressure.broadcast_start_second_bridge) == 1U);
         pressure.immediate_wait.copy_context = &pressure;
         pressure.immediate_wait.copy_probe = [](void* opaque, std::span<std::byte> output) noexcept {
             auto& value = *static_cast<Harness*>(opaque);
             value.backend_state.callback_action = ECallbackAction::FAIL;
             value.recordBroadcastFaultSecond(1);
-            assert(deliverEndpoint(value.broadcast_fault_second_bridge) == 1U);
+            assert(deliverRuntimeEvent(*value.system, value.broadcast_fault_second_bridge) == 1U);
             value.recordBroadcastStart(1);
-            assert(deliverEndpoint(value.broadcast_start_bridge) == 1U);
+            assert(deliverRuntimeEvent(*value.system, value.broadcast_start_bridge) == 1U);
             assert(value.backend_state.wait_error == EScriptEventWaitError::WAITER_CAPACITY_EXCEEDED);
             std::memset(output.data(), 0x32, output.size());
             return true;
@@ -1322,32 +1330,54 @@ namespace
 
 int main(int argc, char**)
 {
+    std::puts("EVENT_CASE testBroadcastSemantics()"); std::fflush(stdout);
     testBroadcastSemantics();
+    std::puts("EVENT_CASE testRegistrationCutoff()"); std::fflush(stdout);
     testRegistrationCutoff();
 #if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
+    std::puts("EVENT_CASE testSealedBatchAndOwnedResultAcrossSteps()"); std::fflush(stdout);
     testSealedBatchAndOwnedResultAcrossSteps();
 #endif
+    std::puts("EVENT_CASE testTargetedAndRetirement()"); std::fflush(stdout);
     testTargetedAndRetirement();
+    std::puts("EVENT_CASE testTargetedScopeRejection()"); std::fflush(stdout);
     testTargetedScopeRejection();
+    std::puts("EVENT_CASE testCapacityFailure()"); std::fflush(stdout);
     testCapacityFailure();
+    std::puts("EVENT_CASE testAwaitableCapacityFailure()"); std::fflush(stdout);
     testAwaitableCapacityFailure();
+    std::puts("EVENT_CASE testResumeQueueFailure()"); std::fflush(stdout);
     testResumeQueueFailure();
+    std::puts("EVENT_CASE testResumeBudget()"); std::fflush(stdout);
     testResumeBudget();
+    std::puts("EVENT_CASE testPayloadFailures()"); std::fflush(stdout);
     testPayloadFailures();
+    std::puts("EVENT_CASE testArtifactSchemaDriftFailsBeforeInstanceCreation()"); std::fflush(stdout);
     testArtifactSchemaDriftFailsBeforeInstanceCreation();
+    std::puts("EVENT_CASE testNestedDispatch()"); std::fflush(stdout);
     testNestedDispatch();
+    std::puts("EVENT_CASE testShutdownWithPendingWaiter()"); std::fflush(stdout);
     testShutdownWithPendingWaiter();
     if (argc == 1)
     {
+        std::puts("EVENT_CASE testIdleWaiterComplexity(10'000U)"); std::fflush(stdout);
         testIdleWaiterComplexity(10'000U);
+        std::puts("EVENT_CASE testIdleWaiterComplexity(50'000U)"); std::fflush(stdout);
         testIdleWaiterComplexity(50'000U);
+        std::puts("EVENT_CASE testIdleWaiterComplexity(100'000U)"); std::fflush(stdout);
         testIdleWaiterComplexity(100'000U);
+        std::puts("EVENT_CASE testOutputSensitiveRetirement()"); std::fflush(stdout);
         testOutputSensitiveRetirement();
     }
+    std::puts("EVENT_CASE testPreparedAdmissionProvenance()"); std::fflush(stdout);
     testPreparedAdmissionProvenance();
+    std::puts("EVENT_CASE testCopyRetirementPin()"); std::fflush(stdout);
     testCopyRetirementPin();
+    std::puts("EVENT_CASE testCopyOtherRecordRemoval()"); std::fflush(stdout);
     testCopyOtherRecordRemoval();
+    std::puts("EVENT_CASE testCopyShutdownAndFailure()"); std::fflush(stdout);
     testCopyShutdownAndFailure();
+    std::puts("EVENT_CASE testCopyNestedAdmission()"); std::fflush(stdout);
     testCopyNestedAdmission();
     return 0;
 }

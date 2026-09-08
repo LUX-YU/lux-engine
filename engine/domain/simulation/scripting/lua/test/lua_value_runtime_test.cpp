@@ -1,3 +1,7 @@
+#include "../../../builtin/script/test/ScriptRuntimeTestRegion.hpp"
+using lux::simulation::script::test::dispatchRuntimeHook;
+using lux::simulation::script::test::deliverRuntimeEvent;
+using lux::simulation::script::test::executeRuntimeStablePoint;
 #include "../../../system/test/HookInvocationTestAccess.hpp"
 #include "LuaValueTestTypes.lua.value.generated.hpp"
 #include "LuaValueTestAbility.ability.generated.hpp"
@@ -6,6 +10,7 @@
 #include "LuaPushOnlyAbility.ability.lua.generated.hpp"
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/engine/simulation/scripting/DeferredScriptHost.hpp>
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 #include <array>
@@ -24,6 +29,11 @@ using lux::simulation::test::dispatchHookForTest;
 using AbilityTraits = lux::script::ScriptAbilityTraits<LuaValueTestAbility>;
 constexpr lux::system::SystemInstanceId kOwner{0x5A0101};
 constexpr HookPointId kHook{0x5A0102};
+constexpr HookPointId kFaultHook{0x5A0106};
+constexpr std::uint64_t kScoreComponent{0x5A0107};
+static const std::array kHostComponents{scriptDeferredComponent<std::int32_t>({
+    kScoreComponent, lux::semantic::typeId("lux.i32"), "lux.i32", LUX_SCRIPT_VK_INT32
+})};
 constexpr lux::script::ScriptSymbolId kTick{0x5A0103}, kBegin{0x5A0104}, kEnd{0x5A0105};
 
 struct Provider
@@ -45,11 +55,12 @@ struct Provider
     std::int32_t scalarProbe(std::int32_t value) noexcept { ++scalar_calls; return value + 1; }
     std::int32_t zeroArgumentProbe() noexcept { ++zero_calls; return 42; }
 };
-static SimulationDescription simulation()
+static SimulationDescription simulation(bool fault = false)
 {
-    const std::array hooks{makeHookPointSpec<void()>(kHook, "value-tick")};
+    const std::array hooks{makeHookPointSpec<void()>(kHook, "value-tick"),
+        makeHookPointSpec<void()>(kFaultHook, "value-nested-fault")};
     const SimulationSystemDescription description{
-        .type = {.canonical_name = "lux.test.values", .version = 1}, .hooks = hooks};
+        .type = {.canonical_name = "lux.test.values", .version = 1}, .hooks = std::span{hooks}.first(fault ? 2U : 1U)};
     SimulationDescriptionBuilder builder;
     assert(builder.addSystem(kOwner, "values", description));
     auto value = std::move(builder).build();
@@ -88,14 +99,23 @@ struct Runtime
     ecs::Entity entity = registry.create();
     SimulationClock clock;
     HookPoint<void()> hook;
+    HookPoint<void()> fault_hook;
     std::optional<ScriptHookEndpoint<void()>> endpoint;
+    std::optional<ScriptHookEndpoint<void()>> fault_endpoint;
     Provider provider;
     decltype(lux::script::bindScriptAbility<LuaValueTestAbility>(provider)) binding;
+    std::optional<DeferredScriptHost> host;
     std::optional<ScriptSystem> system;
-    Runtime(LuaScriptBackend& backend, std::uint8_t id, std::string_view tick)
-        : backend(backend), script(artifact(tick)),
+    Runtime(LuaScriptBackend& backend, std::uint8_t id, std::string_view tick,
+        bool fault = false, bool deferred = false)
+        : backend(backend), sim(simulation(fault)), script(artifact(tick)),
           binding(lux::script::bindScriptAbility<LuaValueTestAbility>(provider))
     {
+        if (deferred)
+        {
+            registry.emplace<std::int32_t>(entity, 10);
+            host.emplace(registry, kHostComponents);
+        }
         std::array<std::uint8_t, 16> bytes{};
         static std::uint8_t incarnation{};
         bytes[0] = id;
@@ -103,13 +123,20 @@ struct Runtime
         asset = lux::asset::AssetId{bytes};
         assert(hook.prepare(1) == EEndpointMutationError::NONE);
         endpoint.emplace(kOwner, kHook, hook);
-        const std::array mounts{ScriptRuntimeMount{ScriptMountId{1}, asset, EntityScriptScope{entity},
+        std::array mounts{ScriptRuntimeMount{ScriptMountId{1}, asset, EntityScriptScope{entity},
             {{kTick, HookScriptTarget{kOwner, kHook}}}}};
+        if (fault)
+        {
+            assert(fault_hook.prepare(1) == EEndpointMutationError::NONE);
+            fault_endpoint.emplace(kOwner, kFaultHook, fault_hook);
+            mounts.front().bindings.push_back({kTick, HookScriptTarget{kOwner, kFaultHook}});
+        }
         const auto plan = planScriptRuntimeCapacity(mounts);
         assert(plan);
         const std::array capabilities{publishScriptAbility(binding)};
         const auto descriptor = backend.descriptor();
-        const auto ep = endpoint->descriptor();
+        const std::array endpoints{endpoint->descriptor(), fault ? fault_endpoint->descriptor() :
+            ScriptHookEndpointDescriptor{}};
         auto created = ScriptSystem::create(sim, *plan, mounts, registry, clock,
             {8U, 1U, 4U, 4U, 4U, 4U, 64U, 4U, 4U, 4U, 4U, 4U},
             {this, [](void* context, const lux::asset::AssetId& requested, ResolvedScriptArtifact& output) noexcept {
@@ -117,7 +144,8 @@ struct Runtime
                 if (requested != self.asset) return false;
                 output.artifact = &self.script;
                 return true;
-            }}, capabilities, std::span{&descriptor, 1}, std::span{&ep, 1}, {});
+            }}, capabilities, std::span{&descriptor, 1}, std::span{endpoints}.first(fault ? 2U : 1U), {},
+            host ? host->api() : ScriptHostApi{});
         assert(created);
         system.emplace(std::move(*created));
         std::fprintf(stderr, "VALUE_CASE asset=%u\n", static_cast<unsigned>(bytes[1]));
@@ -133,13 +161,57 @@ struct Runtime
         assert(provider.angles == 1); // BeginPlay is not ACTIVE, but is an authorized lifecycle call.
     }
 };
+
+static void deferredHostCase()
+{
+    const auto contribution = lux::script::lua::makeScriptAbilityLuaContribution<LuaValueTestAbility>();
+    const std::array components{LuaComponentBinding{"score", kScoreComponent, lux::semantic::typeId("lux.i32"),
+        "lux.i32", LUX_SCRIPT_VK_INT32, sizeof(std::int32_t), alignof(std::int32_t)}};
+    auto backend = LuaScriptBackend::create({
+        .instance_capacity = 1, .prepared_call_capacity = 8, .continuation_capacity = 1,
+        .execution_depth_capacity = 4, .ability_catalog_method_capacity = AbilityTraits::Methods.size(),
+        .prepared_ability_capacity = AbilityTraits::Methods.size(), .components = components,
+        .abilities = std::span{&contribution, 1},
+        .prepared_ability_blocks = std::array{LuaPreparedBlockClass{AbilityTraits::Methods.size(), 1}},
+        .prepared_ability_storage_bytes = 65536});
+    assert(backend);
+    for (const bool fail : {false, true})
+    {
+        const std::string source = "assert(self:get_component('score')==10);"
+            "assert(self:patch_component('score',25)); assert(self:get_component('score')==10);"
+            "assert(not self:patch_component('score','bad')); assert(self:destroy());"
+            "assert(self:has_component('score')); assert(lux.Values.scalarProbe(7)==8);" +
+            std::string{fail ? "error('after accepted commands')" : ""};
+        Runtime runtime{*backend, 3, source, false, true};
+        ecs::EcsCommandBuffer commands;
+        const std::array capacities{ecs::EcsCommandProducerCapacity{2, 64}};
+        assert(commands.prepare(capacities));
+        {
+            auto writer = commands.begin(0, ecs::EEcsCommandPolicy::CONTINUE_ON_INVALID_TARGET);
+            assert(writer);
+            auto host = runtime.host->begin(*writer);
+            auto region = runtime.system->beginExecutionRegion();
+            assert(host && region && dispatchRuntimeHook(*runtime.system, runtime.hook) == 1U);
+            assert(runtime.provider.scalar_calls == 1U && runtime.registry.valid(runtime.entity));
+            assert(runtime.registry.get<std::int32_t>(runtime.entity) == 10);
+            assert(runtime.host->accepted() == 2U && runtime.host->rejected() == 0U);
+            assert(runtime.system->failures().size() == static_cast<std::size_t>(fail));
+            assert(region->finish());
+        }
+        assert(ecs::applyEcsCommands(runtime.registry, commands) && !runtime.registry.valid(runtime.entity));
+        assert(runtime.system->processLifecycle() && runtime.system->activeInstanceCount() == 0U);
+        assert(runtime.provider.angles == 2U && backend->stats().prepared_ability_slots == 0U);
+        assert(runtime.system->shutdown());
+        std::printf("LUA_DEFERRED fault=%u accepted=2 provider=1 endplay=1 backlog=0 PASS\n", fail);
+    }
+}
 static Runtime* outer;
 static Runtime* nested;
 static void reenter() noexcept
 {
     value_reentry = nullptr;
     const auto previous = nested->provider.poses;
-    assert(dispatchHookForTest(nested->hook) == 1);
+    assert(dispatchRuntimeHook(*nested->system, nested->hook) == 1);
     assert(nested->provider.poses == previous + 1);
 }
 static void retire() noexcept
@@ -154,8 +226,16 @@ static void retire() noexcept
 static void closeDuringRead() noexcept
 {
     value_reentry = nullptr;
-    assert(!outer->system->shutdown()); // Existing protection retains resources; new call admission is stopped.
+    assert(outer->system->requestStop());
+    assert(!outer->system->shutdown()); // A request does not revoke this region's invocation authority.
     assert(outer->backend.stats().prepared_ability_slots >= AbilityTraits::Methods.size());
+}
+static void faultDuringRead() noexcept
+{
+    value_reentry = nullptr;
+    // A real nested Lua invocation fails, faulting the same incarnation while the outer pcall is still running.
+    assert(dispatchRuntimeHook(*outer->system, outer->fault_hook) == 1);
+    assert(outer->system->failures().size() == 1U && outer->system->activeInstanceCount() == 0U);
 }
 static constexpr std::string_view pose_tick =
     "local p=lux.Values.echo({key=7,velocity={x=1.5,y=2.25},mode=3});"
@@ -164,29 +244,35 @@ static void admissionCase(LuaScriptBackend& backend, std::string_view name)
 {
     const bool stopping = name.starts_with("stop-");
     const bool retiring = name.starts_with("retire-");
+    const bool faulting = name.starts_with("fault-");
     const bool zero = name.ends_with("zero");
-    assert(stopping || retiring || name == "input-recovery");
-    const bool recovery = !stopping && !retiring;
+    assert(stopping || retiring || faulting || name == "input-recovery");
+    const bool recovery = !stopping && !retiring && !faulting;
+    const bool callable = recovery || stopping;
     const std::string prefix = recovery ? "assert(not pcall(lux.Values.angle,'bad'));" :
-        "assert(not pcall(lux.Values.angle,90));";
+        stopping ? "assert(pcall(lux.Values.angle,90));" : "assert(not pcall(lux.Values.angle,90));";
     const std::string call = zero ? "lux.Values.zeroArgumentProbe" : "lux.Values.scalarProbe,7";
-    const std::string script = prefix + "local ok,v=pcall(" + call + ");"
+    const std::string fault_prefix = faulting ?
+        "if self.faulting then error('nested failure') end self.faulting=true;" : "";
+    const std::string script = fault_prefix + prefix + "local ok,v=pcall(" + call + ");"
         "print('ADMISSION_LUA " + std::string{name} + " reached ok='..tostring(ok));" +
-        (recovery ? "assert(ok and v==8); assert(lux.Values.zeroArgumentProbe()==42)" : "assert(not ok)");
+        (callable ? zero ? "assert(ok and v==42)" : "assert(ok and v==8)" : "assert(not ok)") +
+        (recovery ? "assert(lux.Values.zeroArgumentProbe()==42)" : "");
     std::fprintf(stderr, "ADMISSION_BEGIN %.*s\n", static_cast<int>(name.size()), name.data());
-    Runtime runtime{backend, 1, script};
+    Runtime runtime{backend, 1, script, faulting};
     outer = &runtime;
-    value_reentry = stopping ? closeDuringRead : retiring ? retire : nullptr;
-    assert(dispatchHookForTest(runtime.hook) == 1);
+    value_reentry = stopping ? closeDuringRead : retiring ? retire : faulting ? faultDuringRead : nullptr;
+    assert(dispatchRuntimeHook(*runtime.system, runtime.hook) == 1);
     std::fflush(stdout);
     std::fprintf(stderr, "ADMISSION_COUNTS %.*s scalar=%zu zero=%zu angles=%zu failures=%zu\n",
         static_cast<int>(name.size()), name.data(), runtime.provider.scalar_calls, runtime.provider.zero_calls,
         runtime.provider.angles, runtime.system->failures().size());
-    assert(runtime.provider.scalar_calls == static_cast<std::size_t>(recovery));
-    assert(runtime.provider.zero_calls == static_cast<std::size_t>(recovery));
-    assert(runtime.system->failures().empty()); // The Lua function caught the rejected entry and completed.
+    assert(runtime.provider.scalar_calls == static_cast<std::size_t>(callable && !zero));
+    assert(runtime.provider.zero_calls == static_cast<std::size_t>(recovery || (stopping && zero)));
+    assert(runtime.system->failures().size() == static_cast<std::size_t>(faulting));
+    assert(runtime.system->stats().invocation_failures == static_cast<std::size_t>(faulting));
     assert(runtime.system->shutdown());
-    assert(runtime.provider.angles == 2); // Only BeginPlay + the one qualified EndPlay.
+    assert(runtime.provider.angles == (stopping ? 3U : 2U));
     assert(runtime.system->activeContinuationCount() == 0);
     assert(backend.stats().prepared_ability_slots == 0);
     std::fprintf(stderr, "ADMISSION_PASS %.*s endplay=1 backlog=0\n", static_cast<int>(name.size()), name.data());
@@ -245,7 +331,8 @@ int main(int argc, char** argv)
     const bool benchmark_mode = argc > 2 && std::string_view{argv[1]} == "--benchmark";
     const bool vm_accounting = !benchmark_mode || (argc > 3 && std::string_view{argv[3]} == "--allocations");
     auto created = LuaScriptBackend::create({
-        .instance_capacity = 2, .prepared_call_capacity = 64, .continuation_capacity = 2,
+        // Conformance adds distinct immutable assets for fault/stop cases; timed work retains the original capacity.
+        .instance_capacity = 2, .prepared_call_capacity = benchmark_mode ? 64U : 96U, .continuation_capacity = 2,
         .execution_depth_capacity = 8, .ability_catalog_method_capacity = AbilityTraits::Methods.size(),
         .prepared_ability_capacity = 2 * AbilityTraits::Methods.size(), .abilities = std::span{&contribution, 1},
         .execution_policy = policy, .track_vm_allocations = vm_accounting,
@@ -262,10 +349,10 @@ int main(int argc, char** argv)
     {
         const auto count = std::strtoull(argv[2], nullptr, 10);
         Runtime runtime{backend, 1, pose_tick};
-        for (int i{}; i < 1000; ++i) assert(dispatchHookForTest(runtime.hook) == 1);
+        for (int i{}; i < 1000; ++i) assert(dispatchRuntimeHook(*runtime.system, runtime.hook) == 1);
         const auto before = backend.stats();
         const auto begin = std::chrono::steady_clock::now();
-        for (std::size_t i{}; i < count; ++i) assert(dispatchHookForTest(runtime.hook) == 1);
+        for (std::size_t i{}; i < count; ++i) assert(dispatchRuntimeHook(*runtime.system, runtime.hook) == 1);
         const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now() - begin).count();
         assert(runtime.provider.poses == count + 1000 && runtime.system->failures().empty());
@@ -278,33 +365,34 @@ int main(int argc, char** argv)
     }
     {
         Runtime valid{backend, 1, pose_tick};
-        assert(dispatchHookForTest(valid.hook) == 1 && valid.provider.poses == 1);
+        assert(dispatchRuntimeHook(*valid.system, valid.hook) == 1 && valid.provider.poses == 1);
         assert(valid.system->failures().empty());
         assert(valid.system->shutdown() && valid.provider.angles == 2); // EndPlay remains authorized.
     }
     {
         Runtime constant{backend, 1, "assert(lux.Values.inspect({id=4,weight=2})==6)"};
-        assert(dispatchHookForTest(constant.hook) == 1 && constant.system->failures().empty());
+        assert(dispatchRuntimeHook(*constant.system, constant.hook) == 1 && constant.system->failures().empty());
     }
     {
         Runtime factory{backend, 1, "assert(lux.Values.token(11,2)==13)"};
-        assert(dispatchHookForTest(factory.hook) == 1 && factory.provider.tokens == 1);
+        assert(dispatchRuntimeHook(*factory.system, factory.hook) == 1 && factory.provider.tokens == 1);
         assert(ValueToken::live == 0 && ValueToken::release_count == 1 && ValueToken::released[0] == 11);
     }
     {
         Runtime failure{backend, 1, "lux.Values.token(12,'bad')"};
-        assert(dispatchHookForTest(failure.hook) == 1 && failure.provider.tokens == 0);
+        assert(dispatchRuntimeHook(*failure.system, failure.hook) == 1 && failure.provider.tokens == 0);
         assert(ValueToken::live == 0 && ValueToken::release_count == 2 && ValueToken::released[1] == 12);
     }
     {
         Runtime factory_failure{backend, 1, "lux.Values.token(-1,2)"};
-        assert(dispatchHookForTest(factory_failure.hook) == 1 && factory_failure.provider.tokens == 0);
+        assert(dispatchRuntimeHook(*factory_failure.system, factory_failure.hook) == 1 &&
+            factory_failure.provider.tokens == 0);
         assert(ValueToken::live == 0 && ValueToken::release_count == 2);
     }
     {
         Runtime diagnostic{backend, 1,
             "local ok,e=pcall(lux.Values.token,-2,1); assert(not ok and #e>=255)"};
-        assert(dispatchHookForTest(diagnostic.hook) == 1 && diagnostic.provider.tokens == 0);
+        assert(dispatchRuntimeHook(*diagnostic.system, diagnostic.hook) == 1 && diagnostic.provider.tokens == 0);
         assert(ValueToken::live == 0 && ValueToken::release_count == 2);
     }
     for (const char* expression : {
@@ -315,43 +403,45 @@ int main(int argc, char** argv)
     })
     {
         Runtime invalid{backend, 1, std::string{"lux.Values.echo("} + expression + ")"};
-        assert(dispatchHookForTest(invalid.hook) == 1);
+        assert(dispatchRuntimeHook(*invalid.system, invalid.hook) == 1);
         assert(invalid.provider.poses == 0 && !invalid.system->failures().empty());
     }
     {
         Runtime output{backend, 1, pose_tick};
         output.provider.invalid_result = true;
-        assert(dispatchHookForTest(output.hook) == 1);
+        assert(dispatchRuntimeHook(*output.system, output.hook) == 1);
         assert(output.provider.poses == 1 && !output.system->failures().empty());
     }
     {
         Runtime first{backend, 1, "assert(math.abs(lux.Values.angle(90)-90)<0.001)"};
         Runtime second{backend, 2, pose_tick};
         outer = &first; nested = &second; value_reentry = reenter;
-        assert(dispatchHookForTest(first.hook) == 1);
+        assert(dispatchRuntimeHook(*first.system, first.hook) == 1);
         assert(first.provider.angles == 2 && second.provider.poses == 1 && first.system->failures().empty());
         value_reentry = retire;
-        assert(dispatchHookForTest(first.hook) == 1);
+        assert(dispatchRuntimeHook(*first.system, first.hook) == 1);
         assert(first.provider.angles == 2 && !first.system->failures().empty());
-        assert(first.system->executeStablePoint());
+        assert(executeRuntimeStablePoint(*first.system));
         assert(first.provider.angles == 3); // Only qualified EndPlay, never the invalidated ordinary provider.
     }
     {
         Runtime revoked{backend, 1,
             "assert(not pcall(lux.Values.angle,90)); assert(not pcall(lux.Values.angle,90))"};
         outer = &revoked; value_reentry = retire;
-        assert(dispatchHookForTest(revoked.hook) == 1 && revoked.provider.angles == 1);
-        assert(revoked.system->executeStablePoint() && revoked.provider.angles == 2);
+        assert(dispatchRuntimeHook(*revoked.system, revoked.hook) == 1 && revoked.provider.angles == 1);
+        assert(executeRuntimeStablePoint(*revoked.system) && revoked.provider.angles == 2);
     }
     {
         Runtime first{backend, 1, "lux.Values.angle(90)"};
         outer = &first; value_reentry = closeDuringRead;
-        assert(dispatchHookForTest(first.hook) == 1);
-        assert(first.provider.angles == 1 && !first.system->failures().empty());
-        assert(first.system->shutdown() && first.provider.angles == 2);
+        assert(dispatchRuntimeHook(*first.system, first.hook) == 1);
+        assert(first.provider.angles == 2 && first.system->failures().empty());
+        assert(first.system->processLifecycle() && first.system->isShutdown() && first.provider.angles == 3);
     }
-    for (const auto* name : {"retire-scalar", "retire-zero", "stop-scalar", "stop-zero", "input-recovery"})
+    for (const auto* name : {"retire-scalar", "retire-zero", "fault-scalar", "fault-zero",
+        "stop-scalar", "stop-zero", "input-recovery"})
         admissionCase(backend, name);
     standaloneCase(backend);
+    deferredHostCase();
     std::puts("VALUE_RUNTIME generated-pose enum override provider-count lifecycle reentry retire shutdown PASS");
 }

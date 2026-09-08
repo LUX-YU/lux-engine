@@ -65,7 +65,9 @@ namespace lux::simulation::script::detail
             {
                 if (count >= records.size())
                     return false;
-                records[(head + count) % records.size()] = record;
+                const auto until_wrap = records.size() - head;
+                const auto tail = count < until_wrap ? head + count : count - until_wrap;
+                records[tail] = record;
                 ++count;
                 high_water = (std::max)(high_water, count);
                 return true;
@@ -76,7 +78,8 @@ namespace lux::simulation::script::detail
                 if (count == 0U)
                     return std::nullopt;
                 const auto result = records[head];
-                head = (head + 1U) % records.size();
+                if (++head == records.size())
+                    head = 0U;
                 --count;
                 return result;
             }
@@ -753,7 +756,6 @@ namespace lux::simulation::script::detail
                 &ScriptExecution::waitEventErased
             };
             const auto result = [&]() noexcept {
-                UserInvocationScope scope(*this);
                 ++backend_resume_calls_;
                 return continuation->backend.resume(continuation->backend.state, context, packet);
             }();
@@ -1079,8 +1081,10 @@ namespace lux::simulation::script::detail
             }
         private:
             friend class ScriptExecution;
-            ResumeBatch(ScriptExecution& owner, std::size_t budget) noexcept : owner_(owner), remaining_(budget) {}
+            ResumeBatch(ScriptExecution& owner, std::size_t budget) noexcept
+                : owner_(owner), region_(owner.instance_owner_), remaining_(budget) {}
             ScriptExecution& owner_;
+            ScriptInstances::Protection region_;
             std::size_t remaining_{};
         };
         [[nodiscard]] ResumeBatch resumeBatch() noexcept

@@ -1,3 +1,7 @@
+#include "ScriptRuntimeTestRegion.hpp"
+using lux::simulation::script::test::dispatchRuntimeHook;
+using lux::simulation::script::test::deliverRuntimeEvent;
+using lux::simulation::script::test::executeRuntimeStablePoint;
 #include "../../../system/test/HookInvocationTestAccess.hpp"
 using lux::simulation::test::dispatchHookForTest;
 #include "../../../scripting/core/test/ScriptEndpointTestAccess.hpp"
@@ -361,7 +365,7 @@ namespace
         const auto repeated_prepare = system.prepare();
         assert(!repeated_prepare);
         assert(repeated_prepare.error() == EScriptSystemError::ENDPOINT_BUSY);
-        const auto flushed = system.executeStablePoint();
+        const auto flushed = executeRuntimeStablePoint(system);
         assert(!flushed);
         assert(flushed.error() == EScriptSystemError::ENDPOINT_BUSY);
 
@@ -463,21 +467,21 @@ int main()
 
     const SimulationStepInfo step{1.0F / 60.0F, 12U};
 #if defined(LUX_SCRIPT_OWNER_AFFINITY_PROBE)
-    std::thread foreign_owner{[&]() noexcept { static_cast<void>(dispatchHookForTest(hook, step)); }};
+    std::thread foreign_owner{[&]() noexcept { static_cast<void>(dispatchRuntimeHook(system, hook, step)); }};
     foreign_owner.join();
     assert(backend_state.hook_calls == 0U);
 #endif
-    assert(dispatchHookForTest(hook, step) == 1U);
+    assert(dispatchRuntimeHook(system, hook, step) == 1U);
     assert(backend_state.hook_calls == 2U);
     assert(backend_state.entity_calls == 1U);
-    assert(dispatchHookForTest(secondary_hook, step) == 1U);
+    assert(dispatchRuntimeHook(system, secondary_hook, step) == 1U);
     assert(backend_state.secondary_hook_calls == 1U);
 
     {
         auto writer = broadcast.begin(0U);
         assert(writer.record(step));
     }
-    assert(deliverEndpoint(broadcast_bridge) == 1U);
+    assert(deliverRuntimeEvent(system, broadcast_bridge) == 1U);
     assert(backend_state.broadcast_calls == 2U);
 
     const auto other = registry.create();
@@ -486,12 +490,12 @@ int main()
         assert(writer.record(other, step));
         assert(writer.record(fixture.entity, step));
     }
-    assert(deliverEndpoint(targeted_bridge) == 2U);
+    assert(deliverRuntimeEvent(system, targeted_bridge) == 2U);
     assert(backend_state.targeted_calls == 1U);
 
     const auto destroyed_entity = fixture.entity;
     registry.destroy(destroyed_entity);
-    const auto pending_world = system.executeStablePoint();
+    const auto pending_world = executeRuntimeStablePoint(system);
     assert(pending_world);
     assert(system.activeInstanceCount() == 1U);
 
@@ -500,7 +504,7 @@ int main()
     assert(system.collectMountStatusChanges(mount_changes));
     (*description)[1].scope = EntityScriptScope{fixture.entity};
     assert(system.mountResolvedBatch(std::span{&(*description)[1], 1U}));
-    assert(system.executeStablePoint());
+    assert(executeRuntimeStablePoint(system));
     assert(system.activeInstanceCount() == 2U);
     assert(backend_state.creates == 3U);
     assert(backend_state.prepares == 10U);
@@ -510,28 +514,29 @@ int main()
         assert(writer.record(destroyed_entity, step));
         assert(writer.record(fixture.entity, step));
     }
-    assert(deliverEndpoint(targeted_bridge) == 2U);
+    assert(deliverRuntimeEvent(system, targeted_bridge) == 2U);
     assert(backend_state.targeted_calls == 2U);
 
     const auto releases_before_fault = backend_state.releases;
     backend_state.fail_entity = true;
     backend_state.fail_symbol = kHookSymbol;
-    assert(dispatchHookForTest(hook, step) == 1U);
+    assert(dispatchRuntimeHook(system, hook, step) == 1U);
     assert(system.activeInstanceCount() == 1U);
     assert(system.failures().size() == 1U);
     assert(system.failures().front().status == 9);
-    assert(system.executeStablePoint());
+    assert(executeRuntimeStablePoint(system));
     assert(backend_state.destroys == 2U);
     assert(backend_state.releases == 8U);
     assert(backend_state.releases - releases_before_fault == 4U);
     assert(targeted.pendingOccurrenceCount() == 0U);
 
     backend_state.request_shutdown = true;
-    assert(dispatchHookForTest(hook, step) == 1U);
+    assert(dispatchRuntimeHook(system, hook, step) == 1U);
     assert(backend_state.shutdown_error == EScriptSystemError::ENDPOINT_BUSY);
     assert(system.activeInstanceCount() == 1U);
-    const auto stopping_stable_point = system.executeStablePoint();
-    assert(!stopping_stable_point && stopping_stable_point.error() == EScriptSystemError::ENDPOINT_BUSY);
+    const auto stopping_stable_point = executeRuntimeStablePoint(system);
+    assert(stopping_stable_point && system.activeInstanceCount() == 1U);
+    assert(system.failures().size() == 1U); // The refused shutdown did not create a failure or stop admission.
 
     assert(system.shutdown());
     assert(backend_state.destroys == 3U);

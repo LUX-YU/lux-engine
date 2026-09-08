@@ -19,11 +19,12 @@ namespace lux::simulation
     {
     public:
         SimulationCommandProducer() noexcept = default;
-        [[nodiscard]] lux::cxx::expected<ecs::EcsCommandWriter, ecs::EcsCommandFailure> begin() const noexcept
+        [[nodiscard]] lux::cxx::expected<ecs::EcsCommandWriter, ecs::EcsCommandFailure> begin(
+            ecs::EEcsCommandPolicy policy = ecs::EEcsCommandPolicy::ABORT_BATCH) const noexcept
         {
             if (commands_ == nullptr || slot_ == nullptr || !slot_->active)
                 return lux::cxx::unexpected(ecs::EcsCommandFailure{ecs::EEcsCommandError::STALE_WRITER});
-            return commands_->begin(slot_->producer);
+            return commands_->begin(slot_->producer, policy);
         }
     private:
         SimulationCommandProducer(ecs::EcsCommandBuffer* commands, detail::SimulationCommandSlot* slot) noexcept

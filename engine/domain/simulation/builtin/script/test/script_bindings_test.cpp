@@ -79,6 +79,7 @@ namespace
         assert(instances.protectedCount() == 0U);
         const ScriptPreparedMethod* address{};
         {
+            ScriptInstances::Protection region{instances};
             auto access = instances.invokeAccess(reference);
             assert(access && access.current() && instances.protectedCount() == 1U);
             address = &access.method();
@@ -111,6 +112,7 @@ namespace
         assert(next_id.slot == id.slot && next_id.generation != id.generation);
         assert(!instances.invokeAccess(reference) && !instances.resumeAccess(id));
         {
+            ScriptInstances::Protection region{instances};
             auto access = instances.invokeAccess({0U, reference.method_slot, next_id});
             assert(access && access.current() && &access.method() == address);
         }

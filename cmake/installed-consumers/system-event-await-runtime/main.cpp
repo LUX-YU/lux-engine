@@ -283,18 +283,39 @@ int main()
     auto system = std::move(*created);
     assert(system.prepare());
 
-    struct Context { ScriptSystem& system; BackendState& backend; } context{system, backend_state};
+    struct Context final
+    {
+        ScriptSystem& system;
+        BackendState& backend;
+        std::optional<ScriptSystem::ExecutionRegion> region;
+    } context{system, backend_state, {}};
     auto connection = composed->bindHookCallbacks({&context,
         [](void* opaque, const SimulationClockSnapshot&, bool) noexcept {
             auto& context = *static_cast<Context*>(opaque);
             context.system.beginStableAdmission();
-            return static_cast<bool>(context.system.processLifecycle());
+            if (!context.system.processLifecycle()) return false;
+            auto region = context.system.beginExecutionRegion();
+            if (!region) return false;
+            context.region.emplace(std::move(*region));
+            return true;
         },
         [](void* opaque, const SimulationClockSnapshot&, bool) noexcept {
             auto& context = *static_cast<Context*>(opaque);
             assert(context.backend.resumes == 0U);
-            return static_cast<bool>(context.system.executeStablePoint());
-        }, nullptr});
+            const auto result = context.system.executeStablePoint();
+            if (!context.region->finish()) return false;
+            context.region.reset();
+            return static_cast<bool>(result);
+        },
+        [](void* opaque, const SimulationClockSnapshot&) noexcept {
+            return static_cast<bool>(static_cast<Context*>(opaque)->system.processLifecycle());
+        },
+        [](void* opaque, const SimulationClockSnapshot&) noexcept {
+            auto& context = *static_cast<Context*>(opaque);
+            if (context.region && !context.region->finish()) std::terminate();
+            context.region.reset();
+            static_cast<void>(context.system.processLifecycle(EScriptLifecycleAdmission::RETIRE_ONLY));
+        }});
     assert(connection);
     auto executor = lux::task::TaskExecutor::create({4U, 8U});
     assert(executor && composed->execute(*executor, SimulationDuration{1}));

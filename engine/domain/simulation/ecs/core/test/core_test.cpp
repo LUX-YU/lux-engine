@@ -57,6 +57,41 @@ namespace
         assert(entt::to_integral(*first_entity) < entt::to_integral(*second_entity));
     }
 
+    void testOwnedDeferredReplacement()
+    {
+        using namespace lux::simulation::ecs;
+        Registry registry;
+        const auto entity = registry.create();
+        registry.emplace<Position>(entity, Position{4});
+        EcsCommandBuffer commands;
+        constexpr std::array capacities{EcsCommandProducerCapacity{4U, 256U}};
+        assert(commands.prepare(capacities));
+        struct Observer final
+        {
+            std::size_t updates{};
+            void updated(Registry&, Entity) noexcept { ++updates; }
+        } observer;
+        auto connection = registry.on_update<Position>().connect<&Observer::updated>(observer);
+        {
+            auto writer = commands.begin(0U);
+            assert(writer);
+            Position source{19};
+            assert(writer->replace(entity, source));
+            source.value = 77;
+            assert(registry.get<Position>(entity).value == 4 && observer.updates == 0U);
+        }
+        assert(applyEcsCommands(registry, commands));
+        assert(registry.get<Position>(entity).value == 19 && observer.updates == 1U);
+        {
+            auto writer = commands.begin(0U);
+            assert(writer && writer->remove<Position>(entity));
+            assert(writer->replace(entity, Position{23}));
+        }
+        const auto missing = applyEcsCommands(registry, commands);
+        assert(!missing && missing.error().code == EEcsCommandError::MISSING_COMPONENT);
+        assert(missing.error().command == 1U && observer.updates == 1U);
+    }
+
     void testRecordingFailureIsAtomic()
     {
         using namespace lux::simulation::ecs;
@@ -184,6 +219,7 @@ main()
     static_assert(entt::entt_traits<Entity>::entity_mask >= 2'000'000U);
 
     testDeterministicDeferredEntities();
+    testOwnedDeferredReplacement();
     testRecordingFailureIsAtomic();
     testActiveWriterAndTokenLifetime();
     testApplyFailuresAreClassified();

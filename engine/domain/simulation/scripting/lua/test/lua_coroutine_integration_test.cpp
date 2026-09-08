@@ -1,3 +1,7 @@
+#include "../../../builtin/script/test/ScriptRuntimeTestRegion.hpp"
+using lux::simulation::script::test::dispatchRuntimeHook;
+using lux::simulation::script::test::deliverRuntimeEvent;
+using lux::simulation::script::test::executeRuntimeStablePoint;
 #include "../../../system/test/HookInvocationTestAccess.hpp"
 using lux::simulation::test::dispatchHookForTest;
 #include "../../core/test/ScriptEndpointTestAccess.hpp"
@@ -547,12 +551,12 @@ int main(int argc, char** argv)
     assert(harness.backend->stats().vm_allocations.allocations != 0U);
     assert(harness.backend->stats().vm_allocations.requested_bytes != 0U);
 
-    assert(dispatchHookForTest(harness.sync_hook) == 1U);
+    assert(dispatchRuntimeHook(system, harness.sync_hook) == 1U);
     assert(provider.reads == 1U && provider.writes == 1U && provider.value == 12);
     assert(system.activeContinuationCount() == 0U);
     assert(system.activeAwaitableCount() == 0U);
     assert(harness.backend->stats().vm_coroutine_creations == 0U);
-    assert(dispatchHookForTest(harness.scalar_hook) == 1U);
+    assert(dispatchRuntimeHook(system, harness.scalar_hook) == 1U);
     assert(provider.bool_value);
     assert(provider.i32_value == (std::numeric_limits<std::int32_t>::max)());
     assert(provider.u32_value == (std::numeric_limits<std::uint32_t>::max)());
@@ -560,22 +564,22 @@ int main(int argc, char** argv)
     assert(provider.f64_value == 1234.125);
 
     provider.value = 7;
-    assert(dispatchHookForTest(harness.async_hook) == 1U);
+    assert(dispatchRuntimeHook(system, harness.async_hook) == 1U);
     assert(provider.pending.has_value());
     assert(provider.reads == 2U && provider.writes == 2U && provider.value == 12);
     assert(system.activeContinuationCount() == 1U);
     assert(system.activeAwaitableCount() == 1U);
-    assert(dispatchHookForTest(harness.async_hook) == 1U);
+    assert(dispatchRuntimeHook(system, harness.async_hook) == 1U);
     assert(provider.reads == 2U);
 
     provider.value = 100;
     assert(provider.pending->success(7));
     assert(provider.value == 100);
-    assert(system.executeStablePoint());
+    assert(executeRuntimeStablePoint(system));
     assert(provider.value == 19);
     assert(provider.writes == 3U);
     assert(provider.pending->success(3));
-    assert(system.executeStablePoint());
+    assert(executeRuntimeStablePoint(system));
     assert(provider.value == 22);
     assert(harness.backend->stats().vm_coroutine_creations == 1U);
     assert(harness.backend->stats().vm_coroutine_resumes == 2U);
@@ -595,14 +599,14 @@ int main(int argc, char** argv)
     assert(eager_created);
     auto eager_system = std::move(*eager_created);
     assert(eager_system.prepare());
-    assert(dispatchHookForTest(eager.async_hook) == 1U);
+    assert(dispatchRuntimeHook(eager_system, eager.async_hook) == 1U);
     assert(eager_provider.value == 12);
     assert(eager_provider.eager_result.has_value() && *eager_provider.eager_result);
     assert(eager_system.activeContinuationCount() == 1U);
-    assert(eager_system.executeStablePoint());
+    assert(executeRuntimeStablePoint(eager_system));
     assert(eager_provider.value == 25);
     assert(eager_system.activeContinuationCount() == 1U);
-    assert(eager_system.executeStablePoint());
+    assert(executeRuntimeStablePoint(eager_system));
     assert(eager_provider.value == 39);
     assert(eager_system.activeContinuationCount() == 0U);
     assert(eager_system.shutdown());
@@ -620,12 +624,12 @@ int main(int argc, char** argv)
         assert(writer.record(2));
         assert(writer.record(3));
     }
-    assert(deliverEndpoint(events.event_endpoint) == 2U);
+    assert(deliverRuntimeEvent(event_system, events.event_endpoint) == 2U);
     assert(event_provider.completion_count == 2U);
     assert(event_system.activeContinuationCount() == 2U);
     assert(event_provider.completions[0].success(10));
     assert(event_provider.completions[1].success(20));
-    assert(event_system.executeStablePoint());
+    assert(executeRuntimeStablePoint(event_system));
     assert(event_provider.value == 32);
     assert(event_system.activeContinuationCount() == 0U);
     assert(event_system.shutdown());
@@ -638,7 +642,7 @@ int main(int argc, char** argv)
     assert(waiter_created);
     auto waiter_system = std::move(*waiter_created);
     assert(waiter_system.prepare());
-    assert(dispatchHookForTest(waiter.event_wait_hook) == 1U);
+    assert(dispatchRuntimeHook(waiter_system, waiter.event_wait_hook) == 1U);
     assert(waiter_system.activeContinuationCount() == 1U);
     assert(waiter_system.stats().active_event_waiters == 1U);
     std::int32_t payload{41};
@@ -647,11 +651,11 @@ int main(int argc, char** argv)
         assert(writer.record(payload));
     }
     payload = 99;
-    assert(deliverEndpoint(waiter.event_endpoint) == 1U);
+    assert(deliverRuntimeEvent(waiter_system, waiter.event_endpoint) == 1U);
     assert(waiter_provider.value == 7);
     assert(waiter_system.stats().active_event_waiters == 0U);
     assert(waiter_system.activeContinuationCount() == 2U);
-    assert(waiter_system.executeStablePoint());
+    assert(executeRuntimeStablePoint(waiter_system));
     assert(waiter_provider.value == 41);
     assert(waiter_system.activeContinuationCount() == 1U);
     assert(waiter_system.shutdown());
@@ -664,24 +668,24 @@ int main(int argc, char** argv)
     assert(targeted_created);
     auto targeted_system = std::move(*targeted_created);
     assert(targeted_system.prepare());
-    assert(dispatchHookForTest(targeted.target_wait_hook) == 1U);
+    assert(dispatchRuntimeHook(targeted_system, targeted.target_wait_hook) == 1U);
     assert(targeted_system.stats().active_event_waiters == 1U);
     const auto other = targeted.registry.create();
     {
         auto writer = targeted.target_event.begin(0U);
         assert(writer.record(other, 71));
     }
-    assert(deliverEndpoint(targeted.target_event_endpoint) == 1U);
+    assert(deliverRuntimeEvent(targeted_system, targeted.target_event_endpoint) == 1U);
     assert(targeted_system.stats().active_event_waiters == 1U);
-    assert(targeted_system.executeStablePoint());
+    assert(executeRuntimeStablePoint(targeted_system));
     assert(targeted_provider.value == 7);
     {
         auto writer = targeted.target_event.begin(0U);
         assert(writer.record(targeted.entity, 88));
     }
-    assert(deliverEndpoint(targeted.target_event_endpoint) == 1U);
+    assert(deliverRuntimeEvent(targeted_system, targeted.target_event_endpoint) == 1U);
     assert(targeted_provider.value == 7);
-    assert(targeted_system.executeStablePoint());
+    assert(executeRuntimeStablePoint(targeted_system));
     assert(targeted_provider.value == 88);
     assert(targeted_system.stats().active_event_waiters == 0U);
     assert(targeted_system.shutdown());
@@ -694,10 +698,10 @@ int main(int argc, char** argv)
     assert(event_retirement_created);
     auto event_retirement_system = std::move(*event_retirement_created);
     assert(event_retirement_system.prepare());
-    assert(dispatchHookForTest(event_retirement.event_wait_hook) == 1U);
+    assert(dispatchRuntimeHook(event_retirement_system, event_retirement.event_wait_hook) == 1U);
     assert(event_retirement_system.stats().active_event_waiters == 1U);
     event_retirement.registry.destroy(event_retirement.entity);
-    const auto event_retired = event_retirement_system.executeStablePoint();
+    const auto event_retired = executeRuntimeStablePoint(event_retirement_system);
     assert(event_retired);
     assert(event_retirement_system.stats().active_event_waiters == 0U);
     const auto writes_before_late_event = event_retirement_provider.writes;
@@ -705,8 +709,8 @@ int main(int argc, char** argv)
         auto writer = event_retirement.async_event.begin(0U);
         assert(writer.record(109));
     }
-    assert(deliverEndpoint(event_retirement.event_endpoint) == 1U);
-    static_cast<void>(event_retirement_system.executeStablePoint());
+    assert(deliverRuntimeEvent(event_retirement_system, event_retirement.event_endpoint) == 1U);
+    static_cast<void>(executeRuntimeStablePoint(event_retirement_system));
     assert(event_retirement_provider.writes == writes_before_late_event);
     assert(event_retirement_system.shutdown());
 
@@ -723,7 +727,7 @@ int main(int argc, char** argv)
         assert(writer.record(2));
         assert(writer.record(3));
     }
-    assert(deliverEndpoint(limited.event_endpoint) == 2U);
+    assert(deliverRuntimeEvent(limited_system, limited.event_endpoint) == 2U);
     assert(!limited_system.failures().empty());
     assert(limited_system.activeContinuationCount() <= 1U);
     assert(limited_system.shutdown());
@@ -736,11 +740,11 @@ int main(int argc, char** argv)
     assert(retiring_created);
     auto retiring_system = std::move(*retiring_created);
     assert(retiring_system.prepare());
-    assert(dispatchHookForTest(retiring.async_hook) == 1U);
+    assert(dispatchRuntimeHook(retiring_system, retiring.async_hook) == 1U);
     assert(retiring_provider.pending.has_value());
     const auto late_completion = *retiring_provider.pending;
     retiring.registry.destroy(retiring.entity);
-    const auto retired = retiring_system.executeStablePoint();
+    const auto retired = executeRuntimeStablePoint(retiring_system);
     assert(retired);
     assert(retiring_system.activeContinuationCount() == 0U);
     const auto late = late_completion.success(9);
@@ -755,11 +759,11 @@ int main(int argc, char** argv)
     assert(failed_created);
     auto failed_system = std::move(*failed_created);
     assert(failed_system.prepare());
-    assert(dispatchHookForTest(failed.async_hook) == 1U);
+    assert(dispatchRuntimeHook(failed_system, failed.async_hook) == 1U);
     assert(failed_provider.pending.has_value());
     assert(failed_provider.pending->fail({91}));
-    const auto failed_stable = failed_system.executeStablePoint();
-    assert(!failed_stable && failed_stable.error() == EScriptSystemError::INVOCATION_FAILURE);
+    const auto failed_stable = executeRuntimeStablePoint(failed_system);
+    assert(failed_stable && failed_stable->first_instance_error == EScriptSystemError::INVOCATION_FAILURE);
     assert(failed_system.failures().back().status == 91);
     assert(failed_system.activeContinuationCount() == 0U);
     assert(failed_system.shutdown());
@@ -773,7 +777,7 @@ int main(int argc, char** argv)
     assert(rejected_created);
     auto rejected_system = std::move(*rejected_created);
     assert(rejected_system.prepare());
-    assert(dispatchHookForTest(rejected.async_hook) == 1U);
+    assert(dispatchRuntimeHook(rejected_system, rejected.async_hook) == 1U);
     assert(!rejected_system.failures().empty());
     assert(rejected_system.failures().back().status == 81);
     assert(rejected_system.activeContinuationCount() == 0U);
@@ -786,7 +790,7 @@ int main(int argc, char** argv)
     assert(raw_yield_created);
     auto raw_yield_system = std::move(*raw_yield_created);
     assert(raw_yield_system.prepare());
-    assert(dispatchHookForTest(raw_yield.async_hook) == 1U);
+    assert(dispatchRuntimeHook(raw_yield_system, raw_yield.async_hook) == 1U);
     assert(!raw_yield_system.failures().empty());
     assert(raw_yield_system.activeContinuationCount() == 0U);
     assert(raw_yield_system.activeAwaitableCount() == 0U);
@@ -797,7 +801,7 @@ int main(int argc, char** argv)
     assert(undeclared_created);
     auto undeclared_system = std::move(*undeclared_created);
     assert(undeclared_system.prepare());
-    assert(dispatchHookForTest(undeclared.sync_hook) == 1U);
+    assert(dispatchRuntimeHook(undeclared_system, undeclared.sync_hook) == 1U);
     assert(!undeclared_system.failures().empty());
     assert(undeclared_system.failures().front().error == EScriptSystemError::INVOCATION_FAILURE);
     assert(undeclared_system.shutdown());

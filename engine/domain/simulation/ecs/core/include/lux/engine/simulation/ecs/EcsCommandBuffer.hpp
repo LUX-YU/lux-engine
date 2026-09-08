@@ -18,6 +18,12 @@
 
 namespace lux::simulation::ecs
 {
+    enum class EEcsCommandPolicy : std::uint8_t
+    {
+        ABORT_BATCH,
+        CONTINUE_ON_INVALID_TARGET,
+    };
+
     struct EcsCommandProducerCapacity final
     {
         std::size_t max_commands;
@@ -48,6 +54,8 @@ namespace lux::simulation::ecs
         INVALID_DEFERRED_ENTITY,
         COMPONENT_CONSTRUCTION_FAILURE,
         ALLOCATION_FAILURE,
+        MISSING_COMPONENT,
+        EXISTING_COMPONENT,
     };
 
     struct EcsCommandFailure final
@@ -70,6 +78,9 @@ namespace lux::simulation::ecs
         EcsCommandWriter& operator=(const EcsCommandWriter&) = delete;
 
         [[nodiscard]] explicit operator bool() const noexcept;
+        // Owner-only preflight. Failure does not poison commands that were already accepted.
+        [[nodiscard]] bool canRecord(std::size_t bytes = 0U, std::size_t alignment = 1U) const noexcept;
+        [[nodiscard]] EEcsCommandPolicy policy() const noexcept { return policy_; }
         [[nodiscard]] DeferredEntity create() noexcept;
         void destroy(Entity entity) noexcept;
 
@@ -92,6 +103,28 @@ namespace lux::simulation::ecs
             );
         }
 
+        // Own the replacement value until the existing command barrier. Reads in this region see the old value.
+        template <class Component> [[nodiscard]] bool replace(Entity entity, Component value) noexcept
+        {
+            static_assert(std::is_nothrow_move_constructible_v<Component>);
+            static_assert(std::is_nothrow_move_assignable_v<Component>);
+            static_assert(std::is_nothrow_destructible_v<Component>);
+            const RawCommandVTable table{
+                sizeof(Component), alignof(Component),
+                [](void* target, void* source) noexcept {
+                    std::construct_at(static_cast<Component*>(target), std::move(*static_cast<Component*>(source)));
+                },
+                [](void* raw, Registry& registry, Entity target) {
+                    registry.template replace<Component>(target, std::move(*static_cast<Component*>(raw)));
+                },
+                [](void* raw) noexcept { std::destroy_at(static_cast<Component*>(raw)); },
+                [](const Registry& registry, Entity target) noexcept {
+                    return registry.template all_of<Component>(target);
+                }
+            };
+            return recordPayload(entity, {}, false, table, std::addressof(value));
+        }
+
     private:
         struct RawCommandVTable final
         {
@@ -100,9 +133,12 @@ namespace lux::simulation::ecs
             void (*move_construct)(void*, void*);
             void (*apply)(void*, Registry&, Entity);
             void (*destroy)(void*) noexcept;
+            bool (*applicable)(const Registry&, Entity) noexcept{};
+            EEcsCommandError inapplicable_error{EEcsCommandError::MISSING_COMPONENT};
         };
 
-        EcsCommandWriter(EcsCommandBuffer& owner, std::uint32_t producer, std::uint32_t generation) noexcept;
+        EcsCommandWriter(EcsCommandBuffer& owner, std::uint32_t producer, std::uint32_t generation,
+            EEcsCommandPolicy policy) noexcept;
 
         template <class Component, class... Args>
         [[nodiscard]] bool
@@ -126,7 +162,12 @@ namespace lux::simulation::ecs
                             values
                         );
                     },
-                    [](void* raw) noexcept { std::destroy_at(static_cast<Payload*>(raw)); }};
+                    [](void* raw) noexcept { std::destroy_at(static_cast<Payload*>(raw)); },
+                    [](const Registry& registry, Entity target) noexcept {
+                        return !registry.template all_of<Component>(target);
+                    },
+                    EEcsCommandError::EXISTING_COMPONENT
+                };
                 return recordPayload(entity, deferred, uses_deferred, table, std::addressof(payload));
             }
             catch (const std::bad_alloc&)
@@ -156,6 +197,7 @@ namespace lux::simulation::ecs
         EcsCommandBuffer* owner_{};
         std::uint32_t producer_{};
         std::uint32_t generation_{};
+        EEcsCommandPolicy policy_{EEcsCommandPolicy::ABORT_BATCH};
         friend class EcsCommandBuffer;
     };
 
@@ -172,12 +214,15 @@ namespace lux::simulation::ecs
         [[nodiscard]] lux::cxx::expected<void, EcsCommandFailure>
         prepare(std::span<const EcsCommandProducerCapacity> capacities) noexcept;
         void reset() noexcept;
-        [[nodiscard]] lux::cxx::expected<EcsCommandWriter, EcsCommandFailure> begin(std::size_t producer) noexcept;
+        [[nodiscard]] lux::cxx::expected<EcsCommandWriter, EcsCommandFailure> begin(std::size_t producer,
+            EEcsCommandPolicy policy = EEcsCommandPolicy::ABORT_BATCH) noexcept;
         [[nodiscard]] std::optional<Entity> resolve(DeferredEntity entity) const noexcept;
         [[nodiscard]] bool failed() const noexcept;
         [[nodiscard]] std::optional<EcsCommandFailure> producerFailure(std::size_t producer) const noexcept;
         [[nodiscard]] std::size_t allocationEvents() const noexcept;
         [[nodiscard]] std::size_t discarded() const noexcept;
+        [[nodiscard]] std::size_t rejectedAtCommit() const noexcept;
+        [[nodiscard]] std::optional<EcsCommandFailure> lastRejection() const noexcept;
         void discardPending() noexcept;
 
     private:
@@ -204,6 +249,8 @@ namespace lux::simulation::ecs
         void fail(std::uint32_t producer, std::uint32_t generation, EEcsCommandError error) noexcept;
         void end(std::uint32_t producer, std::uint32_t generation) noexcept;
         [[nodiscard]] bool writerValid(std::uint32_t producer, std::uint32_t generation) const noexcept;
+        [[nodiscard]] bool canRecord(std::uint32_t producer, std::uint32_t generation,
+            std::size_t bytes, std::size_t alignment) const noexcept;
 
         friend class EcsCommandWriter;
         friend LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC lux::cxx::expected<void, EcsCommandFailure>

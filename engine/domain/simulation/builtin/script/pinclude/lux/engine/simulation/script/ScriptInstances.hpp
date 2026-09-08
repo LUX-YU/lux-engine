@@ -81,7 +81,7 @@ namespace lux::simulation::script::detail
             Invocation& operator=(const Invocation&) = delete;
             Invocation(Invocation&& other) noexcept;
             Invocation& operator=(Invocation&&) = delete;
-            ~Invocation() noexcept;
+            ~Invocation() noexcept = default;
             [[nodiscard]] explicit operator bool() const noexcept { return owner_ != nullptr; }
             [[nodiscard]] bool current() const noexcept;
             [[nodiscard]] bool sameIncarnation() const noexcept;
@@ -313,18 +313,12 @@ namespace lux::simulation::script::detail
         const ScriptPreparedMethod* method, const InvocationState& mount
     ) noexcept : owner_(&owner), instance_(instance), method_(method), mount_(&mount)
     {
-        // Both arrays have their complete backing before publication. This pin covers these readonly
-        // borrows through result handling; current()/sameIncarnation() still reload dynamic authority.
-        ++owner_->protection_count_;
+        // The caller's dispatch/resume region protects both arrays through result handling.
+        // This value only borrows; it does not acquire another per-handler lifetime pin.
     }
     inline ScriptInstances::Invocation::Invocation(Invocation&& other) noexcept
         : owner_(std::exchange(other.owner_, nullptr)), instance_(other.instance_), method_(other.method_),
           mount_(other.mount_) {}
-    inline ScriptInstances::Invocation::~Invocation() noexcept
-    {
-        if (owner_ != nullptr)
-            --owner_->protection_count_;
-    }
     inline bool ScriptInstances::Invocation::current() const noexcept
     {
         if (owner_ == nullptr)

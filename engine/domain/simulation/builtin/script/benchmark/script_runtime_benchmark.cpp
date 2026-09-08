@@ -1,3 +1,7 @@
+#include "../test/ScriptRuntimeTestRegion.hpp"
+using lux::simulation::script::test::dispatchRuntimeHook;
+using lux::simulation::script::test::deliverRuntimeEvent;
+using lux::simulation::script::test::executeRuntimeStablePoint;
 #include "CppBenchmarkScripts.hpp"
 #include "ScriptBenchmarkDomain.hpp"
 #include "CppBenchmarkScripts.CppLifecycle.script.generated.hpp"
@@ -1030,7 +1034,7 @@ namespace
 
         void stablePoint()
         {
-            if (!system->executeStablePoint())
+            if (!executeRuntimeStablePoint(*system))
                 throw std::runtime_error("benchmark stable point failed");
         }
 
@@ -1057,7 +1061,7 @@ namespace
                     if (!writer.record(payload))
                         throw std::runtime_error("benchmark Event record failed");
                 }
-                if (deliverEndpoint(event_bridge) == 0U)
+                if (deliverRuntimeEvent(*system, event_bridge) == 0U)
                     throw std::runtime_error("benchmark Event delivery failed");
                 return;
             }
@@ -1068,7 +1072,7 @@ namespace
                 if (!writer.record(entities[*target], payload))
                     throw std::runtime_error("benchmark targeted Event record failed");
             }
-            if (deliverEndpoint(target_event_bridge) == 0U)
+            if (deliverRuntimeEvent(*system, target_event_bridge) == 0U)
                 throw std::runtime_error("benchmark targeted Event delivery failed");
         }
 
@@ -1076,7 +1080,7 @@ namespace
         {
             if (!multi_flight_target)
             {
-                static_cast<void>(dispatchHookForTest(hook));
+                static_cast<void>(dispatchRuntimeHook(*system, hook));
                 return;
             }
             // One entity/mount, K independent Event callback invocations. No invented multi-mount ownership.
@@ -1085,7 +1089,7 @@ namespace
                 for (std::size_t index{}; index < waiter_count; ++index)
                     if (!writer.record(0)) throw std::runtime_error("Event callback admission record failed");
             }
-            if (deliverEndpoint(event_bridge) != waiter_count)
+            if (deliverRuntimeEvent(*system, event_bridge) != waiter_count)
                 throw std::runtime_error("Event callback admission count mismatch");
         }
 
@@ -1100,7 +1104,7 @@ namespace
                     throw std::runtime_error("benchmark targeted Event batch record failed");
             }
             writer = {};
-            if (deliverEndpoint(target_event_bridge) != count)
+            if (deliverRuntimeEvent(*system, target_event_bridge) != count)
                 throw std::runtime_error("benchmark targeted Event batch delivery failed");
         }
 
@@ -1348,7 +1352,7 @@ namespace
 
         void dispatch()
         {
-            static_cast<void>(dispatchHookForTest(hook));
+            static_cast<void>(dispatchRuntimeHook(*system, hook));
             ++dispatches;
         }
 
@@ -1360,7 +1364,7 @@ namespace
 
         void stablePoint()
         {
-            if (!system->executeStablePoint())
+            if (!executeRuntimeStablePoint(*system))
                 throw std::runtime_error("Lua benchmark stable point failed");
         }
 
@@ -1371,7 +1375,7 @@ namespace
                 if (!writer.record(payload))
                     throw std::runtime_error("Lua benchmark Event record failed");
             }
-            if (deliverEndpoint(event_bridge) == 0U)
+            if (deliverRuntimeEvent(*system, event_bridge) == 0U)
                 throw std::runtime_error("Lua benchmark Event delivery failed");
         }
 
@@ -1919,7 +1923,7 @@ namespace
         std::uint64_t previous_resumes{};
         const auto step = [&](bool admit) {
             harness.advance(SimulationDuration{16'666'667});
-            if (admit) static_cast<void>(dispatchHookForTest(harness.hook));
+            if (admit) static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
             harness.deliverEvent(31);
             harness.stablePoint();
             const auto stats = harness.system->stats();
@@ -2249,7 +2253,7 @@ namespace
         RuntimeHarness harness{options.size, mode, options.resume_budget};
         for (std::size_t frame{}; frame < options.warmups; ++frame)
         {
-            static_cast<void>(dispatchHookForTest(harness.hook));
+            static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
             if (mode == EScenarioMode::MIXED)
                 harness.completePending(harness.backend_state.completions.size());
             harness.advance(std::chrono::milliseconds{16});
@@ -2259,7 +2263,7 @@ namespace
         for (std::size_t frame{}; frame < options.frames; ++frame)
         {
             rows.push_back(measureRow(std::string{scenario}, "synthetic-object", options.size, frame, [&] {
-                static_cast<void>(dispatchHookForTest(harness.hook));
+                static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
                 if (mode == EScenarioMode::MIXED)
                     harness.completePending(harness.backend_state.completions.size());
                 harness.advance(std::chrono::milliseconds{16});
@@ -2282,7 +2286,7 @@ namespace
     {
         RuntimeHarness harness{options.size, EScenarioMode::EXTERNAL_AWAIT, options.resume_budget};
         rows.push_back(measureRow("micro-async-suspend", "synthetic-continuation", options.size, 0U, [&] {
-            static_cast<void>(dispatchHookForTest(harness.hook));
+            static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
             Row row;
             appendRuntimeStats(row, harness);
             return row;
@@ -2325,7 +2329,7 @@ namespace
 
         RuntimeHarness eager{options.size, EScenarioMode::EAGER_AWAIT, options.resume_budget};
         rows.push_back(measureRow("micro-async-eager-complete", "stable-point-tail-queue", options.size, 0U, [&] {
-            static_cast<void>(dispatchHookForTest(eager.hook));
+            static_cast<void>(dispatchRuntimeHook(*eager.system, eager.hook));
             if (eager.backend_state.resumes != 0U)
                 throw std::runtime_error("eager benchmark completion resumed recursively");
             eager.stablePoint();
@@ -2394,7 +2398,7 @@ namespace
     void runSuspendedIdle(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EXTERNAL_AWAIT, options.resume_budget};
-        static_cast<void>(dispatchHookForTest(harness.hook));
+        static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
         for (std::size_t frame{}; frame < options.warmups; ++frame)
             harness.stablePoint();
         for (std::size_t frame{}; frame < options.frames; ++frame)
@@ -2466,7 +2470,7 @@ namespace
     void runEventIdle(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.resume_budget};
-        static_cast<void>(dispatchHookForTest(harness.hook));
+        static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
         const auto before = harness.system->stats();
         for (std::size_t frame{}; frame < options.warmups; ++frame)
             harness.stablePoint();
@@ -2491,7 +2495,7 @@ namespace
     void runEventFanout(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.resume_budget};
-        static_cast<void>(dispatchHookForTest(harness.hook));
+        static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
         rows.push_back(measureRow("scene-event-fanout-delivery", "script-event-waiter", options.size, 0U, [&] {
             harness.deliverEvent(23);
             Row row;
@@ -2519,7 +2523,7 @@ namespace
     void runEventSparse(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.resume_budget, true};
-        static_cast<void>(dispatchHookForTest(harness.hook));
+        static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
         rows.push_back(measureRow("scene-event-sparse-delivery", "targeted-event-waiter", options.size, 0U, [&] {
             harness.deliverTargetedBatch(options.ready_count, 29);
             Row row;
@@ -2541,7 +2545,7 @@ namespace
     void runResumeStorm(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EXTERNAL_AWAIT, options.resume_budget};
-        static_cast<void>(dispatchHookForTest(harness.hook));
+        static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
         harness.completePending(options.ready_count);
         std::size_t frame{};
         while (harness.system->stats().resume_queue_depth != 0U ||
@@ -2598,7 +2602,7 @@ namespace
     {
         const bool next_step = mode == EScenarioMode::NEXT_STEP;
         RuntimeHarness harness{options.size, mode, options.resume_budget};
-        static_cast<void>(dispatchHookForTest(harness.hook));
+        static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
         rows.push_back(measureRow(
             next_step ? "scheduler-next-step-idle" : "scheduler-simulation-delay-idle",
             "bounded-heap",
@@ -2639,7 +2643,7 @@ namespace
     {
         RuntimeHarness harness{options.size, EScenarioMode::REAL_DELAY, options.resume_budget};
         rows.push_back(measureRow("integration-real-delay-start", "fake-monotonic-provider", options.size, 0U, [&] {
-            static_cast<void>(dispatchHookForTest(harness.hook));
+            static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
             if (harness.backend_state.real_delay_starts != options.size)
                 throw std::runtime_error("real-delay benchmark start count mismatch");
             Row row;
@@ -2916,7 +2920,7 @@ namespace
         for (std::size_t frame{}; frame < options.warmups + options.frames; ++frame)
         {
             auto row = measureRow("scene-cpp-update-heavy", "cpp-static", options.size, frame, [&] {
-                static_cast<void>(dispatchHookForTest(harness.hook));
+                static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
                 harness.advance(std::chrono::milliseconds{16});
                 harness.stablePoint();
                 Row result;
@@ -2949,7 +2953,7 @@ namespace
                 return Row{.active_instances = options.size, .lifecycle_begins = options.size};
             }));
             rows.push_back(measureRow(name + "-invoke", name, options.size, cycle, [&] {
-                static_cast<void>(dispatchHookForTest(harness->hook));
+                static_cast<void>(dispatchRuntimeHook(*harness->system, harness->hook));
                 harness->advance(SimulationDuration{1});
                 harness->stablePoint();
                 return Row{.active_instances = options.size, .calls = options.size};
@@ -3193,17 +3197,47 @@ namespace
             simulation->scriptEventEndpoints()
         );
         if (!runtime || !runtime->prepare()) throw std::runtime_error("region Script preparation");
-        auto connection = simulation->bindHookCallbacks({&*runtime,
-            [](void* value, const SimulationClockSnapshot&, bool stable) noexcept {
-                auto& script = *static_cast<ScriptSystem*>(value);
-                if (stable) script.beginStableAdmission();
-                return static_cast<bool>(script.processLifecycle());
+        struct HookContext final
+        {
+            ScriptSystem& system;
+            std::optional<ScriptSystem::ExecutionRegion> region;
+        } hook_context{*runtime, {}};
+        auto connection = simulation->bindHookCallbacks({&hook_context,
+            [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+                auto& host = *static_cast<HookContext*>(context);
+                if (host.system.isShutdown()) return true;
+                if (stable) host.system.beginStableAdmission();
+                const auto lifecycle = host.system.processLifecycle();
+                if (!lifecycle && lifecycle.error() != EScriptSystemError::INVOCATION_FAILURE) return false;
+                if (host.system.isShutdown()) return true;
+                auto region = host.system.beginExecutionRegion();
+                if (!region) return false;
+                host.region.emplace(std::move(*region));
+                return true;
             },
-            [](void* value, const SimulationClockSnapshot&, bool stable) noexcept {
-                return !stable || static_cast<bool>(static_cast<ScriptSystem*>(value)->executeStablePoint());
+            [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+                auto& host = *static_cast<HookContext*>(context);
+                if (!host.region) return host.system.isShutdown();
+                const bool resumed = !stable || static_cast<bool>(host.system.executeStablePoint());
+                if (!host.region->finish()) return false;
+                host.region.reset();
+                return resumed;
             },
-            [](void* value, const SimulationClockSnapshot&) noexcept {
-                return static_cast<bool>(static_cast<ScriptSystem*>(value)->processLifecycle());
+            [](void* context, const SimulationClockSnapshot&) noexcept {
+                auto& system = static_cast<HookContext*>(context)->system;
+                if (system.isShutdown()) return true;
+                const auto result = system.processLifecycle();
+                return result || result.error() == EScriptSystemError::INVOCATION_FAILURE;
+            },
+            [](void* context, const SimulationClockSnapshot&) noexcept {
+                auto& host = *static_cast<HookContext*>(context);
+                if (host.region)
+                {
+                    if (!host.region->finish()) std::terminate();
+                    host.region.reset();
+                }
+                if (!host.system.isShutdown())
+                    static_cast<void>(host.system.processLifecycle(EScriptLifecycleAdmission::RETIRE_ONLY));
             }});
         if (!connection) throw std::runtime_error("region bind");
         Row setup;

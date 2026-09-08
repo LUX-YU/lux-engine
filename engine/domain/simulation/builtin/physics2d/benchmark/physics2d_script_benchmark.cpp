@@ -522,6 +522,10 @@ namespace
                     if (stable)
                         self.system->beginStableAdmission();
                     const auto result = self.system->processLifecycle();
+                    if (!result) return false;
+                    auto region = self.system->beginExecutionRegion();
+                    if (!region) return false;
+                    self.execution_region.emplace(std::move(*region));
                     if (self.trace)
                     {
                         self.phase_end = Clock::now();
@@ -534,6 +538,8 @@ namespace
                     auto& self = *static_cast<MixedHarness*>(context);
                     const auto begin = self.trace ? Clock::now() : Clock::time_point{};
                     const bool result = !stable || static_cast<bool>(self.system->executeStablePoint());
+                    if (!self.execution_region->finish()) return false;
+                    self.execution_region.reset();
                     if (self.trace)
                     {
                         self.phase.dispatch_ns = elapsed(self.phase_end, begin);
@@ -553,7 +559,13 @@ namespace
                         self.phase.lifecycle_after_ns = elapsed(begin, self.phase_end);
                     }
                     return static_cast<bool>(result);
-                }, nullptr});
+                },
+                [](void* context, const SimulationClockSnapshot&) noexcept {
+                    auto& self = *static_cast<MixedHarness*>(context);
+                    if (self.execution_region && !self.execution_region->finish()) std::terminate();
+                    self.execution_region.reset();
+                    static_cast<void>(self.system->processLifecycle(EScriptLifecycleAdmission::RETIRE_ONLY));
+                }});
             if (!connection)
                 throw std::runtime_error("Physics2D benchmark Hook binding failed");
             hook_connection = std::move(*connection);
@@ -613,6 +625,7 @@ namespace
         std::optional<LuaScriptBackend> lua;
         std::array<ScriptBackendDescriptor, 3U> backends;
         std::optional<ScriptSystem> system;
+        std::optional<ScriptSystem::ExecutionRegion> execution_region;
         bool trace{};
         std::uint64_t graph_compile_ns{};
         Clock::time_point frame_begin;

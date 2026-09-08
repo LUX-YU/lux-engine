@@ -602,6 +602,8 @@ namespace lux::scene
             [](void* context, const simulation::SimulationClockSnapshot&, bool stable) noexcept {
                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
                 auto& system = runtime.system_;
+                if (system.isShutdown())
+                    return true;
                 if (stable)
                 {
                     if (!runtime.real_delay_->drainCompletions())
@@ -611,25 +613,47 @@ namespace lux::scene
                 if (!runtime.submitResolved())
                     return false;
                 const auto result = system.processLifecycle();
-                return static_cast<bool>(result);
+                if (!result && result.error() != simulation::script::EScriptSystemError::INVOCATION_FAILURE)
+                    return false;
+                if (system.isShutdown())
+                    return true;
+                auto region = system.beginExecutionRegion();
+                if (!region)
+                    return false;
+                runtime.execution_region_.emplace(std::move(*region));
+                return true;
             },
             [](void* context, const simulation::SimulationClockSnapshot&, bool stable_resume) noexcept {
-                if (!stable_resume)
-                    return true;
                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
-                return static_cast<bool>(runtime.system_.executeStablePoint());
+                if (!runtime.execution_region_)
+                    return runtime.system_.isShutdown();
+                const auto resumed = stable_resume ? runtime.system_.executeStablePoint() :
+                    lux::cxx::expected<simulation::script::ScriptStablePointReport,
+                        simulation::script::EScriptSystemError>{};
+                if (!runtime.execution_region_ || !runtime.execution_region_->finish())
+                    return false;
+                runtime.execution_region_.reset();
+                return static_cast<bool>(resumed);
             },
             [](void* context, const simulation::SimulationClockSnapshot&) noexcept {
                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
+                if (runtime.system_.isShutdown())
+                    return true;
                 if (!runtime.submitResolved())
                     return false;
                 const auto result = runtime.system_.processLifecycle();
                 runtime.stats_exchange_.write() = runtime.system_.stats();
                 runtime.stats_exchange_.publish();
-                return static_cast<bool>(result);
+                return result || result.error() == simulation::script::EScriptSystemError::INVOCATION_FAILURE;
             },
             [](void* context, const simulation::SimulationClockSnapshot&) noexcept {
                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
+                if (runtime.execution_region_)
+                {
+                    if (!runtime.execution_region_->finish())
+                        std::terminate();
+                    runtime.execution_region_.reset();
+                }
                 static_cast<void>(runtime.system_.processLifecycle(
                     simulation::script::EScriptLifecycleAdmission::RETIRE_ONLY));
                 runtime.stats_exchange_.write() = runtime.system_.stats();

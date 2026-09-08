@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string_view>
 
@@ -110,6 +111,7 @@ namespace lux::scene
         std::unique_ptr<ScriptRealDelayProvider> real_delay_;
         std::unique_ptr<scene::script::ScriptSystemDescription> description_;
         simulation::script::ScriptSystem system_;
+        std::optional<simulation::script::ScriptSystem::ExecutionRegion> execution_region_;
         simulation::SimulationHookConnection hook_connection_;
         LatestSpscExchange<simulation::script::ScriptRuntimeStats> stats_exchange_;
     };

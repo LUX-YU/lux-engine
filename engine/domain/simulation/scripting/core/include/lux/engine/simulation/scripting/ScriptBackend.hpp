@@ -63,13 +63,14 @@ namespace lux::simulation::script
             ecs::Entity,
             std::uint64_t
         ) noexcept{};
-        bool (*patch)(
+        // Mutation callbacks accept owned deferred commands. They must not mutate the Registry inline.
+        bool (*record_patch)(
             void*,
             ecs::Entity,
             std::uint64_t,
             const void*
         ) noexcept{};
-        bool (*command)(
+        bool (*record_command)(
             void*,
             EScriptHostCommand,
             ecs::Entity,
@@ -132,8 +133,8 @@ namespace lux::simulation::script
             const void* value
         ) const noexcept
         {
-            return hasSelf() && api_ && api_->patch &&
-                api_->patch(api_->context, self(), component_type, value);
+            return hasSelf() && api_ && api_->record_patch &&
+                api_->record_patch(api_->context, self(), component_type, value);
         }
 
         [[nodiscard]] bool command(
@@ -142,7 +143,7 @@ namespace lux::simulation::script
             const void* value = nullptr
         ) const noexcept
         {
-            return api_ && api_->command && api_->command(
+            return api_ && api_->record_command && api_->record_command(
                 api_->context,
                 command,
                 self(),

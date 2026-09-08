@@ -1,10 +1,11 @@
-#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 #pragma once
 
+#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/scene/script_runtime/visibility.h>
 #include <lux/engine/process/Timer.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/engine/simulation/scripting/DeferredScriptHost.hpp>
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp>
 #include <lux/engine/scene/LatestSpscExchange.hpp>
@@ -67,7 +68,17 @@ namespace lux::scene
         simulation::script::ScriptArtifactResolver artifacts;
         scene::script::WorldObjectResolver world;
         std::span<const simulation::script::ScriptBackendDescriptor> backends;
-        simulation::script::ScriptHostApi host;
+        std::span<const simulation::script::ScriptDeferredComponent> components;
+        simulation::ecs::EcsCommandProducerCapacity command_capacity{1024U, 65536U};
+    };
+
+    struct ScriptRuntimeCommandStats final
+    {
+        std::uint64_t accepted{};
+        std::uint64_t rejected{};
+        std::size_t rejected_at_commit{};
+        std::size_t discarded{};
+        std::optional<simulation::ecs::EcsCommandFailure> last_rejection;
     };
 
     class LUX_ENGINE_SCENE_SCRIPT_RUNTIME_PUBLIC ScriptRuntimeSystem final
@@ -88,7 +99,9 @@ namespace lux::scene
             std::unique_ptr<scene::script::ScriptSystemDescription> description,
             simulation::script::ScriptSystem system,
             script::WorldObjectResolver world,
-            simulation::ecs::Registry& registry
+            simulation::ecs::Registry& registry,
+            std::unique_ptr<simulation::ecs::EcsCommandBuffer> commands,
+            std::unique_ptr<simulation::script::DeferredScriptHost> host
         ) noexcept;
         ~ScriptRuntimeSystem() noexcept;
 
@@ -98,6 +111,7 @@ namespace lux::scene
         [[nodiscard]] bool bindSimulation(simulation::Simulation& simulation) noexcept;
         // Observation only, on the execution owner at a safe point. Gameplay pumping is graph-owned.
         [[nodiscard]] const simulation::script::ScriptSystem& scriptSystem() const noexcept;
+        [[nodiscard]] ScriptRuntimeCommandStats commandStats() const noexcept;
         // One observation consumer may call this on another thread; no live runtime storage is borrowed.
         [[nodiscard]] bool acquireStats(simulation::script::ScriptRuntimeStats& output) noexcept;
 
@@ -105,13 +119,20 @@ namespace lux::scene
         struct Loader;
         [[nodiscard]] bool prepareLoader() noexcept;
         [[nodiscard]] bool submitResolved() noexcept;
+        [[nodiscard]] bool beginCommands() noexcept;
+        void endCommands() noexcept;
+        [[nodiscard]] bool commitCommands() noexcept;
         std::unique_ptr<Loader> loader_;
         script::WorldObjectResolver world_;
         simulation::ecs::Registry* registry_{};
         std::unique_ptr<ScriptRealDelayProvider> real_delay_;
         std::unique_ptr<scene::script::ScriptSystemDescription> description_;
+        std::unique_ptr<simulation::ecs::EcsCommandBuffer> commands_;
+        std::unique_ptr<simulation::script::DeferredScriptHost> host_;
         simulation::script::ScriptSystem system_;
         std::optional<simulation::script::ScriptSystem::ExecutionRegion> execution_region_;
+        std::optional<simulation::ecs::EcsCommandWriter> command_writer_;
+        std::optional<simulation::script::DeferredScriptHost::Batch> command_batch_;
         simulation::SimulationHookConnection hook_connection_;
         LatestSpscExchange<simulation::script::ScriptRuntimeStats> stats_exchange_;
     };

@@ -420,7 +420,8 @@ namespace lux::simulation::script::detail
                 const auto last = bucket.handlers.size() - 1U;
                 const bool moved_runnable = bucket.runnable.test(last);
                 bucket.runnable.set(last, false);
-                bucket.runnable.set(position, position != last && moved_runnable);
+                if (position != last)
+                    bucket.runnable.set(position, moved_runnable);
                 bucket.handlers.erase(key);
             }
             else
@@ -435,6 +436,11 @@ namespace lux::simulation::script::detail
     {
         auto& config = configurations_[slot];
         config.published = false;
+        if (traversal_depth_ == 0U)
+        {
+            unlink(slot);
+            return;
+        }
         for (std::size_t index{config.first}; index < config.first + config.count; ++index)
         {
             const auto& binding = bindings_[index];
@@ -445,9 +451,7 @@ namespace lux::simulation::script::detail
             if (handler != nullptr)
                 bucket.runnable.set(static_cast<std::size_t>(handler - bucket.handlers.values().data()), false);
         }
-        if (traversal_depth_ == 0U)
-            unlink(slot);
-        else if (!config.pending_unlink)
+        if (!config.pending_unlink)
         {
             config.pending_unlink = true;
             pending_unlinks_.push_back(slot);

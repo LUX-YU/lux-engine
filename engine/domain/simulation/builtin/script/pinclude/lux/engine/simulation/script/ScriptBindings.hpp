@@ -166,6 +166,8 @@ namespace lux::simulation::script::detail
         public:
             void prepare(std::size_t capacity)
             {
+                if (capacity <= 64U)
+                    return;
                 while (capacity != 0U)
                 {
                     capacity = (capacity + 63U) / 64U;
@@ -177,13 +179,20 @@ namespace lux::simulation::script::detail
             [[nodiscard]] std::size_t count() const noexcept { return count_; }
             [[nodiscard]] bool test(std::size_t index) const noexcept
             {
-                return (levels_[0][index / 64U] & (std::uint64_t{1U} << (index % 64U))) != 0U;
+                const auto word = levels_.empty() ? inline_word_ : levels_[0][index / 64U];
+                return (word & (std::uint64_t{1U} << (index % 64U))) != 0U;
             }
             void set(std::size_t index, bool enabled) noexcept
             {
                 if (test(index) == enabled)
                     return;
                 if (enabled) ++count_; else --count_;
+                if (levels_.empty())
+                {
+                    const auto mask = std::uint64_t{1U} << index;
+                    if (enabled) inline_word_ |= mask; else inline_word_ &= ~mask;
+                    return;
+                }
                 for (auto& level : levels_)
                 {
                     auto& word = level[index / 64U];
@@ -196,10 +205,16 @@ namespace lux::simulation::script::detail
                     index /= 64U;
                 }
             }
-            [[nodiscard]] std::size_t next(std::size_t index) const noexcept { return nextAt(0U, index); }
+            [[nodiscard]] std::size_t next(std::size_t index) const noexcept
+            {
+                if (!levels_.empty())
+                    return nextAt(0U, index);
+                const auto word = index < 64U ? inline_word_ & (~std::uint64_t{} << index) : 0U;
+                return word == 0U ? (std::numeric_limits<std::size_t>::max)() : std::countr_zero(word);
+            }
             [[nodiscard]] std::size_t backingBytes() const noexcept
             {
-                std::size_t bytes{};
+                auto bytes = levels_.capacity() * sizeof(decltype(levels_)::value_type);
                 for (const auto& level : levels_) bytes += level.capacity() * sizeof(std::uint64_t);
                 return bytes;
             }
@@ -218,6 +233,7 @@ namespace lux::simulation::script::detail
             }
             std::vector<std::vector<std::uint64_t>> levels_;
             std::size_t count_{};
+            std::uint64_t inline_word_{};
         };
         struct HookBucket final
         {

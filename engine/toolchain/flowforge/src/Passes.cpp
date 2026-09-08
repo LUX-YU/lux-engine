@@ -50,6 +50,7 @@
 #include <mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h>
 #include <mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h>
 #include <mlir/ExecutionEngine/ExecutionEngine.h>
+#include <mlir/ExecutionEngine/OptUtils.h>
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
 #include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>
 #include <llvm/Support/TargetSelect.h>
@@ -451,6 +452,10 @@ namespace lux::flowforge
         // performance on the table for editor preview runs.
         mlir::ExecutionEngineOptions engine_options;
         engine_options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Default;
+        // Keep the callable alive while ExecutionEngine borrows it. Use the same IR optimization
+        // level as AOT; instruction selection's CodeGenOptLevel is a separate pipeline.
+        const auto optimize = mlir::makeOptimizingTransformer(2U, 0U, nullptr);
+        engine_options.transformer = optimize;
 
         auto maybeEngine = mlir::ExecutionEngine::create(module, engine_options);
         if (!maybeEngine)
@@ -497,8 +502,9 @@ namespace lux::flowforge
         if (!defaults.empty())
             std::memcpy(state.data(), defaults.data(), std::min(defaults.size(), state.size()));
 
-        auto* fnMain = reinterpret_cast<void (*)(void*)>(expectedFn.get());
-        fnMain(state.data());
+        // The second hidden parameter is the prepared Ability table, unused by this graph-only host.
+        auto* fnMain = reinterpret_cast<void (*)(void*, void*)>(expectedFn.get());
+        fnMain(state.data(), nullptr);
         return 0;
     }
 

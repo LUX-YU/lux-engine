@@ -42,6 +42,7 @@
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
 #include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>
 #include <mlir/Target/LLVMIR/Export.h>
+#include <mlir/ExecutionEngine/OptUtils.h>
 
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/Constants.h>
@@ -1797,6 +1798,17 @@ namespace lux::flowforge
             llvm::raw_string_ostream os(verr);
             if (llvm::verifyModule(*llmod, &os))
                 return fail("generated LLVM module is invalid:\n" + os.str());
+        }
+
+        // Target code generation alone does not run LLVM's IR pipeline. Optimize only after the
+        // suspension state machine, imports and ABI wrappers exist, preserving the generic target.
+        if (auto error = mlir::makeOptimizingTransformer(2U, 0U, tm.get())(llmod.get()))
+            return fail("LLVM O2 optimization failed: " + llvm::toString(std::move(error)));
+        {
+            std::string error;
+            llvm::raw_string_ostream output(error);
+            if (llvm::verifyModule(*llmod, &output))
+                return fail("optimized LLVM module is invalid:\n" + output.str());
         }
 
         // 6. Codegen to a COFF/ELF object in memory.

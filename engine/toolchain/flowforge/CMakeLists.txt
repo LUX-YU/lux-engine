@@ -91,6 +91,32 @@ set_tests_properties(
     PROPERTIES ENVIRONMENT "LUX_FLOWFORGE_LINKER=${CMAKE_LINKER}"
 )
 
+# The JIT API is module-private. Compile those same implementation files into the test;
+# do not export private compiler entry points just to exercise both ExecutionEngine paths.
+add_executable(
+    flowforge_jit_optimization_test
+    test/jit_optimization_test.cpp
+    src/IR.cpp
+    src/IRContext.cpp
+    src/Passes.cpp
+    src/ScriptInstance.cpp
+)
+target_include_directories(
+    flowforge_jit_optimization_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/mlir
+    ${CMAKE_CURRENT_BINARY_DIR}/src/mlir
+    ${MLIR_INCLUDE_DIRS}
+)
+target_link_libraries(
+    flowforge_jit_optimization_test PRIVATE
+    lux::engine::flowforge::flowforge_compiler
+    _flowforge_dialect
+)
+add_dependencies(flowforge_jit_optimization_test FlowForgeDialectIncGen)
+lux_classify_target(TARGET flowforge_jit_optimization_test LAYER TOOLCHAIN PRODUCT TEST ROLE DOMAIN)
+add_test(NAME flowforge_jit_optimization_test COMMAND flowforge_jit_optimization_test)
+
 install_components(
     PROJECT_NAME lux-engine-flowforge-compiler
     VERSION      ${PROJECT_VERSION}

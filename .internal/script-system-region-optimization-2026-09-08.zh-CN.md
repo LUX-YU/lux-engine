@@ -66,3 +66,18 @@ scope/epoch/local index。结果预留到 waiter 提交之间无用户代码；A
 广播路由固定为 endpoint 数组；定向路由仍有界哈希，直接使用插入返回的迭代器。
 `event-ctest-2.log` 17/17；`event-ctest-3.log` 新增 37 次复用通过，高水位 2、74 次恢复、backlog 0。
 成本待配对核验，不以源码删除行数宣称收益。
+
+### FlowForge 通用 IR 优化
+
+AOT 在 lowering、异步状态机、导入与 wrapper 生成及 verify 后运行 LLVM O2，再 verify、生成机器码。
+runMainJIT 与 FlowScriptInstance 的 ExecutionEngine 都使用相同 O2 transformer；CodeGenOptLevel 保持原值，
+不启用 LTO、fast-math 或新的 ISA。transformer 的借用覆盖创建与符号 lookup。
+补测暴露私有 JIT host 漏传 prepared 隐藏参数，现以空 prepared 表保持原 graph-only 支持范围。
+真实循环 sink 为 0/1/2/3/4/105；独立 Event 两次参数为 73/91，错误参数与未知 Event 不调用 sink。
+
+`flow-o2-dev` 全量与原 8 项检查通过；`flow-jit-dev-2/ctest-4.log` 新 JIT 通过。
+失败夹具与编译日志保留：旧夹具在加入 Graph 前连接而生成空函数，不能作为 JIT 正确性证据。
+五组成本见 `performance/flow-o2`：相对 Event 阶段，Update 配对中位 -8.96%（4/5）、
+直接 Ability -13.05%（5/5）；coroutine +1.42%、Event +0.23%、sequence +0.92%，后者没有稳定收益。
+这些是开发候选测量；源码 patch 随日志保存，不能将带未提交 patch 的 CSV HEAD 当作完整源码身份。
+历史 CSV 无计时前累计计数，报告保留全批总时间，摊销只用有相邻计数的第 1 行至末行；不推造首行工作量。

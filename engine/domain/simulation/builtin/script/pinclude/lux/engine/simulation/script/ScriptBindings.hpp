@@ -232,7 +232,6 @@ namespace lux::simulation::script::detail
         {
             ScriptBindings* owner{};
             std::uint32_t slot{};
-            bool supports_wait{};
             EndpointConnectionToken token;
             EventHandlerStorage handlers;
             std::size_t capacity{};
@@ -290,6 +289,7 @@ namespace lux::simulation::script::detail
         std::size_t binding_capacity_{};
         std::size_t method_capacity_{};
         std::size_t runnable_backing_bytes_{};
+        std::size_t max_resume_payload_{};
         std::size_t traversal_depth_{};
         std::span<const ScriptRuntimeMount> staged_inputs_;
         std::span<const ScriptMountPlacement> staged_placements_;

@@ -766,8 +766,20 @@ namespace lux::flowforge
                         repair_allocations.push_back(allocation);
                 }
             }
+            using StorageInterval = detail::ContinuationFrameLayout::Interval;
+            std::vector<std::optional<StorageInterval>> storage_intervals;
+            for (auto* allocation : repair_allocations)
+                storage_intervals.push_back(detail::ContinuationFrameLayout::storageInterval(*allocation));
+            struct SharedSlot final
+            {
+                std::uint64_t offset{}, size{}, alignment{};
+                StorageInterval interval;
+            };
+            std::vector<SharedSlot> shared_slots;
+            std::size_t allocation_index{};
             for (auto* allocation : repair_allocations)
             {
+                const auto interval = storage_intervals[allocation_index++];
                 const auto* count = llvm::dyn_cast<llvm::ConstantInt>(allocation->getArraySize());
                 if (count == nullptr)
                 {
@@ -789,10 +801,28 @@ namespace lux::flowforge
                     continue;
                 }
                 const auto alignment = layout.getABITypeAlign(allocation->getAllocatedType()).value();
-                frame_size = alignFrameOffset(frame_size, alignment);
-                const auto offset = frame_size;
                 const auto size = layout.getTypeAllocSize(allocation->getAllocatedType()) * count->getZExtValue();
-                frame_size += size;
+                std::uint64_t offset = UINT64_MAX;
+                if (interval && !needs_initial)
+                {
+                    for (auto& shared : shared_slots)
+                    {
+                        const bool disjoint = interval->last < shared.interval.first ||
+                            shared.interval.last < interval->first;
+                        if (!disjoint || shared.size < size || shared.alignment < alignment) continue;
+                        offset = shared.offset;
+                        shared.interval.first = (std::min)(shared.interval.first, interval->first);
+                        shared.interval.last = (std::max)(shared.interval.last, interval->last);
+                        break;
+                    }
+                }
+                if (offset == UINT64_MAX)
+                {
+                    frame_size = alignFrameOffset(frame_size, alignment);
+                    offset = frame_size;
+                    frame_size += size;
+                    if (interval && !needs_initial) shared_slots.push_back({offset, size, alignment, *interval});
+                }
                 frame_alignment = (std::max)(frame_alignment, static_cast<std::uint64_t>(alignment));
                 slots.push_back({offset, size, alignment, needs_initial});
                 llvm::SmallVector<llvm::Use*, 16> uses;

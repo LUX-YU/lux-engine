@@ -10,6 +10,9 @@
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/compiler/IR.hpp>
 #include <lux/engine/flowforge/compiler/Passes.hpp>
+#include <lux/engine/flowforge/compiler/ContinuationFrameLayout.hpp>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Module.h>
 #include "FlowForgeTestResult.hpp"
 
 #include <lux/engine/flowforge/compiler/ScriptInstance.hpp>
@@ -42,8 +45,53 @@ static lux::meta::RefFunction makeSinkIntFn()
     return fn;
 }
 
+static void testFrameIntervals()
+{
+    llvm::LLVMContext context;
+    llvm::Module module("frame-intervals", context);
+    llvm::IRBuilder<> builder(context);
+    auto* function = llvm::Function::Create(
+        llvm::FunctionType::get(builder.getInt32Ty(), {builder.getInt1Ty()}, false),
+        llvm::GlobalValue::ExternalLinkage, "stages", module
+    );
+    auto* entry = llvm::BasicBlock::Create(context, "entry", function);
+    auto* first_resume = llvm::BasicBlock::Create(context, "resume.a", function);
+    auto* second_resume = llvm::BasicBlock::Create(context, "resume.b", function);
+    builder.SetInsertPoint(entry);
+    auto* a = builder.CreateAlloca(builder.getInt32Ty());
+    auto* b = builder.CreateAlloca(builder.getInt32Ty());
+    builder.CreateStore(builder.getInt32(11), a);
+    builder.CreateBr(first_resume);
+    builder.SetInsertPoint(first_resume);
+    builder.CreateLoad(builder.getInt32Ty(), a);
+    builder.CreateStore(builder.getInt32(22), b);
+    builder.CreateBr(second_resume);
+    builder.SetInsertPoint(second_resume);
+    builder.CreateRet(builder.CreateLoad(builder.getInt32Ty(), b));
+    using Layout = detail::ContinuationFrameLayout;
+    auto a_interval = Layout::storageInterval(*a);
+    auto b_interval = Layout::storageInterval(*b);
+    check(a_interval && b_interval && a_interval->last < b_interval->first,
+        "sequential cross-cut values permit one shared frame slot");
+    check(Layout::readsIncoming(*a, first_resume) && Layout::readsIncoming(*b, second_resume),
+        "both sequential values really survive their respective cut");
+    first_resume->getTerminator()->eraseFromParent();
+    builder.SetInsertPoint(first_resume);
+    builder.CreateCondBr(function->getArg(0), first_resume, second_resume);
+    a_interval = Layout::storageInterval(*a);
+    b_interval = Layout::storageInterval(*b);
+    check(a_interval && b_interval && a_interval->last >= b_interval->first,
+        "loop backedge keeps first value alive across second value writes");
+    builder.SetInsertPoint(first_resume->getTerminator());
+    const auto escape = module.getOrInsertFunction("escape",
+        llvm::FunctionType::get(builder.getVoidTy(), {builder.getPtrTy()}, false));
+    builder.CreateCall(escape, {a});
+    check(!Layout::storageInterval(*a), "escaping frame address cannot share storage");
+}
+
 int main()
 {
+    testFrameIntervals();
     std::printf("FlowForge while-condition test\n==============================\n");
 
     static auto sink_fn = makeSinkIntFn();

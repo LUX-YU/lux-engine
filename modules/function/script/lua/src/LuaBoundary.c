@@ -1,3 +1,4 @@
+#include <lux_lua55_extensions.h>
 #include <lux/engine/function/script/lua/LuaBoundary.h>
 #include <lua.h>
 #include <lauxlib.h>

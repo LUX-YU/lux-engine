@@ -5,6 +5,7 @@ p=argparse.ArgumentParser()
 p.add_argument('--official',type=Path,required=True)
 p.add_argument('--output',type=Path,required=True)
 p.add_argument('--patch',type=Path,required=True)
+p.add_argument('--revision',required=True)
 a=p.parse_args()
 o=a.official.resolve(strict=True); out=a.output.resolve(); patch=a.patch.resolve(strict=True)
 identity=json.loads(Path(str(o)+'.identity.json').read_text())
@@ -14,7 +15,7 @@ for name,digest in identity['files'].items():
  f=(o/name).resolve(strict=True)
  if not f.is_relative_to(o) or hashlib.sha256(f.read_bytes()).hexdigest()!=digest:
   raise SystemExit('Official source mismatch: '+name)
-key=dict(revision='lux-leaf-r1',archive_sha256=expected,patch_sha256=hashlib.sha256(patch.read_bytes()).hexdigest())
+key=dict(revision=a.revision,archive_sha256=expected,patch_sha256=hashlib.sha256(patch.read_bytes()).hexdigest())
 if (out/'.lux-patch.json').exists():
  manifest=json.loads((out/'.lux-patch.json').read_text())
  if any(manifest.get(k)!=v for k,v in key.items()): raise SystemExit('Existing patch tree identity mismatch')

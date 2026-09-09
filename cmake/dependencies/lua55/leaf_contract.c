@@ -1,3 +1,4 @@
+#include <lux_lua55_extensions.h>
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>

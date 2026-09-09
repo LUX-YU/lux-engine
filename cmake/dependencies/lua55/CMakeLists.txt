@@ -21,14 +21,14 @@ option(LUX_LUA55_LEAF_YIELD "Build the explicitly qualified Lux leaf-yield revis
 set(LUX_LUA55_PATCH_REVISION "official-5.5.1")
 set(LUX_LUA55_PATCH_SHA256 "none")
 if(LUX_LUA55_LEAF_YIELD)
-    file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/patches/leaf-yield-r1.patch" LUX_LUA55_PATCH_SHA256)
+    file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/patches/leaf-yield-r2.patch" LUX_LUA55_PATCH_SHA256)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     execute_process(COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/apply_leaf.py"
-        --official "${LUX_LUA55_SOURCE_DIR}" --output "${CMAKE_CURRENT_BINARY_DIR}/lux-leaf-r1"
-        --patch "${CMAKE_CURRENT_SOURCE_DIR}/patches/leaf-yield-r1.patch"
+        --official "${LUX_LUA55_SOURCE_DIR}" --output "${CMAKE_CURRENT_BINARY_DIR}/lux-leaf-r2"
+        --patch "${CMAKE_CURRENT_SOURCE_DIR}/patches/leaf-yield-r2.patch" --revision lux-leaf-r2
         COMMAND_ERROR_IS_FATAL ANY)
-    set(LUX_LUA55_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/lux-leaf-r1")
-    set(LUX_LUA55_PATCH_REVISION "lux-leaf-r1")
+    set(LUX_LUA55_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/lux-leaf-r2")
+    set(LUX_LUA55_PATCH_REVISION "lux-leaf-r2")
 endif()
 
 # Explicit library sources: no CLI, compiler main, amalgamation, or VM modifications.
@@ -41,6 +41,9 @@ set(lua_sources
 list(TRANSFORM lua_sources PREPEND "${LUX_LUA55_SOURCE_DIR}/src/")
 add_library(lux_lua55_runtime SHARED ${lua_sources})
 add_library(LuxLua55::Runtime ALIAS lux_lua55_runtime)
+if(LUX_LUA55_LEAF_YIELD)
+    target_compile_definitions(lux_lua55_runtime PUBLIC LUX_LUA55_LEAF_YIELD_REVISION=2)
+endif()
 set_target_properties(lux_lua55_runtime PROPERTIES EXPORT_NAME Runtime OUTPUT_NAME lux_lua55
     MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
 include(CheckIPOSupported)
@@ -50,7 +53,8 @@ if(lua55_ipo_supported)
 endif()
 message(STATUS "Lua55 C IPO: ${lua55_ipo_supported} ${lua55_ipo_error}")
 target_include_directories(lux_lua55_runtime PUBLIC
-    "$<BUILD_INTERFACE:${LUX_LUA55_SOURCE_DIR}/src>" "$<INSTALL_INTERFACE:include/lua55>")
+    "$<BUILD_INTERFACE:${LUX_LUA55_SOURCE_DIR}/src>"
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>" "$<INSTALL_INTERFACE:include/lua55>")
 option(LUX_LUA55_JUMPTABLE "Use the upstream jump table after a real compiler/run probe" OFF)
 if(LUX_LUA55_JUMPTABLE)
     include(CheckCSourceRuns)
@@ -82,6 +86,7 @@ install(TARGETS lux_lua55_runtime EXPORT LuxLua55Targets RUNTIME DESTINATION bin
 install(EXPORT LuxLua55Targets NAMESPACE LuxLua55:: DESTINATION lib/cmake/LuxLua55)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/LuxLua55Config.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/LuxLua55ConfigVersion.cmake" DESTINATION lib/cmake/LuxLua55)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/lux_lua55_extensions.h" DESTINATION include/lua55)
 foreach(header lua.h luaconf.h lauxlib.h lualib.h lua.hpp)
     install(FILES "${LUX_LUA55_SOURCE_DIR}/src/${header}" DESTINATION include/lua55)
 endforeach()

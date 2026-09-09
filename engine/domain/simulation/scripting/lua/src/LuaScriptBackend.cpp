@@ -1,3 +1,4 @@
+#include <lux_lua55_extensions.h>
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/lua/LuaScriptAbilityProjection.hpp>
 

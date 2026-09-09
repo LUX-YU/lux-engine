@@ -319,7 +319,8 @@ static int resumeAuthorityCase(bool stop)
 {
     constexpr EventPointId event_id{0x5A0120};
     constexpr HookPointId dispatch_id{0x5A0121};
-    const std::array hooks{makeHookPointSpec<void()>(kHook, "resume-start")};
+    const std::array hooks{makeHookPointSpec<void()>(kHook, "resume-start"),
+        makeHookPointSpec<void()>(dispatch_id, "resume-delivery")};
     const std::array events{makeEventPointSpec<ValuePose>(event_id, "resume-pose", dispatch_id,
         EEventRoute::SIMULATION_BROADCAST, "lux.test.lua.pose", 1U)};
     SimulationDescriptionBuilder builder;

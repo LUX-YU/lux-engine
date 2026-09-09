@@ -26,3 +26,8 @@
 
 早期失败、未采用实验和原始退出码均保留。`final-*` 是收尾复核前的 0333ef0f 一轮，最终资格必须使用 `qualified-*`；
 `closure-*` 包含扩展头 C++ linkage 修前失败，不能当作最终通过记录。
+
+固定归档提交：`80526cdcadfdc2375f025be5c36780ba4e624cc7`。
+[固定提交下载](https://raw.githubusercontent.com/LUX-YU/lux-engine/80526cdcadfdc2375f025be5c36780ba4e624cc7/.internal/evidence/script/lua55-v2/raw-logs.zip) · [远端取回校验](remote-verification.json)
+
+已从上述地址重新下载，SHA-256 与仓库内 `b6e509e7f397fe782903f9ba0cc08be84de1e7d3f21e110289f8b3589f308c3e` 一致；没有重打包归档。

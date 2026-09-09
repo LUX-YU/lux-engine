@@ -2,7 +2,7 @@
 
 This builds Lua 5.5.1 as one shared C library. It is a separate dependency build, not an engine
 architecture target. Only a single RelWithDebInfo configuration is accepted. The default applies
-the independently identified `lux-leaf-r1` patch to a verified copy; official input files stay unchanged.
+the independently identified `lux-leaf-r2` patch to a verified copy; official input files stay unchanged.
 
 Download [Lua 5.5.1](https://www.lua.org/ftp/lua-5.5.1.tar.gz) before configuring. Verify the archive SHA-256:
 `1c4b4068d67061f2a2231ad2b5422e77acea1487ea9890f6320af614f4373dce` (398643 bytes).
@@ -43,3 +43,6 @@ downloaded by CMake. The upstream 5.5.1 basic suite contains Linux device paths 
 The Windows qualification keeps the original suite and separately records the NUL-device/portable-mode
 test adaptation. It does not claim the upstream internal C test library or all platforms were tested.
 The Linux recipe needs a real Linux qualification run; other platforms have no recipe here.
+
+The extension declarations are isolated in `lux_lua55_extensions.h`, preserving the upstream `lua.h`.
+The exported CMake target supplies the patch revision; the identity manifest also hashes the extension header.

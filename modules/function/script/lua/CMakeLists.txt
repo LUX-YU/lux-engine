@@ -1,6 +1,7 @@
 find_package(lux-cxx REQUIRED COMPONENTS compile_time)
 
 find_package(LuxLua55 5.5.1 EXACT CONFIG REQUIRED)
+enable_language(C)
 
 include(CheckCXXSourceCompiles)
 set(CMAKE_REQUIRED_LIBRARIES LuxLua55::Runtime)
@@ -49,6 +50,7 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Lua.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/LuaVm.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/LuaBoundary.c
         ${CMAKE_CURRENT_SOURCE_DIR}/src/LuaValue.cpp
 )
 

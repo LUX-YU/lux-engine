@@ -104,9 +104,8 @@ namespace lux::script::lua
             }
             int failureValues(lua_State *state, Operation &operation)
             {
-                lua_pushboolean(state, false);
                 lua_pushlstring(state, operation.key.data(), operation.key.size());
-                return 2;
+                return 1;
             }
             int readField(lua_State *state, Operation &operation)
             {
@@ -303,15 +302,9 @@ namespace lux::script::lua
         {
             Operation operation{failureValues};
             operation.key = message;
-            if (run(state, operation, 0, 0, 2))
-                return 2;
-            // No allocation is needed for the fallback. The Lua wrapper reports this after the
-            // generated C++ conversion frame has been destroyed.
-            if (!lua_checkstack(state, 2))
-                return 0;
-            lua_pushboolean(state, false);
-            lua_pushnil(state);
-            return 2;
+            if (run(state, operation, 0, 0, 1)) return 1;
+            // The C boundary formats the status after all C++ owners have returned.
+            return 0;
         }
         LuaValueResult<void> LuaValueAccess::shape(lua_State *state, int index,
                                                    std::span<const std::string_view> keys) noexcept

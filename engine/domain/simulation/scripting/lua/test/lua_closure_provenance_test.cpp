@@ -21,7 +21,7 @@ namespace
         void (*call)(void*) noexcept;
     };
 
-    int call(lua_State* state) noexcept
+    LuxLuaBoundaryOutcome call(lua_State* state) noexcept
     {
         return detail::invokeLuaAbility<void>(state, [](detail::LuaPreparedAbilityAccess& access) noexcept {
             static_cast<const Dispatch*>(access.dispatch)->call(access.context);
@@ -165,8 +165,6 @@ void testAbilityProvenance()
     assert(alpha_calls == 0 && beta_calls == 2);
     runtime.destroyInstance(runtime.context, rebuilt);
     runtime.destroyInstance(runtime.context, second);
-    assert(backend->stats().wrapper_factory_compilations == 1U);
-    assert(backend->stats().wrapper_closures_created >= 3U);
     assert(backend->stats().prepared_ability_slots == 0U);
 }
 
@@ -255,7 +253,6 @@ void testEventProvenance()
     for (auto instance : instances)
         runtime.destroyInstance(runtime.context, instance);
     assert(backend->stats().prepared_event_slots == 0U);
-    assert(backend->stats().wrapper_factory_compilations == 1U);
 }
 
 void testNestedScopes()

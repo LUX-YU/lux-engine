@@ -30,9 +30,9 @@ namespace
         return {};
     }
 
-    int project(lua_State*) noexcept
+    LuxLuaBoundaryOutcome project(lua_State*) noexcept
     {
-        return 0;
+        return {LUX_LUA_BOUNDARY_RETURN, 0, 0};
     }
 
     [[nodiscard]] lux::script::ScriptArtifact artifact(

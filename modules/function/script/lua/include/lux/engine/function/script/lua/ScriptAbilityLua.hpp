@@ -2,6 +2,7 @@
 
 #include <lux/engine/function/script/ScriptAbility.hpp>
 #include <lux/engine/function/script/lua/LuaValue.hpp>
+#include <lux/engine/function/script/lua/LuaBoundary.h>
 
 #include <memory>
 #include <span>
@@ -68,7 +69,7 @@ namespace lux::script::lua
     struct ScriptAbilityLuaMethodProjection final
     {
         ScriptApiMethodIdView method;
-        int (*entry)(lua_State *) noexcept {};
+        LuxLuaTypedWorker entry{};
         std::span<const LuaValueOperation> parameters;
         std::span<const LuaValueOperation> results;
     };

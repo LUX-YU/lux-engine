@@ -38,8 +38,8 @@ namespace
 
     lua_State* g_observed_vm{};
     std::size_t g_observed_read_entries{};
-    int (*g_original_read)(lua_State*) noexcept{};
-    int observeRead(lua_State* state) noexcept
+    LuxLuaTypedWorker g_original_read{};
+    LuxLuaBoundaryOutcome observeRead(lua_State* state) noexcept
     {
         g_observed_vm = state;
         ++g_observed_read_entries;

@@ -65,9 +65,9 @@ namespace lux::simulation::script::detail
     {
         [[nodiscard]] static bool current(lua_State* state, LuaPreparedAbilityAccess& result) noexcept;
         [[nodiscard]] static bool revalidate(lua_State* state, const LuaPreparedAbilityAccess& original) noexcept;
-        [[nodiscard]] static int fail(lua_State* state, std::int32_t status, const char* message) noexcept;
-        [[nodiscard]] static int succeed(lua_State* state, int results) noexcept;
-        [[nodiscard]] static int suspend(
+        [[nodiscard]] static LuxLuaBoundaryOutcome fail(lua_State* state, std::int32_t status, const char* message) noexcept;
+        [[nodiscard]] static LuxLuaBoundaryOutcome succeed(lua_State* state, int results) noexcept;
+        [[nodiscard]] static LuxLuaBoundaryOutcome suspend(
             lua_State* state,
             ScriptStepResult result,
             std::uint32_t local_slot
@@ -126,7 +126,7 @@ namespace lux::simulation::script::detail
     }
 
     template <class Policy, class Result, class... Arguments, class Invoke>
-    [[nodiscard]] int invokeLuaValueAbility(lua_State* state, Invoke invoke) noexcept
+    [[nodiscard]] LuxLuaBoundaryOutcome invokeLuaValueAbility(lua_State* state, Invoke invoke) noexcept
     {
         using namespace lux::script::lua;
         using ValueAccess = lux::script::lua::detail::LuaValueAccess;
@@ -139,7 +139,7 @@ namespace lux::simulation::script::detail
             !LuaValueCodec<std::remove_cvref_t<Arguments>, Policy>::custom) && ...);
         // current() admits every entry. Parameter reentry only determines whether that admission must be rechecked.
         std::optional<LuaValueFailure> failure;
-        // This inner frame is gone before error formatting and the wrapper's success/error/yield protocol.
+        // This inner frame is gone before error formatting and the C boundary performs error/yield.
         const auto status = [&]() noexcept -> int {
             LuaValueSlots<std::remove_cvref_t<Arguments>...> values;
             if (!readLuaAbilityArguments<Policy, Arguments...>(
@@ -188,11 +188,11 @@ namespace lux::simulation::script::detail
     }
 
     template <class Result, class... Arguments, class Invoke>
-    [[nodiscard]] int invokeLuaAbility(lua_State* state, Invoke invoke) noexcept
+    [[nodiscard]] LuxLuaBoundaryOutcome invokeLuaAbility(lua_State* state, Invoke invoke) noexcept
     { return invokeLuaValueAbility<lux::script::lua::LuaValuePolicy, Result, Arguments...>(state, invoke); }
 
     template <class Policy, class Result, class... Arguments, class Start>
-    [[nodiscard]] int startLuaValueAbility(lua_State* state, Start start) noexcept
+    [[nodiscard]] LuxLuaBoundaryOutcome startLuaValueAbility(lua_State* state, Start start) noexcept
     {
         using namespace lux::script::lua;
         using ValueAccess = lux::script::lua::detail::LuaValueAccess;
@@ -228,6 +228,6 @@ namespace lux::simulation::script::detail
         }
     }
     template <class Result, class... Arguments, class Start>
-    [[nodiscard]] int startLuaAbility(lua_State* state, Start start) noexcept
+    [[nodiscard]] LuxLuaBoundaryOutcome startLuaAbility(lua_State* state, Start start) noexcept
     { return startLuaValueAbility<lux::script::lua::LuaValuePolicy, Result, Arguments...>(state, start); }
 }

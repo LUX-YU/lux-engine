@@ -308,8 +308,124 @@ static void standaloneCase(LuaScriptBackend& backend)
     assert(provider.scalar_calls == 2 && provider.zero_calls == 2 && provider.angles == 2);
     std::puts("ADMISSION_STANDALONE null-host unbound-host scalar=2 zero=2 custom=2 PASS");
 }
+static ecs::Registry* resume_registry{};
+static ecs::Entity resume_entity;
+static ScriptSystem* resume_system{};
+static bool resume_stop{};
+static std::size_t resume_conversions{};
+
+static int resumeAuthorityCase(bool stop)
+{
+    constexpr EventPointId event_id{0x5A0120};
+    constexpr HookPointId dispatch_id{0x5A0121};
+    const std::array hooks{makeHookPointSpec<void()>(kHook, "resume-start")};
+    const std::array events{makeEventPointSpec<ValuePose>(event_id, "resume-pose", dispatch_id,
+        EEventRoute::SIMULATION_BROADCAST, "lux.test.lua.pose", 1U)};
+    SimulationDescriptionBuilder builder;
+    assert(builder.addSystem(kOwner, "resume", {.type = {.canonical_name = "lux.test.resume", .version = 1},
+        .hooks = hooks, .events = events}));
+    auto sim = std::move(builder).build();
+    assert(sim);
+    HookPoint<void()> hook;
+    assert(hook.prepare(1U) == EEndpointMutationError::NONE);
+    ScriptHookEndpoint<void()> endpoint{kOwner, kHook, hook};
+    HookChannel<SimulationBroadcastRoute, ValuePose> channel;
+    assert(channel.prepare({1U, 1U}) == EEndpointMutationError::NONE);
+    ScriptEventEndpoint<SimulationBroadcastRoute, ValuePose> event{kOwner, event_id, channel};
+    auto source = projectScriptEventSource(sim->findEvent(kOwner, event_id), event.descriptor(), "Resume", "pose");
+    assert(source);
+    const auto contribution = lux::script::lua::makeScriptAbilityLuaContribution<LuaValueTestAbility>();
+    auto operation = lux::script::lua::makeLuaValueOperation<ValuePose>();
+    operation.push = [](lua_State* state, const void* value) noexcept {
+        ++resume_conversions;
+        if (resume_stop) assert(resume_system->requestStop());
+        else resume_registry->destroy(resume_entity);
+        const auto original = lux::script::lua::makeLuaValueOperation<ValuePose>();
+        return original.push(state, value);
+    };
+    auto backend = LuaScriptBackend::create({
+        .instance_capacity = 1U, .prepared_call_capacity = 3U, .continuation_capacity = 1U,
+        .execution_depth_capacity = 4U, .ability_catalog_method_capacity = AbilityTraits::Methods.size(),
+        .prepared_ability_capacity = AbilityTraits::Methods.size(), .values = std::span{&operation, 1},
+        .abilities = std::span{&contribution, 1}, .event_catalog_capacity = 1U, .prepared_event_capacity = 1U,
+        .events = std::span{&*source, 1},
+        .prepared_ability_blocks = std::array{LuaPreparedBlockClass{AbilityTraits::Methods.size(), 1U}},
+        .prepared_ability_storage_bytes = 1024U * 1024U,
+        .prepared_event_blocks = std::array{LuaPreparedBlockClass{1U, 1U}},
+        .prepared_event_storage_bytes = 1024U * 1024U
+    });
+    assert(backend);
+    lux::rdesc::Script description;
+    description.module_name = "lux.test.resume-authority";
+    description.body = lux::rdesc::LuaSourceScript{"Resume", {kTick}};
+    description.exports = {{"tick", kTick, {}, {}}};
+    description.api_requirements = {{lux::script::ScriptApiContractId{AbilityTraits::Description.id.name()},
+        AbilityTraits::Description.schema_hash}};
+    description.event_requirements = {*source};
+    constexpr std::string_view code =
+        "return {tick=function(self) "
+        "assert(debug.getinfo(lux.Event.Resume.pose,'S').what=='C');"
+        "assert(debug.getinfo(lux.Values.zeroArgumentProbe,'S').what=='C');"
+        "local saved=coroutine.yield; coroutine.yield=function() error('intercepted engine primitive') end;"
+        "local p=lux.Event.Resume.pose(); coroutine.yield=saved;"
+        "assert(p.key==31 and p.velocity.x==2 and p.velocity.y==3 and p.mode==3);"
+        "assert(lux.Values.zeroArgumentProbe()==42) end}";
+    const auto bytes = std::as_bytes(std::span{code.data(), code.size()});
+    auto script = lux::script::ScriptArtifact::create(std::move(description), {bytes.begin(), bytes.end()});
+    assert(script);
+    std::array<std::uint8_t, 16> id{};
+    id[0] = 41U;
+    const lux::asset::AssetId asset{id};
+    ecs::Registry registry;
+    const auto entity = registry.create();
+    SimulationClock clock;
+    Provider provider;
+    const auto binding = lux::script::bindScriptAbility<LuaValueTestAbility>(provider);
+    const std::array capabilities{publishScriptAbility(binding)};
+    const std::array mounts{ScriptRuntimeMount{ScriptMountId{1}, asset, EntityScriptScope{entity},
+        {{kTick, HookScriptTarget{kOwner, kHook}}}}};
+    const auto plan = planScriptRuntimeCapacity(mounts);
+    assert(plan);
+    const auto descriptor = backend->descriptor();
+    const auto hook_descriptor = endpoint.descriptor();
+    const auto event_descriptor = event.descriptor();
+    auto system = ScriptSystem::create(*sim, *plan, mounts, registry, clock,
+        {8U, 1U, 4U, 4U, 4U, 4U, 64U, 4U, 4U, 4U, 4U, 4U},
+        {&*script, [](void* context, const lux::asset::AssetId&, ResolvedScriptArtifact& output) noexcept {
+            output.artifact = static_cast<lux::script::ScriptArtifact*>(context);
+            return true;
+        }}, capabilities, std::span{&descriptor, 1}, std::span{&hook_descriptor, 1},
+        std::span{&event_descriptor, 1});
+    assert(system && system->prepare());
+    assert(dispatchRuntimeHook(*system, hook) == 1U);
+    assert(system->activeContinuationCount() == 1U && system->stats().active_event_waiters == 1U);
+    {
+        auto writer = channel.begin(0U);
+        assert(writer.record(ValuePose{31, {2.0F, 3.0}, ValueMode::RUN}));
+    }
+    assert(deliverRuntimeEvent(*system, event) == 1U);
+    resume_registry = &registry;
+    resume_entity = entity;
+    resume_system = &*system;
+    resume_stop = stop;
+    resume_conversions = 0U;
+    const auto stable = executeRuntimeStablePoint(*system);
+    assert(stable);
+    assert(resume_conversions == 1U && provider.zero_calls == static_cast<std::size_t>(stop));
+    assert(system->activeContinuationCount() == 0U && system->activeAwaitableCount() == 0U);
+    assert(system->shutdown());
+    const auto released = backend->stats();
+    assert(released.vm_coroutine_creations == 1U && released.vm_coroutine_releases == 1U);
+    assert(released.prepared_ability_slots == 0U && released.prepared_event_slots == 0U);
+    std::printf("RESUME_AUTHORITY stop=%u converted=1 provider=%zu roots=1 released=1 backlog=0 PASS\n",
+        stop, provider.zero_calls);
+    return 0;
+}
+
 int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string_view{argv[1]} == "--resume-retire") return resumeAuthorityCase(false);
+    if (argc == 2 && std::string_view{argv[1]} == "--resume-stop") return resumeAuthorityCase(true);
     static_assert(!std::is_default_constructible_v<ValueToken>);
     static_assert(!lux::script::lua::LuaValueCodec<ValuePushOnly>::can_read);
     const auto push_only = lux::script::lua::makeScriptAbilityLuaContribution<LuaPushOnlyAbility>();

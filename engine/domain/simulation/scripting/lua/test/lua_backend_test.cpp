@@ -35,9 +35,9 @@ namespace
         }
     };
 
-    int noOpAbility(lua_State*) noexcept
+    LuxLuaBoundaryOutcome noOpAbility(lua_State*) noexcept
     {
-        return 0;
+        return {LUX_LUA_BOUNDARY_RETURN, 0, 0};
     }
 
     inline constexpr std::array kNameLuaMethods{

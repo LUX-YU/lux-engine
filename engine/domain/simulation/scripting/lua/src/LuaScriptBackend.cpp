@@ -92,8 +92,12 @@ namespace lux::simulation::script
         {
             lua_State* thread{};
             int reference{LUA_NOREF};
+            int function_ref{LUA_NOREF};
+            int self_ref{LUA_NOREF};
+            const lux_script_value_slot* arguments{};
+            std::uint32_t plain_count{};
+            bool arguments_valid{true};
         };
-        inline static char thread_creator_key;
 
         // Only trivial locals may be crossed by a Lua error. The reservation and rollback live
         // outside pcall; thread allocation remains inside the protected boundary.
@@ -104,28 +108,26 @@ namespace lux::simulation::script
             const auto reference = luaL_ref(state, LUA_REGISTRYINDEX);
             request->thread = thread;
             request->reference = reference;
+            if (!lua_checkstack(thread, static_cast<int>(request->plain_count) + 2))
+                return luaL_error(state, "Lua invocation stack allocation failed");
+            lua_rawgeti(thread, LUA_REGISTRYINDEX, request->function_ref);
+            if (request->self_ref != LUA_NOREF) lua_rawgeti(thread, LUA_REGISTRYINDEX, request->self_ref);
+            for (std::uint32_t index{}; index < request->plain_count; ++index)
+            {
+                if (!pushArgument(thread, request->arguments[index], nullptr))
+                {
+                    request->arguments_valid = false;
+                    break;
+                }
+            }
             return 0;
-        }
-
-        static int installThreadCreator(lua_State* state)
-        {
-            lua_pushlightuserdata(state, &thread_creator_key);
-            lua_pushcfunction(state, &createThread);
-            lua_rawset(state, LUA_REGISTRYINDEX);
-            return 0;
-        }
-
-        [[nodiscard]] static bool initializeThreadCreator(lua_State* state) noexcept
-        {
-            return lux::script::lua::detail::bootstrapLuaOperation(state, &installThreadCreator, nullptr) == LUA_OK;
         }
 
         [[nodiscard]] int createThreadProtected(ThreadCreateRequest& request) noexcept
         {
             if (!lua_checkstack(state, 2)) return LUA_ERRMEM;
             const auto base = lua_gettop(state);
-            lua_pushlightuserdata(state, &thread_creator_key);
-            lua_rawget(state, LUA_REGISTRYINDEX);
+            lua_pushcfunction(state, &createThread);
             lua_pushlightuserdata(state, &request);
             const auto status = lua_pcall(state, 1, 0, 0);
             lua_settop(state, base);
@@ -220,7 +222,7 @@ namespace lux::simulation::script
         {
             const lux::script::ScriptAbilityDescription* ability{};
             const lux::script::ScriptAbilityMethodDescription* method{};
-            int (*entry)(lua_State*) noexcept{};
+            LuxLuaTypedWorker entry{};
         };
 
         struct PreparedAbility final
@@ -370,6 +372,7 @@ namespace lux::simulation::script
             EPendingOperation pending_operation{EPendingOperation::NONE};
             std::int32_t failure_status{};
             bool active{};
+            std::uint64_t generation{};
         };
 
         struct ExecutionFrame final
@@ -450,7 +453,6 @@ namespace lux::simulation::script
                 return;
             }
             if (!lux::script::lua::detail::LuaValueAccess::initialize(state)) return;
-            if (!initializeThreadCreator(state)) return;
             vm_configured = true;
             prototypes.reserve(config.instance_capacity);
             components.assign(
@@ -507,8 +509,6 @@ namespace lux::simulation::script
 
         ~State()
         {
-            for (const auto factory : wrapper_factories)
-                if (factory != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, factory);
             for (auto& continuation : continuations)
             {
                 if (continuation.active && continuation.thread_ref != LUA_NOREF)
@@ -597,10 +597,7 @@ namespace lux::simulation::script
                     lua_pushinteger(state, static_cast<lua_Integer>(local_slot));
                     lua_pushlightuserdata(state, this);
                     lua_rawget(state, lux_index);
-                    lua_pushcclosure(state, ability_methods[ordinal].entry, 3);
-                    const bool is_async = method->kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION;
-                    if (!wrapAbility(is_async, !method->results.empty()))
-                        return false;
+                    pushPrimitive(ability_methods[ordinal].entry);
                     lua_settable(state, ability_index);
                     prototype.ability_ordinals.push_back(static_cast<std::uint32_t>(ordinal));
                     ++ordinal;
@@ -614,40 +611,12 @@ namespace lux::simulation::script
             return true;
         }
 
-        [[nodiscard]] bool wrapAbility(bool is_async, bool has_result) noexcept
+        // All four upvalues are rooted before the C closure is published.
+        void pushPrimitive(LuxLuaTypedWorker worker)
         {
-            // Raise/yield in Lua only, after the typed C++ thunk (and its noexcept frames) has returned.
-            if (!pushWrapperFactory(is_async ? 2U : has_result ? 1U : 0U)) return false;
-            lua_insert(state, -2);
-            if (lua_pcall(state, 1, 1, 0) != LUA_OK) return false;
-            ++wrapper_closures_created;
-            return true;
-        }
-
-        [[nodiscard]] bool pushWrapperFactory(std::size_t shape) noexcept
-        {
-            static constexpr std::array<std::string_view, 4U> sources{
-                "return function(start) return function(...) local ok,value=start(...); "
-                "if not ok then error(value,0) end end end",
-                "return function(start) return function(...) local ok,value=start(...); "
-                "if not ok then error(value,0) end; return value end end",
-                "return function(start) return function(...) local ok,value=start(...); "
-                "if not ok then error(value,0) end; return coroutine.yield() end end",
-                "return function(start) return function() local ok,message=start(); "
-                "if not ok then error(message,0) end; return coroutine.yield() end end"
-            };
-            if (shape >= sources.size()) return false;
-            if (wrapper_factories[shape] == LUA_NOREF)
-            {
-                const auto source = sources[shape];
-                const char* name = shape == 3U ? "lux.Event.wrapper" : "lux.Ability.wrapper";
-                if (luaL_loadbufferx(state, source.data(), source.size(), name, "t") != LUA_OK ||
-                    lua_pcall(state, 0, 1, 0) != LUA_OK || !lua_isfunction(state, -1)) return false;
-                wrapper_factories[shape] = luaL_ref(state, LUA_REGISTRYINDEX);
-                ++wrapper_factory_compilations;
-            }
-            lua_rawgeti(state, LUA_REGISTRYINDEX, wrapper_factories[shape]);
-            return true;
+            auto* storage = static_cast<LuxLuaTypedWorker*>(lua_newuserdatauv(state, sizeof(worker), 0));
+            *storage = worker;
+            lua_pushcclosure(state, &luxLuaBoundaryEntry, 4);
         }
 
         [[nodiscard]] bool appendArtifactEvents(
@@ -668,11 +637,6 @@ namespace lux::simulation::script
             }
             lua_createtable(state, 0, static_cast<int>(groups));
             const auto event_index = lua_gettop(state);
-            if (!pushWrapperFactory(3U))
-            {
-                return false;
-            }
-            const auto factory_index = lua_gettop(state);
             std::string_view active_system;
             int system_index{};
             for (const auto& requirement : artifact.description().event_requirements)
@@ -697,15 +661,11 @@ namespace lux::simulation::script
                 if (local_slot > (std::numeric_limits<lua_Integer>::max)())
                     return false;
                 lua_pushlstring(state, requirement.event_name.data(), requirement.event_name.size());
-                lua_pushvalue(state, factory_index);
                 lua_pushlightuserdata(state, this);
                 lua_pushinteger(state, static_cast<lua_Integer>(local_slot));
                 lua_pushlightuserdata(state, this);
                 lua_rawget(state, lux_index);
-                lua_pushcclosure(state, &State::invokeEventWait, 3);
-                if (lua_pcall(state, 1, 1, 0) != LUA_OK)
-                    return false;
-                ++wrapper_closures_created;
+                pushPrimitive(&State::invokeEventWait);
                 lua_settable(state, system_index);
                 prototype.event_ordinals.push_back(static_cast<std::uint32_t>(found - event_sources.begin()));
             }
@@ -716,7 +676,6 @@ namespace lux::simulation::script
                 lua_settable(state, event_index);
                 lua_remove(state, system_index);
             }
-            lua_remove(state, factory_index);
             lua_setfield(state, lux_index, "Event");
             prototype.event_class = prepared_events.select(prototype.event_ordinals.size());
             return true;
@@ -1545,7 +1504,7 @@ namespace lux::simulation::script
             return pushComponentValue(state, description.abi_kind, value);
         }
 
-        static int abilityFailure(
+        static LuxLuaBoundaryOutcome abilityFailure(
             lua_State* state,
             LuaContinuation* continuation,
             std::int32_t status,
@@ -1554,7 +1513,8 @@ namespace lux::simulation::script
         {
             if (continuation != nullptr)
                 continuation->failure_status = status;
-            return lux::script::lua::detail::LuaValueAccess::failure(state, message);
+            const auto count = lux::script::lua::detail::LuaValueAccess::failure(state, message);
+            return {LUX_LUA_BOUNDARY_ERROR, count, status};
         }
 
         struct EventWaitAdmission final
@@ -1579,7 +1539,7 @@ namespace lux::simulation::script
             return {*waiting, 0};
         }
 
-        static int invokeEventWait(lua_State* state) noexcept
+        static LuxLuaBoundaryOutcome invokeEventWait(lua_State* state) noexcept
         {
             auto* self = static_cast<State*>(lua_touserdata(state, lua_upvalueindex(1)));
             const auto raw_ordinal = lua_tointeger(state, lua_upvalueindex(2));
@@ -1631,8 +1591,7 @@ namespace lux::simulation::script
             execution->continuation->waiting_on = admission.waiting_on;
             execution->continuation->pending_ordinal = static_cast<std::uint32_t>(ordinal);
             execution->continuation->pending_operation = EPendingOperation::EVENT;
-            lua_pushboolean(state, true);
-            return 1;
+            return {LUX_LUA_BOUNDARY_SUSPEND, 0, 0};
         }
 
         static int invoke(lux_script_call_frame* frame) noexcept
@@ -1704,7 +1663,9 @@ namespace lux::simulation::script
 
         [[nodiscard]] lux::cxx::expected<LuaContinuation*, std::int32_t> acquireContinuation(
             Instance& instance,
-            PreparedCall& call
+            PreparedCall& call,
+            const lux_script_call_frame& frame,
+            std::uint32_t plain_count
         ) noexcept
         {
             if (free_continuations.empty())
@@ -1726,16 +1687,23 @@ namespace lux::simulation::script
                 }
             } reservation{*this, instance, slot};
             ThreadCreateRequest request;
+            request.function_ref = call.function->function_ref;
+            request.self_ref = instance.entity_scope ? instance.table_ref : LUA_NOREF;
+            request.arguments = frame.args;
+            request.plain_count = plain_count;
             const auto status = createThreadProtected(request);
             const bool missing_root = request.thread == nullptr || request.reference == LUA_NOREF ||
                 request.reference == LUA_REFNIL;
-            if (status != LUA_OK || missing_root)
+            if (status != LUA_OK || missing_root || !request.arguments_valid)
             {
                 if (request.reference != LUA_NOREF && request.reference != LUA_REFNIL)
                     luaL_unref(state, LUA_REGISTRYINDEX, request.reference);
-                return lux::cxx::unexpected(status == LUA_ERRMEM ? kLuaAllocationFailure : kLuaFailure);
+                return lux::cxx::unexpected(!request.arguments_valid ? kMarshalFailure :
+                    status == LUA_ERRMEM ? kLuaAllocationFailure : kLuaFailure);
             }
             auto& continuation = continuations[slot];
+            const auto generation = continuation.generation + 1U;
+            if (generation == 0U) std::terminate();
             continuation = {
                 this,
                 std::addressof(instance),
@@ -1746,7 +1714,8 @@ namespace lux::simulation::script
                 0U,
                 EPendingOperation::NONE,
                 0,
-                true
+                true,
+                generation
             };
             reservation.committed = true;
             ++vm_coroutine_creations;
@@ -1769,7 +1738,9 @@ namespace lux::simulation::script
             if (continuation.instance == nullptr || continuation.instance->active_continuations == 0U)
                 std::terminate();
             --continuation.instance->active_continuations;
+            const auto generation = continuation.generation;
             continuation = {};
+            continuation.generation = generation;
             owner->free_continuations.push_back(slot);
         }
 
@@ -1920,9 +1891,33 @@ namespace lux::simulation::script
                         : kInvalidResume
                 );
             }
+            const auto* behavior = continuation.instance->behavior;
+            const bool bound_authority = behavior != nullptr && behavior->hasInvocationAuthority();
+            const auto qualification = bound_authority ? behavior->captureInvocation() : ScriptInvocationValidity{};
+            if (bound_authority && !qualification.valid()) return ScriptStepResult::failed(kInvalidCall);
+            const auto* original_instance = continuation.instance;
+            const auto* original_call = continuation.call;
+            auto* original_thread = continuation.thread;
+            const auto original_wait = continuation.waiting_on;
+            const auto original_generation = continuation.generation;
+            const auto base = lua_gettop(original_thread);
             int argument_count{};
             if (!pushResumeValue(continuation, packet, argument_count))
+            {
+                lua_settop(original_thread, base);
                 return ScriptStepResult::failed(kInvalidResume);
+            }
+            const bool same_execution = continuation.active && continuation.instance == original_instance &&
+                continuation.call == original_call && continuation.thread == original_thread &&
+                continuation.waiting_on == original_wait && continuation.generation == original_generation;
+            const bool same_binding = same_execution && original_instance->active &&
+                original_instance->behavior == behavior &&
+                (behavior != nullptr && behavior->hasInvocationAuthority()) == bound_authority;
+            if (!same_binding || (bound_authority && !qualification.valid()))
+            {
+                lua_settop(original_thread, base);
+                return ScriptStepResult::failed(kInvalidCall);
+            }
             continuation.waiting_on = {};
             continuation.pending_operation = EPendingOperation::NONE;
             continuation.failure_status = 0;
@@ -1964,18 +1959,16 @@ namespace lux::simulation::script
             const bool bound_authority = behavior != nullptr && behavior->hasInvocationAuthority();
             const auto qualification = bound_authority ? behavior->captureInvocation() : ScriptInvocationValidity{};
             if (bound_authority && !qualification.valid()) return ScriptStepResult::failed(kInvalidCall);
-            const auto acquired = self.acquireContinuation(*call.instance, call);
+            std::uint32_t plain_count{};
+            while (plain_count < frame.arg_count &&
+                (plain_count >= call.function->argument_operations.size() ||
+                    call.function->argument_operations[plain_count] == nullptr)) ++plain_count;
+            const auto acquired = self.acquireContinuation(*call.instance, call, frame, plain_count);
             if (!acquired) return ScriptStepResult::failed(acquired.error());
             auto* continuation = *acquired;
 
-            lua_rawgeti(continuation->thread, LUA_REGISTRYINDEX, call.function->function_ref);
-            std::uint32_t argument_count{};
-            if (call.instance->entity_scope)
-            {
-                lua_rawgeti(continuation->thread, LUA_REGISTRYINDEX, call.instance->table_ref);
-                ++argument_count;
-            }
-            for (std::uint32_t index{}; index < frame.arg_count; ++index)
+            std::uint32_t argument_count = plain_count + (call.instance->entity_scope ? 1U : 0U);
+            for (std::uint32_t index = plain_count; index < frame.arg_count; ++index)
             {
                 const auto* record = index < call.function->argument_operations.size()
                     ? call.function->argument_operations[index]
@@ -2101,9 +2094,6 @@ namespace lux::simulation::script
         std::size_t vm_coroutine_creations{};
         std::size_t vm_coroutine_resumes{};
         std::size_t vm_coroutine_releases{};
-        std::array<int, 4U> wrapper_factories{LUA_NOREF, LUA_NOREF, LUA_NOREF, LUA_NOREF};
-        std::uint64_t wrapper_factory_compilations{};
-        std::uint64_t wrapper_closures_created{};
     };
 
     bool detail::LuaAbilityProjectionAccess::current(
@@ -2170,7 +2160,7 @@ namespace lux::simulation::script
             (!has_authority || original.validity.valid());
     }
 
-    int detail::LuaAbilityProjectionAccess::fail(
+    LuxLuaBoundaryOutcome detail::LuaAbilityProjectionAccess::fail(
         lua_State* state,
         std::int32_t status,
         const char* message
@@ -2183,7 +2173,7 @@ namespace lux::simulation::script
         return LuaScriptBackend::State::abilityFailure(state, continuation, status, message);
     }
 
-    int detail::LuaAbilityProjectionAccess::suspend(
+    LuxLuaBoundaryOutcome detail::LuaAbilityProjectionAccess::suspend(
         lua_State* state,
         ScriptStepResult result,
         std::uint32_t local_slot
@@ -2205,15 +2195,13 @@ namespace lux::simulation::script
         execution->continuation->waiting_on = result.waiting_on;
         execution->continuation->pending_ordinal = local_slot;
         execution->continuation->pending_operation = LuaScriptBackend::State::EPendingOperation::ABILITY;
-        lua_pushboolean(state, true);
-        return 1;
+        return {LUX_LUA_BOUNDARY_SUSPEND, 0, 0};
     }
 
-    int detail::LuaAbilityProjectionAccess::succeed(lua_State* state, int results) noexcept
+    LuxLuaBoundaryOutcome detail::LuaAbilityProjectionAccess::succeed(lua_State* state, int results) noexcept
     {
-        lua_pushboolean(state, true);
-        lua_insert(state, -results - 1);
-        return results + 1;
+        static_cast<void>(state);
+        return {LUX_LUA_BOUNDARY_RETURN, results, 0};
     }
 
     bool detail::LuaAbilityProjectionAccess::read(lua_State* state, int index, bool& value) noexcept
@@ -2559,8 +2547,6 @@ namespace lux::simulation::script
             state_->vm_allocations.stats,
             abilities.acquire_steps + events.acquire_steps,
             abilities.release_steps + events.release_steps,
-            state_->wrapper_factory_compilations,
-            state_->wrapper_closures_created,
             state_->prototypes.size()
         };
     }

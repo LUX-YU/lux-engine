@@ -16,7 +16,7 @@ namespace lux::script::lua
         using Policy = typename ScriptAbilityLuaPolicy<::{{ rec.fq_name }}>::Type;
 {% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}
         using Values_{{ method.spelling }} = LuaAbilityValueSignature<Policy, {{ method.result_type_id }}{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }}{% endfor %}>;
-        [[nodiscard]] static int {{ method.spelling }}(lua_State* state) noexcept
+        [[nodiscard]] static LuxLuaBoundaryOutcome {{ method.spelling }}(lua_State* state) noexcept
         {
 {% if kind == "async_operation" %}            return lux::simulation::script::detail::startLuaValueAbility<Policy, {{ method.result_type_id }}{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }}{% endfor %}>(
                 state,

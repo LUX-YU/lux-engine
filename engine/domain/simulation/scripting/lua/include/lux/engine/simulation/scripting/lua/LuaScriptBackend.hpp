@@ -116,8 +116,6 @@ namespace lux::simulation::script
         LuaVmAllocationStats vm_allocations;
         std::uint64_t prepared_acquire_steps{};
         std::uint64_t prepared_release_steps{};
-        std::uint64_t wrapper_factory_compilations{};
-        std::uint64_t wrapper_closures_created{};
         std::size_t cached_prototypes{};
     };
 

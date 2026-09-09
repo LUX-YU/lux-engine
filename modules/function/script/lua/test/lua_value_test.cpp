@@ -379,9 +379,8 @@ int main()
         allocator.deny = false;
         assert(!key_failure && allocator.failed > before && lua_gettop(state) == 0 && Resource::live == 1);
         allocator.deny = true;
-        assert(detail::LuaValueAccess::failure(state, message.c_str()) == 2);
-        assert(lua_gettop(state) == 2 && lua_type(state, 1) == LUA_TBOOLEAN && !lua_toboolean(state, 1));
-        assert(lua_isnil(state, 2));
+        assert(detail::LuaValueAccess::failure(state, message.c_str()) == 0);
+        assert(lua_gettop(state) == 0 && Resource::live == 1);
         assert(lua_checkstack(state, 100000) == 0);
         allocator.deny = false;
         lua_settop(state, 0);

@@ -16,8 +16,12 @@
   显式传入旧选择器会在根配置失败。当前 SDK 直接要求 `LuxLua55::Runtime`。
 - 原 v3 多 VM 驱动移入历史诊断目录，原始内容不变；本次不会执行它们。
 - 重复 interpreter CTest 删除，原业务测试与 Scene worker 覆盖保留。
+- Event/Ability 为 C 函数；内部 Lua wrapper 调试帧删除，替换 `coroutine.yield`
+  不拦截引擎原语。普通 Lua coroutine API 保持原行为。
 
 ## 进度
 
-P0：唯一 VM、实际消费者与安装依赖迁移；受影响验证正在进行。
-P1—P8：待完成，最终报告将登记代码、测量、未采用实验和明确限制。
+P0 (`42ffbf9d4`)：Developer 全量构建、83 项受影响 CTest、第二轮无工作通过。
+依赖 C IPO 探测与 smoke 通过，安装到独立 `install/o/v2/lua55`。
+P1：C primitive、原资格重验和真实负例已实现，验证中。
+P2—P8：待完成，最终报告将登记代码、测量、未采用实验和明确限制。

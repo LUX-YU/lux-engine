@@ -215,9 +215,10 @@ namespace lux::script
         }
 {% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}{% if kind == "async_operation" %}        [[nodiscard]] auto {{ method.spelling }}({% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}{{ type.id }} {{ param.name }}{% if not loop.is_last %}, {% endif %}{% endfor %}) const noexcept
         {
+            static constexpr ScriptApiMethodIdView method_id{"{{ cxx_str(annotation_get_for_or(method, "luxability::method", "id", "")) }}"};
             return context_->template awaitPreparedAbility<{{ method.result_type_id }}>(
                 ability_slot_,
-                ScriptApiMethodIdView{"{{ cxx_str(annotation_get_for_or(method, "luxability::method", "id", "")) }}"},
+                method_id,
                 std::tuple{ {% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}std::remove_cvref_t<{{ type.id }}>({{ param.name }}){% if not loop.is_last %}, {% endif %}{% endfor %} },
                 [](
                     void* provider,

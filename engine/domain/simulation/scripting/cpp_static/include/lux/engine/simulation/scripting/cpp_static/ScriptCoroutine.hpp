@@ -126,8 +126,10 @@ namespace lux::simulation::script
         [[nodiscard]] auto awaitAbility(std::uint32_t ability_slot, Starter starter) noexcept;
 
         template<class Result, class Arguments, class Starter>
-        [[nodiscard]] auto awaitPreparedAbility(std::uint32_t ability_slot, lux::script::ScriptApiMethodIdView method,
-            Arguments arguments, Starter starter) noexcept;
+        [[nodiscard]] auto awaitPreparedAbility(
+            std::uint32_t ability_slot, const lux::script::ScriptApiMethodIdView& method,
+            Arguments arguments, Starter starter
+        ) noexcept;
 
         template <class Result, class Admission>
         [[nodiscard]] auto makeAwaiter(Admission admission) noexcept;
@@ -566,14 +568,18 @@ namespace lux::simulation::script
     }
 
     template<class Result, class Arguments, class Starter>
-    auto ScriptCoroutineContext::awaitPreparedAbility(std::uint32_t slot, lux::script::ScriptApiMethodIdView method,
-        Arguments arguments, Starter starter) noexcept
+    auto ScriptCoroutineContext::awaitPreparedAbility(
+        std::uint32_t slot, const lux::script::ScriptApiMethodIdView& method, Arguments arguments, Starter starter
+    ) noexcept
     {
-        return makeAwaiter<Result>([slot, method, arguments = std::move(arguments), starter = std::move(starter)](
+        // Generated projection supplies a static immutable descriptor; no per-frame copy of its name/hash.
+        return makeAwaiter<Result>([
+            slot, method = &method, arguments = std::move(arguments), starter = std::move(starter)
+        ](
             ScriptCoroutineContext& context, ScriptStepContext& step) mutable noexcept {
             detail::ScriptCoroutineAbilityAccess access;
             if (!context.resolveAbility(slot, access)) return ScriptStepResult::failed(-1);
-            const auto local = access.local_async.resolve(method, access.context, access.dispatch);
+            const auto local = access.local_async.resolve(*method, access.context, access.dispatch);
             return std::apply([&](auto&... values) noexcept {
                 return invokePreparedScriptAbilityAsync<Result>(step, local,
                     [&](lux::script::ScriptAbilityCompletion<Result> completion) noexcept {

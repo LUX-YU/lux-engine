@@ -429,8 +429,10 @@ static int resumeAuthorityCase(bool stop)
     std::printf("RESUME_AUTHORITY stop=%u converted=1 provider=%zu roots=1 released=1 backlog=0 PASS\n",
         stop, provider.zero_calls);
     const auto leaf_stats = backend->stats();
-    std::printf("ENGINE_LEAF,available=%d,observed=%d,fast=%llu,standard=%llu\n", leaf_stats.leaf_yield_available, leaf_stats.leaf_statistics_enabled,
-        leaf_stats.leaf_return_yields, leaf_stats.standard_leaf_yields);
+    std::printf("ENGINE_LEAF,available=%d,observed=%d,fast=%llu,standard=%llu\n",
+        leaf_stats.leaf_yield_available, leaf_stats.leaf_statistics_enabled,
+        leaf_stats.leaf_return_yields, leaf_stats.standard_leaf_yields
+    );
     if (leaf_stats.leaf_statistics_enabled) assert(leaf_stats.leaf_return_yields == 1U);
     return 0;
 }

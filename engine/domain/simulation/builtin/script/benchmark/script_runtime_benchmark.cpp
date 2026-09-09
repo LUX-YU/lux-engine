@@ -1366,9 +1366,12 @@ namespace
                 "leaf_available=%d,leaf_observed=%d,leaf=%llu,standard=%llu\n",
                 memory.enabled, memory.allocations, memory.reallocations, memory.frees, memory.failures,
                 memory.system_allocations, memory.system_frees, memory.slot_reuses, memory.in_place,
-                memory.live_bytes, memory.peak_live_bytes, memory.idle_page_backing_bytes, memory.peak_idle_page_backing_bytes,
+                memory.live_bytes, memory.peak_live_bytes, memory.idle_page_backing_bytes,
+                memory.peak_idle_page_backing_bytes,
                 stats.vm_coroutine_creations, stats.vm_coroutine_resumes, stats.vm_coroutine_releases,
-                stats.leaf_yield_available, stats.leaf_statistics_enabled, stats.leaf_return_yields, stats.standard_leaf_yields);
+                stats.leaf_yield_available, stats.leaf_statistics_enabled,
+                stats.leaf_return_yields, stats.standard_leaf_yields
+            );
             if (memory.enabled)
                 std::printf("VM_PAGES,active=%zu,idle=%zu,pinned_free=%zu,rounding=%zu,metadata=%zu,large=%zu,"
                     "large_requested=%zu,page_alloc=%llu,page_free=%llu,page_reuse=%llu,direct_alloc=%llu,"

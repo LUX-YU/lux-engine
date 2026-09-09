@@ -46,11 +46,15 @@ namespace lux::simulation::script::detail
         const auto expected = publishScriptAbility(binding);
         const bool invalid = publication.context != this || publication.dispatch != expected.dispatch ||
             publication.contract != expected.contract || publication.schema_hash != expected.schema_hash ||
-            publication.schema_version != expected.schema_version || publication.methods.data() != expected.methods.data();
-        return invalid ? PreparedLocalAsyncCatalog{} : PreparedLocalAsyncCatalog{this, expected.dispatch, &resolveLocal};
+            publication.schema_version != expected.schema_version ||
+            publication.methods.data() != expected.methods.data();
+        if (invalid) return {};
+        return {this, expected.dispatch, &resolveLocal};
     }
 
-    PreparedLocalAsyncStart ScriptTimers::resolveLocal(void* context, lux::script::ScriptApiMethodIdView method) noexcept
+    PreparedLocalAsyncStart ScriptTimers::resolveLocal(
+        void* context, lux::script::ScriptApiMethodIdView method
+    ) noexcept
     {
         if (method == lux::script::ScriptApiMethodIdView{"lux.simulation.delay.next_step"})
             return {context, &startLocal<ETimerKind::NEXT_STEP>, 0U};
@@ -140,7 +144,9 @@ namespace lux::simulation::script::detail
         if (auto planned = planWait(ETimerKind::SIMULATION_DELAY, duration, schedule); !planned) return planned;
         const auto admission = execution_->timerAssociation(completion);
         if (!admission) return error(EScriptDelayStatus::STOPPING);
-        return registerWait(ETimerKind::SIMULATION_DELAY, *admission, std::move(completion), schedule.deadline, schedule.step);
+        return registerWait(
+            ETimerKind::SIMULATION_DELAY, *admission, std::move(completion), schedule.deadline, schedule.step
+        );
     }
 
     ScriptTimers::StartResult ScriptTimers::realSeconds(double duration, Completion completion) noexcept

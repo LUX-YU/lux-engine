@@ -245,9 +245,13 @@ namespace lux::simulation::script
             }
             return result.state == EScriptStepState::FAILED && result.error.valid() ? result.error.status : -1;
         }
-        static int startLocalNext(void* invocation, void* provider, const void*, lux_script_async_token* waiting) noexcept
+        static int startLocalNext(
+            void* invocation, void* provider, const void*, lux_script_async_token* waiting
+        ) noexcept
         {
-            return finishLocalStart(invocation, waiting, *static_cast<const PreparedLocalAsyncStart*>(provider), {});
+            return finishLocalStart(
+                invocation, waiting, *static_cast<const PreparedLocalAsyncStart*>(provider), {}
+            );
         }
         static int startLocalSeconds(void* invocation, void* provider, const void*, double duration,
             lux_script_async_token* waiting) noexcept

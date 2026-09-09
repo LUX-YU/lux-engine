@@ -5,7 +5,7 @@
 #include "PluginProbe.hpp"
 
 #include <lux/engine/editor/EditorContext.hpp>
-#include <lux/engine/editor/context/detail/ToolsetTestAccess.hpp>
+#include <lux/engine/editor/application/tooling/detail/ToolsetTestAccess.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/resource/asset/storage/AssetProvider.hpp>
 #include <lux/engine/scene/Scene.hpp>
@@ -32,8 +32,8 @@
 #include <utility>
 #include <vector>
 
-static_assert(!std::copy_constructible<lux::editor::Toolset>);
-static_assert(!std::move_constructible<lux::editor::Toolset>);
+static_assert(!std::copy_constructible<lux::editor::application::Toolset>);
+static_assert(!std::move_constructible<lux::editor::application::Toolset>);
 static_assert(!std::copy_constructible<lux::editor::EditorContext>);
 static_assert(!std::move_constructible<lux::editor::EditorContext>);
 
@@ -74,7 +74,7 @@ namespace
     };
 
     template <std::size_t... Ids>
-    [[nodiscard]] bool installFillers(lux::editor::Toolset& toolset, std::index_sequence<Ids...>)
+    [[nodiscard]] bool installFillers(lux::editor::application::Toolset& toolset, std::index_sequence<Ids...>)
     {
         return (static_cast<bool>(toolset.install<FillerTool<Ids>>()) && ...);
     }
@@ -265,7 +265,7 @@ namespace
     {
         ToolProbeState state;
         {
-            lux::editor::Toolset toolset;
+            lux::editor::application::Toolset toolset;
             auto first = toolset.install<OrderedTool<1>>(state);
             assert(first);
             auto* stable_address = std::addressof(first->get());
@@ -274,12 +274,12 @@ namespace
 
             const auto duplicate = toolset.install<OrderedTool<1>>(state);
             assert(!duplicate);
-            assert(duplicate.error().code == lux::editor::EToolsetError::DUPLICATE_TOOL);
+            assert(duplicate.error().code == lux::editor::application::EToolsetError::DUPLICATE_TOOL);
             assert(state.construction_count == 1);
 
             const auto missing = toolset.get<OrderedTool<2>>();
             assert(!missing);
-            assert(missing.error().code == lux::editor::EToolsetError::MISSING_TOOL);
+            assert(missing.error().code == lux::editor::application::EToolsetError::MISSING_TOOL);
             assert(toolset.find<OrderedTool<2>>() == nullptr);
 
             assert(installFillers(toolset, std::make_index_sequence<64>{}));
@@ -287,18 +287,18 @@ namespace
 
             const auto throwing = toolset.install<ThrowingTool>();
             assert(!throwing);
-            assert(throwing.error().code == lux::editor::EToolsetError::CONSTRUCTION_FAILURE);
+            assert(throwing.error().code == lux::editor::application::EToolsetError::CONSTRUCTION_FAILURE);
             assert(toolset.find<ThrowingTool>() == nullptr);
 
-            const auto first_opaque = lux::editor::detail::ToolsetTestAccess::installOpaque(
+            const auto first_opaque = lux::editor::application::detail::ToolsetTestAccess::installOpaque(
                 toolset, lux::cxx::TypeToken{0x12345678U, "lux.editor.test.first_collision"}
             );
             assert(first_opaque);
-            const auto collision = lux::editor::detail::ToolsetTestAccess::installOpaque(
+            const auto collision = lux::editor::application::detail::ToolsetTestAccess::installOpaque(
                 toolset, lux::cxx::TypeToken{0x12345678U, "lux.editor.test.second_collision"}
             );
             assert(!collision);
-            assert(collision.error().code == lux::editor::EToolsetError::TYPE_COLLISION);
+            assert(collision.error().code == lux::editor::application::EToolsetError::TYPE_COLLISION);
 
             auto second = toolset.install<OrderedTool<2>>(state);
             assert(second);
@@ -311,7 +311,7 @@ namespace
             assert(toolset.frozen());
             const auto frozen = toolset.install<FrozenTool>();
             assert(!frozen);
-            assert(frozen.error().code == lux::editor::EToolsetError::FROZEN);
+            assert(frozen.error().code == lux::editor::application::EToolsetError::FROZEN);
 
             toolset.requestStop();
             toolset.requestStop();
@@ -319,7 +319,7 @@ namespace
             assert(state.stop_count == 2);
             const auto stopping = toolset.install<StoppingTool>();
             assert(!stopping);
-            assert(stopping.error().code == lux::editor::EToolsetError::STOPPING);
+            assert(stopping.error().code == lux::editor::application::EToolsetError::STOPPING);
         }
         assert(state.destruction_order == std::vector<int>({2, 1}));
     }
@@ -338,7 +338,7 @@ namespace
         lux::editor::EditorSelection selection{ui.dispatcherRef()};
         {
             lux::process::TaskScope tasks;
-            lux::editor::Toolset toolset;
+            lux::editor::application::Toolset toolset;
             {
                 lux::editor::EditorContext context{lux::editor::EditorContextCreateInfo{
                     toolset, vfs.view(), {}, runtime, tasks, selection, ui, scene_meta
@@ -356,7 +356,7 @@ namespace
                 assert(plugin->get().value() == 42);
                 const auto duplicate_plugin = lux::editor::test::installPluginProbe(context.toolchain(), plugin_state);
                 assert(!duplicate_plugin);
-                assert(duplicate_plugin.error().code == lux::editor::EToolsetError::DUPLICATE_TOOL);
+                assert(duplicate_plugin.error().code == lux::editor::application::EToolsetError::DUPLICATE_TOOL);
                 context.toolchain().freeze();
 
                 {

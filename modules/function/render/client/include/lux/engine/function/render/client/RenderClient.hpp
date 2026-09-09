@@ -1,17 +1,18 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include <lux/cxx/container/SparseSet.hpp>
 #include <lux/cxx/memory/SharedBytes.hpp>
 #include <lux/engine/function/render/client/RenderProgram.hpp>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
@@ -31,14 +32,27 @@ namespace lux::render
 
         RequestId registerCallback(Callback callback, TypeId expected_reply_type)
         {
-            const std::uint32_t slot = entries_.emplace(Entry{std::move(callback), expected_reply_type});
-            if (slot > kIndexMask)
-                renderFatal("response callback store exceeds the RequestId slot limit");
-            if (slot >= generations_.size())
+            // Prepare both growth points before taking a slot. Every occupied slot owns a reserved
+            // free-list cell, so cancellation and dispatch reclamation cannot allocate.
+            if (free_slots_.empty())
             {
-                generations_.resize(slot + 1, 0);
+                if (slots_.size() > kIndexMask)
+                    renderFatal("response callback store exceeds the RequestId slot limit");
+                if (slots_.size() == slots_.capacity() || slots_.size() == free_slots_.capacity())
+                {
+                    const auto capacity =
+                        (std::min)(std::size_t{kIndexMask} + 1, (std::max)(std::size_t{8}, slots_.size() * 2));
+                    slots_.reserve(capacity);
+                    free_slots_.reserve(capacity);
+                }
+                slots_.emplace_back();
+                free_slots_.push_back(static_cast<std::uint32_t>(slots_.size() - 1));
             }
-            return packRequestId(lane_, generations_[slot], slot);
+            const auto slot = free_slots_.back();
+            free_slots_.pop_back();
+            slots_[slot].entry.emplace(Entry{std::move(callback), expected_reply_type});
+            ++pending_;
+            return packRequestId(lane_, slots_[slot].generation, slot);
         }
 
         void cancel(RequestId request_id) noexcept
@@ -46,7 +60,7 @@ namespace lux::render
             if (request_id == kInvalidRequestId || unpackLane(request_id) != lane_)
                 return;
             const auto slot = unpackIndex(request_id);
-            if (entries_.contains(slot))
+            if (slot < slots_.size() && slots_[slot].entry)
                 releaseSlot(slot);
         }
 
@@ -60,7 +74,7 @@ namespace lux::render
             return unrouted_unsolicited_;
         }
 
-        [[nodiscard]] bool dispatch(const Packet& packet, const ReplyRecord& record)
+        [[nodiscard]] bool dispatch(const Packet &packet, const ReplyRecord &record)
         {
             if (record.request_id == kInvalidRequestId)
             {
@@ -83,19 +97,19 @@ namespace lux::render
                 return false;
             }
 
-            if (!entries_.contains(slot))
+            if (slot >= slots_.size() || !slots_[slot].entry)
             {
                 ++unmatched_replies_;
                 return false;
             }
 
-            if (slot >= generations_.size() || generations_[slot] != gen)
+            if (slots_[slot].generation != gen)
             {
                 ++unmatched_replies_;
                 return false;
             }
 
-            Entry& entry = entries_.at(slot);
+            Entry &entry = *slots_[slot].entry;
             const bool is_failure = (record.type_id == kReplyCommandFailedTypeId);
             if (!is_failure && entry.expected_reply_type != record.type_id)
             {
@@ -116,10 +130,10 @@ namespace lux::render
             return true;
         }
 
-        std::size_t dispatchAll(const Packet& packet)
+        std::size_t dispatchAll(const Packet &packet)
         {
             std::size_t handled = 0;
-            for (const ReplyRecord& record : packet.replies)
+            for (const ReplyRecord &record : packet.replies)
             {
                 handled += dispatch(packet, record) ? 1u : 0u;
             }
@@ -138,7 +152,7 @@ namespace lux::render
 
         [[nodiscard]] std::size_t pendingCallbacks() const noexcept
         {
-            return entries_.size();
+            return pending_;
         }
 
     private:
@@ -147,6 +161,13 @@ namespace lux::render
             Callback callback{};
             TypeId expected_reply_type{kInvalidTypeId};
         };
+        struct Slot
+        {
+            std::optional<Entry> entry;
+            std::uint8_t generation{};
+        };
+        static_assert(std::is_nothrow_move_constructible_v<Entry>);
+        static_assert(std::is_nothrow_move_constructible_v<Slot>);
 
         static constexpr RequestId kIndexMask = 0x00FFFFFFu;
         static constexpr RequestId kGenerationMask = 0x3Fu;
@@ -169,17 +190,17 @@ namespace lux::render
             return static_cast<ERequestLane>((id >> 30) & 0x3u);
         }
 
-        void releaseSlot(std::uint32_t slot)
+        void releaseSlot(std::uint32_t slot) noexcept
         {
-            entries_.erase(slot);
-            if (slot < generations_.size())
-            {
-                generations_[slot] = static_cast<std::uint8_t>((generations_[slot] + 1u) & kGenerationMask);
-            }
+            slots_[slot].entry.reset();
+            slots_[slot].generation = static_cast<std::uint8_t>((slots_[slot].generation + 1u) & kGenerationMask);
+            free_slots_.push_back(slot);
+            --pending_;
         }
 
-        lux::cxx::OffsetAutoSparseSet<RequestId, Entry> entries_{};
-        std::vector<std::uint8_t> generations_{};
+        std::vector<Slot> slots_{};
+        std::vector<std::uint32_t> free_slots_{};
+        std::size_t pending_{};
         std::unordered_map<TypeId, Callback> unsolicited_{};
         std::uint64_t unrouted_unsolicited_{0};
         std::uint64_t malformed_replies_{0};
@@ -187,24 +208,43 @@ namespace lux::render
         ERequestLane lane_{ERequestLane::PROGRAM};
     };
 
+    namespace detail
+    {
+        // One envelope is one packet acquired from the existing response ring. Count it even if
+        // every contained record is unmatched or rejected; do not pre-drain into another queue.
+        template <class Channel, class Callbacks>
+        std::size_t pumpReplyEnvelopes(Channel &channel, RenderChannelSync &sync, Callbacks &callbacks,
+                                       std::size_t budget)
+        {
+            std::size_t acquired{};
+            while (acquired < budget && channel.responses.tryAcquireRead())
+            {
+                callbacks.dispatchAll(channel.responses.currentRead());
+                sync.notifyReplyConsumed();
+                ++acquired;
+            }
+            return acquired;
+        }
+    } // namespace detail
+
     template <class Packet, bool AllowBorrowed, std::size_t PayloadAlignment = 64, std::size_t ReplyAlignment = 64>
     class CommandPacketBuilder
     {
     public:
         template <std::size_t RequestAlignment, std::size_t OtherReplyAlignment> friend class RenderClient;
 
-        explicit CommandPacketBuilder(Packet& dst) noexcept : dst_(dst)
+        explicit CommandPacketBuilder(Packet &dst) noexcept : dst_(dst)
         {
         }
 
-        CommandPacketBuilder(Packet& dst, ResponseCallbackStore<ReplyAlignment>& callback_store) noexcept
+        CommandPacketBuilder(Packet &dst, ResponseCallbackStore<ReplyAlignment> &callback_store) noexcept
             : dst_(dst), callback_store_(&callback_store)
         {
         }
 
         using MemoryHints = typename Packet::MemoryHints;
 
-        void begin(const MemoryHints& hints = {})
+        void begin(const MemoryHints &hints = {})
         {
             dst_.clear_keep_capacity();
             dst_.reserve(hints);
@@ -226,15 +266,15 @@ namespace lux::render
         }
 
         template <FrameBlobPayload T>
-        void push(OpCode opcode, TypeId type_id, const T& payload, std::uint16_t flags = 0)
+        void push(OpCode opcode, TypeId type_id, const T &payload, std::uint16_t flags = 0)
         {
             static_assert(!command_has_reply_v<T>, "This command type declares a reply. Use pushWithReply().");
             pushUnary(opcode, type_id, payload, flags, kInvalidRequestId);
         }
 
         template <FrameBlobPayload T, typename Func>
-        RequestId
-        pushWithReply(OpCode opcode, TypeId type_id, const T& payload, Func&& callback, std::uint16_t flags = 0)
+        RequestId pushWithReply(OpCode opcode, TypeId type_id, const T &payload, Func &&callback,
+                                std::uint16_t flags = 0)
         {
             static_assert(command_has_reply_v<T>, "This command type does not declare a reply. Use push().");
             if (callback_store_ == nullptr)
@@ -242,48 +282,56 @@ namespace lux::render
                 valid_ = false;
                 return kInvalidRequestId;
             }
-            auto request_id = callback_store_->registerCallback(std::move(callback), CommandTraits<T>::reply_type_id);
-
-            pushUnary(opcode, type_id, payload, flags | static_cast<std::uint16_t>(CmdFlags::ExpectsReply), request_id);
-
+            struct PreparedRecord
+            {
+                Packet &packet;
+                std::size_t bytes, count;
+                CmdRecord previous{};
+                bool committed{};
+                ~PreparedRecord() noexcept
+                {
+                    if (committed)
+                        return;
+                    packet.payload.resize(bytes);
+                    if constexpr (requires { packet.commands.resize(count); })
+                        packet.commands.resize(count);
+                    else
+                    {
+                        packet.command = previous;
+                        packet.has_command = count != 0;
+                    }
+                }
+            } prepared{dst_, dst_.payload.size(), commandCount()};
+            if constexpr (requires { dst_.command; })
+                prepared.previous = dst_.command;
+            pushUnary(opcode, type_id, payload, flags | static_cast<std::uint16_t>(CmdFlags::ExpectsReply),
+                      kInvalidRequestId);
+            if (!valid_)
+                return kInvalidRequestId;
+            const auto request_id =
+                callback_store_->registerCallback(std::move(callback), CommandTraits<T>::reply_type_id);
+            if constexpr (requires { dst_.commands.back(); })
+                dst_.commands.back().request_id = request_id;
+            else
+                dst_.command.request_id = request_id;
+            prepared.committed = true;
             return request_id;
         }
 
         template <FrameBlobPayload T, typename Func>
-        RequestId pushResource(TypeId type_id, const T& payload, Func&& callback, std::uint16_t flags = 0)
+        RequestId pushResource(TypeId type_id, const T &payload, Func &&callback, std::uint16_t flags = 0)
         {
-            static_assert(
-                command_has_reply_v<T>,
-                "This resource command type does not declare a reply. Use pushResource().");
-            if (callback_store_ == nullptr)
-            {
-                valid_ = false;
-                return kInvalidRequestId;
-            }
-            auto request_id = callback_store_->registerCallback(std::move(callback), CommandTraits<T>::reply_type_id);
-
-            pushUnary(
-                opcodes::ResourceOp,
-                type_id,
-                payload,
-                flags | static_cast<std::uint16_t>(CmdFlags::ExpectsReply),
-                request_id
-            );
-
-            return request_id;
+            static_assert(command_has_reply_v<T>,
+                          "This resource command type does not declare a reply. Use pushResource().");
+            return pushWithReply(opcodes::ResourceOp, type_id, payload, std::forward<Func>(callback), flags);
         }
 
         template <FrameBlobPayload T>
-        void pushBulk(
-            TypeId type_id,
-            std::span<const T> items,
-            std::uint16_t flags = 0,
-            RequestId request_id = kInvalidRequestId
-        )
+        void pushBulk(TypeId type_id, std::span<const T> items, std::uint16_t flags = 0,
+                      RequestId request_id = kInvalidRequestId)
         {
-            static_assert(
-                alignof(T) <= PayloadAlignment,
-                "Payload type alignment exceeds payload blob alignment. Raise PayloadAlignment.");
+            static_assert(alignof(T) <= PayloadAlignment,
+                          "Payload type alignment exceeds payload blob alignment. Raise PayloadAlignment.");
 
             if (items.empty())
             {
@@ -295,15 +343,10 @@ namespace lux::render
         }
 
         template <FrameBlobPayload T>
-        [[nodiscard]] std::span<T> appendBulk(
-            TypeId type_id,
-            std::size_t count,
-            std::uint16_t flags = 0
-        )
+        [[nodiscard]] std::span<T> appendBulk(TypeId type_id, std::size_t count, std::uint16_t flags = 0)
         {
-            static_assert(
-                alignof(T) <= PayloadAlignment,
-                "Payload type alignment exceeds payload blob alignment. Raise PayloadAlignment.");
+            static_assert(alignof(T) <= PayloadAlignment,
+                          "Payload type alignment exceeds payload blob alignment. Raise PayloadAlignment.");
             if (count == 0U)
             {
                 return {};
@@ -320,14 +363,11 @@ namespace lux::render
                 return {};
             }
             appendRecord(opcodes::BulkData, type_id, offset, narrowU32(byte_count), flags, kInvalidRequestId);
-            return {
-                reinterpret_cast<T*>(dst_.payload.data() + offset),
-                count
-            };
+            return {reinterpret_cast<T *>(dst_.payload.data() + offset), count};
         }
 
-        [[nodiscard]] BlobRef
-        pushBlob(std::span<const std::byte> bytes, std::size_t alignment = alignof(std::max_align_t))
+        [[nodiscard]] BlobRef pushBlob(std::span<const std::byte> bytes,
+                                       std::size_t alignment = alignof(std::max_align_t))
         {
             const std::uint32_t offset = appendBytes(bytes.data(), bytes.size(), alignment);
             return BlobRef{
@@ -336,12 +376,13 @@ namespace lux::render
             };
         }
 
-        template <typename T, typename... Args> std::uint32_t emplaceAttachment(TypeId type_id, Args&&... args)
+        template <typename T, typename... Args> std::uint32_t emplaceAttachment(TypeId type_id, Args &&...args)
         {
-            auto destroy = [](void* p) noexcept { delete static_cast<T*>(p); };
+            auto destroy = [](void *p) noexcept { delete static_cast<T *>(p); };
 
-            T* obj = new T(std::forward<Args>(args)...);
-            dst_.attachments.emplace_back(type_id, obj, sizeof(T), sizeof(T), destroy);
+            auto obj = std::make_unique<T>(std::forward<Args>(args)...);
+            dst_.attachments.emplace_back(type_id, obj.get(), sizeof(T), sizeof(T), destroy);
+            static_cast<void>(obj.release());
             return narrowU32(dst_.attachments.size() - 1);
         }
 
@@ -351,7 +392,7 @@ namespace lux::render
         /// SPSC channel.  Consequently producer threads never touch the
         /// endpoint's callback table.
         template <FrameBlobPayload T>
-        void pushPreparedResource(TypeId type_id, const T& payload, std::uint16_t flags = 0)
+        void pushPreparedResource(TypeId type_id, const T &payload, std::uint16_t flags = 0)
         {
             static_assert(command_has_reply_v<T>, "Prepared upload commands must declare a reply");
             if (prepared_reply_type_ != kInvalidTypeId)
@@ -360,13 +401,8 @@ namespace lux::render
                 return;
             }
             prepared_reply_type_ = CommandTraits<T>::reply_type_id;
-            pushUnary(
-                opcodes::ResourceOp,
-                type_id,
-                payload,
-                flags | static_cast<std::uint16_t>(CmdFlags::ExpectsReply),
-                kInvalidRequestId
-            );
+            pushUnary(opcodes::ResourceOp, type_id, payload, flags | static_cast<std::uint16_t>(CmdFlags::ExpectsReply),
+                      kInvalidRequestId);
         }
 
         [[nodiscard]] TypeId preparedReplyType() const noexcept
@@ -388,19 +424,13 @@ namespace lux::render
         /// THREAD SAFETY: The caller is responsible for ensuring no concurrent
         /// writes to the borrowed region while the frame is in flight.
         [[nodiscard]] std::uint32_t pushBorrowedBytesAttachment(
-            const std::byte* data,
-            std::uint32_t size,
-            TypeId attachment_type = attachment_types::BorrowedBytes
-        )
+            const std::byte *data, std::uint32_t size, TypeId attachment_type = attachment_types::BorrowedBytes)
             requires AllowBorrowed
         {
-            return emplaceAttachment<BorrowedBytesAttachment>(
-                attachment_type,
-                BorrowedBytesAttachment{
-                    .data = data,
-                    .size = size,
-                }
-            );
+            return emplaceAttachment<BorrowedBytesAttachment>(attachment_type, BorrowedBytesAttachment{
+                                                                                   .data = data,
+                                                                                   .size = size,
+                                                                               });
         }
 
         /// Attach a borrowed (non-owning) typed object pointer to the current frame.
@@ -409,11 +439,11 @@ namespace lux::render
         /// 的契约归真注释 —— 不是 submitFrame)。现存唯一消费者是 ImGui 快照
         /// (UIRenderProgramSession 的 4 帧快照环按深度兜住借用期)。
         template <typename T>
-        [[nodiscard]] std::uint32_t pushBorrowedObject(TypeId attachment_type, const T* obj)
+        [[nodiscard]] std::uint32_t pushBorrowedObject(TypeId attachment_type, const T *obj)
             requires AllowBorrowed
         {
-            dst_.attachments
-                .emplace_back(attachment_type, const_cast<void*>(static_cast<const void*>(obj)), sizeof(T), 0, nullptr);
+            dst_.attachments.emplace_back(attachment_type, const_cast<void *>(static_cast<const void *>(obj)),
+                                          sizeof(T), 0, nullptr);
             return narrowU32(dst_.attachments.size() - 1);
         }
 
@@ -422,10 +452,10 @@ namespace lux::render
         /// emplaceAttachment<Config> 的读法同形,只是长度来自运行期)。
         /// LIFETIME 同上:到服务端消费完(不是 submitFrame)。现存唯一消费者
         /// addFeatureRaw 借的是进程常驻的 attach 计划,天然满足。
-        [[nodiscard]] std::uint32_t pushBorrowedRaw(TypeId attachment_type, const void* data, std::uint32_t size)
+        [[nodiscard]] std::uint32_t pushBorrowedRaw(TypeId attachment_type, const void *data, std::uint32_t size)
             requires AllowBorrowed
         {
-            dst_.attachments.emplace_back(attachment_type, const_cast<void*>(data), size, 0, nullptr);
+            dst_.attachments.emplace_back(attachment_type, const_cast<void *>(data), size, 0, nullptr);
             return narrowU32(dst_.attachments.size() - 1);
         }
 
@@ -434,33 +464,24 @@ namespace lux::render
         /// The backing memory can outlive the frame packet through @p owner,
         /// making this safe for async worker pipelines.
         [[nodiscard]] std::uint32_t pushSharedBytesAttachment(
-            std::shared_ptr<const void> owner,
-            const std::byte* data,
-            std::uint32_t size,
+            std::shared_ptr<const void> owner, const std::byte *data, std::uint32_t size,
             TypeId attachment_type = attachment_types::OwnedBytes,
-            std::size_t accounted_size = std::numeric_limits<std::size_t>::max()
-        )
+            std::size_t accounted_size = std::numeric_limits<std::size_t>::max())
         {
-            const auto index = emplaceAttachment<OwnedBytesAttachment>(
-                attachment_type,
-                OwnedBytesAttachment{
-                    .owner = std::move(owner),
-                    .data = data,
-                    .size = size,
-                }
-            );
+            const auto index = emplaceAttachment<OwnedBytesAttachment>(attachment_type, OwnedBytesAttachment{
+                                                                                            .owner = std::move(owner),
+                                                                                            .data = data,
+                                                                                            .size = size,
+                                                                                        });
             dst_.attachments[index].accounted_size =
                 accounted_size == std::numeric_limits<std::size_t>::max() ? size : accounted_size;
             return index;
         }
 
         [[nodiscard]] ExternalDataRef pushSharedBytes(
-            std::shared_ptr<const void> owner,
-            const std::byte* data,
-            std::uint32_t size,
+            std::shared_ptr<const void> owner, const std::byte *data, std::uint32_t size,
             TypeId attachment_type = attachment_types::OwnedBytes,
-            std::size_t accounted_size = std::numeric_limits<std::size_t>::max()
-        )
+            std::size_t accounted_size = std::numeric_limits<std::size_t>::max())
         {
             const std::uint32_t attachment_index =
                 pushSharedBytesAttachment(std::move(owner), data, size, attachment_type, accounted_size);
@@ -472,8 +493,8 @@ namespace lux::render
             };
         }
 
-        [[nodiscard]] ExternalDataRef
-        pushSharedBytes(const lux::cxx::SharedBytes<>& bytes, TypeId attachment_type = attachment_types::OwnedBytes)
+        [[nodiscard]] ExternalDataRef pushSharedBytes(const lux::cxx::SharedBytes<> &bytes,
+                                                      TypeId attachment_type = attachment_types::OwnedBytes)
         {
             if (bytes.size() > UINT32_MAX)
             {
@@ -484,20 +505,13 @@ namespace lux::render
                 return pushSharedBytes({}, nullptr, 0u, attachment_type);
 
             auto owner = std::make_shared<const lux::cxx::SharedBytes<>>(bytes);
-            return pushSharedBytes(
-                std::shared_ptr<const void>{owner, owner->data()},
-                owner->data(),
-                static_cast<std::uint32_t>(bytes.size()),
-                attachment_type
-            );
+            return pushSharedBytes(std::shared_ptr<const void>{owner, owner->data()}, owner->data(),
+                                   static_cast<std::uint32_t>(bytes.size()), attachment_type);
         }
 
         /// Copy bytes into shared-owned storage and attach that storage.
-        [[nodiscard]] ExternalDataRef pushOwnedBytesCopy(
-            const std::byte* data,
-            std::uint32_t size,
-            TypeId attachment_type = attachment_types::OwnedBytes
-        )
+        [[nodiscard]] ExternalDataRef pushOwnedBytesCopy(const std::byte *data, std::uint32_t size,
+                                                         TypeId attachment_type = attachment_types::OwnedBytes)
         {
             auto storage = std::make_shared<std::vector<std::byte>>(size);
             if (size > 0)
@@ -505,12 +519,8 @@ namespace lux::render
                 std::memcpy(storage->data(), data, size);
             }
 
-            return pushSharedBytes(
-                std::static_pointer_cast<const void>(storage),
-                storage->data(),
-                size,
-                attachment_type
-            );
+            return pushSharedBytes(std::static_pointer_cast<const void>(storage), storage->data(), size,
+                                   attachment_type);
         }
 
     private:
@@ -539,17 +549,16 @@ namespace lux::render
         }
 
         template <FrameBlobPayload T>
-        void pushUnary(OpCode opcode, TypeId type_id, const T& payload, std::uint16_t flags, RequestId request_id)
+        void pushUnary(OpCode opcode, TypeId type_id, const T &payload, std::uint16_t flags, RequestId request_id)
         {
-            static_assert(
-                alignof(T) <= PayloadAlignment,
-                "Payload type alignment exceeds payload blob alignment. Raise PayloadAlignment.");
+            static_assert(alignof(T) <= PayloadAlignment,
+                          "Payload type alignment exceeds payload blob alignment. Raise PayloadAlignment.");
 
             const std::uint32_t offset = appendBytes(&payload, sizeof(T), alignof(T));
             appendRecord(opcode, type_id, offset, narrowU32(sizeof(T)), flags, request_id);
         }
 
-        template <typename T> std::uint32_t appendBytes(const T* src, std::size_t byte_count, std::size_t alignment)
+        template <typename T> std::uint32_t appendBytes(const T *src, std::size_t byte_count, std::size_t alignment)
         {
             if (alignment == 0 || (alignment & (alignment - 1)) != 0)
             {
@@ -574,14 +583,8 @@ namespace lux::render
             return narrowU32(offset);
         }
 
-        void appendRecord(
-            OpCode opcode,
-            TypeId type_id,
-            std::uint32_t payload_offset,
-            std::uint32_t payload_size,
-            std::uint16_t flags,
-            RequestId request_id
-        )
+        void appendRecord(OpCode opcode, TypeId type_id, std::uint32_t payload_offset, std::uint32_t payload_size,
+                          std::uint16_t flags, RequestId request_id)
         {
             const CmdRecord record{
                 .opcode = opcode,
@@ -606,8 +609,8 @@ namespace lux::render
         }
 
     private:
-        Packet& dst_;
-        ResponseCallbackStore<ReplyAlignment>* callback_store_{nullptr};
+        Packet &dst_;
+        ResponseCallbackStore<ReplyAlignment> *callback_store_{nullptr};
         bool valid_{true};
         TypeId prepared_reply_type_{kInvalidTypeId};
     };
@@ -628,11 +631,8 @@ namespace lux::render
         using Builder = RenderProgramBuilder<RequestAlignment, ReplyAlignment>;
         using StageProgram = RenderProgram<RequestAlignment>;
 
-        explicit RenderClient(
-            std::shared_ptr<Channel> channel,
-            std::shared_ptr<RenderChannelSync> sync,
-            ERequestLane lane = ERequestLane::PROGRAM
-        )
+        explicit RenderClient(std::shared_ptr<Channel> channel, std::shared_ptr<RenderChannelSync> sync,
+                              ERequestLane lane = ERequestLane::PROGRAM)
             : channel_(std::move(channel)), sync_(std::move(sync)), callbacks_(lane),
               staging_builder_(staging_program_, callbacks_)
         {
@@ -658,16 +658,9 @@ namespace lux::render
         //  Reply phase
         // -----------------------------------------------------------------
 
-        std::size_t pumpReplies()
+        std::size_t pumpReplies(std::size_t budget = (std::numeric_limits<std::size_t>::max)())
         {
-            std::size_t acquired = 0u;
-            while (channel_->responses.tryAcquireRead())
-            {
-                callbacks_.dispatchAll(channel_->responses.currentRead());
-                sync_->notifyReplyConsumed();
-                ++acquired;
-            }
-            return acquired;
+            return detail::pumpReplyEnvelopes(*channel_, *sync_, callbacks_, budget);
         }
 
         bool waitAndPumpReplies()
@@ -707,7 +700,7 @@ namespace lux::render
         //  Recording phase
         // -----------------------------------------------------------------
 
-        bool beginFrame(const ProgramMemoryHints& hints = {})
+        bool beginFrame(const ProgramMemoryHints &hints = {})
         {
             // requestStop closes admission for every lane.  Already staged
             // packets may still be drained by retryPendingSubmit(), but a
@@ -734,14 +727,14 @@ namespace lux::render
             return recording_;
         }
 
-        Builder& builder() noexcept
+        Builder &builder() noexcept
         {
             if (!recording_)
                 renderFatal("RenderClient::builder requires an open frame");
             return staging_builder_;
         }
 
-        const Builder& builder() const noexcept
+        const Builder &builder() const noexcept
         {
             if (!recording_)
                 renderFatal("RenderClient::builder requires an open frame");
@@ -786,7 +779,7 @@ namespace lux::render
             }
 
             // Case 3: acquire a real request slot and move staged packet into it.
-            RenderProgram<RequestAlignment>* slot = beginRequestWrite();
+            RenderProgram<RequestAlignment> *slot = beginRequestWrite();
             if (!slot)
             {
                 return false;
@@ -806,14 +799,14 @@ namespace lux::render
             return true;
         }
 
-        [[nodiscard]] bool trySubmitPrepared(StageProgram& source) noexcept
+        [[nodiscard]] bool trySubmitPrepared(StageProgram &source) noexcept
         {
             const bool is_unavailable = sync_->isStopping() || recording_ || staged_ready_ || pending_publish_;
             if (is_unavailable)
             {
                 return false;
             }
-            auto* slot = beginRequestWrite();
+            auto *slot = beginRequestWrite();
             if (slot == nullptr)
             {
                 return false;
@@ -871,7 +864,7 @@ namespace lux::render
         }
 
     private:
-        RenderProgram<RequestAlignment>* beginRequestWrite()
+        RenderProgram<RequestAlignment> *beginRequestWrite()
         {
             return channel_->requests.tryBeginWrite();
         }

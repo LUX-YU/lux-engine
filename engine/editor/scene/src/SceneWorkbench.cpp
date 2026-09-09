@@ -45,12 +45,12 @@ namespace lux::editor::workbench
     {
         std::atomic<std::uint64_t> next_texture{1};
 
-        ui::TextureHandle issueTexture() noexcept
+        lux::ui::TextureHandle issueTexture() noexcept
         {
             auto value = next_texture.load(std::memory_order_relaxed);
             while (value != std::numeric_limits<std::uint64_t>::max())
                 if (next_texture.compare_exchange_weak(value, value + 1, std::memory_order_relaxed))
-                    return ui::TextureHandle{value};
+                    return lux::ui::TextureHandle{value};
             return {};
         }
         template<class Type>
@@ -148,15 +148,19 @@ namespace lux::editor::workbench
         }
     } // namespace
 
-    class WorkbenchPane final : public object::Object<WorkbenchPane, ui::Pane>
+    class WorkbenchPane final : public object::Object<WorkbenchPane, lux::ui::Pane>
     {
     public:
-        WorkbenchPane(ui::UISession& ui, std::string id, std::string title, std::function<void(ui::Frame&)> draw)
-            : Object(ui.dispatcherRef(), ui::PaneId{id}, ui::PaneTypeId{id}, std::move(title)),
-              draw_(std::move(draw)) {}
+      WorkbenchPane(lux::ui::UISession &ui, std::string id, std::string title,
+                    std::function<void(lux::ui::Frame &)> draw)
+          : Object(ui.dispatcherRef(), lux::ui::PaneId{id}, lux::ui::PaneTypeId{id}, std::move(title)),
+            draw_(std::move(draw))
+      {
+      }
+
     private:
-        void draw(ui::Frame& frame, ui::PaneDrawContext&) override { draw_(frame); }
-        std::function<void(ui::Frame&)> draw_;
+        void draw(lux::ui::Frame& frame, lux::ui::PaneDrawContext&) override { draw_(frame); }
+        std::function<void(lux::ui::Frame&)> draw_;
     };
 
     struct SceneWorkbench::Impl final
@@ -182,13 +186,13 @@ namespace lux::editor::workbench
         std::unique_ptr<scene::Scene> scene;
         EditorSceneHandle scene_handle{};
         std::unique_ptr<inspector::EntityInspector> inspector;
-        ui::PaneRegistration pane_registration;
+        lux::ui::PaneRegistration pane_registration;
         std::vector<std::unique_ptr<WorkbenchPane>> panes;
-        std::vector<ui::PaneRegistration> registrations;
+        std::vector<lux::ui::PaneRegistration> registrations;
         std::optional<task::TaskExecutor> executor;
         SceneCamera camera;
-        ui::ViewportElement viewport;
-        ui::ViewportResult viewport_result;
+        lux::ui::ViewportElement viewport;
+        lux::ui::ViewportResult viewport_result;
         render::RenderRequest<render::ViewCreatedReply> pending_view;
         render::RenderRequest<render::TargetReadyReply> pending_target;
         render::RenderRequest<render::TargetResizedReply> pending_resize;
@@ -198,7 +202,7 @@ namespace lux::editor::workbench
         render::RenderSceneId render_scene;
         std::shared_ptr<const void> cpu_lease{std::make_shared<int>(0)};
         std::shared_ptr<bool> view_closed{std::make_shared<bool>(false)};
-        ui::TextureHandle texture{issueTexture()};
+        lux::ui::TextureHandle texture{issueTexture()};
         math::Extent2u extent{1024, 640};
         bool linked{}, view_created{}, suspended{}, closing{}, closed{};
         std::string status{"Creating scene view"};
@@ -342,7 +346,7 @@ namespace lux::editor::workbench
                 "lux-editor.entity-inspector", "lux.scene.resources", 260, 350, 200, "lux.scene.toolbar"});
         }
 
-        void outline(ui::Frame& frame)
+        void outline(lux::ui::Frame& frame)
         {
             static_cast<void>(frame.inputText("Filter", filter));
             const auto& registry = std::as_const(scene->registry());
@@ -364,7 +368,7 @@ namespace lux::editor::workbench
                     if (const auto* parent = registry.try_get<simulation::ecs::Parent>(child);
                         parent && parent->entity == entity)
                         leaf = false;
-                auto group = frame.treeRow({ui::WidgetIdView{label}, label,
+                auto group = frame.treeRow({lux::ui::WidgetIdView{label}, label,
                     context->selection().current().entity == entity, leaf, true});
                 if (group.activated())
                     static_cast<void>(context->selection().select(scene_handle, entity));
@@ -400,7 +404,7 @@ namespace lux::editor::workbench
                 }
         }
 
-        bool addPane(std::string id, std::string title, std::function<void(ui::Frame&)> draw)
+        bool addPane(std::string id, std::string title, std::function<void(lux::ui::Frame&)> draw)
         {
             auto pane = std::make_unique<WorkbenchPane>(
                 context->ui(), std::move(id), std::move(title), std::move(draw));
@@ -545,7 +549,7 @@ namespace lux::editor::workbench
 
             impl->inspector = std::make_unique<inspector::EntityInspector>(
                 context.ui().dispatcherRef(),
-                ui::PaneId{"lux-editor.entity-inspector"},
+                lux::ui::PaneId{"lux-editor.entity-inspector"},
                 context,
                 std::move(*bindings),
                 inspector::EInspectorMode::READ_ONLY
@@ -589,8 +593,8 @@ namespace lux::editor::workbench
             light.value.range = 30.0F;
             registry.emplace<simulation::ecs::Light3D>(light_entity, light);
             auto* state = impl.get();
-            impl->addPane("lux.scene.toolbar", "Workbench", [state](ui::Frame& frame) {
-                auto table = frame.table({ui::WidgetIdView{"workbench-toolbar"}, 3});
+            impl->addPane("lux.scene.toolbar", "Workbench", [state](lux::ui::Frame& frame) {
+                auto table = frame.table({lux::ui::WidgetIdView{"workbench-toolbar"}, 3});
                 table.nextColumn();
                 frame.text("LUX / Scene Workbench");
                 table.nextColumn();
@@ -604,14 +608,16 @@ namespace lux::editor::workbench
                     state->layout();
                 }
             });
-            impl->addPane("lux.scene.viewport", "Scene View", [state](ui::Frame& frame) {
+            impl->addPane("lux.scene.viewport", "Scene View", [state](lux::ui::Frame& frame) {
                 frame.textMuted("RMB + WASD/QE: fly  |  MMB: pan  |  Wheel: move  |  F: focus  |  Home: reset");
                 frame.textMuted(state->status);
-                state->viewport_result = state->viewport.draw(frame,
-                    ui::ViewportSpec{state->linked && !state->closing ? state->texture : ui::TextureHandle{}});
+                state->viewport_result = state->viewport.draw(
+                    frame, lux::ui::ViewportSpec{state->linked && !state->closing ? state->texture
+                                                                                  : lux::ui::TextureHandle{}});
             });
-            impl->addPane("lux.scene.outline", "Scene Outline", [state](ui::Frame& frame) { state->outline(frame); });
-            impl->addPane("lux.scene.resources", "Resources / Diagnostics / History", [state](ui::Frame& frame) {
+            impl->addPane("lux.scene.outline", "Scene Outline",
+                          [state](lux::ui::Frame &frame) { state->outline(frame); });
+            impl->addPane("lux.scene.resources", "Resources / Diagnostics / History", [state](lux::ui::Frame& frame) {
                 if (frame.smallButton("Retry failed resources"))
                     state->retry_requested = true;
                 frame.text(state->status);
@@ -713,7 +719,7 @@ namespace lux::editor::workbench
                 impl_->entities.push_back(entity);
     }
 
-    void SceneWorkbench::afterUiFrame(double seconds, ui::Vec2 scale)
+    void SceneWorkbench::afterUiFrame(double seconds, lux::ui::Vec2 scale)
     {
         if (impl_->closing || impl_->closed)
             return;
@@ -731,7 +737,7 @@ namespace lux::editor::workbench
             }
             return;
         }
-        if (input.pressed[static_cast<std::size_t>(ui::EKey::F)] && state.viewport_result.window_focused &&
+        if (input.pressed[static_cast<std::size_t>(lux::ui::EKey::F)] && state.viewport_result.window_focused &&
             !input.keyboard_blocked)
         {
             const auto selection = state.context->selection().current();

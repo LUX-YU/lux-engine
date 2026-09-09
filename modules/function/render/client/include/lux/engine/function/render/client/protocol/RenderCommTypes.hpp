@@ -41,11 +41,9 @@ namespace lux::render
         [[nodiscard]] T* allocate(std::size_t n)
         {
             if (n > (std::numeric_limits<std::size_t>::max)() / sizeof(T))
-                std::abort();
+                throw std::bad_array_new_length{};
 
-            void* p = ::operator new(n * sizeof(T), std::align_val_t{Alignment}, std::nothrow);
-            if (!p)
-                std::abort();
+            void* p = ::operator new(n * sizeof(T), std::align_val_t{Alignment});
             return static_cast<T*>(p);
         }
 

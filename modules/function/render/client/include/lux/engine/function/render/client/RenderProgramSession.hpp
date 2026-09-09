@@ -29,50 +29,45 @@ namespace lux::render
         using Builder = Client::Builder;
         using ProgramProgressToken = Client::ProgramProgressToken;
 
-        explicit RenderProgramSession(
-            std::shared_ptr<RenderProgramChannel<>> channel,
-            std::shared_ptr<RenderChannelSync> sync
-        );
+        explicit RenderProgramSession(std::shared_ptr<RenderProgramChannel<>> channel,
+                                      std::shared_ptr<RenderChannelSync> sync);
 
-        RenderProgramSession(const RenderProgramSession&) = delete;
-        RenderProgramSession& operator=(const RenderProgramSession&) = delete;
+        RenderProgramSession(const RenderProgramSession &) = delete;
+        RenderProgramSession &operator=(const RenderProgramSession &) = delete;
 
-        std::size_t pumpReplies();
+        std::size_t pumpReplies(std::size_t budget = (std::numeric_limits<std::size_t>::max)());
         [[nodiscard]] bool waitAndPumpReplies();
 
-        void setErrorEventHandler(
-            std::function<void(const ErrorEventBatchReply&)> on_batch,
-            std::function<void(const RenderErrorEvent&)> on_event
-        );
+        void setErrorEventHandler(std::function<void(const ErrorEventBatchReply &)> on_batch,
+                                  std::function<void(const RenderErrorEvent &)> on_event);
         [[nodiscard]] std::uint64_t unroutedUnsolicitedReplies() const noexcept;
 
-        [[nodiscard]] bool beginFrame(const ProgramMemoryHints& hints = {});
+        [[nodiscard]] bool beginFrame(const ProgramMemoryHints &hints = {});
         [[nodiscard]] bool isRecording() const noexcept
         {
             return client_.isRecording();
         }
         [[nodiscard]] bool trySubmitFrame() noexcept;
-        [[nodiscard]] bool trySubmitPrepared(RenderProgram<>& source) noexcept;
+        [[nodiscard]] bool trySubmitPrepared(RenderProgram<> &source) noexcept;
         [[nodiscard]] bool retryPendingSubmit() noexcept;
         [[nodiscard]] bool hasPendingSubmit() const noexcept;
         [[nodiscard]] ProgramProgressToken observeProgress() const noexcept;
         void waitForProgress(ProgramProgressToken observed) const noexcept;
-        [[nodiscard]] bool waitForProgressUntil(
-            ProgramProgressToken observed,
-            std::chrono::steady_clock::time_point deadline
-        ) const noexcept;
+        [[nodiscard]] bool waitForProgressUntil(ProgramProgressToken observed,
+                                                std::chrono::steady_clock::time_point deadline) const noexcept;
         void notifyProgress() noexcept;
         [[nodiscard]] bool isStopping() const noexcept;
         [[nodiscard]] RenderError terminalError() const noexcept;
         [[nodiscard]] std::shared_ptr<RenderChannelSync> progressDomain() const noexcept;
 
-        [[nodiscard]] Builder& builder() noexcept;
-        [[nodiscard]] bool rebaseSceneOrigin(RenderSceneId scene, const std::int64_t scene_origin_page[3]) noexcept;
-        [[nodiscard]] Client& rawClient() noexcept
+        [[nodiscard]] Builder &builder() noexcept;
+        [[nodiscard]] Expected<bool> rebaseSceneOrigin(RenderSceneId scene,
+                                                       const std::int64_t scene_origin_page[3]) noexcept;
+        [[nodiscard]] Client &rawClient() noexcept
         {
             return client_;
         }
-        [[nodiscard]] const Client& rawClient() const noexcept
+        [[nodiscard]] const Client &rawClient() const noexcept
         {
             return client_;
         }

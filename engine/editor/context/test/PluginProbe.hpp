@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/editor/Toolset.hpp>
+#include <lux/engine/editor/application/tooling/Toolset.hpp>
 
 #include <functional>
 
@@ -38,7 +38,8 @@ namespace lux::editor::test
         PluginProbeState& state_;
     };
 
-    [[nodiscard]] lux::cxx::expected<std::reference_wrapper<PluginProbeTool>, ToolsetFailure> installPluginProbe(
-        Toolset& toolset, PluginProbeState& state
+    [[nodiscard]] lux::cxx::expected<std::reference_wrapper<PluginProbeTool>, application::ToolsetFailure>
+    installPluginProbe(
+        application::Toolset& toolset, PluginProbeState& state
     ) noexcept;
 } // namespace lux::editor::test

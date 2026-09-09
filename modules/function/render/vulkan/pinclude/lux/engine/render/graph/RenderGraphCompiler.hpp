@@ -50,6 +50,7 @@ namespace lux::render
         compile(RGGraphDescription graph, PipelineManager& pipeline_manager, const RGCompileOptions& options = {});
 
     private:
+        friend struct RenderGraphCompilerTestAccess;
         // 0) Resolve forward resource references — rewrite placeholder handles
         //    to actual resource indices before any other analysis.
         static void resolveForwardReferences(RGCompiledGraph& compiled);

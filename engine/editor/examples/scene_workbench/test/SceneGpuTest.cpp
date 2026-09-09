@@ -1,0 +1,1060 @@
+#include "../DevelopmentScene.hpp"
+#include <lux/engine/editor/ui/scene/SceneWorkspace.hpp>
+#include <lux/engine/editor/rendering/detail/ViewImageLifetime.hpp>
+#include <lux/engine/editor/rendering/detail/RendererTestAccess.hpp>
+#include <lux/engine/editor/sessions/scene/SceneResourceStatus.hpp>
+#include <lux/engine/editor/sessions/scene/detail/SceneTestAccess.hpp>
+#include <lux/engine/object/ObjectDispatcher.hpp>
+#include <lux/engine/window/GlfwRuntime.hpp>
+#include <lux/engine/window/LuxWindow.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
+#include <algorithm>
+#include <cassert>
+#include <chrono>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <thread>
+#include "../../../rendering/test/ViewLifetimeTest.hpp"
+
+namespace
+{
+    using namespace lux::editor;
+    using Clock = std::chrono::steady_clock;
+    class GatedProvider final : public lux::asset::IAssetProvider
+    {
+    public:
+        std::shared_ptr<lux::asset::IAssetProvider> source;
+        lux::asset::AssetId held;
+        mutable std::atomic<unsigned> entered{}, returned{};
+        std::atomic<bool> released{};
+        std::optional<lux::asset::AssetId> resolve(std::string_view path) const override
+        {
+            return source->resolve(path);
+        }
+        bool contains(const lux::asset::AssetId &id) const override
+        {
+            return source->contains(id);
+        }
+        lux::cxx::expected<lux::asset::AssetBlob, lux::asset::EAssetStorageError> open(
+            const lux::asset::AssetId &id) const override
+        {
+            if (id == held)
+            {
+                ++entered;
+                while (!released.load(std::memory_order_acquire))
+                    released.wait(false, std::memory_order_acquire);
+                auto result = source->open(id);
+                ++returned;
+                return result;
+            }
+            return source->open(id);
+        }
+        void enumerate(const std::function<void(const lux::asset::ProviderEntry &)> &visitor) const override
+        {
+            source->enumerate(visitor);
+        }
+        std::optional<std::string> pathOf(const lux::asset::AssetId &id) const override
+        {
+            return source->pathOf(id);
+        }
+        void release() noexcept
+        {
+            released.store(true, std::memory_order_release);
+            released.notify_all();
+        }
+    };
+    void require(bool success, const char *operation)
+    {
+        if (success)
+            return;
+        std::fprintf(stderr, "ER1 GPU FAIL: %s\n", operation);
+        std::fflush(stderr);
+        std::abort();
+    }
+    template <class T> void require(const T &result, const char *operation)
+    {
+        require(static_cast<bool>(result), operation);
+    }
+    class FailingPane final : public lux::object::Object<FailingPane, lux::ui::Pane>
+    {
+    public:
+        explicit FailingPane(ui::EditorWindow &window, std::string id = "test.foreign.failure")
+            : Object(window.uiSession().dispatcherRef(), lux::ui::PaneId{std::move(id)},
+                     lux::ui::PaneTypeId{"test.foreign.failure"}, "Foreign preparation failure"),
+              window_(window)
+        {
+        }
+        bool fail{true};
+        std::size_t calls{};
+
+    private:
+        ui::EditorWindow &window_;
+        void draw(lux::ui::Frame &frame, lux::ui::PaneDrawContext &) override
+        {
+            ++calls;
+            const auto closed = window_.closeAfterRendererStopped();
+            require(!closed && closed.error().code == ui::EWindowError::BUSY, "draw-time close retains window owner");
+            auto table = frame.table({lux::ui::WidgetIdView{"failure-scope"}, 2, false, false, false});
+            if (fail)
+                throw std::bad_alloc{};
+            frame.text("Recovered foreign pane");
+        }
+    };
+    struct Readback final
+    {
+        rendering::ViewImage image;
+        std::vector<std::byte> pixels;
+        lux::render::RenderRequest<lux::render::ReadbackTargetReply> request;
+        // The actual request references both buffer and target. Neither owner is released while pending.
+        void start(lux::scene::RenderRuntimeLease &runtime, rendering::ViewImage value)
+        {
+            require(!request.valid(), "single readback admission");
+            image = std::move(value);
+            const auto *record = rendering::detail::ViewImageAccess::record(image);
+            require(record != nullptr, "readback retains real image record");
+            pixels.resize(std::size_t(image.extent.width) * image.extent.height * 4);
+            request = runtime.control().readbackTargetAsync(record->version->target, pixels.data(), pixels.size());
+            require(request.valid(), "real readback request");
+        }
+        std::uint64_t finish(const std::filesystem::path &path)
+        {
+            require(request.isReady(), "readback completion");
+            const auto result = request.tryResult();
+            require(result, "readback transport");
+            const auto &reply = result->get();
+            require(reply.status == 0 && reply.bytes_written == pixels.size(), "readback backend and byte count");
+            require(reply.width == image.extent.width && reply.height == image.extent.height, "readback extent");
+            std::ofstream file(path, std::ios::binary);
+            file << "P6\n" << reply.width << ' ' << reply.height << "\n255\n";
+            std::uint64_t checksum = 14695981039346656037ULL;
+            for (std::size_t i = 0; i < pixels.size(); i += 4)
+            {
+                const char rgb[]{char(pixels[i + 2]), char(pixels[i + 1]), char(pixels[i])};
+                file.write(rgb, 3);
+                for (const auto channel : rgb)
+                    checksum = (checksum ^ static_cast<unsigned char>(channel)) * 1099511628211ULL;
+            }
+            require(file.good(), "write raw image evidence");
+            std::printf("capture=%s extent=%ux%u checksum=%llu\n", path.string().c_str(), reply.width, reply.height,
+                        static_cast<unsigned long long>(checksum));
+            std::fflush(stdout);
+            request = {};
+            image = {};
+            return checksum;
+        }
+    };
+} // namespace
+
+int main(int argc, char **argv)
+{
+    using namespace lux::editor;
+    require(argc == 4 || argc == 5, "arguments: asset package, output directory, scene variant, optional recovery pak");
+    const std::string_view variant{argv[3]};
+    const bool retry_test = variant == "retry";
+    const bool dynamic_test = variant == "dynamic";
+    const bool churn_test = variant == "churn";
+    const bool multiple_views_test = variant.starts_with("multiple_");
+    const bool multiple_reverse = variant == "multiple_reverse";
+    const bool multiple_equal = variant == "multiple_equal";
+    const bool multiple_lifecycle = variant == "multiple_lifecycle";
+    const bool record_failure_test = variant == "record_failure";
+    const bool late_entity_test = variant == "late_entity";
+    const bool late_source_test = variant == "late_source";
+    const bool partial_failure_test = variant == "partial_late_close";
+    const bool late_close_test = variant == "late_close" || partial_failure_test;
+    const bool gated_test = late_entity_test || late_source_test || late_close_test;
+#if !defined(LUX_EDITOR_DIAGNOSTICS)
+    require(!dynamic_test && !churn_test && !record_failure_test && !late_entity_test && !late_source_test &&
+                variant != "factory_failure",
+            "requested variant requires the isolated diagnostic build");
+#endif
+    require(!retry_test || argc == 5, "retry needs a complete recovery package");
+    const bool has_mesh = variant != "no_mesh" && variant != "empty";
+    const auto output = std::filesystem::path(argv[2]);
+    std::filesystem::create_directories(output);
+    lux::meta::ReflectionRegistry::initRegistry();
+    {
+        lux::window::GlfwRuntime platform;
+        require(platform.valid(), "GLFW startup");
+        lux::object::ObjectMessageQueue messages;
+        auto execution = lux::process::ExecutionRuntime::create(
+            {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{partial_failure_test ? 4u : 2u, 64}});
+        require(execution, "execution factory");
+        lux::asset::AssetVfs vfs;
+        auto pak = lux::asset::PakAssetProvider::loadFromFile(argv[1]);
+        require(pak, "load actual scene resources");
+        auto provider = std::make_shared<GatedProvider>();
+        provider->source = *pak;
+        if (!gated_test)
+            provider->release();
+        require(vfs.mount({"/Seed", provider, 0}) != lux::asset::kInvalidMountId, "mount resources");
+        auto blocking = execution->blocking();
+        require(blocking, "blocking scheduler");
+        auto endpoint = lux::process::asset_loading::VfsAssetReadEndpoint::create(vfs.view(), *blocking, {64});
+        require(endpoint, "asset endpoint");
+        ui::WindowSpec window_config;
+        window_config.visible = false;
+        auto window_result = ui::EditorWindow::create(messages.dispatcherRef(), window_config);
+        require(window_result, "window factory");
+        auto window = std::move(*window_result);
+        rendering::RendererConfig config;
+        config.validation = true;
+        if (variant == "view_failure")
+            config.diagnostic_capacity = 1;
+        config.validation_message_sink = [](std::uint32_t severity, std::string_view text)
+        { std::fprintf(stderr, "Vulkan severity=%u %.*s\n", severity, int(text.size()), text.data()); };
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+        if (variant == "factory_failure")
+        {
+            std::size_t failures{};
+            for (std::size_t index = 0; index < 512; ++index)
+            {
+                lux_er1_renderer_allocation_fail_after(index);
+                auto attempted = rendering::EditorRenderer::create(window->nativeWindow(), window->uiSession(), config);
+                const auto allocations = lux_er1_renderer_allocation_disarm();
+                if (attempted)
+                {
+                    require(allocations == index, "renderer factory actual allocation count");
+                    require((*attempted)->beginClose(), "empty renderer begins close");
+                    bool complete{};
+                    const auto close_deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
+                    while (!complete && std::chrono::steady_clock::now() < close_deadline)
+                    {
+                        const auto closed = (*attempted)->advanceClose();
+                        require(closed, "empty renderer close progresses");
+                        complete = *closed == rendering::ERenderClose::COMPLETE;
+                        if (!complete)
+                            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+                    }
+                    require(complete && (*attempted)->joinStopped(), "empty renderer actually joined");
+                    break;
+                }
+                ++failures;
+                require(allocations == index + 1 &&
+                            attempted.error().code == rendering::ERendererError::ALLOCATION_FAILURE,
+                        "actual renderer factory allocation failure preserved");
+            }
+            require(failures > 12 && failures < 512, "renderer allocation sweep reached successful construction");
+            std::printf("Renderer factory actual DLL allocation failures checked: %zu\n", failures);
+        }
+#endif
+        auto renderer_result = rendering::EditorRenderer::create(window->nativeWindow(), window->uiSession(), config);
+        require(renderer_result, "renderer factory");
+        auto renderer = std::move(*renderer_result);
+        if (variant == "view_failure")
+        {
+            // Real backend replies for nonexistent Scene identities, not fabricated diagnostics.
+            std::array<std::unique_ptr<rendering::RenderView>, 2> rejected_views;
+            for (std::size_t i = 0; i < rejected_views.size(); ++i)
+            {
+                auto opened = renderer->openView({1000U + static_cast<std::uint32_t>(i), 9}, {{64, 64}, true});
+                require(opened, "view request accepted before asynchronous Scene identity validation");
+                rejected_views[i] = std::move(*opened);
+            }
+            const auto view_deadline = Clock::now() + std::chrono::seconds{10};
+            while (std::any_of(rejected_views.begin(), rejected_views.end(),
+                               [](const auto &view) { return view->status().state != rendering::EViewState::FAILED; }))
+            {
+                require(Clock::now() < view_deadline && renderer->poll(64), "finite actual view error replies");
+                std::this_thread::yield();
+            }
+            for (std::size_t i = 0; i < rejected_views.size(); ++i)
+            {
+                const auto expected =
+                    lux::render::renderError<lux::render::err::scene::NotFound>(1000U + static_cast<std::uint32_t>(i));
+                const auto status = rejected_views[i]->status();
+                const auto image = rejected_views[i]->acquireImage();
+                require(status.failure && status.failure->render_error.type == expected.type &&
+                            status.failure->render_error.args == expected.args &&
+                            status.failure->view == rejected_views[i]->id(),
+                        "failed View status owns its exact backend error and full View identity");
+                require(!image && image.error().render_error.args == expected.args,
+                        "failed image query does not misreport NOT_READY");
+                require(rejected_views[i]->beginClose(), "failed view close retains owner");
+            }
+            require(renderer->statistics().render_events == 2 && renderer->statistics().dropped_events == 1,
+                    "bounded diagnostics overflow does not erase per-operation failure");
+            auto diagnostic = renderer->takeDiagnostic();
+            require(diagnostic && *diagnostic && (**diagnostic).failure.view == rejected_views[0]->id(),
+                    "first owning diagnostic survives queue overflow");
+            require(renderer->takeDiagnostic()->has_value() == false, "only retained diagnostic is delivered");
+            for (auto &view : rejected_views)
+            {
+                for (;;)
+                {
+                    require(Clock::now() < view_deadline && renderer->poll(64), "failed view cleanup progresses");
+                    auto closed = view->advanceClose();
+                    require(closed, "failed View close step");
+                    if (*closed == rendering::ERenderClose::COMPLETE)
+                        break;
+                }
+                view.reset();
+            }
+            std::puts(
+                "Actual view failures retained; diagnostic capacity=1, failures=2, dropped=1, both owners closed");
+        }
+        {
+            FailingPane pane(*window);
+            auto registration = window->uiSession().registerPane(pane);
+            require(registration, "foreign pane registration");
+            const lux::ui::FrameInfo frame{{1600, 900}, 1.0F / 60.0F, {1, 1}};
+            require(window->beginFrame(frame), "foreign failure frame begins");
+            const auto failed = window->drawPanes();
+            require(!failed && failed.error().code == ui::EWindowError::ALLOCATION_FAILURE,
+                    "foreign preparation error is contained");
+            require(!window->frameOpen() && pane.calls == 1, "failed frame is discarded with scopes balanced");
+            pane.fail = false;
+            require(window->beginFrame(frame) && window->drawPanes(), "same window and pane retry after failure");
+            auto snapshot = window->finishFrame();
+            require(snapshot && snapshot->valid() && pane.calls == 2, "retry produces a valid owning snapshot");
+            registration->reset();
+        }
+        auto metadata = examples::buildDevelopmentSceneMeta();
+        require(metadata, "actual Scene metadata");
+        auto shared_meta = std::make_shared<lux::scene::SceneMetaManager>(std::move(*metadata));
+        auto source = (variant == "alternate" ? examples::openAlternateScene : examples::openDevelopmentScene)(
+            {1}, messages.dispatcherRef(), *renderer, (*endpoint)->port(), shared_meta);
+        require(source, "Scene source factory");
+        std::optional<sessions::SceneEntityRef> original_entity, recycled_entity;
+        lux::asset::AssetId replacement_mesh;
+        std::optional<sessions::ResourceRequestKey> superseded_key;
+        if (gated_test)
+            for (const auto entity : source->scene->registry().view<lux::simulation::ecs::Mesh3D>())
+            {
+                provider->held = source->scene->registry().get<lux::simulation::ecs::Mesh3D>(entity).value.mesh;
+                if (partial_failure_test && !provider->contains(provider->held))
+                    continue;
+                original_entity = sessions::SceneEntityRef{source->id, entity};
+                source->initial_selection = entity;
+                break;
+            }
+        require(!gated_test || original_entity.has_value(), "delayed request matches an actual source mesh");
+        if (late_source_test)
+        {
+            for (const auto entity : source->scene->registry().view<lux::simulation::ecs::Mesh3D>())
+            {
+                const auto mesh = source->scene->registry().get<lux::simulation::ecs::Mesh3D>(entity).value.mesh;
+                if (mesh != provider->held)
+                {
+                    replacement_mesh = mesh;
+                    break;
+                }
+            }
+            require(!replacement_mesh.isNull(), "second real mesh source exists");
+        }
+        // Diagnostic variants are prepared before transferring the source into its authoritative Session.
+        if (variant == "dim")
+            for (const auto entity : source->scene->registry().view<lux::simulation::ecs::Light3D>())
+                source->scene->registry().patch<lux::simulation::ecs::Light3D>(entity, [](auto &value)
+                                                                               { value.value.intensity *= 0.15F; });
+        if (variant == "no_mesh")
+            source->scene->registry().clear<lux::simulation::ecs::Mesh3D>();
+        if (variant == "empty")
+        {
+            source->scene->registry().clear();
+            source->initial_selection.reset();
+        }
+        if (churn_test)
+            source->resource_capacity = 6;
+        auto session_result = sessions::SceneSession::openInspection(*source);
+        require(session_result && !source->scene, "Scene source transfer");
+        auto session = std::move(*session_result);
+        std::unique_ptr<sessions::SceneView> separate_view;
+        rendering::PixelExtent separate_extent =
+            multiple_equal ? rendering::PixelExtent{1014, 593} : rendering::PixelExtent{256, 256};
+        const auto open_second = [&]
+        {
+            auto opened = sessions::SceneView::create(messages.dispatcherRef(), *session, *renderer);
+            require(opened, "independent second SceneView of the same Session");
+            separate_view = std::move(*opened);
+            require(separate_view->requestExtent(separate_extent), "second view has its own extent");
+        };
+        if (multiple_reverse)
+            open_second();
+        auto view_result = sessions::SceneView::create(messages.dispatcherRef(), *session, *renderer);
+        require(view_result, "Scene view factory");
+        auto view = std::move(*view_result);
+        if (multiple_views_test)
+            require(view->requestExtent({1014, 593}), "primary extent admitted before startup progress");
+        auto *camera = view.get(); // Narrow borrowed SceneView; workspace owns it until explicit close completes.
+        auto workspace_result = ui::SceneWorkspace::create(*window, {1}, *session, view);
+        require(workspace_result && !view, "workspace view transfer");
+        auto workspace = std::move(*workspace_result);
+        require(workspace->activate(), "workspace activation");
+        {
+            auto closing_view = sessions::SceneView::create(messages.dispatcherRef(), *session, *renderer);
+            require(closing_view, "viewport failure probe owns its SceneView");
+            ui::SceneViewport viewport(messages.dispatcherRef(), lux::ui::PaneId{"er1.failure.viewport"},
+                                       **closing_view);
+            require((*closing_view)->beginClose(), "begin closing viewport failure probe");
+            viewport.consumeInput({}, 0.016, {1, 1});
+            const auto failure = viewport.actionFailure();
+            require(failure && failure->session == (*closing_view)->sessionId() && failure->renderer &&
+                        failure->renderer->code == rendering::ERendererError::STOPPING,
+                    "viewport retains exact failed extent action and its Session/render error");
+            const auto closing_deadline = Clock::now() + std::chrono::seconds{10};
+            for (;;)
+            {
+                require(Clock::now() < closing_deadline, "viewport failure probe finite close");
+                require(renderer->poll(64), "viewport failure probe renderer progress");
+                const auto closed = (*closing_view)->advanceClose();
+                require(closed, "viewport failure probe retains owner until close completes");
+                if (*closed == sessions::ECloseProgress::COMPLETE)
+                    break;
+                std::this_thread::yield();
+            }
+        }
+        {
+            const auto shared_history = session->historyId();
+            auto second_view = sessions::SceneView::create(messages.dispatcherRef(), *session, *renderer);
+            require(second_view, "second view of the same authoritative Session");
+            {
+                FailingPane conflict(*window, "lux.scene.workspace.2.toolbar");
+                auto conflict_registration = window->uiSession().registerPane(conflict);
+                require(conflict_registration, "reserve final pane identity to force factory rollback");
+                auto rejected = ui::SceneWorkspace::create(*window, {2}, *session, *second_view);
+                require(!rejected && *second_view, "final pane registration failure retains caller view");
+                conflict_registration->reset();
+            }
+            auto second_workspace = ui::SceneWorkspace::create(*window, {2}, *session, *second_view);
+            require(second_workspace && !*second_view, "second workspace retains shared window history registration");
+            require((*second_workspace)->beginClose(), "close only the second workspace");
+            const auto partial_close_deadline = Clock::now() + std::chrono::seconds{10};
+            for (;;)
+            {
+                require(Clock::now() < partial_close_deadline, "second workspace finite close");
+                require(renderer->poll(64), "second view close progress");
+                const auto closed = (*second_workspace)->advanceClose();
+                require(closed, "second workspace close step");
+                if (*closed == sessions::ECloseProgress::COMPLETE)
+                    break;
+                std::this_thread::yield();
+            }
+            second_workspace->reset();
+            require(session->state() == sessions::ESessionState::READY && session->historyId() == shared_history,
+                    "closing one workspace preserves Session and shared history");
+            require(window->activeHistory().view()->has_target && workspace->activate(),
+                    "remaining workspace keeps its history registration and can activate");
+        }
+        auto runtime_result = renderer->acquire();
+        require(runtime_result, "diagnostic render lease");
+        auto runtime = std::move(*runtime_result);
+        if (multiple_views_test && !separate_view)
+            open_second();
+        bool separate_closing{}, separate_closed{};
+        rendering::EditorFramePacket pending;
+        rendering::ViewImage retained;
+        rendering::ViewImage evidence_image;
+        Readback readback;
+        Readback second_readback;
+        std::array<std::uint64_t, 4> second_checksums{};
+        std::vector<std::uint64_t> checksums(churn_test ? 12 : (dynamic_test ? 5 : (multiple_lifecycle ? 4 : 2)));
+        std::shared_ptr<const sessions::SceneResourceSnapshot> initial_resources;
+        std::optional<sessions::detail::ESceneTestMutation> pending_mutation;
+        unsigned phase{};
+        const auto needs_second = [&] { return multiple_views_test && (!multiple_lifecycle || phase < 3); };
+        std::uint64_t next_capture = 60, cycle{};
+        bool recovery_mounted{}, retry_accepted{};
+        bool partial_failure_observed{};
+        bool frame_protocol_checked{};
+        std::uint64_t failed_packet_sequence{};
+        const auto injected_error = lux::render::renderError<lux::render::err::memory::GpuAllocationFailed>();
+        std::optional<sessions::ResourceRequestKey> failed_key;
+        std::shared_ptr<const sessions::SceneResourceSnapshot> failed_snapshot;
+        const auto deadline = Clock::now() + std::chrono::seconds{45};
+        while (phase < checksums.size() || (record_failure_test && !failed_packet_sequence))
+        {
+            require(Clock::now() < deadline, "finite GPU run deadline");
+            require(window->collectInput(), "input collection");
+            require(execution->drainMain(64), "main continuations");
+            require(renderer->poll(64), "renderer poll");
+            if (separate_closing && separate_view)
+            {
+                auto closed = separate_view->advanceClose();
+                require(closed, "second view close remains explicit while first keeps rendering");
+                if (*closed == sessions::ECloseProgress::COMPLETE)
+                {
+                    separate_view.reset();
+                    separate_closed = true;
+                }
+            }
+            if (pending.valid())
+                require(renderer->trySubmitFrame(pending), "retry retained frame");
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+            if (pending_mutation)
+            {
+                require(sessions::detail::SceneTestAccess::mutateSource(*session, *pending_mutation),
+                        "diagnostic source change between authoritative owner cycles");
+                pending_mutation.reset();
+            }
+            if (late_entity_test && !recycled_entity && provider->entered.load() && renderer->statistics().frames >= 30)
+            {
+                auto recycled = sessions::detail::SceneTestAccess::recycleSelectedEntity(*session);
+                require(recycled && recycled->entity != original_entity->entity,
+                        "real entity generation changes while its mesh read is in flight");
+                recycled_entity = *recycled;
+                provider->release();
+            }
+#endif
+            const sessions::SceneOwnerUpdate update{++cycle, 1.0 / 60.0};
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+            if (late_source_test && !superseded_key && provider->entered.load() && renderer->statistics().frames >= 30)
+            {
+                const auto before = session->readResources();
+                require(before, "owning source request snapshot");
+                for (const auto &row : (*before)->rows)
+                    if (row.key.target == *original_entity)
+                        superseded_key = row.key;
+                require(superseded_key.has_value(), "original in-flight source request identity");
+                require(
+                    sessions::detail::SceneTestAccess::replaceMeshSource(*session, *original_entity, replacement_mesh),
+                    "replace actual Mesh3D source while old bytes remain in flight");
+                provider->release();
+            }
+#endif
+            require(session->updateAtOwnerSafePoint(update), "Scene owner update");
+            if (late_source_test && superseded_key && session->selection().current)
+                require(session->select(std::nullopt), "selection is independent of changed source adoption");
+            require(workspace->updateBeforeFrame(), "view synchronization");
+            auto resources = session->readResources();
+            require(resources, "resource status snapshot");
+            if (partial_failure_test)
+            {
+                for (const auto &row : (*resources)->rows)
+                    if (row.state == sessions::ESceneResourceState::FAILED)
+                    {
+                        require(row.asset_failure.has_value(), "partial sibling failure owns its asset error");
+                        partial_failure_observed = true;
+                    }
+            }
+            if (retry_test && !retry_accepted)
+            {
+                const auto failed =
+                    std::find_if((*resources)->rows.begin(), (*resources)->rows.end(),
+                                 [](const auto &row) { return row.state == sessions::ESceneResourceState::FAILED; });
+                if (failed != (*resources)->rows.end())
+                {
+                    require(failed->asset_failure.has_value(), "original asset failure survives resource polling");
+                    require(failed->asset_failure->code ==
+                                lux::process::asset_loading::EAssetLoadError::STORAGE_FAILURE,
+                            "real missing asset is a storage failure");
+                    if (!recovery_mounted)
+                    {
+                        failed_snapshot = *resources;
+                        failed_key = failed->key;
+                        auto recovery = lux::asset::PakAssetProvider::loadFromFile(argv[4]);
+                        require(recovery, "load recovery package");
+                        require(vfs.mount({"/Recovery", *recovery, 100}) != lux::asset::kInvalidMountId,
+                                "publish complete resource provider");
+                        require(session->select(std::nullopt), "clear selection independently from resource retry");
+                        recovery_mounted = true;
+                    }
+                    auto retried = session->retryResources(*failed_key);
+                    require(retried || retried.error().code == sessions::ESceneError::BUSY,
+                            "retry either retains previous work or admits replacement");
+                    if (retried)
+                    {
+                        retry_accepted = true;
+                        const auto stale = session->retryResources(*failed_key);
+                        require(!stale && stale.error().code == sessions::ESceneError::STALE_CONTENT,
+                                "old retry token is obsolete after sequence replacement");
+                    }
+                }
+            }
+            const auto ready_count =
+                std::count_if((*resources)->rows.begin(), (*resources)->rows.end(),
+                              [](const auto &row) { return row.state == sessions::ESceneResourceState::READY; });
+            const bool ready =
+                (churn_test && ready_count == 3) ||
+                (!churn_test && std::all_of((*resources)->rows.begin(), (*resources)->rows.end(),
+                                            [&](const auto &row)
+                                            {
+                                                return row.state == sessions::ESceneResourceState::READY ||
+                                                       (dynamic_test && phase >= 3 &&
+                                                        row.state == sessions::ESceneResourceState::SUPERSEDED);
+                                            }));
+            if (churn_test)
+                require((*resources)->rows.size() <= 6, "bounded resource ledger while replacing identities");
+            else if (has_mesh && !(dynamic_test && phase >= 3) && !late_entity_test && !late_source_test)
+                require((*resources)->rows.size() == 3, "discover all three visual entities");
+            if (readback.request.valid() && readback.request.isReady() &&
+                (!needs_second() || second_readback.request.isReady()))
+            {
+                if (needs_second())
+                    second_checksums[phase] = second_readback.finish(
+                        output / (std::string(variant) + "-second-" + std::to_string(phase) + ".ppm"));
+                checksums[phase] =
+                    readback.finish(output / (std::string(variant) + "-" + std::to_string(phase) + ".ppm"));
+                ++phase;
+                if (multiple_lifecycle && phase == 2)
+                {
+                    separate_extent = {384, 192};
+                    require(separate_view->requestExtent(separate_extent), "resize only second view");
+                }
+                if (multiple_lifecycle && phase == 3)
+                {
+                    require(separate_view->beginClose(), "close second view while first continues");
+                    separate_closing = true;
+                }
+                if (churn_test && phase < checksums.size())
+                    pending_mutation = sessions::detail::ESceneTestMutation::ROTATE_MESH_SOURCES;
+                else if (dynamic_test && phase == 1)
+                    pending_mutation = sessions::detail::ESceneTestMutation::ADJUST_VISUALS;
+                else if (dynamic_test && phase == 3)
+                    pending_mutation = sessions::detail::ESceneTestMutation::REMOVE_VISUALS;
+                else if (dynamic_test && phase == 4)
+                    pending_mutation = sessions::detail::ESceneTestMutation::CLEAR_SCENE;
+                else if ((!dynamic_test && phase == 1) || (dynamic_test && phase == 2))
+                {
+                    const auto history = session->historyView();
+                    sessions::CameraMotion motion;
+                    motion.angular_delta = {0.35, 0.1};
+                    require(camera->moveCamera(motion), "camera motion");
+                    require(session->historyView()->history.current == history->history.current,
+                            "camera never dirties content history");
+                }
+                next_capture = renderer->statistics().frames + 45;
+            }
+            std::uint32_t width{}, height{};
+            window->nativeWindow().size(width, height);
+            require(window->beginFrame({{float(width), float(height)}, 1.0F / 60.0F, {1, 1}}), "UI begin");
+            require(window->drawPanes(), "draw real Scene panes");
+            require(workspace->afterDraw(1.0 / 60.0, {1, 1}), "concrete pane input");
+            std::vector<rendering::ViewImage> frame_images(workspace->frameImages().begin(),
+                                                           workspace->frameImages().end());
+            if (separate_view && !separate_closing)
+            {
+                require(separate_view->synchronize(), "second view synchronizes independently");
+                auto second_image = separate_view->image();
+                if (second_image)
+                    frame_images.push_back(std::move(*second_image));
+                else
+                    require(second_image.error().code == sessions::ESceneError::NOT_READY,
+                            "second view either produces its image or is still preparing");
+            }
+            const std::span<const rendering::ViewImage> images{frame_images};
+            if (renderer->statistics().frames >= 70)
+                require(!workspace->frameImages().empty(), "stable viewport retains an image on every UI frame");
+            if (ready && !images.empty() && phase < checksums.size() && !readback.request.valid() &&
+                renderer->statistics().frames >= next_capture && renderer->controlAvailable(needs_second() ? 2 : 1) &&
+                (!needs_second() || images.size() == 2) && (!multiple_lifecycle || phase != 3 || separate_closed))
+            {
+                retained = images.front();
+                if (churn_test && !initial_resources)
+                    initial_resources = *resources;
+                readback.start(runtime, images.front());
+                if (needs_second())
+                {
+                    require(images[0].view != images[1].view &&
+                                images[0].content.source.session == images[1].content.source.session,
+                            "two actual images share only the content Session");
+                    require(images[1].extent == separate_extent, "independent second view extent");
+                    if (multiple_equal)
+                        require(images[0].extent == images[1].extent, "equal-extent physical targets remain distinct");
+                    const auto first_target = rendering::detail::ViewImageAccess::record(images[0])->version->target;
+                    const auto second_target = rendering::detail::ViewImageAccess::record(images[1])->version->target;
+                    require(first_target != second_target, "two real targets");
+                    if (phase == 0)
+                    {
+                        std::printf("view targets first=%u:%u second=%u:%u reverse=%u\n", first_target.index,
+                                    first_target.gen, second_target.index, second_target.gen, multiple_reverse);
+                        std::fflush(stdout);
+                        require(multiple_reverse ? second_target.index < first_target.index
+                                                 : first_target.index < second_target.index,
+                                "actual target allocation/record order matches requested variant");
+                    }
+                    second_readback.start(runtime, images[1]);
+                }
+            }
+            require(session->advanceScene(update), "Scene simulation and presentation");
+            auto snapshot = window->finishFrame();
+            require(snapshot, "owning UI snapshot");
+            if (!frame_protocol_checked && !workspace->frameImages().empty() && !session->presentationPending())
+            {
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+                if (variant == "factory_failure")
+                {
+                    const auto accepted_before = renderer->statistics().accepted_frames;
+                    const std::vector tokens(snapshot->textures().begin(), snapshot->textures().end());
+                    std::vector<long> image_references;
+                    for (const auto &image : images)
+                        image_references.push_back(rendering::detail::ViewImageAccess::references(image));
+                    std::size_t failures{};
+                    for (std::size_t index = 0; index < 128; ++index)
+                    {
+                        std::fprintf(stderr, "seal allocation index=%zu\n", index);
+                        lux_er1_renderer_allocation_fail_after(index);
+                        auto attempted = renderer->sealFrame(*snapshot, images);
+                        const auto allocations = lux_er1_renderer_allocation_disarm();
+                        if (attempted)
+                        {
+                            require(allocations == index && !snapshot->valid(), "seal allocation sweep reached commit");
+                            break;
+                        }
+                        ++failures;
+                        require(allocations == index + 1 &&
+                                    attempted.error().code == rendering::ERendererError::ALLOCATION_FAILURE,
+                                "actual DLL seal allocation failed");
+                        require(snapshot->valid() && std::ranges::equal(snapshot->textures(), tokens) &&
+                                    renderer->statistics().accepted_frames == accepted_before,
+                                "failed seal retains original snapshot and performs no admission");
+                        for (std::size_t i = 0; i < images.size(); ++i)
+                            require(rendering::detail::ViewImageAccess::references(images[i]) == image_references[i],
+                                    "each failed seal returns every temporarily acquired image reference");
+                    }
+                    require(failures > 2 && failures < 128, "all actual seal allocation points retried");
+                    std::printf("Frame seal actual DLL allocation failures checked: %zu\n", failures);
+                    auto recaptured = window->uiSession().captureFrame();
+                    require(recaptured, "recapture completed frame after allocation test without input replay");
+                    *snapshot = std::move(*recaptured);
+                }
+#endif
+                auto forged = images.front();
+                ++forged.view.generation;
+                auto rejected = renderer->sealFrame(*snapshot, {&forged, 1});
+                require(!rejected && rejected.error().code == rendering::ERendererError::STALE_IMAGE &&
+                            snapshot->valid(),
+                        "forged view generation rejected without consuming snapshot");
+                forged = images.front();
+                ++forged.extent.width;
+                rejected = renderer->sealFrame(*snapshot, {&forged, 1});
+                require(!rejected && snapshot->valid(), "forged extent rejected without consuming snapshot");
+                auto second_record = camera->image();
+                require(second_record, "second independent image record for the same texture");
+                const std::array duplicates{images.front(), *second_record};
+                rejected = renderer->sealFrame(*snapshot, duplicates);
+                require(!rejected && rejected.error().code == rendering::ERendererError::STALE_IMAGE &&
+                            snapshot->valid(),
+                        "same texture with different immutable records rejected");
+                rendering::EditorFramePacket blocked;
+                for (std::size_t i = 0; i <= config.frame_capacity; ++i)
+                {
+                    auto copy = window->uiSession().captureFrame();
+                    require(copy, "capture finished frame again without drawing panes or replaying input");
+                    auto sealed = renderer->sealFrame(*copy, images);
+                    require(sealed && !copy->valid(), "independent owning frame seal");
+                    const auto sequence = sealed->sequence();
+                    const auto admitted = renderer->trySubmitFrame(*sealed);
+                    require(admitted, "bounded frame admission");
+                    if (*admitted == rendering::EFrameSubmit::BACKPRESSURED)
+                    {
+                        require(sealed->valid() && sealed->sequence() == sequence,
+                                "backpressure retains exactly the original packet");
+                        blocked = std::move(*sealed);
+                        break;
+                    }
+                    require(!sealed->valid(), "accepted frame consumed exactly once");
+                }
+                require(blocked.valid(), "actually filled the renderer-owned queue");
+                const auto original_sequence = blocked.sequence();
+                const auto backpressure_deadline = Clock::now() + std::chrono::seconds{5};
+                while (blocked.valid())
+                {
+                    require(Clock::now() < backpressure_deadline, "finite backpressure retry");
+                    require(renderer->poll(64), "release actual queue capacity");
+                    require(blocked.sequence() == original_sequence, "same blocked packet retried");
+                    require(renderer->trySubmitFrame(blocked), "retry without UI execution");
+                }
+                auto copy = window->uiSession().captureFrame();
+                require(copy, "move-overwrite source capture");
+                auto first = renderer->sealFrame(*copy, images);
+                copy = window->uiSession().captureFrame();
+                require(copy, "move-overwrite destination capture");
+                auto second = renderer->sealFrame(*copy, images);
+                require(first && second, "two unsubmitted owning packets");
+                const auto source_sequence = first->sequence();
+                const auto accepted = renderer->statistics().accepted_frames;
+                *second = std::move(*first);
+                require(!first->valid() && second->sequence() == source_sequence &&
+                            renderer->statistics().accepted_frames == accepted,
+                        "packet move-overwrite only releases old ownership and transfers the source");
+                frame_protocol_checked = true;
+                evidence_image = images.front();
+            }
+            if (!session->presentationPending())
+            {
+                // Missing image references must fail without consuming the same input that we retry below.
+                if (!snapshot->textures().empty())
+                {
+                    auto rejected = renderer->sealFrame(*snapshot, {});
+                    require(!rejected && snapshot->valid(), "failed seal retains input");
+                }
+                auto packet = renderer->sealFrame(*snapshot, images);
+                require(packet && !snapshot->valid(), "successful seal consumes input");
+                pending = std::move(*packet);
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+                if (record_failure_test && phase == checksums.size())
+                {
+                    failed_packet_sequence = pending.sequence();
+                    require(rendering::detail::RendererTestAccess::failRecord(pending, injected_error),
+                            "inject a typed record-preparation failure into a real owning packet");
+                }
+#endif
+                auto submitted = renderer->trySubmitFrame(pending);
+                require(submitted, "frame admission");
+                require((*submitted == rendering::EFrameSubmit::SUBMITTED) != pending.valid(),
+                        "frame ownership result");
+            }
+            workspace->releaseFrameImages();
+            if (late_close_test && provider->entered.load() && renderer->statistics().frames >= 40 && !images.empty() &&
+                (!partial_failure_test || partial_failure_observed))
+            {
+                // Preserve an actual CPU image owner while the real blocking asset read remains pending.
+                auto image = camera->image();
+                require(image, "late-close image reference");
+                retained = std::move(*image);
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+        require(late_close_test || !has_mesh || checksums[0] != checksums[1],
+                "camera/source change alters actual mesh projection");
+        require(frame_protocol_checked, "frame ownership negative cases actually executed");
+        const auto evidence = renderer->imageEvidence(evidence_image);
+        require(evidence && evidence->evidence == rendering::EImageEvidence::GPU_COMPLETE && evidence->frame_serial &&
+                    evidence->source == evidence_image.content.source,
+                "actual accepted image record reaches the real GPU completion watermark");
+        require(evidence_image.content.evidence == rendering::EImageEvidence::REQUESTED,
+                "observed completion does not mutate captured descriptors or claim physical screen display");
+        if (late_entity_test)
+        {
+            require(recycled_entity && provider->returned.load() == 1, "late real asset result completed");
+            const sessions::SceneOwnerUpdate verify_update{++cycle, 1.0 / 60.0};
+            require(session->updateAtOwnerSafePoint(verify_update), "late entity verification read window");
+            const auto new_entity = session->readEntity(*recycled_entity);
+            require(new_entity && !new_entity->mesh && !session->selection().current,
+                    "old asset completion does not write into reused entity slot or restore selection");
+            require(!session->readEntity(*original_entity), "old full entity identity remains stale");
+            require(session->advanceScene(verify_update), "late entity verification completes owner cycle");
+        }
+        if (late_source_test)
+        {
+            require(superseded_key && provider->returned.load() == 1, "old source result actually returned");
+            const sessions::SceneOwnerUpdate verify_update{++cycle, 1.0 / 60.0};
+            require(session->updateAtOwnerSafePoint(verify_update), "changed source verification read window");
+            const auto current = session->readEntity(*original_entity);
+            require(current && current->mesh && current->mesh->value.mesh == replacement_mesh &&
+                        !session->selection().current,
+                    "late old result cannot overwrite changed source or selection");
+            const auto stale = session->retryResources(*superseded_key);
+            require(!stale && stale.error().code == sessions::ESceneError::STALE_CONTENT,
+                    "old source sequence rejected even though full Entity identity remains valid");
+            require(session->advanceScene(verify_update), "changed source verification completes owner cycle");
+        }
+        if (record_failure_test)
+        {
+            require(failed_packet_sequence != 0, "failure packet was actually sealed");
+            const auto failure_deadline = Clock::now() + std::chrono::seconds{10};
+            while (renderer->state() != rendering::ERendererState::FAILED)
+            {
+                require(Clock::now() < failure_deadline, "accepted record failure finite completion");
+                require(renderer->poll(64), "failed backend still permits owner cleanup polling");
+                if (pending.valid())
+                    require(renderer->trySubmitFrame(pending), "retain fault packet until real admission");
+                std::this_thread::yield();
+            }
+            require(!pending.valid(), "asynchronous record failure does not return an accepted packet");
+            require(renderer->poll(64), "consume terminal failure and release accepted references");
+            auto diagnostic = renderer->takeDiagnostic();
+            require(diagnostic && *diagnostic && (**diagnostic).terminal,
+                    "terminal failure has an owning diagnostic record");
+            const auto &failure = (**diagnostic).failure;
+            require(failure.code == rendering::ERendererError::DEVICE_FAILURE &&
+                        failure.render_error.type == injected_error.type &&
+                        failure.render_error.args == injected_error.args && failure.request == failed_packet_sequence,
+                    "diagnostic preserves exact backend cause and accepted packet identity");
+            require(renderer->statistics().accepted_frames == 0, "accepted CPU packets released on terminal failure");
+            require(renderer->takeDiagnostic()->has_value() == false, "terminal diagnostic delivered once");
+            std::printf("record failure PASS accepted_packet=%llu backend_error=%u:%u\n", failed_packet_sequence,
+                        injected_error.type.index, injected_error.type.gen);
+        }
+        if (churn_test)
+        {
+            const sessions::SceneOwnerUpdate validation_update{++cycle, 1.0 / 60.0};
+            require(session->updateAtOwnerSafePoint(validation_update), "open resource identity validation window");
+            require(initial_resources && initial_resources->rows.size() == 3, "owning pre-churn resource snapshot");
+            for (const auto &row : initial_resources->rows)
+            {
+                require(row.state == sessions::ESceneResourceState::READY, "old owning row remains unchanged");
+                const auto stale = session->retryResources(row.key);
+                require(!stale && stale.error().code == sessions::ESceneError::STALE_CONTENT,
+                        "reclaimed request identities are never reused");
+            }
+            for (std::size_t i = 3; i < checksums.size(); ++i)
+                require(checksums[i] == checksums[i % 3], "source rotations restore identical rendered geometry");
+            require(session->advanceScene(validation_update), "close resource identity validation window");
+        }
+        if (dynamic_test)
+        {
+            require(checksums[1] != checksums[2] && checksums[2] != checksums[3] && checksums[3] == checksums[4],
+                    "live light/transform/camera changes then no visuals and empty Scene");
+            require((*session->readOutline())->rows.empty() && !session->selection().current,
+                    "authoritative clear invalidates selection and publishes empty outline");
+        }
+        if (retry_test)
+        {
+            require(retry_accepted && failed_snapshot && failed_key, "failure and explicit retry actually executed");
+            require(!session->selection().current, "successful resource adoption never changes selection");
+            const auto old = std::find_if(failed_snapshot->rows.begin(), failed_snapshot->rows.end(),
+                                          [&](const auto &row) { return row.key == *failed_key; });
+            require(old != failed_snapshot->rows.end() && old->asset_failure.has_value(),
+                    "old owning failure snapshot survives successful retry");
+            std::printf("resource retry PASS old_sequence=%llu original_storage_error=%u\n", failed_key->sequence,
+                        unsigned(old->asset_failure->storage_error));
+        }
+        pending = {};
+        if (multiple_views_test)
+            require(second_checksums[0] != 0 && second_checksums[0] == second_checksums[1],
+                    "first camera changed while second camera output stayed identical");
+        if (multiple_lifecycle)
+            require(separate_closed && checksums[1] == checksums[2] && checksums[2] == checksums[3],
+                    "first target pixels unchanged through second target resize and completed close");
+        if (separate_view)
+        {
+            require(second_checksums[0] != 0 && second_checksums[0] == second_checksums[1],
+                    "first camera changed rendered output while second camera output stayed identical");
+            require(separate_view->beginClose(), "second view close intent");
+        }
+        if (variant == "image_lifetime")
+        {
+            const auto *record = rendering::detail::ViewImageAccess::record(evidence_image);
+            const auto render_scene = record->version->scene;
+            const auto capture_camera = record->camera;
+            retained = {};
+            evidence_image = {};
+            workspace->releaseFrameImages();
+            require(workspace->beginClose(), "retire original workspace before pool experiment");
+            while (*workspace->advanceClose() != sessions::ECloseProgress::COMPLETE)
+            {
+                require(Clock::now() < deadline && renderer->poll(1), "retire workspace in bounded steps");
+                std::this_thread::yield();
+            }
+            workspace.reset();
+            auto lifetime_view = renderer->openView(render_scene, {{64, 64}, true});
+            require(lifetime_view, "additional real scene view for image lifetime");
+            require((*lifetime_view)->setCamera(capture_camera), "capture real scene camera");
+            while ((*lifetime_view)->status().state != rendering::EViewState::READY)
+            {
+                require(Clock::now() < deadline && renderer->poll(1), "prepare image lifetime view");
+                std::this_thread::yield();
+            }
+            exerciseViewLifetime(*renderer, *window, **lifetime_view);
+            require((*lifetime_view)->beginClose(), "explicit lifetime view close");
+            while (*(*lifetime_view)->advanceClose() != rendering::ERenderClose::COMPLETE)
+            {
+                require(Clock::now() < deadline && renderer->poll(1), "finish lifetime view close");
+                std::this_thread::yield();
+            }
+            lifetime_view->reset();
+        }
+        if (workspace)
+            require(workspace->beginClose(), "workspace close intent");
+        require(session->beginClose(), "Session close intent");
+        for (unsigned i = 0; workspace && i < 20; ++i)
+        {
+            require(renderer->poll(64), "retained image close poll");
+            auto closed = workspace->advanceClose();
+            require(closed && *closed == sessions::ECloseProgress::PENDING,
+                    "CPU image reference retains workspace owner");
+            auto session_closed = session->advanceClose();
+            require(session_closed && *session_closed == sessions::ECloseProgress::PENDING,
+                    "live view retains Session owner");
+        }
+        retained = {};
+        evidence_image = {};
+        runtime = {};
+        const auto closing_deadline = Clock::now() + std::chrono::seconds{15};
+        unsigned held_close_steps{};
+        while (workspace || session || separate_view)
+        {
+            if (Clock::now() >= closing_deadline)
+            {
+                const auto stats = renderer->statistics();
+                std::fprintf(stderr,
+                             "close blocked workspace=%d session=%d renderer=%u leases=%zu views=%zu frames=%zu\n",
+                             bool(workspace), bool(session), unsigned(renderer->state()), stats.runtime_leases,
+                             stats.views, stats.accepted_frames);
+            }
+            require(Clock::now() < closing_deadline, "finite close deadline");
+            require(execution->drainMain(64), "close main continuations");
+            require(renderer->poll(64), "close renderer poll");
+            if (workspace)
+            {
+                const auto closed = workspace->advanceClose();
+                require(closed, "workspace close step");
+                if (*closed == sessions::ECloseProgress::COMPLETE)
+                    workspace.reset();
+            }
+            if (separate_view)
+            {
+                auto closed = separate_view->advanceClose();
+                require(closed, "second view close progression");
+                if (*closed == sessions::ECloseProgress::COMPLETE)
+                    separate_view.reset();
+            }
+            if (session)
+            {
+                const auto closed = session->advanceClose();
+                require(closed, "Session close step");
+                if (late_close_test && !workspace && !provider->released.load())
+                {
+                    require(*closed == sessions::ECloseProgress::PENDING && provider->returned.load() == 0,
+                            "unfinished blocking operation retains Session after all views close");
+                    if (++held_close_steps == 32)
+                        provider->release();
+                }
+                if (*closed == sessions::ECloseProgress::COMPLETE)
+                    session.reset();
+            }
+            std::this_thread::yield();
+        }
+        require(renderer->beginClose(), "renderer close intent");
+        if (late_close_test)
+        {
+            const auto entered = provider->entered.load();
+            const auto returned = provider->returned.load();
+            std::printf("late provider entered=%u returned=%u held_close_steps=%u\n", entered, returned,
+                        held_close_steps);
+            std::fflush(stdout);
+            require(held_close_steps == 32 && entered > 0 && returned == entered &&
+                        (partial_failure_test || entered == 1),
+                    "Session close waits for every actual late provider return");
+        }
+        if (partial_failure_test)
+        {
+            require(partial_failure_observed, "a failed sibling did not turn a pending operation into completion");
+            std::puts("partial resource failure PASS error retained; live sibling held Session for 32 close steps");
+        }
+        for (;;)
+        {
+            require(Clock::now() < closing_deadline, "renderer close deadline");
+            require(renderer->poll(64), "renderer drain");
+            auto closed = renderer->advanceClose();
+            require(closed, "renderer close step");
+            if (*closed == rendering::ERenderClose::COMPLETE)
+                break;
+        }
+        require(renderer->joinStopped(), "join proven stopped renderer");
+        const auto stats = renderer->statistics();
+        require(stats.validation_errors == 0 && stats.texture_misses == 0, "Vulkan validation and texture resolution");
+        require(stats.render_events == (variant == "view_failure" ? 2 : 0) &&
+                    stats.dropped_events == (variant == "view_failure" ? 1 : 0),
+                "no renderer operation errors beyond explicitly checked view failures");
+        require(stats.views == 0 && stats.runtime_leases == 0 && stats.accepted_frames == 0, "terminal owners");
+        require(stats.slots == 3 && stats.descriptors_created == stats.descriptors_retired,
+                "FIF and descriptor retirement");
+        std::printf("ER1 GPU PASS variant=%s cycles=%llu frames=%llu gpu_completed=%llu descriptors=%llu/%llu\n",
+                    argv[3], cycle, stats.frames, stats.gpu_completed, stats.descriptors_created,
+                    stats.descriptors_retired);
+        renderer.reset();
+        require(window->closeAfterRendererStopped(), "window closes after renderer");
+        window.reset();
+        (*endpoint)->requestStop();
+        require((*endpoint)->join(), "asset endpoint terminal join");
+        endpoint->reset();
+        execution->requestStop();
+        require(execution->join(), "execution terminal join");
+    }
+    lux::meta::ReflectionRegistry::destroyRegistry();
+}

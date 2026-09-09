@@ -15,7 +15,7 @@ namespace lux::editor::workbench
     {
         render::ViewCameraUpdatePayload camera{};
         render::RenderTargetId target{};
-        ui::TextureHandle texture{};
+        lux::ui::TextureHandle texture{};
         std::shared_ptr<const void> cpu_lease;
     };
 

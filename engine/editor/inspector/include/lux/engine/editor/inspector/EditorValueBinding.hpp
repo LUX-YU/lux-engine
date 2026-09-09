@@ -21,11 +21,11 @@
 
 namespace lux::editor::inspector
 {
-    inline constexpr ui::PayloadTypeIdView kAssetIdDragPayload{"lux.editor.asset-id"};
+    inline constexpr lux::ui::PayloadTypeIdView kAssetIdDragPayload{"lux.editor.asset-id"};
 
     namespace detail
     {
-        inline void merge(ui::EditResult& target, ui::EditResult value) noexcept
+        inline void merge(lux::ui::EditResult& target, lux::ui::EditResult value) noexcept
         {
             target.changed |= value.changed;
             target.began |= value.began;
@@ -34,19 +34,19 @@ namespace lux::editor::inspector
         }
 
         template<class Value>
-        [[nodiscard]] ui::ScalarEditSpec<Value> scalarSpec(const GeneratedFieldSpec& spec)
+        [[nodiscard]] lux::ui::ScalarEditSpec<Value> scalarSpec(const GeneratedFieldSpec& spec)
         {
-            ui::ScalarEditSpec<Value> result;
+            lux::ui::ScalarEditSpec<Value> result;
             switch (spec.widget)
             {
             case EGeneratedWidget::INPUT:
-                result.mode = ui::EScalarEditMode::INPUT;
+                result.mode = lux::ui::EScalarEditMode::INPUT;
                 break;
             case EGeneratedWidget::SLIDER:
-                result.mode = ui::EScalarEditMode::SLIDER;
+                result.mode = lux::ui::EScalarEditMode::SLIDER;
                 break;
             default:
-                result.mode = ui::EScalarEditMode::DRAG;
+                result.mode = lux::ui::EScalarEditMode::DRAG;
                 break;
             }
             result.speed = static_cast<float>(spec.speed);
@@ -59,7 +59,7 @@ namespace lux::editor::inspector
             return result;
         }
 
-        [[nodiscard]] inline ui::EditResult editAssetId(
+        [[nodiscard]] inline lux::ui::EditResult editAssetId(
             InspectorContext& context,
             asset::AssetId& value
         )
@@ -67,7 +67,7 @@ namespace lux::editor::inspector
             auto path = context.editor.vfs().pathOf(value);
             const std::string label = value.isNull() ? std::string{"<none>"} :
                 (path ? *path : std::string{"<unresolved asset>"});
-            ui::EditResult result;
+            lux::ui::EditResult result;
             if (context.frame.button(label))
             {
                 // AssetBrowser supplies selection in Wave D. The C vertical
@@ -100,7 +100,7 @@ namespace lux::editor::inspector
     template<>
     struct EditorValueBinding<bool>
     {
-        [[nodiscard]] static ui::EditResult edit(
+        [[nodiscard]] static lux::ui::EditResult edit(
             InspectorContext& context,
             std::string_view label,
             bool& value,
@@ -111,18 +111,13 @@ namespace lux::editor::inspector
         }
     };
 
-#define LUX_EDITOR_SCALAR_BINDING(Type)                                                                               \
-    template<>                                                                                                         \
-    struct EditorValueBinding<Type>                                                                                   \
+#define LUX_EDITOR_SCALAR_BINDING(Type)                                                                                \
+    template <> struct EditorValueBinding<Type>                                                                        \
     {                                                                                                                  \
-        [[nodiscard]] static ui::EditResult edit(                                                                      \
-            InspectorContext& context,                                                                                 \
-            std::string_view label,                                                                                    \
-            Type& value,                                                                                               \
-            const GeneratedFieldSpec& spec                                                                             \
-        )                                                                                                              \
+        [[nodiscard]] static lux::ui::EditResult edit(InspectorContext &context, std::string_view label, Type &value,  \
+                                                      const GeneratedFieldSpec &spec)                                  \
         {                                                                                                              \
-            return context.frame.editScalar(label, value, detail::scalarSpec<Type>(spec));                            \
+            return context.frame.editScalar(label, value, detail::scalarSpec<Type>(spec));                             \
         }                                                                                                              \
     }
 
@@ -138,21 +133,21 @@ namespace lux::editor::inspector
     template<>
     struct EditorValueBinding<std::string>
     {
-        [[nodiscard]] static ui::EditResult edit(
+        [[nodiscard]] static lux::ui::EditResult edit(
             InspectorContext& context,
             std::string_view label,
             std::string& value,
             const GeneratedFieldSpec& spec
         )
         {
-            return context.frame.inputText(label, value, ui::InputTextSpec{.read_only = spec.read_only});
+            return context.frame.inputText(label, value, lux::ui::InputTextSpec{.read_only = spec.read_only});
         }
     };
 
     template<>
     struct EditorValueBinding<asset::AssetId>
     {
-        [[nodiscard]] static ui::EditResult edit(
+        [[nodiscard]] static lux::ui::EditResult edit(
             InspectorContext& context,
             std::string_view,
             asset::AssetId& value,
@@ -168,7 +163,7 @@ namespace lux::editor::inspector
     {
         using Vector = Eigen::Matrix<Scalar, Rows, 1, Options, MaxRows, 1>;
 
-        [[nodiscard]] static ui::EditResult edit(
+        [[nodiscard]] static lux::ui::EditResult edit(
             InspectorContext& context,
             std::string_view,
             Vector& value,
@@ -176,7 +171,7 @@ namespace lux::editor::inspector
         )
         {
             static constexpr std::array labels{"X", "Y", "Z", "W"};
-            ui::EditResult result;
+            lux::ui::EditResult result;
             for (int index = 0; index < Rows; ++index)
             {
                 auto part = context.frame.editScalar(
@@ -195,7 +190,7 @@ namespace lux::editor::inspector
     {
         using Quaternion = Eigen::Quaternion<Scalar, Options>;
 
-        [[nodiscard]] static ui::EditResult edit(
+        [[nodiscard]] static lux::ui::EditResult edit(
             InspectorContext& context,
             std::string_view,
             Quaternion& value,
@@ -205,7 +200,7 @@ namespace lux::editor::inspector
             constexpr Scalar radians_to_degrees = Scalar{180} / std::numbers::pi_v<Scalar>;
             constexpr Scalar degrees_to_radians = std::numbers::pi_v<Scalar> / Scalar{180};
             auto degrees = (value.toRotationMatrix().eulerAngles(0, 1, 2) * radians_to_degrees).eval();
-            ui::EditResult result;
+            lux::ui::EditResult result;
             static constexpr std::array labels{"X", "Y", "Z"};
             for (int index = 0; index < 3; ++index)
             {
@@ -232,14 +227,14 @@ namespace lux::editor::inspector
     template<>
     struct EditorValueBinding<rdesc::MeshVisualDescription>
     {
-        [[nodiscard]] static ui::EditResult edit(
+        [[nodiscard]] static lux::ui::EditResult edit(
             InspectorContext& context,
             std::string_view,
             rdesc::MeshVisualDescription& value,
             const GeneratedFieldSpec& spec
         )
         {
-            ui::EditResult result;
+            lux::ui::EditResult result;
             detail::merge(result, EditorValueBinding<asset::AssetId>::edit(context, "Mesh", value.mesh, spec));
             detail::merge(result, EditorValueBinding<asset::AssetId>::edit(context, "Material", value.material, spec));
             detail::merge(result, context.frame.checkbox("Visible", value.visible));
@@ -252,7 +247,7 @@ namespace lux::editor::inspector
     template<>
     struct EditorValueBinding<rdesc::LightDescription>
     {
-        [[nodiscard]] static ui::EditResult edit(
+        [[nodiscard]] static lux::ui::EditResult edit(
             InspectorContext& context,
             std::string_view,
             rdesc::LightDescription& value,
@@ -260,12 +255,12 @@ namespace lux::editor::inspector
         )
         {
             static constexpr std::array options{
-                ui::ComboOption{0, "Directional"},
-                ui::ComboOption{1, "Point"},
-                ui::ComboOption{2, "Spot"},
-                ui::ComboOption{3, "Area"},
+                lux::ui::ComboOption{0, "Directional"},
+                lux::ui::ComboOption{1, "Point"},
+                lux::ui::ComboOption{2, "Spot"},
+                lux::ui::ComboOption{3, "Area"},
             };
-            ui::EditResult result;
+            lux::ui::EditResult result;
             auto type = static_cast<std::int64_t>(value.type);
             auto type_edit = context.frame.editChoice("Type", type, options);
             if (type_edit.changed)

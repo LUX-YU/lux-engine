@@ -43,12 +43,12 @@ namespace lux::editor::application::detail
             std::uint32_t attachment_index{};
             render::ViewCameraUpdatePayload camera{};
             render::RenderTargetId target{};
-            ui::TextureHandle texture{};
+            lux::ui::TextureHandle texture{};
         };
         static_assert(std::is_trivially_copyable_v<UiDrawDataSubmitPayload>);
         struct UiFrameSnapshot final
         {
-            ui::detail::UiDrawDataSnapshot draw;
+            lux::ui::UiFrameSnapshot draw;
             std::shared_ptr<const void> cpu_lease;
         };
 
@@ -68,7 +68,7 @@ namespace lux::editor::application::detail
                 VkImageView view{};
                 VkDescriptorSet descriptor{};
             };
-            ui::detail::UiVulkanRenderer* renderer{};
+            lux::ui::detail::UiVulkanRenderer* renderer{};
             std::array<Entry, 48> entries{};
             std::shared_ptr<ViewStatistics> statistics;
             void clear() noexcept
@@ -102,10 +102,10 @@ namespace lux::editor::application::detail
 
         struct ServerState final
         {
-            std::unique_ptr<ui::detail::UiVulkanRenderer> renderer;
-            ui::detail::UiDrawDataSnapshot* pending_snapshot{};
+            std::unique_ptr<lux::ui::detail::UiVulkanRenderer> renderer;
+            lux::ui::UiFrameSnapshot* pending_snapshot{};
             render::TypeId submit_operation{render::kInvalidTypeId};
-            ui::detail::UiFontAtlasSnapshot font;
+            lux::ui::detail::UiFontAtlasSnapshot font;
             lux::editor::workbench::SceneViewFrame view{};
             render::RenderTargetRegistry* targets{};
             render::FrameStamp stamp{};
@@ -113,7 +113,7 @@ namespace lux::editor::application::detail
             std::shared_ptr<TextureCache> textures{std::make_shared<TextureCache>()};
             std::shared_ptr<ViewStatistics> statistics;
 
-            static VkDescriptorSet resolve(void* user, ui::TextureHandle token) noexcept
+            static VkDescriptorSet resolve(void* user, lux::ui::TextureHandle token) noexcept
             {
                 auto& state = *static_cast<ServerState*>(user);
                 const auto missing = [&]() { ++state.statistics->misses; return VkDescriptorSet{}; };
@@ -328,7 +328,7 @@ namespace lux::editor::application::detail
 
             [[nodiscard]] render::Expected<void> initialize(
                 render::ServerConfig config,
-                ui::detail::UiFontAtlasSnapshot font,
+                lux::ui::detail::UiFontAtlasSnapshot font,
                 render::FeatureCatalog& catalog,
                 std::shared_ptr<ViewStatistics> statistics
             )
@@ -431,8 +431,8 @@ namespace lux::editor::application::detail
                 state_.textures->renderer = nullptr;
                 state_.renderer.reset();
                 auto& resources = resourceContext();
-                auto renderer = ui::detail::UiVulkanRenderer::create(
-                    ui::detail::UiVulkanRendererCreateInfo{
+                auto renderer = lux::ui::detail::UiVulkanRenderer::create(
+                    lux::ui::detail::UiVulkanRendererCreateInfo{
                         resources.instanceContext().instance(),
                         resources.physicalDevice(),
                         resources.logicalDevice(),
@@ -510,7 +510,7 @@ namespace lux::editor::application::detail
 
     UiVulkanPresentation::CreateResult UiVulkanPresentation::create(
         window::LuxWindow& window,
-        ui::UISession& session,
+        lux::ui::UISession& session,
         UiVulkanPresentationConfig config
     ) noexcept
     {
@@ -546,7 +546,7 @@ namespace lux::editor::application::detail
             impl->upload_queue = std::make_shared<Impl::UploadQueue>();
             impl->upload_client = render::RenderUploadClient::bind(impl->upload_queue, &Impl::UploadQueue::submit);
             impl->program_memory = config.program_memory;
-            auto font = ui::detail::captureUiFontAtlas(session);
+            auto font = lux::ui::detail::captureUiFontAtlas(session);
             std::vector<const char*> extensions;
             const auto required = window::LuxWindow::requiredVulkanInstanceExtensions();
             extensions.assign(required.begin(), required.end());
@@ -635,7 +635,7 @@ namespace lux::editor::application::detail
     }
 
     lux::cxx::expected<void, UiVulkanPresentationFailure>
-    UiVulkanPresentation::present(ui::UISession& session) noexcept
+    UiVulkanPresentation::present(lux::ui::UISession& session) noexcept
     {
         if (stopping())
         {
@@ -661,7 +661,11 @@ namespace lux::editor::application::detail
                     impl_->programs->terminalError()
                 });
             }
-            auto snapshot = ui::detail::captureUiDrawData(session);
+            auto captured = session.captureFrame();
+            if (!captured)
+                return lux::cxx::unexpected(
+                    UiVulkanPresentationFailure{EUiVulkanPresentationError::FRAME_CAPTURE_FAILURE});
+            auto snapshot = std::move(*captured);
             const auto attachment = impl_->programs->builder().emplaceAttachment<UiFrameSnapshot>(
                 kUiDrawDataAttachment,
                 UiFrameSnapshot{std::move(snapshot), impl_->view.cpu_lease}

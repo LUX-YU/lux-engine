@@ -72,11 +72,11 @@ namespace
     };
     auto route(std::size_t capacity = 4U)
     {
-        auto value = ActiveEditHistory::create(capacity);
+        auto value = lux::editor::ui::ActiveEditHistory::create(capacity);
         assert(value);
         return std::move(*value);
     }
-    auto registration(ActiveEditHistory& route, EditHistoryTarget& target)
+    auto registration(lux::editor::ui::ActiveEditHistory& route, EditHistoryTarget& target)
     {
         auto value = route.registerTarget(target);
         assert(value);
@@ -119,10 +119,9 @@ namespace
             "R03",
             []
             {
-                expectError(ActiveEditHistory::create(0U), EEditError::INVALID_LIMITS);
-                expectError(
-                    ActiveEditHistory::create((std::numeric_limits<std::size_t>::max)()), EEditError::INVALID_LIMITS
-                );
+                expectError(lux::editor::ui::ActiveEditHistory::create(0U), EEditError::INVALID_LIMITS);
+                expectError(lux::editor::ui::ActiveEditHistory::create((std::numeric_limits<std::size_t>::max)()),
+                            EEditError::INVALID_LIMITS);
                 TextSession a, b;
                 Proxy duplicate(a);
                 auto r = route(1U);
@@ -254,7 +253,7 @@ namespace
                 auto ta = registration(*r, a);
                 auto tb = registration(*r, b);
                 const auto ha = ta.handle(), hb = tb.handle();
-                HistoryTargetRegistration moved(std::move(ta));
+                lux::editor::ui::HistoryTargetRegistration moved(std::move(ta));
                 assert(!ta.handle().valid() && moved.handle() == ha);
                 moved = std::move(moved);
                 assert(moved.handle() == ha);
@@ -293,7 +292,7 @@ namespace
             []
             {
                 TextSession a;
-                HistoryTargetRegistration late;
+                lux::editor::ui::HistoryTargetRegistration late;
                 {
                     auto r = route();
                     late = registration(*r, a);

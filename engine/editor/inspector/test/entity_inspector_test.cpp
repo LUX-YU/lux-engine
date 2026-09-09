@@ -159,7 +159,7 @@ int main()
     lux::asset::AssetVfs vfs;
     lux::editor::EditorSelection selection{ui.dispatcherRef()};
     lux::process::TaskScope tasks;
-    lux::editor::Toolset toolset;
+    lux::editor::application::Toolset toolset;
     lux::editor::EditorContext context{
         lux::editor::EditorContextCreateInfo{toolset, vfs.view(), {}, runtime, tasks, selection, ui, meta}
     };

@@ -15,7 +15,7 @@ namespace lux::editor::inspector
         EDITABLE,
         READ_ONLY,
     };
-    inline constexpr ui::PaneTypeIdView kEntityInspectorPaneType{"lux.editor.entity-inspector"};
+    inline constexpr lux::ui::PaneTypeIdView kEntityInspectorPaneType{"lux.editor.entity-inspector"};
 
     struct InspectorDrawStats final
     {
@@ -24,12 +24,12 @@ namespace lux::editor::inspector
         bool stale_selection{};
     };
 
-    class LUX_EDITOR_INSPECTOR_PUBLIC EntityInspector final : public object::Object<EntityInspector, ui::Pane>
+    class LUX_EDITOR_INSPECTOR_PUBLIC EntityInspector final : public object::Object<EntityInspector, lux::ui::Pane>
     {
     public:
         EntityInspector(
             object::ObjectDispatcherRef dispatcher,
-            ui::PaneId id,
+            lux::ui::PaneId id,
             EditorContext& context,
             ComponentEditorBindingTable bindings,
             EInspectorMode mode = EInspectorMode::EDITABLE
@@ -40,7 +40,7 @@ namespace lux::editor::inspector
         [[nodiscard]] const InspectorDrawStats& lastDrawStats() const noexcept;
 
     protected:
-        void draw(ui::Frame& frame, ui::PaneDrawContext& context) override;
+        void draw(lux::ui::Frame& frame, lux::ui::PaneDrawContext& context) override;
 
     private:
         EditorContext* context_{};

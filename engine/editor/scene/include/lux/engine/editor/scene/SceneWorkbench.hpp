@@ -42,7 +42,7 @@ namespace lux::editor::workbench
         SceneWorkbench& operator=(SceneWorkbench&&) = delete;
         ~SceneWorkbench() noexcept;
         void beforeUiFrame();
-        void afterUiFrame(double seconds, ui::Vec2 framebuffer_scale);
+        void afterUiFrame(double seconds, lux::ui::Vec2 framebuffer_scale);
         void requestClose() noexcept;
         [[nodiscard]] bool closeRequested() const noexcept;
         [[nodiscard]] bool advanceClose();

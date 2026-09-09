@@ -941,7 +941,20 @@ namespace lux::ui
 #endif
             impl_->frame_context_scratch.clear();
             PaneDrawContext draw_context{impl_->frame_context_scratch};
-            if (ImGui::Begin(pane->window_label_.c_str(), toolbar ? nullptr : &visible, flags))
+            const bool shown = ImGui::Begin(pane->window_label_.c_str(), toolbar ? nullptr : &visible, flags);
+            // A foreign Pane may fail during preparation. Its own scopes unwind first; this scope
+            // always balances the outer window before the owning Frame can be discarded.
+            struct PaneWindowScope final
+            {
+                bool open{true};
+                void finish() noexcept
+                {
+                    if (std::exchange(open, false))
+                        ImGui::End();
+                }
+                ~PaneWindowScope() noexcept { finish(); }
+            } window_scope;
+            if (shown)
             {
                 pane->draw(frame, draw_context);
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
@@ -964,7 +977,7 @@ namespace lux::ui
                     hovered_candidate = current;
                 }
             }
-            ImGui::End();
+            window_scope.finish();
             pane = Impl::resolve(record);
             if (pane)
                 pane->setVisible(visible);
@@ -1033,6 +1046,32 @@ namespace lux::ui
         impl_->split_layout = std::move(layout);
     }
 
+    lux::cxx::expected<void, ELayoutError> UISession::validateSplitLayout(const SplitLayout& layout) const noexcept
+    {
+        LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
+        const std::array<std::string_view, 5> ids{
+            layout.left, layout.center, layout.right, layout.bottom, layout.toolbar};
+        const bool valid_dimensions = std::isfinite(layout.left_width) && layout.left_width >= 0 &&
+            std::isfinite(layout.right_width) && layout.right_width >= 0 &&
+            std::isfinite(layout.bottom_height) && layout.bottom_height >= 0;
+        if (!valid_dimensions || layout.center.empty())
+            return lux::cxx::unexpected(ELayoutError::INVALID_DATA);
+        for (std::size_t index = 0; index < ids.size(); ++index)
+        {
+            if (ids[index].empty())
+                continue;
+            if (std::find(ids.begin(), ids.begin() + index, ids[index]) != ids.begin() + index)
+                return lux::cxx::unexpected(ELayoutError::INVALID_DATA);
+            const auto matches = [&](const auto& record) {
+                return !record.tombstone && record.id.name() == ids[index] && record.lifetime.alive();
+            };
+            if (!std::any_of(impl_->panes.begin(), impl_->panes.end(), matches) &&
+                !std::any_of(impl_->pending_panes.begin(), impl_->pending_panes.end(), matches))
+                return lux::cxx::unexpected(ELayoutError::INVALID_DATA);
+        }
+        return {};
+    }
+
     void UISession::clearSplitLayout()
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
@@ -1095,13 +1134,25 @@ namespace lux::ui
     }
 #endif
 
-    detail::UiDrawDataSnapshot detail::UISessionPresentationAccess::capture(UISession& session)
+    lux::cxx::expected<UiFrameSnapshot, EUiCaptureError> UISession::captureFrame() noexcept
     {
-        LUX_UI_CHECK_OWNER(session.control_->owner, session.control_->owner_token);
-        ScopedImGuiContext context{session.impl_->context};
-        UiDrawDataSnapshot snapshot;
-        snapshot.captureCurrent();
-        return snapshot;
+        if (std::this_thread::get_id() != control_->owner)
+            return lux::cxx::unexpected(EUiCaptureError::WRONG_THREAD);
+        if (impl_->frame_open)
+            return lux::cxx::unexpected(EUiCaptureError::FRAME_OPEN);
+        try
+        {
+            ScopedImGuiContext context{impl_->context};
+            UiFrameSnapshot snapshot;
+            snapshot.captureCurrent();
+            if (!snapshot.valid())
+                return lux::cxx::unexpected(EUiCaptureError::NO_FRAME);
+            return snapshot;
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(EUiCaptureError::ALLOCATION_FAILURE);
+        }
     }
 
     detail::UiFontAtlasSnapshot detail::UISessionPresentationAccess::captureFontAtlas(UISession& session)
@@ -1122,11 +1173,6 @@ namespace lux::ui
             result.pixels.assign(pixels, pixels + size);
         }
         return result;
-    }
-
-    detail::UiDrawDataSnapshot detail::captureUiDrawData(UISession& session)
-    {
-        return UISessionPresentationAccess::capture(session);
     }
 
     detail::UiFontAtlasSnapshot detail::captureUiFontAtlas(UISession& session)

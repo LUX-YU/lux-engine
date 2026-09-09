@@ -1,0 +1,28 @@
+#pragma once
+// Generated from the existing component declaration and canonical field annotations.
+#include <lux/engine/editor/ui/scene/ComponentReadBinding.hpp>
+#include <lux/engine/editor/ui/scene/ScenePropertyDisplay.hpp>
+#include <array>
+{% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
+namespace lux::editor::ui::generated
+{
+{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "component") and annotation_get(decl, "editor") %}
+    inline void {{ projection_symbol }}Read{{ decl.name }}(
+        sessions::SceneSession& session,sessions::SceneEntityRef target,lux::ui::Frame& frame)
+    {
+        const auto component = session.readComponent<::{{ decl.fq_name }}>(target);
+        if (!component) { frame.textMuted("Component is unavailable at this owner window"); return; }
+{% for field_id in decl.field_decls %}{% set field = decl_from_id(field_id) %}{% if field.visibility == 1 and not annotation_has(field, "luxref::property::skip") %}{% set display = annotation_get_for_or(field, "luxref::property::member", "display_name", field.name) %}        drawReadOnlyField(frame,"{{ cxx_str(display) }}",component->{{ field.name }});
+{% endif %}{% endfor %}    }
+{% endif %}{% endfor %}
+    inline std::span<const ComponentReadBinding> {{ projection_symbol }}SceneReaders()
+    {
+{% set count = 0 %}{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "component") and annotation_get(decl, "editor") %}{% set count = count + 1 %}{% endif %}{% endfor %}        static const std::array<ComponentReadBinding,{{ count }}> readers{
+{% set emitted = false %}{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "component") and annotation_get(decl, "editor") %}{% if emitted %},
+{% endif %}            ComponentReadBinding{lux::cxx::typeToken<::{{ decl.fq_name }}>(),
+                "{{ cxx_str(annotation_get(decl, "schema")) }}",{{ annotation_get(decl,"version") }},
+                "{{ cxx_str(decl.name) }}",{{ projection_symbol }}Read{{ decl.name }},{}}{% set emitted = true %}{% endif %}{% endfor %}
+        };
+        return readers;
+    }
+}

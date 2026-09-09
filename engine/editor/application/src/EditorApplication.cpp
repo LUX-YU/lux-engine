@@ -24,65 +24,65 @@ namespace lux::editor
 {
     namespace
     {
-        [[nodiscard]] ui::EKey uiKey(int key) noexcept
+        [[nodiscard]] lux::ui::EKey uiKey(int key) noexcept
         {
             switch (key)
             {
-            case GLFW_KEY_A: return ui::EKey::A;
-            case GLFW_KEY_B: return ui::EKey::B;
-            case GLFW_KEY_C: return ui::EKey::C;
-            case GLFW_KEY_D: return ui::EKey::D;
-            case GLFW_KEY_E: return ui::EKey::E;
-            case GLFW_KEY_F: return ui::EKey::F;
-            case GLFW_KEY_G: return ui::EKey::G;
-            case GLFW_KEY_H: return ui::EKey::H;
-            case GLFW_KEY_I: return ui::EKey::I;
-            case GLFW_KEY_J: return ui::EKey::J;
-            case GLFW_KEY_K: return ui::EKey::K;
-            case GLFW_KEY_L: return ui::EKey::L;
-            case GLFW_KEY_M: return ui::EKey::M;
-            case GLFW_KEY_N: return ui::EKey::N;
-            case GLFW_KEY_O: return ui::EKey::O;
-            case GLFW_KEY_P: return ui::EKey::P;
-            case GLFW_KEY_Q: return ui::EKey::Q;
-            case GLFW_KEY_R: return ui::EKey::R;
-            case GLFW_KEY_S: return ui::EKey::S;
-            case GLFW_KEY_T: return ui::EKey::T;
-            case GLFW_KEY_U: return ui::EKey::U;
-            case GLFW_KEY_V: return ui::EKey::V;
-            case GLFW_KEY_W: return ui::EKey::W;
-            case GLFW_KEY_X: return ui::EKey::X;
-            case GLFW_KEY_Y: return ui::EKey::Y;
-            case GLFW_KEY_Z: return ui::EKey::Z;
-            case GLFW_KEY_LEFT_SHIFT: return ui::EKey::LEFT_SHIFT;
-            case GLFW_KEY_RIGHT_SHIFT: return ui::EKey::RIGHT_SHIFT;
-            case GLFW_KEY_LEFT_CONTROL: return ui::EKey::LEFT_CONTROL;
-            case GLFW_KEY_RIGHT_CONTROL: return ui::EKey::RIGHT_CONTROL;
-            case GLFW_KEY_LEFT_ALT: return ui::EKey::LEFT_ALT;
-            case GLFW_KEY_RIGHT_ALT: return ui::EKey::RIGHT_ALT;
-            case GLFW_KEY_TAB: return ui::EKey::TAB;
-            case GLFW_KEY_ENTER: return ui::EKey::ENTER;
-            case GLFW_KEY_ESCAPE: return ui::EKey::ESCAPE;
-            case GLFW_KEY_SPACE: return ui::EKey::SPACE;
-            case GLFW_KEY_BACKSPACE: return ui::EKey::BACKSPACE;
-            case GLFW_KEY_DELETE: return ui::EKey::DELETE_KEY;
-            case GLFW_KEY_LEFT: return ui::EKey::LEFT;
-            case GLFW_KEY_RIGHT: return ui::EKey::RIGHT;
-            case GLFW_KEY_UP: return ui::EKey::UP;
-            case GLFW_KEY_DOWN: return ui::EKey::DOWN;
-            case GLFW_KEY_HOME: return ui::EKey::HOME;
-            case GLFW_KEY_END: return ui::EKey::END;
-            default: return ui::EKey::NONE;
+            case GLFW_KEY_A: return lux::ui::EKey::A;
+            case GLFW_KEY_B: return lux::ui::EKey::B;
+            case GLFW_KEY_C: return lux::ui::EKey::C;
+            case GLFW_KEY_D: return lux::ui::EKey::D;
+            case GLFW_KEY_E: return lux::ui::EKey::E;
+            case GLFW_KEY_F: return lux::ui::EKey::F;
+            case GLFW_KEY_G: return lux::ui::EKey::G;
+            case GLFW_KEY_H: return lux::ui::EKey::H;
+            case GLFW_KEY_I: return lux::ui::EKey::I;
+            case GLFW_KEY_J: return lux::ui::EKey::J;
+            case GLFW_KEY_K: return lux::ui::EKey::K;
+            case GLFW_KEY_L: return lux::ui::EKey::L;
+            case GLFW_KEY_M: return lux::ui::EKey::M;
+            case GLFW_KEY_N: return lux::ui::EKey::N;
+            case GLFW_KEY_O: return lux::ui::EKey::O;
+            case GLFW_KEY_P: return lux::ui::EKey::P;
+            case GLFW_KEY_Q: return lux::ui::EKey::Q;
+            case GLFW_KEY_R: return lux::ui::EKey::R;
+            case GLFW_KEY_S: return lux::ui::EKey::S;
+            case GLFW_KEY_T: return lux::ui::EKey::T;
+            case GLFW_KEY_U: return lux::ui::EKey::U;
+            case GLFW_KEY_V: return lux::ui::EKey::V;
+            case GLFW_KEY_W: return lux::ui::EKey::W;
+            case GLFW_KEY_X: return lux::ui::EKey::X;
+            case GLFW_KEY_Y: return lux::ui::EKey::Y;
+            case GLFW_KEY_Z: return lux::ui::EKey::Z;
+            case GLFW_KEY_LEFT_SHIFT: return lux::ui::EKey::LEFT_SHIFT;
+            case GLFW_KEY_RIGHT_SHIFT: return lux::ui::EKey::RIGHT_SHIFT;
+            case GLFW_KEY_LEFT_CONTROL: return lux::ui::EKey::LEFT_CONTROL;
+            case GLFW_KEY_RIGHT_CONTROL: return lux::ui::EKey::RIGHT_CONTROL;
+            case GLFW_KEY_LEFT_ALT: return lux::ui::EKey::LEFT_ALT;
+            case GLFW_KEY_RIGHT_ALT: return lux::ui::EKey::RIGHT_ALT;
+            case GLFW_KEY_TAB: return lux::ui::EKey::TAB;
+            case GLFW_KEY_ENTER: return lux::ui::EKey::ENTER;
+            case GLFW_KEY_ESCAPE: return lux::ui::EKey::ESCAPE;
+            case GLFW_KEY_SPACE: return lux::ui::EKey::SPACE;
+            case GLFW_KEY_BACKSPACE: return lux::ui::EKey::BACKSPACE;
+            case GLFW_KEY_DELETE: return lux::ui::EKey::DELETE_KEY;
+            case GLFW_KEY_LEFT: return lux::ui::EKey::LEFT;
+            case GLFW_KEY_RIGHT: return lux::ui::EKey::RIGHT;
+            case GLFW_KEY_UP: return lux::ui::EKey::UP;
+            case GLFW_KEY_DOWN: return lux::ui::EKey::DOWN;
+            case GLFW_KEY_HOME: return lux::ui::EKey::HOME;
+            case GLFW_KEY_END: return lux::ui::EKey::END;
+            default: return lux::ui::EKey::NONE;
             }
         }
 
-        [[nodiscard]] std::optional<ui::EPointerButton> pointerButton(int button) noexcept
+        [[nodiscard]] std::optional<lux::ui::EPointerButton> pointerButton(int button) noexcept
         {
             switch (button)
             {
-            case GLFW_MOUSE_BUTTON_LEFT: return ui::EPointerButton::LEFT;
-            case GLFW_MOUSE_BUTTON_MIDDLE: return ui::EPointerButton::MIDDLE;
-            case GLFW_MOUSE_BUTTON_RIGHT: return ui::EPointerButton::RIGHT;
+            case GLFW_MOUSE_BUTTON_LEFT: return lux::ui::EPointerButton::LEFT;
+            case GLFW_MOUSE_BUTTON_MIDDLE: return lux::ui::EPointerButton::MIDDLE;
+            case GLFW_MOUSE_BUTTON_RIGHT: return lux::ui::EPointerButton::RIGHT;
             default: return std::nullopt;
             }
         }
@@ -230,13 +230,13 @@ namespace lux::editor
                     return lux::cxx::unexpected(EEditorApplicationError::PRESENTATION_CREATE_FAILURE);
                 owners->presenter = std::move(*presenter);
                 owners->window->on_cursor_move = [this](const window::CursorMoveEvent& event) {
-                    ui_->feedInput(ui::UiPointerMove{{static_cast<float>(event.x), static_cast<float>(event.y)}});
+                    ui_->feedInput(lux::ui::UiPointerMove{{static_cast<float>(event.x), static_cast<float>(event.y)}});
                 };
                 owners->window->on_focus = [this](const window::WindowFocusEvent&) {
-                    ui_->feedInput(ui::UiWindowFocus{true});
+                    ui_->feedInput(lux::ui::UiWindowFocus{true});
                 };
                 owners->window->on_lost_focus = [this](const window::WindowLostFocusEvent&) {
-                    ui_->feedInput(ui::UiWindowFocus{false});
+                    ui_->feedInput(lux::ui::UiWindowFocus{false});
                 };
                 presentation_owners_ = std::move(owners);
             }
@@ -287,22 +287,22 @@ namespace lux::editor
                 if constexpr (std::same_as<Value, window::WindowKeyEvent>)
                 {
                     const auto key = uiKey(value.key);
-                    if (key != ui::EKey::NONE)
-                        ui_->feedInput(ui::UiKey{key, value.action != GLFW_RELEASE});
+                    if (key != lux::ui::EKey::NONE)
+                        ui_->feedInput(lux::ui::UiKey{key, value.action != GLFW_RELEASE});
                 }
                 else if constexpr (std::same_as<Value, window::WindowMouseButtonEvent>)
                 {
                     const auto button = pointerButton(value.button);
                     if (button)
-                        ui_->feedInput(ui::UiPointerButton{*button, value.action != GLFW_RELEASE});
+                        ui_->feedInput(lux::ui::UiPointerButton{*button, value.action != GLFW_RELEASE});
                 }
                 else if constexpr (std::same_as<Value, window::WindowScrollEvent>)
                 {
-                    ui_->feedInput(ui::UiPointerWheel{{static_cast<float>(value.x), static_cast<float>(value.y)}});
+                    ui_->feedInput(lux::ui::UiPointerWheel{{static_cast<float>(value.x), static_cast<float>(value.y)}});
                 }
                 else if constexpr (std::same_as<Value, window::WindowTextEvent>)
                 {
-                    ui_->feedInput(ui::UiText{static_cast<char32_t>(value.codepoint)});
+                    ui_->feedInput(lux::ui::UiText{static_cast<char32_t>(value.codepoint)});
                 }
             }, event);
         }

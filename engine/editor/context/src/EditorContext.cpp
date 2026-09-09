@@ -16,8 +16,8 @@ namespace lux::editor
     {
     }
 
-    Toolset& EditorContext::toolchain() noexcept { return *toolset_; }
-    const Toolset& EditorContext::toolchain() const noexcept { return *toolset_; }
+    application::Toolset& EditorContext::toolchain() noexcept { return *toolset_; }
+    const application::Toolset& EditorContext::toolchain() const noexcept { return *toolset_; }
     asset::AssetVfsView EditorContext::vfs() const noexcept { return vfs_; }
     process::asset_loading::AssetReadPort EditorContext::assetRead() const noexcept { return asset_read_; }
     process::ExecutionRuntime& EditorContext::execution() noexcept { return *execution_; }
@@ -26,7 +26,7 @@ namespace lux::editor
     const process::TaskScope& EditorContext::tasks() const noexcept { return *tasks_; }
     EditorSelection& EditorContext::selection() noexcept { return *selection_; }
     const EditorSelection& EditorContext::selection() const noexcept { return *selection_; }
-    ui::UISession& EditorContext::ui() noexcept { return *ui_; }
-    const ui::UISession& EditorContext::ui() const noexcept { return *ui_; }
+    lux::ui::UISession& EditorContext::ui() noexcept { return *ui_; }
+    const lux::ui::UISession& EditorContext::ui() const noexcept { return *ui_; }
     const scene::SceneMetaManager& EditorContext::sceneMeta() const noexcept { return *scene_meta_; }
 } // namespace lux::editor

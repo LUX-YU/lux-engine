@@ -14,7 +14,7 @@ namespace lux::editor::inspector
 {
     EntityInspector::EntityInspector(
         object::ObjectDispatcherRef dispatcher,
-        ui::PaneId id,
+        lux::ui::PaneId id,
         EditorContext& context,
         ComponentEditorBindingTable bindings,
         EInspectorMode mode
@@ -22,7 +22,7 @@ namespace lux::editor::inspector
         : Object(
               std::move(dispatcher),
               std::move(id),
-              ui::PaneTypeId{kEntityInspectorPaneType.name()},
+              lux::ui::PaneTypeId{kEntityInspectorPaneType.name()},
               "Inspector"
           ),
           context_(&context),
@@ -35,7 +35,7 @@ namespace lux::editor::inspector
     const InspectorUndoJournal& EntityInspector::undoJournal() const noexcept { return undo_; }
     const InspectorDrawStats& EntityInspector::lastDrawStats() const noexcept { return last_draw_; }
 
-    void EntityInspector::draw(ui::Frame& frame, ui::PaneDrawContext&)
+    void EntityInspector::draw(lux::ui::Frame& frame, lux::ui::PaneDrawContext&)
     {
         last_draw_ = {};
         const auto before_validation = context_->selection().current();
@@ -80,8 +80,8 @@ namespace lux::editor::inspector
             if (binding == nullptr || binding->schema != schema.id)
             {
                 ++last_draw_.missing_bindings;
-                auto group = frame.treeRow(ui::TreeRowSpec{
-                    ui::WidgetIdView{schema.id.name},
+                auto group = frame.treeRow(lux::ui::TreeRowSpec{
+                    lux::ui::WidgetIdView{schema.id.name},
                     schema.id.name,
                     false,
                     false,
@@ -91,8 +91,8 @@ namespace lux::editor::inspector
                     frame.textMuted("<Editor binding unavailable>");
                 continue;
             }
-            auto group = frame.treeRow(ui::TreeRowSpec{
-                ui::WidgetIdView{schema.id.name},
+            auto group = frame.treeRow(lux::ui::TreeRowSpec{
+                lux::ui::WidgetIdView{schema.id.name},
                 binding->display_name,
                 false,
                 false,
@@ -100,8 +100,8 @@ namespace lux::editor::inspector
             });
             if (!group.open())
                 continue;
-            auto table = frame.table(ui::TableSpec{
-                ui::WidgetIdView{schema.id.name},
+            auto table = frame.table(lux::ui::TableSpec{
+                lux::ui::WidgetIdView{schema.id.name},
                 2U,
                 false,
                 false,

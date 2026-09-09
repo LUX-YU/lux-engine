@@ -64,7 +64,7 @@ namespace lux::render
         RenderUploadSession(const RenderUploadSession&) = delete;
         RenderUploadSession& operator=(const RenderUploadSession&) = delete;
 
-        void pumpReplies();
+        std::size_t pumpReplies(std::size_t budget = (std::numeric_limits<std::size_t>::max)());
         [[nodiscard]] bool waitAndPumpReplies();
 
         /// Declares that coordinator is the sole submit/reply owner. Generic

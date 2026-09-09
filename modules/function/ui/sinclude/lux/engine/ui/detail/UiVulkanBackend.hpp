@@ -2,6 +2,7 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/ui/detail/UiPresentationData.hpp>
+#include <lux/engine/ui/UiFrameSnapshot.hpp>
 #include <lux/engine/ui/TextureHandle.hpp>
 
 #include <vulkan/vulkan.h>
@@ -46,7 +47,7 @@ namespace lux::ui::detail
         UiVulkanRenderer(const UiVulkanRenderer&) = delete;
         UiVulkanRenderer& operator=(const UiVulkanRenderer&) = delete;
 
-        void render(const UiDrawDataSnapshot* snapshot, VkCommandBuffer command) noexcept;
+        void render(const UiFrameSnapshot* snapshot, VkCommandBuffer command) noexcept;
         using TextureResolver = VkDescriptorSet (*)(void* user, TextureHandle texture) noexcept;
         // Render-thread only. The provider owns descriptors through GPU completion.
         void setTextureResolver(TextureResolver resolver, void* user) noexcept;

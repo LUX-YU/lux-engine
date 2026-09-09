@@ -52,6 +52,15 @@ engine/
       render/
   editor/
     application/
+    editing/
+    sessions/
+      types/
+      scene/
+    ui/
+      scene/
+    rendering/
+    examples/
+    # ER-2/3 legacy consumers remain isolated until their own deletion gates pass:
     context/
     node_graph/
   toolchain/
@@ -78,13 +87,16 @@ engine/
   承载 latest-state handoff；`integration/world_materialization`、`integration/script` 与 `integration/render`
   分别提供机械 ECS materialization、production Script stable-point/Process bridge 与可选 Render SceneSystem
   integration。Streaming policy 只属于 concrete developer System。
-- `engine/editor` 持有 L5 Editor application composition 与交互式 UI/tooling；`application` 显式 owns
-  ExecutionRuntime、root TaskScope、mutable AssetVfs、production AssetRead endpoint、Toolset、EditorSelection、
-  UISession与immutable SceneMetaManager，并直接产出Editor executable。`context`只携带named borrowed/read
-  capabilities，不拥有任何application service lifetime。Context/Toolset不得成为singleton、字符串service locator
-  或具体compiler registry。`inspector` 是 L5 integration leaf：使用 immutable typed generated binding table、
-  `EditorSelection` 与 feature-local undo journal；generated/plugin API 只调用 Lux UI，字段热路径不得遍历 runtime
-  reflection，semantic relation 必须走 canonical domain mutation。
+- `engine/editor` 按已批准的架构主规范 v4 分为 `application / editing / sessions / ui / rendering`。
+  `application` 只组合并拥有 Window、Renderer、Session、Workspace 与 execution/assets 基础设施，负责主循环和显式关闭顺序。
+  `editing` 是业务盲历史协议；具体 Session 拥有内容、历史、选择、查询缓存和业务资源请求。
+  `ui` 的通用 shell/actions 不依赖具体 Session；`ui/scene` 的真实 Pane 各自持有过滤、展开、捕获、显示等局部状态，
+  通过 Session 的值查询与语义操作工作。局部 HistoryActions 固定目标；窗口菜单捕获 registration token，失效后取消。
+  `rendering` 独占 thread/device、帧提交队列、View/target/descriptor 生命周期，不能调用 Pane 或持有 SceneSession。
+  图像释放同时受 CPU 引用和实际 GPU 完成水位限制；PImpl、shared_ptr 和 noexcept 本身不是协议证明。
+  新场景路径不使用旧 Context/Toolset、Inspector journal、Workbench、Presenter 或 RenderPort；不保留转发安装头或运行时 fallback。
+  ER-2/3 尚未迁移的既存 Inspector/Graph 消费者在旧目标内独立保留，只有本阶段对应删除门槛通过后才退出正式入口。
+  生成字段读取保留 canonical schema/version 身份及 typed value copy，不向 Pane 开放 Registry。
 - `modules/resource/asset` 的 `AssetVfs` 是 application-owned mutable control plane；copy-on-write发布immutable
   mount table，`AssetVfsView`是copyable read capability。runtime/script content read走L2 `AssetReadPort`，不得在
   game/main/UI thread同步执行可能阻塞的provider open。

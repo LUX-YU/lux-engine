@@ -9,7 +9,7 @@ namespace lux::editor::inspector
     struct InspectorContext final
     {
         EditorContext& editor;
-        ui::Frame& frame;
+        lux::ui::Frame& frame;
         InspectorUndoJournal& undo;
         EditorSelectionValue target;
     };

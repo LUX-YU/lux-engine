@@ -9,7 +9,7 @@ namespace lux::render
     namespace
     {
         template <class Reply>
-        [[nodiscard]] Reply decodeReply(ReplyPacketView packet, const ReplyRecord& record) noexcept
+        [[nodiscard]] Reply decodeReply(ReplyPacketView packet, const ReplyRecord &record) noexcept
         {
             Reply value{};
             if (record.payload_size == sizeof(Reply))
@@ -20,17 +20,15 @@ namespace lux::render
         }
     } // namespace
 
-    RenderProgramSession::RenderProgramSession(
-        std::shared_ptr<RenderProgramChannel<>> channel,
-        std::shared_ptr<RenderChannelSync> sync
-    )
+    RenderProgramSession::RenderProgramSession(std::shared_ptr<RenderProgramChannel<>> channel,
+                                               std::shared_ptr<RenderChannelSync> sync)
         : client_(std::move(channel), std::move(sync))
     {
     }
 
-    std::size_t RenderProgramSession::pumpReplies()
+    std::size_t RenderProgramSession::pumpReplies(std::size_t budget)
     {
-        return client_.pumpReplies();
+        return client_.pumpReplies(budget);
     }
 
     bool RenderProgramSession::waitAndPumpReplies()
@@ -38,25 +36,21 @@ namespace lux::render
         return client_.waitAndPumpReplies();
     }
 
-    void RenderProgramSession::setErrorEventHandler(
-        std::function<void(const ErrorEventBatchReply&)> on_batch,
-        std::function<void(const RenderErrorEvent&)> on_event
-    )
+    void RenderProgramSession::setErrorEventHandler(std::function<void(const ErrorEventBatchReply &)> on_batch,
+                                                    std::function<void(const RenderErrorEvent &)> on_event)
     {
-        client_.setUnsolicitedHandler(
-            type_ids::ReplyErrorEventBatch,
-            [handler = std::move(on_batch)](ReplyPacketView packet, const ReplyRecord& record) {
-                if (handler)
-                    handler(decodeReply<ErrorEventBatchReply>(packet, record));
-            }
-        );
-        client_.setUnsolicitedHandler(
-            type_ids::ReplyErrorEvent,
-            [handler = std::move(on_event)](ReplyPacketView packet, const ReplyRecord& record) {
-                if (handler)
-                    handler(decodeReply<RenderErrorEvent>(packet, record));
-            }
-        );
+        client_.setUnsolicitedHandler(type_ids::ReplyErrorEventBatch,
+                                      [handler = std::move(on_batch)](ReplyPacketView packet, const ReplyRecord &record)
+                                      {
+                                          if (handler)
+                                              handler(decodeReply<ErrorEventBatchReply>(packet, record));
+                                      });
+        client_.setUnsolicitedHandler(type_ids::ReplyErrorEvent,
+                                      [handler = std::move(on_event)](ReplyPacketView packet, const ReplyRecord &record)
+                                      {
+                                          if (handler)
+                                              handler(decodeReply<RenderErrorEvent>(packet, record));
+                                      });
     }
 
     std::uint64_t RenderProgramSession::unroutedUnsolicitedReplies() const noexcept
@@ -64,12 +58,13 @@ namespace lux::render
         return client_.unroutedUnsolicited();
     }
 
-    bool RenderProgramSession::beginFrame(const ProgramMemoryHints& hints)
+    bool RenderProgramSession::beginFrame(const ProgramMemoryHints &hints)
     {
         return client_.beginFrame(hints);
     }
 
-    bool RenderProgramSession::rebaseSceneOrigin(RenderSceneId scene, const std::int64_t scene_origin_page[3]) noexcept
+    Expected<bool> RenderProgramSession::rebaseSceneOrigin(RenderSceneId scene,
+                                                           const std::int64_t scene_origin_page[3]) noexcept
     {
         if (!isRecording() || scene.isNull() || scene_origin_page == nullptr)
             return false;
@@ -77,7 +72,14 @@ namespace lux::render
         payload.scene_id = scene;
         for (std::size_t axis = 0u; axis < 3u; ++axis)
             payload.scene_origin_page[axis] = scene_origin_page[axis];
-        builder().push(opcodes::CommandOp, type_ids::RebaseSceneOrigin, payload);
+        try
+        {
+            builder().push(opcodes::CommandOp, type_ids::RebaseSceneOrigin, payload);
+        }
+        catch (const std::bad_alloc &)
+        {
+            return renderFailure<err::memory::OutOfMemory>();
+        }
         return true;
     }
 
@@ -86,7 +88,7 @@ namespace lux::render
         return client_.trySubmitFrame();
     }
 
-    bool RenderProgramSession::trySubmitPrepared(RenderProgram<>& source) noexcept
+    bool RenderProgramSession::trySubmitPrepared(RenderProgram<> &source) noexcept
     {
         return client_.trySubmitPrepared(source);
     }
@@ -111,10 +113,8 @@ namespace lux::render
         client_.waitForProgress(observed);
     }
 
-    bool RenderProgramSession::waitForProgressUntil(
-        ProgramProgressToken observed,
-        std::chrono::steady_clock::time_point deadline
-    ) const noexcept
+    bool RenderProgramSession::waitForProgressUntil(ProgramProgressToken observed,
+                                                    std::chrono::steady_clock::time_point deadline) const noexcept
     {
         auto domain = client_.progressDomain();
         return lux::cxx::concurrent::waitAtomicU64Until(domain->work_epoch, observed, deadline);
@@ -141,7 +141,7 @@ namespace lux::render
         return client_.progressDomain();
     }
 
-    RenderProgramSession::Builder& RenderProgramSession::builder() noexcept
+    RenderProgramSession::Builder &RenderProgramSession::builder() noexcept
     {
         return client_.builder();
     }

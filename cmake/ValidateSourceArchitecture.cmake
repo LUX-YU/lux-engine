@@ -163,7 +163,12 @@ foreach(source IN LISTS production_sources)
         )
     endif()
 
-    if(content MATCHES "(^|[\r\n])[ \t]*throw([ \t;(]|$)")
+    set(throw_checked_content "${content}")
+    if(normalized STREQUAL "${source_root}/modules/function/render/client/include/lux/engine/function/render/client/protocol/RenderCommTypes.hpp")
+        # ER-1 EX-01: the STL allocator transports only allocation failure to the preparation boundary.
+        string(REPLACE "throw std::bad_array_new_length{};" "" throw_checked_content "${throw_checked_content}")
+    endif()
+    if(throw_checked_content MATCHES "(^|[\r\n])[ \t]*throw([ \t;(]|$)")
         message(FATAL_ERROR
             "Architecture: production source '${normalized}' actively throws across the Lux failure boundary."
         )
@@ -2138,6 +2143,8 @@ foreach(source IN LISTS physics2d_sources)
         )
     endif()
 endforeach()
+
+include("${LUX_SOURCE_DIR}/cmake/ValidateEditorArchitectureEr1.cmake")
 
 file(WRITE "${LUX_REPORT_PATH}"
     "vNext L1 semantic architecture debt: 0\n"

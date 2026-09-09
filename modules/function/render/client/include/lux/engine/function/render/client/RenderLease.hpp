@@ -34,7 +34,8 @@ namespace lux::render
     enum class ERenderTargetCloseError
     {
         AlreadyClosed,
-        Stopping
+        Stopping,
+        ALLOCATION_FAILURE
     };
 
     using RenderTargetCloseResult = lux::cxx::expected<RenderRequest<TargetReleasedReply>, ERenderTargetCloseError>;
@@ -44,7 +45,8 @@ namespace lux::render
         Released,
         Deferred,
         Stopping,
-        AlreadyClosed
+        AlreadyClosed,
+        ALLOCATION_FAILURE
     };
 
     class LUX_FUNCTION_PUBLIC RenderSceneLease final

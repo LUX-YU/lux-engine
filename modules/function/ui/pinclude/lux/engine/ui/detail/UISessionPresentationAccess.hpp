@@ -14,7 +14,6 @@ namespace lux::ui::detail
 {
     struct UISessionPresentationAccess final
     {
-        [[nodiscard]] static UiDrawDataSnapshot capture(UISession& session);
         [[nodiscard]] static UiFontAtlasSnapshot captureFontAtlas(UISession& session);
     };
 } // namespace lux::ui::detail

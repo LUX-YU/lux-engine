@@ -34,7 +34,7 @@ namespace lux::editor::inspector
         using Value = std::remove_cvref_t<decltype(component.*Member)>;
         const Value before = component.*Member;
         context.frame.propertyRow(spec.display_name.empty() ? spec.name : spec.display_name);
-        auto id = context.frame.id(ui::WidgetIdView{spec.name});
+        auto id = context.frame.id(lux::ui::WidgetIdView{spec.name});
         auto disabled = context.frame.disabled(spec.read_only || spec.widget == EGeneratedWidget::READ_ONLY);
         auto edit = EditorValueBinding<Value>::edit(context, "##value", component.*Member, spec);
         if (!spec.tooltip.empty())

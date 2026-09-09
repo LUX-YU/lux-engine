@@ -77,17 +77,18 @@ namespace lux::editor
         EditorApplication& operator=(EditorApplication&&) = delete;
 
         template<class Tool, class... Args>
-        [[nodiscard]] lux::cxx::expected<std::reference_wrapper<Tool>, ToolsetFailure>
+        [[nodiscard]] lux::cxx::expected<std::reference_wrapper<Tool>, application::ToolsetFailure>
         installTool(Args&&... args) noexcept
         {
             const auto type = lux::cxx::typeToken<Tool>();
             if (state_ == EState::RUNNING)
             {
-                return lux::cxx::unexpected(ToolsetFailure{EToolsetError::FROZEN, type, {}});
+                return lux::cxx::unexpected(application::ToolsetFailure{application::EToolsetError::FROZEN, type, {}});
             }
             if (state_ != EState::COMPOSING || !toolset_)
             {
-                return lux::cxx::unexpected(ToolsetFailure{EToolsetError::STOPPING, type, {}});
+                return lux::cxx::unexpected(
+                    application::ToolsetFailure{application::EToolsetError::STOPPING, type, {}});
             }
             return toolset_->install<Tool>(std::forward<Args>(args)...);
         }
@@ -123,9 +124,9 @@ namespace lux::editor
         asset::AssetVfs vfs_;
         std::shared_ptr<process::asset_loading::VfsAssetReadEndpoint> asset_read_endpoint_;
         scene::SceneMetaManager scene_meta_;
-        std::optional<ui::UISession> ui_;
+        std::optional<lux::ui::UISession> ui_;
         std::optional<EditorSelection> selection_;
-        std::optional<Toolset> toolset_;
+        std::optional<application::Toolset> toolset_;
         std::optional<process::TaskScope> tasks_;
         std::optional<EditorContext> context_;
         std::optional<EditorPresentationConfig> presentation_config_;

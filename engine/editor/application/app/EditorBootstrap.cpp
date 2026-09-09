@@ -95,7 +95,7 @@ namespace lux::editor::application
         std::unique_ptr<scene::Scene> scene;
         EditorSceneHandle scene_handle{};
         std::unique_ptr<inspector::EntityInspector> inspector;
-        ui::PaneRegistration pane_registration;
+        lux::ui::PaneRegistration pane_registration;
     };
 
     lux::cxx::expected<scene::SceneMetaManager, EEditorBootstrapError> buildDevelopmentSceneMeta() noexcept
@@ -164,7 +164,7 @@ namespace lux::editor::application
 
             impl->inspector = std::make_unique<inspector::EntityInspector>(
                 context.ui().dispatcherRef(),
-                ui::PaneId{"lux-editor.entity-inspector"},
+                lux::ui::PaneId{"lux-editor.entity-inspector"},
                 context,
                 std::move(*bindings)
             );

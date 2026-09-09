@@ -1,0 +1,17 @@
+{
+  "status": "CONTINUATION_SOURCE_CANDIDATE_NOT_ER1_QUALIFIED",
+  "base_commit": "9684a393122388f5b43f0f518e144380871416c9",
+  "candidate_commit": "Recorded externally after creating this source snapshot commit",
+  "build_type": "RelWithDebInfo",
+  "normal_diagnostics": false,
+  "diagnostic_build": "E:/lux-er1/build",
+  "normal_intermediate_build": "E:/lux-er1/normal-build",
+  "historical_evidence": "E:/lux-er1/ER1-intermediate-build48-evidence.zip (immutable; old manifest preserved there)",
+  "qualification_results": "Pending independent clean clone; working-tree logs remain intermediate",
+  "remaining": [
+    "Full late resize acknowledgement/GPU pending/startup failures matrix",
+    "Actual held RMB/MMB focus loss and Chinese IME",
+    "Matched five independent old/new cost pairs",
+    "Legacy official-entry deletion gates and final migration"
+  ]
+}

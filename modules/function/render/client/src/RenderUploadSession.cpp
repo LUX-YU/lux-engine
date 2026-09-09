@@ -14,14 +14,10 @@ namespace lux::render
     {
     }
 
-    void RenderUploadSession::pumpReplies()
+    std::size_t RenderUploadSession::pumpReplies(std::size_t budget)
     {
         requireOwnerThread();
-        while (channel_->responses.tryAcquireRead())
-        {
-            callbacks_.dispatchAll(channel_->responses.currentRead());
-            sync_->notifyReplyConsumed();
-        }
+        return detail::pumpReplyEnvelopes(*channel_, *sync_, callbacks_, budget);
     }
 
     bool RenderUploadSession::waitAndPumpReplies()

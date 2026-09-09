@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/editor/ActiveEditHistory.hpp>
+#include <lux/engine/editor/ui/actions/ActiveEditHistory.hpp>
 #include <lux/engine/editor/context/visibility.h>
 #include <lux/engine/object/Object.hpp>
 #include <lux/engine/object/ObjectAnnotations.hpp>
@@ -7,7 +7,7 @@ namespace lux::editor
 {
     struct EditHistoryActionFailure final
     {
-        HistoryTargetHandle target;
+        lux::editor::ui::HistoryTargetHandle target;
         editing::EHistoryAction action{editing::EHistoryAction::UNDO};
         editing::EditFailure failure;
     };
@@ -16,7 +16,8 @@ namespace lux::editor
     {
     public:
         static const signal_type<EditHistoryActionFailure> failed;
-        explicit EditHistoryController(object::ObjectDispatcherRef dispatcher, ActiveEditHistory& histories) noexcept;
+        explicit EditHistoryController(object::ObjectDispatcherRef dispatcher,
+                                       lux::editor::ui::ActiveEditHistory &histories) noexcept;
         ~EditHistoryController() override;
         void undo() noexcept;
         void redo() noexcept;
@@ -26,6 +27,6 @@ namespace lux::editor
         [[nodiscard]] std::string_view redoLabel() const noexcept;
 
     private:
-        ActiveEditHistory* histories_{};
+        lux::editor::ui::ActiveEditHistory* histories_{};
     };
 } // namespace lux::editor

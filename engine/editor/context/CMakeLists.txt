@@ -16,8 +16,6 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EditorContext.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EditorSelection.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/Toolset.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/ActiveEditHistory.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EditHistoryController.cpp
 )
 
@@ -37,6 +35,8 @@ target_compile_definitions(editor_context PRIVATE LUX_EDITOR_CONTEXT_LIBRARY)
 target_link_libraries(
     editor_context
     PUBLIC
+        lux::engine::editor::editor_tooling
+        lux::engine::editor::editor_ui
         lux::engine::editor::editor_editing
         lux::cxx::compile_time
         lux::engine::function::ui
@@ -50,6 +50,8 @@ target_link_libraries(
 
 component_add_transitive_commands(
     editor_context
+    "find_package(lux-engine-editor-tooling REQUIRED COMPONENTS editor_tooling)"
+    "find_package(lux-engine-editor-ui REQUIRED COMPONENTS editor_ui)"
     "find_package(lux-engine-editor-editing REQUIRED COMPONENTS editor_editing)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
     "find_package(lux-engine-function REQUIRED COMPONENTS ui)"

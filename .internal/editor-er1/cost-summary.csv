@@ -1,0 +1,4 @@
+sample,seconds,ui_iterations,render_frames,viewport,warmup,memory_scope,qualification
+gui-02,602.906,15829813,97835,changed during interactive run,not controlled,not measured,diagnostic observation; not comparable
+app-paced-01,2.628125,240,252,1014x593,not isolated,no attributed memory measurement,single run only; not old/new performance evidence
+required five-run matched baseline/candidate,,,,must match source/view/resolution/completion,pending,owner counters vs GPU/CPU/process must stay distinct,NOT_RUN

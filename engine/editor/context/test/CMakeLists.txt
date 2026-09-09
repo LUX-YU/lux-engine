@@ -29,6 +29,7 @@ add_executable(editor_context_test editor_context_test.cpp)
 target_include_directories(
     editor_context_test
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../pinclude
+        ${PROJECT_SOURCE_DIR}/engine/editor/application/tooling/pinclude
 )
 target_link_libraries(
     editor_context_test

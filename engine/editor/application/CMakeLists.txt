@@ -71,3 +71,11 @@ install(
 if(WIN32)
     install(IMPORTED_RUNTIME_ARTIFACTS imgui::core RUNTIME DESTINATION bin COMPONENT lux_editor)
 endif()
+
+# Independent new composition while the ER-1 deletion gates are being verified.
+add_library(editor_application_candidate STATIC src/Application.cpp)
+target_include_directories(editor_application_candidate PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/sinclude)
+target_link_libraries(editor_application_candidate PUBLIC lux::engine::editor::editor_scene_ui
+    lux::engine::editor::editor_tooling
+    PRIVATE lux::engine::platform::window)
+lux_classify_target(TARGET editor_application_candidate LAYER EDITOR PRODUCT EDITOR ROLE COMPOSITION)

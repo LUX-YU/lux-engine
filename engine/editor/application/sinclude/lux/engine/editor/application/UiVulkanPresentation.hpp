@@ -59,7 +59,7 @@ namespace lux::editor::application::detail
 
         [[nodiscard]] static CreateResult create(
             window::LuxWindow& window,
-            ui::UISession& session,
+            lux::ui::UISession& session,
             UiVulkanPresentationConfig config
         ) noexcept;
 
@@ -67,7 +67,8 @@ namespace lux::editor::application::detail
         UiVulkanPresentation(const UiVulkanPresentation&) = delete;
         UiVulkanPresentation& operator=(const UiVulkanPresentation&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<void, UiVulkanPresentationFailure> present(ui::UISession& session) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, UiVulkanPresentationFailure> present(
+            lux::ui::UISession &session) noexcept;
         void requestStop() noexcept;
         [[nodiscard]] bool join() noexcept;
         [[nodiscard]] bool stopping() const noexcept;

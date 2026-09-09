@@ -13,7 +13,8 @@ namespace lux::editor::workbench
         SceneCamera() noexcept;
         void reset() noexcept;
         void focus(const Eigen::Vector3d& center, double radius) noexcept;
-        void update(const ui::UiInputSnapshot& input, const ui::ViewportResult& viewport, double seconds) noexcept;
+        void update(const lux::ui::UiInputSnapshot &input, const lux::ui::ViewportResult &viewport,
+                    double seconds) noexcept;
         void releaseCapture() noexcept;
         [[nodiscard]] bool captured() const noexcept;
         [[nodiscard]] const Eigen::Vector3d& position() const noexcept { return position_; }

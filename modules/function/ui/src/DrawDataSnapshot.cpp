@@ -1,38 +1,58 @@
 #include <lux/engine/ui/detail/ImGuiDrawDataSnapshot.hpp>
-#include <lux/engine/ui/detail/UiPresentationData.hpp>
-
+#include <lux/engine/ui/UiFrameSnapshot.hpp>
+#include <algorithm>
 #include <memory>
 #include <utility>
 
-namespace lux::ui::detail
+namespace lux::ui
 {
-    struct UiDrawDataSnapshot::Impl final
+    struct UiFrameSnapshot::Impl final
     {
-        ImGuiDrawDataSnapshot snapshot;
+        detail::ImGuiDrawDataSnapshot snapshot;
+        std::vector<TextureHandle> textures;
     };
 
-    UiDrawDataSnapshot::UiDrawDataSnapshot() : impl_(std::make_unique<Impl>()) {}
-    UiDrawDataSnapshot::~UiDrawDataSnapshot() = default;
-    UiDrawDataSnapshot::UiDrawDataSnapshot(UiDrawDataSnapshot&&) noexcept = default;
-    UiDrawDataSnapshot& UiDrawDataSnapshot::operator=(UiDrawDataSnapshot&&) noexcept = default;
+    UiFrameSnapshot::UiFrameSnapshot() noexcept = default;
+    UiFrameSnapshot::~UiFrameSnapshot() noexcept = default;
+    UiFrameSnapshot::UiFrameSnapshot(UiFrameSnapshot&&) noexcept = default;
+    UiFrameSnapshot& UiFrameSnapshot::operator=(UiFrameSnapshot&&) noexcept = default;
 
-    bool UiDrawDataSnapshot::valid() const noexcept
+    bool UiFrameSnapshot::valid() const noexcept
     {
         return impl_ != nullptr && impl_->snapshot.drawData().Valid;
     }
 
-    void UiDrawDataSnapshot::captureCurrent()
+    std::span<const TextureHandle> UiFrameSnapshot::textures() const noexcept
     {
-        const auto* draw_data = ImGui::GetDrawData();
-        if (draw_data != nullptr && draw_data->Valid)
-            impl_->snapshot.capture(*draw_data);
+        return impl_ ? std::span<const TextureHandle>{impl_->textures} : std::span<const TextureHandle>{};
     }
 
-    const void* UiDrawDataSnapshot::nativeDrawData() const noexcept
+    void UiFrameSnapshot::captureCurrent()
     {
-        return impl_ == nullptr ? nullptr : std::addressof(impl_->snapshot.drawData());
+        const auto* data = ImGui::GetDrawData();
+        if (!data || !data->Valid)
+            return;
+        auto prepared = std::make_unique<Impl>();
+        prepared->snapshot.capture(*data);
+        for (const auto* list : prepared->snapshot.drawData().CmdLists)
+            for (const auto& command : list->CmdBuffer)
+            {
+                const TextureHandle token{static_cast<std::uint64_t>(command.GetTexID())};
+                if (token.valid() && std::find(prepared->textures.begin(), prepared->textures.end(), token) ==
+                    prepared->textures.end())
+                    prepared->textures.push_back(token);
+            }
+        impl_ = std::move(prepared);
     }
 
+    const void* UiFrameSnapshot::nativeDrawData() const noexcept
+    {
+        return impl_ ? std::addressof(impl_->snapshot.drawData()) : nullptr;
+    }
+}
+
+namespace lux::ui::detail
+{
     ImGuiDrawDataSnapshot::~ImGuiDrawDataSnapshot()
     {
         clear();

@@ -36,19 +36,19 @@ namespace lux::editor::workbench
     bool SceneCamera::captured() const noexcept { return capture_ != ECapture::NONE; }
 
     void SceneCamera::update(
-        const ui::UiInputSnapshot& input, const ui::ViewportResult& viewport, double seconds
+        const lux::ui::UiInputSnapshot& input, const lux::ui::ViewportResult& viewport, double seconds
     ) noexcept
     {
-        const auto held = [&](ui::EKey key) { return input.held[static_cast<std::size_t>(key)]; };
-        const auto pressed = [&](ui::EKey key) { return input.pressed[static_cast<std::size_t>(key)]; };
-        if (!input.window_focused || input.modal_open || pressed(ui::EKey::ESCAPE))
+        const auto held = [&](lux::ui::EKey key) { return input.held[static_cast<std::size_t>(key)]; };
+        const auto pressed = [&](lux::ui::EKey key) { return input.pressed[static_cast<std::size_t>(key)]; };
+        if (!input.window_focused || input.modal_open || pressed(lux::ui::EKey::ESCAPE))
         {
             releaseCapture();
             return;
         }
-        if (capture_ == ECapture::LOOK && !input.buttons[static_cast<std::size_t>(ui::EPointerButton::RIGHT)])
+        if (capture_ == ECapture::LOOK && !input.buttons[static_cast<std::size_t>(lux::ui::EPointerButton::RIGHT)])
             releaseCapture();
-        if (capture_ == ECapture::PAN && !input.buttons[static_cast<std::size_t>(ui::EPointerButton::MIDDLE)])
+        if (capture_ == ECapture::PAN && !input.buttons[static_cast<std::size_t>(lux::ui::EPointerButton::MIDDLE)])
             releaseCapture();
         if (input.keyboard_blocked)
         {
@@ -59,7 +59,7 @@ namespace lux::editor::workbench
             capture_ = ECapture::LOOK;
         else if (viewport.hovered && viewport.middle_clicked)
             capture_ = ECapture::PAN;
-        if (viewport.window_focused && (pressed(ui::EKey::HOME) || pressed(ui::EKey::END)))
+        if (viewport.window_focused && (pressed(lux::ui::EKey::HOME) || pressed(lux::ui::EKey::END)))
             reset();
         const auto right = forward().cross(Eigen::Vector3d::UnitY()).normalized().eval();
         if (capture_ == ECapture::LOOK)
@@ -68,9 +68,9 @@ namespace lux::editor::workbench
             yaw_ = std::remainder(yaw_, 2.0 * std::numbers::pi);
             pitch_ = std::clamp(pitch_ - static_cast<double>(input.pointer_delta.y) * 0.004, -1.55, 1.55);
             speed_ = std::clamp(speed_ * std::exp(input.wheel.y * 0.15), 0.05, 10000.0);
-            Eigen::Vector3d direction = forward() * (int(held(ui::EKey::W)) - int(held(ui::EKey::S))) +
-                right * (int(held(ui::EKey::D)) - int(held(ui::EKey::A))) +
-                Eigen::Vector3d::UnitY() * (int(held(ui::EKey::E)) - int(held(ui::EKey::Q)));
+            Eigen::Vector3d direction = forward() * (int(held(lux::ui::EKey::W)) - int(held(lux::ui::EKey::S))) +
+                right * (int(held(lux::ui::EKey::D)) - int(held(lux::ui::EKey::A))) +
+                Eigen::Vector3d::UnitY() * (int(held(lux::ui::EKey::E)) - int(held(lux::ui::EKey::Q)));
             if (direction.squaredNorm() > 0.0 && std::isfinite(seconds))
                 position_ += direction.normalized() * speed_ * std::clamp(seconds, 0.0, 0.1);
         }

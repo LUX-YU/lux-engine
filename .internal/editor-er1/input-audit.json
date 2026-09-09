@@ -1,0 +1,39 @@
+{
+  "main": {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "head": "c77bb41ea91e84a8e9b10cb88a48f9759062a316",
+    "branch": "main",
+    "status": "M .gitignore\n M cmake/RunScriptV3Measurements.ps1\n M engine/domain/simulation/builtin/script/include/lux/engine/simulation/ScriptSystem.hpp\n M engine/domain/simulation/builtin/script/pinclude/lux/engine/simulation/script/ScriptExecution.hpp\n M engine/domain/world/partition/include/lux/engine/world/WorldPartition.hpp\n M modules/resource/description/include/lux/engine/description/Script.hpp\n?? cmake/RunScriptV3Stress.ps1",
+    "unknown_hashes": {
+      "cmake/RunScriptV3Measurements.ps1": "3002b82176e84be13eca802aa7661a709345a3d2af7ffecc5438b840fca9502d",
+      "engine/domain/simulation/builtin/script/include/lux/engine/simulation/ScriptSystem.hpp": "19e33618a17dda5f7b21b4e399f11fc3939691d7076ee0f818cea6ce0a32daac",
+      "engine/domain/simulation/builtin/script/pinclude/lux/engine/simulation/script/ScriptExecution.hpp": "1debc1926e57521af016c74761f25df18054f2bc7cdd9c74690686c87be002ed",
+      "engine/domain/world/partition/include/lux/engine/world/WorldPartition.hpp": "a041aaabcc6cd67fed6fb4203a4db270edd19b32f1ced49e461fcde7fcfc7001",
+      "modules/resource/description/include/lux/engine/description/Script.hpp": "1768260c964ebb684ad3274bcc8bbbf5bbb19a0f9a804e095ac99112784d21de",
+      "cmake/RunScriptV3Stress.ps1": "bfb56b4c89b0efc276c4c5d095f224a5b03ebf24d4a549115234d786624b08fc"
+    }
+  },
+  "sv1": {
+    "path": "E:\\lux-sv1\\src",
+    "head": "9684a393122388f5b43f0f518e144380871416c9",
+    "branch": "codex/scene-workbench-sv1",
+    "status": "?? engine.zip",
+    "unknown_hashes": {
+      "engine.zip": "a048426093395ed121507e34f458b05f26a741566b7b788940b0fe3f5a214f27"
+    }
+  },
+  "er1": {
+    "path": "E:\\lux-er1\\src",
+    "head": "9684a393122388f5b43f0f518e144380871416c9",
+    "branch": "codex/editor-rebuild-er1",
+    "status": "?? modules/function/ui/include/lux/engine/ui/UiFrameSnapshot.hpp",
+    "unknown_hashes": {
+      "modules/function/ui/include/lux/engine/ui/UiFrameSnapshot.hpp": "85b91d617b177e8f8a6ccb837b33e86ae65fccd55f051b6594394e668fc3ac0d"
+    }
+  },
+  "archive_comparison": {
+    "files": 614,
+    "different": 33
+  },
+  "source_binding_contract": "v4 user task supersedes old editor topology in .internal; runtime/domain constraints retained"
+}

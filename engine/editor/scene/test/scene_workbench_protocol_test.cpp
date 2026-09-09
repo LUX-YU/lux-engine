@@ -82,7 +82,7 @@ namespace
     void layoutAndUnifiedInput()
     {
         using namespace lux;
-        ui::UISession session;
+        lux::ui::UISession session;
         Probe left{session, "left"}, center{session, "center"}, right{session, "right"};
         Probe bottom{session, "bottom"}, toolbar{session, "toolbar"};
         auto a = session.registerPane(left), b = session.registerPane(center), c = session.registerPane(right);
@@ -110,12 +110,12 @@ namespace
         draw(800, 600);
         assert(right.draws == right_draws);
         draw(1600, 900);
-        assert(session.requestFocus(ui::PaneIdView{"center"}));
+        assert(session.requestFocus(lux::ui::PaneIdView{"center"}));
         draw(1600, 900);
-        session.feedInput(ui::UiPointerMove{{center.result.content_origin.x + 40,
+        session.feedInput(lux::ui::UiPointerMove{{center.result.content_origin.x + 40,
             center.result.content_origin.y + 40}});
         draw(1600, 900);
-        session.feedInput(ui::UiPointerWheel{{0, 2}});
+        session.feedInput(lux::ui::UiPointerWheel{{0, 2}});
         {
             auto frame = session.beginFrame({{1600, 900}, 0.016F, {1, 1}});
             frame.drawPanes();
@@ -126,8 +126,8 @@ namespace
             assert((wheel_camera.position() - before).norm() > 0);
             frame.finish();
         }
-        session.feedInput(ui::UiPointerButton{ui::EPointerButton::RIGHT, true});
-        session.feedInput(ui::UiKey{ui::EKey::W, true});
+        session.feedInput(lux::ui::UiPointerButton{lux::ui::EPointerButton::RIGHT, true});
+        session.feedInput(lux::ui::UiKey{lux::ui::EKey::W, true});
         draw(1600, 900);
         editor::workbench::SceneCamera camera;
         const auto initial = camera.position();
@@ -136,7 +136,7 @@ namespace
         draw(1600, 900);
         camera.update(session.inputSnapshot(), center.result, 0.1);
         assert((camera.position() - initial).norm() > 0);
-        session.feedInput(ui::UiWindowFocus{false});
+        session.feedInput(lux::ui::UiWindowFocus{false});
         draw(1600, 900);
         camera.update(session.inputSnapshot(), center.result, 0.1);
         assert(!camera.captured());

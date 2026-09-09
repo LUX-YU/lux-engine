@@ -7,6 +7,6 @@ namespace lux::editor::inspector
     // Deliberately carries no EditorContext, writable Registry or history journal.
     struct InspectorReadOnlyContext final
     {
-        ui::Frame& frame;
+        lux::ui::Frame& frame;
     };
 }

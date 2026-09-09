@@ -121,7 +121,7 @@ namespace lux::ui::detail
         ImGui_ImplVulkan_RemoveTextureEx(impl_->renderer, descriptor);
     }
 
-    void UiVulkanRenderer::render(const UiDrawDataSnapshot* snapshot, VkCommandBuffer command) noexcept
+    void UiVulkanRenderer::render(const UiFrameSnapshot* snapshot, VkCommandBuffer command) noexcept
     {
         if (impl_ == nullptr || impl_->renderer == nullptr || snapshot == nullptr ||
             command == VK_NULL_HANDLE)

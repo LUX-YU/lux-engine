@@ -27,15 +27,13 @@ namespace lux::render
         using CallbackStore = ResponseCallbackStore<>;
         using Builder = SingleOperationBuilder<>;
 
-        explicit RenderControlSession(
-            std::shared_ptr<RenderControlChannel<>> channel,
-            std::shared_ptr<RenderChannelSync> sync
-        );
+        explicit RenderControlSession(std::shared_ptr<RenderControlChannel<>> channel,
+                                      std::shared_ptr<RenderChannelSync> sync);
 
-        RenderControlSession(const RenderControlSession&) = delete;
-        RenderControlSession& operator=(const RenderControlSession&) = delete;
+        RenderControlSession(const RenderControlSession &) = delete;
+        RenderControlSession &operator=(const RenderControlSession &) = delete;
 
-        std::size_t pumpReplies();
+        std::size_t pumpReplies(std::size_t budget = (std::numeric_limits<std::size_t>::max)());
         [[nodiscard]] bool waitAndPumpReplies();
 
         template <class Reply> [[nodiscard]] Expected<Reply> syncCall(RenderRequest<Reply> request)
@@ -51,7 +49,7 @@ namespace lux::render
             return result->get();
         }
 
-        template <class Predicate> [[nodiscard]] bool awaitAllReady(Predicate&& all_ready)
+        template <class Predicate> [[nodiscard]] bool awaitAllReady(Predicate &&all_ready)
         {
             while (!all_ready())
                 if (!waitAndPumpReplies())
@@ -61,121 +59,116 @@ namespace lux::render
 
         struct CreateSceneConfig
         {
-            const char* name{""};
+            const char *name{""};
             std::uint32_t flags{0};
             lux::rdesc::ETextureFormat lit_color_format{lux::rdesc::ETextureFormat::RGBA16_SFLOAT};
             double coordinate_page_size{1024.0};
             std::int64_t scene_origin_page[3]{};
         };
 
-        [[nodiscard]] RenderRequest<SceneCreatedReply> createScene(const CreateSceneConfig& config);
-        [[nodiscard]] RenderRequest<SceneCreatedReply> createScene(const char* name, std::uint32_t flags = 0);
+        [[nodiscard]] RenderRequest<SceneCreatedReply> createScene(const CreateSceneConfig &config);
+        [[nodiscard]] RenderRequest<SceneCreatedReply> createScene(const char *name, std::uint32_t flags = 0);
         [[nodiscard]] RenderSceneLease adoptScene(RenderSceneId scene) noexcept;
         [[nodiscard]] bool destroyScene(RenderSceneId scene);
         [[nodiscard]] RenderRequest<GenericOkReply> setActiveScene(RenderSceneId scene, bool enabled = true);
 
-        [[nodiscard]] RenderRequest<ViewCreatedReply>
-        addView(RenderSceneId scene, lux::math::Extent2u extent, const char* name);
-        [[nodiscard]] RenderViewLease
-        adoptView(RenderSceneId scene, ViewHandle view, RenderViewReleaseObserver observer = {}) noexcept;
+        [[nodiscard]] RenderRequest<ViewCreatedReply> addView(RenderSceneId scene, lux::math::Extent2u extent,
+                                                              const char *name);
+        [[nodiscard]] RenderViewLease adoptView(RenderSceneId scene, ViewHandle view,
+                                                RenderViewReleaseObserver observer = {}) noexcept;
         [[nodiscard]] RenderRequest<GenericOkReply> removeView(RenderSceneId scene, ViewHandle view);
 
-        [[nodiscard]] RenderRequest<TargetReadyReply>
-        createOffscreenRenderTarget(lux::math::Extent2u extent, std::uint32_t flags = 0);
+        [[nodiscard]] RenderRequest<TargetReadyReply> createOffscreenRenderTarget(lux::math::Extent2u extent,
+                                                                                  std::uint32_t flags = 0);
 
-        [[nodiscard]] RenderRequest<TargetReadyReply>
-        createSurfaceRenderTarget(std::uint64_t native_window_handle, lux::math::Extent2u extent);
+        [[nodiscard]] RenderRequest<TargetReadyReply> createSurfaceRenderTarget(std::uint64_t native_window_handle,
+                                                                                lux::math::Extent2u extent);
 
-        [[nodiscard]] RenderTargetLease
-        adoptTarget(RenderTargetId target, RenderTargetReleaseObserver observer = {}) noexcept;
+        [[nodiscard]] RenderTargetLease adoptTarget(RenderTargetId target,
+                                                    RenderTargetReleaseObserver observer = {}) noexcept;
 
         [[nodiscard]] RenderRequest<TargetReleasedReply> destroyRenderTarget(RenderTargetId target);
 
         void setLayer(RenderTargetId target, std::uint32_t order, RenderSceneId scene, ViewHandle view);
         void removeLayer(RenderTargetId target, std::uint32_t order);
         void resizeTarget(RenderTargetId target, lux::math::Extent2u extent);
-        [[nodiscard]] RenderRequest<TargetResizedReply>
-        requestResizeTarget(RenderTargetId target, lux::math::Extent2u extent);
+        [[nodiscard]] RenderRequest<TargetResizedReply> requestResizeTarget(RenderTargetId target,
+                                                                            lux::math::Extent2u extent);
         void bindSwapchain(RenderSceneId scene, ViewHandle view);
 
-        [[nodiscard]] RenderRequest<ReadbackTargetReply> readbackTarget(
-            RenderTargetId target,
-            void* dst,
-            std::size_t capacity,
-            TargetSlot slot = TargetSlot::SCENE_COLOR
-        );
+        [[nodiscard]] RenderRequest<ReadbackTargetReply> readbackTarget(RenderTargetId target, void *dst,
+                                                                        std::size_t capacity,
+                                                                        TargetSlot slot = TargetSlot::SCENE_COLOR);
 
-        [[nodiscard]] RenderRequest<ReadbackTargetReply> readbackTargetAsync(
-            RenderTargetId target,
-            void* dst,
-            std::size_t capacity,
-            std::uint32_t settle_frames = 3,
-            TargetSlot slot = TargetSlot::SCENE_COLOR
-        );
-        [[nodiscard]] RenderRequest<RenderGraphDumpReply>
-        dumpRenderGraph(RenderSceneId scene, void* dst, std::size_t capacity);
-        [[nodiscard]] RenderRequest<GpuTimingReply>
-        queryGpuTiming(RenderSceneId scene, void* dst, std::size_t capacity);
-        [[nodiscard]] RenderRequest<QueryFeatureParamsReply>
-        queryFeatureParams(RenderSceneId scene, void* dst, std::size_t capacity);
-        [[nodiscard]] RenderRequest<DeviceCapsReply> queryDeviceCaps(DeviceCaps& output);
+        [[nodiscard]] RenderRequest<ReadbackTargetReply> readbackTargetAsync(RenderTargetId target, void *dst,
+                                                                             std::size_t capacity,
+                                                                             std::uint32_t settle_frames = 3,
+                                                                             TargetSlot slot = TargetSlot::SCENE_COLOR);
+        [[nodiscard]] RenderRequest<RenderGraphDumpReply> dumpRenderGraph(RenderSceneId scene, void *dst,
+                                                                          std::size_t capacity);
+        [[nodiscard]] RenderRequest<GpuTimingReply> queryGpuTiming(RenderSceneId scene, void *dst,
+                                                                   std::size_t capacity);
+        [[nodiscard]] RenderRequest<QueryFeatureParamsReply> queryFeatureParams(RenderSceneId scene, void *dst,
+                                                                                std::size_t capacity);
+        [[nodiscard]] RenderRequest<DeviceCapsReply> queryDeviceCaps(DeviceCaps &output);
 
-        [[nodiscard]] RenderRequest<ShaderCompiledReply>
-        compileShader(std::span<const std::byte> spirv, std::span<const std::byte> shader_info = {});
+        [[nodiscard]] RenderRequest<ShaderCompiledReply> compileShader(std::span<const std::byte> spirv,
+                                                                       std::span<const std::byte> shader_info = {});
 
         [[nodiscard]] RenderRequest<ShaderCompiledReply> compileShader(
             std::shared_ptr<const std::vector<std::byte>> spirv,
-            std::shared_ptr<const std::vector<std::byte>> shader_info = {}
-        );
+            std::shared_ptr<const std::vector<std::byte>> shader_info = {});
 
         void destroyShader(ShaderHandle shader);
 
-        [[nodiscard]] RenderRequest<FeatureTypeRegisteredReply>
-        registerFeatureType(const FeatureFactory& factory, std::shared_ptr<const void> module_lease = {});
+        [[nodiscard]] RenderRequest<FeatureTypeRegisteredReply> registerFeatureType(
+            const FeatureFactory &factory, std::shared_ptr<const void> module_lease = {});
 
         [[nodiscard]] RenderRequest<GenericOkReply> unregisterFeatureType(std::uint32_t feature_type_id);
-        [[nodiscard]] RenderRequest<QueryTypeIdReply> queryTypeId(const char* name);
+        [[nodiscard]] RenderRequest<QueryTypeIdReply> queryTypeId(const char *name);
 
         template <class Config>
-        [[nodiscard]] RenderRequest<FeatureAddedReply>
-        addFeature(RenderSceneId scene, std::uint32_t feature_type_id, const Config& config)
+        [[nodiscard]] RenderRequest<FeatureAddedReply> addFeature(RenderSceneId scene, std::uint32_t feature_type_id,
+                                                                  const Config &config)
         {
             static_assert(std::is_trivially_copyable_v<Config>);
-            return recordReply<FeatureAddedReply>([&](Builder& builder, auto callback) {
-                const auto attachment =
-                    builder.template emplaceAttachment<Config>(attachment_types::OwnedObject, config);
-                AddFeaturePayload payload{};
-                payload.scene_id = scene;
-                payload.feature_type_id = feature_type_id;
-                payload.attachment_index = attachment;
-                builder.pushWithReply(opcodes::CommandOp, type_ids::AddFeature, payload, std::move(callback));
-            }
-            );
+            return recordReply<FeatureAddedReply>(
+                [&](Builder &builder, auto callback)
+                {
+                    const auto attachment =
+                        builder.template emplaceAttachment<Config>(attachment_types::OwnedObject, config);
+                    AddFeaturePayload payload{};
+                    payload.scene_id = scene;
+                    payload.feature_type_id = feature_type_id;
+                    payload.attachment_index = attachment;
+                    builder.pushWithReply(opcodes::CommandOp, type_ids::AddFeature, payload, std::move(callback));
+                });
         }
 
-        [[nodiscard]] RenderRequest<FeatureAddedReply>
-        addFeatureRaw(RenderSceneId scene, std::uint32_t feature_type_id, std::span<const std::byte> config);
-        [[nodiscard]] RenderRequest<FeatureAddedReply>
-        addFeatureRaw(RenderSceneId scene, std::uint32_t feature_type_id, lux::cxx::SharedBytes<> config);
+        [[nodiscard]] RenderRequest<FeatureAddedReply> addFeatureRaw(RenderSceneId scene, std::uint32_t feature_type_id,
+                                                                     std::span<const std::byte> config);
+        [[nodiscard]] RenderRequest<FeatureAddedReply> addFeatureRaw(RenderSceneId scene, std::uint32_t feature_type_id,
+                                                                     lux::cxx::SharedBytes<> config);
         [[nodiscard]] RenderRequest<GenericOkReply> removeFeature(RenderSceneId scene, FeatureHandle feature);
-        [[nodiscard]] RenderRequest<GenericOkReply>
-        setFeatureEnabled(RenderSceneId scene, FeatureHandle feature, bool enabled);
+        [[nodiscard]] RenderRequest<GenericOkReply> setFeatureEnabled(RenderSceneId scene, FeatureHandle feature,
+                                                                      bool enabled);
 
-        template <FrameBlobPayload Payload> void send(OpCode opcode, TypeId type_id, const Payload& payload)
+        template <FrameBlobPayload Payload> void send(OpCode opcode, TypeId type_id, const Payload &payload)
         {
-            (void)record([&](Builder& builder) { builder.push(opcode, type_id, payload); });
+            (void)record([&](Builder &builder) { builder.push(opcode, type_id, payload); });
         }
 
         template <class Reply, FrameBlobPayload Payload>
-        [[nodiscard]] RenderRequest<Reply> request(OpCode opcode, TypeId type_id, const Payload& payload)
+        [[nodiscard]] RenderRequest<Reply> request(OpCode opcode, TypeId type_id, const Payload &payload)
         {
-            return recordReply<Reply>([&](Builder& builder, auto callback) {
-                if (opcode == opcodes::ResourceOp)
-                    builder.pushResource(type_id, payload, std::move(callback));
-                else
-                    builder.pushWithReply(opcode, type_id, payload, std::move(callback));
-            }
-            );
+            return recordReply<Reply>(
+                [&](Builder &builder, auto callback)
+                {
+                    if (opcode == opcodes::ResourceOp)
+                        builder.pushResource(type_id, payload, std::move(callback));
+                    else
+                        builder.pushWithReply(opcode, type_id, payload, std::move(callback));
+                });
         }
 
         void destroyTexture(RTextureHandle handle);
@@ -183,7 +176,8 @@ namespace lux::render
 
         /// Explicitly publish passive RAII fallbacks in child-before-parent
         /// order. Normal close() calls publish immediately.
-        [[nodiscard]] bool flushDeferredReleases() noexcept;
+        /// Preparation failure preserves the remaining obligations and returns an owning RenderError.
+        [[nodiscard]] Expected<bool> flushDeferredReleases() noexcept;
         [[nodiscard]] std::size_t pendingSceneReleases() const noexcept;
         [[nodiscard]] std::size_t pendingViewReleases() const noexcept;
         [[nodiscard]] std::size_t pendingTargetReleases() const noexcept;
@@ -195,9 +189,9 @@ namespace lux::render
         friend class RenderViewLease;
         friend class RenderTargetLease;
 
-        [[nodiscard]] bool publishPacket(OperationPacket<>&& packet, bool blocking = true);
+        [[nodiscard]] bool publishPacket(OperationPacket<> &&packet, bool blocking = true);
 
-        template <class Reply, class Record> [[nodiscard]] RenderRequest<Reply> recordReply(Record&& record)
+        template <class Reply, class Record> [[nodiscard]] RenderRequest<Reply> recordReply(Record &&record)
         {
             if (sync_->isStopping())
                 return RenderRequestFactory<Reply>::makeImmediateFailure({});
@@ -217,7 +211,7 @@ namespace lux::render
             return request;
         }
 
-        template <class Record> [[nodiscard]] bool record(Record&& record)
+        template <class Record> [[nodiscard]] bool record(Record &&record)
         {
             if (sync_->isStopping())
                 return false;

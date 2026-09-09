@@ -9,12 +9,12 @@ namespace lux::render
         deferOwnedRelease();
     }
 
-    RenderSceneLease::RenderSceneLease(RenderSceneLease&& other) noexcept
+    RenderSceneLease::RenderSceneLease(RenderSceneLease &&other) noexcept
         : session_(std::exchange(other.session_, nullptr)), id_(std::exchange(other.id_, {}))
     {
     }
 
-    RenderSceneLease& RenderSceneLease::operator=(RenderSceneLease&& other) noexcept
+    RenderSceneLease &RenderSceneLease::operator=(RenderSceneLease &&other) noexcept
     {
         if (this == &other)
             return *this;
@@ -32,8 +32,15 @@ namespace lux::render
         if (!session_ || !id_.isValid())
             return ERenderLeaseCloseStatus::AlreadyClosed;
 
-        if (!session_->destroyScene(id_))
-            return ERenderLeaseCloseStatus::Stopping;
+        try
+        {
+            if (!session_->destroyScene(id_))
+                return ERenderLeaseCloseStatus::Stopping;
+        }
+        catch (const std::bad_alloc &)
+        {
+            return ERenderLeaseCloseStatus::ALLOCATION_FAILURE;
+        }
         (void)std::exchange(id_, {});
         (void)std::exchange(session_, nullptr);
         return ERenderLeaseCloseStatus::Released;
@@ -53,13 +60,13 @@ namespace lux::render
         deferOwnedRelease();
     }
 
-    RenderViewLease::RenderViewLease(RenderViewLease&& other) noexcept
+    RenderViewLease::RenderViewLease(RenderViewLease &&other) noexcept
         : session_(std::exchange(other.session_, nullptr)), scene_id_(std::exchange(other.scene_id_, {})),
           view_(std::exchange(other.view_, {})), observer_(std::move(other.observer_))
     {
     }
 
-    RenderViewLease& RenderViewLease::operator=(RenderViewLease&& other) noexcept
+    RenderViewLease &RenderViewLease::operator=(RenderViewLease &&other) noexcept
     {
         if (this == &other)
             return *this;
@@ -77,7 +84,15 @@ namespace lux::render
         if (!session_ || !scene_id_.isValid() || !view_.isValid())
             return ERenderLeaseCloseStatus::AlreadyClosed;
 
-        auto request = session_->removeView(scene_id_, view_);
+        RenderRequest<GenericOkReply> request;
+        try
+        {
+            request = session_->removeView(scene_id_, view_);
+        }
+        catch (const std::bad_alloc &)
+        {
+            return ERenderLeaseCloseStatus::ALLOCATION_FAILURE;
+        }
         if (request.isReady() && request.failed())
             return ERenderLeaseCloseStatus::Stopping;
         (void)std::exchange(scene_id_, {});
@@ -103,13 +118,13 @@ namespace lux::render
         deferOwnedRelease();
     }
 
-    RenderTargetLease::RenderTargetLease(RenderTargetLease&& other) noexcept
+    RenderTargetLease::RenderTargetLease(RenderTargetLease &&other) noexcept
         : session_(std::exchange(other.session_, nullptr)), target_(std::exchange(other.target_, {})),
           observer_(std::move(other.observer_))
     {
     }
 
-    RenderTargetLease& RenderTargetLease::operator=(RenderTargetLease&& other) noexcept
+    RenderTargetLease &RenderTargetLease::operator=(RenderTargetLease &&other) noexcept
     {
         if (this == &other)
             return *this;
@@ -125,7 +140,15 @@ namespace lux::render
     {
         if (!session_ || !target_.isValid())
             return lux::cxx::unexpected(ERenderTargetCloseError::AlreadyClosed);
-        auto request = session_->destroyRenderTarget(target_);
+        RenderRequest<TargetReleasedReply> request;
+        try
+        {
+            request = session_->destroyRenderTarget(target_);
+        }
+        catch (const std::bad_alloc &)
+        {
+            return lux::cxx::unexpected(ERenderTargetCloseError::ALLOCATION_FAILURE);
+        }
         if (request.isReady() && request.failed())
             return lux::cxx::unexpected(ERenderTargetCloseError::Stopping);
         (void)std::exchange(target_, {});

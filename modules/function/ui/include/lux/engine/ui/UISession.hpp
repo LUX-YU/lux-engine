@@ -9,6 +9,7 @@
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/ui/CommandRouter.hpp>
 #include <lux/engine/ui/Frame.hpp>
+#include <lux/engine/ui/UiFrameSnapshot.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/PaneFactory.hpp>
 #include <lux/engine/ui/Theme.hpp>
@@ -124,9 +125,11 @@ namespace lux::ui
         [[nodiscard]] std::span<const UiContextIdView> focusedContexts() const noexcept;
 
         [[nodiscard]] Frame beginFrame(FrameInfo info);
+        [[nodiscard]] lux::cxx::expected<UiFrameSnapshot, EUiCaptureError> captureFrame() noexcept;
         void feedInput(const UiInputEvent& event);
         [[nodiscard]] UiInputSnapshot inputSnapshot() const noexcept;
         void setSplitLayout(SplitLayout layout);
+        [[nodiscard]] lux::cxx::expected<void, ELayoutError> validateSplitLayout(const SplitLayout&) const noexcept;
         void clearSplitLayout();
 
         [[nodiscard]] LayoutSnapshot captureLayout() const;

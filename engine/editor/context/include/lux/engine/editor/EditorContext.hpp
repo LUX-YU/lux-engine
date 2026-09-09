@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/editor/EditorSelection.hpp>
-#include <lux/engine/editor/Toolset.hpp>
+#include <lux/engine/editor/application/tooling/Toolset.hpp>
 #include <lux/engine/editor/context/visibility.h>
 #include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/process/TaskScope.hpp>
@@ -14,13 +14,13 @@ namespace lux::editor
 {
     struct EditorContextCreateInfo final
     {
-        Toolset& toolset;
+        application::Toolset& toolset;
         asset::AssetVfsView vfs;
         process::asset_loading::AssetReadPort asset_read;
         process::ExecutionRuntime& execution;
         process::TaskScope& tasks;
         EditorSelection& selection;
-        ui::UISession& ui;
+        lux::ui::UISession& ui;
         const scene::SceneMetaManager& scene_meta;
     };
 
@@ -35,8 +35,8 @@ namespace lux::editor
         EditorContext(EditorContext&&) = delete;
         EditorContext& operator=(EditorContext&&) = delete;
 
-        [[nodiscard]] Toolset& toolchain() noexcept;
-        [[nodiscard]] const Toolset& toolchain() const noexcept;
+        [[nodiscard]] application::Toolset& toolchain() noexcept;
+        [[nodiscard]] const application::Toolset& toolchain() const noexcept;
         [[nodiscard]] asset::AssetVfsView vfs() const noexcept;
         [[nodiscard]] process::asset_loading::AssetReadPort assetRead() const noexcept;
         [[nodiscard]] process::ExecutionRuntime& execution() noexcept;
@@ -45,18 +45,18 @@ namespace lux::editor
         [[nodiscard]] const process::TaskScope& tasks() const noexcept;
         [[nodiscard]] EditorSelection& selection() noexcept;
         [[nodiscard]] const EditorSelection& selection() const noexcept;
-        [[nodiscard]] ui::UISession& ui() noexcept;
-        [[nodiscard]] const ui::UISession& ui() const noexcept;
+        [[nodiscard]] lux::ui::UISession& ui() noexcept;
+        [[nodiscard]] const lux::ui::UISession& ui() const noexcept;
         [[nodiscard]] const scene::SceneMetaManager& sceneMeta() const noexcept;
 
     private:
-        Toolset* toolset_{};
+        application::Toolset* toolset_{};
         asset::AssetVfsView vfs_;
         process::asset_loading::AssetReadPort asset_read_;
         process::ExecutionRuntime* execution_{};
         process::TaskScope* tasks_{};
         EditorSelection* selection_{};
-        ui::UISession* ui_{};
+        lux::ui::UISession* ui_{};
         const scene::SceneMetaManager* scene_meta_{};
     };
 } // namespace lux::editor

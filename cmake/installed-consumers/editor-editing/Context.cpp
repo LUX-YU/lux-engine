@@ -17,7 +17,7 @@ public:
 int main()
 {
     lux::object::ObjectMessageQueue queue;
-    auto histories = lux::editor::ActiveEditHistory::create(2U);
+    auto histories = lux::editor::ui::ActiveEditHistory::create(2U);
     assert(histories);
     lux::editor::EditHistoryController controller(queue.dispatcherRef(), **histories);
     Sink sink(queue.dispatcherRef());

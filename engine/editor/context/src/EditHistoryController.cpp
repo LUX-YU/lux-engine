@@ -4,7 +4,7 @@
 namespace lux::editor
 {
     EditHistoryController::EditHistoryController(
-        object::ObjectDispatcherRef dispatcher, ActiveEditHistory& histories
+        object::ObjectDispatcherRef dispatcher, lux::editor::ui::ActiveEditHistory& histories
     ) noexcept
         : Object(std::move(dispatcher)), histories_(&histories)
     {

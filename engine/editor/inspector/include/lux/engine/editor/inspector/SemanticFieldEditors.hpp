@@ -34,8 +34,8 @@ namespace lux::editor::inspector
         const auto before = parent->entity;
         auto encoded = static_cast<std::uint32_t>(entt::to_integral(before));
         context.frame.propertyRow(spec.display_name.empty() ? "Parent" : spec.display_name);
-        auto id = context.frame.id(ui::WidgetIdView{spec.name});
-        auto edit = context.frame.editScalar("##value", encoded, ui::ScalarEditSpec<std::uint32_t>{});
+        auto id = context.frame.id(lux::ui::WidgetIdView{spec.name});
+        auto edit = context.frame.editScalar("##value", encoded, lux::ui::ScalarEditSpec<std::uint32_t>{});
         if (!spec.tooltip.empty())
             context.frame.tooltip(spec.tooltip);
         if (edit.began)

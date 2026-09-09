@@ -938,13 +938,21 @@ namespace lux::render
                     const uint32_t ri = sync.image_patch_resource_idx[bi];
                     uint8_t src_is_final = 0u;
 
-                    const bool can_patch_first_touch = ri < subsequent_view_patched.size() &&
+                    const bool can_patch_first_touch = ri < compiled.original_graph.resources.size() &&
+                                                       ri < subsequent_view_patched.size() &&
                                                        !subsequent_view_patched[ri] &&
                                                        ri < compiled.imported_final_state_lut.size();
                     if (can_patch_first_touch)
                     {
+                        const auto& resource = compiled.original_graph.resources[ri];
+                        // A different target's first layer clears its own image. Scene-wide view order
+                        // does not establish that image's layout. Shared imports and preserving layers
+                        // retain the previous recording's final state and synchronization.
+                        const bool is_discarded_target = resource.import_info && resource.import_info->slot &&
+                                                         !resource.import_info->preserve_content;
                         const uint32_t lut = compiled.imported_final_state_lut[ri];
-                        if (lut != RGCompiledGraph::kInvalidSlotIdx && lut < compiled.imported_final_states.size())
+                        if (!is_discarded_target && lut != RGCompiledGraph::kInvalidSlotIdx &&
+                            lut < compiled.imported_final_states.size())
                         {
                             barrier.srcStageMask = compiled.imported_final_states[lut].stage_mask;
                             barrier.srcAccessMask = compiled.imported_final_states[lut].access_mask;

@@ -1340,11 +1340,51 @@ namespace
             lifecycle_begins = count;
         }
 
+        struct PagePhase final
+        {
+            std::size_t cycle{}, phase{}, active{}, idle{}, live{}, pinned{}, rounding{};
+            std::uint64_t supply{}, release{}, reuse{};
+        };
+        std::unique_ptr<std::array<PagePhase, 16384U>> page_phases;
+        std::size_t page_phase_count{}, page_phase_dropped{};
+        void capturePagePhase(std::size_t cycle, std::size_t phase)
+        {
+            if (!page_phases) return;
+            if (page_phase_count == page_phases->size()) { ++page_phase_dropped; return; }
+            const auto m = backend->stats().vm_allocations;
+            (*page_phases)[page_phase_count++] = {cycle, phase, m.active_page_backing_bytes,
+                m.idle_page_backing_bytes, m.live_bytes, m.pinned_free_slot_bytes, m.class_rounding_bytes,
+                m.page_allocations, m.page_frees, m.page_reuses};
+        }
+        void printPagePhases() const
+        {
+            if (!page_phases) return;
+            for (std::size_t i{}; i < page_phase_count; ++i)
+            {
+                const auto& p = (*page_phases)[i];
+                std::printf("PAGE_PHASE,cycle=%zu,phase=%zu,active=%zu,idle=%zu,live=%zu,pinned=%zu,rounding=%zu,"
+                    "supply=%llu,release=%llu,reuse=%llu,gc_state=null,gc_debt=null,gc_cycle=null\n",
+                    p.cycle, p.phase, p.active, p.idle, p.live, p.pinned, p.rounding, p.supply, p.release, p.reuse);
+            }
+            std::printf("PAGE_PHASE_END,count=%zu,dropped=%zu\n", page_phase_count, page_phase_dropped);
+        }
+
         void memorySnapshot(const char* phase) const
         {
             const auto stats = backend->stats();
             const auto& m = stats.vm_allocations;
             if (!m.enabled) return;
+            for (const auto& c : m.classes)
+            {
+                if (!c.payload) continue;
+                std::printf("VM_CLASS,phase=%s,payload=%zu,stride=%zu,capacity=%zu,tail=%zu,active=%zu,idle=%zu,"
+                    "requests=%llu,frees=%llu,bytes=%llu,supply=%llu,same=%llu,cross=%llu,idle_limit=%llu,"
+                    "trim=%llu,shutdown=%llu,fallback=%llu,header_writes=%llu,page_header=%zu,block_header=%zu\n",
+                    phase, c.payload, c.stride, c.capacity, c.tail, c.active_pages, c.idle_pages, c.requests, c.frees,
+                    c.requested_bytes, c.supplied, c.same_reuses, c.cross_reuses, c.idle_limit_releases,
+                    c.trim_releases, c.shutdown_releases, c.fallback, c.header_writes,
+                    m.page_header_bytes, m.block_header_bytes);
+            }
             std::printf("VM_ROI,phase=%s,alloc=%llu,realloc=%llu,free=%llu,heap_alloc=%llu,heap_free=%llu,"
                 "requested_live=%zu,active=%zu,idle=%zu,pinned_free=%zu,rounding=%zu,metadata=%zu,large=%zu,"
                 "large_requested=%zu,page_alloc=%llu,page_free=%llu,direct_alloc=%llu,direct_free=%llu\n",
@@ -2925,12 +2965,19 @@ namespace
             options.size,
             options.vm_accounting, options.lua_incremental_gc
         };
+        if (options.vm_accounting) harness.page_phases =
+            std::make_unique<std::array<LuaRuntimeHarness::PagePhase, 16384U>>();
         const auto execute_cycle = [&](std::size_t frame, bool record) {
             const auto operation = [&] {
+                const auto cycle = frame + (record ? options.warmups : 0U);
+                harness.capturePagePhase(cycle, 0U);
                 harness.dispatch();
+                harness.capturePagePhase(cycle, 1U);
                 harness.deliverEvent(31);
+                harness.capturePagePhase(cycle, 2U);
                 harness.advance(SimulationDuration{0});
                 harness.stablePoint();
+                harness.capturePagePhase(cycle, 3U);
                 Row row;
                 appendLuaStats(row, harness);
                 row.events = 1U;
@@ -2991,6 +3038,8 @@ namespace
             static_cast<unsigned long long>(cycles), static_cast<unsigned long long>(completed),
             static_cast<unsigned long long>(expected), static_cast<unsigned long long>(checksum));
         finishRuntimeBenchmark(*harness.system, "lua-event");
+        harness.memorySnapshot("shutdown");
+        harness.printPagePhases();
     }
 
     void runLuaChurn(const Options& options, std::vector<Row>& rows)

@@ -20,6 +20,12 @@ namespace lux::script::lua
         std::array<int, 6U> gc_parameters{-1, -1, -1, -1, -1, -1};
         bool track_allocations{};
     };
+    struct LuaPageClassStats final
+    {
+        std::size_t payload{}, stride{}, capacity{}, tail{}, active_pages{}, idle_pages{};
+        std::uint64_t requests{}, frees{}, requested_bytes{}, supplied{}, same_reuses{}, cross_reuses{};
+        std::uint64_t idle_limit_releases{}, trim_releases{}, shutdown_releases{}, fallback{}, header_writes{};
+    };
     struct LuaAllocationStats final
     {
         bool enabled{};
@@ -33,5 +39,8 @@ namespace lux::script::lua
         std::size_t active_page_backing_bytes{}, idle_page_backing_bytes{}, peak_idle_page_backing_bytes{};
         std::size_t pinned_free_slot_bytes{}, class_rounding_bytes{}, metadata_and_header_bytes{};
         std::size_t large_block_backing_bytes{}, large_requested_live_bytes{};
+        // Fixed diagnostic storage; callbacks compiled without Track do not update it.
+        std::array<LuaPageClassStats, 9U> classes{};
+        std::size_t page_header_bytes{}, block_header_bytes{};
     };
 }

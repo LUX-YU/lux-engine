@@ -38,7 +38,7 @@ namespace lux::script::lua
         {
             stats_.enabled = config.track_allocations;
         }
-        ~LuaPageAllocator() { clear(); }
+        ~LuaPageAllocator() { clear(true); }
         LuaPageAllocator(const LuaPageAllocator&) = delete;
         LuaPageAllocator& operator=(const LuaPageAllocator&) = delete;
         [[nodiscard]] Allocate callback() const noexcept
@@ -54,11 +54,22 @@ namespace lux::script::lua
         {
             if (!stats_.enabled) return {};
             auto result = stats_;
+            result.page_header_bytes = sizeof(Page);
+            result.block_header_bytes = sizeof(Block);
+            for (std::size_t i{}; i < classes_.size(); ++i)
+            {
+                auto& c = result.classes[i];
+                c.payload = classes_[i];
+                c.stride = sizeof(Block) + c.payload;
+                c.capacity = (page_bytes_ - sizeof(Page)) / c.stride;
+                c.tail = page_bytes_ - sizeof(Page) - c.capacity * c.stride;
+            }
             result.idle_page_backing_bytes = idle_bytes_;
             std::size_t small_capacity{};
             for (auto* page = pages_; page; page = page->next)
             {
-                if (page->live == 0U) continue;
+                if (page->live == 0U) { ++result.classes[page->index].idle_pages; continue; }
+                ++result.classes[page->index].active_pages;
                 result.active_page_backing_bytes += page_bytes_;
                 result.pinned_free_slot_bytes += (page->capacity - page->live) * classes_[page->index];
                 small_capacity += page->live * classes_[page->index];
@@ -70,14 +81,20 @@ namespace lux::script::lua
             return result;
         }
         // Only idle pages can be released. A live page is never bulk-freed to conceal a missing Lua free.
-        void clear() noexcept
+        void clear(bool shutdown = false) noexcept
         {
             while (idle_)
             {
                 auto* page = idle_;
                 removeAvailable(idle_, page);
                 idle_bytes_ -= page_bytes_;
-                if (stats_.enabled) destroyPage<true>(page); else destroyPage<false>(page);
+                if (stats_.enabled)
+                {
+                    auto& c = stats_.classes[page->index];
+                    if (shutdown) ++c.shutdown_releases; else ++c.trim_releases;
+                    destroyPage<true>(page);
+                }
+                else destroyPage<false>(page);
             }
         }
         [[nodiscard]] bool hasLiveAllocations() const noexcept
@@ -148,7 +165,12 @@ namespace lux::script::lua
                 {
                     removeAvailable(idle_, page);
                     idle_bytes_ -= page_bytes_;
-                    if constexpr (Track) ++stats_.page_reuses;
+                    if constexpr (Track)
+                    {
+                        ++stats_.page_reuses;
+                        auto& c = stats_.classes[index];
+                        if (page->index == index) ++c.same_reuses; else ++c.cross_reuses;
+                    }
                 }
                 else
                 {
@@ -156,14 +178,14 @@ namespace lux::script::lua
                     else page = static_cast<Page*>(heapAllocate<Track>(page_bytes_));
                     if (!page)
                     {
-                        if constexpr (Track) ++stats_.page_fallbacks;
+                        if constexpr (Track) { ++stats_.page_fallbacks; ++stats_.classes[index].fallback; }
                         return acquireDirect<Track>(size);
                     }
                     *page = {};
                     page->next = pages_;
                     if (pages_) pages_->previous = page;
                     pages_ = page;
-                    if constexpr (Track) ++stats_.page_allocations;
+                    if constexpr (Track) { ++stats_.page_allocations; ++stats_.classes[index].supplied; }
                 }
                 page->index = index;
                 page->stride = sizeof(Block) + classes_[index];
@@ -183,6 +205,7 @@ namespace lux::script::lua
                 auto* bytes = reinterpret_cast<unsigned char*>(page) + sizeof(Page) + page->carved++ * page->stride;
                 auto* block = reinterpret_cast<Block*>(bytes);
                 block->page = page;
+                if constexpr (Track) ++stats_.classes[index].header_writes;
                 result = block + 1;
             }
             if (++page->live == page->capacity) removeAvailable(partial_[index], page);
@@ -211,7 +234,11 @@ namespace lux::script::lua
             page->free = pointer;
             if (--page->live != 0U) return;
             removeAvailable(partial_[page->index], page);
-            if (page_bytes_ > budget_ - idle_bytes_) destroyPage<Track>(page);
+            if (page_bytes_ > budget_ - idle_bytes_)
+            {
+                if constexpr (Track) ++stats_.classes[page->index].idle_limit_releases;
+                destroyPage<Track>(page);
+            }
             else
             {
                 addAvailable(idle_, page);
@@ -223,7 +250,9 @@ namespace lux::script::lua
         template<bool Track> void* resize(void* pointer, std::size_t old_size, std::size_t size) noexcept
         {
             if (!pointer) old_size = 0U; // Lua supplies a type tag for first allocations.
-            const bool old_direct = pointer && !(static_cast<Block*>(pointer) - 1)->page;
+            const auto* old_page = pointer ? (static_cast<Block*>(pointer) - 1)->page : nullptr;
+            const bool old_direct = pointer && !old_page;
+            const auto old_index = old_page ? old_page->index : classes_.size();
             if (size == 0U)
             {
                 if (pointer)
@@ -233,6 +262,7 @@ namespace lux::script::lua
                         stats_.live_bytes -= old_size;
                         if (old_direct) stats_.large_requested_live_bytes -= old_size;
                         ++stats_.frees;
+                        if (old_index < classes_.size()) ++stats_.classes[old_index].frees;
                         stats_.released_bytes += old_size;
                     }
                     release<Track>(pointer);
@@ -265,6 +295,13 @@ namespace lux::script::lua
                 if (old_direct) stats_.large_requested_live_bytes -= old_size;
                 if (!(static_cast<Block*>(result) - 1)->page) stats_.large_requested_live_bytes += size;
                 if (pointer) ++stats_.reallocations; else ++stats_.allocations;
+                if (old_index < classes_.size()) ++stats_.classes[old_index].frees;
+                if (const auto* page = (static_cast<Block*>(result) - 1)->page)
+                {
+                    auto& c = stats_.classes[page->index];
+                    ++c.requests;
+                    c.requested_bytes += size;
+                }
                 stats_.requested_bytes += size;
                 stats_.released_bytes += old_size;
             }

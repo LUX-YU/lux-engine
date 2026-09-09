@@ -882,7 +882,10 @@ namespace
         assert(backend);
         TestProvider provider;
         const lux::script::ScriptAbilityBinding binding{&kTestAbility, &provider, &provider, kTestErasedMethods};
-        const std::array capabilities{publishScriptAbility(binding)};
+        const auto publication = publishScriptAbility(binding);
+        const std::array capabilities{PreparedScriptApiCapability{
+            lux::script::ScriptApiContractId{publication.contract.name()}, publication.schema_hash,
+            publication.context, publication.dispatch, publication.schema_version, publication.methods}};
         const auto api = backend.descriptor();
         ScriptBackendInstance instance;
         assert(api.createInstance(api.context, {assetId(), SimulationScriptScope{}, nullptr, {1U, 1U}, capabilities},

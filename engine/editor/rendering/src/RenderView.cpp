@@ -61,6 +61,8 @@ namespace lux::editor::rendering
             return checked;
         if (state.close_requested)
             return lux::cxx::unexpected(RendererFailure{ERendererError::STOPPING, {}, id()});
+        if (state.status.state == EViewState::FAILED && state.status.failure)
+            return lux::cxx::unexpected(*state.status.failure);
         const auto finite = [](double value) { return std::isfinite(value) && std::abs(value) <= FLT_MAX; };
         const bool valid_values = std::all_of(camera.view.begin(), camera.view.end(), finite) &&
                                   std::all_of(camera.projection.begin(), camera.projection.end(), finite) &&

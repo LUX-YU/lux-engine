@@ -247,6 +247,7 @@ int main(int argc, char **argv)
     using namespace lux::editor;
     require(argc == 4 || argc == 5, "arguments: asset package, output directory, scene variant, optional recovery pak");
     const std::string_view variant{argv[3]};
+    bool failed_view_contract = true;
     const bool retry_test = variant == "retry";
     const bool dynamic_test = variant == "dynamic";
     const bool churn_test = variant == "churn";
@@ -368,6 +369,45 @@ int main(int argc, char **argv)
                         "failed View status owns its exact backend error and full View identity");
                 require(!image && image.error().render_error.args == expected.args,
                         "failed image query does not misreport NOT_READY");
+                const auto sameFailure = [&](const rendering::RendererFailure &failure)
+                {
+                    const auto &original = *status.failure;
+                    return failure.code == original.code && failure.render_error.type == original.render_error.type &&
+                           failure.render_error.args == original.render_error.args && failure.view == original.view &&
+                           failure.request == original.request && failure.backend_status == original.backend_status;
+                };
+                const auto before_stats = renderer->statistics();
+                for (const auto extent : std::array<rendering::PixelExtent, 4>{{{96, 80}, {0, 0}, {96, 80}, {64, 64}}})
+                {
+                    const auto resized = rejected_views[i]->requestExtent(extent);
+                    const auto after = rejected_views[i]->status();
+                    const auto queried = rejected_views[i]->acquireImage();
+                    const bool preserved = !resized && sameFailure(resized.error()) &&
+                        after.state == rendering::EViewState::FAILED &&
+                        after.request_sequence == status.request_sequence &&
+                        after.requested_extent == status.requested_extent && after.failure &&
+                        sameFailure(*after.failure) && !queried && sameFailure(queried.error());
+                    failed_view_contract &= preserved;
+                    std::printf("G01 view=%zu extent=%u,%u state=%u->%u sequence=%llu->%llu "
+                                "request=%llu resize_code=%d image_code=%d identity_preserved=%u\n",
+                                i, extent.width, extent.height, unsigned(status.state), unsigned(after.state),
+                                status.request_sequence, after.request_sequence, status.failure->request,
+                                resized ? -1 : int(resized.error().code), queried ? -1 : int(queried.error().code),
+                                unsigned(preserved));
+                }
+                rendering::CameraFrame camera;
+                camera.desired.session = 1;
+                const auto camera_result = rejected_views[i]->setCamera(camera);
+                const bool camera_preserved = !camera_result && sameFailure(camera_result.error());
+                failed_view_contract &= camera_preserved;
+                const auto after_stats = renderer->statistics();
+                failed_view_contract &= before_stats.views == after_stats.views &&
+                    before_stats.descriptors_created == after_stats.descriptors_created &&
+                    before_stats.render_events == after_stats.render_events;
+                std::printf("G01 camera_preserved=%u views=%zu/%zu descriptors=%llu/%llu events=%llu/%llu\n",
+                            unsigned(camera_preserved), before_stats.views, after_stats.views,
+                            before_stats.descriptors_created, after_stats.descriptors_created,
+                            before_stats.render_events, after_stats.render_events);
                 require(rejected_views[i]->beginClose(), "failed view close retains owner");
             }
             require(renderer->statistics().render_events == 2 && renderer->statistics().dropped_events == 1,
@@ -1250,4 +1290,9 @@ int main(int argc, char **argv)
         require(execution->join(), "execution terminal join");
     }
     lux::meta::ReflectionRegistry::destroyRegistry();
+    if (!failed_view_contract)
+    {
+        std::fputs("G01 FAIL: failed View ordinary operations lost original failure; all owners closed\n", stderr);
+        return 1;
+    }
 }

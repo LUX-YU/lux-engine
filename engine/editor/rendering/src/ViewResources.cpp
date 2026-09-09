@@ -41,6 +41,8 @@ namespace lux::editor::rendering::detail
             return checked;
         if (close_requested || status.state == EViewState::CLOSED)
             return fail(ERendererError::STOPPING, status.view);
+        if (status.state == EViewState::FAILED && status.failure)
+            return lux::cxx::unexpected(*status.failure);
         if (extent.width > 16384 || extent.height > 16384)
             return fail(ERendererError::INVALID_ARGUMENT, status.view);
         if (extent == status.requested_extent)

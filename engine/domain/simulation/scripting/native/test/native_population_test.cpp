@@ -147,10 +147,10 @@ namespace
             lux_script_value_slot output{LUX_SCRIPT_VK_UINT32, {}, sizeof(observed),
                 lux::semantic::typeId("lux.u32"), &observed};
             lux_script_call_frame read_frame{};
-            read_frame.user_context = read_method.synchronous.context;
+
             read_frame.return_count = 1U;
             read_frame.returns = &output;
-            assert(read_method.synchronous.invoke(&read_frame) == 0 && observed == 6U);
+            assert(read_method.synchronous.invoke(read_method.synchronous.context, &read_frame) == 0 && observed == 6U);
             api.releaseMethod(api.context, instances[2], read_method);
             for (std::size_t i{}; i < calls.size(); ++i)
                 api.releaseMethod(api.context, instances[i == 0U ? 2U : 0U], calls[i]);

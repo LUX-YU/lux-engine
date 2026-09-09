@@ -1602,11 +1602,11 @@ namespace lux::simulation::script
             return {LUX_LUA_BOUNDARY_SUSPEND, 0, 0};
         }
 
-        static int invoke(lux_script_call_frame* frame) noexcept
+        static int invoke(void* invocation_context, lux_script_call_frame* frame) noexcept
         {
-            if (!frame || !frame->user_context)
+            if (!frame || !invocation_context)
                 return -1;
-            auto& call = *static_cast<PreparedCall*>(frame->user_context);
+            auto& call = *static_cast<PreparedCall*>(invocation_context);
             if (!call.active || !call.instance || !call.function)
                 return -1;
             auto& self = *call.instance->owner;

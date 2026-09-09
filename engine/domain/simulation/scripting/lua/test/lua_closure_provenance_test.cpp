@@ -142,8 +142,8 @@ void testAbilityProvenance()
         ScriptBackendPreparedMethod prepared;
         assert(runtime.prepareMethod(runtime.context, instance, artifact.description().exports[method], prepared) ==
             EScriptBackendResult::SUCCESS);
-        lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, prepared.synchronous.context};
-        const auto result = prepared.synchronous.invoke(&frame);
+        lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+        const auto result = prepared.synchronous.invoke(prepared.synchronous.context, &frame);
         runtime.releaseMethod(runtime.context, instance, prepared);
         return result;
     };
@@ -231,8 +231,8 @@ void testEventProvenance()
     ScriptBackendPreparedMethod save;
     assert(runtime.prepareMethod(runtime.context, instances[0], first_artifact.description().exports[0], save) ==
         EScriptBackendResult::SUCCESS);
-    lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, save.synchronous.context};
-    assert(save.synchronous.invoke(&frame) == 0);
+    lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+    assert(save.synchronous.invoke(save.synchronous.context, &frame) == 0);
     runtime.releaseMethod(runtime.context, instances[0], save);
     ScriptBackendPreparedMethod wait;
     assert(runtime.prepareMethod(runtime.context, instances[1], second_artifact.description().exports[1], wait) ==
@@ -328,8 +328,8 @@ void testNestedScopes()
         {
             ++self.calls;
             lux_script_call_frame frame{};
-            frame.user_context = self.method->synchronous.context;
-            const auto status = self.method->synchronous.invoke(&frame);
+
+            const auto status = self.method->synchronous.invoke(self.method->synchronous.context, &frame);
             if (status != 0)
             {
                 assert(status == -8); // Existing execution-depth capacity error, not a Lua script error.
@@ -347,8 +347,8 @@ void testNestedScopes()
         }
         else
         {
-            frame.user_context = self.method->synchronous.context;
-            self.status = self.method->synchronous.invoke(&frame);
+
+            self.status = self.method->synchronous.invoke(self.method->synchronous.context, &frame);
         }
     }};
     const Dispatch inner_dispatch{[](void* opaque) noexcept { ++*static_cast<int*>(opaque); }};
@@ -381,8 +381,8 @@ void testNestedScopes()
         nested.calls = 0;
         nested.coroutine = mode == 2U;
         lux_script_call_frame frame{};
-        frame.user_context = outer_method.synchronous.context;
-        assert(outer_method.synchronous.invoke(&frame) == 0 && nested.calls == 2);
+
+        assert(outer_method.synchronous.invoke(outer_method.synchronous.context, &frame) == 0 && nested.calls == 2);
         if (mode == 0U)
             assert(nested.status == 0 && inner_calls == 1);
         else if (mode == 1U)
@@ -408,13 +408,13 @@ void testNestedScopes()
     nested.calls = 0;
     nested.probe_depth = true;
     lux_script_call_frame depth_frame{};
-    depth_frame.user_context = outer_method.synchronous.context;
-    assert(outer_method.synchronous.invoke(&depth_frame) == 0);
+
+    assert(outer_method.synchronous.invoke(outer_method.synchronous.context, &depth_frame) == 0);
     assert(nested.calls == 30 && nested.depth_rejections == 16);
     assert(backend->stats().execution_depth_high_water == 4U);
     nested.calls = 0;
     nested.depth_rejections = 0;
-    assert(outer_method.synchronous.invoke(&depth_frame) == 0);
+    assert(outer_method.synchronous.invoke(outer_method.synchronous.context, &depth_frame) == 0);
     assert(nested.calls == 30 && nested.depth_rejections == 16);
     std::puts("DEPTH_RECOVERY,depth=4,providers=30,rejected=16,repeat=1 PASS");
     runtime.releaseMethod(runtime.context, outer_instance, outer_method);

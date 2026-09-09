@@ -13,7 +13,7 @@
 //       lux_script_abi, loaded through NativeModule like any
 //       hand-written native plugin. bind_host fills the import slots from
 //       a host resolver; the instance-state block travels through
-//       call_frame.user_context. 3x invoke must sink the same sequence.
+//       the explicit native context. 3x invoke must sink the same sequence.
 //    3. Negative: a resolver that can't supply the reflected import makes
 //       the module REJECTED at load (bind_host reports missing imports) —
 //       no half-bound module ever becomes callable.
@@ -256,16 +256,17 @@ int main(int argc, char** argv)
         std::vector<std::byte> state(artifact.state_size, std::byte{0});
         std::memcpy(state.data(), artifact.state_defaults.data(), artifact.state_defaults.size());
 
+        lux_script_native_instance_context native_context{state.data()};
         lux_script_call_frame raw{};
         raw.args = nullptr;
         raw.arg_count = 0;
         raw.returns = nullptr;
         raw.return_count = 0;
         raw.world_context = nullptr;
-        raw.user_context = state.data();
+
         g_sunk.clear();
         for (int i = 0; i < 3; ++i)
-            check(fn->invoke(&raw) == 0, "AOT Bump invoke");
+            check(fn->invoke(&native_context, &raw) == 0, "AOT Bump invoke");
         check(g_sunk == jit_sunk, "AOT output matches the JIT baseline (differential)");
 
         int32_t live_counter = 0;

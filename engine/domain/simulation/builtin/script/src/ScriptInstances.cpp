@@ -600,11 +600,11 @@ namespace lux::simulation::script::detail
             frame.arg_count = 1U;
         }
         const auto call = methods_[method].backend.synchronous;
-        frame.user_context = call.context;
+
         Protection protection{*this};
         auto& mount = mounts_[slot];
         mount.lifecycle_call = true;
-        const auto result = call.invoke(&frame);
+        const auto result = call.invoke(call.context, &frame);
         mount.lifecycle_call = false;
         return result;
     }

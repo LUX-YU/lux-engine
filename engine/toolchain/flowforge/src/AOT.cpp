@@ -843,7 +843,7 @@ namespace lux::flowforge
             }
             frame_size = alignFrameOffset(frame_size, frame_alignment);
 
-            auto* start_type = llvm::FunctionType::get(i32, {ptr_type, ptr_type, ptr_type, ptr_type}, false);
+            auto* start_type = llvm::FunctionType::get(i32, {ptr_type, ptr_type, ptr_type, ptr_type, ptr_type}, false);
             result.start = llvm::Function::Create(
                 start_type,
                 llvm::GlobalValue::InternalLinkage,
@@ -853,18 +853,15 @@ namespace lux::flowforge
             result.start->setDSOLocal(true);
             auto* start_block = llvm::BasicBlock::Create(context, "entry", result.start);
             llvm::IRBuilder<> start_builder(start_block);
-            auto* call_frame = result.start->getArg(0);
-            auto* start_host = result.start->getArg(1);
-            auto* start_frame = result.start->getArg(2);
-            auto* start_outcome = result.start->getArg(3);
+            auto* native_instance = result.start->getArg(0);
+            auto* call_frame = result.start->getArg(1);
+            auto* start_host = result.start->getArg(2);
+            auto* start_frame = result.start->getArg(3);
+            auto* start_outcome = result.start->getArg(4);
             start_builder.CreateStore(llvm::ConstantInt::get(i32, 0U), start_frame);
             const auto start_field = [&](llvm::Value* base, std::size_t offset) {
                 return start_builder.CreateGEP(i8, base, llvm::ConstantInt::get(i64, offset));
             };
-            auto* native_instance = start_builder.CreateLoad(
-                ptr_type,
-                start_field(call_frame, offsetof(lux_script_call_frame, native_instance))
-            );
             llvm::SmallVector<llvm::Value*, 12> start_core_arguments;
             auto* state = start_builder.CreateLoad(
                 ptr_type,
@@ -959,6 +956,7 @@ namespace lux::flowforge
             std::uint64_t frame_hash{14695981039346656037ULL};
             frame_hash = appendFrameHash(frame_hash, result.frame_size);
             frame_hash = appendFrameHash(frame_hash, result.frame_align);
+            frame_hash = appendFrameHash(frame_hash, LUX_SCRIPT_FRAME_ZEROED_BY_HOST);
             for (std::size_t index{}; index < argument_offsets.size(); ++index)
             {
                 frame_hash = appendFrameHash(frame_hash, argument_offsets[index]);
@@ -1216,23 +1214,19 @@ namespace lux::flowforge
             // Leading params are instance state + prepared Ability runtime; payload follows.
             const size_t payload_count = tft->getNumParams() - 2;
 
-            auto* wrap_ft = llvm::FunctionType::get(i32, {ptr_ty}, false);
+            auto* wrap_ft = llvm::FunctionType::get(i32, {ptr_ty, ptr_ty}, false);
             auto* wrap =
                 llvm::Function::Create(wrap_ft, llvm::GlobalValue::InternalLinkage, "lux_fnwrap_" + ev.symbol, m);
 
             auto* entry = llvm::BasicBlock::Create(ctx, "entry", wrap);
             llvm::IRBuilder<> b(entry);
-            llvm::Value* frame = wrap->getArg(0);
+            llvm::Value* native_instance = wrap->getArg(0);
+            llvm::Value* frame = wrap->getArg(1);
 
             auto gepByte = [&](llvm::Value* base, uint64_t off) {
                 return b.CreateGEP(b.getInt8Ty(), base, llvm::ConstantInt::get(i64, off));
             };
 
-            llvm::Value* native_instance = b.CreateLoad(
-                ptr_ty,
-                gepByte(frame, offsetof(lux_script_call_frame, native_instance)),
-                "native.instance"
-            );
             llvm::Value* state = b.CreateLoad(
                 ptr_ty,
                 gepByte(native_instance, offsetof(lux_script_native_instance_context, state)),
@@ -1311,7 +1305,8 @@ namespace lux::flowforge
                 "lux_script_event_wait_import_desc"
             );
             auto* step_desc_ty =
-                llvm::StructType::create(ctx, {i32, i32, i64, ptr_ty, ptr_ty, ptr_ty}, "lux_script_step_desc");
+                llvm::StructType::create(
+                    ctx, {i32, i32, i64, ptr_ty, ptr_ty, ptr_ty, i32, i32}, "lux_script_step_desc");
             auto* module_desc_ty = llvm::StructType::create(
                 ctx,
                 {
@@ -1439,7 +1434,9 @@ namespace lux::flowforge
                              llvm::ConstantInt::get(i64, steps[e].frame_hash),
                              steps[e].start,
                              steps[e].resume,
-                             steps[e].destroy}
+                             steps[e].destroy,
+                             llvm::ConstantInt::get(i32, LUX_SCRIPT_FRAME_ZEROED_BY_HOST),
+                             llvm::ConstantInt::get(i32, 0U)}
                         ),
                         "_lfd_step"
                     );

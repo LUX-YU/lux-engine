@@ -5,18 +5,22 @@
 
 namespace
 {
-    int increment(lux_script_call_frame* frame) noexcept
+    int increment(void* invocation_context, lux_script_call_frame* frame) noexcept
     {
-        if (!frame || !frame->user_context)
+        const auto* native = static_cast<const lux_script_native_instance_context*>(invocation_context);
+        void* state = native ? native->state : nullptr;
+        if (!frame || !state)
             return 7;
-        ++*static_cast<std::int32_t*>(frame->user_context);
+        ++*static_cast<std::int32_t*>(state);
         return 0;
     }
 
-    int onUpdate(lux_script_call_frame* frame) noexcept
+    int onUpdate(void* invocation_context, lux_script_call_frame* frame) noexcept
     {
+        const auto* native = static_cast<const lux_script_native_instance_context*>(invocation_context);
+        void* state = native ? native->state : nullptr;
         const bool is_missing_frame = frame == nullptr;
-        const bool is_missing_context = !is_missing_frame && frame->user_context == nullptr;
+        const bool is_missing_context = !is_missing_frame && state == nullptr;
         const bool is_wrong_argument_count = !is_missing_frame && frame->arg_count != 1;
         const bool is_missing_arguments = !is_missing_frame && frame->args == nullptr;
         const bool is_missing_argument_data = !is_missing_frame && !is_missing_arguments &&
@@ -25,14 +29,16 @@ namespace
             is_missing_arguments || is_missing_argument_data;
         if (is_invalid_frame)
             return 8;
-        *static_cast<float*>(frame->user_context) += *static_cast<const float*>(frame->args[0].data);
+        *static_cast<float*>(state) += *static_cast<const float*>(frame->args[0].data);
         return 0;
     }
 
-    int onPair(lux_script_call_frame* frame) noexcept
+    int onPair(void* invocation_context, lux_script_call_frame* frame) noexcept
     {
+        const auto* native = static_cast<const lux_script_native_instance_context*>(invocation_context);
+        void* state = native ? native->state : nullptr;
         const bool is_missing_frame = frame == nullptr;
-        const bool is_missing_context = !is_missing_frame && frame->user_context == nullptr;
+        const bool is_missing_context = !is_missing_frame && state == nullptr;
         const bool is_wrong_argument_count = !is_missing_frame && frame->arg_count != 2;
         const bool is_missing_arguments = !is_missing_frame && frame->args == nullptr;
         const bool is_missing_first_data = !is_missing_frame && !is_missing_arguments &&
@@ -43,28 +49,32 @@ namespace
             is_missing_arguments || is_missing_first_data || is_missing_second_data;
         if (is_invalid_frame)
             return 9;
-        *static_cast<float*>(frame->user_context) +=
+        *static_cast<float*>(state) +=
             *static_cast<const float*>(frame->args[0].data) +
             static_cast<float>(*static_cast<const std::uint32_t*>(frame->args[1].data));
         return 0;
     }
 
-    int admitToGameplay(lux_script_call_frame* frame) noexcept
+    int admitToGameplay(void* invocation_context, lux_script_call_frame* frame) noexcept
     {
-        if (!frame || !frame->user_context || frame->arg_count != 0U)
+        const auto* native = static_cast<const lux_script_native_instance_context*>(invocation_context);
+        void* state = native ? native->state : nullptr;
+        if (!frame || !state || frame->arg_count != 0U)
             return 10;
-        *static_cast<float*>(frame->user_context) += 10.0F;
+        *static_cast<float*>(state) += 10.0F;
         return 0;
     }
 
-    int leaveGameplay(lux_script_call_frame* frame) noexcept
+    int leaveGameplay(void* invocation_context, lux_script_call_frame* frame) noexcept
     {
-        const bool invalid_frame = !frame || !frame->user_context || frame->arg_count != 1U || !frame->args ||
+        const auto* native = static_cast<const lux_script_native_instance_context*>(invocation_context);
+        void* state = native ? native->state : nullptr;
+        const bool invalid_frame = !frame || !state || frame->arg_count != 1U || !frame->args ||
             !frame->args[0].data;
         if (invalid_frame)
             return 11;
         const auto reason = *static_cast<const std::uint32_t*>(frame->args[0].data);
-        return reason == 2U && *static_cast<const float*>(frame->user_context) >= 10.0F ? 0 : 12;
+        return reason == 2U && *static_cast<const float*>(state) >= 10.0F ? 0 : 12;
     }
 
     const lux_script_type_desc kFloatType{

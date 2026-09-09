@@ -312,7 +312,7 @@ namespace
         return ScriptStepResult::completed();
     }
 
-    int invokeSync(lux_script_call_frame*)
+    int invokeSync(void* invocation_context, lux_script_call_frame*)
     {
         return 0;
     }
@@ -425,7 +425,7 @@ namespace
             void emit(std::int32_t payload) noexcept
             {
                 auto slot = lux::simulation::script::detail::argumentSlot(payload);
-                lux_script_call_frame frame{&slot, 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
+                lux_script_call_frame frame{&slot, 1U, 0U, nullptr, 0U, 0U, nullptr};
                 lane(lane_context, ecs::NullEntity, frame);
             }
 

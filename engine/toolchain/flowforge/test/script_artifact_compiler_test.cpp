@@ -698,9 +698,8 @@ int main()
     assert(loaded->findFunction(Symbol) != nullptr);
 
     lux_script_call_frame frame{};
-    const lux_script_native_instance_context native_instance{};
-    frame.native_instance = std::addressof(native_instance);
-    assert(loaded->findFunction(Symbol)->invoke(&frame) == 0);
+    lux_script_native_instance_context native_instance{};
+    assert(loaded->findFunction(Symbol)->invoke(std::addressof(native_instance), &frame) == 0);
 
     constexpr lux::script::ScriptSymbolId AbilitySymbol = 0x2234U;
     auto ability_graph = makeAbilityGraph(AbilitySymbol);
@@ -732,10 +731,10 @@ int main()
     assert(std::string_view{ability_module->abilityImports()[1].method_name} == "lux.test.flowforge.value.write");
     AbilityProvider ability_provider;
     auto ability_prepared = prepareAbilities(*ability_module, ability_provider);
-    const auto ability_instance = nativeContext(ability_prepared, std::addressof(ability_provider));
+    auto ability_instance = nativeContext(ability_prepared, std::addressof(ability_provider));
     lux_script_call_frame ability_frame{};
-    ability_frame.native_instance = std::addressof(ability_instance);
-    assert(ability_module->findFunction(AbilitySymbol)->invoke(std::addressof(ability_frame)) == 0);
+    assert(ability_module->findFunction(AbilitySymbol)->invoke(
+        std::addressof(ability_instance), std::addressof(ability_frame)) == 0);
     assert(ability_provider.value == 41);
     assert(ability_provider.calls == 2U);
 
@@ -797,9 +796,8 @@ int main()
     assert(event_wait_function != nullptr && event_wait_function->step != nullptr);
     AbilityProvider event_wait_provider;
     auto event_wait_prepared = prepareAbilities(*event_wait_module, event_wait_provider);
-    const auto event_wait_instance = nativeContext(event_wait_prepared, std::addressof(event_wait_provider));
+    auto event_wait_instance = nativeContext(event_wait_prepared, std::addressof(event_wait_provider));
     lux_script_call_frame event_wait_frame{};
-    event_wait_frame.native_instance = std::addressof(event_wait_instance);
     AsyncHost event_wait_host;
     const lux_script_step_host event_wait_step_host{
         std::addressof(event_wait_host),
@@ -810,7 +808,7 @@ int main()
     std::memset(event_wait_continuation, 0, event_wait_step.frame_size);
     lux_script_step_outcome event_wait_outcome{};
     assert(event_wait_step.start(
-        &event_wait_frame,
+        &event_wait_instance, &event_wait_frame,
         &event_wait_step_host,
         event_wait_continuation,
         &event_wait_outcome
@@ -913,9 +911,8 @@ int main()
     assert(std::string_view{async_module->abilityImports()[1].method_name} == "lux.test.flowforge.value.write");
     AbilityProvider async_provider;
     auto async_prepared = prepareAbilities(*async_module, async_provider);
-    const auto async_instance = nativeContext(async_prepared, std::addressof(async_provider));
+    auto async_instance = nativeContext(async_prepared, std::addressof(async_provider));
     lux_script_call_frame async_frame{};
-    async_frame.native_instance = std::addressof(async_instance);
     AsyncHost async_host;
     const lux_script_step_host step_host{std::addressof(async_host), nullptr};
     const auto& step = *async_function->step;
@@ -925,7 +922,7 @@ int main()
         : ::operator new(step.frame_size);
     std::memset(continuation_frame, 0, step.frame_size);
     lux_script_step_outcome outcome{};
-    assert(step.start(&async_frame, &step_host, continuation_frame, &outcome) == 0);
+    assert(step.start(&async_instance, &async_frame, &step_host, continuation_frame, &outcome) == 0);
     assert(outcome.state == LUX_SCRIPT_STEP_SUSPENDED);
     assert(outcome.waiting_on.slot == 1U);
     const lux_script_step_resume_packet ready{LUX_SCRIPT_RESUME_READY, 0U, {}, {}, 0};
@@ -938,11 +935,11 @@ int main()
     assert(async_host.starts == 2U);
     std::memset(continuation_frame, 0, step.frame_size);
     async_host.failure_status = 71;
-    assert(step.start(&async_frame, &step_host, continuation_frame, &outcome) == 0);
+    assert(step.start(&async_instance, &async_frame, &step_host, continuation_frame, &outcome) == 0);
     assert(outcome.state == LUX_SCRIPT_STEP_FAILED && outcome.status == 71);
     async_host.failure_status = 0;
     std::memset(continuation_frame, 0, step.frame_size);
-    assert(step.start(&async_frame, &step_host, continuation_frame, &outcome) == 0);
+    assert(step.start(&async_instance, &async_frame, &step_host, continuation_frame, &outcome) == 0);
     assert(outcome.state == LUX_SCRIPT_STEP_SUSPENDED);
     const lux_script_step_resume_packet failed_resume{LUX_SCRIPT_RESUME_FAILED, 0U, {}, {}, 72};
     assert(step.resume(&step_host, continuation_frame, &failed_resume, &outcome) == 0);
@@ -1031,9 +1028,8 @@ int main()
     assert(control_function != nullptr && control_function->step != nullptr);
     AbilityProvider control_provider;
     auto control_prepared = prepareAbilities(*control_module, control_provider);
-    const auto control_instance = nativeContext(control_prepared, std::addressof(control_provider));
+    auto control_instance = nativeContext(control_prepared, std::addressof(control_provider));
     lux_script_call_frame control_frame{};
-    control_frame.native_instance = std::addressof(control_instance);
     AsyncHost control_host;
     const lux_script_step_host control_step_host{std::addressof(control_host), nullptr};
     const auto& control_step = *control_function->step;
@@ -1044,7 +1040,7 @@ int main()
     std::memset(control_continuation, 0, control_step.frame_size);
     lux_script_step_outcome control_outcome{};
     assert(control_step.start(
-        &control_frame,
+        &control_instance, &control_frame,
         &control_step_host,
         control_continuation,
         &control_outcome
@@ -1088,9 +1084,8 @@ int main()
     assert(result_function != nullptr && result_function->step != nullptr);
     AbilityProvider result_provider;
     auto result_prepared = prepareAbilities(*result_module, result_provider);
-    const auto result_instance = nativeContext(result_prepared, std::addressof(result_provider));
+    auto result_instance = nativeContext(result_prepared, std::addressof(result_provider));
     lux_script_call_frame result_frame{};
-    result_frame.native_instance = std::addressof(result_instance);
     AsyncHost result_host;
     const lux_script_step_host result_step_host{std::addressof(result_host), nullptr};
     const auto& result_step = *result_function->step;
@@ -1100,7 +1095,8 @@ int main()
         : ::operator new(result_step.frame_size);
     std::memset(result_continuation, 0, result_step.frame_size);
     lux_script_step_outcome result_outcome{};
-    assert(result_step.start(&result_frame, &result_step_host, result_continuation, &result_outcome) == 0);
+    assert(result_step.start(
+        &result_instance, &result_frame, &result_step_host, result_continuation, &result_outcome) == 0);
     assert(result_outcome.state == LUX_SCRIPT_STEP_SUSPENDED);
     std::int32_t resumed_value{123};
     const lux_script_step_resume_packet value_ready{
@@ -1157,9 +1153,8 @@ int main()
     assert(function_export != nullptr && function_export->step != nullptr);
     AbilityProvider function_provider;
     auto function_prepared = prepareAbilities(*function_module, function_provider);
-    const auto function_instance = nativeContext(function_prepared, std::addressof(function_provider));
+    auto function_instance = nativeContext(function_prepared, std::addressof(function_provider));
     lux_script_call_frame function_frame{};
-    function_frame.native_instance = std::addressof(function_instance);
     AsyncHost function_host;
     const lux_script_step_host function_step_host{std::addressof(function_host), nullptr};
     const auto& function_step = *function_export->step;
@@ -1170,7 +1165,7 @@ int main()
     std::memset(function_continuation, 0, function_step.frame_size);
     lux_script_step_outcome function_outcome{};
     assert(function_step.start(
-        &function_frame,
+        &function_instance, &function_frame,
         &function_step_host,
         function_continuation,
         &function_outcome
@@ -1240,9 +1235,8 @@ int main()
     assert(borrowed_same_step_function != nullptr && borrowed_same_step_function->step != nullptr);
     BorrowProvider borrow_provider;
     auto borrow_prepared = prepareAbilities(*borrowed_same_step_module, borrow_provider);
-    const auto borrow_instance = nativeContext(borrow_prepared, std::addressof(borrow_provider));
+    auto borrow_instance = nativeContext(borrow_prepared, std::addressof(borrow_provider));
     lux_script_call_frame borrow_frame{};
-    borrow_frame.native_instance = std::addressof(borrow_instance);
     AsyncHost borrow_host;
     borrow_host.expected_ordinal = 1U;
     const lux_script_step_host borrow_step_host{std::addressof(borrow_host), nullptr};
@@ -1253,7 +1247,8 @@ int main()
         : ::operator new(borrow_step.frame_size);
     std::memset(borrow_continuation, 0, borrow_step.frame_size);
     lux_script_step_outcome borrow_outcome{};
-    assert(borrow_step.start(&borrow_frame, &borrow_step_host, borrow_continuation, &borrow_outcome) == 0);
+    assert(borrow_step.start(
+        &borrow_instance, &borrow_frame, &borrow_step_host, borrow_continuation, &borrow_outcome) == 0);
     assert(borrow_outcome.state == LUX_SCRIPT_STEP_SUSPENDED);
     assert(borrow_provider.calls == 2U);
     assert(borrow_provider.observed == borrow_provider.value);

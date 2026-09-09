@@ -134,10 +134,10 @@ namespace
         std::optional<EScriptSystemError> shutdown_error;
     };
 
-    int invoke(lux_script_call_frame* frame)
+    int invoke(void* invocation_context, lux_script_call_frame* frame)
     {
         assert(frame && frame->arg_count == 1U && frame->args);
-        auto& call = *static_cast<PreparedCall*>(frame->user_context);
+        auto& call = *static_cast<PreparedCall*>(invocation_context);
         assert(call.instance && call.instance->behavior);
         if (call.instance->behavior->hasSelf())
             ++call.owner->entity_calls;

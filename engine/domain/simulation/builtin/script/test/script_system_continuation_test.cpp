@@ -261,9 +261,9 @@ namespace
         std::size_t blocked_instances{};
     };
 
-    int invokeSync(lux_script_call_frame* frame)
+    int invokeSync(void* invocation_context, lux_script_call_frame* frame)
     {
-        auto& call = *static_cast<PreparedSync*>(frame->user_context);
+        auto& call = *static_cast<PreparedSync*>(invocation_context);
         ++call.instance->owner->sync_calls;
         if (call.instance->dispatch != nullptr)
         {

@@ -302,8 +302,8 @@ static void standaloneCase(LuaScriptBackend& backend)
         ScriptBackendPreparedMethod tick;
         assert(descriptor.prepareMethod(descriptor.context, instance, script.description().exports[0], tick) ==
             EScriptBackendResult::SUCCESS);
-        lux_script_call_frame frame{nullptr, 0, 0, nullptr, 0, 0, nullptr, tick.synchronous.context};
-        assert(tick.synchronous.invoke(&frame) == 0);
+        lux_script_call_frame frame{nullptr, 0, 0, nullptr, 0, 0, nullptr};
+        assert(tick.synchronous.invoke(tick.synchronous.context, &frame) == 0);
         descriptor.releaseMethod(descriptor.context, instance, tick);
         descriptor.destroyInstance(descriptor.context, instance);
     }

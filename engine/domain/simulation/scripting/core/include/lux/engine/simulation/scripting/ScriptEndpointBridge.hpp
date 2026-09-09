@@ -203,7 +203,6 @@ namespace lux::simulation::script
                 nullptr,
                 0U,
                 0U,
-                nullptr,
                 nullptr};
             self.lane_(self.lane_context_, frame);
         }
@@ -305,7 +304,7 @@ namespace lux::simulation::script
                 for (const auto& occurrence : endpoint.channel_->lane(lane))
                 {
                     auto slot = detail::argumentSlot(occurrence.payload);
-                    lux_script_call_frame frame{&slot, 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
+                    lux_script_call_frame frame{&slot, 1U, 0U, nullptr, 0U, 0U, nullptr};
                     if constexpr (std::is_same_v<Route, SimulationBroadcastRoute>)
                         endpoint.lane_(endpoint.lane_context_, ecs::NullEntity, frame);
                     else

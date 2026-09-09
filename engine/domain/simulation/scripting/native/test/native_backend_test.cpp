@@ -497,12 +497,12 @@ int main()
         lux::semantic::typeId("lux.f32"),
         &delta};
     lux_script_call_frame frame{
-        &argument, 1U, 0U, nullptr, 0U, 0U, nullptr, first.context};
-    assert(first.invoke(&frame) == 0);
-    frame.user_context = second.context;
-    assert(second.invoke(&frame) == 0);
-    frame.user_context = third.context;
-    assert(third.invoke(&frame) == 0);
+        &argument, 1U, 0U, nullptr, 0U, 0U, nullptr};
+    assert(first.invoke(first.context, &frame) == 0);
+
+    assert(second.invoke(second.context, &frame) == 0);
+
+    assert(third.invoke(third.context, &frame) == 0);
 
     ScriptBackendPreparedMethod begin_method;
     ScriptBackendPreparedMethod end_method;
@@ -521,8 +521,8 @@ int main()
     const auto begin_call = begin_method.synchronous;
     const auto end_call = end_method.synchronous;
     lux_script_call_frame begin_frame{
-        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, begin_call.context};
-    assert(begin_call.invoke(&begin_frame) == 0);
+        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+    assert(begin_call.invoke(begin_call.context, &begin_frame) == 0);
     const EScriptEndPlayReason end_reason{EScriptEndPlayReason::RUNTIME_STOPPED};
     lux_script_value_slot end_slot{
         LUX_SCRIPT_VK_UINT32,
@@ -531,8 +531,8 @@ int main()
         lux::semantic::typeId("lux.simulation.ScriptEndPlayReason"),
         const_cast<EScriptEndPlayReason*>(std::addressof(end_reason))};
     lux_script_call_frame end_frame{
-        &end_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, end_call.context};
-    assert(end_call.invoke(&end_frame) == 0);
+        &end_slot, 1U, 0U, nullptr, 0U, 0U, nullptr};
+    assert(end_call.invoke(end_call.context, &end_frame) == 0);
 
     auto mismatched = function;
     mismatched.args[0].canonical_name = "lux.f64";
@@ -758,8 +758,8 @@ int main()
     lux_script_call_frame read_frame{};
     read_frame.returns = std::addressof(state_result);
     read_frame.return_count = 1U;
-    read_frame.user_context = read_call.context;
-    assert(read_call.invoke(std::addressof(read_frame)) == 0);
+
+    assert(read_call.invoke(read_call.context, std::addressof(read_frame)) == 0);
     assert(state_value == 1U);
 
     step_descriptor.releaseMethod(step_descriptor.context, step_instance, step_method);

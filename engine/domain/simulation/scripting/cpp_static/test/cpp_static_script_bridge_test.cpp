@@ -203,8 +203,8 @@ int main()
     const auto call = call_method.synchronous;
     float value{3.5F};
     lux_script_value_slot argument{LUX_SCRIPT_VK_FLOAT, {}, sizeof(value), lux::semantic::typeId("lux.f32"), &value};
-    lux_script_call_frame frame{&argument, 1U, 0U, nullptr, 0U, 0U, nullptr, call.context};
-    assert(call.invoke(&frame) == 0);
+    lux_script_call_frame frame{&argument, 1U, 0U, nullptr, 0U, 0U, nullptr};
+    assert(call.invoke(call.context, &frame) == 0);
     assert(test::observed_value == value);
 
     const std::array expected_shapes{13, 6, 103, 202};
@@ -222,9 +222,9 @@ int main()
             symbol == 113U ? static_cast<void*>(&floating) : static_cast<void*>(&input)};
         lux_script_value_slot output_slot{LUX_SCRIPT_VK_INT32, {}, sizeof(output),
             lux::semantic::typeId("lux.i32"), &output};
-        lux_script_call_frame shaped_frame{&input_slot, 1U, 0U, &output_slot, 1U, 0U, nullptr,
-            shaped.synchronous.context};
-        assert(shaped.synchronous.invoke(&shaped_frame) == 0 && output == expected_shapes[symbol - 110U]);
+        lux_script_call_frame shaped_frame{&input_slot, 1U, 0U, &output_slot, 1U, 0U, nullptr};
+        assert(shaped.synchronous.invoke(
+            shaped.synchronous.context, &shaped_frame) == 0 && output == expected_shapes[symbol - 110U]);
         descriptor.releaseMethod(descriptor.context, instance, shaped);
     }
 
@@ -236,18 +236,18 @@ int main()
                                     end_method_prepared) == EScriptBackendResult::SUCCESS);
     const auto begin_call = begin_method_prepared.synchronous;
     const auto end_call = end_method_prepared.synchronous;
-    lux_script_call_frame begin_frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, begin_call.context};
-    assert(begin_call.invoke(&begin_frame) == 0);
-    frame.user_context = call.context;
-    assert(call.invoke(&frame) == 0);
+    lux_script_call_frame begin_frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+    assert(begin_call.invoke(begin_call.context, &begin_frame) == 0);
+
+    assert(call.invoke(call.context, &frame) == 0);
     const EScriptEndPlayReason end_reason{EScriptEndPlayReason::RUNTIME_STOPPED};
     lux_script_value_slot end_argument{LUX_SCRIPT_VK_UINT32,
                                        {},
                                        sizeof(end_reason),
                                        lux::semantic::typeId("lux.simulation.ScriptEndPlayReason"),
                                        const_cast<EScriptEndPlayReason *>(std::addressof(end_reason))};
-    lux_script_call_frame end_frame{&end_argument, 1U, 0U, nullptr, 0U, 0U, nullptr, end_call.context};
-    assert(end_call.invoke(&end_frame) == 0);
+    lux_script_call_frame end_frame{&end_argument, 1U, 0U, nullptr, 0U, 0U, nullptr};
+    assert(end_call.invoke(end_call.context, &end_frame) == 0);
     assert(test::observed_lifecycle_value == 11);
     assert(test::observed_end_reason == end_reason);
 
@@ -262,7 +262,7 @@ int main()
                                              lux::semantic::typeId("lux.i32"),
                                              std::addressof(coroutine_input)};
     lux_script_call_frame coroutine_frame{
-        std::addressof(coroutine_argument), 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
+        std::addressof(coroutine_argument), 1U, 0U, nullptr, 0U, 0U, nullptr};
     ScriptStepContext step_context{{1U, 1U}, nullptr, &createAwaitable, &discardAwaitable};
     ScriptBackendContinuation continuation;
     const auto suspended = step_call.invoke(step_call.context, coroutine_frame, step_context, continuation);
@@ -422,8 +422,8 @@ int main()
     lux_script_value_slot input_slot{LUX_SCRIPT_VK_INT32, {}, sizeof(input), lux::semantic::typeId("lux.i32"), &input};
     lux_script_value_slot output_slot{
         LUX_SCRIPT_VK_INT32, {}, sizeof(output), lux::semantic::typeId("lux.i32"), &output};
-    lux_script_call_frame global_frame{&input_slot, 1U, 0U, &output_slot, 1U, 0U, nullptr, global_call.context};
-    assert(global_call.invoke(&global_frame) == 0);
+    lux_script_call_frame global_frame{&input_slot, 1U, 0U, &output_slot, 1U, 0U, nullptr};
+    assert(global_call.invoke(global_call.context, &global_frame) == 0);
     assert(output == 5);
     global_descriptor.releaseMethod(global_descriptor.context, global_instance, global_method);
     global_descriptor.destroyInstance(global_descriptor.context, global_instance);

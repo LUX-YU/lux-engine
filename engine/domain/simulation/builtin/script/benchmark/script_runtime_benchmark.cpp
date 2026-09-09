@@ -530,9 +530,9 @@ namespace
         }
     }
 
-    int invokePrepared(lux_script_call_frame* frame) noexcept
+    int invokePrepared(void* invocation_context, lux_script_call_frame* frame) noexcept
     {
-        auto& prepared = *static_cast<PreparedCall*>(frame->user_context);
+        auto& prepared = *static_cast<PreparedCall*>(invocation_context);
         auto& object = *prepared.object;
         auto& state = *object.owner;
         if (prepared.symbol == kBegin)
@@ -1494,8 +1494,8 @@ namespace
             for (auto& value : calls)
             {
                 lux_script_call_frame frame{
-                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, value.begin.synchronous.context};
-                if (value.begin.synchronous.invoke(&frame) != 0)
+                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+                if (value.begin.synchronous.invoke(value.begin.synchronous.context, &frame) != 0)
                     throw std::runtime_error(backend_name + " lifecycle benchmark BeginPlay failed");
                 ++successful;
             }
@@ -1507,8 +1507,8 @@ namespace
             for (auto& value : calls)
             {
                 lux_script_call_frame frame{
-                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, value.tick.synchronous.context};
-                if (value.tick.synchronous.invoke(&frame) != 0)
+                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+                if (value.tick.synchronous.invoke(value.tick.synchronous.context, &frame) != 0)
                     throw std::runtime_error(backend_name + " lifecycle benchmark steady call failed");
                 ++successful;
             }
@@ -1528,8 +1528,8 @@ namespace
             {
                 auto& value = calls[index];
                 lux_script_call_frame frame{
-                    &reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, value.end.synchronous.context};
-                if (value.end.synchronous.invoke(&frame) != 0)
+                    &reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr};
+                if (value.end.synchronous.invoke(value.end.synchronous.context, &frame) != 0)
                     throw std::runtime_error(backend_name + " lifecycle benchmark EndPlay failed");
                 descriptor.releaseMethod(descriptor.context, instances[index], value.end);
                 descriptor.releaseMethod(descriptor.context, instances[index], value.tick);
@@ -2175,8 +2175,8 @@ namespace
         std::uint64_t direct_checksum{};
         std::uint64_t bound_checksum{};
         const lux::script::BoundScriptCall bound{
-            [](lux_script_call_frame* frame) noexcept {
-                ++*static_cast<std::uint64_t*>(frame->user_context);
+            [](void* invocation_context, lux_script_call_frame* frame) noexcept {
+                ++*static_cast<std::uint64_t*>(invocation_context);
                 return 0;
             },
             &bound_checksum
@@ -2220,8 +2220,8 @@ namespace
         const auto lua_begin = lua_begin_method.synchronous;
         const auto lua_tick = lua_tick_method.synchronous;
         lux_script_call_frame lua_begin_frame{
-            nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, lua_begin.context};
-        if (lua_begin.invoke(&lua_begin_frame) != 0)
+            nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+        if (lua_begin.invoke(lua_begin.context, &lua_begin_frame) != 0)
             throw std::runtime_error("Lua micro BeginPlay failed");
         std::uint64_t lua_checksum{};
 #endif
@@ -2238,9 +2238,9 @@ namespace
                 return Row{.calls = options.size, .ability_calls = options.size, .checksum = direct_checksum};
             }));
             rows.push_back(measureRow("micro-sync", "bound-script-call", options.size, sample, [&] {
-                lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, bound.context};
+                lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
                 for (std::size_t index{}; index < options.size; ++index)
-                    static_cast<void>(bound.invoke(&frame));
+                    static_cast<void>(bound.invoke(bound.context, &frame));
                 return Row{.calls = options.size, .checksum = bound_checksum};
             }));
             rows.push_back(measureRow("micro-sync", "hook-point", options.size, sample, [&] {
@@ -2251,10 +2251,10 @@ namespace
 #if LUX_BENCHMARK_HAS_LUA
             rows.push_back(measureRow("micro-sync", "lua-prepared-call", options.size, sample, [&] {
                 lux_script_call_frame frame{
-                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, lua_tick.context};
+                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
                 for (std::size_t index{}; index < options.size; ++index)
                 {
-                    if (lua_tick.invoke(&frame) != 0)
+                    if (lua_tick.invoke(lua_tick.context, &frame) != 0)
                         throw std::runtime_error("Lua micro invocation failed");
                     ++lua_checksum;
                 }

@@ -57,9 +57,8 @@ namespace
             nullptr,
             0U,
             0U,
-            nullptr,
-            subscriber.method.synchronous.context};
-        if (subscriber.method.synchronous.invoke(&frame) == 0)
+            nullptr};
+        if (subscriber.method.synchronous.invoke(subscriber.method.synchronous.context, &frame) == 0)
             ++subscriber.callbacks;
     }
 

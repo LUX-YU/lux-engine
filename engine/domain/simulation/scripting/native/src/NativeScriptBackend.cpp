@@ -71,7 +71,7 @@ namespace lux::simulation::script
 
         struct StepAdapter final
         {
-            PreparedCall* call{};
+            std::span<const Instance::PreparedEvent> events;
             ScriptStepContext* context{};
             NativeContinuation* continuation{};
         };
@@ -361,23 +361,6 @@ namespace lux::simulation::script
             }
         }
 
-        static int invokePrepared(lux_script_call_frame* frame) noexcept
-        {
-            if (frame == nullptr || frame->user_context == nullptr)
-                return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
-            auto& prepared = *static_cast<PreparedCall*>(frame->user_context);
-            if (prepared.instance == nullptr || prepared.function == nullptr || prepared.function->invoke == nullptr)
-                return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
-            const auto* previous_native = frame->native_instance;
-            void* previous_user = frame->user_context;
-            frame->native_instance = std::addressof(prepared.instance->native_context);
-            frame->user_context = prepared.instance->state;
-            const auto status = prepared.function->invoke(frame);
-            frame->user_context = previous_user;
-            frame->native_instance = previous_native;
-            return status;
-        }
-
         static int startEventWait(
             void* opaque,
             std::uint32_t ordinal,
@@ -385,17 +368,9 @@ namespace lux::simulation::script
         ) noexcept
         {
             auto& adapter = *static_cast<StepAdapter*>(opaque);
-            if (adapter.call == nullptr || adapter.call->instance == nullptr || adapter.context == nullptr ||
-                adapter.call->instance->module == nullptr || adapter.call->instance->module->module == nullptr ||
-                waiting_on == nullptr)
-            {
+            if (adapter.context == nullptr || waiting_on == nullptr || ordinal >= adapter.events.size())
                 return -1;
-            }
-            if (ordinal >= adapter.call->instance->events.size())
-                return -1;
-            const auto& prepared = adapter.call->instance->events[ordinal];
-            if (prepared.import == nullptr)
-                return -1;
+            const auto& prepared = adapter.events[ordinal];
             const auto result = adapter.context->event_waits.wait(prepared.admission);
             if (!result)
                 return -1000 - static_cast<std::int32_t>(result.error());
@@ -434,7 +409,8 @@ namespace lux::simulation::script
             auto frame = frame_storage.acquire(call.frame_class, step.frame_size);
             if (!frame)
                 return nullptr;
-            std::memset(frame->data, 0, step.frame_size);
+            if (step.initialization == LUX_SCRIPT_FRAME_ZEROED_BY_HOST)
+                std::memset(frame->data, 0, step.frame_size);
             const auto slot = free_continuations.back();
             free_continuations.pop_back();
             auto& continuation = continuations[slot];
@@ -505,7 +481,8 @@ namespace lux::simulation::script
                     const_cast<std::byte*>(packet.value->bytes.data())
                 };
             }
-            StepAdapter adapter{continuation.call, std::addressof(context), std::addressof(continuation)};
+            StepAdapter adapter{
+                continuation.call->instance->events, std::addressof(context), std::addressof(continuation)};
             const lux_script_step_host host{std::addressof(adapter), &startEventWait};
             lux_script_step_outcome outcome{};
             const auto status = continuation.call->function->step->resume(
@@ -538,21 +515,16 @@ namespace lux::simulation::script
             if (continuation == nullptr)
                 return ScriptStepResult::failed(-1);
 
-            const auto* previous_native = frame.native_instance;
-            void* previous_user = frame.user_context;
-            frame.native_instance = std::addressof(prepared.instance->native_context);
-            frame.user_context = prepared.instance->state;
-            StepAdapter adapter{std::addressof(prepared), std::addressof(context), continuation};
+            StepAdapter adapter{prepared.instance->events, std::addressof(context), continuation};
             const lux_script_step_host host{std::addressof(adapter), &startEventWait};
             lux_script_step_outcome outcome{};
             const auto status = prepared.function->step->start(
+                std::addressof(prepared.instance->native_context),
                 std::addressof(frame),
                 std::addressof(host),
                 continuation->frame.data,
                 std::addressof(outcome)
             );
-            frame.user_context = previous_user;
-            frame.native_instance = previous_native;
             if (status != 0)
             {
                 destroyNativeContinuation(*continuation);
@@ -851,7 +823,7 @@ namespace lux::simulation::script
             prepared = {std::addressof(self), instance, function, frame_class};
             result = {
                 std::addressof(prepared),
-                lux::script::BoundScriptCall{&invokePrepared, std::addressof(prepared)},
+                lux::script::BoundScriptCall{function->invoke, std::addressof(instance->native_context)},
                 function->step == nullptr
                     ? BoundScriptStepCall{}
                     : BoundScriptStepCall{std::addressof(prepared), &invokePreparedStep}

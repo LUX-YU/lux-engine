@@ -22,7 +22,7 @@ extern "C" {
 #endif
 
 /** Increment whenever the layout below changes in a non-additive way. */
-#define LUX_SCRIPT_ABI_VERSION 5u
+#define LUX_SCRIPT_ABI_VERSION 6u
 
 /** Symbol name compiled modules must export. */
 #define LUX_SCRIPT_MODULE_ENTRY "lux_script_get_module"
@@ -109,7 +109,7 @@ typedef struct lux_script_prepared_ability {
     lux_script_ability_direct_entry_fn direct_entry;
 } lux_script_prepared_ability;
 
-/** Explicit native instance context; separate from generic per-call user_context. */
+/** Explicit native instance context, bound once and passed as the entry argument. */
 typedef struct lux_script_native_instance_context {
     void* state;
     const lux_script_prepared_ability* abilities;
@@ -128,8 +128,6 @@ typedef struct lux_script_call_frame {
     uint32_t                     reserved1;
 
     void*                        world_context; /**< Opaque engine ptr. */
-    void*                        user_context;  /**< Opaque per-call ptr. */
-    const lux_script_native_instance_context* native_instance;
 } lux_script_call_frame;
 
 typedef struct lux_script_async_token {
@@ -176,6 +174,7 @@ typedef struct lux_script_step_host {
 } lux_script_step_host;
 
 typedef int (*lux_script_step_start_fn)(
+    const lux_script_native_instance_context* instance,
     lux_script_call_frame* frame,
     const lux_script_step_host* host,
     void* continuation_frame,
@@ -189,6 +188,11 @@ typedef int (*lux_script_step_resume_fn)(
 
 typedef void (*lux_script_step_destroy_fn)(void* continuation_frame);
 
+typedef enum lux_script_frame_initialization {
+    LUX_SCRIPT_FRAME_ZEROED_BY_HOST = 0,
+    LUX_SCRIPT_FRAME_INITIALIZED_BY_ENTRY = 1
+} lux_script_frame_initialization;
+
 typedef struct lux_script_step_desc {
     uint32_t frame_size;
     uint32_t frame_align;
@@ -196,10 +200,12 @@ typedef struct lux_script_step_desc {
     lux_script_step_start_fn start;
     lux_script_step_resume_fn resume;
     lux_script_step_destroy_fn destroy;
+    uint32_t initialization; /**< lux_script_frame_initialization; unknown values rejected. */
+    uint32_t reserved;
 } lux_script_step_desc;
 
 /** Function pointer signature for compiled script entries. */
-typedef int (*lux_script_invoke_fn)(lux_script_call_frame* frame);
+typedef int (*lux_script_invoke_fn)(void* context, lux_script_call_frame* frame);
 
 /** Description of a single exported function. */
 typedef struct lux_script_function_desc {

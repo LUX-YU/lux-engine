@@ -197,9 +197,9 @@ namespace
         assert(!closed && closed.error() == EScriptSystemError::ENDPOINT_BUSY);
     }
 
-    int invokePrepared(lux_script_call_frame* frame) noexcept
+    int invokePrepared(void* invocation_context, lux_script_call_frame* frame) noexcept
     {
-        auto& call = *static_cast<PreparedCall*>(frame->user_context);
+        auto& call = *static_cast<PreparedCall*>(invocation_context);
         auto& instance = *call.instance;
         auto& state = *instance.owner;
         if (call.symbol == kBegin)

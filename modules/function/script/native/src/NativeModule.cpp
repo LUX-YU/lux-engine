@@ -123,7 +123,8 @@ namespace lux::script
                 {
                     const auto& step = *function.step;
                     const bool is_invalid_frame = step.frame_size == 0U || step.frame_align == 0U ||
-                        (step.frame_align & (step.frame_align - 1U)) != 0U || step.frame_layout_hash == 0U;
+                        (step.frame_align & (step.frame_align - 1U)) != 0U || step.frame_layout_hash == 0U ||
+                        step.initialization > LUX_SCRIPT_FRAME_INITIALIZED_BY_ENTRY || step.reserved != 0U;
                     const bool is_missing_step_function = step.start == nullptr || step.resume == nullptr ||
                         step.destroy == nullptr;
                     if (is_invalid_frame || is_missing_step_function)

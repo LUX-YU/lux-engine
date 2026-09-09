@@ -134,9 +134,9 @@ namespace
     {
         Probe* probe;
         lux::script::ScriptArtifact artifact;
-        static int invoke(lux_script_call_frame* frame) noexcept
+        static int invoke(void* invocation_context, lux_script_call_frame* frame) noexcept
         {
-            auto& probe = *static_cast<Probe*>(frame->user_context);
+            auto& probe = *static_cast<Probe*>(invocation_context);
             assert(std::this_thread::get_id() == probe.caller);
             assert(probe.active.load() == 0U && probe.finished.load() == 7U);
             ++probe.script_calls;

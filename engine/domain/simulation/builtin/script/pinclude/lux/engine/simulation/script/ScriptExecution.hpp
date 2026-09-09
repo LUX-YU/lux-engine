@@ -934,10 +934,10 @@ namespace lux::simulation::script::detail
             if (!access.current())
                 return;
             const auto& call = access.synchronous();
-            frame.user_context = call.context;
+
             const auto status = [&]() noexcept {
                 ++sync_invocations_;
-                return call.invoke(&frame);
+                return call.invoke(call.context, &frame);
             }();
             if (status == 0)
                 return;

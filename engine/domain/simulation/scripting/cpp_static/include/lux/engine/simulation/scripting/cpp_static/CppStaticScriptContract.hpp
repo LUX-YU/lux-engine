@@ -155,11 +155,11 @@ template <auto Function> struct CppStaticSyncEntry;
 template <class Owner, class Result, class... Args, Result (Owner::*Function)(Args...) noexcept>
 struct CppStaticSyncEntry<Function> : CppStaticSyncShape<Result, Args...>
 {
-    static int invoke(lux_script_call_frame *frame) noexcept
+    static int invoke(void* invocation_context, lux_script_call_frame *frame) noexcept
     {
-        if (frame == nullptr || frame->user_context == nullptr)
+        if (frame == nullptr || invocation_context == nullptr)
             return -1;
-        auto *object = static_cast<Owner *>(frame->user_context);
+        auto *object = static_cast<Owner *>(invocation_context);
         return CppStaticSyncShape<Result, Args...>::call(
             *frame,
             [object](const std::remove_cvref_t<Args> &...args) noexcept -> Result {
@@ -172,11 +172,11 @@ struct CppStaticSyncEntry<Function> : CppStaticSyncShape<Result, Args...>
 template <class Owner, class Result, class... Args, Result (Owner::*Function)(Args...) const noexcept>
 struct CppStaticSyncEntry<Function> : CppStaticSyncShape<Result, Args...>
 {
-    static int invoke(lux_script_call_frame *frame) noexcept
+    static int invoke(void* invocation_context, lux_script_call_frame *frame) noexcept
     {
-        if (frame == nullptr || frame->user_context == nullptr)
+        if (frame == nullptr || invocation_context == nullptr)
             return -1;
-        auto *object = static_cast<const Owner *>(frame->user_context);
+        auto *object = static_cast<const Owner *>(invocation_context);
         return CppStaticSyncShape<Result, Args...>::call(
             *frame,
             [object](const std::remove_cvref_t<Args> &...args) noexcept -> Result {
@@ -189,7 +189,7 @@ struct CppStaticSyncEntry<Function> : CppStaticSyncShape<Result, Args...>
 template <class Result, class... Args, Result (*Function)(Args...) noexcept>
 struct CppStaticSyncEntry<Function> : CppStaticSyncShape<Result, Args...>
 {
-    static int invoke(lux_script_call_frame *frame) noexcept
+    static int invoke(void* invocation_context, lux_script_call_frame *frame) noexcept
     {
         if (frame == nullptr)
             return -1;

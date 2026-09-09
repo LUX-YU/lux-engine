@@ -3,7 +3,7 @@
 #include <lux/engine/function/script/lua/Lua.hpp>
 
 #include <lua.hpp>
-#include <lux/engine/function/script/lua/LuaAllocationCache.hpp>
+#include <lux/engine/function/script/lua/LuaPageAllocator.hpp>
 #include <lux/engine/function/script/lua/LuaBoundary.h>
 
 namespace lux::script::lua
@@ -17,7 +17,7 @@ namespace lux::script::lua
                 config.gc_mode != ELuaGcMode::GENERATIONAL;
             if (invalid_mode || std::ranges::any_of(config.gc_parameters, [](int value) { return value < -1; }))
                 return;
-            L_ = lua_newstate(&LuaAllocationCache::allocate, &allocator_, config.seed);
+            L_ = lua_newstate(allocator_.callback(), &allocator_, config.seed);
             if (!L_) return;
             lua_pushcfunction(L_, &luxLuaBootstrap);
             if (lua_pcall(L_, 0, 0, 0) != LUA_OK)
@@ -103,7 +103,7 @@ namespace lux::script::lua
             lua_pop(L_, 1);
         }
 
-        LuaAllocationCache allocator_; // Construct before VM; destroy after lua_close.
+        LuaPageAllocator allocator_; // Construct before VM; destroy after lua_close.
         lua_State* L_ = nullptr;
         ScriptEngine::ErrorHandler on_error_;
     };

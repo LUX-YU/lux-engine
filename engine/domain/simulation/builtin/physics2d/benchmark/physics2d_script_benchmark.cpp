@@ -587,11 +587,11 @@ namespace
             const auto& memory = stats.vm_allocations;
             std::printf("VM_FINAL,accounting=%d,alloc=%llu,realloc=%llu,free=%llu,failures=%llu,"
                 "heap_alloc=%llu,heap_free=%llu,hits=%llu,in_place=%llu,live=%zu,peak_live=%zu,"
-                "retained=%zu,peak_retained=%zu,threads=%zu,resumes=%zu,released=%zu,"
+                "idle_page_backing=%zu,peak_idle_page_backing=%zu,threads=%zu,resumes=%zu,released=%zu,"
                 "leaf_available=%d,leaf=%llu,standard=%llu\n",
                 memory.enabled, memory.allocations, memory.reallocations, memory.frees, memory.failures,
-                memory.system_allocations, memory.system_frees, memory.cache_hits, memory.in_place,
-                memory.live_bytes, memory.peak_live_bytes, memory.retained_bytes, memory.peak_retained_bytes,
+                memory.system_allocations, memory.system_frees, memory.slot_reuses, memory.in_place,
+                memory.live_bytes, memory.peak_live_bytes, memory.idle_page_backing_bytes, memory.peak_idle_page_backing_bytes,
                 stats.vm_coroutine_creations, stats.vm_coroutine_resumes, stats.vm_coroutine_releases,
                 stats.leaf_yield_available, stats.leaf_return_yields, stats.standard_leaf_yields);
         }

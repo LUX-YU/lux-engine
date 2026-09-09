@@ -2034,7 +2034,16 @@ namespace
             stats.step_invocations != harness.value_provider.calls ||
             stats.suspensions_admitted != 3U * stats.step_invocations ||
             stats.backend_resume_calls != 3U * stats.step_invocations;
-        if (leaked || missed_work) throw std::runtime_error("sequence completion/copy/lifetime counts disagree");
+        if (leaked || missed_work)
+        {
+            std::fprintf(stderr, "SEQUENCE_FAILURE,calls=%llu,provider=%zu,suspensions=%llu,resumes=%llu,errors=%llu\n",
+                stats.step_invocations, harness.value_provider.calls, stats.suspensions_admitted,
+                stats.backend_resume_calls, stats.invocation_failures
+            );
+            for (const auto& failure : harness.system->failures())
+                std::fprintf(stderr, "SEQUENCE_STATUS,%d\n", failure.status);
+            throw std::runtime_error("sequence completion/copy/lifetime counts disagree");
+        }
     }
 
     void runCppSequence(const Options& options, std::vector<Row>& rows)

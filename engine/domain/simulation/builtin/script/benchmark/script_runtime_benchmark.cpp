@@ -130,6 +130,7 @@ namespace
         std::uint64_t seed{0x5EED2026ULL};
         std::filesystem::path output{"script_runtime_benchmark.csv"};
         std::filesystem::path lua_artifact;
+        bool lua_incremental_gc{};
         bool vm_accounting{};
     };
 
@@ -230,6 +231,11 @@ namespace
             }
             else if (key == "--output")
                 result.output = value;
+            else if (key == "--lua-gc")
+            {
+                if (value != "gen" && value != "inc") return std::nullopt;
+                result.lua_incremental_gc = value == "inc";
+            }
             else if (key == "--lua-artifact")
                 result.lua_artifact = value;
             else
@@ -1184,7 +1190,8 @@ namespace
             std::size_t count,
             lux::script::ScriptSymbolId symbol,
             std::size_t resume_budget,
-            bool vm_accounting = false
+            bool vm_accounting = false,
+            bool lua_incremental_gc = false
         )
             : simulation_description(lux::simulation::benchmark_domain::scriptDescription(
                   0U, symbol == kLuaEventWait)), artifact_asset(loadLuaArtifact(artifact_path))
@@ -1272,6 +1279,8 @@ namespace
                 .prepared_event_capacity = bounded_count * requirements->event_sources,
                 .events = std::span{&event_source, 1U},
                 .track_vm_allocations = vm_accounting,
+                .vm = {.gc_mode = lua_incremental_gc ? lux::script::lua::ELuaGcMode::INCREMENTAL :
+                    lux::script::lua::ELuaGcMode::GENERATIONAL},
                 .prepared_ability_blocks = std::array{
                     lux::simulation::script::LuaPreparedBlockClass{
                         requirements->ability_methods,
@@ -1335,6 +1344,17 @@ namespace
         {
             if (system)
                 static_cast<void>(system->shutdown());
+            const auto stats = backend->stats();
+            const auto& memory = stats.vm_allocations;
+            std::printf("VM_FINAL,accounting=%d,alloc=%llu,realloc=%llu,free=%llu,failures=%llu,"
+                "heap_alloc=%llu,heap_free=%llu,hits=%llu,in_place=%llu,live=%zu,peak_live=%zu,"
+                "retained=%zu,peak_retained=%zu,threads=%zu,resumes=%zu,released=%zu,"
+                "leaf_available=%d,leaf=%llu,standard=%llu\n",
+                memory.enabled, memory.allocations, memory.reallocations, memory.frees, memory.failures,
+                memory.system_allocations, memory.system_frees, memory.cache_hits, memory.in_place,
+                memory.live_bytes, memory.peak_live_bytes, memory.retained_bytes, memory.peak_retained_bytes,
+                stats.vm_coroutine_creations, stats.vm_coroutine_resumes, stats.vm_coroutine_releases,
+                stats.leaf_yield_available, stats.leaf_return_yields, stats.standard_leaf_yields);
         }
 
         static bool resolveArtifact(
@@ -2726,7 +2746,7 @@ namespace
             options.size,
             symbol,
             options.resume_budget,
-            options.vm_accounting
+            options.vm_accounting, options.lua_incremental_gc
         };
         for (std::size_t frame{}; frame < options.warmups; ++frame)
         {
@@ -2757,7 +2777,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.vm_accounting
+            options.vm_accounting, options.lua_incremental_gc
         };
         for (std::size_t frame{}; frame < options.warmups; ++frame)
         {
@@ -2788,7 +2808,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.vm_accounting
+            options.vm_accounting, options.lua_incremental_gc
         };
         rows.push_back(measureRow("micro-lua-coroutine-start", "lua-coroutine", options.size, 0U, [&] {
             harness.dispatch();
@@ -2818,7 +2838,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.vm_accounting
+            options.vm_accounting, options.lua_incremental_gc
         };
         harness.dispatch();
         for (std::size_t frame{}; frame < options.warmups; ++frame)
@@ -2843,7 +2863,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.vm_accounting
+            options.vm_accounting, options.lua_incremental_gc
         };
         harness.dispatch();
         std::size_t frame{};
@@ -2869,7 +2889,7 @@ namespace
             options.size,
             kLuaEventWait,
             options.size,
-            options.vm_accounting
+            options.vm_accounting, options.lua_incremental_gc
         };
         const auto execute_cycle = [&](std::size_t frame, bool record) {
             const auto operation = [&] {
@@ -2944,7 +2964,7 @@ namespace
             options.size,
             kLuaPlain,
             options.resume_budget,
-            options.vm_accounting
+            options.vm_accounting, options.lua_incremental_gc
         };
         const auto churn_count = (std::max)(std::size_t{1U}, (std::min)(std::size_t{100U}, options.size / 10U));
         for (std::size_t frame{}; frame < options.warmups; ++frame)
@@ -3537,14 +3557,14 @@ int main(int argc, char** argv)
         else if (options->group == "scene-lua-sequence")
         {
             LuaRuntimeHarness harness{options->lua_artifact, options->size, kLuaSequence,
-                options->resume_budget, options->vm_accounting};
+                options->resume_budget, options->vm_accounting, options->lua_incremental_gc};
             runSequenceFrames(*options, rows, harness, "scene-lua-sequence");
         }
         else if (options->group == "scene-lua-population")
         {
             runPopulationCycles(*options, rows, "lua-population", [&] {
                 return std::make_unique<LuaRuntimeHarness>(options->lua_artifact, options->size, kLuaPlain,
-                    options->resume_budget, options->vm_accounting);
+                    options->resume_budget, options->vm_accounting, options->lua_incremental_gc);
             });
         }
         else if (options->group == "scene-lua-event")

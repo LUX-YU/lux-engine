@@ -72,6 +72,8 @@ namespace
         std::uint64_t seed{0x5EED2026ULL};
         std::filesystem::path output{"physics2d_script_pb3.csv"};
         std::filesystem::path lua_artifact;
+        bool vm_accounting{};
+        bool lua_incremental_gc{};
         std::filesystem::path flowforge_artifact;
     };
 
@@ -155,6 +157,16 @@ namespace
                 if (value != "on" && value != "off")
                     return std::nullopt;
                 result.trace = value == "on";
+            }
+            else if (key == "--lua-gc")
+            {
+                if (value != "gen" && value != "inc") return std::nullopt;
+                result.lua_incremental_gc = value == "inc";
+            }
+            else if (key == "--vm-accounting")
+            {
+                if (value != "on" && value != "off") return std::nullopt;
+                result.vm_accounting = value == "on";
             }
             else if (key == "--lua-artifact")
                 result.lua_artifact = value;
@@ -461,6 +473,9 @@ namespace
                 .event_catalog_capacity = 1U,
                 .prepared_event_capacity = lua_count * requirements->event_sources,
                 .events = event_sources,
+                .track_vm_allocations = options.vm_accounting,
+                .vm = {.gc_mode = options.lua_incremental_gc ? lux::script::lua::ELuaGcMode::INCREMENTAL :
+                    lux::script::lua::ELuaGcMode::GENERATIONAL},
                 .prepared_ability_blocks = std::array{
                     lux::simulation::script::LuaPreparedBlockClass{
                         requirements->ability_methods,
@@ -568,6 +583,17 @@ namespace
             hook_connection.reset();
             if (system)
                 static_cast<void>(system->shutdown());
+            const auto stats = lua->stats();
+            const auto& memory = stats.vm_allocations;
+            std::printf("VM_FINAL,accounting=%d,alloc=%llu,realloc=%llu,free=%llu,failures=%llu,"
+                "heap_alloc=%llu,heap_free=%llu,hits=%llu,in_place=%llu,live=%zu,peak_live=%zu,"
+                "retained=%zu,peak_retained=%zu,threads=%zu,resumes=%zu,released=%zu,"
+                "leaf_available=%d,leaf=%llu,standard=%llu\n",
+                memory.enabled, memory.allocations, memory.reallocations, memory.frees, memory.failures,
+                memory.system_allocations, memory.system_frees, memory.cache_hits, memory.in_place,
+                memory.live_bytes, memory.peak_live_bytes, memory.retained_bytes, memory.peak_retained_bytes,
+                stats.vm_coroutine_creations, stats.vm_coroutine_resumes, stats.vm_coroutine_releases,
+                stats.leaf_yield_available, stats.leaf_return_yields, stats.standard_leaf_yields);
         }
 
         [[nodiscard]] bool frame()

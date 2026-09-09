@@ -25,6 +25,18 @@ int main()
     const auto blocked = camera.position();
     camera.update(input, viewport, 0.1);
     assert(!camera.captured() && camera.position() == blocked);
+    input = {};
+    input.window_focused = true;
+    input.buttons[static_cast<std::size_t>(lux::ui::EPointerButton::MIDDLE)] = true;
+    input.pointer_delta = {20, -10};
+    viewport.hovered = viewport.middle_clicked = true;
+    const auto before_pan = camera.position();
+    camera.update(input, viewport, 0.01);
+    assert(camera.captured() && (camera.position() - before_pan).norm() > 0);
+    input.modal_open = true;
+    const auto before_modal = camera.position();
+    camera.update(input, viewport, 0.01);
+    assert(!camera.captured() && camera.position() == before_modal);
     const auto projection = camera.projection(16.0 / 9.0);
     for (const double distance : {0.05, 100000.0})
     {

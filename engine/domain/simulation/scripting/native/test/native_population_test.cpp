@@ -125,8 +125,10 @@ namespace
             }
             assert(backend.stats().active_frames == 3U && backend.stats().heap_frame_allocations == 0U);
             assert(backend.stats().frame_reserved_slots == 3U);
-            const auto occupied = 2U * a.findFunction(3U)->step->frame_size + b.findFunction(3U)->step->frame_size;
+            // All three calls use the actual 128-byte method; the maximum envelope remains reserved.
+            const auto occupied = 3U * a.findFunction(2U)->step->frame_size;
             assert(backend.stats().frame_live_bytes == 384U && backend.stats().frame_occupied_bytes == occupied);
+            assert(backend.stats().active_frame_region_bytes <= backend.stats().frame_storage_bytes);
             ScriptBackendContinuation over_capacity;
             const auto& full_call = calls[0].resumable;
             assert(full_call.invoke(full_call.context, frame, step, over_capacity).state == EScriptStepState::FAILED);

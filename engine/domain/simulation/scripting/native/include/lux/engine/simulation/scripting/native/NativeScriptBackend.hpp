@@ -96,6 +96,7 @@ namespace lux::simulation::script
         std::size_t state_capacity_failures{};
         bool observation_collected{};
         std::size_t retained_binding_bytes{};
+        std::size_t active_frame_region_bytes{};
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_NATIVE_PUBLIC NativeScriptBackend final

@@ -3,6 +3,7 @@
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
 #include <lux/engine/simulation/scripting/ScriptContractValidation.hpp>
 #include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
+#include <lux/engine/simulation/scripting/native/NativeFrameStorage.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -31,7 +32,7 @@ namespace lux::simulation::script
             void* lease{};
             void (*release)(void*) noexcept{};
             detail::BoundedClassStorage::ClassHandle state_class;
-            detail::BoundedClassStorage::ClassHandle frame_class;
+            detail::NativeFrameStorage::Layout frame_class;
         };
 
         struct Instance final
@@ -83,14 +84,14 @@ namespace lux::simulation::script
             State* owner{};
             Instance* instance{};
             const lux_script_function_desc* function{};
-            detail::BoundedClassStorage::ClassHandle frame_class;
+            detail::NativeFrameStorage::Layout frame_class;
         };
 
         struct NativeContinuation final
         {
             State* owner{};
             PreparedCall* call{};
-            detail::BoundedClassStorage::Allocation frame;
+            detail::NativeFrameStorage::Lease frame;
             std::size_t slot{(std::numeric_limits<std::size_t>::max)()};
             const lux_script_type_desc* waiting_event_payload{};
         };
@@ -105,7 +106,7 @@ namespace lux::simulation::script
         State(
             NativeModuleResolver source_resolver,
             NativeScriptBackendConfig source_config,
-            detail::BoundedClassStorage source_frame_storage,
+            detail::NativeFrameStorage source_frame_storage,
             detail::BoundedClassStorage source_state_storage,
             std::span<const detail::StorageClassPlan> frame_plans,
             std::span<const detail::StorageClassPlan> state_plans
@@ -125,7 +126,6 @@ namespace lux::simulation::script
                     layouts.push_back(StorageLayout{plans[index].size, plans[index].alignment, {index}});
             };
             remember(state_layouts, state_plans);
-            remember(frame_layouts, frame_plans);
             modules.reserve(module_capacity);
             module_index.reserve(module_capacity);
             instances.resize(instance_capacity);
@@ -184,7 +184,7 @@ namespace lux::simulation::script
                 frame_alignment = (std::max)(frame_alignment, static_cast<std::size_t>(function.step->frame_align));
             }
             if (frame_size == 0U) return true;
-            entry.frame_class = findStorageClass(frame_layouts, frame_size, frame_alignment);
+            entry.frame_class = frame_storage.domain(frame_size, frame_alignment);
             return static_cast<bool>(entry.frame_class);
         }
 
@@ -476,15 +476,19 @@ namespace lux::simulation::script
             {
                 return nullptr;
             }
-            auto frame = frame_storage.acquire(call.frame_class, step.frame_size);
-            if (!frame)
-                return nullptr;
-            if (step.initialization == LUX_SCRIPT_FRAME_ZEROED_BY_HOST)
-                std::memset(frame->data, 0, step.frame_size);
             const auto slot = free_continuations.back();
-            free_continuations.pop_back();
+            free_continuations.pop_back(); // Logical slot is reserved before any physical frame relationship.
             auto& continuation = continuations[slot];
-            continuation = {this, std::addressof(call), *frame, slot};
+            if (!frame_storage.acquire(call.frame_class, continuation.frame))
+            {
+                free_continuations.push_back(slot);
+                return nullptr;
+            }
+            if (step.initialization == LUX_SCRIPT_FRAME_ZEROED_BY_HOST)
+                std::memset(continuation.frame.data, 0, step.frame_size);
+            continuation.owner = this;
+            continuation.call = std::addressof(call);
+            continuation.slot = slot;
             return std::addressof(continuation);
         }
 
@@ -500,7 +504,10 @@ namespace lux::simulation::script
             const auto slot = continuation.slot;
             if (owner != nullptr)
                 static_cast<void>(owner->frame_storage.release(continuation.frame));
-            continuation = {};
+            continuation.owner = nullptr;
+            continuation.call = nullptr;
+            continuation.slot = (std::numeric_limits<std::size_t>::max)();
+            continuation.waiting_event_payload = nullptr;
             if (owner != nullptr && slot < owner->continuations.size())
                 owner->free_continuations.push_back(slot);
         }
@@ -872,7 +879,8 @@ namespace lux::simulation::script
                     return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
                 }
             }
-            detail::BoundedClassStorage::ClassHandle frame_class;
+            if (self.free_prepared_calls.empty()) return EScriptBackendResult::CAPACITY_EXCEEDED;
+            detail::NativeFrameStorage::Layout frame_class;
             if (function->step != nullptr)
             {
                 const auto& step = *function->step;
@@ -881,12 +889,10 @@ namespace lux::simulation::script
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
                 // The executable's envelope owns the prepared population. A small method must not
                 // steal a different population's small-frame capacity.
-                frame_class = instance->module->frame_class;
+                frame_class = self.frame_storage.prepare(instance->module->frame_class, step.frame_size, step.frame_align);
                 if (!frame_class)
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
             }
-            if (self.free_prepared_calls.empty())
-                return EScriptBackendResult::CAPACITY_EXCEEDED;
             const auto slot = self.free_prepared_calls.back();
             self.free_prepared_calls.pop_back();
             auto& prepared = self.prepared_calls[slot];
@@ -920,6 +926,7 @@ namespace lux::simulation::script
             const auto slot = static_cast<std::size_t>(prepared - self.prepared_calls.data());
             if (prepared->instance == nullptr)
                 return;
+            if (prepared->frame_class && !self.frame_storage.releaseLayout(prepared->frame_class)) return;
             *prepared = {};
             self.free_prepared_calls.push_back(slot);
         }
@@ -958,7 +965,6 @@ namespace lux::simulation::script
         std::vector<lux::script::native::ScriptAbilityNativeContribution> ability_contributions;
         std::vector<ModuleEntry> modules;
         std::vector<StorageLayout> state_layouts;
-        std::vector<StorageLayout> frame_layouts;
         std::unordered_map<lux::asset::AssetId, std::size_t> module_index;
         std::vector<Instance> instances;
         std::vector<std::size_t> free_instances;
@@ -966,7 +972,7 @@ namespace lux::simulation::script
         std::vector<std::size_t> free_prepared_calls;
         std::vector<NativeContinuation> continuations;
         std::vector<std::size_t> free_continuations;
-        detail::BoundedClassStorage frame_storage;
+        detail::NativeFrameStorage frame_storage;
         detail::BoundedClassStorage state_storage;
     };
 
@@ -1067,11 +1073,12 @@ namespace lux::simulation::script
                 }
                 if (!append(frame_plans, frame_size, frame_alignment, population.continuations)) return;
             }
-            detail::BoundedClassStorage frame_storage;
+            detail::NativeFrameStorage frame_storage;
             if (!frame_plans.empty())
             {
-                auto created = detail::BoundedClassStorage::create(
-                    frame_plans, config.continuation_frame_storage_bytes, config.continuation_capacity, UINT64_MAX, config.observe_storage);
+                auto created = detail::NativeFrameStorage::create(
+                    frame_plans, config.continuation_frame_storage_bytes, config.continuation_capacity,
+                    config.prepared_call_capacity, config.observe_storage);
                 if (!created) return;
                 frame_storage = std::move(*created);
             }
@@ -1129,7 +1136,7 @@ namespace lux::simulation::script
             states.allocation_high_water,
             states.acquire_steps,
             states.release_steps,
-            stats.metadata_bytes + state_->frame_layouts.capacity() * sizeof(State::StorageLayout),
+            stats.metadata_bytes,
             stats.acquire_steps,
             stats.release_steps,
             states.reserved_slots,
@@ -1139,7 +1146,8 @@ namespace lux::simulation::script
             stats.occupied_bytes,
             states.capacity_failures,
             state_->config.observe_storage,
-            state_->retained_binding_bytes
+            state_->retained_binding_bytes,
+            stats.active_region_bytes
         };
     }
 

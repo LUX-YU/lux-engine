@@ -332,7 +332,8 @@ static int resumeAuthorityCase(bool stop)
     assert(hook.prepare(1U) == EEndpointMutationError::NONE);
     ScriptHookEndpoint<void()> endpoint{kOwner, kHook, hook};
     HookChannel<SimulationBroadcastRoute, ValuePose> channel;
-    assert(channel.prepare({1U, 1U}) == EEndpointMutationError::NONE);
+    assert(channel.prepare({1U, 1U}, [](const ValuePose& value) noexcept { return value; }) ==
+        EEndpointMutationError::NONE);
     ScriptEventEndpoint<SimulationBroadcastRoute, ValuePose> event{kOwner, event_id, channel};
     auto source = projectScriptEventSource(sim->findEvent(kOwner, event_id), event.descriptor(), "Resume", "pose");
     assert(source);

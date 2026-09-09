@@ -12,3 +12,15 @@
 
 原始证据：E:/lux-er1/review-github-01/raw/g01-{before,after}{,-build}.log；图像分别在images-before/images-after。
 这是工作树定向验证，尚非本轮最终clean clone/SDK资格。G02–G04与原剩余门槛继续执行，ER-1未通过。
+
+## G02：粘性资源变化（第一组）
+
+修前真实负例：raw/g02-before-03.log，exit=1。AssetReadPort实际接收provider的IO_FAILURE，另一个资源在真实render_client::compileShader准备分配失败；由SceneResources准备边界返回ALLOCATION_FAILURE。未运行新的renderer reply pump，重试同一个cycle后owner为UPLOADING/FAILED，公开snapshot却为READING/READING，revision1→1。显式关闭全部owner后准确失败退出。
+
+修后raw/g02-after-resource_publication.log及g02-after-resource_snapshot.log均exit=0。前者覆盖实际shader请求分配，后者覆盖Scene快照构造分配。重试期间两个row状态与request key均未变化，公开revision1→2；真实direct通知只在完整snapshot发布后触发。再推进静止cycle，snapshot地址不变且不重复通知。最终图像checksum与修前一致，descriptor2/2，全部owner关闭。
+
+pending_change属于SceneResources；每个row作用域记录异常退出前发生的状态变化，只有Session在owner gate内成功发布完整snapshot后确认消费。没有回滚异步完成、每帧复制或改动GPU释放保护。专用诊断接点只存在于LUX_EDITOR_SCENE_TEST_DIAGNOSTICS。
+
+保留探索结果：g02-before.log因测试驱动沿用三实体断言而异常终止，不算合格负例；before-02实际命中snapshot分配并通过，不算复现。对应失败构建日志也保留；all失败后未运行测试。
+
+本组尚未覆盖“先接纳READY再后续准备失败”的独立组合，将继续补齐；不据这两条结果将G02全部验收项标为通过。

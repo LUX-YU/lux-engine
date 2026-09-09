@@ -289,6 +289,7 @@ namespace lux::editor::sessions
         {
             ++impl_->resource_revision;
             impl_->resources_dirty = false;
+            impl_->resources->acknowledgeSnapshot();
             notify<resourcesChanged>(SceneResourceNotice{id(), impl_->resource_revision});
         }
         return {};
@@ -572,6 +573,17 @@ namespace lux::editor::sessions
         return cancelTransformEdit(ref);
     }
 #if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+    bool detail::SceneTestAccess::resourceReadsSettled(const SceneSession &session) noexcept
+    {
+        return session.impl_->check(false) && session.impl_->resources->readsSettled();
+    }
+    SceneResult<std::shared_ptr<const SceneResourceSnapshot>>
+    detail::SceneTestAccess::resourceOwnerSnapshot(const SceneSession &session) noexcept
+    {
+        if (auto checked = session.impl_->check(false); !checked)
+            return lux::cxx::unexpected(checked.error());
+        return session.impl_->resources->snapshot(session.impl_->resource_revision);
+    }
     SceneResult<void> detail::SceneTestAccess::mutateSource(SceneSession &session, ESceneTestMutation mutation) noexcept
     {
         auto &state = *session.impl_;

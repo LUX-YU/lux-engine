@@ -17,6 +17,9 @@
 #include <thread>
 #include <type_traits>
 #include "../../../rendering/test/ViewLifetimeTest.hpp"
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+extern "C" __declspec(dllimport) std::size_t lux_er1_client_allocation_disarm() noexcept;
+#endif
 
 namespace
 {
@@ -27,6 +30,8 @@ namespace
     public:
         std::shared_ptr<lux::asset::IAssetProvider> source;
         lux::asset::AssetId held;
+        bool hold_all{};
+        lux::asset::AssetId failed_asset;
         mutable std::atomic<unsigned> entered{}, returned{};
         std::atomic<bool> released{};
         std::optional<lux::asset::AssetId> resolve(std::string_view path) const override
@@ -40,12 +45,15 @@ namespace
         lux::cxx::expected<lux::asset::AssetBlob, lux::asset::EAssetStorageError> open(
             const lux::asset::AssetId &id) const override
         {
-            if (id == held)
+            if (hold_all || id == held)
             {
                 ++entered;
                 while (!released.load(std::memory_order_acquire))
                     released.wait(false, std::memory_order_acquire);
-                auto result = source->open(id);
+                auto result = id == failed_asset
+                    ? lux::cxx::expected<lux::asset::AssetBlob, lux::asset::EAssetStorageError>{
+                          lux::cxx::unexpected(lux::asset::EAssetStorageError::IO_FAILURE)}
+                    : source->open(id);
                 ++returned;
                 return result;
             }
@@ -143,6 +151,21 @@ namespace
             request = {};
             image = {};
             return checksum;
+        }
+    };
+    class ResourceObserver final : public lux::object::Object<ResourceObserver>
+    {
+    public:
+        using Object::Object;
+        sessions::SceneSession *session{};
+        unsigned calls{};
+        void changed(const sessions::SceneResourceNotice &notice) noexcept
+        {
+            const auto snapshot = session->readResources();
+            require(snapshot && (*snapshot)->session == notice.session &&
+                        (*snapshot)->revision == notice.resource_revision,
+                    "G02 notification observes the completely published resource snapshot");
+            ++calls;
         }
     };
     class ClosingObserver final : public lux::object::Object<ClosingObserver>
@@ -248,6 +271,9 @@ int main(int argc, char **argv)
     require(argc == 4 || argc == 5, "arguments: asset package, output directory, scene variant, optional recovery pak");
     const std::string_view variant{argv[3]};
     bool failed_view_contract = true;
+    bool resource_publication_contract = true;
+    const bool resource_snapshot_test = variant == "resource_snapshot";
+    const bool resource_publication_test = variant == "resource_publication" || resource_snapshot_test;
     const bool retry_test = variant == "retry";
     const bool dynamic_test = variant == "dynamic";
     const bool churn_test = variant == "churn";
@@ -264,7 +290,7 @@ int main(int argc, char **argv)
     const bool gated_test = late_entity_test || late_source_test || late_close_test || late_selection_test;
 #if !defined(LUX_EDITOR_DIAGNOSTICS)
     require(!dynamic_test && !churn_test && !record_failure_test && !late_entity_test && !late_source_test &&
-                variant != "factory_failure",
+                variant != "factory_failure" && !resource_publication_test,
             "requested variant requires the isolated diagnostic build");
 #endif
     require(!retry_test || argc == 5, "retry needs a complete recovery package");
@@ -284,7 +310,8 @@ int main(int argc, char **argv)
         require(pak, "load actual scene resources");
         auto provider = std::make_shared<GatedProvider>();
         provider->source = *pak;
-        if (!gated_test)
+        provider->hold_all = resource_publication_test;
+        if (!gated_test && !resource_publication_test)
             provider->release();
         require(vfs.mount({"/Seed", provider, 0}) != lux::asset::kInvalidMountId, "mount resources");
         auto blocking = execution->blocking();
@@ -453,6 +480,18 @@ int main(int argc, char **argv)
         auto source = (variant == "alternate" ? examples::openAlternateScene : examples::openDevelopmentScene)(
             {1}, messages.dispatcherRef(), *renderer, (*endpoint)->port(), shared_meta);
         require(source, "Scene source factory");
+        if (resource_publication_test)
+        {
+            std::size_t count{};
+            for (const auto entity : source->scene->registry().view<lux::simulation::ecs::Mesh3D>())
+            {
+                if (!count)
+                    provider->failed_asset =
+                        source->scene->registry().get<lux::simulation::ecs::Mesh3D>(entity).value.mesh;
+                if (++count > 2)
+                    source->scene->registry().remove<lux::simulation::ecs::Mesh3D>(entity);
+            }
+        }
         std::optional<sessions::SceneEntityRef> original_entity, recycled_entity;
         lux::asset::AssetId replacement_mesh;
         std::optional<sessions::ResourceRequestKey> superseded_key;
@@ -497,6 +536,79 @@ int main(int argc, char **argv)
         auto session_result = sessions::SceneSession::openInspection(*source);
         require(session_result && !source->scene, "Scene source transfer");
         auto session = std::move(*session_result);
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+        if (resource_publication_test)
+        {
+            ResourceObserver observer(messages.dispatcherRef());
+            observer.session = session.get();
+            auto connection = session->observe<sessions::SceneSession::resourcesChanged, &ResourceObserver::changed,
+                                              lux::object::EDelivery::DIRECT>(observer);
+            require(connection, "G02 real direct resource observer");
+            require(session->updateAtOwnerSafePoint({1, 0}), "G02 publish initial READING snapshot");
+            const auto initial = session->readResources();
+            require(initial && (*initial)->rows.size() == 2 &&
+                        std::all_of((*initial)->rows.begin(), (*initial)->rows.end(), [](const auto &row)
+                            { return row.state == sessions::ESceneResourceState::READING; }),
+                    "G02 real reads held before owner accepts any completion");
+            provider->release();
+            const auto deadline = Clock::now() + std::chrono::seconds{10};
+            while (!sessions::detail::SceneTestAccess::resourceReadsSettled(*session))
+            {
+                require(Clock::now() < deadline, "G02 actual asset reads complete");
+                std::this_thread::yield();
+            }
+            if (resource_snapshot_test)
+                lux_er1_scene_allocation_fail_after(0);
+            else
+                sessions::detail::SceneTestAccess::failNextShaderPreparation();
+            const auto failed = session->updateAtOwnerSafePoint({2, 0});
+            const auto allocations = resource_snapshot_test ? lux_er1_scene_allocation_disarm()
+                                                            : lux_er1_client_allocation_disarm();
+            require(!failed && failed.error().code == sessions::ESceneError::ALLOCATION_FAILURE &&
+                        failed.error().session == session->id() && allocations == 1,
+                    "G02 exact real client shader preparation allocation failure contained by Scene owner");
+            require(observer.calls == 1, "G02 failed preparation cannot notify an unpublished snapshot");
+            const auto actual = sessions::detail::SceneTestAccess::resourceOwnerSnapshot(*session);
+            require(actual, "G02 observe retained owner without mutating it");
+            require(session->updateAtOwnerSafePoint({2, 0}), "G02 retry same owner cycle without backend reply pump");
+            const auto published = session->readResources();
+            require(published, "G02 read retry snapshot");
+            bool found_failure{};
+            for (std::size_t index = 0; index < (*actual)->rows.size(); ++index)
+            {
+                const auto &row = (*actual)->rows[index];
+                const auto &visible = (*published)->rows[index];
+                if (row.state == sessions::ESceneResourceState::FAILED)
+                {
+                    require(row.asset_failure && row.key.mesh == provider->failed_asset,
+                            "G02 actual failed provider identity retained by resource owner");
+                    found_failure = true;
+                    resource_publication_contract &= visible.state == row.state && visible.key == row.key &&
+                        visible.asset_failure && visible.asset_failure->code == row.asset_failure->code;
+                }
+                std::printf("G02 row=%zu owner_state=%u published_state=%u request=%llu revision=%llu->%llu\n",
+                            index, unsigned(row.state), unsigned(visible.state), row.key.sequence,
+                            (*initial)->revision, (*published)->revision);
+            }
+            require(found_failure, "G02 failed reply was accepted before preparation OOM");
+            resource_publication_contract &= (*published)->revision > (*initial)->revision;
+            resource_publication_contract &= observer.calls == 2;
+            const auto owner_after_retry = sessions::detail::SceneTestAccess::resourceOwnerSnapshot(*session);
+            require(owner_after_retry && (*owner_after_retry)->rows.size() == (*actual)->rows.size(),
+                    "G02 retry retains every original request owner");
+            for (std::size_t index = 0; index < (*actual)->rows.size(); ++index)
+                require((*owner_after_retry)->rows[index].key == (*actual)->rows[index].key &&
+                            (*owner_after_retry)->rows[index].state == (*actual)->rows[index].state,
+                        "G02 retry publishes pending changes without a new row transition");
+            require(session->updateAtOwnerSafePoint({3, 0}), "G02 static owner cycle");
+            require(session->readResources()->get() == published->get() && observer.calls == 2,
+                    "G02 acknowledged change does not copy snapshots or notify every cycle");
+            std::printf("G02 allocation_attempts=%zu publication_preserved=%u views=%zu leases=%zu\n", allocations,
+                        unsigned(resource_publication_contract), renderer->statistics().views,
+                        renderer->statistics().runtime_leases);
+            std::fflush(stdout);
+        }
+#endif
         std::unique_ptr<sessions::SceneView> separate_view;
         rendering::PixelExtent separate_extent =
             multiple_equal ? rendering::PixelExtent{1014, 593} : rendering::PixelExtent{256, 256};
@@ -606,7 +718,7 @@ int main(int argc, char **argv)
         std::optional<sessions::detail::ESceneTestMutation> pending_mutation;
         unsigned phase{};
         const auto needs_second = [&] { return multiple_views_test && (!multiple_lifecycle || phase < 3); };
-        std::uint64_t next_capture = 60, cycle{};
+        std::uint64_t next_capture = 60, cycle = resource_publication_test ? 3 : 0;
         bool recovery_mounted{}, retry_accepted{};
         bool partial_failure_observed{};
         unsigned held_selection_steps{};
@@ -753,13 +865,16 @@ int main(int argc, char **argv)
                                             [&](const auto &row)
                                             {
                                                 return row.state == sessions::ESceneResourceState::READY ||
+                                                       (resource_publication_test && row.asset_failure &&
+                                                        row.state == sessions::ESceneResourceState::FAILED) ||
                                                        (dynamic_test && phase >= 3 &&
                                                         row.state == sessions::ESceneResourceState::SUPERSEDED);
                                             }));
             if (churn_test)
                 require((*resources)->rows.size() <= 6, "bounded resource ledger while replacing identities");
             else if (has_mesh && !(dynamic_test && phase >= 3) && !late_entity_test && !late_source_test)
-                require((*resources)->rows.size() == 3, "discover all three visual entities");
+                require((*resources)->rows.size() == (resource_publication_test ? 2 : 3),
+                        "discover every visual entity in the actual input");
             if (readback.request.valid() && readback.request.isReady() &&
                 (!needs_second() || second_readback.request.isReady()))
             {
@@ -1293,6 +1408,11 @@ int main(int argc, char **argv)
     if (!failed_view_contract)
     {
         std::fputs("G01 FAIL: failed View ordinary operations lost original failure; all owners closed\n", stderr);
+        return 1;
+    }
+    if (!resource_publication_contract)
+    {
+        std::fputs("G02 FAIL: accepted resource failure missing from retry snapshot; all owners closed\n", stderr);
         return 1;
     }
 }

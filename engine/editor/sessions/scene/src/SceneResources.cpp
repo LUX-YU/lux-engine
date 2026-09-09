@@ -1,11 +1,18 @@
 #include <lux/engine/editor/sessions/scene/detail/SceneResources.hpp>
 #include <algorithm>
 #include <limits>
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+#include <lux/engine/editor/sessions/scene/detail/SceneTestAccess.hpp>
+extern "C" __declspec(dllimport) void lux_er1_client_allocation_fail_after(std::size_t) noexcept;
+#endif
 
 namespace lux::editor::sessions::detail
 {
     namespace
     {
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+        thread_local bool fail_shader_preparation{};
+#endif
         auto fail(ESceneError code, SessionId id) noexcept
         {
             return lux::cxx::unexpected(SceneFailure{code, id});
@@ -16,6 +23,21 @@ namespace lux::editor::sessions::detail
                    state == ESceneResourceState::SUPERSEDED || state == ESceneResourceState::RELEASED ||
                    state == ESceneResourceState::UNREFERENCED;
         }
+        struct RowChange final
+        {
+            const SceneResourceRow &row;
+            bool &pending;
+            ESceneResourceState before;
+            RowChange(const SceneResourceRow &value, bool &dirty) noexcept
+                : row(value), pending(dirty), before(value.state)
+            {
+            }
+            ~RowChange() noexcept
+            {
+                // State can change before a later preparation allocation throws.
+                pending |= row.state != before;
+            }
+        };
         struct RetirementMarker final
         {
             std::shared_ptr<std::atomic<bool>> consumed;
@@ -45,6 +67,12 @@ namespace lux::editor::sessions::detail
                 row.state = ESceneResourceState::CANCELLED;
         }
     } // namespace
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+    void SceneTestAccess::failNextShaderPreparation() noexcept
+    {
+        fail_shader_preparation = true;
+    }
+#endif
     void ResourceRequest::start(ResourceTasks &tasks, lux::process::asset_loading::AssetReadPort port) noexcept
     {
         if (row.key.mesh.isNull() || row.key.material.isNull())
@@ -138,6 +166,10 @@ namespace lux::editor::sessions::detail
         if (!forward.isValid() && !forward_request.valid() && renderer.controlAvailable())
         {
             const auto info = lux::rdesc::ShaderInfo::serialize(material_data.forward_info);
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+            if (std::exchange(fail_shader_preparation, false))
+                lux_er1_client_allocation_fail_after(0);
+#endif
             forward_request =
                 runtime.control().compileShader(std::as_bytes(std::span{material_data.forward_spirv}), info);
         }
@@ -218,6 +250,13 @@ namespace lux::editor::sessions::detail
         if (active_ && !closed_)
             std::terminate();
     }
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+    bool SceneResources::readsSettled() const noexcept
+    {
+        return !requests_.empty() && std::all_of(requests_.begin(), requests_.end(), [](const auto &request)
+            { return readDone(*request->mesh_read) && readDone(*request->material_read); });
+    }
+#endif
     SceneResult<void> SceneResources::activate() noexcept
     {
         if (renderer_)
@@ -236,16 +275,15 @@ namespace lux::editor::sessions::detail
             return fail(ESceneError::CLOSED, session_);
         if (!renderer_)
             return false;
-        bool changed{};
+        auto &changed = pending_change_;
         try
         {
             // Retire obsolete identities before admitting replacements. Snapshots own their rows;
             // erasing an entirely released request cannot invalidate an observer's saved failure/key.
             for (auto &request : requests_)
             {
-                const auto before = request->row.state;
+                const RowChange change{request->row, changed};
                 request->acceptReplies();
-                changed |= request->row.state != before;
                 const auto &key = request->row.key;
                 const auto *visual = registry.valid(key.target.entity)
                                          ? registry.try_get<lux::simulation::ecs::Mesh3D>(key.target.entity)
@@ -306,7 +344,7 @@ namespace lux::editor::sessions::detail
             }
             for (auto &request : requests_)
             {
-                const auto before = request->row.state;
+                const RowChange change{request->row, changed};
                 request->acceptReplies();
                 const auto &key = request->row.key;
                 const auto *visual = registry.valid(key.target.entity)
@@ -330,7 +368,6 @@ namespace lux::editor::sessions::detail
                         request->adopted = true;
                     }
                 }
-                changed |= request->row.state != before;
             }
             if (auto prepared = prepareRetirement(false); !prepared)
                 return lux::cxx::unexpected(prepared.error());
@@ -340,6 +377,11 @@ namespace lux::editor::sessions::detail
         {
             return fail(ESceneError::ALLOCATION_FAILURE, session_);
         }
+    }
+    void SceneResources::acknowledgeSnapshot() noexcept
+    {
+        // Called only under the Session owner gate after the complete snapshot is published.
+        pending_change_ = false;
     }
     SceneResult<void> SceneResources::prepareRetirement(bool all) noexcept
     {
@@ -425,6 +467,7 @@ namespace lux::editor::sessions::detail
             *found = std::move(replacement);
             ++sequence_;
             (*found)->start(tasks_, port_);
+            pending_change_ = true;
             return {};
         }
         catch (const std::bad_alloc &)

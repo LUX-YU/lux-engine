@@ -137,11 +137,15 @@ namespace lux::editor::sessions::detail
         ~SceneResources() noexcept;
         SceneResult<void> activate() noexcept;
         SceneResult<bool> prepareUpdate(lux::simulation::ecs::Registry &) noexcept;
+        void acknowledgeSnapshot() noexcept;
         void afterPresentation(bool source_update_pending) noexcept;
         SceneResult<void> retry(const ResourceRequestKey &) noexcept;
         SceneResult<std::shared_ptr<const SceneResourceSnapshot>> snapshot(std::uint64_t) const noexcept;
         SceneResult<void> beginClose() noexcept;
         SceneResult<bool> advanceClose() noexcept;
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+        bool readsSettled() const noexcept;
+#endif
 
     private:
         SessionId session_;
@@ -152,6 +156,7 @@ namespace lux::editor::sessions::detail
         std::size_t capacity_{};
         std::uint64_t sequence_{};
         bool active_{}, closing_{}, closed_{};
+        bool pending_change_{true};
         ResourceTasks tasks_;
         SceneResult<void> prepareRetirement(bool all) noexcept;
         lux::render::RenderProgram<> retirement_program_, retirement_progress_;

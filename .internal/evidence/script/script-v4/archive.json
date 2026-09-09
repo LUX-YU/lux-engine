@@ -1,0 +1,9 @@
+{
+  "qualification_source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+  "baseline_source": "e06208deb29b9b1de52fe49a129091f693bb7e08",
+  "archive": "script-v4-raw.zip",
+  "sha256": "0695676277c4113422ddf2f849e21d76c8dc4fa5d2b4ad45f0833fd0243e624e",
+  "archive_bytes": 5134619,
+  "payload_files": 562,
+  "manifest_entries_verified": true
+}

@@ -71,9 +71,9 @@ Windows 宿主工具安装必须可独立运行：`LUX_HOST_TOOLS_PREFIX/bin` �
 `0xc0000135` 静默失败。交叉编译还必须设置 `VULKAN_SDK`；引擎使用 SDK 的当前
 平台中立 Vulkan 头和宿主 `glslc`，但仍链接 NDK 的 arm64 `libvulkan.so`。
 
-Android 默认 `LUX_SCRIPT_HAS_LUA=OFF`，因为当前 overlay triplet 没有目标端
-LuaJIT；这只移除 Lua backend 与 Lua metadata sidecar，不会移除 ScriptSystem 或
-native backend。triplet 提供目标端 LuaJIT 后可显式开启该选项。
+Android 默认 `LUX_SCRIPT_HAS_LUA=OFF`；当前尚无通过资格的目标端 Lua55 依赖 recipe。
+这只移除 Lua backend 与 Lua metadata sidecar，不会移除 ScriptSystem 或 native backend。
+活动构建不再选择 LuaJIT/Lua5.4；未来开启 Lua 前须单独完成目标端 Lua55 资格。
 
 ## harness 的形状:顺序 gate,不是 runtime player
 

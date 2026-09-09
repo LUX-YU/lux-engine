@@ -261,8 +261,44 @@ static void testNumericContract(lua_State* state)
     std::puts("LUA_NUMERIC_CONTRACT,i32_u32_bounds=1,f64_2pow53=1,i64_u64_unsupported=1,finite=1,negative_zero=1");
 }
 
-int main()
+template<int N> static std::int32_t& nestedLeaf(Nested<N>& value) noexcept
 {
+    if constexpr (N == 0) return value.leaf;
+    else return nestedLeaf(value.child);
+}
+template<int N> static void deepStackCase()
+{
+    using Codec = LuaValueCodec<Nested<N>>;
+    Allocation allocator;
+    auto* state = lua_newstate(Allocation::allocate, &allocator, 1592598566U);
+    assert(state);
+    assert(Codec::prepare(state));
+    Nested<N> value{};
+    nestedLeaf(value) = 73;
+    std::printf("CODEC_STACK_BEGIN,depth=%zu,required=%u\n", Codec::depth, Codec::plan().stack);
+    LuaValueWriter writer{state};
+    assert(Codec::push(writer, value) && lua_gettop(state) == 1);
+    LuaValueReader reader{state, 1};
+    auto decoded = Codec::read(reader);
+    assert(decoded && nestedLeaf(*decoded) == 73 && lua_gettop(state) == 1);
+    assert(Codec::push(writer, value) && lua_gettop(state) == 2 && !lua_rawequal(state, 1, 2));
+    lua_close(state);
+    std::printf("CODEC_STACK_PASS,depth=%zu,bidirectional=1,independent_tables=1\n", Codec::depth);
+}
+
+int main(int argc, char** argv)
+{
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    if (argc == 2 && std::string_view{argv[1]} == "--deep-stack")
+    {
+        deepStackCase<0>();
+        deepStackCase<15>();
+        deepStackCase<31>();
+        return 0;
+    }
+    deepStackCase<0>();
+    deepStackCase<15>();
+    deepStackCase<31>();
     static_assert(LuaValueCodec<NamedA>::representation() != LuaValueCodec<NamedB>::representation());
     static_assert(!LuaValueCodec<Angle>::can_read && LuaValueCodec<Angle>::can_push);
     static_assert(!std::is_default_constructible_v<Resource>);

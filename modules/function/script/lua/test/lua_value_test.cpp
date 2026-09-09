@@ -273,7 +273,7 @@ template<int N> static void deepStackCase()
     auto* state = lua_newstate(Allocation::allocate, &allocator, 1592598566U);
     assert(state);
     assert(Codec::prepare(state));
-    Nested<N> value{};
+    Nested<N> value; // The sole scalar member is explicitly initialized below.
     nestedLeaf(value) = 73;
     std::printf("CODEC_STACK_BEGIN,depth=%zu,required=%u\n", Codec::depth, Codec::plan().stack);
     LuaValueWriter writer{state};

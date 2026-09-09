@@ -96,8 +96,19 @@ struct ResourceRecord
     Resource first;
     std::int32_t later;
 };
+struct WideRecord
+{
+    std::int32_t a, b, c, d, e, f, g, h, i, j, k, l;
+};
 namespace lux::script::lua
 {
+    template <> struct LuaGeneratedValue<WideRecord> : LuaRecordValue<WideRecord,
+        LuaValueField<&WideRecord::a, "a">, LuaValueField<&WideRecord::b, "b">,
+        LuaValueField<&WideRecord::c, "c">, LuaValueField<&WideRecord::d, "d">,
+        LuaValueField<&WideRecord::e, "e">, LuaValueField<&WideRecord::f, "f">,
+        LuaValueField<&WideRecord::g, "g">, LuaValueField<&WideRecord::h, "h">,
+        LuaValueField<&WideRecord::i, "i">, LuaValueField<&WideRecord::j, "j">,
+        LuaValueField<&WideRecord::k, "k">, LuaValueField<&WideRecord::l, "l">> {};
     template <>
     struct LuaGeneratedValue<ResourceRecord>
         : LuaRecordValue<ResourceRecord, LuaValueField<&ResourceRecord::first, "first">,
@@ -265,6 +276,28 @@ int main()
     assert(state);
     luaL_openlibs(state);
     assert(detail::LuaValueAccess::initialize(state));
+    {
+        using Codec = LuaValueCodec<WideRecord>;
+        const auto* plan = &Codec::plan();
+        assert(plan == &Codec::plan() && plan->fields.size() == 12U);
+        assert(Codec::prepare(state));
+        load(state, "return {l=12,k=11,j=10,i=9,h=8,g=7,f=6,e=5,d=4,c=3,b=2,a=1}");
+        LuaValueReader input{state, 1};
+        const auto value = Codec::read(input);
+        assert(value && value->a == 1 && value->f == 6 && value->l == 12);
+        LuaValueWriter output{state};
+        assert(Codec::push(output, *value));
+        assert(lua_gettop(state) == 2);
+        load(state, "return {l=12,k=11,j=10,i=9,h=8,g=7,f=6,e=5,d=4,c=3,b=2,unknown=1}");
+        const auto unknown = Codec::read(input);
+        assert(!unknown && unknown.error().code == ELuaValueError::UNKNOWN_FIELD);
+        load(state, "return {l=12,k=11,j=10,i=9,h=8,g=7,f=6,e=5,d=4,c=3}");
+        const auto missing = Codec::read(input);
+        assert(!missing && missing.error().code == ELuaValueError::MISSING_FIELD &&
+            std::string_view{missing.error().path.data()} == "a");
+        lua_settop(state, 0);
+        std::puts("CODEC_PLAN fields=12 stable=1 hash-shape=1 strict=1 missing-order=1 PASS");
+    }
     testNumericContract(state);
     load(state, "return {renamed=7,velocity={x=1.5,y=2.25},mode=3}");
     LuaValueReader reader{state, 1};

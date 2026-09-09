@@ -453,6 +453,16 @@ namespace lux::simulation::script
                 return;
             }
             if (!lux::script::lua::detail::LuaValueAccess::initialize(state)) return;
+            for (const auto& value : config.values)
+                if (value.prepare != nullptr && !value.prepare(state)) return;
+            for (const auto& ability : config.abilities)
+                for (const auto& method : ability.methods)
+                {
+                    for (const auto& value : method.parameters)
+                        if (value.prepare != nullptr && !value.prepare(state)) return;
+                    for (const auto& value : method.results)
+                        if (value.prepare != nullptr && !value.prepare(state)) return;
+                }
             vm_configured = true;
             prototypes.reserve(config.instance_capacity);
             components.assign(

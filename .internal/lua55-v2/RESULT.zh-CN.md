@@ -23,5 +23,7 @@
 
 P0 (`42ffbf9d4`)：Developer 全量构建、83 项受影响 CTest、第二轮无工作通过。
 依赖 C IPO 探测与 smoke 通过，安装到独立 `install/o/v2/lua55`。
-P1：C primitive、原资格重验和真实负例已实现，验证中。
-P2—P8：待完成，最终报告将登记代码、测量、未采用实验和明确限制。
+P1 (`cea6bbcc` 及 fixture 修正至 `c611ca0b`)：原有 Lua 受影响测试 16 项通过，
+两项新增恢复转换用例通过；立即退休 provider=0，延迟 stop provider=1，均 root 1/释放 1。
+P2：不可变 CodecPlan、VM 内字段名 root、plain 树单次保护读写与 typed 外层构造已实现，验证中。
+P3—P8：待完成，最终报告将登记代码、测量、未采用实验和明确限制。

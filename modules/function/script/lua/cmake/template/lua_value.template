@@ -1,5 +1,6 @@
 #pragma once
-// Generated typed value operations. No offsets or runtime reflection interpretation.
+// Generated typed value operations and immutable CodecPlan specializations.
+// Member thunks preserve non-standard-layout and const-member construction; no runtime reflection interpretation.
 #include <lux/engine/function/script/lua/LuaValue.hpp>
 {% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
 {% for header in rule_headers %}#include "{{ header }}"

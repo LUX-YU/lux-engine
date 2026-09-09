@@ -24,6 +24,7 @@ namespace lux::script::lua
         bool writable{};
         bool (*push)(lua_State *, const void *) noexcept {};
         bool native_scalar{};
+        bool (*prepare)(lua_State*) noexcept{};
     };
     template <class T, class Policy = LuaValuePolicy>
     [[nodiscard]] consteval LuaValueOperation makeLuaValueOperation() noexcept
@@ -49,7 +50,7 @@ namespace lux::script::lua
                         detail::LuaValueAccess::restoreScratch(state, top);
                     return valid;
                 },
-                LuaValueScalar<V> && !Codec::custom};
+                LuaValueScalar<V> && !Codec::custom, &Codec::prepare};
     }
     template <class Ability> struct ScriptAbilityLuaPolicy
     {

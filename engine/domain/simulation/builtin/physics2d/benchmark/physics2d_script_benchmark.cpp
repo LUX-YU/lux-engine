@@ -73,7 +73,6 @@ namespace
         std::filesystem::path output{"physics2d_script_pb3.csv"};
         std::filesystem::path lua_artifact;
         std::filesystem::path flowforge_artifact;
-        lux::script::lua::ELuaExecutionPolicy lua_policy{lux::script::lua::ELuaExecutionPolicy::DEFAULT};
     };
 
     struct Row final
@@ -161,15 +160,6 @@ namespace
                 result.lua_artifact = value;
             else if (key == "--flowforge-artifact")
                 result.flowforge_artifact = value;
-            else if (key == "--lua-policy")
-            {
-                if (value == "default")
-                    result.lua_policy = lux::script::lua::ELuaExecutionPolicy::DEFAULT;
-                else if (value == "interpreter-only")
-                    result.lua_policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
-                else
-                    return std::nullopt;
-            }
             else if (key == "--mode")
             {
                 if (value == "performance")
@@ -465,7 +455,6 @@ namespace
                 .ability_catalog_method_capacity = 5U,
                 .prepared_ability_capacity = lua_count * requirements->ability_methods,
                 .abilities = contributions,
-                .execution_policy = options.lua_policy,
                 .event_catalog_capacity = 1U,
                 .prepared_event_capacity = lua_count * requirements->event_sources,
                 .events = event_sources,

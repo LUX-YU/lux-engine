@@ -81,9 +81,6 @@ namespace lux::simulation::script
         std::span<const LuaComponentBinding> components;
         std::span<const lux::script::lua::LuaValueOperation> values;
         std::span<const lux::script::lua::ScriptAbilityLuaContribution> abilities;
-        lux::script::lua::ELuaExecutionPolicy execution_policy{
-            lux::script::lua::ELuaExecutionPolicy::DEFAULT
-        };
         std::size_t event_catalog_capacity{1U};
         std::size_t prepared_event_capacity{};
         std::span<const lux::script::ScriptEventSourceDescription> events;

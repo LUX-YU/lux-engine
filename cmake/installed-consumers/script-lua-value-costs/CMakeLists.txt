@@ -6,7 +6,7 @@ add_executable(script_lua_value_cost main.cpp)
 target_compile_features(script_lua_value_cost PRIVATE cxx_std_20)
 target_compile_options(script_lua_value_cost PRIVATE /UNDEBUG)
 target_link_libraries(script_lua_value_cost PRIVATE lux::engine::simulation::simulation_script_lua
-    lux::engine::function::script_lua_vm)
+    LuxLua55::Runtime)
 target_include_directories(script_lua_value_cost PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 if(SR5_VALUES)
     include_component_cmake_scripts(lux::engine::function::script_lua)

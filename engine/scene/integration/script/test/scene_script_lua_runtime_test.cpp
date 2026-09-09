@@ -38,9 +38,6 @@
 
 namespace
 {
-    lux::script::lua::ELuaExecutionPolicy g_execution_policy{
-        lux::script::lua::ELuaExecutionPolicy::DEFAULT
-    };
     using namespace lux;
     using namespace lux::scene;
     using namespace lux::simulation;
@@ -352,7 +349,6 @@ namespace
                     4U * (DelayTraits::Description.methods.size() + TestAbilityTraits::Description.methods.size()),
                 .components = components,
                 .abilities = contributions,
-                .execution_policy = g_execution_policy,
                 .prepared_ability_blocks = std::array{
                     lux::simulation::script::LuaPreparedBlockClass{
                         DelayTraits::Description.methods.size() + TestAbilityTraits::Description.methods.size(),
@@ -366,8 +362,6 @@ namespace
             });
             assert(created);
             backend.emplace(std::move(*created));
-            assert(g_execution_policy != lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY ||
-                !backend->runtimeInfo().jit_enabled);
             descriptor = backend->descriptor();
         }
 
@@ -526,9 +520,7 @@ int main(int argc, char** argv)
     for (int index = 1; index < argc; ++index)
     {
         const std::string_view argument{argv[index]};
-        if (argument == "--interpreter-only")
-            g_execution_policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
-        else if (argument == "--workers" && index + 1 < argc)
+        if (argument == "--workers" && index + 1 < argc)
         {
             const std::string_view value{argv[++index]};
             if (value != "0" && value != "1" && value != "2" && value != "4")

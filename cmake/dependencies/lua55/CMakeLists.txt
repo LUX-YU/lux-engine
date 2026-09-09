@@ -29,6 +29,12 @@ add_library(lux_lua55_runtime SHARED ${lua_sources})
 add_library(LuxLua55::Runtime ALIAS lux_lua55_runtime)
 set_target_properties(lux_lua55_runtime PROPERTIES EXPORT_NAME Runtime OUTPUT_NAME lux_lua55
     MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
+include(CheckIPOSupported)
+check_ipo_supported(RESULT lua55_ipo_supported OUTPUT lua55_ipo_error LANGUAGES C)
+if(lua55_ipo_supported)
+    set_property(TARGET lux_lua55_runtime PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
+message(STATUS "Lua55 C IPO: ${lua55_ipo_supported} ${lua55_ipo_error}")
 target_include_directories(lux_lua55_runtime PUBLIC
     "$<BUILD_INTERFACE:${LUX_LUA55_SOURCE_DIR}/src>" "$<INSTALL_INTERFACE:include/lua55>")
 if(WIN32)
@@ -41,6 +47,9 @@ else()
 endif()
 
 include(CMakePackageConfigHelpers)
+set(LUX_LUA55_PATCH_REVISION "official-5.5.1")
+configure_file(identity.json.in "${CMAKE_CURRENT_BINARY_DIR}/identity.json" @ONLY)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/identity.json" DESTINATION share/LuxLua55)
 configure_package_config_file(LuxLua55Config.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/LuxLua55Config.cmake"
     INSTALL_DESTINATION lib/cmake/LuxLua55)
 write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/LuxLua55ConfigVersion.cmake"

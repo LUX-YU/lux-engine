@@ -81,14 +81,9 @@ if(LUX_TARGET_OS STREQUAL "ANDROID")
 else()
     option(LUX_SCRIPT_HAS_LUA "Build Lua backend" ON)
 endif()
-set(LUX_LUA_VM "LUA55" CACHE STRING "Lua VM implementation used by the Lua script backend")
-set_property(CACHE LUX_LUA_VM PROPERTY STRINGS LUAJIT LUA54 LUA55)
-string(TOUPPER "${LUX_LUA_VM}" LUX_LUA_VM)
-set(_lux_supported_lua_vms LUAJIT LUA54 LUA55)
-if(LUX_SCRIPT_HAS_LUA AND NOT LUX_LUA_VM IN_LIST _lux_supported_lua_vms)
-    message(FATAL_ERROR "Unknown LUX_LUA_VM='${LUX_LUA_VM}'. Expected LUAJIT, LUA54 or LUA55")
+if(DEFINED LUX_LUA_VM)
+    message(FATAL_ERROR "LUX_LUA_VM was removed. Lux supports only Lua 5.5; remove the old selector.")
 endif()
-unset(_lux_supported_lua_vms)
 option(
     LUX_BUILD_PHYSICS2D
     "Build the canonical Physics2D Simulation builtin"

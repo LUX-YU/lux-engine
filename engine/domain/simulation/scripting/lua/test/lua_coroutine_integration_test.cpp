@@ -31,9 +31,6 @@ using lux::simulation::script::test::deliverEndpoint;
 
 namespace
 {
-    lux::script::lua::ELuaExecutionPolicy g_execution_policy{
-        lux::script::lua::ELuaExecutionPolicy::DEFAULT
-    };
     using namespace lux::simulation;
     using namespace lux::simulation::script;
     using Ability = lux::simulation::script::test::LuaRuntimeTestAbility;
@@ -487,7 +484,6 @@ namespace
                 .ability_catalog_method_capacity = AbilityTraits::Description.methods.size(),
                 .prepared_ability_capacity = AbilityTraits::Description.methods.size(),
                 .abilities = std::span{&contribution, 1U},
-                .execution_policy = g_execution_policy,
                 .event_catalog_capacity = event_sources.size(),
                 .prepared_event_capacity = event_sources.size(),
                 .events = event_sources,
@@ -513,8 +509,6 @@ namespace
             backend.emplace(std::move(*created_backend));
             const auto runtime = backend->runtimeInfo();
             assert(!runtime.vm.empty() && !runtime.version.empty());
-            assert(g_execution_policy != lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY ||
-                !runtime.jit_enabled);
             descriptor = backend->descriptor();
             if (observe_vm)
             {
@@ -816,8 +810,6 @@ int main(int argc, char** argv)
     if (argc == 2 && std::string_view{argv[1]} == "--creation-registry-oom") return testCreationOom(2U, true);
     if (argc == 2 && std::string_view{argv[1]} == "--creation-retire") return testCreationReentry(false);
     if (argc == 2 && std::string_view{argv[1]} == "--creation-stop") return testCreationReentry(true);
-    if (argc == 2 && std::string_view{argv[1]} == "--interpreter-only")
-        g_execution_policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
     Provider provider;
     static_assert(AbilityTraits::Description.name == "LuaRuntimeTest");
     static_assert(AbilityTraits::Description.display_name == "Lua Runtime Test");

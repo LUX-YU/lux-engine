@@ -114,13 +114,7 @@ if(TARGET lux::engine::simulation::simulation_script_lua)
             COMMAND scene_script_lua_runtime_test --workers ${workers})
         set_tests_properties(scene_script_lua_runtime_workers_${workers} PROPERTIES TIMEOUT 30)
     endforeach()
-    add_test(
-        NAME scene_script_lua_runtime_interpreter_test
-        COMMAND scene_script_lua_runtime_test --interpreter-only
-    )
-    add_test(NAME scene_script_lua_runtime_interpreter_workers_4
-        COMMAND scene_script_lua_runtime_test --interpreter-only --workers 4)
-    set_tests_properties(scene_script_lua_runtime_interpreter_workers_4 PROPERTIES TIMEOUT 30)
+
 endif()
 
 install_components(

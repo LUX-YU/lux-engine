@@ -11,7 +11,7 @@ target_compile_features(lux_script_lua_values_consumer PRIVATE cxx_std_20)
 target_include_directories(lux_script_lua_values_consumer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(lux_script_lua_values_consumer PRIVATE lux::engine::simulation::simulation_script_lua
     lux::engine::simulation::simulation_script lux::engine::simulation::composition
-    lux::engine::function::script_lua_vm)
+    LuxLua55::Runtime)
 if(MSVC)
     target_compile_options(lux_script_lua_values_consumer PRIVATE /UNDEBUG)
 else()

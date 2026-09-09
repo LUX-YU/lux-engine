@@ -1,5 +1,5 @@
 #include <lux/engine/function/script/lua/LuaVm.hpp>
-#include <lux/engine/function/script/lua/detail/LuaVmCompatibility.hpp>
+#include <lux/engine/function/script/lua/detail/Lua55Operations.hpp>
 
 #include <lua.hpp>
 
@@ -94,7 +94,6 @@ namespace
 
 int main(int argc, char** argv)
 {
-    const bool interpreter_only = argc == 2 && std::string_view{argv[1]} == "--interpreter-only";
     lua_State* state = luaL_newstate();
     assert(state != nullptr);
     luaL_openlibs(state);
@@ -104,14 +103,9 @@ int main(int argc, char** argv)
     lux::script::lua::LuaRuntimeInfo runtime;
     assert(lux::script::lua::detail::configureLuaVm(
         state,
-        interpreter_only
-            ? lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY
-            : lux::script::lua::ELuaExecutionPolicy::DEFAULT,
         runtime
     ));
     assert(!runtime.vm.empty() && !runtime.version.empty());
-    assert(runtime.jit_available || !runtime.jit_enabled);
-    assert(!interpreter_only || !runtime.jit_enabled);
 
     lua_pushcfunction(state, &yieldForResume);
     lua_setglobal(state, "engine_wait");
@@ -183,15 +177,12 @@ int main(int argc, char** argv)
         "local t=coroutine.create(function() error('expected') end); "
         "assert(not coroutine.resume(t)); assert(coroutine.status(t)=='dead')") == LUA_OK);
     assert(lua_pcall(state, 0, 0, 0) == LUA_OK);
-#if LUA_VERSION_NUM >= 504
     assert(luaL_loadstring(state,
         "closed=0; local t=coroutine.create(function() "
         "local x <close> = setmetatable({}, {__close=function() closed=closed+1 end}); "
         "coroutine.yield() end); assert(coroutine.resume(t)); assert(closed==0); "
         "assert(coroutine.close(t)); assert(closed==1)") == LUA_OK);
     assert(lua_pcall(state, 0, 0, 0) == LUA_OK);
-#endif
-#if LUA_VERSION_NUM >= 505
     static_assert(LUA_COMPAT_GLOBAL == 1); // Preserve the official 5.5.1 default, not strict-global policy.
     assert(luaL_loadstring(state,
         "local global = 1; assert(global==1); local t={}; "
@@ -204,7 +195,6 @@ int main(int argc, char** argv)
         "assert(tostring(1.0)=='1.0'); assert(tonumber(tostring(1.234567890123456))==1.234567890123456)") == LUA_OK);
     assert(lua_pcall(state, 0, 0, 0) == LUA_OK);
     std::puts("LUA55_LANGUAGE,compat_global=1,for_readonly=1,quoted_key=1,float_roundtrip=1");
-#endif
     std::puts("THREAD_REUSE_REJECTED,retained_after_unref=1,closure=1,identity=1,dead=1,cancel=1,error=1");
     lua_close(state);
     return 0;

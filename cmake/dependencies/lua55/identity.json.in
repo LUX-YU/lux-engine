@@ -1,0 +1,10 @@
+{
+  "version": "5.5.1",
+  "archive_sha256": "1c4b4068d67061f2a2231ad2b5422e77acea1487ea9890f6320af614f4373dce",
+  "patch_revision": "@LUX_LUA55_PATCH_REVISION@",
+  "compiler": "@CMAKE_C_COMPILER_ID@ @CMAKE_C_COMPILER_VERSION@",
+  "configuration": "@CMAKE_BUILD_TYPE@",
+  "flags": "@CMAKE_C_FLAGS@ @CMAKE_C_FLAGS_RELWITHDEBINFO@",
+  "ipo_supported": "@lua55_ipo_supported@",
+  "windows_crt": "MultiThreadedDLL"
+}

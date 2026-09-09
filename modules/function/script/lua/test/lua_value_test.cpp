@@ -241,13 +241,11 @@ static void testNumericContract(lua_State* state)
     LuaValueReader reader{state, 1};
     const auto zero = LuaValueCodec<double>::read(reader);
     assert(zero && *zero == 0.0 && std::signbit(*zero));
-#if LUA_VERSION_NUM >= 504
     load(state, "return (-7 // 2) + (7 & 3) + (1 << 4)");
     LuaValueReader operators{state, 1};
     const auto combined = LuaValueCodec<std::int32_t>::read(operators);
     assert(combined && *combined == 15);
     std::puts("LUA_INTEGER_OPERATORS,division=-4,bitand=3,shift=16,typed_i32=15");
-#endif
     lua_settop(state, 0);
     std::puts("LUA_NUMERIC_CONTRACT,i32_u32_bounds=1,f64_2pow53=1,i64_u64_unsupported=1,finite=1,negative_zero=1");
 }
@@ -263,11 +261,7 @@ int main()
     static_assert(!LuaValueCodec<AngleHolder, LargePolicy>::bounded);
     static_assert(LuaValueCodec<std::int32_t>::representation() != LuaValueCodec<std::uint32_t>::representation());
     Allocation allocator;
-#if LUA_VERSION_NUM >= 505
     lua_State *state = lua_newstate(Allocation::allocate, &allocator, 1592598566U);
-#else
-    lua_State *state = lua_newstate(Allocation::allocate, &allocator);
-#endif
     assert(state);
     luaL_openlibs(state);
     assert(detail::LuaValueAccess::initialize(state));
@@ -407,13 +401,9 @@ int main()
     assert(LuaValueCodec<Pose>::push(writer, *pose));
     lua_close(state);
 
-    // Trampoline initialization itself is protected, including LuaJIT closure allocation.
+    // Trampoline initialization itself is protected, including allocation failure.
     Allocation bootstrap;
-#if LUA_VERSION_NUM >= 505
     state = lua_newstate(Allocation::allocate, &bootstrap, 1592598566U);
-#else
-    state = lua_newstate(Allocation::allocate, &bootstrap);
-#endif
     assert(state);
     bootstrap.deny = true;
     assert(!detail::LuaValueAccess::initialize(state));

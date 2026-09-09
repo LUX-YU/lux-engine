@@ -39,12 +39,8 @@ struct ProtectedRecord final
     {
         if (!lua_checkstack(state, 2)) return false;
         const int base = lua_gettop(state);
-#if LUA_VERSION_NUM == 501
-        const int status = lua_cpcall(state, install, nullptr);
-#else
         lua_pushcfunction(state, install);
         const int status = lua_pcall(state, 0, 0, 0);
-#endif
         lua_settop(state, base);
         return status == 0;
     }

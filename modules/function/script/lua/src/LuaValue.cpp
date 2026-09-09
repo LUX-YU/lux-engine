@@ -235,13 +235,9 @@ namespace lux::script::lua
             if (!state || !lua_checkstack(state, 2))
                 return false;
             const auto base = lua_gettop(state);
-#if defined(LUX_SCRIPT_LUA_VM_LUAJIT)
-            const int status = lua_cpcall(state, initializeTrampoline, nullptr);
-#else
-            // Lua 5.4's zero-upvalue C function is a light C function (no allocation).
+            // A zero-upvalue C function does not allocate a closure.
             lua_pushcfunction(state, initializeTrampoline);
             const int status = lua_pcall(state, 0, 0, 0);
-#endif
             lua_settop(state, base);
             return status == 0;
         }

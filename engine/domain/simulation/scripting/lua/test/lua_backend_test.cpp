@@ -118,16 +118,6 @@ int main()
     const auto missing_capacity = LuaScriptBackend::create({});
     assert(!missing_capacity);
     assert(missing_capacity.error() == ELuaScriptBindingBackendError::INVALID_CAPACITY);
-    const auto invalid_policy = LuaScriptBackend::create({
-        .instance_capacity = 1U,
-        .prepared_call_capacity = 1U,
-        .continuation_capacity = 1U,
-        .execution_depth_capacity = 1U,
-        .ability_catalog_method_capacity = 1U,
-        .execution_policy = static_cast<lux::script::lua::ELuaExecutionPolicy>(0xFFU)
-    });
-    assert(!invalid_policy);
-    assert(invalid_policy.error() == ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE);
 
     constexpr auto physics_name = nameDescription(
         "lux.test.lua_name.physics",

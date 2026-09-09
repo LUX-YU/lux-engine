@@ -2,7 +2,7 @@
 #include <lux/engine/simulation/scripting/lua/LuaScriptAbilityProjection.hpp>
 
 #include <lux/engine/function/script/lua/Lua.hpp>
-#include <lux/engine/function/script/lua/detail/LuaVmCompatibility.hpp>
+#include <lux/engine/function/script/lua/detail/Lua55Operations.hpp>
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
 #include <lux/engine/simulation/scripting/ScriptContractValidation.hpp>
 #include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
@@ -96,7 +96,7 @@ namespace lux::simulation::script
         inline static char thread_creator_key;
 
         // Only trivial locals may be crossed by a Lua error. The reservation and rollback live
-        // outside pcall; LuaJIT's allocating C closure is installed at the cold protected boundary.
+        // outside pcall; thread allocation remains inside the protected boundary.
         static int createThread(lua_State* state)
         {
             auto* request = static_cast<ThreadCreateRequest*>(lua_touserdata(state, 1));
@@ -444,7 +444,6 @@ namespace lux::simulation::script
             }
             if (!lux::script::lua::detail::configureLuaVm(
                     state,
-                    config.execution_policy,
                     runtime_info
                 ))
             {
@@ -731,7 +730,7 @@ namespace lux::simulation::script
             lua_createtable(state, 0, 1);
             const auto environment_index = lua_gettop(state);
             lua_createtable(state, 0, 1);
-            lux::script::lua::detail::pushLuaGlobalEnvironment(state);
+            lua_pushglobaltable(state);
             lua_setfield(state, -2, "__index");
             lua_setmetatable(state, environment_index);
             lua_createtable(state, 0, static_cast<int>(artifact.description().api_requirements.size() + 2U));

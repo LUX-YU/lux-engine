@@ -13,10 +13,8 @@
 #   vcpkg install --triplet arm64-android \
 #       --overlay-triplets=<repo>/cmake/triplets <ports...>
 #
-# Known port gap: luajit does not support android cross-builds ("native"
-# supports-clause) — first Android bring-up runs LUX_SCRIPT_HAS_LUA=0; an
-# overlay port / NDK-built LuaJIT comes later. See
-# .internal/lux-engine-mobile-adaptation-investigation.md (2026-07-20 notes).
+# Android currently builds without Lua. The Lua55 recipe has no qualified
+# Android configuration; host Lua55 support does not imply Android support.
 
 if(NOT DEFINED ENV{ANDROID_NDK_HOME})
     message(FATAL_ERROR "arm64-android overlay triplet: set ANDROID_NDK_HOME to your NDK root")

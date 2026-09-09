@@ -326,8 +326,6 @@ int main(int argc, char** argv)
         .values = std::span{&incompatible, 1}, .abilities = std::span{&contribution, 1}});
     assert(!conflict && conflict.error() == ELuaScriptBindingBackendError::INVALID_VALUE_OPERATION);
 
-    const auto policy = argc > 1 && std::string_view{argv[1]} == "--interpreter-only" ?
-        lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY : lux::script::lua::ELuaExecutionPolicy::DEFAULT;
     const bool benchmark_mode = argc > 2 && std::string_view{argv[1]} == "--benchmark";
     const bool vm_accounting = !benchmark_mode || (argc > 3 && std::string_view{argv[3]} == "--allocations");
     auto created = LuaScriptBackend::create({
@@ -335,7 +333,7 @@ int main(int argc, char** argv)
         .instance_capacity = 2, .prepared_call_capacity = benchmark_mode ? 64U : 96U, .continuation_capacity = 2,
         .execution_depth_capacity = 8, .ability_catalog_method_capacity = AbilityTraits::Methods.size(),
         .prepared_ability_capacity = 2 * AbilityTraits::Methods.size(), .abilities = std::span{&contribution, 1},
-        .execution_policy = policy, .track_vm_allocations = vm_accounting,
+        .track_vm_allocations = vm_accounting,
         .prepared_ability_blocks = std::array{LuaPreparedBlockClass{AbilityTraits::Methods.size(), 2}},
         .prepared_ability_storage_bytes = 1024 * 1024});
     assert(created);

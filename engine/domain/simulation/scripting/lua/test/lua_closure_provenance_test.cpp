@@ -15,7 +15,6 @@
 namespace
 {
     using namespace lux::simulation::script;
-    lux::script::lua::ELuaExecutionPolicy policy{lux::script::lua::ELuaExecutionPolicy::DEFAULT};
 
     struct Dispatch final
     {
@@ -100,7 +99,6 @@ void testAbilityProvenance()
         .ability_catalog_method_capacity = 2U,
         .prepared_ability_capacity = 4U,
         .abilities = contributions,
-        .execution_policy = policy,
         .prepared_ability_blocks = std::array{
             lux::simulation::script::LuaPreparedBlockClass{
                 1U,
@@ -188,7 +186,6 @@ void testEventProvenance()
         .continuation_capacity = 2U,
         .execution_depth_capacity = 4U,
         .ability_catalog_method_capacity = 1U,
-        .execution_policy = policy,
         .event_catalog_capacity = 2U,
         .prepared_event_capacity = 2U,
         .events = sources,
@@ -275,7 +272,7 @@ void testNestedScopes()
     auto backend = LuaScriptBackend::create({
         .instance_capacity = 2U, .prepared_call_capacity = 4U, .continuation_capacity = 1U,
         .execution_depth_capacity = 4U, .ability_catalog_method_capacity = 2U, .prepared_ability_capacity = 2U,
-        .abilities = contributions, .execution_policy = policy,
+        .abilities = contributions,
         .event_catalog_capacity = 1U, .prepared_event_capacity = 1U, .events = {&event, 1U},
         .prepared_ability_blocks = std::array{
             lux::simulation::script::LuaPreparedBlockClass{
@@ -430,8 +427,6 @@ void testNestedScopes()
 
 int main(int argc, char** argv)
 {
-    if (argc == 2 && std::string_view{argv[1]} == "--interpreter-only")
-        policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
     testAbilityProvenance();
     testEventProvenance();
     testNestedScopes();

@@ -131,11 +131,6 @@ namespace
         std::filesystem::path output{"script_runtime_benchmark.csv"};
         std::filesystem::path lua_artifact;
         bool vm_accounting{};
-#if LUX_BENCHMARK_HAS_LUA
-        lux::script::lua::ELuaExecutionPolicy lua_policy{
-            lux::script::lua::ELuaExecutionPolicy::DEFAULT
-        };
-#endif
     };
 
     [[nodiscard]] bool parseSize(std::string_view text, std::size_t& output) noexcept
@@ -237,17 +232,6 @@ namespace
                 result.output = value;
             else if (key == "--lua-artifact")
                 result.lua_artifact = value;
-#if LUX_BENCHMARK_HAS_LUA
-            else if (key == "--lua-policy")
-            {
-                if (value == "default")
-                    result.lua_policy = lux::script::lua::ELuaExecutionPolicy::DEFAULT;
-                else if (value == "interpreter-only")
-                    result.lua_policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
-                else
-                    return std::nullopt;
-            }
-#endif
             else
                 return std::nullopt;
         }
@@ -372,7 +356,7 @@ namespace
         if (!output)
             throw std::runtime_error("cannot open benchmark output");
         output << "benchmark_schema_version,git_commit,build_type,compiler,os,logical_cpu_count,"
-                  "lua_vm,lua_version,jit_available,jit_enabled,scenario,backend,"
+                  "lua_vm,lua_version,scenario,backend,"
                   "size,seed,sample,nanoseconds,"
                   "allocations,active_instances,calls,ability_calls,events,suspensions,resumes,continuations,"
                   "awaitables,event_waiters,event_dispatch_visits,payload_bytes,queue_depth,queue_high_water,"
@@ -389,10 +373,8 @@ namespace
                    << LUX_BENCHMARK_COMPILER << ",windows," << std::thread::hardware_concurrency() << ','
 #if LUX_BENCHMARK_HAS_LUA
                    << g_lua_runtime_info.vm << ',' << g_lua_runtime_info.version << ','
-                   << (g_lua_runtime_info.jit_available ? 1 : 0) << ','
-                   << (g_lua_runtime_info.jit_enabled ? 1 : 0) << ','
 #else
-                   << ",,0,0,"
+                   << ",,,"
 #endif
                    << row.scenario << ',' << row.backend << ',' << row.size << ',' << options.seed << ','
                    << row.sample << ','
@@ -1202,7 +1184,7 @@ namespace
             std::size_t count,
             lux::script::ScriptSymbolId symbol,
             std::size_t resume_budget,
-            lux::script::lua::ELuaExecutionPolicy execution_policy, bool vm_accounting = false
+            bool vm_accounting = false
         )
             : simulation_description(lux::simulation::benchmark_domain::scriptDescription(
                   0U, symbol == kLuaEventWait)), artifact_asset(loadLuaArtifact(artifact_path))
@@ -1286,7 +1268,6 @@ namespace
                 .ability_catalog_method_capacity = 6U,
                 .prepared_ability_capacity = bounded_count * requirements->ability_methods,
                 .abilities = contributions,
-                .execution_policy = execution_policy,
                 .event_catalog_capacity = 1U,
                 .prepared_event_capacity = bounded_count * requirements->event_sources,
                 .events = std::span{&event_source, 1U},
@@ -1586,10 +1567,7 @@ namespace
 #if LUX_BENCHMARK_HAS_LUA
     struct LuaLifecycleFixture final
     {
-        LuaLifecycleFixture(
-            std::size_t capacity,
-            lux::script::lua::ELuaExecutionPolicy execution_policy
-        )
+        explicit LuaLifecycleFixture(std::size_t capacity)
         {
             lux::rdesc::Script description;
             description.module_name = "lux.benchmark.lua-lifecycle";
@@ -1623,7 +1601,6 @@ namespace
                 .continuation_capacity = capacity,
                 .execution_depth_capacity = 8U,
                 .ability_catalog_method_capacity = 1U,
-                .execution_policy = execution_policy
             });
             if (!created_backend)
                 throw std::runtime_error("Lua lifecycle backend creation failed");
@@ -2211,7 +2188,7 @@ namespace
             throw std::runtime_error("benchmark direct HookPoint rejected");
         }
 #if LUX_BENCHMARK_HAS_LUA
-        LuaLifecycleFixture lua{1U, options.lua_policy};
+        LuaLifecycleFixture lua{1U};
         auto lua_descriptor = lua.backend->descriptor();
         ScriptBackendInstance lua_instance;
         if (lua_descriptor.createInstance(
@@ -2420,7 +2397,7 @@ namespace
             true
         );
 #if LUX_BENCHMARK_HAS_LUA
-        LuaLifecycleFixture lua{options.size, options.lua_policy};
+        LuaLifecycleFixture lua{options.size};
         runBackendLifecycle(
             options,
             rows,
@@ -2749,7 +2726,7 @@ namespace
             options.size,
             symbol,
             options.resume_budget,
-            options.lua_policy, options.vm_accounting
+            options.vm_accounting
         };
         for (std::size_t frame{}; frame < options.warmups; ++frame)
         {
@@ -2780,7 +2757,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.lua_policy, options.vm_accounting
+            options.vm_accounting
         };
         for (std::size_t frame{}; frame < options.warmups; ++frame)
         {
@@ -2811,7 +2788,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.lua_policy, options.vm_accounting
+            options.vm_accounting
         };
         rows.push_back(measureRow("micro-lua-coroutine-start", "lua-coroutine", options.size, 0U, [&] {
             harness.dispatch();
@@ -2841,7 +2818,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.lua_policy, options.vm_accounting
+            options.vm_accounting
         };
         harness.dispatch();
         for (std::size_t frame{}; frame < options.warmups; ++frame)
@@ -2866,7 +2843,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.lua_policy, options.vm_accounting
+            options.vm_accounting
         };
         harness.dispatch();
         std::size_t frame{};
@@ -2892,7 +2869,7 @@ namespace
             options.size,
             kLuaEventWait,
             options.size,
-            options.lua_policy, options.vm_accounting
+            options.vm_accounting
         };
         const auto execute_cycle = [&](std::size_t frame, bool record) {
             const auto operation = [&] {
@@ -2967,7 +2944,7 @@ namespace
             options.size,
             kLuaPlain,
             options.resume_budget,
-            options.lua_policy, options.vm_accounting
+            options.vm_accounting
         };
         const auto churn_count = (std::max)(std::size_t{1U}, (std::min)(std::size_t{100U}, options.size / 10U));
         for (std::size_t frame{}; frame < options.warmups; ++frame)
@@ -3560,14 +3537,14 @@ int main(int argc, char** argv)
         else if (options->group == "scene-lua-sequence")
         {
             LuaRuntimeHarness harness{options->lua_artifact, options->size, kLuaSequence,
-                options->resume_budget, options->lua_policy, options->vm_accounting};
+                options->resume_budget, options->vm_accounting};
             runSequenceFrames(*options, rows, harness, "scene-lua-sequence");
         }
         else if (options->group == "scene-lua-population")
         {
             runPopulationCycles(*options, rows, "lua-population", [&] {
                 return std::make_unique<LuaRuntimeHarness>(options->lua_artifact, options->size, kLuaPlain,
-                    options->resume_budget, options->lua_policy, options->vm_accounting);
+                    options->resume_budget, options->vm_accounting);
             });
         }
         else if (options->group == "scene-lua-event")

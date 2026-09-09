@@ -69,7 +69,7 @@ add_test(
 
 add_executable(simulation_script_lua_closure_provenance_test test/lua_closure_provenance_test.cpp)
 target_link_libraries(simulation_script_lua_closure_provenance_test
-    PRIVATE lux::engine::simulation::simulation_script_lua)
+    PRIVATE lux::engine::simulation::simulation_script_lua LuxLua55::Runtime)
 if(MSVC)
     target_compile_options(simulation_script_lua_closure_provenance_test PRIVATE /UNDEBUG)
 else()

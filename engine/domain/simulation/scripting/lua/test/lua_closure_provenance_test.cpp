@@ -1,5 +1,6 @@
 #include <lux/engine/simulation/scripting/lua/LuaScriptAbilityProjection.hpp>
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
+#include <lua.hpp>
 
 #include <array>
 #include <cassert>
@@ -196,7 +197,8 @@ void testAbilityProvenance()
     const auto rejected_prototype = runtime.createInstance(runtime.context,
         {assetId(1U), SimulationScriptScope{}, nullptr, {1U, 2U}, {&alpha_capability, 1U}, {}}, new_content, rejected);
     const auto rejected_self = runtime.createInstance(runtime.context,
-        {assetId(1U), SimulationScriptScope{}, nullptr, {1U, 2U}, {&alpha_capability, 1U}, {}}, alpha_artifact, rejected);
+        {assetId(1U), SimulationScriptScope{}, nullptr, {1U, 2U}, {&alpha_capability, 1U}, {}},
+        alpha_artifact, rejected);
     lua_setallocf(observed_vm, allocator.original, allocator.context);
     assert(rejected_prototype == EScriptBackendResult::CONSTRUCTION_FAILURE);
     assert(rejected_self == EScriptBackendResult::ALLOCATION_FAILURE && allocator.failures != 0U);

@@ -139,6 +139,10 @@ namespace lux::simulation::script
         struct Prototype final
         {
             lux::script::ScriptArtifactContentId content;
+            lux::asset::AssetId asset;
+            std::size_t instance_refs{};
+            bool superseded{};
+            std::vector<std::size_t> function_slots;
             int table_ref{LUA_NOREF};
             int environment_ref{LUA_NOREF};
             const void* layout_token{};
@@ -456,6 +460,7 @@ namespace lux::simulation::script
                         if (value.prepare != nullptr && !value.prepare(state)) return;
                 }
             prototypes.reserve(config.instance_capacity);
+            latest_prototypes.reserve(config.instance_capacity);
             components.assign(
                 config.components.begin(),
                 config.components.end()
@@ -494,7 +499,10 @@ namespace lux::simulation::script
             free_instances.reserve(instance_capacity);
             for (std::size_t index = instance_capacity; index > 0U; --index)
                 free_instances.push_back(index - 1U);
-            function_bindings.reserve(prepared_call_capacity);
+            function_bindings.resize(prepared_call_capacity);
+            free_function_bindings.reserve(prepared_call_capacity);
+            for (std::size_t index = prepared_call_capacity; index > 0U; --index)
+                free_function_bindings.push_back(index - 1U);
             function_index.reserve(prepared_call_capacity);
             prepared_calls.resize(prepared_call_capacity);
             free_prepared_calls.reserve(prepared_call_capacity);
@@ -798,6 +806,21 @@ namespace lux::simulation::script
                 luaL_unref(state, LUA_REGISTRYINDEX, prototype.environment_ref);
         }
 
+        void collectPrototype(Prototype& prototype) noexcept
+        {
+            if (!prototype.superseded || prototype.instance_refs != 0U) return;
+            for (const auto index : prototype.function_slots)
+            {
+                auto& binding = function_bindings[index];
+                function_index.erase(FunctionKey{&prototype, binding.signature.symbol_id});
+                luaL_unref(state, LUA_REGISTRYINDEX, binding.function_ref);
+                binding = {};
+                free_function_bindings.push_back(index);
+            }
+            releasePrototype(prototype);
+            prototypes.erase(PrototypeKey{prototype.asset, prototype.content});
+        }
+
         [[nodiscard]] Prototype* prototypeFor(
             const ScriptInstanceCreateContext& context, const lux::script::ScriptArtifact& artifact
         ) noexcept
@@ -810,8 +833,19 @@ namespace lux::simulation::script
             if (content.isNull() || artifact.payload().empty()) return nullptr;
             const auto* body = std::get_if<lux::rdesc::LuaSourceScript>(std::addressof(artifact.description().body));
             if (!body) return nullptr;
+            auto latest = latest_prototypes.find(context.asset);
+            if (latest == latest_prototypes.end() && latest_prototypes.size() >= instance_capacity) return nullptr;
             Prototype prototype;
             prototype.content = content;
+            prototype.asset = context.asset;
+            try
+            {
+                prototype.function_slots.reserve(artifact.description().exports.size());
+            }
+            catch (const std::bad_alloc&)
+            {
+                return nullptr;
+            }
             if (!prepareArtifactLayout(prototype, artifact)) return nullptr;
             PrototypeRequest request{this, &prototype, &artifact, body};
             if (runCold(&loadPrototype, &request) != LUA_OK || !request.complete)
@@ -822,7 +856,31 @@ namespace lux::simulation::script
             try
             {
                 const auto inserted = prototypes.emplace(key, std::move(prototype));
-                if (inserted.second) return std::addressof(inserted.first->second);
+                if (inserted.second)
+                {
+                    auto* current = std::addressof(inserted.first->second);
+                    if (latest == latest_prototypes.end())
+                    {
+                        try
+                        {
+                            latest_prototypes.emplace(context.asset, current);
+                        }
+                        catch (const std::bad_alloc&)
+                        {
+                            releasePrototype(*current);
+                            prototypes.erase(inserted.first);
+                            return nullptr;
+                        }
+                    }
+                    else
+                    {
+                        auto* previous = latest->second;
+                        latest->second = current;
+                        previous->superseded = true;
+                        collectPrototype(*previous);
+                    }
+                    return current;
+                }
             }
             catch (const std::bad_alloc&)
             {
@@ -1290,6 +1348,7 @@ namespace lux::simulation::script
                 self.free_instances.push_back(instance_slot);
                 return EScriptBackendResult::ALLOCATION_FAILURE;
             }
+            ++prototype->instance_refs;
             result.value = instance;
             return EScriptBackendResult::SUCCESS;
         }
@@ -1325,7 +1384,7 @@ namespace lux::simulation::script
             }
             else
             {
-                if (self.function_bindings.size() >= self.prepared_calls.size())
+                if (self.free_function_bindings.empty())
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
                 std::vector<const lux::script::lua::LuaValueOperation*> argument_operations;
                 try
@@ -1359,27 +1418,31 @@ namespace lux::simulation::script
                 const auto function_ref = request.function_ref;
                 try
                 {
-                    const auto binding_index = self.function_bindings.size();
-                    self.function_bindings.push_back(LuaFunctionBinding{
-                        function,
-                        function_ref,
-                        std::move(argument_operations)
-                    });
-                    if (!self.function_index.emplace(key, binding_index).second)
+                    LuaFunctionBinding binding{function, function_ref, std::move(argument_operations)};
+                    const auto binding_index = self.free_function_bindings.back();
+                    instance->prototype->function_slots.push_back(binding_index);
+                    try
                     {
-                        self.function_bindings.pop_back();
-                        luaL_unref(self.state, LUA_REGISTRYINDEX, function_ref);
-                        return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                        if (!self.function_index.emplace(key, binding_index).second)
+                        {
+                            instance->prototype->function_slots.pop_back();
+                            luaL_unref(self.state, LUA_REGISTRYINDEX, function_ref);
+                            return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                        }
                     }
-                    function_binding = std::addressof(self.function_bindings.back());
+                    catch (const std::bad_alloc&)
+                    {
+                        instance->prototype->function_slots.pop_back();
+                        luaL_unref(self.state, LUA_REGISTRYINDEX, function_ref);
+                        return EScriptBackendResult::ALLOCATION_FAILURE;
+                    }
+                    static_assert(std::is_nothrow_move_assignable_v<LuaFunctionBinding>);
+                    self.function_bindings[binding_index] = std::move(binding);
+                    self.free_function_bindings.pop_back();
+                    function_binding = std::addressof(self.function_bindings[binding_index]);
                 }
                 catch (const std::bad_alloc&)
                 {
-                    if (!self.function_bindings.empty() &&
-                        self.function_bindings.back().function_ref == function_ref)
-                    {
-                        self.function_bindings.pop_back();
-                    }
                     luaL_unref(self.state, LUA_REGISTRYINDEX, function_ref);
                     return EScriptBackendResult::ALLOCATION_FAILURE;
                 }
@@ -2128,8 +2191,11 @@ namespace lux::simulation::script
             );
             self.prepared_abilities.release(instance->prepared_abilities);
             self.prepared_events.release(instance->prepared_events);
+            auto* prototype = instance->prototype;
             *instance = {};
             self.free_instances.push_back(instance_slot);
+            --prototype->instance_refs;
+            self.collectPrototype(*prototype);
         }
 
         lux::script::lua::ScriptEngine engine;
@@ -2150,6 +2216,7 @@ namespace lux::simulation::script
         std::size_t execution_depth_capacity{};
         using PrototypeMap = std::unordered_map<PrototypeKey, Prototype, PrototypeKey::Hash>;
         PrototypeMap prototypes;
+        std::unordered_map<lux::asset::AssetId, Prototype*> latest_prototypes;
         std::vector<LuaComponentBinding> components;
         std::unordered_map<std::string_view, std::size_t> component_index;
         std::vector<lux::script::lua::LuaValueOperation> value_operations;
@@ -2158,6 +2225,7 @@ namespace lux::simulation::script
         std::vector<Instance> instances;
         std::vector<std::size_t> free_instances;
         std::vector<LuaFunctionBinding> function_bindings;
+        std::vector<std::size_t> free_function_bindings;
         std::unordered_map<FunctionKey, std::size_t, FunctionKeyHash> function_index;
         std::vector<PreparedCall> prepared_calls;
         std::vector<std::size_t> free_prepared_calls;

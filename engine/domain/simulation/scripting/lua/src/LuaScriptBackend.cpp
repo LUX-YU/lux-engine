@@ -404,7 +404,11 @@ namespace lux::simulation::script
         State(
             LuaScriptBackendConfig config
         )
-            : engine([&config] { auto vm = config.vm; vm.track_allocations |= config.track_vm_allocations; return vm; }()),
+            : engine([&config] {
+                auto vm = config.vm;
+                vm.track_allocations |= config.track_vm_allocations;
+                return vm;
+              }()),
               state(engine.state()),
               instance_capacity(config.instance_capacity),
               prepared_call_capacity(config.prepared_call_capacity),
@@ -487,7 +491,11 @@ namespace lux::simulation::script
             if (!lua_checkstack(state, 3)) return;
             lua_pushcfunction(state, &State::createRoots);
             lua_pushlightuserdata(state, this);
-            if (lua_pcall(state, 1, 0, 0) != LUA_OK) { lua_pop(state, 1); return; }
+            if (lua_pcall(state, 1, 0, 0) != LUA_OK)
+            {
+                lua_pop(state, 1);
+                return;
+            }
             vm_configured = true;
         }
 
@@ -523,7 +531,8 @@ namespace lux::simulation::script
             {
                 static_cast<void>(asset);
                 if (prototype.table_ref != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, prototype.table_ref);
-                if (prototype.environment_ref != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, prototype.environment_ref);
+                if (prototype.environment_ref != LUA_NOREF)
+                    luaL_unref(state, LUA_REGISTRYINDEX, prototype.environment_ref);
             }
             for (const auto& function : function_bindings)
                 if (function.function_ref != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, function.function_ref);

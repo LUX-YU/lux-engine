@@ -65,7 +65,8 @@ namespace lux::simulation::script::detail
     {
         [[nodiscard]] static bool current(lua_State* state, LuaPreparedAbilityAccess& result) noexcept;
         [[nodiscard]] static bool revalidate(lua_State* state, const LuaPreparedAbilityAccess& original) noexcept;
-        [[nodiscard]] static LuxLuaBoundaryOutcome fail(lua_State* state, std::int32_t status, const char* message) noexcept;
+        [[nodiscard]] static LuxLuaBoundaryOutcome
+        fail(lua_State* state, std::int32_t status, const char* message) noexcept;
         [[nodiscard]] static LuxLuaBoundaryOutcome succeed(lua_State* state, int results) noexcept;
         [[nodiscard]] static LuxLuaBoundaryOutcome suspend(
             lua_State* state,

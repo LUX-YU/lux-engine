@@ -80,11 +80,50 @@ static void pagesAndFailure()
     std::puts("PAGE_PROTOCOL,pinned=1,reclassify=1,growth_failure_preserves=1,precise_fallback=1,overflow=1");
 }
 
+static void sameClassAndEviction()
+{
+    LuaPageAllocator allocator({.idle_page_budget_bytes = 2U * 65536U, .track_allocations = true});
+    auto allocate = allocator.callback();
+    auto* thread = allocate(&allocator, nullptr, LUA_TTHREAD, 360U);
+    auto* stack = allocate(&allocator, nullptr, 0U, 720U);
+    assert(thread && stack);
+    allocate(&allocator, thread, 360U, 0U);
+    allocate(&allocator, stack, 720U, 0U); // Most recent global idle belongs to a different class.
+    const auto before = allocator.stats();
+    assert(before.classes[4].payload == 384U && before.classes[4].header_writes == 1U);
+    for (unsigned i{}; i < 32U; ++i)
+    {
+        auto* reused = allocate(&allocator, nullptr, LUA_TTHREAD, 360U);
+        assert(reused == thread);
+        allocate(&allocator, reused, 360U, 0U);
+    }
+    const auto after = allocator.stats();
+    assert(after.classes[4].same_reuses - before.classes[4].same_reuses == 32U);
+    assert(after.classes[4].header_writes == before.classes[4].header_writes);
+    assert(after.system_allocations == before.system_allocations && after.idle_page_backing_bytes == 131072U);
+    thread = allocate(&allocator, nullptr, LUA_TTHREAD, 360U);
+    stack = allocate(&allocator, nullptr, 0U, 720U);
+    auto* other = allocate(&allocator, nullptr, 0U, 4096U);
+    allocate(&allocator, thread, 360U, 0U); // Oldest idle: this page must be evicted.
+    allocate(&allocator, stack, 720U, 0U);
+    allocate(&allocator, other, 4096U, 0U);
+    const auto full = allocator.stats();
+    assert(full.classes[4].idle_limit_releases == 1U && full.classes[8].idle_pages == 1U);
+    assert(full.idle_page_backing_bytes == 131072U);
+    auto* borrowed = allocate(&allocator, nullptr, 0U, 128U);
+    assert(borrowed && allocator.stats().classes[2].cross_reuses == 1U);
+    allocate(&allocator, borrowed, 128U, 0U);
+    allocator.clear();
+    assert(allocator.stats().system_allocations == allocator.stats().system_frees);
+    std::puts("PAGE_REUSE,same_class=32,header_rewrites=0,oldest_evicted=1,cross_class=1,budget_exact=1");
+}
+
 int main()
 {
     for (bool tracked : {false, true})
         for (std::size_t budget : {0U, 16U * 1024U * 1024U}) randomized(tracked, budget);
     pagesAndFailure();
+    sameClassAndEviction();
     for (bool tracked : {false, true})
     {
         LuaPageAllocator allocator({.idle_page_budget_bytes = 65536U, .track_allocations = tracked});

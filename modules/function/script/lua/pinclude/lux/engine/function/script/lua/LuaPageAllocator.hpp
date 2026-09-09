@@ -18,6 +18,9 @@ namespace lux::script::lua
             Page* next{};
             Page* available_previous{};
             Page* available_next{};
+            // available links belong to partial OR class-idle; idle links belong to global eviction order.
+            Page* idle_previous{};
+            Page* idle_next{};
             void* free{};
             std::size_t index{}, stride{}, capacity{}, live{}, carved{};
         };
@@ -30,7 +33,7 @@ namespace lux::script::lua
         };
         static_assert(offsetof(Direct, block) + sizeof(Block) == sizeof(Direct));
         static constexpr std::size_t page_bytes_ = 64U * 1024U;
-        static constexpr std::array<std::size_t, 8U> classes_{32U, 64U, 128U, 256U, 512U, 736U, 1536U, 4096U};
+        static constexpr std::array<std::size_t, 9U> classes_{32U, 64U, 128U, 256U, 384U, 512U, 736U, 1536U, 4096U};
         static constexpr auto unlimited_ = (std::numeric_limits<std::size_t>::max)();
     public:
         using Allocate = void* (*)(void*, void*, std::size_t, std::size_t);
@@ -86,8 +89,7 @@ namespace lux::script::lua
             while (idle_)
             {
                 auto* page = idle_;
-                removeAvailable(idle_, page);
-                idle_bytes_ -= page_bytes_;
+                removeIdle(page);
                 if (stats_.enabled)
                 {
                     auto& c = stats_.classes[page->index];
@@ -121,6 +123,24 @@ namespace lux::script::lua
             else head = page->available_next;
             if (page->available_next) page->available_next->available_previous = page->available_previous;
             page->available_previous = page->available_next = nullptr;
+        }
+        void addIdle(Page* page) noexcept
+        {
+            addAvailable(class_idle_[page->index], page);
+            page->idle_previous = nullptr;
+            page->idle_next = idle_;
+            if (idle_) idle_->idle_previous = page; else oldest_idle_ = page;
+            idle_ = page;
+            idle_bytes_ += page_bytes_;
+        }
+        void removeIdle(Page* page) noexcept
+        {
+            removeAvailable(class_idle_[page->index], page);
+            if (page->idle_previous) page->idle_previous->idle_next = page->idle_next; else idle_ = page->idle_next;
+            if (page->idle_next) page->idle_next->idle_previous = page->idle_previous;
+            else oldest_idle_ = page->idle_previous;
+            page->idle_previous = page->idle_next = nullptr;
+            idle_bytes_ -= page_bytes_;
         }
         template<bool Track> void* heapAllocate(std::size_t size) noexcept
         {
@@ -160,11 +180,11 @@ namespace lux::script::lua
             auto* page = partial_[index];
             if (!page)
             {
-                page = idle_;
+                page = class_idle_[index] ? class_idle_[index] : idle_;
+                const bool same_class = page && page->index == index;
                 if (page)
                 {
-                    removeAvailable(idle_, page);
-                    idle_bytes_ -= page_bytes_;
+                    removeIdle(page);
                     if constexpr (Track)
                     {
                         ++stats_.page_reuses;
@@ -187,11 +207,14 @@ namespace lux::script::lua
                     pages_ = page;
                     if constexpr (Track) { ++stats_.page_allocations; ++stats_.classes[index].supplied; }
                 }
-                page->index = index;
-                page->stride = sizeof(Block) + classes_[index];
-                page->capacity = (page_bytes_ - sizeof(Page)) / page->stride;
-                page->live = page->carved = 0U;
-                page->free = nullptr;
+                if (!same_class)
+                {
+                    page->index = index;
+                    page->stride = sizeof(Block) + classes_[index];
+                    page->capacity = (page_bytes_ - sizeof(Page)) / page->stride;
+                    page->live = page->carved = 0U;
+                    page->free = nullptr;
+                }
                 addAvailable(partial_[index], page);
             }
             void* result = page->free;
@@ -234,15 +257,21 @@ namespace lux::script::lua
             page->free = pointer;
             if (--page->live != 0U) return;
             removeAvailable(partial_[page->index], page);
-            if (page_bytes_ > budget_ - idle_bytes_)
+            if (budget_ < page_bytes_)
             {
                 if constexpr (Track) ++stats_.classes[page->index].idle_limit_releases;
                 destroyPage<Track>(page);
             }
             else
             {
-                addAvailable(idle_, page);
-                idle_bytes_ += page_bytes_;
+                if (page_bytes_ > budget_ - idle_bytes_)
+                {
+                    auto* victim = oldest_idle_;
+                    removeIdle(victim);
+                    if constexpr (Track) ++stats_.classes[victim->index].idle_limit_releases;
+                    destroyPage<Track>(victim);
+                }
+                addIdle(page);
                 if constexpr (Track)
                     stats_.peak_idle_page_backing_bytes = (std::max)(stats_.peak_idle_page_backing_bytes, idle_bytes_);
             }
@@ -308,8 +337,10 @@ namespace lux::script::lua
             return result;
         }
         std::array<Page*, classes_.size()> partial_{};
+        std::array<Page*, classes_.size()> class_idle_{};
         Page* pages_{};
         Page* idle_{};
+        Page* oldest_idle_{};
         Direct* direct_{};
         std::size_t budget_{}, idle_bytes_{};
         std::size_t permitted_system_{unlimited_};

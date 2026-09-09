@@ -2,6 +2,7 @@
 #include <cassert>
 #include <chrono>
 #include <cstdio>
+#include <string_view>
 #include <thread>
 namespace
 {
@@ -31,11 +32,31 @@ namespace
         return lux::cxx::unexpected(sessions::SceneFailure{sessions::ESceneError::INVALID_ARGUMENT, id});
     }
 } // namespace
-int main()
+int main(int argc, char **argv)
 {
     using namespace lux::editor;
     using Clock = std::chrono::steady_clock;
+    const bool metadata_only = argc == 2 && std::string_view{argv[1]} == "metadata";
+    assert(argc == 1 || metadata_only);
+    const auto uninitialized = examples::buildDevelopmentSceneMeta();
+    assert(!uninitialized && uninitialized.error() == examples::EDemoBuildError::META_BUILD_FAILURE);
     lux::meta::ReflectionRegistry::initRegistry();
+    if (metadata_only)
+    {
+        auto &registry = lux::meta::ReflectionRegistry::instance();
+        const auto *configuration = registry.findClass("lux::simulation::TransformSystemConfiguration");
+        assert(configuration && configuration->type.ptr == configuration);
+        for (unsigned repeat = 0; repeat != 100; ++repeat)
+        {
+            auto metadata = examples::buildDevelopmentSceneMeta();
+            assert(metadata);
+            assert(registry.findClass("lux::simulation::TransformSystemConfiguration") == configuration);
+            assert(configuration->type.ptr == configuration);
+        }
+        lux::meta::ReflectionRegistry::destroyRegistry();
+        std::puts("ER1 metadata PASS: uninitialized rejection, 100 builds, stable reflection identity");
+        return 0;
+    }
     {
         auto built_meta = examples::buildDevelopmentSceneMeta();
         assert(built_meta);

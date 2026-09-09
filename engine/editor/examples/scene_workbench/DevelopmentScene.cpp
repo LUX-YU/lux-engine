@@ -1,5 +1,5 @@
 #include "DevelopmentScene.hpp"
-#include "meta_registration.hpp"
+#include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/scene/SceneRenderSchema.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
@@ -125,7 +125,11 @@ namespace lux::editor::examples
     {
         try
         {
-            LuxRegisterAllMetas_META(lux::meta::ReflectionRegistry::instance());
+            if (!lux::meta::ReflectionRegistry::initialized())
+                return lux::cxx::unexpected(EDemoBuildError::META_BUILD_FAILURE);
+            // Generated registrars join the host's pending queue. Replaying them
+            // directly would leave fix-up pointers into rejected duplicate records.
+            lux::meta::ReflectionRegistry::drainPending();
             scene::initializeBuiltinRenderSystemMeta();
             render::initializeBuiltinRenderFeatureMeta();
             std::vector<simulation::ecs::ComponentSchema> schemas;

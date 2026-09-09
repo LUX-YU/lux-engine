@@ -15,6 +15,9 @@ foreach ($entry in @(@($normalRoot, 'OFF'), @($diagnosticRoot, 'ON'))) {
 }
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $normalNinja = Get-Content -LiteralPath (Join-Path $normalRoot 'build.ninja') -Raw
+if ($normalNinja -match '(?i)fsanitize=address|asan_(dynamic|runtime)') {
+    throw 'Address-check instrumentation must not enter the normal SDK/performance build'
+}
 if ($normalNinja -match 'build [^\r\n]*EditorAllocationDiagnostics\.cpp\.obj:' -or
     $normalNinja -match 'build [^\r\n]*ClientAllocationDiagnostics\.cpp\.obj:') {
     throw 'Diagnostic object appears in normal build rules'

@@ -10,3 +10,4 @@ engine_target_add_type_runtime_info(TARGET editor_application_lifecycle_test MET
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen)
 lux_classify_target(TARGET editor_application_lifecycle_test LAYER EDITOR PRODUCT TEST ROLE COMPOSITION)
 # Requires an actual window/Vulkan device; run explicitly in the serial GPU qualification.
+add_test(NAME editor.development_scene.metadata COMMAND editor_application_lifecycle_test metadata)

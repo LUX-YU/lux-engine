@@ -36,7 +36,13 @@ Invoke-Logged 'clone' 'git' @('clone', '--no-hardlinks', '--no-checkout', $sourc
 Invoke-Logged 'checkout' 'git' @('-C', $clone, 'checkout', '--detach', $revision)
 Invoke-Logged 'tracked-snapshot' $CMake @("-DLUX_SOURCE_DIR=$clone", '-P', "$clone/cmake/ValidateTrackedSnapshot.cmake")
 & $DeveloperShell -Arch amd64 -HostArch amd64 -SkipAutomaticLocation | Out-Null
-$env:PATH = "$CxxPrefix/bin;$VcpkgRoot/installed/x64-windows/bin;" + $env:PATH
+$parserRuntime = Join-Path $env:VCINSTALLDIR 'Tools/Llvm/x64/bin'
+if (!(Test-Path -LiteralPath "$parserRuntime/libclang.dll")) { throw 'Configured MSVC parser runtime missing' }
+# The existing generator dynamically loads libclang. Match the working MSVC toolchain;
+# vcpkg also supplies an older libclang with different alias-template deduction support.
+$env:PATH = "$parserRuntime;$CxxPrefix/bin;$VcpkgRoot/installed/x64-windows/bin;" + $env:PATH
+Get-FileHash -LiteralPath "$parserRuntime/libclang.dll" -Algorithm SHA256 |
+    ConvertTo-Json | Set-Content -LiteralPath "$qroot/parser-runtime.json" -Encoding utf8
 $toolchain = "$VcpkgRoot/scripts/buildsystems/vcpkg.cmake"
 Invoke-Logged 'configure' $CMake @('-S', $clone, '-B', $build, '-G', 'Ninja', "-DCMAKE_MAKE_PROGRAM=$Ninja",
     '-DCMAKE_BUILD_TYPE=RelWithDebInfo', "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
@@ -81,7 +87,7 @@ foreach ($location in @('sdk', 'relocated-sdk')) {
         Invoke-Logged "$location-$consumer-build" $CMake @('--build', $output, '--target', 'all', '-j', '4', '--', '-k', '0')
         Invoke-Logged "$location-$consumer-noop" $CMake @('--build', $output, '--target', 'all', '-j', '4', '--', '-k', '0')
         if ($consumer -eq 'editor-editing') {
-            Invoke-Logged "$location-$consumer-test" "$output/lux_editor_editing_consumer.exe" @()
+            Invoke-Logged "$location-$consumer-test" "$output/lux_editor_editing_consumer.exe" @("$prefix/bin")
         } else {
             Invoke-Logged "$location-$consumer-test" $ctest @('--test-dir', $output, '--output-on-failure', '-j', '1')
         }

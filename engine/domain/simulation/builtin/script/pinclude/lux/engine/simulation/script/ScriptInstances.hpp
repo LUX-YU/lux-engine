@@ -64,6 +64,22 @@ namespace lux::simulation::script::detail
         ScriptInstances(ScriptInstances&&) = delete;
         ScriptInstances& operator=(ScriptInstances&&) = delete;
 
+        // Stable, read-only authority. The owner alone writes InvocationState; every query re-reads it.
+        class AuthorityAccess final
+        {
+        public:
+            AuthorityAccess() = default;
+            [[nodiscard]] bool valid() const noexcept;
+            [[nodiscard]] bool current() const noexcept;
+        private:
+            friend class ScriptInstances;
+            AuthorityAccess(const InvocationState* state, ScriptInstanceId identity) noexcept
+                : state_(state), identity_(identity) {}
+            const InvocationState* state_{};
+            ScriptInstanceId identity_;
+        };
+        [[nodiscard]] AuthorityAccess authorityAccess(ScriptInstanceId identity, std::uint32_t slot) const noexcept;
+
         class Protection final
         {
         public:
@@ -372,6 +388,21 @@ namespace lux::simulation::script::detail
             return false;
         const auto& mount = *mount_;
         return mount.instance == instance_ || mount.retiring_instance == instance_;
+    }
+    inline bool ScriptInstances::AuthorityAccess::valid() const noexcept
+    {
+        return state_ != nullptr && state_->instance == identity_;
+    }
+    inline bool ScriptInstances::AuthorityAccess::current() const noexcept
+    {
+        return valid() && state_->state == EScriptMountState::ACTIVE;
+    }
+    inline ScriptInstances::AuthorityAccess
+    ScriptInstances::authorityAccess(ScriptInstanceId identity, std::uint32_t slot) const noexcept
+    {
+        if (slot >= invocation_states_.size() || !identity.valid()) return {};
+        const auto& state = invocation_states_[slot];
+        return state.instance == identity ? AuthorityAccess{&state, identity} : AuthorityAccess{};
     }
     inline bool ScriptInstances::valid(ScriptInstanceId instance) const noexcept
     {

@@ -130,7 +130,8 @@ namespace lux::simulation::script
     public:
         static constexpr std::size_t InlineCapacity{32U};
 
-        ScriptOwnedBytes() noexcept = default;
+        // Payload becomes readable only after a successful producer writes the valid byte range.
+        ScriptOwnedBytes() noexcept {}
         ScriptOwnedBytes(const ScriptOwnedBytes&) = delete;
         ScriptOwnedBytes& operator=(const ScriptOwnedBytes&) = delete;
 
@@ -252,7 +253,7 @@ namespace lux::simulation::script
             }
         }
 
-        alignas(std::max_align_t) std::array<std::byte, InlineCapacity> inline_{};
+        alignas(std::max_align_t) std::array<std::byte, InlineCapacity> inline_;
         std::byte* spill_{};
         std::size_t size_{};
         std::size_t spill_capacity_{};

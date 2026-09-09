@@ -170,13 +170,13 @@ COROUTINE = re.compile(r"^\s*---@lux\.coroutine\s*$")
 
 
 LUA_KEYWORDS = frozenset("""
-and break do else elseif end false for function global goto if in local nil not
+and break do else elseif end false for function goto if in local nil not
 or repeat return then true until while
 """.split())
 
 
 def code_identifier(value: str) -> bool:
-    # Generated projections use the portable identifier set of all supported VMs.
+    # Official Lua 5.5.1 defaults to LUA_COMPAT_GLOBAL=1; global remains a legal name.
     return value not in LUA_KEYWORDS and bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value))
 
 

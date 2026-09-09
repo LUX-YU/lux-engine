@@ -192,15 +192,18 @@ int main(int argc, char** argv)
     assert(lua_pcall(state, 0, 0, 0) == LUA_OK);
 #endif
 #if LUA_VERSION_NUM >= 505
-    assert(luaL_loadstring(state, "local global = 1") == LUA_ERRSYNTAX);
-    lua_pop(state, 1);
+    static_assert(LUA_COMPAT_GLOBAL == 1); // Preserve the official 5.5.1 default, not strict-global policy.
+    assert(luaL_loadstring(state,
+        "local global = 1; assert(global==1); local t={}; "
+        "function t:global() return 7 end; assert(t:global()==7)") == LUA_OK);
+    assert(lua_pcall(state, 0, 0, 0) == LUA_OK);
     assert(luaL_loadstring(state, "for i=1,2 do i=3 end") == LUA_ERRSYNTAX);
     lua_pop(state, 1);
     assert(luaL_loadstring(state,
         "local t={['global']=7}; assert(t['global']==7); "
         "assert(tostring(1.0)=='1.0'); assert(tonumber(tostring(1.234567890123456))==1.234567890123456)") == LUA_OK);
     assert(lua_pcall(state, 0, 0, 0) == LUA_OK);
-    std::puts("LUA55_LANGUAGE,global_reserved=1,for_readonly=1,quoted_key=1,float_roundtrip=1");
+    std::puts("LUA55_LANGUAGE,compat_global=1,for_readonly=1,quoted_key=1,float_roundtrip=1");
 #endif
     std::puts("THREAD_REUSE_REJECTED,retained_after_unref=1,closure=1,identity=1,dead=1,cancel=1,error=1");
     lua_close(state);

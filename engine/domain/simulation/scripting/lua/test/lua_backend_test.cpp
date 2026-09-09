@@ -214,8 +214,13 @@ int main()
             .prepared_ability_blocks = std::array{LuaPreparedBlockClass{1U, 1U}},
             .prepared_ability_storage_bytes = 64U * 1024U * 1024U
         });
-        assert(!reserved_name_backend);
-        assert(reserved_name_backend.error() == ELuaScriptBindingBackendError::INVALID_ABILITY_CONTRIBUTION);
+        if (std::string_view{keyword} == "global")
+            assert(reserved_name_backend); // Lua55 uses its official LUA_COMPAT_GLOBAL=1 default.
+        else
+        {
+            assert(!reserved_name_backend);
+            assert(reserved_name_backend.error() == ELuaScriptBindingBackendError::INVALID_ABILITY_CONTRIBUTION);
+        }
     }
 
     const auto unsupported_integer = lux::script::lua::makeScriptAbilityLuaContribution<

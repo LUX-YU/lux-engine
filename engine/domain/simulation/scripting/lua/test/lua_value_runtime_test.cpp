@@ -20,6 +20,7 @@ using lux::simulation::script::test::executeRuntimeStablePoint;
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <optional>
 #include <string>
 
@@ -334,7 +335,12 @@ static int resumeAuthorityCase(bool stop)
     HookChannel<SimulationBroadcastRoute, ValuePose> channel;
     assert(channel.prepare({1U, 1U}, [](const ValuePose& value) noexcept { return value; }) ==
         EEndpointMutationError::NONE);
-    ScriptEventEndpoint<SimulationBroadcastRoute, ValuePose> event{kOwner, event_id, channel};
+    ScriptEventEndpoint<SimulationBroadcastRoute, ValuePose> event{kOwner, event_id, channel,
+        [](const ValuePose& value, std::span<std::byte> output) noexcept {
+            if (output.size() != sizeof(value)) return false;
+            std::memcpy(output.data(), &value, sizeof(value));
+            return true;
+        }};
     auto source = projectScriptEventSource(sim->findEvent(kOwner, event_id), event.descriptor(), "Resume", "pose");
     assert(source);
     const auto contribution = lux::script::lua::makeScriptAbilityLuaContribution<LuaValueTestAbility>();

@@ -439,6 +439,7 @@ namespace
     inline constexpr lux::script::ScriptSymbolId kLuaQuery{0xB008U};
     inline constexpr lux::script::ScriptSymbolId kLuaEventWait{0xB009U};
     inline constexpr lux::script::ScriptSymbolId kLuaSequence{0xB00AU};
+    inline constexpr lux::script::ScriptSymbolId kLuaReadValue{0xB00BU};
     inline constexpr EventPointId kEvent{0xB009U};
     inline constexpr EventPointId kTargetEvent{0xB00AU};
 
@@ -461,6 +462,8 @@ namespace
         std::size_t calls{};
         std::uint64_t checksum{};
         std::int32_t value{7};
+        std::span<std::int32_t> oracle_values;
+        std::size_t oracle_count{};
 
         std::int32_t read(std::int32_t input) noexcept
         {
@@ -471,6 +474,11 @@ namespace
 
         void write(std::int32_t input) noexcept
         {
+            if (!oracle_values.empty())
+            {
+                if (oracle_count < oracle_values.size()) oracle_values[oracle_count] = input;
+                ++oracle_count;
+            }
             ++calls;
             value = input;
             checksum += static_cast<std::uint32_t>(input);
@@ -1196,7 +1204,8 @@ namespace
             std::size_t resume_budget,
             lux::script::lua::ELuaExecutionPolicy execution_policy, bool vm_accounting = false
         )
-            : simulation_description(scriptDescription()), artifact_asset(loadLuaArtifact(artifact_path))
+            : simulation_description(lux::simulation::benchmark_domain::scriptDescription(
+                  0U, symbol == kLuaEventWait)), artifact_asset(loadLuaArtifact(artifact_path))
         {
             auto clock_simulation = Simulation::create(registry, emptyDescription(), empty_system_types);
             if (!clock_simulation)
@@ -1219,6 +1228,9 @@ namespace
                 {
                     throw std::runtime_error("Lua benchmark mount rejected");
                 }
+                if (symbol == kLuaEventWait)
+                    description_builder.back().bindings.push_back({kLuaReadValue,
+                        HookScriptTarget{kSystem, lux::simulation::benchmark_domain::kReadHook}});
             }
             auto built = std::optional{std::move(description_builder)};
             if (!built)
@@ -1232,6 +1244,15 @@ namespace
                 throw std::runtime_error("Lua benchmark EventPoint prepare failed");
             hook_bridge = std::make_unique<ScriptHookEndpoint<void()>>(kSystem, kHook, hook);
             hook_descriptor = hook_bridge->descriptor();
+            hook_descriptors.push_back(hook_descriptor);
+            if (symbol == kLuaEventWait)
+            {
+                if (read_hook.prepare(1U) != EEndpointMutationError::NONE)
+                    throw std::runtime_error("Lua oracle HookPoint prepare failed");
+                read_bridge = std::make_unique<ScriptHookEndpoint<void()>>(
+                    kSystem, lux::simulation::benchmark_domain::kReadHook, read_hook);
+                hook_descriptors.push_back(read_bridge->descriptor());
+            }
             event_bridge = std::make_unique<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>>(
                 kSystem,
                 kEvent,
@@ -1318,7 +1339,7 @@ namespace
                 {this, &resolveArtifact},
                 publications,
                 std::span{&backend_descriptor, 1U},
-                std::span{&hook_descriptor, 1U},
+                hook_descriptors,
                 std::span{&event_descriptor, 1U}
             );
             if (!created)
@@ -1404,6 +1425,9 @@ namespace
         std::optional<lux::task::TaskExecutor> executor;
         std::optional<std::vector<ScriptRuntimeMount>> system_description;
         HookPoint<void()> hook;
+        HookPoint<void()> read_hook;
+        std::unique_ptr<ScriptHookEndpoint<void()>> read_bridge;
+        std::vector<ScriptHookEndpointDescriptor> hook_descriptors;
         HookChannel<SimulationBroadcastRoute, std::int32_t> event;
         std::unique_ptr<ScriptHookEndpoint<void()>> hook_bridge;
         std::unique_ptr<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>> event_bridge;
@@ -2900,6 +2924,35 @@ namespace
             execute_cycle(frame, true);
         if (harness.system->activeContinuationCount() != 0U || harness.system->stats().active_event_waiters != 0U)
             throw std::runtime_error("Lua Event benchmark left pending runtime state");
+        const auto cycles = static_cast<std::uint64_t>(options.warmups) + frames;
+        const auto completed = cycles * options.size;
+        const auto stats = harness.system->stats();
+        const auto vm = harness.backend->stats();
+        const bool invalid_work = stats.step_invocations != completed || stats.backend_resume_calls != completed ||
+            stats.suspensions_admitted != completed || stats.active_awaitables != 0U ||
+            stats.resume_queue_depth != 0U || vm.vm_coroutine_creations != completed ||
+            vm.vm_coroutine_releases != completed;
+        if (invalid_work) throw std::runtime_error("Lua Event benchmark work count mismatch");
+        const auto expected = 1U + cycles * 31U;
+        if (expected > static_cast<std::uint64_t>((std::numeric_limits<std::int32_t>::max)()))
+            throw std::runtime_error("Lua Event oracle exceeds its declared i32 range");
+        std::vector<std::int32_t> values(options.size, -1);
+        harness.value_provider.oracle_values = values;
+        dispatchRuntimeHook(*harness.system, harness.read_hook);
+        harness.value_provider.oracle_values = {};
+        if (harness.value_provider.oracle_count != options.size)
+            throw std::runtime_error("Lua Event oracle did not visit every instance exactly once");
+        std::uint64_t checksum{};
+        for (std::size_t index{}; index < values.size(); ++index)
+        {
+            if (values[index] != expected)
+                throw std::runtime_error("Lua Event instance value mismatch at " + std::to_string(index));
+            checksum += static_cast<std::uint32_t>(values[index]);
+        }
+        std::printf("BUSINESS_ORACLE,lua-event,instances=%zu,cycles=%llu,completed=%llu,per_instance=%llu,"
+            "checksum=%llu,source=script-readback,outside_timing=1\n", options.size,
+            static_cast<unsigned long long>(cycles), static_cast<unsigned long long>(completed),
+            static_cast<unsigned long long>(expected), static_cast<unsigned long long>(checksum));
         finishRuntimeBenchmark(*harness.system, "lua-event");
     }
 

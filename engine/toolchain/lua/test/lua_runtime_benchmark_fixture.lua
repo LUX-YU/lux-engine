@@ -67,4 +67,11 @@ function BenchmarkBehavior:sequence()
     lux.BenchmarkValue.write(self.value + payload)
 end
 
+-- Diagnostic readback runs only after timing. It does not mutate the script instance.
+---@lux.method
+---@return void
+function BenchmarkBehavior:read_value()
+    lux.BenchmarkValue.write(self.value)
+end
+
 return BenchmarkBehavior

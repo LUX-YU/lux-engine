@@ -34,7 +34,11 @@ namespace
         if (invalid) return 3;
         auto& frame = *new (storage) Frame{static_cast<std::uint32_t*>(instance->state)};
         ++*frame.object;
-        if (fail_start) { fail_start = false; return 97; }
+        if (fail_start)
+        {
+            fail_start = false;
+            return 97;
+        }
         outcome->state = LUX_SCRIPT_STEP_SUSPENDED;
         outcome->waiting_on = {1U, 1U};
         return 0;

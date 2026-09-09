@@ -1366,7 +1366,11 @@ namespace
         void capturePagePhase(std::size_t cycle, std::size_t phase)
         {
             if (!page_phases) return;
-            if (page_phase_count == page_phases->size()) { ++page_phase_dropped; return; }
+            if (page_phase_count == page_phases->size())
+            {
+                ++page_phase_dropped;
+                return;
+            }
             const auto m = backend->stats().vm_allocations;
             (*page_phases)[page_phase_count++] = {cycle, phase, m.active_page_backing_bytes,
                 m.idle_page_backing_bytes, m.live_bytes, m.pinned_free_slot_bytes, m.class_rounding_bytes,

@@ -468,7 +468,11 @@ int main(int argc, char** argv)
             if (arg == "--allocations") vm_accounting = true;
             else if (arg == "--gc-g1") vm_config.gc_parameters[3] = 150;
             else if (arg == "--gc-g2") vm_config.gc_mode = lux::script::lua::ELuaGcMode::GENERATIONAL;
-            else { std::fprintf(stderr, "Unknown record benchmark option\n"); return 2; }
+            else
+            {
+                std::fprintf(stderr, "Unknown record benchmark option\n");
+                return 2;
+            }
         }
     }
     auto created = LuaScriptBackend::create({

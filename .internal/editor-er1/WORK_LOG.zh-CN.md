@@ -149,3 +149,5 @@ q5的同一a6a1e0f6 clean clone另建专用diagnostic-build，all/no-op、135/13
 q6绑定aa91ba553f2ab56c5670a9061d7c41b1336f0433：正常all/no-op、134/134 CTest（78.00秒）、本轮GPU矩阵、两个SDK位置的五种消费者、实际Toolset DLL来源与完整安装reader再生成通过。专用诊断为该clean clone的新构建，all/no-op、135/135 CTest（77.17秒）、19个Scene GPU变体、foreign/application lifecycle和普通/专用DLL/PDB隔离均通过。image_lifetime实测CPU refs=1、submitted227、completed225时保持，completed227后才释放，descriptor最终7/7。
 q6五组十个独立进程具有相同per-frame-recorded等待边界、500实际计量帧、8验证帧、100预热、8ms节奏和相同像素。旧/新主动work wall均值0.1050851/0.10432358秒；等待cycles307632016.8/334947593.2；关闭均值0.10854212/0.13493248秒。第4组新关闭0.2236169秒保留，不作为异常值剔除。不声称整体加速或性能等价；每个进程原始JSON/PPM及DLL身份保留。
 最终续行表按实际q6证据整理：118行中56 PASS_ER1、5历史PASS_INTERMEDIATE、32 PARTIAL、1 BLOCKED_DELETE_GATE、24 DEFERRED_STAGE。H07误引用reply budget、C09误引用partial-resource的记录已纠正，F15对专门shared-import GPU缺口重新标PARTIAL。未完成项不降级或删除；本轮仍不宣布ER-1通过。报告属于后续证据提交，生产产物身份仍为aa91ba55。
+
+归档阶段已实际验证源码ZIP commit注释和四份ZIP的SHA256/全部CRC，I08更新为PASS_ER1；当前57 PASS_ER1、5历史PASS_INTERMEDIATE、31 PARTIAL、1 BLOCKED_DELETE_GATE、24 DEFERRED_STAGE。这是证据完成项更新，不是ER-1完成或生产源码变动。

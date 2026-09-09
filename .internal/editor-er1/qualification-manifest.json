@@ -40,10 +40,10 @@
     "I02",
     "I06",
     "I07",
-    "I08",
     "P02",
     "P03"
   ],
   "deferred": "ER-2/ER-3 unchanged; main not merged/pushed; no publish/freeze",
-  "er1_complete": false
+  "er1_complete": false,
+  "delivery_manifest": "E:/lux-er1/delivery-aa91ba55/delivery-manifest.json"
 }

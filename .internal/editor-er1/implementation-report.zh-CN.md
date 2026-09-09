@@ -34,9 +34,9 @@ source-files.sha256.csv描述aa91ba55 clean clone的实际tracked字节，不描
 
 ## 尚未完成
 
-118行验收表当前为56 PASS_ER1、5历史PASS_INTERMEDIATE、32 PARTIAL、1 BLOCKED_DELETE_GATE、24 DEFERRED_STAGE。历史GUI等中间证据没有升级成当前提交通过；这些逻辑行数也不等于134/135个CTest注册项。
+118行验收表当前为57 PASS_ER1、5历史PASS_INTERMEDIATE、31 PARTIAL、1 BLOCKED_DELETE_GATE、24 DEFERRED_STAGE。历史GUI等中间证据没有升级成当前提交通过；这些逻辑行数也不等于134/135个CTest注册项。
 
-本阶段尚未完全通过的验收ID：A01, A03, A04, A05, A06, A07, A09, C05, C06, U04, U05, U10, U11, U12, H03, H07, F15, R01, R06, R07, R09, X01, X03, X04, X08, X09, X10, I02, I06, I07, I08, P02, P03。逐项范围与已有证据在acceptance-results.csv，不把不同逻辑条目的数量当CTest注册数。
+本阶段尚未完全通过的验收ID：A01, A03, A04, A05, A06, A07, A09, C05, C06, U04, U05, U10, U11, U12, H03, H07, F15, R01, R06, R07, R09, X01, X03, X04, X08, X09, X10, I02, I06, I07, P02, P03。逐项范围与已有证据在acceptance-results.csv，不把不同逻辑条目的数量当CTest注册数。
 
 主要缺口仍是线程/设备/attach分阶段启动故障、View接纳容量/分配失败、GPU mesh成功后的shader/material子失败、set_stopped/value独立路径、资源Control/Upload饱和重试、部分关闭/值访问器线程审计和成本账目。受工具输入能力限制，真实持续RMB/MMB后失焦及中文IME候选仍未验证；此前实际过滤、分栏、选择、滚轮、最小化/恢复只保留为历史GUI证据，未重标为本提交GUI通过。
 
@@ -45,3 +45,5 @@ M26 Toolset已冷装配并闭合Context/Inspector和安装消费者。M01—M05�
 被动RenderLease析构中的既有deferred vector分配仍没有全路径OOM保证。终局record failure已实际验证，不能把它改名为VkDeviceLost专用测试。其他范围不以替身、隐藏源码补丁或删测试冒充通过。
 
 主检出仍为c77bb41e，六个受保护Script文件hash复核不变。没有合并main、推送、发布、冻结、升级依赖或开展Android构建。
+
+交付归档已实际完成CRC和SHA256验证，I08由包装前PARTIAL更新为PASS_ER1；最终报告归档及源码/SDK/诊断归档身份见 E:/lux-er1/delivery-aa91ba55/delivery-manifest.json。

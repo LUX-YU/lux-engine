@@ -63,14 +63,17 @@ struct LargePolicy
     inline static constexpr std::string_view name = "test.large";
     inline static constexpr unsigned version = 1;
 };
+template<int N> struct Nested;
+template<int N> static Nested<N> makeNested() noexcept;
 template <int N> struct Nested
 {
-    Nested<N - 1> child;
+    Nested<N - 1> child = makeNested<N - 1>();
 };
 template <> struct Nested<0>
 {
-    std::int32_t leaf;
+    std::int32_t leaf{};
 };
+template<int N> static Nested<N> makeNested() noexcept { Nested<N> value; return value; }
 struct Resource
 {
     static inline int live{};

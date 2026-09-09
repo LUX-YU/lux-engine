@@ -152,7 +152,7 @@ add_executable(
 )
 target_link_libraries(
     simulation_script_lua_coroutine_integration_test
-    PRIVATE lux::engine::simulation::simulation_script_lua
+    PRIVATE lux::engine::simulation::simulation_script_lua lux::engine::function::script_lua_vm
 )
 target_include_directories(
     simulation_script_lua_coroutine_integration_test

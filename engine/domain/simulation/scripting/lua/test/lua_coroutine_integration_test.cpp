@@ -25,6 +25,9 @@ using lux::simulation::script::test::deliverEndpoint;
 #include <string>
 #include <string_view>
 #include <utility>
+#include <lua.hpp>
+#include <cstdio>
+#include <cstdlib>
 
 namespace
 {
@@ -35,6 +38,14 @@ namespace
     using namespace lux::simulation::script;
     using Ability = lux::simulation::script::test::LuaRuntimeTestAbility;
     using AbilityTraits = lux::script::ScriptAbilityTraits<Ability>;
+
+    lua_State* g_observed_vm{};
+    int (*g_original_read)(lua_State*) noexcept{};
+    int observeRead(lua_State* state) noexcept
+    {
+        g_observed_vm = state;
+        return g_original_read(state);
+    }
 
     inline constexpr lux::system::SystemInstanceId kSystem{0x4C554101U};
     inline constexpr HookPointId kSyncHook{0x4C554102U};
@@ -372,7 +383,8 @@ namespace
         explicit Harness(
             bool require_ability = true,
             std::size_t lua_continuation_capacity = 4U,
-            bool declare_event = true
+            bool declare_event = true,
+            bool observe_vm = false
         )
             : simulation(makeSimulation()),
               artifact(makeArtifact(require_ability, declare_event)),
@@ -430,6 +442,20 @@ namespace
             assert(projected);
             event_sources[1] = std::move(*projected);
             contribution = lux::script::lua::makeScriptAbilityLuaContribution<Ability>();
+            if (observe_vm)
+            {
+                observed_methods.assign(contribution.methods.begin(), contribution.methods.end());
+                for (auto& method : observed_methods)
+                {
+                    if (method.method.name() == "lux.test.lua_runtime.read")
+                    {
+                        g_original_read = method.entry;
+                        method.entry = &observeRead;
+                    }
+                }
+                assert(g_original_read);
+                contribution.methods = observed_methods;
+            }
             auto created_backend = LuaScriptBackend::create({
                 .instance_capacity = 1U,
                 .prepared_call_capacity = 16U,
@@ -527,14 +553,99 @@ namespace
         std::array<ScriptHookEndpointDescriptor, 5U> endpoints;
         std::array<ScriptEventEndpointDescriptor, 2U> event_endpoints;
         lux::script::lua::ScriptAbilityLuaContribution contribution;
+        std::vector<lux::script::lua::ScriptAbilityLuaMethodProjection> observed_methods;
         std::array<lux::script::ScriptEventSourceDescription, 2U> event_sources;
         std::optional<LuaScriptBackend> backend;
         ScriptBackendDescriptor descriptor;
     };
+
+    struct CreationAllocator final
+    {
+        lua_Alloc original{};
+        void* context{};
+        std::size_t permitted{};
+        std::size_t growths{}, failures{};
+        bool armed{};
+        static void* allocate(void* opaque, void* pointer, std::size_t old_size, std::size_t size) noexcept
+        {
+            auto& self = *static_cast<CreationAllocator*>(opaque);
+            if (self.armed && size != 0U && (pointer == nullptr || size > old_size))
+            {
+                const auto index = self.growths++;
+                std::printf("CREATE_ALLOCATION,index=%zu,old=%zu,new=%zu,kind=%s\n",
+                    index, old_size, size, pointer ? "grow" : "new");
+                if (index >= self.permitted)
+                {
+                    ++self.failures;
+                    return nullptr;
+                }
+            }
+            return self.original(self.context, pointer, old_size, size);
+        }
+    };
+
+    int testCreationOom(std::size_t permitted)
+    {
+        Harness harness{true, 1U, true, true};
+        Provider provider;
+        const auto binding = lux::script::bindScriptAbility<Ability>(provider);
+        const std::array publications{publishScriptAbility(binding)};
+        auto created = harness.create(publications);
+        assert(created);
+        auto system = std::move(*created);
+        assert(system.prepare());
+        assert(dispatchRuntimeHook(system, harness.sync_hook) == 1U);
+        assert(g_observed_vm && provider.reads == 1U && provider.writes == 1U);
+        auto* vm = g_observed_vm;
+        const auto base = lua_gettop(vm);
+        CreationAllocator allocation;
+        allocation.original = lua_getallocf(vm, &allocation.context);
+        allocation.permitted = permitted;
+        const auto panic = lua_atpanic(vm, [](lua_State*) -> int {
+            std::puts("UNPROTECTED_CREATION_PANIC,provider_calls_before=2,thread_roots_before=0");
+            std::fflush(stdout);
+            std::_Exit(86);
+        });
+        lua_setallocf(vm, &CreationAllocator::allocate, &allocation);
+        allocation.armed = true;
+        std::puts("CASE,creation-oom,prepared=1,continuation_capacity=1");
+        std::fflush(stdout);
+        assert(dispatchRuntimeHook(system, harness.async_hook) == 1U);
+        allocation.armed = false;
+        lua_setallocf(vm, allocation.original, allocation.context);
+        lua_atpanic(vm, panic);
+        assert(allocation.failures != 0U);
+        assert(lua_gettop(vm) == base);
+        assert(provider.reads == 1U && provider.writes == 1U && !provider.pending);
+        assert(system.activeContinuationCount() == 0U && system.activeAwaitableCount() == 0U);
+        assert(system.stats().invocation_failures == 1U);
+        assert(system.shutdown());
+        const auto after = harness.backend->stats();
+        assert(after.vm_coroutine_creations == after.vm_coroutine_releases);
+        assert(after.prepared_ability_slots == 0U && after.prepared_event_slots == 0U);
+        // Reuse the same backend's only continuation slot with a fresh runtime identity.
+        harness.entity = harness.registry.create();
+        harness.description.front().scope = EntityScriptScope{harness.entity};
+        auto next = harness.create(publications);
+        assert(next && next->prepare());
+        assert(dispatchRuntimeHook(*next, harness.async_hook) == 1U);
+        assert(provider.pending && provider.reads == 2U && provider.writes == 2U);
+        assert(next->activeContinuationCount() == 1U && next->activeAwaitableCount() == 1U);
+        assert(next->shutdown());
+        const auto final = harness.backend->stats();
+        assert(final.vm_coroutine_creations == final.vm_coroutine_releases);
+        assert(final.prepared_ability_slots == 0U && final.prepared_event_slots == 0U);
+        std::printf("CREATION_OOM_PASS,permitted=%zu,failures=%zu,provider_during_failure=0,stack_delta=0,"
+            "slot_reused=1,roots=%zu,releases=%zu\n", permitted, allocation.failures,
+            final.vm_coroutine_creations, final.vm_coroutine_releases);
+        return 0;
+    }
 } // namespace
 
 int main(int argc, char** argv)
 {
+    if (argc == 3 && std::string_view{argv[1]} == "--creation-oom")
+        return testCreationOom(static_cast<std::size_t>(std::strtoul(argv[2], nullptr, 10)));
     if (argc == 2 && std::string_view{argv[1]} == "--interpreter-only")
         g_execution_policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
     Provider provider;

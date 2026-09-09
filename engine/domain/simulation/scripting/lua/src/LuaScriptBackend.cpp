@@ -1877,12 +1877,6 @@ namespace lux::simulation::script
                 return;
             auto* owner = continuation.owner;
             ++owner->vm_coroutine_releases;
-#if defined(LUX_LUA55_LEAF_YIELD_REVISION)
-            unsigned long long fast{}, fallback{};
-            luxlua_leafstats(continuation.thread, &fast, &fallback);
-            owner->leaf_return_yields += fast;
-            owner->standard_leaf_yields += fallback;
-#endif
             const auto slot = static_cast<std::size_t>(
                 std::addressof(continuation) - owner->continuations.data()
             );
@@ -2225,7 +2219,6 @@ namespace lux::simulation::script
 #else
         static constexpr bool leaf_yield_available = false;
 #endif
-        std::uint64_t leaf_return_yields{}, standard_leaf_yields{};
         int traceback_ref{LUA_NOREF};
         int thread_roots_ref{LUA_NOREF};
         std::size_t instance_capacity{};
@@ -2701,6 +2694,8 @@ namespace lux::simulation::script
             return {};
         const auto abilities = state_->prepared_abilities.stats();
         const auto events = state_->prepared_events.stats();
+        unsigned long long fast{}, fallback{};
+        const bool collected = luxlua_vmleafstats(state_->engine.state(), &fast, &fallback) != 0;
         return {
             abilities.active,
             abilities.high_water,
@@ -2715,7 +2710,7 @@ namespace lux::simulation::script
             abilities.acquire_steps + events.acquire_steps,
             abilities.release_steps + events.release_steps,
             state_->prototypes.size(),
-            State::leaf_yield_available, state_->leaf_return_yields, state_->standard_leaf_yields
+            State::leaf_yield_available, collected, fast, fallback
         };
     }
 

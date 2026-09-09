@@ -4,6 +4,7 @@
   "archive_sha256": "1c4b4068d67061f2a2231ad2b5422e77acea1487ea9890f6320af614f4373dce",
   "patch_revision": "@LUX_LUA55_PATCH_REVISION@",
   "patch_sha256": "@LUX_LUA55_PATCH_SHA256@",
+  "diagnostics": "@LUX_LUA55_DIAGNOSTICS@",
   "jump_table": "@LUX_LUA55_JUMPTABLE@",
   "compiler": "@CMAKE_C_COMPILER_ID@ @CMAKE_C_COMPILER_VERSION@",
   "configuration": "@CMAKE_BUILD_TYPE@",

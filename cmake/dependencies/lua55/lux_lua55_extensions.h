@@ -9,7 +9,8 @@ extern "C" {
 #if defined(LUX_LUA55_LEAF_YIELD_REVISION)
 /* Only engine leaf primitives return this private sentinel; other shapes use standard Lua55 yield. */
 LUA_API int luxlua_yieldleaf(lua_State* state, lua_KContext context, lua_KFunction continuation);
-LUA_API void luxlua_leafstats(lua_State* state, unsigned long long* fast, unsigned long long* fallback);
+/* VM-wide, including live and released threads. Returns zero when not collected. */
+LUA_API int luxlua_vmleafstats(lua_State* state, unsigned long long* fast, unsigned long long* fallback);
 #endif
 #ifdef __cplusplus
 }

@@ -108,8 +108,9 @@ namespace lux::simulation::script
         std::uint64_t prepared_acquire_steps{};
         std::uint64_t prepared_release_steps{};
         std::size_t cached_prototypes{};
-        // Counters include released threads only; no per-snapshot scan of live continuations.
+        // VM-wide counters include live and released threads; unavailable when diagnostics are disabled.
         bool leaf_yield_available{};
+        bool leaf_statistics_enabled{};
         std::uint64_t leaf_return_yields{}, standard_leaf_yields{};
     };
 

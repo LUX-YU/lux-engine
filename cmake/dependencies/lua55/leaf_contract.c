@@ -25,11 +25,12 @@ static void oomAfterYield(void) {
     CHECK(luaL_loadstring(T,"local x=wait();local s=string.rep('x',1000000);return x")==LUA_OK);
     CHECK(lua_resume(T,L,0,&n)==LUA_YIELD);fail=1;lua_pushinteger(T,42);
     status=lua_resume(T,L,1,&n);CHECK(status==LUA_ERRMEM);
-    luxlua_leafstats(T,&fast,&standard);CHECK(fast==1 && standard==0);
+    if(luxlua_vmleafstats(T,&fast,&standard)) CHECK(fast==1 && standard==0);
     fail=0;lua_close(L);puts("LEAF_OOM,after_resume=1,status=4,closed=1");
 }
 static void run(lua_State* L,const char* name,const char* code,int count,int fast,int fail,int close_early) {
-    lua_State* T; int ref,n,status,i; unsigned long long a,b;
+    lua_State* T; int ref,n,status,i; unsigned long long a,b,old_a,old_b; int observed;
+    observed=luxlua_vmleafstats(L,&old_a,&old_b);
     CHECK(luaL_loadstring(L,code)==LUA_OK);CHECK(lua_pcall(L,0,1,0)==LUA_OK);
     T=lua_newthread(L);ref=luaL_ref(L,LUA_REGISTRYINDEX);lua_xmove(L,T,1);
     status=lua_resume(T,L,0,&n);
@@ -38,8 +39,8 @@ static void run(lua_State* L,const char* name,const char* code,int count,int fas
         if(close_early) break;
         lua_pushinteger(T,42);status=lua_resume(T,L,1,&n);
     }
-    luxlua_leafstats(T,&a,&b);
-    CHECK(fast ? a==(unsigned long long)(close_early?1:count) && b==0 : a==0 && b>0);
+    luxlua_vmleafstats(T,&a,&b);a-=old_a;b-=old_b;
+    if(observed) CHECK(fast ? a==(unsigned long long)(close_early?1:count) && b==0 : a==0 && b>0);
     if(close_early) CHECK(lua_closethread(T,L)==LUA_OK);
     else if(fail) CHECK(status==LUA_ERRRUN && strstr(lua_tostring(T,-1),"after")!=NULL);
     else CHECK(status==LUA_OK && n==1 && lua_tointeger(T,-1)==42);

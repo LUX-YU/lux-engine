@@ -21,14 +21,14 @@ option(LUX_LUA55_LEAF_YIELD "Build the explicitly qualified Lux leaf-yield revis
 set(LUX_LUA55_PATCH_REVISION "official-5.5.1")
 set(LUX_LUA55_PATCH_SHA256 "none")
 if(LUX_LUA55_LEAF_YIELD)
-    file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/patches/leaf-yield-r2.patch" LUX_LUA55_PATCH_SHA256)
+    file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/patches/lua55-v3-r1.patch" LUX_LUA55_PATCH_SHA256)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     execute_process(COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/apply_leaf.py"
-        --official "${LUX_LUA55_SOURCE_DIR}" --output "${CMAKE_CURRENT_BINARY_DIR}/lux-leaf-r2"
-        --patch "${CMAKE_CURRENT_SOURCE_DIR}/patches/leaf-yield-r2.patch" --revision lux-leaf-r2
+        --official "${LUX_LUA55_SOURCE_DIR}" --output "${CMAKE_CURRENT_BINARY_DIR}/lux-lua55-v3-r1"
+        --patch "${CMAKE_CURRENT_SOURCE_DIR}/patches/lua55-v3-r1.patch" --revision lux-lua55-v3-r1
         COMMAND_ERROR_IS_FATAL ANY)
-    set(LUX_LUA55_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/lux-leaf-r2")
-    set(LUX_LUA55_PATCH_REVISION "lux-leaf-r2")
+    set(LUX_LUA55_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/lux-lua55-v3-r1")
+    set(LUX_LUA55_PATCH_REVISION "lux-lua55-v3-r1")
 endif()
 
 # Explicit library sources: no CLI, compiler main, amalgamation, or VM modifications.
@@ -42,7 +42,11 @@ list(TRANSFORM lua_sources PREPEND "${LUX_LUA55_SOURCE_DIR}/src/")
 add_library(lux_lua55_runtime SHARED ${lua_sources})
 add_library(LuxLua55::Runtime ALIAS lux_lua55_runtime)
 if(LUX_LUA55_LEAF_YIELD)
-    target_compile_definitions(lux_lua55_runtime PUBLIC LUX_LUA55_LEAF_YIELD_REVISION=2)
+    target_compile_definitions(lux_lua55_runtime PUBLIC LUX_LUA55_LEAF_YIELD_REVISION=3)
+endif()
+option(LUX_LUA55_DIAGNOSTICS "Collect VM-wide diagnostic counters outside formal timing builds" OFF)
+if(LUX_LUA55_DIAGNOSTICS)
+    target_compile_definitions(lux_lua55_runtime PRIVATE LUX_LUA55_DIAGNOSTICS=1)
 endif()
 set_target_properties(lux_lua55_runtime PROPERTIES EXPORT_NAME Runtime OUTPUT_NAME lux_lua55
     MSVC_RUNTIME_LIBRARY MultiThreadedDLL)

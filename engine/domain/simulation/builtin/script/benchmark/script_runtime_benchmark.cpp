@@ -1347,14 +1347,22 @@ namespace
             const auto stats = backend->stats();
             const auto& memory = stats.vm_allocations;
             std::printf("VM_FINAL,accounting=%d,alloc=%llu,realloc=%llu,free=%llu,failures=%llu,"
-                "heap_alloc=%llu,heap_free=%llu,hits=%llu,in_place=%llu,live=%zu,peak_live=%zu,"
+                "heap_alloc=%llu,heap_free=%llu,slot_reuses=%llu,in_place=%llu,live=%zu,peak_live=%zu,"
                 "idle_page_backing=%zu,peak_idle_page_backing=%zu,threads=%zu,resumes=%zu,released=%zu,"
-                "leaf_available=%d,leaf=%llu,standard=%llu\n",
+                "leaf_available=%d,leaf_observed=%d,leaf=%llu,standard=%llu\n",
                 memory.enabled, memory.allocations, memory.reallocations, memory.frees, memory.failures,
                 memory.system_allocations, memory.system_frees, memory.slot_reuses, memory.in_place,
                 memory.live_bytes, memory.peak_live_bytes, memory.idle_page_backing_bytes, memory.peak_idle_page_backing_bytes,
                 stats.vm_coroutine_creations, stats.vm_coroutine_resumes, stats.vm_coroutine_releases,
-                stats.leaf_yield_available, stats.leaf_return_yields, stats.standard_leaf_yields);
+                stats.leaf_yield_available, stats.leaf_statistics_enabled, stats.leaf_return_yields, stats.standard_leaf_yields);
+            if (memory.enabled)
+                std::printf("VM_PAGES,active=%zu,idle=%zu,pinned_free=%zu,rounding=%zu,metadata=%zu,large=%zu,"
+                    "large_requested=%zu,page_alloc=%llu,page_free=%llu,page_reuse=%llu,direct_alloc=%llu,"
+                    "direct_free=%llu,page_fallback=%llu\n",
+                    memory.active_page_backing_bytes, memory.idle_page_backing_bytes, memory.pinned_free_slot_bytes,
+                    memory.class_rounding_bytes, memory.metadata_and_header_bytes, memory.large_block_backing_bytes,
+                    memory.large_requested_live_bytes, memory.page_allocations, memory.page_frees, memory.page_reuses,
+                    memory.direct_allocations, memory.direct_frees, memory.page_fallbacks);
         }
 
         static bool resolveArtifact(

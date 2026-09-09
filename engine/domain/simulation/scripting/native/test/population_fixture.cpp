@@ -6,6 +6,9 @@
 
 namespace
 {
+    void (*destroy_probe)(void*) noexcept{};
+    void* probe_context{};
+    bool fail_start{};
     struct Frame final { std::uint32_t* object{}; };
 
     int read(void* invocation_context, lux_script_call_frame* call) noexcept
@@ -31,6 +34,7 @@ namespace
         if (invalid) return 3;
         auto& frame = *new (storage) Frame{static_cast<std::uint32_t*>(instance->state)};
         ++*frame.object;
+        if (fail_start) { fail_start = false; return 97; }
         outcome->state = LUX_SCRIPT_STEP_SUSPENDED;
         outcome->waiting_on = {1U, 1U};
         return 0;
@@ -46,6 +50,7 @@ namespace
     void destroy(void* storage) noexcept
     {
         auto& frame = *static_cast<Frame*>(storage);
+        if (destroy_probe) destroy_probe(probe_context);
         ++*frame.object;
         frame.~Frame();
     }
@@ -67,3 +72,10 @@ namespace
 }
 
 extern "C" LUX_SCRIPT_EXPORT const lux_script_module_desc* lux_script_get_module() { return &Module; }
+
+extern "C" LUX_SCRIPT_EXPORT void lux_population_set_destroy_probe(void (*probe)(void*) noexcept, void* context)
+{
+    destroy_probe = probe;
+    probe_context = context;
+}
+extern "C" LUX_SCRIPT_EXPORT void lux_population_fail_start() { fail_start = true; }

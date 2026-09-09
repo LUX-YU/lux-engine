@@ -58,7 +58,7 @@ if(TARGET script_native_fixture)
         lux_classify_target(TARGET native_population_${variant} LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
     endforeach()
     add_executable(simulation_script_native_population_test test/native_population_test.cpp)
-    target_link_libraries(simulation_script_native_population_test PRIVATE simulation_script_native)
+    target_link_libraries(simulation_script_native_population_test PRIVATE simulation_script_native native_population_wide)
     add_dependencies(simulation_script_native_population_test native_population_aligned native_population_compact
         native_population_wide native_population_narrow)
     lux_classify_target(TARGET simulation_script_native_population_test LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)

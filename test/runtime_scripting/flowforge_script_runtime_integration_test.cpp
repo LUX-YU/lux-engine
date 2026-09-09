@@ -838,23 +838,26 @@ namespace
             {
                 auto read = std::make_unique<ScriptAbilityNode>(kTestNodes[1]);
                 assert(read->parameterPins().front()->setConstantData(meta::RuntimeObject(std::int32_t(i + 1U))));
-                assert(tail->linkTo(&read->execInPin(), previous) == ELinkError::SUCCESS);
-                tail = &read->execOutPin();
-                values.push_back(read->resultPins().front().get());
+                auto* node = read.get();
                 graph.addNodes(std::move(read));
+                assert(tail->linkTo(&node->execInPin(), previous) == ELinkError::SUCCESS);
+                tail = &node->execOutPin();
+                values.push_back(node->resultPins().front().get());
             }
             auto wait = std::make_unique<ScriptAbilityNode>(kTestNodes[2]);
-            assert(tail->linkTo(&wait->execInPin(), previous) == ELinkError::SUCCESS);
-            tail = &wait->execOutPin();
+            auto* wait_node = wait.get();
             graph.addNodes(std::move(wait));
+            assert(tail->linkTo(&wait_node->execInPin(), previous) == ELinkError::SUCCESS);
+            tail = &wait_node->execOutPin();
             for (std::uint32_t i{}; i < (std::max)(1U, count); ++i)
             {
                 auto write = std::make_unique<ScriptAbilityNode>(kTestNodes.front());
-                assert(tail->linkTo(&write->execInPin(), previous) == ELinkError::SUCCESS);
-                tail = &write->execOutPin();
-                if (count) assert(values[i]->linkTo(write->parameterPins().front().get(), previous) == ELinkError::SUCCESS);
-                else assert(write->parameterPins().front()->setConstantData(meta::RuntimeObject(std::int32_t{7})));
+                auto* node = write.get();
                 graph.addNodes(std::move(write));
+                assert(tail->linkTo(&node->execInPin(), previous) == ELinkError::SUCCESS);
+                tail = &node->execOutPin();
+                if (count) assert(values[i]->linkTo(node->parameterPins().front().get(), previous) == ELinkError::SUCCESS);
+                else assert(node->parameterPins().front()->setConstantData(meta::RuntimeObject(std::int32_t{7})));
             }
             assert(graph.addExport({FlowForgeExportNodeId{static_cast<std::uint32_t>(variant + 1U)},
                 graph.getNode(entry).node->id(), symbols[variant]}));

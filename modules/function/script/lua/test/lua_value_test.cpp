@@ -74,6 +74,8 @@ template <> struct Nested<0>
 struct Resource
 {
     static inline int live{};
+    static inline lua_State* mutation_state{};
+    static inline int read_mutations{};
     static inline std::vector<int> released;
     int id;
     Resource() = delete;
@@ -89,8 +91,19 @@ struct Resource
         }
     }
 };
+struct ResourceRecord
+{
+    Resource first;
+    std::int32_t later;
+};
 namespace lux::script::lua
 {
+    template <>
+    struct LuaGeneratedValue<ResourceRecord>
+        : LuaRecordValue<ResourceRecord, LuaValueField<&ResourceRecord::first, "first">,
+              LuaValueField<&ResourceRecord::later, "later">>
+    {
+    };
     template <> struct LuaGeneratedValue<NamedA> : LuaRecordValue<NamedA, LuaValueField<&NamedA::x, "x">>
     {
     };
@@ -150,6 +163,12 @@ namespace lux::script::lua
             auto value = input.number<std::int32_t>();
             if (!value)
                 return lux::cxx::unexpected(value.error());
+            if (Resource::mutation_state)
+            {
+                lua_pushinteger(Resource::mutation_state, 73);
+                lua_setfield(Resource::mutation_state, 1, "later");
+                ++Resource::read_mutations;
+            }
             return Resource{*value};
         }
     };
@@ -374,6 +393,17 @@ int main()
         lua_settop(state, 0);
     }
     assert(Resource::live == 0 && Resource::released.back() == 17);
+    load(state, "return {first=29,later=2}");
+    Resource::mutation_state = state;
+    {
+        LuaValueReader changing{state, 1};
+        const auto observed = LuaValueCodec<ResourceRecord>::read(changing);
+        Resource::mutation_state = nullptr;
+        assert(observed && observed->first.id == 29 && observed->later == 73);
+        assert(Resource::read_mutations == 1 && Resource::live == 1 && lua_gettop(state) == 1);
+    }
+    assert(Resource::live == 0 && Resource::released.back() == 29);
+    std::puts("CUSTOM_READ_FIELD_ORDER,first=29,later=73,mutations=1,live=0 PASS");
     assert(LuaValueCodec<Pose>::push(writer, *pose));
     lua_close(state);
 

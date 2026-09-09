@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cstdio>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -312,6 +313,8 @@ void testNestedScopes()
         int status{};
         std::size_t waits{};
         bool coroutine{};
+        bool probe_depth{};
+        int depth_rejections{};
         ScriptStepResult result;
         ScriptBackendContinuation continuation;
         static ScriptStepContext context(Nested& self) noexcept
@@ -327,6 +330,19 @@ void testNestedScopes()
     int inner_calls{};
     const Dispatch outer_dispatch{[](void* opaque) noexcept {
         auto& self = *static_cast<Nested*>(opaque);
+        if (self.probe_depth)
+        {
+            ++self.calls;
+            lux_script_call_frame frame{};
+            frame.user_context = self.method->synchronous.context;
+            const auto status = self.method->synchronous.invoke(&frame);
+            if (status != 0)
+            {
+                assert(status == -8); // Existing execution-depth capacity error, not a Lua script error.
+                ++self.depth_rejections;
+            }
+            return;
+        }
         if (++self.calls != 1)
             return;
         lux_script_call_frame frame{};
@@ -394,6 +410,19 @@ void testNestedScopes()
         runtime.releaseMethod(runtime.context, inner_instance, inner_method);
     }
     assert(backend->stats().execution_depth_high_water == 2U);
+    nested.method = &outer_method;
+    nested.calls = 0;
+    nested.probe_depth = true;
+    lux_script_call_frame depth_frame{};
+    depth_frame.user_context = outer_method.synchronous.context;
+    assert(outer_method.synchronous.invoke(&depth_frame) == 0);
+    assert(nested.calls == 30 && nested.depth_rejections == 16);
+    assert(backend->stats().execution_depth_high_water == 4U);
+    nested.calls = 0;
+    nested.depth_rejections = 0;
+    assert(outer_method.synchronous.invoke(&depth_frame) == 0);
+    assert(nested.calls == 30 && nested.depth_rejections == 16);
+    std::puts("DEPTH_RECOVERY,depth=4,providers=30,rejected=16,repeat=1 PASS");
     runtime.releaseMethod(runtime.context, outer_instance, outer_method);
     runtime.destroyInstance(runtime.context, inner_instance);
     runtime.destroyInstance(runtime.context, outer_instance);

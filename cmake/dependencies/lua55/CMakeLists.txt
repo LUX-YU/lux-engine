@@ -17,6 +17,18 @@ if(NOT "${lua_MAJOR}.${lua_MINOR}.${lua_RELEASE}" STREQUAL "5.5.1")
     message(FATAL_ERROR "The dependency source must be exactly Lua 5.5.1")
 endif()
 
+option(LUX_LUA55_LEAF_YIELD "Build the explicitly qualified Lux leaf-yield revision" OFF)
+set(LUX_LUA55_PATCH_REVISION "official-5.5.1")
+if(LUX_LUA55_LEAF_YIELD)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    execute_process(COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/apply_leaf.py"
+        --official "${LUX_LUA55_SOURCE_DIR}" --output "${CMAKE_CURRENT_BINARY_DIR}/lux-leaf-r1"
+        --patch "${CMAKE_CURRENT_SOURCE_DIR}/patches/leaf-yield-r1.patch"
+        COMMAND_ERROR_IS_FATAL ANY)
+    set(LUX_LUA55_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/lux-leaf-r1")
+    set(LUX_LUA55_PATCH_REVISION "lux-leaf-r1")
+endif()
+
 # Explicit library sources: no CLI, compiler main, amalgamation, or VM modifications.
 set(lua_sources
     lapi.c lauxlib.c lbaselib.c lcode.c lcorolib.c lctype.c ldblib.c ldebug.c ldo.c ldump.c
@@ -47,7 +59,6 @@ else()
 endif()
 
 include(CMakePackageConfigHelpers)
-set(LUX_LUA55_PATCH_REVISION "official-5.5.1")
 configure_file(identity.json.in "${CMAKE_CURRENT_BINARY_DIR}/identity.json" @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/identity.json" DESTINATION share/LuxLua55)
 configure_package_config_file(LuxLua55Config.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/LuxLua55Config.cmake"
@@ -71,3 +82,10 @@ add_executable(lua55_smoke smoke.c)
 target_link_libraries(lua55_smoke PRIVATE LuxLua55::Runtime)
 set_target_properties(lua55_smoke PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
 add_test(NAME lua55_c_api_smoke COMMAND lua55_smoke)
+
+if(LUX_LUA55_LEAF_YIELD)
+    add_executable(lua55_leaf_contract leaf_contract.c)
+    target_link_libraries(lua55_leaf_contract PRIVATE LuxLua55::Runtime)
+    set_target_properties(lua55_leaf_contract PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
+    add_test(NAME lua55_leaf_contract COMMAND lua55_leaf_contract)
+endif()

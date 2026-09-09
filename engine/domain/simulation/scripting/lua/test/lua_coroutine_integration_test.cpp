@@ -595,7 +595,7 @@ namespace
         }
     };
 
-    int testCreationOom(std::size_t permitted)
+    int testCreationOom(std::size_t permitted, bool registry_growth = false)
     {
         Harness harness{true, 1U, true, true};
         Provider provider;
@@ -609,6 +609,20 @@ namespace
         assert(g_observed_vm && provider.reads == 1U && provider.writes == 1U);
         auto* vm = g_observed_vm;
         const auto base = lua_gettop(vm);
+        std::vector<int> padding;
+        if (registry_growth)
+        {
+            // Force the next registry reference across a public integer-key boundary. Keep all
+            // references alive so the upcoming luaL_ref cannot reuse a free-list entry.
+            padding.reserve(1024U);
+            do
+            {
+                lua_pushboolean(vm, true);
+                padding.push_back(luaL_ref(vm, LUA_REGISTRYINDEX));
+                assert(padding.back() > 0 && padding.size() <= 1024U);
+            } while (padding.back() < 1024);
+            assert(padding.back() == 1024);
+        }
         CreationAllocator allocation;
         allocation.original = lua_getallocf(vm, &allocation.context);
         allocation.permitted = permitted;
@@ -625,6 +639,13 @@ namespace
         allocation.armed = false;
         lua_setallocf(vm, allocation.original, allocation.context);
         lua_atpanic(vm, panic);
+        if (registry_growth)
+        {
+            lua_rawgeti(vm, LUA_REGISTRYINDEX, 1025);
+            assert(lua_isnil(vm, -1));
+            lua_pop(vm, 1);
+        }
+        for (const auto reference : padding) luaL_unref(vm, LUA_REGISTRYINDEX, reference);
         assert(allocation.failures != 0U);
         assert(lua_gettop(vm) == base);
         assert(provider.reads == 1U && provider.writes == 1U && !provider.pending);
@@ -647,8 +668,8 @@ namespace
         const auto final = harness.backend->stats();
         assert(final.vm_coroutine_creations == final.vm_coroutine_releases);
         assert(final.prepared_ability_slots == 0U && final.prepared_event_slots == 0U);
-        std::printf("CREATION_OOM_PASS,permitted=%zu,failures=%zu,provider_during_failure=0,stack_delta=0,"
-            "slot_reused=1,roots=%zu,releases=%zu\n", permitted, allocation.failures,
+        std::printf("CREATION_OOM_PASS,permitted=%zu,registry_growth=%d,failures=%zu,provider_during_failure=0,stack_delta=0,"
+            "slot_reused=1,roots=%zu,releases=%zu\n", permitted, registry_growth ? 1 : 0, allocation.failures,
             final.vm_coroutine_creations, final.vm_coroutine_releases);
         return 0;
     }
@@ -717,6 +738,7 @@ int main(int argc, char** argv)
 {
     if (argc == 3 && std::string_view{argv[1]} == "--creation-oom")
         return testCreationOom(static_cast<std::size_t>(std::strtoul(argv[2], nullptr, 10)));
+    if (argc == 2 && std::string_view{argv[1]} == "--creation-registry-oom") return testCreationOom(2U, true);
     if (argc == 2 && std::string_view{argv[1]} == "--creation-retire") return testCreationReentry(false);
     if (argc == 2 && std::string_view{argv[1]} == "--creation-stop") return testCreationReentry(true);
     if (argc == 2 && std::string_view{argv[1]} == "--interpreter-only")

@@ -4,6 +4,18 @@ from pathlib import Path
 
 root, label, slot = Path(sys.argv[1]).resolve(), sys.argv[2], sys.argv[3]
 mode = sys.argv[4] if len(sys.argv) > 4 else 'aa'
+affinity = None
+if len(sys.argv) > 5 and sys.argv[5] == 'pin':
+    import ctypes as ct
+    topology=json.loads((root/'cpu-sets.json').read_text())
+    selected=next(r for r in topology if r['group']==0 and r['logical']==4)
+    assert selected['efficiency']==max(r['efficiency'] for r in topology)
+    kernel=ct.WinDLL('kernel32',use_last_error=True)
+    kernel.GetCurrentProcess.restype=ct.c_void_p
+    kernel.SetProcessAffinityMask.argtypes=[ct.c_void_p,ct.c_size_t]
+    affinity=1 << selected['logical']
+    if not kernel.SetProcessAffinityMask(kernel.GetCurrentProcess(),affinity):
+        raise ct.WinError(ct.get_last_error())
 build = Path('E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w')/slot
 out = root/label/slot
 out.mkdir(parents=True, exist_ok=True)
@@ -19,7 +31,8 @@ def sha(path):
 source = next(line.split('=',1)[1] for line in (build/'CMakeCache.txt').read_text().splitlines()
               if line.startswith('CMAKE_HOME_DIRECTORY:'))
 identity = dict(source=source, commit=subprocess.check_output(['git','-C',source,'rev-parse','HEAD'],text=True).strip(),
-    vm=slot, exe_sha256=sha(exe), artifact_sha256=sha(artifact), images={p.name:sha(p) for p in (build/'bin').glob('*.dll')})
+    vm=slot, affinity_mask=affinity, exe_sha256=sha(exe), artifact_sha256=sha(artifact),
+    observer_sha256=sha(Path(__file__)), images={p.name:sha(p) for p in (build/'bin').glob('*.dll')})
 (out/'identity.json').write_text(json.dumps(identity, indent=2))
 results=[]
 for pair in range(5 if mode == 'aa' else 1):
@@ -42,6 +55,7 @@ for pair in range(5 if mode == 'aa' else 1):
         valid=valid and text.count('invocation_errors=0')==2 and 'lua-event,shutdown' in text
         valid=valid and all(int(r['continuations'])==int(r['awaitables'])==int(r['event_waiters'])==
                             int(r['queue_depth'])==0 for r in rows)
+        valid=valid and all(r['git_commit']==identity['commit'] and r['build_type']=='RelWithDebInfo' for r in rows)
         ns=sorted(int(r['nanoseconds']) for r in rows)
         item=dict(name=name,pair=pair,side=side,command=command,exit=code,valid=valid,
                   wall_seconds=time.monotonic()-start,utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),

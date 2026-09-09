@@ -218,6 +218,28 @@ void testAbilityProvenance()
     assert(alpha_calls == 33 && backend->stats().cached_prototypes == cached_count);
     std::printf("COLD_CONTENT,oom=%zu,rebuilds=32,new_content_isolated=1,cache_growth=0,provider=33\n",
         allocator.failures);
+    auto held = create(1U, new_content, alpha_capability);
+    ScriptBackendPreparedMethod held_method;
+    assert(runtime.prepareMethod(runtime.context, held, new_content.description().exports[1U], held_method) ==
+        EScriptBackendResult::SUCCESS);
+    for (std::size_t index{}; index < 32U; ++index)
+    {
+        auto loaded = makeArtifact(alpha,
+            "return {save=function() end, own=function() lux.Alpha.call() end,"
+            "foreign=function() table.lux_saved() end}"
+        );
+        auto repeated = create(1U, loaded, alpha_capability);
+        assert(invoke(repeated, loaded, 2U) != 0);
+        assert(invoke(repeated, loaded, 1U) == 0);
+        runtime.destroyInstance(runtime.context, repeated);
+        lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+        assert(held_method.synchronous.invoke(held_method.synchronous.context, &frame) == 0);
+        assert(backend->stats().cached_prototypes <= cached_count + 1U);
+    }
+    runtime.releaseMethod(runtime.context, held, held_method);
+    runtime.destroyInstance(runtime.context, held);
+    assert(alpha_calls == 97 && backend->stats().cached_prototypes == cached_count);
+    std::printf("COLD_RELOAD,reloads=32,held_calls=32,stale_provider=0,provider=97,cache_growth=0\n");
     runtime.destroyInstance(runtime.context, second);
     assert(backend->stats().prepared_ability_slots == 0U);
 }

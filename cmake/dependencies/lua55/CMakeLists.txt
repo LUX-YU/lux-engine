@@ -75,6 +75,7 @@ else()
 endif()
 
 include(CMakePackageConfigHelpers)
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/lux_lua55_extensions.h" LUX_LUA55_EXTENSION_SHA256)
 configure_file(identity.json.in "${CMAKE_CURRENT_BINARY_DIR}/identity.json" @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/identity.json" DESTINATION share/LuxLua55)
 configure_package_config_file(LuxLua55Config.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/LuxLua55Config.cmake"

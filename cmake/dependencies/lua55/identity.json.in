@@ -1,4 +1,5 @@
 {
+  "extension_header_sha256": "@LUX_LUA55_EXTENSION_SHA256@",
   "version": "5.5.1",
   "archive_sha256": "1c4b4068d67061f2a2231ad2b5422e77acea1487ea9890f6320af614f4373dce",
   "patch_revision": "@LUX_LUA55_PATCH_REVISION@",

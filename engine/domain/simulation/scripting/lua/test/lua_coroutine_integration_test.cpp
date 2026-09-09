@@ -668,9 +668,12 @@ namespace
         const auto final = harness.backend->stats();
         assert(final.vm_coroutine_creations == final.vm_coroutine_releases);
         assert(final.prepared_ability_slots == 0U && final.prepared_event_slots == 0U);
-        std::printf("CREATION_OOM_PASS,permitted=%zu,registry_growth=%d,failures=%zu,provider_during_failure=0,stack_delta=0,"
-            "slot_reused=1,roots=%zu,releases=%zu\n", permitted, registry_growth ? 1 : 0, allocation.failures,
-            final.vm_coroutine_creations, final.vm_coroutine_releases);
+        std::printf(
+            "CREATION_OOM_PASS,permitted=%zu,registry_growth=%d,failures=%zu,provider_during_failure=0,stack_delta=0,"
+            "slot_reused=1,roots=%zu,releases=%zu\n",
+            permitted, registry_growth ? 1 : 0, allocation.failures,
+            final.vm_coroutine_creations, final.vm_coroutine_releases
+        );
         return 0;
     }
 
@@ -692,7 +695,8 @@ namespace
         CreationAllocator allocation;
         allocation.original = lua_getallocf(vm, &allocation.context);
         allocation.permitted = (std::numeric_limits<std::size_t>::max)();
-        struct Observation final { Harness& harness; ScriptSystem& system; bool stop; } observation{harness, system, stop};
+        struct Observation final { Harness& harness; ScriptSystem& system; bool stop; };
+        Observation observation{harness, system, stop};
         allocation.observation_context = &observation;
         allocation.observe_growth = [](void* context) noexcept {
             auto& value = *static_cast<Observation*>(context);

@@ -52,7 +52,6 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
-#include <llvm/Bitcode/BitcodeWriter.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include <llvm/Transforms/Utils/Cloning.h>
@@ -1813,16 +1812,6 @@ namespace lux::flowforge
             llvm::raw_string_ostream output(error);
             if (llvm::verifyModule(*llmod, &output))
                 return fail("optimized LLVM module is invalid:\n" + output.str());
-        }
-
-        // Temporary bounded P8 diagnostic, removed from the default compiler after capture.
-        if (const char* bitcode = std::getenv("LUX_FLOWFORGE_DIAGNOSTIC_BITCODE");
-            bitcode && options.module_name == "gameplay.ability")
-        {
-            std::error_code error;
-            llvm::raw_fd_ostream output(bitcode, error);
-            if (error) return fail("cannot write diagnostic bitcode");
-            llvm::WriteBitcodeToFile(*llmod, output);
         }
 
         // 6. Codegen to a COFF/ELF object in memory.

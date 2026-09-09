@@ -17,7 +17,7 @@ if(NOT "${lua_MAJOR}.${lua_MINOR}.${lua_RELEASE}" STREQUAL "5.5.1")
     message(FATAL_ERROR "The dependency source must be exactly Lua 5.5.1")
 endif()
 
-option(LUX_LUA55_LEAF_YIELD "Build the explicitly qualified Lux leaf-yield revision" OFF)
+option(LUX_LUA55_LEAF_YIELD "Build the explicitly qualified Lux leaf-yield revision" ON)
 set(LUX_LUA55_PATCH_REVISION "official-5.5.1")
 set(LUX_LUA55_PATCH_SHA256 "none")
 if(LUX_LUA55_LEAF_YIELD)

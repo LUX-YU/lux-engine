@@ -783,7 +783,8 @@ namespace
             throw std::runtime_error("Physics2D mixed observation mismatch");
         const auto steady = harness.system->stats();
         std::printf("INTEGRITY,physics,steady,invocation_errors=%llu,instances=%zu,resumes=%llu,queue=%zu\n",
-            steady.invocation_failures, steady.active_instances, steady.backend_resume_calls, steady.resume_queue_depth);
+            steady.invocation_failures, steady.active_instances,
+            steady.backend_resume_calls, steady.resume_queue_depth);
         if (steady.invocation_failures != 0U || !harness.system->shutdown())
             throw std::runtime_error("Physics2D mixed shutdown failed");
         const auto closed = harness.system->stats();

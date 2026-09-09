@@ -35,7 +35,7 @@ elif action == 'alltests':
     run(slot+'-ctest', ['ctest', '--test-dir', str(build), '--output-on-failure', '-j', '1',
         '--output-junit', str(out/(slot+'-ctest.xml'))])
 elif action == 'install':
-    run(slot+'-install', ['cmake', '--install', str(build), '--config', 'RelWithDebInfo', '--component', 'lux_sdk'])
+    run(slot+'-install', ['cmake', '--install', str(build), '--config', 'RelWithDebInfo'])
 elif action == 'smoke':
     artifact = build.parent/'t/engine/toolchain/lua/lua_runtime_benchmark_fixture.lxsa'
     run(slot+'-oracle', [str(build/'bin/script_runtime_benchmark.exe'), '--group', 'scene-lua-event',

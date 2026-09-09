@@ -14,7 +14,7 @@ for slot in sys.argv[3:]:
     images = {}
     for path in sorted((build/'bin').iterdir()):
         keep = path.suffix == '.dll' or (path.suffix in ['.exe','.pdb'] and
-            any(name in path.name for name in ['script_runtime_benchmark','script_lua','script_core',
+            any(name in path.name for name in ['script_runtime_benchmark','physics2d_script_benchmark','script_lua','script_core',
                 'simulation_script','function_script','lua51','lua54','lux_lua55']))
         if not path.is_file() or not keep: continue
         saved = target/path.name
@@ -26,6 +26,11 @@ for slot in sys.argv[3:]:
     artifact = build.parent/'t/engine/toolchain/lua/lua_runtime_benchmark_fixture.lxsa'
     shutil.copy2(artifact,target/artifact.name)
     with artifact.open('rb') as stream: digest = hashlib.file_digest(stream,'sha256').hexdigest()
+    fixtures = {}
+    for name in ['physics2d_lua_fixture.lxsa', 'physics2d_flowforge_fixture.lxsa']:
+        fixture = build.parent/'t/engine/toolchain/physics2d'/name
+        shutil.copy2(fixture, target/name)
+        fixtures[name] = hashlib.sha256(fixture.read_bytes()).hexdigest()
     (target/'identity.json').write_text(json.dumps(dict(source=source,commit=commit,slot=slot,
-        artifact_sha256=digest,images=images),indent=2))
+        artifact_sha256=digest,physics_fixtures=fixtures,images=images),indent=2))
     print(label,slot,commit,len(images),flush=True)

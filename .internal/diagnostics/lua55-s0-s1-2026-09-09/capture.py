@@ -8,7 +8,7 @@ source = Path(__file__).resolve().parents[3]
 repos = Path('E:/SyncForder/CodeRepos')
 
 def git(path, *args):
-    return subprocess.check_output(['git', '-C', str(path), *args], text=True).strip()
+    return subprocess.check_output(['git', '-C', str(path), *args], text=True).rstrip('\r\n')
 
 def identity(path):
     return dict(path=str(path), bytes=path.stat().st_size,

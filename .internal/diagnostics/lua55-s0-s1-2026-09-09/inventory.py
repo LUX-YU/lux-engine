@@ -29,7 +29,7 @@ for name in ['engine/toolchain/lua/test/lua_runtime_benchmark_fixture.lua',
     entries.append(dict(file=name,owner='Lua Toolchain',category='cooked-artifact-input',
         reason='Recook with selected toolchain; preserve symbol and wire contracts',
         sha256=hashlib.sha256((source/name).read_bytes()).hexdigest(),
-        test='lua_runtime_benchmark_oracle_test / scene_script_lua_runtime_* / lua_script_packager_contract_test'))
+        test='run.py smoke / scene_script_lua_runtime_* / lua_script_packager_contract_test'))
 for path in sorted((source/'cmake/installed-consumers').iterdir()):
     if path.is_dir() and ('script' in path.name or 'flowforge' in path.name or 'event-await' in path.name):
         entries.append(dict(file=str(path.relative_to(source)),owner='Installed SDK consumer',
@@ -46,7 +46,7 @@ mapping=[
  ('Scene assets and per-step portability protocol','engine/scene/integration/script/test/scene_script_lua_runtime_test.cpp','scene_script_lua_runtime_test and actual CTest variants'),
  ('packaged artifact contracts','engine/toolchain/lua/test/lua_script_packager_contract_test.cpp','lua_script_packager_contract_test'),
  ('real installed Ability provider and cleanup','cmake/installed-consumers/script-lua-values/Runtime.cpp','script-lua-values'),
- ('new per-instance payload readback','engine/domain/simulation/builtin/script/benchmark/script_runtime_benchmark.cpp','lua_runtime_benchmark_oracle_test')]
+ ('new per-instance payload readback','engine/domain/simulation/builtin/script/benchmark/script_runtime_benchmark.cpp','run.py smoke and compare.py scene-lua-event business oracle')]
 with (root/'old_assertion_map.csv').open('w',newline='') as stream:
     writer=csv.writer(stream);writer.writerow(['assertion_family','source','real_entry','status'])
     for row in mapping:writer.writerow([*row,'Retained; see stage CTest/consumer raw logs for actual result'])

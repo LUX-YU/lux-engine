@@ -15,14 +15,18 @@ for name,digest in identity['files'].items():
  if not f.is_relative_to(o) or hashlib.sha256(f.read_bytes()).hexdigest()!=digest:
   raise SystemExit('Official source mismatch: '+name)
 key=dict(revision='lux-leaf-r1',archive_sha256=expected,patch_sha256=hashlib.sha256(patch.read_bytes()).hexdigest())
-if out.exists():
+if (out/'.lux-patch.json').exists():
  manifest=json.loads((out/'.lux-patch.json').read_text())
  if any(manifest.get(k)!=v for k,v in key.items()): raise SystemExit('Existing patch tree identity mismatch')
  for name,digest in manifest['files'].items():
   if hashlib.sha256((out/name).read_bytes()).hexdigest()!=digest: raise SystemExit('Modified patch output: '+name)
  print('VERIFIED_EXISTING_PATCH',key['patch_sha256']); raise SystemExit(0)
 if out==o or out.is_relative_to(o): raise SystemExit('Patch output overlaps official source')
-shutil.copytree(o,out)
+if out.exists():
+ actual={str(f.relative_to(out)):hashlib.sha256(f.read_bytes()).hexdigest() for f in out.rglob('*') if f.is_file()}
+ if actual!=identity['files']: raise SystemExit('Incomplete patch tree is not a pristine official copy')
+ print('VERIFIED_PRISTINE_RETRY')
+else: shutil.copytree(o,out)
 subprocess.run(['git','apply','--check',str(patch)],cwd=out,check=True)
 subprocess.run(['git','apply',str(patch)],cwd=out,check=True)
 key['files']={str(f.relative_to(out)):hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(out.rglob('*')) if f.is_file()}

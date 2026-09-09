@@ -145,3 +145,7 @@ q5/cost-pairs 保存五组独立配对，全部500计量帧、8验证帧、100�
 线程边界补查发现SceneViewport/Workspace的图像借用/释放以及Viewport输入辅助方法未检查外线程。入口现按dispatcher先拒绝，void调用不工作、图像借用返回空，actionFailure返回WRONG_THREAD且不覆盖owner错误；新增真实帧图像不被外线程释放、21个owner方法拒绝及七种owner复制/移动编译期检查。编译和实机结果待后续实际运行记录，不能沿用q5标签。
 normal-17 all/no-op通过；base/image_lifetime/reentrant_close实际通过新的线程边界回归，21个有结果owner调用均返回准确WRONG_THREAD，窗口/Session/history/View注册保持；实际Frame图像和Pane错误未被外线程清除。cost-smoke-06统一per-frame-recorded边界，两边500个work poll、500计量帧、8验证帧、相同像素；单组仅作驱动验证，等待新tracked候选五组，不据此报告收益。
 q5的同一a6a1e0f6 clean clone另建专用diagnostic-build，all/no-op、135/135 CTest（76.23秒）、19个Scene GPU变体及foreign/application lifecycle通过；factory20、seal6（含index=2）、Window8、Scene12、client10真实分配点均重跑。qualified-isolation对同一源码身份的两类DLL/PDB分别取证。该资格不含后续线程辅助方法修复。
+
+q6绑定aa91ba553f2ab56c5670a9061d7c41b1336f0433：正常all/no-op、134/134 CTest（78.00秒）、本轮GPU矩阵、两个SDK位置的五种消费者、实际Toolset DLL来源与完整安装reader再生成通过。专用诊断为该clean clone的新构建，all/no-op、135/135 CTest（77.17秒）、19个Scene GPU变体、foreign/application lifecycle和普通/专用DLL/PDB隔离均通过。image_lifetime实测CPU refs=1、submitted227、completed225时保持，completed227后才释放，descriptor最终7/7。
+q6五组十个独立进程具有相同per-frame-recorded等待边界、500实际计量帧、8验证帧、100预热、8ms节奏和相同像素。旧/新主动work wall均值0.1050851/0.10432358秒；等待cycles307632016.8/334947593.2；关闭均值0.10854212/0.13493248秒。第4组新关闭0.2236169秒保留，不作为异常值剔除。不声称整体加速或性能等价；每个进程原始JSON/PPM及DLL身份保留。
+最终续行表按实际q6证据整理：118行中56 PASS_ER1、5历史PASS_INTERMEDIATE、32 PARTIAL、1 BLOCKED_DELETE_GATE、24 DEFERRED_STAGE。H07误引用reply budget、C09误引用partial-resource的记录已纠正，F15对专门shared-import GPU缺口重新标PARTIAL。未完成项不降级或删除；本轮仍不宣布ER-1通过。报告属于后续证据提交，生产产物身份仍为aa91ba55。

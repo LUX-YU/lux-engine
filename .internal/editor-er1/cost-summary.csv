@@ -1,4 +1,13 @@
 sample,seconds,ui_iterations,render_frames,viewport,warmup,memory_scope,qualification
 gui-02,602.906,15829813,97835,changed during interactive run,not controlled,not measured,diagnostic observation; not comparable
 app-paced-01,2.628125,240,252,1014x593,not isolated,no attributed memory measurement,single run only; not old/new performance evidence
-required five-run matched baseline/candidate,,,,must match source/view/resolution/completion,pending,owner counters vs GPU/CPU/process must stay distinct,NOT_RUN
+q6-1-legacy,4.4604151,500,500 measured + 8 verification,1024x576 one View,100,not attributed; OS CPU and work/wait cycles only,aa91ba55 normal per-frame-recorded; exact pixels; static pipeline scope
+q6-1-scene,4.4547622,500,500 measured + 8 verification,1024x576 one View,100,not attributed; OS CPU and work/wait cycles only,aa91ba55 normal per-frame-recorded; exact pixels; static pipeline scope
+q6-2-legacy,4.4674477,500,500 measured + 8 verification,1024x576 one View,100,not attributed; OS CPU and work/wait cycles only,aa91ba55 normal per-frame-recorded; exact pixels; static pipeline scope
+q6-2-scene,4.4482535,500,500 measured + 8 verification,1024x576 one View,100,not attributed; OS CPU and work/wait cycles only,aa91ba55 normal per-frame-recorded; exact pixels; static pipeline scope
+q6-3-legacy,4.4605698,500,500 measured + 8 verification,1024x576 one View,100,not attributed; OS CPU and work/wait cycles only,aa91ba55 normal per-frame-recorded; exact pixels; static pipeline scope
+q6-3-scene,4.4728582,500,500 measured + 8 verification,1024x576 one View,100,not attributed; OS CPU and work/wait cycles only,aa91ba55 normal per-frame-recorded; exact pixels; static pipeline scope
+q6-4-legacy,4.4482708,500,500 measured + 8 verification,1024x576 one View,100,not attributed; OS CPU and work/wait cycles only,aa91ba55 normal per-frame-recorded; exact pixels; static pipeline scope
+q6-4-scene,4.436519,500,500 measured + 8 verification,1024x576 one View,100,not attributed; OS CPU and work/wait cycles only,aa91ba55 normal per-frame-recorded; exact pixels; static pipeline scope
+q6-5-legacy,4.4485822,500,500 measured + 8 verification,1024x576 one View,100,not attributed; OS CPU and work/wait cycles only,aa91ba55 normal per-frame-recorded; exact pixels; static pipeline scope
+q6-5-scene,4.4673036,500,500 measured + 8 verification,1024x576 one View,100,not attributed; OS CPU and work/wait cycles only,aa91ba55 normal per-frame-recorded; exact pixels; static pipeline scope

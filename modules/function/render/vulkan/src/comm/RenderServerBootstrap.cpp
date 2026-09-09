@@ -915,6 +915,12 @@ namespace lux::render
             // 经扩展点创建:UI 层对 SAMPLED 目标返回 UIOffscreenImagePool
             //(ImGui 描述符),其余走基类池。
             entry.pool = im.makeTargetPool(layout, vk_extent, p.flags);
+            if (!entry.pool || !entry.pool->valid())
+            {
+                reply.status = 1;
+                replyToCurrent<CreateOffscreenTargetPayload>(ctx, reply);
+                return;
+            }
             reply.target = im.targets_registry_.insert(std::move(entry));
             replyToCurrent<CreateOffscreenTargetPayload>(ctx, reply);
         }
@@ -1014,9 +1020,21 @@ namespace lux::render
         {
             auto& im = impl(ctx);
             auto* t = im.targets_registry_.tryGet(p.target);
+            TargetResizedReply reply{};
+            reply.target = p.target;
             if (!t || !t->pool)
-                return;
-            t->pool->resize(clampTargetExtent(im, p.new_extent)); // 旧图进 retire,fence 水位 GC
+                reply.status = 1;
+            else if (p.new_extent.width == 0 || p.new_extent.height == 0)
+                reply.status = 2;
+            else
+            {
+                if (!t->pool->tryResize(clampTargetExtent(im, p.new_extent)))
+                    reply.status = 3;
+                const auto extent = t->pool->extent();
+                reply.extent = {extent.width, extent.height};
+                reply.backing_revision = t->pool->backingRevision();
+            }
+            replyToCurrent<ResizeTargetPayload>(ctx, reply);
         }
 
         void handleBindSwapchain(Ctx& ctx, const BindSwapchainPayload& p)

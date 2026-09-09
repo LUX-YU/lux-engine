@@ -1,6 +1,7 @@
 add_subdirectory(editing)
 add_subdirectory(context)
 add_subdirectory(inspector)
+add_subdirectory(scene)
 add_subdirectory(node_graph)
 add_subdirectory(material)
 add_subdirectory(flowforge)

@@ -65,6 +65,7 @@ namespace lux::scene
         [[nodiscard]] ERenderPublishResult tryPublish() noexcept;
         void requestFullSync() noexcept;
         [[nodiscard]] ERenderForwardResult tryForwardUpdate(render::RenderProgramSession& session) noexcept;
+        [[nodiscard]] bool hasPendingUpdate() const noexcept;
 
     private:
         struct Impl;

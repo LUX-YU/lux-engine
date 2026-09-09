@@ -13,16 +13,17 @@ namespace lux::ui::detail
         ImGui_ImplVulkan_Renderer* renderer{};
         void* render_buffers{};
         void* context{};
-    };
+        TextureResolver resolve{};
+        void* resolver_user{};
 
-    namespace
-    {
-        VkDescriptorSet resolveTexture(ImGui_ImplVulkan_Renderer* renderer, ImTextureID texture, void*)
+        static VkDescriptorSet resolveTexture(ImGui_ImplVulkan_Renderer* renderer, ImTextureID texture, void* user)
         {
-            return texture == ImTextureID{} ? ImGui_ImplVulkan_GetFontsTextureDescriptorSetEx(renderer) :
-                                              VK_NULL_HANDLE;
+            if (texture == ImTextureID{})
+                return ImGui_ImplVulkan_GetFontsTextureDescriptorSetEx(renderer);
+            auto& self = *static_cast<Impl*>(user);
+            return self.resolve ? self.resolve(self.resolver_user, TextureHandle{texture}) : VK_NULL_HANDLE;
         }
-    }
+    };
 
     UiVulkanRenderer::UiVulkanRenderer(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
@@ -63,7 +64,7 @@ namespace lux::ui::detail
             impl->renderer = ImGui_ImplVulkan_CreateRendererEx(&init);
             if (impl->renderer == nullptr)
                 return lux::cxx::unexpected(EUiVulkanBackendError::RENDERER_CREATE_FAILURE);
-            ImGui_ImplVulkan_SetTextureResolverEx(impl->renderer, &resolveTexture, nullptr);
+            ImGui_ImplVulkan_SetTextureResolverEx(impl->renderer, &Impl::resolveTexture, impl.get());
             if (!ImGui_ImplVulkan_CreateFontsTextureEx(
                     impl->renderer,
                     const_cast<unsigned char*>(font.pixels.data()),
@@ -98,6 +99,26 @@ namespace lux::ui::detail
             ImGui_ImplVulkan_DestroyRenderBuffersEx(impl_->renderer, impl_->render_buffers);
         ImGui_ImplVulkan_DestroyFontsTextureEx(impl_->renderer);
         ImGui_ImplVulkan_DestroyRendererEx(impl_->renderer);
+    }
+
+    void UiVulkanRenderer::setTextureResolver(TextureResolver resolver, void* user) noexcept
+    {
+        impl_->resolve = resolver;
+        impl_->resolver_user = user;
+    }
+
+    VkDescriptorSet UiVulkanRenderer::addTexture(VkSampler sampler, VkImageView view, VkImageLayout layout)
+    {
+        ImGuiContextLease context{impl_->context};
+        return ImGui_ImplVulkan_AddTextureEx(impl_->renderer, sampler, view, layout);
+    }
+
+    void UiVulkanRenderer::removeTexture(VkDescriptorSet descriptor) noexcept
+    {
+        if (descriptor == VK_NULL_HANDLE)
+            return;
+        ImGuiContextLease context{impl_->context};
+        ImGui_ImplVulkan_RemoveTextureEx(impl_->renderer, descriptor);
     }
 
     void UiVulkanRenderer::render(const UiDrawDataSnapshot* snapshot, VkCommandBuffer command) noexcept

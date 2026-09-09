@@ -5,6 +5,9 @@
 
 #include <cassert>
 #include <cstdio>
+#include <limits>
+#include <new>
+#include <utility>
 
 namespace lux::render
 {
@@ -21,8 +24,16 @@ namespace lux::render
     )
         : res_ctx_(res_ctx), layout_(layout), frames_in_flight_(frames_in_flight)
     {
-        [[maybe_unused]] bool ok = allocate(extent);
-        assert(ok && "OffscreenImagePool: failed to allocate images");
+        try
+        {
+            recorded_slots_.resize(frames_in_flight);
+            if (extent.width != 0 && extent.height != 0 && frames_in_flight != 0 && allocate(extent))
+                backing_revision_ = 1;
+        }
+        catch (const std::bad_alloc&)
+        {
+            release();
+        }
         // No explicit layout transition — RG inserts correct barriers on first use.
     }
 
@@ -33,8 +44,11 @@ namespace lux::render
         for (auto& retired : retired_images_)
         {
             for (size_t si = 0; si < kTargetSlotCount; ++si)
+            {
+                notifyViewRetirement(retired.slot_views[si]);
                 for (VkImageView v : retired.slot_views[si])
                     vkDestroyImageView(dev, v, nullptr);
+            }
             // VmaImage RAII handles VkImage + VmaAllocation destruction
         }
         retired_images_.clear();
@@ -47,19 +61,49 @@ namespace lux::render
 
     void OffscreenImagePool::resize(VkExtent2D new_extent)
     {
-        // Retire old images — they may still be referenced by in-flight GPU work.
-        RetiredImages retired;
-        for (size_t si = 0; si < kTargetSlotCount; ++si)
-        {
-            retired.slot_images[si] = std::move(slot_images_[si]);
-            retired.slot_views[si] = std::move(slot_views_[si]);
-        }
-        retired.retire_frame = 0; // sentinel — stamped by collectRetired
-        retired_images_.push_back(std::move(retired));
+        static_cast<void>(tryResize(new_extent));
+    }
 
-        binding_ = {};
-        [[maybe_unused]] bool ok = allocate(new_extent);
-        assert(ok && "OffscreenImagePool: failed to allocate images on resize");
+    bool OffscreenImagePool::tryResize(VkExtent2D new_extent) noexcept
+    {
+        if (valid() && new_extent.width == extent().width && new_extent.height == extent().height)
+            return true;
+        return rebuild(layout_, new_extent);
+    }
+
+    bool OffscreenImagePool::tryApplyLayout(const RenderTargetLayout& layout) noexcept
+    {
+        return rebuild(layout, extent());
+    }
+
+    bool OffscreenImagePool::rebuild(const RenderTargetLayout& layout, VkExtent2D extent) noexcept
+    {
+        if (extent.width == 0 || extent.height == 0 || backing_revision_ == std::numeric_limits<uint64_t>::max())
+            return false;
+        try
+        {
+            OffscreenImagePool prepared{res_ctx_, layout, extent, frames_in_flight_};
+            if (!prepared.valid())
+                return false;
+            // Every allocation, including the retirement slot, precedes commit.
+            retired_images_.reserve(retired_images_.size() + 1);
+            RetiredImages retired;
+            retired.slot_images.swap(slot_images_);
+            retired.slot_views.swap(slot_views_);
+            slot_images_.swap(prepared.slot_images_);
+            slot_views_.swap(prepared.slot_views_);
+            std::swap(binding_, prepared.binding_);
+            layout_ = layout;
+            binding_.layout = &layout_;
+            ++backing_revision_;
+            recorded_slots_.swap(prepared.recorded_slots_);
+            retired_images_.push_back(std::move(retired));
+            return true;
+        }
+        catch (const std::bad_alloc&)
+        {
+            return false;
+        }
     }
 
     // =============================================================================
@@ -205,12 +249,19 @@ namespace lux::render
         VkDevice dev = res_ctx_.deviceContext().logicalDevice();
         for (size_t si = 0; si < kTargetSlotCount; ++si)
         {
+            notifyViewRetirement(slot_views_[si]);
             for (VkImageView v : slot_views_[si])
                 vkDestroyImageView(dev, v, nullptr);
             slot_views_[si].clear();
             slot_images_[si].clear(); // VmaImage RAII releases VkImage + VmaAllocation
         }
         binding_ = {};
+    }
+
+    void OffscreenImagePool::notifyViewRetirement(std::span<const VkImageView> views) noexcept
+    {
+        if (retire_views_ != nullptr && !views.empty())
+            retire_views_(retire_owner_.get(), views);
     }
 
     // =============================================================================
@@ -237,6 +288,7 @@ namespace lux::render
             {
                 for (size_t si = 0; si < kTargetSlotCount; ++si)
                 {
+                    notifyViewRetirement(it->slot_views[si]);
                     for (VkImageView v : it->slot_views[si])
                         vkDestroyImageView(dev, v, nullptr);
                     // VmaImage RAII releases VkImage + VmaAllocation

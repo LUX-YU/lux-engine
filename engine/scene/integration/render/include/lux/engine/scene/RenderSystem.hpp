@@ -33,6 +33,7 @@ namespace lux::scene
         [[nodiscard]] render::RenderSceneId renderSceneId() const noexcept;
         [[nodiscard]] bool publishStablePoint() noexcept;
         [[nodiscard]] bool presentationTick() noexcept;
+        [[nodiscard]] bool hasPendingUpdate() const noexcept;
 
     private:
         friend class SceneBuilder;

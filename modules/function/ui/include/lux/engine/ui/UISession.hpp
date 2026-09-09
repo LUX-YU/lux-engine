@@ -125,6 +125,9 @@ namespace lux::ui
 
         [[nodiscard]] Frame beginFrame(FrameInfo info);
         void feedInput(const UiInputEvent& event);
+        [[nodiscard]] UiInputSnapshot inputSnapshot() const noexcept;
+        void setSplitLayout(SplitLayout layout);
+        void clearSplitLayout();
 
         [[nodiscard]] LayoutSnapshot captureLayout() const;
 

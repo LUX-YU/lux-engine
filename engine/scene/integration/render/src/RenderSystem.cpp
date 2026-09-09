@@ -334,6 +334,11 @@ namespace lux::scene
         return false;
     }
 
+    bool RenderSystem::hasPendingUpdate() const noexcept
+    {
+        return sync_->hasPendingUpdate();
+    }
+
     bool RenderSystem::presentationTick() noexcept
     {
         for (;;)

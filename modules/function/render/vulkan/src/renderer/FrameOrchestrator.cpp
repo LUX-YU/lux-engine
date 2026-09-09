@@ -200,6 +200,7 @@ namespace lux::render
         // 拥有,自定义层由它自己的录制回调拥有;链能统一的是"你是第几层"。
         auto runChain = [&](const RenderTargetEntry& t, RenderTargetBinding& binding) {
             const size_t n = t.layers.size();
+            bool recorded = false;
             for (size_t i = 0; i < n; ++i)
             {
                 const auto& l = t.layers[i];
@@ -222,14 +223,17 @@ namespace lux::render
                     // 上传同理已守卫)。跳过录制,而不是对空命令缓冲发
                     // BeginRendering/屏障。
                     if (st.rt.primary_cmd != VK_NULL_HANDLE)
-                        renderer.renderSingleView(*item.scene, *item.view, binding, st.rt, item.cross_view_index);
+                        recorded = renderer.renderSingleView(*item.scene, *item.view, binding, st.rt,
+                            item.cross_view_index);
                 }
                 else if (l.record && st.rt.primary_cmd != VK_NULL_HANDLE)
                 {
                     l.record(l.user, st.rt.primary_cmd, binding, phase);
+                    recorded = true;
                 }
             }
             binding.layout = nullptr; // phased 是栈上的,别把悬垂指针留给调用方
+            return recorded;
         };
 
         // 特性声明的额外输出槽 —— 在(目标,场景)相遇处补齐。
@@ -239,8 +243,9 @@ namespace lux::render
         // 无条件比较自动按新布局重编图模板,SceneGraphCache 照常导入。
         // 稳态成本 = 每目标每 tick 一次掩码比较;命中(装了新声明槽位的特性)才动重建。
         // v1 仅离屏目标(编辑器主视图即是);纯 Surface 路径的额外槽待池侧配套。
-        auto amendTargetSlots = [&](RenderTargetEntry& t) {
+        auto amendTargetSlots = [&](RenderTargetEntry& t) -> bool {
             using Layer = RenderTargetEntry::CompositeLayer;
+            auto prepared_layout = t.layout;
             uint32_t need = 0;
             for (const auto& l : t.layers)
                 if (l.kind == Layer::EKind::SceneView)
@@ -259,7 +264,7 @@ namespace lux::render
             {
                 if (!((need & have) & (1u << i)))
                     continue;
-                auto& d = *t.layout.slots[i]; // have 位已保证 optional 有值
+                auto& d = *prepared_layout.slots[i]; // have 位已保证 optional 有值
                 if (hasUsage(d.usage, ERenderImageUsage::SAMPLED))
                     continue;
                 d.usage |= ERenderImageUsage::SAMPLED;
@@ -274,7 +279,7 @@ namespace lux::render
             }
 
             if (missing == 0 && usage_amended == 0)
-                return;
+                return true;
 
             for (size_t i = 0; i < kTargetSlotCount; ++i)
             {
@@ -284,14 +289,17 @@ namespace lux::render
                 const auto d = defaultTargetSlotDesc(slot);
                 if (d.format == lux::rdesc::ETextureFormat::UNDEFINED)
                     continue; // 主槽/未知槽不经形状表
-                t.layout.slots[i] = d;
+                prepared_layout.slots[i] = d;
                 renderer.renderContext().reportError(
                     renderError<err::frame::TargetLayoutAmended>(static_cast<std::uint32_t>(i)),
                     RenderErrorEvent::kNoScene,
                     current_stamp_.serial
                 );
             }
-            t.pool->applyLayout(t.layout);
+            if (!t.pool->tryApplyLayout(prepared_layout))
+                return false;
+            t.layout = prepared_layout;
+            return true;
         };
 
         // 离屏 target。批在**所有链之前**清空,免得上一帧的场景/视图指针残留。
@@ -303,9 +311,10 @@ namespace lux::render
             auto* t = targets.tryGet(id);
             if (!t || t->kind != RenderTargetEntry::EKind::Offscreen || !t->pool)
                 continue;
-            amendTargetSlots(*t);
+            if (!amendTargetSlots(*t))
+                continue;
             auto binding = t->pool->makeFrameBinding(stamp.slotIndex());
-            runChain(*t, binding);
+            t->pool->markRecorded(stamp.slotIndex(), runChain(*t, binding));
         }
 
         // 主 Surface。

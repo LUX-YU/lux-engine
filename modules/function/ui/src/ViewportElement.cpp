@@ -16,12 +16,17 @@ namespace lux::ui
         result.content_origin = {origin.x, origin.y};
         result.resized = result.size != previous_size_;
         previous_size_ = result.size;
-        ImGui::Image(
+        if (available.x <= 0 || available.y <= 0)
+            return result;
+        if (spec.texture.valid())
+            ImGui::Image(
             static_cast<ImTextureID>(spec.texture.value),
             available,
             ImVec2{spec.uv_min.x, spec.uv_min.y},
             ImVec2{spec.uv_max.x, spec.uv_max.y}
         );
+        else
+            ImGui::Dummy(available);
         result.hovered = ImGui::IsItemHovered();
         const auto pointer = ImGui::GetIO().MousePos;
         result.local_pointer = {pointer.x - origin.x, pointer.y - origin.y};

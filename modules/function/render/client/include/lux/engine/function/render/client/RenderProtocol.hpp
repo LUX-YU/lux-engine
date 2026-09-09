@@ -143,6 +143,7 @@ namespace lux::render
         // ---- Device capability query ----
         inline constexpr TypeId ReplyDeviceCaps = 26;
         inline constexpr TypeId ReplyGpuTiming = 31;
+        inline constexpr TypeId ReplyTargetResized = 32;
 
         // ---- 渲染线程自发上报(无对应请求,request_id = kInvalidRequestId)----
         inline constexpr TypeId ReplyErrorEventBatch = 27; ///< 一批的封面{count, dropped}
@@ -296,6 +297,13 @@ namespace lux::render
         lux::math::Extent2u new_extent{};
     };
     static_assert(std::is_trivially_copyable_v<ResizeTargetPayload>);
+    struct TargetResizedReply final
+    {
+        RenderTargetId target{};
+        lux::math::Extent2u extent{};
+        std::uint64_t backing_revision{};
+        std::uint32_t status{}; // 0 success, 1 missing target, 2 invalid extent, 3 allocation failure
+    };
 
     struct TargetReadyReply
     {
@@ -690,6 +698,13 @@ namespace lux::render
         using Reply = TargetReadyReply;
         static constexpr bool has_reply = true;
         static constexpr TypeId reply_type_id = type_ids::ReplyTargetReady;
+    };
+
+    template <> struct CommandTraits<ResizeTargetPayload>
+    {
+        using Reply = TargetResizedReply;
+        static constexpr bool has_reply = true;
+        static constexpr TypeId reply_type_id = type_ids::ReplyTargetResized;
     };
 
     template <> struct CommandTraits<CreateSurfaceTargetPayload>

@@ -10,6 +10,11 @@
 
 namespace lux::editor::inspector
 {
+    enum class EInspectorMode : std::uint8_t
+    {
+        EDITABLE,
+        READ_ONLY,
+    };
     inline constexpr ui::PaneTypeIdView kEntityInspectorPaneType{"lux.editor.entity-inspector"};
 
     struct InspectorDrawStats final
@@ -26,7 +31,8 @@ namespace lux::editor::inspector
             object::ObjectDispatcherRef dispatcher,
             ui::PaneId id,
             EditorContext& context,
-            ComponentEditorBindingTable bindings
+            ComponentEditorBindingTable bindings,
+            EInspectorMode mode = EInspectorMode::EDITABLE
         );
 
         [[nodiscard]] InspectorUndoJournal& undoJournal() noexcept;
@@ -41,5 +47,6 @@ namespace lux::editor::inspector
         ComponentEditorBindingTable bindings_;
         InspectorUndoJournal undo_;
         InspectorDrawStats last_draw_;
+        EInspectorMode mode_;
     };
 } // namespace lux::editor::inspector

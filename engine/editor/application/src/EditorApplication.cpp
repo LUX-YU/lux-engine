@@ -1,4 +1,5 @@
 #include <lux/engine/editor/application/EditorApplication.hpp>
+#include <lux/engine/editor/scene/SceneWorkbench.hpp>
 #include <lux/engine/editor/application/UiVulkanPresentation.hpp>
 
 #include <lux/engine/ui/UiInputEvent.hpp>
@@ -27,6 +28,38 @@ namespace lux::editor
         {
             switch (key)
             {
+            case GLFW_KEY_A: return ui::EKey::A;
+            case GLFW_KEY_B: return ui::EKey::B;
+            case GLFW_KEY_C: return ui::EKey::C;
+            case GLFW_KEY_D: return ui::EKey::D;
+            case GLFW_KEY_E: return ui::EKey::E;
+            case GLFW_KEY_F: return ui::EKey::F;
+            case GLFW_KEY_G: return ui::EKey::G;
+            case GLFW_KEY_H: return ui::EKey::H;
+            case GLFW_KEY_I: return ui::EKey::I;
+            case GLFW_KEY_J: return ui::EKey::J;
+            case GLFW_KEY_K: return ui::EKey::K;
+            case GLFW_KEY_L: return ui::EKey::L;
+            case GLFW_KEY_M: return ui::EKey::M;
+            case GLFW_KEY_N: return ui::EKey::N;
+            case GLFW_KEY_O: return ui::EKey::O;
+            case GLFW_KEY_P: return ui::EKey::P;
+            case GLFW_KEY_Q: return ui::EKey::Q;
+            case GLFW_KEY_R: return ui::EKey::R;
+            case GLFW_KEY_S: return ui::EKey::S;
+            case GLFW_KEY_T: return ui::EKey::T;
+            case GLFW_KEY_U: return ui::EKey::U;
+            case GLFW_KEY_V: return ui::EKey::V;
+            case GLFW_KEY_W: return ui::EKey::W;
+            case GLFW_KEY_X: return ui::EKey::X;
+            case GLFW_KEY_Y: return ui::EKey::Y;
+            case GLFW_KEY_Z: return ui::EKey::Z;
+            case GLFW_KEY_LEFT_SHIFT: return ui::EKey::LEFT_SHIFT;
+            case GLFW_KEY_RIGHT_SHIFT: return ui::EKey::RIGHT_SHIFT;
+            case GLFW_KEY_LEFT_CONTROL: return ui::EKey::LEFT_CONTROL;
+            case GLFW_KEY_RIGHT_CONTROL: return ui::EKey::RIGHT_CONTROL;
+            case GLFW_KEY_LEFT_ALT: return ui::EKey::LEFT_ALT;
+            case GLFW_KEY_RIGHT_ALT: return ui::EKey::RIGHT_ALT;
             case GLFW_KEY_TAB: return ui::EKey::TAB;
             case GLFW_KEY_ENTER: return ui::EKey::ENTER;
             case GLFW_KEY_ESCAPE: return ui::EKey::ESCAPE;
@@ -276,7 +309,7 @@ namespace lux::editor
     }
 
     lux::cxx::expected<std::size_t, EEditorApplicationError>
-    EditorApplication::run(std::size_t max_frames) noexcept
+    EditorApplication::run(std::size_t max_frames, workbench::SceneWorkbench* workbench) noexcept
     {
         if (state_ != EState::RUNNING || !presentation_owners_ || !presentation_owners_->window ||
             !presentation_owners_->presenter)
@@ -284,11 +317,35 @@ namespace lux::editor
             return lux::cxx::unexpected(EEditorApplicationError::INVALID_STATE);
         }
         std::size_t frames{};
+        struct StopOnFailure final
+        {
+            application::detail::UiVulkanPresentation* presenter;
+            bool completed{};
+            ~StopOnFailure()
+            {
+                if (!completed)
+                {
+                    presenter->requestStop();
+                    static_cast<void>(presenter->join());
+                }
+            }
+        } failure_guard{presentation_owners_->presenter.get()};
         auto previous = std::chrono::steady_clock::now();
-        while (!presentation_owners_->window->shouldClose() && (max_frames == 0U || frames < max_frames))
+        bool closing = false;
+        auto close_started = previous;
+        for (;;)
         {
             window::LuxWindow::pollEvents();
             feedWindowInput();
+            if (!closing && (presentation_owners_->window->shouldClose() ||
+                (workbench && workbench->closeRequested()) || (max_frames != 0U && frames >= max_frames)))
+            {
+                if (!workbench)
+                    break;
+                closing = true;
+                close_started = std::chrono::steady_clock::now();
+                workbench->requestClose();
+            }
             if (!drainMain(64U))
                 return lux::cxx::unexpected(EEditorApplicationError::EXECUTION_JOIN_FAILURE);
 
@@ -306,12 +363,22 @@ namespace lux::editor
             const float scale_y = height == 0U ? 1.0F : static_cast<float>(framebuffer_height) / height;
             try
             {
+                if (workbench)
+                {
+                    workbench->beforeUiFrame();
+                    if (closing && workbench->advanceClose())
+                        break;
+                    if (closing && now - close_started > std::chrono::seconds{10})
+                        return lux::cxx::unexpected(EEditorApplicationError::PRESENTATION_JOIN_FAILURE);
+                }
                 auto frame = ui_->beginFrame({
                     {static_cast<float>(width), static_cast<float>(height)},
                     delta,
                     {scale_x, scale_y}
                 });
                 frame.drawPanes();
+                if (workbench)
+                    workbench->afterUiFrame(delta, {scale_x, scale_y});
                 frame.finish();
             }
             catch (const std::bad_alloc&)
@@ -324,7 +391,13 @@ namespace lux::editor
             if (framebuffer_width == 0U || framebuffer_height == 0U)
                 std::this_thread::sleep_for(std::chrono::milliseconds{16});
         }
+        failure_guard.completed = true;
         return frames;
+    }
+
+    workbench::SceneViewRenderPort* EditorApplication::sceneViewRenderPort() noexcept
+    {
+        return presentation_owners_ ? presentation_owners_->presenter.get() : nullptr;
     }
 
     void EditorApplication::clearWindowCallbacks() noexcept

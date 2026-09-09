@@ -220,13 +220,7 @@ namespace lux::render
 
     void RenderControlSession::resizeTarget(RenderTargetId target, lux::math::Extent2u extent)
     {
-        (void)record([&](Builder& builder) {
-            ResizeTargetPayload payload{};
-            payload.target = target;
-            payload.new_extent = extent;
-            builder.push(opcodes::CommandOp, type_ids::ResizeTarget, payload);
-        }
-        );
+        static_cast<void>(requestResizeTarget(target, extent));
     }
 
     void RenderControlSession::bindSwapchain(RenderSceneId scene, ViewHandle view)
@@ -236,6 +230,15 @@ namespace lux::render
             payload.scene_id = scene;
             payload.view = view;
             builder.push(opcodes::CommandOp, type_ids::BindSwapchain, payload);
+        });
+    }
+
+    RenderRequest<TargetResizedReply>
+    RenderControlSession::requestResizeTarget(RenderTargetId target, lux::math::Extent2u extent)
+    {
+        return recordReply<TargetResizedReply>([&](Builder& builder, auto callback) {
+            ResizeTargetPayload payload{target, extent};
+            builder.pushWithReply(opcodes::CommandOp, type_ids::ResizeTarget, payload, std::move(callback));
         }
         );
     }

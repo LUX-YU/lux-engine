@@ -94,6 +94,8 @@ namespace lux::render
         void setLayer(RenderTargetId target, std::uint32_t order, RenderSceneId scene, ViewHandle view);
         void removeLayer(RenderTargetId target, std::uint32_t order);
         void resizeTarget(RenderTargetId target, lux::math::Extent2u extent);
+        [[nodiscard]] RenderRequest<TargetResizedReply>
+        requestResizeTarget(RenderTargetId target, lux::math::Extent2u extent);
         void bindSwapchain(RenderSceneId scene, ViewHandle view);
 
         [[nodiscard]] RenderRequest<ReadbackTargetReply> readbackTarget(

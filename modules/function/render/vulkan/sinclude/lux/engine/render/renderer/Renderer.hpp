@@ -94,7 +94,7 @@ namespace lux::render
         /// @param cross_view_index  0 for the first view of a scene in the
         ///        current frame; >0 for subsequent views.  The recorder uses
         ///        this to patch imported-resource first-touch barriers.
-        void renderSingleView(
+        bool renderSingleView(
             RenderScene& scene,
             View& view,
             const RenderTargetBinding& binding,

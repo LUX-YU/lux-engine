@@ -23,6 +23,8 @@
 #include <array>
 #include <cstdint>
 #include <vector>
+#include <memory>
+#include <span>
 
 namespace lux::render
 {
@@ -77,14 +79,32 @@ namespace lux::render
         /// Resize all images.  Old images are retired and will be GC'd after
         /// enough frames have elapsed (see collectRetired()).
         virtual void resize(VkExtent2D new_extent);
+        [[nodiscard]] bool tryResize(VkExtent2D new_extent) noexcept;
+        [[nodiscard]] bool tryApplyLayout(const RenderTargetLayout& layout) noexcept;
+        [[nodiscard]] bool valid() const noexcept { return backing_revision_ != 0; }
+        [[nodiscard]] uint64_t backingRevision() const noexcept { return backing_revision_; }
+        [[nodiscard]] bool recorded(uint32_t slot) const noexcept
+        {
+            return slot < recorded_slots_.size() && recorded_slots_[slot] != 0;
+        }
+        void markRecorded(uint32_t slot, bool recorded = true) noexcept
+        {
+            if (slot < recorded_slots_.size())
+                recorded_slots_[slot] = recorded ? 1 : 0;
+        }
+        using RetireViews = void (*)(void*, std::span<const VkImageView>) noexcept;
+        void setViewRetirementObserver(std::shared_ptr<void> owner, RetireViews callback) noexcept
+        {
+            retire_owner_ = std::move(owner);
+            retire_views_ = callback;
+        }
 
         /// 应用新布局(额外输出槽进出)并按当前尺寸重建全部影像。
         /// 走 resize 的虚路径 —— 子类(UIOffscreenImagePool)的描述符刷新
         /// 自动搭车;旧影像照旧经 retire/GC 回收。
         void applyLayout(const RenderTargetLayout& l)
         {
-            layout_ = l;
-            resize(extent());
+            static_cast<void>(tryApplyLayout(l));
         }
 
         /// Call each frame after GPU submit to GC retired images. @p frame_id
@@ -114,6 +134,12 @@ namespace lux::render
         std::vector<RetiredImages> retired_images_;
 
     private:
+        uint64_t backing_revision_{};
+        std::vector<std::uint8_t> recorded_slots_;
+        std::shared_ptr<void> retire_owner_;
+        RetireViews retire_views_{};
+        void notifyViewRetirement(std::span<const VkImageView> views) noexcept;
+        bool rebuild(const RenderTargetLayout& layout, VkExtent2D extent) noexcept;
         bool allocate(VkExtent2D extent);
         void release();
     };

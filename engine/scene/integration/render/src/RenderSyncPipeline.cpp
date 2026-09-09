@@ -165,4 +165,8 @@ namespace lux::scene
         state.forward_pending = false;
         return ERenderForwardResult::FORWARDED;
     }
+    bool RenderSyncPipeline::hasPendingUpdate() const noexcept
+    {
+        return impl_->forward_pending || impl_->updates.pendingFrames() != 0;
+    }
 } // namespace lux::scene

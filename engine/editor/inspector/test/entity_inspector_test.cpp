@@ -8,6 +8,7 @@
 #include <lux/engine/editor/inspector/EntityInspector.hpp>
 #include <lux/engine/editor/inspector/FirstPartyComponentEditors.hpp>
 #include <lux/engine/editor/inspector/GeneratedFieldEditor.hpp>
+#include <lux/engine/editor/inspector/InspectorReadOnlyContext.hpp>
 #include <lux/engine/editor/inspector/SemanticFieldEditors.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/scene/Scene.hpp>
@@ -106,6 +107,41 @@ namespace
 
         int update_count{};
     };
+
+    bool forbiddenEdit(lux::simulation::ecs::Registry&, lux::simulation::ecs::Entity,
+                       lux::editor::inspector::InspectorContext&) noexcept
+    {
+        assert(false && "read-only inspector called a writable binding");
+        return false;
+    }
+
+    class ReadOnlyProbe final : public lux::object::Object<ReadOnlyProbe, lux::ui::Pane>
+    {
+    public:
+        ReadOnlyProbe(lux::ui::UISession& ui, const lux::simulation::ecs::Registry& registry,
+                      lux::simulation::ecs::Entity entity,
+                      const lux::editor::inspector::ComponentEditorBindingTable& bindings)
+            : Object(ui.dispatcherRef(), lux::ui::PaneId{"readonly-probe"},
+                     lux::ui::PaneTypeId{"readonly-probe"}, "Read-only probe"),
+              registry_(registry), entity_(entity), bindings_(bindings) {}
+        std::size_t calls{};
+    private:
+        void draw(lux::ui::Frame& frame, lux::ui::PaneDrawContext&) override
+        {
+            auto table = frame.table(lux::ui::TableSpec{lux::ui::WidgetIdView{"values"}, 2U});
+            if (!table.visible())
+                return;
+            lux::editor::inspector::InspectorReadOnlyContext context{frame};
+            for (const auto& binding : bindings_.all())
+            {
+                binding.draw_read_only(registry_, entity_, context);
+                ++calls;
+            }
+        }
+        const lux::simulation::ecs::Registry& registry_;
+        lux::simulation::ecs::Entity entity_;
+        const lux::editor::inspector::ComponentEditorBindingTable& bindings_;
+    };
 } // namespace
 
 int main()
@@ -193,6 +229,47 @@ int main()
     assert(pane.undoJournal().redo(context));
     assert(registry.get<ecs::Transform3D>(entity).translation == after_translation);
     assert(observer.update_count == 3);
+
+    {
+        auto read_only_bindings = inspector::buildFirstPartyComponentEditorBindings();
+        assert(read_only_bindings);
+        std::vector<inspector::ComponentEditorBinding> safe_bindings;
+        for (auto binding : read_only_bindings->all())
+        {
+            assert(binding.draw_read_only != nullptr);
+            binding.draw = forbiddenEdit;
+            safe_bindings.push_back(std::move(binding));
+        }
+        auto table = inspector::ComponentEditorBindingTable::build(std::move(safe_bindings));
+        assert(table);
+        const auto saved_transform = registry.get<ecs::Transform3D>(entity);
+        const auto saved_visual = registry.get<ecs::Mesh3D>(entity);
+        const auto saved_selection = selection.current();
+        // Exercise generated callbacks directly as well: collapsed trees must not mask writes.
+        ReadOnlyProbe probe{ui, registry, entity, *read_only_bindings};
+        auto probe_registration = ui.registerPane(probe);
+        assert(probe_registration);
+        inspector::EntityInspector read_only{
+            ui.dispatcherRef(), lux::ui::PaneId{"read-only-inspector"}, context,
+            std::move(*table), inspector::EInspectorMode::READ_ONLY
+        };
+        auto read_registration = ui.registerPane(read_only);
+        assert(read_registration);
+        {
+            auto frame = ui.beginFrame({{1280.0F, 720.0F}, 1.0F / 60.0F});
+            frame.drawPanes();
+        }
+        assert(probe.calls == read_only_bindings->all().size());
+        assert(registry.get<ecs::Transform3D>(entity).translation == saved_transform.translation);
+        assert(registry.get<ecs::Transform3D>(entity).rotation == saved_transform.rotation);
+        assert(registry.get<ecs::Transform3D>(entity).scale == saved_transform.scale);
+        assert(registry.get<ecs::Mesh3D>(entity).value == saved_visual.value);
+        assert(selection.current().entity == saved_selection.entity);
+        assert(selection.current().scene == saved_selection.scene);
+        assert(observer.update_count == 3);
+        assert(!read_only.undoJournal().hasActiveGesture());
+        assert(read_only.undoJournal().undoDepth() == 0);
+    }
 
     pane.undoJournal().clear();
     auto& light = registry.emplace<ecs::Light3D>(entity);

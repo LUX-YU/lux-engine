@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <cmath>
 #include <mutex>
 #include <thread>
 #include <type_traits>
@@ -148,6 +149,39 @@ namespace lux::ui
         {
             switch (key)
             {
+            case EKey::A: return ImGuiKey_A;
+            case EKey::B: return ImGuiKey_B;
+            case EKey::C: return ImGuiKey_C;
+            case EKey::D: return ImGuiKey_D;
+            case EKey::E: return ImGuiKey_E;
+            case EKey::F: return ImGuiKey_F;
+            case EKey::G: return ImGuiKey_G;
+            case EKey::H: return ImGuiKey_H;
+            case EKey::I: return ImGuiKey_I;
+            case EKey::J: return ImGuiKey_J;
+            case EKey::K: return ImGuiKey_K;
+            case EKey::L: return ImGuiKey_L;
+            case EKey::M: return ImGuiKey_M;
+            case EKey::N: return ImGuiKey_N;
+            case EKey::O: return ImGuiKey_O;
+            case EKey::P: return ImGuiKey_P;
+            case EKey::Q: return ImGuiKey_Q;
+            case EKey::R: return ImGuiKey_R;
+            case EKey::S: return ImGuiKey_S;
+            case EKey::T: return ImGuiKey_T;
+            case EKey::U: return ImGuiKey_U;
+            case EKey::V: return ImGuiKey_V;
+            case EKey::W: return ImGuiKey_W;
+            case EKey::X: return ImGuiKey_X;
+            case EKey::Y: return ImGuiKey_Y;
+            case EKey::Z: return ImGuiKey_Z;
+            case EKey::LEFT_SHIFT: return ImGuiKey_LeftShift;
+            case EKey::RIGHT_SHIFT: return ImGuiKey_RightShift;
+            case EKey::LEFT_CONTROL: return ImGuiKey_LeftCtrl;
+            case EKey::RIGHT_CONTROL: return ImGuiKey_RightCtrl;
+            case EKey::LEFT_ALT: return ImGuiKey_LeftAlt;
+            case EKey::RIGHT_ALT: return ImGuiKey_RightAlt;
+            case EKey::COUNT: return ImGuiKey_None;
             case EKey::NONE:
                 return ImGuiKey_None;
             case EKey::TAB:
@@ -209,6 +243,7 @@ namespace lux::ui
 #endif
         std::size_t factory_call_depth{0};
         bool frame_open{false};
+        std::optional<SplitLayout> split_layout;
 
         [[nodiscard]] static PaneHandle handle(const PaneRecord& record)
         {
@@ -793,6 +828,73 @@ namespace lux::ui
         if (!impl_->frame_open || frame.session_ != this)
             detail::failUiContract();
         ScopedImGuiContext context{impl_->context};
+        struct Placement { std::string_view id; ImVec2 position; ImVec2 size; };
+        std::array<Placement, 5> placements{};
+        if (impl_->split_layout)
+        {
+            auto& layout = *impl_->split_layout;
+            const auto size = ImGui::GetIO().DisplaySize;
+            const float top = layout.toolbar.empty() ? 0 : 38.0F;
+            const auto visible = [&](const std::string& id) {
+                for (auto& record : impl_->panes)
+                {
+                    const auto* pane = Impl::resolve(record);
+                    if (pane && pane->id().name() == id)
+                        return pane->visible();
+                }
+                return false;
+            };
+            const float left = size.x >= 700 && visible(layout.left) ?
+                std::clamp(layout.left_width, 160.0F, size.x * 0.3F) : 0;
+            const float right = size.x >= 1000 && visible(layout.right) ?
+                std::clamp(layout.right_width, 220.0F, size.x * 0.35F) : 0;
+            const float bottom = size.y >= 450 && visible(layout.bottom) ?
+                std::clamp(layout.bottom_height, 100.0F, size.y * 0.4F) : 0;
+            const auto splitter = [&](const char* id, ImVec2 pos, ImVec2 extent, bool vertical, float& value) {
+                ImGui::SetNextWindowPos(pos);
+                ImGui::SetNextWindowSize(extent);
+                ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{0, 0});
+                ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2{1, 1});
+                ImGui::Begin(id, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav);
+                ImGui::InvisibleButton("##split", extent);
+                if (ImGui::IsItemActive())
+                    value += vertical ? ImGui::GetIO().MouseDelta.x : ImGui::GetIO().MouseDelta.y;
+                if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+                    ImGui::SetMouseCursor(vertical ? ImGuiMouseCursor_ResizeEW : ImGuiMouseCursor_ResizeNS);
+                ImGui::End();
+                ImGui::PopStyleVar(2);
+            };
+            if (left > 0)
+            {
+                layout.left_width = left;
+                splitter("##layout-left", {left, top}, {5, size.y - bottom - top}, true, layout.left_width);
+                layout.left_width = std::clamp(layout.left_width, 160.0F, size.x * 0.3F);
+            }
+            if (right > 0)
+            {
+                float edge = -right;
+                splitter("##layout-right", {size.x - right - 5, top}, {5, size.y - bottom - top}, true, edge);
+                layout.right_width = std::clamp(-edge, 220.0F, size.x * 0.35F);
+            }
+            if (bottom > 0)
+            {
+                float edge = -bottom;
+                splitter("##layout-bottom", {0, size.y - bottom - 5}, {size.x, 5}, false, edge);
+                layout.bottom_height = std::clamp(-edge, 100.0F, size.y * 0.4F);
+            }
+            const float center_x = left > 0 ? left + 5 : 0;
+            const float upper_height = std::max(0.0F, size.y - bottom - (bottom > 0 ? 5 : 0));
+            placements = {{
+                {layout.left, {0, top}, {left, std::max(0.0F, upper_height - top)}},
+                {layout.center, {center_x, top},
+                    {std::max(0.0F, size.x - center_x - right - (right > 0 ? 5 : 0)),
+                    std::max(0.0F, upper_height - top)}},
+                {layout.right, {size.x - right, top}, {right, std::max(0.0F, upper_height - top)}},
+                {layout.bottom, {0, size.y - bottom}, {size.x, bottom}},
+                {layout.toolbar, {0, 0}, {size.x, top}}
+            }};
+        }
         PaneHandle focused_candidate;
         PaneHandle hovered_candidate;
         impl_->frame_focused_contexts.clear();
@@ -808,18 +910,38 @@ namespace lux::ui
                     impl_->pending_focus.reset();
                 continue;
             }
+            bool visible = true;
+            ImGuiWindowFlags flags = 0;
+            bool collapsed_by_layout = false;
+            for (const auto& placement : placements)
+            {
+                if (placement.id.empty() || pane->id().name() != placement.id)
+                    continue;
+                collapsed_by_layout = placement.size.x <= 0 || placement.size.y <= 0;
+                if (!collapsed_by_layout)
+                {
+                    ImGui::SetNextWindowPos(placement.position);
+                    ImGui::SetNextWindowSize(placement.size);
+                }
+                flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
+                break;
+            }
+            if (collapsed_by_layout)
+                continue;
             if (impl_->pending_focus.token == record.token)
             {
                 ImGui::SetNextWindowFocus();
                 impl_->pending_focus.reset();
             }
-            bool visible = true;
+            const bool toolbar = impl_->split_layout && pane->id().name() == impl_->split_layout->toolbar;
+            if (toolbar)
+                flags |= ImGuiWindowFlags_NoDecoration;
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
             const auto scratch_capacity = impl_->frame_context_scratch.capacity();
 #endif
             impl_->frame_context_scratch.clear();
             PaneDrawContext draw_context{impl_->frame_context_scratch};
-            if (ImGui::Begin(pane->window_label_.c_str(), &visible))
+            if (ImGui::Begin(pane->window_label_.c_str(), toolbar ? nullptr : &visible, flags))
             {
                 pane->draw(frame, draw_context);
 #if defined(LUX_UI_TEST_DIAGNOSTICS)
@@ -878,6 +1000,43 @@ namespace lux::ui
         if (size != 0)
             std::memcpy(bytes.data(), data, size);
         return LayoutSnapshot{std::move(bytes)};
+    }
+
+    UiInputSnapshot UISession::inputSnapshot() const noexcept
+    {
+        LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
+        ScopedImGuiContext context{impl_->context};
+        UiInputSnapshot result;
+        const auto& io = ImGui::GetIO();
+        for (std::size_t index = 1; index < result.held.size(); ++index)
+        {
+            const auto key = toImGuiKey(static_cast<EKey>(index));
+            result.held[index] = ImGui::IsKeyDown(key);
+            result.pressed[index] = ImGui::IsKeyPressed(key, false);
+        }
+        for (std::size_t index = 0; index < result.buttons.size(); ++index)
+            result.buttons[index] = ImGui::IsMouseDown(toImGuiButton(static_cast<EPointerButton>(index)));
+        result.pointer_delta = {io.MouseDelta.x, io.MouseDelta.y};
+        result.wheel = {io.MouseWheelH, io.MouseWheel};
+        result.window_focused = !io.AppFocusLost;
+        result.modal_open = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup);
+        result.keyboard_blocked = io.WantTextInput || ImGui::IsAnyItemActive() || result.modal_open;
+        return result;
+    }
+
+    void UISession::setSplitLayout(SplitLayout layout)
+    {
+        LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
+        if (!std::isfinite(layout.left_width) || !std::isfinite(layout.right_width) ||
+            !std::isfinite(layout.bottom_height))
+            return;
+        impl_->split_layout = std::move(layout);
+    }
+
+    void UISession::clearSplitLayout()
+    {
+        LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
+        impl_->split_layout.reset();
     }
 
     lux::cxx::expected<void, ELayoutError> UISession::restoreLayout(const LayoutSnapshot& snapshot)

@@ -4,6 +4,7 @@
 #include <lux/engine/editor/inspector/ComponentEditorBinding.hpp>
 #include <lux/engine/editor/inspector/GeneratedFieldEditor.hpp>
 #include <lux/engine/editor/inspector/SemanticFieldEditors.hpp>
+#include <lux/engine/editor/inspector/ReadOnlyField.hpp>
 #include <array>
 #include <span>
 {% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
@@ -57,6 +58,20 @@ namespace lux::editor::inspector::generated
     }
 {% endif %}{% endfor %}
 
+{% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "component") and annotation_get(decl, "editor") %}
+    inline void {{ projection_symbol }}ReadOnly{{ decl.name }}(
+        const simulation::ecs::Registry& registry,
+        simulation::ecs::Entity entity,
+        InspectorReadOnlyContext& context
+    )
+    {
+        const auto* component = registry.try_get<::{{ decl.fq_name }}>(entity);
+        if (component == nullptr)
+            return;
+{% for field_id in decl.field_decls %}{% set field = decl_from_id(field_id) %}{% if field.visibility == 1 and not annotation_has(field, "luxref::property::skip") %}{% set display = annotation_get_for_or(field, "luxref::property::member", "display_name", field.name) %}        drawReadOnlyField(context, "{{ cxx_str(display) }}", component->{{ field.name }});
+{% endif %}{% endfor %}    }
+{% endif %}{% endfor %}
+
     [[nodiscard]] inline std::span<const ComponentEditorBinding>
     {{ projection_symbol }}ComponentEditorBindings() noexcept
     {
@@ -67,7 +82,8 @@ namespace lux::editor::inspector::generated
                 simulation::ecs::componentSchemaId("{{ cxx_str(annotation_get(decl, "schema")) }}"),
                 "{{ cxx_str(decl.name) }}",
                 {{ projection_symbol }}Draw{{ decl.name }},
-                {}
+                {},
+                {{ projection_symbol }}ReadOnly{{ decl.name }}
             }{% set emitted = true %}{% endif %}{% endfor %}
         };
         return bindings;

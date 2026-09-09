@@ -4,11 +4,18 @@
 #include <span>
 #include <utility>
 #include <vector>
+#include <string>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
 namespace lux::ui
 {
+    struct SplitLayout final
+    {
+        std::string left, center, right, bottom;
+        float left_width{260.0F}, right_width{350.0F}, bottom_height{200.0F};
+        std::string toolbar;
+    };
     enum class ELayoutError
     {
         INVALID_DATA

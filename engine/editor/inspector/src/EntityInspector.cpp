@@ -1,6 +1,7 @@
 #include <lux/engine/editor/inspector/EntityInspector.hpp>
 
 #include <lux/engine/editor/inspector/InspectorContext.hpp>
+#include <lux/engine/editor/inspector/InspectorReadOnlyContext.hpp>
 #include <lux/engine/scene/Scene.hpp>
 #include <lux/engine/ui/Frame.hpp>
 
@@ -15,7 +16,8 @@ namespace lux::editor::inspector
         object::ObjectDispatcherRef dispatcher,
         ui::PaneId id,
         EditorContext& context,
-        ComponentEditorBindingTable bindings
+        ComponentEditorBindingTable bindings,
+        EInspectorMode mode
     )
         : Object(
               std::move(dispatcher),
@@ -24,7 +26,8 @@ namespace lux::editor::inspector
               "Inspector"
           ),
           context_(&context),
-          bindings_(std::move(bindings))
+          bindings_(std::move(bindings)),
+          mode_(mode)
     {
     }
 
@@ -53,18 +56,20 @@ namespace lux::editor::inspector
         }
 
         frame.text("Entity #" + std::to_string(entt::to_integral(selection.entity)));
+        if (mode_ == EInspectorMode::EDITABLE)
         {
-            auto disabled = frame.disabled(!undo_.canUndo());
-            if (frame.smallButton("Undo"))
-                static_cast<void>(undo_.undo(*context_));
+            {
+                auto disabled = frame.disabled(!undo_.canUndo());
+                if (frame.smallButton("Undo"))
+                    static_cast<void>(undo_.undo(*context_));
+            }
+            {
+                auto disabled = frame.disabled(!undo_.canRedo());
+                if (frame.smallButton("Redo"))
+                    static_cast<void>(undo_.redo(*context_));
+            }
         }
-        {
-            auto disabled = frame.disabled(!undo_.canRedo());
-            if (frame.smallButton("Redo"))
-                static_cast<void>(undo_.redo(*context_));
-        }
-
-        InspectorContext inspector_context{*context_, frame, undo_, selection};
+        InspectorReadOnlyContext read_only_context{frame};
         auto& registry = scene->registry();
         for (const auto& schema : context_->sceneMeta().components().all())
         {
@@ -104,7 +109,20 @@ namespace lux::editor::inspector
                 frame.theme().metrics.property_label_width
             });
             if (table.visible())
-                static_cast<void>(binding->draw(registry, selection.entity, inspector_context));
+            {
+                if (mode_ == EInspectorMode::READ_ONLY)
+                {
+                    if (binding->draw_read_only != nullptr)
+                        binding->draw_read_only(std::as_const(registry), selection.entity, read_only_context);
+                    else
+                        frame.textMuted("<Read-only binding unavailable>");
+                }
+                else
+                {
+                    InspectorContext inspector_context{*context_, frame, undo_, selection};
+                    static_cast<void>(binding->draw(registry, selection.entity, inspector_context));
+                }
+            }
         }
     }
 } // namespace lux::editor::inspector

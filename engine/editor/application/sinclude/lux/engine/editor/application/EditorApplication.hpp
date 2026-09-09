@@ -16,6 +16,7 @@
 
 namespace lux::editor
 {
+    namespace workbench { class SceneWorkbench; class SceneViewRenderPort; }
     namespace application::detail
     {
         class UiVulkanPresentation;
@@ -96,7 +97,8 @@ namespace lux::editor
         [[nodiscard]] lux::cxx::expected<std::size_t, EEditorApplicationError>
         drainMain(std::size_t budget = static_cast<std::size_t>(-1)) noexcept;
         [[nodiscard]] lux::cxx::expected<std::size_t, EEditorApplicationError>
-        run(std::size_t max_frames = 0U) noexcept;
+        run(std::size_t max_frames = 0U, workbench::SceneWorkbench* workbench = nullptr) noexcept;
+        [[nodiscard]] workbench::SceneViewRenderPort* sceneViewRenderPort() noexcept;
         [[nodiscard]] lux::cxx::expected<void, EEditorApplicationError> shutdown() noexcept;
 
     private:

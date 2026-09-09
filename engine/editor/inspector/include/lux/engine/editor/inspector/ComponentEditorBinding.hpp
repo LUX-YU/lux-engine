@@ -16,6 +16,7 @@
 namespace lux::editor::inspector
 {
     struct InspectorContext;
+    struct InspectorReadOnlyContext;
 
     struct ComponentEditorBinding final
     {
@@ -24,12 +25,18 @@ namespace lux::editor::inspector
             simulation::ecs::Entity entity,
             InspectorContext& context
         ) noexcept;
+        using ReadOnlyDrawFn = void (*)(
+            const simulation::ecs::Registry& registry,
+            simulation::ecs::Entity entity,
+            InspectorReadOnlyContext& context
+        );
 
         lux::cxx::TypeToken component_type;
         simulation::ecs::ComponentSchemaId schema;
         std::string_view display_name;
         DrawFn draw{};
         std::shared_ptr<const void> code_lifetime;
+        ReadOnlyDrawFn draw_read_only{};
     };
 
     enum class EComponentEditorBindingError : std::uint8_t

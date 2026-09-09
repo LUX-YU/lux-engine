@@ -245,7 +245,7 @@ namespace lux::render
         return gs.valid;
     }
 
-    void Renderer::renderSingleView(
+    bool Renderer::renderSingleView(
         RenderScene& scene,
         View& view,
         const RenderTargetBinding& binding,
@@ -266,7 +266,7 @@ namespace lux::render
                 scene.sceneId().index,
                 current_stamp_.serial
             );
-            return;
+            return false;
         }
         const RenderTargetLayout& layout = *binding.layout;
 
@@ -275,10 +275,12 @@ namespace lux::render
         view.current_extent = {binding.extent.width, binding.extent.height};
 
         if (!prepareSceneForRender(scene, layout))
-            return;
+            return false;
 
         if (!prepareViewForRender(scene, view, binding, rt))
-            return;
+            return false;
+        if (!view.view_slot.isValid())
+            return false;
 
         auto& gs = scene.graphState();
         DrawRequest req;
@@ -286,6 +288,7 @@ namespace lux::render
         req.view = &view;
         req.target = &binding;
         renderView(scene, gs, view, req, rt, cross_view_index);
+        return true;
     }
 
     void Renderer::endFrame(uint64_t frame_serial)

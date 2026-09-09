@@ -94,7 +94,6 @@ namespace lux::script::lua
     namespace detail
     {
         enum class ELuaPlainKind : std::uint8_t { NUMBER, BOOLEAN, RECORD };
-        struct LuaPlainNumber final { double value{}; bool valid{true}; };
         struct LuaFieldLookup final { std::uint64_t hash; std::uint32_t ordinal; };
         constexpr std::uint64_t luaFieldHash(std::string_view value) noexcept
         {
@@ -121,21 +120,55 @@ namespace lux::script::lua
             std::span<const std::string_view> keys;
             std::span<const LuaFieldLookup> lookup;
         };
+        // Only used by generated/default plain callbacks inside the existing protected C operation.
+        // It owns no C++ object and is never passed to a custom converter.
+        struct LuaCodecFrame
+        {
+            lua_State* state{};
+            LuaValueFailure* failure{};
+            std::span<double> scratch;
+            std::array<std::string_view, 33U> path{};
+            std::size_t path_size{}, cursor{};
+            [[nodiscard]] bool reject(ELuaValueError code) noexcept { failure->code = code; return false; }
+            [[nodiscard]] bool reserve(std::size_t& slot) noexcept
+            {
+                slot = cursor++;
+                return slot < scratch.size() || reject(ELuaValueError::CAPACITY);
+            }
+            void field(std::size_t depth, std::string_view name) noexcept
+            {
+                path[depth] = name;
+                path_size = depth + 1U;
+            }
+        };
+        struct LuaCodecTable final { int table{}, keys{}; };
+        static_assert(std::is_trivially_destructible_v<LuaCodecFrame>);
+        static_assert(std::is_trivially_destructible_v<LuaCodecTable>);
+        class LUX_FUNCTION_PUBLIC LuaPlainAccess final
+        {
+        public:
+            static void writeNumber(LuaCodecFrame&, double, bool boolean) noexcept;
+            [[nodiscard]] static bool readNumber(LuaCodecFrame&, int, bool boolean, double&) noexcept;
+            [[nodiscard]] static LuaCodecTable writeRecord(LuaCodecFrame&, const LuaCodecShape&) noexcept;
+            [[nodiscard]] static bool readRecord(LuaCodecFrame&, int, const LuaCodecShape&, LuaCodecTable&) noexcept;
+            static void writeField(LuaCodecFrame&, LuaCodecTable, std::size_t ordinal) noexcept;
+            [[nodiscard]] static int readField(LuaCodecFrame&, LuaCodecTable, std::size_t ordinal) noexcept;
+            static void popField(LuaCodecFrame&) noexcept;
+            static void finishRecord(LuaCodecFrame&, LuaCodecTable) noexcept;
+        };
         struct LuaCodecPlan;
         struct LuaCodecField final
         {
             std::string_view name;
-            const void* (*member)(const void*) noexcept;
-            const LuaCodecPlan& (*plan)() noexcept;
+            const LuaCodecPlan& (*plan)() noexcept; // Cold key preparation only.
         };
-        // Only immutable type structure. No invocation object addresses are stored here.
         struct LuaCodecPlan final
         {
             ELuaPlainKind kind;
             std::uint32_t stack;
             std::span<const LuaCodecField> fields;
-            LuaPlainNumber (*read)(const void*) noexcept;
-            bool (*validate)(double) noexcept;
+            bool (*write_typed)(LuaCodecFrame&, const void*, std::size_t) noexcept;
+            bool (*read_typed)(LuaCodecFrame&, int, std::size_t) noexcept;
             const LuaCodecShape* shape;
         };
         class LUX_FUNCTION_PUBLIC LuaValueAccess final
@@ -403,24 +436,59 @@ namespace lux::script::lua
             }
             else return 0;
         }
+        static bool validatePlain(double value) noexcept
+        {
+            if constexpr (LuaValueScalar<Value>)
+            {
+                if (!std::isfinite(value)) return false;
+                if constexpr (std::is_same_v<Value, bool>) return true;
+                else if constexpr (std::is_integral_v<Value>)
+                    return std::trunc(value) == value &&
+                        value >= static_cast<double>((std::numeric_limits<Value>::lowest)()) &&
+                        value <= static_cast<double>((std::numeric_limits<Value>::max)());
+                else return value >= -static_cast<double>((std::numeric_limits<Value>::max)()) &&
+                    value <= static_cast<double>((std::numeric_limits<Value>::max)());
+            }
+            else
+            {
+                using Underlying = typename Rule::Underlying;
+                return LuaValueCodec<Underlying, Policy>::validatePlain(value) &&
+                    Rule::valid(static_cast<Value>(static_cast<Underlying>(value)));
+            }
+        }
+        static bool writePlain(detail::LuaCodecFrame& frame, const void* pointer, std::size_t level) noexcept
+        {
+            if constexpr (LuaValueScalar<Value> || std::is_enum_v<Value>)
+            {
+                const auto value = *static_cast<const Value*>(pointer);
+                if constexpr (std::is_enum_v<Value>)
+                    if (!Rule::valid(value)) return frame.reject(ELuaValueError::RANGE);
+                detail::LuaPlainAccess::writeNumber(frame, static_cast<double>(value), std::is_same_v<Value, bool>);
+                return true;
+            }
+            else return Rule::template writePlain<Policy>(frame, *static_cast<const Value*>(pointer), level);
+        }
+        static bool readPlain(detail::LuaCodecFrame& frame, int input, std::size_t level) noexcept
+        {
+            if constexpr (LuaValueScalar<Value> || std::is_enum_v<Value>)
+            {
+                std::size_t slot{};
+                double value{};
+                if (!frame.reserve(slot) ||
+                    !detail::LuaPlainAccess::readNumber(frame, input, std::is_same_v<Value, bool>, value)) return false;
+                if (!validatePlain(value)) return frame.reject(ELuaValueError::RANGE);
+                frame.scratch[slot] = value;
+                return true;
+            }
+            else return Rule::template readPlain<Policy>(frame, input, level);
+        }
         static const detail::LuaCodecPlan& plan() noexcept
         {
             if constexpr (LuaValueScalar<Value>)
             {
                 static constexpr detail::LuaCodecPlan result{
                     std::is_same_v<Value, bool> ? detail::ELuaPlainKind::BOOLEAN : detail::ELuaPlainKind::NUMBER,
-                    2U, {}, [](const void* pointer) noexcept {
-                        return detail::LuaPlainNumber{static_cast<double>(*static_cast<const Value*>(pointer)), true};
-                    }, [](double value) noexcept {
-                        if (!std::isfinite(value)) return false;
-                        if constexpr (std::is_same_v<Value, bool>) return true;
-                        else if constexpr (std::is_integral_v<Value>)
-                            return std::trunc(value) == value &&
-                                value >= static_cast<double>((std::numeric_limits<Value>::lowest)()) &&
-                                value <= static_cast<double>((std::numeric_limits<Value>::max)());
-                        else return value >= -static_cast<double>((std::numeric_limits<Value>::max)()) &&
-                            value <= static_cast<double>((std::numeric_limits<Value>::max)());
-                    }, nullptr
+                    2U, {}, &writePlain, &readPlain, nullptr
                 };
                 return result;
             }
@@ -532,13 +600,46 @@ namespace lux::script::lua
         template <class Policy> static const detail::LuaCodecPlan& plan() noexcept
         {
             static constexpr std::array<detail::LuaCodecField, sizeof...(Field)> fields{{
-                {Field::name, [](const void* parent) noexcept -> const void* {
-                    return std::addressof(static_cast<const T*>(parent)->*Field::member);
-                }, &LuaValueCodec<typename Field::template Value<T>, Policy>::plan}...
+                {Field::name, &LuaValueCodec<typename Field::template Value<T>, Policy>::plan}...
             }};
             static constexpr detail::LuaCodecPlan result{detail::ELuaPlainKind::RECORD,
-                static_cast<std::uint32_t>(depthFor<Policy>() * 4U + 8U), fields, nullptr, nullptr, &shape_plan};
+                static_cast<std::uint32_t>(depthFor<Policy>() * 4U + 8U), fields,
+                &LuaValueCodec<T, Policy>::writePlain, &LuaValueCodec<T, Policy>::readPlain, &shape_plan};
             return result;
+        }
+        template<class Policy>
+        static bool writePlain(detail::LuaCodecFrame& frame, const T& value, std::size_t level) noexcept
+        {
+            const auto table = detail::LuaPlainAccess::writeRecord(frame, shape_plan);
+            std::size_t ordinal{};
+            const bool success = (([&]() noexcept {
+                frame.field(level, Field::name);
+                if (!LuaValueCodec<typename Field::template Value<T>, Policy>::writePlain(
+                    frame, std::addressof(value.*Field::member), level + 1U)) return false;
+                frame.path_size = level + 1U;
+                detail::LuaPlainAccess::writeField(frame, table, ordinal++);
+                return true;
+            }()) && ...);
+            if (success) detail::LuaPlainAccess::finishRecord(frame, table);
+            return success;
+        }
+        template<class Policy>
+        static bool readPlain(detail::LuaCodecFrame& frame, int input, std::size_t level) noexcept
+        {
+            std::size_t slot{};
+            detail::LuaCodecTable table;
+            if (!frame.reserve(slot) || !detail::LuaPlainAccess::readRecord(frame, input, shape_plan, table)) return false;
+            std::size_t ordinal{};
+            const bool success = (([&]() noexcept {
+                frame.field(level, Field::name);
+                const auto child = detail::LuaPlainAccess::readField(frame, table, ordinal++);
+                if (!LuaValueCodec<typename Field::template Value<T>, Policy>::readPlain(frame, child, level + 1U))
+                    return false;
+                detail::LuaPlainAccess::popField(frame);
+                return true;
+            }()) && ...);
+            if (success) detail::LuaPlainAccess::finishRecord(frame, table);
+            return success;
         }
         template <class Policy> static bool prepare(lua_State* state) noexcept
         {
@@ -631,13 +732,7 @@ namespace lux::script::lua
         template <class Policy> static const detail::LuaCodecPlan& plan() noexcept
         {
             static constexpr detail::LuaCodecPlan result{detail::ELuaPlainKind::NUMBER, 2U, {},
-                [](const void* pointer) noexcept {
-                    const auto current = *static_cast<const T*>(pointer);
-                    return detail::LuaPlainNumber{static_cast<double>(static_cast<Underlying>(current)), valid(current)};
-                }, [](double number) noexcept {
-                    if (!LuaValueCodec<Underlying, Policy>::plan().validate(number)) return false;
-                    return valid(static_cast<T>(static_cast<Underlying>(number)));
-                }, nullptr};
+                &LuaValueCodec<T, Policy>::writePlain, &LuaValueCodec<T, Policy>::readPlain, nullptr};
             return result;
         }
         template <class Policy>

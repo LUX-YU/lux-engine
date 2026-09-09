@@ -37,21 +37,17 @@ namespace lux::script::lua
     {
         namespace
         {
-            struct Operation final
+            struct Operation final : LuaCodecFrame
             {
+                explicit Operation(int (*entry)(lua_State*, Operation&)) noexcept : execute(entry) {}
                 int (*execute)(lua_State *, Operation &);
                 std::string_view key;
                 std::span<const std::string_view> keys;
-                LuaValueFailure *failure{};
                 bool success{true};
                 int count{};
                 const LuaCodecPlan* plan{};
                 const LuaCodecShape* shape{};
                 const void* object{};
-                std::span<double> scratch;
-                std::array<std::string_view, 33U> path{};
-                std::size_t path_size{};
-                std::size_t cursor{};
             };
             // Lua55 C errors may jump only over trivial, non-owning callback frames.
             int trampoline(lua_State *state)
@@ -61,6 +57,7 @@ namespace lux::script::lua
             }
             bool run(lua_State *state, Operation &operation, int input, int second, int results) noexcept
             {
+                operation.state = state;
                 const int base = lua_gettop(state);
                 // checkstack is the API's non-throwing, fallible stack growth entry.
                 if (!lua_checkstack(state, 5))
@@ -209,76 +206,14 @@ namespace lux::script::lua
                 else { pushShapeKeys(state, *operation.shape); lua_pop(state, 1); }
                 return 0;
             }
-            bool pushPlain(lua_State* state, Operation& operation, const LuaCodecPlan& plan,
-                const void* object, std::size_t depth)
-            {
-                if (plan.kind != ELuaPlainKind::RECORD)
-                {
-                    const auto number = plan.read(object);
-                    if (!number.valid)
-                    { operation.failure->code = ELuaValueError::RANGE; return false; }
-                    if (plan.kind == ELuaPlainKind::BOOLEAN) lua_pushboolean(state, number.value != 0.0);
-                    else lua_pushnumber(state, number.value);
-                    return true;
-                }
-                pushShapeKeys(state, *plan.shape);
-                const int keys = lua_gettop(state);
-                lua_createtable(state, 0, static_cast<int>(plan.fields.size()));
-                const int table = lua_gettop(state);
-                for (std::size_t i{}; i < plan.fields.size(); ++i)
-                {
-                    const auto& field = plan.fields[i];
-                    operation.path[depth] = field.name;
-                    operation.path_size = depth + 1U;
-                    // Resolve the member now, after preceding allocations and callbacks.
-                    if (!pushPlain(state, operation, field.plan(), field.member(object), depth + 1U)) return false;
-                    operation.path_size = depth + 1U;
-                    lua_rawgeti(state, keys, static_cast<lua_Integer>(i + 1U));
-                    lua_insert(state, -2);
-                    lua_rawset(state, table);
-                }
-                lua_remove(state, keys);
-                return true;
-            }
-            bool readPlain(lua_State* state, Operation& operation, const LuaCodecPlan& plan,
-                int value, std::size_t depth)
-            {
-                const auto slot = operation.cursor++;
-                if (slot >= operation.scratch.size()) { operation.failure->code = ELuaValueError::CAPACITY; return false; }
-                if (plan.kind != ELuaPlainKind::RECORD)
-                {
-                    const bool boolean = plan.kind == ELuaPlainKind::BOOLEAN;
-                    if (lua_type(state, value) != (boolean ? LUA_TBOOLEAN : LUA_TNUMBER))
-                    { operation.failure->code = ELuaValueError::TYPE; return false; }
-                    const double number = boolean ? static_cast<double>(lua_toboolean(state, value)) : lua_tonumber(state, value);
-                    if (!plan.validate(number)) { operation.failure->code = ELuaValueError::RANGE; return false; }
-                    operation.scratch[slot] = number;
-                    return true;
-                }
-                if (!matchShape(state, value, plan.shape->keys, plan.shape, *operation.failure)) return false;
-                pushShapeKeys(state, *plan.shape);
-                const int keys = lua_gettop(state);
-                for (std::size_t i{}; i < plan.fields.size(); ++i)
-                {
-                    const auto& field = plan.fields[i];
-                    operation.path[depth] = field.name;
-                    operation.path_size = depth + 1U;
-                    lua_rawgeti(state, keys, static_cast<lua_Integer>(i + 1U));
-                    lua_rawget(state, value);
-                    if (!readPlain(state, operation, field.plan(), lua_gettop(state), depth + 1U)) return false;
-                    lua_pop(state, 1);
-                }
-                lua_pop(state, 1);
-                return true;
-            }
             int writePlain(lua_State* state, Operation& operation)
             {
-                operation.success = pushPlain(state, operation, *operation.plan, operation.object, 0U);
+                operation.success = operation.plan->write_typed(operation, operation.object, 0U);
                 return operation.success ? 1 : 0;
             }
             int readPlainOperation(lua_State* state, Operation& operation)
             {
-                operation.success = readPlain(state, operation, *operation.plan, 2, 0U);
+                operation.success = operation.plan->read_typed(operation, 2, 0U);
                 return 0;
             }
             LuaValueResult<void> planResult(lua_State* state, Operation& operation, int input, int results) noexcept
@@ -291,6 +226,50 @@ namespace lux::script::lua
                 return lux::cxx::unexpected(failure);
             }
         } // namespace
+        void LuaPlainAccess::writeNumber(LuaCodecFrame& frame, double value, bool boolean) noexcept
+        {
+            if (boolean) lua_pushboolean(frame.state, value != 0.0);
+            else lua_pushnumber(frame.state, value);
+        }
+        bool LuaPlainAccess::readNumber(LuaCodecFrame& frame, int input, bool boolean, double& value) noexcept
+        {
+            if (lua_type(frame.state, input) != (boolean ? LUA_TBOOLEAN : LUA_TNUMBER))
+                return frame.reject(ELuaValueError::TYPE);
+            value = boolean ? static_cast<double>(lua_toboolean(frame.state, input)) : lua_tonumber(frame.state, input);
+            return true;
+        }
+        LuaCodecTable LuaPlainAccess::writeRecord(LuaCodecFrame& frame, const LuaCodecShape& shape) noexcept
+        {
+            pushShapeKeys(frame.state, shape);
+            const int keys = lua_gettop(frame.state);
+            lua_createtable(frame.state, 0, static_cast<int>(shape.keys.size()));
+            return {lua_gettop(frame.state), keys};
+        }
+        bool LuaPlainAccess::readRecord(LuaCodecFrame& frame, int input, const LuaCodecShape& shape,
+            LuaCodecTable& result) noexcept
+        {
+            if (!matchShape(frame.state, input, shape.keys, &shape, *frame.failure)) return false;
+            pushShapeKeys(frame.state, shape);
+            result = {input, lua_gettop(frame.state)};
+            return true;
+        }
+        void LuaPlainAccess::writeField(LuaCodecFrame& frame, LuaCodecTable table, std::size_t ordinal) noexcept
+        {
+            lua_rawgeti(frame.state, table.keys, static_cast<lua_Integer>(ordinal + 1U));
+            lua_insert(frame.state, -2);
+            lua_rawset(frame.state, table.table);
+        }
+        int LuaPlainAccess::readField(LuaCodecFrame& frame, LuaCodecTable table, std::size_t ordinal) noexcept
+        {
+            lua_rawgeti(frame.state, table.keys, static_cast<lua_Integer>(ordinal + 1U));
+            lua_rawget(frame.state, table.table);
+            return lua_gettop(frame.state);
+        }
+        void LuaPlainAccess::popField(LuaCodecFrame& frame) noexcept { lua_pop(frame.state, 1); }
+        void LuaPlainAccess::finishRecord(LuaCodecFrame& frame, LuaCodecTable table) noexcept
+        {
+            lua_remove(frame.state, table.keys);
+        }
         bool LuaValueAccess::initialize(lua_State* state) noexcept
         {
             return state != nullptr && lua_checkstack(state, 136) != 0;

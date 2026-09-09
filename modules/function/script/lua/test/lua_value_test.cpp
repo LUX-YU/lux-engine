@@ -316,6 +316,12 @@ int main()
     assert(protected_calls == 1U);
     lua_setglobal(state, "snapshot");
     assert(luaL_dostring(state, "assert(snapshot.renamed==7 and snapshot.velocity.x==1.5 and snapshot.mode==3)") == 0);
+    assert(LuaValueCodec<Pose>::push(writer, *pose));
+    lua_setglobal(state, "snapshot2");
+    assert(luaL_dostring(state,
+        "assert(snapshot ~= snapshot2 and snapshot.velocity ~= snapshot2.velocity); "
+        "snapshot2.velocity.x=91; assert(snapshot.velocity.x==1.5)") == 0);
+    std::puts("TYPED_PLAN_OK,bidirectional=1,nested_table_identity=distinct,retained_result=unchanged");
     for (const char *input :
          {"return {renamed=7,velocity={x=1,y=2}}", "return {renamed=7,velocity={x=1,y=2},mode=2}",
           "return {renamed='7',velocity={x=1,y=2},mode=1}", "return {renamed=7.5,velocity={x=1,y=2},mode=1}",

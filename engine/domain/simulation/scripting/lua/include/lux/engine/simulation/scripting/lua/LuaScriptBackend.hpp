@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/script/lua/LuaAllocation.hpp>
 
 #include <lux/engine/function/script/lua/LuaVm.hpp>
 #include <lux/engine/function/script/lua/ScriptAbilityLua.hpp>
@@ -85,21 +86,11 @@ namespace lux::simulation::script
         std::size_t prepared_event_capacity{};
         std::span<const lux::script::ScriptEventSourceDescription> events;
         bool track_vm_allocations{};
+        lux::script::lua::LuaVmConfiguration vm;
         std::span<const LuaPreparedBlockClass> prepared_ability_blocks;
         std::size_t prepared_ability_storage_bytes{};
         std::span<const LuaPreparedBlockClass> prepared_event_blocks;
         std::size_t prepared_event_storage_bytes{};
-    };
-
-    struct LuaVmAllocationStats final
-    {
-        bool enabled{};
-        std::uint64_t allocations{};
-        std::uint64_t reallocations{};
-        std::uint64_t frees{};
-        std::uint64_t failures{};
-        std::uint64_t requested_bytes{};
-        std::uint64_t released_bytes{};
     };
 
     struct LuaScriptBackendStats final
@@ -113,7 +104,7 @@ namespace lux::simulation::script
         std::size_t execution_depth_high_water{};
         std::size_t vm_coroutine_resumes{};
         std::size_t vm_coroutine_releases{};
-        LuaVmAllocationStats vm_allocations;
+        lux::script::lua::LuaAllocationStats vm_allocations;
         std::uint64_t prepared_acquire_steps{};
         std::uint64_t prepared_release_steps{};
         std::size_t cached_prototypes{};

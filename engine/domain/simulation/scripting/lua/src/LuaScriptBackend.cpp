@@ -51,31 +51,6 @@ namespace lux::simulation::script
 
     struct LuaScriptBackend::State final
     {
-        struct VmAllocationTracker final
-        {
-            lua_Alloc original{};
-            void* context{};
-            LuaVmAllocationStats stats;
-            static void* allocate(void* opaque, void* pointer, std::size_t old_size, std::size_t size) noexcept
-            {
-                auto& self = *static_cast<VmAllocationTracker*>(opaque);
-                auto* result = self.original(self.context, pointer, old_size, size);
-                if (size != 0U && result == nullptr)
-                {
-                    ++self.stats.failures;
-                    return nullptr;
-                }
-                if (size == 0U)
-                    self.stats.frees += pointer != nullptr ? 1U : 0U;
-                else if (pointer == nullptr)
-                    ++self.stats.allocations;
-                else
-                    ++self.stats.reallocations;
-                self.stats.requested_bytes += size;
-                self.stats.released_bytes += pointer != nullptr ? old_size : 0U;
-                return result;
-            }
-        };
         static constexpr std::size_t kMaxAbilityArguments = 8U;
         static constexpr std::size_t kMaxAbilityResults = 4U;
         static constexpr std::int32_t kInvalidCall = -1;
@@ -91,7 +66,9 @@ namespace lux::simulation::script
         struct ThreadCreateRequest final
         {
             lua_State* thread{};
-            int reference{LUA_NOREF};
+            int roots_ref{LUA_NOREF};
+            std::size_t root_slot{};
+            bool rooted{};
             int function_ref{LUA_NOREF};
             int self_ref{LUA_NOREF};
             const lux_script_value_slot* arguments{};
@@ -104,10 +81,11 @@ namespace lux::simulation::script
         static int createThread(lua_State* state)
         {
             auto* request = static_cast<ThreadCreateRequest*>(lua_touserdata(state, 1));
+            lua_rawgeti(state, LUA_REGISTRYINDEX, request->roots_ref);
             auto* thread = lua_newthread(state);
-            const auto reference = luaL_ref(state, LUA_REGISTRYINDEX);
+            lua_rawseti(state, -2, static_cast<lua_Integer>(request->root_slot + 1U));
             request->thread = thread;
-            request->reference = reference;
+            request->rooted = true;
             if (!lua_checkstack(thread, static_cast<int>(request->plain_count) + 2))
                 return luaL_error(state, "Lua invocation stack allocation failed");
             lua_rawgeti(thread, LUA_REGISTRYINDEX, request->function_ref);
@@ -366,7 +344,6 @@ namespace lux::simulation::script
             Instance* instance{};
             PreparedCall* call{};
             lua_State* thread{};
-            int thread_ref{LUA_NOREF};
             ScriptAwaitableId waiting_on;
             std::uint32_t pending_ordinal{};
             EPendingOperation pending_operation{EPendingOperation::NONE};
@@ -427,7 +404,8 @@ namespace lux::simulation::script
         State(
             LuaScriptBackendConfig config
         )
-            : state(engine.state()),
+            : engine([&config] { auto vm = config.vm; vm.track_allocations |= config.track_vm_allocations; return vm; }()),
+              state(engine.state()),
               instance_capacity(config.instance_capacity),
               prepared_call_capacity(config.prepared_call_capacity),
               continuation_capacity(config.continuation_capacity),
@@ -439,12 +417,6 @@ namespace lux::simulation::script
         {
             if (!prepared_abilities.valid() || !prepared_events.valid())
                 return;
-            if (config.track_vm_allocations && state != nullptr)
-            {
-                vm_allocations.original = lua_getallocf(state, &vm_allocations.context);
-                vm_allocations.stats.enabled = true;
-                lua_setallocf(state, &VmAllocationTracker::allocate, &vm_allocations);
-            }
             if (!lux::script::lua::detail::configureLuaVm(
                     state,
                     runtime_info
@@ -463,7 +435,6 @@ namespace lux::simulation::script
                     for (const auto& value : method.results)
                         if (value.prepare != nullptr && !value.prepare(state)) return;
                 }
-            vm_configured = true;
             prototypes.reserve(config.instance_capacity);
             components.assign(
                 config.components.begin(),
@@ -513,32 +484,50 @@ namespace lux::simulation::script
             free_continuations.reserve(continuation_capacity);
             for (std::size_t index = continuation_capacity; index > 0U; --index)
                 free_continuations.push_back(index - 1U);
-            lua_pushcfunction(state, &State::traceback);
-            traceback_ref = luaL_ref(state, LUA_REGISTRYINDEX);
+            if (!lua_checkstack(state, 3)) return;
+            lua_pushcfunction(state, &State::createRoots);
+            lua_pushlightuserdata(state, this);
+            if (lua_pcall(state, 1, 0, 0) != LUA_OK) { lua_pop(state, 1); return; }
+            vm_configured = true;
+        }
+
+        static int createRoots(lua_State* vm)
+        {
+            auto* owner = static_cast<State*>(lua_touserdata(vm, 1));
+            lua_createtable(vm, static_cast<int>(owner->continuation_capacity), 0);
+            for (std::size_t index{}; index < owner->continuation_capacity; ++index)
+            {
+                lua_pushboolean(vm, false);
+                lua_rawseti(vm, -2, static_cast<lua_Integer>(index + 1U));
+            }
+            owner->thread_roots_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
+            lua_pushcfunction(vm, &State::traceback);
+            owner->traceback_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
+            return 0;
+        }
+
+        void clearThreadRoot(std::size_t slot) noexcept
+        {
+            lua_rawgeti(state, LUA_REGISTRYINDEX, thread_roots_ref);
+            lua_pushboolean(state, false);
+            lua_rawseti(state, -2, static_cast<lua_Integer>(slot + 1U));
+            lua_pop(state, 1);
         }
 
         ~State()
         {
-            for (auto& continuation : continuations)
-            {
-                if (continuation.active && continuation.thread_ref != LUA_NOREF)
-                    luaL_unref(state, LUA_REGISTRYINDEX, continuation.thread_ref);
-            }
+            if (!state) return;
+            // The root table owns all remaining VM references and is released once.
+            if (thread_roots_ref != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, thread_roots_ref);
             for (const auto& [asset, prototype] : prototypes)
             {
                 static_cast<void>(asset);
-                if (prototype.table_ref != LUA_NOREF)
-                    luaL_unref(state, LUA_REGISTRYINDEX, prototype.table_ref);
-                if (prototype.environment_ref != LUA_NOREF)
-                    luaL_unref(state, LUA_REGISTRYINDEX, prototype.environment_ref);
+                if (prototype.table_ref != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, prototype.table_ref);
+                if (prototype.environment_ref != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, prototype.environment_ref);
             }
             for (const auto& function : function_bindings)
-            {
-                if (function.function_ref != LUA_NOREF)
-                    luaL_unref(state, LUA_REGISTRYINDEX, function.function_ref);
-            }
-            if (state && traceback_ref != LUA_NOREF)
-                luaL_unref(state, LUA_REGISTRYINDEX, traceback_ref);
+                if (function.function_ref != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, function.function_ref);
+            if (traceback_ref != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, traceback_ref);
         }
 
         [[nodiscard]] static bool identifier(std::string_view value) noexcept
@@ -1697,17 +1686,17 @@ namespace lux::simulation::script
                 }
             } reservation{*this, instance, slot};
             ThreadCreateRequest request;
+            request.roots_ref = thread_roots_ref;
+            request.root_slot = slot;
             request.function_ref = call.function->function_ref;
             request.self_ref = instance.entity_scope ? instance.table_ref : LUA_NOREF;
             request.arguments = frame.args;
             request.plain_count = plain_count;
             const auto status = createThreadProtected(request);
-            const bool missing_root = request.thread == nullptr || request.reference == LUA_NOREF ||
-                request.reference == LUA_REFNIL;
+            const bool missing_root = request.thread == nullptr || !request.rooted;
             if (status != LUA_OK || missing_root || !request.arguments_valid)
             {
-                if (request.reference != LUA_NOREF && request.reference != LUA_REFNIL)
-                    luaL_unref(state, LUA_REGISTRYINDEX, request.reference);
+                if (request.rooted) clearThreadRoot(slot);
                 return lux::cxx::unexpected(!request.arguments_valid ? kMarshalFailure :
                     status == LUA_ERRMEM ? kLuaAllocationFailure : kLuaFailure);
             }
@@ -1719,7 +1708,6 @@ namespace lux::simulation::script
                 std::addressof(instance),
                 std::addressof(call),
                 request.thread,
-                request.reference,
                 {},
                 0U,
                 EPendingOperation::NONE,
@@ -1743,8 +1731,7 @@ namespace lux::simulation::script
             );
             if (continuation.thread != nullptr)
                 lua_settop(continuation.thread, 0);
-            if (continuation.thread_ref != LUA_NOREF)
-                luaL_unref(owner->state, LUA_REGISTRYINDEX, continuation.thread_ref);
+            owner->clearThreadRoot(slot);
             if (continuation.instance == nullptr || continuation.instance->active_continuations == 0U)
                 std::terminate();
             --continuation.instance->active_continuations;
@@ -2069,13 +2056,12 @@ namespace lux::simulation::script
             self.free_instances.push_back(instance_slot);
         }
 
-        // Must outlive ScriptEngine: lua_close may call the original allocator through this diagnostic wrapper.
-        VmAllocationTracker vm_allocations;
         lux::script::lua::ScriptEngine engine;
         lua_State* state{};
         lux::script::lua::LuaRuntimeInfo runtime_info;
         bool vm_configured{};
         int traceback_ref{LUA_NOREF};
+        int thread_roots_ref{LUA_NOREF};
         std::size_t instance_capacity{};
         std::size_t prepared_call_capacity{};
         std::size_t continuation_capacity{};
@@ -2363,6 +2349,8 @@ namespace lux::simulation::script
         if (!each_operation([&](const auto& left) noexcept {
             return each_operation([&](const auto& right) noexcept { return consistent(left, right); });
         })) return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_VALUE_OPERATION);
+        if (config.continuation_capacity > static_cast<std::size_t>((std::numeric_limits<int>::max)()))
+            return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
         std::size_t ability_method_count{};
         for (std::size_t ability_index{}; ability_index < config.abilities.size(); ++ability_index)
         {
@@ -2554,7 +2542,7 @@ namespace lux::simulation::script
             state_->execution_depth_high_water,
             state_->vm_coroutine_resumes,
             state_->vm_coroutine_releases,
-            state_->vm_allocations.stats,
+            state_->engine.allocationStats(),
             abilities.acquire_steps + events.acquire_steps,
             abilities.release_steps + events.release_steps,
             state_->prototypes.size()

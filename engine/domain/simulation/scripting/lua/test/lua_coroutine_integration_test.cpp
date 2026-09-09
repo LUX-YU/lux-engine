@@ -652,11 +652,39 @@ namespace
         return boundary;
     }
 
-    int testCreationOom(std::size_t permitted, bool registry_growth = false)
+    int testFixedRootAtRegistryBoundary()
     {
-        // Discover a real luaL_ref allocation in an identically prepared disposable VM, then
-        // reproduce the prefix. No registry capacity, free-list key or VM layout is assumed.
-        const auto boundary = registry_growth ? observeRegistryGrowth() : RegistryGrowth{};
+        const auto boundary = observeRegistryGrowth();
+        Harness harness{true, 1U, true, true};
+        Provider provider;
+        const auto binding = lux::script::bindScriptAbility<Ability>(provider);
+        const std::array publications{publishScriptAbility(binding)};
+        auto system = harness.create(publications);
+        assert(system && system->prepare());
+        assert(dispatchRuntimeHook(*system, harness.sync_hook) == 1U);
+        auto* vm = g_observed_vm;
+        std::vector<int> padding;
+        for (std::size_t index{}; index < boundary.padding; ++index)
+        {
+            lua_pushboolean(vm, true);
+            padding.push_back(luaL_ref(vm, LUA_REGISTRYINDEX));
+        }
+        assert(padding.back() + 1 == boundary.reference);
+        assert(dispatchRuntimeHook(*system, harness.async_hook) == 1U);
+        assert(provider.pending && provider.reads == 2U && provider.writes == 2U);
+        lua_rawgeti(vm, LUA_REGISTRYINDEX, boundary.reference);
+        assert(lua_isnil(vm, -1));
+        lua_pop(vm, 1);
+        assert(system->shutdown());
+        for (const auto reference : padding) luaL_unref(vm, LUA_REGISTRYINDEX, reference);
+        const auto stats = harness.backend->stats();
+        assert(stats.vm_coroutine_creations == 1U && stats.vm_coroutine_releases == 1U);
+        std::puts("FIXED_ROOT_PASS,registry_boundary_untouched=1,provider_calls=4,roots=1,releases=1");
+        return 0;
+    }
+
+    int testCreationOom(std::size_t permitted)
+    {
         Harness harness{true, 1U, true, true};
         Provider provider;
         const auto binding = lux::script::bindScriptAbility<Ability>(provider);
@@ -669,17 +697,6 @@ namespace
         assert(g_observed_vm && provider.reads == 1U && provider.writes == 1U);
         auto* vm = g_observed_vm;
         const auto base = lua_gettop(vm);
-        std::vector<int> padding;
-        if (registry_growth)
-        {
-            padding.reserve(boundary.padding);
-            for (std::size_t index{}; index < boundary.padding; ++index)
-            {
-                lua_pushboolean(vm, true);
-                padding.push_back(luaL_ref(vm, LUA_REGISTRYINDEX));
-            }
-            assert(!padding.empty() && padding.back() + 1 == boundary.reference);
-        }
         CreationAllocator allocation;
         allocation.original = lua_getallocf(vm, &allocation.context);
         allocation.permitted = permitted;
@@ -696,13 +713,6 @@ namespace
         allocation.armed = false;
         lua_setallocf(vm, allocation.original, allocation.context);
         lua_atpanic(vm, panic);
-        if (registry_growth)
-        {
-            lua_rawgeti(vm, LUA_REGISTRYINDEX, boundary.reference);
-            assert(lua_isnil(vm, -1));
-            lua_pop(vm, 1);
-        }
-        for (const auto reference : padding) luaL_unref(vm, LUA_REGISTRYINDEX, reference);
         assert(allocation.failures != 0U);
         assert(lua_gettop(vm) == base);
         assert(provider.reads == 1U && provider.writes == 1U && !provider.pending);
@@ -728,9 +738,9 @@ namespace
         assert(final.vm_coroutine_creations == final.vm_coroutine_releases);
         assert(final.prepared_ability_slots == 0U && final.prepared_event_slots == 0U);
         std::printf(
-            "CREATION_OOM_PASS,permitted=%zu,registry_growth=%d,failures=%zu,provider_during_failure=0,stack_delta=0,"
+            "CREATION_OOM_PASS,permitted=%zu,failures=%zu,provider_during_failure=0,stack_delta=0,"
             "slot_reused=1,roots=%zu,releases=%zu\n",
-            permitted, registry_growth ? 1 : 0, allocation.failures,
+            permitted, allocation.failures,
             final.vm_coroutine_creations, final.vm_coroutine_releases
         );
         return 0;
@@ -807,7 +817,7 @@ int main(int argc, char** argv)
 {
     if (argc == 3 && std::string_view{argv[1]} == "--creation-oom")
         return testCreationOom(static_cast<std::size_t>(std::strtoul(argv[2], nullptr, 10)));
-    if (argc == 2 && std::string_view{argv[1]} == "--creation-registry-oom") return testCreationOom(2U, true);
+    if (argc == 2 && std::string_view{argv[1]} == "--fixed-root-registry") return testFixedRootAtRegistryBoundary();
     if (argc == 2 && std::string_view{argv[1]} == "--creation-retire") return testCreationReentry(false);
     if (argc == 2 && std::string_view{argv[1]} == "--creation-stop") return testCreationReentry(true);
     Provider provider;

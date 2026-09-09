@@ -1,6 +1,15 @@
 #include <lux/engine/function/script/lua/LuaBoundary.h>
 #include <lua.h>
 #include <lauxlib.h>
+#include <lualib.h>
+
+int luxLuaBootstrap(lua_State* state)
+{
+    const int libraries = LUA_GLIBK | LUA_LOADLIBK | LUA_COLIBK | LUA_DBLIBK | LUA_IOLIBK |
+        LUA_MATHLIBK | LUA_OSLIBK | LUA_STRLIBK | LUA_TABLIBK | LUA_UTF8LIBK;
+    luaL_openselectedlibs(state, libraries, 0);
+    return 0;
+}
 
 static int finishWait(lua_State* state, int status, lua_KContext context)
 {

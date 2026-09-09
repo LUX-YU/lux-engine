@@ -23,6 +23,8 @@ extern "C" {
 #endif
 /* Upvalues 1..3 belong to the caller's prepared provenance. Upvalue 4 is a
  * full userdata containing the immutable worker pointer, never a C++ stack borrow. */
+/* Protected VM bootstrap; explicit libraries, with no owning C++ locals. */
+LUX_FUNCTION_PUBLIC int luxLuaBootstrap(lua_State* state);
 LUX_FUNCTION_PUBLIC int luxLuaBoundaryEntry(lua_State* state);
 #ifdef __cplusplus
 }

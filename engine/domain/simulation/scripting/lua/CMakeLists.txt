@@ -182,8 +182,8 @@ add_test(NAME simulation_script_lua_creation_retire_test
     COMMAND simulation_script_lua_coroutine_integration_test --creation-retire)
 add_test(NAME simulation_script_lua_creation_stop_test
     COMMAND simulation_script_lua_coroutine_integration_test --creation-stop)
-add_test(NAME simulation_script_lua_creation_registry_oom
-    COMMAND simulation_script_lua_coroutine_integration_test --creation-registry-oom)
+add_test(NAME simulation_script_lua_fixed_root_registry_test
+    COMMAND simulation_script_lua_coroutine_integration_test --fixed-root-registry)
 
 if(TARGET script_native_collision_fixture)
     add_executable(

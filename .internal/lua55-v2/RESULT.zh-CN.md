@@ -27,3 +27,5 @@ P1 (`cea6bbcc` 及 fixture 修正至 `c611ca0b`)：原有 Lua 受影响测试 16
 两项新增恢复转换用例通过；立即退休 provider=0，延迟 stop provider=1，均 root 1/释放 1。
 P2：不可变 CodecPlan、VM 内字段名 root、plain 树单次保护读写与 typed 外层构造已实现，验证中。
 P3—P8：待完成，最终报告将登记代码、测量、未采用实验和明确限制。
+
+P2：a459a256，实际 Lua 受影响集合 18/18 通过。P3：创建起接管 allocator、固定 root 数组和显式 GEN/INC 配置；当前准备验证。实际创建请求见 p3-allocation-before.log：216、720、64、64 字节。旧 registry 扩容 OOM 用例改为同一真实扩容边界下无需触碰 registry 空槽的成功断言；逻辑请求 OOM 0/1 与容量复用负例继续保留。

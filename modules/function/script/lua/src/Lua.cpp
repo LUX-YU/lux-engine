@@ -38,9 +38,11 @@ namespace lux::script::lua
         return *this;
     }
 
-    ScriptEngine::ScriptEngine() : impl_(std::make_unique<ScriptEngineImpl>())
+    ScriptEngine::ScriptEngine(LuaVmConfiguration config) : impl_(std::make_unique<ScriptEngineImpl>(config))
     {
     }
+
+    LuaAllocationStats ScriptEngine::allocationStats() const noexcept { return impl_->allocationStats(); }
 
     ScriptEngine::~ScriptEngine()
     {

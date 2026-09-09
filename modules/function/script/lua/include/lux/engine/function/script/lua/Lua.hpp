@@ -1,5 +1,6 @@
 #pragma once
 #include <string_view>
+#include <lux/engine/function/script/lua/LuaAllocation.hpp>
 #include <memory>
 #include <optional>
 #include <lux/cxx/core/move_only_function.hpp>
@@ -36,7 +37,8 @@ namespace lux::script::lua
     class LUX_FUNCTION_PUBLIC ScriptEngine
     {
     public:
-        ScriptEngine();
+        explicit ScriptEngine(LuaVmConfiguration configuration = {});
+        [[nodiscard]] LuaAllocationStats allocationStats() const noexcept;
         ~ScriptEngine();
         lua_State* state();
         std::optional<ScriptRef> parseScript(std::string_view script);

@@ -3,18 +3,34 @@
 #include <lux/engine/function/script/lua/Lua.hpp>
 
 #include <lua.hpp>
+#include <lux/engine/function/script/lua/LuaAllocationCache.hpp>
+#include <lux/engine/function/script/lua/LuaBoundary.h>
 
 namespace lux::script::lua
 {
     class ScriptEngineImpl
     {
     public:
-        ScriptEngineImpl()
+        explicit ScriptEngineImpl(LuaVmConfiguration config) : allocator_(config)
         {
-            L_ = luaL_newstate();
-            if (L_)
-                luaL_openlibs(L_);
+            const bool invalid_mode = config.gc_mode != ELuaGcMode::INCREMENTAL &&
+                config.gc_mode != ELuaGcMode::GENERATIONAL;
+            if (invalid_mode || std::ranges::any_of(config.gc_parameters, [](int value) { return value < -1; }))
+                return;
+            L_ = lua_newstate(&LuaAllocationCache::allocate, &allocator_, config.seed);
+            if (!L_) return;
+            lua_pushcfunction(L_, &luxLuaBootstrap);
+            if (lua_pcall(L_, 0, 0, 0) != LUA_OK)
+            {
+                lua_close(L_);
+                L_ = nullptr;
+                return;
+            }
+            lua_gc(L_, config.gc_mode == ELuaGcMode::GENERATIONAL ? LUA_GCGEN : LUA_GCINC);
+            for (int index{}; index < LUA_GCPN; ++index)
+                if (config.gc_parameters[index] != -1) lua_gc(L_, LUA_GCPARAM, index, config.gc_parameters[index]);
         }
+        [[nodiscard]] LuaAllocationStats allocationStats() const noexcept { return allocator_.stats(); }
 
         ~ScriptEngineImpl()
         {
@@ -87,6 +103,7 @@ namespace lux::script::lua
             lua_pop(L_, 1);
         }
 
+        LuaAllocationCache allocator_; // Construct before VM; destroy after lua_close.
         lua_State* L_ = nullptr;
         ScriptEngine::ErrorHandler on_error_;
     };

@@ -11,6 +11,7 @@ extern "C" {
 LUA_API int luxlua_yieldleaf(lua_State* state, lua_KContext context, lua_KFunction continuation);
 /* VM-wide, including live and released threads. Returns zero when not collected. */
 LUA_API int luxlua_vmleafstats(lua_State* state, unsigned long long* fast, unsigned long long* fallback);
+LUA_API int luxlua_vmcallinfostats(lua_State* state, unsigned long long* inlined, unsigned long long* heap);
 #endif
 #ifdef __cplusplus
 }

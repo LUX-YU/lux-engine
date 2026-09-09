@@ -21,14 +21,14 @@ option(LUX_LUA55_LEAF_YIELD "Build the explicitly qualified Lux leaf-yield revis
 set(LUX_LUA55_PATCH_REVISION "official-5.5.1")
 set(LUX_LUA55_PATCH_SHA256 "none")
 if(LUX_LUA55_LEAF_YIELD)
-    file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/patches/lua55-v3-r1.patch" LUX_LUA55_PATCH_SHA256)
+    file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/patches/lua55-v3-r2.patch" LUX_LUA55_PATCH_SHA256)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     execute_process(COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/apply_leaf.py"
-        --official "${LUX_LUA55_SOURCE_DIR}" --output "${CMAKE_CURRENT_BINARY_DIR}/lux-lua55-v3-r1"
-        --patch "${CMAKE_CURRENT_SOURCE_DIR}/patches/lua55-v3-r1.patch" --revision lux-lua55-v3-r1
+        --official "${LUX_LUA55_SOURCE_DIR}" --output "${CMAKE_CURRENT_BINARY_DIR}/lux-lua55-v3-r2"
+        --patch "${CMAKE_CURRENT_SOURCE_DIR}/patches/lua55-v3-r2.patch" --revision lux-lua55-v3-r2
         COMMAND_ERROR_IS_FATAL ANY)
-    set(LUX_LUA55_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/lux-lua55-v3-r1")
-    set(LUX_LUA55_PATCH_REVISION "lux-lua55-v3-r1")
+    set(LUX_LUA55_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/lux-lua55-v3-r2")
+    set(LUX_LUA55_PATCH_REVISION "lux-lua55-v3-r2")
 endif()
 
 # Explicit library sources: no CLI, compiler main, amalgamation, or VM modifications.
@@ -42,7 +42,7 @@ list(TRANSFORM lua_sources PREPEND "${LUX_LUA55_SOURCE_DIR}/src/")
 add_library(lux_lua55_runtime SHARED ${lua_sources})
 add_library(LuxLua55::Runtime ALIAS lux_lua55_runtime)
 if(LUX_LUA55_LEAF_YIELD)
-    target_compile_definitions(lux_lua55_runtime PUBLIC LUX_LUA55_LEAF_YIELD_REVISION=3)
+    target_compile_definitions(lux_lua55_runtime PUBLIC LUX_LUA55_LEAF_YIELD_REVISION=4)
 endif()
 option(LUX_LUA55_DIAGNOSTICS "Collect VM-wide diagnostic counters outside formal timing builds" OFF)
 if(LUX_LUA55_DIAGNOSTICS)
@@ -121,4 +121,14 @@ if(LUX_LUA55_LEAF_YIELD)
     target_link_libraries(lua55_leaf_contract PRIVATE LuxLua55::Runtime)
     set_target_properties(lua55_leaf_contract PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
     add_test(NAME lua55_leaf_contract COMMAND lua55_leaf_contract)
+endif()
+
+if(LUX_LUA55_LEAF_YIELD)
+    add_executable(lua55_callinfo_contract callinfo_contract.c)
+    target_link_libraries(lua55_callinfo_contract PRIVATE LuxLua55::Runtime)
+    set_target_properties(lua55_callinfo_contract PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
+    if(LUX_LUA55_DIAGNOSTICS)
+        target_compile_definitions(lua55_callinfo_contract PRIVATE LUX_LUA55_DIAGNOSTICS=1)
+    endif()
+    add_test(NAME lua55_callinfo_contract COMMAND lua55_callinfo_contract)
 endif()

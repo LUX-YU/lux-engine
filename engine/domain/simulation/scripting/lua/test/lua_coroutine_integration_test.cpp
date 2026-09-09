@@ -622,8 +622,47 @@ namespace
         }
     };
 
+    struct RegistryGrowth final { std::size_t padding{}; int reference{}; };
+
+    RegistryGrowth observeRegistryGrowth()
+    {
+        Harness harness{true, 1U, true, true};
+        Provider provider;
+        const auto binding = lux::script::bindScriptAbility<Ability>(provider);
+        const std::array publications{publishScriptAbility(binding)};
+        auto system = harness.create(publications);
+        assert(system && system->prepare());
+        assert(dispatchRuntimeHook(*system, harness.sync_hook) == 1U);
+        auto* vm = g_observed_vm;
+        CreationAllocator allocation;
+        allocation.original = lua_getallocf(vm, &allocation.context);
+        allocation.permitted = (std::numeric_limits<std::size_t>::max)();
+        lua_setallocf(vm, &CreationAllocator::allocate, &allocation);
+        allocation.armed = true;
+        RegistryGrowth boundary;
+        for (std::size_t index{}; index < 8192U; ++index)
+        {
+            const auto before = allocation.growths;
+            lua_pushboolean(vm, true);
+            const auto reference = luaL_ref(vm, LUA_REGISTRYINDEX);
+            if (reference >= 256 && allocation.growths != before)
+            {
+                boundary = {index, reference};
+                break;
+            }
+        }
+        allocation.armed = false;
+        lua_setallocf(vm, allocation.original, allocation.context);
+        assert(boundary.reference >= 256 && system->shutdown());
+        std::printf("REGISTRY_CALIBRATION,padding=%zu,next_reference=%d\n", boundary.padding, boundary.reference);
+        return boundary;
+    }
+
     int testCreationOom(std::size_t permitted, bool registry_growth = false)
     {
+        // Discover a real luaL_ref allocation in an identically prepared disposable VM, then
+        // reproduce the prefix. No registry capacity, free-list key or VM layout is assumed.
+        const auto boundary = registry_growth ? observeRegistryGrowth() : RegistryGrowth{};
         Harness harness{true, 1U, true, true};
         Provider provider;
         const auto binding = lux::script::bindScriptAbility<Ability>(provider);
@@ -639,16 +678,13 @@ namespace
         std::vector<int> padding;
         if (registry_growth)
         {
-            // Force the next registry reference across a public integer-key boundary. Keep all
-            // references alive so the upcoming luaL_ref cannot reuse a free-list entry.
-            padding.reserve(1024U);
-            do
+            padding.reserve(boundary.padding);
+            for (std::size_t index{}; index < boundary.padding; ++index)
             {
                 lua_pushboolean(vm, true);
                 padding.push_back(luaL_ref(vm, LUA_REGISTRYINDEX));
-                assert(padding.back() > 0 && padding.size() <= 1024U);
-            } while (padding.back() < 1024);
-            assert(padding.back() == 1024);
+            }
+            assert(!padding.empty() && padding.back() + 1 == boundary.reference);
         }
         CreationAllocator allocation;
         allocation.original = lua_getallocf(vm, &allocation.context);
@@ -668,7 +704,7 @@ namespace
         lua_atpanic(vm, panic);
         if (registry_growth)
         {
-            lua_rawgeti(vm, LUA_REGISTRYINDEX, 1025);
+            lua_rawgeti(vm, LUA_REGISTRYINDEX, boundary.reference);
             assert(lua_isnil(vm, -1));
             lua_pop(vm, 1);
         }

@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <thread>
+#include <type_traits>
 #include "../../../rendering/test/ViewLifetimeTest.hpp"
 
 namespace
@@ -169,6 +170,76 @@ namespace
             require(session->readOutline() && window->frameOpen(), "request does not tear down callback owners");
         }
     };
+    template <class T>
+    constexpr bool fixedOwner = !std::is_move_constructible_v<T> && !std::is_move_assignable_v<T> &&
+                                !std::is_copy_constructible_v<T> && !std::is_copy_assignable_v<T>;
+    static_assert(fixedOwner<application::EditorApplication> && fixedOwner<ui::EditorWindow> &&
+                  fixedOwner<rendering::EditorRenderer> && fixedOwner<rendering::RenderView> &&
+                  fixedOwner<sessions::SceneSession> && fixedOwner<sessions::SceneView> &&
+                  fixedOwner<ui::SceneWorkspace>);
+
+    void foreignOwnerCalls(ui::EditorWindow &window, rendering::EditorRenderer &renderer,
+                           sessions::SceneSession &session, sessions::SceneView &view, ui::SceneWorkspace &workspace)
+    {
+        const auto selection = session.selection();
+        const auto history = session.historyView();
+        const auto before = renderer.statistics();
+        require(history, "owner history before foreign thread rejection");
+        unsigned rejected{};
+        std::thread foreign(
+            [&]
+            {
+                const auto scene = [&](const auto &result)
+                {
+                    require(!result && result.error().code == sessions::ESceneError::WRONG_THREAD,
+                            "Scene owner rejects foreign thread before mutation");
+                    ++rejected;
+                };
+                const auto shell = [&](const auto &result)
+                {
+                    require(!result && result.error().code == ui::EWindowError::WRONG_THREAD,
+                            "Window/Workspace rejects foreign thread before native UI or owner mutation");
+                    ++rejected;
+                };
+                const auto render = [&](const auto &result)
+                {
+                    require(!result && result.error().code == rendering::ERendererError::WRONG_THREAD,
+                            "Renderer rejects foreign thread before queue or lifecycle mutation");
+                    ++rejected;
+                };
+                scene(session.select(std::nullopt));
+                scene(session.readOutline());
+                scene(session.beginClose());
+                scene(session.advanceClose());
+                scene(view.resetCamera());
+                scene(view.moveCamera({}));
+                scene(view.requestExtent({32, 32}));
+                scene(view.synchronize());
+                scene(view.beginClose());
+                scene(view.advanceClose());
+                shell(window.collectInput());
+                shell(window.requestClose());
+                shell(window.closeAfterRendererStopped());
+                shell(workspace.activate());
+                shell(workspace.updateBeforeFrame());
+                shell(workspace.beginClose());
+                shell(workspace.advanceClose());
+                render(renderer.poll(0));
+                render(renderer.beginClose());
+                render(renderer.advanceClose());
+                render(renderer.joinStopped());
+            });
+        foreign.join();
+        const auto after = renderer.statistics();
+        require(rejected == 21 && session.state() == sessions::ESessionState::READY &&
+                    session.selection().current == selection.current &&
+                    session.historyView()->history.current == history->history.current &&
+                    renderer.state() == rendering::ERendererState::READY && before.views == after.views &&
+                    before.runtime_leases == after.runtime_leases && !window.closeRequested() && !window.frameOpen(),
+                "foreign rejection preserves source owners, selection/history and registrations");
+        require(workspace.activate(), "same owner remains usable after all foreign calls");
+        std::printf("owner thread PASS rejected=%u retained_window_renderer_session_view_workspace\n", rejected);
+    }
 } // namespace
 
 int main(int argc, char **argv)
@@ -408,6 +479,7 @@ int main(int argc, char **argv)
         require(workspace_result && !view, "workspace view transfer");
         auto workspace = std::move(*workspace_result);
         require(workspace->activate(), "workspace activation");
+        foreignOwnerCalls(*window, *renderer, *session, *camera, *workspace);
         {
             auto closing_view = sessions::SceneView::create(messages.dispatcherRef(), *session, *renderer);
             require(closing_view, "viewport failure probe owns its SceneView");
@@ -419,6 +491,20 @@ int main(int argc, char **argv)
             require(failure && failure->session == (*closing_view)->sessionId() && failure->renderer &&
                         failure->renderer->code == rendering::ERendererError::STOPPING,
                     "viewport retains exact failed extent action and its Session/render error");
+            std::thread foreign_pane(
+                [&]
+                {
+                    viewport.consumeInput({}, 0.016, {1, 1});
+                    viewport.cancelCapture();
+                    viewport.releaseFrameImages();
+                    require(viewport.frameImages().empty() && viewport.actionFailure() &&
+                                viewport.actionFailure()->code == sessions::ESceneError::WRONG_THREAD,
+                            "foreign Pane calls cannot borrow local state or overwrite its action error");
+                });
+            foreign_pane.join();
+            require(viewport.actionFailure()->renderer->code == rendering::ERendererError::STOPPING &&
+                        viewport.actionFailure()->session == failure->session,
+                    "foreign consumeInput leaves owning-thread failure unchanged");
             const auto closing_deadline = Clock::now() + std::chrono::seconds{10};
             for (;;)
             {
@@ -728,6 +814,19 @@ int main(int argc, char **argv)
             require(snapshot, "owning UI snapshot");
             if (!frame_protocol_checked && !workspace->frameImages().empty() && !session->presentationPending())
             {
+                const auto original_images = workspace->frameImages();
+                const auto original_texture = original_images.front().texture;
+                std::thread foreign_images(
+                    [&]
+                    {
+                        require(workspace->frameImages().empty(), "foreign Workspace cannot borrow live frame images");
+                        workspace->releaseFrameImages();
+                    });
+                foreign_images.join();
+                require(workspace->frameImages().data() == original_images.data() &&
+                            workspace->frameImages().size() == original_images.size() &&
+                            workspace->frameImages().front().texture == original_texture,
+                        "foreign release preserves actual current Pane image owner and texture");
                 const auto *camera_record =
                     rendering::detail::ViewImageAccess::record(workspace->frameImages().front());
                 require(camera_record->camera.origin == std::array<double, 3>{6, 4, 8},

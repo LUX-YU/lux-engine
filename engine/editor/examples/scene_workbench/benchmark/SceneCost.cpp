@@ -55,12 +55,13 @@ int main(int argc, char **argv)
         auto acquired = renderer->acquire();
         assert(acquired);
         auto runtime = std::move(*acquired);
-        std::uint64_t cycle{};
+        std::uint64_t cycle{}, expected_frame{}, poll_count{};
         rendering::ViewImage image;
         rendering::EditorFramePacket pending;
         const auto deadline = Clock::now() + std::chrono::seconds{90};
         const auto poll = [&]
         {
+            ++poll_count;
             assert(Clock::now() < deadline && execution->drainMain(64) && renderer->poll(64));
             assert(renderer->state() == rendering::ERendererState::READY);
         };
@@ -77,8 +78,10 @@ int main(int argc, char **argv)
             assert(snapshot);
             const auto images = workspace->frameImages();
             image = images.empty() ? rendering::ViewImage{} : images.front();
+            expected_frame = renderer->statistics().frames;
             if (!session->presentationPending())
             {
+                ++expected_frame;
                 auto sealed = renderer->sealFrame(*snapshot, images);
                 assert(sealed);
                 pending = std::move(*sealed);
@@ -88,17 +91,13 @@ int main(int argc, char **argv)
         };
         const auto drain = [&]
         {
-            while (pending.valid())
+            while (pending.valid() || renderer->statistics().frames < expected_frame)
             {
                 poll();
-                assert(renderer->trySubmitFrame(pending));
+                if (pending.valid())
+                    assert(renderer->trySubmitFrame(pending));
+                std::this_thread::yield();
             }
-            if (image.lease.valid())
-                while (renderer->imageEvidence(image)->evidence == rendering::EImageEvidence::REQUESTED)
-                {
-                    poll();
-                    std::this_thread::yield();
-                }
         };
         for (;;)
         {
@@ -159,7 +158,7 @@ int main(int argc, char **argv)
         }
         const auto original_checksum = readback();
         Sample sample;
-        sample.begin(renderer->statistics().frames);
+        sample.begin(renderer->statistics().frames, poll_count);
         for (unsigned i = 0; i != measured; ++i)
         {
             const auto tick = Clock::now();

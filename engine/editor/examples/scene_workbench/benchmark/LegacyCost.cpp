@@ -37,9 +37,11 @@ int main(int argc, char **argv)
         auto acquired = presenter->acquire();
         assert(acquired);
         auto runtime = std::move(*acquired);
+        std::uint64_t expected_frame{}, poll_count{};
         const auto deadline = Clock::now() + std::chrono::seconds{90};
         const auto poll = [&]
         {
+            ++poll_count;
             assert(Clock::now() < deadline && app->drainMain(64));
             presenter->pump();
             assert(!presenter->stopping());
@@ -53,6 +55,7 @@ int main(int argc, char **argv)
             draw.drawPanes();
             scene->afterUiFrame(delta, {1, 1});
             draw.finish();
+            expected_frame = presenter->diagnostics().frames + 1;
             assert(presenter->present(ui));
         };
         for (;;)
@@ -73,11 +76,12 @@ int main(int argc, char **argv)
         }
         const auto drain = [&]
         {
-            while (presenter->framePending())
+            while (presenter->framePending() || presenter->diagnostics().frames < expected_frame)
             {
                 poll();
                 // The original presenter retries a retained frame through present(), not pump().
-                assert(presenter->present(ui));
+                if (presenter->framePending())
+                    assert(presenter->present(ui));
                 std::this_thread::yield();
             }
         };
@@ -119,7 +123,7 @@ int main(int argc, char **argv)
         }
         const auto original_checksum = readback();
         Sample sample;
-        sample.begin(presenter->diagnostics().frames);
+        sample.begin(presenter->diagnostics().frames, poll_count);
         for (unsigned i = 0; i != measured; ++i)
         {
             const auto tick = Clock::now();

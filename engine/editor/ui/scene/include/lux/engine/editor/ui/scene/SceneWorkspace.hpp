@@ -16,6 +16,7 @@ namespace lux::editor::ui
     public:
         SceneViewport(lux::object::ObjectDispatcherRef, lux::ui::PaneId, sessions::SceneView &);
         ~SceneViewport() noexcept override;
+        // Owner-thread borrows only. Foreign-thread snapshot returns empty; void helpers reject by doing no work.
         [[nodiscard]] std::span<const rendering::ViewImage> frameImages() const noexcept;
         void cancelCapture() noexcept;
         void consumeInput(const lux::ui::UiInputSnapshot &, double, lux::ui::Vec2) noexcept;
@@ -76,6 +77,7 @@ namespace lux::editor::ui
         [[nodiscard]] WorkspaceId id() const noexcept;
         [[nodiscard]] WindowResult<void> updateBeforeFrame() noexcept;
         [[nodiscard]] WindowResult<void> afterDraw(double, lux::ui::Vec2) noexcept;
+        // Foreign threads cannot borrow or release the Pane's current frame images.
         void releaseFrameImages() noexcept;
         [[nodiscard]] WindowResult<void> activate() noexcept;
         [[nodiscard]] std::span<const rendering::ViewImage> frameImages() const noexcept;

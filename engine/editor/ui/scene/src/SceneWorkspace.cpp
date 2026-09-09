@@ -261,10 +261,14 @@ namespace lux::editor::ui
     }
     std::span<const rendering::ViewImage> SceneWorkspace::frameImages() const noexcept
     {
+        if (!impl_->correctThread())
+            return {};
         return impl_->viewport ? impl_->viewport->frameImages() : std::span<const rendering::ViewImage>{};
     }
     void SceneWorkspace::releaseFrameImages() noexcept
     {
+        if (!impl_->correctThread())
+            return;
         if (impl_->viewport)
             impl_->viewport->releaseFrameImages();
     }

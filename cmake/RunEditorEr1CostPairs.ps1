@@ -42,8 +42,10 @@ for ($pair = 1; $pair -le 5; ++$pair) {
     }
     $old = Get-Content -LiteralPath "$OutputDirectory/$pair-legacy.json" -Raw | ConvertFrom-Json
     $new = Get-Content -LiteralPath "$OutputDirectory/$pair-scene.json" -Raw | ConvertFrom-Json
+    if ($old.wait_boundary -ne 'per-frame-recorded' -or $new.wait_boundary -ne 'per-frame-recorded' -or
+        $old.work_polls -ne 500 -or $new.work_polls -ne 500) { throw "Pair $pair has invalid measurement boundaries" }
     foreach ($field in @('configuration', 'warmup', 'iterations', 'view_count', 'cadence_seconds',
-                         'completed_scene_frames', 'verification_frames', 'close_completed', 'checksum')) {
+                         'completed_scene_frames', 'verification_frames', 'wait_boundary', 'close_completed', 'checksum')) {
         if ($old.$field -ne $new.$field) { throw "Pair $pair has unequal $field" }
     }
     if (($old.window -join ',') -ne ($new.window -join ',') -or
@@ -58,6 +60,8 @@ for ($pair = 1; $pair -le 5; ++$pair) {
         legacy_process_cpu = $old.process_cpu_seconds; candidate_process_cpu = $new.process_cpu_seconds
         legacy_work_cycles = $old.owner_work_cycles; candidate_work_cycles = $new.owner_work_cycles
         legacy_wait_cycles = $old.owner_wait_cycles; candidate_wait_cycles = $new.owner_wait_cycles
+        legacy_work_polls = $old.work_polls; candidate_work_polls = $new.work_polls
+        legacy_wait_polls = $old.wait_polls; candidate_wait_polls = $new.wait_polls
         legacy_close_wall = $old.close_wall_seconds; candidate_close_wall = $new.close_wall_seconds
     }
     $pairs | Export-Csv -LiteralPath "$OutputDirectory/pairs.csv" -NoTypeInformation

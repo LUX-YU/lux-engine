@@ -27,9 +27,12 @@ namespace er1_cost
         double elapsed{}, owner_used{}, process_used{};
         std::uint64_t frames_before{}, frames_after{}, checksum{};
         std::uint64_t work_cycles{}, wait_cycles{};
+        std::uint64_t work_polls{}, wait_polls{};
+        const std::uint64_t *poll_count{};
         unsigned iterations{};
-        void begin(std::uint64_t frames)
+        void begin(std::uint64_t frames, const std::uint64_t &polls)
         {
+            poll_count = &polls;
             frames_before = frames;
             owner_cpu = cpu(false);
             process_cpu = cpu(true);
@@ -39,7 +42,9 @@ namespace er1_cost
         {
             const auto before = Clock::now();
             const auto first_cycle = cycles();
+            const auto first_poll = *poll_count;
             fn();
+            work_polls += *poll_count - first_poll;
             work_cycles += cycles() - first_cycle;
             work_wall += seconds(Clock::now() - before);
         }
@@ -47,7 +52,9 @@ namespace er1_cost
         {
             const auto before = Clock::now();
             const auto first_cycle = cycles();
+            const auto first_poll = *poll_count;
             fn();
+            wait_polls += *poll_count - first_poll;
             wait_cycles += cycles() - first_cycle;
             wait_wall += seconds(Clock::now() - before);
         }
@@ -67,11 +74,13 @@ namespace er1_cost
                    << "\n\"warmup\":" << warmup << ",\n\"iterations\":" << iterations
                    << ",\n\"view_count\":1,\n\"window\":[1600,900],\n\"extent\":[1024,576],"
                    << "\n\"verification_frames\":8,"
+                   << "\n\"wait_boundary\":\"per-frame-recorded\","
                    << "\n\"cadence_seconds\":0.008,\n\"completed_scene_frames\":" << frames_after - frames_before
                    << ",\n\"work_wall_seconds\":" << work_wall << ",\n\"explicit_wait_seconds\":" << wait_wall
                    << ",\n\"elapsed_seconds\":" << elapsed << ",\n\"owner_cpu_seconds\":" << owner_used
                    << ",\n\"process_cpu_seconds\":" << process_used << ",\n\"close_wall_seconds\":" << close_wall
                    << ",\n\"owner_work_cycles\":" << work_cycles << ",\n\"owner_wait_cycles\":" << wait_cycles
+                   << ",\n\"work_polls\":" << work_polls << ",\n\"wait_polls\":" << wait_polls
                    << ",\n\"close_completed\":true,\n\"checksum\":\"" << checksum << "\"\n}\n";
             assert(output.good());
         }

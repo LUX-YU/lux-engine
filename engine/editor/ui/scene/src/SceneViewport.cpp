@@ -56,24 +56,34 @@ namespace lux::editor::ui
     }
     std::span<const rendering::ViewImage> SceneViewport::frameImages() const noexcept
     {
+        if (!dispatcherRef().isCurrent())
+            return {};
         return {impl_->images.data(), impl_->image_count};
     }
     void SceneViewport::releaseFrameImages() noexcept
     {
+        if (!dispatcherRef().isCurrent())
+            return;
         impl_->images[0] = {};
         impl_->image_count = 0;
     }
     void SceneViewport::cancelCapture() noexcept
     {
+        if (!dispatcherRef().isCurrent())
+            return;
         impl_->capture = Impl::ECapture::NONE;
     }
     std::optional<sessions::SceneFailure> SceneViewport::actionFailure() const noexcept
     {
+        if (!dispatcherRef().isCurrent())
+            return sessions::SceneFailure{sessions::ESceneError::WRONG_THREAD};
         return impl_->action_failure;
     }
     void SceneViewport::consumeInput(const lux::ui::UiInputSnapshot &input, double seconds,
                                      lux::ui::Vec2 scale) noexcept
     {
+        if (!dispatcherRef().isCurrent())
+            return;
         const auto accept = [&](const sessions::SceneResult<void> &result, bool explicit_action = false)
         {
             if (!result)

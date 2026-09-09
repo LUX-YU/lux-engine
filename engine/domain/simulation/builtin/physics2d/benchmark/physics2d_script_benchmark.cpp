@@ -781,6 +781,18 @@ namespace
         if (harness.system->activeInstanceCount() != options.size ||
             harness.physics->stats().overlap_queries == query_start)
             throw std::runtime_error("Physics2D mixed observation mismatch");
+        const auto steady = harness.system->stats();
+        std::printf("INTEGRITY,physics,steady,invocation_errors=%llu,instances=%zu,resumes=%llu,queue=%zu\n",
+            steady.invocation_failures, steady.active_instances, steady.backend_resume_calls, steady.resume_queue_depth);
+        if (steady.invocation_failures != 0U || !harness.system->shutdown())
+            throw std::runtime_error("Physics2D mixed shutdown failed");
+        const auto closed = harness.system->stats();
+        const bool retained = closed.active_instances != 0U || closed.active_continuations != 0U ||
+            closed.active_awaitables != 0U || closed.active_event_waiters != 0U || closed.resume_queue_depth != 0U;
+        if (retained || closed.invocation_failures != 0U)
+            throw std::runtime_error("Physics2D mixed cleanup or error count mismatch");
+        std::printf("INTEGRITY,physics,shutdown,invocation_errors=%llu,instances=0,backlog=0\n",
+            closed.invocation_failures);
     }
 }
 

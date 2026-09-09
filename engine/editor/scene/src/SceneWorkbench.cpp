@@ -230,9 +230,13 @@ namespace lux::editor::workbench
                 if (result && result->get().status == 0 && result->get().written == result->get().needed &&
                     result->get().written <= diagnostic_timing_text.size())
                 {
-                    std::ofstream output{diagnostic_directory / "gpu-timing.txt"};
+                    std::ofstream output{diagnostic_directory /
+                        (diagnostic_phase == 2 ? "gpu-scene-timing.txt" : "gpu-timing.txt")};
                     output.write(diagnostic_timing_text.data(), result->get().written);
                 }
+                diagnostic_timing = {};
+                if (diagnostic_phase == 2)
+                    return;
                 closing = true;
                 camera.releaseCapture();
                 port->setViewFrame({});
@@ -302,6 +306,9 @@ namespace lux::editor::workbench
                     scene->registry().clear();
                 ++diagnostic_phase;
                 diagnostic_next_frame = port->diagnostics().frames + 40;
+                if (diagnostic_phase == 2)
+                    diagnostic_timing = runtime.control().queryGpuTiming(render_scene,
+                        diagnostic_timing_text.data(), diagnostic_timing_text.size());
                 if (diagnostic_phase == 5)
                 {
                     diagnostic_passed = diagnostic_checksums[0] != diagnostic_checksums[1] &&

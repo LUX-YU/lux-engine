@@ -287,9 +287,13 @@ template<int N> static void deepStackCase()
     std::printf("CODEC_STACK_BEGIN,depth=%zu,required=%u\n", Codec::depth, Codec::plan().stack);
     LuaValueWriter writer{state};
     assert(Codec::push(writer, value) && lua_gettop(state) == 1);
-    LuaValueReader reader{state, 1};
-    auto decoded = Codec::read(reader);
-    assert(decoded && nestedLeaf(*decoded) == 73 && lua_gettop(state) == 1);
+    // Exercise the exact typed read callback and construction separately: MSVC's expected<T>
+    // converting-constructor probes exceed its initializer nesting limit for this recursive T.
+    std::array<double, Codec::plainCount()> scratch;
+    assert(detail::LuaValueAccess::readPlan(state, 1, Codec::plan(), scratch));
+    std::size_t cursor{};
+    auto decoded = Codec::consumePlain(scratch, cursor);
+    assert(nestedLeaf(decoded) == 73 && cursor == scratch.size() && lua_gettop(state) == 1);
     assert(Codec::push(writer, value) && lua_gettop(state) == 2 && !lua_rawequal(state, 1, 2));
     lua_close(state);
     std::printf("CODEC_STACK_PASS,depth=%zu,bidirectional=1,independent_tables=1\n", Codec::depth);

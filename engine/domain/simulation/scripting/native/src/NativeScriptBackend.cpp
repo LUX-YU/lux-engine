@@ -51,6 +51,31 @@ namespace lux::simulation::script
             std::vector<PreparedLocalAsyncStart> local_abilities;
             std::vector<PreparedEvent> events;
             lux_script_native_instance_context native_context{};
+            [[nodiscard]] std::size_t bindingBytes() const noexcept
+            {
+                return abilities.capacity() * sizeof(lux_script_prepared_ability) +
+                    local_abilities.capacity() * sizeof(PreparedLocalAsyncStart) + events.capacity() * sizeof(PreparedEvent);
+            }
+            void resetForReuse() noexcept
+            {
+                native_context = {};
+                abilities.clear();
+                local_abilities.clear();
+                events.clear();
+                module = nullptr;
+                state = nullptr;
+                state_size = 0U;
+                state_align = 1U;
+                state_allocation = {};
+            }
+        };
+
+        struct BindingCapacityUpdate final
+        {
+            std::size_t& total;
+            const Instance& instance;
+            const std::size_t previous{instance.bindingBytes()};
+            ~BindingCapacityUpdate() { total += instance.bindingBytes() - previous; }
         };
 
         struct PreparedCall final
@@ -267,6 +292,7 @@ namespace lux::simulation::script
             const ScriptInstanceCreateContext& context
         ) noexcept
         {
+            BindingCapacityUpdate observation{retained_binding_bytes, instance};
             const auto imports = instance.module->module->abilityImports();
             if (imports.size() > config.max_ability_imports_per_module)
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
@@ -379,6 +405,7 @@ namespace lux::simulation::script
             const ScriptInstanceCreateContext& context
         ) noexcept
         {
+            BindingCapacityUpdate observation{retained_binding_bytes, instance};
             const auto imports = instance.module->module->eventWaitImports();
             if (imports.size() != context.events.size() || imports.size() > config.max_event_wait_imports_per_module)
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
@@ -764,7 +791,7 @@ namespace lux::simulation::script
             const auto instance_slot = self.free_instances.back();
             self.free_instances.pop_back();
             auto* instance = std::addressof(self.instances[instance_slot]);
-            *instance = {};
+            instance->resetForReuse();
             instance->module = module;
             instance->state_size = body->state_size;
             instance->state_align = body->state_align;
@@ -773,7 +800,7 @@ namespace lux::simulation::script
                 const auto allocation = self.state_storage.acquire(module->state_class, body->state_size);
                 if (!allocation)
                 {
-                    *instance = {};
+                    instance->resetForReuse();
                     self.free_instances.push_back(instance_slot);
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
                 }
@@ -794,7 +821,7 @@ namespace lux::simulation::script
             {
                 if (instance->state)
                     static_cast<void>(self.state_storage.release(instance->state_allocation));
-                *instance = {};
+                instance->resetForReuse();
                 self.free_instances.push_back(instance_slot);
                 return abilities;
             }
@@ -803,7 +830,7 @@ namespace lux::simulation::script
             {
                 if (instance->state)
                     static_cast<void>(self.state_storage.release(instance->state_allocation));
-                *instance = {};
+                instance->resetForReuse();
                 self.free_instances.push_back(instance_slot);
                 return events;
             }
@@ -915,7 +942,7 @@ namespace lux::simulation::script
             const auto instance_slot = static_cast<std::size_t>(
                 instance - self.instances.data()
             );
-            *instance = {};
+            instance->resetForReuse();
             self.free_instances.push_back(instance_slot);
             if (self.live_instances != 0U)
                 --self.live_instances;
@@ -926,6 +953,7 @@ namespace lux::simulation::script
         std::size_t module_capacity{};
         std::size_t instance_capacity{};
         std::size_t live_instances{};
+        std::size_t retained_binding_bytes{};
         NativeScriptRecordLayoutResolver record_layouts;
         std::vector<lux::script::native::ScriptAbilityNativeContribution> ability_contributions;
         std::vector<ModuleEntry> modules;
@@ -1043,7 +1071,7 @@ namespace lux::simulation::script
             if (!frame_plans.empty())
             {
                 auto created = detail::BoundedClassStorage::create(
-                    frame_plans, config.continuation_frame_storage_bytes, config.continuation_capacity);
+                    frame_plans, config.continuation_frame_storage_bytes, config.continuation_capacity, UINT64_MAX, config.observe_storage);
                 if (!created) return;
                 frame_storage = std::move(*created);
             }
@@ -1051,7 +1079,7 @@ namespace lux::simulation::script
             if (!state_plans.empty())
             {
                 auto created = detail::BoundedClassStorage::create(
-                    state_plans, config.state_storage_bytes, config.instance_capacity);
+                    state_plans, config.state_storage_bytes, config.instance_capacity, UINT64_MAX, config.observe_storage);
                 if (!created)
                     return;
                 state_storage = std::move(*created);
@@ -1109,7 +1137,9 @@ namespace lux::simulation::script
             states.live_bytes,
             stats.live_bytes,
             stats.occupied_bytes,
-            states.capacity_failures
+            states.capacity_failures,
+            state_->config.observe_storage,
+            state_->retained_binding_bytes
         };
     }
 

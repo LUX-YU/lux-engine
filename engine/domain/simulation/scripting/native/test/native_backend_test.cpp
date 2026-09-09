@@ -260,7 +260,7 @@ int main()
             .storage_populations = std::array{
                 lux::simulation::script::NativeScriptStoragePopulation{module.get(), 3U, 4U}
             },
-            .state_storage_bytes = 64U * 1024U * 1024U
+            .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = true
         }
     );
     assert(*backend);
@@ -326,7 +326,7 @@ int main()
                 .storage_populations = std::array{
                     lux::simulation::script::NativeScriptStoragePopulation{module.get(), Population, 1U}
                 },
-                .state_storage_bytes = 64U * 1024U * 1024U
+                .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = true
             }
         };
         assert(spread_backend);
@@ -605,7 +605,7 @@ int main()
             .storage_populations = std::array{
                 lux::simulation::script::NativeScriptStoragePopulation{step_module.get(), 1U, 2U}
             },
-            .state_storage_bytes = 64U * 1024U * 1024U
+            .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = true
         }
     };
     assert(step_backend);
@@ -674,7 +674,7 @@ int main()
                 .max_continuation_frame_bytes = 256U, .continuation_frame_storage_bytes = 5120U,
                 .abilities = std::span{&contribution, 1U},
                 .storage_populations = std::array{NativeScriptStoragePopulation{step_module.get(), 1U, 2U}},
-                .state_storage_bytes = 64U * 1024U * 1024U
+                .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = true
             }
         };
         assert(rejected);
@@ -765,4 +765,24 @@ int main()
     step_descriptor.releaseMethod(step_descriptor.context, step_instance, step_method);
     step_descriptor.releaseMethod(step_descriptor.context, step_instance, read_method);
     step_descriptor.destroyInstance(step_descriptor.context, step_instance);
+    const auto retained = step_backend.stats().retained_binding_bytes;
+    assert(retained > 0U);
+    for (std::uint32_t i{}; i < 32U; ++i)
+    {
+        ScriptBackendInstance replacement;
+        ScriptInstanceCreateContext context{lux::asset::AssetId{step_id_bytes}, SimulationScriptScope{}, nullptr,
+            {i + 2U, i + 2U}, capabilities};
+        assert(step_descriptor.createInstance(step_descriptor.context, context, *step_artifact_result, replacement) ==
+            EScriptBackendResult::SUCCESS);
+        ScriptBackendPreparedMethod read;
+        assert(step_descriptor.prepareMethod(step_descriptor.context, replacement, read_state, read) ==
+            EScriptBackendResult::SUCCESS);
+        state_value = 99U;
+        assert(read.synchronous.invoke(read.synchronous.context, &read_frame) == 0 && state_value == 0U);
+        step_descriptor.releaseMethod(step_descriptor.context, replacement, read);
+        step_descriptor.destroyInstance(step_descriptor.context, replacement);
+        assert(step_backend.stats().active_states == 0U && step_backend.stats().active_frames == 0U);
+        assert(step_backend.stats().retained_binding_bytes == retained);
+    }
+    std::printf("NATIVE_BINDING_REUSE,cycles=32,retained=%zu,zeroed_state=1,closed=1\n", retained);
 }

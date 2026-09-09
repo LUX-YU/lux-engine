@@ -714,6 +714,7 @@ namespace
     struct BenchmarkOptions final
     {
         std::string group;
+        bool storage_accounting{};
         std::size_t size{2500U};
         std::size_t frames{30U};
         std::size_t warmups{5U};
@@ -741,6 +742,11 @@ namespace
             const std::string_view value{argv[index]};
             if (key == "--group")
                 result.group = value;
+            else if (key == "--storage-accounting")
+            {
+                if (value != "on" && value != "off") return std::nullopt;
+                result.storage_accounting = value == "on";
+            }
             else if (key == "--size")
             {
                 if (!parseSize(value, result.size))
@@ -929,7 +935,7 @@ namespace
                         std::addressof(*native_module), options.size, options.size
                     }
                 },
-                .state_storage_bytes = 64U * 1024U * 1024U
+                .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = options.storage_accounting
             }
         };
         if (!backend)
@@ -1269,7 +1275,7 @@ int main(int argc, char** argv)
                     std::addressof(*native_module), 1U, 2U
                 }
             },
-            .state_storage_bytes = 64U * 1024U * 1024U
+            .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = true
         }
     };
     assert(backend);
@@ -1417,7 +1423,7 @@ int main(int argc, char** argv)
                     std::addressof(*event_module), 1U, 2U
                 }
             },
-            .state_storage_bytes = 64U * 1024U * 1024U
+            .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = true
         }
     };
     assert(event_backend);
@@ -1447,7 +1453,7 @@ int main(int argc, char** argv)
                     std::addressof(*event_module), 1U, 2U
                 }
             },
-            .state_storage_bytes = 64U * 1024U * 1024U
+            .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = true
         }
     };
     assert(mismatched_backend);

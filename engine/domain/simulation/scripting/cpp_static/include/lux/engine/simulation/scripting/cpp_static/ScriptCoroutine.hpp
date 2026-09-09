@@ -145,8 +145,7 @@ namespace lux::simulation::script
 
         struct FrameHeader final
         {
-            detail::BoundedClassStorage* storage{};
-            detail::BoundedClassStorage::Allocation allocation;
+            detail::BoundedClassStorage::Ticket ticket;
         };
 
         ScriptCoroutineContext(
@@ -186,6 +185,7 @@ namespace lux::simulation::script
             {
                 return nullptr;
             }
+            alignment = (std::max)(alignment, alignof(FrameHeader));
             const auto padding = sizeof(FrameHeader) + alignment - 1U;
             if (size > (std::numeric_limits<std::size_t>::max)() - padding)
                 return nullptr;
@@ -195,7 +195,7 @@ namespace lux::simulation::script
             const auto raw = reinterpret_cast<std::uintptr_t>(allocation->data) + sizeof(FrameHeader);
             const auto aligned = (raw + alignment - 1U) & ~(static_cast<std::uintptr_t>(alignment) - 1U);
             auto* header = reinterpret_cast<FrameHeader*>(aligned - sizeof(FrameHeader));
-            std::construct_at(header, FrameHeader{frame_storage_, *allocation});
+            std::construct_at(header, FrameHeader{frame_storage_->ticket(*allocation)});
             return reinterpret_cast<void*>(aligned);
         }
 
@@ -206,11 +206,10 @@ namespace lux::simulation::script
             auto* header = reinterpret_cast<FrameHeader*>(
                 static_cast<std::byte*>(frame) - sizeof(FrameHeader)
             );
-            auto* storage = header->storage;
-            const auto allocation = header->allocation;
+            const auto ticket = header->ticket;
             std::destroy_at(header);
-            if (storage != nullptr)
-                static_cast<void>(storage->release(allocation));
+            if (ticket.owner != nullptr)
+                static_cast<void>(ticket.owner->release(ticket));
         }
 
         void activate(ScriptStepContext& step, const ScriptResumePacket* packet) noexcept
@@ -618,7 +617,8 @@ namespace lux::simulation::script
 
         [[nodiscard]] static constexpr std::size_t frameOverhead(std::size_t alignment) noexcept
         {
-            return sizeof(ScriptCoroutineContext::FrameHeader) + alignment - 1U;
+            return sizeof(ScriptCoroutineContext::FrameHeader) +
+                (std::max)(alignment, alignof(ScriptCoroutineContext::FrameHeader)) - 1U;
         }
 
         static void activate(

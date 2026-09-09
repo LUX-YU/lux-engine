@@ -435,7 +435,7 @@ struct CppStaticScriptBackend::State final
                 if (owned_bytes != 0U) index.argument_class = {1U};
                 auto frames = detail::BoundedClassStorage::create(
                     std::span{plans}.first(owned_bytes == 0U ? 1U : 2U),
-                    pool.coroutine_frame_storage_bytes, pool.coroutine_capacity * 2U);
+                    pool.coroutine_frame_storage_bytes, pool.coroutine_capacity * 2U, UINT64_MAX, pool.observe_storage);
                 if (!frames)
                 {
                     error = frames.error() == detail::EClassStorageError::ALLOCATION_FAILURE
@@ -1017,6 +1017,7 @@ CppStaticScriptBackendStats CppStaticScriptBackend::stats() const noexcept
         state_->artifact_associations.capacity() * sizeof(State::ArtifactAssociation) +
         state_->free_associations.capacity() * sizeof(std::size_t) + state_->association_import_bytes;
     result.artifact_index_bucket_count = state_->artifact_index.bucket_count();
+    result.frame_observation_collected = !state_->descriptor_indexes.empty();
     for (const auto &descriptor : state_->descriptor_indexes)
     {
         result.prepared_method_storage_bytes += descriptor.prepared_abilities.capacity() *
@@ -1024,6 +1025,8 @@ CppStaticScriptBackendStats CppStaticScriptBackend::stats() const noexcept
             descriptor.free_ability_blocks.capacity() * sizeof(std::size_t);
         const auto stats = descriptor.coroutine_frames.stats();
         result.frame_storage_bytes += stats.arena_bytes;
+        result.frame_metadata_bytes += stats.metadata_bytes;
+        result.frame_observation_collected = result.frame_observation_collected && stats.observation_collected;
         result.active_frames += descriptor.active_coroutines;
         result.frame_high_water += descriptor.coroutine_high_water;
         result.frame_capacity_failures += stats.capacity_failures;

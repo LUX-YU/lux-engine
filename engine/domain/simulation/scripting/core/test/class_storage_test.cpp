@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <cstdio>
 #include <limits>
 #include <vector>
 
@@ -16,7 +17,7 @@ int main()
         StorageClassPlan{32U, 16U, 4096U, 0U}
     };
     assert(!BoundedClassStorage::create(plans, 16384U, 256U)); // Metadata also consumes the budget.
-    auto created = BoundedClassStorage::create(plans, 65536U, 256U);
+    auto created = BoundedClassStorage::create(plans, 65536U, 256U, UINT64_MAX, true);
     assert(created);
     auto storage = std::move(*created);
     const auto small = storage.select(48U, 32U);
@@ -88,5 +89,32 @@ int main()
     assert(mixed->stats().reserved_slots == 320U);
     assert(mixed->stats().metadata_bytes - large_only->stats().metadata_bytes < 4096U);
     assert(mixed->stats().arena_bytes - large_only->stats().arena_bytes == 64U);
+    for (const bool observe : {false, true})
+    {
+        auto checked = BoundedClassStorage::create(plans, 65536U, 2U, 3U, observe);
+        auto foreign = BoundedClassStorage::create(plans, 65536U, 2U, 3U, observe);
+        assert(checked && foreign);
+        const auto handle = checked->select(48U, 32U);
+        const auto a = checked->acquire(handle, 48U);
+        assert(a);
+        const auto ticket = checked->ticket(*a);
+        assert(!foreign->release(ticket));
+        auto wrong = *a;
+        wrong.data = static_cast<std::byte*>(wrong.data) + 1;
+        assert(!checked->release(wrong));
+        assert(checked->release(ticket));
+        const auto b = checked->acquire(handle, 48U);
+        assert(b && !checked->release(ticket));
+        assert(checked->release(checked->ticket(*b)));
+        const auto last = checked->acquire(handle, 48U);
+        assert(last && checked->release(*last));
+        assert(!checked->acquire(handle, 48U));
+        const auto stats = checked->stats();
+        assert(stats.active_allocations == 0U && stats.capacity_failures == 1U);
+        assert(stats.observation_collected == observe);
+        assert(observe ? stats.allocation_high_water == 1U : stats.acquire_steps == 0U);
+        std::printf("STORAGE_TICKET,observe=%d,owner=1,generation=1,allocation_checks=1,exhaustion=1,ticket=%zu\n",
+            observe, sizeof(BoundedClassStorage::Ticket));
+    }
     return 0;
 }

@@ -29,6 +29,7 @@ struct CppStaticScriptPoolDescription final
     std::size_t coroutine_frame_storage_alignment{alignof(std::max_align_t)};
     std::size_t prepared_method_capacity{};
     std::size_t max_coroutine_frame_bytes{512U};
+    bool observe_storage{};
 };
 
 struct CppStaticScriptBackendStats final
@@ -46,6 +47,8 @@ struct CppStaticScriptBackendStats final
     std::size_t cached_artifacts{};
     std::size_t artifact_association_storage_bytes{};
     std::size_t artifact_index_bucket_count{};
+    std::size_t frame_metadata_bytes{};
+    bool frame_observation_collected{};
 };
 
 class LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC CppStaticScriptBackend final

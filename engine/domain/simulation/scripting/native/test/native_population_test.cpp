@@ -63,7 +63,7 @@ namespace
             .max_continuation_frame_bytes = zero_coroutines ? 0U : 1024U,
             .continuation_frame_storage_bytes = zero_coroutines ? 0U : 16384U,
             .continuation_frame_storage_alignment = 16U,
-            .storage_populations = populations, .state_storage_bytes = 16384U
+            .storage_populations = populations, .state_storage_bytes = 16384U, .observe_storage = true
         };
         NativeScriptBackend backend{{&modules, &Modules::resolve}, config};
         if (!backend)

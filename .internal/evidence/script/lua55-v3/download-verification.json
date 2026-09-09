@@ -1,0 +1,10 @@
+{
+  "url": "https://raw.githubusercontent.com/LUX-YU/lux-engine/ca3b891ccda8d8608fa225e9f8899915c4bb2d05/.internal/evidence/script/lua55-v3/raw-logs.zip",
+  "archive_commit": "ca3b891ccda8d8608fa225e9f8899915c4bb2d05",
+  "sha256": "137ec433458c23eff4f53d8db8eb57f78508b641364ae6a0d2bb494ac6d4f483",
+  "bytes": 2043487,
+  "verified": true,
+  "files_verified": 479,
+  "engine_qualification": "e06208deb29b9b1de52fe49a129091f693bb7e08",
+  "utc": "2026-09-09T14:41:34.666247+00:00"
+}

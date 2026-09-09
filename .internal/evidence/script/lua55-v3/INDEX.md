@@ -31,3 +31,7 @@ MANIFEST.json 记录每项路径、大小、SHA-256；打包后已逐项读回�
 正式 VM counters OFF 的原始零输出不解释为“零工作”；解释后的 result.json/analysis.json 使用 null。
 计时只含 30 个有效 AB/BA/AB 进程，不含 profile、内存或 debugger。
 迁址隐藏了实际资格源码/两构建树/原 SDK；开发克隆因占用保持可见，不能声称所有源码都消失。
+
+固定归档提交：`ca3b891ccda8d8608fa225e9f8899915c4bb2d05`。
+[固定提交下载 ZIP](https://raw.githubusercontent.com/LUX-YU/lux-engine/ca3b891ccda8d8608fa225e9f8899915c4bb2d05/.internal/evidence/script/lua55-v3/raw-logs.zip) · [远端下载及逐项哈希验证](download-verification.json)。
+归档已从远端重新取得，SHA-256 与全部 479 项文件一致；未重打包。

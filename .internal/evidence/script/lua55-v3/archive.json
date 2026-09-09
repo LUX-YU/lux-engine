@@ -5,5 +5,6 @@
   "bytes": 2043487,
   "files": 479,
   "binary_products_included": false,
-  "all_file_hashes_reverified": true
+  "all_file_hashes_reverified": true,
+  "archive_commit": "ca3b891ccda8d8608fa225e9f8899915c4bb2d05"
 }

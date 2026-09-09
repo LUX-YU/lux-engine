@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/function/script/ScriptAbility.hpp>
+#include <lux/engine/simulation/scripting/ScriptLocalAsync.hpp>
 
 #include <cstdint>
 
@@ -24,6 +25,7 @@ namespace lux::simulation::script
         const void* dispatch{};
         std::uint32_t schema_version{1U};
         std::span<const lux::script::ScriptAbilityErasedMethodBinding> methods;
+        PreparedLocalAsyncCatalog local_async;
     };
 
     [[nodiscard]] inline ScriptApiCapabilityPublication publishScriptAbility(

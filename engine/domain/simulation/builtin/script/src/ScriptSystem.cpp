@@ -506,7 +506,8 @@ namespace lux::simulation::script
 
             const auto delay_binding = lux::script::bindScriptAbility<DelayAbility>(state->timer_owner);
             const auto delay_publication = publishScriptAbility(delay_binding);
-            const auto catalog = state->preparer.prepareCatalog(artifacts, backends, capabilities, delay_publication);
+            const auto catalog = state->preparer.prepareCatalog(artifacts, backends, capabilities, delay_publication,
+                state->timer_owner.localCatalog(delay_publication));
             if (!catalog)
                 return lux::cxx::unexpected(catalog.error());
             const auto instance_layout = state->instance_owner.prepare(

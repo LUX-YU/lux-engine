@@ -32,6 +32,7 @@ namespace lux::simulation::script::detail
         void* context{};
         const void* dispatch{};
         ScriptStepContext* step{};
+        PreparedLocalAsyncStart local_async;
         std::uint32_t local_slot{};
         int argument_count{};
         const void* execution{};
@@ -216,12 +217,12 @@ namespace lux::simulation::script::detail
                 );
                 if (!read)
                     return false;
-                result = invokeScriptAbilityAsync<Result>(*access.step,
-                    [&](lux::script::ScriptAbilityCompletion<Result> completion) noexcept {
-                        return values.apply([&](auto&... arguments) noexcept {
+                result = values.apply([&](auto&... arguments) noexcept {
+                    return invokePreparedScriptAbilityAsync<Result>(*access.step, access.local_async,
+                        [&](lux::script::ScriptAbilityCompletion<Result> completion) noexcept {
                             return start(access, arguments..., std::move(completion));
-                        });
-                    });
+                        }, arguments...);
+                });
                 return true;
             }();
             if (!converted) return LuaAbilityProjectionAccess::fail(state, -3, "Script Ability argument type mismatch");

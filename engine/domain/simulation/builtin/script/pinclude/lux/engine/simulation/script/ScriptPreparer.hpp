@@ -19,7 +19,8 @@ namespace lux::simulation::script::detail
             ScriptArtifactResolver artifacts,
             std::span<const ScriptBackendDescriptor> backends,
             std::span<const ScriptApiCapabilityPublication> capabilities,
-            const ScriptApiCapabilityPublication& delay
+            const ScriptApiCapabilityPublication& delay,
+            PreparedLocalAsyncCatalog local_delay
         ) noexcept;
         [[nodiscard]] Result prepareMount(
             ScriptInstances& instances,

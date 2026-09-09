@@ -230,6 +230,7 @@ namespace lux::simulation::script
             const void* dispatch{};
             const lux::script::ScriptAbilityErasedMethodBinding* method{};
             const lux::script::ScriptAbilityMethodDescription* semantic{};
+            PreparedLocalAsyncStart local_async;
         };
 
         struct PreparedEventSource final
@@ -1002,7 +1003,8 @@ namespace lux::simulation::script
                     capability->context,
                     capability->dispatch,
                     std::addressof(*method),
-                    projected.method
+                    projected.method,
+                    capability->local_async.resolve(method->method, capability->context, capability->dispatch)
                 };
             }
             return EScriptBackendResult::SUCCESS;
@@ -2281,6 +2283,7 @@ namespace lux::simulation::script
         result.context = prepared->context;
         result.dispatch = prepared->dispatch;
         result.step = owner->active_execution->step;
+        result.local_async = prepared->local_async;
         result.local_slot = static_cast<std::uint32_t>(local_slot);
         result.argument_count = lua_gettop(state);
         result.execution = owner->active_execution;

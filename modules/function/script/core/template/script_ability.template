@@ -7,6 +7,7 @@
 #include <concepts>
 #include <memory>
 #include <utility>
+#include <tuple>
 {% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
 
 namespace lux::script
@@ -214,12 +215,15 @@ namespace lux::script
         }
 {% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}{% if kind == "async_operation" %}        [[nodiscard]] auto {{ method.spelling }}({% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}{{ type.id }} {{ param.name }}{% if not loop.is_last %}, {% endif %}{% endfor %}) const noexcept
         {
-            return context_->template awaitAbility<{{ method.result_type_id }}>(
+            return context_->template awaitPreparedAbility<{{ method.result_type_id }}>(
                 ability_slot_,
-                [{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}{{ param.name }}_owned = std::remove_cvref_t<{{ type.id }}>({{ param.name }}){% if not loop.is_last %}, {% endif %}{% endfor %}](
+                ScriptApiMethodIdView{"{{ cxx_str(annotation_get_for_or(method, "luxability::method", "id", "")) }}"},
+                std::tuple{ {% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}std::remove_cvref_t<{{ type.id }}>({{ param.name }}){% if not loop.is_last %}, {% endif %}{% endfor %} },
+                [](
                     void* provider,
                     const void* dispatch_value,
-                    ScriptAbilityCompletion<{{ method.result_type_id }}> completion
+                    ScriptAbilityCompletion<{{ method.result_type_id }}> completion{% for param_id in method.params %},{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}
+                    std::remove_cvref_t<{{ type.id }}>& {{ param.name }}_owned{% endfor %}
                 ) noexcept
                 {
                     const auto& dispatch = *static_cast<const typename ScriptAbilityTraits<::{{ rec.fq_name }}>::Dispatch*>(dispatch_value);

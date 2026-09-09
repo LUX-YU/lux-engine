@@ -48,6 +48,7 @@ namespace lux::simulation::script
             std::size_t state_align{1U};
             detail::BoundedClassStorage::Allocation state_allocation;
             std::vector<lux_script_prepared_ability> abilities;
+            std::vector<PreparedLocalAsyncStart> local_abilities;
             std::vector<PreparedEvent> events;
             lux_script_native_instance_context native_context{};
         };
@@ -230,6 +231,33 @@ namespace lux::simulation::script
                 native_type.align == semantic.alignment;
         }
 
+        static int finishLocalStart(void* invocation, lux_script_async_token* waiting,
+            const PreparedLocalAsyncStart& local, std::span<const lux::script::ScriptAbilityInputSlot> inputs) noexcept
+        {
+            auto* step = detail::NativeAbilityProjectionAccess::step(invocation);
+            if (!step || !waiting) return -1;
+            detail::NativeAbilityProjectionAccess::beginAbility(invocation);
+            const auto result = local.start(*step, inputs);
+            if (result.state == EScriptStepState::SUSPENDED && result.valid())
+            {
+                *waiting = {result.waiting_on.slot, result.waiting_on.generation};
+                return 0;
+            }
+            return result.state == EScriptStepState::FAILED && result.error.valid() ? result.error.status : -1;
+        }
+        static int startLocalNext(void* invocation, void* provider, const void*, lux_script_async_token* waiting) noexcept
+        {
+            return finishLocalStart(invocation, waiting, *static_cast<const PreparedLocalAsyncStart*>(provider), {});
+        }
+        static int startLocalSeconds(void* invocation, void* provider, const void*, double duration,
+            lux_script_async_token* waiting) noexcept
+        {
+            const lux::script::ScriptAbilityInputSlot input{lux::semantic::TypeTraits<double>::AbiKind, {},
+                sizeof(double), lux::semantic::typeId(lux::semantic::TypeTraits<double>::CanonicalName), &duration};
+            return finishLocalStart(invocation, waiting, *static_cast<const PreparedLocalAsyncStart*>(provider),
+                std::span{&input, 1U});
+        }
+
         [[nodiscard]] EScriptBackendResult bindAbilities(
             Instance& instance,
             const ScriptInstanceCreateContext& context
@@ -244,6 +272,8 @@ namespace lux::simulation::script
             {
                 instance.abilities.clear();
                 instance.abilities.reserve(imports.size());
+                instance.local_abilities.clear();
+                instance.local_abilities.reserve(imports.size());
                 for (const auto& import : imports)
                 {
                     const auto contribution = std::ranges::find_if(ability_contributions, [&](const auto& candidate) {
@@ -311,11 +341,20 @@ namespace lux::simulation::script
                         if (!sameType(import.results[index], method->results[index]))
                             return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                     }
-                    instance.abilities.push_back({
-                        capability->context,
-                        capability->dispatch,
-                        projected->entry
-                    });
+                    const auto local = capability->local_async.resolve(method->method,
+                        capability->context, capability->dispatch);
+                    instance.local_abilities.push_back(local);
+                    if (local)
+                    {
+                        const bool invalid_shape = method->kind != lux::script::EScriptApiMethodKind::ASYNC_OPERATION ||
+                            !method->results.empty() || method->parameters.size() != local.argumentCount();
+                        if (invalid_shape) return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                        const auto entry = local.argumentCount() == 0U ?
+                            reinterpret_cast<lux_script_ability_direct_entry_fn>(&startLocalNext) :
+                            reinterpret_cast<lux_script_ability_direct_entry_fn>(&startLocalSeconds);
+                        instance.abilities.push_back({&instance.local_abilities.back(), capability->dispatch, entry});
+                    }
+                    else instance.abilities.push_back({capability->context, capability->dispatch, projected->entry});
                 }
             }
             catch (const std::bad_alloc&)

@@ -850,6 +850,34 @@ namespace lux::simulation::script::detail
         }
         [[nodiscard]] std::size_t physicalAwaitableCapacity() const noexcept { return awaitables_.capacity(); }
 
+        [[nodiscard]] lux::cxx::expected<ScriptTimerAdmission, EScriptAwaitableCreateError>
+        reserveLocalTimer(const ScriptStepContext& context) noexcept
+        {
+            auto* owner = findExecutionInstance(context.instance);
+            if (!context.awaitables.belongsTo(this) || owner == nullptr || !owner->authority.current())
+                return lux::cxx::unexpected(EScriptAwaitableCreateError::INVALID_INSTANCE);
+            const auto record = reserveAwaitable(*owner, std::nullopt, false);
+            if (!record) return lux::cxx::unexpected(record.error());
+            return ScriptTimerAdmission{{context.instance, (*record)->id}, *record};
+        }
+        void discardLocalTimer(ScriptTimerAssociation association) noexcept
+        {
+            discardAwaitable(association.instance, association.awaitable);
+        }
+        [[nodiscard]] lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>
+        completeLocalTimer(ScriptTimerAssociation association, ScriptSourceId source) noexcept
+        {
+            auto* owner = findExecutionInstance(association.instance);
+            auto* record = awaitables_.find(awaitableKey(association.awaitable));
+            const bool invalid = owner == nullptr || !owner->authority.current() || record == nullptr ||
+                record->instance != association.instance || record->external_completion || record->result_type ||
+                record->source != ScriptWaitSource{source, EScriptWaitSource::TIMER};
+            if (invalid) return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::STALE);
+            const auto completed = finishAwaitableOwner(*record, EScriptAwaitableState::READY, nullptr, {});
+            return completed ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{} :
+                lux::cxx::unexpected(ScriptCompletionIngress::abilityError(completed.error()));
+        }
+
         [[nodiscard]] std::optional<ScriptTimerAdmission> timerAssociation(
             const lux::script::ScriptAbilityCompletion<void>& completion) noexcept
         {

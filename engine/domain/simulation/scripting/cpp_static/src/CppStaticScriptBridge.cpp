@@ -862,7 +862,7 @@ struct CppStaticScriptBackend::State final
             for (std::size_t local{}; local < entries.size(); ++local)
             {
                 const auto& capability = context.capabilities[instance->association->capability_slots[local]];
-                entries[local] = {capability.context, capability.dispatch};
+                entries[local] = {capability.context, capability.dispatch, capability.local_async};
             }
             instance->ability_block = block;
             instance->prepared_abilities = entries;

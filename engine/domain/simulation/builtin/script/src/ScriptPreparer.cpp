@@ -22,7 +22,8 @@ namespace lux::simulation::script::detail
         ScriptArtifactResolver artifacts,
         std::span<const ScriptBackendDescriptor> backends,
         std::span<const ScriptApiCapabilityPublication> capabilities,
-        const ScriptApiCapabilityPublication& delay
+        const ScriptApiCapabilityPublication& delay,
+        PreparedLocalAsyncCatalog local_delay
     ) noexcept
     {
         artifacts_ = artifacts;
@@ -54,6 +55,7 @@ namespace lux::simulation::script::detail
                     return result;
             if (const auto result = add(delay); !result)
                 return result;
+            capabilities_.back().local_async = local_delay;
             std::sort(capabilities_.begin(), capabilities_.end(), [](const auto& left, const auto& right) noexcept {
                 return left.contract.hash() < right.contract.hash() ||
                     (left.contract.hash() == right.contract.hash() && left.contract.name() < right.contract.name());

@@ -514,6 +514,8 @@ namespace lux::simulation::script
             std::optional<PreparedResumeType>) noexcept;
         using DiscardFn = void (*)(void*, ScriptInstanceId, ScriptAwaitableId) noexcept;
 
+        [[nodiscard]] bool belongsTo(const void* owner) const noexcept { return context_ == owner; }
+
     private:
         ScriptAwaitableFactory(void* context, CreateFn create, DiscardFn discard, ScriptInstanceId instance) noexcept
             : context_(context), create_(create), discard_(discard), instance_(instance)

@@ -223,6 +223,9 @@ namespace
         std::optional<lux::script::ScriptAbilityStarter<DelayAbility>> delay;
         std::vector<lux::script::ScriptAbilityCompletion<void>> timer_completions;
         bool simulation_timer{};
+        bool local_timer{};
+        bool seconds_alias{};
+        PreparedLocalAsyncStart local_next, local_seconds, local_simulation;
         double timer_seconds{1000.0};
         bool check_timer_errors{true};
         std::vector<ScriptInstanceId> resumed_instances;
@@ -294,6 +297,19 @@ namespace
             });
             assert(starter);
             state.delay = std::move(*starter);
+            const auto local = [&](const char* method) noexcept {
+                return capability.local_async.resolve(lux::script::ScriptApiMethodIdView{method},
+                    capability.context, capability.dispatch);
+            };
+            state.local_next = local("lux.simulation.delay.next_step");
+            state.local_seconds = local("lux.simulation.delay.seconds");
+            state.local_simulation = local("lux.simulation.delay.simulation_seconds");
+            assert(state.local_next && state.local_seconds && state.local_simulation);
+            assert(!local("lux.simulation.delay.real_seconds"));
+            assert(!capability.local_async.resolve(lux::script::ScriptApiMethodIdView{"lux.simulation.delay.next_step"},
+                &state, capability.dispatch));
+            assert(!capability.local_async.resolve(lux::script::ScriptApiMethodIdView{"lux.simulation.delay.next_step"},
+                capability.context, &state));
         }
         else if (!create.capabilities.empty())
         {
@@ -652,6 +668,32 @@ namespace
         auto& backend = harness.backend_state;
         backend.enable_step = true;
         backend.custom_step = [](BackendState& state, ScriptStepContext& context) noexcept {
+            if (state.local_timer)
+            {
+                if (std::exchange(state.check_timer_errors, false))
+                {
+                    const std::array bad{-1.0, std::numeric_limits<double>::quiet_NaN(),
+                        std::numeric_limits<double>::infinity(), (std::numeric_limits<double>::max)()};
+                    for (std::size_t i{}; i < bad.size(); ++i)
+                    {
+                        const auto result = state.local_simulation.startTyped(context, bad[i]);
+                        const auto expected = i == 3U ? EScriptDelayStatus::DURATION_OVERFLOW :
+                            EScriptDelayStatus::INVALID_DURATION;
+                        assert(result.state == EScriptStepState::FAILED);
+                        assert(result.error.status == static_cast<std::int32_t>(expected));
+                    }
+                }
+                const auto route = state.seconds_alias ? state.local_seconds : state.local_simulation;
+                auto result = state.simulation_timer ? route.startTyped(context, state.timer_seconds) :
+                    state.local_next.startTyped(context);
+                if (state.discard_timer && result.state == EScriptStepState::SUSPENDED)
+                {
+                    context.awaitables.discard(result.waiting_on);
+                    context.awaitables.discard(result.waiting_on);
+                    return ScriptStepResult::completed();
+                }
+                return result;
+            }
             if (std::exchange(state.check_timer_errors, false))
             {
                 const std::array bad_durations{-1.0, std::numeric_limits<double>::quiet_NaN(),
@@ -778,12 +820,15 @@ namespace
 #if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
     void testTimerDeadlineOrderAndBackpressure()
     {
-        for (const unsigned mode : {0U, 1U, 2U}) // NextStep, zero simulation delay, positive delay.
+        for (const bool local : {false, true})
+        for (const unsigned mode : {0U, 1U, 2U}) // NextStep, zero alias, positive simulation delay.
         {
             Harness harness{false, 2U, false, true};
             lux::simulation::script::test::ScriptTestClock clock_owner{harness.registry};
             configureTimerHarness(harness);
             auto& backend = harness.backend_state;
+            backend.local_timer = local;
+            backend.seconds_alias = mode == 1U;
             backend.simulation_timer = mode != 0U;
             backend.timer_seconds = mode == 2U ? 1.0 : 0.0;
             auto configured = limits(2U, 4U, 4U, 1U, 1U);
@@ -806,7 +851,7 @@ namespace
             assert(executeRuntimeStablePoint(system));
             assert(backend.resumed_instances == std::vector<ScriptInstanceId>{first});
             assert(system.stats().next_step_waits + system.stats().simulation_delay_waits == 1U);
-            assert(backend.timer_completions.back().active()); // Second source hit real ResumeRing backpressure.
+            if (!local) assert(backend.timer_completions.back().active()); // Real ResumeRing backpressure.
             assert(executeRuntimeStablePoint(system));
             assert(backend.resume_calls == 1U); // No Timer retry in a duplicate stable point or after a pop.
             const auto due_step = clock_owner.clock().snapshot().step_index;
@@ -816,7 +861,10 @@ namespace
             assert(backend.resumed_instances == std::vector<ScriptInstanceId>({first, second}));
             assert(system.stats().next_step_waits + system.stats().simulation_delay_waits == 0U);
             assert(system.activeAwaitableCount() == 0U && system.failures().empty());
+            assert(system.stats().completion_capability_constructions == (local ? 0U : 6U));
             assert(system.shutdown() && backend.continuation_destroys == 2U);
+            std::printf("LOCAL_TIMER,enabled=%d,capabilities=%llu,resumes=2,source_unlinked=1\n",
+                local, system.stats().completion_capability_constructions);
             std::printf("TIMER_RETRY,mode=%u,due_step=%llu,retry_step=%llu,resumes=2,waits=0\n",
                 mode, due_step, clock_owner.clock().snapshot().step_index);
         }

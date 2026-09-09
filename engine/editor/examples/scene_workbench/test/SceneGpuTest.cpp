@@ -144,6 +144,31 @@ namespace
             return checksum;
         }
     };
+    class ClosingObserver final : public lux::object::Object<ClosingObserver>
+    {
+    public:
+        using Object::Object;
+        ui::EditorWindow *window{};
+        ui::SceneWorkspace *workspace{};
+        sessions::SceneSession *session{};
+        unsigned calls{};
+        void selected(const sessions::SceneSelectionNotice &notice) noexcept
+        {
+            ++calls;
+            require(window->frameOpen() && session->selection().current == notice.current,
+                    "selection publisher remains alive with committed data inside the UI frame");
+            require(session->readOutline() && session->historyView(), "callback can query consistent owner state");
+            const auto closed = session->beginClose();
+            require(!closed && closed.error().code == sessions::ESceneError::BUSY,
+                    "recursive Session close cannot release the active publisher");
+            require(window->requestClose() && window->closeRequested(), "Window accepts a value close request");
+            require(workspace->beginClose(), "Workspace records close intent in selection callback");
+            const auto step = workspace->advanceClose();
+            require(step && *step == sessions::ECloseProgress::PENDING,
+                    "frame keeps Workspace panes, registrations and View alive until safe point");
+            require(session->readOutline() && window->frameOpen(), "request does not tear down callback owners");
+        }
+    };
 } // namespace
 
 int main(int argc, char **argv)
@@ -161,9 +186,10 @@ int main(int argc, char **argv)
     const bool record_failure_test = variant == "record_failure";
     const bool late_entity_test = variant == "late_entity";
     const bool late_source_test = variant == "late_source";
+    const bool late_selection_test = variant == "late_selection";
     const bool partial_failure_test = variant == "partial_late_close";
     const bool late_close_test = variant == "late_close" || partial_failure_test;
-    const bool gated_test = late_entity_test || late_source_test || late_close_test;
+    const bool gated_test = late_entity_test || late_source_test || late_close_test || late_selection_test;
 #if !defined(LUX_EDITOR_DIAGNOSTICS)
     require(!dynamic_test && !churn_test && !record_failure_test && !late_entity_test && !late_source_test &&
                 variant != "factory_failure",
@@ -457,6 +483,8 @@ int main(int argc, char **argv)
         std::uint64_t next_capture = 60, cycle{};
         bool recovery_mounted{}, retry_accepted{};
         bool partial_failure_observed{};
+        unsigned held_selection_steps{};
+        std::optional<sessions::ResourceRequestKey> selection_request;
         bool frame_protocol_checked{};
         std::uint64_t failed_packet_sequence{};
         const auto injected_error = lux::render::renderError<lux::render::err::memory::GpuAllocationFailed>();
@@ -519,6 +547,34 @@ int main(int argc, char **argv)
             require(workspace->updateBeforeFrame(), "view synchronization");
             auto resources = session->readResources();
             require(resources, "resource status snapshot");
+            if (late_selection_test && provider->entered.load() && !provider->released.load())
+            {
+                const auto waiting = std::find_if((*resources)->rows.begin(), (*resources)->rows.end(),
+                                                  [&](const auto &row) { return row.key.target == *original_entity; });
+                require(waiting != (*resources)->rows.end() && waiting->state == sessions::ESceneResourceState::READING,
+                        "held asset stays READING while selection changes");
+                if (!selection_request)
+                {
+                    selection_request = waiting->key;
+                    const auto outline = session->readOutline();
+                    require(outline, "selection test uses the actual Session outline");
+                    const auto other = std::find_if((*outline)->rows.begin(), (*outline)->rows.end(),
+                                                    [&](const auto &row) { return row.target != *original_entity; });
+                    require(other != (*outline)->rows.end() && session->select(other->target),
+                            "select B while A asset read is in flight");
+                    require(session->selection().current == other->target, "selection B was actually committed");
+                }
+                require(waiting->key == *selection_request && provider->returned.load() == 0,
+                        "selection preserves the owning request and does not complete the held provider");
+                ++held_selection_steps;
+                if (held_selection_steps == 16)
+                    require(session->select(std::nullopt), "clear selection while A remains in flight");
+                if (held_selection_steps == 32)
+                {
+                    require(!session->selection().current, "selection remains empty before release");
+                    provider->release();
+                }
+            }
             if (partial_failure_test)
             {
                 for (const auto &row : (*resources)->rows)
@@ -672,6 +728,14 @@ int main(int argc, char **argv)
             require(snapshot, "owning UI snapshot");
             if (!frame_protocol_checked && !workspace->frameImages().empty() && !session->presentationPending())
             {
+                const auto *camera_record =
+                    rendering::detail::ViewImageAccess::record(workspace->frameImages().front());
+                require(camera_record->camera.origin == std::array<double, 3>{6, 4, 8},
+                        "real wire origin carries the camera position, not its enclosing page origin");
+                require(camera_record->wire_camera.view_matrix[12] == 0 &&
+                            camera_record->wire_camera.view_matrix[13] == 0 &&
+                            camera_record->wire_camera.view_matrix[14] == 0,
+                        "rotation-only view matches the existing CPU/GPU camera protocol");
 #if defined(LUX_EDITOR_DIAGNOSTICS)
                 if (variant == "factory_failure")
                 {
@@ -817,6 +881,20 @@ int main(int argc, char **argv)
                 "actual accepted image record reaches the real GPU completion watermark");
         require(evidence_image.content.evidence == rendering::EImageEvidence::REQUESTED,
                 "observed completion does not mutate captured descriptors or claim physical screen display");
+        if (late_selection_test)
+        {
+            require(selection_request && held_selection_steps == 32 && provider->entered.load() != 0 &&
+                        provider->entered.load() == provider->returned.load(),
+                    "all held reads actually returned after 32 selection-independent owner cycles");
+            const auto resources = session->readResources();
+            require(resources && !session->selection().current, "late adoption does not restore global selection");
+            const auto adopted = std::find_if((*resources)->rows.begin(), (*resources)->rows.end(),
+                                              [&](const auto &row) { return row.key == *selection_request; });
+            require(adopted != (*resources)->rows.end() && adopted->state == sessions::ESceneResourceState::READY,
+                    "A completion is adopted using its unchanged Session/entity/source/request identity");
+            std::printf("late selection PASS held_cycles=%u reads=%u sequence=%llu selection=empty\n",
+                        held_selection_steps, provider->returned.load(), selection_request->sequence);
+        }
         if (late_entity_test)
         {
             require(recycled_entity && provider->returned.load() == 1, "late real asset result completed");
@@ -947,6 +1025,22 @@ int main(int argc, char **argv)
                 std::this_thread::yield();
             }
             lifetime_view->reset();
+        }
+        if (variant == "reentrant_close")
+        {
+            ClosingObserver observer(messages.dispatcherRef());
+            observer.window = window.get();
+            observer.workspace = workspace.get();
+            observer.session = session.get();
+            auto connection = session->observe<sessions::SceneSession::selectionChanged, &ClosingObserver::selected,
+                                               lux::object::EDelivery::DIRECT>(observer);
+            require(connection, "real direct selection connection");
+            require(window->beginFrame({{1600, 900}, 1.0F / 60, {1, 1}}), "open frame for callback close");
+            require(session->selection().current && session->select(std::nullopt), "publish actual selection change");
+            require(observer.calls == 1 && workspace && session, "owners retained after notification returns");
+            require(window->discardFrame(), "frame ends before deferred close progression");
+            std::puts(
+                "selection close PASS: BUSY Session, queued Window/Workspace close, live owners through callback");
         }
         if (workspace)
             require(workspace->beginClose(), "workspace close intent");

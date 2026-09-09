@@ -57,6 +57,32 @@ namespace
             }
         };
         auto old = *view.acquireImage();
+        // Two independently acquired records distinguish releasing the overwritten packet
+        // from transferring its replacement. No packet in this scope is submitted.
+        {
+            auto replacement_image = view.acquireImage();
+            assert(replacement_image && !rendering::detail::ViewImageAccess::sameRecord(old, *replacement_image));
+            const auto old_references = rendering::detail::ViewImageAccess::references(old);
+            const auto new_references = rendering::detail::ViewImageAccess::references(*replacement_image);
+            const auto accepted_before = renderer.statistics().accepted_frames;
+            auto destination = seal(old);
+            auto source = seal(*replacement_image);
+            const auto replacement_sequence = source.sequence();
+            assert(destination.sequence() != replacement_sequence);
+            assert(rendering::detail::ViewImageAccess::references(old) == old_references + 1);
+            assert(rendering::detail::ViewImageAccess::references(*replacement_image) == new_references + 1);
+            destination = std::move(source);
+            assert(destination.valid() && destination.sequence() == replacement_sequence);
+            assert(!source.valid() && source.sequence() == 0);
+            assert(rendering::detail::ViewImageAccess::references(old) == old_references);
+            assert(rendering::detail::ViewImageAccess::references(*replacement_image) == new_references + 1);
+            destination = {};
+            assert(rendering::detail::ViewImageAccess::references(*replacement_image) == new_references);
+            assert(renderer.statistics().accepted_frames == accepted_before);
+            assert(renderer.imageEvidence(*replacement_image)->evidence == rendering::EImageEvidence::REQUESTED);
+            assert(rendering::detail::ViewImageAccess::record(*replacement_image)->submitted.load() == 0);
+            std::puts("packet move overwrite PASS: old references released, source transferred, no submission");
+        }
         const auto old_extent = old.extent;
         const auto old_generation = old.content.source.surface_generation;
         const auto initial_descriptors = renderer.statistics().descriptors_created;
@@ -124,8 +150,8 @@ namespace
         assert(view.status().acknowledged_sequence == latest_sequence);
 #if defined(LUX_EDITOR_DIAGNOSTICS)
         assert(observed_old_reply);
-        std::printf("late resize PASS admitted=%llu desired=%llu old reply observed before latest ack\n",
-                    first_resize, latest_sequence);
+        std::printf("late resize PASS admitted=%llu desired=%llu old reply observed before latest ack\n", first_resize,
+                    latest_sequence);
         std::fflush(stdout);
 #endif
         auto fresh = *view.acquireImage();

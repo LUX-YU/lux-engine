@@ -445,9 +445,11 @@ namespace lux::editor::sessions
     editing::EditResult<editing::HistoryTargetResult> SceneSession::undo() noexcept
     {
         const auto code = impl_->owner != std::this_thread::get_id() ? editing::EEditError::WRONG_THREAD
+                          : impl_->busy                              ? editing::EEditError::BUSY
                           : impl_->state == ESessionState::CLOSED    ? editing::EEditError::CLOSED
                                                                      : editing::EEditError::BLOCKED_BY_HOST;
-        return lux::cxx::unexpected(editing::makeEditFailure(code, 0, "Live inspection is read-only"));
+        return lux::cxx::unexpected(editing::makeEditFailure(
+            code, 0, code == editing::EEditError::BLOCKED_BY_HOST ? "Live inspection is read-only" : ""));
     }
     editing::EditResult<editing::HistoryTargetResult> SceneSession::redo() noexcept
     {

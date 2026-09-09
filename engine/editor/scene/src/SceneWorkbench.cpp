@@ -1,4 +1,5 @@
 #include <lux/engine/editor/scene/SceneWorkbench.hpp>
+#include <lux/engine/editor/scene/SceneWorkbenchMeasurement.hpp>
 #include <lux/engine/editor/scene/SceneCamera.hpp>
 #include <lux/engine/editor/scene/SceneResources.hpp>
 #include <lux/engine/scene/SceneRenderSchema.hpp>
@@ -897,4 +898,12 @@ namespace lux::editor::workbench
         return workbench.impl_->diagnostic_passed;
     }
 #endif
+    detail::WorkbenchMeasurement detail::SceneWorkbenchMeasurement::read(const SceneWorkbench& workbench) noexcept
+    {
+        const auto& state = *workbench.impl_;
+        return {state.target.id(), state.cpu_lease, state.extent.width, state.extent.height,
+                state.resources.size(), static_cast<std::size_t>(std::count_if(state.resources.begin(),
+                    state.resources.end(), [](const auto& job) { return job->adopted; })),
+                state.pending_resize.valid()};
+    }
 } // namespace lux::editor::workbench

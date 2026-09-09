@@ -98,7 +98,10 @@ namespace lux::editor::sessions
             auto projection = impl_->camera.projection(static_cast<double>(extent.width) / extent.height);
             if (!projection)
                 return lux::cxx::unexpected(projection.error());
-            const Eigen::Vector3d origin = (impl_->camera.position().array() / 1024).floor().matrix() * 1024;
+            // StandardViewCamera interprets render_origin as the camera position and rebuilds
+            // CPU view translation from it. Send a rotation-only view plus the full camera origin;
+            // RenderView splits that position into page/local coordinates for the wire payload.
+            const Eigen::Vector3d origin = impl_->camera.position();
             const auto view = impl_->camera.view(origin);
             rendering::CameraFrame camera;
             std::copy_n(view.data(), 16, camera.view.data());

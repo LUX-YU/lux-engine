@@ -35,6 +35,9 @@ function Invoke-Logged([string]$Name, [string]$Program, [string[]]$Arguments) {
 Invoke-Logged 'clone' 'git' @('clone', '--no-hardlinks', '--no-checkout', $source, $clone)
 Invoke-Logged 'checkout' 'git' @('-C', $clone, 'checkout', '--detach', $revision)
 Invoke-Logged 'tracked-snapshot' $CMake @("-DLUX_SOURCE_DIR=$clone", '-P', "$clone/cmake/ValidateTrackedSnapshot.cmake")
+@(& git -C $clone ls-files | ForEach-Object {
+    [pscustomobject]@{ path = $_; sha256 = (Get-FileHash -LiteralPath (Join-Path $clone $_) -Algorithm SHA256).Hash }
+}) | Export-Csv -LiteralPath "$qroot/source-files.sha256.csv" -NoTypeInformation
 & $DeveloperShell -Arch amd64 -HostArch amd64 -SkipAutomaticLocation | Out-Null
 $compiler = (Get-Command cl.exe -ErrorAction Stop).Source
 $parserRuntime = Join-Path $env:VCINSTALLDIR 'Tools/Llvm/x64/bin'
@@ -63,7 +66,8 @@ $cleanPath = ($env:PATH -split ';' | Where-Object {
 $env:PATH = "$build/bin;$parserRuntime;$CxxPrefix/bin;$VcpkgRoot/installed/x64-windows/bin;$cleanPath"
 Invoke-Logged 'ctest' $ctest @('--test-dir', $build, '--output-on-failure', '-j', '1')
 Copy-Item -LiteralPath "$build/Testing/Temporary/LastTest.log" -Destination "$logs/ctest-details.log"
-foreach ($variant in @('base', 'multiple_equal', 'multiple_reverse', 'multiple_lifecycle', 'late_close', 'image_lifetime')) {
+foreach ($variant in @('base', 'alternate', 'multiple_equal', 'multiple_reverse', 'multiple_lifecycle',
+                      'late_close', 'late_selection', 'reentrant_close', 'image_lifetime')) {
     Invoke-Logged "gpu-$variant" "$build/bin/editor_scene_gpu_test.exe" @($SeedPak, "$qroot/images", $variant)
 }
 Invoke-Logged 'gpu-foreign' "$build/bin/editor_foreign_renderer_test.exe" @()

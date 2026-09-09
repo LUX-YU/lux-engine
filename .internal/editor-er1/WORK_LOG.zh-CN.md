@@ -134,3 +134,8 @@ build-65：专用 RelWithDebInfo 分配诊断已恢复（ASan 调查产物身份
 
 续作 build-66：工作区仍绑定 a39bc827，受保护主检出仍为 c77bb41e，六个并行 Script 文件哈希复核一致。修正旧 editor_scene/lux_editor 的诊断编译开关，普通 BUILD_TESTING 不再打开 LUX_SV1_DIAGNOSTICS。专用诊断构建 all 与第二轮 no-op 通过；没有修改生产 C++ 实现。
 q3 的 a39bc827 clean clone 实际完成 all/no-op、134/134 CTest、GPU矩阵、两个安装位置的五种消费者。随后扩大隔离审计发现旧 SceneWorkbench 诊断仍在普通 DLL，isolation-review.log 明确失败；因此 q3 仅保留原始通过/失败证据，不作为最终 SDK 资格。新资格驱动在安装前拒绝该污染，并对消费者编译及链接规则检查旧源码、构建及原安装前缀，实际断言消费者第二次构建 no-op。等待新 tracked candidate 的独立 clone 验证。
+
+2026-09-09 续行：q4 的 bae70cde 独立 clean clone 正常构建 all/no-op、CTest134/134（80.11秒）、原/迁移SDK五种消费者均通过。扩展隔离审计包括旧 editor_scene.dll，普通 CRT 与专用 replacement 对象、导出和PDB来源区分通过。q4/installed-loaded-modules.json 验证两位置的实际 Toolset DLL；首次脚本误用exe名称的失败日志保留，修正后通过。q4/regeneration 的头/模板/宏/非法widget输出保留、恢复及no-op均通过。
+新回归在 normal-11 实际执行：Packet move覆盖释放旧引用且不提交；资源读取阻塞32周期时先选择B再清空，原A仍以原请求身份READY；selection回调中Window/Workspace只登记关闭，Session close返回BUSY且owner保留；alternate实体顺序和数据真实GPU上屏。Session通知期间Undo/Redo错误优先级修正为BUSY。
+同量成本首次完成时发现旧/新像素差异，追溯到新SceneView把网格原点当相机位置发送。修正新SceneView以匹配现有Render wire语义，未改modules。cost-smoke-05两边500计量帧+8验证帧、100预热、1024x576、单View、同seed，完整PPM一致，sha256=3683a239eb811dafa3d1faeee13910396bac8da77c03a1c693f3c2f03d98bd58。成本试跑的配置门禁、Windows宏污染编译失败和两次读回推进失败全部保留；没有把失败或中间计时算作最终五组。
+build-67 all/no-op、135/135 CTest（60.78秒）、19个Scene GPU变体、foreign和四阶段application lifecycle均通过。原seal index=2实际重跑；factory20/seal6；image_lifetime同时验证Packet移动覆盖、迟到resize及真实GPU完成水位。normal-16 all/no-op包含工作/等待owner cycles计数的正常成本消费者。新的tracked候选与五组独立进程资格仍待执行；旧正式入口删除门槛和未覆盖失败/GUI项保持未完成。

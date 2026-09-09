@@ -21,3 +21,6 @@ diagnostic build-65 全量 CTest 135/135，51.21秒；第二轮 no-op。五个�
 仍未满足的门槛：完整部分启动与终局设备失败矩阵、实际持续RMB/MMB捕获后失焦和中文IME候选、至少五组同量旧新成本配对，以及对应旧正式入口删除和迁移完成。被动RenderLease析构中的既有deferred vector分配还没有获得全路径OOM保证。保留旧正式入口，不声称最终SDK已排除它；不将Text/Record路由fixture写成材质或Scene内容编辑资格。
 
 原build48归档及哈希保持不变。main及并行脚本分支不修改、不合并、不推送、不发布。
+
+后续资格：q4/qualification.json 绑定 bae70cde；它的134/134 CTest、SDK迁移、实际Toolset DLL加载和Scene reader重新生成已通过，完整隔离证据在q4/isolation。相机协议错配是在之后同量比较中发现的额外正确性问题，详见 CAMERA-PROTOCOL-INCIDENT.zh-CN.md；因此不把q4或旧像素哈希重标为新修复后的最终结果。
+修复后build-67诊断135/135和19个Scene GPU变体、foreign/lifecycle重跑通过。正常成本入口独立记录实际帧数、像素、工作/等待与CPU，并排除专用故障代码；500帧试跑已得到完全相同的旧/新图像，正式五组尚待tracked候选clean clone。

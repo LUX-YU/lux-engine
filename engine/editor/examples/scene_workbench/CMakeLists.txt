@@ -11,4 +11,5 @@ engine_target_add_type_runtime_info(TARGET lux_editor_er1 METAS editor_demo_tran
 lux_classify_target(TARGET lux_editor_er1 LAYER EDITOR PRODUCT EDITOR ROLE COMPOSITION)
 if(BUILD_TESTING)
     add_subdirectory(test)
+    add_subdirectory(benchmark)
 endif()

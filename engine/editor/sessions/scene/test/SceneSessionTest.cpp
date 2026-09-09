@@ -90,6 +90,15 @@ namespace
             assert(session->readOutline());
             auto reentry = session->select(std::nullopt);
             assert(!reentry && reentry.error().code == ESceneError::BUSY);
+            const auto undo = session->undo();
+            const auto redo = session->redo();
+            assert(!undo && undo.error().code == lux::editor::editing::EEditError::BUSY);
+            assert(!redo && redo.error().code == lux::editor::editing::EEditError::BUSY);
+            const auto close = session->beginClose();
+            const auto advance = session->advanceClose();
+            assert(!close && close.error().code == ESceneError::BUSY);
+            assert(!advance && advance.error().code == ESceneError::BUSY);
+            assert(session->selection().current == notice.current && session->readOutline());
         }
     };
 } // namespace

@@ -12,7 +12,7 @@
 //      every slot via resolve(ctx, "<name>") and returning the number of
 //      unresolved imports (0 = success). Only emitted when imports exist.
 //   4. Per OnEvent entry `lux_event_X(state, abilities, a0..aN)`: a call_frame
-//      wrapper pulls the explicit native instance context from the v5 frame,
+//      wrapper receives the explicit native instance context (ABI v6),
 //      loads each argument from args[i].data, calls the event function and
 //      returns 0. Frame/slot field offsets
 //      come from offsetof() on the REAL C structs — both sides compile
@@ -29,6 +29,7 @@
 #include "lux/engine/flowforge/compiler/Passes.hpp"
 #include "lux/engine/flowforge/compiler/ScriptInstance.hpp"
 #include "lux/engine/flowforge/compiler/SuspensionAnalysis.hpp"
+#include "lux/engine/flowforge/compiler/ContinuationFrameLayout.hpp"
 #include "lux/engine/flowforge/script/ScriptEventAwaitNode.hpp"
 #include "lux/engine/flowforge/graph/FlowGraph.hpp"
 #include "lux/engine/flowforge/graph/FunctionalNode.hpp"
@@ -464,76 +465,20 @@ namespace lux::flowforge
 
             struct FrameSlot final
             {
-                llvm::AllocaInst* allocation{};
-                std::uint64_t offset{};
-                std::uint64_t size{};
-                std::uint64_t alignment{};
+                std::uint64_t offset{}, size{}, alignment{};
+                bool needs_initial_value{};
             };
-            std::vector<std::uint64_t> argument_offsets;
+            std::vector<std::uint64_t> argument_offsets(target->arg_size(), UINT64_MAX);
             std::vector<FrameSlot> slots;
             std::uint64_t frame_size{sizeof(std::uint32_t)};
             std::uint64_t frame_alignment{alignof(std::uint32_t)};
             const auto& layout = module.getDataLayout();
-            for (auto* type : target->getFunctionType()->params())
-            {
-                const auto alignment = layout.getABITypeAlign(type).value();
-                frame_size = alignFrameOffset(frame_size, alignment);
-                argument_offsets.push_back(frame_size);
-                frame_size += layout.getTypeAllocSize(type);
-                frame_alignment = (std::max)(frame_alignment, static_cast<std::uint64_t>(alignment));
-            }
-            for (auto& block : *core)
-            {
-                for (auto& instruction : block)
-                {
-                    auto* allocation = llvm::dyn_cast<llvm::AllocaInst>(&instruction);
-                    if (allocation == nullptr)
-                        continue;
-                    const auto* count = llvm::dyn_cast<llvm::ConstantInt>(allocation->getArraySize());
-                    if (count == nullptr)
-                    {
-                        error = "FlowForge continuation frame contains a dynamic allocation";
-                        return false;
-                    }
-                    const auto alignment = layout.getABITypeAlign(allocation->getAllocatedType()).value();
-                    frame_size = alignFrameOffset(frame_size, alignment);
-                    const auto size = layout.getTypeAllocSize(allocation->getAllocatedType()) * count->getZExtValue();
-                    slots.push_back({allocation, frame_size, size, alignment});
-                    frame_size += size;
-                    frame_alignment = (std::max)(frame_alignment, static_cast<std::uint64_t>(alignment));
-                }
-            }
-            std::uint64_t scratch_size{sizeof(lux_script_async_token)};
-            std::uint64_t scratch_alignment{alignof(lux_script_async_token)};
-            const auto scratch_offset = alignFrameOffset(frame_size, scratch_alignment);
-            frame_size = scratch_offset + scratch_size;
-            frame_alignment = (std::max)(frame_alignment, scratch_alignment);
-            frame_size = alignFrameOffset(frame_size, frame_alignment);
-            if (frame_size == 0U || frame_size > (std::numeric_limits<std::uint32_t>::max)() ||
-                frame_alignment > (std::numeric_limits<std::uint32_t>::max)())
-            {
-                error = "FlowForge continuation frame layout exceeds the native ABI";
-                return false;
-            }
-
-            for (auto& slot : slots)
-            {
-                llvm::SmallVector<llvm::Use*, 16> uses;
-                for (auto& use : slot.allocation->uses())
-                    uses.push_back(std::addressof(use));
-                for (auto* use : uses)
-                {
-                    auto* user = llvm::cast<llvm::Instruction>(use->getUser());
-                    llvm::IRBuilder<> builder(user);
-                    auto* address = builder.CreateGEP(i8, frame_argument, llvm::ConstantInt::get(i64, slot.offset));
-                    use->set(address);
-                }
-                slot.allocation->eraseFromParent();
-            }
+            std::vector<llvm::BasicBlock*> resume_entries;
 
             auto* cloned_entry = llvm::cast<llvm::BasicBlock>(value_map[&target->getEntryBlock()]);
             auto* dispatch = llvm::BasicBlock::Create(context, "dispatch", core, cloned_entry);
             llvm::IRBuilder<> dispatch_builder(dispatch);
+            auto* token_storage = dispatch_builder.CreateAlloca(i64, nullptr, "wait.token.local");
             auto* pc = dispatch_builder.CreateLoad(i32, frame_argument, "pc");
             auto* invalid_pc = llvm::BasicBlock::Create(context, "invalid.pc", core);
             auto* dispatch_switch = dispatch_builder.CreateSwitch(pc, invalid_pc, awaits.size() + 1U);
@@ -594,9 +539,7 @@ namespace lux::flowforge
                 marker->eraseFromParent();
 
                 llvm::IRBuilder<> suspend_builder(suspend_block);
-                auto* scratch =
-                    suspend_builder.CreateGEP(i8, frame_argument, llvm::ConstantInt::get(i64, scratch_offset));
-                auto* token = scratch;
+                auto* token = token_storage;
                 const auto host_field = [&](std::size_t offset) {
                     return suspend_builder.CreateGEP(i8, host_argument, llvm::ConstantInt::get(i64, offset));
                 };
@@ -656,50 +599,38 @@ namespace lux::flowforge
                     );
                 }
                 const auto next_pc = static_cast<std::uint32_t>(await_index + 1U);
-                suspend_builder.CreateStore(llvm::ConstantInt::get(i32, next_pc), frame_argument);
-                auto* admitted = suspend_builder.CreateICmpEQ(status, llvm::ConstantInt::get(i32, 0));
-                storeOutcomeField(
-                    suspend_builder,
-                    outcome_argument,
-                    offsetof(lux_script_step_outcome, state),
-                    suspend_builder.CreateSelect(
-                        admitted,
-                        llvm::ConstantInt::get(i8, LUX_SCRIPT_STEP_SUSPENDED),
-                        llvm::ConstantInt::get(i8, LUX_SCRIPT_STEP_FAILED)
-                    )
+                auto* accepted = llvm::BasicBlock::Create(context, "wait.accepted", core);
+                auto* rejected = llvm::BasicBlock::Create(context, "wait.rejected", core);
+                suspend_builder.CreateCondBr(
+                    suspend_builder.CreateICmpEQ(status, llvm::ConstantInt::get(i32, 0U)), accepted, rejected
                 );
-                auto* token_slot = suspend_builder.CreateLoad(i32, token);
-                auto* token_generation_address = suspend_builder.CreateGEP(
-                    i8,
-                    token,
-                    llvm::ConstantInt::get(i64, offsetof(lux_script_async_token, generation))
-                );
-                auto* token_generation = suspend_builder.CreateLoad(i32, token_generation_address);
-                storeOutcomeField(
-                    suspend_builder,
-                    outcome_argument,
-                    offsetof(lux_script_step_outcome, waiting_on) + offsetof(lux_script_async_token, slot),
-                    suspend_builder.CreateSelect(admitted, token_slot, llvm::ConstantInt::get(i32, 0U))
-                );
-                storeOutcomeField(
-                    suspend_builder,
-                    outcome_argument,
-                    offsetof(lux_script_step_outcome, waiting_on) + offsetof(lux_script_async_token, generation),
-                    suspend_builder.CreateSelect(admitted, token_generation, llvm::ConstantInt::get(i32, 0U))
-                );
-                storeOutcomeField(
-                    suspend_builder,
-                    outcome_argument,
-                    offsetof(lux_script_step_outcome, status),
-                    suspend_builder.CreateSelect(admitted, llvm::ConstantInt::get(i32, 0U), status)
-                );
-                suspend_builder.CreateRetVoid();
+                llvm::IRBuilder<> rejected_builder(rejected);
+                storeOutcomeField(rejected_builder, outcome_argument, offsetof(lux_script_step_outcome, state),
+                    llvm::ConstantInt::get(i8, LUX_SCRIPT_STEP_FAILED));
+                storeOutcomeField(rejected_builder, outcome_argument, offsetof(lux_script_step_outcome, status), status);
+                rejected_builder.CreateRetVoid();
+                llvm::IRBuilder<> accepted_builder(accepted);
+                accepted_builder.CreateStore(llvm::ConstantInt::get(i32, next_pc), frame_argument);
+                storeOutcomeField(accepted_builder, outcome_argument, offsetof(lux_script_step_outcome, state),
+                    llvm::ConstantInt::get(i8, LUX_SCRIPT_STEP_SUSPENDED));
+                const auto token_offset = offsetof(lux_script_step_outcome, waiting_on);
+                storeOutcomeField(accepted_builder, outcome_argument, token_offset,
+                    accepted_builder.CreateLoad(i32, token));
+                auto* generation_address = accepted_builder.CreateGEP(i8, token,
+                    llvm::ConstantInt::get(i64, offsetof(lux_script_async_token, generation)));
+                storeOutcomeField(accepted_builder, outcome_argument,
+                    token_offset + offsetof(lux_script_async_token, generation),
+                    accepted_builder.CreateLoad(i32, generation_address));
+                storeOutcomeField(accepted_builder, outcome_argument, offsetof(lux_script_step_outcome, status),
+                    llvm::ConstantInt::get(i32, 0U));
+                accepted_builder.CreateRetVoid();
 
                 auto* resume_entry = llvm::BasicBlock::Create(context, "resume." + std::to_string(next_pc), core);
                 auto* resume_ready = llvm::BasicBlock::Create(context, "resume.ready." + std::to_string(next_pc), core);
                 auto* resume_failed =
                     llvm::BasicBlock::Create(context, "resume.failed." + std::to_string(next_pc), core);
                 dispatch_switch->addCase(llvm::ConstantInt::get(i32, next_pc), resume_entry);
+                resume_entries.push_back(resume_entry);
                 llvm::IRBuilder<> resume_builder(resume_entry);
                 auto* resume_state_address = resume_builder.CreateGEP(
                     i8,
@@ -768,6 +699,14 @@ namespace lux::flowforge
                 );
             }
 
+            llvm::SmallVector<llvm::AllocaInst*, 16> local_allocations;
+            for (auto& block : *core)
+                for (auto& instruction : block)
+                    if (auto* allocation = llvm::dyn_cast<llvm::AllocaInst>(&instruction))
+                        if (allocation->getParent() != dispatch) local_allocations.push_back(allocation);
+            for (auto* allocation : local_allocations)
+                allocation->moveBefore(&*dispatch->getFirstInsertionPt());
+
             for (std::size_t repair{}; repair < 4096U; ++repair)
             {
                 llvm::DominatorTree dominators(*core);
@@ -806,6 +745,17 @@ namespace lux::flowforge
                 }
             }
 
+            for (std::size_t index{}; index < target->arg_size(); ++index)
+            {
+                if (!detail::ContinuationFrameLayout::argumentPersists(*core->getArg(index), resume_entries))
+                    continue;
+                auto* type = target->getFunctionType()->getParamType(index);
+                const auto alignment = layout.getABITypeAlign(type).value();
+                frame_size = alignFrameOffset(frame_size, alignment);
+                argument_offsets[index] = frame_size;
+                frame_size += layout.getTypeAllocSize(type);
+                frame_alignment = (std::max)(frame_alignment, static_cast<std::uint64_t>(alignment));
+            }
             std::vector<llvm::AllocaInst*> repair_allocations;
             for (auto& block : *core)
             {
@@ -823,13 +773,27 @@ namespace lux::flowforge
                     error = "FlowForge dominance spill contains a dynamic allocation";
                     return false;
                 }
+                if (allocation == token_storage) continue; // Known write-on-success bridge; never survives return.
+                const bool persistent = detail::ContinuationFrameLayout::persists(*allocation, resume_entries);
+                const bool needs_initial = detail::ContinuationFrameLayout::readsIncoming(*allocation, cloned_entry);
+                if (!persistent)
+                {
+                    if (needs_initial)
+                    {
+                        llvm::IRBuilder<> local_builder(dispatch->getTerminator());
+                        local_builder.CreateMemSet(allocation, llvm::ConstantInt::get(i8, 0U),
+                            layout.getTypeAllocSize(allocation->getAllocatedType()) * count->getZExtValue(),
+                            allocation->getAlign());
+                    }
+                    continue;
+                }
                 const auto alignment = layout.getABITypeAlign(allocation->getAllocatedType()).value();
                 frame_size = alignFrameOffset(frame_size, alignment);
                 const auto offset = frame_size;
                 const auto size = layout.getTypeAllocSize(allocation->getAllocatedType()) * count->getZExtValue();
                 frame_size += size;
                 frame_alignment = (std::max)(frame_alignment, static_cast<std::uint64_t>(alignment));
-                slots.push_back({nullptr, offset, size, alignment});
+                slots.push_back({offset, size, alignment, needs_initial});
                 llvm::SmallVector<llvm::Use*, 16> uses;
                 for (auto& use : allocation->uses())
                     uses.push_back(std::addressof(use));
@@ -891,8 +855,13 @@ namespace lux::flowforge
                     );
                 }
             }
+            for (const auto& slot : slots)
+                if (slot.needs_initial_value)
+                    start_builder.CreateMemSet(start_field(start_frame, slot.offset),
+                        llvm::ConstantInt::get(i8, 0U), slot.size, llvm::MaybeAlign(slot.alignment));
             for (std::size_t index{}; index < start_core_arguments.size(); ++index)
             {
+                if (argument_offsets[index] == UINT64_MAX) continue;
                 auto* address =
                     start_builder.CreateGEP(i8, start_frame, llvm::ConstantInt::get(i64, argument_offsets[index]));
                 start_builder.CreateStore(start_core_arguments[index], address);
@@ -921,6 +890,12 @@ namespace lux::flowforge
             llvm::SmallVector<llvm::Value*, 12> resume_core_arguments;
             for (std::size_t index{}; index < target->arg_size(); ++index)
             {
+                if (argument_offsets[index] == UINT64_MAX)
+                {
+                    resume_core_arguments.push_back(llvm::PoisonValue::get(
+                        target->getFunctionType()->getParamType(index)));
+                    continue;
+                }
                 auto* address =
                     resume_wrapper.CreateGEP(i8, resume_frame, llvm::ConstantInt::get(i64, argument_offsets[index]));
                 resume_core_arguments.push_back(
@@ -956,7 +931,7 @@ namespace lux::flowforge
             std::uint64_t frame_hash{14695981039346656037ULL};
             frame_hash = appendFrameHash(frame_hash, result.frame_size);
             frame_hash = appendFrameHash(frame_hash, result.frame_align);
-            frame_hash = appendFrameHash(frame_hash, LUX_SCRIPT_FRAME_ZEROED_BY_HOST);
+            frame_hash = appendFrameHash(frame_hash, LUX_SCRIPT_FRAME_INITIALIZED_BY_ENTRY);
             for (std::size_t index{}; index < argument_offsets.size(); ++index)
             {
                 frame_hash = appendFrameHash(frame_hash, argument_offsets[index]);
@@ -969,6 +944,7 @@ namespace lux::flowforge
                 frame_hash = appendFrameHash(frame_hash, slot.offset);
                 frame_hash = appendFrameHash(frame_hash, slot.size);
                 frame_hash = appendFrameHash(frame_hash, slot.alignment);
+                frame_hash = appendFrameHash(frame_hash, slot.needs_initial_value);
             }
             for (const auto& await : awaits)
             {
@@ -1435,7 +1411,7 @@ namespace lux::flowforge
                              steps[e].start,
                              steps[e].resume,
                              steps[e].destroy,
-                             llvm::ConstantInt::get(i32, LUX_SCRIPT_FRAME_ZEROED_BY_HOST),
+                             llvm::ConstantInt::get(i32, LUX_SCRIPT_FRAME_INITIALIZED_BY_ENTRY),
                              llvm::ConstantInt::get(i32, 0U)}
                         ),
                         "_lfd_step"

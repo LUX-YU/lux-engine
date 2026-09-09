@@ -804,8 +804,9 @@ int main()
         &AsyncHost::waitEvent
     };
     const auto& event_wait_step = *event_wait_function->step;
+    assert(event_wait_step.initialization == LUX_SCRIPT_FRAME_INITIALIZED_BY_ENTRY);
     void* event_wait_continuation = ::operator new(event_wait_step.frame_size);
-    std::memset(event_wait_continuation, 0, event_wait_step.frame_size);
+    std::memset(event_wait_continuation, 0xA5, event_wait_step.frame_size);
     lux_script_step_outcome event_wait_outcome{};
     assert(event_wait_step.start(
         &event_wait_instance, &event_wait_frame,
@@ -920,7 +921,7 @@ int main()
     void* continuation_frame = is_over_aligned
         ? ::operator new(step.frame_size, std::align_val_t{step.frame_align})
         : ::operator new(step.frame_size);
-    std::memset(continuation_frame, 0, step.frame_size);
+    std::memset(continuation_frame, 0x5A, step.frame_size);
     lux_script_step_outcome outcome{};
     assert(step.start(&async_instance, &async_frame, &step_host, continuation_frame, &outcome) == 0);
     assert(outcome.state == LUX_SCRIPT_STEP_SUSPENDED);
@@ -933,12 +934,12 @@ int main()
     assert(outcome.state == LUX_SCRIPT_STEP_COMPLETED);
     assert(async_provider.value == 77);
     assert(async_host.starts == 2U);
-    std::memset(continuation_frame, 0, step.frame_size);
+    std::memset(continuation_frame, 0xA5, step.frame_size);
     async_host.failure_status = 71;
     assert(step.start(&async_instance, &async_frame, &step_host, continuation_frame, &outcome) == 0);
     assert(outcome.state == LUX_SCRIPT_STEP_FAILED && outcome.status == 71);
     async_host.failure_status = 0;
-    std::memset(continuation_frame, 0, step.frame_size);
+    std::memset(continuation_frame, 0x5A, step.frame_size);
     assert(step.start(&async_instance, &async_frame, &step_host, continuation_frame, &outcome) == 0);
     assert(outcome.state == LUX_SCRIPT_STEP_SUSPENDED);
     const lux_script_step_resume_packet failed_resume{LUX_SCRIPT_RESUME_FAILED, 0U, {}, {}, 72};
@@ -1037,7 +1038,7 @@ int main()
     void* control_continuation = control_over_aligned
         ? ::operator new(control_step.frame_size, std::align_val_t{control_step.frame_align})
         : ::operator new(control_step.frame_size);
-    std::memset(control_continuation, 0, control_step.frame_size);
+    std::memset(control_continuation, 0xA5, control_step.frame_size);
     lux_script_step_outcome control_outcome{};
     assert(control_step.start(
         &control_instance, &control_frame,
@@ -1093,7 +1094,7 @@ int main()
     void* result_continuation = result_over_aligned
         ? ::operator new(result_step.frame_size, std::align_val_t{result_step.frame_align})
         : ::operator new(result_step.frame_size);
-    std::memset(result_continuation, 0, result_step.frame_size);
+    std::memset(result_continuation, 0x5A, result_step.frame_size);
     lux_script_step_outcome result_outcome{};
     assert(result_step.start(
         &result_instance, &result_frame, &result_step_host, result_continuation, &result_outcome) == 0);
@@ -1162,7 +1163,7 @@ int main()
     void* function_continuation = function_over_aligned
         ? ::operator new(function_step.frame_size, std::align_val_t{function_step.frame_align})
         : ::operator new(function_step.frame_size);
-    std::memset(function_continuation, 0, function_step.frame_size);
+    std::memset(function_continuation, 0xA5, function_step.frame_size);
     lux_script_step_outcome function_outcome{};
     assert(function_step.start(
         &function_instance, &function_frame,
@@ -1245,7 +1246,7 @@ int main()
     void* borrow_continuation = borrow_over_aligned
         ? ::operator new(borrow_step.frame_size, std::align_val_t{borrow_step.frame_align})
         : ::operator new(borrow_step.frame_size);
-    std::memset(borrow_continuation, 0, borrow_step.frame_size);
+    std::memset(borrow_continuation, 0x5A, borrow_step.frame_size);
     lux_script_step_outcome borrow_outcome{};
     assert(borrow_step.start(
         &borrow_instance, &borrow_frame, &borrow_step_host, borrow_continuation, &borrow_outcome) == 0);

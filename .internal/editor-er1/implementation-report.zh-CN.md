@@ -14,6 +14,10 @@ image_lifetime 使用实际Mesh/Light场景：旧packet保留32步，零尺寸�
 
 源码候选将提交后用 cmake/RunEditorEr1Qualification.ps1 从独立 clean clone 构建；最终身份记录到独立 qualification.json，不能将上述工作树日志重标为最终结果。
 
-仍未满足的门槛：完整迟到resize回复与GPU未完成关闭/部分启动故障矩阵、实际持续RMB/MMB捕获后失焦和中文IME候选、至少五组同量旧新成本配对，以及对应旧正式入口删除和迁移完成。被动RenderLease析构中的既有deferred vector分配还没有获得全路径OOM保证。保留旧正式入口，不声称最终SDK已排除它；不将Text/Record路由fixture写成材质或Scene内容编辑资格。
+续行的 clean q1 构建发现堆损坏，ASan 已定位并修复新示例重复注册反射造成的 use-after-free，详见 HEAP-INCIDENT.zh-CN.md。q2 因未固定编译器而误选 clang++，全量构建失败，未运行其程序。以上失败均保留。
+
+diagnostic build-65 全量 CTest 135/135，51.21秒；第二轮 no-op。五个独立进程均实际观察 resize 请求2的旧回复晚于请求3，并验证只有最新回复才发布READY。GPU关闭测试用8个真实空StateUpdate回收请求槽的CPU附件，不增加GPU帧；仅剩View owner引用且真实完成水位尚未追上提交时保留资源，最终descriptor 7/7。gpu-62/63 中未正确回收旧请求槽而超时的测试失败日志也保留。
+
+仍未满足的门槛：完整部分启动与终局设备失败矩阵、实际持续RMB/MMB捕获后失焦和中文IME候选、至少五组同量旧新成本配对，以及对应旧正式入口删除和迁移完成。被动RenderLease析构中的既有deferred vector分配还没有获得全路径OOM保证。保留旧正式入口，不声称最终SDK已排除它；不将Text/Record路由fixture写成材质或Scene内容编辑资格。
 
 原build48归档及哈希保持不变。main及并行脚本分支不修改、不合并、不推送、不发布。

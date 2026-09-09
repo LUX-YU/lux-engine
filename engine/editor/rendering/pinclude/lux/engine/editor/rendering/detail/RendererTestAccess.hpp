@@ -8,5 +8,7 @@ namespace lux::editor::rendering::detail
     struct LUX_EDITOR_RENDERING_PUBLIC RendererTestAccess final
     {
         static RenderResult<void> failRecord(EditorFramePacket &, lux::render::RenderError) noexcept;
+        // Observe the real admitted request, without delaying or replacing its reply.
+        static std::uint64_t inFlightResize(const RenderView &) noexcept;
     };
 }

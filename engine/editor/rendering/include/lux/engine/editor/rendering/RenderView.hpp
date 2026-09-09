@@ -2,6 +2,10 @@
 #include <lux/engine/editor/rendering/ViewImage.hpp>
 namespace lux::editor::rendering
 {
+    namespace detail
+    {
+        struct RendererTestAccess;
+    }
     class LUX_EDITOR_RENDERING_PUBLIC RenderView final
     {
       public:
@@ -21,6 +25,7 @@ namespace lux::editor::rendering
       private:
         friend class EditorRenderer;
         friend class detail::ViewResources;
+        friend struct detail::RendererTestAccess;
         static RenderResult<std::unique_ptr<RenderView>> create(EditorRenderer &, lux::render::RenderControlSession &,
                                                                 RenderViewId, lux::render::RenderSceneId,
                                                                 ViewConfig) noexcept;

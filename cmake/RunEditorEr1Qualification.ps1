@@ -36,6 +36,7 @@ Invoke-Logged 'clone' 'git' @('clone', '--no-hardlinks', '--no-checkout', $sourc
 Invoke-Logged 'checkout' 'git' @('-C', $clone, 'checkout', '--detach', $revision)
 Invoke-Logged 'tracked-snapshot' $CMake @("-DLUX_SOURCE_DIR=$clone", '-P', "$clone/cmake/ValidateTrackedSnapshot.cmake")
 & $DeveloperShell -Arch amd64 -HostArch amd64 -SkipAutomaticLocation | Out-Null
+$compiler = (Get-Command cl.exe -ErrorAction Stop).Source
 $parserRuntime = Join-Path $env:VCINSTALLDIR 'Tools/Llvm/x64/bin'
 if (!(Test-Path -LiteralPath "$parserRuntime/libclang.dll")) { throw 'Configured MSVC parser runtime missing' }
 # The existing generator dynamically loads libclang. Match the working MSVC toolchain;
@@ -45,6 +46,7 @@ Get-FileHash -LiteralPath "$parserRuntime/libclang.dll" -Algorithm SHA256 |
     ConvertTo-Json | Set-Content -LiteralPath "$qroot/parser-runtime.json" -Encoding utf8
 $toolchain = "$VcpkgRoot/scripts/buildsystems/vcpkg.cmake"
 Invoke-Logged 'configure' $CMake @('-S', $clone, '-B', $build, '-G', 'Ninja', "-DCMAKE_MAKE_PROGRAM=$Ninja",
+    "-DCMAKE_CXX_COMPILER=$compiler",
     '-DCMAKE_BUILD_TYPE=RelWithDebInfo', "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
     "-DCMAKE_PREFIX_PATH=$ToolsetPrefix;$CxxPrefix;$BuildDependencyPrefix", '-DLUX_BUILD_PROFILE=EDITOR',
     '-DBUILD_TESTING=ON', '-DLUX_EDITOR_DIAGNOSTICS=OFF', '-DLUX_EDITOR_EDITING_TEST_DIAGNOSTICS=OFF',
@@ -58,7 +60,7 @@ $ctest = Join-Path (Split-Path $CMake) 'ctest.exe'
 $cleanPath = ($env:PATH -split ';' | Where-Object {
     $_ -and $_ -notmatch '(?i)lux-er1|lux-sv1|install[/\\]RelWithDebInfo|build[/\\]RelWithDebInfo'
 }) -join ';'
-$env:PATH = "$build/bin;$CxxPrefix/bin;$VcpkgRoot/installed/x64-windows/bin;$cleanPath"
+$env:PATH = "$build/bin;$parserRuntime;$CxxPrefix/bin;$VcpkgRoot/installed/x64-windows/bin;$cleanPath"
 Invoke-Logged 'ctest' $ctest @('--test-dir', $build, '--output-on-failure', '-j', '1')
 Copy-Item -LiteralPath "$build/Testing/Temporary/LastTest.log" -Destination "$logs/ctest-details.log"
 foreach ($variant in @('base', 'multiple_equal', 'multiple_reverse', 'multiple_lifecycle', 'late_close', 'image_lifetime')) {
@@ -72,7 +74,7 @@ $relocated = Join-Path $qroot 'relocated-sdk'
 Copy-Item -LiteralPath $sdk -Destination $relocated -Recurse
 foreach ($location in @('sdk', 'relocated-sdk')) {
     $prefix = Join-Path $qroot $location
-    $env:PATH = "$prefix/bin;$CxxPrefix/bin;$VcpkgRoot/installed/x64-windows/bin;$cleanPath"
+    $env:PATH = "$prefix/bin;$parserRuntime;$CxxPrefix/bin;$VcpkgRoot/installed/x64-windows/bin;$cleanPath"
     foreach ($consumer in @('editor-ui', 'editor-scene', 'editor-scene-readers', 'editor-tooling', 'editor-editing')) {
         $input = Join-Path $qroot "consumer-input/$consumer"
         if (!(Test-Path -LiteralPath $input)) {
@@ -81,6 +83,7 @@ foreach ($location in @('sdk', 'relocated-sdk')) {
         }
         $output = Join-Path $qroot "consumers/$location/$consumer"
         Invoke-Logged "$location-$consumer-configure" $CMake @('-S', $input, '-B', $output, '-G', 'Ninja',
+            "-DCMAKE_CXX_COMPILER=$compiler",
             "-DCMAKE_MAKE_PROGRAM=$Ninja", '-DCMAKE_BUILD_TYPE=RelWithDebInfo', "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
             "-DCMAKE_PREFIX_PATH=$prefix;$ToolsetPrefix;$CxxPrefix", '-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF',
             '-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF', '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON')

@@ -127,3 +127,7 @@ Layout、UiInputEvent、TextureHandle。现存头先用 Git blob 证明对应仓
 - GUI持续按住RMB/MMB失焦与中文IME候选仍未实际验证；已向用户询问是否可手工协助。当前自动化接口不支持持续右/中键拖动。
 - 最终正常SDK clean clone、相同输入五组配对成本、完整删除门槛仍未完成。保留旧入口，不作ER-1完成声明。
 - ctest-61-all漏载MSVC环境，15个编译负例因缺少vector/stdint.h等失败；重载同一工具链后ctest-61-env-all 134/134，43.76秒。失败日志保留。
+
+2026-09-09 续行：clean q1 的 image_lifetime 真实崩溃经 CDB + ASan 定位为新 DevelopmentScene 重复整组反射注册，03f7996e 修复增量队列入口并添加100次 metadata 构建回归。保留全部故障日志与 dump。q2 编译器误选 GNU模式 clang++，全量失败，没有运行程序；资格驱动改为显式 MSVC cl.exe，并在消费者构建继续固定现有 libclang 路径。
+
+build-65：专用 RelWithDebInfo 分配诊断已恢复（ASan 调查产物身份另存），all/no-op及CTest135/135通过；真实迟到resize及仅GPU完成水位阻止关闭各五个进程通过。完整GPU变体和factory20/seal6实际分配点重跑，包含原seal index=2。仍未宣布ER-1通过。

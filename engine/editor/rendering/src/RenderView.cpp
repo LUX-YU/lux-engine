@@ -3,6 +3,9 @@
 #include <cmath>
 #include <limits>
 #include <new>
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+#include <lux/engine/editor/rendering/detail/RendererTestAccess.hpp>
+#endif
 
 namespace lux::editor::rendering
 {
@@ -10,6 +13,13 @@ namespace lux::editor::rendering
     {
         std::unique_ptr<detail::ViewResources> resources;
     };
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+    std::uint64_t detail::RendererTestAccess::inFlightResize(const RenderView &view) noexcept
+    {
+        const auto &resources = *view.impl_->resources;
+        return resources.resize.valid() ? resources.in_flight_sequence : 0;
+    }
+#endif
     RenderView::RenderView(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl))
     {
     }

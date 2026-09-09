@@ -44,6 +44,8 @@ namespace lux::script::lua
                 std::string_view key;
                 std::span<const std::string_view> keys;
                 bool success{true};
+                // Simple field/table/key/failure operations need at most eight extra slots.
+                int required_stack{8};
                 int count{};
                 const LuaCodecPlan* plan{};
                 const LuaCodecShape* shape{};
@@ -53,6 +55,13 @@ namespace lux::script::lua
             int trampoline(lua_State *state)
             {
                 auto *operation = static_cast<Operation *>(lua_touserdata(state, 1));
+                // A pcall creates a new CallInfo: caller capacity does not grant this frame its quota.
+                if (!lua_checkstack(state, operation->required_stack))
+                {
+                    operation->success = false;
+                    if (operation->failure) operation->failure->code = ELuaValueError::VM_FAILURE;
+                    return 0;
+                }
                 return operation->execute(state, *operation);
             }
             bool run(lua_State *state, Operation &operation, int input, int second, int results) noexcept
@@ -220,8 +229,8 @@ namespace lux::script::lua
             {
                 LuaValueFailure failure{ELuaValueError::VM_FAILURE};
                 operation.failure = &failure;
-                if (operation.plan->stack <= 136U && lua_checkstack(state, static_cast<int>(operation.plan->stack)) &&
-                    run(state, operation, input, 0, results)) return {};
+                operation.required_stack = static_cast<int>(operation.plan->stack);
+                if (operation.plan->stack <= 136U && run(state, operation, input, 0, results)) return {};
                 for (auto i = operation.path_size; i > 0U; --i) failure.prepend(operation.path[i - 1U]);
                 return lux::cxx::unexpected(failure);
             }
@@ -278,7 +287,8 @@ namespace lux::script::lua
         {
             Operation operation{prepareOperation};
             operation.plan = &plan;
-            return lua_checkstack(state, static_cast<int>(plan.stack)) && run(state, operation, 0, 0, 0);
+            operation.required_stack = static_cast<int>(plan.stack);
+            return plan.stack <= 136U && run(state, operation, 0, 0, 0);
         }
         bool LuaValueAccess::prepareShape(lua_State* state, const LuaCodecShape& shape) noexcept
         {

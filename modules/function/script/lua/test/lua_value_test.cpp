@@ -299,6 +299,44 @@ template<int N> static void deepStackCase()
     std::printf("CODEC_STACK_PASS,depth=%zu,bidirectional=1,independent_tables=1\n", Codec::depth);
 }
 
+static void denyCallbackGrowth(lua_State* state, lua_Debug*)
+{
+    void* context{};
+    static_cast<void>(lua_getallocf(state, &context));
+    static_cast<Allocation*>(context)->deny = true;
+    lua_sethook(state, nullptr, 0, 0);
+}
+static void testInnerStackFailure()
+{
+    using Codec = LuaValueCodec<Nested<31>>;
+    Allocation allocator;
+    auto* state = lua_newstate(Allocation::allocate, &allocator, 1592598566U);
+    assert(state);
+    Nested<31> value;
+    nestedLeaf(value) = 91;
+    Resource::released.reserve(8);
+    {
+        LuaValueSlots<Resource> outer;
+        outer.put<0>(Resource{37});
+        lua_sethook(state, &denyCallbackGrowth, LUA_MASKCALL, 0);
+        LuaValueWriter writer{state};
+        const auto failed = Codec::push(writer, value);
+        assert(allocator.deny && allocator.failed > 0U && !failed);
+        assert(failed.error().code == ELuaValueError::VM_FAILURE && lua_gettop(state) == 0 && Resource::live == 1);
+        allocator.deny = false;
+        assert(Codec::prepare(state) && Codec::push(writer, value));
+        std::array<double, Codec::plainCount()> scratch;
+        assert(detail::LuaValueAccess::readPlan(state, 1, Codec::plan(), scratch));
+        std::size_t cursor{};
+        auto decoded = Codec::consumePlain(scratch, cursor);
+        assert(nestedLeaf(decoded) == 91 && lua_gettop(state) == 1);
+    }
+    assert(Resource::live == 0 && Resource::released.back() == 37);
+    Resource::released.clear();
+    lua_close(state);
+    std::puts("CODEC_INNER_STACK_OOM,callback_entered=1,vm_failure=1,outer_lifetime=1,depth32_recovery=1 PASS");
+}
+
 int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -307,11 +345,13 @@ int main(int argc, char** argv)
         deepStackCase<0>();
         deepStackCase<15>();
         deepStackCase<31>();
+        testInnerStackFailure();
         return 0;
     }
     deepStackCase<0>();
     deepStackCase<15>();
     deepStackCase<31>();
+    testInnerStackFailure();
     static_assert(LuaValueCodec<NamedA>::representation() != LuaValueCodec<NamedB>::representation());
     static_assert(!LuaValueCodec<Angle>::can_read && LuaValueCodec<Angle>::can_push);
     static_assert(!std::is_default_constructible_v<Resource>);

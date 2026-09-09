@@ -14,7 +14,7 @@ namespace lux::script::lua
     {
         std::size_t cache_bytes{16U * 1024U * 1024U};
         unsigned seed{1592598566U};
-        ELuaGcMode gc_mode{ELuaGcMode::GENERATIONAL};
+        ELuaGcMode gc_mode{ELuaGcMode::INCREMENTAL};
         // Indexed by ELuaGcParameter; -1 preserves the upstream value.
         std::array<int, 6U> gc_parameters{-1, -1, -1, -1, -1, -1};
         bool track_allocations{};

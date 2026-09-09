@@ -130,7 +130,7 @@ namespace
         std::uint64_t seed{0x5EED2026ULL};
         std::filesystem::path output{"script_runtime_benchmark.csv"};
         std::filesystem::path lua_artifact;
-        bool lua_incremental_gc{};
+        bool lua_incremental_gc{true};
         bool vm_accounting{};
     };
 
@@ -1191,7 +1191,7 @@ namespace
             lux::script::ScriptSymbolId symbol,
             std::size_t resume_budget,
             bool vm_accounting = false,
-            bool lua_incremental_gc = false
+            bool lua_incremental_gc = true
         )
             : simulation_description(lux::simulation::benchmark_domain::scriptDescription(
                   0U, symbol == kLuaEventWait)), artifact_asset(loadLuaArtifact(artifact_path))

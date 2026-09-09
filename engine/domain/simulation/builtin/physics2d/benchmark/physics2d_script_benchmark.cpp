@@ -73,7 +73,7 @@ namespace
         std::filesystem::path output{"physics2d_script_pb3.csv"};
         std::filesystem::path lua_artifact;
         bool vm_accounting{};
-        bool lua_incremental_gc{};
+        bool lua_incremental_gc{true};
         std::filesystem::path flowforge_artifact;
     };
 

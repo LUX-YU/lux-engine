@@ -335,10 +335,11 @@ int main()
                                     delay_method) == EScriptBackendResult::SUCCESS);
     const auto delay_step_call = delay_method.resumable;
     ScriptBackendContinuation delay_continuation;
+    const auto previous_custom_starts = delay_provider.calls;
     const auto delay_suspended =
         delay_step_call.invoke(delay_step_call.context, empty_frame, step_context, delay_continuation);
     assert(delay_suspended.state == EScriptStepState::SUSPENDED);
-    assert(delay_provider.calls == 1U); // Same contract, custom publication: its real starter must run.
+    assert(delay_provider.calls == previous_custom_starts + 1U); // This custom starter must run exactly once.
     const ScriptResumePacket delay_packet{delay_suspended.waiting_on, EScriptAwaitableState::READY, nullptr, {}};
     const auto delay_completed = delay_continuation.resume(delay_continuation.state, step_context, delay_packet);
     assert(delay_completed.state == EScriptStepState::COMPLETED);

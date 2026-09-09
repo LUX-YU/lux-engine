@@ -40,10 +40,12 @@ namespace
     using AbilityTraits = lux::script::ScriptAbilityTraits<Ability>;
 
     lua_State* g_observed_vm{};
+    std::size_t g_observed_read_entries{};
     int (*g_original_read)(lua_State*) noexcept{};
     int observeRead(lua_State* state) noexcept
     {
         g_observed_vm = state;
+        ++g_observed_read_entries;
         return g_original_read(state);
     }
 
@@ -566,11 +568,19 @@ namespace
         std::size_t permitted{};
         std::size_t growths{}, failures{};
         bool armed{};
+        void* observation_context{};
+        void (*observe_growth)(void*) noexcept{};
         static void* allocate(void* opaque, void* pointer, std::size_t old_size, std::size_t size) noexcept
         {
             auto& self = *static_cast<CreationAllocator*>(opaque);
             if (self.armed && size != 0U && (pointer == nullptr || size > old_size))
             {
+                if (self.observe_growth)
+                {
+                    const auto callback = self.observe_growth;
+                    self.observe_growth = nullptr;
+                    callback(self.observation_context);
+                }
                 const auto index = self.growths++;
                 std::printf("CREATE_ALLOCATION,index=%zu,old=%zu,new=%zu,kind=%s\n",
                     index, old_size, size, pointer ? "grow" : "new");
@@ -642,12 +652,73 @@ namespace
             final.vm_coroutine_creations, final.vm_coroutine_releases);
         return 0;
     }
+
+    int testCreationReentry(bool stop)
+    {
+        Harness harness{true, 1U, true, true};
+        Provider provider;
+        const auto binding = lux::script::bindScriptAbility<Ability>(provider);
+        const std::array publications{publishScriptAbility(binding)};
+        auto created = harness.create(publications);
+        assert(created);
+        auto system = std::move(*created);
+        assert(system.prepare());
+        g_observed_read_entries = 0U;
+        assert(dispatchRuntimeHook(system, harness.sync_hook) == 1U);
+        assert(g_observed_vm && g_observed_read_entries == 1U);
+        auto* vm = g_observed_vm;
+        const auto base = lua_gettop(vm);
+        CreationAllocator allocation;
+        allocation.original = lua_getallocf(vm, &allocation.context);
+        allocation.permitted = (std::numeric_limits<std::size_t>::max)();
+        struct Observation final { Harness& harness; ScriptSystem& system; bool stop; } observation{harness, system, stop};
+        allocation.observation_context = &observation;
+        allocation.observe_growth = [](void* context) noexcept {
+            auto& value = *static_cast<Observation*>(context);
+            if (value.stop)
+            {
+                assert(value.system.requestStop());
+                const auto busy = value.system.shutdown();
+                assert(!busy && busy.error() == EScriptSystemError::ENDPOINT_BUSY);
+            }
+            else
+                value.harness.registry.destroy(value.harness.entity);
+            assert(value.harness.backend->stats().prepared_ability_slots == AbilityTraits::Description.methods.size());
+        };
+        lua_setallocf(vm, &CreationAllocator::allocate, &allocation);
+        allocation.armed = true;
+        assert(dispatchRuntimeHook(system, harness.async_hook) == 1U);
+        allocation.armed = false;
+        lua_setallocf(vm, allocation.original, allocation.context);
+        assert(allocation.observe_growth == nullptr && allocation.failures == 0U && lua_gettop(vm) == base);
+        if (stop)
+        {
+            assert(g_observed_read_entries == 2U && provider.reads == 2U && provider.writes == 2U);
+            assert(provider.pending && system.activeContinuationCount() == 1U && system.failures().empty());
+        }
+        else
+        {
+            assert(g_observed_read_entries == 1U && provider.reads == 1U && provider.writes == 1U);
+            assert(!provider.pending && system.activeContinuationCount() == 0U);
+            assert(system.failures().size() == 1U && system.failures().front().status == -1);
+        }
+        assert(system.shutdown());
+        const auto final = harness.backend->stats();
+        assert(final.vm_coroutine_creations == final.vm_coroutine_releases);
+        assert(final.prepared_ability_slots == 0U && final.prepared_event_slots == 0U);
+        std::printf("CREATION_REENTRY_PASS,mode=%s,read_entries=%zu,reads=%zu,writes=%zu,roots=%zu,releases=%zu\n",
+            stop ? "deferred-stop" : "native-retire", g_observed_read_entries, provider.reads, provider.writes,
+            final.vm_coroutine_creations, final.vm_coroutine_releases);
+        return 0;
+    }
 } // namespace
 
 int main(int argc, char** argv)
 {
     if (argc == 3 && std::string_view{argv[1]} == "--creation-oom")
         return testCreationOom(static_cast<std::size_t>(std::strtoul(argv[2], nullptr, 10)));
+    if (argc == 2 && std::string_view{argv[1]} == "--creation-retire") return testCreationReentry(false);
+    if (argc == 2 && std::string_view{argv[1]} == "--creation-stop") return testCreationReentry(true);
     if (argc == 2 && std::string_view{argv[1]} == "--interpreter-only")
         g_execution_policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
     Provider provider;

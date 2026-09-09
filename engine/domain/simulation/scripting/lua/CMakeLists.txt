@@ -186,6 +186,10 @@ foreach(_creation_failure 0 1)
     add_test(NAME simulation_script_lua_creation_oom_${_creation_failure}
         COMMAND simulation_script_lua_coroutine_integration_test --creation-oom ${_creation_failure})
 endforeach()
+add_test(NAME simulation_script_lua_creation_retire_test
+    COMMAND simulation_script_lua_coroutine_integration_test --creation-retire)
+add_test(NAME simulation_script_lua_creation_stop_test
+    COMMAND simulation_script_lua_coroutine_integration_test --creation-stop)
 
 if(TARGET script_native_collision_fixture)
     add_executable(

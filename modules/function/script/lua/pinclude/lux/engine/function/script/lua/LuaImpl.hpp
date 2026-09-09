@@ -30,7 +30,13 @@ namespace lux::script::lua
             for (int index{}; index < LUA_GCPN; ++index)
                 if (config.gc_parameters[index] != -1) lua_gc(L_, LUA_GCPARAM, index, config.gc_parameters[index]);
         }
-        [[nodiscard]] LuaAllocationStats allocationStats() const noexcept { return allocator_.stats(); }
+        [[nodiscard]] LuaAllocationStats allocationStats() const noexcept
+        {
+            auto result = allocator_.stats();
+            if (result.enabled && L_)
+                for (int i{}; i < LUA_GCPN; ++i) result.gc_parameters[i] = lua_gc(L_, LUA_GCPARAM, i, -1);
+            return result;
+        }
 
         ~ScriptEngineImpl()
         {

@@ -458,7 +458,19 @@ int main(int argc, char** argv)
     assert(!conflict && conflict.error() == ELuaScriptBindingBackendError::INVALID_VALUE_OPERATION);
 
     const bool benchmark_mode = argc > 2 && std::string_view{argv[1]} == "--benchmark";
-    const bool vm_accounting = !benchmark_mode || (argc > 3 && std::string_view{argv[3]} == "--allocations");
+    bool vm_accounting = !benchmark_mode;
+    lux::script::lua::LuaVmConfiguration vm_config;
+    if (benchmark_mode)
+    {
+        for (int i = 3; i < argc; ++i)
+        {
+            const std::string_view arg{argv[i]};
+            if (arg == "--allocations") vm_accounting = true;
+            else if (arg == "--gc-g1") vm_config.gc_parameters[3] = 150;
+            else if (arg == "--gc-g2") vm_config.gc_mode = lux::script::lua::ELuaGcMode::GENERATIONAL;
+            else { std::fprintf(stderr, "Unknown record benchmark option\n"); return 2; }
+        }
+    }
     auto created = LuaScriptBackend::create({
         // Conformance adds distinct immutable assets for fault/stop cases; timed work retains the original capacity.
         .instance_capacity = 2, .prepared_call_capacity = benchmark_mode ? 64U : 96U, .continuation_capacity = 2,
@@ -466,7 +478,7 @@ int main(int argc, char** argv)
         .prepared_ability_capacity = 2 * AbilityTraits::Methods.size(), .abilities = std::span{&contribution, 1},
         .track_vm_allocations = vm_accounting,
         .prepared_ability_blocks = std::array{LuaPreparedBlockClass{AbilityTraits::Methods.size(), 2}},
-        .prepared_ability_storage_bytes = 1024 * 1024});
+        .prepared_ability_storage_bytes = 1024 * 1024, .vm = vm_config});
     assert(created);
     auto backend = std::move(*created);
     if (argc > 2 && std::string_view{argv[1]} == "--admission-case")
@@ -490,6 +502,16 @@ int main(int argc, char** argv)
             "vm_accounting=%d vm_allocations=%llu\n",
             count, elapsed, runtime.provider.poses - 1000, runtime.system->activeContinuationCount(),
             vm_accounting, after.vm_allocations.allocations - before.vm_allocations.allocations);
+        if (vm_accounting)
+        {
+            const auto& m = after.vm_allocations;
+            std::printf("RECORD_MEMORY,live=%zu,active=%zu,idle=%zu,pinned=%zu,rounding=%zu,heap_alloc=%llu,"
+                "heap_free=%llu,supply=%llu,release=%llu,pause=%d,minor=%d,major_minor=%d,minor_major=%d,"
+                "step_mul=%d,step_size=%d\n", m.live_bytes, m.active_page_backing_bytes, m.idle_page_backing_bytes,
+                m.pinned_free_slot_bytes, m.class_rounding_bytes, m.system_allocations, m.system_frees,
+                m.page_allocations, m.page_frees, m.gc_parameters[3], m.gc_parameters[0], m.gc_parameters[1],
+                m.gc_parameters[2], m.gc_parameters[4], m.gc_parameters[5]);
+        }
         assert(runtime.system->stats().invocation_failures == 0U);
         assert(runtime.system->shutdown() && runtime.provider.angles == 2U);
         const auto closed = runtime.system->stats();

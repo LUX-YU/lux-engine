@@ -42,5 +42,7 @@ namespace lux::script::lua
         // Fixed diagnostic storage; callbacks compiled without Track do not update it.
         std::array<LuaPageClassStats, 9U> classes{};
         std::size_t page_header_bytes{}, block_header_bytes{};
+        // Read only in owner-side diagnostic snapshots, never from lua_Alloc.
+        std::array<int, 6U> gc_parameters{-1, -1, -1, -1, -1, -1};
     };
 }

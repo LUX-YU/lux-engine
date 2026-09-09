@@ -86,6 +86,51 @@ namespace lux::simulation::script
         static constexpr std::int32_t kContinuationCapacity = -7;
         static constexpr std::int32_t kExecutionDepthCapacity = -8;
         static constexpr std::int32_t kEventWaitFailure = -9;
+        static constexpr std::int32_t kLuaAllocationFailure = -10;
+
+        struct ThreadCreateRequest final
+        {
+            lua_State* thread{};
+            int reference{LUA_NOREF};
+        };
+        inline static char thread_creator_key;
+
+        // Only trivial locals may be crossed by a Lua error. The reservation and rollback live
+        // outside pcall; LuaJIT's allocating C closure is installed at the cold protected boundary.
+        static int createThread(lua_State* state)
+        {
+            auto* request = static_cast<ThreadCreateRequest*>(lua_touserdata(state, 1));
+            auto* thread = lua_newthread(state);
+            const auto reference = luaL_ref(state, LUA_REGISTRYINDEX);
+            request->thread = thread;
+            request->reference = reference;
+            return 0;
+        }
+
+        static int installThreadCreator(lua_State* state)
+        {
+            lua_pushlightuserdata(state, &thread_creator_key);
+            lua_pushcfunction(state, &createThread);
+            lua_rawset(state, LUA_REGISTRYINDEX);
+            return 0;
+        }
+
+        [[nodiscard]] static bool initializeThreadCreator(lua_State* state) noexcept
+        {
+            return lux::script::lua::detail::bootstrapLuaOperation(state, &installThreadCreator, nullptr) == LUA_OK;
+        }
+
+        [[nodiscard]] int createThreadProtected(ThreadCreateRequest& request) noexcept
+        {
+            if (!lua_checkstack(state, 2)) return LUA_ERRMEM;
+            const auto base = lua_gettop(state);
+            lua_pushlightuserdata(state, &thread_creator_key);
+            lua_rawget(state, LUA_REGISTRYINDEX);
+            lua_pushlightuserdata(state, &request);
+            const auto status = lua_pcall(state, 1, 0, 0);
+            lua_settop(state, base);
+            return status;
+        }
 
         enum class EPendingOperation : std::uint8_t
         {
@@ -406,6 +451,7 @@ namespace lux::simulation::script
                 return;
             }
             if (!lux::script::lua::detail::LuaValueAccess::initialize(state)) return;
+            if (!initializeThreadCreator(state)) return;
             vm_configured = true;
             prototypes.reserve(config.instance_capacity);
             components.assign(
@@ -1657,36 +1703,54 @@ namespace lux::simulation::script
             return 0;
         }
 
-        [[nodiscard]] LuaContinuation* acquireContinuation(
+        [[nodiscard]] lux::cxx::expected<LuaContinuation*, std::int32_t> acquireContinuation(
             Instance& instance,
             PreparedCall& call
         ) noexcept
         {
             if (free_continuations.empty())
-                return nullptr;
-            lua_State* thread = lua_newthread(state);
-            if (thread == nullptr)
-                return nullptr;
-            const auto thread_ref = luaL_ref(state, LUA_REGISTRYINDEX);
-            if (thread_ref == LUA_NOREF || thread_ref == LUA_REFNIL)
-                return nullptr;
-            ++vm_coroutine_creations;
+                return lux::cxx::unexpected(kContinuationCapacity);
             const auto slot = free_continuations.back();
             free_continuations.pop_back();
+            ++instance.active_continuations;
+            struct Reservation final
+            {
+                State& owner;
+                Instance& instance;
+                std::size_t slot;
+                bool committed{};
+                ~Reservation()
+                {
+                    if (committed) return;
+                    --instance.active_continuations;
+                    owner.free_continuations.push_back(slot);
+                }
+            } reservation{*this, instance, slot};
+            ThreadCreateRequest request;
+            const auto status = createThreadProtected(request);
+            const bool missing_root = request.thread == nullptr || request.reference == LUA_NOREF ||
+                request.reference == LUA_REFNIL;
+            if (status != LUA_OK || missing_root)
+            {
+                if (request.reference != LUA_NOREF && request.reference != LUA_REFNIL)
+                    luaL_unref(state, LUA_REGISTRYINDEX, request.reference);
+                return lux::cxx::unexpected(status == LUA_ERRMEM ? kLuaAllocationFailure : kLuaFailure);
+            }
             auto& continuation = continuations[slot];
             continuation = {
                 this,
                 std::addressof(instance),
                 std::addressof(call),
-                thread,
-                thread_ref,
+                request.thread,
+                request.reference,
                 {},
                 0U,
                 EPendingOperation::NONE,
                 0,
                 true
             };
-            ++instance.active_continuations;
+            reservation.committed = true;
+            ++vm_coroutine_creations;
             return std::addressof(continuation);
         }
 
@@ -1897,9 +1961,13 @@ namespace lux::simulation::script
             if (!call.active || call.instance == nullptr || call.function == nullptr || frame.return_count != 0U)
                 return ScriptStepResult::failed(kInvalidCall);
             auto& self = *call.instance->owner;
-            auto* continuation = self.acquireContinuation(*call.instance, call);
-            if (continuation == nullptr)
-                return ScriptStepResult::failed(kContinuationCapacity);
+            const auto* behavior = call.instance->behavior;
+            const bool bound_authority = behavior != nullptr && behavior->hasInvocationAuthority();
+            const auto qualification = bound_authority ? behavior->captureInvocation() : ScriptInvocationValidity{};
+            if (bound_authority && !qualification.valid()) return ScriptStepResult::failed(kInvalidCall);
+            const auto acquired = self.acquireContinuation(*call.instance, call);
+            if (!acquired) return ScriptStepResult::failed(acquired.error());
+            auto* continuation = *acquired;
 
             lua_rawgeti(continuation->thread, LUA_REGISTRYINDEX, call.function->function_ref);
             std::uint32_t argument_count{};
@@ -1919,6 +1987,17 @@ namespace lux::simulation::script
                     return ScriptStepResult::failed(kMarshalFailure);
                 }
                 ++argument_count;
+            }
+            // Allocation, GC and record conversion can call native code. A bound but revoked
+            // invocation is never standalone; retain the original lifetime category and epoch.
+            const bool same_binding = call.instance->behavior == behavior &&
+                (behavior != nullptr && behavior->hasInvocationAuthority()) == bound_authority;
+            const bool still_qualified = same_binding && call.instance->active &&
+                (!bound_authority || qualification.valid());
+            if (!still_qualified)
+            {
+                destroyLuaContinuation(*continuation);
+                return ScriptStepResult::failed(kInvalidCall);
             }
             ExecutionScope execution{
                 self,

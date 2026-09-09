@@ -620,6 +620,7 @@ namespace
         assert(provider.reads == 1U && provider.writes == 1U && !provider.pending);
         assert(system.activeContinuationCount() == 0U && system.activeAwaitableCount() == 0U);
         assert(system.stats().invocation_failures == 1U);
+        assert(system.failures().size() == 1U && system.failures().front().status == -10);
         assert(system.shutdown());
         const auto after = harness.backend->stats();
         assert(after.vm_coroutine_creations == after.vm_coroutine_releases);

@@ -13,6 +13,13 @@ namespace lux::script::lua::detail
         int result_count{};
     };
 
+    // Cold C bootstrap, including any allocation needed to push its C closure. The operation
+    // receives context at stack slot 1, returns no values and must contain only trivial locals.
+    // Restores the caller's stack on success and failure; returns the VM's status code.
+    [[nodiscard]] LUX_FUNCTION_PUBLIC int bootstrapLuaOperation(
+        lua_State* state, int (*operation)(lua_State*), void* context
+    ) noexcept;
+
     [[nodiscard]] LUX_FUNCTION_PUBLIC bool configureLuaVm(
         lua_State* state,
         ELuaExecutionPolicy policy,

@@ -14,6 +14,46 @@ namespace
         assert(lua_gettop(state) == 0);
         return lux::script::lua::detail::yieldLuaInvocation(state, 0);
     }
+
+    struct BootstrapAllocator final
+    {
+        lua_Alloc original{};
+        void* context{};
+        std::size_t failures{};
+        static void* denyGrowth(void* opaque, void* pointer, std::size_t old_size, std::size_t size) noexcept
+        {
+            auto& self = *static_cast<BootstrapAllocator*>(opaque);
+            if (size != 0U && (pointer == nullptr || size > old_size))
+            {
+                ++self.failures;
+                return nullptr;
+            }
+            return self.original(self.context, pointer, old_size, size);
+        }
+    };
+
+    void testProtectedBootstrap(lua_State* state)
+    {
+        const auto top = lua_gettop(state);
+        BootstrapAllocator allocation;
+        allocation.original = lua_getallocf(state, &allocation.context);
+        lua_setallocf(state, &BootstrapAllocator::denyGrowth, &allocation);
+        const auto status = lux::script::lua::detail::bootstrapLuaOperation(state, [](lua_State* inner) {
+            lua_createtable(inner, 0, 8);
+            return 0;
+        }, nullptr);
+        lua_setallocf(state, allocation.original, allocation.context);
+        assert(status == LUA_ERRMEM && allocation.failures != 0U && lua_gettop(state) == top);
+        bool recovered{};
+        assert(lux::script::lua::detail::bootstrapLuaOperation(state, [](lua_State* inner) {
+            auto* result = static_cast<bool*>(lua_touserdata(inner, 1));
+            lua_createtable(inner, 0, 8);
+            *result = true;
+            return 0;
+        }, &recovered) == LUA_OK);
+        assert(recovered && lua_gettop(state) == top);
+        std::printf("BOOTSTRAP_OOM,failures=%zu,stack_delta=0,recovery=1\n", allocation.failures);
+    }
 }
 
 int main(int argc, char** argv)
@@ -22,6 +62,7 @@ int main(int argc, char** argv)
     lua_State* state = luaL_newstate();
     assert(state != nullptr);
     luaL_openlibs(state);
+    testProtectedBootstrap(state);
 
     lux::script::lua::LuaRuntimeInfo runtime;
     assert(lux::script::lua::detail::configureLuaVm(

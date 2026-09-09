@@ -8,6 +8,23 @@
 
 namespace lux::script::lua::detail
 {
+    int bootstrapLuaOperation(lua_State* state, int (*operation)(lua_State*), void* context) noexcept
+    {
+        if (state == nullptr || operation == nullptr) return LUA_ERRRUN;
+        if (!lua_checkstack(state, 2)) return LUA_ERRMEM;
+        const auto base = lua_gettop(state);
+#if defined(LUX_SCRIPT_LUA_VM_LUAJIT)
+        const auto status = lua_cpcall(state, operation, context);
+#else
+        // The standard VM represents a zero-upvalue C function without allocating a closure.
+        lua_pushcfunction(state, operation);
+        lua_pushlightuserdata(state, context);
+        const auto status = lua_pcall(state, 1, 0, 0);
+#endif
+        lua_settop(state, base);
+        return status;
+    }
+
 #if defined(LUX_SCRIPT_LUA_VM_LUA54)
     namespace
     {

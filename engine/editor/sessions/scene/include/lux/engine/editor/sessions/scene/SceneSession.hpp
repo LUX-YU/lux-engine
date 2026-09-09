@@ -189,7 +189,12 @@ namespace lux::editor::sessions
         friend struct detail::SceneTestAccess;
         friend class SceneView; // Narrow lifetime/render association; never a public Registry accessor.
         [[nodiscard]] SceneResult<const void *> readComponentValue(SceneEntityRef, lux::cxx::TypeToken) const noexcept;
-        [[nodiscard]] SceneResult<lux::render::RenderSceneId> attachView(rendering::EditorRenderer &) noexcept;
+        struct RenderBinding final
+        {
+            lux::render::RenderSceneId scene;
+            double coordinate_page_size{};
+        };
+        [[nodiscard]] SceneResult<RenderBinding> attachView(rendering::EditorRenderer &) noexcept;
         void detachView() noexcept;
         struct Impl;
         SceneSession(lux::object::ObjectDispatcherRef, std::unique_ptr<Impl>);

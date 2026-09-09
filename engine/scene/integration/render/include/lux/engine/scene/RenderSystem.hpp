@@ -31,6 +31,7 @@ namespace lux::scene
         ~RenderSystem() noexcept override;
 
         [[nodiscard]] render::RenderSceneId renderSceneId() const noexcept;
+        [[nodiscard]] double coordinatePageSize() const noexcept;
         [[nodiscard]] bool publishStablePoint() noexcept;
         [[nodiscard]] bool presentationTick() noexcept;
         [[nodiscard]] bool hasPendingUpdate() const noexcept;
@@ -41,12 +42,14 @@ namespace lux::scene
         RenderSystem(
             RenderRuntimeLease runtime,
             render::RenderSceneLease scene,
-            std::unique_ptr<RenderSyncPipeline> sync
+            std::unique_ptr<RenderSyncPipeline> sync,
+            double coordinate_page_size
         ) noexcept;
 
         RenderRuntimeLease runtime_;
         render::RenderSceneLease scene_;
         std::unique_ptr<RenderSyncPipeline> sync_;
+        const double coordinate_page_size_;
     };
 
     [[nodiscard]] LUX_ENGINE_SCENE_RENDER_PUBLIC SceneSystemRegistration

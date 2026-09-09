@@ -24,3 +24,15 @@ pending_change属于SceneResources；每个row作用域记录异常退出前发�
 保留探索结果：g02-before.log因测试驱动沿用三实体断言而异常终止，不算合格负例；before-02实际命中snapshot分配并通过，不算复现。对应失败构建日志也保留；all失败后未运行测试。
 
 本组尚未覆盖“先接纳READY再后续准备失败”的独立组合，将继续补齐；不据这两条结果将G02全部验收项标为通过。
+
+## G03：真实Scene坐标页配置贯通
+
+采用RenderSystem已经用于Scene创建和Mesh/Light extraction的同一不可变page size，在创建SceneView时携同RenderScene身份传入RenderView。RenderView验证范围，camera origin分页与wire.coordinate_page_size使用该值；默认相机position/rotation-only view协议保留。
+
+正式修前基线为g03-before-build-03.log成功all之后的g03-before-verified-coordinate_{1024,256}.log。1024通过；256明确exit=1，scene_page=256但wire_page=1024，两个实际GPU图像相同背景checksum13526231069286072813，最终所有owner关闭。不是超时/崩溃负例。
+
+修后all成功；两个variant加base均exit=0。全场景（包括根Transform、子Mesh和独立point light）平移(256,-256,1024)，相机同步平移，覆盖页边界、负坐标及非零相机。256 wire page=(1,-1,4), local=(6,4,8)。1024与256在两个相机姿态下的PPM SHA256分别相同：9F1E3680...E0076C、C1093556...077B6；原base也同checksum。g03-image-hashes.json记录完整值。
+
+同时验证zero/negative/max-double/infinity/NaN页尺寸在owner/request接纳之前准确返回INVALID_ARGUMENT。GPU mesh/camera movement、point lighting与实际画面覆盖成立；不推广为所有空间/cull模式的穷尽证明。
+
+流程偏差保留：g03-before-build-02因120列检查失败，但批处理随后误执行了测试。该两份无verified后缀日志不用于资格；256还因旧的camera改变图像断言中止。这次偏差已纠正，修复驱动后重新all成功，再执行上述正常关闭的明确负例。不得删除或混用这些探索日志。

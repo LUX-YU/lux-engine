@@ -463,7 +463,7 @@ namespace lux::editor::sessions
         const auto *render = impl_->scene->findSceneSystem<lux::scene::RenderSystem>();
         return render && render->hasPendingUpdate();
     }
-    SceneResult<lux::render::RenderSceneId> SceneSession::attachView(rendering::EditorRenderer &renderer) noexcept
+    SceneResult<SceneSession::RenderBinding> SceneSession::attachView(rendering::EditorRenderer &renderer) noexcept
     {
         if (auto result = impl_->check(); !result)
             return lux::cxx::unexpected(result.error());
@@ -475,7 +475,7 @@ namespace lux::editor::sessions
         if (!render || !render->renderSceneId().isValid())
             return fail(ESceneError::NOT_READY, id());
         ++impl_->view_count;
-        return render->renderSceneId();
+        return RenderBinding{render->renderSceneId(), render->coordinatePageSize()};
     }
     void SceneSession::detachView() noexcept
     {

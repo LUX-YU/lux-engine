@@ -68,7 +68,7 @@ namespace lux::editor::sessions
             auto scene = session.attachView(renderer);
             if (!scene)
                 return lux::cxx::unexpected(scene.error());
-            auto view = renderer.openView(*scene, {{0, 0}, true});
+            auto view = renderer.openView(scene->scene, {{0, 0}, true, scene->coordinate_page_size});
             if (!view)
             {
                 session.detachView();

@@ -267,7 +267,8 @@ namespace lux::scene
                     description.instanceId(),
                     std::move(*runtime_lease),
                     std::move(scene_lease),
-                    std::move(*sync)
+                    std::move(*sync),
+                    configuration.coordinate_page_size
                 );
                 if (!system)
                 {
@@ -306,9 +307,11 @@ namespace lux::scene
     RenderSystem::RenderSystem(
         RenderRuntimeLease runtime,
         render::RenderSceneLease scene,
-        std::unique_ptr<RenderSyncPipeline> sync
+        std::unique_ptr<RenderSyncPipeline> sync,
+        double coordinate_page_size
     ) noexcept
-        : runtime_(std::move(runtime)), scene_(std::move(scene)), sync_(std::move(sync))
+        : runtime_(std::move(runtime)), scene_(std::move(scene)), sync_(std::move(sync)),
+          coordinate_page_size_(coordinate_page_size)
     {
     }
 
@@ -317,6 +320,10 @@ namespace lux::scene
     render::RenderSceneId RenderSystem::renderSceneId() const noexcept
     {
         return scene_.id();
+    }
+    double RenderSystem::coordinatePageSize() const noexcept
+    {
+        return coordinate_page_size_;
     }
 
     bool RenderSystem::publishStablePoint() noexcept

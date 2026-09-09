@@ -8,6 +8,7 @@
 #include <lux/engine/window/GlfwRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
+#include <lux/engine/simulation/ecs/Parent.hpp>
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -272,6 +273,10 @@ int main(int argc, char **argv)
     const std::string_view variant{argv[3]};
     bool failed_view_contract = true;
     bool resource_publication_contract = true;
+    bool coordinate_contract = true;
+    const bool coordinate_test = variant == "coordinate_256" || variant == "coordinate_1024";
+    const double page_size = variant == "coordinate_256" ? 256.0 : 1024.0;
+    const Eigen::Vector3d coordinate_offset{256, -256, 1024};
     const bool resource_snapshot_test = variant == "resource_snapshot";
     const bool resource_publication_test = variant == "resource_publication" || resource_snapshot_test;
     const bool retry_test = variant == "retry";
@@ -367,6 +372,16 @@ int main(int argc, char **argv)
         auto renderer_result = rendering::EditorRenderer::create(window->nativeWindow(), window->uiSession(), config);
         require(renderer_result, "renderer factory");
         auto renderer = std::move(*renderer_result);
+        for (const auto size : {0.0, -1.0, (std::numeric_limits<double>::max)(),
+                                std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()})
+        {
+            const auto before = renderer->statistics();
+            const auto rejected = renderer->openView({1000, 9}, {{64, 64}, true, size});
+            require(!rejected && rejected.error().code == rendering::ERendererError::INVALID_ARGUMENT &&
+                        renderer->statistics().views == before.views &&
+                        renderer->statistics().render_events == before.render_events,
+                    "G03 invalid camera page size rejected before owner/request admission");
+        }
         if (variant == "view_failure")
         {
             // Real backend replies for nonexistent Scene identities, not fabricated diagnostics.
@@ -477,9 +492,20 @@ int main(int argc, char **argv)
         auto metadata = examples::buildDevelopmentSceneMeta();
         require(metadata, "actual Scene metadata");
         auto shared_meta = std::make_shared<lux::scene::SceneMetaManager>(std::move(*metadata));
-        auto source = (variant == "alternate" ? examples::openAlternateScene : examples::openDevelopmentScene)(
-            {1}, messages.dispatcherRef(), *renderer, (*endpoint)->port(), shared_meta);
+        auto source = coordinate_test
+            ? examples::openCoordinateScene({1}, messages.dispatcherRef(), *renderer, (*endpoint)->port(),
+                                            shared_meta, page_size)
+            : (variant == "alternate" ? examples::openAlternateScene : examples::openDevelopmentScene)(
+                  {1}, messages.dispatcherRef(), *renderer, (*endpoint)->port(), shared_meta);
         require(source, "Scene source factory");
+        if (coordinate_test)
+        {
+            auto &registry = source->scene->registry();
+            for (const auto entity : registry.view<lux::simulation::ecs::Transform3D>())
+                if (!registry.all_of<lux::simulation::ecs::Parent>(entity))
+                    registry.patch<lux::simulation::ecs::Transform3D>(entity,
+                        [&](auto &value) { value.translation += coordinate_offset; });
+        }
         if (resource_publication_test)
         {
             std::size_t count{};
@@ -627,6 +653,15 @@ int main(int argc, char **argv)
         if (multiple_views_test)
             require(view->requestExtent({1014, 593}), "primary extent admitted before startup progress");
         auto *camera = view.get(); // Narrow borrowed SceneView; workspace owns it until explicit close completes.
+        if (coordinate_test)
+        {
+            const auto basis = sessions::SceneCamera{}.view(Eigen::Vector3d::Zero());
+            sessions::CameraMotion motion;
+            motion.pan_delta = {basis.block<1, 3>(0, 0).dot(coordinate_offset),
+                                basis.block<1, 3>(1, 0).dot(coordinate_offset)};
+            motion.dolly = -basis.block<1, 3>(2, 0).dot(coordinate_offset);
+            require(camera->moveCamera(motion), "G03 move real camera with the translated scene");
+        }
         auto workspace_result = ui::SceneWorkspace::create(*window, {1}, *session, view);
         require(workspace_result && !view, "workspace view transfer");
         auto workspace = std::move(*workspace_result);
@@ -984,8 +1019,25 @@ int main(int argc, char **argv)
                         "foreign release preserves actual current Pane image owner and texture");
                 const auto *camera_record =
                     rendering::detail::ViewImageAccess::record(workspace->frameImages().front());
-                require(camera_record->camera.origin == std::array<double, 3>{6, 4, 8},
+                require(coordinate_test || camera_record->camera.origin == std::array<double, 3>{6, 4, 8},
                         "real wire origin carries the camera position, not its enclosing page origin");
+                if (coordinate_test)
+                {
+                    const auto &wire = camera_record->wire_camera;
+                    coordinate_contract &= wire.coordinate_page_size == page_size;
+                    for (std::size_t axis = 0; axis < 3; ++axis)
+                    {
+                        const auto decoded = wire.render_origin.page_delta[axis] * page_size +
+                                             wire.render_origin.local[axis];
+                        coordinate_contract &= std::abs(decoded - camera_record->camera.origin[axis]) < 0.001;
+                    }
+                    std::printf("G03 scene_page=%.0f wire_page=%.0f page=%d,%d,%d local=%.3f,%.3f,%.3f valid=%u\n",
+                                page_size, double(wire.coordinate_page_size), wire.render_origin.page_delta[0],
+                                wire.render_origin.page_delta[1], wire.render_origin.page_delta[2],
+                                double(wire.render_origin.local[0]), double(wire.render_origin.local[1]),
+                                double(wire.render_origin.local[2]), unsigned(coordinate_contract));
+                    std::fflush(stdout);
+                }
                 require(camera_record->wire_camera.view_matrix[12] == 0 &&
                             camera_record->wire_camera.view_matrix[13] == 0 &&
                             camera_record->wire_camera.view_matrix[14] == 0,
@@ -1126,7 +1178,9 @@ int main(int argc, char **argv)
             }
             std::this_thread::sleep_for(std::chrono::milliseconds{1});
         }
-        require(late_close_test || !has_mesh || checksums[0] != checksums[1],
+        if (coordinate_test)
+            coordinate_contract &= checksums[0] != checksums[1];
+        require(coordinate_test || late_close_test || !has_mesh || checksums[0] != checksums[1],
                 "camera/source change alters actual mesh projection");
         require(frame_protocol_checked, "frame ownership negative cases actually executed");
         const auto evidence = renderer->imageEvidence(evidence_image);
@@ -1413,6 +1467,11 @@ int main(int argc, char **argv)
     if (!resource_publication_contract)
     {
         std::fputs("G02 FAIL: accepted resource failure missing from retry snapshot; all owners closed\n", stderr);
+        return 1;
+    }
+    if (!coordinate_contract)
+    {
+        std::fputs("G03 FAIL: Scene and camera wire coordinate pages disagree; all owners closed\n", stderr);
         return 1;
     }
 }

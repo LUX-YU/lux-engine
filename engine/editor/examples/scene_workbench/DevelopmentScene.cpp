@@ -48,7 +48,7 @@ namespace lux::editor::examples
         }
 
         [[nodiscard]] lux::cxx::expected<std::unique_ptr<scene::Scene>, EDemoBuildError> buildDevelopmentScene(
-            const scene::SceneMetaManager &meta, scene::RenderRuntime &runtime)
+            const scene::SceneMetaManager &meta, scene::RenderRuntime &runtime, double coordinate_page_size)
         {
             world::WorldDescriptionBuilder world_builder;
             if (!world_builder.setIdentity(uuidId<world::WorldBundleId>(1U), uuidId<world::WorldBundleGeneration>(1U),
@@ -75,6 +75,7 @@ namespace lux::editor::examples
             scene_builder.setWorld(assetId(1U));
             scene_builder.setSimulation(assetId(2U));
             scene::RenderSystemConfiguration render_config;
+            render_config.coordinate_page_size = coordinate_page_size;
             for (const auto name : {"lux.render.view_camera.v1", "lux.render.material.v1", "lux.render.mesh_stack.v1",
                                     "lux.render.light.v1", "lux.render.forward_mesh.v1", "lux.render.shadow_map.v1"})
             {
@@ -182,11 +183,12 @@ namespace lux::editor::examples
         sessions::SceneResult<sessions::SceneOpenInfo> populate(
             sessions::SessionId id, lux::object::ObjectDispatcherRef dispatcher, rendering::EditorRenderer &renderer,
             lux::process::asset_loading::AssetReadPort assets,
-            std::shared_ptr<const lux::scene::SceneMetaManager> metadata, bool alternate) noexcept
+            std::shared_ptr<const lux::scene::SceneMetaManager> metadata, bool alternate,
+            double coordinate_page_size = 1024.0) noexcept
         {
             try
             {
-                auto scene = buildDevelopmentScene(*metadata, renderer);
+                auto scene = buildDevelopmentScene(*metadata, renderer, coordinate_page_size);
                 if (!scene)
                     return lux::cxx::unexpected(sessions::SceneFailure{sessions::ESceneError::SCENE_BUILD_FAILURE, id});
                 sessions::SceneOpenInfo input;
@@ -267,5 +269,12 @@ namespace lux::editor::examples
         std::shared_ptr<const lux::scene::SceneMetaManager> metadata) noexcept
     {
         return populate(id, std::move(dispatcher), renderer, std::move(assets), std::move(metadata), true);
+    }
+    sessions::SceneResult<sessions::SceneOpenInfo> openCoordinateScene(
+        sessions::SessionId id, lux::object::ObjectDispatcherRef dispatcher, rendering::EditorRenderer &renderer,
+        lux::process::asset_loading::AssetReadPort assets,
+        std::shared_ptr<const lux::scene::SceneMetaManager> metadata, double page_size) noexcept
+    {
+        return populate(id, std::move(dispatcher), renderer, std::move(assets), std::move(metadata), false, page_size);
     }
 } // namespace lux::editor::examples

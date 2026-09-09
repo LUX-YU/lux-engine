@@ -6,6 +6,7 @@
 #include <lux/engine/window/LuxWindow.hpp>
 #include <lux/engine/ui/UISession.hpp>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <mutex>
 #include <new>
@@ -331,6 +332,12 @@ namespace lux::editor::rendering
         if (state() != ERendererState::READY)
             return fail(ERendererError::STOPPING);
         if (!scene.isValid() || !config.sampled || config.extent.width > 16384 || config.extent.height > 16384)
+            return fail(ERendererError::INVALID_ARGUMENT);
+        const bool invalid_page_size = !std::isfinite(config.coordinate_page_size) ||
+            config.coordinate_page_size <= 0 ||
+            config.coordinate_page_size > (std::numeric_limits<float>::max)() ||
+            static_cast<float>(config.coordinate_page_size) <= 0;
+        if (invalid_page_size)
             return fail(ERendererError::INVALID_ARGUMENT);
         const auto slot = std::find(impl_->views.begin(), impl_->views.end(), nullptr);
         if (slot == impl_->views.end())

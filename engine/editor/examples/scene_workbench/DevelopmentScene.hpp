@@ -24,4 +24,8 @@ namespace lux::editor::examples
     [[nodiscard]] sessions::SceneResult<sessions::SceneOpenInfo> openAlternateScene(
         sessions::SessionId, lux::object::ObjectDispatcherRef, rendering::EditorRenderer &,
         lux::process::asset_loading::AssetReadPort, std::shared_ptr<const lux::scene::SceneMetaManager>) noexcept;
+    [[nodiscard]] sessions::SceneResult<sessions::SceneOpenInfo> openCoordinateScene(
+        sessions::SessionId, lux::object::ObjectDispatcherRef, rendering::EditorRenderer &,
+        lux::process::asset_loading::AssetReadPort, std::shared_ptr<const lux::scene::SceneMetaManager>,
+        double) noexcept;
 } // namespace lux::editor::examples

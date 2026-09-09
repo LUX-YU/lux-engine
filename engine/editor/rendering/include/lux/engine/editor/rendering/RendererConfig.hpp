@@ -116,6 +116,7 @@ namespace lux::editor::rendering
     {
         PixelExtent extent;
         bool sampled{true};
+        double coordinate_page_size{1024.0}; // Immutable configuration of the associated RenderScene.
     };
     struct CameraFrame final
     {

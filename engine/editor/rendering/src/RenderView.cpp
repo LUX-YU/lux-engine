@@ -67,11 +67,11 @@ namespace lux::editor::rendering
         const bool valid_values = std::all_of(camera.view.begin(), camera.view.end(), finite) &&
                                   std::all_of(camera.projection.begin(), camera.projection.end(), finite) &&
                                   std::all_of(camera.origin.begin(), camera.origin.end(),
-                                              [](double value)
+                                              [&state](double value)
                                               {
                                                   return std::isfinite(value) &&
-                                                         std::floor(value / 1024.0) >= INT32_MIN &&
-                                                         std::floor(value / 1024.0) <= INT32_MAX;
+                                                         std::floor(value / state.coordinate_page_size) >= INT32_MIN &&
+                                                         std::floor(value / state.coordinate_page_size) <= INT32_MAX;
                                               });
         if (!valid_values || !camera.desired.session)
             return lux::cxx::unexpected(RendererFailure{ERendererError::INVALID_ARGUMENT, {}, id()});
@@ -97,6 +97,7 @@ namespace lux::editor::rendering
             record->content.source.surface_generation = state.version->generation;
             record->wire_camera.scene_id = state.scene;
             record->wire_camera.view = state.view;
+            record->wire_camera.coordinate_page_size = static_cast<float>(state.coordinate_page_size);
             for (std::size_t index = 0; index < 16; ++index)
             {
                 record->wire_camera.view_matrix[index] = static_cast<float>(state.camera.view[index]);
@@ -104,10 +105,10 @@ namespace lux::editor::rendering
             }
             for (std::size_t index = 0; index < 3; ++index)
             {
-                const auto page = std::floor(state.camera.origin[index] / 1024.0);
+                const auto page = std::floor(state.camera.origin[index] / state.coordinate_page_size);
                 record->wire_camera.render_origin.page_delta[index] = static_cast<std::int32_t>(page);
                 record->wire_camera.render_origin.local[index] =
-                    static_cast<float>(state.camera.origin[index] - page * 1024.0);
+                    static_cast<float>(state.camera.origin[index] - page * state.coordinate_page_size);
             }
             ViewImage image{state.version->texture, state.version->extent, id(), record->content, {}};
             image.lease.record_ = std::move(record);

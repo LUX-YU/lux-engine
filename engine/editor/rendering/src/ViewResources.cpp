@@ -13,7 +13,8 @@ namespace lux::editor::rendering::detail
     } // namespace
     ViewResources::ViewResources(EditorRenderer &backend, lux::render::RenderControlSession &channel,
                                  RenderViewId identity, lux::render::RenderSceneId source, ViewConfig config)
-        : renderer(backend), control(channel), scene(source), version(std::make_shared<ImageVersion>())
+        : renderer(backend), control(channel), scene(source), coordinate_page_size(config.coordinate_page_size),
+          version(std::make_shared<ImageVersion>())
     {
         status = {EViewState::CREATING, identity, config.extent, {}, 1, 0};
     }

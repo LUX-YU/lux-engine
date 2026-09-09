@@ -66,6 +66,27 @@ namespace
     inline constexpr lux::script::ScriptSymbolId kEventWaitSymbol{0x4C55410DU};
     inline constexpr lux::script::ScriptSymbolId kTargetWaitSymbol{0x4C554110U};
 
+    decltype(ScriptBackendDescriptor{}.prepareMethod) g_original_prepare{};
+    decltype(BoundScriptStepCall{}.invoke) g_original_step{};
+    ScriptStepResult g_observed_step;
+    std::size_t g_observed_steps{};
+    EScriptBackendResult observePreparedStep(void* context, ScriptBackendInstance instance,
+        const lux::rdesc::ScriptFunction& function, ScriptBackendPreparedMethod& result) noexcept
+    {
+        const auto status = g_original_prepare(context, instance, function, result);
+        if (status == EScriptBackendResult::SUCCESS && function.symbol_id == kAsyncSymbol)
+        {
+            g_original_step = result.resumable.invoke;
+            result.resumable.invoke = [](void* opaque, lux_script_call_frame& frame, ScriptStepContext& step,
+                ScriptBackendContinuation& continuation) noexcept {
+                ++g_observed_steps;
+                g_observed_step = g_original_step(opaque, frame, step, continuation);
+                return g_observed_step;
+            };
+        }
+        return status;
+    }
+
     SimulationDescription makeSimulation();
 
     [[nodiscard]] lux::script::ScriptEventSourceDescription eventSource(
@@ -495,6 +516,12 @@ namespace
             assert(g_execution_policy != lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY ||
                 !runtime.jit_enabled);
             descriptor = backend->descriptor();
+            if (observe_vm)
+            {
+                g_original_prepare = descriptor.prepareMethod;
+                descriptor.prepareMethod = &observePreparedStep;
+                g_observed_steps = 0U;
+            }
         }
 
         [[nodiscard]] lux::cxx::expected<ScriptSystem, EScriptSystemError> create(
@@ -651,6 +678,8 @@ namespace
         assert(provider.reads == 1U && provider.writes == 1U && !provider.pending);
         assert(system.activeContinuationCount() == 0U && system.activeAwaitableCount() == 0U);
         assert(system.stats().invocation_failures == 1U);
+        assert(g_observed_steps == 1U && g_observed_step.state == EScriptStepState::FAILED);
+        assert(g_observed_step.error.status == -10);
         assert(system.failures().size() == 1U && system.failures().front().status == -10);
         assert(system.shutdown());
         const auto after = harness.backend->stats();
@@ -725,7 +754,11 @@ namespace
         {
             assert(g_observed_read_entries == 1U && provider.reads == 1U && provider.writes == 1U);
             assert(!provider.pending && system.activeContinuationCount() == 0U);
-            assert(system.failures().size() == 1U && system.failures().front().status == -1);
+            assert(g_observed_steps == 1U && g_observed_step.state == EScriptStepState::FAILED);
+            assert(g_observed_step.error.status == -1);
+            // Existing invokeStep discards a returned step after native retirement. Its failure
+            // log differs from invokeSync; observe the actual backend result before that boundary.
+            assert(system.failures().empty());
         }
         assert(system.shutdown());
         const auto final = harness.backend->stats();
@@ -734,6 +767,8 @@ namespace
         std::printf("CREATION_REENTRY_PASS,mode=%s,read_entries=%zu,reads=%zu,writes=%zu,roots=%zu,releases=%zu\n",
             stop ? "deferred-stop" : "native-retire", g_observed_read_entries, provider.reads, provider.writes,
             final.vm_coroutine_creations, final.vm_coroutine_releases);
+        std::printf("CREATION_STEP_RESULT,observed=%zu,status=%d,runtime_errors=%zu\n",
+            g_observed_steps, g_observed_step.error.status, system.failures().size());
         return 0;
     }
 } // namespace

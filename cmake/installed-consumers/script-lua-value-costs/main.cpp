@@ -51,7 +51,11 @@ int main(int argc, char** argv)
     const std::size_t count = argc > 2 ? std::strtoull(argv[2], nullptr, 10) : 100000;
     assert(count > 0);
     Allocation allocation;
+#if LUA_VERSION_NUM >= 505
+    auto* state = lua_newstate(Allocation::allocate, &allocation, 1592598566U);
+#else
     auto* state = lua_newstate(Allocation::allocate, &allocation);
+#endif
     assert(state);
 #if SR5_VALUES
     assert(lux::script::lua::detail::LuaValueAccess::initialize(state));

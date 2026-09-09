@@ -197,30 +197,26 @@ int main()
     assert(!duplicate_name_backend);
     assert(duplicate_name_backend.error() == ELuaScriptBindingBackendError::DUPLICATE_ABILITY_NAME);
 
-    constexpr auto reserved_name = nameDescription("lux.test.lua_name.reserved", "end", "End");
-    const auto reserved_contribution = lux::script::lua::ScriptAbilityLuaContribution{
-        &reserved_name,
-        kNameLuaMethods
-    };
-    const auto reserved_name_backend = LuaScriptBackend::create({
-        .instance_capacity = 1U,
-        .prepared_call_capacity = 1U,
-        .continuation_capacity = 1U,
-        .execution_depth_capacity = 4U,
-        .ability_catalog_method_capacity = 1U,
-        .prepared_ability_capacity = 1U,
-        .abilities = {&reserved_contribution, 1U},
-        .prepared_ability_blocks = std::array{
-            lux::simulation::script::LuaPreparedBlockClass{
-                (1U) / ((1U) == 0U ? 1U : (1U)),
-                1U
-            }
-        },
-        .prepared_ability_storage_bytes =
-            64U * 1024U * 1024U
-    });
-    assert(!reserved_name_backend);
-    assert(reserved_name_backend.error() == ELuaScriptBindingBackendError::INVALID_ABILITY_CONTRIBUTION);
+    for (const auto keyword : {"end", "global"})
+    {
+        const auto reserved_name = nameDescription("lux.test.lua_name.reserved", keyword, "Reserved");
+        const auto reserved_contribution = lux::script::lua::ScriptAbilityLuaContribution{
+            &reserved_name, kNameLuaMethods
+        };
+        const auto reserved_name_backend = LuaScriptBackend::create({
+            .instance_capacity = 1U,
+            .prepared_call_capacity = 1U,
+            .continuation_capacity = 1U,
+            .execution_depth_capacity = 4U,
+            .ability_catalog_method_capacity = 1U,
+            .prepared_ability_capacity = 1U,
+            .abilities = {&reserved_contribution, 1U},
+            .prepared_ability_blocks = std::array{LuaPreparedBlockClass{1U, 1U}},
+            .prepared_ability_storage_bytes = 64U * 1024U * 1024U
+        });
+        assert(!reserved_name_backend);
+        assert(reserved_name_backend.error() == ELuaScriptBindingBackendError::INVALID_ABILITY_CONTRIBUTION);
+    }
 
     const auto unsupported_integer = lux::script::lua::makeScriptAbilityLuaContribution<
         test::LuaUnsupportedIntegerAbility

@@ -15,6 +15,42 @@ namespace
         return lux::script::lua::detail::yieldLuaInvocation(state, 0);
     }
 
+    int yieldPair(lua_State* state)
+    {
+        assert(lua_gettop(state) == 2 && lua_tointeger(state, 1) == 11 && lua_tointeger(state, 2) == 12);
+        return lux::script::lua::detail::yieldLuaInvocation(state, 0);
+    }
+
+    void testMultipleResults(lua_State* state)
+    {
+        const auto base = lua_gettop(state);
+        lua_pushcfunction(state, &yieldPair);
+        lua_setglobal(state, "engine_pair");
+        assert(luaL_loadstring(state,
+            "return function() local sum=0; for i=1,3 do local a,b=engine_pair(11,12); "
+            "assert(a==8 and b==9); sum=sum+a+b end; return sum,22,33 end") == LUA_OK);
+        assert(lua_pcall(state, 0, 1, 0) == LUA_OK);
+        auto* thread = lua_newthread(state);
+        const auto reference = luaL_ref(state, LUA_REGISTRYINDEX);
+        lua_xmove(state, thread, 1);
+        auto result = lux::script::lua::detail::resumeLuaVm(thread, state, 0);
+        int suspended_top{};
+        for (int suspension{}; suspension != 3; ++suspension)
+        {
+            assert(result.status == LUA_YIELD && result.result_count == 0);
+            if (suspension == 0) suspended_top = lua_gettop(thread);
+            assert(lua_gettop(thread) == suspended_top);
+            lua_pushinteger(thread, 8);
+            lua_pushinteger(thread, 9);
+            result = lux::script::lua::detail::resumeLuaVm(thread, state, 2);
+        }
+        assert(result.status == LUA_OK && result.result_count == 3 && lua_gettop(thread) == 3);
+        assert(lua_tointeger(thread, 1) == 51 && lua_tointeger(thread, 2) == 22 && lua_tointeger(thread, 3) == 33);
+        luaL_unref(state, LUA_REGISTRYINDEX, reference);
+        assert(lua_gettop(state) == base);
+        std::puts("LUA_RESUME_BASE,yields=3,input_args=2,resume_args=2,result_count=3,values=51/22/33,stack_growth=0");
+    }
+
     struct BootstrapAllocator final
     {
         lua_Alloc original{};
@@ -63,6 +99,7 @@ int main(int argc, char** argv)
     assert(state != nullptr);
     luaL_openlibs(state);
     testProtectedBootstrap(state);
+    testMultipleResults(state);
 
     lux::script::lua::LuaRuntimeInfo runtime;
     assert(lux::script::lua::detail::configureLuaVm(
@@ -153,6 +190,17 @@ int main(int argc, char** argv)
         "coroutine.yield() end); assert(coroutine.resume(t)); assert(closed==0); "
         "assert(coroutine.close(t)); assert(closed==1)") == LUA_OK);
     assert(lua_pcall(state, 0, 0, 0) == LUA_OK);
+#endif
+#if LUA_VERSION_NUM >= 505
+    assert(luaL_loadstring(state, "local global = 1") == LUA_ERRSYNTAX);
+    lua_pop(state, 1);
+    assert(luaL_loadstring(state, "for i=1,2 do i=3 end") == LUA_ERRSYNTAX);
+    lua_pop(state, 1);
+    assert(luaL_loadstring(state,
+        "local t={['global']=7}; assert(t['global']==7); "
+        "assert(tostring(1.0)=='1.0'); assert(tonumber(tostring(1.234567890123456))==1.234567890123456)") == LUA_OK);
+    assert(lua_pcall(state, 0, 0, 0) == LUA_OK);
+    std::puts("LUA55_LANGUAGE,global_reserved=1,for_readonly=1,quoted_key=1,float_roundtrip=1");
 #endif
     std::puts("THREAD_REUSE_REJECTED,retained_after_unref=1,closure=1,identity=1,dead=1,cancel=1,error=1");
     lua_close(state);

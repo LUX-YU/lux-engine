@@ -554,7 +554,7 @@ namespace lux::simulation::script
                 std::string_view{"and"}, std::string_view{"break"}, std::string_view{"do"},
                 std::string_view{"else"}, std::string_view{"elseif"}, std::string_view{"end"},
                 std::string_view{"false"}, std::string_view{"for"}, std::string_view{"function"},
-                std::string_view{"goto"}, std::string_view{"if"}, std::string_view{"in"},
+                std::string_view{"global"}, std::string_view{"goto"}, std::string_view{"if"}, std::string_view{"in"},
                 std::string_view{"local"}, std::string_view{"nil"}, std::string_view{"not"},
                 std::string_view{"or"}, std::string_view{"repeat"}, std::string_view{"return"},
                 std::string_view{"then"}, std::string_view{"true"}, std::string_view{"until"},

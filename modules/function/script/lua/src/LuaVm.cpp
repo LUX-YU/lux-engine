@@ -25,7 +25,7 @@ namespace lux::script::lua::detail
         return status;
     }
 
-#if defined(LUX_SCRIPT_LUA_VM_LUA54)
+#if defined(LUX_SCRIPT_LUA_VM_LUA54) || defined(LUX_SCRIPT_LUA_VM_LUA55)
     namespace
     {
         int finishYieldedAbility(lua_State* state, int, lua_KContext context)
@@ -67,8 +67,14 @@ namespace lux::script::lua::detail
             policy != ELuaExecutionPolicy::INTERPRETER_ONLY
         };
         return true;
-#elif defined(LUX_SCRIPT_LUA_VM_LUA54)
+#elif defined(LUX_SCRIPT_LUA_VM_LUA54) || defined(LUX_SCRIPT_LUA_VM_LUA55)
+        if (lua_version(state) != LUA_VERSION_NUM)
+            return false;
+#if defined(LUX_SCRIPT_LUA_VM_LUA55)
+        result = {"Lua55", LUA_RELEASE, false, false};
+#else
         result = {"Lua54", LUA_RELEASE, false, false};
+#endif
         return true;
 #else
 #    error "Lux Lua VM implementation was not selected"
@@ -87,7 +93,7 @@ namespace lux::script::lua::detail
         (void)caller;
         const auto status = lua_resume(thread, argument_count);
         return {status, lua_gettop(thread)};
-#elif defined(LUX_SCRIPT_LUA_VM_LUA54)
+#elif defined(LUX_SCRIPT_LUA_VM_LUA54) || defined(LUX_SCRIPT_LUA_VM_LUA55)
         int result_count{};
         const auto status = lua_resume(thread, caller, argument_count, &result_count);
         return {status, result_count};
@@ -102,7 +108,7 @@ namespace lux::script::lua::detail
             return luaL_error(state, "invalid Lux Lua yield result count");
 #if defined(LUX_SCRIPT_LUA_VM_LUAJIT)
         return lua_yield(state, result_count);
-#elif defined(LUX_SCRIPT_LUA_VM_LUA54)
+#elif defined(LUX_SCRIPT_LUA_VM_LUA54) || defined(LUX_SCRIPT_LUA_VM_LUA55)
         const auto preserved_count = lua_gettop(state) - result_count;
         return lua_yieldk(
             state,
@@ -119,7 +125,7 @@ namespace lux::script::lua::detail
     {
 #if defined(LUX_SCRIPT_LUA_VM_LUAJIT)
         lua_pushvalue(state, LUA_GLOBALSINDEX);
-#elif defined(LUX_SCRIPT_LUA_VM_LUA54)
+#elif defined(LUX_SCRIPT_LUA_VM_LUA54) || defined(LUX_SCRIPT_LUA_VM_LUA55)
         lua_pushglobaltable(state);
 #endif
     }
@@ -140,7 +146,7 @@ namespace lux::script::lua::detail
         lua_pushvalue(state, absolute_environment);
 #if defined(LUX_SCRIPT_LUA_VM_LUAJIT)
         return lua_setfenv(state, absolute_chunk) != 0;
-#elif defined(LUX_SCRIPT_LUA_VM_LUA54)
+#elif defined(LUX_SCRIPT_LUA_VM_LUA54) || defined(LUX_SCRIPT_LUA_VM_LUA55)
         const auto* name = lua_setupvalue(state, absolute_chunk, 1);
         return name != nullptr && std::string_view{name} == "_ENV";
 #endif

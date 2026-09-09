@@ -8,52 +8,53 @@ configure_file(
 include(${CMAKE_CURRENT_BINARY_DIR}/LuxLuaVmSelection.cmake)
 
 include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_LIBRARIES lux::engine::function::script_lua_vm)
 if(LUX_LUA_VM STREQUAL "LUAJIT")
-    set(CMAKE_REQUIRED_LIBRARIES ${LUAJIT_LIBRARIES})
-    set(CMAKE_REQUIRED_INCLUDES ${LUAJIT_INCLUDE_DIRS})
-    set(_lux_lua_vm_probe [[
-        #include <lua.hpp>
-        #include <type_traits>
-        int main()
-        {
-            static_assert(std::is_same_v<lua_Number, double>);
-            lua_State* state = luaL_newstate();
-            if (!state)
-                return 1;
-            luaL_openlibs(state);
-            lua_State* thread = lua_newthread(state);
-            const int status = lua_resume(thread, 0);
-            (void)status;
-            lua_close(state);
-            return 0;
-        }
-    ]])
+    set(_lux_expected_lua_version 501)
+elseif(LUX_LUA_VM STREQUAL "LUA54")
+    set(_lux_expected_lua_version 504)
 else()
-    set(CMAKE_REQUIRED_LIBRARIES ${LUA_LIBRARIES})
-    set(CMAKE_REQUIRED_INCLUDES ${LUA_INCLUDE_DIR})
-    set(_lux_lua_vm_probe [[
-        #include <lua.hpp>
-        #include <type_traits>
-        int main()
-        {
-            static_assert(std::is_same_v<lua_Number, double>);
-            lua_State* state = luaL_newstate();
-            if (!state)
-                return 1;
-            luaL_openlibs(state);
-            lua_State* thread = lua_newthread(state);
-            int results = 0;
-            const int status = lua_resume(thread, state, 0, &results);
-            (void)status;
-            (void)results;
-            lua_close(state);
-            return 0;
-        }
-    ]])
+    set(_lux_expected_lua_version 505)
 endif()
+set(CMAKE_REQUIRED_DEFINITIONS -DLUX_EXPECTED_LUA_VERSION=${_lux_expected_lua_version})
+set(_lux_lua_vm_probe [[
+    #include <lua.hpp>
+    #include <type_traits>
+    static_assert(LUA_VERSION_NUM == LUX_EXPECTED_LUA_VERSION);
+    static_assert(std::is_same_v<lua_Number, double>);
+    #if LUX_EXPECTED_LUA_VERSION == 505
+    static_assert(LUA_VERSION_RELEASE_NUM == 50501);
+    static_assert(std::is_signed_v<lua_Integer> && sizeof(lua_Integer) == 8);
+    #endif
+    int main()
+    {
+        lua_State* state = luaL_newstate();
+        if (!state) return 1;
+        luaL_openlibs(state);
+        if (luaL_loadstring(state, "return function() coroutine.yield(); return 42 end") != LUA_OK) return 2;
+        if (lua_pcall(state, 0, 1, 0) != LUA_OK) return 3;
+        lua_State* thread = lua_newthread(state);
+        const int reference = luaL_ref(state, LUA_REGISTRYINDEX);
+        lua_xmove(state, thread, 1);
+        #if LUX_EXPECTED_LUA_VERSION == 501
+        if (lua_resume(thread, 0) != LUA_YIELD) return 4;
+        if (lua_resume(thread, 0) != LUA_OK || lua_gettop(thread) != 1) return 5;
+        #else
+        int results{};
+        if (lua_resume(thread, state, 0, &results) != LUA_YIELD || results != 0) return 4;
+        if (lua_resume(thread, state, 0, &results) != LUA_OK || results != 1) return 5;
+        #endif
+        if (lua_tonumber(thread, -1) != 42.0) return 6;
+        luaL_unref(state, LUA_REGISTRYINDEX, reference);
+        lua_close(state);
+        return 0;
+    }
+]])
 unset(LUX_SELECTED_LUA_VM_CAPABLE CACHE)
 check_cxx_source_compiles("${_lux_lua_vm_probe}" LUX_SELECTED_LUA_VM_CAPABLE)
 unset(CMAKE_REQUIRED_LIBRARIES)
+unset(CMAKE_REQUIRED_DEFINITIONS)
+unset(_lux_expected_lua_version)
 unset(CMAKE_REQUIRED_INCLUDES)
 unset(_lux_lua_vm_probe)
 if(NOT LUX_SELECTED_LUA_VM_CAPABLE)

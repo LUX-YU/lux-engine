@@ -153,6 +153,17 @@ def main() -> int:
             "---@lux.method\n---@param value " + wide + "\n---@return void\nfunction Enemy:update(value) end\n",
             {"Enemy:update": 1}), "unsupported")
 
+    for keyword in ("global", "function", "goto"):
+        assert not package.code_identifier(keyword)
+        expect_failure(lambda: parse(
+            "---@lux.method\n---@return void\nfunction Enemy:" + keyword + "() end\n",
+            {"Enemy:" + keyword: 1}), "invalid Lua export identifier")
+        expect_failure(lambda: parse(
+            "---@lux.method\n---@param " + keyword + " lux.i32\n---@return void\n"
+            "function Enemy:update(" + keyword + ") end\n",
+            {"Enemy:update": 1}), "invalid Lua parameter identifier")
+    assert package.code_identifier("global_value")
+
     hinted_source = """---@lux.method
 ---@lux.suggest hook Gameplay.tick
 ---@lux.suggest event Gameplay.damage

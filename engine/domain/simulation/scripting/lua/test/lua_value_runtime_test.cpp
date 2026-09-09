@@ -476,9 +476,9 @@ int main(int argc, char** argv)
         .instance_capacity = 2, .prepared_call_capacity = benchmark_mode ? 64U : 96U, .continuation_capacity = 2,
         .execution_depth_capacity = 8, .ability_catalog_method_capacity = AbilityTraits::Methods.size(),
         .prepared_ability_capacity = 2 * AbilityTraits::Methods.size(), .abilities = std::span{&contribution, 1},
-        .track_vm_allocations = vm_accounting,
+        .track_vm_allocations = vm_accounting, .vm = vm_config,
         .prepared_ability_blocks = std::array{LuaPreparedBlockClass{AbilityTraits::Methods.size(), 2}},
-        .prepared_ability_storage_bytes = 1024 * 1024, .vm = vm_config});
+        .prepared_ability_storage_bytes = 1024 * 1024});
     assert(created);
     auto backend = std::move(*created);
     if (argc > 2 && std::string_view{argv[1]} == "--admission-case")

@@ -358,7 +358,7 @@ namespace lux::editor
             const auto now = std::chrono::steady_clock::now();
             const auto elapsed = std::chrono::duration<float>(now - previous).count();
             previous = now;
-            const float delta = std::clamp(elapsed, 1.0F / 1000.0F, 0.1F);
+            const float delta = std::clamp(elapsed, 0.000001F, 0.1F);
             const float scale_x = width == 0U ? 1.0F : static_cast<float>(framebuffer_width) / width;
             const float scale_y = height == 0U ? 1.0F : static_cast<float>(framebuffer_height) / height;
             try

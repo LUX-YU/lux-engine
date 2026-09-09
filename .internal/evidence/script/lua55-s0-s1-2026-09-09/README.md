@@ -33,3 +33,15 @@ EXE/DLL/PDB 不在归档中；本机保全产物位于 `E:/SyncForder/CodeRepos/
 [复现驱动](../../../diagnostics/lua55-s0-s1-2026-09-09/) 与 [Lua55 独立 C 依赖构建说明](../../../../cmake/dependencies/lua55/README.md) 随源码交付。仅 RelWithDebInfo，构建/运行串行；不重打包任何旧阶段归档。
 
 归档后仅修正阶段 JSON 校验器的 Python 包假设，未更改测量或归档；见 [补充校验记录](postarchive-validation.json)。
+
+## 固定提交下载与远端回取
+
+归档提交：`992860075f734a186155c0c67bb4931286d805d1`。从 GitHub 远端建立全新 bare 对象库，不使用本地 alternates，重新取得五份归档及清单；5 个归档 SHA、1837 个原始条目全部匹配。详见 [远端校验记录](remote-verification.json)。
+
+- [qualification.zip 固定下载](https://github.com/LUX-YU/lux-engine/raw/992860075f734a186155c0c67bb4931286d805d1/.internal/evidence/script/lua55-s0-s1-2026-09-09/qualification.zip)
+- [identities.zip 固定下载](https://github.com/LUX-YU/lux-engine/raw/992860075f734a186155c0c67bb4931286d805d1/.internal/evidence/script/lua55-s0-s1-2026-09-09/identities.zip)
+- [installation.zip 固定下载](https://github.com/LUX-YU/lux-engine/raw/992860075f734a186155c0c67bb4931286d805d1/.internal/evidence/script/lua55-s0-s1-2026-09-09/installation.zip)
+- [costs.zip 固定下载](https://github.com/LUX-YU/lux-engine/raw/992860075f734a186155c0c67bb4931286d805d1/.internal/evidence/script/lua55-s0-s1-2026-09-09/costs.zip)
+- [vtune.zip 固定下载](https://github.com/LUX-YU/lux-engine/raw/992860075f734a186155c0c67bb4931286d805d1/.internal/evidence/script/lua55-s0-s1-2026-09-09/vtune.zip)
+
+下载需要仓库读取权限；实际回取校验使用 SSH Git blob，不冒称匿名 HTTP 下载已验证。资格源码仍为 `55dcb3fa`，本次链接登记不改变测试身份。

@@ -154,6 +154,45 @@ namespace
             return checksum;
         }
     };
+    template <class Failure> bool preservesSceneFailure(const Failure &failure, const sessions::SceneFailure &source)
+    {
+        if constexpr (requires { failure.scene; })
+        {
+            if (!failure.scene || failure.scene->code != source.code || failure.scene->session != source.session ||
+                bool(failure.scene->renderer) != bool(source.renderer))
+                return false;
+            if (!source.renderer)
+                return true;
+            const auto &actual = *failure.scene->renderer;
+            const auto &expected = *source.renderer;
+            return actual.code == expected.code && actual.view == expected.view && actual.request == expected.request &&
+                actual.render_error.type == expected.render_error.type &&
+                actual.render_error.args == expected.render_error.args &&
+                actual.backend_status == expected.backend_status;
+        }
+        return false;
+    }
+    class ViewCloseObserver final : public lux::object::Object<ViewCloseObserver>
+    {
+    public:
+        using Object::Object;
+        sessions::SceneView *view{};
+        ui::SceneWorkspace *workspace{};
+        bool preserved{};
+        unsigned calls{};
+        void changed(const sessions::ViewImageNotice &) noexcept
+        {
+            ++calls;
+            const auto direct = view->beginClose();
+            require(!direct && direct.error().code == sessions::ESceneError::BUSY,
+                    "G04 SceneView reports real publisher reentry BUSY");
+            require(workspace->beginClose(), "G04 Workspace retains close intent");
+            const auto propagated = workspace->advanceClose();
+            preserved = !propagated && preservesSceneFailure(propagated.error(), direct.error());
+            std::printf("G04 close scene_code=%u session=%llu preserved=%u\n", unsigned(direct.error().code),
+                        direct.error().session.value, unsigned(preserved));
+        }
+    };
     class ResourceObserver final : public lux::object::Object<ResourceObserver>
     {
     public:
@@ -221,8 +260,12 @@ namespace
                 };
                 const auto shell = [&](const auto &result)
                 {
-                    require(!result && result.error().code == ui::EWindowError::WRONG_THREAD,
-                            "Window/Workspace rejects foreign thread before native UI or owner mutation");
+                    require(!result, "Window/Workspace rejects foreign thread before native UI or owner mutation");
+                    if constexpr (requires { result.error().window; })
+                        require(result.error().window && result.error().window->code == ui::EWindowError::WRONG_THREAD,
+                                "Workspace retains owning Window thread error");
+                    else
+                        require(result.error().code == ui::EWindowError::WRONG_THREAD, "Window thread error");
                     ++rejected;
                 };
                 const auto render = [&](const auto &result)
@@ -274,6 +317,8 @@ int main(int argc, char **argv)
     bool failed_view_contract = true;
     bool resource_publication_contract = true;
     bool coordinate_contract = true;
+    bool workspace_failure_contract = true;
+    const bool workspace_failure_test = variant == "workspace_failure";
     const bool coordinate_test = variant == "coordinate_256" || variant == "coordinate_1024";
     const double page_size = variant == "coordinate_256" ? 256.0 : 1024.0;
     const Eigen::Vector3d coordinate_offset{256, -256, 1024};
@@ -295,7 +340,7 @@ int main(int argc, char **argv)
     const bool gated_test = late_entity_test || late_source_test || late_close_test || late_selection_test;
 #if !defined(LUX_EDITOR_DIAGNOSTICS)
     require(!dynamic_test && !churn_test && !record_failure_test && !late_entity_test && !late_source_test &&
-                variant != "factory_failure" && !resource_publication_test,
+                variant != "factory_failure" && !resource_publication_test && !workspace_failure_test,
             "requested variant requires the isolated diagnostic build");
 #endif
     require(!retry_test || argc == 5, "retry needs a complete recovery package");
@@ -667,6 +712,72 @@ int main(int argc, char **argv)
         auto workspace = std::move(*workspace_result);
         require(workspace->activate(), "workspace activation");
         foreignOwnerCalls(*window, *renderer, *session, *camera, *workspace);
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+        if (workspace_failure_test)
+        {
+            const auto closeProbe = [&](std::unique_ptr<ui::SceneWorkspace> &probe)
+            {
+                require(probe->beginClose(), "G04 probe retains close owner");
+                const auto deadline = Clock::now() + std::chrono::seconds{10};
+                for (;;)
+                {
+                    require(Clock::now() < deadline && renderer->poll(64), "G04 close progresses");
+                    const auto result = probe->advanceClose();
+                    require(result, "G04 real close completion");
+                    if (*result == sessions::ECloseProgress::COMPLETE)
+                        break;
+                }
+                probe.reset();
+            };
+            const auto before = renderer->statistics();
+            rendering::detail::RendererTestAccess::useSceneForNextView({1001, 9});
+            auto rejected_view = sessions::SceneView::create(messages.dispatcherRef(), *session, *renderer);
+            require(rejected_view, "G04 SceneView owner exists before backend validates source Scene");
+            auto *borrowed = rejected_view->get();
+            auto probe = ui::SceneWorkspace::create(*window, {7}, *session, *rejected_view);
+            require(probe && !*rejected_view && borrowed->requestExtent({64, 64}), "G04 owned Workspace probe");
+            const auto deadline = Clock::now() + std::chrono::seconds{10};
+            std::optional<sessions::SceneFailure> original;
+            while (!original)
+            {
+                require(Clock::now() < deadline && renderer->poll(64), "G04 real invalid Scene reply arrives");
+                const auto result = borrowed->synchronize();
+                if (!result)
+                    original = result.error();
+            }
+            const auto expected = lux::render::renderError<lux::render::err::scene::NotFound>(1001);
+            require(original->renderer && original->renderer->render_error.type == expected.type &&
+                        original->renderer->render_error.args == expected.args,
+                    "G04 backend failure is exact scene::NotFound");
+            const auto propagated = (*probe)->updateBeforeFrame();
+            const bool sync_preserved = !propagated && preservesSceneFailure(propagated.error(), *original);
+            workspace_failure_contract &= sync_preserved;
+            std::printf("G04 sync scene_code=%u renderer_code=%u request=%llu session=%llu preserved=%u\n",
+                        unsigned(original->code), unsigned(original->renderer->code), original->renderer->request,
+                        original->session.value, unsigned(sync_preserved));
+            closeProbe(*probe);
+            auto closing_view = sessions::SceneView::create(messages.dispatcherRef(), *session, *renderer);
+            require(closing_view, "G04 close observer actual SceneView");
+            auto *closing_borrow = closing_view->get();
+            auto closing_workspace = ui::SceneWorkspace::create(*window, {8}, *session, *closing_view);
+            require(closing_workspace, "G04 close observer actual Workspace");
+            ViewCloseObserver observer(messages.dispatcherRef());
+            observer.view = closing_borrow;
+            observer.workspace = closing_workspace->get();
+            auto connection = closing_borrow->observe<sessions::SceneView::imageChanged, &ViewCloseObserver::changed,
+                                                      lux::object::EDelivery::DIRECT>(observer);
+            require(connection && renderer->poll(64) && closing_borrow->synchronize(), "G04 direct View notice");
+            require(observer.calls == 1, "G04 close failure callback actually ran once");
+            workspace_failure_contract &= observer.preserved;
+            closeProbe(*closing_workspace);
+            const auto after = renderer->statistics();
+            require(after.views == before.views && after.runtime_leases == before.runtime_leases,
+                    "G04 failures retain then release exactly their own View/Session association");
+            std::printf("G04 cleanup views=%zu/%zu leases=%zu/%zu events=%llu/%llu\n", before.views, after.views,
+                        before.runtime_leases, after.runtime_leases, before.render_events, after.render_events);
+            std::fflush(stdout);
+        }
+#endif
         {
             auto closing_view = sessions::SceneView::create(messages.dispatcherRef(), *session, *renderer);
             require(closing_view, "viewport failure probe owns its SceneView");
@@ -1440,7 +1551,7 @@ int main(int argc, char **argv)
         require(renderer->joinStopped(), "join proven stopped renderer");
         const auto stats = renderer->statistics();
         require(stats.validation_errors == 0 && stats.texture_misses == 0, "Vulkan validation and texture resolution");
-        require(stats.render_events == (variant == "view_failure" ? 2 : 0) &&
+        require(stats.render_events == (variant == "view_failure" ? 2 : (workspace_failure_test ? 1 : 0)) &&
                     stats.dropped_events == (variant == "view_failure" ? 1 : 0),
                 "no renderer operation errors beyond explicitly checked view failures");
         require(stats.views == 0 && stats.runtime_leases == 0 && stats.accepted_frames == 0, "terminal owners");
@@ -1472,6 +1583,11 @@ int main(int argc, char **argv)
     if (!coordinate_contract)
     {
         std::fputs("G03 FAIL: Scene and camera wire coordinate pages disagree; all owners closed\n", stderr);
+        return 1;
+    }
+    if (!workspace_failure_contract)
+    {
+        std::fputs("G04 FAIL: Workspace lost original Scene failure; all owners closed\n", stderr);
         return 1;
     }
 }

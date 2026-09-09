@@ -11,6 +11,15 @@
 #include <span>
 namespace lux::editor::ui
 {
+    // Scene-specific boundary: preserve owning source failures without adding Scene to generic editor_ui.
+    struct SceneWorkspaceFailure final
+    {
+        std::optional<WindowFailure> window;
+        std::optional<sessions::SceneFailure> scene;
+        SceneWorkspaceFailure(WindowFailure failure) noexcept : window(std::move(failure)) {}
+        SceneWorkspaceFailure(sessions::SceneFailure failure) noexcept : scene(std::move(failure)) {}
+    };
+    template <class T> using SceneWorkspaceResult = lux::cxx::expected<T, SceneWorkspaceFailure>;
     class LUX_EDITOR_SCENE_UI_PUBLIC SceneViewport final : public lux::object::Object<SceneViewport, lux::ui::Pane>
     {
     public:
@@ -75,14 +84,14 @@ namespace lux::editor::ui
         SceneWorkspace(SceneWorkspace &&) = delete;
         SceneWorkspace &operator=(SceneWorkspace &&) = delete;
         [[nodiscard]] WorkspaceId id() const noexcept;
-        [[nodiscard]] WindowResult<void> updateBeforeFrame() noexcept;
+        [[nodiscard]] SceneWorkspaceResult<void> updateBeforeFrame() noexcept;
         [[nodiscard]] WindowResult<void> afterDraw(double, lux::ui::Vec2) noexcept;
         // Foreign threads cannot borrow or release the Pane's current frame images.
         void releaseFrameImages() noexcept;
         [[nodiscard]] WindowResult<void> activate() noexcept;
         [[nodiscard]] std::span<const rendering::ViewImage> frameImages() const noexcept;
         [[nodiscard]] WindowResult<void> beginClose() noexcept;
-        [[nodiscard]] WindowResult<sessions::ECloseProgress> advanceClose() noexcept;
+        [[nodiscard]] SceneWorkspaceResult<sessions::ECloseProgress> advanceClose() noexcept;
 
     private:
         struct Impl; // Owns real panes/view/registrations/connections/layout; no editable source model.

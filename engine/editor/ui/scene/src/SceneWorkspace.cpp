@@ -226,7 +226,7 @@ namespace lux::editor::ui
         static_cast<void>(impl_->window.uiSession().requestFocus(impl_->viewport->id().view()));
         return {};
     }
-    WindowResult<void> SceneWorkspace::updateBeforeFrame() noexcept
+    SceneWorkspaceResult<void> SceneWorkspace::updateBeforeFrame() noexcept
     {
         if (!impl_->correctThread())
             return fail(EWindowError::WRONG_THREAD);
@@ -240,11 +240,11 @@ namespace lux::editor::ui
                 pane->setVisible(true);
             auto result = impl_->window.installLayout(impl_->layout);
             if (!result)
-                return result;
+                return lux::cxx::unexpected(SceneWorkspaceFailure{result.error()});
         }
         auto result = impl_->view->synchronize();
         if (!result)
-            return fail(EWindowError::UI_FAILURE);
+            return lux::cxx::unexpected(SceneWorkspaceFailure{result.error()});
         return {};
     }
     WindowResult<void> SceneWorkspace::afterDraw(double seconds, lux::ui::Vec2 scale) noexcept
@@ -281,7 +281,7 @@ namespace lux::editor::ui
         impl_->closing = true;
         return {};
     }
-    WindowResult<sessions::ECloseProgress> SceneWorkspace::advanceClose() noexcept
+    SceneWorkspaceResult<sessions::ECloseProgress> SceneWorkspace::advanceClose() noexcept
     {
         if (!impl_->correctThread())
             return fail(EWindowError::WRONG_THREAD);
@@ -301,12 +301,12 @@ namespace lux::editor::ui
             releaseFrameImages();
             auto result = impl_->view->beginClose();
             if (!result)
-                return fail(EWindowError::UI_FAILURE);
+                return lux::cxx::unexpected(SceneWorkspaceFailure{result.error()});
             impl_->detached = true;
         }
         auto result = impl_->view->advanceClose();
         if (!result)
-            return fail(EWindowError::UI_FAILURE);
+            return lux::cxx::unexpected(SceneWorkspaceFailure{result.error()});
         if (*result == sessions::ECloseProgress::PENDING)
             return sessions::ECloseProgress::PENDING;
         impl_->toolbar.reset();

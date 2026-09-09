@@ -3,6 +3,11 @@ target_link_libraries(editor_application_lifecycle_test PRIVATE editor_applicati
     lux::engine::simulation::transform_system lux::engine::scene::scene_render_meta
     lux::engine::function::render_client_meta lux::engine::simulation::ecs::hierarchy)
 target_compile_options(editor_application_lifecycle_test PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+if(LUX_EDITOR_DIAGNOSTICS)
+    target_compile_definitions(editor_application_lifecycle_test PRIVATE LUX_EDITOR_DIAGNOSTICS)
+    target_include_directories(editor_application_lifecycle_test PRIVATE
+        ${PROJECT_SOURCE_DIR}/engine/editor/rendering/pinclude)
+endif()
 engine_add_type_runtime_info(NAME editor_lifecycle_transform_meta
     TARGET_FILES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/builtin/transform/include/lux/engine/simulation/TransformSystem.hpp
     REGISTER_FUNC_NAME lux_editor_demo_transform)

@@ -33,6 +33,14 @@ namespace lux::editor::application
             error.renderer = source;
             return lux::cxx::unexpected(error);
         }
+        auto workspaceFailure(const ui::SceneWorkspaceFailure &source) noexcept
+        {
+            if (source.scene)
+                return sceneFailure(*source.scene);
+            if (source.window)
+                return windowFailure(*source.window);
+            return fail(EApplicationError::INVALID_STATE);
+        }
         auto processFailure(lux::process::EExecutionError source) noexcept
         {
             ApplicationFailure error{EApplicationError::PROCESS_FAILURE};
@@ -264,7 +272,7 @@ namespace lux::editor::application
                 return sceneFailure(updated.error());
             auto synchronized = impl_->workspace->updateBeforeFrame();
             if (!synchronized)
-                return windowFailure(synchronized.error());
+                return workspaceFailure(synchronized.error());
             std::uint32_t width{}, height{}, pixel_width{}, pixel_height{};
             impl_->window->nativeWindow().size(width, height);
             impl_->window->nativeWindow().framebufferSize(pixel_width, pixel_height);
@@ -348,7 +356,7 @@ namespace lux::editor::application
                 return windowFailure(began.error());
             auto closed = impl_->workspace->advanceClose();
             if (!closed)
-                return windowFailure(closed.error());
+                return workspaceFailure(closed.error());
             if (*closed == sessions::ECloseProgress::PENDING)
             {
                 impl_->state = EApplicationState::CLOSING_VIEWS;

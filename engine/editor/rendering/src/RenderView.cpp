@@ -14,6 +14,14 @@ namespace lux::editor::rendering
         std::unique_ptr<detail::ViewResources> resources;
     };
 #if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+    namespace
+    {
+        thread_local std::optional<lux::render::RenderSceneId> next_test_scene;
+    }
+    void detail::RendererTestAccess::useSceneForNextView(lux::render::RenderSceneId scene) noexcept
+    {
+        next_test_scene = scene;
+    }
     std::uint64_t detail::RendererTestAccess::inFlightResize(const RenderView &view) noexcept
     {
         const auto &resources = *view.impl_->resources;
@@ -29,6 +37,10 @@ namespace lux::editor::rendering
                                                                  RenderViewId id, lux::render::RenderSceneId scene,
                                                                  ViewConfig config) noexcept
     {
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+        if (const auto replacement = std::exchange(next_test_scene, std::nullopt))
+            scene = *replacement;
+#endif
         try
         {
             auto impl = std::make_unique<Impl>();

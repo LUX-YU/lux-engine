@@ -10,5 +10,6 @@ namespace lux::editor::rendering::detail
         static RenderResult<void> failRecord(EditorFramePacket &, lux::render::RenderError) noexcept;
         // Observe the real admitted request, without delaying or replacing its reply.
         static std::uint64_t inFlightResize(const RenderView &) noexcept;
+        static void useSceneForNextView(lux::render::RenderSceneId) noexcept;
     };
 }

@@ -36,3 +36,13 @@ pending_change属于SceneResources；每个row作用域记录异常退出前发�
 同时验证zero/negative/max-double/infinity/NaN页尺寸在owner/request接纳之前准确返回INVALID_ARGUMENT。GPU mesh/camera movement、point lighting与实际画面覆盖成立；不推广为所有空间/cull模式的穷尽证明。
 
 流程偏差保留：g03-before-build-02因120列检查失败，但批处理随后误执行了测试。该两份无verified后缀日志不用于资格；256还因旧的camera改变图像断言中止。这次偏差已纠正，修复驱动后重新all成功，再执行上述正常关闭的明确负例。不得删除或混用这些探索日志。
+
+## G04：Workspace保留具体Scene错误
+
+修前g04-before.log明确exit=1。真实无效RenderScene请求返回scene::NotFound(1001)，SceneView携带RESOURCE_FAILURE、DEVICE_FAILURE、request=1191182336及Session1；Workspace同步丢失来源。真实imageChanged direct回调内beginClose返回BUSY，Workspace关闭也丢失来源。两条都在收集准确错误后正常关闭全部owner才退出；View1→1、lease2→2。
+
+修后g04-after.log两条preserved=1，所有身份匹配且资源计数相同。SceneWorkspaceResult仅用于业务同步/推进关闭边界，拥有WindowFailure或SceneFailure；没有向generic editor_ui添加Scene依赖。Application按具体来源继续转发。
+
+g04-application-after-02.log由实际Application start/run/advanceShutdown执行。先消费实际Renderer diagnostic，再次run从Workspace收到同一View/request/render_error的SceneFailure，最后views=0/leases=0。原4组部分启动+Toolset销毁回归同时通过。首次Application探针遗漏BlockingScheduler配置导致start断言失败（after.log），已保留为驱动错误，不算负例资格。
+
+CMake变更后的all/no-op见g04-application-build-02.log和g04-application-noop.log，后者ninja:no work。最终仍需绑定新clean源码重新资格。

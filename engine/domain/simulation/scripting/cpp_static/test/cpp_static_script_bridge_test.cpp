@@ -64,8 +64,10 @@ lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> waitEvent(void *, S
 
 struct DelayProvider final
 {
+    std::size_t calls{};
     lux::script::ScriptAbilityStartResult nextStep(lux::script::ScriptAbilityCompletion<void>) noexcept
     {
+        ++calls;
         return {};
     }
 
@@ -336,6 +338,7 @@ int main()
     const auto delay_suspended =
         delay_step_call.invoke(delay_step_call.context, empty_frame, step_context, delay_continuation);
     assert(delay_suspended.state == EScriptStepState::SUSPENDED);
+    assert(delay_provider.calls == 1U); // Same contract, custom publication: its real starter must run.
     const ScriptResumePacket delay_packet{delay_suspended.waiting_on, EScriptAwaitableState::READY, nullptr, {}};
     const auto delay_completed = delay_continuation.resume(delay_continuation.state, step_context, delay_packet);
     assert(delay_completed.state == EScriptStepState::COMPLETED);

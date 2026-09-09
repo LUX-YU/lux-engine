@@ -80,7 +80,13 @@ namespace lux::script::lua
                 if (stats_.enabled) destroyPage<true>(page); else destroyPage<false>(page);
             }
         }
-        [[nodiscard]] bool hasLiveAllocations() const noexcept { return pages_ != nullptr || direct_ != nullptr; }
+        [[nodiscard]] bool hasLiveAllocations() const noexcept
+        {
+            if (direct_ != nullptr) return true;
+            for (auto* page = pages_; page; page = page->next)
+                if (page->live != 0U) return true;
+            return false;
+        }
         // Test-only lower-heap injection, distinct from the logical lua_Alloc fault wrapper.
         void failSystemAfter(std::size_t requests) noexcept { permitted_system_ = requests; }
         void failNextPage() noexcept { fail_next_page_ = true; }

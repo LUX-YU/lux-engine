@@ -15,6 +15,24 @@
 namespace
 {
     using namespace lux::simulation::script;
+    lua_State* observed_vm{};
+
+    struct DenyGrowth final
+    {
+        lua_Alloc original{};
+        void* context{};
+        std::size_t failures{};
+        static void* allocate(void* opaque, void* pointer, std::size_t old_size, std::size_t size) noexcept
+        {
+            auto& self = *static_cast<DenyGrowth*>(opaque);
+            if (size != 0U && (pointer == nullptr || size > old_size))
+            {
+                ++self.failures;
+                return nullptr;
+            }
+            return self.original(self.context, pointer, old_size, size);
+        }
+    };
 
     struct Dispatch final
     {
@@ -23,6 +41,7 @@ namespace
 
     LuxLuaBoundaryOutcome call(lua_State* state) noexcept
     {
+        observed_vm = state;
         return detail::invokeLuaAbility<void>(state, [](detail::LuaPreparedAbilityAccess& access) noexcept {
             static_cast<const Dispatch*>(access.dispatch)->call(access.context);
         });
@@ -164,6 +183,39 @@ void testAbilityProvenance()
     assert(invoke(rebuilt, alpha_artifact, 2U) != 0);
     assert(alpha_calls == 0 && beta_calls == 2);
     runtime.destroyInstance(runtime.context, rebuilt);
+    auto new_content = makeArtifact(alpha,
+        "return {save=function() end, own=function() lux.Alpha.call() end,"
+        "foreign=function() table.lux_saved() end}"
+    );
+    const auto before = backend->stats();
+    const auto top = lua_gettop(observed_vm);
+    DenyGrowth allocator;
+    allocator.original = lua_getallocf(observed_vm, &allocator.context);
+    lua_setallocf(observed_vm, &DenyGrowth::allocate, &allocator);
+    ScriptBackendInstance rejected;
+    const auto rejected_prototype = runtime.createInstance(runtime.context,
+        {assetId(1U), SimulationScriptScope{}, nullptr, {1U, 2U}, {&alpha_capability, 1U}, {}}, new_content, rejected);
+    const auto rejected_self = runtime.createInstance(runtime.context,
+        {assetId(1U), SimulationScriptScope{}, nullptr, {1U, 2U}, {&alpha_capability, 1U}, {}}, alpha_artifact, rejected);
+    lua_setallocf(observed_vm, allocator.original, allocator.context);
+    assert(rejected_prototype == EScriptBackendResult::CONSTRUCTION_FAILURE);
+    assert(rejected_self == EScriptBackendResult::ALLOCATION_FAILURE && allocator.failures != 0U);
+    assert(lua_gettop(observed_vm) == top && backend->stats().cached_prototypes == before.cached_prototypes);
+    assert(backend->stats().prepared_ability_slots == before.prepared_ability_slots);
+    auto replaced = create(1U, new_content, alpha_capability);
+    assert(invoke(replaced, new_content, 2U) != 0 && alpha_calls == 0);
+    assert(invoke(replaced, new_content, 1U) == 0 && alpha_calls == 1);
+    runtime.destroyInstance(runtime.context, replaced);
+    const auto cached_count = backend->stats().cached_prototypes;
+    for (std::size_t index{}; index < 32U; ++index)
+    {
+        auto repeated = create(1U, new_content, alpha_capability);
+        assert(invoke(repeated, new_content, 1U) == 0);
+        runtime.destroyInstance(runtime.context, repeated);
+    }
+    assert(alpha_calls == 33 && backend->stats().cached_prototypes == cached_count);
+    std::printf("COLD_CONTENT,oom=%zu,rebuilds=32,new_content_isolated=1,cache_growth=0,provider=33\n",
+        allocator.failures);
     runtime.destroyInstance(runtime.context, second);
     assert(backend->stats().prepared_ability_slots == 0U);
 }

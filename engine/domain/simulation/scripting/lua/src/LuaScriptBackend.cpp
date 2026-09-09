@@ -138,6 +138,7 @@ namespace lux::simulation::script
 
         struct Prototype final
         {
+            lux::script::ScriptArtifactContentId content;
             int table_ref{LUA_NOREF};
             int environment_ref{LUA_NOREF};
             const void* layout_token{};
@@ -164,9 +165,24 @@ namespace lux::simulation::script
             bool active{};
         };
 
-        struct FunctionKey final
+        struct PrototypeKey final
         {
             lux::asset::AssetId asset;
+            lux::script::ScriptArtifactContentId content;
+            [[nodiscard]] bool operator==(const PrototypeKey&) const noexcept = default;
+            struct Hash final
+            {
+                [[nodiscard]] std::size_t operator()(const PrototypeKey& key) const noexcept
+                {
+                    return std::hash<lux::asset::AssetId>{}(key.asset) ^
+                        lux::script::ScriptArtifactContentId::Hash{}(key.content);
+                }
+            };
+        };
+
+        struct FunctionKey final
+        {
+            const Prototype* prototype{};
             lux::script::ScriptSymbolId symbol{};
 
             [[nodiscard]] bool operator==(const FunctionKey&) const noexcept = default;
@@ -176,7 +192,7 @@ namespace lux::simulation::script
         {
             [[nodiscard]] std::size_t operator()(const FunctionKey& key) const noexcept
             {
-                const auto asset_hash = std::hash<lux::asset::AssetId>{}(key.asset);
+                const auto asset_hash = std::hash<const Prototype*>{}(key.prototype);
                 const auto symbol_hash = std::hash<lux::script::ScriptSymbolId>{}(key.symbol);
                 return asset_hash ^ (symbol_hash + 0x9E3779B9U + (asset_hash << 6U) + (asset_hash >> 2U));
             }
@@ -570,53 +586,71 @@ namespace lux::simulation::script
             return std::find(keywords.begin(), keywords.end(), value) == keywords.end();
         }
 
-        [[nodiscard]] bool appendArtifactAbilities(
-            Prototype& prototype,
-            const lux::script::ScriptArtifact& artifact,
-            int lux_index
+        // Only C++ allocation here. The subsequent protected Lua render reads this frozen layout.
+        [[nodiscard]] bool prepareArtifactLayout(
+            Prototype& prototype, const lux::script::ScriptArtifact& artifact
         ) noexcept
         {
-            for (const auto& requirement : artifact.description().api_requirements)
+            try
             {
-                std::size_t first_method{};
-                while (first_method < ability_methods.size())
+                for (const auto& requirement : artifact.description().api_requirements)
                 {
-                    const auto* ability = ability_methods[first_method].ability;
-                    if (ability->id.hash() == requirement.contract.hash() &&
-                        ability->id.name() == requirement.contract.name() &&
-                        ability->schema_hash == requirement.expected_schema_hash)
-                        break;
-                    ++first_method;
+                    std::size_t ordinal{};
+                    while (ordinal < ability_methods.size())
+                    {
+                        const auto* ability = ability_methods[ordinal].ability;
+                        if (ability->id.hash() == requirement.contract.hash() &&
+                            ability->id.name() == requirement.contract.name() &&
+                            ability->schema_hash == requirement.expected_schema_hash) break;
+                        ++ordinal;
+                    }
+                    if (ordinal == ability_methods.size()) return false;
+                    const auto* ability = ability_methods[ordinal].ability;
+                    while (ordinal < ability_methods.size() && ability_methods[ordinal].ability == ability)
+                        prototype.ability_ordinals.push_back(static_cast<std::uint32_t>(ordinal++));
                 }
-                if (first_method == ability_methods.size())
-                    return false;
-                const auto* ability = ability_methods[first_method].ability;
+                for (const auto& requirement : artifact.description().event_requirements)
+                {
+                    const auto found = std::ranges::find(event_sources, requirement);
+                    if (found == event_sources.end()) return false;
+                    prototype.event_ordinals.push_back(static_cast<std::uint32_t>(found - event_sources.begin()));
+                }
+                prototype.ability_class = prepared_abilities.select(prototype.ability_ordinals.size());
+                prototype.event_class = prepared_events.select(prototype.event_ordinals.size());
+                return true;
+            }
+            catch (const std::bad_alloc&)
+            {
+                return false;
+            }
+        }
+
+        void appendArtifactAbilities(const Prototype& prototype, int lux_index) noexcept
+        {
+            std::size_t local_slot{};
+            while (local_slot < prototype.ability_ordinals.size())
+            {
+                const auto* ability = ability_methods[prototype.ability_ordinals[local_slot]].ability;
                 lua_createtable(state, 0, static_cast<int>(ability->methods.size()));
                 const auto ability_index = lua_gettop(state);
-                auto ordinal = first_method;
-                while (ordinal < ability_methods.size() && ability_methods[ordinal].ability == ability)
+                while (local_slot < prototype.ability_ordinals.size())
                 {
-                    const auto local_slot = prototype.ability_ordinals.size();
-                    if (local_slot > (std::numeric_limits<lua_Integer>::max)())
-                        return false;
-                    const auto* method = ability_methods[ordinal].method;
-                    lua_pushlstring(state, method->name.data(), method->name.size());
+                    const auto& entry = ability_methods[prototype.ability_ordinals[local_slot]];
+                    if (entry.ability != ability) break;
+                    lua_pushlstring(state, entry.method->name.data(), entry.method->name.size());
                     lua_pushlightuserdata(state, this);
                     lua_pushinteger(state, static_cast<lua_Integer>(local_slot));
                     lua_pushlightuserdata(state, this);
                     lua_rawget(state, lux_index);
-                    pushPrimitive(ability_methods[ordinal].entry);
-                    lua_settable(state, ability_index);
-                    prototype.ability_ordinals.push_back(static_cast<std::uint32_t>(ordinal));
-                    ++ordinal;
+                    pushPrimitive(entry.entry);
+                    lua_rawset(state, ability_index);
+                    ++local_slot;
                 }
                 lua_pushlstring(state, ability->name.data(), ability->name.size());
                 lua_pushvalue(state, ability_index);
-                lua_settable(state, lux_index);
+                lua_rawset(state, lux_index);
                 lua_pop(state, 1);
             }
-            prototype.ability_class = prepared_abilities.select(prototype.ability_ordinals.size());
-            return true;
         }
 
         // All four upvalues are rooted before the C closure is published.
@@ -627,14 +661,13 @@ namespace lux::simulation::script
             lua_pushcclosure(state, &luxLuaBoundaryEntry, 4);
         }
 
-        [[nodiscard]] bool appendArtifactEvents(
+        void appendArtifactEvents(
             Prototype& prototype,
             const lux::script::ScriptArtifact& artifact,
             int lux_index
         ) noexcept
         {
-            if (artifact.description().event_requirements.empty())
-                return true;
+            if (artifact.description().event_requirements.empty()) return;
             std::size_t groups{};
             std::string_view previous;
             for (const auto& source : artifact.description().event_requirements)
@@ -647,11 +680,9 @@ namespace lux::simulation::script
             const auto event_index = lua_gettop(state);
             std::string_view active_system;
             int system_index{};
+            std::size_t local_slot{};
             for (const auto& requirement : artifact.description().event_requirements)
             {
-                const auto found = std::ranges::find(event_sources, requirement);
-                if (found == event_sources.end())
-                    return false;
                 if (active_system != requirement.system_name)
                 {
                     if (system_index != 0)
@@ -665,9 +696,6 @@ namespace lux::simulation::script
                     lua_newtable(state);
                     system_index = lua_gettop(state);
                 }
-                const auto local_slot = prototype.event_ordinals.size();
-                if (local_slot > (std::numeric_limits<lua_Integer>::max)())
-                    return false;
                 lua_pushlstring(state, requirement.event_name.data(), requirement.event_name.size());
                 lua_pushlightuserdata(state, this);
                 lua_pushinteger(state, static_cast<lua_Integer>(local_slot));
@@ -675,7 +703,7 @@ namespace lux::simulation::script
                 lua_rawget(state, lux_index);
                 pushPrimitive(&State::invokeEventWait);
                 lua_settable(state, system_index);
-                prototype.event_ordinals.push_back(static_cast<std::uint32_t>(found - event_sources.begin()));
+                ++local_slot;
             }
             if (system_index != 0)
             {
@@ -685,11 +713,9 @@ namespace lux::simulation::script
                 lua_remove(state, system_index);
             }
             lua_setfield(state, lux_index, "Event");
-            prototype.event_class = prepared_events.select(prototype.event_ordinals.size());
-            return true;
         }
 
-        [[nodiscard]] bool pushArtifactEnvironment(
+        void pushArtifactEnvironment(
             Prototype& prototype,
             const lux::script::ScriptArtifact& artifact
         ) noexcept
@@ -707,14 +733,9 @@ namespace lux::simulation::script
             lua_pushlightuserdata(state, this);
             prototype.layout_token = lua_newuserdata(state, 1U);
             lua_rawset(state, lux_index);
-            if (!appendArtifactAbilities(prototype, artifact, lux_index) ||
-                !appendArtifactEvents(prototype, artifact, lux_index))
-            {
-                lua_settop(state, environment_index - 1);
-                return false;
-            }
+            appendArtifactAbilities(prototype, lux_index);
+            appendArtifactEvents(prototype, artifact, lux_index);
             lua_setfield(state, environment_index, "lux");
-            return true;
         }
 
         static int traceback(lua_State* state)
@@ -724,75 +745,90 @@ namespace lux::simulation::script
             return 1;
         }
 
+        // No owning C++ objects may be constructed in callbacks passed here.
+        [[nodiscard]] int runCold(lua_CFunction entry, void* request) noexcept
+        {
+            if (!lua_checkstack(state, 3)) return LUA_ERRMEM;
+            const auto base = lua_gettop(state);
+            lua_pushcfunction(state, entry);
+            lua_pushlightuserdata(state, request);
+            const auto status = lua_pcall(state, 1, 0, 0);
+            lua_settop(state, base);
+            return status;
+        }
+
+        struct PrototypeRequest final
+        {
+            State* owner;
+            Prototype* prototype;
+            const lux::script::ScriptArtifact* artifact;
+            const lux::rdesc::LuaSourceScript* body;
+            bool complete{};
+        };
+
+        static int loadPrototype(lua_State* vm)
+        {
+            auto& request = *static_cast<PrototypeRequest*>(lua_touserdata(vm, 1));
+            auto& prototype = *request.prototype;
+            const auto& artifact = *request.artifact;
+            request.owner->pushArtifactEnvironment(prototype, artifact);
+            const auto environment_index = lua_gettop(vm);
+            if (luaL_loadbufferx(vm, reinterpret_cast<const char*>(artifact.payload().data()),
+                    artifact.payload().size(), artifact.description().module_name.c_str(), "t") != LUA_OK)
+                return lua_error(vm);
+            if (!lux::script::lua::detail::setLuaChunkEnvironment(vm, -1, environment_index)) return 0;
+            lua_call(vm, 0, 1);
+            if (!lua_istable(vm, -1))
+            {
+                lua_pop(vm, 1);
+                lua_getfield(vm, environment_index, request.body->entry.c_str());
+            }
+            if (!lua_istable(vm, -1)) return 0;
+            prototype.table_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
+            lua_pushvalue(vm, environment_index);
+            prototype.environment_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
+            request.complete = true;
+            return 0;
+        }
+
+        void releasePrototype(const Prototype& prototype) noexcept
+        {
+            if (prototype.table_ref != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, prototype.table_ref);
+            if (prototype.environment_ref != LUA_NOREF)
+                luaL_unref(state, LUA_REGISTRYINDEX, prototype.environment_ref);
+        }
+
         [[nodiscard]] Prototype* prototypeFor(
-            const ScriptInstanceCreateContext& context,
-            const lux::script::ScriptArtifact& artifact
+            const ScriptInstanceCreateContext& context, const lux::script::ScriptArtifact& artifact
         ) noexcept
         {
-            const auto found = prototypes.find(context.asset);
-            if (found != prototypes.end())
-                return std::addressof(found->second);
-            if (artifact.payload().empty())
-                return nullptr;
-            const auto* body = std::get_if<lux::rdesc::LuaSourceScript>(
-                std::addressof(artifact.description().body));
-            if (!body)
-                return nullptr;
+            const auto content = artifact.contentIdentity();
+            // Content is immutable; AssetId remains the observable closure publication domain.
+            const PrototypeKey key{context.asset, content};
+            const auto found = prototypes.find(key);
+            if (found != prototypes.end()) return std::addressof(found->second);
+            if (content.isNull() || artifact.payload().empty()) return nullptr;
+            const auto* body = std::get_if<lux::rdesc::LuaSourceScript>(std::addressof(artifact.description().body));
+            if (!body) return nullptr;
             Prototype prototype;
-            lua_rawgeti(state, LUA_REGISTRYINDEX, traceback_ref);
-            const auto error_index = lua_gettop(state);
-            if (!pushArtifactEnvironment(prototype, artifact))
+            prototype.content = content;
+            if (!prepareArtifactLayout(prototype, artifact)) return nullptr;
+            PrototypeRequest request{this, &prototype, &artifact, body};
+            if (runCold(&loadPrototype, &request) != LUA_OK || !request.complete)
             {
-                lua_settop(state, error_index - 1);
+                releasePrototype(prototype);
                 return nullptr;
             }
-            const auto environment_index = lua_gettop(state);
-            const auto* source = reinterpret_cast<const char*>(
-                artifact.payload().data());
-            if (luaL_loadbufferx(
-                    state,
-                    source,
-                    artifact.payload().size(),
-                    artifact.description().module_name.c_str(),
-                    "t") != LUA_OK || !lux::script::lua::detail::setLuaChunkEnvironment(
-                        state,
-                        -1,
-                        environment_index
-                    ) ||
-                lua_pcall(state, 0, 1, error_index) != LUA_OK)
-            {
-                lua_settop(state, error_index - 1);
-                return nullptr;
-            }
-            if (!lua_istable(state, -1))
-            {
-                lua_pop(state, 1);
-                lua_getfield(state, environment_index, body->entry.c_str());
-            }
-            if (!lua_istable(state, -1))
-            {
-                lua_settop(state, error_index - 1);
-                return nullptr;
-            }
-            prototype.table_ref = luaL_ref(state, LUA_REGISTRYINDEX);
-            lua_pushvalue(state, environment_index);
-            prototype.environment_ref = luaL_ref(state, LUA_REGISTRYINDEX);
-            lua_settop(state, error_index - 1);
             try
             {
-                const auto inserted = prototypes.emplace(context.asset, std::move(prototype));
-                if (!inserted.second)
-                    return nullptr;
-                return std::addressof(inserted.first->second);
+                const auto inserted = prototypes.emplace(key, std::move(prototype));
+                if (inserted.second) return std::addressof(inserted.first->second);
             }
             catch (const std::bad_alloc&)
             {
-                if (prototype.table_ref != LUA_NOREF)
-                    luaL_unref(state, LUA_REGISTRYINDEX, prototype.table_ref);
-                if (prototype.environment_ref != LUA_NOREF)
-                    luaL_unref(state, LUA_REGISTRYINDEX, prototype.environment_ref);
-                return nullptr;
             }
+            releasePrototype(prototype);
+            return nullptr;
         }
 
         [[nodiscard]] bool supportedType(
@@ -1119,6 +1155,67 @@ namespace lux::simulation::script
             return 1;
         }
 
+        static int createSelf(lua_State* vm)
+        {
+            auto* instance = static_cast<Instance*>(lua_touserdata(vm, 1));
+            lua_createtable(vm, 0, instance->entity_scope ? 4 : 0);
+            const auto instance_index = lua_gettop(vm);
+            lua_rawgeti(vm, LUA_REGISTRYINDEX, instance->prototype->table_ref);
+            const auto prototype_index = lua_gettop(vm);
+            lua_pushnil(vm);
+            while (lua_next(vm, prototype_index) != 0)
+            {
+                lua_pushvalue(vm, -2);
+                lua_pushvalue(vm, -2);
+                lua_settable(vm, instance_index);
+                lua_pop(vm, 1);
+            }
+            lua_pop(vm, 1);
+            if (instance->entity_scope)
+            {
+                auto* handle = static_cast<HostHandle*>(
+                    lua_newuserdata(vm, sizeof(HostHandle)));
+                *handle = HostHandle{
+                    instance->owner,
+                    instance->behavior,
+                    true};
+                instance->host_handle = handle;
+                const auto handle_index = lua_gettop(vm);
+                lua_pushvalue(vm, handle_index);
+                lua_pushcclosure(vm, &State::hasComponent, 1);
+                lua_setfield(vm, instance_index, "has_component");
+                lua_pushvalue(vm, handle_index);
+                lua_pushcclosure(vm, &State::getComponent, 1);
+                lua_setfield(vm, instance_index, "get_component");
+                lua_pushvalue(vm, handle_index);
+                lua_pushcclosure(vm, &State::patchComponent, 1);
+                lua_setfield(vm, instance_index, "patch_component");
+                lua_pushvalue(vm, handle_index);
+                lua_pushcclosure(vm, &State::destroySelf, 1);
+                lua_setfield(vm, instance_index, "destroy");
+                lua_pop(vm, 1);
+            }
+            const auto table_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
+            instance->table_ref = table_ref;
+            return 0;
+        }
+
+        struct FunctionRequest final
+        {
+            int table_ref;
+            const char* name;
+            int function_ref{LUA_NOREF};
+        };
+
+        static int rootFunction(lua_State* vm)
+        {
+            auto& request = *static_cast<FunctionRequest*>(lua_touserdata(vm, 1));
+            lua_rawgeti(vm, LUA_REGISTRYINDEX, request.table_ref);
+            lua_getfield(vm, -1, request.name);
+            if (lua_isfunction(vm, -1)) request.function_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
+            return 0;
+        }
+
         static EScriptBackendResult createInstance(
             void* opaque,
             const ScriptInstanceCreateContext& context,
@@ -1184,45 +1281,15 @@ namespace lux::simulation::script
             instance->active = true;
             instance->behavior = context.behavior;
 
-            lua_createtable(self.state, 0, instance->entity_scope ? 4 : 0);
-            const auto instance_index = lua_gettop(self.state);
-            lua_rawgeti(self.state, LUA_REGISTRYINDEX, prototype->table_ref);
-            const auto prototype_index = lua_gettop(self.state);
-            lua_pushnil(self.state);
-            while (lua_next(self.state, prototype_index) != 0)
+            if (self.runCold(&createSelf, instance) != LUA_OK)
             {
-                lua_pushvalue(self.state, -2);
-                lua_pushvalue(self.state, -2);
-                lua_settable(self.state, instance_index);
-                lua_pop(self.state, 1);
+                // Nothing was published to user code; the failed Lua stack owns any partial userdata.
+                self.prepared_events.release(instance->prepared_events);
+                self.prepared_abilities.release(instance->prepared_abilities);
+                *instance = {};
+                self.free_instances.push_back(instance_slot);
+                return EScriptBackendResult::ALLOCATION_FAILURE;
             }
-            lua_pop(self.state, 1);
-            if (instance->entity_scope)
-            {
-                auto* handle = static_cast<HostHandle*>(
-                    lua_newuserdata(self.state, sizeof(HostHandle)));
-                *handle = HostHandle{
-                    std::addressof(self),
-                    context.behavior,
-                    true};
-                instance->host_handle = handle;
-                const auto handle_index = lua_gettop(self.state);
-                lua_pushvalue(self.state, handle_index);
-                lua_pushcclosure(self.state, &State::hasComponent, 1);
-                lua_setfield(self.state, instance_index, "has_component");
-                lua_pushvalue(self.state, handle_index);
-                lua_pushcclosure(self.state, &State::getComponent, 1);
-                lua_setfield(self.state, instance_index, "get_component");
-                lua_pushvalue(self.state, handle_index);
-                lua_pushcclosure(self.state, &State::patchComponent, 1);
-                lua_setfield(self.state, instance_index, "patch_component");
-                lua_pushvalue(self.state, handle_index);
-                lua_pushcclosure(self.state, &State::destroySelf, 1);
-                lua_setfield(self.state, instance_index, "destroy");
-                lua_pop(self.state, 1);
-            }
-            const auto table_ref = luaL_ref(self.state, LUA_REGISTRYINDEX);
-            instance->table_ref = table_ref;
             result.value = instance;
             return EScriptBackendResult::SUCCESS;
         }
@@ -1247,7 +1314,7 @@ namespace lux::simulation::script
             if (!lua_checkstack(self.state, static_cast<int>(stack_values + 8U)))
                 return EScriptBackendResult::ALLOCATION_FAILURE;
 
-            const FunctionKey key{instance->asset, function.symbol_id};
+            const FunctionKey key{instance->prototype, function.symbol_id};
             const LuaFunctionBinding* function_binding{};
             const auto cached = self.function_index.find(key);
             if (cached != self.function_index.end())
@@ -1284,18 +1351,12 @@ namespace lux::simulation::script
                     return EScriptBackendResult::ALLOCATION_FAILURE;
                 }
 
-                const auto prototype = self.prototypes.find(instance->asset);
-                if (prototype == self.prototypes.end())
-                    return EScriptBackendResult::CONSTRUCTION_FAILURE;
-                lua_rawgeti(self.state, LUA_REGISTRYINDEX, prototype->second.table_ref);
-                lua_getfield(self.state, -1, function.name.c_str());
-                lua_remove(self.state, -2);
-                if (!lua_isfunction(self.state, -1))
-                {
-                    lua_pop(self.state, 1);
-                    return EScriptBackendResult::CONSTRUCTION_FAILURE;
-                }
-                const auto function_ref = luaL_ref(self.state, LUA_REGISTRYINDEX);
+                FunctionRequest request{instance->prototype->table_ref, function.name.c_str()};
+                const auto status = self.runCold(&rootFunction, &request);
+                if (status != LUA_OK || request.function_ref == LUA_NOREF)
+                    return status == LUA_ERRMEM ? EScriptBackendResult::ALLOCATION_FAILURE :
+                        EScriptBackendResult::CONSTRUCTION_FAILURE;
+                const auto function_ref = request.function_ref;
                 try
                 {
                     const auto binding_index = self.function_bindings.size();
@@ -2087,7 +2148,8 @@ namespace lux::simulation::script
         std::size_t prepared_call_capacity{};
         std::size_t continuation_capacity{};
         std::size_t execution_depth_capacity{};
-        std::unordered_map<lux::asset::AssetId, Prototype> prototypes;
+        using PrototypeMap = std::unordered_map<PrototypeKey, Prototype, PrototypeKey::Hash>;
+        PrototypeMap prototypes;
         std::vector<LuaComponentBinding> components;
         std::unordered_map<std::string_view, std::size_t> component_index;
         std::vector<lux::script::lua::LuaValueOperation> value_operations;

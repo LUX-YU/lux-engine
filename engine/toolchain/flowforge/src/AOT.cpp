@@ -607,7 +607,8 @@ namespace lux::flowforge
                 llvm::IRBuilder<> rejected_builder(rejected);
                 storeOutcomeField(rejected_builder, outcome_argument, offsetof(lux_script_step_outcome, state),
                     llvm::ConstantInt::get(i8, LUX_SCRIPT_STEP_FAILED));
-                storeOutcomeField(rejected_builder, outcome_argument, offsetof(lux_script_step_outcome, status), status);
+                storeOutcomeField(rejected_builder, outcome_argument,
+                    offsetof(lux_script_step_outcome, status), status);
                 rejected_builder.CreateRetVoid();
                 llvm::IRBuilder<> accepted_builder(accepted);
                 accepted_builder.CreateStore(llvm::ConstantInt::get(i32, next_pc), frame_argument);

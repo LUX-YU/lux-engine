@@ -361,8 +361,11 @@ namespace
             if (physics == nullptr)
                 throw std::runtime_error("Physics2D benchmark provider is absent");
 
-            flow_module.emplace(*lux::script::loadNativeModule(flow_asset->data().payload(),
-                                                               flow_asset->data().description().module_name));
+            auto loaded_flow = lux::script::loadNativeModule(flow_asset->data().payload(),
+                flow_asset->data().description().module_name);
+            if (!loaded_flow)
+                throw std::runtime_error("Physics2D FlowForge module rejected; regenerate the artifact for ABI v6");
+            flow_module.emplace(std::move(*loaded_flow));
             sources.cpp = std::addressof(*cpp.artifact);
             sources.flow = std::addressof(flow_asset->data());
             sources.lua = std::addressof(lua_asset->data());

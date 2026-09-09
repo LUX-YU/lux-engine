@@ -840,7 +840,11 @@ namespace lux::simulation::script
             {
                 // A new publication domain may replace an idle cache entry. Live instances retain their roots.
                 for (const auto& [asset, cached] : latest_prototypes)
-                    if (cached->instance_refs == 0U) { evicted = cached; break; }
+                    if (cached->instance_refs == 0U)
+                    {
+                        evicted = cached;
+                        break;
+                    }
                 if (evicted == nullptr) return nullptr;
             }
             Prototype prototype;

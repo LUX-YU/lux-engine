@@ -65,6 +65,11 @@ struct LargePolicy
 };
 template <int N> struct Nested
 {
+    Nested<N - 1> child;
+};
+template<int N> requires (N > 0 && N % 8 == 0)
+struct Nested<N>
+{
     std::int32_t guard{17};
     Nested<N - 1> child;
 };
@@ -123,10 +128,12 @@ namespace lux::script::lua
     {
     };
     template <int N>
-    struct LuaGeneratedValue<Nested<N>> : LuaRecordValue<Nested<N>,
-        LuaValueField<&Nested<N>::guard, "guard">, LuaValueField<&Nested<N>::child, "child">>
+    struct LuaGeneratedValue<Nested<N>> : LuaRecordValue<Nested<N>, LuaValueField<&Nested<N>::child, "child">>
     {
     };
+    template<int N> requires (N > 0 && N % 8 == 0)
+    struct LuaGeneratedValue<Nested<N>> : LuaRecordValue<Nested<N>,
+        LuaValueField<&Nested<N>::guard, "guard">, LuaValueField<&Nested<N>::child, "child">> {};
     template <> struct LuaGeneratedValue<Nested<0>> : LuaRecordValue<Nested<0>, LuaValueField<&Nested<0>::leaf, "leaf">>
     {
     };

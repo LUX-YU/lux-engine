@@ -1390,7 +1390,8 @@ namespace
             const auto stats = backend->stats();
             const auto& m = stats.vm_allocations;
             if (!m.enabled) return;
-            std::printf("VM_GCPARAM,phase=%s,minor=%d,major_minor=%d,minor_major=%d,pause=%d,step_mul=%d,step_size=%d\n",
+            std::printf("VM_GCPARAM,phase=%s,minor=%d,major_minor=%d,minor_major=%d,"
+                "pause=%d,step_mul=%d,step_size=%d\n",
                 phase, m.gc_parameters[0], m.gc_parameters[1], m.gc_parameters[2], m.gc_parameters[3],
                 m.gc_parameters[4], m.gc_parameters[5]);
             for (const auto& c : m.classes)
@@ -3661,14 +3662,18 @@ int main(int argc, char** argv)
         else if (options->group == "scene-lua-sequence")
         {
             LuaRuntimeHarness harness{options->lua_artifact, options->size, kLuaSequence,
-                options->resume_budget, options->vm_accounting, options->lua_incremental_gc, options->gc_pause, options->idle_page_budget};
+                options->resume_budget, options->vm_accounting, options->lua_incremental_gc,
+                options->gc_pause, options->idle_page_budget
+            };
             runSequenceFrames(*options, rows, harness, "scene-lua-sequence");
         }
         else if (options->group == "scene-lua-population")
         {
             runPopulationCycles(*options, rows, "lua-population", [&] {
                 return std::make_unique<LuaRuntimeHarness>(options->lua_artifact, options->size, kLuaPlain,
-                    options->resume_budget, options->vm_accounting, options->lua_incremental_gc, options->gc_pause, options->idle_page_budget);
+                    options->resume_budget, options->vm_accounting, options->lua_incremental_gc,
+                    options->gc_pause, options->idle_page_budget
+                );
             });
         }
         else if (options->group == "scene-lua-event")

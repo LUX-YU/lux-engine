@@ -296,9 +296,12 @@ namespace lux::simulation::script::detail
 
         [[nodiscard]] Stats stats() const noexcept
         {
-            return {stats_.observation_collected, stats_.arena_bytes, stats_.metadata_bytes, slots_.size(), pages_.size(),
-                active_, stats_.allocation_high_water, stats_.live_bytes, stats_.occupied_bytes, stats_.capacity_failures,
-                stats_.selection_steps, stats_.acquire_steps, stats_.release_steps, stats_.maintenance_steps};
+            return {
+                stats_.observation_collected, stats_.arena_bytes, stats_.metadata_bytes, slots_.size(), pages_.size(),
+                active_, stats_.allocation_high_water, stats_.live_bytes, stats_.occupied_bytes,
+                stats_.capacity_failures, stats_.selection_steps, stats_.acquire_steps,
+                stats_.release_steps, stats_.maintenance_steps
+            };
         }
 
     private:

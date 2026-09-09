@@ -55,7 +55,8 @@ namespace lux::simulation::script
             [[nodiscard]] std::size_t bindingBytes() const noexcept
             {
                 return abilities.capacity() * sizeof(lux_script_prepared_ability) +
-                    local_abilities.capacity() * sizeof(PreparedLocalAsyncStart) + events.capacity() * sizeof(PreparedEvent);
+                    local_abilities.capacity() * sizeof(PreparedLocalAsyncStart) +
+                    events.capacity() * sizeof(PreparedEvent);
             }
             void resetForReuse() noexcept
             {
@@ -889,7 +890,9 @@ namespace lux::simulation::script
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
                 // The executable's envelope owns the prepared population. A small method must not
                 // steal a different population's small-frame capacity.
-                frame_class = self.frame_storage.prepare(instance->module->frame_class, step.frame_size, step.frame_align);
+                frame_class = self.frame_storage.prepare(
+                    instance->module->frame_class, step.frame_size, step.frame_align
+                );
                 if (!frame_class)
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
             }
@@ -1086,7 +1089,9 @@ namespace lux::simulation::script
             if (!state_plans.empty())
             {
                 auto created = detail::BoundedClassStorage::create(
-                    state_plans, config.state_storage_bytes, config.instance_capacity, UINT64_MAX, config.observe_storage);
+                    state_plans, config.state_storage_bytes, config.instance_capacity,
+                    UINT64_MAX, config.observe_storage
+                );
                 if (!created)
                     return;
                 state_storage = std::move(*created);

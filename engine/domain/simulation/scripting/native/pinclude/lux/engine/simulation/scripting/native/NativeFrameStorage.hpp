@@ -77,6 +77,8 @@ namespace lux::simulation::script::detail
                 regions += count;
                 bytes += backing;
             }
+            if (bytes > static_cast<std::size_t>((std::numeric_limits<std::ptrdiff_t>::max)()))
+                return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
             auto remaining = budget - bytes;
             const auto consume = [&](std::size_t count, std::size_t size) noexcept {
                 if (count > remaining / size) return false;
@@ -102,7 +104,8 @@ namespace lux::simulation::script::detail
                 result.stats_.observation_collected = observe;
                 result.stats_.arena_bytes = bytes;
                 result.stats_.reserved_slots = regions;
-                result.stats_.metadata_bytes = sizeof(NativeFrameStorage) + result.domains_.capacity() * sizeof(Domain) +
+                result.stats_.metadata_bytes = sizeof(NativeFrameStorage) +
+                    result.domains_.capacity() * sizeof(Domain) +
                     result.regions_.capacity() * sizeof(Region) + result.classes_.capacity() * sizeof(Class) +
                     capacity * sizeof(Lease);
                 if (result.stats_.metadata_bytes > budget - bytes)
@@ -300,7 +303,10 @@ namespace lux::simulation::script::detail
             std::uint32_t layout{Invalid}, live{}, carved{}, free{Invalid}, previous{Invalid}, next{Invalid};
         };
         [[nodiscard]] static bool powerOfTwo(std::size_t n) noexcept { return n && !(n & (n - 1U)); }
-        [[nodiscard]] static std::size_t alignUp(std::size_t n, std::size_t a) noexcept { return (n + a - 1U) & ~(a - 1U); }
+        [[nodiscard]] static std::size_t alignUp(std::size_t n, std::size_t a) noexcept
+        {
+            return (n + a - 1U) & ~(a - 1U);
+        }
         [[nodiscard]] void* pointer(const Domain& d, const Class& c, std::uint32_t region, std::uint32_t slot) noexcept
         {
             return static_cast<std::byte*>(arena_.data) + d.offset + (region - d.first) * d.stride + slot * c.stride;

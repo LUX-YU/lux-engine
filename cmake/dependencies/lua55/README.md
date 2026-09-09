@@ -60,3 +60,8 @@ The Linux recipe needs a real Linux qualification run; other platforms have no r
 
 The extension declarations are isolated in `lux_lua55_extensions.h`, preserving the upstream `lua.h`.
 The exported CMake target supplies the patch revision; the identity manifest also hashes the extension header.
+
+`LUX_LUA55_API_CHECK=ON` is a separate RelWithDebInfo correctness dependency. It enables both
+`LUA_USE_APICHECK` and active Lua assertions (`LUAI_ASSERT`, NDEBUG removed); it is not used for timing.
+Codec callbacks reserve their own CallInfo stack quota before recursive read/write, independently of
+caller stack reservation. The private VM patch stays at v3-r2; no new VM semantics are introduced by v4.

@@ -1365,6 +1365,8 @@ namespace
                 static_cast<unsigned long long>(provider.checksum));
         }
         const auto storage = backend.stats();
+        std::printf("NATIVE_STORAGE_OBSERVATION,collected=%d,active_region_bytes=%zu,retained_bindings=%zu\n",
+            storage.observation_collected, storage.active_frame_region_bytes, storage.retained_binding_bytes);
         std::printf("NATIVE_STORAGE,steady,backing=%zu,metadata=%zu,reserved=%zu,active=%zu,live=%zu,"
             "occupied=%zu,high_water=%zu,capacity_failures=%zu,heap_frames=%zu\n",
             storage.frame_storage_bytes, storage.frame_metadata_bytes, storage.frame_reserved_slots,

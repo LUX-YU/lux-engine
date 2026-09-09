@@ -150,7 +150,8 @@ namespace
                     assert(self.backend.stats().active_frames == 3U);
                     ScriptBackendContinuation nested;
                     lux_script_call_frame frame{};
-                    assert(self.call.invoke(self.call.context, frame, self.step, nested).state == EScriptStepState::FAILED);
+                    const auto result = self.call.invoke(self.call.context, frame, self.step, nested);
+                    assert(result.state == EScriptStepState::FAILED);
                     assert(!nested && self.backend.stats().active_frames == 3U);
                 }
             } probe{backend, calls[0].resumable, step};
@@ -182,9 +183,11 @@ namespace
             {
                 lux_population_fail_start();
                 ScriptBackendContinuation failed;
-                assert(recycled_call.invoke(recycled_call.context, frame, step, failed).state == EScriptStepState::FAILED);
+                const auto failed_result = recycled_call.invoke(recycled_call.context, frame, step, failed);
+                assert(failed_result.state == EScriptStepState::FAILED);
                 assert(!failed && backend.stats().active_frames == 0U);
-                assert(read_method.synchronous.invoke(read_method.synchronous.context, &read_frame) == 0 && observed == 8U);
+                const auto read_result = read_method.synchronous.invoke(read_method.synchronous.context, &read_frame);
+                assert(read_result == 0 && observed == 8U);
                 std::puts("NATIVE_FRAME_FAILURE,start_cleanup=1,destroy_reentry_held_capacity=1,once=1");
             }
             api.releaseMethod(api.context, instances[2], read_method);

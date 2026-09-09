@@ -35,7 +35,7 @@ add_executable(
     app/main.cpp
 )
 target_include_directories(lux_editor PRIVATE app)
-if(BUILD_TESTING)
+if(LUX_EDITOR_DIAGNOSTICS)
     target_include_directories(lux_editor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../scene/pinclude)
     target_compile_definitions(lux_editor PRIVATE LUX_SV1_DIAGNOSTICS=1)
 endif()

@@ -68,6 +68,10 @@ foreach ($variant in @('base', 'multiple_equal', 'multiple_reverse', 'multiple_l
 }
 Invoke-Logged 'gpu-foreign' "$build/bin/editor_foreign_renderer_test.exe" @()
 Invoke-Logged 'gpu-application-lifecycle' "$build/bin/editor_application_lifecycle_test.exe" @()
+$normalRules = Get-Content -LiteralPath "$build/build.ninja" -Raw
+if ($normalRules -match 'LUX_SV1_DIAGNOSTICS=1|EditorAllocationDiagnostics\.cpp\.obj:|ClientAllocationDiagnostics\.cpp\.obj:|fsanitize=address') {
+    throw 'Normal SDK qualification rejected: diagnostic instrumentation appears in build rules'
+}
 $sdk = Join-Path $qroot 'sdk'
 Invoke-Logged 'install' $CMake @('--install', $build, '--prefix', $sdk, '--config', 'RelWithDebInfo')
 $relocated = Join-Path $qroot 'relocated-sdk'
@@ -89,15 +93,21 @@ foreach ($location in @('sdk', 'relocated-sdk')) {
             '-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF', '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON')
         Invoke-Logged "$location-$consumer-build" $CMake @('--build', $output, '--target', 'all', '-j', '4', '--', '-k', '0')
         Invoke-Logged "$location-$consumer-noop" $CMake @('--build', $output, '--target', 'all', '-j', '4', '--', '-k', '0')
+        if ((Get-Content -LiteralPath "$logs/$location-$consumer-noop.log" -Raw) -notmatch 'ninja: no work to do') {
+            throw "Consumer second build was not a no-op: $location/$consumer"
+        }
         if ($consumer -eq 'editor-editing') {
             Invoke-Logged "$location-$consumer-test" "$output/lux_editor_editing_consumer.exe" @("$prefix/bin")
         } else {
             Invoke-Logged "$location-$consumer-test" $ctest @('--test-dir', $output, '--output-on-failure', '-j', '1')
         }
-        $commands = Get-Content -LiteralPath "$output/compile_commands.json" -Raw
-        foreach ($forbidden in @($source, $clone, $build, $BuildDependencyPrefix)) {
+        $commands = (Get-Content -LiteralPath "$output/compile_commands.json" -Raw) +
+            (Get-Content -LiteralPath "$output/build.ninja" -Raw)
+        $excludedLocations = @($source, $clone, $build, $BuildDependencyPrefix)
+        if ($location -eq 'relocated-sdk') { $excludedLocations += $sdk }
+        foreach ($forbidden in $excludedLocations) {
             $normalized = $forbidden.Replace('\', '/').TrimEnd('/')
-            if ($commands.Replace('\\', '/').Replace('\', '/').Contains($normalized)) {
+            if ($commands.Replace('\\', '/').Replace('\', '/').IndexOf($normalized, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
                 throw "Consumer uses excluded source/build/dependency location: $forbidden"
             }
         }

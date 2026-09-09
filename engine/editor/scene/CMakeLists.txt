@@ -13,7 +13,7 @@ add_component(
 component_include_directories(editor_scene BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude INSTALL_TIME include)
 target_compile_definitions(editor_scene PRIVATE LUX_EDITOR_SCENE_LIBRARY)
-target_compile_definitions(editor_scene PRIVATE LUX_SV1_DIAGNOSTICS=$<BOOL:${BUILD_TESTING}>)
+target_compile_definitions(editor_scene PRIVATE LUX_SV1_DIAGNOSTICS=$<BOOL:${LUX_EDITOR_DIAGNOSTICS}>)
 target_link_libraries(editor_scene PUBLIC Eigen3::Eigen lux::engine::editor::editor_inspector
     lux::engine::scene::scene_render
     PRIVATE lux::engine::simulation::transform_system lux::engine::scene::scene_render_meta

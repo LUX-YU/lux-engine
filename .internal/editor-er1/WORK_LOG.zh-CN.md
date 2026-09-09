@@ -131,3 +131,6 @@ Layout、UiInputEvent、TextureHandle。现存头先用 Git blob 证明对应仓
 2026-09-09 续行：clean q1 的 image_lifetime 真实崩溃经 CDB + ASan 定位为新 DevelopmentScene 重复整组反射注册，03f7996e 修复增量队列入口并添加100次 metadata 构建回归。保留全部故障日志与 dump。q2 编译器误选 GNU模式 clang++，全量失败，没有运行程序；资格驱动改为显式 MSVC cl.exe，并在消费者构建继续固定现有 libclang 路径。
 
 build-65：专用 RelWithDebInfo 分配诊断已恢复（ASan 调查产物身份另存），all/no-op及CTest135/135通过；真实迟到resize及仅GPU完成水位阻止关闭各五个进程通过。完整GPU变体和factory20/seal6实际分配点重跑，包含原seal index=2。仍未宣布ER-1通过。
+
+续作 build-66：工作区仍绑定 a39bc827，受保护主检出仍为 c77bb41e，六个并行 Script 文件哈希复核一致。修正旧 editor_scene/lux_editor 的诊断编译开关，普通 BUILD_TESTING 不再打开 LUX_SV1_DIAGNOSTICS。专用诊断构建 all 与第二轮 no-op 通过；没有修改生产 C++ 实现。
+q3 的 a39bc827 clean clone 实际完成 all/no-op、134/134 CTest、GPU矩阵、两个安装位置的五种消费者。随后扩大隔离审计发现旧 SceneWorkbench 诊断仍在普通 DLL，isolation-review.log 明确失败；因此 q3 仅保留原始通过/失败证据，不作为最终 SDK 资格。新资格驱动在安装前拒绝该污染，并对消费者编译及链接规则检查旧源码、构建及原安装前缀，实际断言消费者第二次构建 no-op。等待新 tracked candidate 的独立 clone 验证。

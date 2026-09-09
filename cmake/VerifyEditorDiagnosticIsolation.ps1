@@ -18,12 +18,15 @@ $normalNinja = Get-Content -LiteralPath (Join-Path $normalRoot 'build.ninja') -R
 if ($normalNinja -match '(?i)fsanitize=address|asan_(dynamic|runtime)') {
     throw 'Address-check instrumentation must not enter the normal SDK/performance build'
 }
+if ($normalNinja -match 'LUX_SV1_DIAGNOSTICS=1') {
+    throw 'Legacy workbench diagnostics must not enter the normal SDK/performance build'
+}
 if ($normalNinja -match 'build [^\r\n]*EditorAllocationDiagnostics\.cpp\.obj:' -or
     $normalNinja -match 'build [^\r\n]*ClientAllocationDiagnostics\.cpp\.obj:') {
     throw 'Diagnostic object appears in normal build rules'
 }
 $artifacts = @('render_client.dll', 'lux_engine_editor_ui.dll', 'lux_engine_editor_scene_session.dll',
-    'lux_engine_editor_rendering.dll', 'lux_engine_editor_tooling.dll')
+    'lux_engine_editor_rendering.dll', 'lux_engine_editor_tooling.dll', 'editor_scene.dll')
 $records = @()
 foreach ($name in $artifacts) {
     foreach ($entry in @(@($normalRoot, 'normal'), @($diagnosticRoot, 'diagnostic'))) {
@@ -35,7 +38,7 @@ foreach ($name in $artifacts) {
         if ($LASTEXITCODE -ne 0) { throw "Cannot inspect imports: $file" }
         $exports | Set-Content -LiteralPath (Join-Path $OutputDirectory ($label + '.exports.txt'))
         $imports | Set-Content -LiteralPath (Join-Path $OutputDirectory ($label + '.imports.txt'))
-        $hasFaultExports = ($exports -join "`n") -match 'lux_er1_.*allocation|RendererTestAccess|SceneTestAccess'
+        $hasFaultExports = ($exports -join "`n") -match 'lux_er1_.*allocation|RendererTestAccess|SceneTestAccess|SceneWorkbenchDiagnostics'
         if ($entry[1] -eq 'normal' -and $hasFaultExports) { throw "Fault entry exported by normal DLL: $file" }
         if ($entry[1] -eq 'diagnostic' -and $name -ne 'lux_engine_editor_tooling.dll' -and !$hasFaultExports) {
             throw "Expected diagnostic entry absent: $file"
@@ -51,7 +54,7 @@ foreach ($name in $artifacts) {
         if ($entry[1] -eq 'normal' -and ($hasFaultObject -or !$allocationOrigins.Count)) {
             throw "Normal allocator linker provenance missing or contaminated: $pdb"
         }
-        if ($entry[1] -eq 'diagnostic' -and $name -ne 'lux_engine_editor_tooling.dll' -and !$hasFaultObject) {
+        if ($entry[1] -eq 'diagnostic' -and $name -notin @('lux_engine_editor_tooling.dll', 'editor_scene.dll') -and !$hasFaultObject) {
             throw "Diagnostic allocation replacement not linked into tested DLL: $pdb"
         }
         $records += [pscustomobject]@{

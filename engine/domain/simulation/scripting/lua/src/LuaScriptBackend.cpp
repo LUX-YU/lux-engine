@@ -834,7 +834,14 @@ namespace lux::simulation::script
             const auto* body = std::get_if<lux::rdesc::LuaSourceScript>(std::addressof(artifact.description().body));
             if (!body) return nullptr;
             auto latest = latest_prototypes.find(context.asset);
-            if (latest == latest_prototypes.end() && latest_prototypes.size() >= instance_capacity) return nullptr;
+            Prototype* evicted{};
+            if (latest == latest_prototypes.end() && latest_prototypes.size() >= instance_capacity)
+            {
+                // A new publication domain may replace an idle cache entry. Live instances retain their roots.
+                for (const auto& [asset, cached] : latest_prototypes)
+                    if (cached->instance_refs == 0U) { evicted = cached; break; }
+                if (evicted == nullptr) return nullptr;
+            }
             Prototype prototype;
             prototype.content = content;
             prototype.asset = context.asset;
@@ -864,6 +871,12 @@ namespace lux::simulation::script
                         try
                         {
                             latest_prototypes.emplace(context.asset, current);
+                            if (evicted != nullptr)
+                            {
+                                latest_prototypes.erase(evicted->asset);
+                                evicted->superseded = true;
+                                collectPrototype(*evicted);
+                            }
                         }
                         catch (const std::bad_alloc&)
                         {

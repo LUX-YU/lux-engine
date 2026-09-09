@@ -12,6 +12,7 @@ using lux::simulation::script::test::executeRuntimeStablePoint;
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/scripting/DeferredScriptHost.hpp>
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
+#include <lux/engine/simulation/scripting/ScriptEventSource.hpp>
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 #include <array>
 #include <cassert>

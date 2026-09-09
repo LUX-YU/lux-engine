@@ -5,6 +5,9 @@
 #include "PhysicsQuery2D.ability.generated.hpp"
 #include "PhysicsQuery2D.ability.native.generated.hpp"
 #include "Physics2DScriptTestSupport.hpp"
+#include <lux/engine/simulation/abilities/DelayAbility.hpp>
+#include "DelayAbility.ability.generated.hpp"
+#include "DelayAbility.ability.native.generated.hpp"
 
 #include <lux/engine/flowforge/Compiler.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
@@ -51,7 +54,8 @@ namespace
     };
 
     [[nodiscard]] flowforge::FlowGraph makeGraph(const flowforge::ScriptAbilityNodeDescription& physics,
-                                                 const flowforge::ScriptAbilityNodeDescription& capture)
+                                                 const flowforge::ScriptAbilityNodeDescription& capture,
+                                                 const flowforge::ScriptAbilityNodeDescription* delay)
     {
         flowforge::FlowGraph graph;
         auto entry = std::make_unique<flowforge::OnEventNode>("tick");
@@ -68,8 +72,18 @@ namespace
         graph.addNodes(std::move(overlap));
         graph.addNodes(std::move(record));
         flowforge::LastLink previous;
-        assert(entry_pointer->execOutPin().linkTo(&overlap_pointer->execInPin(), previous) ==
-               flowforge::ELinkError::SUCCESS);
+        if (delay != nullptr)
+        {
+            auto waiting = std::make_unique<flowforge::ScriptAbilityNode>(*delay);
+            auto* waiting_pointer = waiting.get();
+            graph.addNodes(std::move(waiting));
+            assert(entry_pointer->execOutPin().linkTo(&waiting_pointer->execInPin(), previous) ==
+                flowforge::ELinkError::SUCCESS);
+            assert(waiting_pointer->execOutPin().linkTo(&overlap_pointer->execInPin(), previous) ==
+                flowforge::ELinkError::SUCCESS);
+        }
+        else assert(entry_pointer->execOutPin().linkTo(&overlap_pointer->execInPin(), previous) ==
+                    flowforge::ELinkError::SUCCESS);
         assert(overlap_pointer->execOutPin().linkTo(&record_pointer->execInPin(), previous) ==
                flowforge::ELinkError::SUCCESS);
         assert(const_cast<flowforge::DataOutPin&>(*overlap_pointer->resultPins().front())
@@ -109,7 +123,7 @@ namespace
     };
 }
 
-int main()
+int run(bool local_timer)
 {
     using namespace lux;
     using namespace lux::physics2d;
@@ -120,13 +134,17 @@ int main()
     flowforge::ScriptAbilityNodeCatalog catalog;
     assert(catalog.add(flowforge::makeScriptAbilityCatalogContribution<PhysicsQuery2D>()));
     assert(catalog.add(flowforge::makeScriptAbilityCatalogContribution<Physics2DCaptureAbility>()));
+    assert(catalog.add(flowforge::makeScriptAbilityCatalogContribution<DelayAbility>()));
     const auto* physics = catalog.view().find(lux::script::ScriptAbilityTraits<PhysicsQuery2D>::Description.id,
                                               lux::script::ScriptAbilityTraits<PhysicsQuery2D>::Methods.front().id);
     const auto* capture =
         catalog.view().find(lux::script::ScriptAbilityTraits<Physics2DCaptureAbility>::Description.id,
                             lux::script::ScriptAbilityTraits<Physics2DCaptureAbility>::Methods.front().id);
     assert(physics != nullptr && capture != nullptr);
-    auto graph = makeGraph(*physics, *capture);
+    const auto* delay = catalog.view().find(lux::script::ScriptAbilityTraits<DelayAbility>::Description.id,
+        lux::script::ScriptApiMethodIdView{"lux.simulation.delay.next_step"});
+    assert(delay);
+    auto graph = makeGraph(*physics, *capture, local_timer ? delay : nullptr);
     auto artifact = flowforge::compileFlowForgeScript(
         graph,
         {.module_name = "lux.physics2d.flowforge-test", .script_abilities = catalog.view()});
@@ -135,7 +153,7 @@ int main()
         std::fprintf(stderr, "FlowForge compile failed: %s\n", artifact.error().message.c_str());
         return 1;
     }
-    assert(artifact->description().api_requirements.size() == 2U);
+    assert(artifact->description().api_requirements.size() == (local_timer ? 3U : 2U));
     auto module = lux::script::loadNativeModule(artifact->payload(), artifact->description().module_name);
     assert(module);
 
@@ -165,6 +183,7 @@ int main()
     assert(capture_native);
     const std::array native_contributions{
         lux::script::native::makeScriptAbilityNativeContribution<PhysicsQuery2D>(),
+        lux::script::native::makeScriptAbilityNativeContribution<DelayAbility>(),
         *capture_native
     };
     NativeScriptBackend backend{{std::addressof(source), &Source::resolveModule},
@@ -172,7 +191,7 @@ int main()
                                  .instance_capacity = 1U,
                                  .prepared_call_capacity = 2U,
                                  .continuation_capacity = 1U,
-                                 .max_ability_imports_per_module = 2U,
+                                 .max_ability_imports_per_module = 3U,
                                  .max_continuation_frame_bytes = 256U,
                                  .continuation_frame_storage_bytes =
                                      2U * (256U) + 4096U,
@@ -203,9 +222,20 @@ int main()
     ScriptRuntimeHookContext hook_context{*system};
     auto connection = bindScriptRuntime(*simulation, hook_context);
     assert(connection && simulation->execute(*executor, SimulationDuration{}));
+    if (local_timer)
+    {
+        assert(capture_provider.calls == 0U && system->stats().next_step_waits == 1U);
+        assert(system->stats().completion_capability_constructions == 0U);
+        assert(simulation->execute(*executor, SimulationDuration{}));
+        assert(system->stats().backend_resume_calls == 1U);
+    }
     assert(capture_provider.calls == 1U && capture_provider.value);
     assert(system->activeContinuationCount() == 0U);
     assert(system->activeAwaitableCount() == 0U);
     assert(system->shutdown());
+    std::printf("FLOWFORGE_TIMER,local=%d,captures=1,result=1,capabilities=%llu,live=0\n",
+        local_timer, system->stats().completion_capability_constructions);
     return 0;
 }
+
+int main() { return run(false) || run(true); }

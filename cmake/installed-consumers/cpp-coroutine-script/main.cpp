@@ -283,6 +283,7 @@ int main()
         return 20;
     }
     // Retire while suspended, reuse the Entity slot, and materialize a fresh ScriptInstance generation.
+    if (system->stats().completion_capability_constructions != 0U) return 33;
     if (!simulation->execute(*executor, SimulationDuration{1}) || system->stats().active_event_waiters != 1U)
         return 22;
     const auto old_entity = source.entity;

@@ -613,6 +613,8 @@ int main(int argc, char** argv)
         assert(stats.next_step_waits == expected.next_step && stats.simulation_delay_waits == expected.delay);
         assert(stats.external_completion_queue_depth == expected.external && stats.resume_queue_depth == 0U);
         assert(stats.active_continuations == expected.active && stats.active_awaitables == expected.active);
+        // The eager custom provider is external; subsequent built-in NextStep and seconds are owner-local.
+        assert(stats.completion_capability_constructions == 1U);
         assert(runtime->scriptSystem().failures().empty());
         assert(g_probe_system != nullptr && g_probe_system->async_starts == 1U);
         assert(g_probe_system->reads == 0U && g_probe_system->writes == expected.writes);

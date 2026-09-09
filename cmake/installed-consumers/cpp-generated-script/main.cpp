@@ -225,6 +225,7 @@ int main(int argc, char** argv)
         installed_generated::observations[1].self != source.entities[1] ||
         installed_generated::observations[2].self != source.entities[0]) return 26;
     connection->reset();
+    if (system->stats().completion_capability_constructions != 0U) return 33;
     if (!system->shutdown()) return 17;
     if (installed_generated::attach_errors != 0U || installed_generated::ends != 3U ||
         installed_generated::destroys != 3U || backend->stats().active_frames != 0U) return 27;

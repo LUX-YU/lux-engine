@@ -15,8 +15,8 @@ namespace lux::script::lua
             std::size_t capacity, requested, index;
             Block* next;
         };
-        // Observed Lua55 coroutine requests: 64 (CallInfo), 216 (thread), 720 (stack).
-        static constexpr std::array<std::size_t, 8U> classes_{32U, 64U, 128U, 224U, 512U, 736U, 1536U, 4096U};
+        // Observed Lua55 coroutine requests: 64 (CallInfo), 216/240 (official/patched thread), 720 (stack).
+        static constexpr std::array<std::size_t, 8U> classes_{32U, 64U, 128U, 256U, 512U, 736U, 1536U, 4096U};
     public:
         explicit LuaAllocationCache(LuaVmConfiguration config) noexcept : budget_(config.cache_bytes)
         {

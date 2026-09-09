@@ -9,6 +9,24 @@ static int finish(lua_State* L,int status,lua_KContext base) { (void)status; ret
 static int leaf(lua_State* L) { return luxlua_yieldleaf(L,lua_gettop(L),finish); }
 static int afterCall(lua_State* L,int status,lua_KContext ctx) { (void)status;(void)ctx;return lua_gettop(L); }
 static int reenter(lua_State* L) { lua_getglobal(L,"wait");lua_callk(L,0,LUA_MULTRET,0,afterCall);return lua_gettop(L); }
+static int nonyieldable(lua_State* L) { lua_getglobal(L,"wait");lua_call(L,0,0);return 0; }
+static void* failAlloc(void* ud,void* ptr,size_t old,size_t size) {
+    (void)old;
+    if(size==0) { free(ptr);return NULL; }
+    if(*(int*)ud) return NULL;
+    return realloc(ptr,size);
+}
+static void oomAfterYield(void) {
+    int fail=0,n,status;unsigned long long fast,standard;
+    lua_State* L=lua_newstate(failAlloc,&fail,1);lua_State* T;
+    CHECK(L);luaL_openlibs(L);lua_pushcfunction(L,leaf);lua_setglobal(L,"wait");
+    T=lua_newthread(L);
+    CHECK(luaL_loadstring(T,"local x=wait();local s=string.rep('x',1000000);return x")==LUA_OK);
+    CHECK(lua_resume(T,L,0,&n)==LUA_YIELD);fail=1;lua_pushinteger(T,42);
+    status=lua_resume(T,L,1,&n);CHECK(status==LUA_ERRMEM);
+    luxlua_leafstats(T,&fast,&standard);CHECK(fast==1 && standard==0);
+    fail=0;lua_close(L);puts("LEAF_OOM,after_resume=1,status=4,closed=1");
+}
 static void run(lua_State* L,const char* name,const char* code,int count,int fast,int fail,int close_early) {
     lua_State* T; int ref,n,status,i; unsigned long long a,b;
     CHECK(luaL_loadstring(L,code)==LUA_OK);CHECK(lua_pcall(L,0,1,0)==LUA_OK);
@@ -32,6 +50,7 @@ int main(void) {
     lua_pushcfunction(L,leaf);lua_setglobal(L,"wait");lua_pushcfunction(L,reenter);lua_setglobal(L,"reenter");
     run(L,"direct","return function() local v=wait(); return v end",1,1,0,0);
     run(L,"nested-vararg","local function f(...) local v=wait(); return v end return function() local x=f(1,2);return x end",1,1,0,0);
+    run(L,"deep","local function f(n) if n==0 then local x=wait();return x end local x=f(n-1);return x end return function() local x=f(32);return x end",1,1,0,0);
     run(L,"repeated","return function() local x=0 for i=1,1000 do x=wait() end return x end",1000,1,0,0);
     run(L,"pcall","return function() local ok,x=pcall(function() local x=wait(); return x end);assert(ok);return x end",1,0,0,0);
     run(L,"xpcall","return function() local ok,x=xpcall(function() local x=wait();return x end,debug.traceback);assert(ok);return x end",1,0,0,0);
@@ -45,5 +64,8 @@ int main(void) {
     run(L,"fast-cancel","return function() local x=wait();return x end",1,1,0,1);
     run(L,"error-after","return function() local x=wait();error('after resume') end",1,1,1,0);
     CHECK(luaL_dostring(L,"assert(closed==2);local c=coroutine.create(function() coroutine.yield(7);return 8 end);local ok,x=coroutine.resume(c);assert(ok and x==7);ok,x=coroutine.resume(c);assert(ok and x==8)")==LUA_OK);
-    lua_close(L);puts("LEAF_CONTRACT_PASS,cases=14,standard_coroutine=1,close_count=2");return 0;
+    lua_pushcfunction(L,nonyieldable);lua_setglobal(L,"nonyieldable");
+    CHECK(luaL_dostring(L,"local ok,e=pcall(nonyieldable);assert(not ok and e:find('yield')); local saved={} local function f() local me=coroutine.running();saved[#saved+1]=me;for i=1,3 do local x=wait();assert(x==42 and coroutine.running()==me) end return 42 end local a,b=coroutine.create(f),coroutine.create(f);assert(a~=b);for i=0,3 do local ok,x=coroutine.resume(a,42);assert(ok);ok,x=coroutine.resume(b,42);assert(ok) end assert(saved[1]==a and saved[2]==b and coroutine.status(a)=='dead' and coroutine.status(b)=='dead');local c=coroutine.create(f);assert(c~=a and c~=b);local ok=coroutine.resume(c);assert(ok);assert(coroutine.close(c));local q=coroutine.create(function() local x=wait();local ok=pcall(function() error('caught after') end);assert(not ok);return 42 end);assert(coroutine.resume(q));local ok,x=coroutine.resume(q,42);assert(ok and x==42)")==LUA_OK);
+    puts("LEAF_EXTRA,alternating_threads=2,waits_each=3,identity_preserved=1,nonyieldable_rejected=1,error_recovery=1");
+    lua_close(L);oomAfterYield();puts("LEAF_CONTRACT_PASS,cases=15,standard_coroutine=1,close_count=2");return 0;
 }

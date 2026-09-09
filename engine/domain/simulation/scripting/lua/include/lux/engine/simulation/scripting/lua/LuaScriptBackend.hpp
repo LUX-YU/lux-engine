@@ -108,6 +108,9 @@ namespace lux::simulation::script
         std::uint64_t prepared_acquire_steps{};
         std::uint64_t prepared_release_steps{};
         std::size_t cached_prototypes{};
+        // Counters include released threads only; no per-snapshot scan of live continuations.
+        bool leaf_yield_available{};
+        std::uint64_t leaf_return_yields{}, standard_leaf_yields{};
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC LuaScriptBackend final

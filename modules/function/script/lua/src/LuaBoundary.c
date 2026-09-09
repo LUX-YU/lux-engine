@@ -31,7 +31,11 @@ int luxLuaBoundaryEntry(lua_State* state)
     case LUX_LUA_BOUNDARY_RETURN:
         return outcome.result_count;
     case LUX_LUA_BOUNDARY_SUSPEND:
+#if defined(LUX_LUA55_LEAF_YIELD_REVISION)
+        return luxlua_yieldleaf(state, (lua_KContext)base, finishWait);
+#else
         return lua_yieldk(state, 0, (lua_KContext)base, finishWait);
+#endif
     case LUX_LUA_BOUNDARY_ERROR:
         if (outcome.result_count == 1) return lua_error(state);
         return luaL_error(state, "Lux Lua primitive failed (%d)", outcome.error_code);

@@ -1340,6 +1340,20 @@ namespace
             lifecycle_begins = count;
         }
 
+        void memorySnapshot(const char* phase) const
+        {
+            const auto stats = backend->stats();
+            const auto& m = stats.vm_allocations;
+            if (!m.enabled) return;
+            std::printf("VM_ROI,phase=%s,alloc=%llu,realloc=%llu,free=%llu,heap_alloc=%llu,heap_free=%llu,"
+                "requested_live=%zu,active=%zu,idle=%zu,pinned_free=%zu,rounding=%zu,metadata=%zu,large=%zu,"
+                "large_requested=%zu,page_alloc=%llu,page_free=%llu,direct_alloc=%llu,direct_free=%llu\n",
+                phase, m.allocations, m.reallocations, m.frees, m.system_allocations, m.system_frees,
+                m.live_bytes, m.active_page_backing_bytes, m.idle_page_backing_bytes, m.pinned_free_slot_bytes,
+                m.class_rounding_bytes, m.metadata_and_header_bytes, m.large_block_backing_bytes,
+                m.large_requested_live_bytes, m.page_allocations, m.page_frees, m.direct_allocations, m.direct_frees);
+        }
+
         ~LuaRuntimeHarness()
         {
             if (system)
@@ -2929,8 +2943,10 @@ namespace
         for (std::size_t frame{}; frame < options.warmups; ++frame)
             execute_cycle(frame, false);
         const auto frames = micro ? std::size_t{1U} : options.frames;
+        if (options.vm_accounting) harness.memorySnapshot("warm");
         for (std::size_t frame{}; frame < frames; ++frame)
             execute_cycle(frame, true);
+        if (options.vm_accounting) harness.memorySnapshot("end");
         if (harness.system->activeContinuationCount() != 0U || harness.system->stats().active_event_waiters != 0U)
             throw std::runtime_error("Lua Event benchmark left pending runtime state");
         const auto cycles = static_cast<std::uint64_t>(options.warmups) + frames;

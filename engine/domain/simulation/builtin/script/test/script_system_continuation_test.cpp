@@ -732,6 +732,92 @@ namespace
         };
     }
 
+    void testLocalTimerCapacityAndReuse()
+    {
+        for (const bool local : {false, true})
+        for (const bool awaitable_full : {false, true})
+        {
+            Harness harness{false};
+            configureTimerHarness(harness);
+            auto& backend = harness.backend_state;
+            backend.local_timer = local;
+            backend.seconds_alias = awaitable_full;
+            backend.custom_step = [](BackendState& state, ScriptStepContext& context) noexcept {
+                const auto start = [&](double duration) noexcept {
+                    if (state.local_timer) return state.local_simulation.startTyped(context, duration);
+                    return invokeScriptAbilityAsync<void>(context,
+                        [&](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
+                            return state.delay->simulationSeconds(duration, std::move(completion));
+                        });
+                };
+                for (std::size_t i{}; i < 32U; ++i)
+                {
+                    const auto first = start(1000.0);
+                    assert(first.state == EScriptStepState::SUSPENDED);
+                    const auto rejected = start(state.seconds_alias ? -1.0 : 1000.0);
+                    const auto expected = state.seconds_alias
+                        ? static_cast<std::int32_t>(EScriptAbilityInvocationStatus::AWAITABLE_CAPACITY_EXCEEDED)
+                        : static_cast<std::int32_t>(EScriptDelayStatus::CAPACITY_EXCEEDED);
+                    assert(rejected.state == EScriptStepState::FAILED && rejected.error.status == expected);
+                    context.awaitables.discard(first.waiting_on);
+                    context.awaitables.discard(first.waiting_on);
+                }
+                return ScriptStepResult::completed();
+            };
+            auto configured = limits(1U, 2U, awaitable_full ? 1U : 2U);
+            configured.simulation_delay_capacity = 1U;
+            auto system = harness.create(configured, {});
+            assert(system && system->prepare());
+            assert(dispatchRuntimeHook(*system, harness.hook) == 1U);
+            assert(system->activeAwaitableCount() == 0U && system->stats().simulation_delay_waits == 0U);
+            assert(system->failures().empty() && backend.resume_calls == 0U);
+            assert(system->stats().completion_capability_constructions == (local ? 0U : awaitable_full ? 32U : 64U));
+            assert(system->shutdown() && backend.creates == backend.destroys);
+            std::printf("LOCAL_TIMER_CAPACITY,local=%d,awaitable_full=%d,repeats=32,rollback=1,live=0\n",
+                local, awaitable_full);
+        }
+    }
+
+    void testLocalTimerRetirementReuse()
+    {
+        for (const bool simulation : {false, true})
+        {
+            Harness harness{false, 2U, false, true};
+            auto entity = harness.registry.create();
+            harness.description[0].scope = EntityScriptScope{entity};
+            harness.description[1].scope = EntityScriptScope{harness.registry.create()};
+            configureTimerHarness(harness);
+            auto& backend = harness.backend_state;
+            backend.local_timer = true;
+            backend.simulation_timer = simulation;
+            auto configured = limits(2U, 2U, 2U);
+            configured.next_step_wait_capacity = configured.simulation_delay_capacity = 2U;
+            auto system = harness.create(configured, {});
+            assert(system && system->prepare());
+            std::array<ScriptMountStatus, 2U> changes;
+            assert(system->collectMountStatusChanges(changes));
+            assert(dispatchRuntimeHook(*system, harness.hook_third) == 1U);
+            for (std::size_t repeat{}; repeat < 32U; ++repeat)
+            {
+                assert(dispatchRuntimeHook(*system, harness.hook) == 1U);
+                assert(system->activeAwaitableCount() == 2U);
+                harness.registry.destroy(entity);
+                assert(system->activeAwaitableCount() == 1U);
+                assert(system->stats().next_step_waits + system->stats().simulation_delay_waits == 1U);
+                assert(system->processLifecycle() && system->collectMountStatusChanges(changes));
+                entity = harness.registry.create();
+                harness.description[0].scope = EntityScriptScope{entity};
+                assert(system->mountResolvedBatch(std::span{harness.description.data(), 1U}));
+                assert(system->processLifecycle() && system->collectMountStatusChanges(changes));
+            }
+            assert(system->stats().completion_capability_constructions == 0U);
+            assert(system->failures().empty() && system->shutdown());
+            assert(system->activeAwaitableCount() == 0U && backend.resume_calls == 0U);
+            assert(backend.continuation_destroys == 33U && backend.creates == backend.destroys);
+            std::printf("LOCAL_TIMER_RETIRE,simulation=%d,rebuilds=32,capabilities=0,cleaned=33,live=0\n", simulation);
+        }
+    }
+
     void testTimerSourceCancellation()
     {
         for (const bool simulation_timer : {false, true})
@@ -1544,6 +1630,8 @@ void testExternalAdmission()
 int main()
 {
     testTimerSourceCancellation();
+    testLocalTimerCapacityAndReuse();
+    testLocalTimerRetirementReuse();
 #if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
     testTimerDeadlineOrderAndBackpressure();
 #endif

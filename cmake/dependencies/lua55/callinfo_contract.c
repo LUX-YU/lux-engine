@@ -37,7 +37,7 @@ static int finish(lua_State* L,int status,lua_KContext context) {
 static int waitLeaf(lua_State* L) { return luxlua_yieldleaf(L,0,finish); }
 static int createThread(lua_State* L) { lua_newthread(L);return 1; }
 static void workload(lua_State* L,int depth) {
-    lua_State* T=lua_newthread(L);int n,status,before;char code[512];
+    lua_State* T=lua_newthread(L);int n,status,before,after_shrink;char code[512];
     CHECK(T->nci==0 && inlineCount(T)==0);
     if(depth==0) strcpy(code,"return 42");
     else snprintf(code,sizeof(code),
@@ -53,13 +53,14 @@ static void workload(lua_State* L,int depth) {
     CHECK(status==LUA_OK && n==1 && lua_tointeger(T,-1)==42);checkLinks(T);
     before=T->nci;
     lua_gc(L,LUA_GCCOLLECT);checkLinks(T);CHECK(T->nci<=before);
+    after_shrink=T->nci;
     CHECK(lua_closethread(T,L)==LUA_OK);checkLinks(T);
     CHECK(lua_closethread(T,L)==LUA_OK);checkLinks(T);
     CHECK(luaL_loadstring(T,"local x=wait();return x")==LUA_OK);
     CHECK(lua_resume(T,L,0,&n)==LUA_YIELD);lua_pushinteger(T,42);
     CHECK(lua_resume(T,L,1,&n)==LUA_OK && lua_tointeger(T,-1)==42);checkLinks(T);
     printf("CI_DEPTH,depth=%d,initial_ci=%d,after_shrink=%d,inline=%d,reset_reuse=1\n",
-        depth,before,T->nci,inlineCount(T));
+        depth,before,after_shrink,inlineCount(T));
     lua_pop(L,1);lua_gc(L,LUA_GCCOLLECT);
 }
 static void allocationFailures(lua_State* L,Memory* memory) {
@@ -90,6 +91,15 @@ int main(void) {
     lua_pushcfunction(L,waitLeaf);lua_setglobal(L,"wait");
     printf("CI_LAYOUT,LX=%zu,state=%zu,CI=%zu,stack=%zu,inline_capacity=2\n",
         sizeof(LX),sizeof(lua_State),sizeof(CallInfo),(BASIC_STACK_SIZE+EXTRA_STACK)*sizeof(StackValue));
+    {
+        lua_State* T=lua_newthread(L);int n;
+        CHECK(luaL_loadstring(T,"local x=wait();return x")==LUA_OK);
+        CHECK(lua_resume(T,L,0,&n)==LUA_YIELD);
+        checkLinks(T);CHECK(T->nci==2 && inlineCount(T)==2);
+        lua_pushinteger(T,42);CHECK(lua_resume(T,L,1,&n)==LUA_OK && lua_tointeger(T,-1)==42);
+        lua_pop(L,1);lua_gc(L,LUA_GCCOLLECT);
+        puts("CI_SHALLOW,linked=2,inline=2,heap_overflow=0,value=42");
+    }
     for(i=0;i<=3;i++) workload(L,i);
     workload(L,32);allocationFailures(L,&memory);
     CHECK(luaL_dostring(L,

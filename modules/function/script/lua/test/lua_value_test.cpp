@@ -63,17 +63,15 @@ struct LargePolicy
     inline static constexpr std::string_view name = "test.large";
     inline static constexpr unsigned version = 1;
 };
-template<int N> struct Nested;
-template<int N> static Nested<N> makeNested() noexcept;
 template <int N> struct Nested
 {
-    Nested<N - 1> child = makeNested<N - 1>();
+    std::int32_t guard{17};
+    Nested<N - 1> child;
 };
 template <> struct Nested<0>
 {
     std::int32_t leaf{};
 };
-template<int N> static Nested<N> makeNested() noexcept { Nested<N> value; return value; }
 struct Resource
 {
     static inline int live{};
@@ -125,7 +123,8 @@ namespace lux::script::lua
     {
     };
     template <int N>
-    struct LuaGeneratedValue<Nested<N>> : LuaRecordValue<Nested<N>, LuaValueField<&Nested<N>::child, "child">>
+    struct LuaGeneratedValue<Nested<N>> : LuaRecordValue<Nested<N>,
+        LuaValueField<&Nested<N>::guard, "guard">, LuaValueField<&Nested<N>::child, "child">>
     {
     };
     template <> struct LuaGeneratedValue<Nested<0>> : LuaRecordValue<Nested<0>, LuaValueField<&Nested<0>::leaf, "leaf">>

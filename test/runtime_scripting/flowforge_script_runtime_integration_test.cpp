@@ -1107,6 +1107,26 @@ namespace
         // not a total-error counter; a full bounded log may have omitted additional failures.
         const auto retained = system->failures().size();
         const auto stopped_at = system->stats();
+        if (options.group == "scene-flowforge-event" && options.resume_budget >= options.size)
+        {
+            const auto cycles = static_cast<std::uint64_t>(options.warmups) + options.frames;
+            const auto expected = cycles * options.size;
+            const bool invalid_business = provider.calls != expected || provider.checksum != expected * 31U ||
+                stopped_at.step_invocations != expected || stopped_at.backend_resume_calls != expected ||
+                stopped_at.active_continuations != 0U || stopped_at.active_awaitables != 0U ||
+                stopped_at.active_event_waiters != 0U || stopped_at.resume_queue_depth != 0U;
+            if (invalid_business)
+            {
+                std::fprintf(stderr, "FlowForge Event business oracle failed: calls=%zu expected=%llu checksum=%llu\n",
+                    provider.calls, static_cast<unsigned long long>(expected),
+                    static_cast<unsigned long long>(provider.checksum));
+                return 36;
+            }
+            std::printf("BUSINESS_ORACLE,flowforge-event,instances=%zu,cycles=%llu,completed=%llu,checksum=%llu,"
+                "source=provider-payload,outside_timing=1\n", options.size,
+                static_cast<unsigned long long>(cycles), static_cast<unsigned long long>(expected),
+                static_cast<unsigned long long>(provider.checksum));
+        }
         const auto storage = backend.stats();
         std::printf("NATIVE_STORAGE,steady,backing=%zu,metadata=%zu,reserved=%zu,active=%zu,live=%zu,"
             "occupied=%zu,high_water=%zu,capacity_failures=%zu,heap_frames=%zu\n",

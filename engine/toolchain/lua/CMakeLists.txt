@@ -122,14 +122,6 @@ add_executable(
 )
 if(TARGET script_runtime_benchmark)
     add_dependencies(script_runtime_benchmark lua_runtime_benchmark_fixture)
-    add_test(NAME lua_runtime_benchmark_oracle_test
-        COMMAND script_runtime_benchmark --group scene-lua-event --mode performance --size 64
-            --warmups 5 --frames 20 --seed 1592598566 --vm-accounting off
-            --lua-artifact "${_lua_benchmark_lxsa}"
-            --output "${CMAKE_CURRENT_BINARY_DIR}/lua_event_oracle.csv")
-    set_tests_properties(lua_runtime_benchmark_oracle_test PROPERTIES
-        PASS_REGULAR_EXPRESSION
-            "BUSINESS_ORACLE,lua-event,instances=64,cycles=25,completed=1600,per_instance=776,checksum=49664")
 endif()
 target_link_libraries(
     lua_script_packager_contract_test

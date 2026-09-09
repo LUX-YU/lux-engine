@@ -574,6 +574,7 @@ namespace
                 const auto index = self.growths++;
                 std::printf("CREATE_ALLOCATION,index=%zu,old=%zu,new=%zu,kind=%s\n",
                     index, old_size, size, pointer ? "grow" : "new");
+                std::fflush(stdout);
                 if (index >= self.permitted)
                 {
                     ++self.failures;

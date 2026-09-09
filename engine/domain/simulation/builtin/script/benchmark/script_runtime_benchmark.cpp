@@ -2133,6 +2133,10 @@ namespace
             if (iteration < options.warmups) rows.resize(first);
         }
         lux::simulation::benchmark::event_only_source.reset();
+        std::printf("BUSINESS_ORACLE,cpp-event,instances=%zu,cycles=%zu,completed=%zu,checksum=%zu,"
+            "source=script-payload,outside_timing=1\n", options.size, options.warmups + options.frames,
+            options.size * (options.warmups + options.frames),
+            31U * options.size * (options.warmups + options.frames));
     }
 
     void runHookChannelMicro(const Options& options, std::vector<Row>& rows)

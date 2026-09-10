@@ -547,6 +547,12 @@ namespace lux::editor::application::detail
             impl->upload_client = render::RenderUploadClient::bind(impl->upload_queue, &Impl::UploadQueue::submit);
             impl->program_memory = config.program_memory;
             auto font = lux::ui::detail::captureUiFontAtlas(session);
+            if (!font)
+                return lux::cxx::unexpected(UiVulkanPresentationFailure{
+                    font.error() == lux::ui::EUiInitError::ALLOCATION_FAILURE
+                        ? EUiVulkanPresentationError::ALLOCATION_FAILURE : EUiVulkanPresentationError::INVALID_CONFIG,
+                    {}
+                });
             std::vector<const char*> extensions;
             const auto required = window::LuxWindow::requiredVulkanInstanceExtensions();
             extensions.assign(required.begin(), required.end());
@@ -554,7 +560,7 @@ namespace lux::editor::application::detail
             auto server_thread = startPresentationThread([
                 raw,
                 &window,
-                font = std::move(font),
+                font = std::move(*font),
                 extensions = std::move(extensions),
                 validation = config.enable_validation
             ]() mutable {

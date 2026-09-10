@@ -7,6 +7,7 @@
 #include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
 #include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>
 #include <atomic>
+#include <unordered_map>
 
 namespace lux::editor::sessions::detail
 {
@@ -44,7 +45,7 @@ namespace lux::editor::sessions::detail
         std::unique_ptr<CloseOperation> close_;
         bool started_{};
 
-    public:
+      public:
         lux::process::TaskScope scope;
         std::atomic<bool> done{};
         ~ResourceTasks() noexcept
@@ -83,21 +84,18 @@ namespace lux::editor::sessions::detail
             auto values = stdexec::then(
                 lux::process::asset_loading::loadAsset<T>(
                     std::move(port), id, lux::asset::AssetDecodeLimits{16 * 1024 * 1024, 32 * 1024 * 1024, 16}),
-                [result](std::shared_ptr<const T> value) noexcept
-                {
+                [result](std::shared_ptr<const T> value) noexcept {
                     result->value = std::move(value);
                     result->state.store(AssetResult<T>::EState::VALUE, std::memory_order_release);
                 });
-            auto errors =
-                stdexec::upon_error(std::move(values),
-                                    [result](lux::process::asset_loading::AssetLoadFailure failure) noexcept
-                                    {
-                                        result->failure = failure;
-                                        result->state.store(AssetResult<T>::EState::ERROR, std::memory_order_release);
-                                    });
-            auto lifetime = stdexec::upon_stopped(
-                std::move(errors), [result]() noexcept
-                { result->state.store(AssetResult<T>::EState::CANCELLED, std::memory_order_release); });
+            auto errors = stdexec::upon_error(
+                std::move(values), [result](lux::process::asset_loading::AssetLoadFailure failure) noexcept {
+                    result->failure = failure;
+                    result->state.store(AssetResult<T>::EState::ERROR, std::memory_order_release);
+                });
+            auto lifetime = stdexec::upon_stopped(std::move(errors), [result]() noexcept {
+                result->state.store(AssetResult<T>::EState::CANCELLED, std::memory_order_release);
+            });
             auto admitted = scope.start(std::move(lifetime));
             if (admitted)
                 started_ = true;
@@ -132,7 +130,7 @@ namespace lux::editor::sessions::detail
 
     class SceneResources final
     {
-    public:
+      public:
         SceneResources(SessionId, lux::process::asset_loading::AssetReadPort, rendering::EditorRenderer *, std::size_t);
         ~SceneResources() noexcept;
         SceneResult<void> activate() noexcept;
@@ -149,12 +147,15 @@ namespace lux::editor::sessions::detail
         std::size_t liveHandles(const ResourceRequestKey &) const noexcept;
 #endif
 
-    private:
+      private:
         SessionId session_;
         lux::process::asset_loading::AssetReadPort port_;
         rendering::EditorRenderer *renderer_{};
         lux::scene::RenderRuntimeLease runtime_;
         std::vector<std::unique_ptr<ResourceRequest>> requests_;
+        // Non-owning current association. Full Entity includes its generation; the pointed-to key owns sources.
+        // Superseded requests remain exclusively owned by requests_ until their real retirement completes.
+        std::unordered_map<lux::simulation::ecs::Entity, ResourceRequest *> current_requests_;
         std::size_t capacity_{};
         std::uint64_t sequence_{};
         bool active_{}, closing_{}, closed_{};

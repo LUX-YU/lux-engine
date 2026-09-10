@@ -32,6 +32,7 @@ int main(int argc, char **argv)
     using namespace lux::editor;
     std::size_t frames{};
     bool alternate{}, validation{}, hidden{};
+    std::optional<ui::WindowFontSpec> font;
     auto asset_path =
         std::filesystem::absolute(argv[0]).parent_path().parent_path() / "share/lux-engine/editor/sv1.luxpak";
     for (int i = 1; i < argc; ++i)
@@ -45,6 +46,11 @@ int main(int argc, char **argv)
             alternate = true;
         else if (arg == "--assets" && i + 1 < argc)
             asset_path = argv[++i];
+        else if (arg == "--font" && i + 1 < argc)
+        {
+            font.emplace();
+            font->file = argv[++i];
+        }
         else if (arg == "--frames" && i + 1 < argc)
         {
             const std::string_view text{argv[++i]};
@@ -70,10 +76,12 @@ int main(int argc, char **argv)
     }
     application::EditorApplicationCreateInfo config;
     config.window.visible = !hidden;
+    config.window.font = std::move(font);
     config.window.title = "Lux Editor / ER-1";
     config.renderer.validation = validation;
-    config.renderer.validation_message_sink = [](std::uint32_t severity, std::string_view text)
-    { std::fprintf(stderr, "Vulkan severity=%u %.*s\n", severity, int(text.size()), text.data()); };
+    config.renderer.validation_message_sink = [](std::uint32_t severity, std::string_view text) {
+        std::fprintf(stderr, "Vulkan severity=%u %.*s\n", severity, int(text.size()), text.data());
+    };
     config.execution = {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}};
     config.asset_read = {64};
     config.mounts = {{"/Seed", *pak, 0}};

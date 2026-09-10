@@ -127,8 +127,9 @@ namespace lux::editor::sessions
                     row.resources_ready = resourcesReady(registry, entity);
                     next->rows.push_back(std::move(row));
                 }
-                std::sort(next->rows.begin(), next->rows.end(), [](const auto &a, const auto &b)
-                          { return entt::to_integral(a.target.entity) < entt::to_integral(b.target.entity); });
+                std::sort(next->rows.begin(), next->rows.end(), [](const auto &a, const auto &b) {
+                    return entt::to_integral(a.target.entity) < entt::to_integral(b.target.entity);
+                });
                 return next;
             }
             catch (const std::bad_alloc &)
@@ -171,6 +172,18 @@ namespace lux::editor::sessions
             return fail(ESceneError::STALE_ENTITY, input.id);
         try
         {
+            // A pre-resolved handle is meaningful only for the exact authoritative Mesh3D sources.
+            // Reject before taking the caller's Scene or acquiring this Session's renderer lease.
+            const auto &registry = std::as_const(input.scene->registry());
+            for (const auto entity : registry.view<const lux::scene::ResolvedMeshResources>())
+            {
+                const auto *visual = registry.try_get<lux::simulation::ecs::Mesh3D>(entity);
+                const auto &resolved = registry.get<lux::scene::ResolvedMeshResources>(entity);
+                const bool matches = visual && resolved.mesh_source == visual->value.mesh &&
+                                     resolved.material_source == visual->value.material;
+                if (!matches)
+                    return fail(ESceneError::STALE_CONTENT, input.id);
+            }
             auto impl = std::make_unique<Impl>();
             impl->identity = input.id;
             impl->stamp = {input.id, 0, 0};
@@ -582,12 +595,12 @@ namespace lux::editor::sessions
         return session.impl_->check(false) && session.impl_->resources->readyForAdoption();
     }
     std::size_t detail::SceneTestAccess::liveResourceHandles(const SceneSession &session,
-                                                           const ResourceRequestKey &key) noexcept
+                                                             const ResourceRequestKey &key) noexcept
     {
         return session.impl_->check(false) ? session.impl_->resources->liveHandles(key) : 0;
     }
-    SceneResult<std::shared_ptr<const SceneResourceSnapshot>>
-    detail::SceneTestAccess::resourceOwnerSnapshot(const SceneSession &session) noexcept
+    SceneResult<std::shared_ptr<const SceneResourceSnapshot>> detail::SceneTestAccess::resourceOwnerSnapshot(
+        const SceneSession &session) noexcept
     {
         if (auto checked = session.impl_->check(false); !checked)
             return lux::cxx::unexpected(checked.error());
@@ -604,8 +617,7 @@ namespace lux::editor::sessions
         auto &registry = state.scene->registry();
         switch (mutation)
         {
-        case ESceneTestMutation::ROTATE_MESH_SOURCES:
-        {
+        case ESceneTestMutation::ROTATE_MESH_SOURCES: {
             lux::asset::AssetId previous;
             lux::simulation::ecs::Entity first{};
             bool found{};

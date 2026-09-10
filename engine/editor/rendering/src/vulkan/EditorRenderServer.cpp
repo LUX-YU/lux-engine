@@ -96,8 +96,7 @@ namespace lux::editor::rendering::detail
             static VkDescriptorSet resolve(void *user, lux::ui::TextureHandle token) noexcept
             {
                 auto &state = *static_cast<ServerState *>(user);
-                const auto missing = [&]()
-                {
+                const auto missing = [&]() {
                     ++state.statistics->misses;
                     return VkDescriptorSet{};
                 };
@@ -216,8 +215,7 @@ namespace lux::editor::rendering::detail
 
             const auto barrier = [&](VkImageLayout old_layout, VkImageLayout new_layout,
                                      VkPipelineStageFlags2 source_stage, VkAccessFlags2 source_access,
-                                     VkPipelineStageFlags2 target_stage, VkAccessFlags2 target_access)
-            {
+                                     VkPipelineStageFlags2 target_stage, VkAccessFlags2 target_access) {
                 VkImageMemoryBarrier2 image_barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
                 image_barrier.srcStageMask = source_stage;
                 image_barrier.srcAccessMask = source_access;
@@ -453,49 +451,59 @@ namespace lux::editor::rendering::detail
         {
             const auto required = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
             std::vector<const char *> extensions(required.begin(), required.end());
-            return std::jthread(
-                [&state, &window, font = std::move(font), extensions = std::move(extensions),
-                 validation = config.validation, sink = config.validation_message_sink]() mutable
+            return std::jthread([&state, &window, font = std::move(font), extensions = std::move(extensions),
+                                 validation = config.validation, sink = config.validation_message_sink]() mutable {
+                try
                 {
-                    try
+                    EditorRenderServer server(state.frames, state.controls, state.uploads, state.sync);
+                    render::ServerConfig server_config;
+                    server_config.instance_extensions = std::move(extensions);
+                    server_config.enable_validation = validation;
+                    server_config.validation_error_counter = &state.statistics->validation_errors;
+                    server_config.validation_message_sink = std::move(sink);
+                    auto initialized = server.initialize(std::move(server_config), std::move(font), state.catalog,
+                                                         state.statistics, state.sync, state.failed_packet);
+                    if (initialized)
+                        initialized = server.attach(window);
+                    if (!initialized)
                     {
-                        EditorRenderServer server(state.frames, state.controls, state.uploads, state.sync);
-                        render::ServerConfig server_config;
-                        server_config.instance_extensions = std::move(extensions);
-                        server_config.enable_validation = validation;
-                        server_config.validation_error_counter = &state.statistics->validation_errors;
-                        server_config.validation_message_sink = std::move(sink);
-                        auto initialized = server.initialize(std::move(server_config), std::move(font), state.catalog,
-                                                             state.statistics, state.sync, state.failed_packet);
-                        if (initialized)
-                            initialized = server.attach(window);
-                        if (!initialized)
-                        {
-                            state.startup_error = initialized.error();
-                            state.startup.store(2, std::memory_order_release);
-                        }
-                        else
-                        {
-                            state.submit_operation = server.submitOperation();
-                            state.startup.store(1, std::memory_order_release);
-                        }
-                        state.startup.notify_all();
-                        if (initialized)
-                            while (server.tick())
-                            {
-                            }
-                    }
-                    catch (const std::bad_alloc &)
-                    {
-                        state.allocation_failed.store(true, std::memory_order_release);
+                        state.startup_error = initialized.error();
                         state.startup.store(2, std::memory_order_release);
-                        state.startup.notify_all();
-                        ++state.statistics->events;
                     }
-                    // Backend destruction has completed on its thread before this terminal fact is published.
-                    state.sync->requestStop();
-                    state.stopped.store(1, std::memory_order_release);
-                });
+                    else
+                    {
+                        state.submit_operation = server.submitOperation();
+                        state.startup.store(1, std::memory_order_release);
+                    }
+                    state.startup.notify_all();
+                    if (initialized)
+                        for (;;)
+                        {
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+                            // Test-only rendezvous before the real consumer enters its next tick.
+                            // Queues, messages, FIFO and reply generation remain unchanged.
+                            if (state.pause_requested.load(std::memory_order_acquire))
+                            {
+                                state.pause_reached.store(true, std::memory_order_release);
+                                state.pause_requested.wait(true, std::memory_order_acquire);
+                                state.pause_reached.store(false, std::memory_order_release);
+                            }
+#endif
+                            if (!server.tick())
+                                break;
+                        }
+                }
+                catch (const std::bad_alloc &)
+                {
+                    state.allocation_failed.store(true, std::memory_order_release);
+                    state.startup.store(2, std::memory_order_release);
+                    state.startup.notify_all();
+                    ++state.statistics->events;
+                }
+                // Backend destruction has completed on its thread before this terminal fact is published.
+                state.sync->requestStop();
+                state.stopped.store(1, std::memory_order_release);
+            });
         }
         catch (const std::bad_alloc &)
         {

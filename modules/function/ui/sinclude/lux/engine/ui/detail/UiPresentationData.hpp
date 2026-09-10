@@ -1,6 +1,8 @@
 #pragma once
 
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/ui/UiFontSource.hpp>
+#include <lux/cxx/compile_time/expected.hpp>
 
 #include <cstdint>
 #include <memory>
@@ -23,5 +25,6 @@ namespace lux::ui::detail
         void* context{};
     };
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC UiFontAtlasSnapshot captureUiFontAtlas(UISession& session);
+    using UiFontAtlasResult = lux::cxx::expected<UiFontAtlasSnapshot, EUiInitError>;
+    [[nodiscard]] LUX_FUNCTION_PUBLIC UiFontAtlasResult captureUiFontAtlas(UISession& session) noexcept;
 } // namespace lux::ui::detail

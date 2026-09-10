@@ -14,6 +14,8 @@ namespace lux::editor::sessions::detail
     };
     struct LUX_EDITOR_SCENE_SESSION_PUBLIC SceneTestAccess final
     {
+        struct ResourceBackpressure final { std::size_t control{}, upload{}; };
+        static ResourceBackpressure resourceBackpressure(bool reset = false) noexcept;
         static SceneResult<void> mutateSource(SceneSession &, ESceneTestMutation) noexcept;
         static SceneResult<SceneEntityRef> recycleSelectedEntity(SceneSession &) noexcept;
         static SceneResult<void> replaceMeshSource(SceneSession &, SceneEntityRef, lux::asset::AssetId) noexcept;

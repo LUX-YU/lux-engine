@@ -2,18 +2,119 @@
 #include <lux/engine/window/LuxWindow.hpp>
 #include <lux/engine/ui/UiInputEvent.hpp>
 #include <GLFW/glfw3.h>
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+#include <SelectedTextTrace.hpp>
+#endif
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <fstream>
 #include <new>
 #include <optional>
 #include <thread>
 #include <type_traits>
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+#include <imm.h>
+#endif
 
 namespace lux::editor::ui
 {
     namespace
     {
+        TextInputPlatformStatus positionTextInput(lux::window::LuxWindow &window, lux::ui::UiTextInputAnchor anchor,
+                                                  lux::ui::Size logical_size) noexcept
+        {
+            TextInputPlatformStatus result;
+            if (!anchor.valid || !anchor.want_visible || !glfwGetWindowAttrib(window.handle(), GLFW_FOCUSED) ||
+                !glfwGetWindowAttrib(window.handle(), GLFW_VISIBLE) ||
+                glfwGetWindowAttrib(window.handle(), GLFW_ICONIFIED))
+                return result;
+            result.frame = anchor.frame;
+#if defined(_WIN32)
+            const auto handle = static_cast<HWND>(window.win32Handle());
+            RECT client{};
+            if (!GetClientRect(handle, &client))
+            {
+                result.state = ETextInputPlatformState::PLATFORM_FAILURE;
+                return result;
+            }
+            // Both IMM coordinates and GetClientRect use this owner's current Win32 client space.
+            // FrameInfo may use logical units; convert from its actual extent exactly once.
+            // The render framebuffer scale is NOT an additional DPI multiplier.
+            const bool valid_input = logical_size.width > 0 && logical_size.height > 0 &&
+                                     std::isfinite(anchor.caret.x) && std::isfinite(anchor.caret.y) &&
+                                     std::isfinite(anchor.line_height) && anchor.line_height > 0;
+            if (!valid_input || client.right <= 0 || client.bottom <= 0)
+            {
+                result.state = ETextInputPlatformState::INVALID_COORDINATES;
+                return result;
+            }
+            const auto scale_x = double(client.right) / logical_size.width;
+            const auto scale_y = double(client.bottom) / logical_size.height;
+            const auto x = double(anchor.caret.x) * scale_x;
+            const auto y = double(anchor.caret.y) * scale_y;
+            const auto bottom = y + double(anchor.line_height) * scale_y;
+            const bool valid_rectangle =
+                x >= 0 && x <= client.right && y >= 0 && y <= client.bottom && bottom >= y && bottom <= client.bottom;
+            if (!valid_rectangle)
+            {
+                result.state = ETextInputPlatformState::INVALID_COORDINATES;
+                return result;
+            }
+            const auto ime = ImmGetContext(handle);
+            if (!ime)
+            {
+                result.state = ETextInputPlatformState::UNAVAILABLE;
+                return result;
+            }
+            struct ReleaseContext final
+            {
+                HWND window;
+                HIMC context;
+                ~ReleaseContext()
+                {
+                    ImmReleaseContext(window, context);
+                }
+            } release{handle, ime};
+            COMPOSITIONFORM composition{};
+            composition.dwStyle = CFS_POINT;
+            composition.ptCurrentPos = {static_cast<LONG>(std::lround(x)), static_cast<LONG>(std::lround(y))};
+            CANDIDATEFORM candidate{};
+            candidate.dwIndex = 0;
+            candidate.dwStyle = CFS_EXCLUDE;
+            candidate.ptCurrentPos = composition.ptCurrentPos;
+            candidate.rcArea = {composition.ptCurrentPos.x, composition.ptCurrentPos.y, composition.ptCurrentPos.x + 1,
+                                static_cast<LONG>(std::ceil(bottom))};
+            result.composition_positioned = ImmSetCompositionWindow(ime, &composition) != FALSE;
+            result.candidate_positioned = ImmSetCandidateWindow(ime, &candidate) != FALSE;
+            result.state = result.composition_positioned && result.candidate_positioned
+                               ? ETextInputPlatformState::APPLIED
+                               : ETextInputPlatformState::PLATFORM_FAILURE;
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+            static unsigned logged{};
+            static POINT last{-1, -1};
+            if (diagnostics::selectedTextTraceEnabled() && logged < 64 &&
+                (last.x != composition.ptCurrentPos.x || last.y != composition.ptCurrentPos.y))
+            {
+                ++logged;
+                last = composition.ptCurrentPos;
+                std::fprintf(stderr,
+                             "ER1 selected_text anchor frame=%llu ui=%.2f,%.2f client=%ld,%ld "
+                             "scale=%.3f,%.3f dpi=%u composition=%d candidate=%d\n",
+                             anchor.frame, anchor.caret.x, anchor.caret.y, last.x, last.y, scale_x, scale_y,
+                             GetDpiForWindow(handle), result.composition_positioned, result.candidate_positioned);
+            }
+#endif
+#else
+            result.state = ETextInputPlatformState::UNAVAILABLE;
+#endif
+            return result;
+        }
+
         [[nodiscard]] lux::ui::EKey uiKey(int key) noexcept
         {
             switch (key)
@@ -135,10 +236,13 @@ namespace lux::editor::ui
     struct EditorWindow::Impl final
     {
         const std::thread::id owner{std::this_thread::get_id()};
-        std::unique_ptr<lux::window::LuxWindow> window;
         std::unique_ptr<lux::ui::UISession> ui;
+        // Cold unwinding destroys native callbacks before their UI receiver.
+        std::unique_ptr<lux::window::LuxWindow> window;
         std::unique_ptr<ActiveEditHistory> histories;
         std::optional<lux::ui::Frame> frame;
+        lux::ui::Size frame_size;
+        TextInputPlatformStatus text_input_status;
         bool drawing{}, entering{}, close_requested{}, closed{};
 
         WindowResult<void> check() const noexcept
@@ -174,7 +278,35 @@ namespace lux::editor::ui
         try
         {
             auto impl = std::make_unique<Impl>();
-            impl->ui = std::make_unique<lux::ui::UISession>();
+            std::optional<lux::ui::UiFontSource> font;
+            if (spec.font)
+            {
+                std::ifstream input(spec.font->file, std::ios::binary | std::ios::ate);
+                if (!input)
+                    return fail(EWindowError::FONT_OPEN_FAILURE);
+                const auto size = input.tellg();
+                if (size <= 0)
+                    return fail(EWindowError::FONT_READ_FAILURE);
+                if (size > 32 * 1024 * 1024)
+                    return fail(EWindowError::FONT_LIMIT);
+                font.emplace();
+                font->bytes.resize(static_cast<std::size_t>(size));
+                font->ranges = spec.font->ranges;
+                font->face = spec.font->face;
+                font->size_pixels = spec.font->size_pixels;
+                input.seekg(0);
+                if (!input.read(reinterpret_cast<char *>(font->bytes.data()), size))
+                    return fail(EWindowError::FONT_READ_FAILURE);
+            }
+            auto ui = lux::ui::UISession::create({}, font ? &*font : nullptr);
+            if (!ui)
+            {
+                const auto code = ui.error() == lux::ui::EUiInitError::ALLOCATION_FAILURE
+                                      ? EWindowError::ALLOCATION_FAILURE
+                                      : EWindowError::UI_INITIALIZATION_FAILURE;
+                return lux::cxx::unexpected(WindowFailure{code, 0, ui.error()});
+            }
+            impl->ui = std::move(*ui);
             auto &commands = impl->ui->commandRouter();
             if (!commands.defineCommand({lux::ui::UiCommandId{"lux.edit.undo"}, "Undo"}) ||
                 !commands.defineCommand({lux::ui::UiCommandId{"lux.edit.redo"}, "Redo"}))
@@ -190,12 +322,15 @@ namespace lux::editor::ui
             impl->window->hide(!spec.visible);
             // The callback receiver is this Window's stable, exclusively owned input state.
             auto *input = impl->ui.get();
-            impl->window->on_cursor_move = [input](const lux::window::CursorMoveEvent &event)
-            { input->feedInput(lux::ui::UiPointerMove{{static_cast<float>(event.x), static_cast<float>(event.y)}}); };
-            impl->window->on_focus = [input](const lux::window::WindowFocusEvent &)
-            { input->feedInput(lux::ui::UiWindowFocus{true}); };
-            impl->window->on_lost_focus = [input](const lux::window::WindowLostFocusEvent &)
-            { input->feedInput(lux::ui::UiWindowFocus{false}); };
+            impl->window->on_cursor_move = [input](const lux::window::CursorMoveEvent &event) {
+                input->feedInput(lux::ui::UiPointerMove{{static_cast<float>(event.x), static_cast<float>(event.y)}});
+            };
+            impl->window->on_focus = [input](const lux::window::WindowFocusEvent &) {
+                input->feedInput(lux::ui::UiWindowFocus{true});
+            };
+            impl->window->on_lost_focus = [input](const lux::window::WindowLostFocusEvent &) {
+                input->feedInput(lux::ui::UiWindowFocus{false});
+            };
             return std::unique_ptr<EditorWindow>(new EditorWindow(std::move(dispatcher), std::move(impl)));
         }
         catch (const std::bad_alloc &)
@@ -224,6 +359,12 @@ namespace lux::editor::ui
     {
         return impl_->close_requested;
     }
+    WindowResult<TextInputPlatformStatus> EditorWindow::textInputPlatformStatus() const noexcept
+    {
+        if (auto checked = impl_->check(); !checked)
+            return lux::cxx::unexpected(checked.error());
+        return impl_->text_input_status;
+    }
 
     WindowResult<void> EditorWindow::collectInput() noexcept
     {
@@ -235,8 +376,7 @@ namespace lux::editor::ui
         for (const auto &event : impl_->window->drainInputEvents())
         {
             std::visit(
-                [this](const auto &value)
-                {
+                [this](const auto &value) {
                     using Value = std::remove_cvref_t<decltype(value)>;
                     if constexpr (std::same_as<Value, window::WindowKeyEvent>)
                     {
@@ -257,12 +397,19 @@ namespace lux::editor::ui
                     }
                     else if constexpr (std::same_as<Value, window::WindowTextEvent>)
                     {
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+                        diagnostics::traceCodepoint("WindowTextEvent", value.codepoint);
+#endif
                         impl_->ui->feedInput(lux::ui::UiText{static_cast<char32_t>(value.codepoint)});
                     }
                 },
                 event);
         }
         impl_->close_requested |= impl_->window->shouldClose();
+        const bool inactive = impl_->close_requested || !glfwGetWindowAttrib(impl_->window->handle(), GLFW_FOCUSED) ||
+                              !glfwGetWindowAttrib(impl_->window->handle(), GLFW_VISIBLE);
+        if (inactive)
+            impl_->text_input_status = {};
         return {};
     }
 
@@ -287,6 +434,8 @@ namespace lux::editor::ui
             }
         } gate{impl_->entering};
         impl_->entering = true;
+        impl_->text_input_status = {};
+        impl_->frame_size = info.display_size;
         try
         {
             impl_->frame.emplace(impl_->ui->beginFrame(info));
@@ -315,8 +464,7 @@ namespace lux::editor::ui
             if (accepts_shortcut)
             {
                 auto &router = impl_->ui->commandRouter();
-                const auto invoke = [&](lux::ui::EKey key, lux::ui::UiCommandIdView id)
-                {
+                const auto invoke = [&](lux::ui::EKey key, lux::ui::UiCommandIdView id) {
                     if (input.pressed[static_cast<std::size_t>(key)])
                         if (const auto command = router.findCommand(id))
                             static_cast<void>(router.invoke(*command));
@@ -345,6 +493,9 @@ namespace lux::editor::ui
         auto snapshot = impl_->ui->captureFrame();
         if (!snapshot)
             return fail(EWindowError::UI_FAILURE);
+        if (!impl_->close_requested)
+            impl_->text_input_status =
+                positionTextInput(*impl_->window, impl_->ui->textInputAnchor(), impl_->frame_size);
         return std::move(*snapshot);
     }
     WindowResult<void> EditorWindow::discardFrame() noexcept
@@ -379,6 +530,7 @@ namespace lux::editor::ui
         if (auto check = impl_->check(); !check)
             return check;
         impl_->close_requested = true;
+        impl_->text_input_status = {};
         return {};
     }
     WindowResult<void> EditorWindow::closeAfterRendererStopped() noexcept

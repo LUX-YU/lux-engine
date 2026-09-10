@@ -135,8 +135,11 @@ int main(int argc, char **argv)
             << ",\n\"iterations\":" << measured << ",\n\"owner_update_seconds\":" << owner_wall
             << ",\n\"owner_update_cycles\":" << owner_cycles << ",\n\"advance_poll_seconds\":" << other_wall
             << ",\n\"close_seconds\":" << close_wall << ",\n\"checksum\":" << total_checksum
-            << ",\n\"unchanged_snapshot\":true,\n\"association_comparisons_per_cycle_by_source\":"
-            << count * (count + 1) / 2 << ",\n\"resource_typed_payload_floor_bytes\":" << payload_floor
+            << ",\n\"unchanged_snapshot\":true,\n\"association_map_lookups_per_cycle_by_source\":" << count
+            << ",\n\"association_index_value_payload_floor_bytes\":"
+            << count * sizeof(std::pair<const lux::simulation::ecs::Entity, Request*>)
+            << ",\n\"association_index_bucket_and_node_overhead_included\":false"
+            << ",\n\"resource_typed_payload_floor_bytes\":" << payload_floor
             << ",\n\"snapshot_payload_bytes_held_through_close\":" << count * sizeof(sessions::SceneResourceRow)
             << ",\n\"close_completed\":true\n}\n";
         assert(out.good());

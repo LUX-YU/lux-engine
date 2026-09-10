@@ -14,6 +14,8 @@
 #include <lux/engine/ui/PaneFactory.hpp>
 #include <lux/engine/ui/Theme.hpp>
 #include <lux/engine/ui/UiInputEvent.hpp>
+#include <lux/engine/ui/UiFontSource.hpp>
+#include <lux/engine/ui/UiTextInputAnchor.hpp>
 
 namespace lux::ui
 {
@@ -102,6 +104,9 @@ namespace lux::ui
     {
     public:
         explicit UISession(UISessionCreateInfo info = {});
+        // Fallible cold initialization; a supplied font must succeed, with no silent default-font fallback.
+        [[nodiscard]] static lux::cxx::expected<std::unique_ptr<UISession>, EUiInitError>
+        create(const UISessionCreateInfo& info = {}, const UiFontSource* font = nullptr) noexcept;
         ~UISession();
         UISession(const UISession&) = delete;
         UISession& operator=(const UISession&) = delete;
@@ -128,6 +133,8 @@ namespace lux::ui
         [[nodiscard]] lux::cxx::expected<UiFrameSnapshot, EUiCaptureError> captureFrame() noexcept;
         void feedInput(const UiInputEvent& event);
         [[nodiscard]] UiInputSnapshot inputSnapshot() const noexcept;
+        // Invalid during a frame, on focus loss, failed capture, or before the first capture.
+        [[nodiscard]] UiTextInputAnchor textInputAnchor() const noexcept;
         void setSplitLayout(SplitLayout layout);
         [[nodiscard]] lux::cxx::expected<void, ELayoutError> validateSplitLayout(const SplitLayout&) const noexcept;
         void clearSplitLayout();
@@ -156,6 +163,9 @@ namespace lux::ui
 #endif
 
         struct Impl;
+        struct UninitializedTag {};
+        UISession(const UISessionCreateInfo&, UninitializedTag);
+        [[nodiscard]] lux::cxx::expected<void, EUiInitError> initialize(const UiFontSource* font);
         std::unique_ptr<Impl> impl_;
         std::shared_ptr<detail::SessionControl> control_;
     };

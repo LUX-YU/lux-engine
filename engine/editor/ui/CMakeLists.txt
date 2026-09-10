@@ -41,7 +41,11 @@ lux_classify_target(TARGET editor_ui LAYER EDITOR PRODUCT EDITOR ROLE INTEGRATIO
 install_components(PROJECT_NAME lux-engine-editor-ui VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_ui
 )
+if(WIN32)
+    target_link_libraries(editor_ui PRIVATE imm32)
+endif()
 if(LUX_EDITOR_DIAGNOSTICS)
+    target_include_directories(editor_ui PRIVATE ${PROJECT_SOURCE_DIR}/cmake/diagnostics)
     target_sources(editor_ui PRIVATE ${PROJECT_SOURCE_DIR}/cmake/diagnostics/EditorAllocationDiagnostics.cpp)
     target_compile_definitions(editor_ui PRIVATE
         LUX_ALLOCATION_ARM=lux_er1_ui_allocation_fail_after

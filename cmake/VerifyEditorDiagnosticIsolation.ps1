@@ -25,7 +25,7 @@ if ($normalNinja -match 'build [^\r\n]*EditorAllocationDiagnostics\.cpp\.obj:' -
     $normalNinja -match 'build [^\r\n]*ClientAllocationDiagnostics\.cpp\.obj:') {
     throw 'Diagnostic object appears in normal build rules'
 }
-$artifacts = @('render_client.dll', 'lux_engine_editor_ui.dll', 'lux_engine_editor_scene_session.dll',
+$artifacts = @('ui.dll', 'render_client.dll', 'lux_engine_editor_ui.dll', 'lux_engine_editor_scene_session.dll',
     'lux_engine_editor_rendering.dll', 'lux_engine_editor_tooling.dll', 'editor_scene.dll')
 $records = @()
 foreach ($name in $artifacts) {

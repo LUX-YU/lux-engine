@@ -9,7 +9,8 @@ param(
     [Parameter(Mandatory = $true)][string]$CxxPrefix,
     [Parameter(Mandatory = $true)][string]$BuildDependencyPrefix,
     [Parameter(Mandatory = $true)][string]$SeedPak,
-    [Parameter(Mandatory = $true)][string]$DeveloperShell
+    [Parameter(Mandatory = $true)][string]$DeveloperShell,
+    [string]$TestFont = ''
 )
 $ErrorActionPreference = 'Stop'
 if (Test-Path -LiteralPath $QualificationRoot) { throw 'Qualification requires a new directory' }
@@ -59,6 +60,16 @@ Invoke-Logged 'build-noop' $CMake @('--build', $build, '--target', 'all', '-j', 
 if ((Get-Content -LiteralPath "$logs/build-noop.log" -Raw) -notmatch 'ninja: no work to do') {
     throw 'Second all build was not a no-op'
 }
+# Content, not timestamps, binds this build. A restored mtime must not hide an edited source.
+foreach ($file in Import-Csv -LiteralPath "$qroot/source-files.sha256.csv") {
+    if ((Get-FileHash -LiteralPath (Join-Path $clone $file.path)).Hash -ne $file.sha256) {
+        throw "Source content changed during build; tests prohibited: $($file.path)"
+    }
+}
+if ($TestFont) {
+    Get-FileHash -LiteralPath $TestFont | ConvertTo-Json |
+        Set-Content -LiteralPath "$qroot/external-font-identity.json" -Encoding utf8
+}
 $ctest = Join-Path (Split-Path $CMake) 'ctest.exe'
 $cleanPath = ($env:PATH -split ';' | Where-Object {
     $_ -and $_ -notmatch '(?i)lux-er1|lux-sv1|install[/\\]RelWithDebInfo|build[/\\]RelWithDebInfo'
@@ -68,11 +79,17 @@ Invoke-Logged 'ctest' $ctest @('--test-dir', $build, '--output-on-failure', '-j'
 Copy-Item -LiteralPath "$build/Testing/Temporary/LastTest.log" -Destination "$logs/ctest-details.log"
 foreach ($variant in @('base', 'alternate', 'multiple_equal', 'multiple_reverse', 'multiple_lifecycle',
                       'late_close', 'late_selection', 'reentrant_close', 'image_lifetime',
-                      'view_failure', 'coordinate_1024', 'coordinate_256')) {
+                      'view_failure', 'coordinate_1024', 'coordinate_256', 'resolved_source')) {
     Invoke-Logged "gpu-$variant" "$build/bin/editor_scene_gpu_test.exe" @($SeedPak, "$qroot/images", $variant)
 }
 Invoke-Logged 'gpu-foreign' "$build/bin/editor_foreign_renderer_test.exe" @()
 Invoke-Logged 'gpu-application-lifecycle' "$build/bin/editor_application_lifecycle_test.exe" @()
+Invoke-Logged 'ui-cold-default' "$build/bin/ui_cold_input_test.exe" @()
+if ($TestFont) {
+    Invoke-Logged 'ui-cold-font' "$build/bin/ui_cold_input_test.exe" @($TestFont)
+    Invoke-Logged 'gpu-cold-font' "$build/bin/lux_editor_er1.exe" @('--assets', $SeedPak, '--font', $TestFont,
+        '--hidden', '--frames', '100', '--validation')
+}
 $normalRules = Get-Content -LiteralPath "$build/build.ninja" -Raw
 if ($normalRules -match 'LUX_SV1_DIAGNOSTICS=1|EditorAllocationDiagnostics\.cpp\.obj:|ClientAllocationDiagnostics\.cpp\.obj:|fsanitize=address') {
     throw 'Normal SDK qualification rejected: diagnostic instrumentation appears in build rules'
@@ -95,7 +112,8 @@ foreach ($location in @('sdk', 'relocated-sdk')) {
             "-DCMAKE_CXX_COMPILER=$compiler",
             "-DCMAKE_MAKE_PROGRAM=$Ninja", '-DCMAKE_BUILD_TYPE=RelWithDebInfo', "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
             "-DCMAKE_PREFIX_PATH=$prefix;$ToolsetPrefix;$CxxPrefix", '-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF',
-            '-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF', '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON')
+            '-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF', '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
+            "-DLUX_TEST_FONT=$TestFont")
         Invoke-Logged "$location-$consumer-build" $CMake @('--build', $output, '--target', 'all', '-j', '4', '--', '-k', '0')
         Invoke-Logged "$location-$consumer-noop" $CMake @('--build', $output, '--target', 'all', '-j', '4', '--', '-k', '0')
         if ((Get-Content -LiteralPath "$logs/$location-$consumer-noop.log" -Raw) -notmatch 'ninja: no work to do') {

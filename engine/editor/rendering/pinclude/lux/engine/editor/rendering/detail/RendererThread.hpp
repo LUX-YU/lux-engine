@@ -22,6 +22,9 @@ namespace lux::editor::rendering::detail
         std::atomic<unsigned> startup{}, stopped{};
         std::atomic<bool> allocation_failed{};
         std::atomic<std::uint64_t> failed_packet{};
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+        std::atomic<bool> pause_requested{}, pause_reached{};
+#endif
         lux::render::RenderError startup_error;
         lux::render::TypeId submit_operation{};
     };

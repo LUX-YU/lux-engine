@@ -37,6 +37,7 @@ namespace lux::editor::ui
         [[nodiscard]] WindowResult<void> closeAfterRendererStopped() noexcept;
         [[nodiscard]] bool frameOpen() const noexcept;
         [[nodiscard]] bool closeRequested() const noexcept;
+        [[nodiscard]] WindowResult<TextInputPlatformStatus> textInputPlatformStatus() const noexcept;
 
     private:
         struct Impl;

@@ -1,4 +1,5 @@
 #include "../DevelopmentScene.hpp"
+#include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/editor/ui/scene/SceneWorkspace.hpp>
 #include <lux/engine/editor/rendering/detail/ViewImageLifetime.hpp>
 #include <lux/engine/editor/rendering/detail/RendererTestAccess.hpp>
@@ -20,6 +21,8 @@
 #include "../../../rendering/test/ViewLifetimeTest.hpp"
 #if defined(LUX_EDITOR_DIAGNOSTICS)
 extern "C" __declspec(dllimport) std::size_t lux_er1_client_allocation_disarm() noexcept;
+extern "C" __declspec(dllimport) void lux_er1_function_ui_allocation_fail_after(std::size_t) noexcept;
+extern "C" __declspec(dllimport) std::size_t lux_er1_function_ui_allocation_disarm() noexcept;
 #endif
 
 namespace
@@ -61,9 +64,10 @@ namespace
                         secondary_released.wait(false, std::memory_order_acquire);
                 }
                 auto result = id == failed_asset
-                    ? lux::cxx::expected<lux::asset::AssetBlob, lux::asset::EAssetStorageError>{
-                          lux::cxx::unexpected(lux::asset::EAssetStorageError::IO_FAILURE)}
-                    : source->open(id);
+                                  ? lux::cxx::expected<lux::asset::AssetBlob,
+                                                       lux::asset::EAssetStorageError>{lux::cxx::unexpected(
+                                        lux::asset::EAssetStorageError::IO_FAILURE)}
+                                  : source->open(id);
                 ++returned;
                 return result;
             }
@@ -175,9 +179,9 @@ namespace
             const auto &actual = *failure.scene->renderer;
             const auto &expected = *source.renderer;
             return actual.code == expected.code && actual.view == expected.view && actual.request == expected.request &&
-                actual.render_error.type == expected.render_error.type &&
-                actual.render_error.args == expected.render_error.args &&
-                actual.backend_status == expected.backend_status;
+                   actual.render_error.type == expected.render_error.type &&
+                   actual.render_error.args == expected.render_error.args &&
+                   actual.backend_status == expected.backend_status;
         }
         return false;
     }
@@ -258,53 +262,48 @@ namespace
         const auto before = renderer.statistics();
         require(history, "owner history before foreign thread rejection");
         unsigned rejected{};
-        std::thread foreign(
-            [&]
-            {
-                const auto scene = [&](const auto &result)
-                {
-                    require(!result && result.error().code == sessions::ESceneError::WRONG_THREAD,
-                            "Scene owner rejects foreign thread before mutation");
-                    ++rejected;
-                };
-                const auto shell = [&](const auto &result)
-                {
-                    require(!result, "Window/Workspace rejects foreign thread before native UI or owner mutation");
-                    if constexpr (requires { result.error().window; })
-                        require(result.error().window && result.error().window->code == ui::EWindowError::WRONG_THREAD,
-                                "Workspace retains owning Window thread error");
-                    else
-                        require(result.error().code == ui::EWindowError::WRONG_THREAD, "Window thread error");
-                    ++rejected;
-                };
-                const auto render = [&](const auto &result)
-                {
-                    require(!result && result.error().code == rendering::ERendererError::WRONG_THREAD,
-                            "Renderer rejects foreign thread before queue or lifecycle mutation");
-                    ++rejected;
-                };
-                scene(session.select(std::nullopt));
-                scene(session.readOutline());
-                scene(session.beginClose());
-                scene(session.advanceClose());
-                scene(view.resetCamera());
-                scene(view.moveCamera({}));
-                scene(view.requestExtent({32, 32}));
-                scene(view.synchronize());
-                scene(view.beginClose());
-                scene(view.advanceClose());
-                shell(window.collectInput());
-                shell(window.requestClose());
-                shell(window.closeAfterRendererStopped());
-                shell(workspace.activate());
-                shell(workspace.updateBeforeFrame());
-                shell(workspace.beginClose());
-                shell(workspace.advanceClose());
-                render(renderer.poll(0));
-                render(renderer.beginClose());
-                render(renderer.advanceClose());
-                render(renderer.joinStopped());
-            });
+        std::thread foreign([&] {
+            const auto scene = [&](const auto &result) {
+                require(!result && result.error().code == sessions::ESceneError::WRONG_THREAD,
+                        "Scene owner rejects foreign thread before mutation");
+                ++rejected;
+            };
+            const auto shell = [&](const auto &result) {
+                require(!result, "Window/Workspace rejects foreign thread before native UI or owner mutation");
+                if constexpr (requires { result.error().window; })
+                    require(result.error().window && result.error().window->code == ui::EWindowError::WRONG_THREAD,
+                            "Workspace retains owning Window thread error");
+                else
+                    require(result.error().code == ui::EWindowError::WRONG_THREAD, "Window thread error");
+                ++rejected;
+            };
+            const auto render = [&](const auto &result) {
+                require(!result && result.error().code == rendering::ERendererError::WRONG_THREAD,
+                        "Renderer rejects foreign thread before queue or lifecycle mutation");
+                ++rejected;
+            };
+            scene(session.select(std::nullopt));
+            scene(session.readOutline());
+            scene(session.beginClose());
+            scene(session.advanceClose());
+            scene(view.resetCamera());
+            scene(view.moveCamera({}));
+            scene(view.requestExtent({32, 32}));
+            scene(view.synchronize());
+            scene(view.beginClose());
+            scene(view.advanceClose());
+            shell(window.collectInput());
+            shell(window.requestClose());
+            shell(window.closeAfterRendererStopped());
+            shell(workspace.activate());
+            shell(workspace.updateBeforeFrame());
+            shell(workspace.beginClose());
+            shell(workspace.advanceClose());
+            render(renderer.poll(0));
+            render(renderer.beginClose());
+            render(renderer.advanceClose());
+            render(renderer.joinStopped());
+        });
         foreign.join();
         const auto after = renderer.statistics();
         require(rejected == 21 && session.state() == sessions::ESessionState::READY &&
@@ -321,14 +320,19 @@ namespace
 int main(int argc, char **argv)
 {
     using namespace lux::editor;
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     require(argc == 4 || argc == 5, "arguments: asset package, output directory, scene variant, optional recovery pak");
     const std::string_view variant{argv[3]};
     bool failed_view_contract = true;
     bool resource_publication_contract = true;
     bool coordinate_contract = true;
     bool workspace_failure_contract = true;
+    bool resolved_source_contract = true;
     const bool workspace_failure_test = variant == "workspace_failure";
     const bool shader_subfailure_test = variant == "shader_subfailure";
+    const bool backpressure_close = variant == "resource_backpressure_close";
+    const bool resource_backpressure_test = variant == "resource_backpressure" || backpressure_close;
+    std::shared_ptr<const sessions::SceneResourceSnapshot> backpressured_resources;
     const bool coordinate_test = variant == "coordinate_256" || variant == "coordinate_1024";
     const double page_size = variant == "coordinate_256" ? 256.0 : 1024.0;
     const Eigen::Vector3d coordinate_offset{256, -256, 1024};
@@ -353,8 +357,9 @@ int main(int argc, char **argv)
     const bool gated_test = late_entity_test || late_source_test || late_close_test || late_selection_test;
 #if !defined(LUX_EDITOR_DIAGNOSTICS)
     require(!dynamic_test && !churn_test && !record_failure_test && !late_entity_test && !late_source_test &&
-                variant != "factory_failure" && variant != "view_admission" &&
-                !resource_publication_test && !workspace_failure_test && !shader_subfailure_test,
+                variant != "factory_failure" && variant != "view_admission" && !resource_publication_test &&
+                !workspace_failure_test && !shader_subfailure_test && !resource_backpressure_test &&
+                variant != "ui_atlas_failure",
             "requested variant requires the isolated diagnostic build");
 #endif
     require(!retry_test || argc == 5, "retry needs a complete recovery package");
@@ -389,10 +394,13 @@ int main(int argc, char **argv)
         auto window = std::move(*window_result);
         rendering::RendererConfig config;
         config.validation = true;
+        if (resource_backpressure_test)
+            config.control_capacity = config.upload_capacity = 2;
         if (variant == "view_failure")
             config.diagnostic_capacity = 1;
-        config.validation_message_sink = [](std::uint32_t severity, std::string_view text)
-        { std::fprintf(stderr, "Vulkan severity=%u %.*s\n", severity, int(text.size()), text.data()); };
+        config.validation_message_sink = [](std::uint32_t severity, std::string_view text) {
+            std::fprintf(stderr, "Vulkan severity=%u %.*s\n", severity, int(text.size()), text.data());
+        };
 #if defined(LUX_EDITOR_DIAGNOSTICS)
         if (variant == "factory_failure")
         {
@@ -428,14 +436,29 @@ int main(int argc, char **argv)
             std::printf("Renderer factory actual DLL allocation failures checked: %zu\n", failures);
         }
 #endif
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+        if (variant == "ui_atlas_failure")
+        {
+            auto *const original_ui = &window->uiSession();
+            lux_er1_function_ui_allocation_fail_after(0);
+            auto failed = rendering::EditorRenderer::create(window->nativeWindow(), window->uiSession(), config);
+            const auto attempts = lux_er1_function_ui_allocation_disarm();
+            require(!failed && failed.error().code == rendering::ERendererError::ALLOCATION_FAILURE && attempts == 1 &&
+                        &window->uiSession() == original_ui,
+                    "actual UI DLL atlas copy failure retains exact Renderer error and UI owner");
+            require(window->beginFrame({{1600, 900}, 1.0F / 60, {1, 1}}) && window->drawPanes() &&
+                        window->finishFrame(),
+                    "Window UI remains usable after rejected Renderer creation");
+            std::puts("UI atlas copy: actual DLL allocation rejected; Renderer ALLOCATION_FAILURE; Window retained");
+        }
+#endif
         auto renderer_result = rendering::EditorRenderer::create(window->nativeWindow(), window->uiSession(), config);
         require(renderer_result, "renderer factory");
         auto renderer = std::move(*renderer_result);
 #if defined(LUX_EDITOR_DIAGNOSTICS)
         if (variant == "view_admission")
         {
-            const auto close = [&](std::unique_ptr<rendering::RenderView> &view)
-            {
+            const auto close = [&](std::unique_ptr<rendering::RenderView> &view) {
                 require(view->beginClose(), "C06 admitted View retains close owner");
                 const auto deadline = Clock::now() + std::chrono::seconds{10};
                 for (;;)
@@ -492,8 +515,8 @@ int main(int argc, char **argv)
                 close(owner);
             require(renderer->statistics().views == 0 && renderer->statistics().render_events == 0,
                     "C06 capacity/factory failure leaves no View or backend error");
-            std::printf("C06 PASS factory_allocations=%zu capacity=%zu full_allocations=0 closed_views=0\n",
-                        failures, config.view_capacity);
+            std::printf("C06 PASS factory_allocations=%zu capacity=%zu full_allocations=0 closed_views=0\n", failures,
+                        config.view_capacity);
         }
 #endif
         for (const auto size : {0.0, -1.0, (std::numeric_limits<double>::max)(),
@@ -535,8 +558,7 @@ int main(int argc, char **argv)
                         "failed View status owns its exact backend error and full View identity");
                 require(!image && image.error().render_error.args == expected.args,
                         "failed image query does not misreport NOT_READY");
-                const auto sameFailure = [&](const rendering::RendererFailure &failure)
-                {
+                const auto sameFailure = [&](const rendering::RendererFailure &failure) {
                     const auto &original = *status.failure;
                     return failure.code == original.code && failure.render_error.type == original.render_error.type &&
                            failure.render_error.args == original.render_error.args && failure.view == original.view &&
@@ -549,10 +571,10 @@ int main(int argc, char **argv)
                     const auto after = rejected_views[i]->status();
                     const auto queried = rejected_views[i]->acquireImage();
                     const bool preserved = !resized && sameFailure(resized.error()) &&
-                        after.state == rendering::EViewState::FAILED &&
-                        after.request_sequence == status.request_sequence &&
-                        after.requested_extent == status.requested_extent && after.failure &&
-                        sameFailure(*after.failure) && !queried && sameFailure(queried.error());
+                                           after.state == rendering::EViewState::FAILED &&
+                                           after.request_sequence == status.request_sequence &&
+                                           after.requested_extent == status.requested_extent && after.failure &&
+                                           sameFailure(*after.failure) && !queried && sameFailure(queried.error());
                     failed_view_contract &= preserved;
                     std::printf("G01 view=%zu extent=%u,%u state=%u->%u sequence=%llu->%llu "
                                 "request=%llu resize_code=%d image_code=%d identity_preserved=%u\n",
@@ -568,8 +590,8 @@ int main(int argc, char **argv)
                 failed_view_contract &= camera_preserved;
                 const auto after_stats = renderer->statistics();
                 failed_view_contract &= before_stats.views == after_stats.views &&
-                    before_stats.descriptors_created == after_stats.descriptors_created &&
-                    before_stats.render_events == after_stats.render_events;
+                                        before_stats.descriptors_created == after_stats.descriptors_created &&
+                                        before_stats.render_events == after_stats.render_events;
                 std::printf("G01 camera_preserved=%u views=%zu/%zu descriptors=%llu/%llu events=%llu/%llu\n",
                             unsigned(camera_preserved), before_stats.views, after_stats.views,
                             before_stats.descriptors_created, after_stats.descriptors_created,
@@ -617,18 +639,64 @@ int main(int argc, char **argv)
         require(metadata, "actual Scene metadata");
         auto shared_meta = std::make_shared<lux::scene::SceneMetaManager>(std::move(*metadata));
         auto source = coordinate_test
-            ? examples::openCoordinateScene({1}, messages.dispatcherRef(), *renderer, (*endpoint)->port(),
-                                            shared_meta, page_size)
-            : (variant == "alternate" ? examples::openAlternateScene : examples::openDevelopmentScene)(
-                  {1}, messages.dispatcherRef(), *renderer, (*endpoint)->port(), shared_meta);
+                          ? examples::openCoordinateScene({1}, messages.dispatcherRef(), *renderer, (*endpoint)->port(),
+                                                          shared_meta, page_size)
+                          : (variant == "alternate" ? examples::openAlternateScene : examples::openDevelopmentScene)(
+                                {1}, messages.dispatcherRef(), *renderer, (*endpoint)->port(), shared_meta);
         require(source, "Scene source factory");
+        if (variant == "resolved_source")
+        {
+            auto &registry = source->scene->registry();
+            const auto entity = *registry.view<lux::simulation::ecs::Mesh3D>().begin();
+            const auto visual = registry.get<lux::simulation::ecs::Mesh3D>(entity).value;
+            const lux::scene::ResolvedMeshResources conflict{visual.material, visual.material, {}, {}};
+            registry.emplace<lux::scene::ResolvedMeshResources>(entity, conflict);
+            auto *const original_scene = source->scene.get();
+            const auto original_selection = source->initial_selection;
+            const auto before = renderer->statistics();
+            auto attempted = sessions::SceneSession::openInspection(*source);
+            const bool retained =
+                source->scene.get() == original_scene && source->initial_selection == original_selection;
+            resolved_source_contract = !attempted && retained &&
+                                       attempted.error().code == sessions::ESceneError::STALE_CONTENT &&
+                                       attempted.error().session == source->id;
+            std::printf("R01 conflicting resolved source admitted=%d input_retained=%d error=%d session=%llu "
+                        "leases=%zu->%zu views=%zu->%zu\n",
+                        bool(attempted), retained, attempted ? -1 : int(attempted.error().code), source->id.value,
+                        before.runtime_leases, renderer->statistics().runtime_leases, before.views,
+                        renderer->statistics().views);
+            if (attempted)
+            {
+                require((*attempted)->beginClose(), "R01 close previously admitted conflicting source");
+                const auto deadline = Clock::now() + std::chrono::seconds{10};
+                for (;;)
+                {
+                    const auto closed = (*attempted)->advanceClose();
+                    require(closed, "R01 preserve explicit close result");
+                    if (*closed == sessions::ECloseProgress::COMPLETE)
+                        break;
+                    require(Clock::now() < deadline && execution->drainMain(64) && renderer->poll(64),
+                            "R01 conflicting source owner cleanup");
+                }
+                attempted->reset();
+                source = examples::openDevelopmentScene({2}, messages.dispatcherRef(), *renderer, (*endpoint)->port(),
+                                                        shared_meta);
+                require(source, "R01 new independent valid source after closing rejected candidate");
+            }
+            else
+            {
+                require(retained && registry.get<lux::scene::ResolvedMeshResources>(entity) == conflict,
+                        "R01 failure leaves Scene content and caller ownership intact");
+                registry.remove<lux::scene::ResolvedMeshResources>(entity);
+            }
+        }
         if (coordinate_test)
         {
             auto &registry = source->scene->registry();
             for (const auto entity : registry.view<lux::simulation::ecs::Transform3D>())
                 if (!registry.all_of<lux::simulation::ecs::Parent>(entity))
-                    registry.patch<lux::simulation::ecs::Transform3D>(entity,
-                        [&](auto &value) { value.translation += coordinate_offset; });
+                    registry.patch<lux::simulation::ecs::Transform3D>(
+                        entity, [&](auto &value) { value.translation += coordinate_offset; });
         }
         if (resource_publication_test)
         {
@@ -672,8 +740,8 @@ int main(int argc, char **argv)
         // Diagnostic variants are prepared before transferring the source into its authoritative Session.
         if (variant == "dim")
             for (const auto entity : source->scene->registry().view<lux::simulation::ecs::Light3D>())
-                source->scene->registry().patch<lux::simulation::ecs::Light3D>(entity, [](auto &value)
-                                                                               { value.value.intensity *= 0.15F; });
+                source->scene->registry().patch<lux::simulation::ecs::Light3D>(
+                    entity, [](auto &value) { value.value.intensity *= 0.15F; });
         if (variant == "no_mesh")
             source->scene->registry().clear<lux::simulation::ecs::Mesh3D>();
         if (variant == "empty")
@@ -687,6 +755,85 @@ int main(int argc, char **argv)
         require(session_result && !source->scene, "Scene source transfer");
         auto session = std::move(*session_result);
 #if defined(LUX_EDITOR_DIAGNOSTICS)
+        if (resource_backpressure_test)
+        {
+            const sessions::SceneOwnerUpdate first{++prepared_cycles, 0};
+            require(session->updateAtOwnerSafePoint(first), "R09 start real asset reads");
+            require(session->advanceScene(first), "R09 finish initial Scene cycle before pausing consumer");
+            require(window->beginFrame({{1600, 900}, 1.0F / 60, {1, 1}}) && window->drawPanes(),
+                    "R09 prepare an actual UI frame to finish the current backend tick");
+            auto wake_snapshot = window->finishFrame();
+            require(wake_snapshot, "R09 capture real UI wake frame");
+            auto wake_packet = renderer->sealFrame(*wake_snapshot, {});
+            require(wake_packet, "R09 seal real UI wake frame");
+            require(rendering::detail::RendererTestAccess::pauseConsumer(*renderer, true), "R09 request pause");
+            const auto deadline = Clock::now() + std::chrono::seconds{15};
+            while (!rendering::detail::RendererTestAccess::consumerPaused(*renderer))
+            {
+                if (wake_packet->valid())
+                    require(renderer->trySubmitFrame(*wake_packet), "R09 admit actual wake packet");
+                require(Clock::now() < deadline && renderer->poll(64), "R09 consumer reaches actual tick boundary");
+                std::this_thread::yield();
+            }
+            while (!sessions::detail::SceneTestAccess::resourceReadsSettled(*session))
+            {
+                require(Clock::now() < deadline && execution->drainMain(64), "R09 actual provider replies complete");
+                std::this_thread::yield();
+            }
+            static_cast<void>(sessions::detail::SceneTestAccess::resourceBackpressure(true));
+            const sessions::SceneOwnerUpdate full{++prepared_cycles, 0};
+            require(session->updateAtOwnerSafePoint(full), "R09 full queues retain retryable resource preparation");
+            auto snapshot = session->readResources();
+            require(snapshot && (*snapshot)->rows.size() == 3, "R09 all authoritative resource identities retained");
+            backpressured_resources = *snapshot;
+            const auto pressure = sessions::detail::SceneTestAccess::resourceBackpressure();
+            require(pressure.control > 0 && pressure.upload > 0 && !renderer->controlAvailable(),
+                    "R09 real Control ring and Upload admission both exhaust capacity");
+            for (const auto &row : backpressured_resources->rows)
+                require(row.state == sessions::ESceneResourceState::UPLOADING && !row.upload_failure &&
+                            !row.asset_failure && row.render_failure.ok(),
+                        "R09 backpressure is not resource failure");
+            std::printf("R09 actual pressure control=%zu upload=%zu capacity=2 rows=%zu consumer_paused=1\n",
+                        pressure.control, pressure.upload, backpressured_resources->rows.size());
+            require(session->advanceScene(full), "R09 finish the prepared Scene cycle");
+            if (backpressure_close)
+            {
+                auto *const retained = session.get();
+                require(session->beginClose(), "R09 close under actual resource queue pressure");
+                for (unsigned step = 0; step < 8; ++step)
+                {
+                    const auto closed = session->advanceClose();
+                    require(closed && *closed == sessions::ECloseProgress::PENDING && session.get() == retained,
+                            "R09 unfinished close returns PENDING and preserves its owner");
+                }
+                std::puts("R09 closing while consumer paused: eight PENDING results; same Session owner retained");
+            }
+            require(rendering::detail::RendererTestAccess::pauseConsumer(*renderer, false), "R09 resume real consumer");
+            if (backpressure_close)
+            {
+                const auto close_deadline = Clock::now() + std::chrono::seconds{15};
+                for (;;)
+                {
+                    require(execution->drainMain(64) && renderer->poll(64), "R09 advance actual resource replies");
+                    const auto closed = session->advanceClose();
+                    require(closed, "R09 preserve original close failure if any");
+                    if (*closed == sessions::ECloseProgress::COMPLETE)
+                        break;
+                    require(Clock::now() < close_deadline, "R09 actual backpressure close completes");
+                }
+                session.reset();
+                require(renderer->statistics().runtime_leases == 0,
+                        "R09 Scene runtime and resources release both leases");
+                source = examples::openDevelopmentScene({2}, messages.dispatcherRef(), *renderer, (*endpoint)->port(),
+                                                        shared_meta);
+                require(source, "R09 independent Scene after completing pressure close");
+                auto reopened = sessions::SceneSession::openInspection(*source);
+                require(reopened, "R09 same Renderer admits subsequent real Scene");
+                session = std::move(*reopened);
+                prepared_cycles = 0;
+                std::puts("R09 pressure close COMPLETE; resource lease released; independent Scene admitted");
+            }
+        }
         if (shader_subfailure_test)
             sessions::detail::SceneTestAccess::failShaderInfoAfterMeshUpload();
         if (resource_publication_test)
@@ -694,14 +841,15 @@ int main(int argc, char **argv)
             ResourceObserver observer(messages.dispatcherRef());
             observer.session = session.get();
             auto connection = session->observe<sessions::SceneSession::resourcesChanged, &ResourceObserver::changed,
-                                              lux::object::EDelivery::DIRECT>(observer);
+                                               lux::object::EDelivery::DIRECT>(observer);
             require(connection, "G02 real direct resource observer");
             require(session->updateAtOwnerSafePoint({++prepared_cycles, 0}), "G02 publish initial READING snapshot");
             auto initial = session->readResources();
-            require(initial && (*initial)->rows.size() == 2 &&
-                        std::all_of((*initial)->rows.begin(), (*initial)->rows.end(), [](const auto &row)
-                            { return row.state == sessions::ESceneResourceState::READING; }),
-                    "G02 real reads held before owner accepts any completion");
+            require(
+                initial && (*initial)->rows.size() == 2 &&
+                    std::all_of((*initial)->rows.begin(), (*initial)->rows.end(),
+                                [](const auto &row) { return row.state == sessions::ESceneResourceState::READING; }),
+                "G02 real reads held before owner accepts any completion");
             const auto deadline = Clock::now() + std::chrono::seconds{10};
             if (resource_ready_test)
             {
@@ -767,8 +915,8 @@ int main(int argc, char **argv)
                 sessions::detail::SceneTestAccess::failNextShaderPreparation();
             const auto notices_before = observer.calls;
             const auto failed = session->updateAtOwnerSafePoint({++prepared_cycles, 0});
-            const auto allocations = resource_snapshot_test ? lux_er1_scene_allocation_disarm()
-                                                            : lux_er1_client_allocation_disarm();
+            const auto allocations =
+                resource_snapshot_test ? lux_er1_scene_allocation_disarm() : lux_er1_client_allocation_disarm();
             require(!failed && failed.error().code == sessions::ESceneError::ALLOCATION_FAILURE &&
                         failed.error().session == session->id() && allocations == 1,
                     "G02 exact real client shader preparation allocation failure contained by Scene owner");
@@ -790,16 +938,17 @@ int main(int argc, char **argv)
                             "G02 actual failed provider identity retained by resource owner");
                     found_failure = true;
                     resource_publication_contract &= visible.state == row.state && visible.key == row.key &&
-                        visible.asset_failure && visible.asset_failure->code == row.asset_failure->code;
+                                                     visible.asset_failure &&
+                                                     visible.asset_failure->code == row.asset_failure->code;
                 }
                 if (resource_ready_test && row.state == sessions::ESceneResourceState::READY)
                 {
                     found_failure = true;
                     resource_publication_contract &= visible.state == row.state && visible.key == row.key;
                 }
-                std::printf("G02 row=%zu owner_state=%u published_state=%u request=%llu revision=%llu->%llu\n",
-                            index, unsigned(row.state), unsigned(visible.state), row.key.sequence,
-                            (*initial)->revision, (*published)->revision);
+                std::printf("G02 row=%zu owner_state=%u published_state=%u request=%llu revision=%llu->%llu\n", index,
+                            unsigned(row.state), unsigned(visible.state), row.key.sequence, (*initial)->revision,
+                            (*published)->revision);
             }
             require(found_failure, "G02 required failure or READY transition occurred before preparation OOM");
             resource_publication_contract &= (*published)->revision > (*initial)->revision;
@@ -812,8 +961,8 @@ int main(int argc, char **argv)
                             (*owner_after_retry)->rows[index].state == (*actual)->rows[index].state,
                         "G02 retry publishes pending changes without a new row transition");
             require(session->updateAtOwnerSafePoint({++prepared_cycles, 0}), "G02 static owner cycle");
-            resource_publication_contract &= session->readResources()->get() == published->get() &&
-                observer.calls == notices_before + 1;
+            resource_publication_contract &=
+                session->readResources()->get() == published->get() && observer.calls == notices_before + 1;
             std::printf("G02 allocation_attempts=%zu publication_preserved=%u views=%zu leases=%zu\n", allocations,
                         unsigned(resource_publication_contract), renderer->statistics().views,
                         renderer->statistics().runtime_leases);
@@ -823,8 +972,7 @@ int main(int argc, char **argv)
         std::unique_ptr<sessions::SceneView> separate_view;
         rendering::PixelExtent separate_extent =
             multiple_equal ? rendering::PixelExtent{1014, 593} : rendering::PixelExtent{256, 256};
-        const auto open_second = [&]
-        {
+        const auto open_second = [&] {
             auto opened = sessions::SceneView::create(messages.dispatcherRef(), *session, *renderer);
             require(opened, "independent second SceneView of the same Session");
             separate_view = std::move(*opened);
@@ -855,8 +1003,7 @@ int main(int argc, char **argv)
 #if defined(LUX_EDITOR_DIAGNOSTICS)
         if (workspace_failure_test)
         {
-            const auto closeProbe = [&](std::unique_ptr<ui::SceneWorkspace> &probe)
-            {
+            const auto closeProbe = [&](std::unique_ptr<ui::SceneWorkspace> &probe) {
                 require(probe->beginClose(), "G04 probe retains close owner");
                 const auto deadline = Clock::now() + std::chrono::seconds{10};
                 for (;;)
@@ -929,16 +1076,14 @@ int main(int argc, char **argv)
             require(failure && failure->session == (*closing_view)->sessionId() && failure->renderer &&
                         failure->renderer->code == rendering::ERendererError::STOPPING,
                     "viewport retains exact failed extent action and its Session/render error");
-            std::thread foreign_pane(
-                [&]
-                {
-                    viewport.consumeInput({}, 0.016, {1, 1});
-                    viewport.cancelCapture();
-                    viewport.releaseFrameImages();
-                    require(viewport.frameImages().empty() && viewport.actionFailure() &&
-                                viewport.actionFailure()->code == sessions::ESceneError::WRONG_THREAD,
-                            "foreign Pane calls cannot borrow local state or overwrite its action error");
-                });
+            std::thread foreign_pane([&] {
+                viewport.consumeInput({}, 0.016, {1, 1});
+                viewport.cancelCapture();
+                viewport.releaseFrameImages();
+                require(viewport.frameImages().empty() && viewport.actionFailure() &&
+                            viewport.actionFailure()->code == sessions::ESceneError::WRONG_THREAD,
+                        "foreign Pane calls cannot borrow local state or overwrite its action error");
+            });
             foreign_pane.join();
             require(viewport.actionFailure()->renderer->code == rendering::ERendererError::STOPPING &&
                         viewport.actionFailure()->session == failure->session,
@@ -1147,17 +1292,14 @@ int main(int argc, char **argv)
                               [](const auto &row) { return row.state == sessions::ESceneResourceState::READY; });
             const bool ready =
                 (churn_test && ready_count == 3) ||
-                (!churn_test && std::all_of((*resources)->rows.begin(), (*resources)->rows.end(),
-                                            [&](const auto &row)
-                                            {
-                                                return row.state == sessions::ESceneResourceState::READY ||
-                                                       (shader_subfailure_test && row.backend_status == 1 &&
-                                                        row.state == sessions::ESceneResourceState::FAILED) ||
-                                                       (resource_publication_test && row.asset_failure &&
-                                                        row.state == sessions::ESceneResourceState::FAILED) ||
-                                                       (dynamic_test && phase >= 3 &&
-                                                        row.state == sessions::ESceneResourceState::SUPERSEDED);
-                                            }));
+                (!churn_test && std::all_of((*resources)->rows.begin(), (*resources)->rows.end(), [&](const auto &row) {
+                    return row.state == sessions::ESceneResourceState::READY ||
+                           (shader_subfailure_test && row.backend_status == 1 &&
+                            row.state == sessions::ESceneResourceState::FAILED) ||
+                           (resource_publication_test && row.asset_failure &&
+                            row.state == sessions::ESceneResourceState::FAILED) ||
+                           (dynamic_test && phase >= 3 && row.state == sessions::ESceneResourceState::SUPERSEDED);
+                }));
             if (churn_test)
                 require((*resources)->rows.size() <= 6, "bounded resource ledger while replacing identities");
             else if (has_mesh && !(dynamic_test && phase >= 3) && !late_entity_test && !late_source_test)
@@ -1259,12 +1401,10 @@ int main(int argc, char **argv)
             {
                 const auto original_images = workspace->frameImages();
                 const auto original_texture = original_images.front().texture;
-                std::thread foreign_images(
-                    [&]
-                    {
-                        require(workspace->frameImages().empty(), "foreign Workspace cannot borrow live frame images");
-                        workspace->releaseFrameImages();
-                    });
+                std::thread foreign_images([&] {
+                    require(workspace->frameImages().empty(), "foreign Workspace cannot borrow live frame images");
+                    workspace->releaseFrameImages();
+                });
                 foreign_images.join();
                 require(workspace->frameImages().data() == original_images.data() &&
                             workspace->frameImages().size() == original_images.size() &&
@@ -1280,8 +1420,8 @@ int main(int argc, char **argv)
                     coordinate_contract &= wire.coordinate_page_size == page_size;
                     for (std::size_t axis = 0; axis < 3; ++axis)
                     {
-                        const auto decoded = wire.render_origin.page_delta[axis] * page_size +
-                                             wire.render_origin.local[axis];
+                        const auto decoded =
+                            wire.render_origin.page_delta[axis] * page_size + wire.render_origin.local[axis];
                         coordinate_contract &= std::abs(decoded - camera_record->camera.origin[axis]) < 0.001;
                     }
                     std::printf("G03 scene_page=%.0f wire_page=%.0f page=%d,%d,%d local=%.3f,%.3f,%.3f valid=%u\n",
@@ -1491,22 +1631,36 @@ int main(int argc, char **argv)
             const auto resources = session->readResources();
             require(resources, "R06 public resource failure");
             const auto row = std::find_if((*resources)->rows.begin(), (*resources)->rows.end(),
-                                         [&](const auto &value) { return value.key == *key; });
+                                          [&](const auto &value) { return value.key == *key; });
             require(row != (*resources)->rows.end() && row->state == sessions::ESceneResourceState::FAILED &&
                         row->backend_status == 1 && !row->asset_failure && row->render_failure.ok(),
                     "R06 exact ShaderCompiledReply backend status retained with its resource identity");
             const auto outline = session->readOutline();
             require(outline, "R06 authoritative Scene outline");
             const auto entity = std::find_if((*outline)->rows.begin(), (*outline)->rows.end(),
-                                            [&](const auto &value) { return value.target == key->target; });
+                                             [&](const auto &value) { return value.target == key->target; });
             require(entity != (*outline)->rows.end() && !entity->resources_ready &&
                         sessions::detail::SceneTestAccess::liveResourceHandles(*session, *key) == 0,
                     "R06 failed shader never adopts a partial resolved mesh and releases all sibling handles");
             require(session->advanceScene(update), "R06 complete owner cycle");
             std::printf("R06 PASS mesh_ready_before_shader_failure=1 resource_sequence=%llu backend_status=1 "
-                        "remaining_handles_and_requests=0\n", key->sequence);
+                        "remaining_handles_and_requests=0\n",
+                        key->sequence);
         }
 #endif
+        if (resource_backpressure_test && !backpressure_close)
+        {
+            const auto ready = session->readResources();
+            require(ready && backpressured_resources && (*ready)->rows.size() == backpressured_resources->rows.size(),
+                    "R09 recovery preserves resource count");
+            for (const auto &old : backpressured_resources->rows)
+                require(std::any_of((*ready)->rows.begin(), (*ready)->rows.end(),
+                                    [&](const auto &row) {
+                                        return row.key == old.key && row.state == sessions::ESceneResourceState::READY;
+                                    }),
+                        "R09 same admitted identities finish actual uploads and render");
+            std::puts("R09 recovery complete: same resource keys READY after real Control/Upload saturation");
+        }
         if (record_failure_test)
         {
             require(failed_packet_sequence != 0, "failure packet was actually sealed");
@@ -1725,7 +1879,8 @@ int main(int argc, char **argv)
         require(stats.views == 0 && stats.runtime_leases == 0 && stats.accepted_frames == 0, "terminal owners");
         require(stats.slots == 3 && stats.descriptors_created == stats.descriptors_retired,
                 "FIF and descriptor retirement");
-        std::printf("ER1 GPU PASS variant=%s cycles=%llu frames=%llu gpu_completed=%llu descriptors=%llu/%llu\n",
+        std::printf("ER1 GPU render/retirement subcheck complete variant=%s cycles=%llu frames=%llu "
+                    "gpu_completed=%llu descriptors=%llu/%llu\n",
                     argv[3], cycle, stats.frames, stats.gpu_completed, stats.descriptors_created,
                     stats.descriptors_retired);
         renderer.reset();
@@ -1758,4 +1913,11 @@ int main(int argc, char **argv)
         std::fputs("G04 FAIL: Workspace lost original Scene failure; all owners closed\n", stderr);
         return 1;
     }
+    if (!resolved_source_contract)
+    {
+        std::fputs("R01 FAIL: conflicting resolved source admitted; all owners closed\n", stderr);
+        return 1;
+    }
+    std::printf("ER1 GPU PASS variant=%s all business and shutdown checks complete\n", argv[3]);
+    return 0;
 }

@@ -15,6 +15,7 @@ namespace lux::editor::sessions::detail
         thread_local bool hold_resource_adoption{};
         thread_local bool fail_shader_info_after_mesh{};
         thread_local std::optional<ResourceRequestKey> failed_shader_key;
+        thread_local SceneTestAccess::ResourceBackpressure backpressure;
 #endif
         auto fail(ESceneError code, SessionId id) noexcept
         {
@@ -71,6 +72,13 @@ namespace lux::editor::sessions::detail
         }
     } // namespace
 #if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+    SceneTestAccess::ResourceBackpressure SceneTestAccess::resourceBackpressure(bool reset) noexcept
+    {
+        const auto result = backpressure;
+        if (reset)
+            backpressure = {};
+        return result;
+    }
     void SceneTestAccess::failNextShaderPreparation() noexcept
     {
         fail_shader_preparation = true;
@@ -115,8 +123,7 @@ namespace lux::editor::sessions::detail
     }
     void ResourceRequest::acceptReplies() noexcept
     {
-        const auto accept = [this](auto &request, auto &handle, auto field)
-        {
+        const auto accept = [this](auto &request, auto &handle, auto field) {
             if (!request.valid() || !request.isReady())
                 return;
             const auto result = request.tryResult();
@@ -159,11 +166,15 @@ namespace lux::editor::sessions::detail
         row.state = ESceneResourceState::UPLOADING;
         const auto mesh_ops = runtime.features().ops<lux::render::MeshStackOperationIds>("StandardMeshStack");
         const auto material_ops = runtime.features().ops<lux::render::MaterialOperationIds>("StandardMaterial");
-        const auto failedUpload = [this](auto error)
-        {
+        const auto failedUpload = [this](auto error) {
             if (error == lux::render::ERenderUploadSubmitError::QUEUE_FULL ||
                 error == lux::render::ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED)
+            {
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+                ++backpressure.upload;
+#endif
                 return;
+            }
             row.upload_failure = error;
             row.state = ESceneResourceState::FAILED;
         };
@@ -183,6 +194,11 @@ namespace lux::editor::sessions::detail
             return;
 #endif
         const auto &material_data = material_read->value->data();
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+        if ((!forward.isValid() && !forward_request.valid()) || (!gbuffer.isValid() && !gbuffer_request.valid()))
+            if (!renderer.controlAvailable())
+                ++backpressure.control;
+#endif
         if (!forward.isValid() && !forward_request.valid() && renderer.controlAvailable())
         {
             auto info = lux::rdesc::ShaderInfo::serialize(material_data.forward_info);
@@ -271,6 +287,7 @@ namespace lux::editor::sessions::detail
         : session_(id), port_(std::move(port)), renderer_(renderer), capacity_(capacity)
     {
         requests_.reserve(capacity);
+        current_requests_.reserve(capacity);
     }
     SceneResources::~SceneResources() noexcept
     {
@@ -280,15 +297,15 @@ namespace lux::editor::sessions::detail
 #if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
     bool SceneResources::readsSettled() const noexcept
     {
-        return !requests_.empty() && std::all_of(requests_.begin(), requests_.end(), [](const auto &request)
-            { return readDone(*request->mesh_read) && readDone(*request->material_read); });
+        return !requests_.empty() && std::all_of(requests_.begin(), requests_.end(), [](const auto &request) {
+            return readDone(*request->mesh_read) && readDone(*request->material_read);
+        });
     }
     bool SceneResources::readyForAdoption() const noexcept
     {
-        return std::any_of(requests_.begin(), requests_.end(), [](const auto &request)
-        {
+        return std::any_of(requests_.begin(), requests_.end(), [](const auto &request) {
             return request->row.state == ESceneResourceState::UPLOADING && request->mesh.isValid() &&
-                request->material.isValid();
+                   request->material.isValid();
         });
     }
     std::size_t SceneResources::liveHandles(const ResourceRequestKey &key) const noexcept
@@ -296,8 +313,8 @@ namespace lux::editor::sessions::detail
         for (const auto &request : requests_)
             if (request->row.key == key)
                 return std::size_t(request->mesh.isValid()) + request->material.isValid() + request->forward.isValid() +
-                    request->gbuffer.isValid() + request->mesh_request.valid() + request->material_request.valid() +
-                    request->forward_request.valid() + request->gbuffer_request.valid();
+                       request->gbuffer.isValid() + request->mesh_request.valid() + request->material_request.valid() +
+                       request->forward_request.valid() + request->gbuffer_request.valid();
         return 0;
     }
 #endif
@@ -335,6 +352,9 @@ namespace lux::editor::sessions::detail
                 const bool current = visual && visual->value.mesh == key.mesh && visual->value.material == key.material;
                 if (current)
                     continue;
+                const auto association = current_requests_.find(key.target.entity);
+                if (association != current_requests_.end() && association->second == request.get())
+                    current_requests_.erase(association);
                 changed |= request->row.state != ESceneResourceState::SUPERSEDED;
                 request->row.state = ESceneResourceState::SUPERSEDED;
                 if (registry.valid(key.target.entity))
@@ -345,33 +365,30 @@ namespace lux::editor::sessions::detail
                 }
                 request->releaseStep(*renderer_, runtime_);
             }
-            const auto removed = std::erase_if(requests_,
-                                               [](const auto &request)
-                                               {
-                                                   return request->row.state == ESceneResourceState::SUPERSEDED &&
-                                                          request->settled() && !request->mesh.isValid() &&
-                                                          !request->material.isValid() && !request->forward.isValid() &&
-                                                          !request->gbuffer.isValid();
-                                               });
+            const auto removed = std::erase_if(requests_, [](const auto &request) {
+                return request->row.state == ESceneResourceState::SUPERSEDED && request->settled() &&
+                       !request->mesh.isValid() && !request->material.isValid() && !request->forward.isValid() &&
+                       !request->gbuffer.isValid();
+            });
             changed |= removed != 0;
             for (const auto entity : registry.view<lux::simulation::ecs::Mesh3D>())
             {
                 const auto &visual = registry.get<lux::simulation::ecs::Mesh3D>(entity).value;
-                const auto found = std::find_if(requests_.begin(), requests_.end(),
-                                                [&](const auto &request)
-                                                {
-                                                    const auto &key = request->row.key;
-                                                    return key.target.entity == entity && key.mesh == visual.mesh &&
-                                                           key.material == visual.material &&
-                                                           request->row.state != ESceneResourceState::SUPERSEDED;
-                                                });
-                if (found != requests_.end())
+                const auto found = current_requests_.find(entity);
+                if (found != current_requests_.end())
+                {
+                    const auto &key = found->second->row.key;
+                    const bool matches = key.mesh == visual.mesh && key.material == visual.material &&
+                                         found->second->row.state != ESceneResourceState::SUPERSEDED;
+                    if (!matches)
+                        return fail(ESceneError::STALE_CONTENT, session_);
                     continue;
+                }
                 if (requests_.size() == capacity_)
                 {
-                    const bool reclaiming =
-                        std::any_of(requests_.begin(), requests_.end(), [](const auto &request)
-                                    { return request->row.state == ESceneResourceState::SUPERSEDED; });
+                    const bool reclaiming = std::any_of(requests_.begin(), requests_.end(), [](const auto &request) {
+                        return request->row.state == ESceneResourceState::SUPERSEDED;
+                    });
                     // Let presentation/retirement progress while obsolete slots are still owned.
                     if (reclaiming)
                         continue;
@@ -381,6 +398,9 @@ namespace lux::editor::sessions::detail
                     return fail(ESceneError::RESOURCE_FAILURE, session_);
                 auto request = std::make_unique<ResourceRequest>(
                     ResourceRequestKey{{session_, entity}, visual.mesh, visual.material, sequence_ + 1});
+                // Finish all allocating preparation before admission/start. The entries vector was reserved
+                // at construction and remains below capacity; moving unique_ptr into it cannot fail.
+                current_requests_.emplace(entity, request.get());
                 requests_.push_back(std::move(request));
                 ++sequence_;
                 requests_.back()->start(tasks_, port_);
@@ -435,8 +455,9 @@ namespace lux::editor::sessions::detail
     {
         if (!renderer_ || retirement_pending_)
             return {};
-        const auto needs_marker = [&](const auto &request)
-        { return request->adopted && !request->retired_program_consumed && (all || terminal(request->row.state)); };
+        const auto needs_marker = [&](const auto &request) {
+            return request->adopted && !request->retired_program_consumed && (all || terminal(request->row.state));
+        };
         if (std::none_of(requests_.begin(), requests_.end(), needs_marker))
             return {};
         try
@@ -472,13 +493,10 @@ namespace lux::editor::sessions::detail
                 return;
             retirement_pending_ = false;
         }
-        const bool awaiting_consumption =
-            std::any_of(requests_.begin(), requests_.end(),
-                        [](const auto &request)
-                        {
-                            return request->retired_program_consumed &&
-                                   !request->retired_program_consumed->load(std::memory_order_acquire);
-                        });
+        const bool awaiting_consumption = std::any_of(requests_.begin(), requests_.end(), [](const auto &request) {
+            return request->retired_program_consumed &&
+                   !request->retired_program_consumed->load(std::memory_order_acquire);
+        });
         if (awaiting_consumption)
         {
             // One empty StateUpdate advances slot retirement without replacing the last UI draw or
@@ -509,10 +527,14 @@ namespace lux::editor::sessions::detail
             return fail(ESceneError::RESOURCE_FAILURE, session_);
         try
         {
+            const auto association = current_requests_.find(key.target.entity);
+            if (association == current_requests_.end() || association->second != found->get())
+                return fail(ESceneError::STALE_CONTENT, session_);
             auto next = key;
             next.sequence = sequence_ + 1;
             auto replacement = std::make_unique<ResourceRequest>(next);
             *found = std::move(replacement);
+            association->second = found->get();
             ++sequence_;
             (*found)->start(tasks_, port_);
             pending_change_ = true;
@@ -570,6 +592,7 @@ namespace lux::editor::sessions::detail
             }
             if (!tasks_.done.load(std::memory_order_acquire))
                 return false;
+            current_requests_.clear();
             requests_.clear();
             runtime_ = {};
             closed_ = true;

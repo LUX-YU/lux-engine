@@ -10,6 +10,9 @@
 #include <limits>
 #include <mutex>
 #include <new>
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+#include <lux/engine/editor/rendering/detail/RendererTestAccess.hpp>
+#endif
 
 namespace lux::editor::rendering
 {
@@ -220,8 +223,7 @@ namespace lux::editor::rendering
             impl->upload_client = lux::render::RenderUploadClient::bind(impl->upload_queue, &UploadQueue::submit);
             impl->programs->setErrorEventHandler(
                 [stats = thread.statistics](const auto &batch) { stats->dropped += batch.dropped; },
-                [owner = impl.get()](const auto &event)
-                {
+                [owner = impl.get()](const auto &event) {
                     owner->thread.statistics->events += event.occurrences;
                     owner->recordDiagnostic({{ERendererError::DEVICE_FAILURE, event.error},
                                              event.scene_index,
@@ -231,10 +233,18 @@ namespace lux::editor::rendering
                                              false});
                 });
             auto font = lux::ui::detail::captureUiFontAtlas(ui);
+            if (!font)
+            {
+                const auto code = font.error() == lux::ui::EUiInitError::ALLOCATION_FAILURE
+                                      ? ERendererError::ALLOCATION_FAILURE
+                                      : (font.error() == lux::ui::EUiInitError::WRONG_THREAD
+                                             ? ERendererError::WRONG_THREAD : ERendererError::INVALID_ARGUMENT);
+                return fail(code);
+            }
             // Allocate the final owner before starting the worker. After startup, adopting the thread cannot fail.
             auto result = std::unique_ptr<EditorRenderer>(new EditorRenderer(std::move(impl)));
             result->impl_->joined = true;
-            auto started = detail::startRendererThread(result->impl_->thread, window, std::move(font), config);
+            auto started = detail::startRendererThread(result->impl_->thread, window, std::move(*font), config);
             if (!started)
                 return lux::cxx::unexpected(started.error());
             result->impl_->worker = std::move(*started);
@@ -334,9 +344,9 @@ namespace lux::editor::rendering
         if (!scene.isValid() || !config.sampled || config.extent.width > 16384 || config.extent.height > 16384)
             return fail(ERendererError::INVALID_ARGUMENT);
         const bool invalid_page_size = !std::isfinite(config.coordinate_page_size) ||
-            config.coordinate_page_size <= 0 ||
-            config.coordinate_page_size > (std::numeric_limits<float>::max)() ||
-            static_cast<float>(config.coordinate_page_size) <= 0;
+                                       config.coordinate_page_size <= 0 ||
+                                       config.coordinate_page_size > (std::numeric_limits<float>::max)() ||
+                                       static_cast<float>(config.coordinate_page_size) <= 0;
         if (invalid_page_size)
             return fail(ERendererError::INVALID_ARGUMENT);
         const auto slot = std::find(impl_->views.begin(), impl_->views.end(), nullptr);
@@ -548,6 +558,10 @@ namespace lux::editor::rendering
         if (auto check = impl_->check(); !check)
             return check;
         impl_->closing = true;
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+        impl_->thread.pause_requested.store(false, std::memory_order_release);
+        impl_->thread.pause_requested.notify_all();
+#endif
         impl_->upload_queue->stop();
         return {};
     }
@@ -630,4 +644,24 @@ namespace lux::editor::rendering
     {
         return impl_->thread.catalog;
     }
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+    RenderResult<void> detail::RendererTestAccess::pauseConsumer(EditorRenderer &renderer, bool paused) noexcept
+    {
+        if (auto checked = renderer.impl_->check(); !checked)
+            return checked;
+        auto &thread = renderer.impl_->thread;
+        if (renderer.impl_->closing || thread.stopped.load(std::memory_order_acquire))
+            return fail(ERendererError::STOPPING);
+        thread.pause_requested.store(paused, std::memory_order_release);
+        thread.pause_requested.notify_all();
+        thread.sync->notifyRequestStateChanged();
+        return {};
+    }
+    bool detail::RendererTestAccess::consumerPaused(const EditorRenderer &renderer) noexcept
+    {
+        if (renderer.impl_->owner != std::this_thread::get_id())
+            return false;
+        return renderer.impl_->thread.pause_reached.load(std::memory_order_acquire);
+    }
+#endif
 } // namespace lux::editor::rendering

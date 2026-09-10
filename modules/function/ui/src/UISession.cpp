@@ -1,11 +1,15 @@
 #include <lux/engine/ui/UISession.hpp>
 
 #include <imgui.h>
+#if defined(LUX_UI_FAILURE_DIAGNOSTICS)
+#include <SelectedTextTrace.hpp>
+#endif
 
 #include <algorithm>
 #include <cstring>
 #include <cmath>
 #include <mutex>
+#include <limits>
 #include <thread>
 #include <type_traits>
 #include <utility>
@@ -14,6 +18,7 @@
 #include <lux/engine/ui/detail/UiContract.hpp>
 #include <lux/engine/ui/detail/ImGuiContextLease.hpp>
 #include <lux/engine/ui/detail/UISessionPresentationAccess.hpp>
+#include <lux/engine/ui/detail/FontValidation.hpp>
 
 namespace lux::ui
 {
@@ -24,39 +29,39 @@ namespace lux::ui
             std::recursive_mutex imgui_context_mutex;
         }
 
-        ImGuiContextLease::ImGuiContextLease(void* context) noexcept
+        ImGuiContextLease::ImGuiContextLease(void *context) noexcept
         {
             imgui_context_mutex.lock();
             previous_ = ImGui::GetCurrentContext();
-            ImGui::SetCurrentContext(static_cast<ImGuiContext*>(context));
+            ImGui::SetCurrentContext(static_cast<ImGuiContext *>(context));
         }
 
         ImGuiContextLease::~ImGuiContextLease()
         {
-            ImGui::SetCurrentContext(static_cast<ImGuiContext*>(previous_));
+            ImGui::SetCurrentContext(static_cast<ImGuiContext *>(previous_));
             imgui_context_mutex.unlock();
         }
 
         struct SessionControl final
         {
-            explicit SessionControl(UISession* value) noexcept
+            explicit SessionControl(UISession *value) noexcept
                 : session(value), owner(std::this_thread::get_id()), owner_token(currentUiThreadToken())
             {
             }
 
-            UISession* session{nullptr};
+            UISession *session{nullptr};
             const std::thread::id owner;
-            const void* const owner_token;
+            const void *const owner_token;
         };
 
         struct PaneStateAccess final
         {
-            static void setFocused(Pane& pane, bool focused)
+            static void setFocused(Pane &pane, bool focused)
             {
                 pane.setFocused(focused);
             }
 
-            static void setHovered(Pane& pane, bool hovered) noexcept
+            static void setHovered(Pane &pane, bool hovered) noexcept
             {
                 pane.setHovered(hovered);
             }
@@ -104,9 +109,9 @@ namespace lux::ui
             return ImVec4{value.red, value.green, value.blue, value.alpha};
         }
 
-        void applyTheme(const Theme& theme) noexcept
+        void applyTheme(const Theme &theme) noexcept
         {
-            auto& style = ImGui::GetStyle();
+            auto &style = ImGui::GetStyle();
             style.WindowPadding = {theme.spacing.panel_padding.x, theme.spacing.panel_padding.y};
             style.FramePadding = {theme.spacing.item.x, theme.spacing.compact.y};
             style.ItemSpacing = {theme.spacing.item.x, theme.spacing.item.y};
@@ -149,39 +154,72 @@ namespace lux::ui
         {
             switch (key)
             {
-            case EKey::A: return ImGuiKey_A;
-            case EKey::B: return ImGuiKey_B;
-            case EKey::C: return ImGuiKey_C;
-            case EKey::D: return ImGuiKey_D;
-            case EKey::E: return ImGuiKey_E;
-            case EKey::F: return ImGuiKey_F;
-            case EKey::G: return ImGuiKey_G;
-            case EKey::H: return ImGuiKey_H;
-            case EKey::I: return ImGuiKey_I;
-            case EKey::J: return ImGuiKey_J;
-            case EKey::K: return ImGuiKey_K;
-            case EKey::L: return ImGuiKey_L;
-            case EKey::M: return ImGuiKey_M;
-            case EKey::N: return ImGuiKey_N;
-            case EKey::O: return ImGuiKey_O;
-            case EKey::P: return ImGuiKey_P;
-            case EKey::Q: return ImGuiKey_Q;
-            case EKey::R: return ImGuiKey_R;
-            case EKey::S: return ImGuiKey_S;
-            case EKey::T: return ImGuiKey_T;
-            case EKey::U: return ImGuiKey_U;
-            case EKey::V: return ImGuiKey_V;
-            case EKey::W: return ImGuiKey_W;
-            case EKey::X: return ImGuiKey_X;
-            case EKey::Y: return ImGuiKey_Y;
-            case EKey::Z: return ImGuiKey_Z;
-            case EKey::LEFT_SHIFT: return ImGuiKey_LeftShift;
-            case EKey::RIGHT_SHIFT: return ImGuiKey_RightShift;
-            case EKey::LEFT_CONTROL: return ImGuiKey_LeftCtrl;
-            case EKey::RIGHT_CONTROL: return ImGuiKey_RightCtrl;
-            case EKey::LEFT_ALT: return ImGuiKey_LeftAlt;
-            case EKey::RIGHT_ALT: return ImGuiKey_RightAlt;
-            case EKey::COUNT: return ImGuiKey_None;
+            case EKey::A:
+                return ImGuiKey_A;
+            case EKey::B:
+                return ImGuiKey_B;
+            case EKey::C:
+                return ImGuiKey_C;
+            case EKey::D:
+                return ImGuiKey_D;
+            case EKey::E:
+                return ImGuiKey_E;
+            case EKey::F:
+                return ImGuiKey_F;
+            case EKey::G:
+                return ImGuiKey_G;
+            case EKey::H:
+                return ImGuiKey_H;
+            case EKey::I:
+                return ImGuiKey_I;
+            case EKey::J:
+                return ImGuiKey_J;
+            case EKey::K:
+                return ImGuiKey_K;
+            case EKey::L:
+                return ImGuiKey_L;
+            case EKey::M:
+                return ImGuiKey_M;
+            case EKey::N:
+                return ImGuiKey_N;
+            case EKey::O:
+                return ImGuiKey_O;
+            case EKey::P:
+                return ImGuiKey_P;
+            case EKey::Q:
+                return ImGuiKey_Q;
+            case EKey::R:
+                return ImGuiKey_R;
+            case EKey::S:
+                return ImGuiKey_S;
+            case EKey::T:
+                return ImGuiKey_T;
+            case EKey::U:
+                return ImGuiKey_U;
+            case EKey::V:
+                return ImGuiKey_V;
+            case EKey::W:
+                return ImGuiKey_W;
+            case EKey::X:
+                return ImGuiKey_X;
+            case EKey::Y:
+                return ImGuiKey_Y;
+            case EKey::Z:
+                return ImGuiKey_Z;
+            case EKey::LEFT_SHIFT:
+                return ImGuiKey_LeftShift;
+            case EKey::RIGHT_SHIFT:
+                return ImGuiKey_RightShift;
+            case EKey::LEFT_CONTROL:
+                return ImGuiKey_LeftCtrl;
+            case EKey::RIGHT_CONTROL:
+                return ImGuiKey_RightCtrl;
+            case EKey::LEFT_ALT:
+                return ImGuiKey_LeftAlt;
+            case EKey::RIGHT_ALT:
+                return ImGuiKey_RightAlt;
+            case EKey::COUNT:
+                return ImGuiKey_None;
             case EKey::NONE:
                 return ImGuiKey_None;
             case EKey::TAB:
@@ -216,12 +254,32 @@ namespace lux::ui
 
     struct UISession::Impl final
     {
-        Impl(UISession* value, Theme theme_value) noexcept : owner(value), theme(std::move(theme_value))
+        Impl(UISession *value, Theme theme_value) : owner(value), theme(std::move(theme_value))
         {
         }
 
-        UISession* owner{nullptr};
-        ImGuiContext* context{nullptr};
+        ~Impl()
+        {
+            // This owner also runs when UISession construction has not completed.
+            // Destroy the context before any font backing/ranges owned by Impl are released.
+            std::lock_guard lock{detail::imgui_context_mutex};
+            if (context)
+            {
+                auto *previous = ImGui::GetCurrentContext();
+                if (previous == context)
+                    previous = nullptr;
+                ImGui::DestroyContext(context);
+                ImGui::SetCurrentContext(previous);
+            }
+        }
+
+        UISession *owner{nullptr};
+        ImGuiContext *context{nullptr};
+        std::vector<std::uint8_t> font_bytes;
+        std::vector<ImWchar> font_ranges;
+        UiTextInputAnchor backend_anchor, captured_anchor;
+        std::uint64_t frame_sequence{};
+        bool window_focused{true};
         Theme theme;
         lux::object::ObjectMessageQueue messages;
         CommandRouter command_router;
@@ -245,27 +303,27 @@ namespace lux::ui
         bool frame_open{false};
         std::optional<SplitLayout> split_layout;
 
-        [[nodiscard]] static PaneHandle handle(const PaneRecord& record)
+        [[nodiscard]] static PaneHandle handle(const PaneRecord &record)
         {
             return {record.token, record.lifetime};
         }
 
-        [[nodiscard]] static Pane* resolve(const PaneHandle& pane) noexcept
+        [[nodiscard]] static Pane *resolve(const PaneHandle &pane) noexcept
         {
             return pane ? pane.lifetime.getAsOnCurrent<Pane>() : nullptr;
         }
 
-        [[nodiscard]] static Pane* resolve(PaneRecord& record) noexcept
+        [[nodiscard]] static Pane *resolve(PaneRecord &record) noexcept
         {
             if (record.tombstone)
                 return nullptr;
-            auto* pane = record.lifetime.getAsOnCurrent<Pane>();
+            auto *pane = record.lifetime.getAsOnCurrent<Pane>();
             if (!pane)
                 record.tombstone = true;
             return pane;
         }
 
-        [[nodiscard]] PaneRecord* findPane(std::uint64_t token) noexcept
+        [[nodiscard]] PaneRecord *findPane(std::uint64_t token) noexcept
         {
             const auto active = std::ranges::find(panes, token, &PaneRecord::token);
             if (active != panes.end())
@@ -274,7 +332,7 @@ namespace lux::ui
             return pending == pending_panes.end() ? nullptr : std::addressof(*pending);
         }
 
-        [[nodiscard]] const PaneRecord* findPane(std::uint64_t token) const noexcept
+        [[nodiscard]] const PaneRecord *findPane(std::uint64_t token) const noexcept
         {
             const auto active = std::ranges::find(panes, token, &PaneRecord::token);
             if (active != panes.end())
@@ -283,21 +341,21 @@ namespace lux::ui
             return pending == pending_panes.end() ? nullptr : std::addressof(*pending);
         }
 
-        [[nodiscard]] Pane* resolveRegistered(const PaneHandle& pane) noexcept
+        [[nodiscard]] Pane *resolveRegistered(const PaneHandle &pane) noexcept
         {
-            auto* record = findPane(pane.token);
+            auto *record = findPane(pane.token);
             return record ? resolve(*record) : nullptr;
         }
 
-        [[nodiscard]] Pane* resolveRegistered(const PaneHandle& pane) const noexcept
+        [[nodiscard]] Pane *resolveRegistered(const PaneHandle &pane) const noexcept
         {
-            const auto* record = findPane(pane.token);
+            const auto *record = findPane(pane.token);
             return record && !record->tombstone ? pane.lifetime.getAsOnCurrent<Pane>() : nullptr;
         }
 
         void compactPaneRecords()
         {
-            const auto dead = [](const PaneRecord& record) { return record.tombstone || record.lifetime.expired(); };
+            const auto dead = [](const PaneRecord &record) { return record.tombstone || record.lifetime.expired(); };
             std::erase_if(panes, dead);
             std::erase_if(pending_panes, dead);
         }
@@ -305,7 +363,7 @@ namespace lux::ui
         void publishPendingPanes()
         {
             compactPaneRecords();
-            for (auto& record : pending_panes)
+            for (auto &record : pending_panes)
             {
                 if (!record.tombstone && record.lifetime.alive())
                     panes.push_back(std::move(record));
@@ -315,14 +373,14 @@ namespace lux::ui
 
         void compactFactories()
         {
-            std::erase_if(factories, [](const FactoryRecord& record) { return record.tombstone; });
-            std::erase_if(pending_factories, [](const FactoryRecord& record) { return record.tombstone; });
+            std::erase_if(factories, [](const FactoryRecord &record) { return record.tombstone; });
+            std::erase_if(pending_factories, [](const FactoryRecord &record) { return record.tombstone; });
         }
 
         void publishPendingFactories()
         {
             compactFactories();
-            for (auto& record : pending_factories)
+            for (auto &record : pending_factories)
             {
                 if (!record.tombstone)
                     factories.push_back(std::move(record));
@@ -330,8 +388,8 @@ namespace lux::ui
             pending_factories.clear();
         }
 
-        [[nodiscard]] static bool
-        sameContexts(const std::vector<UiContextId>& owned, std::span<const UiContextIdView> views) noexcept
+        [[nodiscard]] static bool sameContexts(const std::vector<UiContextId> &owned,
+                                               std::span<const UiContextIdView> views) noexcept
         {
             if (owned.size() != views.size())
                 return false;
@@ -357,7 +415,7 @@ namespace lux::ui
 
         void rebuildFocusedContexts()
         {
-            auto* focused = resolveRegistered(focused_pane);
+            auto *focused = resolveRegistered(focused_pane);
             if (!focused)
                 focused_pane.reset();
 
@@ -366,10 +424,8 @@ namespace lux::ui
             const auto append_unique = [&](UiContextIdView context) {
                 if (!context.isValid())
                     return;
-                const auto found = std::ranges::find_if(focused_context_ids, [context](const UiContextId& value) {
-                    return value.view() == context;
-                }
-                );
+                const auto found = std::ranges::find_if(
+                    focused_context_ids, [context](const UiContextId &value) { return value.view() == context; });
                 if (found == focused_context_ids.end())
                 {
                     focused_context_ids.emplace_back(context.name());
@@ -389,7 +445,7 @@ namespace lux::ui
             append_unique(kGlobalContext);
 
             focused_contexts.reserve(focused_context_ids.size());
-            for (const auto& context : focused_context_ids)
+            for (const auto &context : focused_context_ids)
                 focused_contexts.push_back(context.view());
             owner->updateCommandRoute(focused, focused_contexts);
         }
@@ -402,7 +458,7 @@ namespace lux::ui
             focused_pane.reset();
             focused_local_context_ids.clear();
             rebuildFocusedContexts();
-            if (auto* pane = resolve(previous))
+            if (auto *pane = resolve(previous))
                 detail::PaneStateAccess::setFocused(*pane, false);
         }
 
@@ -423,12 +479,12 @@ namespace lux::ui
 
             if (pane_changed)
             {
-                if (auto* old_pane = resolve(previous))
+                if (auto *old_pane = resolve(previous))
                     detail::PaneStateAccess::setFocused(*old_pane, false);
 
                 if (focused_pane.token != pane.token)
                     return;
-                auto* new_pane = resolveRegistered(focused_pane);
+                auto *new_pane = resolveRegistered(focused_pane);
                 if (!new_pane)
                 {
                     clearFocus();
@@ -444,23 +500,23 @@ namespace lux::ui
                 pane.reset();
             if (hovered_pane.token == pane.token)
                 return;
-            if (auto* previous = resolve(hovered_pane))
+            if (auto *previous = resolve(hovered_pane))
                 detail::PaneStateAccess::setHovered(*previous, false);
             hovered_pane = pane;
-            if (auto* current = resolveRegistered(hovered_pane))
+            if (auto *current = resolveRegistered(hovered_pane))
                 detail::PaneStateAccess::setHovered(*current, true);
         }
     };
 
-    Frame::Frame(UISession& session) noexcept : session_(&session)
+    Frame::Frame(UISession &session) noexcept : session_(&session)
     {
     }
 
-    Frame::Frame(Frame&& other) noexcept : session_(std::exchange(other.session_, nullptr))
+    Frame::Frame(Frame &&other) noexcept : session_(std::exchange(other.session_, nullptr))
     {
     }
 
-    Frame& Frame::operator=(Frame&& other) noexcept
+    Frame &Frame::operator=(Frame &&other) noexcept
     {
         if (this != std::addressof(other))
         {
@@ -490,7 +546,7 @@ namespace lux::ui
         session_ = nullptr;
     }
 
-    const Theme& Frame::theme() const noexcept
+    const Theme &Frame::theme() const noexcept
     {
         if (session_ == nullptr)
             detail::failUiContract();
@@ -502,12 +558,12 @@ namespace lux::ui
     {
     }
 
-    PaneRegistration::PaneRegistration(PaneRegistration&& other) noexcept
+    PaneRegistration::PaneRegistration(PaneRegistration &&other) noexcept
         : control_(std::move(other.control_)), token_(std::exchange(other.token_, 0))
     {
     }
 
-    PaneRegistration& PaneRegistration::operator=(PaneRegistration&& other) noexcept
+    PaneRegistration &PaneRegistration::operator=(PaneRegistration &&other) noexcept
     {
         if (this != std::addressof(other))
         {
@@ -537,20 +593,18 @@ namespace lux::ui
         control_.reset();
     }
 
-    PaneFactoryRegistration::PaneFactoryRegistration(
-        std::weak_ptr<detail::SessionControl> control,
-        std::uint64_t token
-    ) noexcept
+    PaneFactoryRegistration::PaneFactoryRegistration(std::weak_ptr<detail::SessionControl> control,
+                                                     std::uint64_t token) noexcept
         : control_(std::move(control)), token_(token)
     {
     }
 
-    PaneFactoryRegistration::PaneFactoryRegistration(PaneFactoryRegistration&& other) noexcept
+    PaneFactoryRegistration::PaneFactoryRegistration(PaneFactoryRegistration &&other) noexcept
         : control_(std::move(other.control_)), token_(std::exchange(other.token_, 0))
     {
     }
 
-    PaneFactoryRegistration& PaneFactoryRegistration::operator=(PaneFactoryRegistration&& other) noexcept
+    PaneFactoryRegistration &PaneFactoryRegistration::operator=(PaneFactoryRegistration &&other) noexcept
     {
         if (this != std::addressof(other))
         {
@@ -580,27 +634,98 @@ namespace lux::ui
         control_.reset();
     }
 
-    UISession::UISession(UISessionCreateInfo info)
-        : impl_(std::make_unique<Impl>(this, std::move(info.theme))),
-          control_(std::make_shared<detail::SessionControl>(this))
+    UISession::UISession(UISessionCreateInfo info) : UISession(info, UninitializedTag{})
     {
-        auto* previous = ImGui::GetCurrentContext();
+        // Legacy default construction has no caller-supplied font validation failures.
+        // Standard allocation exceptions retain their existing construction boundary.
+        const auto initialized = initialize(nullptr);
+        if (!initialized)
+            detail::failUiContract();
+    }
+
+    UISession::UISession(const UISessionCreateInfo &info, UninitializedTag)
+        : impl_(std::make_unique<Impl>(this, info.theme)), control_(std::make_shared<detail::SessionControl>(this))
+    {
+    }
+
+    lux::cxx::expected<std::unique_ptr<UISession>, EUiInitError> UISession::create(const UISessionCreateInfo &info,
+                                                                                   const UiFontSource *font) noexcept
+    {
+        if (font)
+            if (const auto valid = detail::validateFont(*font); !valid)
+                return lux::cxx::unexpected(valid.error());
+        try
+        {
+            auto result = std::unique_ptr<UISession>(new UISession(info, UninitializedTag{}));
+            if (const auto initialized = result->initialize(font); !initialized)
+                return lux::cxx::unexpected(initialized.error());
+            return result;
+        }
+        catch (const std::bad_alloc &)
+        {
+            return lux::cxx::unexpected(EUiInitError::ALLOCATION_FAILURE);
+        }
+    }
+
+    lux::cxx::expected<void, EUiInitError> UISession::initialize(const UiFontSource *font)
+    {
+        std::lock_guard lock{detail::imgui_context_mutex};
+        ScopedImGuiContext restore{ImGui::GetCurrentContext()};
         impl_->context = ImGui::CreateContext();
         {
             ScopedImGuiContext context{impl_->context};
-            unsigned char* pixels = nullptr;
+            auto &platform = ImGui::GetPlatformIO();
+            platform.Platform_ImeUserData = impl_.get();
+            // Replace the default native callback; generic UI never invokes an OS IME API.
+            platform.Platform_SetImeDataFn = [](ImGuiContext *, ImGuiViewport *viewport, ImGuiPlatformImeData *data) {
+                auto &state = *static_cast<Impl *>(ImGui::GetPlatformIO().Platform_ImeUserData);
+                state.backend_anchor = {};
+                if (!viewport || viewport != ImGui::GetMainViewport())
+                    return;
+                state.backend_anchor.caret = {data->InputPos.x - viewport->Pos.x, data->InputPos.y - viewport->Pos.y};
+                state.backend_anchor.line_height = data->InputLineHeight;
+                state.backend_anchor.want_visible = data->WantVisible;
+                state.backend_anchor.valid = data->WantVisible;
+            };
+            auto *atlas = ImGui::GetIO().Fonts;
+            if (font)
+            {
+                impl_->font_bytes = font->bytes;
+                impl_->font_ranges.reserve(font->ranges.size() * 2 + 1);
+                for (const auto range : font->ranges)
+                {
+                    impl_->font_ranges.push_back(static_cast<ImWchar>(range.first));
+                    impl_->font_ranges.push_back(static_cast<ImWchar>(range.last));
+                }
+                impl_->font_ranges.push_back(0);
+                ImFontConfig config;
+                config.FontDataOwnedByAtlas = false;
+                config.FontNo = static_cast<int>(font->face);
+                config.OversampleH = config.OversampleV = 1;
+                atlas->TexDesiredWidth = 4096;
+                if (!atlas->AddFontFromMemoryTTF(impl_->font_bytes.data(), static_cast<int>(impl_->font_bytes.size()),
+                                                 font->size_pixels, &config, impl_->font_ranges.data()))
+                    return lux::cxx::unexpected(EUiInitError::ATLAS_FAILURE);
+            }
+            if (!atlas->Build())
+                return lux::cxx::unexpected(EUiInitError::ATLAS_FAILURE);
+            const bool valid_extent =
+                atlas->TexWidth > 0 && atlas->TexHeight > 0 && atlas->TexWidth <= 8192 && atlas->TexHeight <= 8192;
+            if (!valid_extent || std::uint64_t(atlas->TexWidth) * atlas->TexHeight * 4 > 64U * 1024U * 1024U)
+                return lux::cxx::unexpected(EUiInitError::ATLAS_LIMIT);
+            unsigned char *pixels = nullptr;
             int width = 0;
             int height = 0;
             ImGui::GetIO().Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
             applyTheme(impl_->theme);
         }
-        ImGui::SetCurrentContext(previous);
         impl_->focused_contexts.reserve(8);
         impl_->focused_local_context_ids.reserve(8);
         impl_->focused_context_ids.reserve(8);
         impl_->frame_context_scratch.reserve(8);
         impl_->frame_focused_contexts.reserve(8);
         impl_->rebuildFocusedContexts();
+        return {};
     }
 
     UISession::~UISession()
@@ -610,21 +735,15 @@ namespace lux::ui
         impl_->clearFocus();
         impl_->commitHover({});
         impl_->messages.close();
-        auto* previous = ImGui::GetCurrentContext();
-        if (previous == impl_->context)
-            previous = nullptr;
-        ImGui::SetCurrentContext(impl_->context);
-        ImGui::DestroyContext(impl_->context);
-        ImGui::SetCurrentContext(previous);
     }
 
-    void
-    UISession::updateCommandRoute(lux::object::LuxObject* activation_scope, std::span<const UiContextIdView> contexts)
+    void UISession::updateCommandRoute(lux::object::LuxObject *activation_scope,
+                                       std::span<const UiContextIdView> contexts)
     {
         impl_->command_router.updateRoute(activation_scope, contexts);
     }
 
-    lux::cxx::expected<PaneRegistration, EUiRegistrationError> UISession::registerPane(Pane& pane)
+    lux::cxx::expected<PaneRegistration, EUiRegistrationError> UISession::registerPane(Pane &pane)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         if (!pane.id().isValid())
@@ -633,7 +752,7 @@ namespace lux::ui
         }
         if (!impl_->frame_open)
             impl_->compactPaneRecords();
-        const auto duplicate_id = [&](const PaneRecord& record) {
+        const auto duplicate_id = [&](const PaneRecord &record) {
             return !record.tombstone && record.lifetime.alive() && record.id.view() == pane.id().view();
         };
         if (std::ranges::any_of(impl_->panes, duplicate_id) || std::ranges::any_of(impl_->pending_panes, duplicate_id))
@@ -662,7 +781,7 @@ namespace lux::ui
         }
         if (impl_->factory_call_depth == 0)
             impl_->compactFactories();
-        const auto duplicate_type = [&](const FactoryRecord& record) {
+        const auto duplicate_type = [&](const FactoryRecord &record) {
             return !record.tombstone && record.factory.type == factory.type;
         };
         if (std::ranges::any_of(impl_->factories, duplicate_type) ||
@@ -682,18 +801,17 @@ namespace lux::ui
     std::unique_ptr<Pane> UISession::createPane(PaneTypeIdView type, PaneId id)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
-        const auto found = std::ranges::find_if(impl_->factories, [&](const FactoryRecord& record) {
+        const auto found = std::ranges::find_if(impl_->factories, [&](const FactoryRecord &record) {
             return !record.tombstone && record.factory.type.view() == type;
-        }
-        );
+        });
         if (found == impl_->factories.end())
             return {};
 
         struct FactoryCallScope final
         {
-            Impl* impl;
+            Impl *impl;
 
-            explicit FactoryCallScope(Impl& value) noexcept : impl(&value)
+            explicit FactoryCallScope(Impl &value) noexcept : impl(&value)
             {
                 ++impl->factory_call_depth;
             }
@@ -709,13 +827,13 @@ namespace lux::ui
         return found->factory.create(impl_->messages.dispatcherRef(), std::move(id));
     }
 
-    CommandRouter& UISession::commandRouter() noexcept
+    CommandRouter &UISession::commandRouter() noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         return impl_->command_router;
     }
 
-    const CommandRouter& UISession::commandRouter() const noexcept
+    const CommandRouter &UISession::commandRouter() const noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         return impl_->command_router;
@@ -732,20 +850,19 @@ namespace lux::ui
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         if (!impl_->frame_open)
             impl_->compactPaneRecords();
-        const auto found = std::ranges::find_if(impl_->panes, [&](const PaneRecord& record) {
+        const auto found = std::ranges::find_if(impl_->panes, [&](const PaneRecord &record) {
             return !record.tombstone && record.id.view() == pane && record.lifetime.alive();
-        }
-        );
+        });
         if (found == impl_->panes.end())
             return false;
-        auto* resolved = found->lifetime.getAsOnCurrent<Pane>();
+        auto *resolved = found->lifetime.getAsOnCurrent<Pane>();
         if (!resolved || !resolved->visible())
             return false;
         impl_->pending_focus = Impl::handle(*found);
         return true;
     }
 
-    Pane* UISession::focusedPane() const noexcept
+    Pane *UISession::focusedPane() const noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         return impl_->resolveRegistered(impl_->focused_pane);
@@ -757,13 +874,13 @@ namespace lux::ui
         return impl_->focused_contexts;
     }
 
-    void UISession::feedInput(const UiInputEvent& event)
+    void UISession::feedInput(const UiInputEvent &event)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         ScopedImGuiContext context{impl_->context};
-        auto& io = ImGui::GetIO();
+        auto &io = ImGui::GetIO();
         std::visit(
-            [&](const auto& value) {
+            [&](const auto &value) {
                 using Value = std::remove_cvref_t<decltype(value)>;
                 if constexpr (std::same_as<Value, UiPointerMove>)
                 {
@@ -785,15 +902,22 @@ namespace lux::ui
                 }
                 else if constexpr (std::same_as<Value, UiText>)
                 {
+#if defined(LUX_UI_FAILURE_DIAGNOSTICS)
+                    auto *font = io.Fonts->Fonts[0];
+                    diagnostics::traceCodepoint("UiText", static_cast<unsigned>(value.codepoint),
+                                                font->FindGlyphNoFallback(static_cast<ImWchar>(value.codepoint)) !=
+                                                    nullptr);
+#endif
                     io.AddInputCharacter(static_cast<unsigned int>(value.codepoint));
                 }
                 else if constexpr (std::same_as<Value, UiWindowFocus>)
                 {
+                    impl_->window_focused = value.focused;
+                    impl_->captured_anchor = {};
                     io.AddFocusEvent(value.focused);
                 }
             },
-            event
-        );
+            event);
     }
 
     Frame UISession::beginFrame(FrameInfo info)
@@ -801,6 +925,9 @@ namespace lux::ui
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         if (impl_->frame_open)
             detail::failUiContract();
+        impl_->captured_anchor = {};
+        if (impl_->frame_sequence != (std::numeric_limits<std::uint64_t>::max)())
+            ++impl_->frame_sequence;
         ScopedImGuiContext context{impl_->context};
         impl_->publishPendingPanes();
         static_cast<void>(impl_->messages.dispatchPending());
@@ -813,7 +940,7 @@ namespace lux::ui
         {
             impl_->commitHover({});
         }
-        auto& io = ImGui::GetIO();
+        auto &io = ImGui::GetIO();
         io.DisplaySize = {info.display_size.width, info.display_size.height};
         io.DeltaTime = info.delta_seconds;
         io.DisplayFramebufferScale = {info.framebuffer_scale.x, info.framebuffer_scale.y};
@@ -822,41 +949,47 @@ namespace lux::ui
         return Frame{*this};
     }
 
-    void UISession::drawPanes(Frame& frame)
+    void UISession::drawPanes(Frame &frame)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         if (!impl_->frame_open || frame.session_ != this)
             detail::failUiContract();
         ScopedImGuiContext context{impl_->context};
-        struct Placement { std::string_view id; ImVec2 position; ImVec2 size; };
+        struct Placement
+        {
+            std::string_view id;
+            ImVec2 position;
+            ImVec2 size;
+        };
         std::array<Placement, 5> placements{};
         if (impl_->split_layout)
         {
-            auto& layout = *impl_->split_layout;
+            auto &layout = *impl_->split_layout;
             const auto size = ImGui::GetIO().DisplaySize;
             const float top = layout.toolbar.empty() ? 0 : 38.0F;
-            const auto visible = [&](const std::string& id) {
-                for (auto& record : impl_->panes)
+            const auto visible = [&](const std::string &id) {
+                for (auto &record : impl_->panes)
                 {
-                    const auto* pane = Impl::resolve(record);
+                    const auto *pane = Impl::resolve(record);
                     if (pane && pane->id().name() == id)
                         return pane->visible();
                 }
                 return false;
             };
-            const float left = size.x >= 700 && visible(layout.left) ?
-                std::clamp(layout.left_width, 160.0F, size.x * 0.3F) : 0;
-            const float right = size.x >= 1000 && visible(layout.right) ?
-                std::clamp(layout.right_width, 220.0F, size.x * 0.35F) : 0;
-            const float bottom = size.y >= 450 && visible(layout.bottom) ?
-                std::clamp(layout.bottom_height, 100.0F, size.y * 0.4F) : 0;
-            const auto splitter = [&](const char* id, ImVec2 pos, ImVec2 extent, bool vertical, float& value) {
+            const float left =
+                size.x >= 700 && visible(layout.left) ? std::clamp(layout.left_width, 160.0F, size.x * 0.3F) : 0;
+            const float right =
+                size.x >= 1000 && visible(layout.right) ? std::clamp(layout.right_width, 220.0F, size.x * 0.35F) : 0;
+            const float bottom =
+                size.y >= 450 && visible(layout.bottom) ? std::clamp(layout.bottom_height, 100.0F, size.y * 0.4F) : 0;
+            const auto splitter = [&](const char *id, ImVec2 pos, ImVec2 extent, bool vertical, float &value) {
                 ImGui::SetNextWindowPos(pos);
                 ImGui::SetNextWindowSize(extent);
                 ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{0, 0});
                 ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2{1, 1});
-                ImGui::Begin(id, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav);
+                ImGui::Begin(id, nullptr,
+                             ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav);
                 ImGui::InvisibleButton("##split", extent);
                 if (ImGui::IsItemActive())
                     value += vertical ? ImGui::GetIO().MouseDelta.x : ImGui::GetIO().MouseDelta.y;
@@ -885,22 +1018,21 @@ namespace lux::ui
             }
             const float center_x = left > 0 ? left + 5 : 0;
             const float upper_height = std::max(0.0F, size.y - bottom - (bottom > 0 ? 5 : 0));
-            placements = {{
-                {layout.left, {0, top}, {left, std::max(0.0F, upper_height - top)}},
-                {layout.center, {center_x, top},
-                    {std::max(0.0F, size.x - center_x - right - (right > 0 ? 5 : 0)),
-                    std::max(0.0F, upper_height - top)}},
-                {layout.right, {size.x - right, top}, {right, std::max(0.0F, upper_height - top)}},
-                {layout.bottom, {0, size.y - bottom}, {size.x, bottom}},
-                {layout.toolbar, {0, 0}, {size.x, top}}
-            }};
+            placements = {{{layout.left, {0, top}, {left, std::max(0.0F, upper_height - top)}},
+                           {layout.center,
+                            {center_x, top},
+                            {std::max(0.0F, size.x - center_x - right - (right > 0 ? 5 : 0)),
+                             std::max(0.0F, upper_height - top)}},
+                           {layout.right, {size.x - right, top}, {right, std::max(0.0F, upper_height - top)}},
+                           {layout.bottom, {0, size.y - bottom}, {size.x, bottom}},
+                           {layout.toolbar, {0, 0}, {size.x, top}}}};
         }
         PaneHandle focused_candidate;
         PaneHandle hovered_candidate;
         impl_->frame_focused_contexts.clear();
-        for (auto& record : impl_->panes)
+        for (auto &record : impl_->panes)
         {
-            auto* pane = Impl::resolve(record);
+            auto *pane = Impl::resolve(record);
             if (!pane)
                 continue;
             const auto current = Impl::handle(record);
@@ -913,7 +1045,7 @@ namespace lux::ui
             bool visible = true;
             ImGuiWindowFlags flags = 0;
             bool collapsed_by_layout = false;
-            for (const auto& placement : placements)
+            for (const auto &placement : placements)
             {
                 if (placement.id.empty() || pane->id().name() != placement.id)
                     continue;
@@ -952,7 +1084,10 @@ namespace lux::ui
                     if (std::exchange(open, false))
                         ImGui::End();
                 }
-                ~PaneWindowScope() noexcept { finish(); }
+                ~PaneWindowScope() noexcept
+                {
+                    finish();
+                }
             } window_scope;
             if (shown)
             {
@@ -986,7 +1121,7 @@ namespace lux::ui
         impl_->commitHover(hovered_candidate);
     }
 
-    void UISession::endFrame(Frame& frame) noexcept
+    void UISession::endFrame(Frame &frame) noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         if (!impl_->frame_open || frame.session_ != this)
@@ -997,7 +1132,7 @@ namespace lux::ui
         impl_->compactPaneRecords();
     }
 
-    const Theme& UISession::theme() const noexcept
+    const Theme &UISession::theme() const noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         return impl_->theme;
@@ -1008,7 +1143,7 @@ namespace lux::ui
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         ScopedImGuiContext context{impl_->context};
         std::size_t size = 0;
-        const char* data = ImGui::SaveIniSettingsToMemory(&size);
+        const char *data = ImGui::SaveIniSettingsToMemory(&size);
         std::vector<std::byte> bytes(size);
         if (size != 0)
             std::memcpy(bytes.data(), data, size);
@@ -1020,7 +1155,7 @@ namespace lux::ui
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         ScopedImGuiContext context{impl_->context};
         UiInputSnapshot result;
-        const auto& io = ImGui::GetIO();
+        const auto &io = ImGui::GetIO();
         for (std::size_t index = 1; index < result.held.size(); ++index)
         {
             const auto key = toImGuiKey(static_cast<EKey>(index));
@@ -1046,14 +1181,14 @@ namespace lux::ui
         impl_->split_layout = std::move(layout);
     }
 
-    lux::cxx::expected<void, ELayoutError> UISession::validateSplitLayout(const SplitLayout& layout) const noexcept
+    lux::cxx::expected<void, ELayoutError> UISession::validateSplitLayout(const SplitLayout &layout) const noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
-        const std::array<std::string_view, 5> ids{
-            layout.left, layout.center, layout.right, layout.bottom, layout.toolbar};
+        const std::array<std::string_view, 5> ids{layout.left, layout.center, layout.right, layout.bottom,
+                                                  layout.toolbar};
         const bool valid_dimensions = std::isfinite(layout.left_width) && layout.left_width >= 0 &&
-            std::isfinite(layout.right_width) && layout.right_width >= 0 &&
-            std::isfinite(layout.bottom_height) && layout.bottom_height >= 0;
+                                      std::isfinite(layout.right_width) && layout.right_width >= 0 &&
+                                      std::isfinite(layout.bottom_height) && layout.bottom_height >= 0;
         if (!valid_dimensions || layout.center.empty())
             return lux::cxx::unexpected(ELayoutError::INVALID_DATA);
         for (std::size_t index = 0; index < ids.size(); ++index)
@@ -1062,7 +1197,7 @@ namespace lux::ui
                 continue;
             if (std::find(ids.begin(), ids.begin() + index, ids[index]) != ids.begin() + index)
                 return lux::cxx::unexpected(ELayoutError::INVALID_DATA);
-            const auto matches = [&](const auto& record) {
+            const auto matches = [&](const auto &record) {
                 return !record.tombstone && record.id.name() == ids[index] && record.lifetime.alive();
             };
             if (!std::any_of(impl_->panes.begin(), impl_->panes.end(), matches) &&
@@ -1078,7 +1213,7 @@ namespace lux::ui
         impl_->split_layout.reset();
     }
 
-    lux::cxx::expected<void, ELayoutError> UISession::restoreLayout(const LayoutSnapshot& snapshot)
+    lux::cxx::expected<void, ELayoutError> UISession::restoreLayout(const LayoutSnapshot &snapshot)
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
         const auto bytes = snapshot.bytes();
@@ -1087,14 +1222,14 @@ namespace lux::ui
             return lux::cxx::unexpected<ELayoutError>{ELayoutError::INVALID_DATA};
         }
         ScopedImGuiContext context{impl_->context};
-        ImGui::LoadIniSettingsFromMemory(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        ImGui::LoadIniSettingsFromMemory(reinterpret_cast<const char *>(bytes.data()), bytes.size());
         return {};
     }
 
     void UISession::unregisterPane(std::uint64_t token) noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
-        auto* found = impl_->findPane(token);
+        auto *found = impl_->findPane(token);
         if (!found || found->tombstone)
             return;
         found->tombstone = true;
@@ -1111,7 +1246,7 @@ namespace lux::ui
     void UISession::unregisterFactory(std::uint64_t token) noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
-        const auto mark = [token](std::vector<FactoryRecord>& records) {
+        const auto mark = [token](std::vector<FactoryRecord> &records) {
             const auto found = std::ranges::find(records, token, &FactoryRecord::token);
             if (found != records.end())
                 found->tombstone = true;
@@ -1128,7 +1263,7 @@ namespace lux::ui
         return impl_->wrapper_growth_count;
     }
 
-    const void* UISession::contextIdentityForTest() const noexcept
+    const void *UISession::contextIdentityForTest() const noexcept
     {
         return impl_->context;
     }
@@ -1138,6 +1273,7 @@ namespace lux::ui
     {
         if (std::this_thread::get_id() != control_->owner)
             return lux::cxx::unexpected(EUiCaptureError::WRONG_THREAD);
+        impl_->captured_anchor = {};
         if (impl_->frame_open)
             return lux::cxx::unexpected(EUiCaptureError::FRAME_OPEN);
         try
@@ -1147,35 +1283,55 @@ namespace lux::ui
             snapshot.captureCurrent();
             if (!snapshot.valid())
                 return lux::cxx::unexpected(EUiCaptureError::NO_FRAME);
+            if (impl_->window_focused && impl_->frame_sequence != (std::numeric_limits<std::uint64_t>::max)())
+            {
+                impl_->captured_anchor = impl_->backend_anchor;
+                impl_->captured_anchor.frame = impl_->frame_sequence;
+            }
             return snapshot;
         }
-        catch (const std::bad_alloc&)
+        catch (const std::bad_alloc &)
         {
             return lux::cxx::unexpected(EUiCaptureError::ALLOCATION_FAILURE);
         }
     }
 
-    detail::UiFontAtlasSnapshot detail::UISessionPresentationAccess::captureFontAtlas(UISession& session)
+    UiTextInputAnchor UISession::textInputAnchor() const noexcept
     {
-        LUX_UI_CHECK_OWNER(session.control_->owner, session.control_->owner_token);
-        ScopedImGuiContext context{session.impl_->context};
-        unsigned char* pixels{};
-        int width{};
-        int height{};
-        ImGui::GetIO().Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        UiFontAtlasSnapshot result;
-        result.width = width;
-        result.height = height;
-        result.context = session.impl_->context;
-        if (pixels != nullptr && width > 0 && height > 0)
-        {
-            const auto size = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4U;
-            result.pixels.assign(pixels, pixels + size);
-        }
-        return result;
+        if (std::this_thread::get_id() != control_->owner)
+            return {};
+        return impl_->frame_open ? UiTextInputAnchor{} : impl_->captured_anchor;
     }
 
-    detail::UiFontAtlasSnapshot detail::captureUiFontAtlas(UISession& session)
+    detail::UiFontAtlasResult detail::UISessionPresentationAccess::captureFontAtlas(UISession &session) noexcept
+    {
+        if (std::this_thread::get_id() != session.control_->owner)
+            return lux::cxx::unexpected(EUiInitError::WRONG_THREAD);
+        try
+        {
+            ScopedImGuiContext context{session.impl_->context};
+            const auto* atlas = ImGui::GetIO().Fonts;
+            // initialize() completed the only atlas build. Capturing cannot trigger a hidden rebuild.
+            if (!atlas->TexPixelsRGBA32 || !atlas->TexReady || atlas->TexWidth <= 0 || atlas->TexHeight <= 0)
+                return lux::cxx::unexpected(EUiInitError::ATLAS_FAILURE);
+            const auto size = std::uint64_t(atlas->TexWidth) * atlas->TexHeight * 4U;
+            if (size > 64U * 1024U * 1024U)
+                return lux::cxx::unexpected(EUiInitError::ATLAS_LIMIT);
+            UiFontAtlasSnapshot result;
+            result.width = atlas->TexWidth;
+            result.height = atlas->TexHeight;
+            result.context = session.impl_->context;
+            const auto *pixels = reinterpret_cast<const std::uint8_t *>(atlas->TexPixelsRGBA32);
+            result.pixels.assign(pixels, pixels + size);
+            return result;
+        }
+        catch (const std::bad_alloc&)
+        {
+            return lux::cxx::unexpected(EUiInitError::ALLOCATION_FAILURE);
+        }
+    }
+
+    detail::UiFontAtlasResult detail::captureUiFontAtlas(UISession &session) noexcept
     {
         return UISessionPresentationAccess::captureFontAtlas(session);
     }

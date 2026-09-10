@@ -170,7 +170,7 @@ namespace
         }
         assert(directory.empty() && !directory.tryEmplace({}));
         Fixture f{1, 1};
-        const PreparedResumeType large{"lux.test.aligned64", lux::semantic::typeId("lux.test.aligned64"),
+        const PreparedResumeType large{lux::semantic::typeId("lux.test.aligned64"),
             LUX_SCRIPT_VK_STRUCT_REF, 64U, 64U};
         assert(large.valid());
         reject_payload_allocation = true;

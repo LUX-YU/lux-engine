@@ -200,6 +200,8 @@ namespace lux::simulation::script::detail
             [[nodiscard]] ScriptExecutionState& operator[](key_type key) noexcept { return *find(key); }
             [[nodiscard]] std::optional<key_type> tryEmplace(ScriptExecutionState value) noexcept
             {
+                const auto inserted = owner_.executions_.tryEmplace({});
+                if (!inserted) return std::nullopt;
                 // Selection does not change the wait. Invalid/already-bound waits still fail at attach.
                 ScriptCellTicket cell;
                 const auto* selected = owner_.waits_.find({value.waiting_on.slot - 1U, value.waiting_on.generation});
@@ -212,13 +214,12 @@ namespace lux::simulation::script::detail
                 }
                 const bool promoted = static_cast<bool>(cell);
                 if (!promoted) cell = owner_.acquire(EScriptCellBody::EXECUTION);
-                if (!cell) return std::nullopt;
-                const auto inserted = owner_.executions_.tryEmplace(cell);
-                if (!inserted)
+                if (!cell)
                 {
-                    if (!promoted) owner_.releaseEmpty(cell);
+                    static_cast<void>(owner_.executions_.erase(*inserted));
                     return std::nullopt;
                 }
+                *owner_.executions_.find(*inserted) = cell;
                 value.id = {inserted->index + 1U, inserted->gen};
                 value.cell = cell;
                 cell.cell->body.execution.execution.emplace(value);
@@ -266,6 +267,9 @@ namespace lux::simulation::script::detail
             [[nodiscard]] std::optional<key_type> admit(ScriptInstanceId instance,
                 std::optional<PreparedResumeType> type, bool external, ScriptCellTicket* scope) noexcept
             {
+                // The physical A reservation exists before any cell can acquire an A role.
+                const auto inserted = owner_.waits_.tryEmplace({});
+                if (!inserted) return std::nullopt;
                 const bool eligible = !external && scope && (!type ||
                     (type->size <= ScriptOwnedBytes::InlineCapacity && type->alignment <= alignof(std::max_align_t)));
                 ScriptCellTicket cell;
@@ -279,19 +283,19 @@ namespace lux::simulation::script::detail
                     local = cell && !cell.cell->body.execution.wait;
                 }
                 if (!local) cell = owner_.acquire(EScriptCellBody::BOXED);
-                if (!cell) return std::nullopt;
+                if (!cell)
+                {
+                    static_cast<void>(owner_.waits_.erase(*inserted));
+                    return std::nullopt;
+                }
                 if (cell.cell->wait_epoch == UINT64_MAX)
                 {
                     owner_.releaseEmpty(cell);
+                    static_cast<void>(owner_.waits_.erase(*inserted));
                     return std::nullopt;
                 }
                 const LocalWaitTicket ticket{cell, ++cell.cell->wait_epoch};
-                const auto inserted = owner_.waits_.tryEmplace(ticket);
-                if (!inserted)
-                {
-                    owner_.releaseEmpty(cell);
-                    return std::nullopt;
-                }
+                *owner_.waits_.find(*inserted) = ticket;
 #if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
                 ++owner_.observation_.wait_admissions;
                 if (local)
@@ -345,6 +349,12 @@ namespace lux::simulation::script::detail
         private:
             ScriptOperationStorage& owner_;
         };
+
+        ScriptOperationStorage() = default;
+        ScriptOperationStorage(const ScriptOperationStorage&) = delete;
+        ScriptOperationStorage& operator=(const ScriptOperationStorage&) = delete;
+        ScriptOperationStorage(ScriptOperationStorage&&) = delete;
+        ScriptOperationStorage& operator=(ScriptOperationStorage&&) = delete;
 
         void prepare(std::size_t continuations, std::size_t awaitables)
         {

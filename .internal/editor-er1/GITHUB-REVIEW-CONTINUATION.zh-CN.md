@@ -70,3 +70,9 @@ normal-build-01/all及normal-build-noop成功，normal-ctest.log 134/134通过�
 初测idle-64.json与idle-1024.json：owner update批次0.0032146/0.1449846秒。关联比较次数由准确源循环推导为2080/524800每cycle（不是运行时计数器）；类型payload下界32768/524288字节，公开snapshot行8192/131072字节持有至关闭之后。明确不包括shared控制块、allocator元数据、Registry/Outline/RenderSystem/driver/RSS，不伪称完整内存归因。此样本只隔离资源owner静止关联成本，不替代READY资源、GUI或GPU成本。最终clean正常构建各做五次独立进程。
 
 idle-build-01/02是新benchmark接入meta生成器时的重复target/output错误，未执行EXE；使用独立CMake子目录后idle-build-03全all成功、idle-noop无工作，再运行上述初测。既有q6五组数据和所有原始日志保留。
+
+## q7 clean资格驱动输入纠正
+
+正常all/no-op/134CTest、12GPU+foreign/lifecycle、两位置五消费者、再生成、五组成本、十次idle成本均完成。诊断all/no-op/135CTest和原19GPU变体通过后，扩展外部驱动误把新增坐标变体纳入missing-ground输入条件，gpu-coordinate_1024超时并异常退出。此为驱动错误，不是G03修前负例或成功，不纳入有效27变体。
+
+原驱动及失败日志保留；只修正输入选择，用同一clean诊断构建在diagnostic-rerun新目录执行全部8新增变体、foreign与Application生命周期，全通过。未改源码、未减少测试或混用旧EXE。之后六DLL×两配置的隔离检查通过。GUI在全部构建/测试/成本结束后独立执行，结果见IME-CURRENT-FAILURE.zh-CN.md；存在真实UI失败，ER-1仍不通过。

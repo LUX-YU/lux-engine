@@ -1,49 +1,50 @@
-# ER-1 续行候选：实际修复与资格
+# ER-1 GitHub审阅续行：实际修复与资格
 
-ER-1仍未通过。生产源码候选为 `aa91ba553f2ab56c5670a9061d7c41b1336f0433`，已从独立clean clone分别完成正常和专用诊断RelWithDebInfo构建、安装及实际GPU验证。本报告不宣称旧正式入口迁移完成，也不进入ER-2。报告提交与被编译的源码提交分别记录，后续报告更新不改变已有产物身份。
+ER-1仍未通过。本轮生产/测试源码候选 `2d2650c5d498d4c74b0ba076dd3f5b322b6c13f7`，已从独立clean clone完成q7正常和专用诊断RelWithDebInfo资格。当前报告提交是独立身份，不重标被编译的代码。未进入ER-2、合并main、推送、发布或冻结。
 
-## 实际代码修复
+## 本轮实际修正
 
-- EX-01：AlignedAllocator保留标准容器契约，溢出/真实分配失败按标准异常传递，在准确factory/prepare边界转为结构化错误；aligned new/delete配对。callback/payload准备与显式release失败保留输入和owner。诊断实际覆盖Renderer工厂20、seal6、Window8、Scene12、client10个分配失败点；原seal index=2保留，不以abort/terminate替换成功判据。
-- EX-02：resources[ri]访问先通过有效范围检查；不同target首次触及与跨View末态分别关联，保留共享导入和preserve语义。双View同尺寸/逆序/生命周期、FIF、resize和实际像素回归通过；没有清零所有cross_view_index或加入逐帧waitIdle。
-- EX-03：现有Control/Program/Upload reply pump共用剩余额度并轮转。实际7个envelope、6个callback、3个failure、1个unmatched；连续60次budget1轮询各lane消费20个；一个含64条record的envelope计为1。预算计数没有使用全drain后截断。
-- clean q1暴露的反射use-after-free已修复：新示例使用增量drainPending，不重复注册并替换已有metadata；100次实际构建保持反射指针稳定。原ASan/CDB证据见HEAP-INCIDENT.zh-CN.md及历史原始日志。
-- 同量像素对比暴露的新SceneView相机原点错误已修复：按既有Render wire契约发送实际相机位置与rotation-only view。CPU shadow/cull与GPU投影一致，500帧旧/新实际图像相同；详见CAMERA-PROTOCOL-INCIDENT.zh-CN.md。
-- aa91ba55补上SceneViewport/Workspace输入辅助与图像借用/释放的外线程入口检查；21个fallible owner调用、实际帧图像保留、Pane错误不被外线程覆盖及七种owner复制/移动禁用均有当前源码回归。其余owner-thread-only值/引用访问器没有被包装成完整跨线程安全接口。
+- G01：真实失败View在resize/零尺寸/恢复/相同尺寸/camera普通调用后保留FAILED、原View/request/backend错误；明确关闭并重新openView才有新身份。修前exit=1、修后exit=0均正常关闭全部owner；不以timeout判定。
+- G02：SceneResources维护粘性pending_change，每个row状态变化在异常退出前仍登记；Session完整发布snapshot/revision后才确认消费。真实失败后准备OOM、READY后另一准备OOM、snapshot自身OOM三组合及无新状态重试通过；下一静止cycle不重发/不复制。
+- G03：实际不可变RenderSystem coordinate_page_size经SceneView传至RenderView，用于校验、分页及wire字段。默认1024和256场景统一平移(256,-256,1024)，覆盖负坐标、跨页和非零相机；两姿态真实GPU图像相同。原1024硬编码在256下实际画成背景的负例保留。
+- G04：SceneWorkspaceFailure只位于业务UI边界，保留Scene/Window拥有数据；Application按来源转交。真实NotFound及回调BUSY分别贯通同步/关闭；没有向generic WindowFailure注入Scene依赖。
+- C06：4个真实View工厂DLL分配点、既定8槽满、第9次接纳拒绝及释放后新身份复验通过。R06新增实际GPU mesh成功后shader元数据被真实后端拒绝，保留backend_status=1和资源key，清理取得的句柄；未据此宣称独立material上传失败已测。
 
-## 当前资格
+EX-01/02/03、正常/诊断隔离、metadata稳定性和默认相机协议保留。本轮没有modules生产代码修改、依赖升级、完整Impl共享、万能Context、新栈调用旧栈或运行时fallback。
 
-| 类别 | 实际结果与范围 |
+## 实际资格
+
+| 项目 | q7结果 |
 |---|---|
-| 正常clean构建 | all -j4 -k0、第二轮no-op、134/134 CTest；九个Scene GPU变体、foreign、Application部分启动生命周期 |
-| 专用诊断clean构建 | all、no-op、135/135 CTest；19个Scene GPU变体、foreign、Application生命周期；真实分配点复验 |
-| CPU/GPU寿命 | 旧packet、真实迟到resize回复、零尺寸恢复、pool/backing换代、两FIF；仅CPU引用释放不能伪造GPU完成；完成后descriptor计数配平 |
-| 安装迁移 | 两个全新SDK位置各五种消费者，编译/链接规则排除source/build/旧依赖前缀，迁移位置排除原SDK；实际Toolset DLL路径/hash符合所选prefix |
-| 生成器 | 复制安装SDK后改头/模板/宏实际再生成；精确非法widget负例保留完整旧输出的字节与mtime；恢复后no-op与消费者通过 |
-| 路由/回归 | 真实Object/UI CommandRouter、固定Text/Record目标、InputText拦截、菜单token、direct/queued信号、既有Graph/Inspector/Context相关CTest |
+| 正常clean | all -j4 -k0、no-op、134/134 CTest；12 Scene GPU变体、foreign、Application生命周期 |
+| 专用诊断clean | all、no-op、135/135 CTest；27 Scene GPU变体、foreign、Application生命周期 |
+| 分配/预算 | 原seal全部实际分配点包括index=2重跑；原reply budget/FIFO用例保留；不等同资源Control/Upload饱和资格 |
+| 安装 | 五类消费者在sdk/relocated-sdk两位置构建、no-op与执行；排除源树/构建树/旧SDK搜索路径；实际loaded modules与安装reader再生成通过 |
+| 隔离 | 两种缓存分别OFF/ON，六DLL×两配置的导出、PDB链接对象/CRT分配来源、DLL/PDB SHA256共12记录；正常SDK无replacement allocation/fault路径 |
+| 成本 | 五组旧/新独立正常进程、每组500实际完成帧、十PPM字节相同；另64/1024空引用Mesh静止owner各五独立进程 |
 
-原始证据：`E:/lux-er1/q6/raw/`、`diagnostic-raw/`、`regeneration/`、`qualified-isolation/`。两类DLL/EXE身份分别在qualification.json和diagnostic-qualification.json；DLL/PDB链接对象与导出审计证明正常SDK没有专用replacement allocation/fault对象。诊断代码不由普通BUILD_TESTING开启。
+源与产物身份：q7/qualification.json、diagnostic-qualification.json（GPU日志由diagnostic-raw原19变体与diagnostic-rerun新增8变体组成）、source-files.sha256.csv、qualified-isolation/dll-isolation.json。原23项source-binding保留起始hash并记录q7实际字节；github-review-binding.csv单列本轮改动与测试hash。
 
-source-files.sha256.csv描述aa91ba55 clean clone的实际tracked字节，不描述后来报告提交。source-binding.csv的23项已逐路径检查；S02在clean checkout补齐两处CRLF，规范化文本和Git内容不变，当前hash按资格源码字节记录。
+本轮未知engine.zip/modules.zip留在原工作区，没有忽略、移动或混入源码。由候选tracked commit建立独立qualification-input，ValidateTrackedSnapshot通过后再由既有流程建立q7/src clean clone。审阅附件是源码推导；修前/修后由实施方执行，详细日志和无效探索结果见GITHUB-REVIEW-CONTINUATION.zh-CN.md及review-github-01/raw。旧q6原始结果与COST-q6保留。
 
-## 成本与限制
+## 成本边界
 
-五组十个独立正常进程采用同seed、尺寸、单View、100预热、500实际计量帧、8单列验证帧、8ms节奏与相同逐帧录制等待条件，像素checksum全部相同。完整原始样本和计量边界见COST-q6.zh-CN.md。q5不一致等待策略样本没有删除；仅针对这一项窄假设统一驱动边界。没有为了改善数字更改生产Renderer调度。
+500帧主动工作wall均值0.08738692→0.08869704秒；等待cycles均值288817855.8→320411995（五对均增加，约10.94%）；关闭wall均值0.09991118→0.10653356秒。不是整体加速/性能等价结论。
 
-关闭批量均值、等待cycles等残余差异原样保留，不声称整体性能等价。未测完整Application事件循环、owner分配/保留内存、匹配resize/retry尾部成本。快照复用并不代表outlineCurrent的逐row检查为O(1)。
+静止owner 64/1024 Mesh的500次更新均值0.00318376/0.1477368秒，缓存snapshot保持同一地址。关联比较由原算法推导2080/524800每cycle；类型payload下界32768/524288字节。此零View空资源引用样本不替代READY资源、大型GPU场景或完整内存归因；见COST-q7.zh-CN.md及逐进程原始JSON。
 
-## 尚未完成
+## 剩余门槛与限制
 
-118行验收表当前为57 PASS_ER1、5历史PASS_INTERMEDIATE、31 PARTIAL、1 BLOCKED_DELETE_GATE、24 DEFERRED_STAGE。历史GUI等中间证据没有升级成当前提交通过；这些逻辑行数也不等于134/135个CTest注册项。
+原118行当前状态：{'PARTIAL': 30, 'PASS_ER1': 58, 'PASS_INTERMEDIATE': 5, 'DEFERRED_STAGE': 24, 'BLOCKED_DELETE_GATE': 1}。逻辑行数与134/135个CTest注册数分别统计；历史PASS_INTERMEDIATE不升级为当前提交GUI通过。
 
-本阶段尚未完全通过的验收ID：A01, A03, A04, A05, A06, A07, A09, C05, C06, U04, U05, U10, U11, U12, H03, H07, F15, R01, R06, R07, R09, X01, X03, X04, X08, X09, X10, I02, I06, I07, P02, P03。逐项范围与已有证据在acceptance-results.csv，不把不同逻辑条目的数量当CTest注册数。
+仍未完全通过的原ID：A01, A03, A04, A05, A06, A07, A09, C05, U04, U05, U10, U11, U12, H03, H07, F15, R01, R06, R07, R09, X01, X03, X04, X08, X09, X10, I02, I06, I07, P02, P03。
 
-主要缺口仍是线程/设备/attach分阶段启动故障、View接纳容量/分配失败、GPU mesh成功后的shader/material子失败、set_stopped/value独立路径、资源Control/Upload饱和重试、部分关闭/值访问器线程审计和成本账目。受工具输入能力限制，真实持续RMB/MMB后失焦及中文IME候选仍未验证；此前实际过滤、分栏、选择、滚轮、最小化/恢复只保留为历史GUI证据，未重标为本提交GUI通过。
+主要未测路径仍为thread/device/attach分阶段启动失败、预存ResolvedMeshResources冲突、独立material上传失败、分别控制set_stopped/value、真实资源Control/Upload饱和重试、专用shared-import/preserve GPU执行、实际持续RMB/MMB失焦/隐藏/关闭和中文IME候选，以及部分关闭借用/值访问器线程审计和resize/retry尾部账目。VkDeviceLost专用路径未测，不把record failure改名；被动RenderLease析构中的deferred vector OOM仍无全路径证明。
 
-M26 Toolset已冷装配并闭合Context/Inspector和安装消费者。M01—M05、M21—M23、M28—M29旧正式入口的删除门槛仍未满足，保留审计明确的旧栈，SDK不宣称legacy-free；新路径没有调用旧栈或runtime fallback。Text/Record仅证明共享Editing与路由，Material/FlowForge迁移留ER-3。
+本提交已执行真实GUI/IME：ni候选与数字选词实际发生，但候选位置和汉字显示有明确失败；普通Alt-F4关闭exit0、descriptor2/2、所有owner0。见IME-CURRENT-FAILURE.zh-CN.md及当前截图。持续RMB/MMB部分仍提供人工步骤，不将旧gui-02换标签。
 
-被动RenderLease析构中的既有deferred vector分配仍没有全路径OOM保证。终局record failure已实际验证，不能把它改名为VkDeviceLost专用测试。其他范围不以替身、隐藏源码补丁或删测试冒充通过。
+M26 Toolset冷装配及安装消费者保留通过；M01—M05/M21—M23/M28—M29等删除门槛未满足，旧正式入口仍存在。新候选示例lux_editor_er1在clean build/bin，尚未安装为唯一正式入口；本SDK不是legacy-free。没有先删旧代码换取扫描通过。Text/Record仅为Editing/路由机制，不是材质业务迁移。
 
-主检出仍为c77bb41e，六个受保护Script文件hash复核不变。没有合并main、推送、发布、冻结、升级依赖或开展Android构建。
+本轮交付的是有真实修复和新资格证据、仍保留上述缺口的ER-1续行候选，不能宣称原ER-1所有门槛已完成。
 
-交付归档已实际完成CRC和SHA256验证，I08由包装前PARTIAL更新为PASS_ER1；最终报告归档及源码/SDK/诊断归档身份见 E:/lux-er1/delivery-aa91ba55/delivery-manifest.json。
+六个受保护main/Script文件及两个未知ZIP的最终SHA256与本轮开始一致，见protected-main-final.json/inputs-final.json。交付归档与CRC/SHA256身份见E:/lux-er1/delivery-2d2650c5/delivery-manifest.json。

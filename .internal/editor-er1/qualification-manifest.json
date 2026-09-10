@@ -1,14 +1,13 @@
 {
-  "status": "ER1_CONTINUATION_QUALIFIED_ARTIFACTS_NOT_ER1_COMPLETE",
-  "candidate_commit": "aa91ba553f2ab56c5670a9061d7c41b1336f0433",
+  "status": "ER1_GITHUB_CONTINUATION_QUALIFIED_NOT_ER1_COMPLETE",
+  "candidate_commit": "2d2650c5d498d4c74b0ba076dd3f5b322b6c13f7",
   "build_type": "RelWithDebInfo",
-  "normal_qualification": "E:\\lux-er1\\q6\\qualification.json",
-  "diagnostic_qualification": "E:\\lux-er1\\q6\\diagnostic-qualification.json",
-  "source_files_manifest_scope": "Actual tracked bytes of clean candidate aa91ba553f2ab56c5670a9061d7c41b1336f0433; not later report commit",
-  "sdk": "E:\\lux-er1\\q6\\sdk",
-  "relocated_sdk": "E:\\lux-er1\\q6\\relocated-sdk",
-  "cost": "E:\\lux-er1\\q6\\cost-pairs\\identity.json",
-  "isolation": "E:\\lux-er1\\q6\\qualified-isolation\\dll-isolation.json",
+  "normal_qualification": "E:\\lux-er1\\q7\\qualification.json",
+  "diagnostic_qualification": "E:\\lux-er1\\q7\\diagnostic-qualification.json",
+  "sdk": "E:\\lux-er1\\q7\\sdk",
+  "relocated_sdk": "E:\\lux-er1\\q7\\relocated-sdk",
+  "cost": "E:\\lux-er1\\q7\\cost-pairs\\identity.json",
+  "isolation": "E:\\lux-er1\\q7\\qualified-isolation\\dll-isolation.json",
   "remaining_acceptance_ids": [
     "A01",
     "A03",
@@ -18,7 +17,6 @@
     "A07",
     "A09",
     "C05",
-    "C06",
     "U04",
     "U05",
     "U10",
@@ -43,7 +41,11 @@
     "P02",
     "P03"
   ],
-  "deferred": "ER-2/ER-3 unchanged; main not merged/pushed; no publish/freeze",
   "er1_complete": false,
-  "delivery_manifest": "E:/lux-er1/delivery-aa91ba55/delivery-manifest.json"
+  "historical_qualification": "E:/lux-er1/q6/qualification.json",
+  "source_files_manifest_scope": "Actual clean tracked candidate bytes; later report-only commit is a separate identity",
+  "gui_evidence": "E:/lux-er1/review-github-01/gui-q7-identity.json",
+  "gui_status": "ACTUAL_IME_POSITION_AND_GLYPH_FAILURE; ordinary close passed; held RMB/MMB unverified",
+  "protected_files_evidence": "E:/lux-er1/review-github-01/protected-main-final.json",
+  "delivery_manifest": "E:/lux-er1/delivery-2d2650c5/delivery-manifest.json"
 }

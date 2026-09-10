@@ -1,8 +1,8 @@
 # ER-1 当前候选真实输入验收脚本（尚未执行）
 
-本脚本不是通过证据。执行时从新qualification.json填写source_commit、EXE/DLL SHA256、操作系统/显示缩放/输入法版本、UTC时间与录屏路径。禁止沿用gui-02作为本提交通过记录。现有会话没有可调用的桌面输入工具；以下需要在实际交互桌面执行。
+本脚本不是通过证据。执行时从新qualification.json填写source_commit、EXE/DLL SHA256、操作系统/显示缩放/输入法版本、UTC时间与录屏路径。禁止沿用gui-02作为本提交通过记录。本次已实际初始化computer-use的@oai/sky运行时；支持click选择按钮，但DragInput没有按钮参数，也没有mouse-down/up或保持跨调用的接口。因此持续RMB/MMB跨失焦仍需人工执行；IME结果以本轮单独日志为准，不因可输入中文字符串而宣称候选组合通过。
 
-使用本轮正常RelWithDebInfo SDK/依赖PATH运行lux_editor_er1.exe --assets E:/lux-sv1/sv1.luxpak --validation，将stdout/stderr写入新的日志。若validation layer未安装，单列不可用，不能宣称启用。每组独立启动；不要使用--frames提前结束交互。
+使用本轮正常RelWithDebInfo clean构建 E:/lux-er1/q7/build/bin 及记录的依赖PATH，运行 E:/lux-er1/q7/build/bin/lux_editor_er1.exe --assets E:/lux-sv1/sv1.luxpak --validation（此候选示例尚未安装为正式入口，不能在SDK/bin中假定存在），将stdout/stderr写入新的日志。若validation layer未安装，单列不可用，不能宣称启用。每组独立启动；不要使用--frames提前结束交互。
 
 1. 在Viewport内按住RMB拖动确认相机旋转；保持按住时Alt-Tab至另一窗口。在外部释放，再回到Editor，仅移动鼠标。应不继续旋转；重新RMB按下才能重新捕获。MMB平移重复同样步骤。
 2. 分别在RMB/MMB捕获中最小化窗口，再恢复；在外部释放按键。应无残留旋转/平移或黑图，重新捕获可用。再在捕获中使用Esc取消，仅移动鼠标不得继续相机动作。

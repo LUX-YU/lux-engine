@@ -62,3 +62,11 @@ CMake变更后的all/no-op见g04-application-build-02.log和g04-application-noop
 c06-after.log：4个真实Renderer DLL View构造分配点逐点失败后释放部分owner；8个既定注册槽全部占用，第9个返回CAPACITY且分配计数0；关闭一个owner后新View可接纳且身份不同；最终views=0，随后真实正常场景渲染/关闭通过。
 
 r06-after.log：shader_subfailure用例先等待实际GPU mesh handle，再通过既有compileShader通道提交格式错误ShaderInfo。真实RenderServerHandlers::handleCompileShader返回ShaderCompiledReply.status=1（未创建非法Vulkan shader module）。资源快照保留FAILED、backend_status=1及原ResourceRequestKey；无asset错误混用。资源没有装入ResolvedMeshResources，对应已取得的mesh/shader句柄和在途请求最终全部为0；其他两资源实际图像继续生成并关闭。独立material上传失败仍不据此扩称已测。
+
+## 静止规模账目与正常回归
+
+normal-build-01/all及normal-build-noop成功，normal-ctest.log 134/134通过（54.10秒）。新增独立正常成本EXE editor_scene_idle_cost，诊断配置不创建此target。64/1024个Mesh3D全部使用空资源引用（UNREFERENCED），保持真实Scene/RenderSystem/Renderer，零View。100次warmup、500次owner更新，分别计update与advance/poll，确认每次同一快照和revision，关闭前后保留只读snapshot引用。
+
+初测idle-64.json与idle-1024.json：owner update批次0.0032146/0.1449846秒。关联比较次数由准确源循环推导为2080/524800每cycle（不是运行时计数器）；类型payload下界32768/524288字节，公开snapshot行8192/131072字节持有至关闭之后。明确不包括shared控制块、allocator元数据、Registry/Outline/RenderSystem/driver/RSS，不伪称完整内存归因。此样本只隔离资源owner静止关联成本，不替代READY资源、GUI或GPU成本。最终clean正常构建各做五次独立进程。
+
+idle-build-01/02是新benchmark接入meta生成器时的重复target/output错误，未执行EXE；使用独立CMake子目录后idle-build-03全all成功、idle-noop无工作，再运行上述初测。既有q6五组数据和所有原始日志保留。

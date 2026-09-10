@@ -20,3 +20,5 @@ engine_add_type_runtime_info(NAME editor_cost_transform_meta
 engine_target_add_type_runtime_info(TARGET editor_scene_cost METAS editor_cost_transform_meta
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen)
 lux_classify_target(TARGET editor_scene_cost LAYER EDITOR PRODUCT TEST ROLE COMPOSITION)
+
+add_subdirectory(idle)

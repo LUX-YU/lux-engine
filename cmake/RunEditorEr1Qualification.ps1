@@ -67,7 +67,8 @@ $env:PATH = "$build/bin;$parserRuntime;$CxxPrefix/bin;$VcpkgRoot/installed/x64-w
 Invoke-Logged 'ctest' $ctest @('--test-dir', $build, '--output-on-failure', '-j', '1')
 Copy-Item -LiteralPath "$build/Testing/Temporary/LastTest.log" -Destination "$logs/ctest-details.log"
 foreach ($variant in @('base', 'alternate', 'multiple_equal', 'multiple_reverse', 'multiple_lifecycle',
-                      'late_close', 'late_selection', 'reentrant_close', 'image_lifetime')) {
+                      'late_close', 'late_selection', 'reentrant_close', 'image_lifetime',
+                      'view_failure', 'coordinate_1024', 'coordinate_256')) {
     Invoke-Logged "gpu-$variant" "$build/bin/editor_scene_gpu_test.exe" @($SeedPak, "$qroot/images", $variant)
 }
 Invoke-Logged 'gpu-foreign' "$build/bin/editor_foreign_renderer_test.exe" @()

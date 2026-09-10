@@ -191,27 +191,7 @@ namespace lux::simulation::script::detail
             {
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::EXTERNAL_RESULT_NOT_TRANSPORTABLE);
             }
-            return reserveAwaitableValidated(owner, std::move(result_type), external_completion);
-        }
-        [[nodiscard]] lux::cxx::expected<AwaitableRecord*, EScriptAwaitableCreateError> reservePreparedEventAwaitable(
-            ExecutionInstance& owner, const PreparedResumeType& payload
-        ) noexcept
-        {
-            // Only waitEvent's matched admission reaches here. Artifact/endpoint preparation proves
-            // nonzero size, power-of-two alignment, ownership and the configured payload bound.
-            // Custom endpoint schemas can still pass preparation with an unsupported ABI shape.
-            // Preserve that rejection here (after source preflight), rather than changing cold errors.
-            const bool valid_payload = payload.abi_kind == LUX_SCRIPT_VK_STRUCT_REF
-                ? payload.type_id != lux::semantic::InvalidTypeId && payload.size % payload.alignment == 0U
-                : payload.valid();
-            if (!valid_payload)
-                return lux::cxx::unexpected(EScriptAwaitableCreateError::INVALID_RESULT_TYPE);
-            return reserveAwaitableValidated(owner, payload, false);
-        }
-        [[nodiscard]] lux::cxx::expected<AwaitableRecord*, EScriptAwaitableCreateError> reserveAwaitableValidated(
-            ExecutionInstance& owner, std::optional<PreparedResumeType> result_type, bool external_completion
-        ) noexcept
-        {
+
             if (stopping_)
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::STOPPING);
             if (awaitables_.size() >= limits_.awaitable_capacity)
@@ -448,7 +428,7 @@ namespace lux::simulation::script::detail
 
             // No user code or owner mutation can intervene before waiter commit. The authoritative
             // incarnation/source check above covers result admission as well; storage has stable addresses.
-            auto awaitable = reservePreparedEventAwaitable(*owner, source->payload);
+            auto awaitable = reserveAwaitable(*owner, source->payload, false);
             if (!awaitable)
                 return lux::cxx::unexpected(eventWaitError(awaitable.error()));
 
@@ -456,7 +436,7 @@ namespace lux::simulation::script::detail
             const auto registered = event_owner_.registerWait(std::move(*reservation), record.id);
             if (!registered)
             {
-                static_cast<void>(eraseAwaitableRecord(record, {owner, instance}));
+                discardAwaitable(instance, record.id);
                 return lux::cxx::unexpected(registered.error());
             }
             record.source = {*registered, EScriptWaitSource::EVENT};

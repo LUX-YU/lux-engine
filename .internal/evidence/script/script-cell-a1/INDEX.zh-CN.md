@@ -4,7 +4,7 @@
 B 实际完整资格/计时为 `caf34bd307912450d894da922b59af4238154508`。归档/报告提交不作为新测试身份。
 
 [结果报告](../../../script-cell-a1/RESULT.zh-CN.md) · [实际数据](../../../script-cell-a1/result.json) ·
-[合同映射](../../../script-cell-a1/TEST_MATRIX.csv) · [原始ZIP](script-cell-a1-raw.zip) · [SHA-256](SHA256SUMS)
+[合同映射](../../../script-cell-a1/TEST_MATRIX.csv) · [原始ZIP](script-cell-a1-raw.zip) · [SHA-256](SHA256SUMS) · [远端校验](remote-verification.json)
 
 归档 `5311142` B，`557` 项文件 hash、`558` 项ZIP entries，已逐项核验。
 SHA-256：`af17674b63690ba77b48aefd63b5e54d188d592dc33151a3bb0e23d63a6aef98`。无DLL/PDB/EXE/OBJ产品二进制；匹配镜像保持在原本地目录，身份清单入包。
@@ -18,4 +18,6 @@ SHA-256：`af17674b63690ba77b48aefd63b5e54d188d592dc33151a3bb0e23d63a6aef98`。�
 - `*attempt*`及早期build/test日志：失败与驱动拒绝原因原样保留，不冒充有效资格。
 - `final-audit.json`：204依赖、镜像/资产/安装头、未知修改保护复核；`qualified-source.patch`仅便于查看已提交源码变化。
 
-固定提交下载入口在归档提交产生后登记；本ZIP只打包一次，不改写旧v4归档。
+固定提交下载入口：
+`https://raw.githubusercontent.com/LUX-YU/lux-engine/d30e72354c01daea0bd23e07aa5c1050e5cf69ea/.internal/evidence/script/script-cell-a1/script-cell-a1-raw.zip`
+本ZIP只打包一次，不改写旧v4归档。

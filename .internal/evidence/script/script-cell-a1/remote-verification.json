@@ -1,0 +1,10 @@
+{
+  "branch": "codex/s6-execution-cell-a1",
+  "remote_head": "d30e72354c01daea0bd23e07aa5c1050e5cf69ea",
+  "archive_commit": "d30e72354c01daea0bd23e07aa5c1050e5cf69ea",
+  "url": "https://raw.githubusercontent.com/LUX-YU/lux-engine/d30e72354c01daea0bd23e07aa5c1050e5cf69ea/.internal/evidence/script/script-cell-a1/script-cell-a1-raw.zip",
+  "sha256": "af17674b63690ba77b48aefd63b5e54d188d592dc33151a3bb0e23d63a6aef98",
+  "bytes": 5311142,
+  "hashed_files": 557,
+  "verified": true
+}

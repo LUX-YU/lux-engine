@@ -1,3 +1,5 @@
+> 最新续行结果见 [Q8-RESULTS.zh-CN.md](Q8-RESULTS.zh-CN.md)，候选e6252e50。以下保留q7历史报告，其身份与结果不改标为q8。
+
 # ER-1 GitHub审阅续行：实际修复与资格
 
 ER-1仍未通过。本轮生产/测试源码候选 `2d2650c5d498d4c74b0ba076dd3f5b322b6c13f7`，已从独立clean clone完成q7正常和专用诊断RelWithDebInfo资格。当前报告提交是独立身份，不重标被编译的代码。未进入ER-2、合并main、推送、发布或冻结。

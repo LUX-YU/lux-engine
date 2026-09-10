@@ -763,6 +763,12 @@ int main()
     assert(state_value == 1U);
 
     step_descriptor.releaseMethod(step_descriptor.context, step_instance, step_method);
+    // A formerly published entry must fail after release, without acquiring a frame or calling the provider.
+    ScriptBackendContinuation released_result;
+    const auto released = step_call.invoke(step_call.context, step_frame, step_context, released_result);
+    assert(released.state == EScriptStepState::FAILED && released.error.status == -1);
+    assert(!released_result && step_backend.stats().active_frames == 0U);
+    std::puts("NATIVE_RELEASED_PREPARED,rejected=1,frames=0");
     step_descriptor.releaseMethod(step_descriptor.context, step_instance, read_method);
     step_descriptor.destroyInstance(step_descriptor.context, step_instance);
     const auto retained = step_backend.stats().retained_binding_bytes;

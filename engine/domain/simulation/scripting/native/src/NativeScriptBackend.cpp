@@ -467,16 +467,14 @@ namespace lux::simulation::script
             }
         }
 
-        [[nodiscard]] NativeContinuation* createNativeContinuation(PreparedCall& call) noexcept
+        [[nodiscard]] NativeContinuation* createNativeContinuationResolved(
+            PreparedCall& call, const lux_script_step_desc& step
+        ) noexcept
         {
-            if (free_continuations.empty() || call.function == nullptr || call.function->step == nullptr)
+            // loadNativeModule validates the immutable step shape; prepareMethod validates the
+            // configured envelope and acquires its layout before publishing this call.
+            if (free_continuations.empty())
                 return nullptr;
-            const auto& step = *call.function->step;
-            if (step.frame_size == 0U || step.frame_size > config.max_continuation_frame_bytes ||
-                step.frame_align == 0U || (step.frame_align & (step.frame_align - 1U)) != 0U)
-            {
-                return nullptr;
-            }
             const auto slot = free_continuations.back();
             free_continuations.pop_back(); // Logical slot is reserved before any physical frame relationship.
             auto& continuation = continuations[slot];
@@ -500,7 +498,8 @@ namespace lux::simulation::script
             {
                 return;
             }
-            continuation.call->function->step->destroy(continuation.frame.data);
+            const auto& step = *continuation.call->function->step;
+            step.destroy(continuation.frame.data);
             auto* owner = continuation.owner;
             const auto slot = continuation.slot;
             if (owner != nullptr)
@@ -525,6 +524,8 @@ namespace lux::simulation::script
             {
                 return ScriptStepResult::failed(-1);
             }
+            const auto& call = *continuation.call;
+            const auto& step = *call.function->step;
             if (packet.state == EScriptAwaitableState::READY && continuation.waiting_event_payload != nullptr)
             {
                 const auto* actual = packet.value != nullptr && packet.value->type.valid()
@@ -560,10 +561,10 @@ namespace lux::simulation::script
                 };
             }
             StepAdapter adapter{
-                continuation.call->instance->events, std::addressof(context), std::addressof(continuation)};
+                call.instance->events, std::addressof(context), std::addressof(continuation)};
             const lux_script_step_host host{std::addressof(adapter), &startEventWait};
             lux_script_step_outcome outcome{};
-            const auto status = continuation.call->function->step->resume(
+            const auto status = step.resume(
                 std::addressof(host),
                 continuation.frame.data,
                 std::addressof(native_packet),
@@ -589,14 +590,15 @@ namespace lux::simulation::script
             if (prepared.owner == nullptr || prepared.instance == nullptr || prepared.function == nullptr ||
                 prepared.function->step == nullptr)
                 return ScriptStepResult::failed(-1);
-            auto* continuation = prepared.owner->createNativeContinuation(prepared);
+            const auto& step = *prepared.function->step;
+            auto* continuation = prepared.owner->createNativeContinuationResolved(prepared, step);
             if (continuation == nullptr)
                 return ScriptStepResult::failed(-1);
 
             StepAdapter adapter{prepared.instance->events, std::addressof(context), continuation};
             const lux_script_step_host host{std::addressof(adapter), &startEventWait};
             lux_script_step_outcome outcome{};
-            const auto status = prepared.function->step->start(
+            const auto status = step.start(
                 std::addressof(prepared.instance->native_context),
                 std::addressof(frame),
                 std::addressof(host),

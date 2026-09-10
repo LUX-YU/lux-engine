@@ -860,7 +860,8 @@ namespace lux::simulation::script::detail
             auto* record = association.local ? cells_.wait(association.local) :
                 awaitables_.find(awaitableKey(association.awaitable));
             const bool invalid = owner == nullptr || !owner->authority.current() || record == nullptr ||
-                record->instance != association.instance || record->id != association.awaitable || record->external_completion || record->result_type ||
+                record->instance != association.instance || record->id != association.awaitable ||
+                record->external_completion || record->result_type ||
                 record->source != ScriptWaitSource{source, EScriptWaitSource::TIMER};
             if (invalid) return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::STALE);
             const auto completed = finishAwaitableOwner(*record, EScriptAwaitableState::READY, nullptr, {});
@@ -1033,9 +1034,12 @@ namespace lux::simulation::script::detail
             }
 
             const auto& endpoint = binding_owner_.eventEndpoint(waiter.endpoint);
-            auto* record = waiter.local ? cells_.wait(waiter.local) : awaitables_.find(awaitableKey(awaitable));
-            if (record == nullptr || record->id != awaitable || record->instance != instance || record->release_pending ||
-                record->source != ScriptWaitSource{id, EScriptWaitSource::EVENT})
+            auto* record = waiter.local ? cells_.wait(waiter.local) :
+                awaitables_.find(awaitableKey(awaitable));
+            const bool invalid_wait = record == nullptr || record->id != awaitable ||
+                record->instance != instance || record->release_pending ||
+                record->source != ScriptWaitSource{id, EScriptWaitSource::EVENT};
+            if (invalid_wait)
             {
                 static_cast<void>(event_owner_.cancel(id));
                 return;

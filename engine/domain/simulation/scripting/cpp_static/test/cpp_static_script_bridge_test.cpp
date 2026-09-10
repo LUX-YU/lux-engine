@@ -56,7 +56,7 @@ lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError> cre
 
 void discardAwaitable(void *, ScriptInstanceId, ScriptAwaitableId) noexcept {}
 
-lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> waitEvent(void *, ScriptInstanceId,
+lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> waitEvent(void *, const ScriptStepContext&,
                                                                        ScriptEventAdmissionHandle) noexcept
 {
     return ScriptAwaitableId{2U, 1U};

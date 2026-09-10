@@ -290,7 +290,8 @@ namespace lux::simulation::script::detail
                 inserted_route = inserted.second;
             }
             const auto inserted = waiters_.tryEmplace(EventWaiterRecord{
-                {}, instance, awaitable, endpoint, target, sequence_ + 1U, EEventWaiterState::ACTIVE, {}, {}, {}, {}, local
+                {}, instance, awaitable, endpoint, target, sequence_ + 1U,
+                EEventWaiterState::ACTIVE, {}, {}, {}, {}, local
             });
             if (!inserted)
             {

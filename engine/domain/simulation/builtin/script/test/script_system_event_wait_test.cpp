@@ -225,6 +225,10 @@ namespace
         std::vector<std::int32_t> resume_values;
         void* nested_context{};
         void (*nested_dispatch)(void*, std::int32_t) noexcept{};
+        ScriptStepResult (*custom_start)(BackendState&, ScriptStepContext&) noexcept{};
+        ScriptStepResult (*custom_resume)(BackendState&, ScriptStepContext&, const ScriptResumePacket&) noexcept{};
+        ScriptAwaitableId retained_wait;
+        std::vector<ScriptAwaitableCompletion> completions;
     };
 
     void destroyContinuation(void* opaque) noexcept
@@ -236,12 +240,17 @@ namespace
 
     ScriptStepResult resumeContinuation(
         void* opaque,
-        ScriptStepContext&,
+        ScriptStepContext& context,
         const ScriptResumePacket& packet
     ) noexcept
     {
         auto& continuation = *static_cast<Continuation*>(opaque);
         auto& state = *continuation.owner;
+        if (state.custom_resume != nullptr)
+        {
+            ++state.resumes;
+            return state.custom_resume(state, context, packet);
+        }
         assert(packet.state == EScriptAwaitableState::READY);
         assert(packet.value != nullptr && packet.value->type.valid());
         assert(packet.value->type.type_id == lux::semantic::typeId("lux.i32"));
@@ -288,7 +297,16 @@ namespace
         assert(frame.arg_count == 1U && frame.args != nullptr);
         ++state.step_calls;
         if (call.symbol == kStartSymbol)
+        {
+            if (state.custom_start != nullptr)
+            {
+                const auto result = state.custom_start(state, context);
+                if (result.state == EScriptStepState::SUSPENDED)
+                    output = {new Continuation{&state}, &resumeContinuation, &destroyContinuation};
+                return result;
+            }
             return beginWait(state, call.instance->event, context, output);
+        }
         if (call.symbol != kCallbackSymbol)
             return ScriptStepResult::failed(1200);
 
@@ -1350,10 +1368,127 @@ namespace
         assert(pressure.backend_state.resumes == 0U && pressure.system->stats().active_awaitables == 0U);
         assert(pressure.system->shutdown());
     }
+
+    void testCellRearmAtCapacityOne()
+    {
+        HarnessOptions options;
+        options.limits.awaitable_capacity = 1U;
+        Harness h{options};
+        h.backend_state.custom_resume = [](BackendState& state, ScriptStepContext& step,
+            const ScriptResumePacket& packet) noexcept {
+            assert(packet.state == EScriptAwaitableState::READY && packet.value->bytes.size() == 4U);
+            std::int32_t value{};
+            std::memcpy(&value, packet.value->bytes.data(), sizeof(value));
+            state.resume_values.push_back(value);
+            if (state.resumes == 32U) return ScriptStepResult::completed();
+            const auto next = step.event_waits.wait(state.first_admission);
+            assert(next); // A=1 was returned before this user code.
+            return ScriptStepResult::suspended(*next);
+        };
+        h.recordBroadcastStart(1);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+        for (std::int32_t i = 1; i <= 32; ++i)
+        {
+            h.recordBroadcastWait(i * 17);
+            assert(deliverRuntimeEvent(*h.system, h.broadcast_wait_bridge) == 1U);
+            assert(h.backend_state.resumes == static_cast<std::size_t>(i - 1));
+            assert(executeRuntimeStablePoint(*h.system));
+            assert(h.backend_state.resume_values.back() == i * 17);
+            assert(h.system->activeAwaitableCount() == (i == 32 ? 0U : 1U));
+        }
+        assert(h.backend_state.continuation_destroys == 1U && h.system->failures().empty());
+        assert(h.system->shutdown());
+        std::puts("CELL_CASE rearm_a1 starts=1 resumes=32 destroys=1 value_oracle=32 active=0");
+    }
+
+    void testUnboundLocalWithForeignExecution()
+    {
+        Harness h{{}};
+        h.backend_state.custom_start = [](BackendState& state, ScriptStepContext& step) noexcept {
+            if (state.step_calls == 1U)
+            {
+                const auto wait = step.event_waits.wait(state.first_admission);
+                assert(wait);
+                return ScriptStepResult::suspended(*wait);
+            }
+            assert(state.retained_wait.valid());
+            return ScriptStepResult::suspended(state.retained_wait);
+        };
+        h.backend_state.custom_resume = [](BackendState& state, ScriptStepContext& step,
+            const ScriptResumePacket& packet) noexcept {
+            assert(packet.state == EScriptAwaitableState::READY);
+            if (state.resumes <= 2U)
+            {
+                assert(packet.value && packet.value->bytes.size() == 4U);
+                std::int32_t value{};
+                std::memcpy(&value, packet.value->bytes.data(), sizeof(value));
+                state.resume_values.push_back(value);
+            }
+            else assert(packet.value && packet.value->bytes.empty());
+            if (state.resumes != 1U) return ScriptStepResult::completed();
+            const auto local = step.event_waits.wait(state.first_admission);
+            assert(local);
+            state.retained_wait = *local;
+            const auto external = step.awaitables.create();
+            assert(external);
+            state.completions.push_back(external->completion);
+            return ScriptStepResult::suspended(external->id);
+        };
+        h.recordBroadcastStart(1);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+        h.recordBroadcastWait(41);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_wait_bridge) == 1U);
+        assert(executeRuntimeStablePoint(*h.system));
+        assert(h.backend_state.resumes == 1U && h.system->activeAwaitableCount() == 2U);
+        h.recordBroadcastStart(2);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+        assert(h.system->activeContinuationCount() == 2U);
+        h.recordBroadcastWait(73);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_wait_bridge) == 1U);
+        assert(executeRuntimeStablePoint(*h.system));
+        assert(h.backend_state.resumes == 2U && h.backend_state.continuation_destroys == 1U);
+        assert(h.system->activeContinuationCount() == 1U && h.system->activeAwaitableCount() == 1U);
+        assert(h.backend_state.completions[0].ready());
+        assert(executeRuntimeStablePoint(*h.system));
+        assert((h.backend_state.resume_values == std::vector<std::int32_t>{41, 73}));
+        assert(h.backend_state.resumes == 3U && h.backend_state.continuation_destroys == 2U);
+        assert(h.system->failures().empty() && h.system->shutdown());
+        std::puts("CELL_CASE foreign_target local_values=41/73 external=1 resumes=3 destroys=2 active=0");
+    }
+
+    void testCompletedCallPreservesWait()
+    {
+        Harness h{{}};
+        h.backend_state.custom_start = [](BackendState& state, ScriptStepContext& step) noexcept {
+            if (state.step_calls != 1U) return ScriptStepResult::suspended(state.retained_wait);
+            const auto wait = step.event_waits.wait(state.first_admission);
+            assert(wait);
+            state.retained_wait = *wait;
+            return ScriptStepResult::completed();
+        };
+        h.recordBroadcastStart(1);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+        assert(h.system->activeAwaitableCount() == 1U && h.system->activeContinuationCount() == 0U);
+        h.recordBroadcastWait(97);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_wait_bridge) == 1U);
+        assert(executeRuntimeStablePoint(*h.system));
+        assert(h.backend_state.resumes == 0U);
+        h.recordBroadcastStart(2);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+        assert(h.backend_state.resumes == 0U);
+        assert(executeRuntimeStablePoint(*h.system));
+        assert(h.backend_state.resumes == 1U && h.backend_state.resume_values[0] == 97);
+        assert(h.system->failures().empty() && h.system->shutdown());
+        std::puts("CELL_CASE completed_unbound terminal_before_attach=1 resumes=1 value=97 destroys=1");
+    }
+
 }
 
 int main(int argc, char**)
 {
+    testCellRearmAtCapacityOne();
+    testUnboundLocalWithForeignExecution();
+    testCompletedCallPreservesWait();
     std::puts("EVENT_CASE testBroadcastSemantics()"); std::fflush(stdout);
     testBroadcastSemantics();
     testBroadcastRouteReuse();

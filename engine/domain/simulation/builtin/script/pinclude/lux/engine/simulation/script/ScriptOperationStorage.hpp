@@ -65,6 +65,7 @@ namespace lux::simulation::script::detail
         // Header lifetime spans the bank lifetime, including every body destruction and reuse.
         std::uint64_t epoch{};
         std::uint64_t wait_epoch{};
+        const void* owner{};
         std::size_t next_free{};
         EScriptCellBody kind{EScriptCellBody::EMPTY};
         union Body
@@ -309,12 +310,17 @@ namespace lux::simulation::script::detail
             // Caller validates limit arithmetic; allocation failure is handled by the existing prepare boundary.
             capacity_ = continuations + awaitables;
             cells_ = std::make_unique<ScriptOperationCell[]>(capacity_);
-            for (std::size_t i = 0; i < capacity_; ++i) cells_[i].next_free = i + 1U;
+            for (std::size_t i = 0; i < capacity_; ++i)
+            {
+                cells_[i].next_free = i + 1U;
+                cells_[i].owner = this;
+            }
             first_ = 0;
         }
         [[nodiscard]] bool valid(ScriptCellTicket ticket) const noexcept
         {
-            return ticket.cell && ticket.cell->epoch == ticket.epoch && ticket.cell->kind != EScriptCellBody::EMPTY;
+            return ticket.cell && ticket.cell->owner == this && ticket.cell->epoch == ticket.epoch &&
+                ticket.cell->kind != EScriptCellBody::EMPTY;
         }
         [[nodiscard]] ScriptExecutionState* execution(ScriptCellTicket cell, ScriptContinuationId id) noexcept
         {

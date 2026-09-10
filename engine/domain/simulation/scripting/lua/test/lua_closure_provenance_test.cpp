@@ -315,7 +315,7 @@ void testEventProvenance()
         EScriptBackendResult::SUCCESS);
     std::size_t registrations{};
     ScriptStepContext step{{2U, 1U}, &registrations, nullptr, nullptr,
-        [](void* context, ScriptInstanceId, ScriptEventAdmissionHandle) noexcept
+        [](void* context, const ScriptStepContext&, ScriptEventAdmissionHandle) noexcept
             -> lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> {
             ++*static_cast<std::size_t*>(context);
             return ScriptAwaitableId{1U, 1U};
@@ -390,7 +390,7 @@ void testNestedScopes()
         static ScriptStepContext context(Nested& self) noexcept
         {
             return {{2U, 1U}, &self, nullptr, nullptr,
-                [](void* opaque, ScriptInstanceId, ScriptEventAdmissionHandle) noexcept
+                [](void* opaque, const ScriptStepContext&, ScriptEventAdmissionHandle) noexcept
                     -> lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> {
                     ++static_cast<Nested*>(opaque)->waits;
                     return ScriptAwaitableId{1U, 1U};

@@ -980,6 +980,28 @@ namespace
         assert(stats.active_continuations == 0U);
     }
 
+    void testSourcePreflightBeforeAwaitableCapacity()
+    {
+        HarnessOptions options;
+        options.occurrence_capacity = 2U;
+        options.limits.awaitable_capacity = 1U;
+        options.limits.event_wait_capacity = 1U;
+        Harness harness{options};
+        harness.recordBroadcastStart(1);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 1U);
+        assert(harness.system->stats().active_awaitables == 1U);
+        assert(harness.system->stats().active_event_waiters == 1U);
+        harness.recordBroadcastStart(2);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 1U);
+        assert(harness.backend_state.wait_error == EScriptEventWaitError::WAITER_CAPACITY_EXCEEDED);
+        assert(harness.backend_state.step_calls == 2U);
+        assert(executeRuntimeStablePoint(*harness.system));
+        const auto stats = harness.system->stats();
+        assert(stats.active_event_waiters == 0U && stats.active_awaitables == 0U && stats.active_continuations == 0U);
+        assert(harness.backend_state.continuation_destroys == 1U);
+        std::puts("EVENT_PREFLIGHT,both_full=1,error=WAITER_CAPACITY_EXCEEDED,calls=2,destroys=1");
+    }
+
     void testResumeQueueFailure()
     {
         HarnessOptions options;
@@ -1354,6 +1376,7 @@ namespace
 
 int main(int argc, char**)
 {
+    testSourcePreflightBeforeAwaitableCapacity();
     std::puts("EVENT_CASE testBroadcastSemantics()"); std::fflush(stdout);
     testBroadcastSemantics();
     testBroadcastRouteReuse();

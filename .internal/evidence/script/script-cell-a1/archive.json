@@ -1,0 +1,11 @@
+{
+  "path": "script-cell-a1-raw.zip",
+  "sha256": "af17674b63690ba77b48aefd63b5e54d188d592dc33151a3bb0e23d63a6aef98",
+  "bytes": 5311142,
+  "hashed_files": 557,
+  "zip_entries": 558,
+  "qualification_source": "caf34bd307912450d894da922b59af4238154508",
+  "baseline_source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+  "verification": "All file hashes and ZIP CRC verified",
+  "compiled_product_binaries": false
+}

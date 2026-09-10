@@ -39,7 +39,7 @@ EX-01/02/03、正常/诊断隔离、metadata稳定性和默认相机协议保留
 
 仍未完全通过的原ID：A01, A03, A04, A05, A06, A07, A09, C05, U04, U05, U10, U11, U12, H03, H07, F15, R01, R06, R07, R09, X01, X03, X04, X08, X09, X10, I02, I06, I07, P02, P03。
 
-主要未测路径仍为thread/device/attach分阶段启动失败、预存ResolvedMeshResources冲突、独立material上传失败、分别控制set_stopped/value、真实资源Control/Upload饱和重试、专用shared-import/preserve GPU执行、实际持续RMB/MMB失焦/隐藏/关闭和中文IME候选，以及部分关闭借用/值访问器线程审计和resize/retry尾部账目。VkDeviceLost专用路径未测，不把record failure改名；被动RenderLease析构中的deferred vector OOM仍无全路径证明。
+主要未测路径仍为thread/device/attach分阶段启动失败、预存ResolvedMeshResources冲突、独立material上传失败、分别控制set_stopped/value、真实资源Control/Upload饱和重试、专用shared-import/preserve GPU执行、实际持续RMB/MMB失焦/隐藏/关闭，以及部分关闭借用/值访问器线程审计和resize/retry尾部账目。中文IME候选已实测，其位置/汉字显示存在明确失败。VkDeviceLost专用路径未测，不把record failure改名；被动RenderLease析构中的deferred vector OOM仍无全路径证明。
 
 本提交已执行真实GUI/IME：ni候选与数字选词实际发生，但候选位置和汉字显示有明确失败；普通Alt-F4关闭exit0、descriptor2/2、所有owner0。见IME-CURRENT-FAILURE.zh-CN.md及当前截图。持续RMB/MMB部分仍提供人工步骤，不将旧gui-02换标签。
 

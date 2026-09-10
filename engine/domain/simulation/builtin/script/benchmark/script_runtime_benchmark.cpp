@@ -1818,10 +1818,59 @@ namespace
         return result;
     }
 
+    void reportExecutionCells(const ScriptRuntimeStats& stats, const char* scenario, const char* phase)
+    {
+        std::printf("CELL_LAYOUT,%s,%s,stride=%zu,capacity=%zu,active=%zu,bank=%zu,wait_directory=%zu,"
+            "execution_directory=%zu,local_body=%zu,boxed_body=%zu,ready_stride=%zu,ready_backing=%zu\n",
+            scenario, phase, stats.operation_cell_bytes, stats.operation_cell_capacity, stats.operation_cells_active,
+            stats.operation_cell_backing_bytes, stats.awaitable_storage_bytes, stats.continuation_directory_bytes,
+            stats.awaitable_record_bytes, stats.boxed_wait_body_bytes, stats.resume_record_bytes,
+            stats.resume_backing_bytes);
+        std::printf("CELL_OBSERVATION,%s,%s,enabled=%d\n", scenario, phase, stats.cell_observation_enabled);
+        if (!stats.cell_observation_enabled) return;
+        std::printf("CELL_COUNT,%s,%s,cell_acquires=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_cell_acquires));
+        std::printf("CELL_COUNT,%s,%s,cell_releases=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_cell_releases));
+        std::printf("CELL_COUNT,%s,%s,in_place_promotions=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_in_place_promotions));
+        std::printf("CELL_COUNT,%s,%s,execution_body_creations=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_execution_body_creations));
+        std::printf("CELL_COUNT,%s,%s,local_waits=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_local_waits));
+        std::printf("CELL_COUNT,%s,%s,local_rearms=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_local_rearms));
+        std::printf("CELL_COUNT,%s,%s,boxed_external=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_boxed_external));
+        std::printf("CELL_COUNT,%s,%s,boxed_no_scope=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_boxed_no_scope));
+        std::printf("CELL_COUNT,%s,%s,boxed_layout=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_boxed_layout));
+        std::printf("CELL_COUNT,%s,%s,boxed_occupied_local=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_boxed_occupied_local));
+        std::printf("CELL_COUNT,%s,%s,wait_admissions=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_wait_admissions));
+        std::printf("CELL_COUNT,%s,%s,wait_releases=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_wait_releases));
+        std::printf("CELL_COUNT,%s,%s,execution_admissions=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_execution_admissions));
+        std::printf("CELL_COUNT,%s,%s,execution_releases=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_execution_releases));
+        std::printf("CELL_COUNT,%s,%s,source_direct_hits=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_source_direct_hits));
+        std::printf("CELL_COUNT,%s,%s,source_directory_lookups=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_source_directory_lookups));
+        std::printf("CELL_COUNT,%s,%s,stale_pops=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_stale_pops));
+        std::printf("CELL_COUNT,%s,%s,pin_deferrals=%llu\n", scenario, phase,
+            static_cast<unsigned long long>(stats.cell_pin_deferrals));
+    }
+
     void finishRuntimeBenchmark(ScriptSystem& system, const char* scenario)
     {
         const auto report = [&](const char* phase) {
             const auto stats = system.stats();
+            reportExecutionCells(stats, scenario, phase);
             std::printf("INTEGRITY,%s,%s,invocation_errors=%llu,idle_page_backing=%zu,instances=%zu,continuations=%zu,"
                 "awaitables=%zu,waiters=%zu,queue=%zu,calls=%llu,resumes=%llu\n", scenario, phase,
                 static_cast<unsigned long long>(stats.invocation_failures), system.failures().size(),
@@ -2131,6 +2180,7 @@ namespace
             RuntimeHarness harness{options.size, EScenarioMode::MIXED, options.resume_budget,
                 true, true, 1U, false, &descriptor, &*artifact};
             runSequenceFrames(options, rows, harness, "scene-cpp-sequence");
+            finishRuntimeBenchmark(*harness.system, "cpp-sequence");
         }
         const auto storage = backend->stats();
         const bool invalid_storage = storage.active_frames != 0U || storage.heap_frame_allocations != 0U;

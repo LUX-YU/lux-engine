@@ -932,7 +932,8 @@ namespace
                     state.completions.push_back(wait->completion);
                     return ScriptStepResult::suspended(wait->id);
                 }
-                return state.local_simulation.startTyped(step, 0.0);
+                double delay{};
+                return state.local_simulation.startTyped(step, delay);
             };
             auto system = h.create(limits(1U, 1U, 1U, 1U, 1U), {}, true, &clock.clock());
             assert(system && system->prepare());

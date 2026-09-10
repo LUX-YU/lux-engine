@@ -12,6 +12,7 @@ namespace lux::editor::sessions::detail
     {
 #if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
         thread_local bool fail_shader_preparation{};
+        thread_local bool hold_resource_adoption{};
 #endif
         auto fail(ESceneError code, SessionId id) noexcept
         {
@@ -71,6 +72,10 @@ namespace lux::editor::sessions::detail
     void SceneTestAccess::failNextShaderPreparation() noexcept
     {
         fail_shader_preparation = true;
+    }
+    void SceneTestAccess::holdResourceAdoption(bool held) noexcept
+    {
+        hold_resource_adoption = held;
     }
 #endif
     void ResourceRequest::start(ResourceTasks &tasks, lux::process::asset_loading::AssetReadPort port) noexcept
@@ -256,6 +261,14 @@ namespace lux::editor::sessions::detail
         return !requests_.empty() && std::all_of(requests_.begin(), requests_.end(), [](const auto &request)
             { return readDone(*request->mesh_read) && readDone(*request->material_read); });
     }
+    bool SceneResources::readyForAdoption() const noexcept
+    {
+        return std::any_of(requests_.begin(), requests_.end(), [](const auto &request)
+        {
+            return request->row.state == ESceneResourceState::UPLOADING && request->mesh.isValid() &&
+                request->material.isValid();
+        });
+    }
 #endif
     SceneResult<void> SceneResources::activate() noexcept
     {
@@ -359,7 +372,11 @@ namespace lux::editor::sessions::detail
                 {
                     request->prepareStep(*renderer_, runtime_);
                     if (request->mesh.isValid() && request->material.isValid() &&
-                        request->row.state != ESceneResourceState::READY && !terminal(request->row.state))
+                        request->row.state != ESceneResourceState::READY && !terminal(request->row.state)
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+                        && !hold_resource_adoption
+#endif
+                    )
                     {
                         registry.emplace_or_replace<lux::scene::ResolvedMeshResources>(
                             key.target.entity, lux::scene::ResolvedMeshResources{key.mesh, key.material, request->mesh,

@@ -145,6 +145,7 @@ namespace lux::editor::sessions::detail
         SceneResult<bool> advanceClose() noexcept;
 #if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
         bool readsSettled() const noexcept;
+        bool readyForAdoption() const noexcept;
 #endif
 
     private:

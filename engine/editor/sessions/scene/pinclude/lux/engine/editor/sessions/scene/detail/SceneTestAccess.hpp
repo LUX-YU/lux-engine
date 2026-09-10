@@ -18,6 +18,8 @@ namespace lux::editor::sessions::detail
         static SceneResult<SceneEntityRef> recycleSelectedEntity(SceneSession &) noexcept;
         static SceneResult<void> replaceMeshSource(SceneSession &, SceneEntityRef, lux::asset::AssetId) noexcept;
         static bool resourceReadsSettled(const SceneSession &) noexcept;
+        static bool resourceReadyForAdoption(const SceneSession &) noexcept;
+        static void holdResourceAdoption(bool) noexcept;
         static void failNextShaderPreparation() noexcept;
         static SceneResult<std::shared_ptr<const SceneResourceSnapshot>>
         resourceOwnerSnapshot(const SceneSession &) noexcept;

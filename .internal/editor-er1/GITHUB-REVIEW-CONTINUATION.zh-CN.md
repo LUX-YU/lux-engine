@@ -46,3 +46,13 @@ pending_change属于SceneResources；每个row作用域记录异常退出前发�
 g04-application-after-02.log由实际Application start/run/advanceShutdown执行。先消费实际Renderer diagnostic，再次run从Workspace收到同一View/request/render_error的SceneFailure，最后views=0/leases=0。原4组部分启动+Toolset销毁回归同时通过。首次Application探针遗漏BlockingScheduler配置导致start断言失败（after.log），已保留为驱动错误，不算负例资格。
 
 CMake变更后的all/no-op见g04-application-build-02.log和g04-application-noop.log，后者ninja:no work。最终仍需绑定新clean源码重新资格。
+
+## G02补充：真实READY后另一资源准备失败
+
+增加resource_ready_publication。A实际完成mesh/shader/material上传，B的material provider读取被暂扣。诊断构建仅暂缓A的Registry接纳，持有实际GPU句柄（没有模拟完成或替代业务owner）；读取完成后解除暂缓，A正常接纳READY，再在B的真实shader请求准备分配失败。无新的renderer reply pump重试。
+
+为复核旧算法，把459eeb3a的prepareUpdate函数精确取回，仅添加两轮共有的诊断接纳门；其余G01/G03/G04保持。g02-ready-before.patch记录与577ce66a的差异。old all成功、g02-ready-before.log exit=1：owner READY/UPLOADING，公开UPLOADING/READING，revision2→2。随后恢复修正，g02-ready-restored-build-02.log重新编译，restored-after-02.log exit=0：revision2→3，完整快照及direct通知一致，下一静止cycle不复制/不重发。两轮最终图像checksum相同、descriptor2/2、所有owner关闭。
+
+探索前置条件未成立的超时/断言日志after至after-05均保留但不算负例资格。真实material reply有机会在另一个准备步骤内接纳，单靠外部poll后窥探未能稳定停在READY前；因此采用专用诊断接纳门固定顺序，上传和资源拥有者仍为实际路径。
+
+另保留一次时间戳偏差：第一次Copy-Item恢复源码保留较旧mtime，Ninja误报no work，restored-after仍运行旧算法并失败；该次结果不属于修正产物。更新准确源文件mtime后all实际重新编译，形成restored-after-02的有效通过。最终clean clone资格排除此类增量历史。

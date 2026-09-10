@@ -33,6 +33,8 @@ namespace
         lux::asset::AssetId held;
         bool hold_all{};
         lux::asset::AssetId failed_asset;
+        lux::asset::AssetId secondary_held;
+        std::atomic<bool> secondary_released{};
         mutable std::atomic<unsigned> entered{}, returned{};
         std::atomic<bool> released{};
         std::optional<lux::asset::AssetId> resolve(std::string_view path) const override
@@ -51,6 +53,13 @@ namespace
                 ++entered;
                 while (!released.load(std::memory_order_acquire))
                     released.wait(false, std::memory_order_acquire);
+                // secondary_held is set before release(); the acquire above publishes that test configuration.
+                if (id == secondary_held)
+                {
+                    std::fprintf(stderr, "G02 held material tail=%u\n", std::to_integer<unsigned>(id.bytes().back()));
+                    while (!secondary_released.load(std::memory_order_acquire))
+                        secondary_released.wait(false, std::memory_order_acquire);
+                }
                 auto result = id == failed_asset
                     ? lux::cxx::expected<lux::asset::AssetBlob, lux::asset::EAssetStorageError>{
                           lux::cxx::unexpected(lux::asset::EAssetStorageError::IO_FAILURE)}
@@ -323,7 +332,10 @@ int main(int argc, char **argv)
     const double page_size = variant == "coordinate_256" ? 256.0 : 1024.0;
     const Eigen::Vector3d coordinate_offset{256, -256, 1024};
     const bool resource_snapshot_test = variant == "resource_snapshot";
-    const bool resource_publication_test = variant == "resource_publication" || resource_snapshot_test;
+    const bool resource_ready_test = variant == "resource_ready_publication";
+    const bool resource_publication_test =
+        variant == "resource_publication" || resource_snapshot_test || resource_ready_test;
+    std::uint64_t prepared_cycles{};
     const bool retry_test = variant == "retry";
     const bool dynamic_test = variant == "dynamic";
     const bool churn_test = variant == "churn";
@@ -556,7 +568,7 @@ int main(int argc, char **argv)
             std::size_t count{};
             for (const auto entity : source->scene->registry().view<lux::simulation::ecs::Mesh3D>())
             {
-                if (!count)
+                if (!count && !resource_ready_test)
                     provider->failed_asset =
                         source->scene->registry().get<lux::simulation::ecs::Mesh3D>(entity).value.mesh;
                 if (++count > 2)
@@ -615,33 +627,87 @@ int main(int argc, char **argv)
             auto connection = session->observe<sessions::SceneSession::resourcesChanged, &ResourceObserver::changed,
                                               lux::object::EDelivery::DIRECT>(observer);
             require(connection, "G02 real direct resource observer");
-            require(session->updateAtOwnerSafePoint({1, 0}), "G02 publish initial READING snapshot");
-            const auto initial = session->readResources();
+            require(session->updateAtOwnerSafePoint({++prepared_cycles, 0}), "G02 publish initial READING snapshot");
+            auto initial = session->readResources();
             require(initial && (*initial)->rows.size() == 2 &&
                         std::all_of((*initial)->rows.begin(), (*initial)->rows.end(), [](const auto &row)
                             { return row.state == sessions::ESceneResourceState::READING; }),
                     "G02 real reads held before owner accepts any completion");
-            provider->release();
             const auto deadline = Clock::now() + std::chrono::seconds{10};
+            if (resource_ready_test)
+            {
+                sessions::detail::SceneTestAccess::holdResourceAdoption(true);
+                provider->secondary_held = (*initial)->rows.back().key.material;
+                std::printf("G02 fixture A=%u/%u B=%u/%u\n",
+                            std::to_integer<unsigned>((*initial)->rows.front().key.mesh.bytes().back()),
+                            std::to_integer<unsigned>((*initial)->rows.front().key.material.bytes().back()),
+                            std::to_integer<unsigned>((*initial)->rows.back().key.mesh.bytes().back()),
+                            std::to_integer<unsigned>((*initial)->rows.back().key.material.bytes().back()));
+                std::fflush(stdout);
+            }
+            provider->release();
+            if (resource_ready_test)
+            {
+                rendering::EditorFramePacket progress_packet;
+                while (!sessions::detail::SceneTestAccess::resourceReadyForAdoption(*session))
+                {
+                    require(Clock::now() < deadline, "G02 real material upload reply before owner adoption");
+                    const sessions::SceneOwnerUpdate update{++prepared_cycles, 0};
+                    require(session->updateAtOwnerSafePoint(update) && session->advanceScene(update) &&
+                                renderer->poll(64),
+                            "G02 real mesh/shader/material pipeline advances while sibling read is held");
+                    if (!progress_packet.valid())
+                    {
+                        require(window->beginFrame({{1600, 900}, 0.016F, {1, 1}}) && window->drawPanes(),
+                                "G02 actual frame advances upload device completion");
+                        auto snapshot = window->finishFrame();
+                        require(snapshot, "G02 owner frame snapshot");
+                        auto packet = renderer->sealFrame(*snapshot, {});
+                        require(packet && !snapshot->valid(), "G02 progress frame admission preparation");
+                        progress_packet = std::move(*packet);
+                    }
+                    require(renderer->trySubmitFrame(progress_packet), "G02 retain any backpressured progress frame");
+                    if (prepared_cycles % 1000 == 0)
+                    {
+                        const auto observation = sessions::detail::SceneTestAccess::resourceOwnerSnapshot(*session);
+                        require(observation, "G02 waiting owner observation");
+                        std::printf("G02 waiting states=%u,%u provider=%u/%u frames=%llu\n",
+                                    unsigned((*observation)->rows[0].state), unsigned((*observation)->rows[1].state),
+                                    provider->entered.load(), provider->returned.load(), renderer->statistics().frames);
+                        std::fflush(stdout);
+                    }
+                    std::this_thread::yield();
+                }
+                initial = session->readResources();
+                require(initial && (*initial)->rows.front().state == sessions::ESceneResourceState::UPLOADING &&
+                            (*initial)->rows.back().state == sessions::ESceneResourceState::READING,
+                        "G02 actual A upload completes before READY adoption; B read is still held");
+                provider->secondary_released.store(true, std::memory_order_release);
+                provider->secondary_released.notify_all();
+            }
             while (!sessions::detail::SceneTestAccess::resourceReadsSettled(*session))
             {
                 require(Clock::now() < deadline, "G02 actual asset reads complete");
                 std::this_thread::yield();
             }
+            if (resource_ready_test)
+                sessions::detail::SceneTestAccess::holdResourceAdoption(false);
             if (resource_snapshot_test)
                 lux_er1_scene_allocation_fail_after(0);
             else
                 sessions::detail::SceneTestAccess::failNextShaderPreparation();
-            const auto failed = session->updateAtOwnerSafePoint({2, 0});
+            const auto notices_before = observer.calls;
+            const auto failed = session->updateAtOwnerSafePoint({++prepared_cycles, 0});
             const auto allocations = resource_snapshot_test ? lux_er1_scene_allocation_disarm()
                                                             : lux_er1_client_allocation_disarm();
             require(!failed && failed.error().code == sessions::ESceneError::ALLOCATION_FAILURE &&
                         failed.error().session == session->id() && allocations == 1,
                     "G02 exact real client shader preparation allocation failure contained by Scene owner");
-            require(observer.calls == 1, "G02 failed preparation cannot notify an unpublished snapshot");
+            require(observer.calls == notices_before, "G02 failed preparation cannot notify an unpublished snapshot");
             const auto actual = sessions::detail::SceneTestAccess::resourceOwnerSnapshot(*session);
             require(actual, "G02 observe retained owner without mutating it");
-            require(session->updateAtOwnerSafePoint({2, 0}), "G02 retry same owner cycle without backend reply pump");
+            require(session->updateAtOwnerSafePoint({prepared_cycles, 0}),
+                    "G02 retry same owner cycle without backend reply pump");
             const auto published = session->readResources();
             require(published, "G02 read retry snapshot");
             bool found_failure{};
@@ -657,13 +723,18 @@ int main(int argc, char **argv)
                     resource_publication_contract &= visible.state == row.state && visible.key == row.key &&
                         visible.asset_failure && visible.asset_failure->code == row.asset_failure->code;
                 }
+                if (resource_ready_test && row.state == sessions::ESceneResourceState::READY)
+                {
+                    found_failure = true;
+                    resource_publication_contract &= visible.state == row.state && visible.key == row.key;
+                }
                 std::printf("G02 row=%zu owner_state=%u published_state=%u request=%llu revision=%llu->%llu\n",
                             index, unsigned(row.state), unsigned(visible.state), row.key.sequence,
                             (*initial)->revision, (*published)->revision);
             }
-            require(found_failure, "G02 failed reply was accepted before preparation OOM");
+            require(found_failure, "G02 required failure or READY transition occurred before preparation OOM");
             resource_publication_contract &= (*published)->revision > (*initial)->revision;
-            resource_publication_contract &= observer.calls == 2;
+            resource_publication_contract &= observer.calls == notices_before + 1;
             const auto owner_after_retry = sessions::detail::SceneTestAccess::resourceOwnerSnapshot(*session);
             require(owner_after_retry && (*owner_after_retry)->rows.size() == (*actual)->rows.size(),
                     "G02 retry retains every original request owner");
@@ -671,9 +742,9 @@ int main(int argc, char **argv)
                 require((*owner_after_retry)->rows[index].key == (*actual)->rows[index].key &&
                             (*owner_after_retry)->rows[index].state == (*actual)->rows[index].state,
                         "G02 retry publishes pending changes without a new row transition");
-            require(session->updateAtOwnerSafePoint({3, 0}), "G02 static owner cycle");
-            require(session->readResources()->get() == published->get() && observer.calls == 2,
-                    "G02 acknowledged change does not copy snapshots or notify every cycle");
+            require(session->updateAtOwnerSafePoint({++prepared_cycles, 0}), "G02 static owner cycle");
+            resource_publication_contract &= session->readResources()->get() == published->get() &&
+                observer.calls == notices_before + 1;
             std::printf("G02 allocation_attempts=%zu publication_preserved=%u views=%zu leases=%zu\n", allocations,
                         unsigned(resource_publication_contract), renderer->statistics().views,
                         renderer->statistics().runtime_leases);
@@ -864,7 +935,7 @@ int main(int argc, char **argv)
         std::optional<sessions::detail::ESceneTestMutation> pending_mutation;
         unsigned phase{};
         const auto needs_second = [&] { return multiple_views_test && (!multiple_lifecycle || phase < 3); };
-        std::uint64_t next_capture = 60, cycle = resource_publication_test ? 3 : 0;
+        std::uint64_t next_capture = 60, cycle = prepared_cycles;
         bool recovery_mounted{}, retry_accepted{};
         bool partial_failure_observed{};
         unsigned held_selection_steps{};

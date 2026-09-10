@@ -13,6 +13,8 @@ namespace lux::editor::sessions::detail
 #if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
         thread_local bool fail_shader_preparation{};
         thread_local bool hold_resource_adoption{};
+        thread_local bool fail_shader_info_after_mesh{};
+        thread_local std::optional<ResourceRequestKey> failed_shader_key;
 #endif
         auto fail(ESceneError code, SessionId id) noexcept
         {
@@ -76,6 +78,15 @@ namespace lux::editor::sessions::detail
     void SceneTestAccess::holdResourceAdoption(bool held) noexcept
     {
         hold_resource_adoption = held;
+    }
+    void SceneTestAccess::failShaderInfoAfterMeshUpload() noexcept
+    {
+        failed_shader_key.reset();
+        fail_shader_info_after_mesh = true;
+    }
+    std::optional<ResourceRequestKey> SceneTestAccess::failedShaderKey() noexcept
+    {
+        return failed_shader_key;
     }
 #endif
     void ResourceRequest::start(ResourceTasks &tasks, lux::process::asset_loading::AssetReadPort port) noexcept
@@ -167,11 +178,22 @@ namespace lux::editor::sessions::detail
         }
         if (terminal(row.state))
             return;
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+        if (fail_shader_info_after_mesh && !mesh.isValid())
+            return;
+#endif
         const auto &material_data = material_read->value->data();
         if (!forward.isValid() && !forward_request.valid() && renderer.controlAvailable())
         {
-            const auto info = lux::rdesc::ShaderInfo::serialize(material_data.forward_info);
+            auto info = lux::rdesc::ShaderInfo::serialize(material_data.forward_info);
 #if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+            if (std::exchange(fail_shader_info_after_mesh, false))
+            {
+                // Actual mesh upload has completed. The real backend rejects this malformed metadata
+                // before shader module creation and returns ShaderCompiledReply.status == 1.
+                failed_shader_key = row.key;
+                info.assign(1, std::byte{0xff});
+            }
             if (std::exchange(fail_shader_preparation, false))
                 lux_er1_client_allocation_fail_after(0);
 #endif
@@ -268,6 +290,15 @@ namespace lux::editor::sessions::detail
             return request->row.state == ESceneResourceState::UPLOADING && request->mesh.isValid() &&
                 request->material.isValid();
         });
+    }
+    std::size_t SceneResources::liveHandles(const ResourceRequestKey &key) const noexcept
+    {
+        for (const auto &request : requests_)
+            if (request->row.key == key)
+                return std::size_t(request->mesh.isValid()) + request->material.isValid() + request->forward.isValid() +
+                    request->gbuffer.isValid() + request->mesh_request.valid() + request->material_request.valid() +
+                    request->forward_request.valid() + request->gbuffer_request.valid();
+        return 0;
     }
 #endif
     SceneResult<void> SceneResources::activate() noexcept

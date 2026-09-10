@@ -146,6 +146,7 @@ namespace lux::editor::sessions::detail
 #if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
         bool readsSettled() const noexcept;
         bool readyForAdoption() const noexcept;
+        std::size_t liveHandles(const ResourceRequestKey &) const noexcept;
 #endif
 
     private:

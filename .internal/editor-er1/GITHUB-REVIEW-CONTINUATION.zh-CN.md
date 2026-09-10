@@ -56,3 +56,9 @@ CMake变更后的all/no-op见g04-application-build-02.log和g04-application-noop
 探索前置条件未成立的超时/断言日志after至after-05均保留但不算负例资格。真实material reply有机会在另一个准备步骤内接纳，单靠外部poll后窥探未能稳定停在READY前；因此采用专用诊断接纳门固定顺序，上传和资源拥有者仍为实际路径。
 
 另保留一次时间戳偏差：第一次Copy-Item恢复源码保留较旧mtime，Ninja误报no work，restored-after仍运行旧算法并失败；该次结果不属于修正产物。更新准确源文件mtime后all实际重新编译，形成restored-after-02的有效通过。最终clean clone资格排除此类增量历史。
+
+## C06 / R06 本阶段补充
+
+c06-after.log：4个真实Renderer DLL View构造分配点逐点失败后释放部分owner；8个既定注册槽全部占用，第9个返回CAPACITY且分配计数0；关闭一个owner后新View可接纳且身份不同；最终views=0，随后真实正常场景渲染/关闭通过。
+
+r06-after.log：shader_subfailure用例先等待实际GPU mesh handle，再通过既有compileShader通道提交格式错误ShaderInfo。真实RenderServerHandlers::handleCompileShader返回ShaderCompiledReply.status=1（未创建非法Vulkan shader module）。资源快照保留FAILED、backend_status=1及原ResourceRequestKey；无asset错误混用。资源没有装入ResolvedMeshResources，对应已取得的mesh/shader句柄和在途请求最终全部为0；其他两资源实际图像继续生成并关闭。独立material上传失败仍不据此扩称已测。

@@ -328,6 +328,7 @@ int main(int argc, char **argv)
     bool coordinate_contract = true;
     bool workspace_failure_contract = true;
     const bool workspace_failure_test = variant == "workspace_failure";
+    const bool shader_subfailure_test = variant == "shader_subfailure";
     const bool coordinate_test = variant == "coordinate_256" || variant == "coordinate_1024";
     const double page_size = variant == "coordinate_256" ? 256.0 : 1024.0;
     const Eigen::Vector3d coordinate_offset{256, -256, 1024};
@@ -352,7 +353,8 @@ int main(int argc, char **argv)
     const bool gated_test = late_entity_test || late_source_test || late_close_test || late_selection_test;
 #if !defined(LUX_EDITOR_DIAGNOSTICS)
     require(!dynamic_test && !churn_test && !record_failure_test && !late_entity_test && !late_source_test &&
-                variant != "factory_failure" && !resource_publication_test && !workspace_failure_test,
+                variant != "factory_failure" && variant != "view_admission" &&
+                !resource_publication_test && !workspace_failure_test && !shader_subfailure_test,
             "requested variant requires the isolated diagnostic build");
 #endif
     require(!retry_test || argc == 5, "retry needs a complete recovery package");
@@ -429,6 +431,71 @@ int main(int argc, char **argv)
         auto renderer_result = rendering::EditorRenderer::create(window->nativeWindow(), window->uiSession(), config);
         require(renderer_result, "renderer factory");
         auto renderer = std::move(*renderer_result);
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+        if (variant == "view_admission")
+        {
+            const auto close = [&](std::unique_ptr<rendering::RenderView> &view)
+            {
+                require(view->beginClose(), "C06 admitted View retains close owner");
+                const auto deadline = Clock::now() + std::chrono::seconds{10};
+                for (;;)
+                {
+                    require(Clock::now() < deadline && renderer->poll(64), "C06 finite View closure");
+                    const auto closed = view->advanceClose();
+                    require(closed, "C06 View close result");
+                    if (*closed == rendering::ERenderClose::COMPLETE)
+                        break;
+                }
+                view.reset();
+            };
+            std::size_t failures{};
+            for (std::size_t index = 0; index < 16; ++index)
+            {
+                const auto before = renderer->statistics();
+                lux_er1_renderer_allocation_fail_after(index);
+                auto attempted = renderer->openView({1000, 9}, {{0, 0}, true});
+                const auto allocations = lux_er1_renderer_allocation_disarm();
+                if (attempted)
+                {
+                    require(allocations == index && renderer->statistics().views == before.views + 1,
+                            "C06 View factory sweeps every actual DLL allocation through successful admission");
+                    close(*attempted);
+                    break;
+                }
+                ++failures;
+                require(attempted.error().code == rendering::ERendererError::ALLOCATION_FAILURE &&
+                            allocations == index + 1 && renderer->statistics().views == before.views &&
+                            renderer->statistics().render_events == before.render_events,
+                        "C06 failed View factory releases partial ownership before any request is published");
+            }
+            require(failures == 4, "C06 Impl/owner/resources/image-version actual allocation coverage");
+            std::vector<std::unique_ptr<rendering::RenderView>> owners;
+            owners.reserve(config.view_capacity);
+            for (std::size_t index = 0; index < config.view_capacity; ++index)
+            {
+                auto view = renderer->openView({1000, 9}, {{0, 0}, true});
+                require(view, "C06 each configured registration slot admits one owner");
+                owners.push_back(std::move(*view));
+            }
+            lux_er1_renderer_allocation_fail_after(0);
+            const auto full = renderer->openView({1000, 9}, {{0, 0}, true});
+            const auto allocations = lux_er1_renderer_allocation_disarm();
+            require(!full && full.error().code == rendering::ERendererError::CAPACITY && allocations == 0 &&
+                        renderer->statistics().views == config.view_capacity,
+                    "C06 full registration refuses before allocation or backend publication");
+            const auto retired = owners.back()->id();
+            close(owners.back());
+            auto replacement = renderer->openView({1000, 9}, {{0, 0}, true});
+            require(replacement && (*replacement)->id() != retired, "C06 reclaimed slot never reuses View identity");
+            owners.back() = std::move(*replacement);
+            for (auto &owner : owners)
+                close(owner);
+            require(renderer->statistics().views == 0 && renderer->statistics().render_events == 0,
+                    "C06 capacity/factory failure leaves no View or backend error");
+            std::printf("C06 PASS factory_allocations=%zu capacity=%zu full_allocations=0 closed_views=0\n",
+                        failures, config.view_capacity);
+        }
+#endif
         for (const auto size : {0.0, -1.0, (std::numeric_limits<double>::max)(),
                                 std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN()})
         {
@@ -620,6 +687,8 @@ int main(int argc, char **argv)
         require(session_result && !source->scene, "Scene source transfer");
         auto session = std::move(*session_result);
 #if defined(LUX_EDITOR_DIAGNOSTICS)
+        if (shader_subfailure_test)
+            sessions::detail::SceneTestAccess::failShaderInfoAfterMeshUpload();
         if (resource_publication_test)
         {
             ResourceObserver observer(messages.dispatcherRef());
@@ -1082,6 +1151,8 @@ int main(int argc, char **argv)
                                             [&](const auto &row)
                                             {
                                                 return row.state == sessions::ESceneResourceState::READY ||
+                                                       (shader_subfailure_test && row.backend_status == 1 &&
+                                                        row.state == sessions::ESceneResourceState::FAILED) ||
                                                        (resource_publication_test && row.asset_failure &&
                                                         row.state == sessions::ESceneResourceState::FAILED) ||
                                                        (dynamic_test && phase >= 3 &&
@@ -1410,6 +1481,32 @@ int main(int argc, char **argv)
                     "old source sequence rejected even though full Entity identity remains valid");
             require(session->advanceScene(verify_update), "changed source verification completes owner cycle");
         }
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+        if (shader_subfailure_test)
+        {
+            const auto key = sessions::detail::SceneTestAccess::failedShaderKey();
+            require(key, "R06 shader rejection issued only after an actual GPU mesh handle was received");
+            const sessions::SceneOwnerUpdate update{++cycle, 0};
+            require(session->updateAtOwnerSafePoint(update), "R06 final failure snapshot");
+            const auto resources = session->readResources();
+            require(resources, "R06 public resource failure");
+            const auto row = std::find_if((*resources)->rows.begin(), (*resources)->rows.end(),
+                                         [&](const auto &value) { return value.key == *key; });
+            require(row != (*resources)->rows.end() && row->state == sessions::ESceneResourceState::FAILED &&
+                        row->backend_status == 1 && !row->asset_failure && row->render_failure.ok(),
+                    "R06 exact ShaderCompiledReply backend status retained with its resource identity");
+            const auto outline = session->readOutline();
+            require(outline, "R06 authoritative Scene outline");
+            const auto entity = std::find_if((*outline)->rows.begin(), (*outline)->rows.end(),
+                                            [&](const auto &value) { return value.target == key->target; });
+            require(entity != (*outline)->rows.end() && !entity->resources_ready &&
+                        sessions::detail::SceneTestAccess::liveResourceHandles(*session, *key) == 0,
+                    "R06 failed shader never adopts a partial resolved mesh and releases all sibling handles");
+            require(session->advanceScene(update), "R06 complete owner cycle");
+            std::printf("R06 PASS mesh_ready_before_shader_failure=1 resource_sequence=%llu backend_status=1 "
+                        "remaining_handles_and_requests=0\n", key->sequence);
+        }
+#endif
         if (record_failure_test)
         {
             require(failed_packet_sequence != 0, "failure packet was actually sealed");

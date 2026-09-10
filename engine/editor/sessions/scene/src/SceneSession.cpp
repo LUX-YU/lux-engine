@@ -581,6 +581,11 @@ namespace lux::editor::sessions
     {
         return session.impl_->check(false) && session.impl_->resources->readyForAdoption();
     }
+    std::size_t detail::SceneTestAccess::liveResourceHandles(const SceneSession &session,
+                                                           const ResourceRequestKey &key) noexcept
+    {
+        return session.impl_->check(false) ? session.impl_->resources->liveHandles(key) : 0;
+    }
     SceneResult<std::shared_ptr<const SceneResourceSnapshot>>
     detail::SceneTestAccess::resourceOwnerSnapshot(const SceneSession &session) noexcept
     {

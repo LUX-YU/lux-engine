@@ -63,10 +63,10 @@ namespace
 
 
 
-    [[nodiscard]] SimulationDescription makeSimulation()
+    [[nodiscard]] SimulationDescription makeSimulation(const lux::script::ScriptEventPayloadDescription* payload = nullptr)
     {
         constexpr std::array hooks{makeHookPointSpec<void()>(kDispatchHook, "dispatch")};
-        constexpr std::array events{
+        std::array events{
             makeEventPointSpec<std::int32_t>(
                 kBroadcastStart,
                 "broadcast-start",
@@ -116,6 +116,11 @@ namespace
                 1U
             )
         };
+        if (payload != nullptr)
+        {
+            events[1].payload_type = payload->type_id;
+            events[1].payload_schema_name = payload->canonical_name;
+        }
         const SimulationSystemDescription system{
             .type = {.canonical_name = "lux.test.event-wait", .version = 1U},
             .hooks = hooks,
@@ -130,7 +135,8 @@ namespace
 
     [[nodiscard]] lux::script::ScriptArtifact makeArtifact(
         EEventRoute wait_route,
-        ERequirementMutation mutation
+        ERequirementMutation mutation,
+        const lux::script::ScriptEventPayloadDescription* wait_payload = nullptr
     )
     {
         const auto payload = lux::rdesc::makeScriptValueType<std::int32_t>(lux::semantic::EValuePass::CONST_REF);
@@ -154,6 +160,11 @@ namespace
             lux::semantic::typeId("lux.i32"),
             1U, delivery.id().value, delivery.contractHash(), delivery.contractVersion()
         };
+        if (wait_payload != nullptr)
+        {
+            requirement.payload = *wait_payload;
+            requirement.payload_schema_hash = lux::semantic::typeId(wait_payload->canonical_name);
+        }
         switch (mutation)
         {
         case ERequirementMutation::EVENT_ID: requirement.event_id += 0x1000U; break;
@@ -386,6 +397,7 @@ namespace
         bool disable_wait_copy{};
         bool fail_wait_copy{};
         ERequirementMutation requirement_mutation{ERequirementMutation::NONE};
+        std::optional<lux::script::ScriptEventPayloadDescription> wait_payload;
         std::optional<EScriptSystemError> expected_prepare_error;
         std::size_t occurrence_capacity{8U};
         const SimulationClock* clock_override{};
@@ -484,8 +496,9 @@ namespace
         }
 
         explicit Harness(HarnessOptions options)
-            : simulation(makeSimulation()),
-              artifact(makeArtifact(options.wait_route, options.requirement_mutation)),
+            : simulation(makeSimulation(options.wait_payload ? &*options.wait_payload : nullptr)),
+              artifact(makeArtifact(options.wait_route, options.requirement_mutation,
+                  options.wait_payload ? &*options.wait_payload : nullptr)),
               asset(assetId())
         {
             if (options.entity_scope)
@@ -547,6 +560,15 @@ namespace
             const auto wait_event = options.wait_route == EEventRoute::ENTITY_TARGETED
                 ? kTargetedWait
                 : kBroadcastWait;
+            if (options.wait_payload)
+            {
+                const auto& payload = *options.wait_payload;
+                auto& endpoint = endpoints[wait_endpoint];
+                endpoint.payload_type.type_id = payload.type_id;
+                endpoint.payload_type.canonical_name = payload.canonical_name;
+                endpoint.payload_projection.owned_layout = {payload.type_id, payload.canonical_name,
+                    payload.abi_kind, payload.size, payload.alignment};
+            }
             const auto projected = projectScriptEventSource(
                 simulation.findEvent(kSystem, wait_event),
                 endpoints[wait_endpoint],
@@ -1069,6 +1091,43 @@ namespace
         }
     }
 
+    void testPreparedPayloadResidualValidation()
+    {
+        // These custom shapes passed V4 assembly. Invalid ones must still fail at wait admission,
+        // not become cold failures or reach a payload copy. The valid struct exercises the prepared kernel.
+        constexpr std::array<std::pair<std::uint8_t, std::uint32_t>, 4> shapes{{
+            {LUX_SCRIPT_VK_STRUCT_REF, 4U}, {LUX_SCRIPT_VK_STRUCT_REF, 6U},
+            {LUX_SCRIPT_VK_INT32, 8U}, {255U, 4U}
+        }};
+        for (const auto& [kind, size] : shapes)
+        {
+            HarnessOptions options;
+            options.wait_payload = lux::script::ScriptEventPayloadDescription{
+                "lux.test.H1Payload", lux::semantic::typeId("lux.test.H1Payload"), kind, size, 4U};
+            Harness harness{options};
+            assert(harness.backend_state.instance_creates == 1U && harness.system->activeInstanceCount() == 1U);
+            harness.recordBroadcastStart(1);
+            assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 1U);
+            const bool valid = kind == LUX_SCRIPT_VK_STRUCT_REF && size == 4U;
+            if (valid)
+            {
+                assert(harness.system->stats().active_awaitables == 1U);
+                assert(harness.system->stats().active_event_waiters == 1U);
+            }
+            else
+            {
+                assert(harness.backend_state.wait_error == EScriptEventWaitError::PAYLOAD_NOT_OWNABLE);
+                assert(harness.system->stats().active_awaitables == 0U);
+                assert(harness.system->stats().active_event_waiters == 0U);
+            }
+            assert(harness.system->shutdown());
+            assert(harness.system->stats().active_awaitables == 0U);
+            assert(harness.backend_state.continuation_destroys == (valid ? 1U : 0U));
+            std::printf("EVENT_PREPARED_SHAPE,kind=%u,size=%u,prepared=1,accepted=%d,destroys=%zu\n",
+                static_cast<unsigned>(kind), size, valid, harness.backend_state.continuation_destroys);
+        }
+    }
+
     void testArtifactSchemaDriftFailsBeforeInstanceCreation()
     {
         constexpr std::array cases{
@@ -1377,6 +1436,7 @@ namespace
 int main(int argc, char**)
 {
     testSourcePreflightBeforeAwaitableCapacity();
+    testPreparedPayloadResidualValidation();
     std::puts("EVENT_CASE testBroadcastSemantics()"); std::fflush(stdout);
     testBroadcastSemantics();
     testBroadcastRouteReuse();

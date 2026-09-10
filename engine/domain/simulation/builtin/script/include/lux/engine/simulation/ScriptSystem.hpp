@@ -100,6 +100,26 @@ namespace lux::simulation::script
         std::size_t boxed_wait_body_bytes{};
         std::size_t resume_record_bytes{};
         std::size_t resume_backing_bytes{};
+        // Counts are uncollected unless this flag is true; timing builds omit their updates.
+        bool cell_observation_enabled{};
+        std::uint64_t cell_cell_acquires{};
+        std::uint64_t cell_cell_releases{};
+        std::uint64_t cell_in_place_promotions{};
+        std::uint64_t cell_execution_body_creations{};
+        std::uint64_t cell_local_waits{};
+        std::uint64_t cell_local_rearms{};
+        std::uint64_t cell_boxed_external{};
+        std::uint64_t cell_boxed_no_scope{};
+        std::uint64_t cell_boxed_layout{};
+        std::uint64_t cell_boxed_occupied_local{};
+        std::uint64_t cell_wait_admissions{};
+        std::uint64_t cell_wait_releases{};
+        std::uint64_t cell_execution_admissions{};
+        std::uint64_t cell_execution_releases{};
+        std::uint64_t cell_source_direct_hits{};
+        std::uint64_t cell_source_directory_lookups{};
+        std::uint64_t cell_stale_pops{};
+        std::uint64_t cell_pin_deferrals{};
         // Cumulative assembly work, including rejected preflights; not instance resource counts.
         std::uint64_t assembly_configuration_slot_visits{};
         std::uint64_t assembly_endpoint_count_visits{};

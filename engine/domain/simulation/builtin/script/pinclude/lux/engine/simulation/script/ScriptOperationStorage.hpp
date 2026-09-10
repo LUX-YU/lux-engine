@@ -154,6 +154,24 @@ namespace lux::simulation::script::detail
         std::size_t size_{};
     };
 
+    struct ScriptCellObservation final
+    {
+        std::uint64_t cell_acquires{};
+        std::uint64_t cell_releases{};
+        std::uint64_t in_place_promotions{};
+        std::uint64_t execution_body_creations{};
+        std::uint64_t local_waits{};
+        std::uint64_t local_rearms{};
+        std::uint64_t boxed_external{};
+        std::uint64_t boxed_no_scope{};
+        std::uint64_t boxed_layout{};
+        std::uint64_t boxed_occupied_local{};
+        std::uint64_t wait_admissions{};
+        std::uint64_t wait_releases{};
+        std::uint64_t execution_admissions{};
+        std::uint64_t execution_releases{};
+    };
+
     class ScriptOperationStorage final
     {
         struct ContinuationTag;
@@ -204,6 +222,11 @@ namespace lux::simulation::script::detail
                 value.id = {inserted->index + 1U, inserted->gen};
                 value.cell = cell;
                 cell.cell->body.execution.execution.emplace(value);
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+                ++owner_.observation_.execution_admissions;
+                if (promoted) ++owner_.observation_.in_place_promotions;
+                else ++owner_.observation_.execution_body_creations;
+#endif
                 return inserted;
             }
             [[nodiscard]] bool erase(key_type key) noexcept
@@ -212,6 +235,9 @@ namespace lux::simulation::script::detail
                 if (!found) return false;
                 const auto cell = *found;
                 static_cast<void>(owner_.executions_.erase(key));
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+                ++owner_.observation_.execution_releases;
+#endif
                 cell.cell->body.execution.execution.reset();
                 owner_.releaseEmpty(cell);
                 return true;
@@ -266,6 +292,18 @@ namespace lux::simulation::script::detail
                     owner_.releaseEmpty(cell);
                     return std::nullopt;
                 }
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+                ++owner_.observation_.wait_admissions;
+                if (local)
+                {
+                    ++owner_.observation_.local_waits;
+                    if (cell.cell->body.execution.execution) ++owner_.observation_.local_rearms;
+                }
+                else if (external) ++owner_.observation_.boxed_external;
+                else if (!scope) ++owner_.observation_.boxed_no_scope;
+                else if (!eligible) ++owner_.observation_.boxed_layout;
+                else ++owner_.observation_.boxed_occupied_local;
+#endif
                 auto& record = local ? cell.cell->body.execution.wait.emplace().state : cell.cell->body.boxed.state;
                 record.id = {inserted->index + 1U, inserted->gen};
                 record.instance = instance;
@@ -293,6 +331,9 @@ namespace lux::simulation::script::detail
                 auto* record = owner_.wait(ticket);
                 if (!record || record->write_pins != 0U) std::terminate();
                 static_cast<void>(owner_.waits_.erase(key));
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+                ++owner_.observation_.wait_releases;
+#endif
                 if (ticket.cell.cell->kind == EScriptCellBody::EXECUTION)
                 {
                     ticket.cell.cell->body.execution.wait.reset();
@@ -366,6 +407,7 @@ namespace lux::simulation::script::detail
             }
             else wait.location.cell.cell->body.boxed.value = std::move(value);
         }
+        [[nodiscard]] const ScriptCellObservation& observation() const noexcept { return observation_; }
         [[nodiscard]] std::size_t capacity() const noexcept { return capacity_; }
         [[nodiscard]] std::size_t used() const noexcept { return used_; }
         [[nodiscard]] std::size_t bankBytes() const noexcept { return capacity_ * sizeof(ScriptOperationCell); }
@@ -389,6 +431,9 @@ namespace lux::simulation::script::detail
                 if (kind == EScriptCellBody::EXECUTION) std::construct_at(&cell.body.execution);
                 else std::construct_at(&cell.body.boxed);
                 ++used_;
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+                ++observation_.cell_acquires;
+#endif
                 return {&cell, cell.epoch};
             }
             return {};
@@ -407,6 +452,9 @@ namespace lux::simulation::script::detail
             cell.next_free = first_;
             first_ = static_cast<std::size_t>(&cell - cells_.get());
             --used_;
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+            ++observation_.cell_releases;
+#endif
         }
         std::unique_ptr<ScriptOperationCell[]> cells_;
         Executions executions_;
@@ -414,5 +462,7 @@ namespace lux::simulation::script::detail
         std::size_t capacity_{};
         std::size_t first_{};
         std::size_t used_{};
+        ScriptCellObservation observation_;
+
     };
 }

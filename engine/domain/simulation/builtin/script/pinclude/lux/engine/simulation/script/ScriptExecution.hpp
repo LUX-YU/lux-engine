@@ -508,6 +508,9 @@ namespace lux::simulation::script::detail
                 record->state = EScriptAwaitableState::CANCELLED;
                 record->release_pending = true;
                 ++pending_awaitable_releases_;
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+                ++pin_deferrals_;
+#endif
                 return true;
             }
             return awaitables_.erase(awaitableKey(id));
@@ -749,12 +752,20 @@ namespace lux::simulation::script::detail
             if (instance == nullptr || continuation == nullptr || continuation->instance != resume.instance ||
                 continuation->waiting_on != resume.awaitable)
             {
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+                ++stale_pops_;
+#endif
                 return {};
             }
             const ExecutionAccess execution{instance, resume.instance};
             auto outcome = takeAwaitable(resume, execution);
             if (!outcome)
+            {
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+                ++stale_pops_;
+#endif
                 return {};
+            }
             if (!execution.current())
             {
                 destroyContinuation(resume.continuation);
@@ -857,6 +868,10 @@ namespace lux::simulation::script::detail
         completeLocalTimer(ScriptTimerAssociation association, ScriptSourceId source) noexcept
         {
             auto* owner = findExecutionInstance(association.instance);
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+            if (association.local) ++source_direct_hits_;
+            else ++source_directory_lookups_;
+#endif
             auto* record = association.local ? cells_.wait(association.local) :
                 awaitables_.find(awaitableKey(association.awaitable));
             const bool invalid = owner == nullptr || !owner->authority.current() || record == nullptr ||
@@ -1034,6 +1049,10 @@ namespace lux::simulation::script::detail
             }
 
             const auto& endpoint = binding_owner_.eventEndpoint(waiter.endpoint);
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+            if (waiter.local) ++source_direct_hits_;
+            else ++source_directory_lookups_;
+#endif
             auto* record = waiter.local ? cells_.wait(waiter.local) :
                 awaitables_.find(awaitableKey(awaitable));
             const bool invalid_wait = record == nullptr || record->id != awaitable ||
@@ -1193,6 +1212,10 @@ namespace lux::simulation::script::detail
         std::uint64_t step_invocations_{};
         std::uint64_t backend_resume_calls_{};
         std::uint64_t suspensions_admitted_{};
+        std::uint64_t source_direct_hits_{};
+        std::uint64_t source_directory_lookups_{};
+        std::uint64_t stale_pops_{};
+        std::uint64_t pin_deferrals_{};
         bool stopping_{};
         bool prepared_{};
     };

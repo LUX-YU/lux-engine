@@ -99,12 +99,37 @@ namespace
         assert(f.executions.erase(*c));
         std::cout << "CASE external_first local_after_take=1 shared_capacity_rejection=1\n";
     }
+
+    void testHeaderOwnerAndExhaustion()
+    {
+        Fixture first{1, 1}, other{1, 1};
+        ScriptCellTicket scope;
+        const auto waiting = first.waits.admit({1, 1}, {}, false, &scope);
+        assert(waiting);
+        const auto ticket = first.waits.find(*waiting)->location;
+        assert(other.cells.wait(ticket) == nullptr && !other.cells.valid(scope));
+        const auto c = first.executions.tryEmplace(execution(first.waits.find(*waiting)->id));
+        assert(c && first.waits.erase(*waiting));
+        scope.cell->wait_epoch = UINT64_MAX;
+        assert(!first.waits.admit({1, 1}, {}, false, &scope));
+        assert(first.executions.find(*c) && first.cells.used() == 1U);
+        assert(first.executions.erase(*c));
+        assert(first.cells.wait(ticket) == nullptr);
+        // Exhausted headers are not wrapped into a capability held by an old source.
+        scope.cell->epoch = UINT64_MAX;
+        scope = {};
+        const auto final_wait = first.waits.admit({1, 1}, {}, false, &scope);
+        assert(final_wait && scope.cell != ticket.cell.cell);
+        assert(first.waits.erase(*final_wait));
+        std::cout << "CASE owner_epoch wrong_owner=1 wait_exhaustion=1 cell_exhaustion=1 stale=1\n";
+    }
 }
 int main()
 {
     testPromotionRearmAndStale();
     testExtraAndForeignConsumer();
     testExternalFirstAndQuota();
+    testHeaderOwnerAndExhaustion();
     std::cout << "LAYOUT cell=" << sizeof(ScriptOperationCell) << " local=" << sizeof(ScriptLocalWait)
         << " boxed=" << sizeof(ScriptBoxedWait) << " execution=" << sizeof(ScriptExecutionState) << '\n';
 }

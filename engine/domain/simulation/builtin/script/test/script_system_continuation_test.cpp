@@ -255,6 +255,7 @@ namespace
         std::vector<ScriptAwaitableCompletion> completions;
         std::optional<lux::script::ScriptAbilityStarter<TestAbility>> ability_starter;
         ScriptStepResult (*custom_step)(BackendState&, ScriptStepContext&) noexcept{};
+        ScriptStepResult (*custom_resume)(BackendState&, ScriptStepContext&) noexcept{};
         std::size_t provider_starts{};
         std::size_t expected_payload_size{};
         void* resume_probe_context{};
@@ -430,7 +431,9 @@ namespace
         owner.max_resume_depth = (std::max)(owner.max_resume_depth, owner.resume_depth);
 
         ScriptStepResult result = ScriptStepResult::completed();
-        if (continuation.suspensions_remaining != 0U)
+        if (owner.custom_resume != nullptr)
+            result = owner.custom_resume(owner, context);
+        else if (continuation.suspensions_remaining != 0U)
         {
             --continuation.suspensions_remaining;
             auto awaiting = context.awaitables.create(
@@ -904,6 +907,55 @@ namespace
     }
 
 #if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
+    void testCellMixedTimerTransitions()
+    {
+        for (const bool external_first : {false, true})
+        {
+            Harness h{false};
+            lux::simulation::script::test::ScriptTestClock clock{h.registry};
+            configureTimerHarness(h);
+            auto& backend = h.backend_state;
+            backend.eager_first = external_first;
+            backend.custom_step = [](BackendState& state, ScriptStepContext& step) noexcept {
+                if (!state.eager_first) return state.local_next.startTyped(step);
+                const auto wait = step.awaitables.create();
+                assert(wait);
+                state.completions.push_back(wait->completion);
+                return ScriptStepResult::suspended(wait->id);
+            };
+            backend.custom_resume = [](BackendState& state, ScriptStepContext& step) noexcept {
+                if (state.resume_calls == 3U) return ScriptStepResult::completed();
+                if (state.resume_calls == 1U && !state.eager_first)
+                {
+                    const auto wait = step.awaitables.create();
+                    assert(wait);
+                    state.completions.push_back(wait->completion);
+                    return ScriptStepResult::suspended(wait->id);
+                }
+                return state.local_simulation.startTyped(step, 0.0);
+            };
+            auto system = h.create(limits(1U, 1U, 1U, 1U, 1U), {}, true, &clock.clock());
+            assert(system && system->prepare());
+            assert(dispatchRuntimeHook(*system, h.hook) == 1U);
+            std::size_t completed{};
+            for (std::size_t step = 1U; step <= 3U; ++step)
+            {
+                if (completed < backend.completions.size())
+                    assert(backend.completions[completed++].ready());
+                clock.advance(SimulationDuration{});
+                assert(backend.resume_calls == step - 1U);
+                assert(executeRuntimeStablePoint(*system));
+                assert(backend.resume_calls == step);
+                assert(system->activeAwaitableCount() == (step == 3U ? 0U : 1U));
+            }
+            assert(backend.completions.size() == 1U && backend.continuation_destroys == 1U);
+            assert(system->failures().empty() && system->shutdown());
+            assert(backend.creates == backend.destroys);
+            std::printf("CELL_CASE mixed_timer external_first=%d starts=1 resumes=3 boxed=1 destroys=1 active=0\n",
+                external_first);
+        }
+    }
+
     void testTimerDeadlineOrderAndBackpressure()
     {
         for (const bool local : {false, true})
@@ -1634,6 +1686,7 @@ int main()
     testLocalTimerRetirementReuse();
 #if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
     testTimerDeadlineOrderAndBackpressure();
+    testCellMixedTimerTransitions();
 #endif
     {
         Harness harness{false, 1U, true};

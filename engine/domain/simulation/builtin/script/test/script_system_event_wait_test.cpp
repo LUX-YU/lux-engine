@@ -1369,6 +1369,69 @@ namespace
         assert(pressure.system->shutdown());
     }
 
+
+    void testCellContinuationAdmissionAfterSideEffects()
+    {
+        for (const bool global : {false, true})
+        {
+            HarnessOptions options;
+            options.ownership_pair = global;
+            options.limits.instance_capacity = global ? 2U : 1U;
+            options.limits.continuation_capacity = options.limits.continuation_capacity_per_instance = 1U;
+            Harness h{options};
+            h.recordBroadcastStart(1);
+            assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+            if (global)
+            {
+                h.recordBroadcastStartSecond(2);
+                assert(deliverRuntimeEvent(*h.system, h.broadcast_start_second_bridge) == 1U);
+            }
+            else
+            {
+                h.recordBroadcastStart(2);
+                assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+            }
+            assert(h.backend_state.step_calls == 2U && !h.backend_state.wait_error);
+            const auto error = global ? EScriptSystemError::CONTINUATION_CAPACITY_EXCEEDED :
+                EScriptSystemError::INSTANCE_CONTINUATION_CAPACITY_EXCEEDED;
+            assert(!h.system->failures().empty() && h.system->failures().back().error == error);
+            assert(h.system->shutdown() && h.backend_state.continuation_destroys == 2U);
+            std::printf("CELL_CASE late_c global=%d backend_starts=2 destroys=2 error=%u resumes=0\n",
+                global, static_cast<unsigned>(error));
+        }
+    }
+
+    void testPinnedCancellationStillOccupiesCapacity()
+    {
+        HarnessOptions options;
+        options.ownership_pair = true;
+        options.immediate_wait_endpoint = true;
+        options.limits.instance_capacity = 2U;
+        options.limits.awaitable_capacity = 1U;
+        Harness h{options};
+        h.recordBroadcastStartSecond(1);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_start_second_bridge) == 1U);
+        h.immediate_wait.copy_context = &h;
+        h.immediate_wait.copy_probe = [](void* context, std::span<std::byte> output) noexcept {
+            auto& h = *static_cast<Harness*>(context);
+            h.backend_state.callback_action = ECallbackAction::FAIL;
+            h.recordBroadcastFaultSecond(1);
+            assert(deliverRuntimeEvent(*h.system, h.broadcast_fault_second_bridge) == 1U);
+            const auto pinned = h.system->stats();
+            assert(pinned.active_awaitables == 0U && pinned.deferred_awaitable_releases == 1U);
+            h.recordBroadcastStart(1);
+            assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+            assert(h.backend_state.wait_error == EScriptEventWaitError::AWAITABLE_CAPACITY_EXCEEDED);
+            assert(h.system->stats().result_write_pins == 1U);
+            std::memset(output.data(), 0x45, output.size());
+            return true;
+        };
+        h.emitImmediateWait(31);
+        assert(h.system->stats().result_write_pins == 0U && h.system->stats().deferred_awaitable_releases == 0U);
+        assert(h.backend_state.resumes == 0U && h.system->shutdown());
+        std::puts("CELL_CASE pin_capacity active=0 physical_pending=1 nested_rejected=1 final_pins=0");
+    }
+
     void testCellRearmAtCapacityOne()
     {
         HarnessOptions options;
@@ -1486,6 +1549,8 @@ namespace
 
 int main(int argc, char**)
 {
+    testCellContinuationAdmissionAfterSideEffects();
+    testPinnedCancellationStillOccupiesCapacity();
     testCellRearmAtCapacityOne();
     testUnboundLocalWithForeignExecution();
     testCompletedCallPreservesWait();

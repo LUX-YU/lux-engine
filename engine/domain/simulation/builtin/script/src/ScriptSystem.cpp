@@ -476,6 +476,12 @@ namespace lux::simulation::script
         if (invalid_limits || artifacts.resolve == nullptr)
             return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
 
+        const bool invalid_execution_capacity = limits.continuation_capacity >= UINT32_MAX ||
+            limits.awaitable_capacity >= UINT32_MAX || limits.continuation_capacity >
+                std::numeric_limits<std::size_t>::max() - limits.awaitable_capacity;
+        if (invalid_execution_capacity)
+            return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
+
         const bool invalid_capacity = capacity.enabled_mount_capacity > capacity.mount_capacity ||
             capacity.enabled_mount_capacity > limits.instance_capacity ||
             capacity.mount_capacity >= std::numeric_limits<std::uint32_t>::max() ||

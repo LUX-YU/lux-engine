@@ -4,6 +4,25 @@
 
 namespace lux::simulation::script::detail
 {
+    struct ScriptOperationCell;
+
+    struct ScriptCellTicket final
+    {
+        ScriptOperationCell* cell{};
+        std::uint64_t epoch{};
+        [[nodiscard]] explicit operator bool() const noexcept { return cell != nullptr; }
+        friend bool operator==(ScriptCellTicket, ScriptCellTicket) noexcept = default;
+    };
+
+    // Owner-thread capability. The stable header is checked before entering the body union.
+    struct LocalWaitTicket final
+    {
+        ScriptCellTicket cell;
+        std::uint64_t wait_epoch{};
+        [[nodiscard]] explicit operator bool() const noexcept { return static_cast<bool>(cell); }
+        friend bool operator==(LocalWaitTicket, LocalWaitTicket) noexcept = default;
+    };
+
     struct ScriptSourceId final
     {
         std::uint32_t slot{};
@@ -37,6 +56,7 @@ namespace lux::simulation::script::detail
     {
         ScriptInstanceId instance;
         ScriptAwaitableId awaitable;
+        LocalWaitTicket local;
     };
 
     // Only for the synchronous no-user-code interval between source admission and commit.

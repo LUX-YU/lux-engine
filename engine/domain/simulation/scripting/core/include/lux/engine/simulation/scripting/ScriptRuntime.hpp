@@ -582,6 +582,8 @@ namespace lux::simulation::script
         PreparedResumeType payload;
     };
 
+    struct ScriptStepContext;
+
     class ScriptEventWaitFactory final
     {
     public:
@@ -597,24 +599,24 @@ namespace lux::simulation::script
         {
             if (wait_ == nullptr)
                 return lux::cxx::unexpected<EScriptEventWaitError>(EScriptEventWaitError::STOPPING);
-            return wait_(context_, instance_, admission);
+            return wait_(context_, *step_, admission);
         }
 
         using WaitFn = lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> (*)(
             void*,
-            ScriptInstanceId,
+            const ScriptStepContext&,
             ScriptEventAdmissionHandle
         ) noexcept;
 
     private:
-        ScriptEventWaitFactory(void* context, WaitFn wait, ScriptInstanceId instance) noexcept
-            : context_(context), wait_(wait), instance_(instance)
+        ScriptEventWaitFactory(void* context, WaitFn wait, const ScriptStepContext& step) noexcept
+            : context_(context), wait_(wait), step_(&step)
         {
         }
 
         void* context_{};
         WaitFn wait_{};
-        ScriptInstanceId instance_;
+        const ScriptStepContext* step_{};
 
         friend struct ScriptStepContext;
     };
@@ -630,7 +632,7 @@ namespace lux::simulation::script
         ) noexcept
             : instance(instance),
               awaitables(context, create, discard, instance),
-              event_waits(context, wait_event, instance)
+              event_waits(context, wait_event, *this)
         {}
 
         ScriptStepContext(const ScriptStepContext&) = delete;
@@ -641,6 +643,10 @@ namespace lux::simulation::script
         ScriptInstanceId instance;
         ScriptAwaitableFactory awaitables;
         ScriptEventWaitFactory event_waits;
+    private:
+        // Exact synchronous invocation association; factories retain their original owner context.
+        void* invocation_scope_{};
+        friend class detail::ScriptRuntimeAccess;
     };
 
     struct ScriptBackendContinuation final

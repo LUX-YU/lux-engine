@@ -15,6 +15,7 @@ namespace lux::simulation::script::detail
         ScriptInstanceId instance;
         ScriptAwaitableId awaitable;
         std::uint32_t endpoint{};
+        LocalWaitTicket local;
     };
 
     class ScriptEventWaits final
@@ -62,6 +63,7 @@ namespace lux::simulation::script::detail
             ScriptSourceId route_next;
             ScriptSourceId instance_previous;
             ScriptSourceId instance_next;
+            LocalWaitTicket local;
         };
 
 
@@ -268,7 +270,7 @@ namespace lux::simulation::script::detail
             return Admission{*this, *owner, endpoint, target};
         }
         [[nodiscard]] lux::cxx::expected<ScriptSourceId, EScriptEventWaitError> registerWait(
-            Admission&& admission, ScriptAwaitableId awaitable) noexcept
+            Admission&& admission, ScriptAwaitableId awaitable, LocalWaitTicket local = {}) noexcept
         {
             if (std::exchange(admission.owner_, nullptr) != this)
                 std::terminate();
@@ -288,7 +290,7 @@ namespace lux::simulation::script::detail
                 inserted_route = inserted.second;
             }
             const auto inserted = waiters_.tryEmplace(EventWaiterRecord{
-                {}, instance, awaitable, endpoint, target, sequence_ + 1U, EEventWaiterState::ACTIVE, {}, {}, {}, {}
+                {}, instance, awaitable, endpoint, target, sequence_ + 1U, EEventWaiterState::ACTIVE, {}, {}, {}, {}, local
             });
             if (!inserted)
             {
@@ -355,7 +357,7 @@ namespace lux::simulation::script::detail
             const auto* waiter = waiters_.find(eventWaiterKey(id));
             if (waiter == nullptr || waiter->state != EEventWaiterState::CLAIMED)
                 return std::nullopt;
-            return ScriptClaimedEventWait{id, waiter->instance, waiter->awaitable, waiter->bucket_slot};
+            return ScriptClaimedEventWait{id, waiter->instance, waiter->awaitable, waiter->bucket_slot, waiter->local};
         }
         void finishClaim(std::size_t begin, std::size_t end) noexcept
         {

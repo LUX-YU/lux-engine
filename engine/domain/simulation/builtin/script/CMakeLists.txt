@@ -59,6 +59,17 @@ endif()
 
 find_package(lux-cxx REQUIRED COMPONENTS container)
 
+add_executable(simulation_script_operation_storage_test test/script_operation_storage_test.cpp)
+target_include_directories(simulation_script_operation_storage_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
+target_link_libraries(simulation_script_operation_storage_test PRIVATE simulation_script)
+if(MSVC)
+    target_compile_options(simulation_script_operation_storage_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_script_operation_storage_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(TARGET simulation_script_operation_storage_test LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
+add_test(NAME simulation_script_operation_storage_test COMMAND simulation_script_operation_storage_test)
+
 add_executable(simulation_script_bindings_test
     test/script_bindings_test.cpp src/ScriptBindings.cpp src/ScriptInstances.cpp
 )

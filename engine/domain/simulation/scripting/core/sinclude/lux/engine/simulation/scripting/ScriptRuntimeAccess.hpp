@@ -8,6 +8,14 @@ namespace lux::simulation::script::detail
     class ScriptRuntimeAccess final
     {
     public:
+        static void bindStepInvocation(ScriptStepContext& step, void* scope) noexcept
+        {
+            step.invocation_scope_ = scope;
+        }
+        [[nodiscard]] static void* stepInvocation(const ScriptStepContext& step) noexcept
+        {
+            return step.invocation_scope_;
+        }
         static void bindInvocation(ScriptBehavior& behavior, const void* context,
             ScriptInvocationValidity (*capture)(const void*) noexcept) noexcept
         {

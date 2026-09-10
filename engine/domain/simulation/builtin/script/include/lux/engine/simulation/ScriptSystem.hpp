@@ -91,6 +91,15 @@ namespace lux::simulation::script
         std::size_t awaitable_reserved_slots{};
         std::size_t awaitable_storage_bytes{};
         std::size_t external_ticket_storage_bytes{};
+        // One C+A bank; boxed payload spill allocations are additional, as with ScriptOwnedBytes.
+        std::size_t operation_cell_bytes{};
+        std::size_t operation_cell_capacity{};
+        std::size_t operation_cells_active{};
+        std::size_t operation_cell_backing_bytes{};
+        std::size_t continuation_directory_bytes{};
+        std::size_t boxed_wait_body_bytes{};
+        std::size_t resume_record_bytes{};
+        std::size_t resume_backing_bytes{};
         // Cumulative assembly work, including rejected preflights; not instance resource counts.
         std::uint64_t assembly_configuration_slot_visits{};
         std::uint64_t assembly_endpoint_count_visits{};

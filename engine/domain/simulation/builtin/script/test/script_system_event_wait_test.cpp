@@ -63,7 +63,8 @@ namespace
 
 
 
-    [[nodiscard]] SimulationDescription makeSimulation(const lux::script::ScriptEventPayloadDescription* payload = nullptr)
+    [[nodiscard]] SimulationDescription
+    makeSimulation(const lux::script::ScriptEventPayloadDescription* payload = nullptr)
     {
         constexpr std::array hooks{makeHookPointSpec<void()>(kDispatchHook, "dispatch")};
         std::array events{

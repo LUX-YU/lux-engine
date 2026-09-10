@@ -64,12 +64,13 @@ namespace lux::simulation::script::detail
         [[nodiscard]] bool release(Ticket value) noexcept
         {
             if (value.owner != this || value.page >= pages_.size()) return false;
-            const auto& page = pages_[value.page];
+            auto& page = pages_[value.page];
             if (value.slot >= page.slot_count) return false;
-            const auto& slot = slots_[page.metadata_first + value.slot];
+            auto& slot = slots_[page.metadata_first + value.slot];
+            if (!slot.active || slot.generation != value.generation) return false;
             const auto& prepared = classes_[page.class_index];
-            return release(Allocation{static_cast<std::byte*>(arena_.data) + page.offset + prepared.stride * value.slot,
-                value.page, value.slot, value.generation, slot.size});
+            releaseResolved(page, slot, prepared, value.page, value.slot);
+            return true;
         }
 
         struct Stats final
@@ -274,23 +275,7 @@ namespace lux::simulation::script::detail
                 slot.size != allocation.size || allocation.data != expected;
             if (is_invalid_slot)
                 return false;
-            slot.active = false;
-            --page.active;
-            --active_;
-            if (stats_.observation_collected)
-            {
-                stats_.release_steps += 3U;
-                stats_.live_bytes -= slot.size;
-                stats_.occupied_bytes -= prepared.stride;
-            }
-            slot.size = 0U;
-            if (page.free_head == Invalid)
-            {
-                const auto steps = linkPage(allocation.page);
-                if (stats_.observation_collected) stats_.release_steps += steps;
-            }
-            slot.next = page.free_head;
-            page.free_head = allocation.slot;
+            releaseResolved(page, slot, prepared, allocation.page, allocation.slot);
             return true;
         }
 
@@ -355,6 +340,29 @@ namespace lux::simulation::script::detail
             std::uint32_t next{Invalid};
             bool active{};
         };
+
+        void releaseResolved(Page& page, Slot& slot, const Class& prepared,
+            std::uint32_t page_index, std::uint32_t local_slot) noexcept
+        {
+            // Both checked gateways end in this non-reentrant mutation interval.
+            slot.active = false;
+            --page.active;
+            --active_;
+            if (stats_.observation_collected)
+            {
+                stats_.release_steps += 3U;
+                stats_.live_bytes -= slot.size;
+                stats_.occupied_bytes -= prepared.stride;
+            }
+            slot.size = 0U;
+            if (page.free_head == Invalid)
+            {
+                const auto steps = linkPage(page_index);
+                if (stats_.observation_collected) stats_.release_steps += steps;
+            }
+            slot.next = page.free_head;
+            page.free_head = local_slot;
+        }
 
         [[nodiscard]] static bool powerOfTwo(std::size_t value) noexcept
         {

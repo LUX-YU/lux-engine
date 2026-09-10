@@ -99,10 +99,39 @@ int main()
         assert(a);
         const auto ticket = checked->ticket(*a);
         assert(!foreign->release(ticket));
+        auto bad_ticket = ticket;
+        bad_ticket.owner = nullptr;
+        assert(!checked->release(bad_ticket));
+        bad_ticket = ticket;
+        bad_ticket.page = UINT32_MAX;
+        assert(!checked->release(bad_ticket));
+        bad_ticket = ticket;
+        bad_ticket.slot = UINT32_MAX;
+        assert(!checked->release(bad_ticket));
+        bad_ticket = ticket;
+        bad_ticket.generation ^= UINT64_C(1) << 40U;
+        assert(!checked->release(bad_ticket));
         auto wrong = *a;
         wrong.data = static_cast<std::byte*>(wrong.data) + 1;
         assert(!checked->release(wrong));
+        wrong = *a;
+        ++wrong.size;
+        assert(!checked->release(wrong));
+        wrong = *a;
+        wrong.generation ^= UINT64_C(1) << 40U;
+        assert(!checked->release(wrong));
+        wrong = *a;
+        wrong.page = UINT32_MAX;
+        assert(!checked->release(wrong));
+        wrong = *a;
+        wrong.slot = UINT32_MAX;
+        assert(!checked->release(wrong));
+        wrong = *a;
+        wrong.data = nullptr;
+        assert(!checked->release(wrong));
+        assert(checked->stats().active_allocations == 1U && checked->stats().release_steps == 0U);
         assert(checked->release(ticket));
+        assert(!checked->release(ticket) && !checked->release(*a));
         const auto b = checked->acquire(handle, 48U);
         assert(b && !checked->release(ticket));
         assert(checked->release(checked->ticket(*b)));
@@ -115,6 +144,8 @@ int main()
         assert(observe ? stats.allocation_high_water == 1U : stats.acquire_steps == 0U);
         std::printf("STORAGE_TICKET,observe=%d,owner=1,generation=1,allocation_checks=1,exhaustion=1,ticket=%zu\n",
             observe, sizeof(BoundedClassStorage::Ticket));
+        std::printf("STORAGE_RELEASE_BOUNDARIES,observe=%d,owner=1,bounds=1,high_generation=1,data=1,size=1,double=1\n",
+            observe);
     }
     return 0;
 }

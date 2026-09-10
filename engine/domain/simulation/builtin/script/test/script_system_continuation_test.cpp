@@ -1247,6 +1247,25 @@ namespace
         std::puts("RESUME_WRAP capacity=3 budget=2 cycles=17 calls=35 resumes=35 destroyed=35 backlog=0");
     }
 
+
+    void testNoWaitResumableCall()
+    {
+        Harness h{false};
+        h.backend_state.enable_step = true;
+        h.backend_state.custom_step = [](BackendState& state, ScriptStepContext&) noexcept {
+            ++state.provider_starts;
+            return ScriptStepResult::completed();
+        };
+        auto system = h.create(limits(1U, 1U, 1U), {});
+        assert(system && system->prepare());
+        for (unsigned i = 0; i < 8U; ++i) assert(dispatchRuntimeHook(*system, h.hook) == 1U);
+        assert(h.backend_state.provider_starts == 8U && h.backend_state.step_calls == 8U);
+        assert(system->activeContinuationCount() == 0U && system->activeAwaitableCount() == 0U);
+        assert(h.backend_state.continuation_destroys == 0U);
+        assert(system->failures().empty() && system->shutdown());
+        std::puts("CELL_CASE no_wait starts=8 provider=8 continuations=0 awaitables=0 destroys=0");
+    }
+
     void testSyncAndContinuation()
     {
         Harness synchronous{false};
@@ -1745,6 +1764,7 @@ int main()
     testMixedHookEntryShapes();
     testHookRatios();
     testNonPowerOfTwoResumeWrap();
+    testNoWaitResumableCall();
     testSyncAndContinuation();
     testAsyncAbilityInvocation();
     testCapacityAndCancellation();

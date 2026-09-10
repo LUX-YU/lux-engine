@@ -228,6 +228,7 @@ namespace
         ScriptStepResult (*custom_start)(BackendState&, ScriptStepContext&) noexcept{};
         ScriptStepResult (*custom_resume)(BackendState&, ScriptStepContext&, const ScriptResumePacket&) noexcept{};
         ScriptAwaitableId retained_wait;
+        ScriptStepContext* borrowed_context{};
         std::vector<ScriptAwaitableCompletion> completions;
     };
 
@@ -1432,6 +1433,117 @@ namespace
         std::puts("CELL_CASE pin_capacity active=0 physical_pending=1 nested_rejected=1 final_pins=0");
     }
 
+
+    void testEventCompletesInsideInitialBackend()
+    {
+        Harness h{{.immediate_wait_endpoint = true}};
+        h.backend_state.custom_start = [](BackendState& state, ScriptStepContext& context) noexcept {
+            const auto wait = context.event_waits.wait(state.first_admission);
+            assert(wait);
+            state.nested_dispatch(state.nested_context, 103);
+            assert(state.resumes == 0U);
+            return ScriptStepResult::suspended(*wait);
+        };
+        h.recordBroadcastStart(1);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+        assert(h.backend_state.resumes == 0U && h.system->stats().resume_queue_depth == 1U);
+        assert(executeRuntimeStablePoint(*h.system));
+        assert(h.backend_state.resume_values == std::vector<std::int32_t>{103});
+        assert(h.system->failures().empty() && h.system->shutdown());
+        std::puts("CELL_CASE initial_eager starts=1 inline_resumes=0 queued=1 value=103 destroys=1");
+    }
+
+    void testSecondConsumerRejected()
+    {
+        Harness h{{}};
+        h.backend_state.custom_start = [](BackendState& state, ScriptStepContext& context) noexcept {
+            if (!state.retained_wait.valid())
+            {
+                const auto wait = context.event_waits.wait(state.first_admission);
+                assert(wait);
+                state.retained_wait = *wait;
+            }
+            return ScriptStepResult::suspended(state.retained_wait);
+        };
+        h.recordBroadcastStart(1);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+        h.recordBroadcastStart(2);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+        assert(h.backend_state.step_calls == 2U && h.backend_state.resumes == 0U);
+        assert(h.system->failures().size() == 1U);
+        assert(h.system->failures()[0].error == EScriptSystemError::INVOCATION_FAILURE);
+        assert(h.system->shutdown() && h.backend_state.continuation_destroys == 2U);
+        std::puts("CELL_CASE second_consumer starts=2 error=invocation_failure resumes=0 destroys=2");
+    }
+
+    void testOldContextInsideNestedSameInstanceCall()
+    {
+        Harness h{{}};
+        h.backend_state.nested_context = &h;
+        h.backend_state.nested_dispatch = [](void* opaque, std::int32_t) noexcept {
+            auto& h = *static_cast<Harness*>(opaque);
+            h.recordBroadcastStart(2);
+            assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+        };
+        h.backend_state.custom_start = [](BackendState& state, ScriptStepContext& context) noexcept {
+            if (state.step_calls == 1U)
+            {
+                const auto first = context.event_waits.wait(state.first_admission);
+                assert(first);
+                state.retained_wait = *first;
+                state.borrowed_context = &context;
+                state.nested_dispatch(state.nested_context, 0);
+                state.borrowed_context = nullptr;
+                return ScriptStepResult::suspended(*first);
+            }
+            assert(state.borrowed_context && state.borrowed_context != &context);
+            assert(state.borrowed_context->instance == context.instance);
+            const auto extra = state.borrowed_context->event_waits.wait(state.first_admission);
+            assert(extra && *extra != state.retained_wait);
+            return ScriptStepResult::suspended(*extra);
+        };
+        h.backend_state.custom_resume = [](BackendState& state, ScriptStepContext&,
+            const ScriptResumePacket& packet) noexcept {
+            assert(packet.state == EScriptAwaitableState::READY && packet.value->bytes.size() == 4U);
+            assert((packet.awaitable == state.retained_wait) == (state.resumes == 1U));
+            return ScriptStepResult::completed();
+        };
+        h.recordBroadcastStart(1);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+        assert(h.system->activeContinuationCount() == 2U && h.system->activeAwaitableCount() == 2U);
+        h.recordBroadcastWait(71);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_wait_bridge) == 1U);
+        assert(executeRuntimeStablePoint(*h.system));
+        assert(h.backend_state.resumes == 2U && h.backend_state.continuation_destroys == 2U);
+        assert(h.system->failures().empty() && h.system->shutdown());
+        std::puts("CELL_CASE old_context_nested starts=2 resumes=2 source_fifo=1 destroys=2");
+    }
+
+    void testStaleLocalReadyConsumesBudget()
+    {
+        HarnessOptions options;
+        options.ownership_pair = true;
+        options.limits.instance_capacity = 2U;
+        options.limits.resumes_per_stable_point = 1U;
+        Harness h{options};
+        h.recordBroadcastStartSecond(1);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_start_second_bridge) == 1U);
+        h.recordBroadcastStart(1);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+        h.recordBroadcastWait(47);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_wait_bridge) == 1U);
+        assert(h.system->stats().resume_queue_depth == 2U);
+        h.backend_state.callback_action = ECallbackAction::FAIL;
+        h.recordBroadcastFaultSecond(1);
+        assert(deliverRuntimeEvent(*h.system, h.broadcast_fault_second_bridge) == 1U);
+        assert(executeRuntimeStablePoint(*h.system));
+        assert(h.backend_state.resumes == 0U && h.system->stats().resume_queue_depth == 1U);
+        assert(executeRuntimeStablePoint(*h.system));
+        assert(h.backend_state.resumes == 1U && h.backend_state.resume_values[0] == 47);
+        assert(h.system->stats().resume_queue_depth == 0U && h.system->shutdown());
+        std::puts("CELL_CASE stale_budget pops=2 first_resume_count=0 second_resume_count=1 value=47");
+    }
+
     void testCellRearmAtCapacityOne()
     {
         HarnessOptions options;
@@ -1551,6 +1663,10 @@ int main(int argc, char**)
 {
     testCellContinuationAdmissionAfterSideEffects();
     testPinnedCancellationStillOccupiesCapacity();
+    testEventCompletesInsideInitialBackend();
+    testSecondConsumerRejected();
+    testOldContextInsideNestedSameInstanceCall();
+    testStaleLocalReadyConsumesBudget();
     testCellRearmAtCapacityOne();
     testUnboundLocalWithForeignExecution();
     testCompletedCallPreservesWait();

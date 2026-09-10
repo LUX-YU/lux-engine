@@ -3,12 +3,25 @@
 #include <lux/engine/ui/detail/UiPresentationData.hpp>
 #include <atomic>
 #include <thread>
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+#include <lux/engine/editor/rendering/detail/RendererTestAccess.hpp>
+#endif
 
 namespace lux::editor::rendering::detail
 {
     struct RenderStatistics final
     {
         std::atomic<int> validation_errors{};
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+        std::atomic<bool> observe_shared{}, observe_memory{};
+        std::atomic<ResourceMemoryTrace> memory_trace{};
+        std::atomic<bool> reject_material{};
+        lux::render::ShaderHandle rejected_forward{}, rejected_gbuffer{};
+        std::atomic<std::uint64_t> material_rejections{};
+        std::atomic<std::uint64_t> shared_pairs{}, shared_write_sample{}, shared_cross_view{};
+        std::atomic<std::uint64_t> shared_reads{}, shared_writes{};
+        std::atomic<std::uint64_t> shared_first_serial{}, shared_image{};
+#endif
         std::atomic<std::uint64_t> frames{}, slots{}, created{}, retired{}, misses{}, events{}, dropped{}, completed{};
     };
     struct RendererThread final

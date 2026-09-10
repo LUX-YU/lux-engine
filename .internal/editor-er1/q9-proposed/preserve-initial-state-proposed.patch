@@ -1,0 +1,11 @@
+--- a/modules/function/render/vulkan/src/renderer/FrameOrchestrator.cpp
++++ b/modules/function/render/vulkan/src/renderer/FrameOrchestrator.cpp
+@@ -170,6 +170,8 @@
+                     continue;
+                 // 非首层:图像已有内容,LOAD 而非 CLEAR。
+                 slot->preserve_content = !phase.is_first;
++                if (!phase.is_first && slot->aspect == ERenderAspect::COLOR)
++                    slot->initial_state = ERenderResourceState::COLOR_ATTACHMENT;
+                 if (!phase.is_last)
+                 {
+                     // 非末层:把图像交棒给下一层,不做终态转换。

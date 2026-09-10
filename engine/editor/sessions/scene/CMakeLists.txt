@@ -32,6 +32,14 @@ lux_classify_target(TARGET editor_scene_session LAYER EDITOR PRODUCT EDITOR ROLE
 install_components(PROJECT_NAME lux-engine-editor-scene-session VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_scene_session)
 if(LUX_EDITOR_DIAGNOSTICS)
+    target_include_directories(editor_scene_session PRIVATE
+        ${PROJECT_SOURCE_DIR}/engine/editor/rendering/pinclude)
+    add_executable(editor_resource_completion_test test/ResourceCompletionTest.cpp)
+    target_include_directories(editor_resource_completion_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
+    target_link_libraries(editor_resource_completion_test PRIVATE lux::engine::editor::editor_scene_session)
+    target_compile_definitions(editor_resource_completion_test PRIVATE LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+    target_compile_options(editor_resource_completion_test PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    lux_classify_target(TARGET editor_resource_completion_test LAYER EDITOR PRODUCT TEST ROLE INTEGRATION)
     target_compile_definitions(editor_scene_session PRIVATE LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
     target_sources(editor_scene_session PRIVATE ${PROJECT_SOURCE_DIR}/cmake/diagnostics/EditorAllocationDiagnostics.cpp)
     target_compile_definitions(editor_scene_session PRIVATE

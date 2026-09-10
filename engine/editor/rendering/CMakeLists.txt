@@ -32,6 +32,8 @@ component_add_transitive_commands(editor_rendering
 )
 lux_classify_target(TARGET editor_rendering LAYER EDITOR PRODUCT EDITOR ROLE INTEGRATION)
 if(LUX_EDITOR_DIAGNOSTICS)
+    target_sources(render_vulkan PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test/ResourceMemoryDiagnostics.cpp)
+    target_sources(render_features PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test/MaterialReplyDiagnostics.cpp)
     target_sources(editor_rendering PRIVATE ${PROJECT_SOURCE_DIR}/cmake/diagnostics/EditorAllocationDiagnostics.cpp)
     target_compile_definitions(editor_rendering PRIVATE
         LUX_ALLOCATION_ARM=lux_er1_renderer_allocation_fail_after
@@ -42,6 +44,12 @@ if(LUX_EDITOR_DIAGNOSTICS)
     target_compile_definitions(render_client PRIVATE
         LUX_ALLOCATION_ARM=lux_er1_client_allocation_fail_after
         LUX_ALLOCATION_DISARM=lux_er1_client_allocation_disarm)
+    add_executable(editor_startup_failure_test test/StartupFailureTest.cpp)
+    target_include_directories(editor_startup_failure_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
+    target_link_libraries(editor_startup_failure_test PRIVATE lux::engine::editor::editor_rendering
+        lux::engine::editor::editor_ui lux::engine::platform::window)
+    target_compile_options(editor_startup_failure_test PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    lux_classify_target(TARGET editor_startup_failure_test LAYER EDITOR PRODUCT TEST ROLE COMPOSITION)
     add_executable(editor_client_allocation_test test/ClientAllocationTest.cpp)
     target_link_libraries(editor_client_allocation_test PRIVATE lux::engine::function::render_client)
     lux_classify_target(TARGET editor_client_allocation_test LAYER EDITOR PRODUCT TEST ROLE INTEGRATION)

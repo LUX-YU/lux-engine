@@ -3,6 +3,13 @@
 #include <lux/engine/editor/rendering/detail/ViewImageLifetime.hpp>
 #include <lux/engine/ui/detail/UiVulkanBackend.hpp>
 #include <system_error>
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+#include <lux/engine/editor/rendering/detail/RendererTestAccess.hpp>
+#include <lux/engine/render/renderer/Renderer.hpp>
+#include <lux/engine/render/scene/RenderScene.hpp>
+#include <lux/engine/render/scene/View.hpp>
+#include <lux/engine/render/graph/RGRecorder.hpp>
+#endif
 
 #include <lux/engine/ui/UISession.hpp>
 
@@ -13,7 +20,11 @@
 #include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>
 #include <lux/engine/function/render/client/genops/ForwardMeshOperation.ops.hpp>
 #include <lux/engine/function/render/client/genops/ShadowMapOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/MeshShadowOperation.ops.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+#include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>
+#endif
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/renderer/FrameOrchestrator.hpp>
 #include <lux/engine/render/renderer/RenderTargetRegistry.hpp>
@@ -33,6 +44,20 @@
 #include <vector>
 #include <cstdio>
 #include <limits>
+
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+extern "C" __declspec(dllimport) void
+lux_er1_render_memory_statistics(VmaAllocator, std::uint64_t *, std::uint64_t *) noexcept;
+#endif
+
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+extern "C" __declspec(dllimport) void lux_er1_handle_destroy_material(
+    lux::render::GeneralRenderServer::Dispatcher::Ctx &, const lux::render::DestroyMaterialPayload &);
+extern "C" __declspec(dllimport) void lux_er1_handle_upload_material(
+    lux::render::GeneralRenderServer::Dispatcher::Ctx &, const lux::render::UploadGraphMaterialPayload &);
+extern "C" __declspec(dllimport) void lux_er1_handle_modify_material(
+    lux::render::GeneralRenderServer::Dispatcher::Ctx &, const lux::render::ModifyGraphMaterialPayload &);
+#endif
 
 namespace lux::editor::rendering::detail
 {
@@ -155,6 +180,32 @@ namespace lux::editor::rendering::detail
         using Server = render::GeneralRenderServer;
         using Dispatcher = Server::Dispatcher;
         using DispatchContext = Dispatcher::Ctx;
+
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+        void rejectSelectedMaterialUpload(DispatchContext &context, const render::UploadGraphMaterialPayload &payload)
+        {
+            auto &state = *static_cast<ServerState *>(render::serverExtensionOf(context.user_state));
+            auto &stats = *state.statistics;
+            const bool armed = stats.reject_material.load(std::memory_order_acquire);
+            if (armed && payload.graph_forward_shader == stats.rejected_forward &&
+                payload.graph_gbuffer_shader == stats.rejected_gbuffer)
+            {
+                // Explicit one-shot service fault, delivered by the real typed reply lane. This does
+                // not claim that Vulkan or MaterialResources naturally exhausted an allocation.
+                ++stats.material_rejections;
+                stats.reject_material.store(false, std::memory_order_release);
+                render::replyToCurrent<render::UploadGraphMaterialPayload>(
+                    context, render::MaterialUploadedReply{{}, 1}
+                );
+                return;
+            }
+            lux_er1_handle_upload_material(context, payload);
+        }
+        using DiagnosticMaterialOps = render::FeatureOpRegistrar<
+            render::ServerOp<render::DestroyMaterialOp, &lux_er1_handle_destroy_material>,
+            render::ServerOp<render::UploadGraphMaterialOp, &rejectSelectedMaterialUpload>,
+            render::ServerOp<render::ModifyGraphMaterialOp, &lux_er1_handle_modify_material>>;
+#endif
 
         void handleSubmitDrawData(DispatchContext &context, const SubmitDrawPayload &payload)
         {
@@ -288,7 +339,7 @@ namespace lux::editor::rendering::detail
             {
                 if (auto *provider = swapchainProvider())
                     provider->setRebuildCallback({});
-                if (auto *device = deviceContext())
+                if (auto *device = deviceContext(); device && device->logicalDevice())
                     static_cast<void>(device->logicalDevice().waitIdle());
                 state_.textures->clear();
                 state_.textures->renderer = nullptr;
@@ -336,10 +387,16 @@ namespace lux::editor::rendering::detail
 #if LUX_EDITOR_PACKED_CONTENT
                 const std::array factories{&render::kViewCameraFeatureFactory,  &render::kMaterialFeatureFactory,
                                            &render::kMeshStackFeatureFactory,   &render::kLightFeatureFactory,
-                                           &render::kForwardMeshFeatureFactory, &render::kShadowMapFeatureFactory};
+                                           &render::kForwardMeshFeatureFactory, &render::kShadowMapFeatureFactory,
+                                           &render::kMeshShadowFeatureFactory};
                 for (const auto *feature : factories)
                 {
-                    const auto registered = addFeatureFactory(*feature);
+                    auto installed = *feature;
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+                    if (feature == &render::kMaterialFeatureFactory)
+                        installed.register_ops_fn = &DiagnosticMaterialOps::registerAll;
+#endif
+                    const auto registered = addFeatureFactory(installed);
                     if (!registered.error.ok() || registered.feature_type_id == 0)
                         return lux::cxx::unexpected(registered.error);
                     catalog.add(*feature, registered.feature_type_id, {registered.ops, registered.op_count});
@@ -399,6 +456,21 @@ namespace lux::editor::rendering::detail
                 state_.stamp = frame.rt.stamp;
                 ++state_.statistics->frames;
                 renderRenderTick(frame);
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+                if (state_.statistics->observe_memory.load(std::memory_order_acquire))
+                {
+                    auto trace = state_.statistics->memory_trace.load(std::memory_order_relaxed);
+                    ++trace.samples;
+                    lux_er1_render_memory_statistics(
+                        deviceContext()->vmaAllocator(), &trace.last_bytes, &trace.last_allocations
+                    );
+                    trace.peak_bytes = std::max(trace.peak_bytes, trace.last_bytes);
+                    trace.peak_allocations = std::max(trace.peak_allocations, trace.last_allocations);
+                    state_.statistics->memory_trace.store(trace, std::memory_order_release);
+                }
+                if (state_.statistics->observe_shared.load(std::memory_order_acquire))
+                    observeSharedImports(frame.rt.stamp.serial);
+#endif
                 const bool ended = endRenderTick(frame);
                 if (ended && frame.rt.primary_cmd && state_.pending_snapshot)
                     for (const auto &image : state_.pending_snapshot->images)
@@ -414,6 +486,75 @@ namespace lux::editor::rendering::detail
             }
 
         private:
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+            void observeSharedImports(std::uint64_t serial)
+            {
+                auto &stats = *state_.statistics;
+                renderer().forEachScene([&](render::RenderScene &scene) {
+                    const auto &state = scene.graphState();
+                    if (!state.valid || !state.graph || !state.graph->barrier_program)
+                        return;
+                    const auto &graph = *state.graph;
+                    for (std::uint32_t ri = 0; ri != graph.original_graph.resources.size(); ++ri)
+                    {
+                        const auto &resource = graph.original_graph.resources[ri];
+                        if (!resource.import_info || resource.import_info->slot || !resource.import_info->image_getter)
+                            continue;
+                        std::uintptr_t first{};
+                        unsigned matches{};
+                        scene.forEachActiveView([&](const render::View &view) {
+                            if (!view.resource_state)
+                                return;
+                            const auto *physical = view.resource_state->physical_resources.tryGet(ri);
+                            if (!physical || physical->physical_handles.empty())
+                                return;
+                            const auto handle = physical->getHandle(0);
+                            if (!handle)
+                                return;
+                            if (!first)
+                                first = handle;
+                            if (first != handle)
+                                return;
+                            ++matches;
+                            const auto &skips = view.resource_state->record_ctx.cond_skip_scratch;
+                            for (const auto pass_index : graph.execution_order)
+                            {
+                                if (pass_index >= skips.size() || skips[pass_index])
+                                    continue;
+                                const auto &pass = graph.compiled_passes[pass_index];
+                                const auto &reads = pass.resources.read_images;
+                                const auto &writes = pass.resources.write_images;
+                                if (std::find(reads.begin(), reads.end(), ri) != reads.end())
+                                    ++stats.shared_reads;
+                                if (std::find(writes.begin(), writes.end(), ri) != writes.end())
+                                    ++stats.shared_writes;
+                            }
+                        });
+                        if (matches < 2)
+                            continue;
+                        stats.shared_pairs += matches - 1;
+                        stats.shared_image.store(first);
+                        if (stats.shared_first_serial.load() == 0)
+                            stats.shared_first_serial.store(serial);
+                        for (const auto &group : graph.barrier_program->subsequent_view_barriers)
+                            for (std::size_t bi = 0; bi != group.image_patch_resource_idx.size(); ++bi)
+                            {
+                                if (group.image_patch_resource_idx[bi] != ri)
+                                    continue;
+                                const auto &barrier = group.image_barriers[bi];
+                                const auto writes = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+                                                    VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+                                const auto reads = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT | VK_ACCESS_2_SHADER_READ_BIT;
+                                if ((barrier.srcAccessMask & writes) && (barrier.dstAccessMask & reads))
+                                    ++stats.shared_write_sample;
+                                if (bi < group.image_src_is_final_state.size() && group.image_src_is_final_state[bi])
+                                    ++stats.shared_cross_view;
+                            }
+                    }
+                });
+            }
+#endif
+
             [[nodiscard]] render::Expected<void> rebuildRenderer()
             {
                 auto *provider = swapchainProvider();
@@ -443,19 +584,74 @@ namespace lux::editor::rendering::detail
         };
     } // namespace
 
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+    namespace
+    {
+        thread_local EStartupFault startup_fault{};
+        thread_local render::RenderError startup_injected_error{};
+        std::atomic<unsigned> workers_started{}, servers_created{}, servers_initialized{}, servers_attached{};
+        std::atomic<unsigned> servers_destroyed{}, workers_exited{};
+        struct ServerDestructionTrace final
+        {
+            bool constructed{};
+            ~ServerDestructionTrace()
+            {
+                if (constructed)
+                    ++servers_destroyed;
+            }
+        };
+    }
+    void RendererTestAccess::failStartup(EStartupFault fault, render::RenderError error) noexcept
+    {
+        startup_fault = fault;
+        startup_injected_error = error;
+        workers_started = servers_created = servers_initialized = 0;
+        servers_attached = servers_destroyed = workers_exited = 0;
+    }
+    StartupTrace RendererTestAccess::startupTrace() noexcept
+    {
+        return {workers_started.load(), servers_created.load(), servers_initialized.load(), servers_attached.load(),
+                servers_destroyed.load(), workers_exited.load()};
+    }
+#endif
+
     RenderResult<std::jthread> startRendererThread(RendererThread &state, lux::window::LuxWindow &window,
                                                    lux::ui::detail::UiFontAtlasSnapshot font,
                                                    const RendererConfig &config) noexcept
     {
         try
         {
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+            const auto fault = std::exchange(startup_fault, EStartupFault::NONE);
+            const auto injected_error = startup_injected_error;
+            if (fault == EStartupFault::THREAD_LAUNCH)
+                return lux::cxx::unexpected(RendererFailure{ERendererError::EXTERNAL_FAILURE, injected_error});
+#endif
             const auto required = lux::window::LuxWindow::requiredVulkanInstanceExtensions();
             std::vector<const char *> extensions(required.begin(), required.end());
-            return std::jthread([&state, &window, font = std::move(font), extensions = std::move(extensions),
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+            if (fault == EStartupFault::INITIALIZE)
+                extensions.push_back("VK_LUX_er1_deliberately_unavailable_startup_extension");
+#endif
+            return std::jthread([&state, &window,
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+                                 fault, injected_error,
+#endif
+                                 font = std::move(font), extensions = std::move(extensions),
                                  validation = config.validation, sink = config.validation_message_sink]() mutable {
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+                ++workers_started;
+#endif
                 try
                 {
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+                    ServerDestructionTrace destruction_trace;
+#endif
                     EditorRenderServer server(state.frames, state.controls, state.uploads, state.sync);
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+                    ++servers_created;
+                    destruction_trace.constructed = true;
+#endif
                     render::ServerConfig server_config;
                     server_config.instance_extensions = std::move(extensions);
                     server_config.enable_validation = validation;
@@ -463,8 +659,26 @@ namespace lux::editor::rendering::detail
                     server_config.validation_message_sink = std::move(sink);
                     auto initialized = server.initialize(std::move(server_config), std::move(font), state.catalog,
                                                          state.statistics, state.sync, state.failed_packet);
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
                     if (initialized)
+                    {
+                        ++servers_initialized;
+                        if (fault == EStartupFault::AFTER_DEVICE)
+                            initialized = lux::cxx::unexpected(injected_error);
+                    }
+#endif
+                    if (initialized)
+                    {
                         initialized = server.attach(window);
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+                        if (initialized)
+                        {
+                            ++servers_attached;
+                            if (fault == EStartupFault::AFTER_ATTACH)
+                                initialized = lux::cxx::unexpected(injected_error);
+                        }
+#endif
+                    }
                     if (!initialized)
                     {
                         state.startup_error = initialized.error();
@@ -503,6 +717,9 @@ namespace lux::editor::rendering::detail
                 // Backend destruction has completed on its thread before this terminal fact is published.
                 state.sync->requestStop();
                 state.stopped.store(1, std::memory_order_release);
+#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
+                ++workers_exited;
+#endif
             });
         }
         catch (const std::bad_alloc &)

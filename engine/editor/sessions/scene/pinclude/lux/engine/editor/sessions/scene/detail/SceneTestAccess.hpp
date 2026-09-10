@@ -12,9 +12,18 @@ namespace lux::editor::sessions::detail
         REMOVE_VISUALS,
         CLEAR_SCENE
     };
+    struct ResourceAccounting final
+    {
+        std::size_t requests{}, request_capacity{}, associations{}, association_buckets{};
+        std::size_t request_body_bytes{}, request_array_bytes{}, result_body_bytes{}, snapshot_capacity_bytes{};
+        std::size_t mesh_payload_capacity_bytes{}, material_spirv_capacity_bytes{};
+        std::size_t pending_reads{}, pending_gpu_requests{}, gpu_handles{}, retirement_marker_refs{};
+        bool scope_present{}, scope_closed{};
+    };
     struct LUX_EDITOR_SCENE_SESSION_PUBLIC SceneTestAccess final
     {
         struct ResourceBackpressure final { std::size_t control{}, upload{}; };
+        static SceneResult<ResourceAccounting> resourceAccounting(const SceneSession &) noexcept;
         static ResourceBackpressure resourceBackpressure(bool reset = false) noexcept;
         static SceneResult<void> mutateSource(SceneSession &, ESceneTestMutation) noexcept;
         static SceneResult<SceneEntityRef> recycleSelectedEntity(SceneSession &) noexcept;
@@ -24,6 +33,8 @@ namespace lux::editor::sessions::detail
         static void holdResourceAdoption(bool) noexcept;
         static void failShaderInfoAfterMeshUpload() noexcept;
         static std::optional<ResourceRequestKey> failedShaderKey() noexcept;
+        static void rejectMaterialAfterSiblingUploads() noexcept;
+        static std::optional<ResourceRequestKey> rejectedMaterialKey() noexcept;
         static std::size_t liveResourceHandles(const SceneSession &, const ResourceRequestKey &) noexcept;
         static void failNextShaderPreparation() noexcept;
         static SceneResult<std::shared_ptr<const SceneResourceSnapshot>>

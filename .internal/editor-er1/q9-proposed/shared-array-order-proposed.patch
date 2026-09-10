@@ -1,0 +1,61 @@
+--- a/modules/function/render/vulkan/src/graph/RGBuilder.cpp
++++ b/modules/function/render/vulkan/src/graph/RGBuilder.cpp
+@@ -4,7 +4,8 @@
+ 
+ #include <lux/cxx/container/HeterogeneousLookup.hpp>
+ 
+ #include <string>
++#include <limits>
+ 
+ namespace lux::render
+ {
+@@ -474,6 +475,8 @@
+     {
+         if (handle.index < graph.resources.size())
+         {
++            if (graph.resources[handle.index].lifetime == ERGResourceLifetime::FORWARD_REFERENCE)
++                return std::numeric_limits<uint32_t>::max(); // Resolve the implicit whole-array range at compile time.
+             const auto* tex = std::get_if<RGTextureDescription>(&graph.resources[handle.index].desc);
+             if (tex && tex->dimension == lux::rdesc::ETextureDimension::TEX_2D_ARRAY)
+                 return tex->array_layers;
+--- a/modules/function/render/vulkan/src/graph/RenderGraphCompiler.cpp
++++ b/modules/function/render/vulkan/src/graph/RenderGraphCompiler.cpp
+@@ -876,9 +876,19 @@
+         {
+             for (auto& tex : pass.textures)
+             {
++                if (tex.resource.index >= resource_count)
++                    continue; // The graph validation phase owns invalid handles.
+                 if (remap[tex.resource.index] != tex.resource.index)
+                 {
+                     tex.resource.index = remap[tex.resource.index];
++                    if (tex.range.layer_count == std::numeric_limits<uint32_t>::max())
++                    {
++                        const auto* description =
++                            std::get_if<RGTextureDescription>(&graph.resources[tex.resource.index].desc);
++                        tex.range.layer_count = description &&
++                            description->dimension == lux::rdesc::ETextureDimension::TEX_2D_ARRAY
++                            ? description->array_layers : 1U;
++                    }
+                 }
+             }
+             for (auto& buf : pass.buffers)
+--- a/modules/function/render/features/src/renderer/features/forward/ForwardMeshFeature.cpp
++++ b/modules/function/render/features/src/renderer/features/forward/ForwardMeshFeature.cpp
+@@ -20,6 +20,7 @@
+ #include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp>       // appendVertexLayoutSpecs
+ #include <lux/engine/render/scene/RenderScene.hpp>
+ #include <lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp> // kShadowViewUploadPassName
++#include <lux/engine/function/render/client/features/shadow/MeshShadowOperation.hpp> // kMeshShadowDrawPassName
+ #include <lux/engine/render/gpu/VulkanContext.hpp>
+ #include <lux/engine/render/gpu/VulkanCheck.hpp>
+ #include <lux/engine/render/resources/material/MaterialFamily.hpp>
+@@ -240,6 +241,7 @@
+             auto shadow_atlas = builder.referenceTexture(cfg_.shadow_atlas);
+             draw_pass.read(shadow_atlas, lux::render::ETextureRole::SAMPLED);
+             draw_pass.after(kShadowViewUploadPassName);
++            draw_pass.after(kMeshShadowDrawPassName);
+         }
+ 
+         // The variant array is one pipeline per VARIANT BUCKET (each resolved by
+

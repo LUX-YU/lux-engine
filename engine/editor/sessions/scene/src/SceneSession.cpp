@@ -586,6 +586,20 @@ namespace lux::editor::sessions
         return cancelTransformEdit(ref);
     }
 #if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+    SceneResult<detail::ResourceAccounting>
+    detail::SceneTestAccess::resourceAccounting(const SceneSession &session) noexcept
+    {
+        const auto &state = *session.impl_;
+        if (state.owner != std::this_thread::get_id())
+            return fail(ESceneError::WRONG_THREAD);
+        if (state.busy)
+            return fail(ESceneError::BUSY, state.identity);
+        auto result = state.resources ? state.resources->accounting() : ResourceAccounting{};
+        if (state.resource_snapshot)
+            result.snapshot_capacity_bytes = sizeof(SceneResourceSnapshot) +
+                                             state.resource_snapshot->rows.capacity() * sizeof(SceneResourceRow);
+        return result;
+    }
     bool detail::SceneTestAccess::resourceReadsSettled(const SceneSession &session) noexcept
     {
         return session.impl_->check(false) && session.impl_->resources->readsSettled();

@@ -1,4 +1,5 @@
 #include <lux/engine/render/graph/RenderGraphCompiler.hpp>
+#include <lux/engine/render/graph/RGBuilder.hpp>
 #include <cassert>
 #include <cstdio>
 
@@ -7,6 +8,10 @@ namespace lux::render
     // Non-installed test access to the actual compiler implementation exported by render_vulkan.
     struct RenderGraphCompilerTestAccess
     {
+        static void resolve(RGCompiledGraph &graph)
+        {
+            RenderGraphCompiler::resolveForwardReferences(graph);
+        }
         static void build(RGCompiledGraph &graph)
         {
             RenderGraphCompiler::buildBarrierProgram(graph);
@@ -81,7 +86,38 @@ int main()
             ++cases;
         }
     }
-    std::printf(
-        "barrier program PASS cases=%u color/depth clear/preserve/shared/transient sentinel later-touch final\n",
-        cases);
+    bool ranges_correct = true;
+    for (const std::uint32_t layers : {1U, 4U})
+    {
+        RGBuilder builder;
+        const auto forward = builder.referenceTexture("shared-array");
+        builder.addPass("automatic-forward-read", ERGPassType::GRAPHICS).read(forward);
+        builder.addPass("explicit-single-layer-read", ERGPassType::GRAPHICS).read(forward);
+        builder.graphInternal().passes.back().textures.back().range.layer_count = 1;
+        RGTextureDescription texture;
+        texture.dimension = lux::rdesc::ETextureDimension::TEX_2D_ARRAY;
+        texture.array_layers = layers;
+        texture.width = texture.height = 32;
+        texture.format = lux::rdesc::ETextureFormat::D32_SFLOAT;
+        const auto actual = builder.importTexture("shared-array", texture, {});
+        builder.addPass("known-array-read", ERGPassType::GRAPHICS).read(actual);
+        RGCompiledGraph graph;
+        graph.original_graph = std::move(builder).build();
+        RenderGraphCompilerTestAccess::resolve(graph);
+        const auto &passes = graph.original_graph.passes;
+        const bool correct = passes[0].textures[0].resource.index == actual.index &&
+                             passes[0].textures[0].range.layer_count == layers &&
+                             passes[1].textures[0].range.layer_count == 1 &&
+                             passes[2].textures[0].range.layer_count == layers;
+        std::printf("forward array layers=%u automatic=%u explicit=%u known=%u correct=%u\n", layers,
+                    passes[0].textures[0].range.layer_count, passes[1].textures[0].range.layer_count,
+                    passes[2].textures[0].range.layer_count, correct);
+        ranges_correct &= correct;
+    }
+    if (!ranges_correct)
+    {
+        std::fputs("barrier protocol FAIL: forward array range; original eight barrier cases passed\n", stderr);
+        return 1;
+    }
+    std::printf("barrier program PASS core_cases=%u forward_array_cases=2 explicit ranges retained\n", cases);
 }

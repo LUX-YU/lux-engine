@@ -22,10 +22,13 @@ if ($normalNinja -match 'LUX_SV1_DIAGNOSTICS=1') {
     throw 'Legacy workbench diagnostics must not enter the normal SDK/performance build'
 }
 if ($normalNinja -match 'build [^\r\n]*EditorAllocationDiagnostics\.cpp\.obj:' -or
-    $normalNinja -match 'build [^\r\n]*ClientAllocationDiagnostics\.cpp\.obj:') {
+    $normalNinja -match 'build [^\r\n]*ClientAllocationDiagnostics\.cpp\.obj:' -or
+    $normalNinja -match 'build [^\r\n]*ResourceMemoryDiagnostics\.cpp\.obj:' -or
+    $normalNinja -match 'build [^\r\n]*MaterialReplyDiagnostics\.cpp\.obj:') {
     throw 'Diagnostic object appears in normal build rules'
 }
-$artifacts = @('ui.dll', 'render_client.dll', 'lux_engine_editor_ui.dll', 'lux_engine_editor_scene_session.dll',
+$artifacts = @('ui.dll', 'render_client.dll', 'render_vulkan.dll', 'render_features.dll',
+    'lux_engine_editor_ui.dll', 'lux_engine_editor_scene_session.dll',
     'lux_engine_editor_rendering.dll', 'lux_engine_editor_tooling.dll', 'editor_scene.dll')
 $records = @()
 foreach ($name in $artifacts) {
@@ -38,7 +41,7 @@ foreach ($name in $artifacts) {
         if ($LASTEXITCODE -ne 0) { throw "Cannot inspect imports: $file" }
         $exports | Set-Content -LiteralPath (Join-Path $OutputDirectory ($label + '.exports.txt'))
         $imports | Set-Content -LiteralPath (Join-Path $OutputDirectory ($label + '.imports.txt'))
-        $hasFaultExports = ($exports -join "`n") -match 'lux_er1_.*allocation|RendererTestAccess|SceneTestAccess|SceneWorkbenchDiagnostics'
+        $hasFaultExports = ($exports -join "`n") -match 'lux_er1_.*allocation|lux_er1_render_memory_statistics|lux_er1_handle_.*material|RendererTestAccess|SceneTestAccess|SceneWorkbenchDiagnostics'
         if ($entry[1] -eq 'normal' -and $hasFaultExports) { throw "Fault entry exported by normal DLL: $file" }
         if ($entry[1] -eq 'diagnostic' -and $name -ne 'lux_engine_editor_tooling.dll' -and !$hasFaultExports) {
             throw "Expected diagnostic entry absent: $file"
@@ -54,8 +57,19 @@ foreach ($name in $artifacts) {
         if ($entry[1] -eq 'normal' -and ($hasFaultObject -or !$allocationOrigins.Count)) {
             throw "Normal allocator linker provenance missing or contaminated: $pdb"
         }
-        if ($entry[1] -eq 'diagnostic' -and $name -notin @('lux_engine_editor_tooling.dll', 'editor_scene.dll') -and !$hasFaultObject) {
+        if ($entry[1] -eq 'diagnostic' -and $name -notin @('lux_engine_editor_tooling.dll', 'editor_scene.dll', 'render_vulkan.dll', 'render_features.dll') -and !$hasFaultObject) {
             throw "Diagnostic allocation replacement not linked into tested DLL: $pdb"
+        }
+        $hasMemoryObject = ($modules -join "`n") -match 'ResourceMemoryDiagnostics\.cpp\.obj'
+        $hasMaterialObject = ($modules -join "`n") -match 'MaterialReplyDiagnostics\.cpp\.obj'
+        if ($entry[1] -eq 'normal' -and ($hasMemoryObject -or $hasMaterialObject)) {
+            throw "Resource diagnostics linked into normal DLL: $pdb"
+        }
+        if ($entry[1] -eq 'diagnostic' -and $name -eq 'render_vulkan.dll' -and !$hasMemoryObject) {
+            throw "Resource memory instrumentation absent from diagnostic Vulkan DLL: $pdb"
+        }
+        if ($entry[1] -eq 'diagnostic' -and $name -eq 'render_features.dll' -and !$hasMaterialObject) {
+            throw "Material reply diagnostics absent from diagnostic feature DLL: $pdb"
         }
         $records += [pscustomobject]@{
             kind = $entry[1]; path = $file; sha256 = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
@@ -63,6 +77,8 @@ foreach ($name in $artifacts) {
             pdb_sha256 = (Get-FileHash -LiteralPath $pdb -Algorithm SHA256).Hash
             allocation_linker_origins = $allocationOrigins
             fault_object = $hasFaultObject
+            resource_memory_object = $hasMemoryObject
+            material_reply_object = $hasMaterialObject
             # An empty import list is not proof of absence: the CRT can supply these functions statically.
             allocation_imports = @($imports | Where-Object { $_ -match '\?\?[23]@' } | ForEach-Object { $_.Trim() })
         }

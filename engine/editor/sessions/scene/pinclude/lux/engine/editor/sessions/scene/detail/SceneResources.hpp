@@ -8,9 +8,25 @@
 #include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>
 #include <atomic>
 #include <unordered_map>
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+#include <lux/engine/editor/sessions/scene/detail/SceneTestAccess.hpp>
+#endif
 
 namespace lux::editor::sessions::detail
 {
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+    // An explicitly armed callback rendezvous. Absent from the normal DLL and all installed headers.
+    struct AssetCompletionProbe final
+    {
+        std::atomic<bool> entered{}, released{};
+        void arrive() noexcept
+        {
+            entered.store(true, std::memory_order_release);
+            while (!released.load(std::memory_order_acquire))
+                released.wait(false, std::memory_order_acquire);
+        }
+    };
+#endif
     // A result has its own sender-held lifetime. Publishing ready is not permission to destroy the sender.
     template <class T> struct AssetResult final
     {
@@ -24,6 +40,14 @@ namespace lux::editor::sessions::detail
         std::atomic<EState> state{EState::PENDING};
         std::shared_ptr<const T> value;
         lux::process::asset_loading::AssetLoadFailure failure;
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+        std::shared_ptr<AssetCompletionProbe> completion_probe;
+        void observeCompletion() const noexcept
+        {
+            if (completion_probe)
+                completion_probe->arrive();
+        }
+#endif
     };
 
     class ResourceTasks final
@@ -87,14 +111,23 @@ namespace lux::editor::sessions::detail
                 [result](std::shared_ptr<const T> value) noexcept {
                     result->value = std::move(value);
                     result->state.store(AssetResult<T>::EState::VALUE, std::memory_order_release);
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+                    result->observeCompletion();
+#endif
                 });
             auto errors = stdexec::upon_error(
                 std::move(values), [result](lux::process::asset_loading::AssetLoadFailure failure) noexcept {
                     result->failure = failure;
                     result->state.store(AssetResult<T>::EState::ERROR, std::memory_order_release);
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+                    result->observeCompletion();
+#endif
                 });
             auto lifetime = stdexec::upon_stopped(std::move(errors), [result]() noexcept {
                 result->state.store(AssetResult<T>::EState::CANCELLED, std::memory_order_release);
+#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+                    result->observeCompletion();
+#endif
             });
             auto admitted = scope.start(std::move(lifetime));
             if (admitted)
@@ -142,6 +175,7 @@ namespace lux::editor::sessions::detail
         SceneResult<void> beginClose() noexcept;
         SceneResult<bool> advanceClose() noexcept;
 #if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+        ResourceAccounting accounting() const noexcept;
         bool readsSettled() const noexcept;
         bool readyForAdoption() const noexcept;
         std::size_t liveHandles(const ResourceRequestKey &) const noexcept;

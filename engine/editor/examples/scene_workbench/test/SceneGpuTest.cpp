@@ -99,6 +99,54 @@ namespace
     {
         require(static_cast<bool>(result), operation);
     }
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+    struct ResourceLedger final
+    {
+        sessions::detail::ResourceAccounting peak;
+        std::size_t samples{};
+        void observe(sessions::SceneSession &session)
+        {
+            using Accounting = sessions::detail::ResourceAccounting;
+            const auto current = sessions::detail::SceneTestAccess::resourceAccounting(session);
+            require(current, "owner resource accounting");
+            require(current->requests <= current->request_capacity && current->associations <= current->requests,
+                    "association and owning request counts remain bounded");
+            for (auto member : {&Accounting::requests, &Accounting::request_capacity, &Accounting::associations,
+                                &Accounting::association_buckets, &Accounting::request_body_bytes,
+                                &Accounting::request_array_bytes, &Accounting::result_body_bytes,
+                                &Accounting::snapshot_capacity_bytes, &Accounting::mesh_payload_capacity_bytes,
+                                &Accounting::material_spirv_capacity_bytes, &Accounting::pending_reads,
+                                &Accounting::pending_gpu_requests, &Accounting::gpu_handles,
+                                &Accounting::retirement_marker_refs})
+                peak.*member = std::max(peak.*member, (*current).*member);
+            if (samples++ == 0)
+            {
+                std::thread foreign([&] {
+                    const auto rejected = sessions::detail::SceneTestAccess::resourceAccounting(session);
+                    require(!rejected && rejected.error().code == sessions::ESceneError::WRONG_THREAD,
+                            "resource accounting rejects foreign thread before reading mutable owners");
+                });
+                foreign.join();
+            }
+        }
+        void closed(sessions::SceneSession &session)
+        {
+            const auto current = sessions::detail::SceneTestAccess::resourceAccounting(session);
+            require(current && !current->scope_present && current->requests == 0 && current->associations == 0 &&
+                        current->pending_reads == 0 && current->pending_gpu_requests == 0 && current->gpu_handles == 0,
+                    "completed Session releases resource tasks, associations, requests and handles");
+            std::printf("resource ledger samples=%zu peak_requests=%zu capacity=%zu associations=%zu buckets=%zu "
+                        "request_bodies=%zu request_array=%zu result_bodies=%zu snapshot_capacity=%zu "
+                        "mesh_payload_capacity=%zu material_spirv_capacity=%zu pending_reads=%zu "
+                        "pending_gpu_requests=%zu handles=%zu marker_refs=%zu closed_requests=0 closed_handles=0 "
+                        "closed_snapshot_capacity=%zu\n", samples, peak.requests, peak.request_capacity,
+                        peak.associations, peak.association_buckets, peak.request_body_bytes, peak.request_array_bytes,
+                        peak.result_body_bytes, peak.snapshot_capacity_bytes, peak.mesh_payload_capacity_bytes,
+                        peak.material_spirv_capacity_bytes, peak.pending_reads, peak.pending_gpu_requests,
+                        peak.gpu_handles, peak.retirement_marker_refs, current->snapshot_capacity_bytes);
+        }
+    };
+#endif
     class FailingPane final : public lux::object::Object<FailingPane, lux::ui::Pane>
     {
     public:
@@ -317,6 +365,8 @@ namespace
     }
 } // namespace
 
+#include "PreserveGpuTest.hpp"
+
 int main(int argc, char **argv)
 {
     using namespace lux::editor;
@@ -328,8 +378,18 @@ int main(int argc, char **argv)
     bool coordinate_contract = true;
     bool workspace_failure_contract = true;
     bool resolved_source_contract = true;
+    bool shared_gpu_contract = true;
+    bool preserve_gpu_contract = true;
+    bool validation_contract = true;
+    bool renderer_events_contract = true;
     const bool workspace_failure_test = variant == "workspace_failure";
+    const bool resource_memory_test = variant == "resource_memory" || variant == "churn" || variant == "retry" ||
+                                      variant == "image_lifetime";
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+    ResourceLedger resource_ledger;
+#endif
     const bool shader_subfailure_test = variant == "shader_subfailure";
+    const bool material_subfailure_test = variant == "material_subfailure";
     const bool backpressure_close = variant == "resource_backpressure_close";
     const bool resource_backpressure_test = variant == "resource_backpressure" || backpressure_close;
     std::shared_ptr<const sessions::SceneResourceSnapshot> backpressured_resources;
@@ -344,10 +404,11 @@ int main(int argc, char **argv)
     const bool retry_test = variant == "retry";
     const bool dynamic_test = variant == "dynamic";
     const bool churn_test = variant == "churn";
+    const bool shared_gpu_test = variant.starts_with("multiple_shared_");
     const bool multiple_views_test = variant.starts_with("multiple_");
-    const bool multiple_reverse = variant == "multiple_reverse";
-    const bool multiple_equal = variant == "multiple_equal";
-    const bool multiple_lifecycle = variant == "multiple_lifecycle";
+    const bool multiple_reverse = variant == "multiple_reverse" || variant == "multiple_shared_reverse";
+    const bool multiple_equal = variant == "multiple_equal" || variant == "multiple_shared_equal";
+    const bool multiple_lifecycle = variant == "multiple_lifecycle" || variant == "multiple_shared_lifecycle";
     const bool record_failure_test = variant == "record_failure";
     const bool late_entity_test = variant == "late_entity";
     const bool late_source_test = variant == "late_source";
@@ -358,8 +419,9 @@ int main(int argc, char **argv)
 #if !defined(LUX_EDITOR_DIAGNOSTICS)
     require(!dynamic_test && !churn_test && !record_failure_test && !late_entity_test && !late_source_test &&
                 variant != "factory_failure" && variant != "view_admission" && !resource_publication_test &&
-                !workspace_failure_test && !shader_subfailure_test && !resource_backpressure_test &&
-                variant != "ui_atlas_failure",
+                !workspace_failure_test && !shader_subfailure_test && !material_subfailure_test &&
+                !resource_backpressure_test &&
+                variant != "ui_atlas_failure" && variant != "resource_memory",
             "requested variant requires the isolated diagnostic build");
 #endif
     require(!retry_test || argc == 5, "retry needs a complete recovery package");
@@ -455,6 +517,10 @@ int main(int argc, char **argv)
         auto renderer_result = rendering::EditorRenderer::create(window->nativeWindow(), window->uiSession(), config);
         require(renderer_result, "renderer factory");
         auto renderer = std::move(*renderer_result);
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+        if (resource_memory_test)
+            require(rendering::detail::RendererTestAccess::observeResourceMemory(*renderer), "arm VMA accounting");
+#endif
 #if defined(LUX_EDITOR_DIAGNOSTICS)
         if (variant == "view_admission")
         {
@@ -638,12 +704,28 @@ int main(int argc, char **argv)
         auto metadata = examples::buildDevelopmentSceneMeta();
         require(metadata, "actual Scene metadata");
         auto shared_meta = std::make_shared<lux::scene::SceneMetaManager>(std::move(*metadata));
+        auto open_source = variant == "alternate" ? examples::openAlternateScene : examples::openDevelopmentScene;
+        if (shared_gpu_test)
+            open_source = examples::openSharedShadowScene;
         auto source = coordinate_test
                           ? examples::openCoordinateScene({1}, messages.dispatcherRef(), *renderer, (*endpoint)->port(),
                                                           shared_meta, page_size)
-                          : (variant == "alternate" ? examples::openAlternateScene : examples::openDevelopmentScene)(
+                          : open_source(
                                 {1}, messages.dispatcherRef(), *renderer, (*endpoint)->port(), shared_meta);
         require(source, "Scene source factory");
+        if (shared_gpu_test)
+        {
+            auto &registry = source->scene->registry();
+            for (const auto entity : registry.view<lux::simulation::ecs::Light3D>())
+                registry.patch<lux::simulation::ecs::Light3D>(entity, [](auto &light) {
+                    light.value.cast_shadow = true;
+                    light.value.shadow_map_size = 256;
+                });
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+            require(rendering::detail::RendererTestAccess::observeSharedImports(*renderer),
+                    "observe real shared imports");
+#endif
+        }
         if (variant == "resolved_source")
         {
             auto &registry = source->scene->registry();
@@ -836,6 +918,8 @@ int main(int argc, char **argv)
         }
         if (shader_subfailure_test)
             sessions::detail::SceneTestAccess::failShaderInfoAfterMeshUpload();
+        if (material_subfailure_test)
+            sessions::detail::SceneTestAccess::rejectMaterialAfterSiblingUploads();
         if (resource_publication_test)
         {
             ResourceObserver observer(messages.dispatcherRef());
@@ -1216,6 +1300,10 @@ int main(int argc, char **argv)
             require(workspace->updateBeforeFrame(), "view synchronization");
             auto resources = session->readResources();
             require(resources, "resource status snapshot");
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+            if (resource_memory_test)
+                resource_ledger.observe(*session);
+#endif
             if (late_selection_test && provider->entered.load() && !provider->released.load())
             {
                 const auto waiting = std::find_if((*resources)->rows.begin(), (*resources)->rows.end(),
@@ -1294,7 +1382,7 @@ int main(int argc, char **argv)
                 (churn_test && ready_count == 3) ||
                 (!churn_test && std::all_of((*resources)->rows.begin(), (*resources)->rows.end(), [&](const auto &row) {
                     return row.state == sessions::ESceneResourceState::READY ||
-                           (shader_subfailure_test && row.backend_status == 1 &&
+                           ((shader_subfailure_test || material_subfailure_test) && row.backend_status == 1 &&
                             row.state == sessions::ESceneResourceState::FAILED) ||
                            (resource_publication_test && row.asset_failure &&
                             row.state == sessions::ESceneResourceState::FAILED) ||
@@ -1622,10 +1710,11 @@ int main(int argc, char **argv)
             require(session->advanceScene(verify_update), "changed source verification completes owner cycle");
         }
 #if defined(LUX_EDITOR_DIAGNOSTICS)
-        if (shader_subfailure_test)
+        if (shader_subfailure_test || material_subfailure_test)
         {
-            const auto key = sessions::detail::SceneTestAccess::failedShaderKey();
-            require(key, "R06 shader rejection issued only after an actual GPU mesh handle was received");
+            const auto key = material_subfailure_test ? sessions::detail::SceneTestAccess::rejectedMaterialKey()
+                                                     : sessions::detail::SceneTestAccess::failedShaderKey();
+            require(key, "R06 rejected child request follows actual successful GPU sibling uploads");
             const sessions::SceneOwnerUpdate update{++cycle, 0};
             require(session->updateAtOwnerSafePoint(update), "R06 final failure snapshot");
             const auto resources = session->readResources();
@@ -1634,18 +1723,25 @@ int main(int argc, char **argv)
                                           [&](const auto &value) { return value.key == *key; });
             require(row != (*resources)->rows.end() && row->state == sessions::ESceneResourceState::FAILED &&
                         row->backend_status == 1 && !row->asset_failure && row->render_failure.ok(),
-                    "R06 exact ShaderCompiledReply backend status retained with its resource identity");
+                    "R06 exact child reply backend status retained with its resource identity");
             const auto outline = session->readOutline();
             require(outline, "R06 authoritative Scene outline");
             const auto entity = std::find_if((*outline)->rows.begin(), (*outline)->rows.end(),
                                              [&](const auto &value) { return value.target == key->target; });
             require(entity != (*outline)->rows.end() && !entity->resources_ready &&
                         sessions::detail::SceneTestAccess::liveResourceHandles(*session, *key) == 0,
-                    "R06 failed shader never adopts a partial resolved mesh and releases all sibling handles");
+                    "R06 rejected child never adopts a partial resolved mesh and releases all sibling handles");
             require(session->advanceScene(update), "R06 complete owner cycle");
-            std::printf("R06 PASS mesh_ready_before_shader_failure=1 resource_sequence=%llu backend_status=1 "
+            if (material_subfailure_test)
+            {
+                const auto count = rendering::detail::RendererTestAccess::rejectedMaterialUploads(*renderer);
+                require(count && *count == 1, "R06 material service rejection issued exactly once");
+                std::puts("R06 material fault=explicit_service_rejection actual_upload_lane=1 "
+                          "mesh_and_two_shaders_ready_before_rejection=1 natural_Vulkan_failure_claimed=0");
+            }
+            std::printf("R06 PASS child=%s resource_sequence=%llu backend_status=1 "
                         "remaining_handles_and_requests=0\n",
-                        key->sequence);
+                        material_subfailure_test ? "material" : "shader", key->sequence);
         }
 #endif
         if (resource_backpressure_test && !backpressure_close)
@@ -1721,6 +1817,41 @@ int main(int argc, char **argv)
                     "old owning failure snapshot survives successful retry");
             std::printf("resource retry PASS old_sequence=%llu original_storage_error=%u\n", failed_key->sequence,
                         unsigned(old->asset_failure->storage_error));
+        }
+        if (variant == "preserve")
+        {
+            auto overlay = examples::openDevelopmentScene(
+                {81}, messages.dispatcherRef(), *renderer, (*endpoint)->port(), shared_meta
+            );
+            require(overlay, "prepare independent preserve overlay source");
+            auto &registry = overlay->scene->registry();
+            std::vector<lux::simulation::ecs::Entity> removed;
+            for (const auto entity : registry.view<lux::simulation::ecs::Mesh3D>())
+                if (entity != *overlay->initial_selection)
+                    removed.push_back(entity);
+            for (const auto entity : removed)
+                registry.remove<lux::simulation::ecs::Mesh3D>(entity);
+            preserve_gpu_contract = exercisePreserveGpu(*renderer, *window, *execution, *overlay, runtime,
+                                                        retained, output);
+        }
+        if (shared_gpu_test)
+        {
+            const auto *record = rendering::detail::ViewImageAccess::record(retained);
+            require(record, "shared graph dump keeps image and Scene identity");
+            std::vector<char> graph_text(1024 * 1024);
+            auto dump = runtime.control().dumpRenderGraph(record->version->scene, graph_text.data(), graph_text.size());
+            require(dump.valid(), "admit actual compiled graph dump");
+            while (!dump.isReady())
+            {
+                require(Clock::now() < deadline && renderer->poll(64), "complete actual graph dump");
+                std::this_thread::yield();
+            }
+            const auto dumped = dump.tryResult();
+            require(dumped && dumped->get().status == 0 && dumped->get().written == dumped->get().needed,
+                    "complete graph dump actual reply");
+            std::ofstream graph_file(output / (std::string(variant) + "-graph.txt"), std::ios::binary);
+            graph_file.write(graph_text.data(), dumped->get().written);
+            require(graph_file.good(), "save owning graph dump before closing Scene");
         }
         pending = {};
         if (multiple_views_test)
@@ -1840,10 +1971,31 @@ int main(int argc, char **argv)
                         provider->release();
                 }
                 if (*closed == sessions::ECloseProgress::COMPLETE)
+                {
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+                    if (resource_memory_test)
+                        resource_ledger.closed(*session);
+#endif
                     session.reset();
+                }
             }
             std::this_thread::yield();
         }
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+        if (shared_gpu_test)
+        {
+            const auto trace = rendering::detail::RendererTestAccess::sharedImportTrace(*renderer);
+            require(trace, "read backend shared-import evidence");
+            std::printf("shared import pairs=%llu image=%llu write_sample=%llu cross_view=%llu reads=%llu writes=%llu "
+                        "first_serial=%llu completed=%llu\n", trace->view_pairs, trace->image_identity,
+                        trace->write_sample_barriers, trace->cross_view_barriers, trace->recorded_reads,
+                        trace->recorded_writes, trace->first_serial, renderer->statistics().gpu_completed);
+            std::fflush(stdout);
+            shared_gpu_contract = trace->view_pairs && trace->image_identity && trace->write_sample_barriers &&
+                                  trace->cross_view_barriers && trace->recorded_reads && trace->recorded_writes &&
+                                  renderer->statistics().gpu_completed >= trace->first_serial;
+        }
+#endif
         require(renderer->beginClose(), "renderer close intent");
         if (late_close_test)
         {
@@ -1872,10 +2024,26 @@ int main(int argc, char **argv)
         }
         require(renderer->joinStopped(), "join proven stopped renderer");
         const auto stats = renderer->statistics();
-        require(stats.validation_errors == 0 && stats.texture_misses == 0, "Vulkan validation and texture resolution");
-        require(stats.render_events == (variant == "view_failure" ? 2 : (workspace_failure_test ? 1 : 0)) &&
-                    stats.dropped_events == (variant == "view_failure" ? 1 : 0),
-                "no renderer operation errors beyond explicitly checked view failures");
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+        if (resource_memory_test)
+        {
+            const auto memory = rendering::detail::RendererTestAccess::resourceMemoryTrace(*renderer);
+            require(memory && memory->samples && memory->peak_bytes && memory->peak_allocations,
+                    "actual VMA measurements were taken on the render owner");
+            std::printf("VMA resource ledger samples=%llu peak_bytes=%llu peak_allocations=%llu "
+                        "last_before_teardown_bytes=%llu last_before_teardown_allocations=%llu "
+                        "backend_joined=1 device_teardown_leak_contract_satisfied=1\n",
+                        memory->samples, memory->peak_bytes, memory->peak_allocations,
+                        memory->last_bytes, memory->last_allocations);
+        }
+#endif
+        validation_contract = stats.validation_errors == 0 && stats.texture_misses == 0;
+        std::printf("validation_errors=%llu texture_misses=%llu; continuing explicit owner shutdown\n",
+                    stats.validation_errors, stats.texture_misses);
+        renderer_events_contract =
+            stats.render_events == (variant == "view_failure" ? 2 : (workspace_failure_test ? 1 : 0)) &&
+            stats.dropped_events == (variant == "view_failure" ? 1 : 0);
+        std::printf("renderer_events=%llu dropped_events=%llu\n", stats.render_events, stats.dropped_events);
         require(stats.views == 0 && stats.runtime_leases == 0 && stats.accepted_frames == 0, "terminal owners");
         require(stats.slots == 3 && stats.descriptors_created == stats.descriptors_retired,
                 "FIF and descriptor retirement");
@@ -1916,6 +2084,26 @@ int main(int argc, char **argv)
     if (!resolved_source_contract)
     {
         std::fputs("R01 FAIL: conflicting resolved source admitted; all owners closed\n", stderr);
+        return 1;
+    }
+    if (!validation_contract)
+    {
+        std::fputs("F15 FAIL: Vulkan validation or texture resolution failed; all owners closed\n", stderr);
+        return 1;
+    }
+    if (!renderer_events_contract)
+    {
+        std::fputs("F15 FAIL: unexpected Renderer events; all owners closed\n", stderr);
+        return 1;
+    }
+    if (!shared_gpu_contract)
+    {
+        std::fputs("F15 FAIL: missing shared-image write/sample/completion evidence; all owners closed\n", stderr);
+        return 1;
+    }
+    if (!preserve_gpu_contract)
+    {
+        std::fputs("F15 FAIL: actual preserve layers lost or changed expected pixels; all owners closed\n", stderr);
         return 1;
     }
     std::printf("ER1 GPU PASS variant=%s all business and shutdown checks complete\n", argv[3]);

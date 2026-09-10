@@ -48,7 +48,8 @@ namespace lux::editor::examples
         }
 
         [[nodiscard]] lux::cxx::expected<std::unique_ptr<scene::Scene>, EDemoBuildError> buildDevelopmentScene(
-            const scene::SceneMetaManager &meta, scene::RenderRuntime &runtime, double coordinate_page_size)
+            const scene::SceneMetaManager &meta, scene::RenderRuntime &runtime, double coordinate_page_size,
+            bool shared_shadows)
         {
             world::WorldDescriptionBuilder world_builder;
             if (!world_builder.setIdentity(uuidId<world::WorldBundleId>(1U), uuidId<world::WorldBundleGeneration>(1U),
@@ -77,8 +78,11 @@ namespace lux::editor::examples
             scene::RenderSystemConfiguration render_config;
             render_config.coordinate_page_size = coordinate_page_size;
             for (const auto name : {"lux.render.view_camera.v1", "lux.render.material.v1", "lux.render.mesh_stack.v1",
-                                    "lux.render.light.v1", "lux.render.forward_mesh.v1", "lux.render.shadow_map.v1"})
+                                    "lux.render.light.v1", "lux.render.forward_mesh.v1", "lux.render.shadow_map.v1",
+                                    "lux.render.mesh_shadow.v1"})
             {
+                if (!shared_shadows && std::string_view{name} == "lux.render.mesh_shadow.v1")
+                    continue;
                 const auto *feature = meta.getRenderFeatureMeta(render::featureId(name));
                 if (!feature)
                     return lux::cxx::unexpected(EDemoBuildError::META_BUILD_FAILURE);
@@ -184,11 +188,11 @@ namespace lux::editor::examples
             sessions::SessionId id, lux::object::ObjectDispatcherRef dispatcher, rendering::EditorRenderer &renderer,
             lux::process::asset_loading::AssetReadPort assets,
             std::shared_ptr<const lux::scene::SceneMetaManager> metadata, bool alternate,
-            double coordinate_page_size = 1024.0) noexcept
+            double coordinate_page_size = 1024.0, bool shared_shadows = false) noexcept
         {
             try
             {
-                auto scene = buildDevelopmentScene(*metadata, renderer, coordinate_page_size);
+                auto scene = buildDevelopmentScene(*metadata, renderer, coordinate_page_size, shared_shadows);
                 if (!scene)
                     return lux::cxx::unexpected(sessions::SceneFailure{sessions::ESceneError::SCENE_BUILD_FAILURE, id});
                 sessions::SceneOpenInfo input;
@@ -262,6 +266,13 @@ namespace lux::editor::examples
         std::shared_ptr<const lux::scene::SceneMetaManager> metadata) noexcept
     {
         return populate(id, std::move(dispatcher), renderer, std::move(assets), std::move(metadata), false);
+    }
+    sessions::SceneResult<sessions::SceneOpenInfo> openSharedShadowScene(
+        sessions::SessionId id, lux::object::ObjectDispatcherRef dispatcher, rendering::EditorRenderer &renderer,
+        lux::process::asset_loading::AssetReadPort assets,
+        std::shared_ptr<const lux::scene::SceneMetaManager> metadata) noexcept
+    {
+        return populate(id, std::move(dispatcher), renderer, std::move(assets), std::move(metadata), false, 1024, true);
     }
     sessions::SceneResult<sessions::SceneOpenInfo> openAlternateScene(
         sessions::SessionId id, lux::object::ObjectDispatcherRef dispatcher, rendering::EditorRenderer &renderer,

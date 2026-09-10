@@ -1,0 +1,9 @@
+{
+  "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+  "archive": "v4-h1-evidence.zip",
+  "sha256": "f27b20d13c5c921294e4a994c62453532d880e8bfb1209382f5cfea555320a15",
+  "bytes": 13210304,
+  "entries": 1589,
+  "hashed_files": 1588,
+  "scope": "raw VTune results/exports, code snippets, exact commands, failed attempts, correctness/install logs, all timing; no build/SDK binaries"
+}

@@ -78,7 +78,7 @@ namespace lux::simulation::script::detail
     };
 
     // Fixed public-identity directory: no growth, no generation wrapping, no result/execution objects.
-    template<class Value, class Tag>
+    template<class Value, class Tag, std::uint32_t LastGeneration = UINT32_MAX>
     class ScriptCellDirectory final
     {
     public:
@@ -124,7 +124,7 @@ namespace lux::simulation::script::detail
             entry.occupied = false;
             entry.value = {};
             --size_;
-            if (++entry.generation != UINT32_MAX)
+            if (++entry.generation != LastGeneration)
             {
                 entry.next = first_;
                 first_ = key.index;

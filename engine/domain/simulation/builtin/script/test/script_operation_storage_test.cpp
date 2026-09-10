@@ -1,6 +1,39 @@
 #include <lux/engine/simulation/script/ScriptOperationStorage.hpp>
 #include <cassert>
 #include <iostream>
+#include <cstdlib>
+#if defined(_MSC_VER)
+#include <malloc.h>
+#endif
+
+namespace
+{
+    bool reject_payload_allocation{};
+    unsigned payload_allocation_failures{};
+}
+
+void* operator new(std::size_t size, std::align_val_t alignment, const std::nothrow_t&) noexcept
+{
+    if (reject_payload_allocation)
+    {
+        ++payload_allocation_failures;
+        return nullptr;
+    }
+#if defined(_MSC_VER)
+    return _aligned_malloc(size, static_cast<std::size_t>(alignment));
+#else
+    const auto a = static_cast<std::size_t>(alignment);
+    return std::aligned_alloc(a, (size + a - 1U) / a * a);
+#endif
+}
+void operator delete(void* pointer, std::align_val_t) noexcept
+{
+#if defined(_MSC_VER)
+    _aligned_free(pointer);
+#else
+    std::free(pointer);
+#endif
+}
 
 using namespace lux::simulation::script;
 using namespace lux::simulation::script::detail;
@@ -123,6 +156,39 @@ namespace
         assert(first.waits.erase(*final_wait));
         std::cout << "CASE owner_epoch wrong_owner=1 wait_exhaustion=1 cell_exhaustion=1 stale=1\n";
     }
+
+    void testPublicGenerationAndPayloadFailure()
+    {
+        struct TestTag;
+        ScriptCellDirectory<ScriptCellTicket, TestTag, 4U> directory;
+        directory.reserve(1U);
+        for (std::uint32_t generation = 1U; generation < 4U; ++generation)
+        {
+            const auto key = directory.tryEmplace({});
+            assert(key && key->gen == generation && directory.erase(*key));
+            assert(directory.find(*key) == nullptr);
+        }
+        assert(directory.empty() && !directory.tryEmplace({}));
+        Fixture f{1, 1};
+        const PreparedResumeType large{"lux.test.aligned64", lux::semantic::typeId("lux.test.aligned64"),
+            LUX_SCRIPT_VK_STRUCT_REF, 64U, 64U};
+        assert(large.valid());
+        reject_payload_allocation = true;
+        const auto rejected = f.waits.admit({1, 1}, large, false, nullptr);
+        reject_payload_allocation = false;
+        assert(!rejected && payload_allocation_failures == 1U && f.waits.empty() && f.cells.used() == 0U);
+        const auto accepted = f.waits.admit({1, 1}, large, false, nullptr);
+        assert(accepted);
+        auto* wait = f.waits.find(*accepted);
+        const auto bytes = ScriptOperationStorage::bytes(*wait);
+        assert(bytes.size() == 64U && reinterpret_cast<std::uintptr_t>(bytes.data()) % 64U == 0U);
+        std::memset(bytes.data(), 0x37, bytes.size());
+        wait->state = EScriptAwaitableState::READY;
+        auto outcome = ScriptOperationStorage::takeValue(*wait);
+        assert(f.waits.erase(*accepted) && f.cells.used() == 0U);
+        assert(outcome.bytes.size() == 64U && outcome.bytes.data()[63] == std::byte{0x37});
+        std::cout << "CASE public_generation_payload exhausted=1 injected_failure=1 recovered=1 aligned64=1\n";
+    }
 }
 int main()
 {
@@ -130,6 +196,7 @@ int main()
     testExtraAndForeignConsumer();
     testExternalFirstAndQuota();
     testHeaderOwnerAndExhaustion();
+    testPublicGenerationAndPayloadFailure();
     std::cout << "LAYOUT cell=" << sizeof(ScriptOperationCell) << " local=" << sizeof(ScriptLocalWait)
         << " boxed=" << sizeof(ScriptBoxedWait) << " execution=" << sizeof(ScriptExecutionState) << '\n';
 }

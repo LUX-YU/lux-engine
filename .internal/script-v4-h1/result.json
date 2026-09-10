@@ -1,0 +1,4475 @@
+{
+  "schema_version": 1,
+  "task": "V4-H1 prepared checks",
+  "implementation": "PARTIAL",
+  "contract": "PASS",
+  "cost": "NO_CLEAR_GAIN",
+  "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+  "baseline_source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+  "withdrawn_candidate": "655855401e09aac2d4e8becd16afca62086291ee",
+  "branch": "codex/s6-v4-prepared-checks",
+  "report_commit_is_qualification_source": false,
+  "stages": {
+    "H0": "COMPLETE_WITH_ROI_LIMIT",
+    "H1": "RETAINED",
+    "H2": "IMPLEMENTED_AND_WITHDRAWN_COST",
+    "H3": "RETAINED",
+    "Native_arithmetic": "NOT_SELECTED_METADATA_TRADEOFF",
+    "H4": "ALREADY_BOUNDARY_ONLY",
+    "H5": "COMPLETE"
+  },
+  "configuration": {
+    "build": "RelWithDebInfo",
+    "lua": "5.5.1 + lux-lua55-v3-r2",
+    "gc": "INC upstream defaults",
+    "idle_page_budget": 16777216,
+    "native_abi": 6,
+    "lux_cxx": "3100f54d0743c5ed94a4ccf5943df04e933de255",
+    "toolset": "99c3d0480d1db816779b1dfa7f3c06cb7d39a94f",
+    "compiler": "MSVC19.44.35228 /O2 /Ob1 /MD /Zi /DNDEBUG; test assertions /UNDEBUG",
+    "affinity_mask": 16
+  },
+  "tests": {
+    "d": {
+      "count": 126,
+      "exit": 0,
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "log": "final2-d-tests.log"
+    },
+    "t": {
+      "count": 110,
+      "exit": 0,
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "log": "final2-t-tests.log"
+    }
+  },
+  "vm_contracts": {
+    "count": 4,
+    "exit": 0,
+    "log": "final-vm-tests.log",
+    "unchanged_vm": true
+  },
+  "installed_consumers": [
+    {
+      "consumer": "cpp-generated-script",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "C37CFBD70F52A2F6415481A26D1BA45A47DC0DD6BAA882DBC0F1E3CE6FABA0B0",
+      "status": "PASS"
+    },
+    {
+      "consumer": "physics2d-script",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "29CF854B61D183DA18ED8B91565C14B93D71B60FB630E80F96971F941BA734AC",
+      "status": "PASS"
+    },
+    {
+      "consumer": "system-event-await-runtime",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "F4857F84E4BA7913995C385D473FFDFBE1E2234BB0189F52AD63324BDDCFA1F6",
+      "status": "PASS"
+    },
+    {
+      "consumer": "flowforge-compiler",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "0B6804B1A4F155D59F8D9E1C6399981049EC7FC4575C2E2A0D18E19608CC8A58",
+      "status": "PASS"
+    },
+    {
+      "consumer": "lua-script-packager",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "42B6CB41C737D21584DB98B74B95C725C0F39143299290717AB83489E4ABA720",
+      "status": "PASS"
+    },
+    {
+      "consumer": "scene-script-runtime",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "64CB3EE3E96B8C5BD522417F20BEA3EDA43AEC9F1C11FA37F29CA5C29FACD65F",
+      "status": "PASS"
+    },
+    {
+      "consumer": "script-ability-codegen",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "AD0D4E9B76BD9835737C69114C788843028E476CA4052C9A002301F12EC225CC",
+      "status": "PASS"
+    },
+    {
+      "consumer": "system-hook-script-binding",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "C3290074BEDC8D4912E4C271B33D16B9872E0733C9A2DC1FE4F696C021F4AAC5",
+      "status": "PASS"
+    },
+    {
+      "consumer": "cpp-coroutine-script",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "E4BC071CACFCD4EA7646BA3287697A08B34A2B19A5214AE88268D97C052FCE07",
+      "status": "PASS"
+    },
+    {
+      "consumer": "script-static-ability-specialization",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "7AF5B12EFEC6E3E3CE72A49E22CA9DEEB2467A4E739CC908A45D24AE0DE0675C",
+      "status": "PASS"
+    },
+    {
+      "consumer": "script-ability-ipo",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "F65C97EC5A8C8DB2AB4DD0D40CCED3568133DB0035B73626F70E85942CCC1751",
+      "status": "PASS"
+    },
+    {
+      "consumer": "script-authoring",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "7ED589DDF236277BBE7BA1441537DDE4079600FBE4499E37264C7EC949B1622D",
+      "status": "PASS"
+    },
+    {
+      "consumer": "script-runtime-input",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "E8927C38107A2873A046C453CFD3674C28156C10F3DE1A4EADE1EE2FB027F3E5",
+      "status": "PASS"
+    },
+    {
+      "consumer": "script-description",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "66DD34D4A75D85C9478C66AEAFB75BE578AE0B5FCBF8086EF6A530A95AE9273E",
+      "status": "PASS"
+    },
+    {
+      "consumer": "script-lua-values",
+      "source_sha": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "prefixes": "E:/SyncForder/CodeRepos/install/o/v4-h1/sdk;E:/SyncForder/CodeRepos/install/o/v4-h1/tools;E:/SyncForder/CodeRepos/install/o/v4/lua55;E:/SyncForder/CodeRepos/install/q2/toolset;E:/SyncForder/CodeRepos/install/q2/c",
+      "executable_sha256": "C767EBE38DDDC6B0414311BBA1B66691E1E711CA826C0AC8A8E59781130B7BA9",
+      "status": "PASS"
+    }
+  ],
+  "incremental": [
+    {
+      "before": "9DF9517D26575CDD939C11F1836D47BBCEF8A842831E1D0E48775801219D31E4",
+      "case": "initial-noop",
+      "expected_success": true,
+      "exit": 0,
+      "after": "9DF9517D26575CDD939C11F1836D47BBCEF8A842831E1D0E48775801219D31E4",
+      "generation_hits": 0
+    },
+    {
+      "before": "9DF9517D26575CDD939C11F1836D47BBCEF8A842831E1D0E48775801219D31E4",
+      "case": "included-field",
+      "expected_success": true,
+      "exit": 0,
+      "after": "9DF9517D26575CDD939C11F1836D47BBCEF8A842831E1D0E48775801219D31E4",
+      "generation_hits": 1
+    },
+    {
+      "before": "9DF9517D26575CDD939C11F1836D47BBCEF8A842831E1D0E48775801219D31E4",
+      "case": "compile-macro",
+      "expected_success": true,
+      "exit": 0,
+      "after": "9DF9517D26575CDD939C11F1836D47BBCEF8A842831E1D0E48775801219D31E4",
+      "generation_hits": 1
+    },
+    {
+      "before": "9DF9517D26575CDD939C11F1836D47BBCEF8A842831E1D0E48775801219D31E4",
+      "case": "annotation",
+      "expected_success": true,
+      "exit": 0,
+      "after": "FFCC81D8F68C317214E506A60916D32721F05D9987D695F3CB992F9FF220F81F",
+      "generation_hits": 1
+    },
+    {
+      "before": "FFCC81D8F68C317214E506A60916D32721F05D9987D695F3CB992F9FF220F81F",
+      "case": "custom-rule",
+      "expected_success": true,
+      "exit": 0,
+      "after": "FFCC81D8F68C317214E506A60916D32721F05D9987D695F3CB992F9FF220F81F",
+      "generation_hits": 1
+    },
+    {
+      "before": "FFCC81D8F68C317214E506A60916D32721F05D9987D695F3CB992F9FF220F81F",
+      "case": "installed-template",
+      "expected_success": true,
+      "exit": 0,
+      "after": "54EBD16D5A9D1675296A8F237E4D8E6B0FABB1F3E23AE9BE6A26D0ABE489E389",
+      "generation_hits": 1
+    },
+    {
+      "before": "54EBD16D5A9D1675296A8F237E4D8E6B0FABB1F3E23AE9BE6A26D0ABE489E389",
+      "case": "maximum-64-fields",
+      "expected_success": true,
+      "exit": 0,
+      "after": "7304E41A23E4BB1CF4CD00A0F42FF2B039F01300251E84FCD2EF62A01EC708DC",
+      "generation_hits": 1
+    },
+    {
+      "before": "7304E41A23E4BB1CF4CD00A0F42FF2B039F01300251E84FCD2EF62A01EC708DC",
+      "case": "reject-duplicate",
+      "expected_success": false,
+      "exit": 1,
+      "after": "7304E41A23E4BB1CF4CD00A0F42FF2B039F01300251E84FCD2EF62A01EC708DC",
+      "generation_hits": 1
+    },
+    {
+      "before": "7304E41A23E4BB1CF4CD00A0F42FF2B039F01300251E84FCD2EF62A01EC708DC",
+      "case": "reject-private",
+      "expected_success": false,
+      "exit": 1,
+      "after": "7304E41A23E4BB1CF4CD00A0F42FF2B039F01300251E84FCD2EF62A01EC708DC",
+      "generation_hits": 1
+    },
+    {
+      "before": "7304E41A23E4BB1CF4CD00A0F42FF2B039F01300251E84FCD2EF62A01EC708DC",
+      "case": "reject-capacity",
+      "expected_success": false,
+      "exit": 1,
+      "after": "7304E41A23E4BB1CF4CD00A0F42FF2B039F01300251E84FCD2EF62A01EC708DC",
+      "generation_hits": 1
+    },
+    {
+      "before": "7304E41A23E4BB1CF4CD00A0F42FF2B039F01300251E84FCD2EF62A01EC708DC",
+      "case": "reject-union",
+      "expected_success": false,
+      "exit": 1,
+      "after": "7304E41A23E4BB1CF4CD00A0F42FF2B039F01300251E84FCD2EF62A01EC708DC",
+      "generation_hits": 1
+    },
+    {
+      "before": "7304E41A23E4BB1CF4CD00A0F42FF2B039F01300251E84FCD2EF62A01EC708DC",
+      "case": "restored",
+      "expected_success": true,
+      "exit": 0,
+      "after": "9DF9517D26575CDD939C11F1836D47BBCEF8A842831E1D0E48775801219D31E4",
+      "generation_hits": 1
+    },
+    {
+      "before": "9DF9517D26575CDD939C11F1836D47BBCEF8A842831E1D0E48775801219D31E4",
+      "case": "final-noop",
+      "expected_success": true,
+      "exit": 0,
+      "after": "9DF9517D26575CDD939C11F1836D47BBCEF8A842831E1D0E48775801219D31E4",
+      "generation_hits": 0
+    }
+  ],
+  "relocated": [
+    {
+      "exe_sha256": "69B10868C1D52F11557224C948FE0CF91A072440B3A38D06DDF8797ECAF595B9",
+      "source_commit": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "original_paths_unavailable": true,
+      "status": "PASS",
+      "consumer": "script-lua-values"
+    },
+    {
+      "exe_sha256": "3802EDB9115B8C102C8299F5087D663913D1FD1774445BCDDDEE4AACD42034E3",
+      "source_commit": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "original_paths_unavailable": true,
+      "status": "PASS",
+      "consumer": "lua-script-packager"
+    }
+  ],
+  "costs": [
+    {
+      "scene": "event",
+      "phase": "steady",
+      "unit": "complete-event-cycle",
+      "paired_ns": {
+        "A": [
+          657.84479,
+          664.64531,
+          725.13951
+        ],
+        "B": [
+          649.02221,
+          652.560765,
+          717.60496
+        ]
+      },
+      "deltas_percent": [
+        -1.341133977818687,
+        -1.8181945796021726,
+        -1.039048334299142
+      ],
+      "median_percent": -1.341133977818687,
+      "whole_measured_deltas_percent": [
+        -1.341133977818687,
+        -1.8181945796021615,
+        -1.039048334299153
+      ],
+      "A_ns": 664.64531,
+      "B_ns": 652.560765
+    },
+    {
+      "scene": "nextstep",
+      "phase": "steady",
+      "unit": "complete-nextstep-cycle",
+      "paired_ns": {
+        "A": [
+          747.557275,
+          727.57353,
+          731.10866
+        ],
+        "B": [
+          704.48348,
+          728.54889,
+          730.520035
+        ]
+      },
+      "deltas_percent": [
+        -5.7619391102842314,
+        0.13405655370668512,
+        -0.08051128815790287
+      ],
+      "median_percent": -0.08051128815790287,
+      "whole_measured_deltas_percent": [
+        -5.76193911028422,
+        0.13405655370668512,
+        -0.08051128815790287
+      ],
+      "A_ns": 731.10866,
+      "B_ns": 728.54889
+    },
+    {
+      "scene": "flowforge-event",
+      "phase": "steady",
+      "unit": "complete-flowforge-event-cycle",
+      "paired_ns": {
+        "A": [
+          312.4161,
+          312.32647,
+          310.63144
+        ],
+        "B": [
+          311.58056,
+          316.18282,
+          318.31998
+        ]
+      },
+      "deltas_percent": [
+        -0.26744460352714494,
+        1.2347176337631716,
+        2.4751325879955877
+      ],
+      "median_percent": 1.2347176337631716,
+      "whole_measured_deltas_percent": [
+        -0.26744460352715604,
+        1.2347176337631494,
+        2.47513258799561
+      ],
+      "A_ns": 312.32647,
+      "B_ns": 316.18282
+    },
+    {
+      "scene": "cpp-sequence",
+      "phase": "steady",
+      "unit": "whole-simulation-frame",
+      "paired_ns": {
+        "A": [
+          2612010.3,
+          2593804.0,
+          2627890.4
+        ],
+        "B": [
+          2642187.8,
+          2665728.3,
+          2626121.9
+        ]
+      },
+      "deltas_percent": [
+        1.1553361791873495,
+        2.772927329898467,
+        -0.0672973271640287
+      ],
+      "median_percent": 1.1553361791873495,
+      "whole_measured_deltas_percent": [
+        1.1553361791873495,
+        2.772927329898489,
+        -0.0672973271640287
+      ],
+      "A_ns": 2612010.3,
+      "B_ns": 2642187.8
+    },
+    {
+      "scene": "scalar",
+      "phase": "steady",
+      "unit": "complete-scalar-cycle",
+      "paired_ns": {
+        "A": [
+          144.227165,
+          141.90092,
+          143.752485
+        ],
+        "B": [
+          139.975335,
+          139.8312,
+          140.73021
+        ]
+      },
+      "deltas_percent": [
+        -2.948009135449625,
+        -1.4585670057671307,
+        -2.102415829542015
+      ],
+      "median_percent": -2.102415829542015,
+      "whole_measured_deltas_percent": [
+        -2.948009135449625,
+        -1.4585670057671196,
+        -2.1024158295420037
+      ],
+      "A_ns": 143.752485,
+      "B_ns": 139.975335
+    },
+    {
+      "scene": "record",
+      "phase": "steady",
+      "unit": "complete-ValuePose-ability-call",
+      "paired_ns": {
+        "A": [
+          1299.3121,
+          1303.0437,
+          1309.6998
+        ],
+        "B": [
+          1310.4226,
+          1319.3074,
+          1320.8287
+        ]
+      },
+      "deltas_percent": [
+        0.8551063289566896,
+        1.2481315860703557,
+        0.8497290753193942
+      ],
+      "median_percent": 0.8551063289566896,
+      "whole_measured_deltas_percent": [
+        0.8551063289566896,
+        1.2481315860703779,
+        0.8497290753193942
+      ],
+      "A_ns": 1303.0437,
+      "B_ns": 1319.3074
+    },
+    {
+      "scene": "physics",
+      "phase": "steady",
+      "unit": "whole-simulation-frame",
+      "paired_ns": {
+        "A": [
+          2785826.0,
+          2775116.8,
+          2790028.75
+        ],
+        "B": [
+          2759486.75,
+          2763609.45,
+          2746098.95
+        ]
+      },
+      "deltas_percent": [
+        -0.9454736225449789,
+        -0.4146618261256507,
+        -1.5745285778865137
+      ],
+      "median_percent": -0.9454736225449789,
+      "whole_measured_deltas_percent": [
+        -0.9454736225449789,
+        -0.4146618261256618,
+        -1.5745285778865137
+      ],
+      "A_ns": 2785826.0,
+      "B_ns": 2759486.75
+    }
+  ],
+  "runs": [
+    {
+      "scene": "event",
+      "pair": 0,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-lua-event",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\event-0-A.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 20.18699999999808,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 13156895800,
+          "actual_operations": 20000000,
+          "unit": "complete-event-cycle",
+          "ns_per_actual_operation": 657.84479,
+          "p50_batch_ns": 6522250.0,
+          "p95_batch_ns": 8686300,
+          "p99_batch_ns": 10287900,
+          "max_batch_ns": 25440500
+        }
+      ],
+      "total_measured_ns": 13156895800,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "0",
+        "events": "1",
+        "suspensions": "30000000",
+        "resumes": "30000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "30000000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "13000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "BUSINESS_ORACLE,lua-event,instances=10000,cycles=3000,completed=30000000,per_instance=93001,checksum=930010000,source=script-readback,outside_timing=1",
+        "INTEGRITY,lua-event,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30010000,resumes=30000000",
+        "INTEGRITY,lua-event,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30010000,resumes=30000000"
+      ]
+    },
+    {
+      "scene": "event",
+      "pair": 0,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-lua-event",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\event-0-B.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 20.015999999995984,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 12980444200,
+          "actual_operations": 20000000,
+          "unit": "complete-event-cycle",
+          "ns_per_actual_operation": 649.02221,
+          "p50_batch_ns": 6459050.0,
+          "p95_batch_ns": 8546600,
+          "p99_batch_ns": 9715900,
+          "max_batch_ns": 31104100
+        }
+      ],
+      "total_measured_ns": 12980444200,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "0",
+        "events": "1",
+        "suspensions": "30000000",
+        "resumes": "30000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "30000000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "13000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "BUSINESS_ORACLE,lua-event,instances=10000,cycles=3000,completed=30000000,per_instance=93001,checksum=930010000,source=script-readback,outside_timing=1",
+        "INTEGRITY,lua-event,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30010000,resumes=30000000",
+        "INTEGRITY,lua-event,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30010000,resumes=30000000"
+      ]
+    },
+    {
+      "scene": "event",
+      "pair": 1,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-lua-event",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\event-1-B.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 20.0940000000046,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 13051215300,
+          "actual_operations": 20000000,
+          "unit": "complete-event-cycle",
+          "ns_per_actual_operation": 652.560765,
+          "p50_batch_ns": 6439300.0,
+          "p95_batch_ns": 8690100,
+          "p99_batch_ns": 12233400,
+          "max_batch_ns": 35336900
+        }
+      ],
+      "total_measured_ns": 13051215300,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "0",
+        "events": "1",
+        "suspensions": "30000000",
+        "resumes": "30000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "30000000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "13000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "BUSINESS_ORACLE,lua-event,instances=10000,cycles=3000,completed=30000000,per_instance=93001,checksum=930010000,source=script-readback,outside_timing=1",
+        "INTEGRITY,lua-event,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30010000,resumes=30000000",
+        "INTEGRITY,lua-event,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30010000,resumes=30000000"
+      ]
+    },
+    {
+      "scene": "event",
+      "pair": 1,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-lua-event",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\event-1-A.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 20.35899999999674,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 13292906200,
+          "actual_operations": 20000000,
+          "unit": "complete-event-cycle",
+          "ns_per_actual_operation": 664.64531,
+          "p50_batch_ns": 6514950.0,
+          "p95_batch_ns": 9022000,
+          "p99_batch_ns": 10685300,
+          "max_batch_ns": 50533000
+        }
+      ],
+      "total_measured_ns": 13292906200,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "0",
+        "events": "1",
+        "suspensions": "30000000",
+        "resumes": "30000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "30000000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "13000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "BUSINESS_ORACLE,lua-event,instances=10000,cycles=3000,completed=30000000,per_instance=93001,checksum=930010000,source=script-readback,outside_timing=1",
+        "INTEGRITY,lua-event,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30010000,resumes=30000000",
+        "INTEGRITY,lua-event,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30010000,resumes=30000000"
+      ]
+    },
+    {
+      "scene": "event",
+      "pair": 2,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-lua-event",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\event-2-A.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 21.906000000002678,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 14502790200,
+          "actual_operations": 20000000,
+          "unit": "complete-event-cycle",
+          "ns_per_actual_operation": 725.13951,
+          "p50_batch_ns": 7069900.0,
+          "p95_batch_ns": 9971100,
+          "p99_batch_ns": 12064400,
+          "max_batch_ns": 48977100
+        }
+      ],
+      "total_measured_ns": 14502790200,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "0",
+        "events": "1",
+        "suspensions": "30000000",
+        "resumes": "30000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "30000000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "13000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "BUSINESS_ORACLE,lua-event,instances=10000,cycles=3000,completed=30000000,per_instance=93001,checksum=930010000,source=script-readback,outside_timing=1",
+        "INTEGRITY,lua-event,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30010000,resumes=30000000",
+        "INTEGRITY,lua-event,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30010000,resumes=30000000"
+      ]
+    },
+    {
+      "scene": "event",
+      "pair": 2,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-lua-event",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\event-2-B.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 21.985000000000582,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 14352099200,
+          "actual_operations": 20000000,
+          "unit": "complete-event-cycle",
+          "ns_per_actual_operation": 717.60496,
+          "p50_batch_ns": 6958200.0,
+          "p95_batch_ns": 9856000,
+          "p99_batch_ns": 11364800,
+          "max_batch_ns": 37367600
+        }
+      ],
+      "total_measured_ns": 14352099200,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "0",
+        "events": "1",
+        "suspensions": "30000000",
+        "resumes": "30000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "30000000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "13000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "BUSINESS_ORACLE,lua-event,instances=10000,cycles=3000,completed=30000000,per_instance=93001,checksum=930010000,source=script-readback,outside_timing=1",
+        "INTEGRITY,lua-event,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30010000,resumes=30000000",
+        "INTEGRITY,lua-event,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30010000,resumes=30000000"
+      ]
+    },
+    {
+      "scene": "nextstep",
+      "pair": 0,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-lua-coroutine",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\nextstep-0-A.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 23.014999999999418,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 14951145500,
+          "actual_operations": 20000000,
+          "unit": "complete-nextstep-cycle",
+          "ns_per_actual_operation": 747.557275,
+          "p50_batch_ns": 7312150.0,
+          "p95_batch_ns": 10103700,
+          "p99_batch_ns": 11859300,
+          "max_batch_ns": 22921600
+        }
+      ],
+      "total_measured_ns": 14951145500,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "0",
+        "events": "0",
+        "suspensions": "30000000",
+        "resumes": "30000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "0",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "13000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,lua-coroutine,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=30000000",
+        "INTEGRITY,lua-coroutine,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=30000000"
+      ]
+    },
+    {
+      "scene": "nextstep",
+      "pair": 0,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-lua-coroutine",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\nextstep-0-B.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 21.67199999999866,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 14089669600,
+          "actual_operations": 20000000,
+          "unit": "complete-nextstep-cycle",
+          "ns_per_actual_operation": 704.48348,
+          "p50_batch_ns": 6806350.0,
+          "p95_batch_ns": 9220200,
+          "p99_batch_ns": 11527600,
+          "max_batch_ns": 140621800
+        }
+      ],
+      "total_measured_ns": 14089669600,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "0",
+        "events": "0",
+        "suspensions": "30000000",
+        "resumes": "30000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "0",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "13000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,lua-coroutine,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=30000000",
+        "INTEGRITY,lua-coroutine,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=30000000"
+      ]
+    },
+    {
+      "scene": "nextstep",
+      "pair": 1,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-lua-coroutine",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\nextstep-1-B.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 22.04699999999866,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 14570977800,
+          "actual_operations": 20000000,
+          "unit": "complete-nextstep-cycle",
+          "ns_per_actual_operation": 728.54889,
+          "p50_batch_ns": 7309750.0,
+          "p95_batch_ns": 9615800,
+          "p99_batch_ns": 10974500,
+          "max_batch_ns": 15209100
+        }
+      ],
+      "total_measured_ns": 14570977800,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "0",
+        "events": "0",
+        "suspensions": "30000000",
+        "resumes": "30000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "0",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "13000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,lua-coroutine,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=30000000",
+        "INTEGRITY,lua-coroutine,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=30000000"
+      ]
+    },
+    {
+      "scene": "nextstep",
+      "pair": 1,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-lua-coroutine",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\nextstep-1-A.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 22.31300000000192,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 14551470600,
+          "actual_operations": 20000000,
+          "unit": "complete-nextstep-cycle",
+          "ns_per_actual_operation": 727.57353,
+          "p50_batch_ns": 7257400.0,
+          "p95_batch_ns": 9429700,
+          "p99_batch_ns": 10806600,
+          "max_batch_ns": 14276600
+        }
+      ],
+      "total_measured_ns": 14551470600,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "0",
+        "events": "0",
+        "suspensions": "30000000",
+        "resumes": "30000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "0",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "13000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,lua-coroutine,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=30000000",
+        "INTEGRITY,lua-coroutine,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=30000000"
+      ]
+    },
+    {
+      "scene": "nextstep",
+      "pair": 2,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-lua-coroutine",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\nextstep-2-A.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 22.468000000000757,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 14622173200,
+          "actual_operations": 20000000,
+          "unit": "complete-nextstep-cycle",
+          "ns_per_actual_operation": 731.10866,
+          "p50_batch_ns": 7268800.0,
+          "p95_batch_ns": 9591100,
+          "p99_batch_ns": 11190800,
+          "max_batch_ns": 36839800
+        }
+      ],
+      "total_measured_ns": 14622173200,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "0",
+        "events": "0",
+        "suspensions": "30000000",
+        "resumes": "30000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "0",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "13000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,lua-coroutine,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=30000000",
+        "INTEGRITY,lua-coroutine,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=30000000"
+      ]
+    },
+    {
+      "scene": "nextstep",
+      "pair": 2,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-lua-coroutine",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\nextstep-2-B.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 22.375,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 14610400700,
+          "actual_operations": 20000000,
+          "unit": "complete-nextstep-cycle",
+          "ns_per_actual_operation": 730.520035,
+          "p50_batch_ns": 7293300.0,
+          "p95_batch_ns": 9513700,
+          "p99_batch_ns": 11282800,
+          "max_batch_ns": 32843100
+        }
+      ],
+      "total_measured_ns": 14610400700,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "0",
+        "events": "0",
+        "suspensions": "30000000",
+        "resumes": "30000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "0",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "13000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,lua-coroutine,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=30000000",
+        "INTEGRITY,lua-coroutine,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=30000000"
+      ]
+    },
+    {
+      "scene": "flowforge-event",
+      "pair": 0,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-flow-image\\flowforge_script_runtime_benchmark.exe",
+        "--group",
+        "scene-flowforge-event",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "1000",
+        "--warmups",
+        "300",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\flowforge-event-0-A.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 4.171999999998661,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 3124161000,
+          "actual_operations": 10000000,
+          "unit": "complete-flowforge-event-cycle",
+          "ns_per_actual_operation": 312.4161,
+          "p50_batch_ns": 2963200.0,
+          "p95_batch_ns": 3787600,
+          "p99_batch_ns": 4473700,
+          "max_batch_ns": 7982900
+        }
+      ],
+      "total_measured_ns": 3124161000,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "13000000",
+        "suspensions": "13000000",
+        "resumes": "13000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "13000000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "415438720",
+        "started": "13000000",
+        "completed": "0",
+        "phase": "steady"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,begin,calls=3000000,invocation_errors=0,started=3000000,resumes=3000000,suspensions=3000000,queue=0,continuations=0,awaitables=0,waiters=0",
+        "BUSINESS_ORACLE,flowforge-event,instances=10000,cycles=1300,completed=13000000,checksum=403000000,source=provider-payload,outside_timing=1",
+        "NATIVE_STORAGE_OBSERVATION,collected=0,active_region_bytes=0,retained_bindings=880000",
+        "NATIVE_STORAGE,steady,backing=160000,metadata=1200272,reserved=10000,active=0,live=0,occupied=0,high_water=0,capacity_failures=0,heap_frames=0",
+        "ERRORS,steady,invocation_errors=0",
+        "INTEGRITY,steady,retained=0,calls=13000000,checksum=403000000,queue=0,continuations=0,awaitables=0,waiters=0",
+        "NATIVE_STORAGE,shutdown,active=0,live=0,occupied=0,acquires=0,releases=0",
+        "ERRORS,shutdown,invocation_errors=0",
+        "INTEGRITY,shutdown,retained=0,calls=13000000,checksum=403000000,queue=0,continuations=0,awaitables=0,waiters=0"
+      ]
+    },
+    {
+      "scene": "flowforge-event",
+      "pair": 0,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-flow-image\\flowforge_script_runtime_benchmark.exe",
+        "--group",
+        "scene-flowforge-event",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "1000",
+        "--warmups",
+        "300",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\flowforge-event-0-B.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 4.26600000000326,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 3115805600,
+          "actual_operations": 10000000,
+          "unit": "complete-flowforge-event-cycle",
+          "ns_per_actual_operation": 311.58056,
+          "p50_batch_ns": 3005700.0,
+          "p95_batch_ns": 3758800,
+          "p99_batch_ns": 4371100,
+          "max_batch_ns": 8199400
+        }
+      ],
+      "total_measured_ns": 3115805600,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "13000000",
+        "suspensions": "13000000",
+        "resumes": "13000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "13000000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "415438720",
+        "started": "13000000",
+        "completed": "0",
+        "phase": "steady"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,begin,calls=3000000,invocation_errors=0,started=3000000,resumes=3000000,suspensions=3000000,queue=0,continuations=0,awaitables=0,waiters=0",
+        "BUSINESS_ORACLE,flowforge-event,instances=10000,cycles=1300,completed=13000000,checksum=403000000,source=provider-payload,outside_timing=1",
+        "NATIVE_STORAGE_OBSERVATION,collected=0,active_region_bytes=0,retained_bindings=880000",
+        "NATIVE_STORAGE,steady,backing=160000,metadata=1200272,reserved=10000,active=0,live=0,occupied=0,high_water=0,capacity_failures=0,heap_frames=0",
+        "ERRORS,steady,invocation_errors=0",
+        "INTEGRITY,steady,retained=0,calls=13000000,checksum=403000000,queue=0,continuations=0,awaitables=0,waiters=0",
+        "NATIVE_STORAGE,shutdown,active=0,live=0,occupied=0,acquires=0,releases=0",
+        "ERRORS,shutdown,invocation_errors=0",
+        "INTEGRITY,shutdown,retained=0,calls=13000000,checksum=403000000,queue=0,continuations=0,awaitables=0,waiters=0"
+      ]
+    },
+    {
+      "scene": "flowforge-event",
+      "pair": 1,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-flow-image\\flowforge_script_runtime_benchmark.exe",
+        "--group",
+        "scene-flowforge-event",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "1000",
+        "--warmups",
+        "300",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\flowforge-event-1-B.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 4.2189999999973224,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 3161828200,
+          "actual_operations": 10000000,
+          "unit": "complete-flowforge-event-cycle",
+          "ns_per_actual_operation": 316.18282,
+          "p50_batch_ns": 3032050.0,
+          "p95_batch_ns": 3797400,
+          "p99_batch_ns": 4439800,
+          "max_batch_ns": 9370300
+        }
+      ],
+      "total_measured_ns": 3161828200,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "13000000",
+        "suspensions": "13000000",
+        "resumes": "13000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "13000000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "415438720",
+        "started": "13000000",
+        "completed": "0",
+        "phase": "steady"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,begin,calls=3000000,invocation_errors=0,started=3000000,resumes=3000000,suspensions=3000000,queue=0,continuations=0,awaitables=0,waiters=0",
+        "BUSINESS_ORACLE,flowforge-event,instances=10000,cycles=1300,completed=13000000,checksum=403000000,source=provider-payload,outside_timing=1",
+        "NATIVE_STORAGE_OBSERVATION,collected=0,active_region_bytes=0,retained_bindings=880000",
+        "NATIVE_STORAGE,steady,backing=160000,metadata=1200272,reserved=10000,active=0,live=0,occupied=0,high_water=0,capacity_failures=0,heap_frames=0",
+        "ERRORS,steady,invocation_errors=0",
+        "INTEGRITY,steady,retained=0,calls=13000000,checksum=403000000,queue=0,continuations=0,awaitables=0,waiters=0",
+        "NATIVE_STORAGE,shutdown,active=0,live=0,occupied=0,acquires=0,releases=0",
+        "ERRORS,shutdown,invocation_errors=0",
+        "INTEGRITY,shutdown,retained=0,calls=13000000,checksum=403000000,queue=0,continuations=0,awaitables=0,waiters=0"
+      ]
+    },
+    {
+      "scene": "flowforge-event",
+      "pair": 1,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-flow-image\\flowforge_script_runtime_benchmark.exe",
+        "--group",
+        "scene-flowforge-event",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "1000",
+        "--warmups",
+        "300",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\flowforge-event-1-A.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 4.1710000000020955,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 3123264700,
+          "actual_operations": 10000000,
+          "unit": "complete-flowforge-event-cycle",
+          "ns_per_actual_operation": 312.32647,
+          "p50_batch_ns": 2961400.0,
+          "p95_batch_ns": 3766500,
+          "p99_batch_ns": 4310400,
+          "max_batch_ns": 18196700
+        }
+      ],
+      "total_measured_ns": 3123264700,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "13000000",
+        "suspensions": "13000000",
+        "resumes": "13000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "13000000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "415438720",
+        "started": "13000000",
+        "completed": "0",
+        "phase": "steady"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,begin,calls=3000000,invocation_errors=0,started=3000000,resumes=3000000,suspensions=3000000,queue=0,continuations=0,awaitables=0,waiters=0",
+        "BUSINESS_ORACLE,flowforge-event,instances=10000,cycles=1300,completed=13000000,checksum=403000000,source=provider-payload,outside_timing=1",
+        "NATIVE_STORAGE_OBSERVATION,collected=0,active_region_bytes=0,retained_bindings=880000",
+        "NATIVE_STORAGE,steady,backing=160000,metadata=1200272,reserved=10000,active=0,live=0,occupied=0,high_water=0,capacity_failures=0,heap_frames=0",
+        "ERRORS,steady,invocation_errors=0",
+        "INTEGRITY,steady,retained=0,calls=13000000,checksum=403000000,queue=0,continuations=0,awaitables=0,waiters=0",
+        "NATIVE_STORAGE,shutdown,active=0,live=0,occupied=0,acquires=0,releases=0",
+        "ERRORS,shutdown,invocation_errors=0",
+        "INTEGRITY,shutdown,retained=0,calls=13000000,checksum=403000000,queue=0,continuations=0,awaitables=0,waiters=0"
+      ]
+    },
+    {
+      "scene": "flowforge-event",
+      "pair": 2,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-flow-image\\flowforge_script_runtime_benchmark.exe",
+        "--group",
+        "scene-flowforge-event",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "1000",
+        "--warmups",
+        "300",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\flowforge-event-2-A.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 4.156999999999243,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 3106314400,
+          "actual_operations": 10000000,
+          "unit": "complete-flowforge-event-cycle",
+          "ns_per_actual_operation": 310.63144,
+          "p50_batch_ns": 2998450.0,
+          "p95_batch_ns": 3705300,
+          "p99_batch_ns": 4483500,
+          "max_batch_ns": 8487100
+        }
+      ],
+      "total_measured_ns": 3106314400,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "13000000",
+        "suspensions": "13000000",
+        "resumes": "13000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "13000000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "415438720",
+        "started": "13000000",
+        "completed": "0",
+        "phase": "steady"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,begin,calls=3000000,invocation_errors=0,started=3000000,resumes=3000000,suspensions=3000000,queue=0,continuations=0,awaitables=0,waiters=0",
+        "BUSINESS_ORACLE,flowforge-event,instances=10000,cycles=1300,completed=13000000,checksum=403000000,source=provider-payload,outside_timing=1",
+        "NATIVE_STORAGE_OBSERVATION,collected=0,active_region_bytes=0,retained_bindings=880000",
+        "NATIVE_STORAGE,steady,backing=160000,metadata=1200272,reserved=10000,active=0,live=0,occupied=0,high_water=0,capacity_failures=0,heap_frames=0",
+        "ERRORS,steady,invocation_errors=0",
+        "INTEGRITY,steady,retained=0,calls=13000000,checksum=403000000,queue=0,continuations=0,awaitables=0,waiters=0",
+        "NATIVE_STORAGE,shutdown,active=0,live=0,occupied=0,acquires=0,releases=0",
+        "ERRORS,shutdown,invocation_errors=0",
+        "INTEGRITY,shutdown,retained=0,calls=13000000,checksum=403000000,queue=0,continuations=0,awaitables=0,waiters=0"
+      ]
+    },
+    {
+      "scene": "flowforge-event",
+      "pair": 2,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-flow-image\\flowforge_script_runtime_benchmark.exe",
+        "--group",
+        "scene-flowforge-event",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "1000",
+        "--warmups",
+        "300",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\flowforge-event-2-B.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 4.25,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 3183199800,
+          "actual_operations": 10000000,
+          "unit": "complete-flowforge-event-cycle",
+          "ns_per_actual_operation": 318.31998,
+          "p50_batch_ns": 3120700.0,
+          "p95_batch_ns": 3808600,
+          "p99_batch_ns": 4387900,
+          "max_batch_ns": 9233800
+        }
+      ],
+      "total_measured_ns": 3183199800,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "13000000",
+        "suspensions": "13000000",
+        "resumes": "13000000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "13000000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "415438720",
+        "started": "13000000",
+        "completed": "0",
+        "phase": "steady"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,begin,calls=3000000,invocation_errors=0,started=3000000,resumes=3000000,suspensions=3000000,queue=0,continuations=0,awaitables=0,waiters=0",
+        "BUSINESS_ORACLE,flowforge-event,instances=10000,cycles=1300,completed=13000000,checksum=403000000,source=provider-payload,outside_timing=1",
+        "NATIVE_STORAGE_OBSERVATION,collected=0,active_region_bytes=0,retained_bindings=880000",
+        "NATIVE_STORAGE,steady,backing=160000,metadata=1200272,reserved=10000,active=0,live=0,occupied=0,high_water=0,capacity_failures=0,heap_frames=0",
+        "ERRORS,steady,invocation_errors=0",
+        "INTEGRITY,steady,retained=0,calls=13000000,checksum=403000000,queue=0,continuations=0,awaitables=0,waiters=0",
+        "NATIVE_STORAGE,shutdown,active=0,live=0,occupied=0,acquires=0,releases=0",
+        "ERRORS,shutdown,invocation_errors=0",
+        "INTEGRITY,shutdown,retained=0,calls=13000000,checksum=403000000,queue=0,continuations=0,awaitables=0,waiters=0"
+      ]
+    },
+    {
+      "scene": "cpp-sequence",
+      "pair": 0,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-cpp-sequence",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "1000",
+        "--warmups",
+        "300",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\cpp-sequence-0-A.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 3.4530000000013388,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 2612010300,
+          "actual_operations": 1000,
+          "unit": "whole-simulation-frame",
+          "ns_per_actual_operation": 2612010.3,
+          "p50_batch_ns": 2608900.0,
+          "p95_batch_ns": 3541100,
+          "p99_batch_ns": 3933400,
+          "max_batch_ns": 8693400
+        }
+      ],
+      "total_measured_ns": 2612010300,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "3250000",
+        "ability_calls": "3250000",
+        "events": "1",
+        "suspensions": "9750000",
+        "resumes": "9750000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "3250000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "633750000",
+        "claim_lookups": "1300",
+        "actual_copy_bytes": "13000000",
+        "completion_capabilities": "0"
+      },
+      "errors": null,
+      "error_scope": "business, backend storage and shutdown assertions; cumulative failure counter unavailable",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": []
+    },
+    {
+      "scene": "cpp-sequence",
+      "pair": 0,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-cpp-sequence",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "1000",
+        "--warmups",
+        "300",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\cpp-sequence-0-B.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 3.4839999999967404,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 2642187800,
+          "actual_operations": 1000,
+          "unit": "whole-simulation-frame",
+          "ns_per_actual_operation": 2642187.8,
+          "p50_batch_ns": 2596050.0,
+          "p95_batch_ns": 3548400,
+          "p99_batch_ns": 3980400,
+          "max_batch_ns": 33062700
+        }
+      ],
+      "total_measured_ns": 2642187800,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "3250000",
+        "ability_calls": "3250000",
+        "events": "1",
+        "suspensions": "9750000",
+        "resumes": "9750000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "3250000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "633750000",
+        "claim_lookups": "1300",
+        "actual_copy_bytes": "13000000",
+        "completion_capabilities": "0"
+      },
+      "errors": null,
+      "error_scope": "business, backend storage and shutdown assertions; cumulative failure counter unavailable",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": []
+    },
+    {
+      "scene": "cpp-sequence",
+      "pair": 1,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-cpp-sequence",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "1000",
+        "--warmups",
+        "300",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\cpp-sequence-1-B.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 3.5,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 2665728300,
+          "actual_operations": 1000,
+          "unit": "whole-simulation-frame",
+          "ns_per_actual_operation": 2665728.3,
+          "p50_batch_ns": 2634700.0,
+          "p95_batch_ns": 3656500,
+          "p99_batch_ns": 4225300,
+          "max_batch_ns": 8490900
+        }
+      ],
+      "total_measured_ns": 2665728300,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "3250000",
+        "ability_calls": "3250000",
+        "events": "1",
+        "suspensions": "9750000",
+        "resumes": "9750000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "3250000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "633750000",
+        "claim_lookups": "1300",
+        "actual_copy_bytes": "13000000",
+        "completion_capabilities": "0"
+      },
+      "errors": null,
+      "error_scope": "business, backend storage and shutdown assertions; cumulative failure counter unavailable",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": []
+    },
+    {
+      "scene": "cpp-sequence",
+      "pair": 1,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-cpp-sequence",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "1000",
+        "--warmups",
+        "300",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\cpp-sequence-1-A.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 3.438000000001921,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 2593804000,
+          "actual_operations": 1000,
+          "unit": "whole-simulation-frame",
+          "ns_per_actual_operation": 2593804.0,
+          "p50_batch_ns": 2573200.0,
+          "p95_batch_ns": 3530500,
+          "p99_batch_ns": 3845500,
+          "max_batch_ns": 9233900
+        }
+      ],
+      "total_measured_ns": 2593804000,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "3250000",
+        "ability_calls": "3250000",
+        "events": "1",
+        "suspensions": "9750000",
+        "resumes": "9750000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "3250000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "633750000",
+        "claim_lookups": "1300",
+        "actual_copy_bytes": "13000000",
+        "completion_capabilities": "0"
+      },
+      "errors": null,
+      "error_scope": "business, backend storage and shutdown assertions; cumulative failure counter unavailable",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": []
+    },
+    {
+      "scene": "cpp-sequence",
+      "pair": 2,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-cpp-sequence",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "1000",
+        "--warmups",
+        "300",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\cpp-sequence-2-A.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 3.4680000000007567,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 2627890400,
+          "actual_operations": 1000,
+          "unit": "whole-simulation-frame",
+          "ns_per_actual_operation": 2627890.4,
+          "p50_batch_ns": 2603900.0,
+          "p95_batch_ns": 3571100,
+          "p99_batch_ns": 3824900,
+          "max_batch_ns": 9098100
+        }
+      ],
+      "total_measured_ns": 2627890400,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "3250000",
+        "ability_calls": "3250000",
+        "events": "1",
+        "suspensions": "9750000",
+        "resumes": "9750000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "3250000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "633750000",
+        "claim_lookups": "1300",
+        "actual_copy_bytes": "13000000",
+        "completion_capabilities": "0"
+      },
+      "errors": null,
+      "error_scope": "business, backend storage and shutdown assertions; cumulative failure counter unavailable",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": []
+    },
+    {
+      "scene": "cpp-sequence",
+      "pair": 2,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\script_runtime_benchmark.exe",
+        "--group",
+        "scene-cpp-sequence",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "1000",
+        "--warmups",
+        "300",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\cpp-sequence-2-B.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 3.4689999999973224,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 2626121900,
+          "actual_operations": 1000,
+          "unit": "whole-simulation-frame",
+          "ns_per_actual_operation": 2626121.9,
+          "p50_batch_ns": 2606700.0,
+          "p95_batch_ns": 3547100,
+          "p99_batch_ns": 3896500,
+          "max_batch_ns": 7657900
+        }
+      ],
+      "total_measured_ns": 2626121900,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "3250000",
+        "ability_calls": "3250000",
+        "events": "1",
+        "suspensions": "9750000",
+        "resumes": "9750000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "3250000",
+        "queue_depth": "0",
+        "queue_high_water": "10000",
+        "checksum": "633750000",
+        "claim_lookups": "1300",
+        "actual_copy_bytes": "13000000",
+        "completion_capabilities": "0"
+      },
+      "errors": null,
+      "error_scope": "business, backend storage and shutdown assertions; cumulative failure counter unavailable",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": []
+    },
+    {
+      "scene": "scalar",
+      "pair": 0,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\script_runtime_benchmark.exe",
+        "--group",
+        "micro-lua-ability-query",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\scalar-0-A.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 4.421999999998661,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 2884543300,
+          "actual_operations": 20000000,
+          "unit": "complete-scalar-cycle",
+          "ns_per_actual_operation": 144.227165,
+          "p50_batch_ns": 1275000.0,
+          "p95_batch_ns": 2097400,
+          "p99_batch_ns": 2381600,
+          "max_batch_ns": 13345600
+        }
+      ],
+      "total_measured_ns": 2884543300,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "30000000",
+        "events": "0",
+        "suspensions": "0",
+        "resumes": "0",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "0",
+        "queue_depth": "0",
+        "queue_high_water": "0",
+        "checksum": "315135013000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,lua-sync,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=0",
+        "INTEGRITY,lua-sync,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=0"
+      ]
+    },
+    {
+      "scene": "scalar",
+      "pair": 0,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\script_runtime_benchmark.exe",
+        "--group",
+        "micro-lua-ability-query",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\scalar-0-B.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 4.296999999998661,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 2799506700,
+          "actual_operations": 20000000,
+          "unit": "complete-scalar-cycle",
+          "ns_per_actual_operation": 139.975335,
+          "p50_batch_ns": 1234850.0,
+          "p95_batch_ns": 2075900,
+          "p99_batch_ns": 2303100,
+          "max_batch_ns": 6810800
+        }
+      ],
+      "total_measured_ns": 2799506700,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "30000000",
+        "events": "0",
+        "suspensions": "0",
+        "resumes": "0",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "0",
+        "queue_depth": "0",
+        "queue_high_water": "0",
+        "checksum": "315135013000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,lua-sync,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=0",
+        "INTEGRITY,lua-sync,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=0"
+      ]
+    },
+    {
+      "scene": "scalar",
+      "pair": 1,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\script_runtime_benchmark.exe",
+        "--group",
+        "micro-lua-ability-query",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\scalar-1-B.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 4.2810000000026776,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 2796624000,
+          "actual_operations": 20000000,
+          "unit": "complete-scalar-cycle",
+          "ns_per_actual_operation": 139.8312,
+          "p50_batch_ns": 1249650.0,
+          "p95_batch_ns": 2056100,
+          "p99_batch_ns": 2291700,
+          "max_batch_ns": 7767600
+        }
+      ],
+      "total_measured_ns": 2796624000,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "30000000",
+        "events": "0",
+        "suspensions": "0",
+        "resumes": "0",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "0",
+        "queue_depth": "0",
+        "queue_high_water": "0",
+        "checksum": "315135013000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,lua-sync,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=0",
+        "INTEGRITY,lua-sync,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=0"
+      ]
+    },
+    {
+      "scene": "scalar",
+      "pair": 1,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\script_runtime_benchmark.exe",
+        "--group",
+        "micro-lua-ability-query",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\scalar-1-A.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 4.3439999999973224,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 2838018400,
+          "actual_operations": 20000000,
+          "unit": "complete-scalar-cycle",
+          "ns_per_actual_operation": 141.90092,
+          "p50_batch_ns": 1258800.0,
+          "p95_batch_ns": 2096100,
+          "p99_batch_ns": 2424900,
+          "max_batch_ns": 7662200
+        }
+      ],
+      "total_measured_ns": 2838018400,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "30000000",
+        "events": "0",
+        "suspensions": "0",
+        "resumes": "0",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "0",
+        "queue_depth": "0",
+        "queue_high_water": "0",
+        "checksum": "315135013000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,lua-sync,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=0",
+        "INTEGRITY,lua-sync,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=0"
+      ]
+    },
+    {
+      "scene": "scalar",
+      "pair": 2,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\script_runtime_benchmark.exe",
+        "--group",
+        "micro-lua-ability-query",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\scalar-2-A.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 4.39100000000326,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 2875049700,
+          "actual_operations": 20000000,
+          "unit": "complete-scalar-cycle",
+          "ns_per_actual_operation": 143.752485,
+          "p50_batch_ns": 1260700.0,
+          "p95_batch_ns": 2106600,
+          "p99_batch_ns": 2398600,
+          "max_batch_ns": 27617700
+        }
+      ],
+      "total_measured_ns": 2875049700,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "30000000",
+        "events": "0",
+        "suspensions": "0",
+        "resumes": "0",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "0",
+        "queue_depth": "0",
+        "queue_high_water": "0",
+        "checksum": "315135013000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,lua-sync,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=0",
+        "INTEGRITY,lua-sync,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=0"
+      ]
+    },
+    {
+      "scene": "scalar",
+      "pair": 2,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\script_runtime_benchmark.exe",
+        "--group",
+        "micro-lua-ability-query",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "1000",
+        "--seed",
+        "1592598566",
+        "--resume-budget",
+        "10000",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\scalar-2-B.csv",
+        "--vm-accounting",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\lua_runtime_benchmark_fixture.lxsa"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 4.2960000000020955,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 2814604200,
+          "actual_operations": 20000000,
+          "unit": "complete-scalar-cycle",
+          "ns_per_actual_operation": 140.73021,
+          "p50_batch_ns": 1241850.0,
+          "p95_batch_ns": 2071700,
+          "p99_batch_ns": 2343200,
+          "max_batch_ns": 7848600
+        }
+      ],
+      "total_measured_ns": 2814604200,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "calls": "30000000",
+        "ability_calls": "30000000",
+        "events": "0",
+        "suspensions": "0",
+        "resumes": "0",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "event_dispatch_visits": "0",
+        "queue_depth": "0",
+        "queue_high_water": "0",
+        "checksum": "315135013000",
+        "claim_lookups": "0",
+        "actual_copy_bytes": "0",
+        "completion_capabilities": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,lua-sync,steady,invocation_errors=0,idle_page_backing=0,instances=10000,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=0",
+        "INTEGRITY,lua-sync,shutdown,invocation_errors=0,idle_page_backing=0,instances=0,continuations=0,awaitables=0,waiters=0,queue=0,calls=30000000,resumes=0"
+      ]
+    },
+    {
+      "scene": "record",
+      "pair": 0,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\simulation_script_lua_value_runtime_test.exe",
+        "--benchmark",
+        "1000000"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 1.3130000000019209,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 1299312100,
+          "actual_operations": 1000000,
+          "unit": "complete-ValuePose-ability-call",
+          "ns_per_actual_operation": 1299.3121,
+          "p50_batch_ns": null,
+          "p95_batch_ns": null,
+          "p99_batch_ns": null,
+          "max_batch_ns": 1299312100
+        }
+      ],
+      "total_measured_ns": 1299312100,
+      "cumulative_business": {},
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": []
+    },
+    {
+      "scene": "record",
+      "pair": 0,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\simulation_script_lua_value_runtime_test.exe",
+        "--benchmark",
+        "1000000"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 1.3439999999973224,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 1310422600,
+          "actual_operations": 1000000,
+          "unit": "complete-ValuePose-ability-call",
+          "ns_per_actual_operation": 1310.4226,
+          "p50_batch_ns": null,
+          "p95_batch_ns": null,
+          "p99_batch_ns": null,
+          "max_batch_ns": 1310422600
+        }
+      ],
+      "total_measured_ns": 1310422600,
+      "cumulative_business": {},
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": []
+    },
+    {
+      "scene": "record",
+      "pair": 1,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\simulation_script_lua_value_runtime_test.exe",
+        "--benchmark",
+        "1000000"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 1.3440000000045984,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 1319307400,
+          "actual_operations": 1000000,
+          "unit": "complete-ValuePose-ability-call",
+          "ns_per_actual_operation": 1319.3074,
+          "p50_batch_ns": null,
+          "p95_batch_ns": null,
+          "p99_batch_ns": null,
+          "max_batch_ns": 1319307400
+        }
+      ],
+      "total_measured_ns": 1319307400,
+      "cumulative_business": {},
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": []
+    },
+    {
+      "scene": "record",
+      "pair": 1,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\simulation_script_lua_value_runtime_test.exe",
+        "--benchmark",
+        "1000000"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 1.3119999999980791,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 1303043700,
+          "actual_operations": 1000000,
+          "unit": "complete-ValuePose-ability-call",
+          "ns_per_actual_operation": 1303.0437,
+          "p50_batch_ns": null,
+          "p95_batch_ns": null,
+          "p99_batch_ns": null,
+          "max_batch_ns": 1303043700
+        }
+      ],
+      "total_measured_ns": 1303043700,
+      "cumulative_business": {},
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": []
+    },
+    {
+      "scene": "record",
+      "pair": 2,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\simulation_script_lua_value_runtime_test.exe",
+        "--benchmark",
+        "1000000"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 1.3280000000013388,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 1309699800,
+          "actual_operations": 1000000,
+          "unit": "complete-ValuePose-ability-call",
+          "ns_per_actual_operation": 1309.6998,
+          "p50_batch_ns": null,
+          "p95_batch_ns": null,
+          "p99_batch_ns": null,
+          "max_batch_ns": 1309699800
+        }
+      ],
+      "total_measured_ns": 1309699800,
+      "cumulative_business": {},
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": []
+    },
+    {
+      "scene": "record",
+      "pair": 2,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\simulation_script_lua_value_runtime_test.exe",
+        "--benchmark",
+        "1000000"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 1.3439999999973224,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 1320828700,
+          "actual_operations": 1000000,
+          "unit": "complete-ValuePose-ability-call",
+          "ns_per_actual_operation": 1320.8287,
+          "p50_batch_ns": null,
+          "p95_batch_ns": null,
+          "p99_batch_ns": null,
+          "max_batch_ns": 1320828700
+        }
+      ],
+      "total_measured_ns": 1320828700,
+      "cumulative_business": {},
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": null,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": []
+    },
+    {
+      "scene": "physics",
+      "pair": 0,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\physics2d_script_benchmark.exe",
+        "--group",
+        "scene-physics-mixed",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "300",
+        "--workers",
+        "0",
+        "--trace",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\physics2d_lua_fixture.lxsa",
+        "--flowforge-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\physics2d_flowforge_fixture.lxsa",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\physics-0-A.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 6.5,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 5571652000,
+          "actual_operations": 2000,
+          "unit": "whole-simulation-frame",
+          "ns_per_actual_operation": 2785826.0,
+          "p50_batch_ns": 3344150.0,
+          "p95_batch_ns": 4625400,
+          "p99_batch_ns": 5177100,
+          "max_batch_ns": 19244000
+        }
+      ],
+      "total_measured_ns": 5571652000,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "events": "2000",
+        "suspensions": "12500000",
+        "resumes": "12500000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "queue_depth": "0",
+        "queue_high_water": "7500",
+        "checksum": "9755000000",
+        "physics_queries": "7500000",
+        "script_calls": "12500000",
+        "next_step_waits": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": 0,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,physics,steady,invocation_errors=0,instances=10000,resumes=14375000,queue=0",
+        "INTEGRITY,physics,shutdown,invocation_errors=0,instances=0,backlog=0"
+      ]
+    },
+    {
+      "scene": "physics",
+      "pair": 0,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\physics2d_script_benchmark.exe",
+        "--group",
+        "scene-physics-mixed",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "300",
+        "--workers",
+        "0",
+        "--trace",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\physics2d_lua_fixture.lxsa",
+        "--flowforge-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\physics2d_flowforge_fixture.lxsa",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\physics-0-B.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 6.453000000001339,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 5518973500,
+          "actual_operations": 2000,
+          "unit": "whole-simulation-frame",
+          "ns_per_actual_operation": 2759486.75,
+          "p50_batch_ns": 3323200.0,
+          "p95_batch_ns": 4606700,
+          "p99_batch_ns": 5122700,
+          "max_batch_ns": 9702100
+        }
+      ],
+      "total_measured_ns": 5518973500,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "events": "2000",
+        "suspensions": "12500000",
+        "resumes": "12500000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "queue_depth": "0",
+        "queue_high_water": "7500",
+        "checksum": "9755000000",
+        "physics_queries": "7500000",
+        "script_calls": "12500000",
+        "next_step_waits": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": 0,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,physics,steady,invocation_errors=0,instances=10000,resumes=14375000,queue=0",
+        "INTEGRITY,physics,shutdown,invocation_errors=0,instances=0,backlog=0"
+      ]
+    },
+    {
+      "scene": "physics",
+      "pair": 1,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\physics2d_script_benchmark.exe",
+        "--group",
+        "scene-physics-mixed",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "300",
+        "--workers",
+        "0",
+        "--trace",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\physics2d_lua_fixture.lxsa",
+        "--flowforge-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\physics2d_flowforge_fixture.lxsa",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\physics-1-B.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 6.421999999998661,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 5527218900,
+          "actual_operations": 2000,
+          "unit": "whole-simulation-frame",
+          "ns_per_actual_operation": 2763609.45,
+          "p50_batch_ns": 3329100.0,
+          "p95_batch_ns": 4571200,
+          "p99_batch_ns": 5070800,
+          "max_batch_ns": 31046400
+        }
+      ],
+      "total_measured_ns": 5527218900,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "events": "2000",
+        "suspensions": "12500000",
+        "resumes": "12500000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "queue_depth": "0",
+        "queue_high_water": "7500",
+        "checksum": "9755000000",
+        "physics_queries": "7500000",
+        "script_calls": "12500000",
+        "next_step_waits": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": 0,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,physics,steady,invocation_errors=0,instances=10000,resumes=14375000,queue=0",
+        "INTEGRITY,physics,shutdown,invocation_errors=0,instances=0,backlog=0"
+      ]
+    },
+    {
+      "scene": "physics",
+      "pair": 1,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\physics2d_script_benchmark.exe",
+        "--group",
+        "scene-physics-mixed",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "300",
+        "--workers",
+        "0",
+        "--trace",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\physics2d_lua_fixture.lxsa",
+        "--flowforge-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\physics2d_flowforge_fixture.lxsa",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\physics-1-A.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 6.453000000001339,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 5550233600,
+          "actual_operations": 2000,
+          "unit": "whole-simulation-frame",
+          "ns_per_actual_operation": 2775116.8,
+          "p50_batch_ns": 3194400.0,
+          "p95_batch_ns": 4608300,
+          "p99_batch_ns": 4935500,
+          "max_batch_ns": 10291200
+        }
+      ],
+      "total_measured_ns": 5550233600,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "events": "2000",
+        "suspensions": "12500000",
+        "resumes": "12500000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "queue_depth": "0",
+        "queue_high_water": "7500",
+        "checksum": "9755000000",
+        "physics_queries": "7500000",
+        "script_calls": "12500000",
+        "next_step_waits": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": 0,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,physics,steady,invocation_errors=0,instances=10000,resumes=14375000,queue=0",
+        "INTEGRITY,physics,shutdown,invocation_errors=0,instances=0,backlog=0"
+      ]
+    },
+    {
+      "scene": "physics",
+      "pair": 2,
+      "side": "A",
+      "source": "f7d2815bdd2025ee23a7c11449def822413f58e9",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\physics2d_script_benchmark.exe",
+        "--group",
+        "scene-physics-mixed",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "300",
+        "--workers",
+        "0",
+        "--trace",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\physics2d_lua_fixture.lxsa",
+        "--flowforge-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4\\final-image\\physics2d_flowforge_fixture.lxsa",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\physics-2-A.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 6.485000000000582,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 5580057500,
+          "actual_operations": 2000,
+          "unit": "whole-simulation-frame",
+          "ns_per_actual_operation": 2790028.75,
+          "p50_batch_ns": 3357800.0,
+          "p95_batch_ns": 4644800,
+          "p99_batch_ns": 5061200,
+          "max_batch_ns": 10212200
+        }
+      ],
+      "total_measured_ns": 5580057500,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "events": "2000",
+        "suspensions": "12500000",
+        "resumes": "12500000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "queue_depth": "0",
+        "queue_high_water": "7500",
+        "checksum": "9755000000",
+        "physics_queries": "7500000",
+        "script_calls": "12500000",
+        "next_step_waits": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": 0,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,physics,steady,invocation_errors=0,instances=10000,resumes=14375000,queue=0",
+        "INTEGRITY,physics,shutdown,invocation_errors=0,instances=0,backlog=0"
+      ]
+    },
+    {
+      "scene": "physics",
+      "pair": 2,
+      "side": "B",
+      "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+      "command": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\physics2d_script_benchmark.exe",
+        "--group",
+        "scene-physics-mixed",
+        "--mode",
+        "performance",
+        "--size",
+        "10000",
+        "--frames",
+        "2000",
+        "--warmups",
+        "300",
+        "--workers",
+        "0",
+        "--trace",
+        "off",
+        "--lua-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\physics2d_lua_fixture.lxsa",
+        "--flowforge-artifact",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-image\\physics2d_flowforge_fixture.lxsa",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-v4-h1\\final2-costs\\physics-2-B.csv"
+      ],
+      "exit": 0,
+      "valid": true,
+      "wall_seconds": 6.389999999999418,
+      "measurements": [
+        {
+          "phase": "steady",
+          "total_ns": 5492197900,
+          "actual_operations": 2000,
+          "unit": "whole-simulation-frame",
+          "ns_per_actual_operation": 2746098.95,
+          "p50_batch_ns": 3332700.0,
+          "p95_batch_ns": 4590300,
+          "p99_batch_ns": 5035700,
+          "max_batch_ns": 9756600
+        }
+      ],
+      "total_measured_ns": 5492197900,
+      "cumulative_business": {
+        "active_instances": "10000",
+        "events": "2000",
+        "suspensions": "12500000",
+        "resumes": "12500000",
+        "continuations": "0",
+        "awaitables": "0",
+        "event_waiters": "0",
+        "queue_depth": "0",
+        "queue_high_water": "7500",
+        "checksum": "9755000000",
+        "physics_queries": "7500000",
+        "script_calls": "12500000",
+        "next_step_waits": "0"
+      },
+      "errors": 0,
+      "error_scope": "outside-ROI cumulative runtime failures and business assertions",
+      "backlog": 0,
+      "exe_local_allocations": 0,
+      "vm_allocations": null,
+      "hotpath_diagnostics": false,
+      "affinity_mask": 16,
+      "observations": [
+        "INTEGRITY,physics,steady,invocation_errors=0,instances=10000,resumes=14375000,queue=0",
+        "INTEGRITY,physics,shutdown,invocation_errors=0,instances=0,backlog=0"
+      ]
+    }
+  ],
+  "prewithdrawal_costs": [
+    {
+      "scene": "event",
+      "phase": "steady",
+      "unit": "complete-event-cycle",
+      "paired_ns": {
+        "A": [
+          684.35708,
+          646.001615,
+          669.46025
+        ],
+        "B": [
+          645.662205,
+          642.247485,
+          717.24736
+        ]
+      },
+      "deltas_percent": [
+        -5.654193714193767,
+        -0.5811332220895471,
+        7.138154953934905
+      ],
+      "median_percent": -0.5811332220895471,
+      "whole_measured_deltas_percent": [
+        -5.654193714193767,
+        -0.5811332220895471,
+        7.138154953934905
+      ],
+      "A_ns": 669.46025,
+      "B_ns": 645.662205
+    },
+    {
+      "scene": "nextstep",
+      "phase": "steady",
+      "unit": "complete-nextstep-cycle",
+      "paired_ns": {
+        "A": [
+          756.04554,
+          729.934245,
+          730.1616
+        ],
+        "B": [
+          730.027505,
+          688.767075,
+          724.24406
+        ]
+      },
+      "deltas_percent": [
+        -3.4413317218960016,
+        -5.639846367257373,
+        -0.8104425102607449
+      ],
+      "median_percent": -3.4413317218960016,
+      "whole_measured_deltas_percent": [
+        -3.4413317218960127,
+        -5.639846367257373,
+        -0.8104425102607449
+      ],
+      "A_ns": 730.1616,
+      "B_ns": 724.24406
+    },
+    {
+      "scene": "flowforge-event",
+      "phase": "steady",
+      "unit": "complete-flowforge-event-cycle",
+      "paired_ns": {
+        "A": [
+          316.26466,
+          323.1805,
+          308.79418
+        ],
+        "B": [
+          325.01075,
+          324.89902,
+          327.17007
+        ]
+      },
+      "deltas_percent": [
+        2.7654338616271534,
+        0.5317523798620272,
+        5.950853736945438
+      ],
+      "median_percent": 2.7654338616271534,
+      "whole_measured_deltas_percent": [
+        2.7654338616271534,
+        0.5317523798620272,
+        5.950853736945438
+      ],
+      "A_ns": 316.26466,
+      "B_ns": 325.01075
+    },
+    {
+      "scene": "cpp-sequence",
+      "phase": "steady",
+      "unit": "whole-simulation-frame",
+      "paired_ns": {
+        "A": [
+          2632225.9,
+          2567350.1,
+          2624936.7
+        ],
+        "B": [
+          2420364.7,
+          2543012.2,
+          2593334.5
+        ]
+      },
+      "deltas_percent": [
+        -8.048746879969526,
+        -0.9479774495889659,
+        -1.2039223650612274
+      ],
+      "median_percent": -1.2039223650612274,
+      "whole_measured_deltas_percent": [
+        -8.048746879969537,
+        -0.947977449588977,
+        -1.2039223650612274
+      ],
+      "A_ns": 2624936.7,
+      "B_ns": 2543012.2
+    },
+    {
+      "scene": "scalar",
+      "phase": "steady",
+      "unit": "complete-scalar-cycle",
+      "paired_ns": {
+        "A": [
+          145.144865,
+          141.12077,
+          141.22669
+        ],
+        "B": [
+          141.5502,
+          142.306265,
+          140.9822
+        ]
+      },
+      "deltas_percent": [
+        -2.4766050111383664,
+        0.8400570660151541,
+        -0.17311883469051104
+      ],
+      "median_percent": -0.17311883469051104,
+      "whole_measured_deltas_percent": [
+        -2.4766050111383553,
+        0.8400570660151541,
+        -0.17311883469052214
+      ],
+      "A_ns": 141.22669,
+      "B_ns": 141.5502
+    },
+    {
+      "scene": "record",
+      "phase": "steady",
+      "unit": "complete-ValuePose-ability-call",
+      "paired_ns": {
+        "A": [
+          1299.879,
+          1304.8019,
+          1323.5092
+        ],
+        "B": [
+          1329.2142,
+          1314.0008,
+          1324.142
+        ]
+      },
+      "deltas_percent": [
+        2.2567638987936567,
+        0.7050035718065839,
+        0.047812285702297785
+      ],
+      "median_percent": 0.7050035718065839,
+      "whole_measured_deltas_percent": [
+        2.2567638987936567,
+        0.7050035718065617,
+        0.04781228570227558
+      ],
+      "A_ns": 1304.8019,
+      "B_ns": 1324.142
+    },
+    {
+      "scene": "physics",
+      "phase": "steady",
+      "unit": "whole-simulation-frame",
+      "paired_ns": {
+        "A": [
+          2831805.85,
+          2805022.65,
+          2795180.8
+        ],
+        "B": [
+          2801638.6,
+          2797988.85,
+          2802453.05
+        ]
+      },
+      "deltas_percent": [
+        -1.0653007867753361,
+        -0.25075733345681916,
+        0.2601710057539064
+      ],
+      "median_percent": -0.25075733345681916,
+      "whole_measured_deltas_percent": [
+        -1.0653007867753361,
+        -0.25075733345683027,
+        0.2601710057539064
+      ],
+      "A_ns": 2805022.65,
+      "B_ns": 2801638.6
+    }
+  ],
+  "withdrawal_diagnostic": [
+    {
+      "scene": "flowforge-event",
+      "phase": "steady",
+      "unit": "complete-flowforge-event-cycle",
+      "paired_ns": {
+        "A": [
+          323.59033,
+          324.78263,
+          326.48169
+        ],
+        "B": [
+          309.39667,
+          311.7169,
+          312.88998
+        ]
+      },
+      "deltas_percent": [
+        -4.38630536332777,
+        -4.022915264895777,
+        -4.163084919096082
+      ],
+      "median_percent": -4.163084919096082,
+      "whole_measured_deltas_percent": [
+        -4.386305363327758,
+        -4.022915264895788,
+        -4.163084919096072
+      ],
+      "A_ns": 324.78263,
+      "B_ns": 311.7169
+    }
+  ],
+  "trial_counts": {
+    "prewithdrawal_valid": 42,
+    "related_withdrawal_valid": 6,
+    "final_valid": 42,
+    "invalid_timing": 0
+  },
+  "resources": {
+    "sizes": {
+      "lux::simulation::script::PreparedScriptEventAdmission": 72,
+      "ScriptEventSourceAccess": 48,
+      "ScriptPreparedMethod": 56,
+      "PreparedInvocation": 32,
+      "NativeFrameStorage::Class": 32,
+      "BoundedClassStorage": 208,
+      "BoundedClassStorage::Ticket": 24,
+      "BoundedClassStorage::Class": 32,
+      "ScriptExecution": 472,
+      "ScriptExecution::ContinuationRecord": 72,
+      "ScriptExecution::AwaitableRecord": 192,
+      "ScriptExecution::ResumeRecord": 24,
+      "ScriptExecution::ExecutionInstance": 64,
+      "ScriptExecution::HookFlight": 16,
+      "ScriptEventWaits": 280,
+      "ScriptEventWaits::EventWaiterRecord": 88,
+      "ScriptClaimedEventWait": 28,
+      "ScriptTimers": 296,
+      "ScriptTimers::Wait": 104,
+      "ScriptTimerAssociation": 16,
+      "ScriptCompletionIngress": 48,
+      "ScriptCompletionIngress::Transport": 80,
+      "ExternalCompletionRing::Ticket": 24,
+      "ExternalCompletionRing::Cell": 80
+    },
+    "backing": [
+      {
+        "name": "continuations",
+        "object": 80,
+        "dynamic": 840117,
+        "total_requested": 840117,
+        "allocations": 3
+      },
+      {
+        "name": "awaitables",
+        "object": 64,
+        "dynamic": 2335695,
+        "total_requested": 2336375,
+        "allocations": 51
+      },
+      {
+        "name": "ready",
+        "object": 48,
+        "dynamic": 240039,
+        "total_requested": 240039,
+        "allocations": 1
+      },
+      {
+        "name": "execution_indices_N_methods",
+        "object": 48,
+        "dynamic": 800078,
+        "total_requested": 800078,
+        "allocations": 2
+      },
+      {
+        "name": "event_source_N_1_endpoint",
+        "object": 280,
+        "dynamic": 1771361,
+        "total_requested": 1771425,
+        "allocations": 9
+      },
+      {
+        "name": "timer_source_N",
+        "object": 296,
+        "dynamic": 2400312,
+        "total_requested": 2400312,
+        "allocations": 8
+      },
+      {
+        "name": "transport_shared_and_arrays",
+        "object": 16,
+        "dynamic": 1045856,
+        "total_requested": 1045856,
+        "allocations": 3
+      }
+    ],
+    "selected_owner_bytes": 9434554,
+    "logical_N": 10000,
+    "physical_A_slots": 10240,
+    "scope": "selected four owners and N methods/one Event endpoint, not whole engine/RSS; requested allocation bytes include probe header/alignment",
+    "additional_proof_storage_bytes": 0,
+    "vm_allocations": null,
+    "rss": null,
+    "heap_calls": null,
+    "executable_allocations": "see each raw run; DLL/VM allocations not inferred"
+  },
+  "artifact_identity": {
+    "source": "7c565a0014d7c82f0d522eb4ca8c8f0f64773893",
+    "qualifier_clean": true,
+    "main_head": "c77bb41ea91e84a8e9b10cb88a48f9759062a316",
+    "main_status": " M .gitignore\n M cmake/RunScriptV3Measurements.ps1\n M engine/domain/simulation/builtin/script/include/lux/engine/simulation/ScriptSystem.hpp\n M engine/domain/simulation/builtin/script/pinclude/lux/engine/simulation/script/ScriptExecution.hpp\n M engine/domain/world/partition/include/lux/engine/world/WorldPartition.hpp\n M modules/resource/description/include/lux/engine/description/Script.hpp\n?? cmake/RunScriptV3Stress.ps1",
+    "protected_files": {
+      ".gitignore": "fe2dd202cb8a28b41ed0c5e5e666bdb9ab635d31b39f4a915a3573b3f90c254b",
+      "cmake/RunScriptV3Measurements.ps1": "3002b82176e84be13eca802aa7661a709345a3d2af7ffecc5438b840fca9502d",
+      "engine/domain/simulation/builtin/script/include/lux/engine/simulation/ScriptSystem.hpp": "19e33618a17dda5f7b21b4e399f11fc3939691d7076ee0f818cea6ce0a32daac",
+      "engine/domain/simulation/builtin/script/pinclude/lux/engine/simulation/script/ScriptExecution.hpp": "1debc1926e57521af016c74761f25df18054f2bc7cdd9c74690686c87be002ed",
+      "engine/domain/world/partition/include/lux/engine/world/WorldPartition.hpp": "a041aaabcc6cd67fed6fb4203a4db270edd19b32f1ced49e461fcde7fcfc7001",
+      "modules/resource/description/include/lux/engine/description/Script.hpp": "1768260c964ebb684ad3274bcc8bbbf5bbb19a0f9a804e095ac99112784d21de",
+      "cmake/RunScriptV3Stress.ps1": "bfb56b4c89b0efc276c4c5d095f224a5b03ebf24d4a549115234d786624b08fc"
+    },
+    "dependencies_verified": 204,
+    "baseline_images_verified": true,
+    "preserved_v4": "f92853ea8361a7dc90ce0da072497d3722c29f88",
+    "preserved_a1": "1039f2bcca44cff7bdfdb09f5c090db3647ae32a",
+    "production_changes": [
+      "engine/domain/simulation/scripting/core/include/lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp",
+      "engine/domain/simulation/scripting/native/src/NativeScriptBackend.cpp"
+    ],
+    "sdk_headers_match": true,
+    "private_headers_absent": true,
+    "artifacts": {
+      "final-image": {
+        "box2d.dll": {
+          "sha256": "15d6d30e44ffbd9a90b466139384fa34fa82231c079ad78964416d68e1dd12b0",
+          "bytes": 295936
+        },
+        "description.dll": {
+          "sha256": "5ba77a18571112ff77aab72808931ebcef7c2cb4961d8f815558c07ef521d117",
+          "bytes": 138240
+        },
+        "description.pdb": {
+          "sha256": "06f032de19b757a67bbdff0c263f6547666aabc4007501bbce7599b3cdebff96",
+          "bytes": 2027520
+        },
+        "dynamic_library.dll": {
+          "sha256": "b13dbe7feb1962519fe20cab737268bffc1f4d4d2bd98a4a202a5c3d352b696e",
+          "bytes": 331776
+        },
+        "dynamic_library.pdb": {
+          "sha256": "cb664509c6b127fa29eb7692ecb31be98fea8b00c289a594f6e0702abd228d0a",
+          "bytes": 3911680
+        },
+        "lua_runtime_benchmark_fixture.lxsa": {
+          "sha256": "9cd2d2a6b068f8a8f72ee3cc8b82ebdbf769b37ab4e2d69a9996ea67447b3679",
+          "bytes": 2931
+        },
+        "lux_engine_asset.dll": {
+          "sha256": "344166952f2875b6558af6d20695087876d7aaa55dcd71e18ce2adb7db402e42",
+          "bytes": 1501184
+        },
+        "lux_engine_asset.pdb": {
+          "sha256": "8db6ad0f8f16fbcd3ec05ea6d6276b753dce616630a464ca44c2810fdb4be8e7",
+          "bytes": 18239488
+        },
+        "lux_engine_core_task.dll": {
+          "sha256": "cda8a0cdd47d87e4534e62e0c7e33319a5e3d5f374a9c6f2f66caf21aa5df90e",
+          "bytes": 146944
+        },
+        "lux_engine_core_task.pdb": {
+          "sha256": "c442d5b92b306bf8d18bc4f83c7519fcbf59ddb5d5cd01e9ec29f2e92697bf40",
+          "bytes": 2158592
+        },
+        "lux_engine_domain_system_description.dll": {
+          "sha256": "d229523e4cb762e67bcf876aff6fd8e2e18a19885c018b826a2ed3faddec8f24",
+          "bytes": 59904
+        },
+        "lux_engine_domain_system_description.pdb": {
+          "sha256": "546cdb862ca9c6d6dc3a45d8b3bb7544262baad171bdfb2d4454d607aebe1e9b",
+          "bytes": 1003520
+        },
+        "lux_engine_domain_system_identity.dll": {
+          "sha256": "d46dabc818615887df8151d81fb2172817369dd91fec3301d5f70485a3f0e741",
+          "bytes": 44032
+        },
+        "lux_engine_domain_system_identity.pdb": {
+          "sha256": "516552ffd2dc63aa209f763344d57ca334179dd2ad58650d2ea69e7274e7d18b",
+          "bytes": 905216
+        },
+        "lux_engine_function_script_artifact.dll": {
+          "sha256": "9ebbca1ad37a19329293e39dad23fd38a2a8892c9f6f0ad34f714f48e90d8edb",
+          "bytes": 236032
+        },
+        "lux_engine_function_script_artifact.pdb": {
+          "sha256": "1fde8c8aa96061b44c6273a5b1a27c1d43eb48eb24a5e47c0890a969977de006",
+          "bytes": 3657728
+        },
+        "lux_engine_function_script_lua.dll": {
+          "sha256": "edb533a97afde375580241292d0c23bd4c7c36a97fe9e989a7bd8f3bac4da0e1",
+          "bytes": 50176
+        },
+        "lux_engine_function_script_lua.pdb": {
+          "sha256": "97b90f467ca3cf4863802462f175a253de678947294309acab24e4b64d1992aa",
+          "bytes": 1339392
+        },
+        "lux_engine_function_script_native.dll": {
+          "sha256": "6c6d257f5e9a9f0789f160c23d7ca784bebac538e625c42803bca5868582e8cd",
+          "bytes": 143360
+        },
+        "lux_engine_function_script_native.pdb": {
+          "sha256": "e02d55a88972c4c45f14fe36127b453fa004c70b3d011014488298d84e70dd15",
+          "bytes": 3887104
+        },
+        "lux_engine_physics2d_simulation.dll": {
+          "sha256": "b3da1dd17b3d48161656c0210c72c5e12a278e05df937dc42dff2fe9c34cc0a3",
+          "bytes": 359424
+        },
+        "lux_engine_physics2d_simulation.pdb": {
+          "sha256": "609f42668fced6db38a156d556589131f197bacb1682f11610b75759eb5ec6ce",
+          "bytes": 19697664
+        },
+        "lux_engine_simulation_composition.dll": {
+          "sha256": "8d3116a46235dbbd15296d2c708eacd8124b1a5b6f6444153ab0813004d7d924",
+          "bytes": 529408
+        },
+        "lux_engine_simulation_composition.pdb": {
+          "sha256": "e0682079a6818853f20edc9cc10a409d4938bf0702cd62524a6ddbcf4cb0c536",
+          "bytes": 12947456
+        },
+        "lux_engine_simulation_description.dll": {
+          "sha256": "7cf73be8b9782f2491fa3288300d73b9732d3512acf27abec601126fe5b60006",
+          "bytes": 403968
+        },
+        "lux_engine_simulation_description.pdb": {
+          "sha256": "3e8d82722f88edd796de39b36a5f928e3c230c3d1f75aa87e790162b57d1c403",
+          "bytes": 4911104
+        },
+        "lux_engine_simulation_ecs_core.dll": {
+          "sha256": "a85a899fd5f0a32e94a3a43803a4848e396feb805a96cea2cb3aa5057e6559cf",
+          "bytes": 108032
+        },
+        "lux_engine_simulation_ecs_core.pdb": {
+          "sha256": "33a654653655effd09810fae7f00a5e17cffd2b583b113d826cabaa35d3d1218",
+          "bytes": 1839104
+        },
+        "lux_engine_simulation_script.dll": {
+          "sha256": "2cc652c6b6d49e1320c92cd0fb2aa5b55266e3a47dc45fccf56dd1b2776db42f",
+          "bytes": 1013248
+        },
+        "lux_engine_simulation_script.pdb": {
+          "sha256": "e5c24c1efb2dab89848f5c932bb0166606d257f4be2f1eaa834601075b5f19cf",
+          "bytes": 47198208
+        },
+        "lux_engine_simulation_script_cpp_static.dll": {
+          "sha256": "60536f974ff0d84401fe30e958f28e6954e47e8c85b5c8376f23c83859bc25b3",
+          "bytes": 301056
+        },
+        "lux_engine_simulation_script_cpp_static.pdb": {
+          "sha256": "558576240dd561f42b2c27466371792477063bd0f90d3c66fe37253d4713f54c",
+          "bytes": 10981376
+        },
+        "lux_engine_simulation_script_lua.dll": {
+          "sha256": "a6557233dc213fcef528cd8225f64da9a6af42f54e415b39f5c2d6d914ccdeff",
+          "bytes": 361472
+        },
+        "lux_engine_simulation_script_lua.pdb": {
+          "sha256": "62e5308d28cfd26cd231a70551f63dc1d71e848144f7e1dc37565d27f9f6c9a6",
+          "bytes": 15773696
+        },
+        "lux_engine_simulation_script_native.dll": {
+          "sha256": "aa3837cf0922f2f642802a39a1b3a2e2ac684f1776754eb5f867f0869b377218",
+          "bytes": 231424
+        },
+        "lux_engine_simulation_script_native.pdb": {
+          "sha256": "0b7dfc01e6bdfe564f2da2e503b5662f038f0472676f5c0e2df5e04d3e3fea63",
+          "bytes": 8941568
+        },
+        "lux_engine_simulation_system.dll": {
+          "sha256": "f4729d4785f6d61dd0efe41fe4638fd6595f6a8ca084c669de9a4618806a0ab0",
+          "bytes": 86016
+        },
+        "lux_engine_simulation_system.pdb": {
+          "sha256": "9baf92c6ccf2f66c05c020b87dfbea1542af0730184f7225083a5d4a158c0a7b",
+          "bytes": 1699840
+        },
+        "lux_lua55.dll": {
+          "sha256": "34f11df8679a46b2d956462a99a9a3ba49ee29e88b85bb27b1c2b3c5a78bb29e",
+          "bytes": 245248
+        },
+        "lux_lua55.pdb": {
+          "sha256": "aa3014a7e4a5fb8b275a0b0746014a318e8fd4c6903b83db7a2cffaaea842339",
+          "bytes": 1789952
+        },
+        "physics2d_flowforge_fixture.lxsa": {
+          "sha256": "7cf55802e26b2127ea4eb4858611d00403930da7a7a4f4e00de0ee3c5db0fe80",
+          "bytes": 4336
+        },
+        "physics2d_lua_fixture.lxsa": {
+          "sha256": "ea857e3abd11a92ae2d442b9e708c261f62be460f62ffe4f421689a816ec93d1",
+          "bytes": 1387
+        },
+        "physics2d_script_benchmark.exe": {
+          "sha256": "3d4e1fad83300bcce36a11cdb5d7e03324e252018a056fc31ae542aa199662b1",
+          "bytes": 590336
+        },
+        "physics2d_script_benchmark.pdb": {
+          "sha256": "0a4bb5347ae128cfa5205fff1ad863312f687fe7ce567bf4f9e020ef7ea5b42c",
+          "bytes": 45240320
+        },
+        "script_runtime_benchmark.exe": {
+          "sha256": "71973eb28a5e4a8025e60cf2a45c6e92aeccf905108b4a4e8efc535a1e29e111",
+          "bytes": 1302528
+        },
+        "script_runtime_benchmark.pdb": {
+          "sha256": "dfdffadc24845df977a3174bebc46e5d5d3375cea5ab45cc38c104f76ba7d3ac",
+          "bytes": 59084800
+        },
+        "simulation_script_lua_value_runtime_test.exe": {
+          "sha256": "0087fd934b2e26ef652a3821fd481c9645454fc0120fa4e587e9845372241fd8",
+          "bytes": 503808
+        },
+        "simulation_script_lua_value_runtime_test.pdb": {
+          "sha256": "cedd69ebc3e3c808bc0a21a2e2cdd081d38d1e2fba0edc32fd695d74ba9e9071",
+          "bytes": 23154688
+        }
+      },
+      "final-flow-image": {
+        "description.dll": {
+          "sha256": "ca5f07b00103aafab159186857e5f94c6f4f32c82530c8836a0bed7e362dec05",
+          "bytes": 138240
+        },
+        "description.pdb": {
+          "sha256": "246533f3b9b8b31db05f4ff4bf9e9167238c01ec0a4ad8e84644145a557d7621",
+          "bytes": 2027520
+        },
+        "dynamic_library.dll": {
+          "sha256": "465e7248330e47e0e89b7d74b69e348748bdb163b6f66db87b98ff87a4fa5397",
+          "bytes": 331776
+        },
+        "dynamic_library.pdb": {
+          "sha256": "fe34a155788b47e07bc099ba065036e73c9c2a040c1b85ac0ec32f0e85b374d7",
+          "bytes": 3911680
+        },
+        "flowforge_script_runtime_benchmark.exe": {
+          "sha256": "060314873b6245af0821d7908e324b14c01c84d827a119182d3d5631184fcf0a",
+          "bytes": 934400
+        },
+        "flowforge_script_runtime_benchmark.pdb": {
+          "sha256": "6c3df3a523d676f9a42b1513d732eb17134303f9b54a9e48d40b4b77a17eb978",
+          "bytes": 29691904
+        },
+        "lux_engine_asset.dll": {
+          "sha256": "507def5fca01b0bf74644d75b274e15a330f8800fce3a622d2936c4db0e41fd2",
+          "bytes": 1501184
+        },
+        "lux_engine_asset.pdb": {
+          "sha256": "76182e84d12a8496d655a1421d3adc14506384b757897205dcf2841766988561",
+          "bytes": 18239488
+        },
+        "lux_engine_core_meta.dll": {
+          "sha256": "1853fe66177c287424855c60801a7d73365c4d0c3f04cb5c4f95b81803e72a05",
+          "bytes": 223232
+        },
+        "lux_engine_core_meta.pdb": {
+          "sha256": "7dc81b18b297fa95ac4a8e8c218feaef3ee378803cc4c1f115baf3af8e403a4a",
+          "bytes": 3043328
+        },
+        "lux_engine_core_task.dll": {
+          "sha256": "1ecbb92a3864b541f26f075ffeccc22cde3e6811bd7424d62d4ff057d22fca0b",
+          "bytes": 146944
+        },
+        "lux_engine_core_task.pdb": {
+          "sha256": "9be7a648cdff2a569e63977e50c5e4c2f4d3336e97cdfb22d50e859bdc370e27",
+          "bytes": 2150400
+        },
+        "lux_engine_domain_system_description.dll": {
+          "sha256": "4147e5a5dfe66594621d1da3b601bc7198f7553d32a415a6ca05856d0ec81d7f",
+          "bytes": 59904
+        },
+        "lux_engine_domain_system_description.pdb": {
+          "sha256": "7feae3fb794cc1c655d51c1e0a9b83d8b419e191fdf74682c3b4e151ae35bf49",
+          "bytes": 1003520
+        },
+        "lux_engine_domain_system_identity.dll": {
+          "sha256": "bcb3898c88c8e7cf5ec4536f9c753b3ae24b97da7d27906651aea190e33179f6",
+          "bytes": 44032
+        },
+        "lux_engine_domain_system_identity.pdb": {
+          "sha256": "3c03ec09fbc53c04da30beb7beb3881fd25260ca17dfe2f651187836e27566e3",
+          "bytes": 905216
+        },
+        "lux_engine_flowforge_compiler.dll": {
+          "sha256": "9d4183451426806f324c4d538e4aa2ead3ede9e79b389f26cbc3c1a664cbf32d",
+          "bytes": 69668352
+        },
+        "lux_engine_flowforge_compiler.pdb": {
+          "sha256": "b3f07d541873390dd427b4ec787cbef0e2ca12e19afb1a974e6166c2c45ccc52",
+          "bytes": 1021161472
+        },
+        "lux_engine_function_graph.dll": {
+          "sha256": "74ecfd754cda31213d85993f47aa4e3754f0acb5fb6599d75069de0dae55c620",
+          "bytes": 163328
+        },
+        "lux_engine_function_graph.pdb": {
+          "sha256": "8224dca58863eabb14e28d85cedea0dc0da7bd865c4f465d28baf8636fd8b4d3",
+          "bytes": 2191360
+        },
+        "lux_engine_function_script_artifact.dll": {
+          "sha256": "4e8ca50de3d7586adc87f36c91140ea33041543c356d82a71d6099c6e8d4e211",
+          "bytes": 236032
+        },
+        "lux_engine_function_script_artifact.pdb": {
+          "sha256": "9f45ee24312c368b7140a50b1325cf95f0a1d4414ce42547a2291d23e040d501",
+          "bytes": 3657728
+        },
+        "lux_engine_function_script_native.dll": {
+          "sha256": "7a9ac873ec0aa8391a2d7d9d1ae07c34166ee5f664d78e6f6491552b8eb20624",
+          "bytes": 143360
+        },
+        "lux_engine_function_script_native.pdb": {
+          "sha256": "f5079b8171a1cf94e9cda6863e1be808aea8e3c65ad5a1d4c85f67e64247e8d8",
+          "bytes": 3887104
+        },
+        "lux_engine_scene_script_description.dll": {
+          "sha256": "77374a1767c4cca17b76b650fb7f7f81896f82c25355e77e626f2372a88359a1",
+          "bytes": 192000
+        },
+        "lux_engine_scene_script_description.pdb": {
+          "sha256": "6db35b652e8fbbe2c8325d0f5edc2f63b8d1532cdac8b0d0180f2372bb65ff90",
+          "bytes": 7286784
+        },
+        "lux_engine_simulation_composition.dll": {
+          "sha256": "19dda41b986abf74996569c799b7ec8c68cb0ee56c709dbd90c1d02f174af609",
+          "bytes": 529408
+        },
+        "lux_engine_simulation_composition.pdb": {
+          "sha256": "e5c92367a6219872e5c8f17c4d44cddb629542ece02ebeb3af916f6df54f3409",
+          "bytes": 12316672
+        },
+        "lux_engine_simulation_description.dll": {
+          "sha256": "9908846ca6f72142638899be2ac6f75cc67e00a9a276d7100659c635255010dd",
+          "bytes": 403968
+        },
+        "lux_engine_simulation_description.pdb": {
+          "sha256": "db656e5f59725aa5cdc1a5a5de1748b3b98cf2658cc2f2f44f87acf2dc819ac2",
+          "bytes": 4911104
+        },
+        "lux_engine_simulation_ecs_core.dll": {
+          "sha256": "d85450f591bb2d42e6ee26d770302782647c16c50546f695b6fcc5a725bc2640",
+          "bytes": 108032
+        },
+        "lux_engine_simulation_ecs_core.pdb": {
+          "sha256": "ef493cf30960f4f3da74b319a9f8b8d5d918b2688f83a38442eee44d24e39cbc",
+          "bytes": 1839104
+        },
+        "lux_engine_simulation_script.dll": {
+          "sha256": "e41907d6ef1c6817372431fc6b7e6c6aae87de4346ef252df1eb7807b7753c76",
+          "bytes": 992256
+        },
+        "lux_engine_simulation_script.pdb": {
+          "sha256": "90b6fea3ef548ed828dcc48d28075b96155d75c8826cacc56a9a549663c2dbb1",
+          "bytes": 52547584
+        },
+        "lux_engine_simulation_script_native.dll": {
+          "sha256": "1730f04f0118fec4a4522ef94f2db883cc12f6d75ab1b7b81283f9dfb1f75a3a",
+          "bytes": 231424
+        },
+        "lux_engine_simulation_script_native.pdb": {
+          "sha256": "152131c8c7fdcf07f9b9ea6b7e73e6555704940baf9a1be6a81f2bf3aa4dea8a",
+          "bytes": 8105984
+        },
+        "lux_engine_simulation_system.dll": {
+          "sha256": "dac9443aa2939b115cd5a4a2cac749ddd0f3d86ce94e66ac560008ecff954987",
+          "bytes": 86016
+        },
+        "lux_engine_simulation_system.pdb": {
+          "sha256": "ac1131691c1d31f994f1021353ebaef6735f8fece830602749a49fb029e38ec2",
+          "bytes": 1699840
+        },
+        "zlib1.dll": {
+          "sha256": "0a1bb1c50f0cafb3a6e3bc1f4b806d08e01d909227156203a4b5d0fba052e4d3",
+          "bytes": 90624
+        },
+        "zstd.dll": {
+          "sha256": "de015ebc8319fa8550222f015f9315a5d02e75fa498b96e8d99445ca8f380c04",
+          "bytes": 660480
+        }
+      },
+      "final2-image": {
+        "box2d.dll": {
+          "sha256": "15d6d30e44ffbd9a90b466139384fa34fa82231c079ad78964416d68e1dd12b0",
+          "bytes": 295936
+        },
+        "description.dll": {
+          "sha256": "5ba77a18571112ff77aab72808931ebcef7c2cb4961d8f815558c07ef521d117",
+          "bytes": 138240
+        },
+        "description.pdb": {
+          "sha256": "06f032de19b757a67bbdff0c263f6547666aabc4007501bbce7599b3cdebff96",
+          "bytes": 2027520
+        },
+        "dynamic_library.dll": {
+          "sha256": "b13dbe7feb1962519fe20cab737268bffc1f4d4d2bd98a4a202a5c3d352b696e",
+          "bytes": 331776
+        },
+        "dynamic_library.pdb": {
+          "sha256": "cb664509c6b127fa29eb7692ecb31be98fea8b00c289a594f6e0702abd228d0a",
+          "bytes": 3911680
+        },
+        "lua_runtime_benchmark_fixture.lxsa": {
+          "sha256": "9cd2d2a6b068f8a8f72ee3cc8b82ebdbf769b37ab4e2d69a9996ea67447b3679",
+          "bytes": 2931
+        },
+        "lux_engine_asset.dll": {
+          "sha256": "344166952f2875b6558af6d20695087876d7aaa55dcd71e18ce2adb7db402e42",
+          "bytes": 1501184
+        },
+        "lux_engine_asset.pdb": {
+          "sha256": "8db6ad0f8f16fbcd3ec05ea6d6276b753dce616630a464ca44c2810fdb4be8e7",
+          "bytes": 18239488
+        },
+        "lux_engine_core_task.dll": {
+          "sha256": "cda8a0cdd47d87e4534e62e0c7e33319a5e3d5f374a9c6f2f66caf21aa5df90e",
+          "bytes": 146944
+        },
+        "lux_engine_core_task.pdb": {
+          "sha256": "c442d5b92b306bf8d18bc4f83c7519fcbf59ddb5d5cd01e9ec29f2e92697bf40",
+          "bytes": 2158592
+        },
+        "lux_engine_domain_system_description.dll": {
+          "sha256": "d229523e4cb762e67bcf876aff6fd8e2e18a19885c018b826a2ed3faddec8f24",
+          "bytes": 59904
+        },
+        "lux_engine_domain_system_description.pdb": {
+          "sha256": "546cdb862ca9c6d6dc3a45d8b3bb7544262baad171bdfb2d4454d607aebe1e9b",
+          "bytes": 1003520
+        },
+        "lux_engine_domain_system_identity.dll": {
+          "sha256": "d46dabc818615887df8151d81fb2172817369dd91fec3301d5f70485a3f0e741",
+          "bytes": 44032
+        },
+        "lux_engine_domain_system_identity.pdb": {
+          "sha256": "516552ffd2dc63aa209f763344d57ca334179dd2ad58650d2ea69e7274e7d18b",
+          "bytes": 905216
+        },
+        "lux_engine_function_script_artifact.dll": {
+          "sha256": "9ebbca1ad37a19329293e39dad23fd38a2a8892c9f6f0ad34f714f48e90d8edb",
+          "bytes": 236032
+        },
+        "lux_engine_function_script_artifact.pdb": {
+          "sha256": "1fde8c8aa96061b44c6273a5b1a27c1d43eb48eb24a5e47c0890a969977de006",
+          "bytes": 3657728
+        },
+        "lux_engine_function_script_lua.dll": {
+          "sha256": "edb533a97afde375580241292d0c23bd4c7c36a97fe9e989a7bd8f3bac4da0e1",
+          "bytes": 50176
+        },
+        "lux_engine_function_script_lua.pdb": {
+          "sha256": "97b90f467ca3cf4863802462f175a253de678947294309acab24e4b64d1992aa",
+          "bytes": 1339392
+        },
+        "lux_engine_function_script_native.dll": {
+          "sha256": "6c6d257f5e9a9f0789f160c23d7ca784bebac538e625c42803bca5868582e8cd",
+          "bytes": 143360
+        },
+        "lux_engine_function_script_native.pdb": {
+          "sha256": "e02d55a88972c4c45f14fe36127b453fa004c70b3d011014488298d84e70dd15",
+          "bytes": 3887104
+        },
+        "lux_engine_physics2d_simulation.dll": {
+          "sha256": "b3da1dd17b3d48161656c0210c72c5e12a278e05df937dc42dff2fe9c34cc0a3",
+          "bytes": 359424
+        },
+        "lux_engine_physics2d_simulation.pdb": {
+          "sha256": "609f42668fced6db38a156d556589131f197bacb1682f11610b75759eb5ec6ce",
+          "bytes": 19697664
+        },
+        "lux_engine_simulation_composition.dll": {
+          "sha256": "8d3116a46235dbbd15296d2c708eacd8124b1a5b6f6444153ab0813004d7d924",
+          "bytes": 529408
+        },
+        "lux_engine_simulation_composition.pdb": {
+          "sha256": "e0682079a6818853f20edc9cc10a409d4938bf0702cd62524a6ddbcf4cb0c536",
+          "bytes": 12947456
+        },
+        "lux_engine_simulation_description.dll": {
+          "sha256": "7cf73be8b9782f2491fa3288300d73b9732d3512acf27abec601126fe5b60006",
+          "bytes": 403968
+        },
+        "lux_engine_simulation_description.pdb": {
+          "sha256": "3e8d82722f88edd796de39b36a5f928e3c230c3d1f75aa87e790162b57d1c403",
+          "bytes": 4911104
+        },
+        "lux_engine_simulation_ecs_core.dll": {
+          "sha256": "a85a899fd5f0a32e94a3a43803a4848e396feb805a96cea2cb3aa5057e6559cf",
+          "bytes": 108032
+        },
+        "lux_engine_simulation_ecs_core.pdb": {
+          "sha256": "33a654653655effd09810fae7f00a5e17cffd2b583b113d826cabaa35d3d1218",
+          "bytes": 1839104
+        },
+        "lux_engine_simulation_script.dll": {
+          "sha256": "e2fa202f33fbff71bbbfdba98f46e19e83fec803d651818ef12e23d2313fadb7",
+          "bytes": 1013248
+        },
+        "lux_engine_simulation_script.pdb": {
+          "sha256": "c8e2a3e9c0402e1c748200bceef8cea62a1e031676a55b040bfad44d0ef436bd",
+          "bytes": 47198208
+        },
+        "lux_engine_simulation_script_cpp_static.dll": {
+          "sha256": "60536f974ff0d84401fe30e958f28e6954e47e8c85b5c8376f23c83859bc25b3",
+          "bytes": 301056
+        },
+        "lux_engine_simulation_script_cpp_static.pdb": {
+          "sha256": "558576240dd561f42b2c27466371792477063bd0f90d3c66fe37253d4713f54c",
+          "bytes": 10981376
+        },
+        "lux_engine_simulation_script_lua.dll": {
+          "sha256": "a6557233dc213fcef528cd8225f64da9a6af42f54e415b39f5c2d6d914ccdeff",
+          "bytes": 361472
+        },
+        "lux_engine_simulation_script_lua.pdb": {
+          "sha256": "62e5308d28cfd26cd231a70551f63dc1d71e848144f7e1dc37565d27f9f6c9a6",
+          "bytes": 15773696
+        },
+        "lux_engine_simulation_script_native.dll": {
+          "sha256": "aa3837cf0922f2f642802a39a1b3a2e2ac684f1776754eb5f867f0869b377218",
+          "bytes": 231424
+        },
+        "lux_engine_simulation_script_native.pdb": {
+          "sha256": "0b7dfc01e6bdfe564f2da2e503b5662f038f0472676f5c0e2df5e04d3e3fea63",
+          "bytes": 8941568
+        },
+        "lux_engine_simulation_system.dll": {
+          "sha256": "f4729d4785f6d61dd0efe41fe4638fd6595f6a8ca084c669de9a4618806a0ab0",
+          "bytes": 86016
+        },
+        "lux_engine_simulation_system.pdb": {
+          "sha256": "9baf92c6ccf2f66c05c020b87dfbea1542af0730184f7225083a5d4a158c0a7b",
+          "bytes": 1699840
+        },
+        "lux_lua55.dll": {
+          "sha256": "34f11df8679a46b2d956462a99a9a3ba49ee29e88b85bb27b1c2b3c5a78bb29e",
+          "bytes": 245248
+        },
+        "lux_lua55.pdb": {
+          "sha256": "aa3014a7e4a5fb8b275a0b0746014a318e8fd4c6903b83db7a2cffaaea842339",
+          "bytes": 1789952
+        },
+        "physics2d_flowforge_fixture.lxsa": {
+          "sha256": "7cf55802e26b2127ea4eb4858611d00403930da7a7a4f4e00de0ee3c5db0fe80",
+          "bytes": 4336
+        },
+        "physics2d_lua_fixture.lxsa": {
+          "sha256": "ea857e3abd11a92ae2d442b9e708c261f62be460f62ffe4f421689a816ec93d1",
+          "bytes": 1387
+        },
+        "physics2d_script_benchmark.exe": {
+          "sha256": "ced9fb9b434d85f2060639e37cf28917df3228f8e0840fa3fb6153ec565d874f",
+          "bytes": 590336
+        },
+        "physics2d_script_benchmark.pdb": {
+          "sha256": "45a4e9e9567e036d072e049948b15fc174000ff505dd4c394c9833ef7a815f19",
+          "bytes": 46567424
+        },
+        "script_runtime_benchmark.exe": {
+          "sha256": "e473ddbd95bccb440c13d809ac347935c29ab61b92f987607572af22c9058212",
+          "bytes": 1302528
+        },
+        "script_runtime_benchmark.pdb": {
+          "sha256": "821021abbbd48ca371270c82f1a3f887e6d46ea8b1c9dac2262f8fad2c10093b",
+          "bytes": 59084800
+        },
+        "simulation_script_lua_value_runtime_test.exe": {
+          "sha256": "0087fd934b2e26ef652a3821fd481c9645454fc0120fa4e587e9845372241fd8",
+          "bytes": 503808
+        },
+        "simulation_script_lua_value_runtime_test.pdb": {
+          "sha256": "cedd69ebc3e3c808bc0a21a2e2cdd081d38d1e2fba0edc32fd695d74ba9e9071",
+          "bytes": 23154688
+        }
+      },
+      "final2-flow-image": {
+        "description.dll": {
+          "sha256": "ca5f07b00103aafab159186857e5f94c6f4f32c82530c8836a0bed7e362dec05",
+          "bytes": 138240
+        },
+        "description.pdb": {
+          "sha256": "246533f3b9b8b31db05f4ff4bf9e9167238c01ec0a4ad8e84644145a557d7621",
+          "bytes": 2027520
+        },
+        "dynamic_library.dll": {
+          "sha256": "465e7248330e47e0e89b7d74b69e348748bdb163b6f66db87b98ff87a4fa5397",
+          "bytes": 331776
+        },
+        "dynamic_library.pdb": {
+          "sha256": "fe34a155788b47e07bc099ba065036e73c9c2a040c1b85ac0ec32f0e85b374d7",
+          "bytes": 3911680
+        },
+        "flowforge_script_runtime_benchmark.exe": {
+          "sha256": "64de6d78c908ecbbfaa4e37fb52da08b4eeff9233167ce6cc3fd90e45de14e72",
+          "bytes": 933888
+        },
+        "flowforge_script_runtime_benchmark.pdb": {
+          "sha256": "b809c3ba7d1d8921f07d1c0107b490e06e2ec11906d73dfe53236e20931d4e8d",
+          "bytes": 29691904
+        },
+        "lux_engine_asset.dll": {
+          "sha256": "507def5fca01b0bf74644d75b274e15a330f8800fce3a622d2936c4db0e41fd2",
+          "bytes": 1501184
+        },
+        "lux_engine_asset.pdb": {
+          "sha256": "76182e84d12a8496d655a1421d3adc14506384b757897205dcf2841766988561",
+          "bytes": 18239488
+        },
+        "lux_engine_core_meta.dll": {
+          "sha256": "1853fe66177c287424855c60801a7d73365c4d0c3f04cb5c4f95b81803e72a05",
+          "bytes": 223232
+        },
+        "lux_engine_core_meta.pdb": {
+          "sha256": "7dc81b18b297fa95ac4a8e8c218feaef3ee378803cc4c1f115baf3af8e403a4a",
+          "bytes": 3043328
+        },
+        "lux_engine_core_task.dll": {
+          "sha256": "1ecbb92a3864b541f26f075ffeccc22cde3e6811bd7424d62d4ff057d22fca0b",
+          "bytes": 146944
+        },
+        "lux_engine_core_task.pdb": {
+          "sha256": "9be7a648cdff2a569e63977e50c5e4c2f4d3336e97cdfb22d50e859bdc370e27",
+          "bytes": 2150400
+        },
+        "lux_engine_domain_system_description.dll": {
+          "sha256": "4147e5a5dfe66594621d1da3b601bc7198f7553d32a415a6ca05856d0ec81d7f",
+          "bytes": 59904
+        },
+        "lux_engine_domain_system_description.pdb": {
+          "sha256": "7feae3fb794cc1c655d51c1e0a9b83d8b419e191fdf74682c3b4e151ae35bf49",
+          "bytes": 1003520
+        },
+        "lux_engine_domain_system_identity.dll": {
+          "sha256": "bcb3898c88c8e7cf5ec4536f9c753b3ae24b97da7d27906651aea190e33179f6",
+          "bytes": 44032
+        },
+        "lux_engine_domain_system_identity.pdb": {
+          "sha256": "3c03ec09fbc53c04da30beb7beb3881fd25260ca17dfe2f651187836e27566e3",
+          "bytes": 905216
+        },
+        "lux_engine_flowforge_compiler.dll": {
+          "sha256": "9d4183451426806f324c4d538e4aa2ead3ede9e79b389f26cbc3c1a664cbf32d",
+          "bytes": 69668352
+        },
+        "lux_engine_flowforge_compiler.pdb": {
+          "sha256": "b3f07d541873390dd427b4ec787cbef0e2ca12e19afb1a974e6166c2c45ccc52",
+          "bytes": 1021161472
+        },
+        "lux_engine_function_graph.dll": {
+          "sha256": "74ecfd754cda31213d85993f47aa4e3754f0acb5fb6599d75069de0dae55c620",
+          "bytes": 163328
+        },
+        "lux_engine_function_graph.pdb": {
+          "sha256": "8224dca58863eabb14e28d85cedea0dc0da7bd865c4f465d28baf8636fd8b4d3",
+          "bytes": 2191360
+        },
+        "lux_engine_function_script_artifact.dll": {
+          "sha256": "4e8ca50de3d7586adc87f36c91140ea33041543c356d82a71d6099c6e8d4e211",
+          "bytes": 236032
+        },
+        "lux_engine_function_script_artifact.pdb": {
+          "sha256": "9f45ee24312c368b7140a50b1325cf95f0a1d4414ce42547a2291d23e040d501",
+          "bytes": 3657728
+        },
+        "lux_engine_function_script_native.dll": {
+          "sha256": "7a9ac873ec0aa8391a2d7d9d1ae07c34166ee5f664d78e6f6491552b8eb20624",
+          "bytes": 143360
+        },
+        "lux_engine_function_script_native.pdb": {
+          "sha256": "f5079b8171a1cf94e9cda6863e1be808aea8e3c65ad5a1d4c85f67e64247e8d8",
+          "bytes": 3887104
+        },
+        "lux_engine_scene_script_description.dll": {
+          "sha256": "77374a1767c4cca17b76b650fb7f7f81896f82c25355e77e626f2372a88359a1",
+          "bytes": 192000
+        },
+        "lux_engine_scene_script_description.pdb": {
+          "sha256": "6db35b652e8fbbe2c8325d0f5edc2f63b8d1532cdac8b0d0180f2372bb65ff90",
+          "bytes": 7286784
+        },
+        "lux_engine_simulation_composition.dll": {
+          "sha256": "19dda41b986abf74996569c799b7ec8c68cb0ee56c709dbd90c1d02f174af609",
+          "bytes": 529408
+        },
+        "lux_engine_simulation_composition.pdb": {
+          "sha256": "e5c92367a6219872e5c8f17c4d44cddb629542ece02ebeb3af916f6df54f3409",
+          "bytes": 12316672
+        },
+        "lux_engine_simulation_description.dll": {
+          "sha256": "9908846ca6f72142638899be2ac6f75cc67e00a9a276d7100659c635255010dd",
+          "bytes": 403968
+        },
+        "lux_engine_simulation_description.pdb": {
+          "sha256": "db656e5f59725aa5cdc1a5a5de1748b3b98cf2658cc2f2f44f87acf2dc819ac2",
+          "bytes": 4911104
+        },
+        "lux_engine_simulation_ecs_core.dll": {
+          "sha256": "d85450f591bb2d42e6ee26d770302782647c16c50546f695b6fcc5a725bc2640",
+          "bytes": 108032
+        },
+        "lux_engine_simulation_ecs_core.pdb": {
+          "sha256": "ef493cf30960f4f3da74b319a9f8b8d5d918b2688f83a38442eee44d24e39cbc",
+          "bytes": 1839104
+        },
+        "lux_engine_simulation_script.dll": {
+          "sha256": "c50ace74bf0b4012c628ab4e3187e01eb1cebae5eee88f61f32974487c3a48f1",
+          "bytes": 1013248
+        },
+        "lux_engine_simulation_script.pdb": {
+          "sha256": "730160813f141fc36223974556aec64df77f32275ee2198c0d122d5df9b1bfda",
+          "bytes": 52547584
+        },
+        "lux_engine_simulation_script_native.dll": {
+          "sha256": "1730f04f0118fec4a4522ef94f2db883cc12f6d75ab1b7b81283f9dfb1f75a3a",
+          "bytes": 231424
+        },
+        "lux_engine_simulation_script_native.pdb": {
+          "sha256": "152131c8c7fdcf07f9b9ea6b7e73e6555704940baf9a1be6a81f2bf3aa4dea8a",
+          "bytes": 8105984
+        },
+        "lux_engine_simulation_system.dll": {
+          "sha256": "dac9443aa2939b115cd5a4a2cac749ddd0f3d86ce94e66ac560008ecff954987",
+          "bytes": 86016
+        },
+        "lux_engine_simulation_system.pdb": {
+          "sha256": "ac1131691c1d31f994f1021353ebaef6735f8fece830602749a49fb029e38ec2",
+          "bytes": 1699840
+        },
+        "zlib1.dll": {
+          "sha256": "0a1bb1c50f0cafb3a6e3bc1f4b806d08e01d909227156203a4b5d0fba052e4d3",
+          "bytes": 90624
+        },
+        "zstd.dll": {
+          "sha256": "de015ebc8319fa8550222f015f9315a5d02e75fa498b96e8d99445ca8f380c04",
+          "bytes": 660480
+        }
+      }
+    }
+  },
+  "profile": {
+    "count": 5,
+    "mode": "software10ms",
+    "roi": "whole target process including setup/warmup/cleanup; no ITT ROI",
+    "pmu": null,
+    "candidate_profile": null,
+    "exports": "baseline-profile/*/{summary,hotspots,top-down}.csv",
+    "machine_code": "machine-A-full;machine-B-full(withdrawn);machine-B2-full(final)"
+  },
+  "limitations": [
+    "H2 not adopted after measured regression; not a fully delivered H1/H2/H3 performance optimization",
+    "Three pairs do not establish performance equivalence; final micro residuals remain unexplained",
+    "Software sampling is coarse and has no PMU; ValuePose sample short",
+    "No new old-VM/Android qualification; retained V4 scalar and Native metadata debts",
+    "MSVC deep public expected wrapper limitation not fixed",
+    "Timing disables VM/allocator/leaf statistics: null is unobserved; C++ Sequence cumulative runtime failure counter unavailable"
+  ],
+  "incomplete_matrix": [],
+  "failures": [
+    "attempt1 final all: new test signature exceeded120columns; fixed65585540",
+    "five unsupported VTune bottom-up report requests; valid exports separately retained",
+    "contract driver command parsing then quoting failures, corrected raw compiler commands",
+    "first final2 driver path-replacement typo before any build, corrected",
+    "Native boundary diagnostic compile used nonexistent default constructor; corrected unique_ptr reset",
+    "Native boundary diagnostic initial max_ability_imports=0 rejected by unchanged configuration gate; corrected config",
+    "Pin diagnostic moved source lost its quoted sibling include; added original test include directory",
+    "Outer PowerShell emitted nonfatal input-line-too-long warning; source not isolated; individual target exits/oracles and identities validated",
+    "H2 valid-but-slower production experiment withdrawn; never classify as invalid timing"
+  ]
+}

@@ -5,7 +5,14 @@ f7d2815bdd2025ee23a7c11449def822413f58e9。两者仅有 V4 报告/归档差异�
 候选分支 codex/s6-v4-prepared-checks；现有实验工作树复用其目录，内容来自 V4，未合入 A1。
 独立资格 clone 及 d/t 构建槽复用，候选安装前缀 install/o/v4-h1；不覆盖 V4/A1 镜像或 SDK。
 
-## 本次生产修改
+## 最终采用范围
+
+最终资格源码为 7c565a0014d7c82f0d522eb4ca8c8f0f64773893。保留 Native H1 与 storage H3。
+下文 Event H2 是 65585540 的已实施候选记录，**已从最终生产代码撤回**：七腿首次对照中 FlowForge Event
+三对均变慢；唯一一次 H2 撤销对照三对改善 4.39% / 4.02% / 4.16%。保留实现提交、新增反例和原始结果，
+不将 H2 写成最终已采用。最终 ScriptExecution.hpp 与 V4 完全一致。
+
+## 实施过的生产修改（H2 后撤回）
 
 - Native checked entry 验证当前 prepared 发布链，取得 step 引用后进入
   createNativeContinuationResolved。loadNativeModule 已检查非零大小、二幂 alignment、step callbacks；
@@ -25,7 +32,7 @@ V4 的 artifact/endpoint 检查并不等价于 PreparedResumeType::valid 的全�
 size=6、align=4 的 struct，或非标准 ABI kind，并通过原装配；旧路径在 wait 的 source preflight 后才
 返回 PAYLOAD_NOT_OWNABLE。本次真实新测试在固定 V4 DLL 上确认了这个阶段差异。
 
-因此本次不提前冷拒绝这类输入，也不增加缓存证书/side map。已准备 struct 路径复用非零 size、二幂
+因此 H2 候选不提前冷拒绝这类输入，也不增加缓存证书/side map。已准备 struct 路径复用非零 size、二幂
 alignment、owned 构造及 max_resume_payload_bytes 的已有证明，保留 type identity 与 size%alignment；
 非 struct 仍使用原 valid()。这是一项有意保留的检查范围限制，不声称所有 Event 类型判断已经消除。
 新增正常 struct、错 struct 布局、错误 scalar 布局、非法 kind 四个同轨迹测试，同时覆盖 source/A 双满。

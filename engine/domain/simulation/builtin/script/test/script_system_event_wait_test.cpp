@@ -398,6 +398,7 @@ namespace
         bool entity_scope{};
         bool bind_start{true};
         bool bind_callback{};
+        bool bind_start_again{};
         EEventRoute wait_route{EEventRoute::SIMULATION_BROADCAST};
         ECallbackAction callback_action{ECallbackAction::NONE};
         bool ownership_pair{};
@@ -519,6 +520,8 @@ namespace
                 const auto event = options.entity_scope ? kTargetedStart : kBroadcastStart;
                 mount.bindings.push_back({kStartSymbol, EventScriptTarget{kSystem, event}});
             }
+            if (options.bind_start_again)
+                mount.bindings.push_back({kStartSymbol, EventScriptTarget{kSystem, kBroadcastStartSecond}});
             if (options.bind_callback)
             {
                 const auto event = options.wait_route == EEventRoute::ENTITY_TARGETED
@@ -1478,12 +1481,12 @@ namespace
 
     void testOldContextInsideNestedSameInstanceCall()
     {
-        Harness h{{}};
+        Harness h{{.bind_start_again = true}};
         h.backend_state.nested_context = &h;
         h.backend_state.nested_dispatch = [](void* opaque, std::int32_t) noexcept {
             auto& h = *static_cast<Harness*>(opaque);
-            h.recordBroadcastStart(2);
-            assert(deliverRuntimeEvent(*h.system, h.broadcast_start_bridge) == 1U);
+            h.recordBroadcastStartSecond(2);
+            assert(deliverRuntimeEvent(*h.system, h.broadcast_start_second_bridge) == 1U);
         };
         h.backend_state.custom_start = [](BackendState& state, ScriptStepContext& context) noexcept {
             if (state.step_calls == 1U)

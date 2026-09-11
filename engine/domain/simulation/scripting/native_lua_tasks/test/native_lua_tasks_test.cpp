@@ -182,7 +182,8 @@ void normal(std::size_t count, unsigned mode)
     Harness h(count);
     assert(h.system->prepare());
     assert(h.leases == count * 2U && na1::constructed == count);
-    assert(dispatchRuntimeHook(*h.system, h.hook) == count);
+    assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
+    assert(na1::started == count);
     assert(h.system->stats().active_event_waiters == count);
     const auto rounds = mode == 3U ? 32U : 1U;
     for (unsigned i{}; i < rounds; ++i)
@@ -248,7 +249,7 @@ int main()
     {
         Harness h(64U);
         assert(h.system->prepare());
-        assert(dispatchRuntimeHook(*h.system, h.hook) == 64U);
+        assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
         h.closed();
         assert(na1::completed == 0U && na1::frames_destroyed == 64U);
         std::puts("CASE pending-cancel frames=64 completed=0 waiters=0");

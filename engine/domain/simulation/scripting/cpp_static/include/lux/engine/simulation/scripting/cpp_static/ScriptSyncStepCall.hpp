@@ -26,7 +26,9 @@ namespace lux::simulation::script::detail
         using Result = lux::cxx::expected<R, ScriptSyncStepError>;
         static_assert(sizeof...(Args) <= 64U);
         static_assert(((!std::is_pointer_v<std::remove_cvref_t<Args>> &&
-            !std::is_volatile_v<std::remove_reference_t<Args>>) && ...));
+            !std::is_volatile_v<std::remove_reference_t<Args>> &&
+            (!std::is_reference_v<Args> || (std::is_lvalue_reference_v<Args> &&
+                std::is_const_v<std::remove_reference_t<Args>>))) && ...));
         inline static constexpr std::array<lux::semantic::EValuePass, sizeof...(Args)> Passes{
             (std::is_reference_v<Args> ? lux::semantic::EValuePass::CONST_REF : lux::semantic::EValuePass::VALUE)...
         };

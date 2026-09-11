@@ -1,4 +1,5 @@
 #pragma once
+#include "../../lua/test/LuaValueTestTypes.hpp"
 #include <lux/engine/meta/MetaAnnotations.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp>
 #include <optional>
@@ -62,6 +63,35 @@ struct LUX_TYPE_INFO(compile_time) NativeTask final
             }
             results[index] = *value;
         }
+        ++completed;
+    }
+    std::size_t index{};
+};
+struct LUX_TYPE_INFO(compile_time) NativePoseTask final
+{
+    NativePoseTask() noexcept : index(constructed++)
+    {
+    }
+    ~NativePoseTask()
+    {
+        ++destroyed;
+    }
+    LUX_METHOD(script_export = "task.run", script_coroutine = true)
+    script::ScriptCoroutine run(script::ScriptCoroutineContext &context, const script::test::ValuePose &input) noexcept
+    {
+        FrameLifetime lifetime;
+        ++started;
+        {
+            auto before = context.callStep<std::int32_t(const script::test::ValuePose &)>(0U, input);
+            if (!before)
+                co_await context.fail(before.error());
+            results[index] = *before;
+        }
+        const auto payload = co_await context.wait(*event_source);
+        auto after = context.callStep<std::int32_t(const script::test::ValuePose &)>(0U, input);
+        if (!after)
+            co_await context.fail(after.error());
+        results[index] = *after + payload;
         ++completed;
     }
     std::size_t index{};

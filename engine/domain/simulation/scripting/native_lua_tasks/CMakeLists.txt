@@ -49,3 +49,10 @@ add_test(NAME simulation_script_native_lua_tasks_test COMMAND simulation_script_
 
 include_component_cmake_scripts(script_core)
 lux_script_abilities(TARGET simulation_script_native_lua_tasks_test SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test/TaskProbe.hpp)
+
+target_link_libraries(simulation_script_native_lua_tasks_test PRIVATE simulation_script_lua_value_fixtures)
+lux_cpp_static_scripts(TARGET simulation_script_native_lua_tasks_test NAME Na1PoseTask
+    SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/test/NativeTask.hpp LOGICAL_PATH NativeTask.hpp
+    MODULE lux.na1.pose-tasks DESCRIPTOR na1-pose-tasks-v1 OWNER lux::simulation::na1::NativePoseTask SCOPE ENTITY
+    SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/test/task.symbols.json
+    EVENT_SCHEMA "${task_schema}" EVENT_NAMES Task.event DEPENDS native_lua_task_schema)

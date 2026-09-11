@@ -5,6 +5,8 @@
 #include "../../../builtin/script/test/ScriptTestClock.hpp"
 #include "DelayAbility.ability.lua.generated.hpp"
 #include "NativeTask.Na1Task.script.generated.hpp"
+#include "NativeTask.Na1PoseTask.script.generated.hpp"
+#include "LuaValueTestTypes.lua.value.generated.hpp"
 #include "NativeTask.hpp"
 #include "TaskDomain.hpp"
 #include "TaskProbe.ability.generated.hpp"
@@ -20,6 +22,7 @@ namespace
 using namespace lux::simulation;
 using namespace lux::simulation::script;
 using namespace lux::simulation::script::test;
+using lux::simulation::script::generated::Na1PoseTask;
 using lux::simulation::script::generated::Na1Task;
 lua_State *observed_vm{};
 LuxLuaTypedWorker original_probe{};
@@ -73,15 +76,15 @@ lux::asset::AssetId asset(std::uint8_t value)
     bytes[0] = value;
     return lux::asset::AssetId{bytes};
 }
-lux::script::ScriptArtifact nativeArtifact()
+lux::script::ScriptArtifact nativeArtifact(const CppStaticContract &contract)
 {
-    auto description = materializeCppStaticScript(Na1Task);
+    auto description = materializeCppStaticScript(contract);
     assert(description);
     auto result = lux::script::ScriptArtifact::create(std::move(*description), {});
     assert(result);
     return std::move(*result);
 }
-lux::script::ScriptArtifact luaArtifact(std::string_view body)
+lux::script::ScriptArtifact luaArtifact(std::string_view body, bool pose)
 {
     lux::rdesc::Script description;
     description.module_name = "lux.na1.lua";
@@ -92,6 +95,13 @@ lux::script::ScriptArtifact luaArtifact(std::string_view body)
                             {lux::rdesc::makeScriptValueType<std::int32_t>()}},
                            {"begin_life", 103U, {}, {}},
                            {"end_life", 104U, {lux::rdesc::makeScriptValueType<EScriptEndPlayReason>()}, {}}};
+    if (pose)
+    {
+        description.exports[0].args = {
+            lux::rdesc::makeScriptValueType<ValuePose>(lux::semantic::EValuePass::CONST_REF)};
+        description.exports[1].args = description.exports[0].args;
+    }
+    description.exports.push_back({"nested", 105U, {}, {}});
     description.lifecycle = {103U, 104U};
     const auto &probe = lux::script::ScriptAbilityTraits<na1::TaskProbe>::Description;
     const auto &delay = lux::script::ScriptAbilityTraits<DelayAbility>::Description;
@@ -108,7 +118,7 @@ lux::script::ScriptArtifact luaArtifact(std::string_view body)
         "end_life=function(self,reason) assert(self.value>=1 and not self.ended); self.ended=true; "
         "lux.TaskProbe.hit(2) end, "
         "run=function(self) local p=lux.Event.Task.event(); self.value=self.value+p end, "
-        "apply=function(self,p) " +
+        "nested=function(self) lux.TaskProbe.hit(4) end, apply=function(self,p) " +
         std::string(body) + " end }";
     std::vector<std::byte> payload;
     for (const auto value : source)
@@ -120,21 +130,27 @@ lux::script::ScriptArtifact luaArtifact(std::string_view body)
 struct Harness final
 {
     explicit Harness(std::size_t count, std::string_view body = "self.value=self.value+p; return self.value",
-                     unsigned invalid = 0U)
-        : count(count), simulation(na1::domain()), lua_artifact(luaArtifact(body)), native_artifact(nativeArtifact())
+                     unsigned invalid = 0U, bool pose = false)
+        : count(count), simulation(na1::domain()), lua_artifact(luaArtifact(body, pose)),
+          native_artifact(nativeArtifact(pose ? Na1PoseTask : Na1Task))
     {
         na1::constructed = na1::destroyed = na1::started = na1::completed = na1::frames_destroyed = na1::unreachable =
             0U;
         na1::results.assign(count, 0);
+        const auto &contract = pose ? Na1PoseTask : Na1Task;
+        assert(pose_hook.prepare(count) == EEndpointMutationError::NONE);
+        assert(nested_hook.prepare(count) == EEndpointMutationError::NONE);
         assert(hook.prepare(count) == EEndpointMutationError::NONE);
         assert(event.prepare({1U, 4U}) == EEndpointMutationError::NONE);
         hook_endpoint.emplace(na1::System, na1::Hook, hook);
+        pose_endpoint.emplace(na1::System, na1::PoseHook, pose_hook);
+        nested_endpoint.emplace(na1::System, na1::NestedHook, nested_hook);
         event_endpoint.emplace(na1::System, na1::Event, event);
         auto source = projectScriptEventSource(simulation.findEvent(na1::System, na1::Event),
                                                event_endpoint->descriptor(), "Task", "event");
         assert(source);
         event_source = std::move(*source);
-        auto typed = CppScriptEventSource<std::int32_t>::create(Na1Task, event_source);
+        auto typed = CppScriptEventSource<std::int32_t>::create(contract, event_source);
         assert(typed);
         na1::event_source = *typed;
         const std::array blocks{LuaPreparedBlockClass{1U, count}};
@@ -146,7 +162,7 @@ struct Harness final
         probe_contribution.methods = probe_methods;
         const std::array contributions{probe_contribution,
                                        lux::script::lua::makeScriptAbilityLuaContribution<DelayAbility>()};
-        const std::array pools{CppStaticScriptPoolDescription{&Na1Task, count, count * 2U, count * 2048U,
+        const std::array pools{CppStaticScriptPoolDescription{&contract, count, count * 2U, count * 2048U,
                                                               alignof(std::max_align_t), count * 2U, 512U, true}};
         const std::array routes{NativeLuaTaskRoute{101U, 101U}};
         std::array steps{*lua_artifact.findExport(102U)};
@@ -154,13 +170,15 @@ struct Harness final
             steps[0].returns[0] = lux::rdesc::makeScriptValueType<double>();
         const std::array plans{NativeLuaTaskPlan{
             asset(1U), invalid == 1U ? native_artifact.contentIdentity() : lua_artifact.contentIdentity(), asset(2U),
-            native_artifact.contentIdentity(), &Na1Task, routes, steps}};
+            native_artifact.contentIdentity(), &contract, routes, steps}};
+        const std::array values{lux::script::lua::makeLuaValueOperation<ValuePose>()};
         auto created = NativeLuaTaskBackend::create({.lua = {.instance_capacity = count,
-                                                             .prepared_call_capacity = count * 4U,
+                                                             .prepared_call_capacity = count * 5U,
                                                              .continuation_capacity = 0U,
                                                              .execution_depth_capacity = 8U,
                                                              .ability_catalog_method_capacity = 5U,
                                                              .prepared_ability_capacity = count * 5U,
+                                                             .values = values,
                                                              .abilities = contributions,
                                                              .event_catalog_capacity = 1U,
                                                              .prepared_event_capacity = count,
@@ -174,7 +192,7 @@ struct Harness final
                                                      .plans = plans,
                                                      .artifacts = {this, &resolve},
                                                      .instance_capacity = count,
-                                                     .prepared_method_capacity = count * 4U});
+                                                     .prepared_method_capacity = count * 5U});
         assert(created);
         backend.emplace(std::move(*created));
         descriptor = backend->descriptor();
@@ -185,19 +203,21 @@ struct Harness final
             mounts.push_back({ScriptMountId{i + 1U},
                               asset(1U),
                               EntityScriptScope{entity},
-                              {{101U, HookScriptTarget{na1::System, na1::Hook}}}});
+                              {{101U, HookScriptTarget{na1::System, pose ? na1::PoseHook : na1::Hook}},
+                               {105U, HookScriptTarget{na1::System, na1::NestedHook}}}});
         }
         const auto capacity = planScriptRuntimeCapacity(mounts);
         assert(capacity);
-        const auto endpoint = hook_endpoint->descriptor();
+        const std::array endpoints{hook_endpoint->descriptor(), pose_endpoint->descriptor(),
+                                   nested_endpoint->descriptor()};
         const auto events = event_endpoint->descriptor();
         const auto binding = lux::script::bindScriptAbility<na1::TaskProbe>(probe);
         const std::array capabilities{publishScriptAbility(binding)};
         auto runtime = ScriptSystem::create(simulation, *capacity, mounts, registry, clock_owner.clock(),
                                             {64U, count, count * 2U, 2U, count * 2U, count * 2U, 64U, count * 2U,
                                              count * 2U, count * 2U, count * 2U, count * 2U},
-                                            {this, &resolve}, capabilities, std::span{&descriptor, 1U},
-                                            std::span{&endpoint, 1U}, std::span{&events, 1U});
+                                            {this, &resolve}, capabilities, std::span{&descriptor, 1U}, endpoints,
+                                            std::span{&events, 1U});
         assert(runtime);
         system.emplace(std::move(*runtime));
     }
@@ -244,9 +264,11 @@ struct Harness final
     ScriptTestClock clock_owner{registry};
     Probe probe;
     std::vector<lux::script::lua::ScriptAbilityLuaMethodProjection> probe_methods;
-    HookPoint<void()> hook;
+    HookPoint<void()> hook, nested_hook;
+    HookPoint<void(const ValuePose &)> pose_hook;
     HookChannel<SimulationBroadcastRoute, std::int32_t> event;
-    std::optional<ScriptHookEndpoint<void()>> hook_endpoint;
+    std::optional<ScriptHookEndpoint<void()>> hook_endpoint, nested_endpoint;
+    std::optional<ScriptHookEndpoint<void(const ValuePose &)>> pose_endpoint;
     std::optional<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>> event_endpoint;
     std::vector<ecs::Entity> entities;
     std::vector<ScriptRuntimeMount> mounts;
@@ -282,6 +304,39 @@ int main()
     normal(64U, 0U);
     normal(1000U, 0U);
     normal(64U, 3U);
+    {
+        Harness h(16U, "self.value=self.value+p.key; return p.key+p.mode+math.floor(p.velocity.x+p.velocity.y)", 0U,
+                  true);
+        assert(h.system->prepare());
+        ValuePose value{31, {2.5F, 7.0}, ValueMode::RUN};
+        assert(dispatchRuntimeHook(*h.system, h.pose_hook, value) == 1U);
+        for (auto result : na1::results)
+            assert(result == 43);
+        value = {-99, {-1.0F, -2.0}, ValueMode::WALK};
+        h.occurrence();
+        for (auto result : na1::results)
+            assert(result == 74);
+        assert(na1::completed == 16U && h.system->failures().empty());
+        h.closed();
+        std::puts("CASE record snapshot=43 after=74 caller-mutated=1 completed=16 frames=16");
+    }
+    {
+        Harness h(1U, "lux.TaskProbe.hit(3); return p");
+        h.probe.callback_context = &h;
+        h.probe.callback = [](void *pointer, std::int32_t code) noexcept {
+            auto &h = *static_cast<Harness *>(pointer);
+            if (code == 3)
+                assert(dispatchRuntimeHook(*h.system, h.nested_hook) == 1U);
+        };
+        assert(h.system->prepare() && observed_vm);
+        const auto base = lua_gettop(observed_vm);
+        assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
+        h.occurrence();
+        assert(na1::completed == 1U && h.probe.calls == 2U && lua_gettop(observed_vm) == base);
+        assert(h.system->failures().empty());
+        h.closed();
+        std::puts("CASE nested-lua provider=2 stack-delta=0 completed=1");
+    }
     for (const unsigned mode : {4U, 5U})
     {
         na1::mode = mode;

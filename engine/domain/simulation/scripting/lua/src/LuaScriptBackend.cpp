@@ -1980,7 +1980,7 @@ namespace lux::simulation::script
             return 0;
         }
 
-        template <bool EntityScope, bool HasResult, bool ScalarArguments>
+        template <bool EntityScope, bool HasResult, bool ScalarArguments, class Scalar = void>
 
         static int invokeSyncStep(void* opaque, const void* const* arguments, void* output,
                                   const ScriptInvocationValidity& qualification) noexcept
@@ -1993,8 +1993,13 @@ namespace lux::simulation::script
             ExecutionScope execution{self, {vm, call.instance, nullptr, nullptr, nullptr}};
             if (!execution) return kExecutionDepthCapacity;
             const auto& operations = call.function->sync_arguments;
+            const auto argument_count = [&]() {
+                if constexpr (std::is_same_v<Scalar, std::nullptr_t>) return std::size_t{};
+                else if constexpr (!std::is_void_v<Scalar>) return std::size_t{1U};
+                else return operations.size();
+            }();
             constexpr auto protected_slots = ScalarArguments ? 3U + EntityScope : 3U;
-            const auto stack_slots = ScalarArguments ? operations.size() + protected_slots : protected_slots;
+            const auto stack_slots = ScalarArguments ? argument_count + protected_slots : protected_slots;
             if (!lua_checkstack(vm, static_cast<int>(stack_slots)))
                 return kLuaFailure;
             const auto base = lua_gettop(vm);
@@ -2007,15 +2012,18 @@ namespace lux::simulation::script
                 lua_rawgeti(vm, LUA_REGISTRYINDEX, call.function->function_ref);
                 if constexpr (EntityScope)
                     lua_rawgeti(vm, LUA_REGISTRYINDEX, call.instance->table_ref);
-                for (std::size_t i{}; i < operations.size(); ++i)
-                    operations[i].push(vm, arguments[i], nullptr);
+                if constexpr (std::is_same_v<Scalar, std::nullptr_t>) {}
+                else if constexpr (!std::is_void_v<Scalar>) pushSyncScalar<Scalar>(vm, arguments[0], nullptr);
+                else
+                    for (std::size_t i{}; i < argument_count; ++i)
+                        operations[i].push(vm, arguments[i], nullptr);
                 if (!qualification.valid())
                 {
                     lua_settop(vm, base);
                     return kInvalidCall;
                 }
                 const auto status =
-                    lua_pcall(vm, static_cast<int>(operations.size()) + EntityScope, HasResult ? 1 : 0, base + 1);
+                    lua_pcall(vm, static_cast<int>(argument_count) + EntityScope, HasResult ? 1 : 0, base + 1);
                 bool valid_result = true;
                 if constexpr (HasResult)
                     if (status == LUA_OK)
@@ -2978,6 +2986,25 @@ namespace lux::simulation::script
         {
             invoke = call.function->scalar_sync ? &Impl::invokeSyncStep<EntityScope, HasResult, true>
                                                 : &Impl::invokeSyncStep<EntityScope, HasResult, false>;
+            // The common zero/one scalar shapes need neither an argument loop nor a per-value indirect push.
+            // Custom operations always retain the protected converter path, including enum custom representations.
+            if (!call.function->scalar_sync) return;
+            if (function.args.empty())
+                invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, std::nullptr_t>;
+            else if (function.args.size() == 1U)
+            {
+                switch (function.args[0].abi_kind)
+                {
+                case LUX_SCRIPT_VK_BOOL: invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, bool>; break;
+                case LUX_SCRIPT_VK_INT32:
+                    invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, std::int32_t>; break;
+                case LUX_SCRIPT_VK_UINT32:
+                    invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, std::uint32_t>; break;
+                case LUX_SCRIPT_VK_FLOAT: invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, float>; break;
+                case LUX_SCRIPT_VK_DOUBLE: invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, double>; break;
+                default: break;
+                }
+            }
         };
         if (call.instance->entity_scope)
         {

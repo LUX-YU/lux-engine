@@ -1,0 +1,75 @@
+{
+  "schema": "lux-script-symbol-ledger",
+  "version": 1,
+  "next_symbol": 45076,
+  "entries": [
+    {
+      "source_identity": "BenchmarkBehavior:admit",
+      "symbol": 45059
+    },
+    {
+      "source_identity": "BenchmarkBehavior:update",
+      "symbol": 45060
+    },
+    {
+      "source_identity": "BenchmarkBehavior:retire",
+      "symbol": 45061
+    },
+    {
+      "source_identity": "BenchmarkBehavior:update_async",
+      "symbol": 45062
+    },
+    {
+      "source_identity": "BenchmarkBehavior:update_plain",
+      "symbol": 45063
+    },
+    {
+      "source_identity": "BenchmarkBehavior:query_only",
+      "symbol": 45064
+    },
+    {
+      "source_identity": "BenchmarkBehavior:wait_event",
+      "symbol": 45065
+    },
+    {
+      "source_identity": "BenchmarkBehavior:sequence",
+      "symbol": 45066
+    },
+    {
+      "source_identity": "BenchmarkBehavior:read_value",
+      "symbol": 45067
+    },
+    {
+      "source_identity": "BenchmarkBehavior:long_task",
+      "symbol": 45068
+    },
+    {
+      "source_identity": "BenchmarkBehavior:pose_task",
+      "symbol": 45069
+    },
+    {
+      "source_identity": "BenchmarkBehavior:apply_event",
+      "symbol": 45070
+    },
+    {
+      "source_identity": "BenchmarkBehavior:before_wait",
+      "symbol": 45071
+    },
+    {
+      "source_identity": "BenchmarkBehavior:after_next",
+      "symbol": 45072
+    },
+    {
+      "source_identity": "BenchmarkBehavior:after_sequence",
+      "symbol": 45073
+    },
+    {
+      "source_identity": "BenchmarkBehavior:before_pose",
+      "symbol": 45074
+    },
+    {
+      "source_identity": "BenchmarkBehavior:after_pose",
+      "symbol": 45075
+    }
+  ]
+}

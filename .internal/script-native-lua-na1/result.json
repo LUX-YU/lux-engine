@@ -4083,12 +4083,16 @@
   "evidence": {
     "archive": "evidence/logs.zip",
     "manifest": "evidence/manifest.json",
-    "download_verification": "PENDING_PUSH",
+    "download_verification": "PASS",
     "local_images": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\images",
     "local_raw_vtune": [
       "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\profiles",
       "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\profiles2",
       "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\profiles-pose"
-    ]
+    ],
+    "archive_commit": "c734758cd2192b5c90ceba796a6663677b753c53",
+    "archive_sha256": "912b6e2d8f44c94bd6b01e8d73a2b7f2a8b9f061b4abb3baac4b0e2cb4a4eb39",
+    "remote_readback": "evidence/remote-readback.json",
+    "download": "https://github.com/LUX-YU/lux-engine/raw/c734758cd2192b5c90ceba796a6663677b753c53/.internal/script-native-lua-na1/evidence/logs.zip"
   }
 }

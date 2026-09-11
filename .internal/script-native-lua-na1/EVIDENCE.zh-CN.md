@@ -31,4 +31,6 @@
 
 编译产物未进 ZIP；它们位于 `E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/images/`，完整 hash 在归档。补充合同诊断由独立源码 hash 绑定同一 4a 生产库，不冒充已进入 4a 的新增测试源码。已跑全量 CTest 的 4a 原测试未被更改。
 
-已在本地重新读取 ZIP 并核对全部 1366 项 SHA。远端固定提交下载和回取核对在本次证据提交后补记；此处当前不是远端 PASS。
+已在本地重新读取 ZIP 并核对全部 1366 项 SHA。远端归档固定提交 `c734758cd2192b5c90ceba796a6663677b753c53` 已通过独立 bare 仓库从 origin 重新 fetch，归档 SHA 和全部 1366 项 hash 一致。
+
+[固定提交下载](https://github.com/LUX-YU/lux-engine/raw/c734758cd2192b5c90ceba796a6663677b753c53/.internal/script-native-lua-na1/evidence/logs.zip) · [远端回取记录](evidence/remote-readback.json)。远端分支之后的文档提交不修改此归档或 4a 资格身份。

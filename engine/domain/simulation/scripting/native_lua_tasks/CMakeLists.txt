@@ -27,7 +27,7 @@ add_custom_target(native_lua_task_schema DEPENDS "${task_schema}")
 lux_classify_target(TARGET native_lua_task_schema LAYER SIMULATION PRODUCT BUILD_TOOL ROLE DOMAIN)
 add_executable(simulation_script_native_lua_tasks_test test/native_lua_tasks_test.cpp)
 target_link_libraries(simulation_script_native_lua_tasks_test PRIVATE
-    simulation_script_native_lua_tasks simulation_composition lux::engine::core::type_info)
+    simulation_script_native_lua_tasks simulation_composition lux::engine::core::type_info LuxLua55::Runtime)
 target_include_directories(simulation_script_native_lua_tasks_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test)
 if(MSVC)
     target_compile_options(native_lua_task_schema_writer PRIVATE /UNDEBUG)

@@ -1,3 +1,6 @@
+#include <lux/engine/function/script/lua/ScriptAbilityLua.hpp>
+#include <lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp>
+
 #include "../../../builtin/script/test/ScriptRuntimeTestRegion.hpp"
 #include "../../../builtin/script/test/ScriptTestClock.hpp"
 #include "DelayAbility.ability.lua.generated.hpp"
@@ -43,6 +46,27 @@ struct Probe final
         return code;
     }
 };
+
+struct FailingAllocation final
+{
+    lua_Alloc original{};
+    void *context{};
+    std::size_t permitted{}, failures{};
+    static void *allocate(void *opaque, void *pointer, std::size_t old_size, std::size_t new_size) noexcept
+    {
+        auto &self = *static_cast<FailingAllocation *>(opaque);
+        if (new_size > old_size || (!pointer && new_size != 0U))
+        {
+            if (self.permitted == 0U)
+            {
+                ++self.failures;
+                return nullptr;
+            }
+            --self.permitted;
+        }
+        return self.original(self.context, pointer, old_size, new_size);
+    }
+};
 lux::asset::AssetId asset(std::uint8_t value)
 {
     std::array<std::uint8_t, 16U> bytes{};
@@ -80,9 +104,9 @@ lux::script::ScriptArtifact luaArtifact(std::string_view body)
     assert(event);
     description.event_requirements.push_back(std::move(*event));
     const std::string source =
-        "return { begin_life=function(self) assert(self.value==nil); self.value=1; lux.Ability.TaskProbe.hit(1) end, "
+        "return { begin_life=function(self) assert(self.value==nil); self.value=1; lux.TaskProbe.hit(1) end, "
         "end_life=function(self,reason) assert(self.value>=1 and not self.ended); self.ended=true; "
-        "lux.Ability.TaskProbe.hit(2) end, "
+        "lux.TaskProbe.hit(2) end, "
         "run=function(self) local p=lux.Event.Task.event(); self.value=self.value+p end, "
         "apply=function(self,p) " +
         std::string(body) + " end }";
@@ -189,6 +213,8 @@ struct Harness final
     }
     void occurrence()
     {
+        // One real owner step per occurrence; duplicate nonzero stable points cannot drain resumes.
+        clock_owner.advance(SimulationDuration{1'000'000});
         {
             auto writer = event.begin(0U);
             assert(writer.record(std::int32_t{31}));
@@ -271,7 +297,15 @@ int main()
         {
             assert(h.system->stats().active_event_waiters == 64U);
             h.occurrence();
-            assert(h.system->stats().simulation_delay_waits == 64U && na1::completed == 0U);
+            const auto stats = h.system->stats();
+            std::fprintf(stderr,
+                         "TRACE sequence step=%llu C=%zu A=%zu event=%zu next=%zu delay=%zu ready=%zu done=%zu\n",
+                         h.clock_owner.clock().snapshot().step_index, stats.active_continuations,
+                         stats.active_awaitables, stats.active_event_waiters, stats.next_step_waits,
+                         stats.simulation_delay_waits, stats.resume_queue_depth, na1::completed);
+            for (const auto &failure : h.system->failures())
+                std::fprintf(stderr, "TRACE failure error=%u status=%d\n", unsigned(failure.error), failure.status);
+            assert(stats.simulation_delay_waits == 64U && na1::completed == 0U);
             h.clock_owner.advance(SimulationDuration{1'000'000});
             assert(executeRuntimeStablePoint(*h.system));
         }
@@ -306,7 +340,7 @@ int main()
     }
     na1::mode = 0U;
     for (const auto body : {"error('step failure')", "return 'wrong result'", "coroutine.yield()",
-                            "lux.Event.Task.event()", "lux.Ability.Delay.nextStep()"})
+                            "lux.Event.Task.event()", "lux.Delay.nextStep()"})
     {
         Harness h(1U, body);
         assert(h.system->prepare());
@@ -326,15 +360,35 @@ int main()
         std::puts("CASE ordinary-error-recovery completed=1 result=31");
     }
     {
-        Harness h(1U,
-                  "do local x <close> = setmetatable({}, {__close=function() lux.Ability.TaskProbe.hit(3) end}) end; "
-                  "return p");
+        Harness h(1U, "do local x <close> = setmetatable({}, {__close=function() lux.TaskProbe.hit(3) end}) end; "
+                      "return p");
         assert(h.system->prepare());
         assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
         h.occurrence();
         assert(h.probe.calls == 1U && na1::completed == 1U);
         h.closed();
         std::puts("CASE tbc-close calls=1 frame=1 cleanup=1");
+    }
+    for (const std::size_t permitted : {0U, 1U, 3U})
+    {
+        Harness h(1U, "local t={}; for i=1,100 do t[i]=string.rep('x',10000) end; "
+                      "lux.TaskProbe.hit(3); return #t");
+        assert(h.system->prepare() && observed_vm);
+        auto *vm = observed_vm;
+        const auto base = lua_gettop(vm);
+        assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
+        FailingAllocation allocation;
+        allocation.original = lua_getallocf(vm, &allocation.context);
+        allocation.permitted = permitted;
+        lua_setallocf(vm, &FailingAllocation::allocate, &allocation);
+        h.occurrence();
+        lua_setallocf(vm, allocation.original, allocation.context);
+        assert(allocation.failures > 0U && lua_gettop(vm) == base);
+        assert(h.probe.calls == 0U && na1::completed == 0U && na1::frames_destroyed == 1U);
+        assert(!h.system->failures().empty());
+        h.closed();
+        std::printf("CASE step-oom permitted=%zu allocation-failures=%zu provider=0 frames=1 stack-delta=0\n",
+                    permitted, allocation.failures);
     }
     {
         Harness h(64U);

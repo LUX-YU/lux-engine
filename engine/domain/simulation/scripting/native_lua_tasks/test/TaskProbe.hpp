@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <lux/engine/function/script/ScriptAbilityAnnotations.hpp>
 namespace lux::simulation::na1
 {

@@ -31,7 +31,7 @@
 
 一个核心 mount/完整 identity/behavior，两个 backend 子对象。`NativeLuaTaskPlan` 冻结 Lua/Cpp 制品身份、任务 contract、路由、步骤和 import 映射；未映射导出走原 Lua，映射失败报错不 fallback。创建按 Lua child→步骤→Cpp child 发布；失败逆序回滚；EndPlay、执行取消和实际回收仍由原核心时机控制。
 
-公共变化为 `ScriptSyncStep.hpp`、默认空 `ScriptInstanceCreateContext::sync_steps`、`context.callStep<Signature>`、`context.fail` 及安装组件 `simulation_script_native_lua_tasks`。旧 C++ SDK 消费者须重编译；ABI6 不代表新旧 C++ EXE/DLL 可混用。普通返回 expected 的临时值放在普通同步 helper 栈，跨等待值放编译器 frame。
+公共变化为 `ScriptSyncStep.hpp`、默认空 `ScriptInstanceCreateContext::sync_steps`、`context.callStep<Signature>`、`context.fail` 及安装组件 `simulation_script_native_lua_tasks`。旧 C++ SDK 消费者须重编译；ABI6 不代表新旧 C++ EXE/DLL 可混用。同步返回 expected 的临时值在源码中置于普通 helper；后续机器码审计发现部分暂存经 MSVC 内联仍进入 P4 的 coroutine frame，不能以源码作用域宣称物理上全部在普通栈。跨等待值由编译器 frame 持有。
 
 同步事务保留内层 checkstack、当前/原发布资格、原错误保护及转换后重验。引擎 await 在登记前拒绝；raw yield 不能跨同步 C 边界；Lua 内部 pcall 可合法恢复。fail 保存显式错误并终止当前任务，不分配 A/Ready、不继续业务。原 TaskGraph、预算、真实 step、frontier、single-flight、Event 多飞、Event/Timer 不同满队列政策和 pin 均未改。
 
@@ -146,3 +146,5 @@ installed 使用 public SDK 和实际 tools；迁址时原 qualified source/buil
 早期失败包含 expected C++20 推导、安装导出遗漏、过大 frame、测试未推进真实 step、原 probe 缓存、采样 stdout 和诊断脚本错误；原日志均保留。修正都已进入连续子提交；失败测量不混为正式样本。
 
 [证据入口](EVIDENCE.zh-CN.md) 提供归档、逐文件 SHA、产物身份、固定远端提交和回取检查。原测量身份始终为 4a8812e9/f7d2815b，报告提交不代替它们。大型 EXE/DLL/PDB 留在受控镜像，原 VTune DB 随证据保存。代码只推送实验分支，不合并 V4/main、不发 tag。
+
+后续只读检查：[P4 直接采样](P4-VTUNE-FOLLOWUP.zh-CN.md)与[32 项热路径操作审计](P4-OPERATION-AUDIT.zh-CN.md)。这些补充未修改4a生产实现，也没有重标本报告的原资格/计时身份。

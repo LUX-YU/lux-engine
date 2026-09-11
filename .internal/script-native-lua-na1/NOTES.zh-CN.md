@@ -26,7 +26,7 @@
 
 - `ScriptInstanceCreateContext::sync_steps` 默认空。新增的 public `ScriptSyncStep.hpp` 不包含 Lua 私有类型。
 - `PreparedScriptSyncStep` 为只读签名和窄 BoundScriptCall；`ScriptSyncStepSetView` 携带完整实例、发布代次、behavior 和有限 current 回调。没有 writable authority/State 容器。
-- `context.callStep<R(Args...)>(ordinal, ...)` 返回 `expected<R, ScriptSyncStepError>`。当前参数为既有 scalar/有限 enum/record；返回限 scalar/void。参数槽、同步返回的 expected 和结果中转属于普通 C++ 调用栈。需要跨等待的 record 按既有 typed 输入持有。
+- `context.callStep<R(Args...)>(ordinal, ...)` 返回 `expected<R, ScriptSyncStepError>`。当前参数为既有 scalar/有限 enum/record；返回限 scalar/void。参数槽、同步返回的 expected 和结果中转只需在同步调用内存活；源码 helper 不保证编译后的物理栈放置。后续机器码审计发现 MSVC 仍将 P4 的部分 ABI 暂存放入 coroutine frame（实际 352 B），见 [P4 操作审计](P4-OPERATION-AUDIT.zh-CN.md)。需要跨等待的 record 按既有 typed 输入持有。
 - 前置条件为原 owner 的有效 start/resume 调用。验证原 full instance、公有视图 publication、ordinal、签名和当前资格；用户代码后复验原 capture 和原 publication，不重新获取 ACTIVE。
 - `context.fail(error)` 把 outcome 写为 FAILED 并返回 start/resume adapter，不分配 Awaitable、不入 Ready、不执行后续业务。适配器保留实际错误码并销毁一次 frame。没有改变全局异常策略。
 

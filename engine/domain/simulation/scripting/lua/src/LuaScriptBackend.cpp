@@ -50,7 +50,7 @@ namespace lux::simulation::script
         return result;
     }
 
-    struct LuaScriptBackend::State final
+    struct LuaScriptBackend::Impl final
     {
         static constexpr std::size_t kMaxAbilityArguments = 8U;
         static constexpr std::size_t kMaxAbilityResults = 4U;
@@ -104,12 +104,12 @@ namespace lux::simulation::script
 
         [[nodiscard]] int createThreadProtected(ThreadCreateRequest& request) noexcept
         {
-            if (!lua_checkstack(state, 2)) return LUA_ERRMEM;
-            const auto base = lua_gettop(state);
-            lua_pushcfunction(state, &createThread);
-            lua_pushlightuserdata(state, &request);
-            const auto status = lua_pcall(state, 1, 0, 0);
-            lua_settop(state, base);
+            if (!lua_checkstack(main_thread, 2)) return LUA_ERRMEM;
+            const auto base = lua_gettop(main_thread);
+            lua_pushcfunction(main_thread, &createThread);
+            lua_pushlightuserdata(main_thread, &request);
+            const auto status = lua_pcall(main_thread, 1, 0, 0);
+            lua_settop(main_thread, base);
             return status;
         }
 
@@ -122,7 +122,7 @@ namespace lux::simulation::script
 
         struct HostHandle final
         {
-            State* owner{};
+            Impl* owner{};
             ScriptBehavior* host{};
             bool alive{};
         };
@@ -156,7 +156,7 @@ namespace lux::simulation::script
         struct Instance final
         {
             ScriptBehavior* behavior{};
-            State* owner{};
+            Impl* owner{};
             lux::asset::AssetId asset;
             int table_ref{LUA_NOREF};
             bool entity_scope{};
@@ -362,7 +362,7 @@ namespace lux::simulation::script
 
         struct LuaContinuation final
         {
-            State* owner{};
+            Impl* owner{};
             Instance* instance{};
             PreparedCall* call{};
             lua_State* thread{};
@@ -386,7 +386,7 @@ namespace lux::simulation::script
         class ExecutionScope final
         {
         public:
-            ExecutionScope(State& owner, ExecutionFrame frame) noexcept
+            ExecutionScope(Impl& owner, ExecutionFrame frame) noexcept
                 : owner_(std::addressof(owner)), frame_(frame)
             {
                 if (owner.execution_depth >= owner.execution_depth_capacity)
@@ -418,12 +418,12 @@ namespace lux::simulation::script
             }
 
         private:
-            State* owner_{};
+            Impl* owner_{};
             ExecutionFrame frame_;
             bool active_{};
         };
 
-        State(
+        Impl(
             LuaScriptBackendConfig config
         )
             : engine([&config] {
@@ -431,7 +431,7 @@ namespace lux::simulation::script
                 vm.track_allocations |= config.track_vm_allocations;
                 return vm;
               }()),
-              state(engine.state()),
+              main_thread(engine.state()),
               instance_capacity(config.instance_capacity),
               prepared_call_capacity(config.prepared_call_capacity),
               continuation_capacity(config.continuation_capacity),
@@ -444,22 +444,22 @@ namespace lux::simulation::script
             if (!prepared_abilities.valid() || !prepared_events.valid())
                 return;
             if (!lux::script::lua::detail::configureLuaVm(
-                    state,
+                    main_thread,
                     runtime_info
                 ))
             {
                 return;
             }
-            if (!lux::script::lua::detail::LuaValueAccess::initialize(state)) return;
+            if (!lux::script::lua::detail::LuaValueAccess::initialize(main_thread)) return;
             for (const auto& value : config.values)
-                if (value.prepare != nullptr && !value.prepare(state)) return;
+                if (value.prepare != nullptr && !value.prepare(main_thread)) return;
             for (const auto& ability : config.abilities)
                 for (const auto& method : ability.methods)
                 {
                     for (const auto& value : method.parameters)
-                        if (value.prepare != nullptr && !value.prepare(state)) return;
+                        if (value.prepare != nullptr && !value.prepare(main_thread)) return;
                     for (const auto& value : method.results)
-                        if (value.prepare != nullptr && !value.prepare(state)) return;
+                        if (value.prepare != nullptr && !value.prepare(main_thread)) return;
                 }
             prototypes.reserve(config.instance_capacity);
             latest_prototypes.reserve(config.instance_capacity);
@@ -514,12 +514,12 @@ namespace lux::simulation::script
             free_continuations.reserve(continuation_capacity);
             for (std::size_t index = continuation_capacity; index > 0U; --index)
                 free_continuations.push_back(index - 1U);
-            if (!lua_checkstack(state, 3)) return;
-            lua_pushcfunction(state, &State::createRoots);
-            lua_pushlightuserdata(state, this);
-            if (lua_pcall(state, 1, 0, 0) != LUA_OK)
+            if (!lua_checkstack(main_thread, 3)) return;
+            lua_pushcfunction(main_thread, &Impl::createRoots);
+            lua_pushlightuserdata(main_thread, this);
+            if (lua_pcall(main_thread, 1, 0, 0) != LUA_OK)
             {
-                lua_pop(state, 1);
+                lua_pop(main_thread, 1);
                 return;
             }
             vm_configured = true;
@@ -527,7 +527,7 @@ namespace lux::simulation::script
 
         static int createRoots(lua_State* vm)
         {
-            auto* owner = static_cast<State*>(lua_touserdata(vm, 1));
+            auto* owner = static_cast<Impl*>(lua_touserdata(vm, 1));
             lua_createtable(vm, static_cast<int>(owner->continuation_capacity), 0);
             for (std::size_t index{}; index < owner->continuation_capacity; ++index)
             {
@@ -535,34 +535,34 @@ namespace lux::simulation::script
                 lua_rawseti(vm, -2, static_cast<lua_Integer>(index + 1U));
             }
             owner->thread_roots_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
-            lua_pushcfunction(vm, &State::traceback);
+            lua_pushcfunction(vm, &Impl::traceback);
             owner->traceback_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
             return 0;
         }
 
         void clearThreadRoot(std::size_t slot) noexcept
         {
-            lua_rawgeti(state, LUA_REGISTRYINDEX, thread_roots_ref);
-            lua_pushboolean(state, false);
-            lua_rawseti(state, -2, static_cast<lua_Integer>(slot + 1U));
-            lua_pop(state, 1);
+            lua_rawgeti(main_thread, LUA_REGISTRYINDEX, thread_roots_ref);
+            lua_pushboolean(main_thread, false);
+            lua_rawseti(main_thread, -2, static_cast<lua_Integer>(slot + 1U));
+            lua_pop(main_thread, 1);
         }
 
-        ~State()
+        ~Impl()
         {
-            if (!state) return;
+            if (!main_thread) return;
             // The root table owns all remaining VM references and is released once.
-            if (thread_roots_ref != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, thread_roots_ref);
+            if (thread_roots_ref != LUA_NOREF) luaL_unref(main_thread, LUA_REGISTRYINDEX, thread_roots_ref);
             for (const auto& [asset, prototype] : prototypes)
             {
                 static_cast<void>(asset);
-                if (prototype.table_ref != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, prototype.table_ref);
+                if (prototype.table_ref != LUA_NOREF) luaL_unref(main_thread, LUA_REGISTRYINDEX, prototype.table_ref);
                 if (prototype.environment_ref != LUA_NOREF)
-                    luaL_unref(state, LUA_REGISTRYINDEX, prototype.environment_ref);
+                    luaL_unref(main_thread, LUA_REGISTRYINDEX, prototype.environment_ref);
             }
             for (const auto& function : function_bindings)
-                if (function.function_ref != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, function.function_ref);
-            if (traceback_ref != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, traceback_ref);
+                if (function.function_ref != LUA_NOREF) luaL_unref(main_thread, LUA_REGISTRYINDEX, function.function_ref);
+            if (traceback_ref != LUA_NOREF) luaL_unref(main_thread, LUA_REGISTRYINDEX, traceback_ref);
         }
 
         [[nodiscard]] static bool identifier(std::string_view value) noexcept
@@ -641,34 +641,34 @@ namespace lux::simulation::script
             while (local_slot < prototype.ability_ordinals.size())
             {
                 const auto* ability = ability_methods[prototype.ability_ordinals[local_slot]].ability;
-                lua_createtable(state, 0, static_cast<int>(ability->methods.size()));
-                const auto ability_index = lua_gettop(state);
+                lua_createtable(main_thread, 0, static_cast<int>(ability->methods.size()));
+                const auto ability_index = lua_gettop(main_thread);
                 while (local_slot < prototype.ability_ordinals.size())
                 {
                     const auto& entry = ability_methods[prototype.ability_ordinals[local_slot]];
                     if (entry.ability != ability) break;
-                    lua_pushlstring(state, entry.method->name.data(), entry.method->name.size());
-                    lua_pushlightuserdata(state, this);
-                    lua_pushinteger(state, static_cast<lua_Integer>(local_slot));
-                    lua_pushlightuserdata(state, this);
-                    lua_rawget(state, lux_index);
+                    lua_pushlstring(main_thread, entry.method->name.data(), entry.method->name.size());
+                    lua_pushlightuserdata(main_thread, this);
+                    lua_pushinteger(main_thread, static_cast<lua_Integer>(local_slot));
+                    lua_pushlightuserdata(main_thread, this);
+                    lua_rawget(main_thread, lux_index);
                     pushPrimitive(entry.entry);
-                    lua_rawset(state, ability_index);
+                    lua_rawset(main_thread, ability_index);
                     ++local_slot;
                 }
-                lua_pushlstring(state, ability->name.data(), ability->name.size());
-                lua_pushvalue(state, ability_index);
-                lua_rawset(state, lux_index);
-                lua_pop(state, 1);
+                lua_pushlstring(main_thread, ability->name.data(), ability->name.size());
+                lua_pushvalue(main_thread, ability_index);
+                lua_rawset(main_thread, lux_index);
+                lua_pop(main_thread, 1);
             }
         }
 
         // All four upvalues are rooted before the C closure is published.
         void pushPrimitive(LuxLuaTypedWorker worker)
         {
-            auto* storage = static_cast<LuxLuaTypedWorker*>(lua_newuserdatauv(state, sizeof(worker), 0));
+            auto* storage = static_cast<LuxLuaTypedWorker*>(lua_newuserdatauv(main_thread, sizeof(worker), 0));
             *storage = worker;
-            lua_pushcclosure(state, &luxLuaBoundaryEntry, 4);
+            lua_pushcclosure(main_thread, &luxLuaBoundaryEntry, 4);
         }
 
         void appendArtifactEvents(
@@ -686,8 +686,8 @@ namespace lux::simulation::script
                 ++groups;
                 previous = source.system_name;
             }
-            lua_createtable(state, 0, static_cast<int>(groups));
-            const auto event_index = lua_gettop(state);
+            lua_createtable(main_thread, 0, static_cast<int>(groups));
+            const auto event_index = lua_gettop(main_thread);
             std::string_view active_system;
             int system_index{};
             std::size_t local_slot{};
@@ -697,32 +697,32 @@ namespace lux::simulation::script
                 {
                     if (system_index != 0)
                     {
-                        lua_pushlstring(state, active_system.data(), active_system.size());
-                        lua_pushvalue(state, system_index);
-                        lua_settable(state, event_index);
-                        lua_remove(state, system_index);
+                        lua_pushlstring(main_thread, active_system.data(), active_system.size());
+                        lua_pushvalue(main_thread, system_index);
+                        lua_settable(main_thread, event_index);
+                        lua_remove(main_thread, system_index);
                     }
                     active_system = requirement.system_name;
-                    lua_newtable(state);
-                    system_index = lua_gettop(state);
+                    lua_newtable(main_thread);
+                    system_index = lua_gettop(main_thread);
                 }
-                lua_pushlstring(state, requirement.event_name.data(), requirement.event_name.size());
-                lua_pushlightuserdata(state, this);
-                lua_pushinteger(state, static_cast<lua_Integer>(local_slot));
-                lua_pushlightuserdata(state, this);
-                lua_rawget(state, lux_index);
-                pushPrimitive(&State::invokeEventWait);
-                lua_settable(state, system_index);
+                lua_pushlstring(main_thread, requirement.event_name.data(), requirement.event_name.size());
+                lua_pushlightuserdata(main_thread, this);
+                lua_pushinteger(main_thread, static_cast<lua_Integer>(local_slot));
+                lua_pushlightuserdata(main_thread, this);
+                lua_rawget(main_thread, lux_index);
+                pushPrimitive(&Impl::invokeEventWait);
+                lua_settable(main_thread, system_index);
                 ++local_slot;
             }
             if (system_index != 0)
             {
-                lua_pushlstring(state, active_system.data(), active_system.size());
-                lua_pushvalue(state, system_index);
-                lua_settable(state, event_index);
-                lua_remove(state, system_index);
+                lua_pushlstring(main_thread, active_system.data(), active_system.size());
+                lua_pushvalue(main_thread, system_index);
+                lua_settable(main_thread, event_index);
+                lua_remove(main_thread, system_index);
             }
-            lua_setfield(state, lux_index, "Event");
+            lua_setfield(main_thread, lux_index, "Event");
         }
 
         void pushArtifactEnvironment(
@@ -730,22 +730,22 @@ namespace lux::simulation::script
             const lux::script::ScriptArtifact& artifact
         ) noexcept
         {
-            lua_createtable(state, 0, 1);
-            const auto environment_index = lua_gettop(state);
-            lua_createtable(state, 0, 1);
-            lua_pushglobaltable(state);
-            lua_setfield(state, -2, "__index");
-            lua_setmetatable(state, environment_index);
-            lua_createtable(state, 0, static_cast<int>(artifact.description().api_requirements.size() + 2U));
-            const auto lux_index = lua_gettop(state);
+            lua_createtable(main_thread, 0, 1);
+            const auto environment_index = lua_gettop(main_thread);
+            lua_createtable(main_thread, 0, 1);
+            lua_pushglobaltable(main_thread);
+            lua_setfield(main_thread, -2, "__index");
+            lua_setmetatable(main_thread, environment_index);
+            lua_createtable(main_thread, 0, static_cast<int>(artifact.description().api_requirements.size() + 2U));
+            const auto lux_index = lua_gettop(main_thread);
             // A full userdata is retained by the environment and every closure. An old reachable closure
             // therefore prevents reuse of its layout identity, independently of C++ prototype storage.
-            lua_pushlightuserdata(state, this);
-            prototype.layout_token = lua_newuserdata(state, 1U);
-            lua_rawset(state, lux_index);
+            lua_pushlightuserdata(main_thread, this);
+            prototype.layout_token = lua_newuserdata(main_thread, 1U);
+            lua_rawset(main_thread, lux_index);
             appendArtifactAbilities(prototype, lux_index);
             appendArtifactEvents(prototype, artifact, lux_index);
-            lua_setfield(state, environment_index, "lux");
+            lua_setfield(main_thread, environment_index, "lux");
         }
 
         static int traceback(lua_State* state)
@@ -758,18 +758,18 @@ namespace lux::simulation::script
         // No owning C++ objects may be constructed in callbacks passed here.
         [[nodiscard]] int runCold(lua_CFunction entry, void* request) noexcept
         {
-            if (!lua_checkstack(state, 3)) return LUA_ERRMEM;
-            const auto base = lua_gettop(state);
-            lua_pushcfunction(state, entry);
-            lua_pushlightuserdata(state, request);
-            const auto status = lua_pcall(state, 1, 0, 0);
-            lua_settop(state, base);
+            if (!lua_checkstack(main_thread, 3)) return LUA_ERRMEM;
+            const auto base = lua_gettop(main_thread);
+            lua_pushcfunction(main_thread, entry);
+            lua_pushlightuserdata(main_thread, request);
+            const auto status = lua_pcall(main_thread, 1, 0, 0);
+            lua_settop(main_thread, base);
             return status;
         }
 
         struct PrototypeRequest final
         {
-            State* owner;
+            Impl* owner;
             Prototype* prototype;
             const lux::script::ScriptArtifact* artifact;
             const lux::rdesc::LuaSourceScript* body;
@@ -803,9 +803,9 @@ namespace lux::simulation::script
 
         void releasePrototype(const Prototype& prototype) noexcept
         {
-            if (prototype.table_ref != LUA_NOREF) luaL_unref(state, LUA_REGISTRYINDEX, prototype.table_ref);
+            if (prototype.table_ref != LUA_NOREF) luaL_unref(main_thread, LUA_REGISTRYINDEX, prototype.table_ref);
             if (prototype.environment_ref != LUA_NOREF)
-                luaL_unref(state, LUA_REGISTRYINDEX, prototype.environment_ref);
+                luaL_unref(main_thread, LUA_REGISTRYINDEX, prototype.environment_ref);
         }
 
         void collectPrototype(Prototype& prototype) noexcept
@@ -815,7 +815,7 @@ namespace lux::simulation::script
             {
                 auto& binding = function_bindings[index];
                 function_index.erase(FunctionKey{&prototype, binding.signature.symbol_id});
-                luaL_unref(state, LUA_REGISTRYINDEX, binding.function_ref);
+                luaL_unref(main_thread, LUA_REGISTRYINDEX, binding.function_ref);
                 binding = {};
                 free_function_bindings.push_back(index);
             }
@@ -1260,16 +1260,16 @@ namespace lux::simulation::script
                 instance->host_handle = handle;
                 const auto handle_index = lua_gettop(vm);
                 lua_pushvalue(vm, handle_index);
-                lua_pushcclosure(vm, &State::hasComponent, 1);
+                lua_pushcclosure(vm, &Impl::hasComponent, 1);
                 lua_setfield(vm, instance_index, "has_component");
                 lua_pushvalue(vm, handle_index);
-                lua_pushcclosure(vm, &State::getComponent, 1);
+                lua_pushcclosure(vm, &Impl::getComponent, 1);
                 lua_setfield(vm, instance_index, "get_component");
                 lua_pushvalue(vm, handle_index);
-                lua_pushcclosure(vm, &State::patchComponent, 1);
+                lua_pushcclosure(vm, &Impl::patchComponent, 1);
                 lua_setfield(vm, instance_index, "patch_component");
                 lua_pushvalue(vm, handle_index);
-                lua_pushcclosure(vm, &State::destroySelf, 1);
+                lua_pushcclosure(vm, &Impl::destroySelf, 1);
                 lua_setfield(vm, instance_index, "destroy");
                 lua_pop(vm, 1);
             }
@@ -1301,7 +1301,7 @@ namespace lux::simulation::script
             ScriptBackendInstance& result
         ) noexcept
         {
-            auto& self = *static_cast<State*>(opaque);
+            auto& self = *static_cast<Impl*>(opaque);
             if (self.free_instances.empty())
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
             const auto* body = std::get_if<lux::rdesc::LuaSourceScript>(
@@ -1380,7 +1380,7 @@ namespace lux::simulation::script
             ScriptBackendPreparedMethod& result
         ) noexcept
         {
-            auto& self = *static_cast<State*>(opaque);
+            auto& self = *static_cast<Impl*>(opaque);
             auto* instance = static_cast<Instance*>(instance_value.value);
             if (!instance)
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
@@ -1390,7 +1390,7 @@ namespace lux::simulation::script
             const auto stack_values = (std::max)(function.args.size(), function.returns.size());
             if (stack_values > static_cast<std::size_t>((std::numeric_limits<int>::max)()) - 8U)
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
-            if (!lua_checkstack(self.state, static_cast<int>(stack_values + 8U)))
+            if (!lua_checkstack(self.main_thread, static_cast<int>(stack_values + 8U)))
                 return EScriptBackendResult::ALLOCATION_FAILURE;
 
             const FunctionKey key{instance->prototype, function.symbol_id};
@@ -1446,14 +1446,14 @@ namespace lux::simulation::script
                         if (!self.function_index.emplace(key, binding_index).second)
                         {
                             instance->prototype->function_slots.pop_back();
-                            luaL_unref(self.state, LUA_REGISTRYINDEX, function_ref);
+                            luaL_unref(self.main_thread, LUA_REGISTRYINDEX, function_ref);
                             return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                         }
                     }
                     catch (const std::bad_alloc&)
                     {
                         instance->prototype->function_slots.pop_back();
-                        luaL_unref(self.state, LUA_REGISTRYINDEX, function_ref);
+                        luaL_unref(self.main_thread, LUA_REGISTRYINDEX, function_ref);
                         return EScriptBackendResult::ALLOCATION_FAILURE;
                     }
                     static_assert(std::is_nothrow_move_assignable_v<LuaFunctionBinding>);
@@ -1463,7 +1463,7 @@ namespace lux::simulation::script
                 }
                 catch (const std::bad_alloc&)
                 {
-                    luaL_unref(self.state, LUA_REGISTRYINDEX, function_ref);
+                    luaL_unref(self.main_thread, LUA_REGISTRYINDEX, function_ref);
                     return EScriptBackendResult::ALLOCATION_FAILURE;
                 }
             }
@@ -1489,7 +1489,7 @@ namespace lux::simulation::script
             }
             result = {
                 std::addressof(call),
-                lux::script::BoundScriptCall{&State::invoke, std::addressof(call)},
+                lux::script::BoundScriptCall{&Impl::invokePreparedSync, std::addressof(call)},
                 resumable
                     ? BoundScriptStepCall{std::addressof(call), &invokePreparedStep}
                     : BoundScriptStepCall{}
@@ -1693,7 +1693,7 @@ namespace lux::simulation::script
 
         static LuxLuaBoundaryOutcome invokeEventWait(lua_State* state) noexcept
         {
-            auto* self = static_cast<State*>(lua_touserdata(state, lua_upvalueindex(1)));
+            auto* self = static_cast<Impl*>(lua_touserdata(state, lua_upvalueindex(1)));
             const auto raw_ordinal = lua_tointeger(state, lua_upvalueindex(2));
             const bool is_invalid_ordinal = self == nullptr || raw_ordinal < 0;
             if (is_invalid_ordinal)
@@ -1746,7 +1746,7 @@ namespace lux::simulation::script
             return {LUX_LUA_BOUNDARY_SUSPEND, 0, 0};
         }
 
-        static int invoke(void* invocation_context, lux_script_call_frame* frame) noexcept
+        static int invokePreparedSync(void* invocation_context, lux_script_call_frame* frame) noexcept
         {
             if (!frame || !invocation_context)
                 return -1;
@@ -1754,14 +1754,14 @@ namespace lux::simulation::script
             if (!call.active || !call.instance || !call.function)
                 return -1;
             auto& self = *call.instance->owner;
-            lua_rawgeti(self.state, LUA_REGISTRYINDEX, self.traceback_ref);
-            const auto error_index = lua_gettop(self.state);
-            lua_rawgeti(self.state, LUA_REGISTRYINDEX, call.function->function_ref);
+            lua_rawgeti(self.main_thread, LUA_REGISTRYINDEX, self.traceback_ref);
+            const auto error_index = lua_gettop(self.main_thread);
+            lua_rawgeti(self.main_thread, LUA_REGISTRYINDEX, call.function->function_ref);
             std::uint32_t argument_count{};
             if (call.instance->entity_scope)
             {
                 lua_rawgeti(
-                    self.state,
+                    self.main_thread,
                     LUA_REGISTRYINDEX,
                     call.instance->table_ref);
                 ++argument_count;
@@ -1771,29 +1771,29 @@ namespace lux::simulation::script
                 const auto* record = index < call.function->argument_operations.size()
                     ? call.function->argument_operations[index]
                     : nullptr;
-                if (!pushArgument(self.state, frame->args[index], record))
+                if (!pushArgument(self.main_thread, frame->args[index], record))
                 {
-                    lua_settop(self.state, error_index - 1);
+                    lua_settop(self.main_thread, error_index - 1);
                     return -3;
                 }
                 ++argument_count;
             }
             ExecutionScope execution{
                 self,
-                {self.state, call.instance, nullptr, nullptr, nullptr}
+                {self.main_thread, call.instance, nullptr, nullptr, nullptr}
             };
             if (!execution)
             {
-                lua_settop(self.state, error_index - 1);
+                lua_settop(self.main_thread, error_index - 1);
                 return kExecutionDepthCapacity;
             }
             if (lua_pcall(
-                    self.state,
+                    self.main_thread,
                     static_cast<int>(argument_count),
                     static_cast<int>(frame->return_count),
                     error_index) != LUA_OK)
             {
-                lua_settop(self.state, error_index - 1);
+                lua_settop(self.main_thread, error_index - 1);
                 return kLuaFailure;
             }
             for (std::uint32_t index{}; index < frame->return_count; ++index)
@@ -1801,15 +1801,15 @@ namespace lux::simulation::script
                 const auto stack_index =
                     error_index + 1 + static_cast<int>(index);
                 if (!readReturn(
-                        self.state,
+                        self.main_thread,
                         stack_index,
                         frame->returns[index]))
                 {
-                    lua_settop(self.state, error_index - 1);
+                    lua_settop(self.main_thread, error_index - 1);
                     return -5;
                 }
             }
-            lua_settop(self.state, error_index - 1);
+            lua_settop(self.main_thread, error_index - 1);
             return 0;
         }
 
@@ -1827,7 +1827,7 @@ namespace lux::simulation::script
             ++instance.active_continuations;
             struct Reservation final
             {
-                State& owner;
+                Impl& owner;
                 Instance& instance;
                 std::size_t slot;
                 bool committed{};
@@ -2169,7 +2169,7 @@ namespace lux::simulation::script
             ScriptBackendPreparedMethod method
         ) noexcept
         {
-            auto& self = *static_cast<State*>(opaque);
+            auto& self = *static_cast<Impl*>(opaque);
             auto* call = static_cast<PreparedCall*>(method.token);
             if (!call || !call->active)
                 return;
@@ -2185,7 +2185,7 @@ namespace lux::simulation::script
             ScriptBackendInstance instance_value
         ) noexcept
         {
-            auto& self = *static_cast<State*>(opaque);
+            auto& self = *static_cast<Impl*>(opaque);
             auto* instance = static_cast<Instance*>(instance_value.value);
             if (!instance)
                 return;
@@ -2199,7 +2199,7 @@ namespace lux::simulation::script
                 instance->host_handle = nullptr;
             }
             if (instance->table_ref != LUA_NOREF)
-                luaL_unref(self.state, LUA_REGISTRYINDEX, instance->table_ref);
+                luaL_unref(self.main_thread, LUA_REGISTRYINDEX, instance->table_ref);
             const auto instance_slot = static_cast<std::size_t>(
                 instance - self.instances.data()
             );
@@ -2213,7 +2213,7 @@ namespace lux::simulation::script
         }
 
         lux::script::lua::ScriptEngine engine;
-        lua_State* state{};
+        lua_State* main_thread{};
         lux::script::lua::LuaRuntimeInfo runtime_info;
         bool vm_configured{};
 #if defined(LUX_LUA55_LEAF_YIELD_REVISION)
@@ -2261,7 +2261,7 @@ namespace lux::simulation::script
         LuaPreparedAbilityAccess& result
     ) noexcept
     {
-        auto* owner = static_cast<LuaScriptBackend::State*>(lua_touserdata(state, lua_upvalueindex(1)));
+        auto* owner = static_cast<LuaScriptBackend::Impl*>(lua_touserdata(state, lua_upvalueindex(1)));
         const auto raw_slot = lua_tointeger(state, lua_upvalueindex(2));
         if (owner == nullptr || raw_slot < 0 || owner->active_execution == nullptr ||
             owner->active_execution->thread != state || owner->active_execution->instance == nullptr)
@@ -2302,7 +2302,7 @@ namespace lux::simulation::script
         lua_State* state, const LuaPreparedAbilityAccess& original
     ) noexcept
     {
-        auto* owner = static_cast<LuaScriptBackend::State*>(lua_touserdata(state, lua_upvalueindex(1)));
+        auto* owner = static_cast<LuaScriptBackend::Impl*>(lua_touserdata(state, lua_upvalueindex(1)));
         if (owner == nullptr || owner->active_execution != original.execution)
             return false;
         const auto* frame = owner->active_execution;
@@ -2327,11 +2327,11 @@ namespace lux::simulation::script
         const char* message
     ) noexcept
     {
-        auto* owner = static_cast<LuaScriptBackend::State*>(lua_touserdata(state, lua_upvalueindex(1)));
+        auto* owner = static_cast<LuaScriptBackend::Impl*>(lua_touserdata(state, lua_upvalueindex(1)));
         auto* continuation = owner != nullptr && owner->active_execution != nullptr
             ? owner->active_execution->continuation
             : nullptr;
-        return LuaScriptBackend::State::abilityFailure(state, continuation, status, message);
+        return LuaScriptBackend::Impl::abilityFailure(state, continuation, status, message);
     }
 
     LuxLuaBoundaryOutcome detail::LuaAbilityProjectionAccess::suspend(
@@ -2340,13 +2340,13 @@ namespace lux::simulation::script
         std::uint32_t local_slot
     ) noexcept
     {
-        auto* owner = static_cast<LuaScriptBackend::State*>(lua_touserdata(state, lua_upvalueindex(1)));
+        auto* owner = static_cast<LuaScriptBackend::Impl*>(lua_touserdata(state, lua_upvalueindex(1)));
         auto* execution = owner != nullptr ? owner->active_execution : nullptr;
         if (execution == nullptr || execution->thread != state || execution->continuation == nullptr ||
             result.state != EScriptStepState::SUSPENDED || !result.valid())
         {
             const auto status = result.error.valid() ? result.error.status : -1;
-            return LuaScriptBackend::State::abilityFailure(
+            return LuaScriptBackend::Impl::abilityFailure(
                 state,
                 execution != nullptr ? execution->continuation : nullptr,
                 status,
@@ -2355,7 +2355,7 @@ namespace lux::simulation::script
         }
         execution->continuation->waiting_on = result.waiting_on;
         execution->continuation->pending_ordinal = local_slot;
-        execution->continuation->pending_operation = LuaScriptBackend::State::EPendingOperation::ABILITY;
+        execution->continuation->pending_operation = LuaScriptBackend::Impl::EPendingOperation::ABILITY;
         return {LUX_LUA_BOUNDARY_SUSPEND, 0, 0};
     }
 
@@ -2521,7 +2521,7 @@ namespace lux::simulation::script
         {
             const auto& contribution = config.abilities[ability_index];
             if (!contribution.valid() || contribution.description->methods.empty() ||
-                !State::identifier(contribution.description->name) ||
+                !Impl::identifier(contribution.description->name) ||
                 !lux::script::scriptAbilityMethodIdsUnique(contribution.description->methods))
             {
                 return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_ABILITY_CONTRIBUTION);
@@ -2538,8 +2538,8 @@ namespace lux::simulation::script
             {
                 const auto& method = contribution.description->methods[method_index];
                 const auto& projection = contribution.methods[method_index];
-                if (!State::identifier(method.name) || method.parameters.size() > State::kMaxAbilityArguments ||
-                    method.results.size() > State::kMaxAbilityResults ||
+                if (!Impl::identifier(method.name) || method.parameters.size() > Impl::kMaxAbilityArguments ||
+                    method.results.size() > Impl::kMaxAbilityResults ||
                     (method.kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION && method.results.size() > 1U) ||
                     projection.entry == nullptr || projection.method != method.id)
                 {
@@ -2563,7 +2563,7 @@ namespace lux::simulation::script
                         operation.canonical_name != value.canonical_name || operation.size != value.size ||
                         operation.alignment != value.alignment || operation.frame_bytes > 65536 - frame_bytes;
                     const bool invalid_async = method.kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION &&
-                        (!State::supportedType(value) || !operation.native_scalar);
+                        (!Impl::supportedType(value) || !operation.native_scalar);
                     if (mismatch || invalid_async)
                         return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
                     frame_bytes += operation.frame_bytes;
@@ -2579,7 +2579,7 @@ namespace lux::simulation::script
                         operation.canonical_name != value.canonical_name || operation.size != value.size ||
                         operation.alignment != value.alignment || operation.frame_bytes > 65536 - frame_bytes;
                     const bool invalid_async = method.kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION &&
-                        (!State::supportedType(value) || !operation.native_scalar ||
+                        (!Impl::supportedType(value) || !operation.native_scalar ||
                             value.pass != lux::semantic::EValuePass::VALUE ||
                          value.lifetime != lux::script::EScriptAbilityValueLifetime::AWAITABLE);
                     if (mismatch || invalid_async)
@@ -2621,8 +2621,8 @@ namespace lux::simulation::script
                 default: return false;
                 }
             }();
-            const bool is_invalid_source = !source.valid() || !State::identifier(source.system_name) ||
-                !State::identifier(source.event_name) ||
+            const bool is_invalid_source = !source.valid() || !Impl::identifier(source.system_name) ||
+                !Impl::identifier(source.event_name) ||
                 source.payload.type_id != lux::semantic::typeId(source.payload.canonical_name) ||
                 (source.payload.abi_kind != LUX_SCRIPT_VK_STRUCT_REF && !is_supported_scalar);
             if (is_invalid_source)
@@ -2648,7 +2648,7 @@ namespace lux::simulation::script
         }
         try
         {
-            auto state = std::make_unique<State>(config);
+            auto state = std::make_unique<Impl>(config);
             if (!state->prepared_abilities.valid() || !state->prepared_events.valid())
                 return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
             if (!state->vm_configured)
@@ -2667,7 +2667,7 @@ namespace lux::simulation::script
     }
 
     LuaScriptBackend::LuaScriptBackend(
-        std::unique_ptr<State> state
+        std::unique_ptr<Impl> state
     ) noexcept
         : state_(std::move(state))
     {
@@ -2683,7 +2683,7 @@ namespace lux::simulation::script
 
     LuaScriptBackend::operator bool() const noexcept
     {
-        return state_ && state_->state && state_->traceback_ref != LUA_NOREF;
+        return state_ && state_->main_thread && state_->traceback_ref != LUA_NOREF;
     }
 
     lux::script::lua::LuaRuntimeInfo LuaScriptBackend::runtimeInfo() const noexcept
@@ -2713,7 +2713,7 @@ namespace lux::simulation::script
             abilities.acquire_steps + events.acquire_steps,
             abilities.release_steps + events.release_steps,
             state_->prototypes.size(),
-            State::leaf_yield_available, collected, fast, fallback
+            Impl::leaf_yield_available, collected, fast, fallback
         };
     }
 
@@ -2722,10 +2722,10 @@ namespace lux::simulation::script
         return ScriptBackendDescriptor{
             lux::rdesc::Script::Kind::LUA_SOURCE,
             state_.get(),
-            &State::createInstance,
-            &State::prepareMethod,
-            &State::releaseMethod,
-            &State::destroyInstance};
+            &Impl::createInstance,
+            &Impl::prepareMethod,
+            &Impl::releaseMethod,
+            &Impl::destroyInstance};
     }
 
 }

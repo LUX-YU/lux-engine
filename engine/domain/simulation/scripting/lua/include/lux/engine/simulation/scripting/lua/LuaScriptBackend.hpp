@@ -134,11 +134,11 @@ namespace lux::simulation::script
         [[nodiscard]] LuaScriptBackendStats stats() const noexcept;
         [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
       private:
-        struct State;
+        struct Impl;
         explicit LuaScriptBackend(
-            std::unique_ptr<State> state
+            std::unique_ptr<Impl> state
         ) noexcept;
-        std::unique_ptr<State> state_;
+        std::unique_ptr<Impl> state_;
         friend struct detail::LuaAbilityProjectionAccess;
     };
 }

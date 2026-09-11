@@ -127,6 +127,19 @@ struct LUX_TYPE_INFO(compile_time) NativeTask final
         results[index] = *result;
         ++completed;
     }
+    LUX_METHOD(script_export = "task.large", script_coroutine = true)
+    script::ScriptCoroutine large(script::ScriptCoroutineContext &context) noexcept
+    {
+        // Deliberately observable storage tests the existing hard limit, not an average-size budget.
+        volatile script::test::ValuePose records[16]{};
+        FrameLifetime lifetime;
+        ++started;
+        for (std::int32_t i{}; i < 16; ++i)
+            records[i].id = i + results[index];
+        const auto payload = co_await context.wait(*event_source);
+        results[index] = records[payload & 15].id;
+        ++completed;
+    }
     std::size_t index{};
 };
 struct LUX_TYPE_INFO(compile_time) NativePoseTask final

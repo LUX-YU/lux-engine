@@ -1,7 +1,7 @@
 {
   "schema": "lux-script-symbol-ledger",
   "version": 1,
-  "next_symbol": 112,
+  "next_symbol": 113,
   "entries": [
     {
       "source_identity": "task.run",
@@ -26,6 +26,10 @@
     {
       "source_identity": "task.void",
       "symbol": 111
+    },
+    {
+      "source_identity": "task.large",
+      "symbol": 112
     }
   ]
 }

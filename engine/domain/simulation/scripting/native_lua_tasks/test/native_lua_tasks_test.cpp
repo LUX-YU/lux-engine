@@ -186,6 +186,7 @@ struct Harness final
                                 : na1::mode == 4U                      ? 108U
                                 : na1::mode == 5U                      ? 109U
                                 : (na1::mode == 6U || na1::mode == 7U) ? 110U
+                                : na1::mode == 10U                     ? 112U
                                 : na1::mode == 8U                      ? 111U
                                                                        : 101U;
         std::vector<NativeLuaTaskRoute> routes{{101U, native_run}};
@@ -667,6 +668,19 @@ int main()
                h.backend->stats().lua.prepared_event_slots == 0U);
         std::printf("CASE companion-reject kind=%u objects=%zu destroys=%zu leases=0\n", invalid, na1::constructed,
                     na1::destroyed);
+    }
+    {
+        na1::mode = 10U;
+        Harness h(1U);
+        assert(h.system->prepare());
+        assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
+        assert(na1::started == 0U && na1::completed == 0U && na1::frames_destroyed == 0U);
+        // The explicit frame-size guard runs before the storage allocator; its counter stays zero.
+        assert(h.backend->stats().native.frame_capacity_failures == 0U);
+        assert(!h.system->failures().empty() && h.system->stats().active_awaitables == 0U);
+        h.closed();
+        std::puts("CASE large-record-frame records=16 limit=512 size-limit-reject=1 storage-capacity-failures=0 body=0 "
+                  "wait=0");
     }
     for (const auto expression : {"true", "0/0", "math.huge", "1.5", "2147483648"})
     {

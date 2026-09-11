@@ -23,6 +23,10 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include "HostResources.hpp"
+#if NA1_HAS_ITT
+#include <ittnotify.h>
+#endif
 
 namespace
 {
@@ -40,7 +44,7 @@ struct Options
 {
     std::string scenario{"P1"}, output{"cost.csv"};
     std::size_t count{64U}, warmups{2U}, batches{4U};
-    bool diagnostics{}, keep_lua_reserve{};
+    bool diagnostics{}, keep_lua_reserve{}, roi{};
 };
 struct Provider
 {
@@ -122,7 +126,7 @@ struct Harness
         const std::array events{LuaPreparedBlockClass{requirements->event_sources, count}};
         const std::array values{lux::script::lua::makeLuaValueOperation<ValuePose>()};
         LuaScriptBackendConfig lua_config{.instance_capacity = count,
-                                          .prepared_call_capacity = count * 10U,
+                                          .prepared_call_capacity = count * (NA1_CANDIDATE ? 10U : 4U),
                                           .continuation_capacity =
                                               NA1_CANDIDATE && !options.keep_lua_reserve ? 0U : count,
                                           .execution_depth_capacity = 16U,
@@ -272,6 +276,7 @@ struct Harness
     {
         if (!options.diagnostics)
             return;
+        reportNa1HostResources(phase);
         const auto vm = luaStats();
         const auto core = system->stats();
         const auto &m = vm.vm_allocations;
@@ -338,6 +343,8 @@ int main(int argc, char **argv)
                 o.output = value;
             else if (key == "--diagnostics")
                 o.diagnostics = value == "on";
+            else if (key == "--roi")
+                o.roi = value == "on";
             else if (key == "--keep-lua-reserve")
                 o.keep_lua_reserve = value == "on";
             else
@@ -359,6 +366,16 @@ int main(int argc, char **argv)
         const auto lua_start = h.luaStats();
         const auto provider_start = h.provider.calls;
         std::vector<std::uint64_t> durations(o.batches);
+        if (o.roi)
+        {
+#if NA1_HAS_ITT
+            std::puts("ROI_BEGIN complete-task-waves; warmup and observation excluded");
+            std::fflush(stdout);
+            __itt_resume();
+#else
+            throw std::runtime_error("ROI requested without ITT support");
+#endif
+        }
         const auto total_start = Clock::now();
         for (std::size_t i{}; i < o.batches; ++i)
         {
@@ -367,6 +384,12 @@ int main(int argc, char **argv)
             durations[i] = std::chrono::duration_cast<Nanos>(Clock::now() - begin).count();
         }
         const auto elapsed = std::chrono::duration_cast<Nanos>(Clock::now() - total_start).count();
+#if NA1_HAS_ITT
+        if (o.roi)
+            __itt_pause();
+#endif
+        if (o.roi)
+            std::puts("ROI_END complete-task-waves; verification follows");
         const auto finish = h.system->stats();
         const auto lua_finish = h.luaStats();
         h.memory("end");

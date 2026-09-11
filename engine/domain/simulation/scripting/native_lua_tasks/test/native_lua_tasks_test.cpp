@@ -84,7 +84,7 @@ lux::script::ScriptArtifact nativeArtifact(const CppStaticContract &contract)
     assert(result);
     return std::move(*result);
 }
-lux::script::ScriptArtifact luaArtifact(std::string_view body, bool pose)
+lux::script::ScriptArtifact luaArtifact(std::string_view body, bool pose, unsigned invalid)
 {
     lux::rdesc::Script description;
     description.module_name = "lux.na1.lua";
@@ -109,12 +109,15 @@ lux::script::ScriptArtifact luaArtifact(std::string_view body, bool pose)
     const auto &delay = lux::script::ScriptAbilityTraits<DelayAbility>::Description;
     description.api_requirements = {{lux::script::ScriptApiContractId{probe.id.name()}, probe.schema_hash},
                                     {lux::script::ScriptApiContractId{delay.id.name()}, delay.schema_hash}};
+    if (invalid == 4U)
+        description.api_requirements.pop_back();
     description.body = lux::rdesc::LuaSourceScript{"Na1Lua", {101U, 107U}};
     const auto simulation = na1::domain();
     auto event =
         describeScriptEventSource<std::int32_t>(simulation.findEvent(na1::System, na1::Event), "Task", "event");
     assert(event);
-    description.event_requirements.push_back(std::move(*event));
+    if (invalid != 3U)
+        description.event_requirements.push_back(std::move(*event));
     const std::string source =
         "return { begin_life=function(self) assert(self.value==nil); self.value=1; lux.TaskProbe.hit(1) end, "
         "end_life=function(self,reason) assert(self.value>=1 and not self.ended); self.ended=true; "
@@ -135,7 +138,7 @@ struct Harness final
 {
     explicit Harness(std::size_t count, std::string_view body = "self.value=self.value+p; return self.value",
                      unsigned invalid = 0U, bool pose = false)
-        : count(count), simulation(na1::domain()), lua_artifact(luaArtifact(body, pose)),
+        : count(count), simulation(na1::domain()), lua_artifact(luaArtifact(body, pose, invalid)),
           native_artifact(nativeArtifact(pose ? Na1PoseTask : Na1Task))
     {
         na1::constructed = na1::destroyed = na1::started = na1::completed = na1::frames_destroyed = na1::unreachable =
@@ -180,12 +183,14 @@ struct Harness final
         std::array steps{*lua_artifact.findExport(102U), *lua_artifact.findExport(106U)};
         if (invalid == 2U)
             steps[0].returns[0] = lux::rdesc::makeScriptValueType<double>();
+        if (invalid == 5U)
+            steps[0] = *lua_artifact.findExport(101U);
         const std::array plans{NativeLuaTaskPlan{
             asset(1U), invalid == 1U ? native_artifact.contentIdentity() : lua_artifact.contentIdentity(), asset(2U),
             native_artifact.contentIdentity(), &contract, routes, steps}};
         const std::array values{lux::script::lua::makeLuaValueOperation<ValuePose>()};
         auto created = NativeLuaTaskBackend::create({.lua = {.instance_capacity = count,
-                                                             .prepared_call_capacity = count * 6U,
+                                                             .prepared_call_capacity = invalid == 6U ? 1U : count * 6U,
                                                              .continuation_capacity = 0U,
                                                              .execution_depth_capacity = 8U,
                                                              .ability_catalog_method_capacity = 5U,
@@ -314,6 +319,33 @@ void normal(std::size_t count, unsigned mode)
 int main()
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
+    {
+        auto empty = NativeLuaTaskBackend::create({});
+        assert(!empty && empty.error() == ENativeLuaTaskBackendError::INVALID_CONFIGURATION);
+        const std::array routes{NativeLuaTaskRoute{101U, 101U}};
+        const std::array pools{CppStaticScriptPoolDescription{&Na1Task}};
+        const std::array plans{NativeLuaTaskPlan{asset(1U), {}, asset(2U), {}, &Na1Task, routes, {}},
+                               NativeLuaTaskPlan{asset(1U), {}, asset(2U), {}, &Na1Task, routes, {}}};
+        auto duplicate = NativeLuaTaskBackend::create(
+            {.native_pools = pools,
+             .plans = plans,
+             .artifacts = {nullptr, [](void *, const lux::asset::AssetId &,
+                                       ResolvedScriptArtifact &) noexcept { return false; }},
+             .instance_capacity = 1U,
+             .prepared_method_capacity = 1U});
+        assert(!duplicate && duplicate.error() == ENativeLuaTaskBackendError::DUPLICATE_PLAN);
+        std::puts("CASE cold-factory invalid-capacity=1 duplicate-plan=1");
+    }
+    {
+        Harness h(1U);
+        ScriptBackendInstance invalid;
+        const ScriptInstanceCreateContext context{asset(1U), EntityScriptScope{h.entities[0]}, nullptr, {1U, 1U}};
+        const auto result = h.descriptor.createInstance(h.descriptor.context, context, h.lua_artifact, invalid);
+        assert(result == EScriptBackendResult::HOST_CONTEXT_MISMATCH && !invalid && h.leases == 0U);
+        assert(h.system->prepare());
+        h.closed();
+        std::puts("CASE host-reject leases=0 slot-reused=1");
+    }
     normal(64U, 0U);
     normal(1000U, 0U);
     normal(64U, 3U);
@@ -389,7 +421,7 @@ int main()
         h.closed();
         std::printf("CASE timer mode=%u completed=64 begins=64 ends=64 frames=64\n", mode);
     }
-    for (unsigned invalid = 1U; invalid <= 2U; ++invalid)
+    for (unsigned invalid = 1U; invalid <= 6U; ++invalid)
     {
         Harness h(1U, "return p", invalid);
         assert(!h.system->prepare());

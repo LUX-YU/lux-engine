@@ -119,14 +119,18 @@ struct NativeLuaTaskBackend::Impl final
         if (!instance.plan)
             return lua_api.createInstance(lua_api.context, context, artifact, instance.lua);
         const auto &plan = instance.plan->description;
+        const bool invalid_host = !context.instance.valid() || !context.behavior || !context.behavior->isAttached();
+        if (invalid_host)
+            return EScriptBackendResult::HOST_CONTEXT_MISMATCH;
         const auto *body = std::get_if<lux::rdesc::LuaSourceScript>(&artifact.description().body);
         const bool invalid_lua = body == nullptr || artifact.contentIdentity() != plan.lua_content;
         if (invalid_lua)
             return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
-        if (!artifacts.resolve(artifacts.context, plan.native_asset, instance.companion))
-            return EScriptBackendResult::CONSTRUCTION_FAILURE;
+        const bool resolved = artifacts.resolve(artifacts.context, plan.native_asset, instance.companion);
         if (instance.companion.release)
             ++leases;
+        if (!resolved)
+            return EScriptBackendResult::CONSTRUCTION_FAILURE;
         const auto *companion = instance.companion.artifact;
         const bool invalid_native = companion == nullptr || companion->contentIdentity() != plan.native_content ||
                                     !std::holds_alternative<lux::rdesc::CppStaticScript>(companion->description().body);
@@ -318,7 +322,7 @@ NativeLuaTaskBackend::CreateResult NativeLuaTaskBackend::create(NativeLuaTaskBac
     for (std::size_t i{}; i < config.plans.size(); ++i)
     {
         const auto &plan = config.plans[i];
-        if (!plan.contract || plan.routes.empty())
+        if (!plan.contract || plan.routes.empty() || plan.lua_asset.isNull() || plan.native_asset.isNull())
             return lux::cxx::unexpected(Error::INVALID_PLAN);
         const auto pool =
             std::ranges::find(config.native_pools, plan.contract, &CppStaticScriptPoolDescription::descriptor);
@@ -380,13 +384,25 @@ NativeLuaTaskBackendStats NativeLuaTaskBackend::stats() const noexcept
                    instance.events.capacity() * sizeof(PreparedScriptEventAdmission) +
                    instance.steps.capacity() * sizeof(PreparedScriptSyncStep) +
                    instance.step_methods.capacity() * sizeof(ScriptBackendPreparedMethod);
+    const auto string_bytes = [](const std::string &value) noexcept {
+        const auto data = reinterpret_cast<std::uintptr_t>(value.data());
+        const auto object = reinterpret_cast<std::uintptr_t>(&value);
+        const bool embedded = data >= object && data - object < sizeof(value);
+        return embedded ? std::size_t{} : value.capacity() + 1U;
+    };
     for (const auto &plan : self.plans)
     {
         backing += plan.routes.capacity() * sizeof(NativeLuaTaskRoute) +
                    plan.steps.capacity() * sizeof(lux::rdesc::ScriptFunction);
         for (const auto &step : plan.steps)
-            backing += step.name.capacity() + 1U +
+        {
+            backing += string_bytes(step.name) +
                        (step.args.capacity() + step.returns.capacity()) * sizeof(lux::rdesc::ScriptValueType);
+            for (const auto &type : step.args)
+                backing += string_bytes(type.canonical_name);
+            for (const auto &type : step.returns)
+                backing += string_bytes(type.canonical_name);
+        }
     }
     return {self.active_instances, self.active_methods, self.leases, backing, self.lua.stats(), self.native.stats()};
 }

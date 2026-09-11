@@ -4,9 +4,9 @@
 #include "../../../builtin/script/test/ScriptRuntimeTestRegion.hpp"
 #include "../../../builtin/script/test/ScriptTestClock.hpp"
 #include "DelayAbility.ability.lua.generated.hpp"
-#include "NativeTask.Na1Task.script.generated.hpp"
-#include "NativeTask.Na1PoseTask.script.generated.hpp"
 #include "LuaValueTestTypes.lua.value.generated.hpp"
+#include "NativeTask.Na1PoseTask.script.generated.hpp"
+#include "NativeTask.Na1Task.script.generated.hpp"
 #include "NativeTask.hpp"
 #include "TaskDomain.hpp"
 #include "TaskProbe.ability.generated.hpp"
@@ -93,7 +93,7 @@ lux::script::ScriptArtifact nativeArtifact(const CppStaticContract &contract)
     assert(result);
     return std::move(*result);
 }
-lux::script::ScriptArtifact luaArtifact(std::string_view body, bool pose, unsigned invalid)
+lux::script::ScriptArtifact luaArtifact(std::string_view body, bool pose, unsigned invalid, std::string_view void_body)
 {
     lux::rdesc::Script description;
     description.module_name = "lux.na1.lua";
@@ -128,12 +128,18 @@ lux::script::ScriptArtifact luaArtifact(std::string_view body, bool pose, unsign
     if (invalid != 3U)
         description.event_requirements.push_back(std::move(*event));
     const std::string source =
-        "return { begin_life=function(self) assert(self.value==nil); self.value=1; lux.TaskProbe.hit(1) end, "
-        "end_life=function(self,reason) assert(self.value>=1 and not self.ended); self.ended=true; "
+        "return { begin_life=function(self) assert(self.value==nil); "
+        "self.value=1; lux.TaskProbe.hit(1) end, "
+        "end_life=function(self,reason) assert(self.value>=1 and not "
+        "self.ended); self.ended=true; "
         "lux.TaskProbe.hit(2) end, "
-        "run=function(self) local p=lux.Event.Task.event(); self.value=self.value+p end, "
-        "other=function(self) local p=lux.Event.Task.event(); assert(p==31); lux.TaskProbe.hit(4) end, "
-        "apply_void=function(self,p) self.value=self.value+p; lux.TaskProbe.hit(3) end, "
+        "run=function(self) local p=lux.Event.Task.event(); "
+        "self.value=self.value+p end, "
+        "other=function(self) local p=lux.Event.Task.event(); assert(p==31); "
+        "lux.TaskProbe.hit(4) end, "
+        "apply_void=function(self,p) " +
+        std::string(void_body.empty() ? "self.value=self.value+p; lux.TaskProbe.hit(3)" : void_body) +
+        " end, "
         "nested=function(self) " +
         std::string(invalid == 8U ? "error('nested fault')" : "lux.TaskProbe.hit(4)") +
         " end, apply=function(self,p) " + std::string(body) + " end }";
@@ -147,14 +153,23 @@ lux::script::ScriptArtifact luaArtifact(std::string_view body, bool pose, unsign
 struct Harness final
 {
     explicit Harness(std::size_t count, std::string_view body = "self.value=self.value+p; return self.value",
-                     unsigned invalid = 0U, bool pose = false, bool mixed = false)
-        : count(count), mixed(mixed), simulation(na1::domain()), lua_artifact(luaArtifact(body, pose, invalid)),
+                     unsigned invalid = 0U, bool pose = false, bool mixed = false, std::string_view void_body = {})
+        : count(count), mixed(mixed), simulation(na1::domain()),
+          lua_artifact(luaArtifact(body, pose, invalid, void_body)),
           native_artifact(nativeArtifact(pose ? Na1PoseTask : Na1Task))
     {
         na1::constructed = na1::destroyed = na1::started = na1::completed = na1::frames_destroyed = na1::unreachable =
             0U;
         na1::results.assign(count, 0);
-        const auto &contract = pose ? Na1PoseTask : Na1Task;
+        task_contract = pose ? Na1PoseTask : Na1Task;
+        if (invalid == 13U)
+            task_contract.sync_step_shapes = {};
+        if (invalid == 14U)
+        {
+            static constexpr std::array wrong_shapes{scriptSyncStepShape<double(double)>()};
+            task_contract.sync_step_shapes = wrong_shapes;
+        }
+        const auto& contract = task_contract;
         assert(pose_hook.prepare(count) == EEndpointMutationError::NONE);
         assert(nested_hook.prepare(count) == EEndpointMutationError::NONE);
         assert(hook.prepare(count) == EEndpointMutationError::NONE);
@@ -275,11 +290,12 @@ struct Harness final
     };
     void useCheckedPublication()
     {
-        // A real CppStatic/runtime call with a test-owned producer of the public synchronous-step view.
-        // This isolates the checked bridge from the facade's immutable publication discipline.
+        // A real CppStatic/runtime call with a test-owned producer of the public
+        // synchronous-step view. This isolates the checked bridge from the facade's
+        // immutable publication discipline.
         system.reset();
         publications.resize(count);
-        const std::array pools{CppStaticScriptPoolDescription{&Na1Task, count, count, count * 2048U,
+        const std::array pools{CppStaticScriptPoolDescription{&task_contract, count, count, count * 2048U,
                                                               alignof(std::max_align_t), count * 2U, 512U}};
         auto made = CppStaticScriptBackend::create(pools);
         assert(made);
@@ -293,17 +309,18 @@ struct Harness final
             auto &h = *static_cast<Harness *>(pointer);
             auto &p = h.publications[h.publication_next++];
             p.identity = context.instance;
-            p.step = {h.lua_artifact.findExport(102U),
-                      {+[](void *pointer, lux_script_call_frame *frame) noexcept {
-                           auto &p = *static_cast<TestPublication *>(pointer);
-                           ++p.calls;
-                           const auto value = *static_cast<const std::int32_t *>(frame->args[0].data);
-                           std::memcpy(frame->returns[0].data, &value, sizeof(value));
-                           if (p.invalidate_in_call)
-                               ++p.epoch;
-                           return 0;
-                       },
-                       &p}};
+            p.step = {
+                h.lua_artifact.findExport(102U), scriptSyncStepShape<std::int32_t(std::int32_t)>(), &p,
+                +[](void* pointer, const void* const* arguments, void* output, const ScriptInvocationValidity&) noexcept
+                {
+                    auto& p = *static_cast<TestPublication*>(pointer);
+                    ++p.calls;
+                    const auto value = *static_cast<const std::int32_t*>(arguments[0]);
+                    std::memcpy(output, &value, sizeof(value));
+                    if (p.invalidate_in_call)
+                        ++p.epoch;
+                    return 0;
+                }};
             p.view = {context.instance,
                       p.epoch,
                       context.behavior,
@@ -350,7 +367,8 @@ struct Harness final
     }
     void occurrence()
     {
-        // One real owner step per occurrence; duplicate nonzero stable points cannot drain resumes.
+        // One real owner step per occurrence; duplicate nonzero stable points
+        // cannot drain resumes.
         clock_owner.advance(SimulationDuration{1'000'000});
         {
             auto writer = event.begin(0U);
@@ -369,13 +387,15 @@ struct Harness final
         assert(core.active_continuations == 0U && core.active_awaitables == 0U && core.active_event_waiters == 0U);
         assert(na1::constructed == na1::destroyed && na1::started == na1::frames_destroyed);
         assert(na1::unreachable == 0U && probe.begins == probe.ends);
-        // Real backend counters, including attempts that did not reach a suspended state.
+        // Real backend counters, including attempts that did not reach a suspended
+        // state.
         const auto expected_lua = mixed ? count : 0U;
         assert(child.lua.vm_coroutine_creations == expected_lua && child.lua.vm_coroutine_resumes == expected_lua);
         assert(child.lua.vm_coroutine_releases == expected_lua);
     }
     std::size_t count, leases{};
     bool mixed{};
+    CppStaticContract task_contract;
     SimulationDescription simulation;
     lux::script::ScriptArtifact lua_artifact, native_artifact;
     lux::script::ScriptEventSourceDescription event_source;
@@ -418,12 +438,51 @@ void normal(std::size_t count, unsigned mode)
     assert(na1::completed == count && na1::frames_destroyed == count);
     assert(h.system->failures().empty());
     h.closed();
-    std::printf("CASE event count=%zu rounds=%u payload=31 completed=%zu lua_threads=0 lua_resumes=0 leases=%zu\n",
+    std::printf("CASE event count=%zu rounds=%u payload=31 completed=%zu "
+                "lua_threads=0 lua_resumes=0 leases=%zu\n",
                 count, rounds, na1::completed, h.leases);
 }
 } // namespace
 int main()
 {
+    for (const auto invalid : {13U, 14U})
+    {
+        na1::mode = 0U;
+        Harness h(1U, "return p", invalid);
+        assert(!h.system->prepare());
+        assert(na1::constructed == 0U && na1::destroyed == 0U && h.probe.begins == 0U && h.leases == 0U);
+        assert(h.system->shutdown());
+        std::printf("CASE cold-native-step-shape kind=%u objects=0 provider=0 leases=0\n", invalid);
+    }
+    for (const auto body : {"error('void failure')", "coroutine.yield()", "lux.Event.Task.event()",
+                            "local x <close> = setmetatable({}, {__close=function() "
+                            "lux.TaskProbe.hit(3) end}); error('close')"})
+    {
+        na1::mode = 8U;
+        Harness h(1U, "return p", 0U, false, false, body);
+        assert(h.system->prepare());
+        assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
+        h.occurrence();
+        const auto expected_calls = std::string_view(body).starts_with("local x") ? 1U : 0U;
+        assert(na1::completed == 0U && h.probe.calls == expected_calls && na1::frames_destroyed == 1U);
+        assert(h.system->stats().active_awaitables == 0U && !h.system->failures().empty());
+        h.closed();
+        std::printf("CASE flat-void-failure body=%s provider=%zu frames=1 waits=0\n", body, expected_calls);
+    }
+    {
+        na1::mode = 8U;
+        Harness h(1U, "return p", 0U, false, false,
+                  "local ok=pcall(function() lux.Delay.nextStep() end); assert(not ok); "
+                  "assert(math.type(p)=='float'); lux.TaskProbe.hit(3)");
+        assert(h.system->prepare());
+        assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
+        h.occurrence();
+        assert(na1::completed == 1U && h.probe.calls == 1U && h.system->failures().empty());
+        h.closed();
+        std::puts("CASE flat-void-recovery provider=1 completed=1 "
+                  "number-representation=float");
+    }
+    na1::mode = 0U;
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     {
         auto empty = NativeLuaTaskBackend::create({});
@@ -456,8 +515,10 @@ int main()
     normal(1000U, 0U);
     normal(64U, 3U);
     {
-        Harness h(16U, "self.value=self.value+p.key; return p.key+p.mode+math.floor(p.velocity.x+p.velocity.y)", 0U,
-                  true);
+        Harness h(16U,
+                  "self.value=self.value+p.key; return "
+                  "p.key+p.mode+math.floor(p.velocity.x+p.velocity.y)",
+                  0U, true);
         assert(h.system->prepare());
         ValuePose value{31, {2.5F, 7.0}, ValueMode::RUN};
         assert(dispatchRuntimeHook(*h.system, h.pose_hook, value) == 1U);
@@ -469,7 +530,8 @@ int main()
             assert(result == 74);
         assert(na1::completed == 16U && h.system->failures().empty());
         h.closed();
-        std::puts("CASE record snapshot=43 after=74 caller-mutated=1 completed=16 frames=16");
+        std::puts("CASE record snapshot=43 after=74 caller-mutated=1 completed=16 "
+                  "frames=16");
     }
     {
         na1::mode = 0U;
@@ -522,8 +584,9 @@ int main()
         }
         assert(h.system->processLifecycle());
         h.closed();
-        std::printf("CASE converter-qualification fault=%u provider=%zu completed=0 frames=1\n", unsigned(fault),
-                    h.probe.calls);
+        std::printf("CASE converter-qualification fault=%u provider=%zu "
+                    "completed=0 frames=1\n",
+                    unsigned(fault), h.probe.calls);
     }
     for (const unsigned mode : {4U, 5U})
     {
@@ -542,7 +605,8 @@ int main()
             h.occurrence();
             const auto stats = h.system->stats();
             std::fprintf(stderr,
-                         "TRACE sequence step=%llu C=%zu A=%zu event=%zu next=%zu delay=%zu ready=%zu done=%zu\n",
+                         "TRACE sequence step=%llu C=%zu A=%zu event=%zu next=%zu "
+                         "delay=%zu ready=%zu done=%zu\n",
                          h.clock_owner.clock().snapshot().step_index, stats.active_continuations,
                          stats.active_awaitables, stats.active_event_waiters, stats.next_step_waits,
                          stats.simulation_delay_waits, stats.resume_queue_depth, na1::completed);
@@ -623,7 +687,8 @@ int main()
         std::printf("CASE step-error body=%s completed=0 frames=1\n", body);
     }
     {
-        Harness h(1U, "local ok=pcall(function() lux.Event.Task.event() end); assert(not ok); return p");
+        Harness h(1U, "local ok=pcall(function() lux.Event.Task.event() end); "
+                      "assert(not ok); return p");
         assert(h.system->prepare());
         assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
         h.occurrence();
@@ -632,7 +697,8 @@ int main()
         std::puts("CASE ordinary-error-recovery completed=1 result=31");
     }
     {
-        Harness h(1U, "do local x <close> = setmetatable({}, {__close=function() lux.TaskProbe.hit(3) end}) end; "
+        Harness h(1U, "do local x <close> = setmetatable({}, {__close=function() "
+                      "lux.TaskProbe.hit(3) end}) end; "
                       "return p");
         assert(h.system->prepare());
         assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
@@ -666,7 +732,9 @@ int main()
         }
         assert(na1::frames_destroyed == 32U && h.probe.begins == 33U);
         h.closed();
-        std::printf("CASE churn rounds=32 frames=32 begins=33 ends=33 late-event-resumes=0 backing=%zu\n", backing);
+        std::printf("CASE churn rounds=32 frames=32 begins=33 ends=33 "
+                    "late-event-resumes=0 backing=%zu\n",
+                    backing);
     }
     {
         Harness h(1U, "lux.TaskProbe.hit(3); lux.TaskProbe.hit(5); return p");
@@ -686,7 +754,8 @@ int main()
         assert(h.system->processLifecycle());
         assert(h.system->isShutdown());
         h.closed();
-        std::puts("CASE deferred-stop in-region-provider=2 completed=1 early-destroy=0 final-destroy=1");
+        std::puts("CASE deferred-stop in-region-provider=2 completed=1 "
+                  "early-destroy=0 final-destroy=1");
     }
     for (const std::size_t permitted : {0U, 1U, 3U})
     {
@@ -706,7 +775,8 @@ int main()
         assert(h.probe.calls == 0U && na1::completed == 0U && na1::frames_destroyed == 1U);
         assert(!h.system->failures().empty());
         h.closed();
-        std::printf("CASE step-oom permitted=%zu allocation-failures=%zu provider=0 frames=1 stack-delta=0\n",
+        std::printf("CASE step-oom permitted=%zu allocation-failures=%zu "
+                    "provider=0 frames=1 stack-delta=0\n",
                     permitted, allocation.failures);
     }
     {
@@ -731,7 +801,8 @@ int main()
         assert(h.system->failures().size() == 1U);
         assert(h.system->failures()[0].error == EScriptSystemError::CONTINUATION_CAPACITY_EXCEEDED);
         h.closed();
-        std::puts("CASE continuation-late capacity=1 starts=2 before-wait-side-effects=2 frames=2");
+        std::puts("CASE continuation-late capacity=1 starts=2 "
+                  "before-wait-side-effects=2 frames=2");
     }
     {
         na1::mode = 0U;
@@ -744,7 +815,8 @@ int main()
         assert(na1::completed == 1U && h.probe.calls == 1U);
         assert(h.system->failures().empty() && h.system->stats().backend_resume_calls == 2U);
         h.closed();
-        std::puts("CASE mixed-routes native=1 Lua=1 one-identity=1 lifecycle=1 frames=1 threads=1");
+        std::puts("CASE mixed-routes native=1 Lua=1 one-identity=1 lifecycle=1 "
+                  "frames=1 threads=1");
     }
     for (const unsigned invalid : {11U, 12U})
     {
@@ -763,11 +835,13 @@ int main()
         assert(h.system->prepare());
         assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
         assert(na1::started == 0U && na1::completed == 0U && na1::frames_destroyed == 0U);
-        // The explicit frame-size guard runs before the storage allocator; its counter stays zero.
+        // The explicit frame-size guard runs before the storage allocator; its
+        // counter stays zero.
         assert(h.backend->stats().native.frame_capacity_failures == 0U);
         assert(!h.system->failures().empty() && h.system->stats().active_awaitables == 0U);
         h.closed();
-        std::puts("CASE large-record-frame records=16 limit=512 size-limit-reject=1 storage-capacity-failures=0 body=0 "
+        std::puts("CASE large-record-frame records=16 limit=512 "
+                  "size-limit-reject=1 storage-capacity-failures=0 body=0 "
                   "wait=0");
     }
     for (unsigned mode{}; mode < 4U; ++mode)
@@ -795,8 +869,9 @@ int main()
         }
         h.closed();
         assert(h.direct_native->stats().active_frames == 0U);
-        std::printf("CASE checked-publication mode=%u calls=%zu result=%d frames=1 leases=0\n", mode, p.calls,
-                    na1::results[0]);
+        std::printf("CASE checked-publication mode=%u calls=%zu result=%d frames=1 "
+                    "leases=0\n",
+                    mode, p.calls, na1::results[0]);
     }
     for (const auto expression : {"true", "0/0", "math.huge", "1.5", "2147483648"})
     {
@@ -813,7 +888,8 @@ int main()
     }
     {
         na1::mode = 0U;
-        Harness h(1U, "local x <close> = setmetatable({}, {__close=function() lux.TaskProbe.hit(3); "
+        Harness h(1U, "local x <close> = setmetatable({}, {__close=function() "
+                      "lux.TaskProbe.hit(3); "
                       "error('close failure') end}); return p");
         assert(h.system->prepare() && observed_vm);
         const auto base = lua_gettop(observed_vm);
@@ -840,7 +916,8 @@ int main()
         assert(na1::frames_destroyed == 1U && lua_gettop(vm) == base);
         assert(h.system->stats().active_awaitables == 0U && !h.system->failures().empty());
         h.closed();
-        std::printf("CASE record-argument-oom failures=%zu provider=0 frames=1 stack-restored=1\n",
+        std::printf("CASE record-argument-oom failures=%zu provider=0 frames=1 "
+                    "stack-restored=1\n",
                     allocation.failures);
     }
     {

@@ -2,8 +2,8 @@
 
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/ScriptSyncStepCall.hpp>
-#include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/visibility.h>
+#include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -36,7 +36,7 @@ namespace lux::simulation::script
             const void* dispatch{};
             PreparedLocalAsyncCatalog local_async;
         };
-    }
+    } // namespace detail
 
     enum class EScriptCoroutineError : std::uint8_t
     {
@@ -120,44 +120,37 @@ namespace lux::simulation::script
         [[nodiscard]] lux::script::ScriptAbilityCoroutine<DelayAbility, ScriptCoroutineContext> delay() noexcept;
 
     private:
-        [[nodiscard]] lux::cxx::expected<void, ScriptSyncStepError> invokeSyncStep(
-            std::uint32_t ordinal, lux_script_call_frame& frame,
-            std::span<const lux::semantic::EValuePass> passes) noexcept;
-        template<class Signature> friend struct detail::ScriptSyncStepCall;
+      [[nodiscard]] lux::cxx::expected<void, ScriptSyncStepError> invokeSyncStep(std::uint32_t ordinal,
+                                                                                 const ScriptSyncStepShape& shape,
+                                                                                 const void* const* arguments,
+                                                                                 void* output) noexcept;
+      template <class Signature> friend struct detail::ScriptSyncStepCall;
 
-        using FindAbilityFn = bool (*)(void*, std::uint32_t, std::uint64_t, std::uint32_t&) noexcept;
-        using ResolveAbilityFn = bool (*)(
-            void*,
-            std::uint32_t,
-            std::uint32_t,
-            detail::ScriptCoroutineAbilityAccess&
-        ) noexcept;
-        using ResolveEventFn = bool (*)(void*, std::uint32_t, const CppStaticContract*, std::uint32_t,
-            ScriptEventAdmissionHandle&) noexcept;
+      using FindAbilityFn = bool (*)(void*, std::uint32_t, std::uint64_t, std::uint32_t&) noexcept;
+      using ResolveAbilityFn = bool (*)(void*, std::uint32_t, std::uint32_t,
+                                        detail::ScriptCoroutineAbilityAccess&) noexcept;
+      using ResolveEventFn = bool (*)(void*, std::uint32_t, const CppStaticContract*, std::uint32_t,
+                                      ScriptEventAdmissionHandle&) noexcept;
 
-        template <class Result, class Invoker>
-        [[nodiscard]] auto invokeAbility(std::uint32_t ability_slot, Invoker&& invoker) noexcept;
+      template <class Result, class Invoker>
+      [[nodiscard]] auto invokeAbility(std::uint32_t ability_slot, Invoker&& invoker) noexcept;
 
-        template <class Result, class Starter>
-        [[nodiscard]] auto awaitAbility(std::uint32_t ability_slot, Starter starter) noexcept;
+      template <class Result, class Starter>
+      [[nodiscard]] auto awaitAbility(std::uint32_t ability_slot, Starter starter) noexcept;
 
-        template<class Result, class Arguments, class Starter>
-        [[nodiscard]] auto awaitPreparedAbility(
-            std::uint32_t ability_slot, const lux::script::ScriptApiMethodIdView& method,
-            Arguments arguments, Starter starter
-        ) noexcept;
+      template <class Result, class Arguments, class Starter>
+      [[nodiscard]] auto awaitPreparedAbility(std::uint32_t ability_slot,
+                                              const lux::script::ScriptApiMethodIdView& method, Arguments arguments,
+                                              Starter starter) noexcept;
 
-        template <class Result, class Admission>
-        [[nodiscard]] auto makeAwaiter(Admission admission) noexcept;
+      template <class Result, class Admission> [[nodiscard]] auto makeAwaiter(Admission admission) noexcept;
 
-        [[nodiscard]] bool resolveAbility(
-            std::uint32_t ability_slot,
-            detail::ScriptCoroutineAbilityAccess& result
-        ) const noexcept
-        {
-            return active_step_ != nullptr && resolve_ability_ != nullptr &&
-                resolve_ability_(backend_, instance_slot_, ability_slot, result);
-        }
+      [[nodiscard]] bool resolveAbility(std::uint32_t ability_slot,
+                                        detail::ScriptCoroutineAbilityAccess& result) const noexcept
+      {
+          return active_step_ != nullptr && resolve_ability_ != nullptr &&
+                 resolve_ability_(backend_, instance_slot_, ability_slot, result);
+      }
 
         struct FrameHeader final
         {
@@ -368,30 +361,35 @@ namespace lux::simulation::script
                     outcome = ScriptStepResult::failed(-1);
                     return false;
                 }
-                resume_packet = std::addressof(packet);
+                resume_data = expects_value ? packet.value->bytes.data() : nullptr;
                 outcome = ScriptStepResult::completed();
                 return true;
             }
 
-            void clearResume() noexcept
-            {
-                resume_packet = nullptr;
-            }
+            void clearResume() noexcept { resume_data = nullptr; }
 
+          private:
             template <class Result>
             [[nodiscard]] Result result() const noexcept
             {
                 static_assert(std::is_trivially_copyable_v<Result>);
-                Result value{};
-                if (resume_packet != nullptr && resume_packet->value != nullptr)
-                    std::memcpy(std::addressof(value), resume_packet->value->bytes.data(), sizeof(Result));
+                // Only the suspended typed awaiter reads this, after prepareResume
+                // validated state/type/size. The packet owner outlives this synchronous
+                // resume window.
+                Result value;
+                std::memcpy(std::addressof(value), resume_data, sizeof(Result));
                 return value;
             }
 
+            template <class Result, class Admission> friend class ScriptCoroutineAwaiter;
+
+          public:
             ScriptStepResult outcome;
             lux::semantic::TypeId expected_type{lux::semantic::InvalidTypeId};
             std::size_t expected_size{};
-            const ScriptResumePacket* resume_packet{};
+
+          private:
+            const void* resume_data{};
         };
 
         ScriptCoroutine() noexcept = default;
@@ -473,11 +471,8 @@ namespace lux::simulation::script
             }
             else
             {
-                promise_->suspend(
-                    result,
-                    lux::semantic::typeId(lux::semantic::TypeTraits<Result>::CanonicalName),
-                    sizeof(Result)
-                );
+                constexpr auto result_type = lux::semantic::typeId(lux::semantic::TypeTraits<Result>::CanonicalName);
+                promise_->suspend(result, result_type, sizeof(Result));
             }
         }
 
@@ -591,7 +586,8 @@ namespace lux::simulation::script
         std::uint32_t slot, const lux::script::ScriptApiMethodIdView& method, Arguments arguments, Starter starter
     ) noexcept
     {
-        // Generated projection supplies a static immutable descriptor; no per-frame copy of its name/hash.
+        // Generated projection supplies a static immutable descriptor; no per-frame
+        // copy of its name/hash.
         return makeAwaiter<Result>([
             slot, method = &method, arguments = std::move(arguments), starter = std::move(starter)
         ](
@@ -682,4 +678,4 @@ namespace lux::simulation::script
             return coroutine.release();
         }
     };
-}
+} // namespace lux::simulation::script

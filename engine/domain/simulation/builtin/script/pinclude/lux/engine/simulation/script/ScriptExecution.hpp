@@ -1,11 +1,12 @@
 #pragma once
 
-#include <lux/engine/simulation/script/ScriptInstances.hpp>
-#include <lux/engine/simulation/script/ScriptEventWaits.hpp>
-#include <lux/engine/simulation/script/ScriptTimers.hpp>
-#include <lux/engine/simulation/script/ScriptCompletionIngress.hpp>
-#include <lux/engine/function/script/ScriptAbilityAsync.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
+#include <lux/engine/function/script/ScriptAbilityAsync.hpp>
+#include <lux/engine/simulation/script/ScriptCompletionIngress.hpp>
+#include <lux/engine/simulation/script/ScriptEventWaits.hpp>
+
+#include <lux/engine/simulation/script/ScriptInstances.hpp>
+#include <lux/engine/simulation/script/ScriptTimers.hpp>
 
 namespace lux::simulation::script::detail
 {
@@ -28,7 +29,8 @@ namespace lux::simulation::script::detail
             ScriptInstances::AuthorityAccess authority;
         };
 
-        // Short internal borrow: no directory lookup or writable Instances authority is exposed.
+        // Short internal borrow: no directory lookup or writable Instances authority
+        // is exposed.
         struct ExecutionAccess final
         {
             ExecutionInstance* record{};
@@ -191,6 +193,16 @@ namespace lux::simulation::script::detail
             {
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::EXTERNAL_RESULT_NOT_TRANSPORTABLE);
             }
+            return admitAwaitable(owner, std::move(result_type), external_completion);
+        }
+
+        // Private allocation kernel. Arbitrary result descriptions enter through
+        // reserveAwaitable; prepared Events carry the layout proved by Preparer and
+        // the current admission lookup.
+        [[nodiscard]] lux::cxx::expected<AwaitableRecord*, EScriptAwaitableCreateError>
+        admitAwaitable(ExecutionInstance& owner, std::optional<PreparedResumeType> result_type,
+                       bool external_completion) noexcept
+        {
 
             if (stopping_)
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::STOPPING);
@@ -426,9 +438,10 @@ namespace lux::simulation::script::detail
             if (!reservation)
                 return lux::cxx::unexpected(reservation.error());
 
-            // No user code or owner mutation can intervene before waiter commit. The authoritative
-            // incarnation/source check above covers result admission as well; storage has stable addresses.
-            auto awaitable = reserveAwaitable(*owner, source->payload, false);
+            // No user code or owner mutation can intervene before waiter commit. The
+            // authoritative incarnation/source check above covers result admission as
+            // well; storage has stable addresses.
+            auto awaitable = admitAwaitable(*owner, source->payload, false);
             if (!awaitable)
                 return lux::cxx::unexpected(eventWaitError(awaitable.error()));
 
@@ -670,8 +683,9 @@ namespace lux::simulation::script::detail
             ScriptStepResult result, bool hook_single_flight
         ) noexcept
         {
-            // The caller just revalidated its Invocation after backend code; no user code
-            // intervenes before this helper. Keep that protected full identity, not a cold mount snapshot.
+            // The caller just revalidated its Invocation after backend code; no user
+            // code intervenes before this helper. Keep that protected full identity,
+            // not a cold mount snapshot.
             if (!result.valid() || result.state != EScriptStepState::SUSPENDED || !backend_continuation)
             {
                 if (backend_continuation)
@@ -856,7 +870,7 @@ namespace lux::simulation::script::detail
             auto* owner = findExecutionInstance(context.instance);
             if (!context.awaitables.belongsTo(this) || owner == nullptr || !owner->authority.current())
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::INVALID_INSTANCE);
-            const auto record = reserveAwaitable(*owner, std::nullopt, false);
+            const auto record = admitAwaitable(*owner, std::nullopt, false);
             if (!record) return lux::cxx::unexpected(record.error());
             return ScriptTimerAdmission{{context.instance, (*record)->id}, *record};
         }
@@ -895,8 +909,9 @@ namespace lux::simulation::script::detail
         }
         void attachTimer(const ScriptTimerAdmission& admission, ScriptSourceId id) noexcept
         {
-            // Timer storage is distinct and preallocated. Registration executes no user code and
-            // cannot mutate awaitables or authority; source commit needs no second identity lookup.
+            // Timer storage is distinct and preallocated. Registration executes no user
+            // code and cannot mutate awaitables or authority; source commit needs no
+            // second identity lookup.
             static_cast<AwaitableRecord*>(admission.result_)->source = {id, EScriptWaitSource::TIMER};
         }
         void detachSource(ScriptSourceCancellation cancelled) noexcept
@@ -928,7 +943,8 @@ namespace lux::simulation::script::detail
             if (record == nullptr)
                 return;
             const auto first = record->first_continuation;
-            *record = {}; // Claim execution teardown before entering a continuation destructor.
+            *record = {}; // Claim execution teardown before entering a continuation
+                          // destructor.
             UserInvocationScope cleanup(*this);
             destroyContinuations(retired, first);
         }
@@ -969,7 +985,8 @@ namespace lux::simulation::script::detail
             }();
             if (status == 0)
                 return;
-            // Revoking new calls must not discard an error returned by this protected incarnation.
+            // Revoking new calls must not discard an error returned by this protected
+            // incarnation.
             if (!access.sameIncarnation())
                 return;
             faultInvocation(handler.mount_slot, instance_owner_.methodSymbol(handler.method_slot),
@@ -1151,7 +1168,8 @@ namespace lux::simulation::script::detail
                 const auto record = owner_.resumes_.pop();
                 if (!record)
                     return std::nullopt;
-                --remaining_; // Every pop, including a stale one, consumes exactly one budget unit.
+                --remaining_; // Every pop, including a stale one, consumes exactly one
+                              // budget unit.
                 return owner_.resumeOne(*record);
             }
         private:
@@ -1199,4 +1217,4 @@ namespace lux::simulation::script::detail
         bool stopping_{};
         bool prepared_{};
     };
-}
+} // namespace lux::simulation::script::detail

@@ -10,6 +10,8 @@ inline std::optional<lux::simulation::script::CppScriptEventSource<std::int32_t>
 struct Frame final { ~Frame() { ++frames; } };
 struct LUX_TYPE_INFO(compile_time) CoroutineBehavior final
 {
+    inline static constexpr std::array SyncStepShapes{
+        lux::simulation::script::scriptSyncStepShape<std::int32_t(std::int32_t)>()};
     CoroutineBehavior() noexcept { ++objects; }
     ~CoroutineBehavior() { ++destroys; }
     LUX_METHOD(script_export = "consumer.run", script_coroutine = true)
@@ -25,4 +27,4 @@ struct LUX_TYPE_INFO(compile_time) CoroutineBehavior final
         ++ends;
     }
 };
-}
+} // namespace installed_consumer

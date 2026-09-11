@@ -1,6 +1,6 @@
-#include <lux_lua55_extensions.h>
-#include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/lua/LuaScriptAbilityProjection.hpp>
+#include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
+#include <lux_lua55_extensions.h>
 
 #include <lux/engine/function/script/lua/Lua.hpp>
 #include <lux/engine/function/script/lua/detail/Lua55Operations.hpp>
@@ -12,8 +12,8 @@
 
 #include <algorithm>
 #include <array>
-#include <cstdint>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -77,8 +77,9 @@ namespace lux::simulation::script
             bool arguments_valid{true};
         };
 
-        // Only trivial locals may be crossed by a Lua error. The reservation and rollback live
-        // outside pcall; thread allocation remains inside the protected boundary.
+        // Only trivial locals may be crossed by a Lua error. The reservation and
+        // rollback live outside pcall; thread allocation remains inside the protected
+        // boundary.
         static int createThread(lua_State* state)
         {
             auto* request = static_cast<ThreadCreateRequest*>(lua_touserdata(state, 1));
@@ -203,11 +204,21 @@ namespace lux::simulation::script
             }
         };
 
+        struct SyncArgument final
+        {
+            bool (*push)(lua_State*, const void*, const lux::script::lua::LuaValueOperation*) noexcept {};
+            const lux::script::lua::LuaValueOperation* operation{};
+        };
+
         struct LuaFunctionBinding final
         {
             lux::rdesc::ScriptFunction signature;
             int function_ref{LUA_NOREF};
             std::vector<const lux::script::lua::LuaValueOperation*> argument_operations;
+            std::vector<SyncArgument> sync_arguments;
+            bool (*read_sync_result)(lua_State*, void*) noexcept {};
+            bool scalar_sync{};
+            bool sync_prepared{};
         };
 
         struct PreparedCall final
@@ -600,7 +611,8 @@ namespace lux::simulation::script
             return std::find(keywords.begin(), keywords.end(), value) == keywords.end();
         }
 
-        // Only C++ allocation here. The subsequent protected Lua render reads this frozen layout.
+        // Only C++ allocation here. The subsequent protected Lua render reads this
+        // frozen layout.
         [[nodiscard]] bool prepareArtifactLayout(
             Prototype& prototype, const lux::script::ScriptArtifact& artifact
         ) noexcept
@@ -742,8 +754,9 @@ namespace lux::simulation::script
             lua_setmetatable(main_thread, environment_index);
             lua_createtable(main_thread, 0, static_cast<int>(artifact.description().api_requirements.size() + 2U));
             const auto lux_index = lua_gettop(main_thread);
-            // A full userdata is retained by the environment and every closure. An old reachable closure
-            // therefore prevents reuse of its layout identity, independently of C++ prototype storage.
+            // A full userdata is retained by the environment and every closure. An old
+            // reachable closure therefore prevents reuse of its layout identity,
+            // independently of C++ prototype storage.
             lua_pushlightuserdata(main_thread, this);
             prototype.layout_token = lua_newuserdata(main_thread, 1U);
             lua_rawset(main_thread, lux_index);
@@ -832,7 +845,8 @@ namespace lux::simulation::script
         ) noexcept
         {
             const auto content = artifact.contentIdentity();
-            // Content is immutable; AssetId remains the observable closure publication domain.
+            // Content is immutable; AssetId remains the observable closure publication
+            // domain.
             const PrototypeKey key{context.asset, content};
             const auto found = prototypes.find(key);
             if (found != prototypes.end()) return std::addressof(found->second);
@@ -843,7 +857,8 @@ namespace lux::simulation::script
             Prototype* evicted{};
             if (latest == latest_prototypes.end() && latest_prototypes.size() >= instance_capacity)
             {
-                // A new publication domain may replace an idle cache entry. Live instances retain their roots.
+                // A new publication domain may replace an idle cache entry. Live
+                // instances retain their roots.
                 for (const auto& [asset, cached] : latest_prototypes)
                     if (cached->instance_refs == 0U)
                     {
@@ -1365,7 +1380,8 @@ namespace lux::simulation::script
 
             if (self.runCold(&createSelf, instance) != LUA_OK)
             {
-                // Nothing was published to user code; the failed Lua stack owns any partial userdata.
+                // Nothing was published to user code; the failed Lua stack owns any
+                // partial userdata.
                 self.prepared_events.release(instance->prepared_events);
                 self.prepared_abilities.release(instance->prepared_abilities);
                 *instance = {};
@@ -1817,102 +1833,210 @@ namespace lux::simulation::script
             return 0;
         }
 
+        template <class T>
+        static bool pushSyncScalar(lua_State* vm, const void* data, const lux::script::lua::LuaValueOperation*) noexcept
+        {
+            if constexpr (std::is_same_v<T, bool>)
+                lua_pushboolean(vm, *static_cast<const T*>(data));
+            else
+                lua_pushnumber(vm, static_cast<lua_Number>(*static_cast<const T*>(data)));
+            return true;
+        }
+
+        static bool pushSyncRecord(lua_State* vm, const void* data,
+                                   const lux::script::lua::LuaValueOperation* operation) noexcept
+        {
+            return operation->push(vm, data);
+        }
+
+        static SyncArgument syncArgument(const lux::rdesc::ScriptValueType& type,
+                                         const lux::script::lua::LuaValueOperation* operation) noexcept
+        {
+            if (operation)
+                return {&pushSyncRecord, operation};
+            switch (type.abi_kind)
+            {
+            case LUX_SCRIPT_VK_BOOL:
+                return {&pushSyncScalar<bool>, nullptr};
+            case LUX_SCRIPT_VK_INT32:
+                return {&pushSyncScalar<std::int32_t>, nullptr};
+            case LUX_SCRIPT_VK_UINT32:
+                return {&pushSyncScalar<std::uint32_t>, nullptr};
+            case LUX_SCRIPT_VK_FLOAT:
+                return {&pushSyncScalar<float>, nullptr};
+            case LUX_SCRIPT_VK_DOUBLE:
+                return {&pushSyncScalar<double>, nullptr};
+            default:
+                return {};
+            }
+        }
+
+        template <class T> static bool readSyncResult(lua_State* vm, void* output) noexcept
+        {
+            T value;
+            if constexpr (std::is_same_v<T, bool>)
+            {
+                if (lua_type(vm, -1) != LUA_TBOOLEAN)
+                    return false;
+                value = lua_toboolean(vm, -1) != 0;
+            }
+            else if (!readStrictNumber(vm, -1, value))
+                return false;
+            std::memcpy(output, &value, sizeof(value));
+            return true;
+        }
+
+        // Cold-only. The normal prepared function shares this immutable plan across
+        // instances.
+        static void prepareSyncOperations(LuaFunctionBinding& function)
+        {
+            if (function.sync_prepared)
+                return;
+            std::vector<SyncArgument> arguments;
+            arguments.reserve(function.signature.args.size());
+            bool scalar = true;
+            for (std::size_t i{}; i < function.signature.args.size(); ++i)
+            {
+                const auto* operation = function.argument_operations[i];
+                scalar = scalar && operation == nullptr;
+                arguments.push_back(syncArgument(function.signature.args[i], operation));
+            }
+            function.sync_arguments = std::move(arguments);
+            function.scalar_sync = scalar;
+            function.sync_prepared = true;
+            if (function.signature.returns.empty())
+                return;
+            switch (function.signature.returns[0].abi_kind)
+            {
+            case LUX_SCRIPT_VK_BOOL:
+                function.read_sync_result = &readSyncResult<bool>;
+                break;
+            case LUX_SCRIPT_VK_INT32:
+                function.read_sync_result = &readSyncResult<std::int32_t>;
+                break;
+            case LUX_SCRIPT_VK_UINT32:
+                function.read_sync_result = &readSyncResult<std::uint32_t>;
+                break;
+            case LUX_SCRIPT_VK_FLOAT:
+                function.read_sync_result = &readSyncResult<float>;
+                break;
+            case LUX_SCRIPT_VK_DOUBLE:
+                function.read_sync_result = &readSyncResult<double>;
+                break;
+            default:
+                break;
+            }
+        }
+
         struct SyncInvocationRequest final
         {
             PreparedCall* call;
-            lux_script_call_frame* frame;
-            ScriptInvocationValidity qualification;
-            bool bound;
-            ScalarStorage output;
+            const void* const* arguments;
+            void* output;
+            const ScriptInvocationValidity* qualification;
             std::int32_t status{kInvalidCall};
         };
 
-        // Only trivially destructible borrows live here. lua_call and stack cleanup may longjmp
-        // to invokeSyncStep's pcall, never through the native task or an owning C++ local.
-        static int executeSyncStep(lua_State* vm)
+        // Record/custom conversion can allocate or reenter. The protected C callback
+        // contains only trivial borrows; each converter retains its own typed
+        // construction/cleanup frame.
+        template <bool EntityScope, bool HasResult> static int executeSyncStep(lua_State* vm)
         {
             auto& request = *static_cast<SyncInvocationRequest*>(lua_touserdata(vm, 1));
-            auto& call = *request.call;
-            const auto& frame = *request.frame;
-            if (!lua_checkstack(vm, static_cast<int>(frame.arg_count + frame.return_count + 8U)))
+            const auto& call = *request.call;
+            const auto& operations = call.function->sync_arguments;
+            if (!lua_checkstack(vm, static_cast<int>(operations.size() + 9U)))
             {
                 request.status = kLuaFailure;
                 return 0;
             }
             lua_rawgeti(vm, LUA_REGISTRYINDEX, call.function->function_ref);
-            int count{};
-            if (call.instance->entity_scope)
-            {
+            if constexpr (EntityScope)
                 lua_rawgeti(vm, LUA_REGISTRYINDEX, call.instance->table_ref);
-                ++count;
-            }
-            for (std::uint32_t i{}; i < frame.arg_count; ++i)
+            for (std::size_t i{}; i < operations.size(); ++i)
             {
-                if (!pushArgument(vm, frame.args[i], call.function->argument_operations[i]))
+                const auto& operation = operations[i];
+                if (!operation.push(vm, request.arguments[i], operation.operation))
                 {
                     request.status = -3;
                     return 0;
                 }
-                ++count;
             }
-            // Converters may invoke providers/finalizers and revoke the original invocation.
-            if (request.bound && !request.qualification.valid()) return 0;
-            lua_call(vm, count, static_cast<int>(frame.return_count));
-            if (frame.return_count != 0U)
+            if (!request.qualification->valid())
+                return 0;
+            lua_call(vm, static_cast<int>(operations.size()) + EntityScope, HasResult ? 1 : 0);
+            if constexpr (HasResult)
             {
-                auto slot = frame.returns[0];
-                slot.data = &request.output;
-                if (!readReturn(vm, -1, slot))
+                if (!call.function->read_sync_result(vm, request.output))
                 {
                     request.status = kInvalidResult;
                     return 0;
                 }
             }
+            // Preserve converter-created to-be-closed cleanup before publishing
+            // success.
             lua_settop(vm, 1);
             request.status = 0;
             return 0;
         }
 
-        static int invokeSyncStep(void* opaque, lux_script_call_frame* frame) noexcept
+        template <bool EntityScope, bool HasResult, bool ScalarArguments>
+
+        static int invokeSyncStep(void* opaque, const void* const* arguments, void* output,
+                                  const ScriptInvocationValidity& qualification) noexcept
         {
-            if (!opaque || !frame) return kInvalidCall;
-            auto& call = *static_cast<PreparedCall*>(opaque);
-            if (!call.active || !call.instance || !call.instance->active || !call.function) return kInvalidCall;
-            const auto& signature = call.function->signature;
-            const bool invalid_count = frame->arg_count != signature.args.size() ||
-                frame->return_count != signature.returns.size() || frame->return_count > 1U || frame->arg_count > 64U;
-            const bool invalid_storage = (frame->arg_count != 0U && !frame->args) ||
-                (frame->return_count != 0U && !frame->returns);
-            if (invalid_count || invalid_storage) return kInvalidCall;
-            const auto matches = [](const lux::rdesc::ScriptValueType& type, const lux_script_value_slot& slot) {
-                return slot.data && slot.kind == type.abi_kind && slot.size == type.size &&
-                    slot.type_id == type.type_id && type.alignment != 0U &&
-                    reinterpret_cast<std::uintptr_t>(slot.data) % type.alignment == 0U;
-            };
-            for (std::size_t i{}; i < frame->arg_count; ++i)
-                if (!matches(signature.args[i], frame->args[i])) return kInvalidCall;
-            if (frame->return_count && !matches(signature.returns[0], frame->returns[0])) return kInvalidCall;
+            // The typed bridge already checked the publication, shape and original
+            // authority.
+            const auto& call = *static_cast<PreparedCall*>(opaque);
             auto& self = *call.instance->owner;
-            auto* behavior = call.instance->behavior;
-            const bool bound = behavior && behavior->hasInvocationAuthority();
-            const auto qualification = bound ? behavior->captureInvocation() : ScriptInvocationValidity{};
-            if (bound && !qualification.valid()) return kInvalidCall;
-            ExecutionScope execution{self, {self.main_thread, call.instance, nullptr, nullptr, nullptr}};
+            auto* vm = self.main_thread;
+            ExecutionScope execution{self, {vm, call.instance, nullptr, nullptr, nullptr}};
             if (!execution) return kExecutionDepthCapacity;
-            if (!lua_checkstack(self.main_thread, 3)) return kLuaFailure;
-            const auto base = lua_gettop(self.main_thread);
-            SyncInvocationRequest request{&call, frame, qualification, bound, {}, kInvalidCall};
-            lua_rawgeti(self.main_thread, LUA_REGISTRYINDEX, self.traceback_ref);
-            lua_pushcfunction(self.main_thread, &executeSyncStep);
-            lua_pushlightuserdata(self.main_thread, &request);
-            const auto status = lua_pcall(self.main_thread, 1, 0, base + 1);
-            // The protected callback owns its own temporary/TBC range; only the plain error handler remains here.
-            lua_settop(self.main_thread, base);
-            if (status != LUA_OK) return kLuaFailure;
-            if (request.status != 0) return request.status;
-            if (bound && !qualification.valid()) return kInvalidCall;
-            if (frame->return_count) std::memcpy(frame->returns[0].data, &request.output, frame->returns[0].size);
-            return 0;
+            const auto& operations = call.function->sync_arguments;
+            constexpr auto protected_slots = ScalarArguments ? 3U + EntityScope : 3U;
+            const auto stack_slots = ScalarArguments ? operations.size() + protected_slots : protected_slots;
+            if (!lua_checkstack(vm, static_cast<int>(stack_slots)))
+                return kLuaFailure;
+            const auto base = lua_gettop(vm);
+            lua_pushcfunction(vm, &traceback);
+            if constexpr (ScalarArguments)
+            {
+                // These APIs neither allocate nor raise with the established stack
+                // allowance. Stack growth above can call the allocator: validate again
+                // before running Lua.
+                lua_rawgeti(vm, LUA_REGISTRYINDEX, call.function->function_ref);
+                if constexpr (EntityScope)
+                    lua_rawgeti(vm, LUA_REGISTRYINDEX, call.instance->table_ref);
+                for (std::size_t i{}; i < operations.size(); ++i)
+                    operations[i].push(vm, arguments[i], nullptr);
+                if (!qualification.valid())
+                {
+                    lua_settop(vm, base);
+                    return kInvalidCall;
+                }
+                const auto status =
+                    lua_pcall(vm, static_cast<int>(operations.size()) + EntityScope, HasResult ? 1 : 0, base + 1);
+                bool valid_result = true;
+                if constexpr (HasResult)
+                    if (status == LUA_OK)
+                        valid_result = call.function->read_sync_result(vm, output);
+                lua_settop(vm, base);
+                if (status != LUA_OK)
+                    return kLuaFailure;
+                return valid_result ? 0 : kInvalidResult;
+            }
+            else
+            {
+                SyncInvocationRequest request{const_cast<PreparedCall*>(&call), arguments, output, &qualification};
+                lua_pushcfunction(vm, (&executeSyncStep<EntityScope, HasResult>));
+                lua_pushlightuserdata(vm, &request);
+                const auto status = lua_pcall(vm, 1, 0, base + 1);
+                lua_settop(vm, base);
+                return status != LUA_OK ? kLuaFailure : request.status;
+            }
+            // The bridge checks the original qualification after this scope/cleanup
+            // finishes, before exposing any scalar result to the task. Backend errors
+            // keep their priority.
         }
 
         [[nodiscard]] lux::cxx::expected<LuaContinuation*, std::int32_t> acquireContinuation(
@@ -2232,8 +2356,9 @@ namespace lux::simulation::script
                 }
                 ++argument_count;
             }
-            // Allocation, GC and record conversion can call native code. A bound but revoked
-            // invocation is never standalone; retain the original lifetime category and epoch.
+            // Allocation, GC and record conversion can call native code. A bound but
+            // revoked invocation is never standalone; retain the original lifetime
+            // category and epoch.
             const bool same_binding = call.instance->behavior == behavior &&
                 (behavior != nullptr && behavior->hasInvocationAuthority()) == bound_authority;
             const bool still_qualified = same_binding && call.instance->active &&
@@ -2416,8 +2541,9 @@ namespace lux::simulation::script
             lua_touserdata(state, lua_upvalueindex(3)) == instance->prototype->layout_token;
         if (!same_projection || instance->behavior != original.behavior)
             return false;
-        // The still-active execution frame pins its immutable prepared layout and provider association.
-        // Reuse the ORIGINAL authority capture, including lifecycle privilege and retirement epoch.
+        // The still-active execution frame pins its immutable prepared layout and
+        // provider association. Reuse the ORIGINAL authority capture, including
+        // lifecycle privilege and retirement epoch.
         const bool has_authority = original.behavior && original.behavior->hasInvocationAuthority();
         return has_authority == original.has_core_authority &&
             (!has_authority || original.validity.valid());
@@ -2820,9 +2946,14 @@ namespace lux::simulation::script
     }
 
     EScriptBackendResult LuaScriptBackend::prepareSyncStep(ScriptBackendInstance instance,
-        const lux::rdesc::ScriptFunction& function, ScriptBackendPreparedMethod& result) noexcept
+                                                           const lux::rdesc::ScriptFunction& function,
+                                                           const ScriptSyncStepShape& shape,
+                                                           ScriptBackendPreparedMethod& method,
+                                                           PreparedScriptSyncStep& result) noexcept
     {
-        if (!state_ || function.args.size() > 64U || function.returns.size() > 1U)
+        const bool invalid_shape = function.args.size() > 64U || function.returns.size() > 1U ||
+                                   !detail::syncStepShapeMatches(shape, function);
+        if (!state_ || invalid_shape)
             return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
         ScriptBackendPreparedMethod prepared;
         const auto status = Impl::prepareMethod(state_.get(), instance, function, prepared);
@@ -2832,8 +2963,38 @@ namespace lux::simulation::script
             Impl::releaseMethod(state_.get(), instance, prepared);
             return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
         }
-        prepared.synchronous.invoke = &Impl::invokeSyncStep;
-        result = prepared;
+        const auto& call = *static_cast<Impl::PreparedCall*>(prepared.token);
+        try
+        {
+            Impl::prepareSyncOperations(*const_cast<Impl::LuaFunctionBinding*>(call.function));
+        }
+        catch (const std::bad_alloc&)
+        {
+            Impl::releaseMethod(state_.get(), instance, prepared);
+            return EScriptBackendResult::ALLOCATION_FAILURE;
+        }
+        decltype(PreparedScriptSyncStep::invoke) invoke{};
+        const auto select = [&]<bool EntityScope, bool HasResult>()
+        {
+            invoke = call.function->scalar_sync ? &Impl::invokeSyncStep<EntityScope, HasResult, true>
+                                                : &Impl::invokeSyncStep<EntityScope, HasResult, false>;
+        };
+        if (call.instance->entity_scope)
+        {
+            if (function.returns.empty())
+                select.template operator()<true, false>();
+            else
+                select.template operator()<true, true>();
+        }
+        else
+        {
+            if (function.returns.empty())
+                select.template operator()<false, false>();
+            else
+                select.template operator()<false, true>();
+        }
+        method = prepared;
+        result = {&function, &shape, prepared.token, invoke};
         return EScriptBackendResult::SUCCESS;
     }
 
@@ -2848,4 +3009,4 @@ namespace lux::simulation::script
             &Impl::destroyInstance};
     }
 
-}
+} // namespace lux::simulation::script

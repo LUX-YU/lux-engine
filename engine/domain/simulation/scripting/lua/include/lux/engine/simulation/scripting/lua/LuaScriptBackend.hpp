@@ -1,9 +1,10 @@
 #pragma once
 #include <lux/engine/function/script/lua/LuaAllocation.hpp>
 
+#include <lux/engine/function/script/ScriptEvent.hpp>
+
 #include <lux/engine/function/script/lua/LuaVm.hpp>
 #include <lux/engine/function/script/lua/ScriptAbilityLua.hpp>
-#include <lux/engine/function/script/ScriptEvent.hpp>
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/lua/visibility.h>
 
@@ -108,7 +109,8 @@ namespace lux::simulation::script
         std::uint64_t prepared_acquire_steps{};
         std::uint64_t prepared_release_steps{};
         std::size_t cached_prototypes{};
-        // VM-wide counters include live and released threads; unavailable when diagnostics are disabled.
+        // VM-wide counters include live and released threads; unavailable when
+        // diagnostics are disabled.
         bool leaf_yield_available{};
         bool leaf_statistics_enabled{};
         std::uint64_t leaf_return_yields{}, standard_leaf_yields{};
@@ -134,7 +136,10 @@ namespace lux::simulation::script
         [[nodiscard]] LuaScriptBackendStats stats() const noexcept;
         [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
         [[nodiscard]] EScriptBackendResult prepareSyncStep(ScriptBackendInstance instance,
-            const lux::rdesc::ScriptFunction& function, ScriptBackendPreparedMethod& result) noexcept;
+                                                           const lux::rdesc::ScriptFunction& function,
+                                                           const ScriptSyncStepShape& shape,
+                                                           ScriptBackendPreparedMethod& method,
+                                                           PreparedScriptSyncStep& result) noexcept;
 
       private:
         struct Impl;
@@ -144,4 +149,4 @@ namespace lux::simulation::script
         std::unique_ptr<Impl> state_;
         friend struct detail::LuaAbilityProjectionAccess;
     };
-}
+} // namespace lux::simulation::script

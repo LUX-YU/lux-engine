@@ -166,7 +166,8 @@ struct NativeLuaTaskBackend::Impl final
                 std::ranges::binary_search(body->suspension_capable_exports, step.symbol_id))
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
         }
-        // Fallible cold preparation: all arrays stabilize before any child borrows them.
+        // Fallible cold preparation: all arrays stabilize before any child borrows
+        // them.
         try
         {
             instance.capabilities.reserve(companion->description().api_requirements.size());
@@ -202,13 +203,19 @@ struct NativeLuaTaskBackend::Impl final
         for (const auto &step : plan.steps)
         {
             ScriptBackendPreparedMethod prepared;
-            result = lua.prepareSyncStep(instance.lua, step, prepared);
+            const auto shape =
+                std::ranges::find_if(plan.contract->sync_step_shapes, [&](const auto* declared)
+                                     { return declared && detail::syncStepShapeMatches(*declared, step); });
+            if (shape == plan.contract->sync_step_shapes.end())
+                return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+            PreparedScriptSyncStep entry;
+            result = lua.prepareSyncStep(instance.lua, step, **shape, prepared, entry);
             if (result != EScriptBackendResult::SUCCESS)
                 return result;
             instance.step_methods.push_back(prepared);
             if (prepared.resumable || !prepared.synchronous)
                 return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
-            instance.steps.push_back({&step, prepared.synchronous});
+            instance.steps.push_back(entry);
         }
         instance.step_view = {context.instance, instance.publication, context.behavior, instance.steps, &instance,
                               &current};

@@ -1,10 +1,11 @@
 #pragma once
 
-#include <lux/engine/simulation/ScriptSystem.hpp>
-#include <lux/engine/simulation/script/ScriptWaitSource.hpp>
-#include <lux/cxx/container/SlotMap.hpp>
 #include <entt/container/dense_map.hpp>
 #include <limits>
+#include <lux/cxx/container/SlotMap.hpp>
+
+#include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/engine/simulation/script/ScriptWaitSource.hpp>
 #include <utility>
 
 namespace lux::simulation::script::detail
@@ -195,10 +196,11 @@ namespace lux::simulation::script::detail
         }
 
     public:
-        // A synchronous owner-thread preflight. Between this and commit only result-storage admission
-        // may run: no user code, waiter mutation or region exit. No capacity is consumed before commit.
-        class Admission final
-        {
+      // A synchronous owner-thread preflight. Between this and commit only
+      // result-storage admission may run: no user code, waiter mutation or region
+      // exit. No capacity is consumed before commit.
+      class Admission final
+      {
         public:
             Admission(const Admission&) = delete;
             Admission& operator=(const Admission&) = delete;
@@ -298,7 +300,10 @@ namespace lux::simulation::script::detail
             }
             ++sequence_;
             const auto id = eventWaiterId(*inserted);
-            auto& waiter = waiters_[*inserted];
+            // SlotMap insertion appends to dense storage; no user code or mutation
+            // intervenes. Keep this borrow inside registration, never across dispatch
+            // or another insertion.
+            auto& waiter = waiters_.values().back();
             waiter.id = id;
             waiter.route_previous = route->last;
             if (waiter.route_previous.valid())
@@ -376,4 +381,4 @@ namespace lux::simulation::script::detail
         std::size_t cleanup_visits_{};
         std::uint64_t claim_lookups_{};
     };
-}
+} // namespace lux::simulation::script::detail

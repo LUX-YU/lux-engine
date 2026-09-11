@@ -16,7 +16,7 @@ namespace lux::simulation::script::detail
                 return EScriptSystemError::ALLOCATION_FAILURE;
             return EScriptSystemError::BACKEND_FAILURE;
         }
-    }
+    } // namespace
 
     ScriptPreparer::Result ScriptPreparer::prepareCatalog(
         ScriptArtifactResolver artifacts,
@@ -180,8 +180,11 @@ namespace lux::simulation::script::detail
                 EventPointId{requirement.event_id});
             if (!eventMatches(requirement, described, bindings.eventEndpoint(*endpoint_slot)))
                 return lux::cxx::unexpected(EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH);
-            construction.addEvent({&requirement, {}, *endpoint_slot, {requirement.payload.type_id,
-                requirement.payload.abi_kind, requirement.payload.size, requirement.payload.alignment}});
+            const PreparedResumeType payload{requirement.payload.type_id, requirement.payload.abi_kind,
+                                             requirement.payload.size, requirement.payload.alignment};
+            if (!payload.valid())
+                return lux::cxx::unexpected(EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH);
+            construction.addEvent({&requirement, {}, *endpoint_slot, payload});
         }
         if (const auto result = construction.allocateIdentity(); !result)
             return result;
@@ -259,4 +262,4 @@ namespace lux::simulation::script::detail
             owned.abi_kind == requirement.payload.abi_kind && owned.size == requirement.payload.size &&
             owned.alignment == requirement.payload.alignment && endpoint.payload_projection.copy != nullptr;
     }
-}
+} // namespace lux::simulation::script::detail

@@ -12,12 +12,13 @@
 
 namespace lux::simulation::script
 {
-// Non-owning views of canonical Script facts. Generated tables have static lifetime;
-// no registry, reflected declarations, provider addresses or runtime slots are stored here.
-struct CppStaticValueView final
-{
-    lux::semantic::Layout layout;
-    lux::semantic::EValuePass pass{};
+    // Non-owning views of canonical Script facts. Generated tables have static
+    // lifetime; no registry, reflected declarations, provider addresses or runtime
+    // slots are stored here.
+    struct CppStaticValueView final
+    {
+        lux::semantic::Layout layout;
+        lux::semantic::EValuePass pass{};
 };
 
 struct CppStaticExportEntry final
@@ -62,6 +63,7 @@ struct CppStaticContract final
     std::span<const CppStaticApiRequirement> abilities;
     std::span<const lux::script::ScriptEventSourceView> events;
     bool (*resolve_ability)(std::uint64_t contract_hash, std::uint32_t& local_slot) noexcept{};
+    std::span<const ScriptSyncStepShape* const> sync_step_shapes;
 };
 
 namespace detail
@@ -200,7 +202,8 @@ struct CppStaticSyncEntry<Function> : CppStaticSyncShape<Result, Args...>
 template <class... Args> struct CppStaticOwnedArguments : CppStaticArguments<Args...>
 {
     static_assert((cppStaticPersistentArgumentSupported<Args> && ...),
-                  "CppStatic coroutine const-reference must be trivial; pointers and mutable references are forbidden");
+                  "CppStatic coroutine const-reference must be trivial; pointers "
+                  "and mutable references are forbidden");
     struct Layout final
     {
         std::array<std::size_t, sizeof...(Args)> offsets{};
@@ -309,7 +312,8 @@ template <class Owner, auto Attach = nullptr>
     if constexpr (!std::is_same_v<decltype(Attach), std::nullptr_t>)
     {
         static_assert(std::is_same_v<decltype(Attach), void (Owner::*)(ScriptBehavior&) noexcept>,
-            "Script attach must be void(ScriptBehavior&) noexcept on a mutable object");
+                      "Script attach must be void(ScriptBehavior&) noexcept on a "
+                      "mutable object");
         result.requires_host = true;
         result.attach = [](void* object, ScriptBehavior& behavior) noexcept {
             std::invoke(Attach, *static_cast<Owner*>(object), behavior);

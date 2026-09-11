@@ -19,6 +19,8 @@ struct FrameLifetime final
 };
 struct LUX_TYPE_INFO(compile_time) NativeTask final
 {
+    inline static constexpr std::array SyncStepShapes{script::scriptSyncStepShape<std::int32_t(std::int32_t)>(),
+                                                      script::scriptSyncStepShape<void(std::int32_t)>()};
     NativeTask() noexcept : index(constructed++)
     {
     }
@@ -130,7 +132,8 @@ struct LUX_TYPE_INFO(compile_time) NativeTask final
     LUX_METHOD(script_export = "task.large", script_coroutine = true)
     script::ScriptCoroutine large(script::ScriptCoroutineContext &context) noexcept
     {
-        // Deliberately observable storage tests the existing hard limit, not an average-size budget.
+        // Deliberately observable storage tests the existing hard limit, not an
+        // average-size budget.
         volatile script::test::ValuePose records[16]{};
         FrameLifetime lifetime;
         ++started;
@@ -144,6 +147,9 @@ struct LUX_TYPE_INFO(compile_time) NativeTask final
 };
 struct LUX_TYPE_INFO(compile_time) NativePoseTask final
 {
+    inline static constexpr std::array SyncStepShapes{
+        script::scriptSyncStepShape<std::int32_t(const script::test::ValuePose&)>(),
+        script::scriptSyncStepShape<void(std::int32_t)>()};
     NativePoseTask() noexcept : index(constructed++)
     {
     }

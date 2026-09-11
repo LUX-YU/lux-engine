@@ -528,13 +528,16 @@ namespace lux::simulation::script
         static int createRoots(lua_State* vm)
         {
             auto* owner = static_cast<Impl*>(lua_touserdata(vm, 1));
-            lua_createtable(vm, static_cast<int>(owner->continuation_capacity), 0);
-            for (std::size_t index{}; index < owner->continuation_capacity; ++index)
+            if (owner->continuation_capacity != 0U)
             {
-                lua_pushboolean(vm, false);
-                lua_rawseti(vm, -2, static_cast<lua_Integer>(index + 1U));
+                lua_createtable(vm, static_cast<int>(owner->continuation_capacity), 0);
+                for (std::size_t index{}; index < owner->continuation_capacity; ++index)
+                {
+                    lua_pushboolean(vm, false);
+                    lua_rawseti(vm, -2, static_cast<lua_Integer>(index + 1U));
+                }
+                owner->thread_roots_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
             }
-            owner->thread_roots_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
             lua_pushcfunction(vm, &Impl::traceback);
             owner->traceback_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
             return 0;
@@ -1814,6 +1817,104 @@ namespace lux::simulation::script
             return 0;
         }
 
+        struct SyncInvocationRequest final
+        {
+            PreparedCall* call;
+            lux_script_call_frame* frame;
+            ScriptInvocationValidity qualification;
+            bool bound;
+            ScalarStorage output;
+            std::int32_t status{kInvalidCall};
+        };
+
+        // Only trivially destructible borrows live here. lua_call and stack cleanup may longjmp
+        // to invokeSyncStep's pcall, never through the native task or an owning C++ local.
+        static int executeSyncStep(lua_State* vm)
+        {
+            auto& request = *static_cast<SyncInvocationRequest*>(lua_touserdata(vm, 1));
+            auto& call = *request.call;
+            const auto& frame = *request.frame;
+            if (!lua_checkstack(vm, static_cast<int>(frame.arg_count + frame.return_count + 8U)))
+            {
+                request.status = kLuaFailure;
+                return 0;
+            }
+            lua_rawgeti(vm, LUA_REGISTRYINDEX, call.function->function_ref);
+            int count{};
+            if (call.instance->entity_scope)
+            {
+                lua_rawgeti(vm, LUA_REGISTRYINDEX, call.instance->table_ref);
+                ++count;
+            }
+            for (std::uint32_t i{}; i < frame.arg_count; ++i)
+            {
+                if (!pushArgument(vm, frame.args[i], call.function->argument_operations[i]))
+                {
+                    request.status = -3;
+                    return 0;
+                }
+                ++count;
+            }
+            // Converters may invoke providers/finalizers and revoke the original invocation.
+            if (request.bound && !request.qualification.valid()) return 0;
+            lua_call(vm, count, static_cast<int>(frame.return_count));
+            if (frame.return_count != 0U)
+            {
+                auto slot = frame.returns[0];
+                slot.data = &request.output;
+                if (!readReturn(vm, -1, slot))
+                {
+                    request.status = kInvalidResult;
+                    return 0;
+                }
+            }
+            lua_settop(vm, 1);
+            request.status = 0;
+            return 0;
+        }
+
+        static int invokeSyncStep(void* opaque, lux_script_call_frame* frame) noexcept
+        {
+            if (!opaque || !frame) return kInvalidCall;
+            auto& call = *static_cast<PreparedCall*>(opaque);
+            if (!call.active || !call.instance || !call.instance->active || !call.function) return kInvalidCall;
+            const auto& signature = call.function->signature;
+            const bool invalid_count = frame->arg_count != signature.args.size() ||
+                frame->return_count != signature.returns.size() || frame->return_count > 1U || frame->arg_count > 64U;
+            const bool invalid_storage = (frame->arg_count != 0U && !frame->args) ||
+                (frame->return_count != 0U && !frame->returns);
+            if (invalid_count || invalid_storage) return kInvalidCall;
+            const auto matches = [](const lux::rdesc::ScriptValueType& type, const lux_script_value_slot& slot) {
+                return slot.data && slot.kind == type.abi_kind && slot.size == type.size &&
+                    slot.type_id == type.type_id && type.alignment != 0U &&
+                    reinterpret_cast<std::uintptr_t>(slot.data) % type.alignment == 0U;
+            };
+            for (std::size_t i{}; i < frame->arg_count; ++i)
+                if (!matches(signature.args[i], frame->args[i])) return kInvalidCall;
+            if (frame->return_count && !matches(signature.returns[0], frame->returns[0])) return kInvalidCall;
+            auto& self = *call.instance->owner;
+            auto* behavior = call.instance->behavior;
+            const bool bound = behavior && behavior->hasInvocationAuthority();
+            const auto qualification = bound ? behavior->captureInvocation() : ScriptInvocationValidity{};
+            if (bound && !qualification.valid()) return kInvalidCall;
+            ExecutionScope execution{self, {self.main_thread, call.instance, nullptr, nullptr, nullptr}};
+            if (!execution) return kExecutionDepthCapacity;
+            if (!lua_checkstack(self.main_thread, 3)) return kLuaFailure;
+            const auto base = lua_gettop(self.main_thread);
+            SyncInvocationRequest request{&call, frame, qualification, bound, {}, kInvalidCall};
+            lua_rawgeti(self.main_thread, LUA_REGISTRYINDEX, self.traceback_ref);
+            lua_pushcfunction(self.main_thread, &executeSyncStep);
+            lua_pushlightuserdata(self.main_thread, &request);
+            const auto status = lua_pcall(self.main_thread, 1, 0, base + 1);
+            // The protected callback owns its own temporary/TBC range; only the plain error handler remains here.
+            lua_settop(self.main_thread, base);
+            if (status != LUA_OK) return kLuaFailure;
+            if (request.status != 0) return request.status;
+            if (bound && !qualification.valid()) return kInvalidCall;
+            if (frame->return_count) std::memcpy(frame->returns[0].data, &request.output, frame->returns[0].size);
+            return 0;
+        }
+
         [[nodiscard]] lux::cxx::expected<LuaContinuation*, std::int32_t> acquireContinuation(
             Instance& instance,
             PreparedCall& call,
@@ -2413,7 +2514,7 @@ namespace lux::simulation::script
         ) noexcept
     {
         const bool has_invalid_capacity = config.instance_capacity == 0U ||
-            config.prepared_call_capacity == 0U || config.continuation_capacity == 0U ||
+            config.prepared_call_capacity == 0U ||
             config.execution_depth_capacity == 0U || config.ability_catalog_method_capacity == 0U ||
             config.event_catalog_capacity == 0U ||
             config.ability_catalog_method_capacity > static_cast<std::size_t>((std::numeric_limits<int>::max)()) - 2U ||
@@ -2716,6 +2817,24 @@ namespace lux::simulation::script
             state_->prototypes.size(),
             Impl::leaf_yield_available, collected, fast, fallback
         };
+    }
+
+    EScriptBackendResult LuaScriptBackend::prepareSyncStep(ScriptBackendInstance instance,
+        const lux::rdesc::ScriptFunction& function, ScriptBackendPreparedMethod& result) noexcept
+    {
+        if (!state_ || function.args.size() > 64U || function.returns.size() > 1U)
+            return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
+        ScriptBackendPreparedMethod prepared;
+        const auto status = Impl::prepareMethod(state_.get(), instance, function, prepared);
+        if (status != EScriptBackendResult::SUCCESS) return status;
+        if (prepared.resumable)
+        {
+            Impl::releaseMethod(state_.get(), instance, prepared);
+            return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
+        }
+        prepared.synchronous.invoke = &Impl::invokeSyncStep;
+        result = prepared;
+        return EScriptBackendResult::SUCCESS;
     }
 
     ScriptBackendDescriptor LuaScriptBackend::descriptor() noexcept

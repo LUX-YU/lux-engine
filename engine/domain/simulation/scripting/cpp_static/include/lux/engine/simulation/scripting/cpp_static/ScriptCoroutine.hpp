@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
+#include <lux/engine/simulation/scripting/cpp_static/ScriptSyncStepCall.hpp>
 #include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/visibility.h>
 
@@ -90,12 +91,22 @@ namespace lux::simulation::script
     };
 
     class ScriptCoroutine;
+    class ScriptCoroutineFailure;
     struct ScriptCoroutinePromiseAccess;
 
     class LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC ScriptCoroutineContext final
     {
     public:
         ScriptCoroutineContext() noexcept = default;
+
+        template<class Signature, class... Args>
+        [[nodiscard]] auto callStep(std::uint32_t ordinal, Args&&... args) noexcept
+        {
+            return detail::ScriptSyncStepCall<Signature>::invoke(*this, ordinal, std::forward<Args>(args)...);
+        }
+
+        [[nodiscard]] ScriptCoroutineFailure fail(ScriptSyncStepError error) noexcept;
+
 
         template <class Payload>
         [[nodiscard]] auto wait(const CppScriptEventSource<Payload>& source) noexcept;
@@ -109,6 +120,11 @@ namespace lux::simulation::script
         [[nodiscard]] lux::script::ScriptAbilityCoroutine<DelayAbility, ScriptCoroutineContext> delay() noexcept;
 
     private:
+        [[nodiscard]] lux::cxx::expected<void, ScriptSyncStepError> invokeSyncStep(
+            std::uint32_t ordinal, lux_script_call_frame& frame,
+            std::span<const lux::semantic::EValuePass> passes) noexcept;
+        template<class Signature> friend struct detail::ScriptSyncStepCall;
+
         using FindAbilityFn = bool (*)(void*, std::uint32_t, std::uint64_t, std::uint32_t&) noexcept;
         using ResolveAbilityFn = bool (*)(
             void*,
@@ -157,9 +173,11 @@ namespace lux::simulation::script
             detail::BoundedClassStorage::ClassHandle frame_class,
             std::size_t frame_limit,
             std::size_t alignment_limit,
-            ResolveEventFn resolve_event
+            ResolveEventFn resolve_event,
+            const ScriptSyncStepSetView* sync_steps
         ) noexcept
-            : backend_(backend),
+            : sync_steps_(sync_steps), sync_publication_(sync_steps ? sync_steps->publication : 0U),
+              backend_(backend),
               instance_slot_(instance_slot),
               find_ability_(find_ability),
               resolve_ability_(resolve_ability),
@@ -224,6 +242,8 @@ namespace lux::simulation::script
             resume_packet_ = nullptr;
         }
 
+        const ScriptSyncStepSetView* sync_steps_{};
+        std::uint64_t sync_publication_{};
         void* backend_{};
         std::uint32_t instance_slot_{};
         FindAbilityFn find_ability_{};
@@ -588,6 +608,25 @@ namespace lux::simulation::script
         });
     }
 
+    class ScriptCoroutineFailure final
+    {
+    public:
+        explicit ScriptCoroutineFailure(std::int32_t status) noexcept : status_(status != 0 ? status : -1) {}
+        [[nodiscard]] bool await_ready() const noexcept { return false; }
+        void await_suspend(std::coroutine_handle<ScriptCoroutine::promise_type> handle) const noexcept
+        {
+            handle.promise().suspend(ScriptStepResult::failed(status_), lux::semantic::InvalidTypeId, 0U);
+        }
+        [[noreturn]] void await_resume() const noexcept { std::terminate(); }
+    private:
+        std::int32_t status_;
+    };
+
+    inline ScriptCoroutineFailure ScriptCoroutineContext::fail(ScriptSyncStepError error) noexcept
+    {
+        return ScriptCoroutineFailure(error.status);
+    }
+
     struct CppStaticCoroutineAccess final
     {
         template <class Result, class Admission>
@@ -608,11 +647,12 @@ namespace lux::simulation::script
             detail::BoundedClassStorage::ClassHandle frame_class,
             std::size_t frame_limit,
             std::size_t alignment_limit,
-            ScriptCoroutineContext::ResolveEventFn resolve_event
+            ScriptCoroutineContext::ResolveEventFn resolve_event,
+            const ScriptSyncStepSetView* sync_steps = nullptr
         ) noexcept
         {
             return {backend, instance_slot, find_ability, resolve_ability, frame_storage,
-                frame_class, frame_limit, alignment_limit, resolve_event};
+                frame_class, frame_limit, alignment_limit, resolve_event, sync_steps};
         }
 
         [[nodiscard]] static constexpr std::size_t frameOverhead(std::size_t alignment) noexcept

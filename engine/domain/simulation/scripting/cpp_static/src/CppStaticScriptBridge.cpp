@@ -16,6 +16,47 @@ lux::script::ScriptAbilityCoroutine<DelayAbility, ScriptCoroutineContext> Script
     return {*this, slot.value_or((std::numeric_limits<std::uint32_t>::max)())};
 }
 
+lux::cxx::expected<void, ScriptSyncStepError> ScriptCoroutineContext::invokeSyncStep(
+    std::uint32_t ordinal, lux_script_call_frame& frame,
+    std::span<const lux::semantic::EValuePass> passes) noexcept
+{
+    const auto error = [ordinal](EScriptSyncStepError category, std::int32_t status) {
+        return lux::cxx::unexpected(ScriptSyncStepError{ordinal, category, status});
+    };
+    const auto* view = sync_steps_;
+    const bool invalid_context = active_step_ == nullptr || view == nullptr;
+    if (invalid_context) return error(EScriptSyncStepError::INVALID_CONTEXT, -32001);
+    const auto identity = active_step_->instance;
+    const bool invalid_publication = view->instance != identity || view->publication != sync_publication_ ||
+        !view->current || !view->current(view->owner, identity, sync_publication_);
+    if (invalid_publication) return error(EScriptSyncStepError::INVALID_CONTEXT, -32001);
+    if (ordinal >= view->steps.size()) return error(EScriptSyncStepError::INVALID_STEP, -32002);
+    const auto& entry = view->steps[ordinal];
+    const auto* signature = entry.signature;
+    const bool invalid_shape = !signature || !entry.call || signature->args.size() != frame.arg_count ||
+        signature->returns.size() != frame.return_count || passes.size() != frame.arg_count;
+    if (invalid_shape) return error(EScriptSyncStepError::SIGNATURE_MISMATCH, -32003);
+    const auto matches = [](const lux::rdesc::ScriptValueType& type, const lux_script_value_slot& slot) {
+        return slot.data && type.type_id == slot.type_id && type.abi_kind == slot.kind && type.size == slot.size &&
+            type.alignment != 0U && reinterpret_cast<std::uintptr_t>(slot.data) % type.alignment == 0U;
+    };
+    for (std::size_t i{}; i < frame.arg_count; ++i)
+        if (!matches(signature->args[i], frame.args[i]) || signature->args[i].pass != passes[i])
+            return error(EScriptSyncStepError::SIGNATURE_MISMATCH, -32003);
+    for (std::size_t i{}; i < frame.return_count; ++i)
+        if (!matches(signature->returns[i], frame.returns[i]))
+            return error(EScriptSyncStepError::SIGNATURE_MISMATCH, -32003);
+    auto* behavior = view->behavior;
+    const bool bound = behavior && behavior->hasInvocationAuthority();
+    const auto qualification = bound ? behavior->captureInvocation() : ScriptInvocationValidity{};
+    if (!bound || !qualification.valid()) return error(EScriptSyncStepError::INVOCATION_REVOKED, -32004);
+    const auto status = entry.call.invoke(entry.call.context, &frame);
+    if (status != 0) return error(EScriptSyncStepError::BACKEND_FAILURE, status);
+    if (!view->current(view->owner, identity, sync_publication_) || !qualification.valid())
+        return error(EScriptSyncStepError::INVOCATION_REVOKED, -32004);
+    return {};
+}
+
 namespace
 {
 bool sameValue(const lux::rdesc::ScriptValueType &value, const CppStaticValueView &expected) noexcept
@@ -269,6 +310,7 @@ struct CppStaticScriptBackend::State final
         std::span<const detail::ScriptCoroutineAbilityAccess> prepared_abilities;
         std::size_t ability_block{};
         std::span<const PreparedScriptEventAdmission> events;
+        const ScriptSyncStepSetView* sync_steps{};
         const lux::script::ScriptArtifact* artifact{};
         ArtifactAssociation* association{};
         std::size_t active_coroutines{};
@@ -337,7 +379,8 @@ struct CppStaticScriptBackend::State final
             const bool completed =
                 continuation->handle.done() && outcome.state == EScriptStepState::COMPLETED && outcome.valid();
             state.destroyCoroutine(*continuation);
-            return completed ? outcome : ScriptStepResult::failed(-1);
+            return completed || (outcome.state == EScriptStepState::FAILED && outcome.valid())
+                ? outcome : ScriptStepResult::failed(-1);
         }
     };
 
@@ -609,7 +652,7 @@ struct CppStaticScriptBackend::State final
         continuation.instance = std::addressof(instance);
         continuation.context = CppStaticCoroutineAccess::context(
             this, instance.slot, &State::findAbility, &State::resolveAbility, descriptor.coroutine_frames, {0U},
-            descriptor.frame_limit, descriptor.frame_alignment, &State::resolveEvent);
+            descriptor.frame_limit, descriptor.frame_alignment, &State::resolveEvent, instance.sync_steps);
         continuation.slot = static_cast<std::uint32_t>(slot);
         continuation.active = true;
         ++descriptor.active_coroutines;
@@ -633,7 +676,8 @@ struct CppStaticScriptBackend::State final
         promise.clearResume();
         const auto result = promise.outcome;
         const bool is_invalid_terminal = continuation.handle.done() && result.state == EScriptStepState::SUSPENDED;
-        const bool is_invalid_suspension = !continuation.handle.done() && result.state != EScriptStepState::SUSPENDED;
+        const bool is_invalid_suspension = !continuation.handle.done() && result.state != EScriptStepState::SUSPENDED &&
+            result.state != EScriptStepState::FAILED;
         return is_invalid_terminal || is_invalid_suspension ? ScriptStepResult::failed(-1) : result;
     }
 
@@ -789,6 +833,7 @@ struct CppStaticScriptBackend::State final
         instance->slot = static_cast<std::uint32_t>(instance_slot);
         instance->capabilities = context.capabilities;
         instance->events = context.events;
+        instance->sync_steps = context.sync_steps;
         instance->artifact = &artifact;
         instance->association = *association;
         if (descriptor.object.size != 0U)

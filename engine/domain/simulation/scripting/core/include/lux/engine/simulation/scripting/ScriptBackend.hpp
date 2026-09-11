@@ -6,6 +6,7 @@
 #include <lux/engine/simulation/ecs/Entity.hpp>
 #include <lux/engine/simulation/scripting/ScriptApiCapability.hpp>
 #include <lux/engine/simulation/scripting/ScriptRuntime.hpp>
+#include <lux/engine/simulation/scripting/ScriptSyncStep.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -213,6 +214,7 @@ namespace lux::simulation::script
         ScriptInstanceId instance;
         std::span<const PreparedScriptApiCapability> capabilities;
         std::span<const PreparedScriptEventAdmission> events;
+        const ScriptSyncStepSetView* sync_steps{};
     };
 
     struct BoundScriptStepCall final

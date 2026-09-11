@@ -133,6 +133,9 @@ namespace lux::simulation::script
         [[nodiscard]] lux::script::lua::LuaRuntimeInfo runtimeInfo() const noexcept;
         [[nodiscard]] LuaScriptBackendStats stats() const noexcept;
         [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
+        [[nodiscard]] EScriptBackendResult prepareSyncStep(ScriptBackendInstance instance,
+            const lux::rdesc::ScriptFunction& function, ScriptBackendPreparedMethod& result) noexcept;
+
       private:
         struct Impl;
         explicit LuaScriptBackend(

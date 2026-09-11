@@ -8,6 +8,7 @@
 #include "LuaValueTestTypes.lua.value.generated.hpp"
 #include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
+#include <lux/engine/simulation/scripting/ScriptEventSource.hpp>
 #if NA1_CANDIDATE
 #include "Tasks.CompleteTasks.script.generated.hpp"
 #include "Tasks.hpp"

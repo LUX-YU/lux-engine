@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 project(native_lua_complete_task_comparison LANGUAGES CXX)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(NOT NA1_SOURCE_DIR)
     message(FATAL_ERROR "NA1_SOURCE_DIR must identify the tracked common fixture source")
 endif()
@@ -19,13 +20,14 @@ target_compile_definitions(native_lua_complete_tasks PRIVATE NA1_CANDIDATE=$<BOO
 target_compile_options(native_lua_complete_tasks PRIVATE /UNDEBUG)
 target_link_libraries(native_lua_complete_tasks PRIVATE lux::engine::simulation::simulation_script_lua
     lux::engine::simulation::simulation_composition)
-set(old_benchmark "${NA1_BENCHMARK_DIR}/../../../builtin/script/benchmark")
-set(old_values "${NA1_BENCHMARK_DIR}/../../lua/test")
+file(REAL_PATH "${NA1_BENCHMARK_DIR}/../../../builtin/script/benchmark" old_benchmark)
+file(REAL_PATH "${NA1_BENCHMARK_DIR}/../../lua/test" old_values)
 target_include_directories(native_lua_complete_tasks PRIVATE ${NA1_BENCHMARK_DIR} ${old_benchmark} ${old_values})
 lux_script_lua_values(TARGET native_lua_complete_tasks SOURCES ${old_values}/LuaValueTestTypes.hpp
     RULE_HEADERS ${old_values}/LuaValueTestRules.hpp)
 add_library(cost_ability_contract STATIC ${NA1_BENCHMARK_DIR}/contracts.cpp)
 target_compile_features(cost_ability_contract PUBLIC cxx_std_20)
+target_include_directories(cost_ability_contract PUBLIC ${old_benchmark})
 target_link_libraries(cost_ability_contract PUBLIC lux::engine::simulation::simulation_scripting_core)
 find_path(delay_include NAMES lux/engine/simulation/abilities/DelayAbility.hpp REQUIRED)
 lux_script_abilities(TARGET cost_ability_contract SOURCES ${old_benchmark}/ScriptBenchmarkAbility.hpp

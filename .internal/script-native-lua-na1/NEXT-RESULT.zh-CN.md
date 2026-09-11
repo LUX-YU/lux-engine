@@ -95,3 +95,5 @@ EventSource 借用及 Outcome 临时交接的变化不等于整体 VM 内存减�
 
 [原始 ZIP](evidence/next-hotpath.zip) · [逐文件 SHA、源码与产物身份](evidence/next-hotpath.json)。
 停止等待独立审阅；不发布 tag，不自动扩展下一项目。
+
+[固定提交原始证据下载](https://github.com/LUX-YU/lux-engine/raw/e23d623684a3f8cf9aca174fcb30a8b6b0020013/.internal/script-native-lua-na1/evidence/next-hotpath.zip) · [远端 741 项回取核验](evidence/next-remote-readback.json)。

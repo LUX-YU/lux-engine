@@ -27,7 +27,8 @@ $target_names = @{
     'script-authoring'='lux_script_authoring_consumer';
     'script-runtime-input'='lux_script_runtime_input_consumer';
     'script-description'='lux_script_description_consumer';
-    'script-lua-values'='lux_script_lua_values_consumer'
+    'script-lua-values'='lux_script_lua_values_consumer';
+    'native-task-lua-steps'='lux_native_task_lua_steps_consumer'
 }
 $bins = @($PrefixPath.Split(';') | ForEach-Object { Join-Path $_ 'bin' })
 $clean_path = @($env:PATH.Split(';') | Where-Object {

@@ -561,7 +561,8 @@ namespace lux::simulation::script
                     luaL_unref(main_thread, LUA_REGISTRYINDEX, prototype.environment_ref);
             }
             for (const auto& function : function_bindings)
-                if (function.function_ref != LUA_NOREF) luaL_unref(main_thread, LUA_REGISTRYINDEX, function.function_ref);
+                if (function.function_ref != LUA_NOREF)
+                    luaL_unref(main_thread, LUA_REGISTRYINDEX, function.function_ref);
             if (traceback_ref != LUA_NOREF) luaL_unref(main_thread, LUA_REGISTRYINDEX, traceback_ref);
         }
 

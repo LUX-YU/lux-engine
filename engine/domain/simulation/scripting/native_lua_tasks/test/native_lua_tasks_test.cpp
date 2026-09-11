@@ -168,7 +168,13 @@ struct Harness final
                                        lux::script::lua::makeScriptAbilityLuaContribution<DelayAbility>()};
         const std::array pools{CppStaticScriptPoolDescription{&contract, count, count * 2U, count * 2048U,
                                                               alignof(std::max_align_t), count * 2U, 512U, true}};
-        std::vector<NativeLuaTaskRoute> routes{{101U, 101U}};
+        const auto native_run = pose                                   ? 101U
+                                : na1::mode == 4U                      ? 108U
+                                : na1::mode == 5U                      ? 109U
+                                : (na1::mode == 6U || na1::mode == 7U) ? 110U
+                                : na1::mode == 8U                      ? 111U
+                                                                       : 101U;
+        std::vector<NativeLuaTaskRoute> routes{{101U, native_run}};
         if (!pose)
             routes.push_back({107U, 107U});
         std::array steps{*lua_artifact.findExport(102U), *lua_artifact.findExport(106U)};

@@ -36,40 +36,14 @@ struct LUX_TYPE_INFO(compile_time) NativeTask final
             co_await context.fail({0U, script::EScriptSyncStepError::BACKEND_FAILURE, -771});
             ++unreachable;
         }
-        if (mode == 6U || mode == 7U)
-        {
-            auto rejected = mode == 6U ? context.callStep<std::int32_t(std::int32_t)>(999U, 1)
-                                       : context.callStep<std::int32_t(double)>(0U, 1.5);
-            if (!rejected)
-                co_await context.fail(rejected.error());
-            ++unreachable;
-        }
-        if (mode == 4U || mode == 5U)
-        {
-            const auto before = context.callStep<std::int32_t(std::int32_t)>(0U, 1);
-            if (!before)
-                co_await context.fail(before.error());
-            results[index] = *before;
-            co_await context.delay().nextStep();
-        }
         const auto count = mode == 3U ? 32U : 1U;
         for (std::uint32_t i{}; i < count; ++i)
         {
-            const auto payload = mode == 4U ? 10 : co_await context.wait(*event_source);
-            if (mode == 5U)
-                co_await context.delay().simulationSeconds(0.001);
+            const auto payload = co_await context.wait(*event_source);
             if (mode == 2U)
             {
                 co_await context.fail({0U, script::EScriptSyncStepError::BACKEND_FAILURE, -772});
                 ++unreachable;
-            }
-            if (mode == 8U)
-            {
-                auto applied = context.callStep<void(std::int32_t)>(1U, payload);
-                if (!applied)
-                    co_await context.fail(applied.error());
-                ++completed;
-                co_return;
             }
             const auto value = context.callStep<std::int32_t(std::int32_t)>(0U, payload);
             if (!value)
@@ -79,6 +53,66 @@ struct LUX_TYPE_INFO(compile_time) NativeTask final
             }
             results[index] = *value;
         }
+        ++completed;
+    }
+    LUX_METHOD(script_export = "task.next", script_coroutine = true)
+    script::ScriptCoroutine next(script::ScriptCoroutineContext &context) noexcept
+    {
+        FrameLifetime lifetime;
+        ++started;
+        {
+            auto value = context.callStep<std::int32_t(std::int32_t)>(0U, 1);
+            if (!value)
+                co_await context.fail(value.error());
+            results[index] = *value;
+        }
+        co_await context.delay().nextStep();
+        auto value = context.callStep<std::int32_t(std::int32_t)>(0U, 10);
+        if (!value)
+            co_await context.fail(value.error());
+        results[index] = *value;
+        ++completed;
+    }
+    LUX_METHOD(script_export = "task.sequence", script_coroutine = true)
+    script::ScriptCoroutine sequence(script::ScriptCoroutineContext &context) noexcept
+    {
+        FrameLifetime lifetime;
+        ++started;
+        {
+            auto value = context.callStep<std::int32_t(std::int32_t)>(0U, 1);
+            if (!value)
+                co_await context.fail(value.error());
+            results[index] = *value;
+        }
+        co_await context.delay().nextStep();
+        const auto payload = co_await context.wait(*event_source);
+        co_await context.delay().simulationSeconds(0.001);
+        auto value = context.callStep<std::int32_t(std::int32_t)>(0U, payload);
+        if (!value)
+            co_await context.fail(value.error());
+        results[index] = *value;
+        ++completed;
+    }
+    LUX_METHOD(script_export = "task.boundary", script_coroutine = true)
+    script::ScriptCoroutine boundary(script::ScriptCoroutineContext &context) noexcept
+    {
+        FrameLifetime lifetime;
+        ++started;
+        auto rejected = mode == 6U ? context.callStep<std::int32_t(std::int32_t)>(999U, 1)
+                                   : context.callStep<std::int32_t(double)>(0U, 1.5);
+        if (!rejected)
+            co_await context.fail(rejected.error());
+        ++unreachable;
+    }
+    LUX_METHOD(script_export = "task.void", script_coroutine = true)
+    script::ScriptCoroutine voidStep(script::ScriptCoroutineContext &context) noexcept
+    {
+        FrameLifetime lifetime;
+        ++started;
+        const auto payload = co_await context.wait(*event_source);
+        auto applied = context.callStep<void(std::int32_t)>(1U, payload);
+        if (!applied)
+            co_await context.fail(applied.error());
         ++completed;
     }
     LUX_METHOD(script_export = "task.other", script_coroutine = true)

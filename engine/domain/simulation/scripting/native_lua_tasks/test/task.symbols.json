@@ -1,7 +1,7 @@
 {
   "schema": "lux-script-symbol-ledger",
   "version": 1,
-  "next_symbol": 108,
+  "next_symbol": 112,
   "entries": [
     {
       "source_identity": "task.run",
@@ -10,6 +10,22 @@
     {
       "source_identity": "task.other",
       "symbol": 107
+    },
+    {
+      "source_identity": "task.next",
+      "symbol": 108
+    },
+    {
+      "source_identity": "task.sequence",
+      "symbol": 109
+    },
+    {
+      "source_identity": "task.boundary",
+      "symbol": 110
+    },
+    {
+      "source_identity": "task.void",
+      "symbol": 111
     }
   ]
 }

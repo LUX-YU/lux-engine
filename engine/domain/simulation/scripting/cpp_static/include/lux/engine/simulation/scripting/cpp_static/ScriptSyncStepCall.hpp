@@ -57,7 +57,7 @@ namespace lux::simulation::script::detail
                 frame.returns = &slot;
                 frame.return_count = 1U;
                 const auto invoked = context.invokeSyncStep(ordinal, frame, Passes);
-                if (!invoked) return lux::cxx::unexpected(invoked.error());
+                if (!invoked) return lux::cxx::unexpected<ScriptSyncStepError>(invoked.error());
                 return value;
             }
         }

@@ -45,9 +45,10 @@ namespace lux::simulation::script::detail
 
     struct ScriptEventSourceAccess final
     {
-        std::uint32_t endpoint{};
-        PreparedResumeType payload;
-        ScriptInstanceScope scope;
+        // Owner protection covers the whole registration transaction. Neither
+        // reservation nor source commit executes user code or moves these arrays.
+        const PreparedScriptEventAdmission* source{};
+        const ScriptInstanceScope* scope{};
     };
 
     class ScriptInstances final
@@ -474,7 +475,7 @@ namespace lux::simulation::script::detail
         if (!local)
             return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
         const auto& source = mount.event_sources[*local];
-        return ScriptEventSourceAccess{source.endpoint_slot, source.payload, mount.scope};
+        return ScriptEventSourceAccess{&source, &mount.scope};
     }
 
 }

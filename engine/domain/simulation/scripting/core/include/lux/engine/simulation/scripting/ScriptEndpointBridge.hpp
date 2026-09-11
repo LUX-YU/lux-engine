@@ -247,9 +247,15 @@ namespace lux::simulation::script
         {
             constexpr auto route = std::is_same_v<Route, SimulationBroadcastRoute>
                 ? EEventRoute::SIMULATION_BROADCAST : EEventRoute::ENTITY_TARGETED;
+            auto copy = payload_copy_ != nullptr ? &copyPayload<false> : nullptr;
+            if constexpr (detail::defaultEventPayloadCopy<Payload>() != nullptr)
+            {
+                if (payload_copy_ == detail::defaultEventPayloadCopy<Payload>())
+                    copy = &copyPayload<true>;
+            }
             return {system_, id_, route,
                 lux::semantic::makeType<Payload>(lux::semantic::EValuePass::CONST_REF),
-                {detail::eventPayloadLayout<Payload>(), payload_copy_ != nullptr ? &copyPayload : nullptr},
+                {detail::eventPayloadLayout<Payload>(), copy},
                 this, &connect, &disconnect,
                 &consume,
                 [](void* context) noexcept { return self(context).channel_->failed(); },
@@ -316,14 +322,25 @@ namespace lux::simulation::script
             return calls;
         }
 
+        template <bool DefaultScalar>
         static bool copyPayload(void* context, const lux_script_value_slot& input, std::span<std::byte> output) noexcept
         {
-            const auto& endpoint = self(context);
             using Traits = lux::semantic::TypeTraits<Payload>;
-            const bool invalid = input.data == nullptr || input.kind != Traits::AbiKind ||
-                input.type_id != lux::semantic::typeId(Traits::CanonicalName) || input.size != Traits::Size ||
-                output.size() != Traits::Size || endpoint.payload_copy_ == nullptr;
-            return !invalid && endpoint.payload_copy_(*static_cast<const Payload*>(input.data), output);
+            constexpr auto type = lux::semantic::typeId(Traits::CanonicalName);
+            const bool is_invalid_input = input.data == nullptr || input.kind != Traits::AbiKind ||
+                input.type_id != type || input.size != Traits::Size || output.size() != Traits::Size;
+            if (is_invalid_input)
+                return false;
+            if constexpr (DefaultScalar)
+            {
+                std::memcpy(output.data(), input.data, sizeof(Payload));
+                return true;
+            }
+            else
+            {
+                // The immutable callback was selected when this descriptor was prepared.
+                return self(context).payload_copy_(*static_cast<const Payload*>(input.data), output);
+            }
         }
 
         lux::system::SystemInstanceId system_;

@@ -400,12 +400,13 @@ namespace lux::simulation::script
             ScriptStablePointReport report;
             bool completion_failed{};
             auto batch = execution_owner.resumeBatch();
-            while (const auto resumed = batch.next())
+            ScriptExecution::Result resumed;
+            while (batch.next(resumed))
             {
-                if (!*resumed && !report.first_instance_error)
-                    report.first_instance_error = resumed->error();
+                if (!resumed && !report.first_instance_error)
+                    report.first_instance_error = resumed.error();
                 // Do not recapture: completion admission after EVERY pop uses the same bounded frontier.
-                if (!execution_owner.drainExternalCompletions())
+                if (execution_owner.hasPendingExternalCompletions() && !execution_owner.drainExternalCompletions())
                     completion_failed = true;
             }
             if (completion_failed)

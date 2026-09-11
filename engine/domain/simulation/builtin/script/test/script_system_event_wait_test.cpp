@@ -740,6 +740,52 @@ namespace
         std::unique_ptr<ScriptSystem> system;
     };
 
+    void testPreparedScalarProjection()
+    {
+        HookChannel<SimulationBroadcastRoute, std::int32_t> channel;
+        using Bridge = ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>;
+        Bridge builtin{kSystem, kBroadcastWait, channel};
+        static unsigned custom_calls{};
+        custom_calls = 0U;
+        Bridge custom{kSystem, kBroadcastWait, channel,
+            [](const std::int32_t& input, std::span<std::byte> output) noexcept {
+                ++custom_calls;
+                const auto value = input + 5;
+                std::memcpy(output.data(), &value, sizeof(value));
+                return true;
+            }
+        };
+        Bridge disabled{kSystem, kBroadcastWait, channel, nullptr};
+        assert(disabled.descriptor().payload_projection.copy == nullptr);
+        std::int32_t input{31}, output{};
+        auto slot = lux::simulation::script::detail::argumentSlot(input);
+        const auto original = slot;
+        auto bytes = std::as_writable_bytes(std::span{&output, 1U});
+        for (const auto descriptor : {builtin.descriptor(), custom.descriptor()})
+        {
+            const auto copy = descriptor.payload_projection.copy;
+            assert(copy(descriptor.context, slot, bytes));
+            assert(output == (descriptor.context == &builtin ? 31 : 36));
+            const auto count = custom_calls;
+            slot.type_id ^= 1U;
+            assert(!copy(descriptor.context, slot, bytes));
+            slot = original;
+            slot.kind = 0U;
+            assert(!copy(descriptor.context, slot, bytes));
+            slot = original;
+            slot.size = 0U;
+            assert(!copy(descriptor.context, slot, bytes));
+            slot = original;
+            slot.data = nullptr;
+            assert(!copy(descriptor.context, slot, bytes));
+            slot = original;
+            assert(!copy(descriptor.context, slot, bytes.first(1U)));
+            assert(custom_calls == count);
+        }
+        assert(custom_calls == 1U);
+        std::puts("EVENT_PROJECTION default=31 custom=36 invalid_provider_calls=0");
+    }
+
     void testBroadcastSemantics()
     {
         {
@@ -1354,6 +1400,7 @@ namespace
 
 int main(int argc, char**)
 {
+    testPreparedScalarProjection();
     std::puts("EVENT_CASE testBroadcastSemantics()"); std::fflush(stdout);
     testBroadcastSemantics();
     testBroadcastRouteReuse();

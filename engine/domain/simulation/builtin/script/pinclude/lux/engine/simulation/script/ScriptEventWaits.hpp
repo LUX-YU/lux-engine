@@ -52,6 +52,9 @@ namespace lux::simulation::script::detail
 
         struct EventWaiterRecord final
         {
+            EventWaiterRecord(ScriptInstanceId owner, ScriptAwaitableId result, std::uint32_t endpoint,
+                ecs::Entity entity, std::uint64_t order) noexcept
+                : instance(owner), awaitable(result), bucket_slot(endpoint), target(entity), sequence(order) {}
             ScriptSourceId id;
             ScriptInstanceId instance;
             ScriptAwaitableId awaitable;
@@ -289,9 +292,7 @@ namespace lux::simulation::script::detail
                 route = &inserted.first->second;
                 inserted_route = inserted.second;
             }
-            const auto inserted = waiters_.tryEmplace(EventWaiterRecord{
-                {}, instance, awaitable, endpoint, target, sequence_ + 1U, EEventWaiterState::ACTIVE, {}, {}, {}, {}
-            });
+            const auto inserted = waiters_.tryEmplace(instance, awaitable, endpoint, target, sequence_ + 1U);
             if (!inserted)
             {
                 if (inserted_route)
@@ -328,7 +329,8 @@ namespace lux::simulation::script::detail
 
         [[nodiscard]] std::optional<ScriptSourceCancellation> cancel(ScriptSourceId id) noexcept
         {
-            auto* waiter = waiters_.find(eventWaiterKey(id));
+            const auto key = eventWaiterKey(id);
+            auto* waiter = waiters_.find(key);
             if (waiter == nullptr)
                 return std::nullopt;
             const ScriptSourceCancellation result{waiter->instance, waiter->awaitable, {id, EScriptWaitSource::EVENT}};
@@ -337,7 +339,7 @@ namespace lux::simulation::script::detail
             else
                 --active_claimed_;
             unlinkEventWaiterOwnership(*waiter);
-            static_cast<void>(waiters_.erase(eventWaiterKey(id)));
+            static_cast<void>(waiters_.erase(key));
             return result;
         }
         [[nodiscard]] std::optional<ScriptSourceCancellation> cancelNext(ScriptInstanceId instance) noexcept

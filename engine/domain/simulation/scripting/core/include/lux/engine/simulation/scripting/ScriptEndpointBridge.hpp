@@ -248,7 +248,9 @@ namespace lux::simulation::script
             constexpr auto route = std::is_same_v<Route, SimulationBroadcastRoute>
                 ? EEventRoute::SIMULATION_BROADCAST : EEventRoute::ENTITY_TARGETED;
             auto copy = payload_copy_ != nullptr ? &copyPayload<false> : nullptr;
-            if constexpr (detail::defaultEventPayloadCopy<Payload>() != nullptr)
+            constexpr bool is_default_scalar_layout = detail::defaultEventPayloadCopy<Payload>() != nullptr &&
+                lux::semantic::TypeTraits<Payload>::Size == sizeof(Payload);
+            if constexpr (is_default_scalar_layout)
             {
                 if (payload_copy_ == detail::defaultEventPayloadCopy<Payload>())
                     copy = &copyPayload<true>;

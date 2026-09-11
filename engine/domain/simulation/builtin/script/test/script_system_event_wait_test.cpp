@@ -24,6 +24,23 @@ using lux::simulation::script::test::deliverEndpoint;
 #include <utility>
 #include <vector>
 
+struct MisSizedScalar final
+{
+    std::uint64_t value{};
+};
+
+namespace lux::semantic
+{
+    template <>
+    struct TypeTraits<MisSizedScalar> final
+    {
+        static constexpr std::string_view CanonicalName = "lux.i32";
+        static constexpr std::uint8_t AbiKind = static_cast<std::uint8_t>(EAbiKind::I32);
+        static constexpr std::uint32_t Size = 4U;
+        static constexpr std::uint32_t Alignment = 4U;
+    };
+}
+
 namespace
 {
     using namespace lux::simulation;
@@ -783,7 +800,19 @@ namespace
             assert(custom_calls == count);
         }
         assert(custom_calls == 1U);
-        std::puts("EVENT_PROJECTION default=31 custom=36 invalid_provider_calls=0");
+        HookChannel<SimulationBroadcastRoute, MisSizedScalar> malformed_channel;
+        ScriptEventEndpoint<SimulationBroadcastRoute, MisSizedScalar> malformed{
+            kSystem, kBroadcastWait, malformed_channel
+        };
+        const auto descriptor = malformed.descriptor();
+        MisSizedScalar malformed_input{0x1122334455667788ULL};
+        const auto malformed_slot = lux::simulation::script::detail::argumentSlot(malformed_input);
+        std::array<std::byte, 8U> guarded_output{};
+        assert(!descriptor.payload_projection.copy(descriptor.context, malformed_slot,
+            std::span{guarded_output}.first(4U)));
+        for (const auto value : guarded_output)
+            assert(value == std::byte{});
+        std::puts("EVENT_PROJECTION default=31 custom=36 invalid_provider_calls=0 malformed_size=rejected");
     }
 
     void testBroadcastSemantics()

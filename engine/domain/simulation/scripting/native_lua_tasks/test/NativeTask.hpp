@@ -36,6 +36,14 @@ struct LUX_TYPE_INFO(compile_time) NativeTask final
             co_await context.fail({0U, script::EScriptSyncStepError::BACKEND_FAILURE, -771});
             ++unreachable;
         }
+        if (mode == 6U || mode == 7U)
+        {
+            auto rejected = mode == 6U ? context.callStep<std::int32_t(std::int32_t)>(999U, 1)
+                                       : context.callStep<std::int32_t(double)>(0U, 1.5);
+            if (!rejected)
+                co_await context.fail(rejected.error());
+            ++unreachable;
+        }
         if (mode == 4U || mode == 5U)
         {
             const auto before = context.callStep<std::int32_t(std::int32_t)>(0U, 1);
@@ -55,6 +63,14 @@ struct LUX_TYPE_INFO(compile_time) NativeTask final
                 co_await context.fail({0U, script::EScriptSyncStepError::BACKEND_FAILURE, -772});
                 ++unreachable;
             }
+            if (mode == 8U)
+            {
+                auto applied = context.callStep<void(std::int32_t)>(1U, payload);
+                if (!applied)
+                    co_await context.fail(applied.error());
+                ++completed;
+                co_return;
+            }
             const auto value = context.callStep<std::int32_t(std::int32_t)>(0U, payload);
             if (!value)
             {
@@ -63,6 +79,18 @@ struct LUX_TYPE_INFO(compile_time) NativeTask final
             }
             results[index] = *value;
         }
+        ++completed;
+    }
+    LUX_METHOD(script_export = "task.other", script_coroutine = true)
+    script::ScriptCoroutine other(script::ScriptCoroutineContext &context) noexcept
+    {
+        FrameLifetime lifetime;
+        ++started;
+        const auto payload = co_await context.wait(*event_source);
+        const auto result = context.callStep<std::int32_t(std::int32_t)>(0U, payload + 100);
+        if (!result)
+            co_await context.fail(result.error());
+        results[index] = *result;
         ++completed;
     }
     std::size_t index{};

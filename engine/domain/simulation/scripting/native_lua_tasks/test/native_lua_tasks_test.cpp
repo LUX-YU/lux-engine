@@ -102,12 +102,14 @@ lux::script::ScriptArtifact luaArtifact(std::string_view body, bool pose)
         description.exports[1].args = description.exports[0].args;
     }
     description.exports.push_back({"nested", 105U, {}, {}});
+    description.exports.push_back({"apply_void", 106U, {lux::rdesc::makeScriptValueType<std::int32_t>()}, {}});
+    description.exports.push_back({"other", 107U, {}, {}});
     description.lifecycle = {103U, 104U};
     const auto &probe = lux::script::ScriptAbilityTraits<na1::TaskProbe>::Description;
     const auto &delay = lux::script::ScriptAbilityTraits<DelayAbility>::Description;
     description.api_requirements = {{lux::script::ScriptApiContractId{probe.id.name()}, probe.schema_hash},
                                     {lux::script::ScriptApiContractId{delay.id.name()}, delay.schema_hash}};
-    description.body = lux::rdesc::LuaSourceScript{"Na1Lua", {101U}};
+    description.body = lux::rdesc::LuaSourceScript{"Na1Lua", {101U, 107U}};
     const auto simulation = na1::domain();
     auto event =
         describeScriptEventSource<std::int32_t>(simulation.findEvent(na1::System, na1::Event), "Task", "event");
@@ -118,6 +120,8 @@ lux::script::ScriptArtifact luaArtifact(std::string_view body, bool pose)
         "end_life=function(self,reason) assert(self.value>=1 and not self.ended); self.ended=true; "
         "lux.TaskProbe.hit(2) end, "
         "run=function(self) local p=lux.Event.Task.event(); self.value=self.value+p end, "
+        "other=function(self) lux.Event.Task.event() end, "
+        "apply_void=function(self,p) self.value=self.value+p; lux.TaskProbe.hit(3) end, "
         "nested=function(self) lux.TaskProbe.hit(4) end, apply=function(self,p) " +
         std::string(body) + " end }";
     std::vector<std::byte> payload;
@@ -164,8 +168,10 @@ struct Harness final
                                        lux::script::lua::makeScriptAbilityLuaContribution<DelayAbility>()};
         const std::array pools{CppStaticScriptPoolDescription{&contract, count, count * 2U, count * 2048U,
                                                               alignof(std::max_align_t), count * 2U, 512U, true}};
-        const std::array routes{NativeLuaTaskRoute{101U, 101U}};
-        std::array steps{*lua_artifact.findExport(102U)};
+        std::vector<NativeLuaTaskRoute> routes{{101U, 101U}};
+        if (!pose)
+            routes.push_back({107U, 107U});
+        std::array steps{*lua_artifact.findExport(102U), *lua_artifact.findExport(106U)};
         if (invalid == 2U)
             steps[0].returns[0] = lux::rdesc::makeScriptValueType<double>();
         const std::array plans{NativeLuaTaskPlan{
@@ -173,7 +179,7 @@ struct Harness final
             native_artifact.contentIdentity(), &contract, routes, steps}};
         const std::array values{lux::script::lua::makeLuaValueOperation<ValuePose>()};
         auto created = NativeLuaTaskBackend::create({.lua = {.instance_capacity = count,
-                                                             .prepared_call_capacity = count * 5U,
+                                                             .prepared_call_capacity = count * 6U,
                                                              .continuation_capacity = 0U,
                                                              .execution_depth_capacity = 8U,
                                                              .ability_catalog_method_capacity = 5U,
@@ -204,7 +210,7 @@ struct Harness final
                               asset(1U),
                               EntityScriptScope{entity},
                               {{101U, HookScriptTarget{na1::System, pose ? na1::PoseHook : na1::Hook}},
-                               {105U, HookScriptTarget{na1::System, na1::NestedHook}}}});
+                               {na1::mode == 9U ? 107U : 105U, HookScriptTarget{na1::System, na1::NestedHook}}}});
         }
         const auto capacity = planScriptRuntimeCapacity(mounts);
         assert(capacity);
@@ -335,8 +341,8 @@ int main()
         assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
         h.occurrence();
         std::fprintf(stderr, "TRACE nested done=%zu calls=%zu base=%d top=%d depth=%zu\n", na1::completed,
-            h.probe.calls, base, lua_gettop(observed_vm), h.backend->stats().lua.execution_depth_high_water);
-        for (const auto& failure : h.system->failures())
+                     h.probe.calls, base, lua_gettop(observed_vm), h.backend->stats().lua.execution_depth_high_water);
+        for (const auto &failure : h.system->failures())
             std::fprintf(stderr, "TRACE nested-failure error=%u status=%d\n", unsigned(failure.error), failure.status);
         assert(na1::completed == 1U && h.probe.calls == 2U && lua_gettop(observed_vm) == base);
         assert(h.system->failures().empty());
@@ -398,6 +404,35 @@ int main()
         assert(h.system->failures().front().status == (mode == 1U ? -771 : -772));
         h.closed();
         std::printf("CASE fail phase=%u completed=0 frames=1 unreachable=0\n", mode);
+    }
+    for (const unsigned mode : {6U, 7U, 8U, 9U})
+    {
+        na1::mode = mode;
+        Harness h(1U);
+        assert(h.system->prepare());
+        assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
+        if (mode == 9U)
+        {
+            assert(dispatchRuntimeHook(*h.system, h.nested_hook) == 1U);
+            assert(h.system->stats().active_continuations == 2U);
+            h.occurrence();
+            assert(na1::completed == 2U && na1::results[0] == 163);
+        }
+        else if (mode == 8U)
+        {
+            h.occurrence();
+            assert(na1::completed == 1U && h.probe.calls == 1U);
+        }
+        else
+        {
+            assert(na1::completed == 0U && h.probe.calls == 0U);
+            assert(h.system->stats().active_awaitables == 0U);
+            assert(h.system->failures().size() == 1U);
+            assert(h.system->failures()[0].status == (mode == 6U ? -32002 : -32003));
+        }
+        h.closed();
+        std::printf("CASE typed-boundary mode=%u completed=%zu frames=%zu\n", mode, na1::completed,
+                    na1::frames_destroyed);
     }
     na1::mode = 0U;
     for (const auto body : {"error('step failure')", "return 'wrong result'", "coroutine.yield()",

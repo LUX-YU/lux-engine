@@ -18,3 +18,6 @@ Cleanup: core revokes -> protected invocation/resume exits -> core cancels/destr
 The Lua active-continuation count alone is not the composition lifetime authority.
 
 Contracts T01-T54 start NOT_RUN; old tests are not new qualification evidence. Actual mappings will replace this draft.
+
+
+最终实现与合同见 [NOTES.zh-CN.md](NOTES.zh-CN.md)，实测/限制见 [RESULT.zh-CN.md](RESULT.zh-CN.md)。本文保留开工时映射，不作为已通过证据。

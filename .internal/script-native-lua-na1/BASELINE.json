@@ -39,5 +39,8 @@
   "baseline_flow_image": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-v4/final-flow-image",
   "baseline_sdk": "E:/SyncForder/CodeRepos/install/o/v4/sdk",
   "candidate_install": "E:/SyncForder/CodeRepos/install/o/na1",
-  "cleanup_reclaimed_file_bytes": 14721861914
+  "cleanup_reclaimed_file_bytes": 14721861914,
+  "record_semantics": "Historical N0 preflight; fields describing not-yet-built remain original, final results in result.json",
+  "final_result": "result.json",
+  "final_qualified_source": "4a8812e9813fe90b241dba29e3e668e4a4239b26"
 }

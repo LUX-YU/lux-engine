@@ -10,3 +10,6 @@ The frame keeps only cross-wait business values. Main-thread Lua execution state
 Record separately: actual sizeof/stride, reserved payload and metadata, active/high-water frames, facade and routing,
 Lua object/live/idle/root resources, core C/A/Ready/source/transport, and leases. Shared backing is counted once.
 Lua task capacity may be zero in sync-only compositions. B_KEEP_LUA_RESERVE is a resource-only comparison.
+
+
+最终实现与合同见 [NOTES.zh-CN.md](NOTES.zh-CN.md)，实测/限制见 [RESULT.zh-CN.md](RESULT.zh-CN.md)。本文保留开工时映射，不作为已通过证据。

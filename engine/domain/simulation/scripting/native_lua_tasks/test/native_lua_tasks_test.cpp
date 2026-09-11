@@ -301,6 +301,7 @@ void normal(std::size_t count, unsigned mode)
 } // namespace
 int main()
 {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     normal(64U, 0U);
     normal(1000U, 0U);
     normal(64U, 3U);
@@ -321,6 +322,7 @@ int main()
         std::puts("CASE record snapshot=43 after=74 caller-mutated=1 completed=16 frames=16");
     }
     {
+        na1::mode = 0U;
         Harness h(1U, "lux.TaskProbe.hit(3); return p");
         h.probe.callback_context = &h;
         h.probe.callback = [](void *pointer, std::int32_t code) noexcept {
@@ -332,6 +334,10 @@ int main()
         const auto base = lua_gettop(observed_vm);
         assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
         h.occurrence();
+        std::fprintf(stderr, "TRACE nested done=%zu calls=%zu base=%d top=%d depth=%zu\n", na1::completed,
+            h.probe.calls, base, lua_gettop(observed_vm), h.backend->stats().lua.execution_depth_high_water);
+        for (const auto& failure : h.system->failures())
+            std::fprintf(stderr, "TRACE nested-failure error=%u status=%d\n", unsigned(failure.error), failure.status);
         assert(na1::completed == 1U && h.probe.calls == 2U && lua_gettop(observed_vm) == base);
         assert(h.system->failures().empty());
         h.closed();

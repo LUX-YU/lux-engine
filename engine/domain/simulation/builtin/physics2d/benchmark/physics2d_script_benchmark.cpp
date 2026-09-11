@@ -490,7 +490,8 @@ namespace
             std::array<lux::rdesc::ScriptFunction, 3U> steps;
             for (std::size_t i{}; i < steps.size(); ++i)
             {
-                const auto* step = sources.lua->findExport(lux::script::ScriptSymbolId{1345130501U + i});
+                const auto* step = sources.lua->findExport(
+                    lux::script::ScriptSymbolId{1345130501U + static_cast<std::uint32_t>(i)});
                 if (!step) throw std::runtime_error("Physics Lua synchronous step absent");
                 steps[i] = *step;
             }

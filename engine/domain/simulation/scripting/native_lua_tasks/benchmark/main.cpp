@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <fstream>
 #include <numeric>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -155,7 +156,8 @@ struct Harness
         std::array<lux::rdesc::ScriptFunction, 6U> steps;
         for (std::size_t i{}; i < steps.size(); ++i)
         {
-            auto *function = artifact->data().findExport(lux::script::ScriptSymbolId{45070U + i});
+            auto *function =
+                artifact->data().findExport(lux::script::ScriptSymbolId{45070U + static_cast<std::uint32_t>(i)});
             require(function != nullptr, "step absent");
             steps[i] = *function;
         }
@@ -226,7 +228,7 @@ struct Harness
     {
         {
             auto writer = event.begin(0U);
-            require(writer.record(std::int32_t{31}), "record Event");
+            require(static_cast<bool>(writer.record(std::int32_t{31})), "record Event");
         }
         require(deliverRuntimeEvent(*system, event_endpoint) == 1U, "deliver Event");
     }
@@ -406,9 +408,10 @@ int main(int argc, char **argv)
         h.memory("closed");
         std::ofstream csv(o.output);
         require(static_cast<bool>(csv), "CSV open");
-        csv << "batch,nanoseconds,completed_tasks,waits,errors,backlog\n";
+        csv << "batch,nanoseconds,validated_tasks_per_wave,validated_waits_per_wave,per_wave_errors_unobserved,per_"
+               "wave_backlog_unobserved\n";
         for (std::size_t i{}; i < durations.size(); ++i)
-            csv << i << ',' << durations[i] << ',' << o.count << ',' << o.count * waits_per_task << ",0,0\n";
+            csv << i << ',' << durations[i] << ',' << o.count << ',' << o.count * waits_per_task << ",,\n";
         std::printf(
             "BUSINESS case=%s side=%c instances=%zu warmups=%zu batches=%zu tasks=%zu waits=%zu "
             "resumes=%llu provider=%zu per_instance=%zu errors=%llu backlog=%zu elapsed_ns=%lld prepare_ns=%lld "

@@ -51,3 +51,7 @@ C++ 创建 context/CppStatic frame context 新增步骤视图，因此需要重�
 ## 热路径审计的后续实施
 
 32 项审计已有实际处理，见 [修改与合同](HOTPATH-CHANGES.zh-CN.md)、[最终资格及成本](HOTPATH-RESULT.zh-CN.md)和 [逐项结果](HOTPATH-OPERATIONS.csv)。本次资格源码为 21d10601；原 NA1/V4 数据和采用待审阅状态不改。
+
+## 第二轮等待与结果交接优化
+
+后续六项修改、联合验证和当前对照已完成，见 [修改合同](NEXT-CHANGES.zh-CN.md)、[结果与限制](NEXT-RESULT.zh-CN.md)和 [完整机器可读结果](next-result.json)。最终资格源码为 7f201916，生产对照为 21d10601。Event 路径有实测收益，NextStep/Lua scalar 分别保留 +1.95%/+2.02% 的未解释小幅新增成本；采用仍待独立审阅，不将历史数据重标为本轮测量。

@@ -34,3 +34,23 @@
 已在本地重新读取 ZIP 并核对全部 1366 项 SHA。远端归档固定提交 `c734758cd2192b5c90ceba796a6663677b753c53` 已通过独立 bare 仓库从 origin 重新 fetch，归档 SHA 和全部 1366 项 hash 一致。
 
 [固定提交下载](https://github.com/LUX-YU/lux-engine/raw/c734758cd2192b5c90ceba796a6663677b753c53/.internal/script-native-lua-na1/evidence/logs.zip) · [远端回取记录](evidence/remote-readback.json)。远端分支之后的文档提交不修改此归档或 4a 资格身份。
+
+## 第二轮交接优化证据
+
+[结果](NEXT-RESULT.zh-CN.md)、[合同](NEXT-CHANGES.zh-CN.md)、[原始归档](evidence/next-hotpath.zip)、[逐文件索引](evidence/next-hotpath.json)。资格源码 7f201916，生产对照 21d10601；不修改以上旧归档或身份。
+
+ZIP 共 741 项、7,244,421 字节，SHA-256 `9fc590df65ea727d31eab552aee9e5b02f8281dc6e323e27288a8dba173bb341`。含两侧 P4 VTune 原始结果与导出、54 个最终计时进程、资源/机器码/布局、全量测试、安装/增量/迁址、镜像哈希、保护检查及所有中间记录，不含编译 EXE/DLL/PDB。已本地解包逐项核验。
+
+| 内容 | ZIP 内入口 |
+|---|---|
+| 最终同量对照、每批与完整业务 | `next-costs/summary.json`、`next-costs/runs.json`、各 CSV/log |
+| 两侧 P4 原始 VTune/导出 | `next-profiles/P4-A/`、`next-profiles/P4-B/` |
+| 机器码、布局与 frame | `next-machine-code/`、`next-class-layout/`、`next-analysis/` |
+| 资源独立观察 | `next-resources/` |
+| 最终构建/测试/安装 | `next-final-*`、`next-vm-tests.*` |
+| 16 消费者、值转换和组合增量 | `next-installed/`、`next-value-incremental/`、`next-new-incremental/` |
+| 三条迁址链及原路径不可用记录 | `next-relocated/` |
+| 基线、最终 EXE/DLL/PDB/资产哈希、固定依赖与受保护工作区 | `next-baseline.json`、`next-final-image-identities.json`、`next-protected-final.json`、`next-source-identity.json` |
+| 编译修正及补 sizeof 证明前的完整记录 | `next-first-*`、`next-preproof-*`、`next-intermediate-disposition.json` |
+
+原 C 镜像 126 项、安装依赖 204 项再次核验未变；最终安装公共头与资格 clone 的头逐字节一致。中间四个完整计时及一个被中止进程只归档，不进入最终 54 进程结果。

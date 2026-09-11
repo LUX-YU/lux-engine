@@ -471,6 +471,53 @@ int main()
         h.closed();
         std::puts("CASE tbc-close calls=1 frame=1 cleanup=1");
     }
+    {
+        Harness h(1U);
+        assert(h.system->prepare());
+        na1::results.resize(33U);
+        const auto backing = h.backend->stats().composition_backing_bytes;
+        for (unsigned round{}; round < 32U; ++round)
+        {
+            const auto old = (**h.system->queryMountStatus({1U})).instance;
+            assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
+            h.registry.destroy(h.entities[0]);
+            assert(h.system->processLifecycle());
+            assert(h.leases == 0U && h.backend->stats().native.active_frames == 0U);
+            h.occurrence();
+            assert(na1::completed == 0U);
+            std::array<ScriptMountStatus, 1U> changes;
+            assert(h.system->collectMountStatusChanges(changes));
+            h.entities[0] = h.registry.create();
+            h.mounts[0].scope = EntityScriptScope{h.entities[0]};
+            assert(h.system->mountResolvedBatch(h.mounts));
+            assert(h.system->processLifecycle());
+            const auto current = (**h.system->queryMountStatus({1U})).instance;
+            assert(current != old && h.backend->stats().composition_backing_bytes == backing);
+        }
+        assert(na1::frames_destroyed == 32U && h.probe.begins == 33U);
+        h.closed();
+        std::printf("CASE churn rounds=32 frames=32 begins=33 ends=33 late-event-resumes=0 backing=%zu\n", backing);
+    }
+    {
+        Harness h(1U, "lux.TaskProbe.hit(3); lux.TaskProbe.hit(5); return p");
+        h.probe.callback_context = &h;
+        h.probe.callback = [](void *pointer, std::int32_t code) noexcept {
+            auto &h = *static_cast<Harness *>(pointer);
+            if (code != 3)
+                return;
+            assert(h.system->requestStop());
+            assert(h.backend->stats().native.active_frames == 1U && h.leases == 2U);
+            assert(na1::destroyed == 0U && h.probe.ends == 0U);
+        };
+        assert(h.system->prepare());
+        assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
+        h.occurrence();
+        assert(na1::completed == 1U && h.probe.calls == 2U && !h.system->isShutdown());
+        assert(h.system->processLifecycle());
+        assert(h.system->isShutdown());
+        h.closed();
+        std::puts("CASE deferred-stop in-region-provider=2 completed=1 early-destroy=0 final-destroy=1");
+    }
     for (const std::size_t permitted : {0U, 1U, 3U})
     {
         Harness h(1U, "local t={}; for i=1,100 do t[i]=string.rep('x',10000) end; "

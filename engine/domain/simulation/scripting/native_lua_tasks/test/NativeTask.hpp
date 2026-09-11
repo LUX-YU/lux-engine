@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/meta/MetaAnnotations.hpp>
-#include <lux/engine/simulation/scripting/cpp_static/ScriptCoroutine.hpp>
+#include <lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp>
 #include <optional>
 #include <vector>
 namespace lux::simulation::na1
@@ -35,10 +35,20 @@ struct LUX_TYPE_INFO(compile_time) NativeTask final
             co_await context.fail({0U, script::EScriptSyncStepError::BACKEND_FAILURE, -771});
             ++unreachable;
         }
+        if (mode == 4U || mode == 5U)
+        {
+            const auto before = context.callStep<std::int32_t(std::int32_t)>(0U, 1);
+            if (!before)
+                co_await context.fail(before.error());
+            results[index] = *before;
+            co_await context.delay().nextStep();
+        }
         const auto count = mode == 3U ? 32U : 1U;
         for (std::uint32_t i{}; i < count; ++i)
         {
-            const auto payload = co_await context.wait(*event_source);
+            const auto payload = mode == 4U ? 10 : co_await context.wait(*event_source);
+            if (mode == 5U)
+                co_await context.delay().simulationSeconds(0.001);
             if (mode == 2U)
             {
                 co_await context.fail({0U, script::EScriptSyncStepError::BACKEND_FAILURE, -772});

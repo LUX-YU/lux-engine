@@ -47,3 +47,7 @@ C++ 创建 context/CppStatic frame context 新增步骤视图，因此需要重�
 统计关闭表示未采集。正式计时 CSV 的每波 errors/backlog 留空，进程结束的累计 errors、实际核心挂起/恢复数、逐实例 readback 和 shutdown 另行检查。批次时长包括任务创建、完成、销毁与必要 drain；准备耗时另外记录，不把业务恢复的每次 pcall 单独冒充完整任务。
 
 所有失败尝试保留，包括最初超 512 B 编译器 frame、错误测试时钟、安装组件漏导出、C++20 expected 推导错误和复用构建槽的旧架构探针缓存。编译器超限通过移出同步临时值修正，没有扩大 frame 限额。旧构建探针首轮负例不计有效通过，使用 --fresh 后完整重跑。
+
+## 热路径审计的后续实施
+
+32 项审计已有实际处理，见 [修改与合同](HOTPATH-CHANGES.zh-CN.md)、[最终资格及成本](HOTPATH-RESULT.zh-CN.md)和 [逐项结果](HOTPATH-OPERATIONS.csv)。本次资格源码为 21d10601；原 NA1/V4 数据和采用待审阅状态不改。

@@ -1,3 +1,6 @@
+#include "PhysicsLuaTask.hpp"
+#include "PhysicsLuaTask.PhysicsLuaTask.script.generated.hpp"
+#include <lux/engine/simulation/scripting/native_lua_tasks/NativeLuaTaskBackend.hpp>
 #include "PhysicsCppScript.hpp"
 #include "PhysicsCppScript.PhysicsCpp.script.generated.hpp"
 #include "PhysicsQuery2D.ability.generated.hpp"
@@ -309,9 +312,18 @@ namespace
         std::optional<CppStaticScriptBackend> backend;
     };
 
+    [[nodiscard]] asset::AssetId luaTaskAssetId()
+    {
+        std::array<std::uint8_t, 16U> bytes{};
+        bytes.front() = 0x2DU;
+        bytes.back() = 0xC1U;
+        return asset::AssetId{bytes};
+    }
+
     struct Sources final
     {
         const lux::script::ScriptArtifact* cpp{};
+        const lux::script::ScriptArtifact* lua_task{};
         const lux::script::ScriptArtifact* flow{};
         const lux::script::ScriptArtifact* lua{};
         const lux::script::NativeModule* flow_module{};
@@ -323,7 +335,9 @@ namespace
                                     ResolvedScriptArtifact& output) noexcept
         {
             const auto& self = *static_cast<Sources*>(context);
-            if (requested == cppAssetId())
+            if (requested == luaTaskAssetId())
+                output.artifact = self.lua_task;
+            else if (requested == cppAssetId())
                 output.artifact = self.cpp;
             else if (requested == self.flow_id)
                 output.artifact = self.flow;
@@ -462,10 +476,32 @@ namespace
             const auto lua_count = options.size - cpp_count - flow_count;
             const auto requirements = describeLuaPreparedRequirements(lua_asset->data().description(), contributions);
             if (!requirements) throw std::runtime_error("Lua Physics requirements are incompatible");
-            lua.emplace(*LuaScriptBackend::create({
+            const auto& task_contract = lux::simulation::script::generated::PhysicsLuaTask;
+            auto task_description = materializeCppStaticScript(task_contract);
+            if (!task_description) throw std::runtime_error("Physics Lua task contract rejected");
+            auto task_artifact = lux::script::ScriptArtifact::create(std::move(*task_description), {});
+            if (!task_artifact) throw std::runtime_error("Physics Lua task artifact rejected");
+            lua_task_artifact.emplace(std::move(*task_artifact));
+            sources.lua_task = &*lua_task_artifact;
+            auto typed_event = CppScriptEventSource<std::int32_t>::create(task_contract, event_sources.front());
+            if (!typed_event) throw std::runtime_error("Physics Lua task Event contract rejected");
+            lux::physics2d::benchmark::lua_task_event = *typed_event;
+            const std::array routes{NativeLuaTaskRoute{TickSymbol, 1345138945U}};
+            std::array<lux::rdesc::ScriptFunction, 3U> steps;
+            for (std::size_t i{}; i < steps.size(); ++i)
+            {
+                const auto* step = sources.lua->findExport(lux::script::ScriptSymbolId{1345130501U + i});
+                if (!step) throw std::runtime_error("Physics Lua synchronous step absent");
+                steps[i] = *step;
+            }
+            const std::array plans{NativeLuaTaskPlan{sources.lua_id, sources.lua->contentIdentity(),
+                luaTaskAssetId(), sources.lua_task->contentIdentity(), &task_contract, routes, steps}};
+            const std::array pools{CppStaticScriptPoolDescription{&task_contract, lua_count, lua_count,
+                lua_count * 1024U + 4096U, alignof(std::max_align_t), lua_count, 512U}};
+            auto composed = NativeLuaTaskBackend::create({.lua = {
                 .instance_capacity = lua_count,
                 .prepared_call_capacity = lua_count * 5U,
-                .continuation_capacity = lua_count,
+                .continuation_capacity = 0U,
                 .execution_depth_capacity = 4U,
                 .ability_catalog_method_capacity = 5U,
                 .prepared_ability_capacity = lua_count * requirements->ability_methods,
@@ -492,7 +528,11 @@ namespace
                 },
                 .prepared_event_storage_bytes =
                     64U * 1024U * 1024U
-            }));
+            }, .native_pools = pools, .plans = plans,
+                .artifacts = {&sources, &Sources::resolveArtifact}, .instance_capacity = lua_count,
+                .prepared_method_capacity = lua_count * 2U});
+            if (!composed) throw std::runtime_error("Physics native Lua composition rejected");
+            lua.emplace(std::move(*composed));
             backends = {cpp.backend->descriptor(), native->descriptor(), lua->descriptor()};
             const auto bounded = (std::max)(options.size, std::size_t{1U});
             auto created = ScriptSystem::create(
@@ -583,7 +623,10 @@ namespace
             hook_connection.reset();
             if (system)
                 static_cast<void>(system->shutdown());
-            const auto stats = lua->stats();
+            const auto composition = lua->stats();
+            const auto stats = composition.lua;
+            if (stats.vm_coroutine_creations || stats.vm_coroutine_resumes || composition.native.active_frames)
+                std::terminate();
             const auto& memory = stats.vm_allocations;
             std::printf("VM_FINAL,accounting=%d,alloc=%llu,realloc=%llu,free=%llu,failures=%llu,"
                 "heap_alloc=%llu,heap_free=%llu,slot_reuses=%llu,in_place=%llu,live=%zu,peak_live=%zu,"
@@ -651,7 +694,8 @@ namespace
         Sources sources;
         std::optional<std::vector<ScriptRuntimeMount>> description;
         std::optional<NativeScriptBackend> native;
-        std::optional<LuaScriptBackend> lua;
+        std::optional<lux::script::ScriptArtifact> lua_task_artifact;
+        std::optional<NativeLuaTaskBackend> lua;
         std::array<ScriptBackendDescriptor, 3U> backends;
         std::optional<ScriptSystem> system;
         std::optional<ScriptSystem::ExecutionRegion> execution_region;

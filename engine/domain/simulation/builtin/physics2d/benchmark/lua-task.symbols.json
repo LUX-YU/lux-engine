@@ -1,0 +1,11 @@
+{
+  "schema": "lux-script-symbol-ledger",
+  "version": 1,
+  "next_symbol": 1345138946,
+  "entries": [
+    {
+      "source_identity": "physics.lua.task",
+      "symbol": 1345138945
+    }
+  ]
+}

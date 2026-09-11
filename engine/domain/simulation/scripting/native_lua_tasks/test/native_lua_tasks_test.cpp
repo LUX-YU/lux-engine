@@ -25,6 +25,15 @@ using namespace lux::simulation::script::test;
 using lux::simulation::script::generated::Na1PoseTask;
 using lux::simulation::script::generated::Na1Task;
 lua_State *observed_vm{};
+void *push_context{};
+void (*push_reentry)(void *) noexcept {};
+bool pushPose(lua_State *vm, const void *value) noexcept
+{
+    if (push_reentry)
+        push_reentry(push_context);
+    constexpr auto original = lux::script::lua::makeLuaValueOperation<ValuePose>();
+    return original.push(vm, value);
+}
 LuxLuaTypedWorker original_probe{};
 LuxLuaBoundaryOutcome observeProbe(lua_State *vm) noexcept
 {
@@ -125,8 +134,9 @@ lux::script::ScriptArtifact luaArtifact(std::string_view body, bool pose, unsign
         "run=function(self) local p=lux.Event.Task.event(); self.value=self.value+p end, "
         "other=function(self) lux.Event.Task.event() end, "
         "apply_void=function(self,p) self.value=self.value+p; lux.TaskProbe.hit(3) end, "
-        "nested=function(self) lux.TaskProbe.hit(4) end, apply=function(self,p) " +
-        std::string(body) + " end }";
+        "nested=function(self) " +
+        std::string(invalid == 8U ? "error('nested fault')" : "lux.TaskProbe.hit(4)") +
+        " end, apply=function(self,p) " + std::string(body) + " end }";
     std::vector<std::byte> payload;
     for (const auto value : source)
         payload.push_back(static_cast<std::byte>(value));
@@ -188,7 +198,9 @@ struct Harness final
         const std::array plans{NativeLuaTaskPlan{
             asset(1U), invalid == 1U ? native_artifact.contentIdentity() : lua_artifact.contentIdentity(), asset(2U),
             native_artifact.contentIdentity(), &contract, routes, steps}};
-        const std::array values{lux::script::lua::makeLuaValueOperation<ValuePose>()};
+        std::array values{lux::script::lua::makeLuaValueOperation<ValuePose>()};
+        if (pose)
+            values[0].push = &pushPose;
         auto created = NativeLuaTaskBackend::create({.lua = {.instance_capacity = count,
                                                              .prepared_call_capacity = invalid == 6U ? 1U : count * 6U,
                                                              .continuation_capacity = 0U,
@@ -386,6 +398,38 @@ int main()
         assert(h.system->failures().empty());
         h.closed();
         std::puts("CASE nested-lua provider=2 stack-delta=0 completed=1");
+    }
+    for (const bool fault : {false, true})
+    {
+        Harness h(1U, "lux.TaskProbe.hit(3); return p.key", fault ? 8U : 0U, true);
+        assert(h.system->prepare());
+        push_context = &h;
+        push_reentry = fault ? +[](void* pointer) noexcept {
+            push_reentry = nullptr;
+            auto& h = *static_cast<Harness*>(pointer);
+            assert(dispatchRuntimeHook(*h.system, h.nested_hook) == 1U);
+        } : +[](void* pointer) noexcept {
+            push_reentry = nullptr;
+            auto& h = *static_cast<Harness*>(pointer);
+            assert(h.system->requestStop());
+        };
+        const ValuePose value{31, {2.5F, 7.0}, ValueMode::RUN};
+        assert(dispatchRuntimeHook(*h.system, h.pose_hook, value) == 1U);
+        assert(push_reentry == nullptr && na1::started == 1U && na1::completed == 0U);
+        if (fault)
+        {
+            assert(h.probe.calls == 0U && !h.system->failures().empty());
+            assert(h.system->stats().active_awaitables == 0U && na1::frames_destroyed == 1U);
+        }
+        else
+        {
+            assert(h.probe.calls == 1U && h.system->failures().empty());
+            assert(h.system->stats().active_awaitables == 1U && na1::frames_destroyed == 0U);
+        }
+        assert(h.system->processLifecycle());
+        h.closed();
+        std::printf("CASE converter-qualification fault=%u provider=%zu completed=0 frames=1\n", unsigned(fault),
+                    h.probe.calls);
     }
     for (const unsigned mode : {4U, 5U})
     {

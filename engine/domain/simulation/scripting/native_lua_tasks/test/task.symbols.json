@@ -1,0 +1,11 @@
+{
+  "schema": "lux-script-symbol-ledger",
+  "version": 1,
+  "next_symbol": 102,
+  "entries": [
+    {
+      "source_identity": "task.run",
+      "symbol": 101
+    }
+  ]
+}

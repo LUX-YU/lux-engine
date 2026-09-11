@@ -132,6 +132,11 @@ struct NativeLuaTaskBackend::Impl final
                                     !std::holds_alternative<lux::rdesc::CppStaticScript>(companion->description().body);
         if (invalid_native)
             return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+        const auto &native_body = std::get<lux::rdesc::CppStaticScript>(companion->description().body);
+        const bool wrong_contract = native_body.descriptor != plan.contract->key ||
+                                    companion->description().module_name != plan.contract->module;
+        if (wrong_contract)
+            return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
         for (const auto &route : plan.routes)
         {
             const auto *from = artifact.findExport(route.lua_export);
@@ -355,8 +360,12 @@ NativeLuaTaskBackend::NativeLuaTaskBackend(NativeLuaTaskBackend &&) noexcept = d
 NativeLuaTaskBackend &NativeLuaTaskBackend::operator=(NativeLuaTaskBackend &&) noexcept = default;
 ScriptBackendDescriptor NativeLuaTaskBackend::descriptor() noexcept
 {
-    return {lux::rdesc::Script::Kind::LUA, impl_.get(),          &Impl::createInstance,
-            &Impl::prepareMethod,          &Impl::releaseMethod, &Impl::destroyInstance};
+    return {lux::rdesc::Script::Kind::LUA_SOURCE,
+            impl_.get(),
+            &Impl::createInstance,
+            &Impl::prepareMethod,
+            &Impl::releaseMethod,
+            &Impl::destroyInstance};
 }
 NativeLuaTaskBackendStats NativeLuaTaskBackend::stats() const noexcept
 {

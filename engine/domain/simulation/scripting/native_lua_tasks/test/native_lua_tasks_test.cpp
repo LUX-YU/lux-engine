@@ -264,6 +264,90 @@ struct Harness final
                   [](void *pointer) noexcept { --static_cast<Harness *>(pointer)->leases; }};
         return true;
     }
+    struct TestPublication
+    {
+        ScriptInstanceId identity;
+        std::uint64_t epoch{1U};
+        ScriptSyncStepSetView view;
+        PreparedScriptSyncStep step;
+        std::size_t calls{};
+        bool invalidate_in_call{};
+    };
+    void useCheckedPublication()
+    {
+        // A real CppStatic/runtime call with a test-owned producer of the public synchronous-step view.
+        // This isolates the checked bridge from the facade's immutable publication discipline.
+        system.reset();
+        publications.resize(count);
+        const std::array pools{CppStaticScriptPoolDescription{&Na1Task, count, count, count * 2048U,
+                                                              alignof(std::max_align_t), count * 2U, 512U}};
+        auto made = CppStaticScriptBackend::create(pools);
+        assert(made);
+        direct_native.emplace(std::move(*made));
+        direct_api = direct_native->descriptor();
+        descriptor = direct_api;
+        descriptor.context = this;
+        descriptor.createInstance = [](void *pointer, const ScriptInstanceCreateContext &context,
+                                       const lux::script::ScriptArtifact &artifact,
+                                       ScriptBackendInstance &output) noexcept {
+            auto &h = *static_cast<Harness *>(pointer);
+            auto &p = h.publications[h.publication_next++];
+            p.identity = context.instance;
+            p.step = {h.lua_artifact.findExport(102U),
+                      {+[](void *pointer, lux_script_call_frame *frame) noexcept {
+                           auto &p = *static_cast<TestPublication *>(pointer);
+                           ++p.calls;
+                           const auto value = *static_cast<const std::int32_t *>(frame->args[0].data);
+                           std::memcpy(frame->returns[0].data, &value, sizeof(value));
+                           if (p.invalidate_in_call)
+                               ++p.epoch;
+                           return 0;
+                       },
+                       &p}};
+            p.view = {context.instance,
+                      p.epoch,
+                      context.behavior,
+                      std::span{&p.step, 1U},
+                      &p,
+                      +[](const void *pointer, ScriptInstanceId identity, std::uint64_t epoch) noexcept {
+                          const auto &p = *static_cast<const TestPublication *>(pointer);
+                          return p.identity == identity && p.epoch == epoch;
+                      }};
+            auto child_context = context;
+            child_context.sync_steps = &p.view;
+            return h.direct_api.createInstance(h.direct_api.context, child_context, artifact, output);
+        };
+        descriptor.prepareMethod = [](void *pointer, ScriptBackendInstance instance,
+                                      const lux::rdesc::ScriptFunction &function,
+                                      ScriptBackendPreparedMethod &output) noexcept {
+            const auto &api = static_cast<Harness *>(pointer)->direct_api;
+            return api.prepareMethod(api.context, instance, function, output);
+        };
+        descriptor.releaseMethod = [](void *pointer, ScriptBackendInstance instance,
+                                      ScriptBackendPreparedMethod method) noexcept {
+            const auto &api = static_cast<Harness *>(pointer)->direct_api;
+            api.releaseMethod(api.context, instance, method);
+        };
+        descriptor.destroyInstance = [](void *pointer, ScriptBackendInstance instance) noexcept {
+            const auto &api = static_cast<Harness *>(pointer)->direct_api;
+            api.destroyInstance(api.context, instance);
+        };
+        for (auto &mount : mounts)
+        {
+            mount.asset = asset(2U);
+            mount.bindings.resize(1U);
+        }
+        const auto capacity = planScriptRuntimeCapacity(mounts);
+        assert(capacity);
+        const auto endpoint = hook_endpoint->descriptor();
+        const auto event = event_endpoint->descriptor();
+        auto made_system = ScriptSystem::create(
+            simulation, *capacity, mounts, registry, clock_owner.clock(),
+            {64U, count, count, 1U, count, count, 64U, count, count, count, count, count}, {this, &resolve}, {},
+            std::span{&descriptor, 1U}, std::span{&endpoint, 1U}, std::span{&event, 1U});
+        assert(made_system);
+        system.emplace(std::move(*made_system));
+    }
     void occurrence()
     {
         // One real owner step per occurrence; duplicate nonzero stable points cannot drain resumes.
@@ -308,6 +392,10 @@ struct Harness final
     std::vector<ecs::Entity> entities;
     std::vector<ScriptRuntimeMount> mounts;
     std::optional<NativeLuaTaskBackend> backend;
+    std::optional<CppStaticScriptBackend> direct_native;
+    ScriptBackendDescriptor direct_api;
+    std::vector<TestPublication> publications;
+    std::size_t publication_next{};
     ScriptBackendDescriptor descriptor;
     std::optional<ScriptSystem> system;
 };
@@ -681,6 +769,34 @@ int main()
         h.closed();
         std::puts("CASE large-record-frame records=16 limit=512 size-limit-reject=1 storage-capacity-failures=0 body=0 "
                   "wait=0");
+    }
+    for (unsigned mode{}; mode < 4U; ++mode)
+    {
+        na1::mode = 0U;
+        Harness h(1U);
+        h.useCheckedPublication();
+        assert(h.system->prepare());
+        assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
+        auto &p = h.publications[0];
+        if (mode == 1U)
+            ++p.epoch;
+        else if (mode == 2U)
+            p.view.instance = ScriptInstanceId{999U, 17U};
+        else if (mode == 3U)
+            p.invalidate_in_call = true;
+        h.occurrence();
+        assert(p.calls == ((mode == 0U || mode == 3U) ? 1U : 0U));
+        assert(na1::completed == (mode == 0U ? 1U : 0U));
+        assert(na1::results[0] == (mode == 0U ? 31 : 0));
+        if (mode != 0U)
+        {
+            assert(h.system->failures().size() == 1U);
+            assert(h.system->failures()[0].status == (mode == 3U ? -32004 : -32001));
+        }
+        h.closed();
+        assert(h.direct_native->stats().active_frames == 0U);
+        std::printf("CASE checked-publication mode=%u calls=%zu result=%d frames=1 leases=0\n", mode, p.calls,
+                    na1::results[0]);
     }
     for (const auto expression : {"true", "0/0", "math.huge", "1.5", "2147483648"})
     {

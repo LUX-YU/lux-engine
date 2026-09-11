@@ -136,4 +136,5 @@ StableSlotMap 结果 insert→find 保留；只复用 owner 内、无用户代�
 本轮通过的具体负例不冒充这些范围已穷尽。internal Lua C 调试帧减少属于记录在案的可观察变化。
 
 原始记录入口：[本轮归档清单](evidence/hotpath.json)、[原始 ZIP](evidence/hotpath.zip)。
-提交/远端回取的 receipt 与 ZIP 身份单列；文档提交不会改写资格 source。完成后等待独立审阅。
+归档已在提交 `841aae662a6d25975f4051559221119a986e229c` 推送，并从独立 bare 仓库重新取得，601 项文件哈希全部匹配。
+[远端回取凭据](evidence/hotpath-remote-readback.json)记录固定下载入口；文档提交不会改写资格 source。完成后等待独立审阅。

@@ -811,7 +811,7 @@ struct CppStaticScriptBackend::State final
         {
             const auto& view = *context.sync_steps;
             const bool invalid_view = view.instance != context.instance || view.behavior != context.behavior ||
-                                      !view.current || !view.owner || view.publication == 0U;
+                                      !view.current;
             if (invalid_view)
                 return EScriptBackendResult::HOST_CONTEXT_MISMATCH;
             for (const auto& entry : view.steps)

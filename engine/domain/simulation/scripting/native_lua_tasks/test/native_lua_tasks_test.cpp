@@ -288,8 +288,9 @@ struct Harness final
         std::size_t calls{};
         bool invalidate_in_call{};
     };
-    void useCheckedPublication()
+    void useCheckedPublication(bool stateless = false)
     {
+        stateless_publication = stateless;
         // A real CppStatic/runtime call with a test-owned producer of the public
         // synchronous-step view. This isolates the checked bridge from the facade's
         // immutable publication discipline.
@@ -330,6 +331,14 @@ struct Harness final
                           const auto &p = *static_cast<const TestPublication *>(pointer);
                           return p.identity == identity && p.epoch == epoch;
                       }};
+            if (h.stateless_publication)
+            {
+                p.view.owner = nullptr;
+                p.view.publication = 0U;
+                p.view.current = +[](const void*, ScriptInstanceId identity, std::uint64_t epoch) noexcept {
+                    return identity.valid() && epoch == 0U;
+                };
+            }
             auto child_context = context;
             child_context.sync_steps = &p.view;
             return h.direct_api.createInstance(h.direct_api.context, child_context, artifact, output);
@@ -415,6 +424,7 @@ struct Harness final
     std::optional<CppStaticScriptBackend> direct_native;
     ScriptBackendDescriptor direct_api;
     std::vector<TestPublication> publications;
+    bool stateless_publication{};
     std::size_t publication_next{};
     ScriptBackendDescriptor descriptor;
     std::optional<ScriptSystem> system;
@@ -445,6 +455,17 @@ void normal(std::size_t count, unsigned mode)
 } // namespace
 int main()
 {
+    {
+        na1::mode = 0U;
+        Harness h(1U);
+        h.useCheckedPublication(true);
+        assert(h.system->prepare());
+        assert(dispatchRuntimeHook(*h.system, h.hook) == 1U);
+        h.occurrence();
+        assert(h.publications[0].calls == 1U && na1::completed == 1U && na1::results[0] == 31);
+        h.closed();
+        std::puts("CASE stateless-publication owner=null epoch=0 completed=1 result=31 frames=1");
+    }
     for (const auto invalid : {13U, 14U})
     {
         na1::mode = 0U;

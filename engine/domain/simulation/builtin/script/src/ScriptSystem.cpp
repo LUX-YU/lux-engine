@@ -400,7 +400,7 @@ namespace lux::simulation::script
             ScriptStablePointReport report;
             bool completion_failed{};
             auto batch = execution_owner.resumeBatch();
-            ScriptExecution::Result resumed;
+            detail::ScriptExecution::Result resumed;
             while (batch.next(resumed))
             {
                 if (!resumed && !report.first_instance_error)

@@ -7,6 +7,24 @@
 
 namespace lux::simulation::script::detail
 {
+    namespace
+    {
+        // A double representation of INT64_MAX rounds up on MSVC. Use the exact
+        // exclusive power-of-two limit and check the rounded value before casting.
+        template<class Duration>
+        [[nodiscard]] std::optional<Duration> checkedDuration(double seconds) noexcept
+        {
+            using Rep = typename Duration::rep;
+            static_assert(std::is_integral_v<Rep> && std::is_signed_v<Rep>);
+            const auto count = std::ceil(static_cast<long double>(seconds) * 1'000'000'000.0L);
+            static_assert(std::numeric_limits<Rep>::digits < 64);
+            constexpr auto exclusive_limit = static_cast<long double>(
+                std::uint64_t{1U} << std::numeric_limits<Rep>::digits);
+            if (count >= exclusive_limit) return std::nullopt;
+            return Duration{static_cast<Rep>(count)};
+        }
+    }
+
     void ScriptTimers::prepare(const SimulationClock& clock, ScriptRuntimeLimits limits,
         ScriptRealDelayEndpoint real_delay, ScriptExecution& execution, std::size_t instance_capacity)
     {
@@ -76,11 +94,9 @@ namespace lux::simulation::script::detail
             return {};
         }
         if (!std::isfinite(duration) || duration < 0.0) return error(EScriptDelayStatus::INVALID_DURATION);
-        const long double requested = static_cast<long double>(duration) * 1'000'000'000.0L;
-        const auto maximum = static_cast<long double>(std::numeric_limits<SimulationDuration::rep>::max());
-        if (requested > maximum) return error(EScriptDelayStatus::DURATION_OVERFLOW);
-        const auto count = duration == 0.0 ? SimulationDuration::rep{} :
-            static_cast<SimulationDuration::rep>(std::ceil(requested));
+        const auto converted = checkedDuration<SimulationDuration>(duration);
+        if (!converted) return error(EScriptDelayStatus::DURATION_OVERFLOW);
+        const auto count = converted->count();
         const auto current = clock_->snapshot();
         const bool step_overflow = current.step_index == std::numeric_limits<std::uint64_t>::max();
         const bool deadline_overflow = count > 0 &&
@@ -157,12 +173,9 @@ namespace lux::simulation::script::detail
             return error(EScriptDelayStatus::INVALID_DURATION);
         if (duration == 0.0)
             return nextStep(std::move(completion));
-        const long double requested = static_cast<long double>(duration) * 1'000'000'000.0L;
-        const auto maximum = static_cast<long double>(std::numeric_limits<std::chrono::nanoseconds::rep>::max());
-        if (requested > maximum)
-            return error(EScriptDelayStatus::DURATION_OVERFLOW);
-        return real_delay_.invoke(std::chrono::nanoseconds{static_cast<std::chrono::nanoseconds::rep>(
-            std::ceil(requested))}, std::move(completion));
+        const auto converted = checkedDuration<std::chrono::nanoseconds>(duration);
+        if (!converted) return error(EScriptDelayStatus::DURATION_OVERFLOW);
+        return real_delay_.invoke(*converted, std::move(completion));
     }
 
     ScriptTimers::StartResult ScriptTimers::registerWait(ETimerKind kind, const ScriptTimerAdmission& admission,

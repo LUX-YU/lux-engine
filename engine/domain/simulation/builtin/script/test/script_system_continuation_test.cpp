@@ -732,6 +732,41 @@ namespace
         };
     }
 
+    void testTimerDurationBoundaries()
+    {
+        const double exclusive_seconds = std::ldexp(1.0, 63) / 1'000'000'000.0;
+        const std::array durations{std::nextafter(exclusive_seconds, 0.0), exclusive_seconds,
+            std::nextafter(exclusive_seconds, std::numeric_limits<double>::infinity())};
+        for (const bool local : {false, true})
+        {
+            for (std::size_t i{}; i < durations.size(); ++i)
+            {
+                Harness harness{false};
+                configureTimerHarness(harness);
+                auto& backend = harness.backend_state;
+                backend.local_timer = local;
+                backend.simulation_timer = true;
+                backend.timer_seconds = durations[i];
+                auto system = harness.create(limits(), {});
+                assert(system && system->prepare());
+                assert(dispatchRuntimeHook(*system, harness.hook) == 1U);
+                const auto stats = system->stats();
+                const bool accepted = i == 0U;
+                std::printf("TIMER_BOUNDARY local=%u index=%zu waits=%zu errors=%llu expected_accept=%u\n",
+                    local, i, stats.simulation_delay_waits, stats.invocation_failures, accepted);
+                assert(stats.simulation_delay_waits == static_cast<std::size_t>(accepted));
+                assert(system->activeAwaitableCount() == static_cast<std::size_t>(accepted));
+                assert(system->activeContinuationCount() == static_cast<std::size_t>(accepted));
+                assert(stats.invocation_failures == static_cast<std::size_t>(!accepted));
+                if (!accepted)
+                    assert(system->failures().front().status == static_cast<int>(EScriptDelayStatus::DURATION_OVERFLOW));
+                assert(system->shutdown());
+                assert(backend.creates == 1U && backend.destroys == 1U && backend.continuation_destroys == 1U);
+                assert(system->activeAwaitableCount() == 0U && system->activeContinuationCount() == 0U);
+            }
+        }
+    }
+
     void testLocalTimerCapacityAndReuse()
     {
         for (const bool local : {false, true})
@@ -1629,6 +1664,7 @@ void testExternalAdmission()
 
 int main()
 {
+    testTimerDurationBoundaries();
     testTimerSourceCancellation();
     testLocalTimerCapacityAndReuse();
     testLocalTimerRetirementReuse();

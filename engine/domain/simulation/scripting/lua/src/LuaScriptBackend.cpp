@@ -1507,9 +1507,13 @@ namespace lux::simulation::script
                 self.free_prepared_calls.push_back(call_slot);
                 return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
             }
+            const bool protected_arguments = stack_values + 8U > LUA_MINSTACK ||
+                std::any_of(function_binding->argument_operations.begin(), function_binding->argument_operations.end(),
+                    [](const auto* operation) noexcept { return operation != nullptr; });
             result = {
                 std::addressof(call),
-                lux::script::BoundScriptCall{&Impl::invokePreparedSync, std::addressof(call)},
+                lux::script::BoundScriptCall{
+                    protected_arguments ? &invokeConvertedSync : &invokePreparedSync, std::addressof(call)},
                 resumable
                     ? BoundScriptStepCall{std::addressof(call), &invokePreparedStep}
                     : BoundScriptStepCall{}
@@ -1764,6 +1768,85 @@ namespace lux::simulation::script
             execution->continuation->pending_ordinal = static_cast<std::uint32_t>(ordinal);
             execution->continuation->pending_operation = EPendingOperation::EVENT;
             return {LUX_LUA_BOUNDARY_SUSPEND, 0, 0};
+        }
+
+        struct ConvertedSyncRequest final
+        {
+            PreparedCall& call;
+            Instance& instance;
+            const LuaFunctionBinding& function;
+            lux_script_call_frame& frame;
+            const ScriptBehavior* behavior;
+            ScriptInvocationValidity qualification;
+            bool bound_authority;
+            std::int32_t status{kInvalidCall};
+        };
+
+        static int executeConvertedSync(lua_State* vm)
+        {
+            auto& request = *static_cast<ConvertedSyncRequest*>(lua_touserdata(vm, 1));
+            auto& frame = request.frame;
+            const auto slots = (std::max)(frame.arg_count, frame.return_count);
+            const bool invalid_slots = slots > static_cast<std::uint32_t>((std::numeric_limits<int>::max)()) - 8U;
+            if (invalid_slots || !lua_checkstack(vm, static_cast<int>(slots + 8U)))
+                return 0;
+            lua_rawgeti(vm, LUA_REGISTRYINDEX, request.function.function_ref);
+            const bool entity_scope = request.instance.entity_scope;
+            if (entity_scope) lua_rawgeti(vm, LUA_REGISTRYINDEX, request.instance.table_ref);
+            for (std::uint32_t i{}; i < frame.arg_count; ++i)
+            {
+                const auto* operation = i < request.function.argument_operations.size()
+                    ? request.function.argument_operations[i] : nullptr;
+                if (!pushArgument(vm, frame.args[i], operation))
+                {
+                    request.status = kMarshalFailure;
+                    return 0;
+                }
+            }
+            const bool same_binding = request.call.active && request.instance.active &&
+                request.call.instance == &request.instance && request.call.function == &request.function &&
+                request.instance.behavior == request.behavior &&
+                (request.behavior != nullptr && request.behavior->hasInvocationAuthority()) == request.bound_authority;
+            if (!same_binding || (request.bound_authority && !request.qualification.valid())) return 0;
+            lua_call(vm, static_cast<int>(frame.arg_count) + entity_scope, static_cast<int>(frame.return_count));
+            for (std::uint32_t i{}; i < frame.return_count; ++i)
+            {
+                if (!readReturn(vm, 2 + static_cast<int>(i), frame.returns[i]))
+                {
+                    request.status = -5;
+                    return 0;
+                }
+            }
+            // Converter-created to-be-closed values and errors stay inside this C boundary.
+            lua_settop(vm, 1);
+            request.status = 0;
+            return 0;
+        }
+
+        static int invokeConvertedSync(void* opaque, lux_script_call_frame* frame) noexcept
+        {
+            if (!opaque || !frame) return kInvalidCall;
+            auto& call = *static_cast<PreparedCall*>(opaque);
+            const bool invalid_call = !call.active || !call.instance || !call.function;
+            if (invalid_call) return kInvalidCall;
+            auto& self = *call.instance->owner;
+            const auto* behavior = call.instance->behavior;
+            const bool bound_authority = behavior != nullptr && behavior->hasInvocationAuthority();
+            const auto qualification = bound_authority ? behavior->captureInvocation() : ScriptInvocationValidity{};
+            if (bound_authority && !qualification.valid()) return kInvalidCall;
+            ExecutionScope execution{self, {self.main_thread, call.instance, nullptr, nullptr, nullptr}};
+            if (!execution) return kExecutionDepthCapacity;
+            auto* vm = self.main_thread;
+            if (!lua_checkstack(vm, 3)) return kLuaFailure;
+            const auto base = lua_gettop(vm);
+            ConvertedSyncRequest request{call, *call.instance, *call.function, *frame, behavior,
+                qualification, bound_authority};
+            lua_pushcfunction(vm, &traceback);
+            lua_pushcfunction(vm, &executeConvertedSync);
+            lua_pushlightuserdata(vm, &request);
+            const auto result = lua_pcall(vm, 1, 0, base + 1);
+            lua_settop(vm, base);
+            return result == LUA_OK ? request.status : kLuaFailure;
         }
 
         static int invokePreparedSync(void* invocation_context, lux_script_call_frame* frame) noexcept

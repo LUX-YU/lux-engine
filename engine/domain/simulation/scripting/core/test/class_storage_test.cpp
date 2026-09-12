@@ -1,3 +1,4 @@
+#include <lux/engine/simulation/scripting/ScriptRuntime.hpp>
 #include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
 
 #include <array>
@@ -8,8 +9,38 @@
 #include <limits>
 #include <vector>
 
+static void testOwnedBytes()
+{
+    using lux::simulation::script::ScriptOwnedBytes;
+    ScriptOwnedBytes bytes;
+    assert(bytes.resize(8U));
+    for (std::size_t i{}; i < 8U; ++i) bytes.data()[i] = static_cast<std::byte>(i + 1U);
+    auto* inline_address = bytes.data();
+    assert(bytes.resize(16U) && bytes.data() == inline_address);
+    for (std::size_t i{}; i < 8U; ++i) assert(bytes.data()[i] == static_cast<std::byte>(i + 1U));
+    assert(bytes.resize(64U, 32U) && bytes.data() != inline_address);
+    for (std::size_t i{}; i < 8U; ++i) assert(bytes.data()[i] == static_cast<std::byte>(i + 1U));
+    assert(bytes.resize(4U) && bytes.data() == inline_address);
+    for (std::size_t i{}; i < 4U; ++i) assert(bytes.data()[i] == static_cast<std::byte>(i + 1U));
+    assert(!bytes.resize(4U, 3U) && bytes.size() == 4U);
+    ScriptOwnedBytes moved{std::move(bytes)};
+    assert(bytes.empty() && moved.size() == 4U);
+    for (std::size_t i{}; i < 4U; ++i) assert(moved.data()[i] == static_cast<std::byte>(i + 1U));
+    auto& self = moved;
+    moved = std::move(self);
+    assert(moved.size() == 4U && moved.resize(0U) && moved.empty());
+    assert(moved.resize(64U, 32U));
+    moved.data()[0] = std::byte{17};
+    auto* spill = moved.data();
+    bytes = std::move(moved);
+    assert(moved.empty() && bytes.data() == spill && bytes.data()[0] == std::byte{17});
+    assert(bytes.resize(0U) && bytes.empty());
+    std::puts("OWNED_BYTES inline-grow spill inline-shrink invalid-align move self-move empty PASS");
+}
+
 int main()
 {
+    testOwnedBytes();
     using namespace lux::simulation::script::detail;
     constexpr std::array plans{
         StorageClassPlan{64U, 64U, 4096U, 2U},

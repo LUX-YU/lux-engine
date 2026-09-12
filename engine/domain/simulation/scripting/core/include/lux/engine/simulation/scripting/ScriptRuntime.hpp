@@ -164,8 +164,8 @@ namespace lux::simulation::script
                 return false;
             if (size <= InlineCapacity && alignment <= alignof(std::max_align_t))
             {
-                if (size_ != 0U)
-                    std::memcpy(inline_.data(), data(), (std::min)(size_, size));
+                if (spill_ != nullptr && size_ != 0U && size != 0U)
+                    std::memcpy(inline_.data(), spill_, (std::min)(size_, size));
                 releaseSpill();
                 size_ = size;
                 return true;

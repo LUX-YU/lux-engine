@@ -256,7 +256,7 @@ lux_classify_target(TARGET simulation_script_lua_value_boundary_test LAYER SIMUL
 add_test(NAME simulation_script_lua_value_boundary_test COMMAND simulation_script_lua_value_boundary_test)
 
 add_executable(simulation_script_lua_value_runtime_test test/lua_value_runtime_test.cpp)
-target_link_libraries(simulation_script_lua_value_runtime_test PRIVATE simulation_script_lua_value_fixtures)
+target_link_libraries(simulation_script_lua_value_runtime_test PRIVATE simulation_script_lua_value_fixtures LuxLua55::Runtime)
 lux_script_abilities(TARGET simulation_script_lua_value_runtime_test
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test/LuaValueTestAbility.hpp
         ${CMAKE_CURRENT_SOURCE_DIR}/test/LuaPushOnlyAbility.hpp)
@@ -269,3 +269,8 @@ lux_classify_target(TARGET simulation_script_lua_value_runtime_test LAYER SIMULA
 add_test(NAME simulation_script_lua_value_runtime_test COMMAND simulation_script_lua_value_runtime_test)
 add_test(NAME simulation_script_lua_resume_retire_test COMMAND simulation_script_lua_value_runtime_test --resume-retire)
 add_test(NAME simulation_script_lua_resume_stop_test COMMAND simulation_script_lua_value_runtime_test --resume-stop)
+
+foreach(_sync_case valid retire stop error)
+    add_test(NAME simulation_script_lua_sync_${_sync_case}_test
+        COMMAND simulation_script_lua_value_runtime_test --sync-${_sync_case})
+endforeach()

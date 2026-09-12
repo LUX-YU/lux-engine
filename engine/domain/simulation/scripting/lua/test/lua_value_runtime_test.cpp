@@ -1,3 +1,4 @@
+#include <lua.hpp>
 #include "../../../builtin/script/test/ScriptRuntimeTestRegion.hpp"
 using lux::simulation::script::test::dispatchRuntimeHook;
 using lux::simulation::script::test::deliverRuntimeEvent;
@@ -316,8 +317,23 @@ static ScriptSystem* resume_system{};
 static bool resume_stop{};
 static std::size_t resume_conversions{};
 
-static int resumeAuthorityCase(bool stop)
+enum class EConversionAuthorityCase
 {
+    RESUME_RETIRE, RESUME_STOP, SYNC_VALID, SYNC_RETIRE, SYNC_STOP, SYNC_ERROR
+};
+static bool conversion_synchronous{};
+static bool conversion_retains_instance{};
+static bool conversion_raises_error{};
+static std::size_t conversion_body_calls{};
+
+static int conversionAuthorityCase(EConversionAuthorityCase selected)
+{
+    const bool stop = selected == EConversionAuthorityCase::RESUME_STOP ||
+        selected == EConversionAuthorityCase::SYNC_STOP;
+    const bool synchronous = selected != EConversionAuthorityCase::RESUME_RETIRE &&
+        selected != EConversionAuthorityCase::RESUME_STOP;
+    const bool retains_instance = selected == EConversionAuthorityCase::SYNC_VALID;
+    const bool raises_error = selected == EConversionAuthorityCase::SYNC_ERROR;
     constexpr EventPointId event_id{0x5A0120};
     constexpr HookPointId dispatch_id{0x5A0121};
     const std::array hooks{makeHookPointSpec<void()>(kHook, "resume-start"),
@@ -347,10 +363,21 @@ static int resumeAuthorityCase(bool stop)
     auto operation = lux::script::lua::makeLuaValueOperation<ValuePose>();
     operation.push = [](lua_State* state, const void* value) noexcept {
         ++resume_conversions;
+        if (conversion_raises_error)
+        {
+            luaL_error(state, "injected input converter failure");
+            return false;
+        }
         if (resume_stop) assert(resume_system->requestStop());
-        else resume_registry->destroy(resume_entity);
+        else if (!conversion_retains_instance) resume_registry->destroy(resume_entity);
         const auto original = lux::script::lua::makeLuaValueOperation<ValuePose>();
-        return original.push(state, value);
+        const bool pushed = original.push(state, value);
+        if (pushed && conversion_synchronous)
+        {
+            lua_pushcfunction(state, +[](lua_State*) -> int { ++conversion_body_calls; return 0; });
+            lua_setfield(state, -2, "audit");
+        }
+        return pushed;
     };
     auto backend = LuaScriptBackend::create({
         .instance_capacity = 1U, .prepared_call_capacity = 3U, .continuation_capacity = 1U,
@@ -371,7 +398,7 @@ static int resumeAuthorityCase(bool stop)
     description.api_requirements = {{lux::script::ScriptApiContractId{AbilityTraits::Description.id.name()},
         AbilityTraits::Description.schema_hash}};
     description.event_requirements = {*source};
-    constexpr std::string_view code =
+    constexpr std::string_view resume_code =
         "return {tick=function(self) "
         "assert(debug.getinfo(lux.Event.Resume.pose,'S').what=='C');"
         "assert(debug.getinfo(lux.Values.zeroArgumentProbe,'S').what=='C');"
@@ -379,6 +406,17 @@ static int resumeAuthorityCase(bool stop)
         "local p=lux.Event.Resume.pose(); coroutine.yield=saved;"
         "assert(p.key==31 and p.velocity.x==2 and p.velocity.y==3 and p.mode==3);"
         "assert(lux.Values.zeroArgumentProbe()==42) end}";
+    constexpr std::string_view sync_code =
+        "return {tick=function(self,p) p.audit();"
+        "assert(p.key==31 and p.velocity.x==2 and p.velocity.y==3 and p.mode==3);"
+        "assert(lux.Values.zeroArgumentProbe()==42) end}";
+    if (synchronous)
+    {
+        description.body = lux::rdesc::LuaSourceScript{"Resume"};
+        description.exports.front().args = {
+            lux::rdesc::makeScriptValueType<ValuePose>(lux::semantic::EValuePass::CONST_REF)};
+    }
+    const auto code = synchronous ? sync_code : resume_code;
     const auto bytes = std::as_bytes(std::span{code.data(), code.size()});
     auto script = lux::script::ScriptArtifact::create(std::move(description), {bytes.begin(), bytes.end()});
     assert(script);
@@ -392,7 +430,8 @@ static int resumeAuthorityCase(bool stop)
     const auto binding = lux::script::bindScriptAbility<LuaValueTestAbility>(provider);
     const std::array capabilities{publishScriptAbility(binding)};
     const std::array mounts{ScriptRuntimeMount{ScriptMountId{1}, asset, EntityScriptScope{entity},
-        {{kTick, HookScriptTarget{kOwner, kHook}}}}};
+        {{kTick, synchronous ? ScriptBindingTarget{EventScriptTarget{kOwner, event_id}}
+                            : ScriptBindingTarget{HookScriptTarget{kOwner, kHook}}}}}};
     const auto plan = planScriptRuntimeCapacity(mounts);
     assert(plan);
     const auto descriptor = backend->descriptor();
@@ -406,41 +445,61 @@ static int resumeAuthorityCase(bool stop)
         }}, capabilities, std::span{&descriptor, 1}, std::span{&hook_descriptor, 1},
         std::span{&event_descriptor, 1});
     assert(system && system->prepare());
-    assert(dispatchRuntimeHook(*system, hook) == 1U);
-    assert(system->activeContinuationCount() == 1U && system->stats().active_event_waiters == 1U);
+    if (!synchronous)
+    {
+        assert(dispatchRuntimeHook(*system, hook) == 1U);
+        assert(system->activeContinuationCount() == 1U && system->stats().active_event_waiters == 1U);
+    }
     {
         auto writer = channel.begin(0U);
         assert(writer.record(ValuePose{31, {2.0F, 3.0}, ValueMode::RUN}));
     }
-    assert(deliverRuntimeEvent(*system, event) == 1U);
     resume_registry = &registry;
     resume_entity = entity;
     resume_system = &*system;
     resume_stop = stop;
     resume_conversions = 0U;
+    conversion_synchronous = synchronous;
+    conversion_retains_instance = retains_instance;
+    conversion_raises_error = raises_error;
+    conversion_body_calls = 0U;
+    assert(deliverRuntimeEvent(*system, event) == 1U);
     const auto stable = executeRuntimeStablePoint(*system);
-    assert(stable);
-    assert(resume_conversions == 1U && provider.zero_calls == static_cast<std::size_t>(stop));
+    assert(synchronous && stop ? !stable : static_cast<bool>(stable));
+    const auto expected_calls = static_cast<std::size_t>(stop || retains_instance);
+    std::printf("CONVERSION_AUTHORITY mode=%u conversions=%zu body=%zu provider=%zu expected=%zu\n",
+        static_cast<unsigned>(selected), resume_conversions, conversion_body_calls, provider.zero_calls, expected_calls);
+    assert(resume_conversions == 1U && provider.zero_calls == expected_calls);
+    if (synchronous) assert(conversion_body_calls == expected_calls);
     assert(system->activeContinuationCount() == 0U && system->activeAwaitableCount() == 0U);
     assert(system->shutdown());
     const auto released = backend->stats();
-    assert(released.vm_coroutine_creations == 1U && released.vm_coroutine_releases == 1U);
+    const auto expected_threads = static_cast<std::size_t>(!synchronous);
+    assert(released.vm_coroutine_creations == expected_threads && released.vm_coroutine_releases == expected_threads);
     assert(released.prepared_ability_slots == 0U && released.prepared_event_slots == 0U);
-    std::printf("RESUME_AUTHORITY stop=%u converted=1 provider=%zu roots=1 released=1 backlog=0 PASS\n",
-        stop, provider.zero_calls);
+    std::printf("CONVERSION_CLEANUP synchronous=%u provider=%zu roots=%zu released=%zu backlog=0 PASS\n",
+        synchronous, provider.zero_calls, expected_threads, expected_threads);
     const auto leaf_stats = backend->stats();
     std::printf("ENGINE_LEAF,available=%d,observed=%d,fast=%llu,standard=%llu\n",
         leaf_stats.leaf_yield_available, leaf_stats.leaf_statistics_enabled,
         leaf_stats.leaf_return_yields, leaf_stats.standard_leaf_yields
     );
-    if (leaf_stats.leaf_statistics_enabled) assert(leaf_stats.leaf_return_yields == 1U);
+    if (leaf_stats.leaf_statistics_enabled) assert(leaf_stats.leaf_return_yields == expected_threads);
     return 0;
 }
 
 int main(int argc, char** argv)
 {
-    if (argc == 2 && std::string_view{argv[1]} == "--resume-retire") return resumeAuthorityCase(false);
-    if (argc == 2 && std::string_view{argv[1]} == "--resume-stop") return resumeAuthorityCase(true);
+    if (argc == 2 && std::string_view{argv[1]} == "--resume-retire") return conversionAuthorityCase(EConversionAuthorityCase::RESUME_RETIRE);
+    if (argc == 2 && std::string_view{argv[1]} == "--resume-stop") return conversionAuthorityCase(EConversionAuthorityCase::RESUME_STOP);
+    if (argc == 2 && std::string_view{argv[1]} == "--sync-valid")
+        return conversionAuthorityCase(EConversionAuthorityCase::SYNC_VALID);
+    if (argc == 2 && std::string_view{argv[1]} == "--sync-retire")
+        return conversionAuthorityCase(EConversionAuthorityCase::SYNC_RETIRE);
+    if (argc == 2 && std::string_view{argv[1]} == "--sync-stop")
+        return conversionAuthorityCase(EConversionAuthorityCase::SYNC_STOP);
+    if (argc == 2 && std::string_view{argv[1]} == "--sync-error")
+        return conversionAuthorityCase(EConversionAuthorityCase::SYNC_ERROR);
     static_assert(!std::is_default_constructible_v<ValueToken>);
     static_assert(!lux::script::lua::LuaValueCodec<ValuePushOnly>::can_read);
     const auto push_only = lux::script::lua::makeScriptAbilityLuaContribution<LuaPushOnlyAbility>();

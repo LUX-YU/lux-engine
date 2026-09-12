@@ -13,3 +13,7 @@ SHA-256：`3c6687acd41da78e6c56959da3756032b2f31e81ebddd8f99b222d85ddfe0db5`。�
 
 不含编译 DLL/PDB/EXE/OBJ；它们保存在本机封存镜像，身份见 [artifact-files.json](artifact-files.json)。
 未采集的性能字段保持 null；历史原始文件不改写。
+
+远端归档提交：`3eef07c7ed179c2a129cb4ce68346d6190bb2f49`。已从新的独立 bare 仓库回取并核对同一 SHA-256。
+
+[固定提交下载](https://raw.githubusercontent.com/LUX-YU/lux-engine/3eef07c7ed179c2a129cb4ce68346d6190bb2f49/.internal/evidence/script/premerge-cleanup-20260912/cleanup-e39535cf.zip) · [回取记录](remote-check.json)。

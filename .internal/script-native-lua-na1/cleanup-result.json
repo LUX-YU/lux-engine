@@ -808,7 +808,17 @@
     "path": "../evidence/script/premerge-cleanup-20260912/cleanup-e39535cf.zip",
     "bytes": 5321465,
     "sha256": "3c6687acd41da78e6c56959da3756032b2f31e81ebddd8f99b222d85ddfe0db5",
-    "raw_files": 562
+    "raw_files": 562,
+    "remote_verification": {
+      "archive_commit": "3eef07c7ed179c2a129cb4ce68346d6190bb2f49",
+      "branch": "codex/s6-native-task-lua-steps",
+      "method": "fresh independent bare repository; depth 1 blob-filtered fetch, then fetch archive blob from origin",
+      "archive_path": ".internal/evidence/script/premerge-cleanup-20260912/cleanup-e39535cf.zip",
+      "sha256": "3c6687acd41da78e6c56959da3756032b2f31e81ebddd8f99b222d85ddfe0db5",
+      "bytes": 5321465,
+      "verified": true,
+      "download_url": "https://raw.githubusercontent.com/LUX-YU/lux-engine/3eef07c7ed179c2a129cb4ce68346d6190bb2f49/.internal/evidence/script/premerge-cleanup-20260912/cleanup-e39535cf.zip"
+    }
   },
   "limits": [
     "P4 +1.57% and FlowForge Event +1.76% paired medians remain unexplained; not performance equivalence or accepted safety cost.",

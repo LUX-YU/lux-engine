@@ -1,6 +1,7 @@
 #pragma once
 #include <lux/engine/editor/sessions/scene/SceneSession.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <unordered_map>
 namespace lux::editor::sessions
 {
@@ -19,5 +20,6 @@ namespace lux::editor::sessions
         std::unordered_map<lux::simulation::ecs::Entity, std::string> labels;
         std::size_t resource_capacity{128};
         std::optional<lux::simulation::ecs::Entity> initial_selection;
+        lux::asset::AssetVfsView asset_catalog;
     };
 } // namespace lux::editor::sessions

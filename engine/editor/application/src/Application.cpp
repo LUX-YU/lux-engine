@@ -185,6 +185,7 @@ namespace lux::editor::application
             if (!source)
                 return sceneFailure(source.error());
             impl_->source.emplace(std::move(*source));
+            impl_->source->asset_catalog = impl_->vfs.view();
             auto session = sessions::SceneSession::openInspection(*impl_->source);
             if (!session)
                 return sceneFailure(session.error());

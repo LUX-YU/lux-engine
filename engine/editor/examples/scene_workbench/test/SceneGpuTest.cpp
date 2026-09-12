@@ -858,9 +858,24 @@ int main(int argc, char **argv)
         }
         if (churn_test)
             source->resource_capacity = 6;
+        source->asset_catalog = vfs.view();
         auto session_result = sessions::SceneSession::openInspection(*source);
         require(session_result && !source->scene, "Scene source transfer");
         auto session = std::move(*session_result);
+        std::array<std::uint8_t, 16> display_asset_bytes{0x53, 0x56, 1};
+        display_asset_bytes.back() = 11;
+        const lux::asset::AssetId display_asset{display_asset_bytes};
+        const auto display_path = session->readAssetPath(display_asset);
+        require(display_path && *display_path == vfs.view().pathOf(display_asset),
+                "Inspector asset display resolves the actual current mounted path");
+        const auto empty_path = session->readAssetPath(lux::asset::NullAssetId);
+        require(empty_path && !*empty_path, "null reference has no invented asset path");
+        std::thread path_thread([&] {
+            const auto result = session->readAssetPath(display_asset);
+            require(!result && result.error().code == sessions::ESceneError::WRONG_THREAD,
+                    "asset display rejects wrong thread before invoking provider");
+        });
+        path_thread.join();
 #if defined(LUX_EDITOR_DIAGNOSTICS)
         if (resource_backpressure_test)
         {

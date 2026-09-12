@@ -172,6 +172,8 @@ namespace lux::editor::sessions
         // Available during CLOSING/CLOSED. Does not pump replies or publish business snapshots.
         [[nodiscard]] SceneResult<std::shared_ptr<const SceneCloseSnapshot>> closeStatus() const noexcept;
         [[nodiscard]] SceneResult<void> retryResources(const ResourceRequestKey &) noexcept;
+        // Owning display value from the current mount snapshot; no VFS or provider escapes to a Pane.
+        [[nodiscard]] SceneResult<std::optional<std::string>> readAssetPath(lux::asset::AssetId) const noexcept;
         // EDIT_CONTENT only. One active typed property gesture per Session in this release.
         [[nodiscard]] SceneResult<PropertyGesture> beginTransformEdit(SceneObjectRef) noexcept;
         [[nodiscard]] SceneResult<void> previewTransform(PropertyGesture,

@@ -55,6 +55,7 @@ namespace lux::editor::sessions
         std::unique_ptr<lux::task::TaskExecutor> executor;
         std::unique_ptr<editing::EditHistory> history;
         std::unique_ptr<detail::SceneResources> resources;
+        lux::asset::AssetVfsView asset_catalog;
         rendering::EditorRenderer *renderer{};
         std::unordered_map<lux::simulation::ecs::Entity, std::string> labels;
         SceneOutlineRef outline;
@@ -206,6 +207,7 @@ namespace lux::editor::sessions
             impl->history = std::move(*history);
             impl->renderer = input.renderer;
             impl->labels = input.labels;
+            impl->asset_catalog = input.asset_catalog;
             auto outline = impl->prepareOutline(*input.scene);
             if (!outline)
                 return lux::cxx::unexpected(outline.error());
@@ -463,6 +465,20 @@ namespace lux::editor::sessions
             impl_->resources_dirty = true;
         return result;
     }
+    SceneResult<std::optional<std::string>> SceneSession::readAssetPath(lux::asset::AssetId asset) const noexcept
+    {
+        if (auto result = impl_->check(); !result)
+            return lux::cxx::unexpected(result.error());
+        Gate gate{impl_->busy};
+        try
+        {
+            return impl_->asset_catalog.pathOf(asset);
+        }
+        catch (const std::bad_alloc &)
+        {
+            return fail(ESceneError::ALLOCATION_FAILURE, id());
+        }
+    }
     editing::HistoryId SceneSession::historyId() const noexcept
     {
         return impl_->history->id();
@@ -559,6 +575,7 @@ namespace lux::editor::sessions
         if (!closed)
             return fail(ESceneError::BUSY, id());
         impl_->resources.reset();
+        impl_->asset_catalog = {};
         impl_->executor.reset();
         impl_->metadata.reset();
         impl_->state = ESessionState::CLOSED;

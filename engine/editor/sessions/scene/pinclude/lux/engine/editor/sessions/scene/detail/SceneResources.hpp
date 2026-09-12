@@ -172,6 +172,8 @@ namespace lux::editor::sessions::detail
         void afterPresentation(bool source_update_pending) noexcept;
         SceneResult<void> retry(const ResourceRequestKey &) noexcept;
         SceneResult<std::shared_ptr<const SceneResourceSnapshot>> snapshot(std::uint64_t) const noexcept;
+        SceneResult<std::shared_ptr<const SceneCloseSnapshot>> closeSnapshot(
+            ESessionState, std::size_t views, bool scene_present) const noexcept;
         SceneResult<void> beginClose() noexcept;
         SceneResult<bool> advanceClose() noexcept;
 #if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)

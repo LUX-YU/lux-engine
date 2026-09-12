@@ -59,6 +59,13 @@ namespace lux::editor::application
         std::shared_ptr<const lux::scene::SceneMetaManager> metadata;
         InspectionSourceFactory source{};
     };
+    struct ApplicationShutdownStatus final
+    {
+        EApplicationState state{};
+        bool close_requested{}, workspace_present{}, unattached_view_present{};
+        std::optional<rendering::RendererCloseStatus> renderer;
+        std::shared_ptr<const sessions::SceneCloseSnapshot> session;
+    };
     class EditorApplication final
     {
     public:
@@ -68,9 +75,11 @@ namespace lux::editor::application
         // Cold composition only. Retained borrows still obey Toolset's freeze/stop admission checks.
         [[nodiscard]] ApplicationResult<std::reference_wrapper<Toolset>> tooling() noexcept;
         [[nodiscard]] ApplicationResult<std::size_t> run(std::size_t max_frames = 0) noexcept;
+        // Non-result queries require this application's owner thread; shutdownStatus() rejects foreign threads.
         [[nodiscard]] EApplicationState state() const noexcept;
         [[nodiscard]] ApplicationResult<void> requestClose() noexcept;
         [[nodiscard]] ApplicationResult<bool> advanceShutdown(std::size_t budget) noexcept;
+        [[nodiscard]] ApplicationResult<ApplicationShutdownStatus> shutdownStatus() const noexcept;
         [[nodiscard]] rendering::RendererStatistics rendererStatistics() const noexcept;
         ~EditorApplication() noexcept;
         EditorApplication(const EditorApplication &) = delete;

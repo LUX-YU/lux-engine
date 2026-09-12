@@ -302,6 +302,31 @@ namespace lux::editor::rendering
                 impl_->frames.size(),
                 static_cast<std::uint64_t>(stats.validation_errors.load())};
     }
+    RenderResult<RendererCloseStatus> EditorRenderer::closeStatus() const noexcept
+    {
+        if (auto checked = impl_->check(); !checked)
+            return lux::cxx::unexpected(checked.error());
+        RendererCloseStatus result;
+        result.statistics = statistics();
+        result.state = state();
+        result.close_requested = impl_->closing;
+        result.uploads_pending = !impl_->upload_queue->empty();
+        result.program_pending = impl_->programs && impl_->programs->hasPendingSubmit();
+        result.worker_stopped = impl_->thread.stopped.load(std::memory_order_acquire);
+        result.scene_releases = impl_->control->pendingSceneReleases();
+        result.view_releases = impl_->control->pendingViewReleases();
+        result.target_releases = impl_->control->pendingTargetReleases();
+        for (const auto *view : impl_->views)
+        {
+            if (!view)
+                continue;
+            auto current = view->closeStatus();
+            if (!current)
+                return lux::cxx::unexpected(current.error());
+            result.views[result.view_count++] = *current;
+        }
+        return result;
+    }
     RenderResult<ImageContentStamp> EditorRenderer::imageEvidence(const ViewImage &image) const noexcept
     {
         if (auto checked = impl_->check(); !checked)

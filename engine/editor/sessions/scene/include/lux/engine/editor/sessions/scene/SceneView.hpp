@@ -50,6 +50,7 @@ namespace lux::editor::sessions
         SceneView &operator=(const SceneView &) = delete;
         SceneView(SceneView &&) = delete;
         SceneView &operator=(SceneView &&) = delete;
+        // Non-result queries require the owning thread, as do the Session and Renderer borrows inside this View.
         [[nodiscard]] SessionId sessionId() const noexcept;
         [[nodiscard]] SceneResult<void> resetCamera() noexcept;
         [[nodiscard]] SceneResult<void> synchronize() noexcept; // Owner update only, no Simulation step.

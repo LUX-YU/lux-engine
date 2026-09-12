@@ -57,7 +57,7 @@ namespace lux::editor::sessions
                                                               SceneSession &session,
                                                               rendering::EditorRenderer &renderer) noexcept
     {
-        if (!dispatcher || !dispatcher.isCurrent())
+        if (!dispatcher || !dispatcher.isCurrent() || !session.dispatcherRef().isCurrent())
             return fail(ESceneError::WRONG_THREAD);
         try
         {

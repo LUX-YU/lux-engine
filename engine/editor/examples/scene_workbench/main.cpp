@@ -1,4 +1,5 @@
 #include "DevelopmentScene.hpp"
+#include "ShutdownDiagnostics.hpp"
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 #include <charconv>
 #include <chrono>
@@ -112,6 +113,7 @@ int main(int argc, char **argv)
         report(started.error());
     static_cast<void>(app->requestClose());
     const auto closing = std::chrono::steady_clock::now();
+    auto next_close_report = closing + std::chrono::seconds{1};
     bool reported{};
     for (;;)
     {
@@ -123,6 +125,15 @@ int main(int argc, char **argv)
             report(closed.error());
             reported = true;
             result = 1;
+        }
+        if (std::chrono::steady_clock::now() >= next_close_report)
+        {
+            const auto status = app->shutdownStatus();
+            if (status)
+                examples::reportShutdown(*status);
+            else
+                report(status.error());
+            next_close_report = std::chrono::steady_clock::now() + std::chrono::seconds{5};
         }
         if (frames && std::chrono::steady_clock::now() - closing > std::chrono::seconds{30})
         {

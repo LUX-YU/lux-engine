@@ -67,7 +67,7 @@ namespace lux::render
 
         instance_ = instance_builder.build(allocator_);
 
-        if (debug_callback_)
+        if (debug_callback_ && instance_)
         {
             debug_report_ = instance_.createDebugReport(&debug_report_callback, &debug_callback_, allocator_);
         }

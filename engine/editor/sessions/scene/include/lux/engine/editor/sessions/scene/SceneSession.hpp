@@ -137,6 +137,7 @@ namespace lux::editor::sessions
         double elapsed_seconds{}; // Finite, nonnegative; same cycle requires same input.
     };
     struct SceneResourceSnapshot; // Define in PUBLIC SceneResourceStatus.hpp: immutable owned rows, not jobs.
+    struct SceneCloseSnapshot;
     struct ResourceRequestKey;    // Define the value in PUBLIC SceneResourceStatus.hpp; request state remains private.
     class LUX_EDITOR_SCENE_SESSION_PUBLIC LUX_OBJECT() SceneSession final : public lux::object::Object<SceneSession>,
                                                                             public editing::EditHistoryTarget
@@ -153,6 +154,8 @@ namespace lux::editor::sessions
         SceneSession &operator=(const SceneSession &) = delete;
         SceneSession(SceneSession &&) = delete;
         SceneSession &operator=(SceneSession &&) = delete;
+        // Non-result queries (including selection/historyId) require the owning thread.
+        // A returned owning snapshot may outlive this Session; a live Session is never a worker input.
         [[nodiscard]] SessionId id() const noexcept;
         [[nodiscard]] ESessionState state() const noexcept;
         [[nodiscard]] ESceneAccess access() const noexcept;
@@ -166,6 +169,8 @@ namespace lux::editor::sessions
         [[nodiscard]] SceneResult<void> select(std::optional<SceneEntityRef>) noexcept;
         [[nodiscard]] SceneSelectionNotice selection() const noexcept;
         [[nodiscard]] SceneResult<std::shared_ptr<const SceneResourceSnapshot>> readResources() const noexcept;
+        // Available during CLOSING/CLOSED. Does not pump replies or publish business snapshots.
+        [[nodiscard]] SceneResult<std::shared_ptr<const SceneCloseSnapshot>> closeStatus() const noexcept;
         [[nodiscard]] SceneResult<void> retryResources(const ResourceRequestKey &) noexcept;
         // EDIT_CONTENT only. One active typed property gesture per Session in this release.
         [[nodiscard]] SceneResult<PropertyGesture> beginTransformEdit(SceneObjectRef) noexcept;

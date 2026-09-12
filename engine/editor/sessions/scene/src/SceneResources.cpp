@@ -623,6 +623,42 @@ namespace lux::editor::sessions::detail
             return fail(ESceneError::ALLOCATION_FAILURE, session_);
         }
     }
+    SceneResult<std::shared_ptr<const SceneCloseSnapshot>> SceneResources::closeSnapshot(
+        ESessionState state, std::size_t views, bool scene_present) const noexcept
+    {
+        try
+        {
+            auto result = std::make_shared<SceneCloseSnapshot>();
+            result->session = session_;
+            result->state = state;
+            result->views = views;
+            result->scene_present = scene_present;
+            result->task_scope_complete = tasks_.done.load(std::memory_order_acquire);
+            result->retirement_submission_pending = retirement_pending_;
+            result->resources.reserve(requests_.size());
+            for (const auto &request : requests_)
+            {
+                SceneResourceCloseRow row;
+                row.resource = request->row;
+                row.mesh_read_pending = !readDone(*request->mesh_read);
+                row.material_read_pending = !readDone(*request->material_read);
+                row.mesh_upload_pending = request->mesh_request.valid();
+                row.material_upload_pending = request->material_request.valid();
+                row.forward_upload_pending = request->forward_request.valid();
+                row.gbuffer_upload_pending = request->gbuffer_request.valid();
+                row.retirement_pending = request->retired_program_consumed &&
+                    !request->retired_program_consumed->load(std::memory_order_acquire);
+                row.live_handles = request->mesh.isValid() + request->material.isValid() +
+                                   request->forward.isValid() + request->gbuffer.isValid();
+                result->resources.push_back(std::move(row));
+            }
+            return result;
+        }
+        catch (const std::bad_alloc &)
+        {
+            return fail(ESceneError::ALLOCATION_FAILURE, session_);
+        }
+    }
     SceneResult<void> SceneResources::beginClose() noexcept
     {
         closing_ = true;

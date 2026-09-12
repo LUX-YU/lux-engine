@@ -24,6 +24,7 @@ namespace lux::editor::ui
         EditorWindow(EditorWindow &&) = delete;
         EditorWindow &operator=(EditorWindow &&) = delete;
 
+        // Non-result borrows/queries require the dispatcher owner; native/UI borrows end before Window close.
         [[nodiscard]] lux::ui::UISession &uiSession() noexcept;
         [[nodiscard]] lux::window::LuxWindow &nativeWindow() noexcept;
         [[nodiscard]] ActiveEditHistory &activeHistory() noexcept;

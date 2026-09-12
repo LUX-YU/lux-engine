@@ -62,6 +62,28 @@ namespace lux::editor::rendering
     {
         return impl_->resources->status;
     }
+    RenderResult<RenderViewCloseStatus> RenderView::closeStatus() const noexcept
+    {
+        const auto &state = *impl_->resources;
+        if (auto checked = state.check(); !checked)
+            return lux::cxx::unexpected(checked.error());
+        RenderViewCloseStatus result;
+        result.status = state.status;
+        result.close_requested = state.close_requested;
+        result.layer_attached = state.linked;
+        result.target_owned = state.target.isValid();
+        result.view_owned = state.view.isValid();
+        result.image_version_owners = state.version.use_count();
+        if (state.version)
+            result.last_submission = state.version->last_submission.load(std::memory_order_acquire);
+        result.gpu_completed = state.renderer.statistics().gpu_completed;
+        result.create_view = state.create_view.requestId();
+        result.create_target = state.create_target.requestId();
+        result.resize = state.resize.requestId();
+        result.release_view = state.release_view.requestId();
+        result.release_target = state.release_target.requestId();
+        return result;
+    }
     RenderResult<void> RenderView::requestExtent(PixelExtent extent) noexcept
     {
         return impl_->resources->requestExtent(extent);

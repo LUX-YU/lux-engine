@@ -443,6 +443,31 @@ namespace lux::editor::application
         impl_->state = EApplicationState::STOPPED;
         return true;
     }
+    ApplicationResult<ApplicationShutdownStatus> EditorApplication::shutdownStatus() const noexcept
+    {
+        if (auto checked = impl_->check(); !checked)
+            return lux::cxx::unexpected(checked.error());
+        ApplicationShutdownStatus result;
+        result.state = impl_->state;
+        result.close_requested = impl_->close_requested;
+        result.workspace_present = bool(impl_->workspace);
+        result.unattached_view_present = bool(impl_->unattached_view);
+        if (impl_->renderer)
+        {
+            auto current = impl_->renderer->closeStatus();
+            if (!current)
+                return renderFailure(current.error());
+            result.renderer = *current;
+        }
+        if (impl_->session)
+        {
+            auto current = impl_->session->closeStatus();
+            if (!current)
+                return sceneFailure(current.error());
+            result.session = std::move(*current);
+        }
+        return result;
+    }
     rendering::RendererStatistics EditorApplication::rendererStatistics() const noexcept
     {
         return impl_->renderer ? impl_->renderer->statistics() : impl_->final_statistics;

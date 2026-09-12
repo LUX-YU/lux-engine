@@ -236,6 +236,8 @@ namespace lux::render
             };
         }
         inst_ctx_ = std::make_unique<InstanceContext>(cfg.instance_extensions, std::move(debug_cb));
+        if (!inst_ctx_->instance())
+            return renderFailure<err::device::VulkanObjectCreationFailed>();
         dev_ctx_ = std::make_unique<DeviceContext>(*inst_ctx_);
         res_ctx_ = std::make_unique<ResourceContext>(*dev_ctx_);
 
@@ -496,8 +498,8 @@ namespace lux::render
 
     GeneralRenderServer::Impl::~Impl()
     {
-        if (!dev_ctx_)
-            return; // init() was never called
+        if (!dev_ctx_ || !dev_ctx_->logicalDevice())
+            return; // No logical device was created; member owners release any partial CPU/instance state.
         bool device_lost_during_teardown = false;
 
         // Close admission and join the single transfer owner first. Recorded

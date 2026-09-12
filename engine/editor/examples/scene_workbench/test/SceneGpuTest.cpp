@@ -1,4 +1,5 @@
 #include "../DevelopmentScene.hpp"
+#include "../ShutdownDiagnostics.hpp"
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/editor/ui/scene/SceneWorkspace.hpp>
 #include <lux/engine/editor/rendering/detail/ViewImageLifetime.hpp>
@@ -351,10 +352,14 @@ namespace
             render(renderer.beginClose());
             render(renderer.advanceClose());
             render(renderer.joinStopped());
+            render(renderer.closeStatus());
+            scene(session.closeStatus());
+            lux::object::ObjectMessageQueue local_messages;
+            scene(sessions::SceneView::create(local_messages.dispatcherRef(), session, renderer));
         });
         foreign.join();
         const auto after = renderer.statistics();
-        require(rejected == 21 && session.state() == sessions::ESessionState::READY &&
+        require(rejected == 24 && session.state() == sessions::ESessionState::READY &&
                     session.selection().current == selection.current &&
                     session.historyView()->history.current == history->history.current &&
                     renderer.state() == rendering::ERendererState::READY && before.views == after.views &&
@@ -428,6 +433,25 @@ int main(int argc, char **argv)
             "requested variant requires the isolated diagnostic build");
 #endif
     require(!retry_test || argc == 5, "retry needs a complete recovery package");
+    auto pak = lux::asset::PakAssetProvider::loadFromFile(argv[1]);
+    if (!pak)
+    {
+        std::fputs("GPU fixture input error: scene package cannot be loaded\n", stderr);
+        return 2;
+    }
+    if (partial_failure_test || retry_test)
+    {
+        std::array<std::uint8_t, 16> ground{};
+        ground[0] = 0x53;
+        ground[1] = 0x56;
+        ground[2] = 1;
+        ground.back() = 11;
+        if ((*pak)->contains(lux::asset::AssetId{ground}))
+        {
+            std::fputs("GPU fixture input error: this variant requires the --omit-ground package\n", stderr);
+            return 2;
+        }
+    }
     const bool has_mesh = variant != "no_mesh" && variant != "empty";
     const auto output = std::filesystem::path(argv[2]);
     std::filesystem::create_directories(output);
@@ -440,8 +464,6 @@ int main(int argc, char **argv)
             {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{partial_failure_test ? 4u : 2u, 64}});
         require(execution, "execution factory");
         lux::asset::AssetVfs vfs;
-        auto pak = lux::asset::PakAssetProvider::loadFromFile(argv[1]);
-        require(pak, "load actual scene resources");
         auto provider = std::make_shared<GatedProvider>();
         provider->source = *pak;
         provider->hold_all = resource_publication_test;
@@ -1949,6 +1971,7 @@ int main(int argc, char **argv)
         runtime = {};
         const auto closing_deadline = Clock::now() + std::chrono::seconds{15};
         unsigned held_close_steps{};
+        std::shared_ptr<const sessions::SceneCloseSnapshot> held_close_snapshot;
         while (workspace || session || separate_view)
         {
             if (Clock::now() >= closing_deadline)
@@ -1984,11 +2007,45 @@ int main(int argc, char **argv)
                 {
                     require(*closed == sessions::ECloseProgress::PENDING && provider->returned.load() == 0,
                             "unfinished blocking operation retains Session after all views close");
+                    const auto status = session->closeStatus();
+                    require(status && (*status)->session == session->id() && !(*status)->views &&
+                                !(*status)->scene_present && !(*status)->task_scope_complete,
+                            "close diagnostic identifies retained Session scope after Scene and Views exit");
+                    const auto blocked = std::find_if((*status)->resources.begin(), (*status)->resources.end(),
+                        [&](const auto &row) {
+                            return row.resource.key.mesh == provider->held && row.mesh_read_pending;
+                        });
+                    require(blocked != (*status)->resources.end() && blocked->resource.key.sequence,
+                            "close diagnostic identifies exact held asset source and request sequence");
+                    if (!held_close_snapshot)
+                    {
+                        held_close_snapshot = *status;
+                        examples::reportShutdown(**status);
+#if defined(LUX_EDITOR_DIAGNOSTICS)
+                        for (std::size_t allocation = 0; allocation != 2; ++allocation)
+                        {
+                            lux_er1_scene_allocation_fail_after(allocation);
+                            const auto failed = session->closeStatus();
+                            const auto attempts = lux_er1_scene_allocation_disarm();
+                            require(!failed && failed.error().code == sessions::ESceneError::ALLOCATION_FAILURE &&
+                                        attempts == allocation + 1 &&
+                                        session->state() == sessions::ESessionState::CLOSING &&
+                                        provider->returned.load() == 0,
+                                    "close diagnostic allocation failure retains owner and pending operation");
+                            std::printf("close snapshot allocation index=%zu attempts=%zu exact error retained; "
+                                        "Session CLOSING and provider pending\n", allocation, attempts);
+                        }
+#endif
+                    }
                     if (++held_close_steps == 32)
                         provider->release();
                 }
                 if (*closed == sessions::ECloseProgress::COMPLETE)
                 {
+                    const auto status = session->closeStatus();
+                    require(status && (*status)->state == sessions::ESessionState::CLOSED &&
+                                (*status)->resources.empty() && (*status)->task_scope_complete,
+                            "closed diagnostic retains identity and reports no request owners");
 #if defined(LUX_EDITOR_DIAGNOSTICS)
                     if (resource_memory_test)
                         resource_ledger.closed(*session);
@@ -2016,6 +2073,9 @@ int main(int argc, char **argv)
         require(renderer->beginClose(), "renderer close intent");
         if (late_close_test)
         {
+            require(held_close_snapshot && !held_close_snapshot->task_scope_complete &&
+                        !held_close_snapshot->resources.empty(),
+                    "owning close snapshot survives successful closure without retaining jobs");
             const auto entered = provider->entered.load();
             const auto returned = provider->returned.load();
             std::printf("late provider entered=%u returned=%u held_close_steps=%u\n", entered, returned,

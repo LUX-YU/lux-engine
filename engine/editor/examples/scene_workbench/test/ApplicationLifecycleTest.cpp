@@ -177,6 +177,16 @@ int main(int argc, char **argv)
             }
             assert(stopped == 0 && destroyed == 0);
             assert(app->requestClose());
+            const auto status = app->shutdownStatus();
+            assert(status && status->close_requested && !status->session);
+            bool wrong_status_thread{};
+            std::jthread status_reader([&] {
+                const auto rejected = app->shutdownStatus();
+                wrong_status_thread = !rejected &&
+                    rejected.error().code == application::EApplicationError::WRONG_THREAD;
+            });
+            status_reader.join();
+            assert(wrong_status_thread);
             const auto zero = app->advanceShutdown(0);
             assert(zero && !*zero && destroyed == 0);
             const auto deadline = Clock::now() + std::chrono::seconds{15};
@@ -193,6 +203,9 @@ int main(int argc, char **argv)
             }
             assert(stopped == 1 && destroyed == 1);
             assert(app->state() == application::EApplicationState::STOPPED);
+            const auto closed_status = app->shutdownStatus();
+            assert(closed_status && !closed_status->renderer && !closed_status->session &&
+                   !closed_status->workspace_present && !closed_status->unattached_view_present);
             assert(!app->tooling());
             assert(app->requestClose() && *app->advanceShutdown(0) && *app->advanceShutdown(1));
             assert(!app->start());

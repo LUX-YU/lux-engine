@@ -2,6 +2,15 @@
 #include <lux/engine/editor/rendering/ViewImage.hpp>
 namespace lux::editor::rendering
 {
+    struct RenderViewCloseStatus final
+    {
+        ViewStatus status;
+        bool close_requested{}, layer_attached{}, target_owned{}, view_owned{};
+        // Includes the View's own version reference; aliases of one image record share a version owner.
+        long image_version_owners{};
+        std::uint64_t last_submission{}, gpu_completed{};
+        std::uint64_t create_view{}, create_target{}, resize{}, release_view{}, release_target{};
+    };
     namespace detail
     {
         struct RendererTestAccess;
@@ -14,8 +23,11 @@ namespace lux::editor::rendering
         RenderView &operator=(const RenderView &) = delete;
         RenderView(RenderView &&) = delete;
         RenderView &operator=(RenderView &&) = delete;
+        // Non-result queries require the owning thread; returned values do not extend this owner's lifetime.
         [[nodiscard]] RenderViewId id() const noexcept;
         [[nodiscard]] ViewStatus status() const noexcept;
+        // Observes values only, including CPU ownership and actual GPU completion independently; never polls.
+        [[nodiscard]] RenderResult<RenderViewCloseStatus> closeStatus() const noexcept;
         [[nodiscard]] RenderResult<void> requestExtent(PixelExtent) noexcept;
         [[nodiscard]] RenderResult<void> setCamera(const CameraFrame &) noexcept;
         [[nodiscard]] RenderResult<ViewImage> acquireImage() noexcept;

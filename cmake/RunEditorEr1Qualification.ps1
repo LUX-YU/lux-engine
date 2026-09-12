@@ -53,7 +53,7 @@ Invoke-Logged 'configure' $CMake @('-S', $clone, '-B', $build, '-G', 'Ninja', "-
     "-DCMAKE_CXX_COMPILER=$compiler",
     '-DCMAKE_BUILD_TYPE=RelWithDebInfo', "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
     "-DCMAKE_INSTALL_PREFIX=$qroot/sdk",
-    "-DCMAKE_PREFIX_PATH=$ToolsetPrefix;$CxxPrefix;$BuildDependencyPrefix", '-DLUX_BUILD_PROFILE=EDITOR',
+    "-DCMAKE_PREFIX_PATH=$CxxPrefix;$ToolsetPrefix;$BuildDependencyPrefix", '-DLUX_BUILD_PROFILE=EDITOR',
     '-DBUILD_TESTING=ON', '-DLUX_EDITOR_DIAGNOSTICS=OFF', '-DLUX_EDITOR_EDITING_TEST_DIAGNOSTICS=OFF',
     '-DLUX_BUILD_PACKED_RENDER_CONTENT=ON', "-DLUX_EDITOR_SEED_PAK=$SeedPak")
 Invoke-Logged 'build-all' $CMake @('--build', $build, '--target', 'all', '-j', '4', '--', '-k', '0')
@@ -84,6 +84,11 @@ foreach ($variant in @('base', 'alternate', 'multiple_equal', 'multiple_reverse'
                       'view_failure', 'coordinate_1024', 'coordinate_256', 'resolved_source', 'viewport_input')) {
     Invoke-Logged "gpu-$variant" "$build/bin/editor_scene_gpu_test.exe" @($SeedPak, "$qroot/images", $variant)
 }
+Invoke-Logged 'seed-missing-ground' "$build/bin/lux_scene_seed.exe" @("$qroot/missing-ground.luxpak", '--omit-ground')
+Invoke-Logged 'gpu-partial-late-close' "$build/bin/editor_scene_gpu_test.exe" @(
+    "$qroot/missing-ground.luxpak", "$qroot/images", 'partial_late_close')
+Invoke-Logged 'gpu-retry' "$build/bin/editor_scene_gpu_test.exe" @(
+    "$qroot/missing-ground.luxpak", "$qroot/images", 'retry', $SeedPak)
 Invoke-Logged 'gpu-foreign' "$build/bin/editor_foreign_renderer_test.exe" @()
 Invoke-Logged 'gpu-application-lifecycle' "$build/bin/editor_application_lifecycle_test.exe" @()
 Invoke-Logged 'ui-cold-default' "$build/bin/ui_cold_input_test.exe" @()
@@ -113,7 +118,7 @@ foreach ($location in @('sdk', 'relocated-sdk')) {
         Invoke-Logged "$location-$consumer-configure" $CMake @('-S', $input, '-B', $output, '-G', 'Ninja',
             "-DCMAKE_CXX_COMPILER=$compiler",
             "-DCMAKE_MAKE_PROGRAM=$Ninja", '-DCMAKE_BUILD_TYPE=RelWithDebInfo', "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
-            "-DCMAKE_PREFIX_PATH=$prefix;$ToolsetPrefix;$CxxPrefix", '-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF',
+            "-DCMAKE_PREFIX_PATH=$prefix;$CxxPrefix;$ToolsetPrefix", '-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF',
             '-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF', '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
             "-DLUX_TEST_FONT=$TestFont")
         Invoke-Logged "$location-$consumer-build" $CMake @('--build', $output, '--target', 'all', '-j', '4', '--', '-k', '0')

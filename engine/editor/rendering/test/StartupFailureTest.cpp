@@ -19,9 +19,11 @@ int main(int argc, char **argv)
     using rendering::detail::EStartupFault;
     using rendering::detail::RendererTestAccess;
     const std::string_view selected = argc == 2 ? argv[1] : "all";
+    const bool without_validation = selected == "initialize_no_validation";
     constexpr std::string_view names[]{"none", "thread_launch", "initialize", "after_device", "after_attach"};
     assert(argc <= 2 &&
-           (selected == "all" || std::find(std::begin(names) + 1, std::end(names), selected) != std::end(names)));
+           (selected == "all" || without_validation ||
+            std::find(std::begin(names) + 1, std::end(names), selected) != std::end(names)));
     unsigned executed{};
     lux::meta::ReflectionRegistry::initRegistry();
     {
@@ -33,15 +35,18 @@ int main(int argc, char **argv)
         auto *const native = &(*window)->nativeWindow();
         auto *const session = &(*window)->uiSession();
         RendererConfig config;
-        config.validation = true;
+        config.validation = !without_validation;
         for (const auto fault : {EStartupFault::THREAD_LAUNCH, EStartupFault::INITIALIZE, EStartupFault::AFTER_DEVICE,
                                  EStartupFault::AFTER_ATTACH})
         {
-            if (selected != "all" && selected != names[static_cast<unsigned>(fault)])
+            if (selected != "all" && selected != names[static_cast<unsigned>(fault)] &&
+                !(without_validation && fault == EStartupFault::INITIALIZE))
                 continue;
             ++executed;
             const lux::render::RenderError injected{{901, 17}, {static_cast<unsigned>(fault), 29, 41}};
             RendererTestAccess::failStartup(fault, injected);
+            std::printf("startup attempt fault=%u validation=%u\n", unsigned(fault), unsigned(config.validation));
+            std::fflush(stdout);
             auto failed = EditorRenderer::create(*native, *session, config);
             assert(!failed);
             const auto expected_code = fault == EStartupFault::THREAD_LAUNCH ? ERendererError::EXTERNAL_FAILURE
@@ -51,7 +56,10 @@ int main(int argc, char **argv)
             if (fault != EStartupFault::INITIALIZE)
                 assert(backend.type == injected.type && backend.args == injected.args);
             else
-                assert(!backend.ok() && backend.type != injected.type);
+            {
+                const auto expected = lux::render::renderError<lux::render::err::device::VulkanObjectCreationFailed>();
+                assert(backend.type == expected.type && backend.args == expected.args);
+            }
             const auto trace = RendererTestAccess::startupTrace();
             const auto worker_count = fault == EStartupFault::THREAD_LAUNCH ? 0U : 1U;
             assert(trace.workers_started == worker_count && trace.workers_exited == worker_count);

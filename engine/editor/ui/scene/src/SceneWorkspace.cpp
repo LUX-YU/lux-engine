@@ -145,7 +145,9 @@ namespace lux::editor::ui
         EditorWindow &window, WorkspaceId id, sessions::SceneSession &session,
         std::unique_ptr<sessions::SceneView> &view) noexcept
     {
-        if (!window.dispatcherRef().isCurrent())
+        if (!window.dispatcherRef().isCurrent() || !session.dispatcherRef().isCurrent())
+            return fail(EWindowError::WRONG_THREAD);
+        if (view && !view->dispatcherRef().isCurrent())
             return fail(EWindowError::WRONG_THREAD);
         if (!id.value || !view || session.state() != sessions::ESessionState::READY)
             return fail(EWindowError::INVALID_ARGUMENT);

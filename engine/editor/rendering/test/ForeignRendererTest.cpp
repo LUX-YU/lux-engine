@@ -65,10 +65,22 @@ int main()
         assert(snapshot->valid() && foreign->lease.valid() && foreign->view == foreign_id);
         assert((*first)->statistics().accepted_frames == accepted);
         assert((*view)->beginClose());
+        bool wrong_thread{};
+        std::jthread foreign_query([&] {
+            const auto current = (*view)->closeStatus();
+            wrong_thread = !current && current.error().code == rendering::ERendererError::WRONG_THREAD;
+        });
+        foreign_query.join();
+        assert(wrong_thread);
         for (unsigned i = 0; i != 4; ++i)
         {
             assert((*second)->poll(1));
             assert(*(*view)->advanceClose() == rendering::ERenderClose::PENDING);
+            const auto status = (*second)->closeStatus();
+            assert(status && status->view_count == 1 && status->statistics.runtime_leases == 1);
+            const auto &held = status->views[0];
+            assert(held.status.view == foreign_id && held.image_version_owners > 1 && held.close_requested);
+            assert(held.target_owned && held.view_owned);
         }
         foreign = lux::cxx::unexpected(rendering::RendererFailure{});
         for (;;)
@@ -81,6 +93,7 @@ int main()
             std::this_thread::yield();
         }
         view->reset();
+        assert((*second)->closeStatus()->view_count == 0);
         assert(runtime->control().destroyScene(scene->get().scene_id));
         runtime = lux::cxx::unexpected(lux::scene::RenderRuntimeFailure{});
         for (auto *renderer : {first->get(), second->get()})

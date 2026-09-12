@@ -429,6 +429,28 @@ namespace lux::editor::sessions
             return fail(ESceneError::NOT_READY, id());
         return impl_->resource_snapshot;
     }
+    SceneResult<std::shared_ptr<const SceneCloseSnapshot>> SceneSession::closeStatus() const noexcept
+    {
+        if (impl_->owner != std::this_thread::get_id())
+            return fail(ESceneError::WRONG_THREAD);
+        if (impl_->busy)
+            return fail(ESceneError::BUSY, id());
+        if (impl_->resources)
+            return impl_->resources->closeSnapshot(impl_->state, impl_->view_count, bool(impl_->scene));
+        try
+        {
+            auto result = std::make_shared<SceneCloseSnapshot>();
+            result->session = id();
+            result->state = impl_->state;
+            result->views = impl_->view_count;
+            result->scene_present = bool(impl_->scene);
+            return result;
+        }
+        catch (const std::bad_alloc &)
+        {
+            return fail(ESceneError::ALLOCATION_FAILURE, id());
+        }
+    }
     SceneResult<void> SceneSession::retryResources(const ResourceRequestKey &key) noexcept
     {
         if (auto result = impl_->check(); !result)

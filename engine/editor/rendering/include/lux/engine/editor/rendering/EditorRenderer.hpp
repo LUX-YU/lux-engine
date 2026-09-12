@@ -12,6 +12,16 @@ namespace lux::ui
 } // namespace lux::ui
 namespace lux::editor::rendering
 {
+    struct RendererCloseStatus final
+    {
+        RendererStatistics statistics;
+        ERendererState state{};
+        bool close_requested{}, uploads_pending{}, program_pending{}, worker_stopped{};
+        std::size_t scene_releases{}, view_releases{}, target_releases{};
+        // The same finite upper bound enforced by RendererConfig validation.
+        std::array<RenderViewCloseStatus, 48> views;
+        std::size_t view_count{};
+    };
     namespace detail { struct RendererTestAccess; }
     class LUX_EDITOR_RENDERING_PUBLIC EditorRenderer final : public lux::scene::RenderRuntime
     {
@@ -25,8 +35,10 @@ namespace lux::editor::rendering
         EditorRenderer &operator=(const EditorRenderer &) = delete;
         EditorRenderer(EditorRenderer &&) = delete;
         EditorRenderer &operator=(EditorRenderer &&) = delete;
+        // Queries without an error result require the owning thread. For fallible observation use closeStatus().
         [[nodiscard]] ERendererState state() const noexcept;
         [[nodiscard]] RendererStatistics statistics() const noexcept;
+        [[nodiscard]] RenderResult<RendererCloseStatus> closeStatus() const noexcept;
         // Owning, allocation-free records; overflow is counted in statistics().dropped_events.
         [[nodiscard]] RenderResult<std::optional<RendererDiagnostic>> takeDiagnostic() noexcept;
         // Observes this immutable record's actual submission, then the real device completion watermark.

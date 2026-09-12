@@ -84,9 +84,18 @@ int main()
         bad.dolly = (std::numeric_limits<double>::quiet_NaN)();
         assert(!first.move(bad) && first.position() == before_bad);
         assert(session.beginClose());
+        auto closing_status = session.closeStatus();
+        assert(closing_status && (*closing_status)->session == session.id() &&
+               (*closing_status)->state == sessions::ESessionState::CLOSING);
         auto closed = session.advanceClose();
         assert(closed && *closed == sessions::ECloseProgress::COMPLETE);
+        auto closed_status = session.closeStatus();
+        assert(closed_status && (*closed_status)->state == sessions::ESessionState::CLOSED &&
+               !(*closed_status)->scene_present && (*closed_status)->resources.empty() &&
+               (*closed_status)->task_scope_complete);
         opened->reset();
+        assert((*closing_status)->session == sessions::SessionId{17} &&
+               (*closing_status)->state == sessions::ESessionState::CLOSING);
         assert((*outline)->rows.front().label == "Nonvisual independent entity");
         std::puts(
             "Installed Scene SDK: independent content, failure retention, readonly history, owning snapshot passed");

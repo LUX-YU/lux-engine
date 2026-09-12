@@ -38,4 +38,21 @@ namespace lux::editor::sessions
         std::uint64_t revision{};
         std::vector<SceneResourceRow> rows;
     };
+    struct SceneResourceCloseRow final
+    {
+        SceneResourceRow resource;
+        bool mesh_read_pending{}, material_read_pending{};
+        bool mesh_upload_pending{}, material_upload_pending{}, forward_upload_pending{}, gbuffer_upload_pending{};
+        bool retirement_pending{};
+        std::size_t live_handles{};
+    };
+    // On-demand owning diagnostic values, with no operation, callback, Registry or GPU resource borrow.
+    struct SceneCloseSnapshot final
+    {
+        SessionId session;
+        ESessionState state{ESessionState::CLOSED};
+        std::size_t views{};
+        bool scene_present{}, retirement_submission_pending{}, task_scope_complete{true};
+        std::vector<SceneResourceCloseRow> resources;
+    };
 } // namespace lux::editor::sessions

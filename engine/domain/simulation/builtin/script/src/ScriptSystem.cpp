@@ -246,8 +246,7 @@ namespace lux::simulation::script
                 owner.binding_owner.visitEvent(bucket, entity,
                     [&](const Handler& handler) noexcept { owner.execution_owner.invoke(handler, frame, false); });
                 for (std::size_t index{}; index < claimed.size(); ++index)
-                    if (const auto waiter = claimed.at(index))
-                        owner.execution_owner.completeClaimedEventWaiter(*waiter, frame);
+                    owner.execution_owner.completeClaimedEventWaiter(claimed.at(index), frame);
             }
             --owner.endpoint_dispatch_depth;
         }

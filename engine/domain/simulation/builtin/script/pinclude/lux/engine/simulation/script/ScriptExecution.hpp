@@ -63,7 +63,7 @@ namespace lux::simulation::script::detail
 
         struct ResumeRing final
         {
-            std::vector<ResumeRecord> records;
+            std::vector<ScriptAwaitableId> records;
             std::size_t head{};
             std::size_t count{};
             std::size_t high_water{};
@@ -76,7 +76,7 @@ namespace lux::simulation::script::detail
                 high_water = 0U;
             }
 
-            [[nodiscard]] bool push(ResumeRecord record) noexcept
+            [[nodiscard]] bool push(ScriptAwaitableId record) noexcept
             {
                 if (count >= records.size())
                     return false;
@@ -88,7 +88,7 @@ namespace lux::simulation::script::detail
                 return true;
             }
 
-            [[nodiscard]] std::optional<ResumeRecord> pop() noexcept
+            [[nodiscard]] std::optional<ScriptAwaitableId> pop() noexcept
             {
                 if (count == 0U)
                     return std::nullopt;
@@ -106,12 +106,10 @@ namespace lux::simulation::script::detail
             }
         };
 
-        struct AwaitableRecord final
+        struct AwaitableRecord final : ScriptWaitIdentity
         {
             AwaitableRecord(ScriptInstanceId owner, std::optional<PreparedResumeType> type, bool external) noexcept
-                : instance(owner), result_type(std::move(type)), external_completion(external) {}
-            ScriptAwaitableId id;
-            ScriptInstanceId instance;
+                : ScriptWaitIdentity{{}, owner}, result_type(std::move(type)), external_completion(external) {}
             ScriptContinuationId continuation;
             EScriptAwaitableState state{EScriptAwaitableState::PENDING};
             std::optional<PreparedResumeType> result_type;
@@ -124,6 +122,7 @@ namespace lux::simulation::script::detail
             ScriptAwaitableId instance_previous;
             ScriptAwaitableId instance_next;
             ScriptWaitSource source;
+            ScriptEventWaitLink event_link;
         };
 
         struct ContinuationTag;
@@ -320,7 +319,7 @@ namespace lux::simulation::script::detail
                 ingress_.close(record.id);
             if (record.continuation.valid())
             {
-                static_cast<void>(resumes_.push({record.instance, record.continuation, record.id}));
+                static_cast<void>(resumes_.push(record.id));
                 record.resume_enqueued = true;
             }
             return {};
@@ -438,13 +437,8 @@ namespace lux::simulation::script::detail
                 return lux::cxx::unexpected(eventWaitError(awaitable.error()));
 
             auto& record = **awaitable;
-            const auto registered = event_owner_.registerWait(std::move(*reservation), record.id);
-            if (!registered)
-            {
-                discardAwaitable(instance, record.id);
-                return lux::cxx::unexpected(registered.error());
-            }
-            record.source = {*registered, EScriptWaitSource::EVENT};
+            const auto source_id = event_owner_.registerWait(std::move(*reservation), record.event_link, record);
+            record.source = {source_id, EScriptWaitSource::EVENT};
             return record.id;
         }
         [[nodiscard]] static lux::cxx::expected<ScriptAwaitableId, EScriptEventWaitError> waitEventErased(
@@ -471,7 +465,7 @@ namespace lux::simulation::script::detail
             record->continuation = continuation;
             if (record->state != EScriptAwaitableState::PENDING)
             {
-                static_cast<void>(resumes_.push({instance, continuation, awaitable}));
+                static_cast<void>(resumes_.push(awaitable));
                 record->resume_enqueued = true;
             }
             return {};
@@ -556,16 +550,12 @@ namespace lux::simulation::script::detail
         };
 
         [[nodiscard]] bool takeAwaitable(
-            ResumeRecord resume, ExecutionAccess access, std::optional<AwaitableOutcome>& outcome
+            AwaitableRecord& value, ExecutionAccess access, std::optional<AwaitableOutcome>& outcome
         ) noexcept
         {
-            auto* record = awaitables_.find(awaitableKey(resume.awaitable));
-            if (record == nullptr || record->instance != resume.instance ||
-                record->continuation != resume.continuation ||
-                (record->state != EScriptAwaitableState::READY && record->state != EScriptAwaitableState::FAILED))
-            {
+            auto* record = &value;
+            if (record->state != EScriptAwaitableState::READY && record->state != EScriptAwaitableState::FAILED)
                 return false;
-            }
             outcome.emplace(record->state, std::move(record->value), record->error);
             static_cast<void>(eraseAwaitableRecord(*record, access));
             return true;
@@ -589,14 +579,9 @@ namespace lux::simulation::script::detail
         {
             const auto source = std::exchange(record.source, {});
             if (source.kind == EScriptWaitSource::EVENT)
-                static_cast<void>(event_owner_.cancel(source.id));
+                static_cast<void>(event_owner_.cancel(record.event_link));
             else if (source.kind == EScriptWaitSource::TIMER)
                 static_cast<void>(timer_owner_.cancel(source.id));
-        }
-        void eraseEventWaiter(ScriptSourceId id) noexcept
-        {
-            if (const auto removed = event_owner_.cancel(id))
-                detachSource(*removed);
         }
         void discardAwaitable(ScriptInstanceId instance, ScriptAwaitableId id) noexcept
         {
@@ -765,8 +750,11 @@ namespace lux::simulation::script::detail
             if (owner != nullptr && owner->authority.current())
                 faultInvocation(owner->mount_slot, lux::script::InvalidScriptSymbolId, error);
         }
-        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> resumeOne(ResumeRecord resume) noexcept
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> resumeOne(ScriptAwaitableId ready) noexcept
         {
+            auto* wait = awaitables_.find(awaitableKey(ready));
+            if (wait == nullptr) return {};
+            const ResumeRecord resume{wait->instance, wait->continuation, ready};
             auto* instance = findExecutionInstance(resume.instance);
             auto* continuation = continuations_.find(continuationKey(resume.continuation));
             if (instance == nullptr || continuation == nullptr || continuation->instance != resume.instance ||
@@ -776,7 +764,7 @@ namespace lux::simulation::script::detail
             }
             const ExecutionAccess execution{instance, resume.instance};
             std::optional<AwaitableOutcome> outcome;
-            if (!takeAwaitable(resume, execution, outcome))
+            if (!takeAwaitable(*wait, execution, outcome))
                 return {};
             if (!execution.current())
             {
@@ -807,7 +795,6 @@ namespace lux::simulation::script::detail
                 return {};
             }
             const auto slot = instance->mount_slot;
-            const auto symbol = instance_owner_.methodSymbol(continuation->method_slot);
             if (result.state == EScriptStepState::COMPLETED && result.valid())
             {
                 destroyContinuation(resume.continuation);
@@ -823,6 +810,7 @@ namespace lux::simulation::script::detail
                     return {};
                 }
                 const auto error = attached.error();
+                const auto symbol = instance_owner_.methodSymbol(continuation->method_slot);
                 destroyContinuation(resume.continuation);
                 discardAwaitable(resume.instance, result.waiting_on);
                 faultInvocation(slot, symbol, error);
@@ -830,6 +818,7 @@ namespace lux::simulation::script::detail
             }
 
             const auto status = result.error.status;
+            const auto symbol = instance_owner_.methodSymbol(continuation->method_slot);
             destroyContinuation(resume.continuation);
             faultInvocation(slot, symbol, EScriptSystemError::INVOCATION_FAILURE, status);
             return lux::cxx::unexpected(EScriptSystemError::INVOCATION_FAILURE);
@@ -1053,7 +1042,7 @@ namespace lux::simulation::script::detail
             record.error = {};
             if (record.continuation.valid())
             {
-                static_cast<void>(resumes_.push({record.instance, record.continuation, record.id}));
+                static_cast<void>(resumes_.push(record.id));
                 record.resume_enqueued = true;
             }
             return {};
@@ -1061,7 +1050,7 @@ namespace lux::simulation::script::detail
     public:
         void completeClaimedEventWaiter(const ScriptClaimedEventWait& waiter, lux_script_call_frame& frame) noexcept
         {
-            const auto id = waiter.id;
+            const ScriptSourceId id{waiter.awaitable.slot, waiter.awaitable.generation};
             const auto instance = waiter.instance;
             const auto awaitable = waiter.awaitable;
             auto* owner = executionRecord(instance);
@@ -1069,18 +1058,15 @@ namespace lux::simulation::script::detail
             const bool is_live = execution.current();
             if (!is_live)
             {
-                eraseEventWaiter(id);
                 discardAwaitable(instance, awaitable);
                 return;
             }
 
             const auto& endpoint = binding_owner_.eventEndpoint(waiter.endpoint);
             auto* record = awaitables_.find(awaitableKey(awaitable));
-            if (record == nullptr || record->instance != instance || record->release_pending)
-            {
-                static_cast<void>(event_owner_.cancel(id));
-                return;
-            }
+            const bool is_stale = record == nullptr || record->instance != instance || record->release_pending ||
+                record->source != ScriptWaitSource{id, EScriptWaitSource::EVENT};
+            if (is_stale) return;
             ResultWritePin pin(*this, *record);
             const bool is_invalid_frame = frame.arg_count != 1U || frame.args == nullptr;
             bool copied{};

@@ -56,3 +56,26 @@ ZIP 共 741 项、7,244,421 字节，SHA-256 `9fc590df65ea727d31eab552aee9e5b02f
 原 C 镜像 126 项、安装依赖 204 项再次核验未变；最终安装公共头与资格 clone 的头逐字节一致。中间四个完整计时及一个被中止进程只归档，不进入最终 54 进程结果。
 
 第二轮归档固定提交 `e23d623684a3f8cf9aca174fcb30a8b6b0020013` 已从 origin 回取；ZIP 与全部 741 项 SHA 一致。[固定提交下载](https://github.com/LUX-YU/lux-engine/raw/e23d623684a3f8cf9aca174fcb30a8b6b0020013/.internal/script-native-lua-na1/evidence/next-hotpath.zip) · [回取记录](evidence/next-remote-readback.json)。此后文档提交不改变 7f201916 资格身份。
+
+## 本地等待与同步步骤优化证据
+
+[实际结果](LOCAL-WAIT-RESULT.zh-CN.md)、[实施合同](LOCAL-WAIT-CHANGES.zh-CN.md)、[机器可读结果](local-result.json)、
+[原始归档](evidence/local-waits.zip)、[逐文件 SHA 清单](evidence/local-waits.json)。
+资格源码 `841320a36e864145eda43fd6b775a10a696d8e7f`，参照 `7f20191692d3f5e1037a14273a61fc99eef95714`；以上旧归档与提交身份不变。
+
+ZIP 646 项、5093734 字节，SHA-256 `e14fc09449b0371cb1765013afd9274fc5a6a03cf21f40dc5dc8aa53f9dfa5fb`。已本地解包逐项核验，不含编译 EXE/DLL/PDB。
+
+| 内容 | 归档内入口 |
+|---|---|
+| 完整 54 进程、配对、每批/业务原始数据 | `local-costs/` |
+| P4 两侧 VTune 原始采样、命令、调用树 | `local-profiles/` |
+| 互斥 CPU 分组、布局/frame、机器码 | `local-analysis/`、`local-class-layout/`、`local-machine-code/` |
+| 独立资源和 8/8192 重建复核 | `local-resources/`、`local-scale/` |
+| 全量构建、测试、安装、原 VM 合同 | `local-final-*`、`local-vm-tests.*` |
+| 16 消费者、13+5 增量、三迁址链 | `local-installed/`、`local-value-incremental/`、`local-new-incremental/`、`local-relocated/` |
+| 基线、实际产物、固定依赖、安装头与受保护工作区 | `local-baseline.json`、`local-source-identity.json`、`local-final-image-identities.json`、`local-protected-final.json` |
+| 中间失败与有限检查记录 | `local-failed-attempts.json`、各 `local-*.log/json` |
+
+原 D 镜像 126 项、固定安装依赖 204 项核验未变；12 份改变的公开安装头与资格源码匹配。
+后续文档提交不重标测试身份。成本仍含 Lua scalar +0.70% 未解释残余；长任务 frame 增大，详情见报告。
+

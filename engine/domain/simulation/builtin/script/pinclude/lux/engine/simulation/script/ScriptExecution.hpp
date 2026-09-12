@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/cxx/container/StableSlotMap.hpp>
+#include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/function/script/ScriptAbilityAsync.hpp>
 #include <lux/engine/simulation/script/ScriptCompletionIngress.hpp>
 #include <lux/engine/simulation/script/ScriptEventWaits.hpp>
@@ -18,13 +18,14 @@ namespace lux::simulation::script::detail
 
     class ScriptExecution final
     {
+        struct AwaitableRecord;
         struct ExecutionInstance final
         {
             ScriptInstanceId id;
             std::uint32_t mount_slot{};
             std::size_t active_continuations{};
             ScriptContinuationId first_continuation;
-            ScriptAwaitableId first_awaitable;
+            AwaitableRecord* first_awaitable{};
             bool admission_revoked{};
             ScriptInstances::AuthorityAccess authority;
         };
@@ -108,8 +109,8 @@ namespace lux::simulation::script::detail
 
         struct AwaitableRecord final : ScriptWaitIdentity
         {
-            AwaitableRecord(ScriptInstanceId owner, std::optional<PreparedResumeType> type, bool external) noexcept
-                : ScriptWaitIdentity{{}, owner}, result_type(std::move(type)), external_completion(external) {}
+            ExecutionInstance* owner{};
+            std::uint32_t next_free{};
             ScriptContinuationId continuation;
             EScriptAwaitableState state{EScriptAwaitableState::PENDING};
             std::optional<PreparedResumeType> result_type;
@@ -119,8 +120,8 @@ namespace lux::simulation::script::detail
             bool external_completion{};
             bool release_pending{};
             std::uint32_t write_pins{};
-            ScriptAwaitableId instance_previous;
-            ScriptAwaitableId instance_next;
+            AwaitableRecord* instance_previous{};
+            AwaitableRecord* instance_next{};
             ScriptWaitSource source;
             ScriptEventWaitLink event_link;
         };
@@ -131,8 +132,97 @@ namespace lux::simulation::script::detail
         using PreparedMethod = ScriptPreparedMethod;
         using ContinuationStorage = lux::cxx::SlotMap<ContinuationRecord, ContinuationTag>;
         using ContinuationKey = ContinuationStorage::key_type;
-        using AwaitableStorage = lux::cxx::StableSlotMap<AwaitableRecord, AwaitableTag>;
-        using AwaitableKey = AwaitableStorage::key_type;
+        using AwaitableKey = lux::cxx::SlotKey<AwaitableTag>;
+        // A fixed result bank, not an additional pool. Records and their Event
+        // links live until shutdown. Logical waits acquire a fresh generation and
+        // return capacity before user resume; write pins delay that return exactly
+        // as before. No per-wait construction, dense index or block lookup remains.
+        class AwaitableStorage final
+        {
+            static constexpr std::uint32_t NoSlot = (std::numeric_limits<std::uint32_t>::max)();
+        public:
+            void reserve(std::size_t capacity)
+            {
+                if (active_ != 0U) std::terminate();
+                if (records_.empty())
+                {
+                    records_.resize(capacity);
+                    for (auto& record : records_) record.id.generation = 1U;
+                }
+                else if (records_.size() != capacity) std::terminate();
+                rebuildFreeList();
+            }
+            [[nodiscard]] AwaitableRecord* acquire(ExecutionInstance& owner,
+                std::optional<PreparedResumeType> type, bool external) noexcept
+            {
+                if (free_head_ == NoSlot) return nullptr;
+                const auto slot = free_head_;
+                auto& record = records_[slot];
+                free_head_ = record.next_free;
+                record.id.slot = slot + 1U;
+                record.instance = owner.id;
+                record.owner = &owner;
+                record.state = EScriptAwaitableState::PENDING;
+                record.result_type = type;
+                record.external_completion = external;
+                ++active_;
+                return &record;
+            }
+            [[nodiscard]] AwaitableRecord* find(AwaitableKey key) noexcept
+            {
+                if (key.index >= records_.size()) return nullptr;
+                auto& record = records_[key.index];
+                return record.id.slot != 0U && record.id.generation == key.gen ? &record : nullptr;
+            }
+            void releaseResolved(AwaitableRecord& record) noexcept
+            {
+                const auto slot = record.id.slot - 1U;
+                record.id.slot = 0U;
+                record.continuation = {};
+                record.value = {};
+                record.error = {};
+                record.resume_enqueued = false;
+                record.release_pending = false;
+                --active_;
+                // Exhausted generations retire the physical slot; never wrap an
+                // old public 32-bit token into a newly live wait.
+                if (record.id.generation != NoSlot)
+                {
+                    ++record.id.generation;
+                    record.next_free = free_head_;
+                    free_head_ = slot;
+                }
+                else record.id.generation = 0U;
+            }
+            [[nodiscard]] bool empty() const noexcept { return active_ == 0U; }
+            [[nodiscard]] std::size_t size() const noexcept { return active_; }
+            [[nodiscard]] std::size_t capacity() const noexcept { return records_.size(); }
+            [[nodiscard]] std::size_t storageBytes() const noexcept
+            {
+                return records_.capacity() * sizeof(AwaitableRecord);
+            }
+            void clear() noexcept
+            {
+                if (active_ != 0U) std::terminate();
+                // Keep the physical bank and generations for a prepare retry.
+                rebuildFreeList();
+            }
+        private:
+            void rebuildFreeList() noexcept
+            {
+                free_head_ = NoSlot;
+                for (std::size_t i = records_.size(); i > 0U; --i)
+                {
+                    auto& record = records_[i - 1U];
+                    if (record.id.generation == 0U) continue;
+                    record.next_free = free_head_;
+                    free_head_ = static_cast<std::uint32_t>(i - 1U);
+                }
+            }
+            std::vector<AwaitableRecord> records_;
+            std::uint32_t free_head_{NoSlot};
+            std::size_t active_{};
+        };
         struct UserInvocationScope final
         {
             explicit UserInvocationScope(ScriptExecution& owner) noexcept : protection(owner.instance_owner_) {}
@@ -209,30 +299,23 @@ namespace lux::simulation::script::detail
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::STOPPING);
             if (awaitables_.size() >= limits_.awaitable_capacity)
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::CAPACITY_EXCEEDED);
-            auto inserted = awaitables_.tryEmplacePrepared(owner.id, std::move(result_type), external_completion);
-            if (!inserted)
+            auto* inserted = awaitables_.acquire(owner, std::move(result_type), external_completion);
+            if (inserted == nullptr)
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::ALLOCATION_FAILURE);
-            const auto id = awaitableId(*inserted);
-            auto& record = *awaitables_.find(*inserted);
+            auto& record = *inserted;
+            const auto id = record.id;
             if (!external_completion && record.result_type)
             {
                 record.value.type = *record.result_type;
                 if (!record.value.bytes.resize(record.result_type->size, record.result_type->alignment))
                 {
-                    static_cast<void>(awaitables_.erase(*inserted));
+                    awaitables_.releaseResolved(record);
                     return lux::cxx::unexpected(EScriptAwaitableCreateError::ALLOCATION_FAILURE);
                 }
             }
-            record.id = id;
             record.instance_next = owner.first_awaitable;
-            if (record.instance_next.valid())
-            {
-                auto* next = awaitables_.find(awaitableKey(record.instance_next));
-                if (next == nullptr)
-                    std::terminate();
-                next->instance_previous = id;
-            }
-            owner.first_awaitable = id;
+            if (record.instance_next) record.instance_next->instance_previous = &record;
+            owner.first_awaitable = &record;
             if (external_completion)
                 ingress_.open(id, record.result_type);
             return &record;
@@ -483,31 +566,19 @@ namespace lux::simulation::script::detail
         void unlinkAwaitableOwnership(AwaitableRecord& record, ExecutionAccess access) noexcept
         {
             auto* owner = access.record;
-            if (record.instance_previous.valid())
-            {
-                auto* previous = awaitables_.find(awaitableKey(record.instance_previous));
-                if (previous != nullptr)
-                    previous->instance_next = record.instance_next;
-            }
-            else if (owner != nullptr && owner->first_awaitable == record.id)
-            {
+            if (record.instance_previous) record.instance_previous->instance_next = record.instance_next;
+            else if (owner != nullptr && owner->first_awaitable == &record)
                 owner->first_awaitable = record.instance_next;
-            }
-            if (record.instance_next.valid())
-            {
-                auto* next = awaitables_.find(awaitableKey(record.instance_next));
-                if (next != nullptr)
-                    next->instance_previous = record.instance_previous;
-            }
-            record.instance_previous = {};
-            record.instance_next = {};
+            if (record.instance_next) record.instance_next->instance_previous = record.instance_previous;
+            record.instance_previous = nullptr;
+            record.instance_next = nullptr;
         }
         [[nodiscard]] bool eraseAwaitable(ScriptAwaitableId id) noexcept
         {
             auto* record = awaitables_.find(awaitableKey(id));
             if (record == nullptr)
                 return false;
-            return eraseAwaitableRecord(*record, {executionRecord(record->instance), record->instance});
+            return eraseAwaitableRecord(*record, {record->owner, record->instance});
         }
         [[nodiscard]] bool eraseAwaitableRecord(AwaitableRecord& value, ExecutionAccess access) noexcept
         {
@@ -525,7 +596,8 @@ namespace lux::simulation::script::detail
                 ++pending_awaitable_releases_;
                 return true;
             }
-            return awaitables_.erase(AwaitableKey{id.slot - 1U, id.generation});
+            awaitables_.releaseResolved(*record);
+            return true;
         }
         struct ResultWritePin final
         {
@@ -542,9 +614,8 @@ namespace lux::simulation::script::detail
                 --owner.result_write_pins_;
                 if (record.write_pins == 0U && record.release_pending)
                 {
-                    const AwaitableKey key{record.id.slot - 1U, record.id.generation};
                     --owner.pending_awaitable_releases_;
-                    static_cast<void>(owner.awaitables_.erase(key));
+                    owner.awaitables_.releaseResolved(record);
                 }
             }
         };
@@ -560,17 +631,14 @@ namespace lux::simulation::script::detail
             static_cast<void>(eraseAwaitableRecord(*record, access));
             return true;
         }
-        void cancelAwaitables(ScriptInstanceId instance, ScriptAwaitableId first) noexcept
+        void cancelAwaitables(ScriptInstanceId instance, AwaitableRecord* first) noexcept
         {
             const ExecutionAccess access{executionRecord(instance), instance};
-            auto current = first;
-            while (current.valid())
+            auto* current = first;
+            while (current)
             {
-                auto* record = awaitables_.find(awaitableKey(current));
-                if (record == nullptr || record->instance != instance)
-                    std::terminate();
-                const auto next = record->instance_next;
-                static_cast<void>(eraseAwaitableRecord(*record, access));
+                auto* next = current->instance_next;
+                static_cast<void>(eraseAwaitableRecord(*current, access));
                 ++instance_cleanup_awaitable_visits_;
                 current = next;
             }
@@ -587,7 +655,7 @@ namespace lux::simulation::script::detail
         {
             auto* record = awaitables_.find(awaitableKey(id));
             if (record != nullptr && record->instance == instance)
-                static_cast<void>(eraseAwaitableRecord(*record, {executionRecord(instance), instance}));
+                static_cast<void>(eraseAwaitableRecord(*record, {record->owner, instance}));
         }
         static void discardAwaitableErased(
             void* context,
@@ -755,7 +823,7 @@ namespace lux::simulation::script::detail
             auto* wait = awaitables_.find(awaitableKey(ready));
             if (wait == nullptr) return {};
             const ResumeRecord resume{wait->instance, wait->continuation, ready};
-            auto* instance = findExecutionInstance(resume.instance);
+            auto* instance = wait->owner;
             auto* continuation = continuations_.find(continuationKey(resume.continuation));
             if (instance == nullptr || continuation == nullptr || continuation->instance != resume.instance ||
                 continuation->waiting_on != resume.awaitable)
@@ -1053,20 +1121,18 @@ namespace lux::simulation::script::detail
             const ScriptSourceId id{waiter.awaitable.slot, waiter.awaitable.generation};
             const auto instance = waiter.instance;
             const auto awaitable = waiter.awaitable;
-            auto* owner = executionRecord(instance);
-            const ExecutionAccess execution{owner, instance};
-            const bool is_live = execution.current();
-            if (!is_live)
-            {
-                discardAwaitable(instance, awaitable);
-                return;
-            }
-
-            const auto& endpoint = binding_owner_.eventEndpoint(waiter.endpoint);
             auto* record = awaitables_.find(awaitableKey(awaitable));
             const bool is_stale = record == nullptr || record->instance != instance || record->release_pending ||
                 record->source != ScriptWaitSource{id, EScriptWaitSource::EVENT};
             if (is_stale) return;
+            auto* owner = record->owner;
+            const ExecutionAccess execution{owner, instance};
+            if (!execution.current())
+            {
+                static_cast<void>(eraseAwaitableRecord(*record, execution));
+                return;
+            }
+            const auto& endpoint = binding_owner_.eventEndpoint(waiter.endpoint);
             ResultWritePin pin(*this, *record);
             const bool is_invalid_frame = frame.arg_count != 1U || frame.args == nullptr;
             bool copied{};

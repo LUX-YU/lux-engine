@@ -1344,6 +1344,73 @@ namespace
         assert(harness.system->activeAwaitableCount() == 0U && harness.backend_state.continuation_destroys == 2U);
     }
 
+    void testClaimedCancellationAndSlotReuse()
+    {
+        HarnessOptions options;
+        options.ownership_pair = true;
+        options.immediate_wait_endpoint = true;
+        options.limits.instance_capacity = 2U;
+        options.limits.awaitable_capacity = 2U;
+        Harness harness{options};
+        harness.recordBroadcastStart(1);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 1U);
+        harness.recordBroadcastStartSecond(1);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_second_bridge) == 1U);
+        struct Probe final { Harness* harness; unsigned copies{}; } probe{&harness};
+        harness.immediate_wait.copy_context = &probe;
+        harness.immediate_wait.copy_probe = [](void* opaque, std::span<std::byte>) noexcept {
+            auto& probe = *static_cast<Probe*>(opaque);
+            if (++probe.copies == 1U)
+            {
+                auto& value = *probe.harness;
+                value.backend_state.callback_action = ECallbackAction::FAIL;
+                value.recordBroadcastFaultSecond(1);
+                assert(deliverRuntimeEvent(*value.system, value.broadcast_fault_second_bridge) == 1U);
+                // Both physical slots were occupied. The replacement must use the
+                // cancelled wait's slot while the old occurrence snapshot remains.
+                value.recordBroadcastStart(1);
+                assert(deliverRuntimeEvent(*value.system, value.broadcast_start_bridge) == 1U);
+                assert(value.system->stats().active_awaitables == 2U);
+            }
+            return true;
+        };
+        harness.emitImmediateWait(91);
+        assert(probe.copies == 1U);
+        assert(harness.system->stats().active_event_waiters == 1U);
+        assert(executeRuntimeStablePoint(*harness.system));
+        assert(harness.backend_state.resume_values == std::vector<std::int32_t>{91});
+        harness.emitImmediateWait(92);
+        assert(probe.copies == 2U);
+        assert(executeRuntimeStablePoint(*harness.system));
+        assert(harness.backend_state.resume_values == std::vector<std::int32_t>({91, 92}));
+        assert(harness.system->stats().active_event_waiters == 0U);
+        assert(harness.system->stats().active_awaitables == 0U);
+        assert(harness.backend_state.continuation_destroys == 3U);
+    }
+
+    void testRepeatedWaitStorageReuse()
+    {
+        HarnessOptions options;
+        options.limits.awaitable_capacity = 1U;
+        options.limits.event_wait_capacity = 1U;
+        Harness harness{options};
+        const auto storage = harness.system->stats().awaitable_storage_bytes;
+        for (std::int32_t i = 1; i <= 64; ++i)
+        {
+            harness.recordBroadcastStart(i);
+            assert(deliverRuntimeEvent(*harness.system, harness.broadcast_start_bridge) == 1U);
+            harness.recordBroadcastWait(i);
+            assert(deliverRuntimeEvent(*harness.system, harness.broadcast_wait_bridge) == 1U);
+            assert(executeRuntimeStablePoint(*harness.system));
+            assert(harness.backend_state.resumes == static_cast<std::size_t>(i));
+            assert(harness.backend_state.resume_values.back() == i);
+            assert(harness.system->stats().active_awaitables == 0U);
+            assert(harness.system->stats().active_event_waiters == 0U);
+            assert(harness.system->stats().awaitable_storage_bytes == storage);
+        }
+        assert(harness.backend_state.continuation_destroys == 64U);
+    }
+
     void testCopyShutdownAndFailure()
     {
         for (bool stop : {false, true})
@@ -1476,6 +1543,8 @@ int main(int argc, char**)
     testCopyRetirementPin();
     std::puts("EVENT_CASE testCopyOtherRecordRemoval()"); std::fflush(stdout);
     testCopyOtherRecordRemoval();
+    testClaimedCancellationAndSlotReuse();
+    testRepeatedWaitStorageReuse();
     std::puts("EVENT_CASE testCopyShutdownAndFailure()"); std::fflush(stdout);
     testCopyShutdownAndFailure();
     std::puts("EVENT_CASE testCopyNestedAdmission()"); std::fflush(stdout);

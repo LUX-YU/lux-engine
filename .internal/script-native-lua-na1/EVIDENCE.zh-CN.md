@@ -79,3 +79,5 @@ ZIP 646 项、5093734 字节，SHA-256 `e14fc09449b0371cb1765013afd9274fc5a6a03c
 原 D 镜像 126 项、固定安装依赖 204 项核验未变；12 份改变的公开安装头与资格源码匹配。
 后续文档提交不重标测试身份。成本仍含 Lua scalar +0.70% 未解释残余；长任务 frame 增大，详情见报告。
 
+本轮归档固定提交 `0cf93879faa13e9741d2511d2368b06dd71632a8` 已从 origin 回取；ZIP 与全部 646 项 SHA 一致。
+[固定提交下载](https://github.com/LUX-YU/lux-engine/raw/0cf93879faa13e9741d2511d2368b06dd71632a8/.internal/script-native-lua-na1/evidence/local-waits.zip) · [回取记录](evidence/local-remote-readback.json)。后续文档提交不改变 `841320a3` 资格身份。

@@ -365,7 +365,7 @@ static int conversionAuthorityCase(EConversionAuthorityCase selected)
         ++resume_conversions;
         if (conversion_raises_error)
         {
-            luaL_error(state, "injected input converter failure");
+            // Typed converters return a failure; a raw longjmp across their noexcept C++ frame is not supported.
             return false;
         }
         if (resume_stop) assert(resume_system->requestStop());

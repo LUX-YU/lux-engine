@@ -762,7 +762,8 @@ namespace
                     assert(system->failures().front().status ==
                         static_cast<int>(EScriptDelayStatus::DURATION_OVERFLOW));
                 assert(system->shutdown());
-                assert(backend.creates == 1U && backend.destroys == 1U && backend.continuation_destroys == 1U);
+                assert(backend.creates == 1U && backend.destroys == 1U);
+                assert(backend.continuation_destroys == static_cast<std::size_t>(accepted));
                 assert(system->activeAwaitableCount() == 0U && system->activeContinuationCount() == 0U);
             }
         }

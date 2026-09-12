@@ -11,6 +11,10 @@ namespace lux::editor::workbench::detail
         std::uint32_t width{}, height{};
         std::size_t resources{}, ready{};
         bool resizing{};
+        bool presentation_pending{};
+        std::size_t failed{}, settled{}, live_handles{}, pending_requests{};
+        std::uint64_t serial_sum{};
+        std::uint32_t asset_error{}, storage_error{};
     };
     struct LUX_EDITOR_SCENE_PUBLIC SceneWorkbenchMeasurement final
     {

@@ -53,6 +53,7 @@ Invoke-Logged 'configure' $CMake @('-S', $clone, '-B', $build, '-G', 'Ninja', "-
     "-DCMAKE_CXX_COMPILER=$compiler",
     '-DCMAKE_BUILD_TYPE=RelWithDebInfo', "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
     "-DCMAKE_INSTALL_PREFIX=$qroot/sdk",
+    "-Dlux-cmake-toolset_DIR=$ToolsetPrefix/share/lux-cmake-toolset",
     "-DCMAKE_PREFIX_PATH=$CxxPrefix;$ToolsetPrefix;$BuildDependencyPrefix", '-DLUX_BUILD_PROFILE=EDITOR',
     '-DBUILD_TESTING=ON', '-DLUX_EDITOR_DIAGNOSTICS=OFF', '-DLUX_EDITOR_EDITING_TEST_DIAGNOSTICS=OFF',
     '-DLUX_BUILD_PACKED_RENDER_CONTENT=ON', "-DLUX_EDITOR_SEED_PAK=$SeedPak")
@@ -119,6 +120,7 @@ foreach ($location in @('sdk', 'relocated-sdk')) {
             "-DCMAKE_CXX_COMPILER=$compiler",
             "-DCMAKE_MAKE_PROGRAM=$Ninja", '-DCMAKE_BUILD_TYPE=RelWithDebInfo', "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
             "-DCMAKE_PREFIX_PATH=$prefix;$CxxPrefix;$ToolsetPrefix", '-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF',
+            "-Dlux-cmake-toolset_DIR=$ToolsetPrefix/share/lux-cmake-toolset",
             '-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF', '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
             "-DLUX_TEST_FONT=$TestFont")
         Invoke-Logged "$location-$consumer-build" $CMake @('--build', $output, '--target', 'all', '-j', '4', '--', '-k', '0')

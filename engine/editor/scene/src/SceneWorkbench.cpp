@@ -901,9 +901,29 @@ namespace lux::editor::workbench
     detail::WorkbenchMeasurement detail::SceneWorkbenchMeasurement::read(const SceneWorkbench& workbench) noexcept
     {
         const auto& state = *workbench.impl_;
-        return {state.target.id(), state.cpu_lease, state.extent.width, state.extent.height,
+        detail::WorkbenchMeasurement result{state.target.id(), state.cpu_lease, state.extent.width, state.extent.height,
                 state.resources.size(), static_cast<std::size_t>(std::count_if(state.resources.begin(),
                     state.resources.end(), [](const auto& job) { return job->adopted; })),
                 state.pending_resize.valid()};
+        result.presentation_pending = state.scene &&
+            state.scene->findSceneSystem<scene::RenderSystem>()->hasPendingUpdate();
+        for (const auto& job : state.resources)
+        {
+            result.failed += job->failed;
+            result.settled += job->settled();
+            result.serial_sum += job->serial;
+            result.pending_requests += !job->mesh_read->done() + !job->material_read->done() +
+                job->mesh_upload.valid() + job->material_upload.valid() + job->forward_compile.valid() +
+                job->gbuffer_compile.valid();
+            if (!job->released)
+                result.live_handles += job->mesh.isValid() + job->material.isValid() +
+                    job->forward.isValid() + job->gbuffer.isValid();
+            if (job->failed && job->mesh_read->done())
+            {
+                result.asset_error = static_cast<std::uint32_t>(job->mesh_read->failure.code);
+                result.storage_error = static_cast<std::uint32_t>(job->mesh_read->failure.storage_error);
+            }
+        }
+        return result;
     }
 } // namespace lux::editor::workbench

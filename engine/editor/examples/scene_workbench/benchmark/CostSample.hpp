@@ -20,6 +20,11 @@ namespace er1_cost
     }
     double cpu(bool process);
     std::uint64_t cycles();
+    struct ProcessMemory final
+    {
+        std::uint64_t private_bytes{}, working_set{}, peak_working_set{};
+    };
+    ProcessMemory processMemory();
     struct Sample final
     {
         Clock::time_point started;

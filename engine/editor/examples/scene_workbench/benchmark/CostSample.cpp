@@ -2,9 +2,18 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
+#include <Psapi.h>
 
 namespace er1_cost
 {
+    ProcessMemory processMemory()
+    {
+        PROCESS_MEMORY_COUNTERS_EX memory{};
+        memory.cb = sizeof(memory);
+        assert(K32GetProcessMemoryInfo(GetCurrentProcess(),
+            reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory), sizeof(memory)));
+        return {memory.PrivateUsage, memory.WorkingSetSize, memory.PeakWorkingSetSize};
+    }
     std::uint64_t cycles()
     {
         ULONG64 result{};

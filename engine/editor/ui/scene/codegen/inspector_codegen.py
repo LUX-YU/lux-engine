@@ -78,7 +78,7 @@ class Generator:
             raise ValueError(f"unknown widget {widget} for {tid}")
         if attrs.get("readonly") == "true" or widget == "readonly":
             # Read-only is enforced around the complete field, including custom/container operations.
-            attrs = dict(attrs, widget="default")
+            attrs = dict(attrs, widget="default", readonly="true")
             widget = "default"
         for key in ("min", "max", "speed", "step"):
             if key in attrs and not math.isfinite(float(attrs[key])):
@@ -87,10 +87,11 @@ class Generator:
             raise ValueError(f"reversed range for {tid}")
         if "step" in attrs and float(attrs["step"]) <= 0:
             raise ValueError(f"non-positive step for {tid}")
-        if tid in self.custom_types or widget == "custom":
+        if tid in self.custom_types or widget in ("custom", "asset"):
             tag = attrs.get("widget_tag", "DefaultWidgetTag")
             return [f"result = InspectorWidget<{tid}, {tag}>::draw(value, state, "
-                    f"InspectorField{{\"##value\", nullptr, {attrs.get('speed', '0.1')}, state.read_only}});"]
+                    f"InspectorField{{\"##value\", nullptr, {attrs.get('speed', '0.1')}, "
+                    f"state.read_only || {str(attrs.get('readonly') == 'true').lower()}}});"]
         if kind == "BuiltinType":
             if tid == "bool":
                 if widget not in ("default", "input"):
@@ -160,6 +161,8 @@ class Generator:
         if template in ("std::basic_string", "std::string") or tid in ("std::string", "std::basic_string<char>"):
             if widget not in ("default", "input"):
                 raise ValueError(f"widget {widget} cannot edit string")
+            if args and args[0].get("type_id") != "char":
+                raise ValueError(f"string {tid} requires an Editor specialization for UTF-8 conversion")
             return ['result = edited(ImGui::InputText("##value", &value));']
         if template == "Eigen::Matrix":
             scalar = args[0]["type_id"]
@@ -195,6 +198,8 @@ class Generator:
                     "        Eigen::AngleAxis<Scalar>{radians[0], Eigen::Matrix<Scalar, 3, 1>::UnitX()} *",
                     "        Eigen::AngleAxis<Scalar>{radians[1], Eigen::Matrix<Scalar, 3, 1>::UnitY()} *",
                     "        Eigen::AngleAxis<Scalar>{radians[2], Eigen::Matrix<Scalar, 3, 1>::UnitZ()}}.normalized();", "}"]
+        if widget != "default":
+            raise ValueError(f"widget {widget} cannot edit aggregate {tid}; use a custom specialization")
         if kind in ("ConstantArrayType", "ArrayType") or template in ("std::array", "std::vector", "std::deque", "std::list"):
             element = args[0]["type_id"] if args else t.get("element_type_id")
             if not element:
@@ -252,6 +257,8 @@ class Generator:
                 lines += [f'if (value.index() == {i}) merge(result, {fn}(std::get<{i}>(value), state));']
             return lines
         if kind == "RecordType" and t.get("decl_id") in self.decls:
+            if "luxref::class" not in annotations(self.decls[t["decl_id"]]):
+                raise ValueError(f"record {tid} requires reflection annotations or an Editor specialization")
             if tid in self.active:
                 raise ValueError(f"recursive ownership type {tid} requires an Editor specialization")
             self.active.append(tid)

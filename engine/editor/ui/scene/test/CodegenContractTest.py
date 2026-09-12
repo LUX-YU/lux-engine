@@ -47,6 +47,14 @@ with tempfile.TemporaryDirectory(prefix="lux-inspector-codegen-") as directory:
         assert result.returncode != 0 and expected in result.stderr, result.stderr
         assert before == {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in (root / "output").iterdir()}
         print("exact rejection and output preservation:", expected)
+    invalid = copy.deepcopy(data)
+    field = next(d for d in invalid["declarations"] if d.get("fq_name") == "inspector_fixture::Component::nested")
+    field["attributes"] = ["widget = slider, min = 0, max = 10"]
+    ir.write_text(json.dumps(invalid), encoding="utf-8")
+    result = subprocess.run(command, capture_output=True, text=True)
+    assert result.returncode != 0 and "cannot edit aggregate" in result.stderr
+    assert before == {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in (root / "output").iterdir()}
+    print("exact rejection and output preservation: scalar widget on aggregate")
     invalid = copy.deepcopy(config)
     invalid["components"].append(invalid["components"][0])
     try:
@@ -55,4 +63,4 @@ with tempfile.TemporaryDirectory(prefix="lux-inspector-codegen-") as directory:
         assert "duplicate component" in str(error)
     else:
         raise AssertionError("duplicate component accepted")
-print("Codegen direct calls, one cpp per component, deterministic no-op and six exact negatives PASS")
+print("Codegen direct calls, one cpp per component, deterministic no-op and seven exact negatives PASS")

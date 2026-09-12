@@ -17,7 +17,7 @@
 
 namespace inspector_fixture
 {
-    enum class LUX_ENUM_INFO(static) Mode { FIRST = 3, SECOND = 7 };
+    enum class LUX_ENUM_INFO(static) EMode { FIRST = 3, SECOND = 7 };
     struct LUX_TYPE_INFO(static) Nested
     {
         friend bool operator==(const Nested &, const Nested &) = default;
@@ -45,7 +45,7 @@ namespace inspector_fixture
         float LUX_MEMBER(widget = input, step = 0.25) weight{1};
         double LUX_MEMBER(widget = drag, speed = 0.05) precise{2};
         std::string caption{"Generated input"};
-        Mode mode{Mode::SECOND};
+        EMode mode{EMode::SECOND};
         Nested nested;
         std::array<float, 3> fixed{1, 2, 3};
         int raw[2][2]{{4, 5}, {6, 7}};

@@ -72,6 +72,13 @@ initial_mtime = generated.stat().st_mtime_ns
 assert 'ninja: no work to do' in compile_step('baseline-noop')
 assert generated.read_bytes() == initial and generated.stat().st_mtime_ns == initial_mtime
 
+sidecar = build / 'inspector_ir/consumer_scene_readers/PluginComponent.editor-ir.json'
+sidecar_bytes = sidecar.read_bytes()
+sidecar.unlink()
+compile_step('missing-ir-sidecar')
+assert sidecar.read_bytes() == sidecar_bytes and generated.read_bytes() == initial
+assert 'ninja: no work to do' in compile_step('sidecar-restored-noop')
+
 header.write_bytes(original_header.replace(b'display_name = Caption', b'display_name = CaptionChanged'))
 compile_step('header')
 assert b'CaptionChanged' in generated.read_bytes()
@@ -102,6 +109,11 @@ header.write_bytes(header.read_bytes().replace(b'display_name = Weight', b'displ
 compile_step('invalid-widget', expected=1, reason='unknown widget unapproved_probe')
 assert generated.read_bytes() == good_output and generated.stat().st_mtime_ns == good_mtime
 print('validation failure preserves last complete output PASS', flush=True)
+
+cmakelists.write_bytes(original_cmake.replace(b'PROPERTY LUX_ARCH_LAYER EDITOR', b'PROPERTY LUX_ARCH_LAYER FUNCTION'))
+run('reject-runtime-target', [cmake, '-S', str(src), '-B', str(build)],
+    expected=1, reason='Editor Inspector output requires an EDITOR target')
+assert generated.read_bytes() == good_output
 
 header.write_bytes(original_header)
 cmakelists.write_bytes(original_cmake)

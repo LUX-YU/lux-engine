@@ -43,12 +43,24 @@ namespace lux::simulation::script::detail
         std::int32_t status{};
     };
 
-    struct ScriptEventSourceAccess final
+    class ScriptEventImports final
     {
-        // Owner protection covers the whole registration transaction. Neither
-        // reservation nor source commit executes user code or moves these arrays.
-        const PreparedScriptEventAdmission* source{};
-        const ScriptInstanceScope* scope{};
+    public:
+        // Immutable incarnation borrow, protected by the same owner region as
+        // prepared methods. Permission is checked by Execution before resolve.
+        [[nodiscard]] const PreparedScriptEventAdmission* resolve(
+            ScriptInstanceId instance, ScriptEventAdmissionHandle handle) const noexcept
+        {
+            const auto local = ScriptRuntimeAccess::matchAdmission(handle, scope_, instance, epoch_, sources_.size());
+            return local ? &sources_[*local] : nullptr;
+        }
+        [[nodiscard]] ecs::Entity target() const noexcept { return target_; }
+    private:
+        friend class ScriptInstances;
+        ScriptEventAdmissionScope scope_;
+        std::uint64_t epoch_{};
+        std::span<const PreparedScriptEventAdmission> sources_;
+        ecs::Entity target_{ecs::NullEntity};
     };
 
     class ScriptInstances final
@@ -209,10 +221,7 @@ namespace lux::simulation::script::detail
         [[nodiscard]] std::size_t protectedCount() const noexcept { return protection_count_; }
         [[nodiscard]] std::size_t activeCount() const noexcept { return active_count_; }
         [[nodiscard]] lux::script::ScriptSymbolId methodSymbol(std::uint32_t slot) const noexcept;
-        [[nodiscard]] lux::cxx::expected<ScriptEventSourceAccess, EScriptEventWaitError>
-        eventSource(
-            ScriptInstanceId instance, std::uint32_t mount_slot, ScriptEventAdmissionHandle handle
-        ) const noexcept;
+        [[nodiscard]] ScriptEventImports eventImports(std::uint32_t mount_slot) const noexcept;
 
         [[nodiscard]] LifecycleResult beginPlay(std::uint32_t slot) noexcept;
         void activate(std::uint32_t slot) noexcept;
@@ -459,23 +468,15 @@ namespace lux::simulation::script::detail
     {
         return methods_[slot].symbol;
     }
-    inline lux::cxx::expected<ScriptEventSourceAccess, EScriptEventWaitError>
-    ScriptInstances::eventSource(
-        ScriptInstanceId instance, std::uint32_t mount_slot, ScriptEventAdmissionHandle handle
-    ) const noexcept
+    inline ScriptEventImports ScriptInstances::eventImports(std::uint32_t mount_slot) const noexcept
     {
-        if (mount_slot >= invocation_states_.size())
-            return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
-        const auto& state = invocation_states_[mount_slot];
-        if (state.state != EScriptMountState::ACTIVE || state.instance != instance)
-            return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
         const auto& mount = mounts_[mount_slot];
-        const auto local = ScriptRuntimeAccess::matchAdmission(handle, event_scope_, instance,
-            mount.event_layout_epoch, mount.event_sources.size());
-        if (!local)
-            return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
-        const auto& source = mount.event_sources[*local];
-        return ScriptEventSourceAccess{&source, &mount.scope};
+        ScriptEventImports result;
+        result.scope_ = event_scope_;
+        result.epoch_ = mount.event_layout_epoch;
+        result.sources_ = mount.event_sources;
+        if (const auto* entity = std::get_if<EntityScriptScope>(&mount.scope)) result.target_ = entity->self;
+        return result;
     }
 
 }

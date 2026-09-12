@@ -220,7 +220,7 @@ int main(int argc, char**)
             assert(storage_backend);
             const auto runtime = storage_backend->descriptor();
             const auto initial_bytes = storage_backend->stats().prepared_binding_bytes;
-            const PreparedScriptEventAdmission prepared_event{&event, {}, {}, {}};
+            const PreparedScriptEventAdmission prepared_event{&event, {}, {}, false, {}};
             std::vector<ScriptBackendInstance> instances(population);
             const auto create = [&](std::size_t index, std::uint32_t generation) {
                 const auto result = runtime.createInstance(runtime.context,

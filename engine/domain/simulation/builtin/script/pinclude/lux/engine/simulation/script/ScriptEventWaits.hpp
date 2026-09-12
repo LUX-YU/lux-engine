@@ -1,6 +1,7 @@
 #pragma once
 
 #include <entt/container/dense_map.hpp>
+#include <array>
 #include <limits>
 #include <utility>
 
@@ -21,11 +22,9 @@ namespace lux::simulation::script::detail
     {
         friend class ScriptEventWaits;
         enum class EState : std::uint8_t { DETACHED, ACTIVE, CLAIMED };
-        const ScriptWaitIdentity* wait_{};
-        ScriptEventWaitLink* route_previous_{};
-        ScriptEventWaitLink* route_next_{};
-        ScriptEventWaitLink* instance_previous_{};
-        ScriptEventWaitLink* instance_next_{};
+        ScriptAwaitableId awaitable_;
+        std::uint32_t page_{};
+        std::uint8_t position_{};
         ecs::Entity target_{ecs::NullEntity};
         std::uint32_t endpoint_{};
         EState state_{EState::DETACHED};
@@ -40,6 +39,15 @@ namespace lux::simulation::script::detail
     class ScriptEventWaits final
     {
         using Link = ScriptEventWaitLink;
+        static constexpr std::uint32_t NoPage = (std::numeric_limits<std::uint32_t>::max)();
+        static constexpr std::size_t PageSize = 4U;
+        struct WaitPage final
+        {
+            std::array<Link*, PageSize> entries;
+            std::uint32_t previous{NoPage};
+            std::uint32_t next{NoPage};
+            std::uint32_t count{};
+        };
         struct EventRouteKey final
         {
             std::uint32_t bucket_slot{};
@@ -57,22 +65,11 @@ namespace lux::simulation::script::detail
         };
         struct EventRouteHead final
         {
-            Link* first{};
-            Link* last{};
-        };
-        struct InstanceIndex final
-        {
-            ScriptInstanceId id;
-            Link* first{};
+            std::uint32_t first{NoPage};
+            std::uint32_t last{NoPage};
         };
         using EventRouteIndex = entt::dense_map<EventRouteKey, EventRouteHead, EventRouteKeyHash>;
 
-        [[nodiscard]] InstanceIndex* instanceRecord(ScriptInstanceId instance) noexcept
-        {
-            if (!instance.valid() || instance.slot > instances_.size()) return nullptr;
-            auto& result = instances_[instance.slot - 1U];
-            return result.id == instance ? &result : nullptr;
-        }
         [[nodiscard]] EventRouteHead* findRoute(std::uint32_t endpoint, ecs::Entity target) noexcept
         {
             if (target == ecs::NullEntity) return &broadcast_routes_[endpoint];
@@ -84,34 +81,72 @@ namespace lux::simulation::script::detail
             if (target == ecs::NullEntity) broadcast_routes_[endpoint] = {};
             else routes_.erase(EventRouteKey{endpoint, target});
         }
+        [[nodiscard]] std::uint32_t appendPage(EventRouteHead& route) noexcept
+        {
+            // At most one nonempty page per ACTIVE wait. The source preflight
+            // guarantees a free page without imposing a per-event capacity.
+            if (free_page_ == NoPage) std::terminate();
+            const auto index = free_page_;
+            auto& page = pages_[index];
+            free_page_ = page.next;
+            page.previous = route.last;
+            page.next = NoPage;
+            page.count = 0U;
+            if (route.last != NoPage) pages_[route.last].next = index;
+            else route.first = index;
+            route.last = index;
+            return index;
+        }
+        void releasePage(std::uint32_t index) noexcept
+        {
+            auto& page = pages_[index];
+            page.count = 0U;
+            page.next = free_page_;
+            free_page_ = index;
+        }
         void unlinkRoute(Link& link) noexcept
         {
+            auto& page = pages_[link.page_];
+            const auto last = --page.count;
+            if (link.position_ != last)
+            {
+                auto* moved = page.entries[last];
+                page.entries[link.position_] = moved;
+                moved->position_ = link.position_;
+            }
+            if (page.count != 0U) return;
             auto* route = findRoute(link.endpoint_, link.target_);
             if (route == nullptr) std::terminate();
-            if (link.route_previous_) link.route_previous_->route_next_ = link.route_next_;
-            else route->first = link.route_next_;
-            if (link.route_next_) link.route_next_->route_previous_ = link.route_previous_;
-            else route->last = link.route_previous_;
-            if (!route->first) removeEmptyRoute(link.endpoint_, link.target_);
+            if (page.previous != NoPage) pages_[page.previous].next = page.next;
+            else route->first = page.next;
+            if (page.next != NoPage) pages_[page.next].previous = page.previous;
+            else route->last = page.previous;
+            releasePage(link.page_);
+            if (route->first == NoPage) removeEmptyRoute(link.endpoint_, link.target_);
         }
         void claimRoute(std::uint32_t endpoint, ecs::Entity target) noexcept
         {
             ++claim_lookups_;
             auto* route = findRoute(endpoint, target);
             if (route == nullptr) return;
-            auto* current = route->first;
-            // No user code runs here. Detach the complete occurrence batch before
-            // callbacks can register new waits, including nested occurrences.
-            while (current)
+            auto current = route->first;
+            // Each page contains a dense range. Task order inside one occurrence
+            // is unspecified; cancellation swaps the last page entry into its gap.
+            // Claim is still complete before any user callback can register again.
+            while (current != NoPage)
             {
-                auto* next = current->route_next_;
-                ++dispatch_visits_;
-                current->route_previous_ = nullptr;
-                current->route_next_ = nullptr;
-                current->state_ = Link::EState::CLAIMED;
-                ++active_claimed_;
-                if (claimed_.size() == claimed_.capacity()) std::terminate();
-                claimed_.push_back(current->wait_->id);
+                auto& page = pages_[current];
+                const auto next = page.next;
+                for (std::uint32_t i{}; i < page.count; ++i)
+                {
+                    auto& link = *page.entries[i];
+                    ++dispatch_visits_;
+                    link.state_ = Link::EState::CLAIMED;
+                    ++active_claimed_;
+                    if (claimed_.size() == claimed_.capacity()) std::terminate();
+                    claimed_.push_back(link.awaitable_);
+                }
+                releasePage(current);
                 current = next;
             }
             removeEmptyRoute(endpoint, target);
@@ -123,15 +158,13 @@ namespace lux::simulation::script::detail
             Admission(const Admission&) = delete;
             Admission& operator=(const Admission&) = delete;
             Admission(Admission&& other) noexcept
-                : owner_(std::exchange(other.owner_, nullptr)), instance_(other.instance_),
-                  endpoint_(other.endpoint_), target_(other.target_) {}
+                : owner_(std::exchange(other.owner_, nullptr)), endpoint_(other.endpoint_), target_(other.target_) {}
         private:
             friend class ScriptEventWaits;
-            Admission(ScriptEventWaits& owner, InstanceIndex& instance, std::uint32_t endpoint,
+            Admission(ScriptEventWaits& owner, std::uint32_t endpoint,
                 ecs::Entity target) noexcept
-                : owner_(&owner), instance_(&instance), endpoint_(endpoint), target_(target) {}
+                : owner_(&owner), endpoint_(endpoint), target_(target) {}
             ScriptEventWaits* owner_{};
-            InstanceIndex* instance_{};
             std::uint32_t endpoint_{};
             ecs::Entity target_{ecs::NullEntity};
         };
@@ -165,49 +198,36 @@ namespace lux::simulation::script::detail
             std::uint32_t endpoint_{};
         };
 
-        void prepare(std::size_t capacity, std::size_t instance_capacity, std::size_t endpoint_count);
-        void beginInstance(ScriptInstanceId instance) noexcept
-        {
-            auto& index = instances_[instance.slot - 1U];
-            if (index.first) std::terminate();
-            index = {instance, nullptr};
-        }
+        void prepare(std::size_t capacity, std::size_t endpoint_count);
         [[nodiscard]] lux::cxx::expected<Admission, EScriptEventWaitError> reserve(
-            ScriptInstanceId instance, std::uint32_t endpoint, ecs::Entity target) noexcept
+            std::uint32_t endpoint, ecs::Entity target) noexcept
         {
-            auto* owner = instanceRecord(instance);
-            if (!owner) return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
             if (endpoint >= broadcast_routes_.size())
                 return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
             const auto reserved = active_ - active_claimed_ + claimed_.size();
             if (reserved >= capacity_)
                 return lux::cxx::unexpected(EScriptEventWaitError::WAITER_CAPACITY_EXCEEDED);
-            if (sequence_ == std::numeric_limits<std::uint64_t>::max())
-                return lux::cxx::unexpected(EScriptEventWaitError::SEQUENCE_EXHAUSTED);
-            return Admission{*this, *owner, endpoint, target};
+            return Admission{*this, endpoint, target};
         }
         [[nodiscard]] ScriptSourceId registerWait(
             Admission&& admission, Link& link, const ScriptWaitIdentity& wait) noexcept
         {
             if (std::exchange(admission.owner_, nullptr) != this || link.state_ != Link::EState::DETACHED)
                 std::terminate();
-            auto& owner = *admission.instance_;
             const auto endpoint = admission.endpoint_;
             const auto target = admission.target_;
             auto& route = target == ecs::NullEntity ? broadcast_routes_[endpoint] :
                 routes_.try_emplace(EventRouteKey{endpoint, target}, EventRouteHead{}).first->second;
-            ++sequence_;
-            link.wait_ = &wait;
+            link.awaitable_ = wait.id;
             link.endpoint_ = endpoint;
             link.target_ = target;
             link.state_ = Link::EState::ACTIVE;
-            link.route_previous_ = route.last;
-            if (route.last) route.last->route_next_ = &link;
-            else route.first = &link;
-            route.last = &link;
-            link.instance_next_ = owner.first;
-            if (owner.first) owner.first->instance_previous_ = &link;
-            owner.first = &link;
+            const auto page_index = route.last == NoPage || pages_[route.last].count == PageSize ?
+                appendPage(route) : route.last;
+            auto& page = pages_[page_index];
+            link.page_ = page_index;
+            link.position_ = static_cast<std::uint8_t>(page.count);
+            page.entries[page.count++] = &link;
             high_water_ = (std::max)(high_water_, ++active_);
             return {wait.id.slot, wait.id.generation};
         }
@@ -217,27 +237,18 @@ namespace lux::simulation::script::detail
             claimRoute(endpoint, target);
             return ClaimBatch{*this, begin, claimed_.size(), endpoint};
         }
-        [[nodiscard]] std::optional<ScriptSourceCancellation> cancel(Link& link) noexcept
+        void cancel(Link& link) noexcept
         {
-            if (link.state_ == Link::EState::DETACHED) return std::nullopt;
-            const auto& wait = *link.wait_;
-            const ScriptSourceCancellation result{wait.instance, wait.id,
-                {{wait.id.slot, wait.id.generation}, EScriptWaitSource::EVENT}};
+            if (link.state_ == Link::EState::DETACHED) return;
             if (link.state_ == Link::EState::ACTIVE) unlinkRoute(link);
             else --active_claimed_;
-            if (link.instance_previous_) link.instance_previous_->instance_next_ = link.instance_next_;
-            else instances_[wait.instance.slot - 1U].first = link.instance_next_;
-            if (link.instance_next_) link.instance_next_->instance_previous_ = link.instance_previous_;
-            link = {};
+            link.state_ = Link::EState::DETACHED;
             --active_;
-            return result;
         }
-        [[nodiscard]] std::optional<ScriptSourceCancellation> cancelNext(ScriptInstanceId instance) noexcept
+        void cancelForRetirement(Link& link) noexcept
         {
-            auto* owner = instanceRecord(instance);
-            if (!owner || !owner->first) return std::nullopt;
             ++cleanup_visits_;
-            return cancel(*owner->first);
+            cancel(link);
         }
         [[nodiscard]] std::size_t claimedCount() const noexcept { return active_claimed_; }
         void shutdown() noexcept;
@@ -248,13 +259,13 @@ namespace lux::simulation::script::detail
             if (claimed_.size() != end) std::terminate();
             claimed_.resize(begin);
         }
+        std::vector<WaitPage> pages_;
+        std::uint32_t free_page_{NoPage};
         EventRouteIndex routes_;
         std::vector<EventRouteHead> broadcast_routes_;
         std::vector<ScriptAwaitableId> claimed_;
-        std::vector<InstanceIndex> instances_;
         std::size_t capacity_{};
         std::size_t active_{};
-        std::uint64_t sequence_{};
         std::size_t active_claimed_{};
         std::size_t high_water_{};
         std::size_t dispatch_visits_{};

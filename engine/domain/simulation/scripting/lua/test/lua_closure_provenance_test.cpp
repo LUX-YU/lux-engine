@@ -298,7 +298,7 @@ void testEventProvenance()
     const std::array artifacts{&first_artifact, &second_artifact};
     for (std::size_t index{}; index < instances.size(); ++index)
     {
-        const PreparedScriptEventAdmission event{&sources[index], {}, {}, {}};
+        const PreparedScriptEventAdmission event{&sources[index], {}, {}, false, {}};
         assert(runtime.createInstance(runtime.context,
             {assetId(static_cast<std::uint8_t>(index + 1U)), SimulationScriptScope{}, nullptr,
                 {static_cast<std::uint32_t>(index + 1U), 1U}, {}, {&event, 1U}},
@@ -436,7 +436,7 @@ void testNestedScopes()
         &inner_calls, &inner_dispatch, 1U, beta.bindings};
     const auto runtime = backend->descriptor();
     ScriptBackendInstance outer_instance, inner_instance;
-    const PreparedScriptEventAdmission prepared_event{&event, {}, {}, {}};
+    const PreparedScriptEventAdmission prepared_event{&event, {}, {}, false, {}};
     assert(runtime.createInstance(runtime.context,
         {assetId(11U), SimulationScriptScope{}, nullptr, {1U, 1U}, {&outer_capability, 1U}, {}},
         outer, outer_instance) == EScriptBackendResult::SUCCESS);

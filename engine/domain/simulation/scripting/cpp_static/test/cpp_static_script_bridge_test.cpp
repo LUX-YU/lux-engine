@@ -154,7 +154,7 @@ int main()
     assert(typed_event);
     test::coroutine_event_source = std::move(*typed_event);
     using DelayTraits = lux::script::ScriptAbilityTraits<DelayAbility>;
-    const std::array event_requirements{PreparedScriptEventAdmission{&event_source, {}, {}, {}}};
+    const std::array event_requirements{PreparedScriptEventAdmission{&event_source, {}, {}, false, {}}};
     auto projected = materializeCppStaticScript(Bridge);
     assert(projected);
     assert(projected->exports.size() == 12U);

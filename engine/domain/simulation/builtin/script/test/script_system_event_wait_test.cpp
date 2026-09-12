@@ -774,6 +774,11 @@ namespace
         };
         Bridge disabled{kSystem, kBroadcastWait, channel, nullptr};
         assert(disabled.descriptor().payload_projection.copy == nullptr);
+        assert(!builtin.descriptor().payload_projection.mayReenter());
+        assert(custom.descriptor().payload_projection.mayReenter());
+        auto replaced = builtin.descriptor().payload_projection;
+        replaced.copy = custom.descriptor().payload_projection.copy;
+        assert(replaced.mayReenter());
         std::int32_t input{31}, output{};
         auto slot = lux::simulation::script::detail::argumentSlot(input);
         const auto original = slot;
@@ -1388,6 +1393,43 @@ namespace
         assert(harness.backend_state.continuation_destroys == 3U);
     }
 
+    void testDensePageCancellation()
+    {
+        HarnessOptions options;
+        options.ownership_pair = true;
+        options.limits.instance_capacity = 2U;
+        options.limits.awaitable_capacity = 8U;
+        options.limits.event_wait_capacity = 8U;
+        Harness harness{options};
+        auto start = [&](bool second, unsigned count) {
+            for (unsigned i{}; i < count; ++i)
+            {
+                if (second) harness.recordBroadcastStartSecond(1);
+                else harness.recordBroadcastStart(1);
+            }
+            auto& endpoint = second ? harness.broadcast_start_second_bridge : harness.broadcast_start_bridge;
+            assert(deliverRuntimeEvent(*harness.system, endpoint) == count);
+        };
+        start(false, 1U);
+        start(true, 4U);
+        start(false, 3U);
+        assert(harness.system->stats().active_event_waiters == 8U);
+        const auto backing = harness.system->stats().event_page_storage_bytes;
+        harness.backend_state.callback_action = ECallbackAction::FAIL;
+        harness.recordBroadcastFaultSecond(1);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_fault_second_bridge) == 1U);
+        assert(harness.system->stats().active_event_waiters == 4U);
+        start(false, 4U);
+        assert(harness.system->stats().active_event_waiters == 8U);
+        harness.recordBroadcastWait(101);
+        assert(deliverRuntimeEvent(*harness.system, harness.broadcast_wait_bridge) == 1U);
+        assert(executeRuntimeStablePoint(*harness.system));
+        assert(harness.backend_state.resume_values == std::vector<std::int32_t>(8U, 101));
+        assert(harness.backend_state.continuation_destroys == 12U);
+        assert(harness.system->stats().active_event_waiters == 0U);
+        assert(harness.system->stats().event_page_storage_bytes == backing);
+    }
+
     void testRepeatedWaitStorageReuse()
     {
         HarnessOptions options;
@@ -1545,6 +1587,7 @@ int main(int argc, char**)
     testCopyOtherRecordRemoval();
     testClaimedCancellationAndSlotReuse();
     testRepeatedWaitStorageReuse();
+    testDensePageCancellation();
     std::puts("EVENT_CASE testCopyShutdownAndFailure()"); std::fflush(stdout);
     testCopyShutdownAndFailure();
     std::puts("EVENT_CASE testCopyNestedAdmission()"); std::fflush(stdout);

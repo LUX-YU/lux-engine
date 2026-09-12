@@ -20,10 +20,25 @@ namespace lux::simulation::script
     using ScriptHookLane = void (*)(void *, lux_script_call_frame &) noexcept;
     using ScriptEventLane = void (*)(void *, ecs::Entity, lux_script_call_frame &) noexcept;
 
+    template <class Route, class Payload> class ScriptEventEndpoint;
+
     struct ScriptEventPayloadProjection final
     {
+        using Copy = bool (*)(void*, const lux_script_value_slot&, std::span<std::byte>) noexcept;
+        ScriptEventPayloadProjection() noexcept = default;
+        ScriptEventPayloadProjection(lux::semantic::Layout layout, Copy projection) noexcept
+            : owned_layout(layout), copy(projection) {}
+        [[nodiscard]] bool mayReenter() const noexcept
+        {
+            return non_reentrant_copy_ == nullptr || copy != non_reentrant_copy_;
+        }
         lux::semantic::Layout owned_layout;
-        bool (*copy)(void*, const lux_script_value_slot&, std::span<std::byte>) noexcept{};
+        Copy copy{};
+    private:
+        template <class Route, class Payload> friend class ScriptEventEndpoint;
+        // A callback identity proved by the typed endpoint factory. Replacing the
+        // public copy callback invalidates this fact automatically.
+        Copy non_reentrant_copy_{};
     };
 
     struct ScriptHookEndpointDescriptor final
@@ -255,9 +270,13 @@ namespace lux::simulation::script
                 if (payload_copy_ == detail::defaultEventPayloadCopy<Payload>())
                     copy = &copyPayload<true>;
             }
+            ScriptEventPayloadProjection projection{detail::eventPayloadLayout<Payload>(), copy};
+            if constexpr (is_default_scalar_layout)
+                if (payload_copy_ == detail::defaultEventPayloadCopy<Payload>())
+                    projection.non_reentrant_copy_ = copy;
             return {system_, id_, route,
                 lux::semantic::makeType<Payload>(lux::semantic::EValuePass::CONST_REF),
-                {detail::eventPayloadLayout<Payload>(), copy},
+                projection,
                 this, &connect, &disconnect,
                 &consume,
                 [](void* context) noexcept { return self(context).channel_->failed(); },

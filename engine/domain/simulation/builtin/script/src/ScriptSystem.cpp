@@ -245,8 +245,16 @@ namespace lux::simulation::script
                 auto claimed = owner.event_owner.claim(bucket, target);
                 owner.binding_owner.visitEvent(bucket, entity,
                     [&](const Handler& handler) noexcept { owner.execution_owner.invoke(handler, frame, false); });
-                for (std::size_t index{}; index < claimed.size(); ++index)
-                    owner.execution_owner.completeClaimedEventWaiter(claimed.at(index), frame);
+                if (endpoint.payload_projection.mayReenter())
+                {
+                    for (std::size_t index{}; index < claimed.size(); ++index)
+                        owner.execution_owner.completeClaimedEventWaiter<true>(claimed.at(index), frame);
+                }
+                else
+                {
+                    for (std::size_t index{}; index < claimed.size(); ++index)
+                        owner.execution_owner.completeClaimedEventWaiter<false>(claimed.at(index), frame);
+                }
             }
             --owner.endpoint_dispatch_depth;
         }
@@ -297,7 +305,6 @@ namespace lux::simulation::script
             if (mount.state == EScriptMountState::INITIALIZED)
             {
                 execution_owner.beginInstance(mount.instance, slot);
-                event_owner.beginInstance(mount.instance);
                 timer_owner.beginInstance(mount.instance);
             }
             return {};
@@ -469,6 +476,8 @@ namespace lux::simulation::script
                                     limits.continuation_capacity_per_instance == 0U ||
                                     limits.continuation_capacity_per_instance > limits.continuation_capacity ||
                                     limits.awaitable_capacity == 0U ||
+                                    limits.awaitable_capacity > std::numeric_limits<std::uint32_t>::max() ||
+                                    limits.event_wait_capacity > std::numeric_limits<std::uint32_t>::max() ||
                                     limits.resume_queue_capacity == 0U || limits.max_resume_payload_bytes == 0U ||
                                     limits.resumes_per_stable_point == 0U || limits.next_step_wait_capacity == 0U ||
                                     limits.simulation_delay_capacity == 0U || limits.event_wait_capacity == 0U ||
@@ -518,7 +527,7 @@ namespace lux::simulation::script
             state->execution_owner.prepare(limits, state->instance_owner.identityCapacity(), capacity.method_capacity,
                 {&state->failure_port, &State::faultErased});
             state->event_owner.prepare(
-                limits.event_wait_capacity, state->instance_owner.identityCapacity(), events.size()
+                limits.event_wait_capacity, events.size()
             );
             state->timer_owner.prepare(clock, limits, real_delay, state->execution_owner,
                 state->instance_owner.identityCapacity());

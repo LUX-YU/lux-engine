@@ -184,7 +184,8 @@ namespace lux::simulation::script::detail
                                              requirement.payload.size, requirement.payload.alignment};
             if (!payload.valid())
                 return lux::cxx::unexpected(EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH);
-            construction.addEvent({&requirement, {}, *endpoint_slot, payload});
+            const bool targeted = requirement.route == lux::script::EScriptEventRoute::ENTITY_TARGETED;
+            construction.addEvent({&requirement, {}, *endpoint_slot, targeted, payload});
         }
         if (const auto result = construction.allocateIdentity(); !result)
             return result;

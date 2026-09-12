@@ -62,3 +62,25 @@
 - `local-bindings-tests` 保留错误地在构造期要求 ACTIVE publication 的失败；
   `local-bound-step-tests` 保留生成器 alias-template CTAD 和误拒绝零 epoch 的失败。
   修正未改变业务断言。`local-publication-boundary-build/tests`：all 成功，88/88。
+
+## 按事件访问与复制
+
+- 等待页每页四项，页内稠密，取消用末项补洞；各事件共享预留页池。预留 N 页保证 N 个等待
+  即使全部属于不同路由也能接受，不能把常见 N/4 页使用量冒充最坏预留量。
+- EventWaits 不再有实例目录或实例链。实例退休先沿 Execution 的等待链撤销 Event，再按旧顺序
+  清理 Timer 和结果；仍只访问被退休实例，冷期多一次该实例等待链遍历，避免热期维护重复链。
+- occurrence 的 claim 在 callback 前完整摘出当时的等待，因而删除无用途的逐等待 64 位登记序号。
+  删除 `SEQUENCE_EXHAUSTED` 枚举项；其他错误的整数值保持（9 留空）。公开等待 token 仍为原 32 位代次。
+- Event 的已验证 import、scope 关联由 Execution 借用。每次入口仍核对实际 handle 与当前权限，
+  不再回到 Mount 找 scope、再回到 endpoint 判断路由。Entity 销毁通过已连接的 attachment 信号先撤权，
+  不重复执行 Registry::valid；提交和实际初始化前的 Entity 检查保留。
+- 内建 scalar copy 的不可重入性来自 typed factory 的真实 callback 身份。公开 callback 被替换即失效。
+  分支每 occurrence 选择一次。成功路径不建立 pin/嵌套调用保护；copy 出错或队列满时重建原清理保护窗口。
+  自定义 copy 路径和所有实际 payload/type/size 检查保留。
+- `local-dense-events`、`local-event-ownership`、`local-event-imports`、`local-pure-copy`：
+  每组 all 成功、脚本/Lua 88/88。新增 `testDensePageCancellation` 覆盖页中间删除、补洞、补满及最终释放。
+- backing 新增单列页池、claimed ID 和恢复 ID 字节数；嵌入的事件关系已经算在结果存储内，不能重复相加。
+
+尚未完成本轮最终安装/迁址/生成增量与同量成本。大 payload 共享不加入当前候选：主长任务 payload 为 4 B；
+自定义逐等待 copy 可重入、有可观察副作用，不能用一次共享复制代替。已有 channel 双缓冲的寿命也不覆盖
+跨 step 的 READY backlog。本轮不制造新大 payload 业务来宣称收益。

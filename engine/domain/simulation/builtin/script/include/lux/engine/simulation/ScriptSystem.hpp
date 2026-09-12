@@ -90,6 +90,10 @@ namespace lux::simulation::script
         std::size_t event_waiter_record_bytes{};
         std::size_t awaitable_reserved_slots{};
         std::size_t awaitable_storage_bytes{};
+        // Event links are included in awaitable_storage_bytes, not counted twice.
+        std::size_t event_page_storage_bytes{};
+        std::size_t event_claim_storage_bytes{};
+        std::size_t resume_storage_bytes{};
         std::size_t external_ticket_storage_bytes{};
         // Cumulative assembly work, including rejected preflights; not instance resource counts.
         std::uint64_t assembly_configuration_slot_visits{};

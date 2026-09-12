@@ -28,6 +28,7 @@ namespace lux::simulation::script::detail
             AwaitableRecord* first_awaitable{};
             bool admission_revoked{};
             ScriptInstances::AuthorityAccess authority;
+            ScriptEventImports events;
         };
 
         // Short internal borrow: no directory lookup or writable Instances authority
@@ -494,28 +495,22 @@ namespace lux::simulation::script::detail
             auto* owner = executionRecord(instance);
             if (owner == nullptr)
                 return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
-            const auto source = instance_owner_.eventSource(instance, owner->mount_slot, admission);
-            if (!source)
-                return lux::cxx::unexpected(source.error());
-            const auto endpoint_slot = source->source->endpoint_slot;
-            const auto& endpoint = binding_owner_.eventEndpoint(endpoint_slot);
-            ecs::Entity target{ecs::NullEntity};
-            if (endpoint.route == EEventRoute::ENTITY_TARGETED)
-            {
-                const auto* entity = std::get_if<EntityScriptScope>(source->scope);
-                if (entity == nullptr || entity->self == ecs::NullEntity || !instance_owner_.validEntity(entity->self))
-                    return lux::cxx::unexpected(EScriptEventWaitError::SCOPE_MISMATCH);
-                target = entity->self;
-            }
-
-            auto reservation = event_owner_.reserve(instance, endpoint_slot, target);
+            if (!ExecutionAccess{owner, instance}.current())
+                return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
+            const auto* source = owner->events.resolve(instance, admission);
+            if (source == nullptr) return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
+            const auto endpoint_slot = source->endpoint_slot;
+            const auto target = source->entity_targeted ? owner->events.target() : ecs::NullEntity;
+            if (source->entity_targeted && target == ecs::NullEntity)
+                return lux::cxx::unexpected(EScriptEventWaitError::SCOPE_MISMATCH);
+            auto reservation = event_owner_.reserve(endpoint_slot, target);
             if (!reservation)
                 return lux::cxx::unexpected(reservation.error());
 
             // No user code or owner mutation can intervene before waiter commit. The
             // authoritative incarnation/source check above covers result admission as
             // well; storage has stable addresses.
-            auto awaitable = admitAwaitable(*owner, source->source->payload, false);
+            auto awaitable = admitAwaitable(*owner, source->payload, false);
             if (!awaitable)
                 return lux::cxx::unexpected(eventWaitError(awaitable.error()));
 
@@ -906,6 +901,7 @@ namespace lux::simulation::script::detail
         {
             execution_instances_[instance.slot - 1U] = {instance, slot};
             execution_instances_[instance.slot - 1U].authority = instance_owner_.authorityAccess(instance, slot);
+            execution_instances_[instance.slot - 1U].events = instance_owner_.eventImports(slot);
         }
         void enablePrepared() noexcept { prepared_ = true; }
         void stop() noexcept { stopping_ = true; }
@@ -983,8 +979,17 @@ namespace lux::simulation::script::detail
             record->admission_revoked = true;
             const auto first_awaitable = record->first_awaitable;
             UserInvocationScope cleanup(*this);
-            while (const auto cancelled = event_owner_.cancelNext(instance))
-                detachSource(*cancelled);
+            // Event relations live in these stable result records. Preserve Event
+            // cancellation before Timer cleanup, without a second instance index
+            // or a duplicate ownership chain on every successful wait.
+            for (auto* wait = first_awaitable; wait; wait = wait->instance_next)
+            {
+                if (wait->source.kind == EScriptWaitSource::EVENT)
+                {
+                    event_owner_.cancelForRetirement(wait->event_link);
+                    wait->source = {};
+                }
+            }
             while (const auto cancelled = timer_owner_.cancelNext(instance))
                 detachSource(*cancelled);
             cancelAwaitables(instance, first_awaitable);
@@ -1116,6 +1121,7 @@ namespace lux::simulation::script::detail
             return {};
         }
     public:
+        template <bool CopyMayReenter>
         void completeClaimedEventWaiter(const ScriptClaimedEventWait& waiter, lux_script_call_frame& frame) noexcept
         {
             const ScriptSourceId id{waiter.awaitable.slot, waiter.awaitable.generation};
@@ -1133,6 +1139,28 @@ namespace lux::simulation::script::detail
                 return;
             }
             const auto& endpoint = binding_owner_.eventEndpoint(waiter.endpoint);
+            if constexpr (!CopyMayReenter)
+            {
+                // This specific typed copy function cannot execute user code.
+                // Keep actual packet validation in that function; no ACTIVE state
+                // or short-lived result borrow is carried across a user boundary.
+                const bool valid_frame = frame.arg_count == 1U && frame.args != nullptr;
+                const bool copied = valid_frame && endpoint.payload_projection.copy(
+                    endpoint.context, frame.args[0], record->value.bytes.span());
+                if (copied)
+                {
+                    event_payload_copy_bytes_ += record->value.bytes.size();
+                    releaseSource(*record);
+                    if (const auto completed = finishPreparedEvent(*record); completed) return;
+                }
+                // Preserve the old physical-capacity window while error cleanup
+                // may reenter, even though the completed scalar copy needed no pin.
+                ResultWritePin pin(*this, *record);
+                static_cast<void>(eraseAwaitableRecord(*record, execution));
+                faultInvocation(owner->mount_slot, lux::script::InvalidScriptSymbolId,
+                    copied ? EScriptSystemError::RESUME_QUEUE_FULL : EScriptSystemError::INVOCATION_FAILURE);
+                return;
+            }
             ResultWritePin pin(*this, *record);
             const bool is_invalid_frame = frame.arg_count != 1U || frame.args == nullptr;
             bool copied{};

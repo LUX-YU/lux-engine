@@ -547,8 +547,8 @@ namespace lux::simulation::script
         PAYLOAD_TOO_LARGE,
         WAITER_CAPACITY_EXCEEDED,
         AWAITABLE_CAPACITY_EXCEEDED,
-        SEQUENCE_EXHAUSTED,
-        ALLOCATION_FAILURE,
+        // Value 9 was the removed per-wait registration sequence limit.
+        ALLOCATION_FAILURE = 10,
         STOPPING,
     };
 
@@ -579,6 +579,7 @@ namespace lux::simulation::script
         const lux::script::ScriptEventSourceDescription* source{};
         ScriptEventAdmissionHandle admission;
         std::uint32_t endpoint_slot{};
+        bool entity_targeted{};
         PreparedResumeType payload;
     };
 

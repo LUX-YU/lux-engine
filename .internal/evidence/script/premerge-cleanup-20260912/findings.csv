@@ -1,0 +1,13 @@
+id,status,change,evidence
+F01,FIXED,Lua converted synchronous entry captures original qualification before conversion and rechecks before Lua body; small scalar path unchanged,final-oracles.log: CONVERSION_AUTHORITY modes 2-5
+F02,FIXED,Shared ceil conversion rejects exact exclusive 2^63 bound before integer cast,final-oracles.log: TIMER_BOUNDARY/TIMER_ROUNDING/REAL_TIMER_BOUNDARY
+F03,FIXED,Inline resize copies only when moving from spill; inline self-copy removed,final-oracles.log: OWNED_BYTES
+F04,REMOVED,Write-only resume_enqueued; unused awaitableId and Lua scalar reader removed,source diff; Developer/Toolchain all
+F05,SIMPLIFIED,Ticket and Allocation checked adapters share releaseResolved; keep owner/generation/active and external data/size checks,final-oracles.log: STORAGE_TICKET; machine-excerpts.asm
+F06,SIMPLIFIED_NOT_ZERO_COPY,Internal optional metadata borrowed; explicit byte/type clear removes temporary owned result; take still releases logical slot before user resume,machine-excerpts.asm; pin/cancellation/capacity suite
+F07,HOISTED,Native step layout remains loader/preparation responsibility; resolved kernel receives local step reference,NativeScriptBackend.cpp diff; Native/FlowForge/installed suites
+F08,PARTIAL_CHECK_RETAINED,One Timer lookup before completion; keep post-callback cancel because the callback may detach/move storage,ScriptTimers.cpp; TIMER_RETRY and cancellation tests
+F09,SIMPLIFIED,Bounded feedback ring preserves first-dirty/ack order without shifting unconsumed items,final-oracles.log: FEEDBACK_WRAP
+F10,CORRECTED,"INTEGRITY failures size is retained_failures, not idle_page_backing; historical raw files unchanged",benchmark source diff; new raw performance logs
+F11,MIGRATED,Retired LuaRecordMarshaller branch removed; default diagnostic uses current generated Lua55 codec,retry-retired-diagnostic-* logs
+F12,FIXED_EXISTING_TOOL_GAP,Relative style source paths resolve absolutely; missing/empty engine scan rejected,style-relative-negative.log and style-relative-positive.log

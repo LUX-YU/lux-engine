@@ -5,7 +5,7 @@ authority. Follow the linked ADR and satisfy its reopening evidence before creat
 
 | Work | Status | Decision source | Reopening evidence |
 |---|---|---|---|
-| Script NA1 pre-merge correctness | Open | [Pre-merge audit](script-native-lua-na1/PREMERGE-AUDIT.zh-CN.md) | Close F01–F03 with matching production fixes and real regressions; preserve existing qualification identities and performance debt. |
+| Script NA1 cleanup / cost review | Correctness fixed; review pending | [Cleanup result](script-native-lua-na1/CLEANUP-RESULT.zh-CN.md) | F01–F03 regressions pass; P4 +1.57% and FlowForge Event +1.76% remain unexplained. No main merge or performance-equivalence approval. |
 | CPU typed Asset lifecycle | Needs more evidence | `ADR-20260830_CPU_Typed_Asset_Lifecycle_Gate.md` | A real cross-Scene CPU Asset workload with measured ownership, cancellation, generation and memory behavior. |
 | Asset residency / Product streaming | Needs more evidence | `ADR-20260830_Asset_Residency_Barrier_A_Review.md` | Real AssetId load, duplicate interest, failure/retry, GPU ready/release and generation replacement in two independent domains. |
 | Spatial runtime index adoption / StreamingSystem | Needs more evidence | `ADR-20260830_Spatial_Runtime_Index_Adoption_Gate.md` | Cooked index wire, safe-point adoption and a real streaming workload. |

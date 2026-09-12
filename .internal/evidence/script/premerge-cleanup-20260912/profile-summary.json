@@ -1,0 +1,67 @@
+{
+  "sampled_self_seconds": 3.636032,
+  "PMU": false,
+  "scope": "single F exact P4 business ROI software sample; no per-operation latency attribution",
+  "hotspots": [
+    {
+      "function": "lux::simulation::script::detail::ScriptExecution::waitEvent",
+      "self_seconds": 0.359839,
+      "share_percent": 9.896475058525338
+    },
+    {
+      "function": "luaH_Hgetshortstr",
+      "self_seconds": 0.249188,
+      "share_percent": 6.85329502050587
+    },
+    {
+      "function": "lux::simulation::script::detail::ScriptExecution::resumeOne",
+      "self_seconds": 0.236186,
+      "share_percent": 6.495707408515656
+    },
+    {
+      "function": "lux::simulation::script::detail::ScriptExecution::AwaitableStorage::releaseResolved",
+      "self_seconds": 0.192799,
+      "share_percent": 5.30245608399486
+    },
+    {
+      "function": "lux::simulation::script::ScriptCoroutineContext::wait<int>",
+      "self_seconds": 0.135567,
+      "share_percent": 3.7284325330470134
+    },
+    {
+      "function": "lux::simulation::script::ScriptCoroutine::promise_type::prepareResume",
+      "self_seconds": 0.106178,
+      "share_percent": 2.920161318712266
+    },
+    {
+      "function": "lux::simulation::script::ScriptCoroutineAwaiter<int,class `auto lux::simulation::script::ScriptCoroutineContext::wait<int>(class lux::simulation::script::CppScriptEventSource<int> const &)'::`2'::<lambda_1> >::await_suspend",
+      "self_seconds": 0.105281,
+      "share_percent": 2.895491568831077
+    },
+    {
+      "function": "lux::simulation::script::ScriptBehavior::captureInvocation",
+      "self_seconds": 0.089942,
+      "share_percent": 2.473630595110274
+    },
+    {
+      "function": "std::vector<lux::simulation::script::ScriptAwaitableId,std::allocator<lux::simulation::script::ScriptAwaitableId> >::push_back",
+      "self_seconds": 0.089873,
+      "share_percent": 2.47173292204249
+    },
+    {
+      "function": "lux::simulation::script::detail::ScriptExecution::takeAwaitable",
+      "self_seconds": 0.088243,
+      "share_percent": 2.4269038336296274
+    },
+    {
+      "function": "lua_rawgeti",
+      "self_seconds": 0.076343,
+      "share_percent": 2.0996239857074963
+    },
+    {
+      "function": "lux::simulation::script::detail::ScriptRuntimeAccess::matchAdmission",
+      "self_seconds": 0.076325,
+      "share_percent": 2.099128940559379
+    }
+  ]
+}

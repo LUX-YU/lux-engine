@@ -78,7 +78,7 @@ namespace lux::simulation::script::detail
             identities_.reserve(instance_capacity);
             mount_index_.reserve(enabled_capacity_);
             entity_associations_.reserve(enabled_capacity_ * 2U);
-            changes_.reserve(capacity.mount_capacity);
+            changes_.resize(capacity.mount_capacity);
             changed_.resize(capacity.mount_capacity);
             batch_ids_.reserve(enabled_capacity_);
             batch_slots_.reserve(enabled_capacity_);
@@ -251,10 +251,13 @@ namespace lux::simulation::script::detail
             mount.status.scope = mount.scope;
         if (changed_[slot] != 0U)
             return;
-        if (changes_.size() == changes_.capacity())
+        if (changes_count_ == changes_.size())
             std::terminate();
         changed_[slot] = 1U;
-        changes_.push_back(slot);
+        auto position = changes_first_ + changes_count_;
+        if (position >= changes_.size()) position -= changes_.size();
+        changes_[position] = slot;
+        ++changes_count_;
     }
 
     ScriptMountView ScriptInstances::view(std::uint32_t slot) const noexcept
@@ -273,16 +276,17 @@ namespace lux::simulation::script::detail
     }
     ScriptMountStatusCollection ScriptInstances::collect(std::span<ScriptMountStatus> output) noexcept
     {
-        const auto count = (std::min)(output.size(), changes_.size());
+        const auto count = (std::min)(output.size(), changes_count_);
         for (std::size_t index{}; index < count; ++index)
         {
-            const auto slot = changes_[index];
+            const auto slot = changes_[changes_first_];
+            if (++changes_first_ == changes_.size()) changes_first_ = 0U;
             output[index] = mounts_[slot].status;
             mounts_[slot].unconsumed_result = false;
             changed_[slot] = 0U;
         }
-        changes_.erase(changes_.begin(), changes_.begin() + count);
-        return {count, changes_.size()};
+        changes_count_ -= count;
+        return {count, changes_count_};
     }
     void ScriptInstances::writeStats(ScriptRuntimeStats& output) const noexcept
     {

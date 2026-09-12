@@ -1,9 +1,5 @@
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
-#if SR5_VALUES
 #include "CollisionValue.lua.value.generated.hpp"
-#else
-#include "CollisionValue.hpp"
-#endif
 #include <lua.hpp>
 #include <cassert>
 #include <chrono>
@@ -29,20 +25,6 @@ struct Allocation
         return std::realloc(pointer, size);
     }
 };
-#if !SR5_VALUES
-// Exact operation from the entry collision_event_chain_test.cpp, including its old error boundary.
-static bool pushCollision(void*, void* opaque_state, const void* opaque_value) noexcept
-{
-    auto* state = static_cast<lua_State*>(opaque_state);
-    const auto& collision = *static_cast<const CollisionEvent*>(opaque_value);
-    lua_createtable(state, 0, 2);
-    lua_pushinteger(state, collision.body);
-    lua_setfield(state, -2, "body");
-    lua_pushnumber(state, collision.impulse);
-    lua_setfield(state, -2, "impulse");
-    return true;
-}
-#endif
 int main(int argc, char** argv)
 {
     const std::string_view mode = argc > 1 ? argv[1] : "timing";
@@ -53,14 +35,8 @@ int main(int argc, char** argv)
     Allocation allocation;
     auto* state = lua_newstate(Allocation::allocate, &allocation, 1592598566U);
     assert(state);
-#if SR5_VALUES
     assert(lux::script::lua::detail::LuaValueAccess::initialize(state));
     const auto operation = lux::script::lua::makeLuaValueOperation<CollisionEvent>();
-#else
-    const lux::simulation::script::LuaRecordMarshaller operation{
-        lux::semantic::typeId("lux.physics.CollisionEvent"), "lux.physics.CollisionEvent",
-        sizeof(CollisionEvent), alignof(CollisionEvent), nullptr, &pushCollision};
-#endif
     const CollisionEvent value{7, 2.5f};
     assert(ProtectedRecord::initialize(state));
     ProtectedRecord protected_value{&value};
@@ -97,11 +73,7 @@ int main(int argc, char** argv)
         if (protected_mode) { assert(protected_value.push(state)); }
         else
         {
-#if SR5_VALUES
         assert(operation.push(state, &value));
-#else
-        assert(operation.push(operation.context, state, &value));
-#endif
         }
         assert(lua_gettop(state) == 1);
     };

@@ -64,12 +64,10 @@ namespace lux::simulation::script::detail
         [[nodiscard]] bool release(Ticket value) noexcept
         {
             if (value.owner != this || value.page >= pages_.size()) return false;
-            const auto& page = pages_[value.page];
+            auto& page = pages_[value.page];
             if (value.slot >= page.slot_count) return false;
-            const auto& slot = slots_[page.metadata_first + value.slot];
-            const auto& prepared = classes_[page.class_index];
-            return release(Allocation{static_cast<std::byte*>(arena_.data) + page.offset + prepared.stride * value.slot,
-                value.page, value.slot, value.generation, slot.size});
+            auto& slot = slots_[page.metadata_first + value.slot];
+            return releaseResolved(value.page, value.slot, value.generation, page, slot);
         }
 
         struct Stats final
@@ -270,28 +268,10 @@ namespace lux::simulation::script::detail
             const auto& prepared = classes_[page.class_index];
             const auto* expected = static_cast<std::byte*>(arena_.data) + page.offset +
                 prepared.stride * allocation.slot;
-            const bool is_invalid_slot = !slot.active || slot.generation != allocation.generation ||
-                slot.size != allocation.size || allocation.data != expected;
-            if (is_invalid_slot)
+            const bool is_invalid_allocation = slot.size != allocation.size || allocation.data != expected;
+            if (is_invalid_allocation)
                 return false;
-            slot.active = false;
-            --page.active;
-            --active_;
-            if (stats_.observation_collected)
-            {
-                stats_.release_steps += 3U;
-                stats_.live_bytes -= slot.size;
-                stats_.occupied_bytes -= prepared.stride;
-            }
-            slot.size = 0U;
-            if (page.free_head == Invalid)
-            {
-                const auto steps = linkPage(allocation.page);
-                if (stats_.observation_collected) stats_.release_steps += steps;
-            }
-            slot.next = page.free_head;
-            page.free_head = allocation.slot;
-            return true;
+            return releaseResolved(allocation.page, allocation.slot, allocation.generation, page, slot);
         }
 
         [[nodiscard]] Stats stats() const noexcept
@@ -355,6 +335,33 @@ namespace lux::simulation::script::detail
             std::uint32_t next{Invalid};
             bool active{};
         };
+
+        // The checked adapters resolve storage once; this operation owns the generation check and free-list update.
+        [[nodiscard]] bool releaseResolved(
+            std::uint32_t page_index, std::uint32_t slot_index, std::uint64_t generation, Page& page, Slot& slot
+        ) noexcept
+        {
+            if (!slot.active || slot.generation != generation)
+                return false;
+            slot.active = false;
+            --page.active;
+            --active_;
+            if (stats_.observation_collected)
+            {
+                stats_.release_steps += 3U;
+                stats_.live_bytes -= slot.size;
+                stats_.occupied_bytes -= classes_[page.class_index].stride;
+            }
+            slot.size = 0U;
+            if (page.free_head == Invalid)
+            {
+                const auto steps = linkPage(page_index);
+                if (stats_.observation_collected) stats_.release_steps += steps;
+            }
+            slot.next = page.free_head;
+            page.free_head = slot_index;
+            return true;
+        }
 
         [[nodiscard]] static bool powerOfTwo(std::size_t value) noexcept
         {

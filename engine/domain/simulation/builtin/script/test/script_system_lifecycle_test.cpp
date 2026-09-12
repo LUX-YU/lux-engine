@@ -729,6 +729,37 @@ namespace
         assert(!closed && closed.error() == EScriptSystemError::SHUT_DOWN);
     }
 
+    void testFeedbackWrapAndRedirty()
+    {
+        Harness harness{3U, true, true, true};
+        auto created = harness.create();
+        assert(created && created->prepare());
+        auto& system = *created;
+        const auto backing = system.stats().mount_feedback_backing_bytes;
+        std::array<ScriptMountStatus, 1U> one;
+        const auto first = system.collectMountStatusChanges(one);
+        assert(first && first->written == 1U && first->remaining == 2U && one[0].id.value == 1U);
+        harness.registry.destroy(harness.entities[0]);
+        assert(system.processLifecycle());
+        const auto status = system.queryMountStatus({1U});
+        assert(status && *status && (**status).reclaimed);
+        const auto zero = system.collectMountStatusChanges({});
+        assert(zero && zero->written == 0U && zero->remaining == 3U);
+        for (const auto id : {2U, 3U, 1U})
+        {
+            const auto collected = system.collectMountStatusChanges(one);
+            assert(collected && collected->written == 1U && one[0].id.value == id);
+            if (id == 1U) assert(one[0].reclaimed && collected->remaining == 0U);
+        }
+        assert(system.stats().mount_feedback_backing_bytes == backing);
+        assert(system.shutdown());
+        assert(harness.backend_state.creates == 3U && harness.backend_state.destroys == 3U);
+        assert(system.collectMountStatusChanges(one)->written == 1U);
+        assert(system.collectMountStatusChanges(one)->written == 1U);
+        assert(system.collectMountStatusChanges(one)->remaining == 0U);
+        std::puts("FEEDBACK_WRAP first=1 redirty=1 order=2,3,1 zero_no_consume=1 backing_stable=1 PASS");
+    }
+
     void testMixedReassociationRollback()
     {
         Harness harness{3U, true, true, true};
@@ -1296,6 +1327,7 @@ int main(int argc, char** argv)
     testResolvedPreparationFailures();
     testOwnedRuntimeInput();
     testResolvedBatchProtocol();
+    testFeedbackWrapAndRedirty();
     testMixedReassociationRollback();
     testResolvedInputExpiryAndReuse();
     testInitialLifecycle();

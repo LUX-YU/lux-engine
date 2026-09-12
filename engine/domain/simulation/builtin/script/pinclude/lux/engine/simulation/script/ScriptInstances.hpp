@@ -313,6 +313,7 @@ namespace lux::simulation::script::detail
         entt::dense_map<ecs::Entity, std::uint32_t> entity_associations_;
         std::uint64_t assembly_configuration_slot_visits_{};
         std::vector<std::uint32_t> changes_;
+        std::size_t changes_first_{}, changes_count_{};
         std::vector<std::uint8_t> changed_;
         std::vector<std::uint64_t> batch_ids_;
         std::vector<ScriptMountPlacement> batch_slots_;

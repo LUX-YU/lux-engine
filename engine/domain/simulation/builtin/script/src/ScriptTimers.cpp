@@ -4,6 +4,8 @@
 #include "DelayAbility.ability.generated.hpp"
 #include <cmath>
 #include <limits>
+#include <type_traits>
+#include <tuple>
 
 namespace lux::simulation::script::detail
 {
@@ -325,11 +327,13 @@ namespace lux::simulation::script::detail
     bool ScriptTimers::completeDue(ScriptSourceId id, bool& backpressured) noexcept
     {
         // Completion can detach its source synchronously. Keep the lease, never a SlotMap record borrow.
-        const auto association = waits_[key(id)].association;
-        const auto route = waits_[key(id)].route;
+        const auto [association, route, external] = [&]() noexcept {
+            const auto& due = waits_[key(id)];
+            return std::tuple{due.association, due.route, due.external};
+        }();
         const auto completed = [&]() noexcept {
             if (route == ETimerRoute::OWNER_LOCAL) return execution_->completeLocalTimer(association, id);
-            const auto completion = external_[waits_[key(id)].external];
+            const auto completion = external_[external];
             return lux::script::detail::ScriptAbilityOwnerCompletionAccess::success(completion);
         }();
         backpressured = !completed && completed.error() == lux::script::EScriptAbilityCompletionError::BACKPRESSURE;

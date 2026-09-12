@@ -1625,52 +1625,6 @@ namespace lux::simulation::script
             }
         }
 
-        union ScalarStorage final
-        {
-            bool boolean;
-            std::int32_t i32;
-            std::uint32_t u32;
-            std::int64_t i64;
-            float f32;
-            double f64;
-        };
-
-        [[nodiscard]] static bool readAbilityArgument(
-            lua_State* state,
-            int index,
-            const lux::script::ScriptAbilityValueDescription& description,
-            ScalarStorage& storage,
-            lux::script::ScriptAbilityInputSlot& slot
-        ) noexcept
-        {
-            bool valid{};
-            switch (description.abi_kind)
-            {
-            case LUX_SCRIPT_VK_BOOL:
-                if (lua_type(state, index) == LUA_TBOOLEAN)
-                {
-                    storage.boolean = lua_toboolean(state, index) != 0;
-                    valid = true;
-                }
-                break;
-            case LUX_SCRIPT_VK_INT32: valid = readStrictNumber(state, index, storage.i32); break;
-            case LUX_SCRIPT_VK_UINT32: valid = readStrictNumber(state, index, storage.u32); break;
-            case LUX_SCRIPT_VK_FLOAT: valid = readStrictNumber(state, index, storage.f32); break;
-            case LUX_SCRIPT_VK_DOUBLE: valid = readStrictNumber(state, index, storage.f64); break;
-            default: break;
-            }
-            if (!valid)
-                return false;
-            slot = {
-                description.abi_kind,
-                {},
-                description.size,
-                description.type_id,
-                std::addressof(storage)
-            };
-            return true;
-        }
-
         [[nodiscard]] static bool pushAbilityResult(
             lua_State* state,
             const lux::script::ScriptAbilityValueDescription& description,

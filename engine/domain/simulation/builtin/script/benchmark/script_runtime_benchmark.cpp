@@ -1822,7 +1822,7 @@ namespace
     {
         const auto report = [&](const char* phase) {
             const auto stats = system.stats();
-            std::printf("INTEGRITY,%s,%s,invocation_errors=%llu,idle_page_backing=%zu,instances=%zu,continuations=%zu,"
+            std::printf("INTEGRITY,%s,%s,invocation_errors=%llu,retained_failures=%zu,instances=%zu,continuations=%zu,"
                 "awaitables=%zu,waiters=%zu,queue=%zu,calls=%llu,resumes=%llu\n", scenario, phase,
                 static_cast<unsigned long long>(stats.invocation_failures), system.failures().size(),
                 stats.active_instances, stats.active_continuations, stats.active_awaitables, stats.active_event_waiters,

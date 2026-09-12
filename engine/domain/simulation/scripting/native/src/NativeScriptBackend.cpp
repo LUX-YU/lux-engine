@@ -467,16 +467,13 @@ namespace lux::simulation::script
             }
         }
 
-        [[nodiscard]] NativeContinuation* createNativeContinuation(PreparedCall& call) noexcept
+        [[nodiscard]] NativeContinuation* createNativeContinuation(
+            PreparedCall& call, const lux_script_step_desc& step
+        ) noexcept
         {
-            if (free_continuations.empty() || call.function == nullptr || call.function->step == nullptr)
+            // Loader and preparation fixed this layout; frame capacity and lifetime remain dynamic.
+            if (free_continuations.empty())
                 return nullptr;
-            const auto& step = *call.function->step;
-            if (step.frame_size == 0U || step.frame_size > config.max_continuation_frame_bytes ||
-                step.frame_align == 0U || (step.frame_align & (step.frame_align - 1U)) != 0U)
-            {
-                return nullptr;
-            }
             const auto slot = free_continuations.back();
             free_continuations.pop_back(); // Logical slot is reserved before any physical frame relationship.
             auto& continuation = continuations[slot];
@@ -589,14 +586,15 @@ namespace lux::simulation::script
             if (prepared.owner == nullptr || prepared.instance == nullptr || prepared.function == nullptr ||
                 prepared.function->step == nullptr)
                 return ScriptStepResult::failed(-1);
-            auto* continuation = prepared.owner->createNativeContinuation(prepared);
+            const auto& step = *prepared.function->step;
+            auto* continuation = prepared.owner->createNativeContinuation(prepared, step);
             if (continuation == nullptr)
                 return ScriptStepResult::failed(-1);
 
             StepAdapter adapter{prepared.instance->events, std::addressof(context), continuation};
             const lux_script_step_host host{std::addressof(adapter), &startEventWait};
             lux_script_step_outcome outcome{};
-            const auto status = prepared.function->step->start(
+            const auto status = step.start(
                 std::addressof(prepared.instance->native_context),
                 std::addressof(frame),
                 std::addressof(host),

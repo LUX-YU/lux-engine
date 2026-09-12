@@ -117,7 +117,6 @@ namespace lux::simulation::script::detail
             std::optional<PreparedResumeType> result_type;
             ScriptOwnedResumeValue value;
             ScriptStepError error;
-            bool resume_enqueued{};
             bool external_completion{};
             bool release_pending{};
             std::uint32_t write_pins{};
@@ -154,7 +153,7 @@ namespace lux::simulation::script::detail
                 rebuildFreeList();
             }
             [[nodiscard]] AwaitableRecord* acquire(ExecutionInstance& owner,
-                std::optional<PreparedResumeType> type, bool external) noexcept
+                const std::optional<PreparedResumeType>& type, bool external) noexcept
             {
                 if (free_head_ == NoSlot) return nullptr;
                 const auto slot = free_head_;
@@ -180,9 +179,9 @@ namespace lux::simulation::script::detail
                 const auto slot = record.id.slot - 1U;
                 record.id.slot = 0U;
                 record.continuation = {};
-                record.value = {};
+                record.value.bytes.clear();
+                record.value.type = {};
                 record.error = {};
-                record.resume_enqueued = false;
                 record.release_pending = false;
                 --active_;
                 // Exhausted generations retire the physical slot; never wrap an
@@ -237,10 +236,6 @@ namespace lux::simulation::script::detail
         {
             return id.valid() ? ContinuationKey{id.slot - 1U, id.generation} : ContinuationKey::invalid();
         }
-        [[nodiscard]] static constexpr ScriptAwaitableId awaitableId(AwaitableKey key) noexcept
-        {
-            return {key.index + 1U, key.gen};
-        }
         [[nodiscard]] static constexpr AwaitableKey awaitableKey(ScriptAwaitableId id) noexcept
         {
             return id.valid() ? AwaitableKey{id.slot - 1U, id.generation} : AwaitableKey::invalid();
@@ -269,7 +264,7 @@ namespace lux::simulation::script::detail
 
         [[nodiscard]] lux::cxx::expected<AwaitableRecord*, EScriptAwaitableCreateError> reserveAwaitable(
             ExecutionInstance& owner,
-            std::optional<PreparedResumeType> result_type,
+            const std::optional<PreparedResumeType>& result_type,
             bool external_completion
         ) noexcept
         {
@@ -285,14 +280,14 @@ namespace lux::simulation::script::detail
             {
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::EXTERNAL_RESULT_NOT_TRANSPORTABLE);
             }
-            return admitAwaitable(owner, std::move(result_type), external_completion);
+            return admitAwaitable(owner, result_type, external_completion);
         }
 
         // Private allocation kernel. Arbitrary result descriptions enter through
         // reserveAwaitable; prepared Events carry the layout proved by Preparer and
         // the current admission lookup.
         [[nodiscard]] lux::cxx::expected<AwaitableRecord*, EScriptAwaitableCreateError>
-        admitAwaitable(ExecutionInstance& owner, std::optional<PreparedResumeType> result_type,
+        admitAwaitable(ExecutionInstance& owner, const std::optional<PreparedResumeType>& result_type,
                        bool external_completion) noexcept
         {
 
@@ -300,7 +295,7 @@ namespace lux::simulation::script::detail
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::STOPPING);
             if (awaitables_.size() >= limits_.awaitable_capacity)
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::CAPACITY_EXCEEDED);
-            auto* inserted = awaitables_.acquire(owner, std::move(result_type), external_completion);
+            auto* inserted = awaitables_.acquire(owner, result_type, external_completion);
             if (inserted == nullptr)
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::ALLOCATION_FAILURE);
             auto& record = *inserted;
@@ -322,20 +317,20 @@ namespace lux::simulation::script::detail
             return &record;
         }
         [[nodiscard]] lux::cxx::expected<ScriptAwaitableId, EScriptAwaitableCreateError> createAwaitableRecord(
-            ScriptInstanceId instance, std::optional<PreparedResumeType> result_type) noexcept
+            ScriptInstanceId instance, const std::optional<PreparedResumeType>& result_type) noexcept
         {
             auto* owner = findExecutionInstance(instance);
             if (owner == nullptr)
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::INVALID_INSTANCE);
-            const auto record = reserveAwaitable(*owner, std::move(result_type), true);
+            const auto record = reserveAwaitable(*owner, result_type, true);
             if (!record)
                 return lux::cxx::unexpected(record.error());
             return (*record)->id;
         }
         [[nodiscard]] lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError>
-        createAwaitable(ScriptInstanceId instance, std::optional<PreparedResumeType> type) noexcept
+        createAwaitable(ScriptInstanceId instance, const std::optional<PreparedResumeType>& type) noexcept
         {
-            const auto created = createAwaitableRecord(instance, std::move(type));
+            const auto created = createAwaitableRecord(instance, type);
             if (!created)
                 return lux::cxx::unexpected(created.error());
             return ingress_.registration(instance, *created, this, &ScriptExecution::completeAbilityOwnerErased,
@@ -346,7 +341,7 @@ namespace lux::simulation::script::detail
                               ScriptInstanceId instance,
                               std::optional<PreparedResumeType> result_type) noexcept
         {
-            return static_cast<ScriptExecution*>(context)->createAwaitable(instance, std::move(result_type));
+            return static_cast<ScriptExecution*>(context)->createAwaitable(instance, result_type);
         }
         [[nodiscard]] bool validAwaitableOutcome(
             const AwaitableRecord& record,
@@ -404,7 +399,6 @@ namespace lux::simulation::script::detail
             if (record.continuation.valid())
             {
                 static_cast<void>(resumes_.push(record.id));
-                record.resume_enqueued = true;
             }
             return {};
         }
@@ -544,7 +538,6 @@ namespace lux::simulation::script::detail
             if (record->state != EScriptAwaitableState::PENDING)
             {
                 static_cast<void>(resumes_.push(awaitable));
-                record->resume_enqueued = true;
             }
             return {};
         }
@@ -1116,7 +1109,6 @@ namespace lux::simulation::script::detail
             if (record.continuation.valid())
             {
                 static_cast<void>(resumes_.push(record.id));
-                record.resume_enqueued = true;
             }
             return {};
         }

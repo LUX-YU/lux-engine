@@ -192,6 +192,8 @@ namespace lux::simulation::script
             return true;
         }
 
+        void clear() noexcept { reset(); }
+
         [[nodiscard]] std::byte* data() noexcept
         {
             return spill_ != nullptr ? spill_ : inline_.data();

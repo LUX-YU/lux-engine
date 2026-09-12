@@ -59,8 +59,9 @@ def compile_step(label, **kwargs):
 
 header = src / 'PluginComponent.hpp'
 cmakelists = src / 'CMakeLists.txt'
-template = sdk / 'share/lux-engine-editor-scene-ui/editor_scene_ui/cmake_scripts/template/scene_reader.template'
-generated = build / 'scene_reader_gen/PluginComponent.scene_reader.hpp'
+template = sdk / 'share/lux-engine-editor-scene-ui/editor_scene_ui/cmake_scripts/codegen/inspector_codegen.py'
+generated = build / ('inspector_gen/consumer_scene_readers/consumer__RichComponent_' +
+                     hashlib.sha256(b'consumer::RichComponent').hexdigest()[:8] + '.inspector.generated.cpp')
 original_header, original_cmake, original_template = (p.read_bytes() for p in (header, cmakelists, template))
 
 configure('configure')
@@ -75,9 +76,10 @@ header.write_bytes(original_header.replace(b'display_name = Caption', b'display_
 compile_step('header')
 assert b'CaptionChanged' in generated.read_bytes()
 
-template.write_bytes(original_template + b'\n// ER1 template dependency witness\n')
+template.write_bytes(original_template.replace(b'Generated Editor-only ImGui implementation',
+                                               b'ER2 generator dependency witness'))
 compile_step('template')
-assert b'ER1 template dependency witness' in generated.read_bytes()
+assert b'ER2 generator dependency witness' in generated.read_bytes()
 
 header.write_bytes(original_header.replace(
     b'        std::string LUX_MEMBER(display_name = Caption) caption{"Plugin component"};',
@@ -97,7 +99,7 @@ assert 'ninja: no work to do' in compile_step('macro-noop')
 good_output = generated.read_bytes()
 good_mtime = generated.stat().st_mtime_ns
 header.write_bytes(header.read_bytes().replace(b'display_name = Weight', b'display_name = Weight, widget = unapproved_probe'))
-compile_step('invalid-widget', expected=1, reason='unsupported generated Editor widget')
+compile_step('invalid-widget', expected=1, reason='unknown widget unapproved_probe')
 assert generated.read_bytes() == good_output and generated.stat().st_mtime_ns == good_mtime
 print('validation failure preserves last complete output PASS', flush=True)
 

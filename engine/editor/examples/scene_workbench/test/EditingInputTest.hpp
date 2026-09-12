@@ -67,12 +67,27 @@ namespace
         const auto reset = session.readAuthor(target);
         require(reset->transform->translation.isZero() && reset->transform->scale.isOnes(),
             "actual toolbar reset changes the same author object");
-        require(session.undo(), "toolbar undo shares Inspector history");
+        move(980, 18); button(true); button(false);
+        move(1010, 45); button(true); button(false);
+        require(!input.inputSnapshot().modal_open, "Edit menu closes after Undo");
         require(session.readAuthor(target)->transform->translation == edited->transform->translation,
             "first undo restores Inspector result");
-        require(session.undo(), "Inspector undo after toolbar undo");
+        input.feedInput(lux::ui::UiKey{lux::ui::EKey::LEFT_CONTROL, true});
+        input.feedInput(lux::ui::UiKey{lux::ui::EKey::Z, true}); step();
+        input.feedInput(lux::ui::UiKey{lux::ui::EKey::Z, false});
+        input.feedInput(lux::ui::UiKey{lux::ui::EKey::LEFT_CONTROL, false}); step();
         require(session.readAuthor(target)->transform->translation == original->transform->translation,
             "second undo restores pre-Inspector author value");
+        input.feedInput(lux::ui::UiKey{lux::ui::EKey::LEFT_CONTROL, true});
+        input.feedInput(lux::ui::UiKey{lux::ui::EKey::Y, true}); step();
+        input.feedInput(lux::ui::UiKey{lux::ui::EKey::Y, false});
+        input.feedInput(lux::ui::UiKey{lux::ui::EKey::LEFT_CONTROL, false}); step();
+        require(session.readAuthor(target)->transform->translation == edited->transform->translation,
+            "Ctrl+Y restores the generated Inspector edit");
+        move(980, 18); button(true); button(false);
+        move(1010, 45); button(true); button(false);
+        require(session.readAuthor(target)->transform->translation == original->transform->translation,
+            "Edit menu Undo restores the original value after Ctrl+Y");
         const auto before_cancel = session.historyView()->history;
         const auto drag = [&] {
             for (unsigned i = 0; i < 24; ++i) step(); // Separate gestures from double-click text entry.
@@ -105,6 +120,6 @@ namespace
             "reopened Inspector reads the replayed committed value");
         require(window.requestClose() && window.closeRequested() && window.cancelCloseRequest() &&
             !window.closeRequested(), "close request can be cancelled before owner detachment");
-        std::puts("ER2 Inspector/toolbar shared history, Escape/focus/hide cancellation and replay PASS; UI events");
+        std::puts("ER2 generated Inspector, Edit menu Undo, Ctrl+Z/Y, cancellation and replay PASS; UI events");
     }
 }

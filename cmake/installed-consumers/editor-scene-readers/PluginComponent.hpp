@@ -6,7 +6,7 @@
 #include <string>
 namespace consumer
 {
-    enum class EMode { BASIC, DETAILED };
+    enum class LUX_ENUM_INFO(static) EMode { BASIC, DETAILED };
     struct LUX_COMPONENT(schema = "consumer.RichComponent", version = 3, snapshot = COPY,
         semantic = DOMAIN_CONTRACT, editor = true) RichComponent final
     {

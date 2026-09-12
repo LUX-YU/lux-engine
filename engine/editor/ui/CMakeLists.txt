@@ -10,6 +10,7 @@ add_component(
     OUTPUT_NAME lux_engine_editor_ui
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/shell/EditorWindow.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/shell/EditorEditMenu.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/actions/ActiveEditHistory.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/actions/HistoryActions.cpp
 )
@@ -18,6 +19,8 @@ component_include_directories(editor_ui
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
     INSTALL_TIME include
 )
+find_package(imgui REQUIRED COMPONENTS core)
+target_link_libraries(editor_ui PRIVATE imgui::core)
 target_compile_definitions(editor_ui PRIVATE LUX_EDITOR_UI_LIBRARY)
 target_link_libraries(editor_ui PUBLIC
     lux::engine::editor::editor_editing

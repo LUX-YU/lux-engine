@@ -9,9 +9,13 @@ add_library(scene_reader_plugin SHARED Plugin.cpp)
 target_include_directories(scene_reader_plugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(scene_reader_plugin PRIVATE lux::engine::editor::editor_scene_ui)
 target_compile_features(scene_reader_plugin PRIVATE cxx_std_20)
-engine_target_add_scene_reader_codegen(NAME consumer_scene_readers TARGET scene_reader_plugin
+# This plugin is Editor-owned; the generated objects must never enter its component's runtime DLL.
+set_property(TARGET scene_reader_plugin PROPERTY LUX_ARCH_LAYER EDITOR)
+engine_target_add_imgui_inspector_codegen(NAME consumer_scene_readers TARGET scene_reader_plugin
     HEADER ${CMAKE_CURRENT_SOURCE_DIR}/PluginComponent.hpp LOGICAL_PATH PluginComponent.hpp
-    SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/Plugin.cpp SYMBOL consumer)
+    SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/Plugin.cpp COMPONENTS consumer::RichComponent
+    CUSTOM_TYPES lux::asset::AssetId CUSTOM_HEADERS ConsumerInspectorWidget.hpp
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/ConsumerInspectorWidget.hpp)
 add_executable(scene_reader_consumer main.cpp)
 target_compile_features(scene_reader_consumer PRIVATE cxx_std_20)
 target_link_libraries(scene_reader_consumer PRIVATE lux::engine::editor::editor_scene_ui)

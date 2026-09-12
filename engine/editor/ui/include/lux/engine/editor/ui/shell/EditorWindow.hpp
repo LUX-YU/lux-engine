@@ -31,6 +31,8 @@ namespace lux::editor::ui
         [[nodiscard]] WindowResult<void> collectInput() noexcept;
         [[nodiscard]] WindowResult<void> beginFrame(const lux::ui::FrameInfo &) noexcept;
         [[nodiscard]] WindowResult<void> drawPanes() noexcept;
+        // Called by the top Pane while this Window is drawing its current UI frame.
+        [[nodiscard]] WindowResult<void> drawEditMenu();
         [[nodiscard]] WindowResult<lux::ui::UiFrameSnapshot> finishFrame() noexcept;
         [[nodiscard]] WindowResult<void> discardFrame() noexcept;
         [[nodiscard]] WindowResult<void> installLayout(const WorkspaceLayout &) noexcept;

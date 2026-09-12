@@ -1,6 +1,7 @@
 #include <lux/engine/editor/ui/scene/SceneWorkspace.hpp>
 #include <lux/engine/editor/ui/scene/ComponentReadBinding.hpp>
-#include <lux/engine/editor/ui/scene/ScenePropertyEditors.hpp>
+#include <transform_inspectors.inspector.generated.hpp>
+#include <visual_inspectors.inspector.generated.hpp>
 #include <algorithm>
 #include <lux/engine/editor/ui/scene/SceneEditFailureDisplay.hpp>
 namespace lux::editor::ui
@@ -14,6 +15,7 @@ namespace lux::editor::ui
         std::optional<sessions::PropertyGesture> gesture;
         std::optional<sessions::SceneFailure> failure;
         bool light{}, commit_requested{};
+        InspectorInteraction interaction;
         explicit Impl(sessions::SceneSession &source) : session(source), readers(firstPartySceneReaders())
         {
         }
@@ -85,9 +87,15 @@ namespace lux::editor::ui
             if (impl_->gesture && frame.smallButton("Cancel edit"))
                 cancelEdit();
         }
+        if (impl_->interaction.error[0])
+            frame.textMuted(impl_->interaction.error.data());
         const auto current = impl_->session.selection().current;
         if (current != impl_->displayed)
+        {
             cancelEdit();
+            if (impl_->gesture) return;
+            impl_->interaction.reset();
+        }
         impl_->displayed = current;
         if (!current)
         {
@@ -136,8 +144,14 @@ namespace lux::editor::ui
                     if (reader != impl_->readers.end()) reader->draw(impl_->session, *current, frame);
                     continue;
                 }
-                const auto edit = transform ? detail::editTransform(frame, *author->transform) :
-                                              detail::editLight(frame, *author->light);
+                impl_->interaction.error.fill('\0');
+                const auto edit = transform
+                    ? generated::draw_lux__simulation__ecs__Transform3D_b831b8b5(
+                        *author->transform, impl_->interaction)
+                    : generated::draw_lux__simulation__ecs__Light3D_3f6bfbf7(
+                        *author->light, impl_->interaction);
+                // The generated function only edits this owned snapshot. A failed draft is never published.
+                if (impl_->interaction.error[0]) continue;
                 if (edit.changed && !impl_->gesture)
                 {
                     const auto begun = transform ? impl_->session.beginTransformEdit(*data->authored) :
@@ -186,6 +200,7 @@ namespace lux::editor::ui
         if (!result && result.error().code == sessions::ESceneError::BUSY)
             return;
         impl_->gesture.reset();
+        impl_->interaction.reset();
         impl_->commit_requested = false;
         impl_->failure.reset();
     }

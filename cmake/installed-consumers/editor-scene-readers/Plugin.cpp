@@ -1,7 +1,7 @@
 #include "PluginApi.hpp"
 #include "PluginComponent.hpp"
 #if !defined(__LUX_PARSE_TIME__)
-#include <PluginComponent.scene_reader.hpp>
+#include <consumer_scene_readers.inspector.generated.hpp>
 #endif
 namespace
 {
@@ -24,7 +24,7 @@ namespace
     {
         ++draws;
 #if !defined(__LUX_PARSE_TIME__)
-        lux::editor::ui::generated::consumerSceneReaders().front().draw(session, target, frame);
+        lux::editor::ui::generated::consumer_scene_readersBindings().front().draw(session, target, frame);
 #endif
     }
 }
@@ -36,7 +36,7 @@ extern "C" __declspec(dllexport) void openSceneReaderPlugin(PluginApi *output)
         ecs::componentSchemaId("consumer.RichComponent"), 3, ecs::EComponentSnapshotPolicy::COPY, {}, nullptr,
         ecs::EComponentSemanticKind::DOMAIN_CONTRACT, true);
 #if !defined(__LUX_PARSE_TIME__)
-    result.reader = lux::editor::ui::generated::consumerSceneReaders().front();
+    result.reader = lux::editor::ui::generated::consumer_scene_readersBindings().front();
 #endif
     result.reader.draw = &draw;
     result.populate = &populate;

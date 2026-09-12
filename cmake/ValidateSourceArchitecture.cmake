@@ -914,6 +914,10 @@ if(EXISTS "${source_root}/engine/editor")
             continue()
         endif()
         file(READ "${source}" content)
+        if(normalized_source MATCHES "/engine/editor/ui/scene/codegen/support/[^/]+[.]hpp$" OR
+           normalized_source MATCHES "/engine/editor/ui/src/shell/EditorEditMenu[.]cpp$")
+            continue()
+        endif()
         if(content MATCHES
            "#[ \t]*include[ \t]*[<\"](imgui[.]h|imgui_internal[.]h|imgui_node_editor[.]h)[>\"]")
             message(FATAL_ERROR

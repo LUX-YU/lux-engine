@@ -1,5 +1,6 @@
 #include <lux/engine/editor/ui/shell/EditorWindow.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
+#include <lux/engine/editor/ui/detail/EditorEditMenu.hpp>
 #include <lux/engine/ui/UiInputEvent.hpp>
 #include <GLFW/glfw3.h>
 #if defined(LUX_EDITOR_DIAGNOSTICS)
@@ -240,6 +241,7 @@ namespace lux::editor::ui
         // Cold unwinding destroys native callbacks before their UI receiver.
         std::unique_ptr<lux::window::LuxWindow> window;
         std::unique_ptr<ActiveEditHistory> histories;
+        std::unique_ptr<detail::EditorEditMenu> edit_menu;
         std::optional<lux::ui::Frame> frame;
         lux::ui::Size frame_size;
         TextInputPlatformStatus text_input_status;
@@ -319,6 +321,9 @@ namespace lux::editor::ui
             if (!histories)
                 return fail(EWindowError::ALLOCATION_FAILURE);
             impl->histories = std::move(*histories);
+            impl->edit_menu = std::make_unique<detail::EditorEditMenu>(
+                dispatcher, *impl->histories, impl->ui->commandRouter());
+            if (!impl->edit_menu->valid()) return fail(EWindowError::UI_FAILURE);
             impl->window->hide(!spec.visible);
             // The callback receiver is this Window's stable, exclusively owned input state.
             auto *input = impl->ui.get();
@@ -543,6 +548,14 @@ namespace lux::editor::ui
         impl_->close_requested = false;
         return {};
     }
+    WindowResult<void> EditorWindow::drawEditMenu()
+    {
+        const auto checked = impl_->check();
+        if (!checked) return checked;
+        if (!impl_->drawing || !impl_->frame) return fail(EWindowError::BUSY);
+        impl_->edit_menu->draw();
+        return {};
+    }
     WindowResult<void> EditorWindow::closeAfterRendererStopped() noexcept
     {
         if (impl_->owner != std::this_thread::get_id())
@@ -556,6 +569,7 @@ namespace lux::editor::ui
         impl_->window->on_cursor_move = {};
         impl_->window->on_focus = {};
         impl_->window->on_lost_focus = {};
+        impl_->edit_menu.reset();
         impl_->ui.reset();
         impl_->window.reset();
         impl_->closed = true;

@@ -18,32 +18,8 @@ namespace lux::editor::ui
             SceneToolbar(lux::object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, EditorWindow &window,
                          sessions::SceneSession &session)
                 : Object(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.scene.toolbar"}, "Workbench"),
-                  menu_(std::move(dispatcher), window.activeHistory()), commands_(window.uiSession().commandRouter()),
-                  session_(session)
+                  window_(window), session_(session)
             {
-                const auto define = [&](std::string name, std::string label) -> std::optional<lux::ui::CommandHandle>
-                {
-                    auto existing = commands_.findCommand(lux::ui::UiCommandIdView{name});
-                    if (existing)
-                        return existing;
-                    auto created = commands_.defineCommand({lux::ui::UiCommandId{std::move(name)}, std::move(label)});
-                    return created ? std::optional{*created} : std::nullopt;
-                };
-                auto undo = define(std::string(this->id().name()) + ".menu.undo", "Undo");
-                auto redo = define(std::string(this->id().name()) + ".menu.redo", "Redo");
-                if (!undo || !redo)
-                    return;
-                undo_ = *undo;
-                redo_ = *redo;
-                auto first =
-                    commands_.bindGlobal<&HistoryMenuActions::undo, &HistoryMenuActions::canUndo>(undo_, menu_);
-                auto second =
-                    commands_.bindGlobal<&HistoryMenuActions::redo, &HistoryMenuActions::canRedo>(redo_, menu_);
-                if (!first || !second)
-                    return;
-                undo_binding_ = std::move(*first);
-                redo_binding_ = std::move(*second);
-                valid_ = true;
             }
             ~SceneToolbar() noexcept override
             {
@@ -62,7 +38,7 @@ namespace lux::editor::ui
             }
             bool valid() const noexcept
             {
-                return valid_;
+                return true;
             }
             bool takeRestoreRequest() noexcept
             {
@@ -106,13 +82,10 @@ namespace lux::editor::ui
                 reset_gesture_.reset();
                 reset_failure_.reset();
             }
-            HistoryMenuActions menu_;
-            lux::ui::CommandRouter &commands_;
-            lux::ui::CommandHandle undo_, redo_;
-            lux::ui::CommandRegistration undo_binding_, redo_binding_;
-            bool valid_{};
-            void draw(lux::ui::Frame &frame, lux::ui::PaneDrawContext &) override
+            EditorWindow &window_;
+            void draw(lux::ui::Frame &frame, lux::ui::PaneDrawContext &context) override
             {
+                context.activateContext(lux::ui::UiContextIdView{id().name()});
                 if (close_prompt_)
                 {
                     frame.openPopup(lux::ui::WidgetIdView{"Discard scene changes?"});
@@ -166,28 +139,7 @@ namespace lux::editor::ui
                     }
                 }
                 table.nextColumn();
-                if (frame.smallButton("Window history") && menu_.capture())
-                    frame.openPopup(lux::ui::WidgetIdView{"window-history"});
-                {
-                    auto popup = frame.popup({lux::ui::WidgetIdView{"window-history"}, false});
-                    if (popup.visible())
-                    {
-                        frame.textMuted("History target is fixed when this menu opens");
-                        const auto item = [&](lux::ui::CommandHandle command, const char *label)
-                        {
-                            auto disabled = frame.disabled(!commands_.state(command).enabled);
-                            if (frame.smallButton(label))
-                            {
-                                static_cast<void>(commands_.invoke(command));
-                                popup.close();
-                            }
-                        };
-                        item(undo_, "Undo");
-                        item(redo_, "Redo");
-                    }
-                    else
-                        static_cast<void>(menu_.cancel());
-                }
+                static_cast<void>(window_.drawEditMenu());
                 table.nextColumn();
                 if (frame.smallButton("Restore panels / layout"))
                     restore_ = true;
@@ -268,7 +220,7 @@ namespace lux::editor::ui
             if (!impl->toolbar->valid())
                 return fail(EWindowError::UI_FAILURE);
             impl->registrations.reserve(5);
-            impl->commands.reserve(8);
+            impl->commands.reserve(10);
             auto &router = window.uiSession().commandRouter();
             const auto undo = router.findCommand(lux::ui::UiCommandIdView{"lux.edit.undo"});
             const auto redo = router.findCommand(lux::ui::UiCommandIdView{"lux.edit.redo"});
@@ -280,8 +232,6 @@ namespace lux::editor::ui
                 if (!registration)
                     return fail(EWindowError::UI_FAILURE);
                 impl->registrations.push_back(std::move(*registration));
-                if (pane == impl->toolbar.get())
-                    continue;
                 auto undo_binding = router.bind<&HistoryActions::undo, &HistoryActions::canUndo>(
                     *undo, lux::ui::UiContextId{pane->id().name()}, *pane, *impl->history);
                 if (!undo_binding)

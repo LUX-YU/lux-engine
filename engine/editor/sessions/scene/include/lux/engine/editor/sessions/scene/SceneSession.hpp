@@ -224,13 +224,8 @@ namespace lux::editor::sessions
         if (!value)
             return lux::cxx::unexpected(value.error());
         // The private type check and owner window finish before copying a supported generated value.
-        try
         {
             return *static_cast<const T *>(*value);
-        }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(SceneFailure{ESceneError::ALLOCATION_FAILURE, id()});
         }
     }
 } // namespace lux::editor::sessions

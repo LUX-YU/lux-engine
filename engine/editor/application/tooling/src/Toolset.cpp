@@ -97,14 +97,9 @@ namespace lux::editor::application
         {
             return ready;
         }
-        try
         {
             impl_->entries.push_back(Impl::Entry{type, value, destroy, request_stop});
             return {};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(EToolsetError::ALLOCATION_FAILURE, type));
         }
     }
 

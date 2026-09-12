@@ -241,12 +241,12 @@ SPIR-V 反射编译器的解析成本。
 
 ### Lux semantic error 不使用 C++ exception
 
-Runtime/domain public API 默认使用 `noexcept` 与 `expected`/结构化 error。Lux-owned production
-代码不得主动 `throw`，Hook/Event record、dispatch、drain 与 System/Task 执行热路径不得出现
-`try/catch`。STL 分配与第三方库异常只允许在 Builder、Codec、fallible factory、Toolchain
-compiler 或明确的 plugin/foreign containment boundary 捕获，并必须立即转换为 Lux error；
-不得让异常跨 DLL、System、Task、Script ABI 或 plugin boundary。不得为此全局启用
-`-fno-exceptions` 或 `/EHs-`。
+引擎以无异常处理为设计目标。Lux-owned production 代码不以 C++ exception 表达或处理失败，
+不新增 `throw`、`try/catch`、`bad_alloc` 分类、异常恢复或专门的终止处理器；生成代码遵守同一规则。
+正常业务失败使用 `expected` / 结构化返回值，保留容量预算、背压、值校验与显式资源错误。
+内存不足不做特殊处理。保留标准 allocator 契约，不用捕获后 `terminate` 模拟这条要求。
+存量异常处理属于待清理历史代码；本轮清理 Editor 正式代码和生成器，底层存量不据此声称已经全部清理。
+不通过全局异常编译开关代替源码清理或改写第三方依赖。
 
 ### 库不决定文字打到哪；宿主装配一次出口
 

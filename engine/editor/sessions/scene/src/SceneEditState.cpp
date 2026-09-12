@@ -100,16 +100,11 @@ namespace lux::editor::sessions::detail
             const auto reserved = budget.reserve(sizeof(Plan) + sizeof(SceneAuthorObject));
             if (!reserved)
                 return lux::cxx::unexpected(reserved.error());
-            try
             {
                 auto prepared = std::make_unique<SceneAuthorObject>(next);
                 editing::PreparedEditPtr plan =
                     std::make_unique<Plan>(state_, index_, std::move(prepared), !equal(expected, next));
                 return plan;
-            }
-            catch (const std::bad_alloc &)
-            {
-                return editFail(editing::EEditError::ALLOCATION_FAILURE);
             }
         }
     private:
@@ -125,7 +120,6 @@ namespace lux::editor::sessions::detail
         if (!input.source.scene || !input.source.metadata || input.objects.empty())
             return fail(ESceneError::INVALID_ARGUMENT, session);
         const auto &registry = input.source.scene->registry();
-        try
         {
             auto state = std::make_unique<SceneEditState>();
             state->session_ = session;
@@ -167,10 +161,6 @@ namespace lux::editor::sessions::detail
                 state->objects_.push_back(std::make_unique<SceneAuthorObject>(object));
             }
             return state;
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ESceneError::ALLOCATION_FAILURE, session);
         }
     }
     void SceneEditState::bind(editing::EditHistory &history, SceneSession &owner,
@@ -245,7 +235,6 @@ namespace lux::editor::sessions::detail
     {
         if (!matches(token) || gesture_->property != property)
             return fail(ESceneError::STALE_CONTENT, session_);
-        try
         {
             if (!gesture_->pending)
             {
@@ -255,10 +244,6 @@ namespace lux::editor::sessions::detail
                 gesture_->pending = std::make_unique<Operation>(*this, gesture_->index,
                     *objects_[gesture_->index], gesture_->preview, gesture_->property, view->snapshot.current);
             }
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ESceneError::ALLOCATION_FAILURE, session_);
         }
         const auto result = history_->execute(gesture_->pending);
         if (!result)
@@ -305,7 +290,6 @@ namespace lux::editor::sessions::detail
     {
         if (!projection_dirty_)
             return {};
-        try
         {
             for (std::size_t i = 0; i < objects_.size(); ++i)
             {
@@ -337,11 +321,6 @@ namespace lux::editor::sessions::detail
                     registry.patch<lux::simulation::ecs::Light3D>(value.entity,
                         [&](auto &component) { component = *value.light; });
             }
-        }
-        catch (const std::bad_alloc &)
-        {
-            projection_failure_ = SceneFailure{ESceneError::ALLOCATION_FAILURE, session_};
-            return lux::cxx::unexpected(*projection_failure_);
         }
         projection_failure_.reset();
         projection_dirty_ = false;

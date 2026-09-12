@@ -166,7 +166,6 @@ namespace lux::editor::rendering::detail
         }
         if (!renderer.controlAvailable())
             return {};
-        try
         {
             if (close_requested)
             {
@@ -263,10 +262,6 @@ namespace lux::editor::rendering::detail
             status.acknowledged_sequence = status.request_sequence;
             status.state = EViewState::READY;
             return {};
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ERendererError::ALLOCATION_FAILURE, status.view);
         }
     }
 } // namespace lux::editor::rendering::detail

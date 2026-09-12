@@ -27,7 +27,6 @@ namespace lux::editor::inspector
                 });
             }
         }
-        try
         {
             std::ranges::sort(bindings, {}, [](const ComponentEditorBinding& value) {
                 return value.component_type.hash();
@@ -65,14 +64,6 @@ namespace lux::editor::inspector
                 }
             }
             return ComponentEditorBindingTable{std::move(bindings)};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(ComponentEditorBindingFailure{
-                EComponentEditorBindingError::ALLOCATION_FAILURE,
-                {},
-                {}
-            });
         }
     }
 

@@ -128,7 +128,6 @@ namespace lux::editor::examples
 
     lux::cxx::expected<scene::SceneMetaManager, EDemoBuildError> buildDevelopmentSceneMeta() noexcept
     {
-        try
         {
             if (!lux::meta::ReflectionRegistry::initialized())
                 return lux::cxx::unexpected(EDemoBuildError::META_BUILD_FAILURE);
@@ -167,10 +166,6 @@ namespace lux::editor::examples
             }
             return std::move(*meta);
         }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(EDemoBuildError::ALLOCATION_FAILURE);
-        }
     }
 
     namespace
@@ -190,7 +185,6 @@ namespace lux::editor::examples
             std::shared_ptr<const lux::scene::SceneMetaManager> metadata, bool alternate,
             double coordinate_page_size = 1024.0, bool shared_shadows = false) noexcept
         {
-            try
             {
                 auto scene = buildDevelopmentScene(*metadata, renderer, coordinate_page_size, shared_shadows);
                 if (!scene)
@@ -254,10 +248,6 @@ namespace lux::editor::examples
                 input.labels.emplace(light_entity, "Key light");
                 return input;
             }
-            catch (const std::bad_alloc &)
-            {
-                return lux::cxx::unexpected(sessions::SceneFailure{sessions::ESceneError::ALLOCATION_FAILURE, id});
-            }
         }
     } // namespace
     sessions::SceneResult<sessions::SceneOpenInfo> openDevelopmentScene(
@@ -275,7 +265,6 @@ namespace lux::editor::examples
         auto scene = populate(id, std::move(dispatcher), renderer, std::move(assets), std::move(metadata), false);
         if (!scene)
             return lux::cxx::unexpected(scene.error());
-        try
         {
             sessions::SceneEditInput input;
             auto &registry = scene->scene->registry();
@@ -293,10 +282,6 @@ namespace lux::editor::examples
             scene->history_limits = {128, 1024 * 1024, 64 * 1024, 128};
             input.source = std::move(*scene);
             return input;
-        }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(sessions::SceneFailure{sessions::ESceneError::ALLOCATION_FAILURE, id});
         }
     }
     sessions::SceneResult<sessions::SceneOpenInfo> openSharedShadowScene(

@@ -90,27 +90,17 @@ namespace lux::editor::material_graph
 
     graph::NodeId MaterialGraphDocument::addNode(graph::NodeTypeId type)
     {
-        try
         {
             auto node = makeNode(nodeKind(type));
             return node ? graph_->addNode(std::move(node)) : graph::NodeId{};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return {};
         }
     }
 
     node_graph::NodeCapture MaterialGraphDocument::detachNode(graph::NodeId node)
     {
         std::shared_ptr<Capture> capture;
-        try
         {
             capture = std::make_shared<Capture>();
-        }
-        catch (const std::bad_alloc&)
-        {
-            return {};
         }
         const auto* layout_value = graph_->layout().find(node);
         auto detached = graph_->extractNode(node);

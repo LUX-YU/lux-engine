@@ -22,7 +22,6 @@
 #include <type_traits>
 #include "../../../rendering/test/ViewLifetimeTest.hpp"
 #if defined(LUX_EDITOR_DIAGNOSTICS)
-extern "C" __declspec(dllimport) std::size_t lux_er1_client_allocation_disarm() noexcept;
 extern "C" __declspec(dllimport) void lux_er1_function_ui_allocation_fail_after(std::size_t) noexcept;
 extern "C" __declspec(dllimport) std::size_t lux_er1_function_ui_allocation_disarm() noexcept;
 #endif
@@ -149,16 +148,15 @@ namespace
         }
     };
 #endif
-    class FailingPane final : public lux::object::Object<FailingPane, lux::ui::Pane>
+    class WindowContractPane final : public lux::object::Object<WindowContractPane, lux::ui::Pane>
     {
     public:
-        explicit FailingPane(ui::EditorWindow &window, std::string id = "test.foreign.failure")
+        explicit WindowContractPane(ui::EditorWindow &window, std::string id = "test.window.contract")
             : Object(window.uiSession().dispatcherRef(), lux::ui::PaneId{std::move(id)},
-                     lux::ui::PaneTypeId{"test.foreign.failure"}, "Foreign preparation failure"),
+                     lux::ui::PaneTypeId{"test.window.contract"}, "Window contract probe"),
               window_(window)
         {
         }
-        bool fail{true};
         std::size_t calls{};
 
     private:
@@ -169,9 +167,7 @@ namespace
             const auto closed = window_.closeAfterRendererStopped();
             require(!closed && closed.error().code == ui::EWindowError::BUSY, "draw-time close retains window owner");
             auto table = frame.table({lux::ui::WidgetIdView{"failure-scope"}, 2, false, false, false});
-            if (fail)
-                throw std::bad_alloc{};
-            frame.text("Recovered foreign pane");
+            frame.text("Draw-time close was rejected");
         }
     };
     struct Readback final
@@ -388,6 +384,12 @@ int main(int argc, char **argv)
     bool resolved_source_contract = true;
     bool shared_gpu_contract = true;
     bool shadow_order_contract = true;
+    if (variant == "factory_failure" || variant == "resource_snapshot" ||
+        variant == "resource_publication" || variant == "resource_ready_publication")
+    {
+        std::fputs("This allocation-recovery variant was retired with the no-exception policy.\n", stderr);
+        return 2;
+    }
     bool viewport_input_contract = true;
     bool preserve_gpu_contract = true;
     bool validation_contract = true;
@@ -406,10 +408,9 @@ int main(int argc, char **argv)
     const bool coordinate_test = variant == "coordinate_256" || variant == "coordinate_1024";
     const double page_size = variant == "coordinate_256" ? 256.0 : 1024.0;
     const Eigen::Vector3d coordinate_offset{256, -256, 1024};
-    const bool resource_snapshot_test = variant == "resource_snapshot";
-    const bool resource_ready_test = variant == "resource_ready_publication";
+    const bool resource_ready_test = variant == "resource_ready_progress";
     const bool resource_publication_test =
-        variant == "resource_publication" || resource_snapshot_test || resource_ready_test;
+        variant == "resource_state_progress" || resource_ready_test;
     std::uint64_t prepared_cycles{};
     const bool editing_test = variant == "editing";
     const bool retry_test = variant == "retry";
@@ -492,41 +493,6 @@ int main(int argc, char **argv)
             std::fprintf(stderr, "Vulkan severity=%u %.*s\n", severity, int(text.size()), text.data());
         };
 #if defined(LUX_EDITOR_DIAGNOSTICS)
-        if (variant == "factory_failure")
-        {
-            std::size_t failures{};
-            for (std::size_t index = 0; index < 512; ++index)
-            {
-                lux_er1_renderer_allocation_fail_after(index);
-                auto attempted = rendering::EditorRenderer::create(window->nativeWindow(), window->uiSession(), config);
-                const auto allocations = lux_er1_renderer_allocation_disarm();
-                if (attempted)
-                {
-                    require(allocations == index, "renderer factory actual allocation count");
-                    require((*attempted)->beginClose(), "empty renderer begins close");
-                    bool complete{};
-                    const auto close_deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
-                    while (!complete && std::chrono::steady_clock::now() < close_deadline)
-                    {
-                        const auto closed = (*attempted)->advanceClose();
-                        require(closed, "empty renderer close progresses");
-                        complete = *closed == rendering::ERenderClose::COMPLETE;
-                        if (!complete)
-                            std::this_thread::sleep_for(std::chrono::milliseconds{1});
-                    }
-                    require(complete && (*attempted)->joinStopped(), "empty renderer actually joined");
-                    break;
-                }
-                ++failures;
-                require(allocations == index + 1 &&
-                            attempted.error().code == rendering::ERendererError::ALLOCATION_FAILURE,
-                        "actual renderer factory allocation failure preserved");
-            }
-            require(failures > 12 && failures < 512, "renderer allocation sweep reached successful construction");
-            std::printf("Renderer factory actual DLL allocation failures checked: %zu\n", failures);
-        }
-#endif
-#if defined(LUX_EDITOR_DIAGNOSTICS)
         if (variant == "ui_atlas_failure")
         {
             auto *const original_ui = &window->uiSession();
@@ -565,27 +531,11 @@ int main(int argc, char **argv)
                 }
                 view.reset();
             };
-            std::size_t failures{};
-            for (std::size_t index = 0; index < 16; ++index)
-            {
-                const auto before = renderer->statistics();
-                lux_er1_renderer_allocation_fail_after(index);
-                auto attempted = renderer->openView({1000, 9}, {{0, 0}, true});
-                const auto allocations = lux_er1_renderer_allocation_disarm();
-                if (attempted)
-                {
-                    require(allocations == index && renderer->statistics().views == before.views + 1,
-                            "C06 View factory sweeps every actual DLL allocation through successful admission");
-                    close(*attempted);
-                    break;
-                }
-                ++failures;
-                require(attempted.error().code == rendering::ERendererError::ALLOCATION_FAILURE &&
-                            allocations == index + 1 && renderer->statistics().views == before.views &&
-                            renderer->statistics().render_events == before.render_events,
-                        "C06 failed View factory releases partial ownership before any request is published");
-            }
-            require(failures == 4, "C06 Impl/owner/resources/image-version actual allocation coverage");
+            const auto before = renderer->statistics();
+            auto admitted = renderer->openView({1000, 9}, {{0, 0}, true});
+            require(admitted && renderer->statistics().views == before.views + 1,
+                    "C06 View factory admits and owns one view");
+            close(*admitted);
             std::vector<std::unique_ptr<rendering::RenderView>> owners;
             owners.reserve(config.view_capacity);
             for (std::size_t index = 0; index < config.view_capacity; ++index)
@@ -609,7 +559,7 @@ int main(int argc, char **argv)
                 close(owner);
             require(renderer->statistics().views == 0 && renderer->statistics().render_events == 0,
                     "C06 capacity/factory failure leaves no View or backend error");
-            std::printf("C06 PASS factory_allocations=%zu capacity=%zu full_allocations=0 closed_views=0\n", failures,
+            std::printf("C06 PASS capacity=%zu full_allocations=0 closed_views=0\n",
                         config.view_capacity);
         }
 #endif
@@ -714,19 +664,14 @@ int main(int argc, char **argv)
                 "Actual view failures retained; diagnostic capacity=1, failures=2, dropped=1, both owners closed");
         }
         {
-            FailingPane pane(*window);
+            WindowContractPane pane(*window);
             auto registration = window->uiSession().registerPane(pane);
             require(registration, "foreign pane registration");
             const lux::ui::FrameInfo frame{{1600, 900}, 1.0F / 60.0F, {1, 1}};
-            require(window->beginFrame(frame), "foreign failure frame begins");
-            const auto failed = window->drawPanes();
-            require(!failed && failed.error().code == ui::EWindowError::ALLOCATION_FAILURE,
-                    "foreign preparation error is contained");
-            require(!window->frameOpen() && pane.calls == 1, "failed frame is discarded with scopes balanced");
-            pane.fail = false;
-            require(window->beginFrame(frame) && window->drawPanes(), "same window and pane retry after failure");
+            require(window->beginFrame(frame) && window->drawPanes(), "window contract frame draws");
             auto snapshot = window->finishFrame();
-            require(snapshot && snapshot->valid() && pane.calls == 2, "retry produces a valid owning snapshot");
+            require(snapshot && snapshot->valid() && pane.calls == 1,
+                    "reentrant close rejection preserves window and owning snapshot");
             registration->reset();
         }
         auto metadata = examples::buildDevelopmentSceneMeta();
@@ -1061,24 +1006,16 @@ int main(int argc, char **argv)
             }
             if (resource_ready_test)
                 sessions::detail::SceneTestAccess::holdResourceAdoption(false);
-            if (resource_snapshot_test)
-                lux_er1_scene_allocation_fail_after(0);
-            else
-                sessions::detail::SceneTestAccess::failNextShaderPreparation();
             const auto notices_before = observer.calls;
-            const auto failed = session->updateAtOwnerSafePoint({++prepared_cycles, 0});
-            const auto allocations =
-                resource_snapshot_test ? lux_er1_scene_allocation_disarm() : lux_er1_client_allocation_disarm();
-            require(!failed && failed.error().code == sessions::ESceneError::ALLOCATION_FAILURE &&
-                        failed.error().session == session->id() && allocations == 1,
-                    "G02 exact real client shader preparation allocation failure contained by Scene owner");
-            require(observer.calls == notices_before, "G02 failed preparation cannot notify an unpublished snapshot");
+            require(session->updateAtOwnerSafePoint({++prepared_cycles, 0}),
+                    "resource progress accepts actual completed reads and resource replies");
+            require(observer.calls == notices_before + 1, "resource transition publishes once");
             const auto actual = sessions::detail::SceneTestAccess::resourceOwnerSnapshot(*session);
             require(actual, "G02 observe retained owner without mutating it");
             require(session->updateAtOwnerSafePoint({prepared_cycles, 0}),
-                    "G02 retry same owner cycle without backend reply pump");
+                    "repeating the owner cycle does not publish twice");
             const auto published = session->readResources();
-            require(published, "G02 read retry snapshot");
+            require(published, "read published resource snapshot");
             bool found_failure{};
             for (std::size_t index = 0; index < (*actual)->rows.size(); ++index)
             {
@@ -1102,20 +1039,20 @@ int main(int argc, char **argv)
                             unsigned(row.state), unsigned(visible.state), row.key.sequence, (*initial)->revision,
                             (*published)->revision);
             }
-            require(found_failure, "G02 required failure or READY transition occurred before preparation OOM");
+            require(found_failure, "required provider failure or READY transition actually occurred");
             resource_publication_contract &= (*published)->revision > (*initial)->revision;
             resource_publication_contract &= observer.calls == notices_before + 1;
             const auto owner_after_retry = sessions::detail::SceneTestAccess::resourceOwnerSnapshot(*session);
             require(owner_after_retry && (*owner_after_retry)->rows.size() == (*actual)->rows.size(),
-                    "G02 retry retains every original request owner");
+                    "repeating the owner cycle retains every original request owner");
             for (std::size_t index = 0; index < (*actual)->rows.size(); ++index)
                 require((*owner_after_retry)->rows[index].key == (*actual)->rows[index].key &&
                             (*owner_after_retry)->rows[index].state == (*actual)->rows[index].state,
-                        "G02 retry publishes pending changes without a new row transition");
+                        "repeating the owner cycle does not change resource states");
             require(session->updateAtOwnerSafePoint({++prepared_cycles, 0}), "G02 static owner cycle");
             resource_publication_contract &=
                 session->readResources()->get() == published->get() && observer.calls == notices_before + 1;
-            std::printf("G02 allocation_attempts=%zu publication_preserved=%u views=%zu leases=%zu\n", allocations,
+            std::printf("resource progress publication_consistent=%u views=%zu leases=%zu\n",
                         unsigned(resource_publication_contract), renderer->statistics().views,
                         renderer->statistics().runtime_leases);
             std::fflush(stdout);
@@ -1257,7 +1194,7 @@ int main(int argc, char **argv)
             auto second_view = sessions::SceneView::create(messages.dispatcherRef(), *session, *renderer);
             require(second_view, "second view of the same authoritative Session");
             {
-                FailingPane conflict(*window, "lux.scene.workspace.2.toolbar");
+                WindowContractPane conflict(*window, "lux.scene.workspace.2.toolbar");
                 auto conflict_registration = window->uiSession().registerPane(conflict);
                 require(conflict_registration, "reserve final pane identity to force factory rollback");
                 auto rejected = ui::SceneWorkspace::create(*window, {2}, *session, *second_view);
@@ -1625,44 +1562,6 @@ int main(int argc, char **argv)
                             camera_record->wire_camera.view_matrix[13] == 0 &&
                             camera_record->wire_camera.view_matrix[14] == 0,
                         "rotation-only view matches the existing CPU/GPU camera protocol");
-#if defined(LUX_EDITOR_DIAGNOSTICS)
-                if (variant == "factory_failure")
-                {
-                    const auto accepted_before = renderer->statistics().accepted_frames;
-                    const std::vector tokens(snapshot->textures().begin(), snapshot->textures().end());
-                    std::vector<long> image_references;
-                    for (const auto &image : images)
-                        image_references.push_back(rendering::detail::ViewImageAccess::references(image));
-                    std::size_t failures{};
-                    for (std::size_t index = 0; index < 128; ++index)
-                    {
-                        std::fprintf(stderr, "seal allocation index=%zu\n", index);
-                        lux_er1_renderer_allocation_fail_after(index);
-                        auto attempted = renderer->sealFrame(*snapshot, images);
-                        const auto allocations = lux_er1_renderer_allocation_disarm();
-                        if (attempted)
-                        {
-                            require(allocations == index && !snapshot->valid(), "seal allocation sweep reached commit");
-                            break;
-                        }
-                        ++failures;
-                        require(allocations == index + 1 &&
-                                    attempted.error().code == rendering::ERendererError::ALLOCATION_FAILURE,
-                                "actual DLL seal allocation failed");
-                        require(snapshot->valid() && std::ranges::equal(snapshot->textures(), tokens) &&
-                                    renderer->statistics().accepted_frames == accepted_before,
-                                "failed seal retains original snapshot and performs no admission");
-                        for (std::size_t i = 0; i < images.size(); ++i)
-                            require(rendering::detail::ViewImageAccess::references(images[i]) == image_references[i],
-                                    "each failed seal returns every temporarily acquired image reference");
-                    }
-                    require(failures > 2 && failures < 128, "all actual seal allocation points retried");
-                    std::printf("Frame seal actual DLL allocation failures checked: %zu\n", failures);
-                    auto recaptured = window->uiSession().captureFrame();
-                    require(recaptured, "recapture completed frame after allocation test without input replay");
-                    *snapshot = std::move(*recaptured);
-                }
-#endif
                 auto forged = images.front();
                 ++forged.view.generation;
                 auto rejected = renderer->sealFrame(*snapshot, {&forged, 1});
@@ -2113,21 +2012,7 @@ int main(int argc, char **argv)
                     {
                         held_close_snapshot = *status;
                         examples::reportShutdown(**status);
-#if defined(LUX_EDITOR_DIAGNOSTICS)
-                        for (std::size_t allocation = 0; allocation != 2; ++allocation)
-                        {
-                            lux_er1_scene_allocation_fail_after(allocation);
-                            const auto failed = session->closeStatus();
-                            const auto attempts = lux_er1_scene_allocation_disarm();
-                            require(!failed && failed.error().code == sessions::ESceneError::ALLOCATION_FAILURE &&
-                                        attempts == allocation + 1 &&
-                                        session->state() == sessions::ESessionState::CLOSING &&
-                                        provider->returned.load() == 0,
-                                    "close diagnostic allocation failure retains owner and pending operation");
-                            std::printf("close snapshot allocation index=%zu attempts=%zu exact error retained; "
-                                        "Session CLOSING and provider pending\n", allocation, attempts);
-                        }
-#endif
+
                     }
                     if (++held_close_steps == 32)
                         provider->release();

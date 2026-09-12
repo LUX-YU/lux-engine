@@ -48,15 +48,10 @@ namespace lux::editor::ui
                 if (readers[i].canonical_schema == readers[j].canonical_schema || readers[i].type == readers[j].type)
                     return lux::cxx::unexpected(WindowFailure{EWindowError::INVALID_ARGUMENT});
         }
-        try
         {
             std::vector<ComponentReadBinding> prepared(readers.begin(), readers.end());
             impl_->readers.swap(prepared);
             return {};
-        }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(WindowFailure{EWindowError::ALLOCATION_FAILURE});
         }
     }
     void SceneInspector::draw(lux::ui::Frame &frame, lux::ui::PaneDrawContext &context)

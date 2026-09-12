@@ -82,20 +82,7 @@ namespace lux::editor::application
                 return lux::cxx::unexpected(ready.error());
             }
 
-            Tool* tool{};
-            try
-            {
-                tool = new Tool(std::forward<Args>(args)...);
-            }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(failure(EToolsetError::ALLOCATION_FAILURE, type));
-            }
-            catch (...)
-            {
-                // Tool construction is an explicit plugin/factory containment boundary.
-                return lux::cxx::unexpected(failure(EToolsetError::CONSTRUCTION_FAILURE, type));
-            }
+            auto* tool = new Tool(std::forward<Args>(args)...);
 
             const auto destroy = [](void* value) noexcept { delete static_cast<Tool*>(value); };
             RequestStopFn request_stop{};

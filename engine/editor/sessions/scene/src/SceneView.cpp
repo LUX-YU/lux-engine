@@ -59,7 +59,6 @@ namespace lux::editor::sessions
     {
         if (!dispatcher || !dispatcher.isCurrent() || !session.dispatcherRef().isCurrent())
             return fail(ESceneError::WRONG_THREAD);
-        try
         {
             auto impl = std::make_unique<Impl>();
             impl->session = &session;
@@ -77,10 +76,6 @@ namespace lux::editor::sessions
             owner->impl_->view = std::move(*view);
             owner->impl_->closed = false;
             return owner;
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ESceneError::ALLOCATION_FAILURE, session.id());
         }
     }
     SceneResult<void> SceneView::synchronize() noexcept

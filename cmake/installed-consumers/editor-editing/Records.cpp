@@ -89,7 +89,6 @@ namespace consumer::records
             {
                 return lux::cxx::unexpected(reserved.error());
             }
-            try
             {
                 std::vector<Record> records;
                 if (!forward)
@@ -100,10 +99,7 @@ namespace consumer::records
                     new Plan(model_, std::move(records), forward ? std::nullopt : std::optional<int>(7))
                 );
             }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(makeEditFailure(EEditError::ALLOCATION_FAILURE));
-            }
+
         }
     };
 } // namespace consumer::records

@@ -41,17 +41,12 @@ namespace lux::editor::rendering
         if (const auto replacement = std::exchange(next_test_scene, std::nullopt))
             scene = *replacement;
 #endif
-        try
         {
             auto impl = std::make_unique<Impl>();
             // Allocate the owner before the stateful resource record; no request is sent from this factory.
             auto result = std::unique_ptr<RenderView>(new RenderView(std::move(impl)));
             result->impl_->resources = std::make_unique<detail::ViewResources>(renderer, control, id, scene, config);
             return result;
-        }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(RendererFailure{ERendererError::ALLOCATION_FAILURE, {}, id});
         }
     }
     RenderViewId RenderView::id() const noexcept
@@ -122,7 +117,6 @@ namespace lux::editor::rendering
             return lux::cxx::unexpected(*state.status.failure);
         if (state.status.state != EViewState::READY || !state.camera_valid)
             return lux::cxx::unexpected(RendererFailure{ERendererError::NOT_READY, {}, id()});
-        try
         {
             auto record = std::make_shared<ViewImageLease::Record>();
             record->version = state.version;
@@ -147,10 +141,6 @@ namespace lux::editor::rendering
             ViewImage image{state.version->texture, state.version->extent, id(), record->content, {}};
             image.lease.record_ = std::move(record);
             return image;
-        }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(RendererFailure{ERendererError::ALLOCATION_FAILURE, {}, id()});
         }
     }
     RenderResult<void> RenderView::pollResources() noexcept

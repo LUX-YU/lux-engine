@@ -107,7 +107,6 @@ namespace lux::editor::sessions
         }
         SceneResult<SceneOutlineRef> prepareOutline(const lux::scene::Scene &source) const noexcept
         {
-            try
             {
                 auto next = std::make_shared<SceneOutlineSnapshot>();
                 next->stamp = stamp;
@@ -136,10 +135,6 @@ namespace lux::editor::sessions
                     return entt::to_integral(a.target.entity) < entt::to_integral(b.target.entity);
                 });
                 return next;
-            }
-            catch (const std::bad_alloc &)
-            {
-                return fail(ESceneError::ALLOCATION_FAILURE, identity);
             }
         }
         SceneResult<void> entityCheck(SceneEntityRef target) const noexcept
@@ -180,7 +175,6 @@ namespace lux::editor::sessions
             return fail(ESceneError::INVALID_ARGUMENT, input.id);
         if (input.initial_selection && !input.scene->registry().valid(*input.initial_selection))
             return fail(ESceneError::STALE_ENTITY, input.id);
-        try
         {
             // A pre-resolved handle is meaningful only for the exact authoritative Mesh3D sources.
             // Reject before taking the caller's Scene or acquiring this Session's renderer lease.
@@ -242,10 +236,6 @@ namespace lux::editor::sessions
             owner->impl_->state = ESessionState::READY;
             owner->impl_->read_window = true;
             return owner;
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ESceneError::ALLOCATION_FAILURE, input.id);
         }
     }
     SceneResult<std::unique_ptr<SceneSession>> SceneSession::openEditing(SceneEditInput &input) noexcept
@@ -408,7 +398,6 @@ namespace lux::editor::sessions
     {
         if (auto result = impl_->entityCheck(target); !result)
             return lux::cxx::unexpected(result.error());
-        try
         {
             SceneReadData result;
             result.target = target;
@@ -440,10 +429,6 @@ namespace lux::editor::sessions
                     result.components.push_back({schema.id.name, schema.version, schema.id.name, true, editable});
                 }
             return result;
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ESceneError::ALLOCATION_FAILURE, id());
         }
     }
     SceneResult<void> SceneSession::select(std::optional<SceneEntityRef> target) noexcept
@@ -489,7 +474,6 @@ namespace lux::editor::sessions
             return fail(ESceneError::BUSY, id());
         if (impl_->resources)
             return impl_->resources->closeSnapshot(impl_->state, impl_->view_count, bool(impl_->scene));
-        try
         {
             auto result = std::make_shared<SceneCloseSnapshot>();
             result->session = id();
@@ -497,10 +481,6 @@ namespace lux::editor::sessions
             result->views = impl_->view_count;
             result->scene_present = bool(impl_->scene);
             return result;
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ESceneError::ALLOCATION_FAILURE, id());
         }
     }
     SceneResult<void> SceneSession::retryResources(const ResourceRequestKey &key) noexcept
@@ -520,13 +500,8 @@ namespace lux::editor::sessions
         if (auto result = impl_->check(); !result)
             return lux::cxx::unexpected(result.error());
         Gate gate{impl_->busy};
-        try
         {
             return impl_->asset_catalog.pathOf(asset);
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ESceneError::ALLOCATION_FAILURE, id());
         }
     }
     editing::HistoryId SceneSession::historyId() const noexcept
@@ -779,7 +754,6 @@ namespace lux::editor::sessions
         if (!author) return lux::cxx::unexpected(author.error());
         if (!author->transform) return fail(ESceneError::UNSUPPORTED_EDIT, session.id());
         Gate gate{state.busy};
-        try
         {
             auto &registry = state.scene->registry();
             if (present)
@@ -787,10 +761,6 @@ namespace lux::editor::sessions
             else
                 registry.remove<lux::simulation::ecs::Transform3D>(author->entity);
             return {};
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ESceneError::ALLOCATION_FAILURE, session.id());
         }
     }
     SceneResult<detail::ResourceAccounting>

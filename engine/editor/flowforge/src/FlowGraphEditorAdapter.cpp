@@ -72,7 +72,6 @@ namespace lux::editor::flow_graph
 
     graph::NodeId FlowGraphDocument::addNode(graph::NodeTypeId type)
     {
-        try
         {
             auto node = makeNode(nodeOperation(type));
             if (!node)
@@ -80,10 +79,6 @@ namespace lux::editor::flow_graph
             auto* raw = node.get();
             const auto index = graph_->addNodes(std::move(node));
             return index == (std::numeric_limits<std::size_t>::max)() ? graph::NodeId{} : raw->id();
-        }
-        catch (const std::bad_alloc&)
-        {
-            return {};
         }
     }
 
@@ -93,13 +88,8 @@ namespace lux::editor::flow_graph
         if (storage == nullptr)
             return {};
         std::shared_ptr<Capture> capture;
-        try
         {
             capture = std::make_shared<Capture>();
-        }
-        catch (const std::bad_alloc&)
-        {
-            return {};
         }
         capture->index = storage->index;
         if (const auto* layout_value = graph_->layout().find(node))
@@ -144,7 +134,6 @@ namespace lux::editor::flow_graph
         if (is_remove && graph_->topology().linkCount(sequence.execOutPins().back()->id()) != 0U)
             return std::nullopt;
 
-        try
         {
             auto before = std::make_shared<SequenceActionState>();
             before->outputs.reserve(current);
@@ -166,10 +155,6 @@ namespace lux::editor::flow_graph
             }
             return node_graph::NodeActionJournal{std::move(before), std::move(after)};
         }
-        catch (const std::bad_alloc&)
-        {
-            return std::nullopt;
-        }
     }
 
     bool FlowGraphDocument::restoreNodeAction(graph::NodeId node, node_graph::NodeCapture state)
@@ -184,7 +169,6 @@ namespace lux::editor::flow_graph
         for (std::size_t index{}; index < prefix_count; ++index)
             if (sequence.execOutPins()[index]->id() != target->outputs[index])
                 return false;
-        try
         {
             if (target->outputs.size() == current)
                 return true;
@@ -201,10 +185,6 @@ namespace lux::editor::flow_graph
                 static_cast<void>(sequence.removeExecOutPin());
                 return true;
             }
-            return false;
-        }
-        catch (const std::bad_alloc&)
-        {
             return false;
         }
     }

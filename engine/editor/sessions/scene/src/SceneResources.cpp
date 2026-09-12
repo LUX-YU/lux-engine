@@ -4,7 +4,6 @@
 #if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
 #include <lux/engine/editor/sessions/scene/detail/SceneTestAccess.hpp>
 #include <lux/engine/editor/rendering/detail/RendererTestAccess.hpp>
-extern "C" __declspec(dllimport) void lux_er1_client_allocation_fail_after(std::size_t) noexcept;
 #endif
 
 namespace lux::editor::sessions::detail
@@ -12,7 +11,6 @@ namespace lux::editor::sessions::detail
     namespace
     {
 #if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
-        thread_local bool fail_shader_preparation{};
         thread_local bool hold_resource_adoption{};
         thread_local bool fail_shader_info_after_mesh{};
         thread_local std::optional<ResourceRequestKey> failed_shader_key;
@@ -41,7 +39,7 @@ namespace lux::editor::sessions::detail
             }
             ~RowChange() noexcept
             {
-                // State can change before a later preparation allocation throws.
+                // State can change before a later preparation step returns an error.
                 pending |= row.state != before;
             }
         };
@@ -81,10 +79,6 @@ namespace lux::editor::sessions::detail
         if (reset)
             backpressure = {};
         return result;
-    }
-    void SceneTestAccess::failNextShaderPreparation() noexcept
-    {
-        fail_shader_preparation = true;
     }
     void SceneTestAccess::holdResourceAdoption(bool held) noexcept
     {
@@ -222,8 +216,6 @@ namespace lux::editor::sessions::detail
                 failed_shader_key = row.key;
                 info.assign(1, std::byte{0xff});
             }
-            if (std::exchange(fail_shader_preparation, false))
-                lux_er1_client_allocation_fail_after(0);
 #endif
             forward_request =
                 runtime.control().compileShader(std::as_bytes(std::span{material_data.forward_spirv}), info);
@@ -397,7 +389,6 @@ namespace lux::editor::sessions::detail
         if (!renderer_)
             return false;
         auto &changed = pending_change_;
-        try
         {
             // Retire obsolete identities before admitting replacements. Snapshots own their rows;
             // erasing an entirely released request cannot invalidate an observer's saved failure/key.
@@ -501,10 +492,6 @@ namespace lux::editor::sessions::detail
                 return lux::cxx::unexpected(prepared.error());
             return changed;
         }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ESceneError::ALLOCATION_FAILURE, session_);
-        }
     }
     void SceneResources::acknowledgeSnapshot() noexcept
     {
@@ -520,7 +507,6 @@ namespace lux::editor::sessions::detail
         };
         if (std::none_of(requests_.begin(), requests_.end(), needs_marker))
             return {};
-        try
         {
             auto consumed = std::make_shared<std::atomic<bool>>(false);
             lux::render::RenderProgram<> prepared;
@@ -534,10 +520,6 @@ namespace lux::editor::sessions::detail
                 if (needs_marker(request))
                     request->retired_program_consumed = consumed;
             return {};
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ESceneError::ALLOCATION_FAILURE, session_);
         }
     }
     void SceneResources::afterPresentation(bool source_update_pending) noexcept
@@ -585,7 +567,6 @@ namespace lux::editor::sessions::detail
             return fail(ESceneError::BUSY, session_);
         if (sequence_ == (std::numeric_limits<std::uint64_t>::max)())
             return fail(ESceneError::RESOURCE_FAILURE, session_);
-        try
         {
             const auto association = current_requests_.find(key.target.entity);
             if (association == current_requests_.end() || association->second != found->get())
@@ -600,15 +581,10 @@ namespace lux::editor::sessions::detail
             pending_change_ = true;
             return {};
         }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ESceneError::ALLOCATION_FAILURE, session_);
-        }
     }
     SceneResult<std::shared_ptr<const SceneResourceSnapshot>> SceneResources::snapshot(
         std::uint64_t revision) const noexcept
     {
-        try
         {
             auto result = std::make_shared<SceneResourceSnapshot>();
             result->session = session_;
@@ -618,15 +594,10 @@ namespace lux::editor::sessions::detail
                 result->rows.push_back(request->row);
             return result;
         }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ESceneError::ALLOCATION_FAILURE, session_);
-        }
     }
     SceneResult<std::shared_ptr<const SceneCloseSnapshot>> SceneResources::closeSnapshot(
         ESessionState state, std::size_t views, bool scene_present) const noexcept
     {
-        try
         {
             auto result = std::make_shared<SceneCloseSnapshot>();
             result->session = session_;
@@ -654,10 +625,6 @@ namespace lux::editor::sessions::detail
             }
             return result;
         }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ESceneError::ALLOCATION_FAILURE, session_);
-        }
     }
     SceneResult<void> SceneResources::beginClose() noexcept
     {
@@ -676,7 +643,6 @@ namespace lux::editor::sessions::detail
         if (auto prepared = prepareRetirement(true); !prepared)
             return lux::cxx::unexpected(prepared.error());
         afterPresentation(false);
-        try
         {
             for (auto &request : requests_)
             {
@@ -693,10 +659,6 @@ namespace lux::editor::sessions::detail
             runtime_ = {};
             closed_ = true;
             return true;
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ESceneError::ALLOCATION_FAILURE, session_);
         }
     }
 } // namespace lux::editor::sessions::detail

@@ -40,14 +40,9 @@ namespace lux::editor::inspector
             {
                 return false;
             }
-            try
             {
                 active_ = std::make_unique<Operation<Component, Value>>(target, field, before, apply);
                 return true;
-            }
-            catch (const std::bad_alloc&)
-            {
-                return false;
             }
         }
 
@@ -64,18 +59,12 @@ namespace lux::editor::inspector
                 return false;
             }
             auto* operation = static_cast<Operation<Component, Value>*>(active_.get());
-            try
             {
                 operation->after = after;
                 undo_.reserve(undo_.size() + 1U);
                 undo_.push_back(std::move(active_));
                 redo_.clear();
                 return true;
-            }
-            catch (const std::bad_alloc&)
-            {
-                active_.reset();
-                return false;
             }
         }
 

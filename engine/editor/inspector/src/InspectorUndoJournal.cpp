@@ -26,13 +26,8 @@ namespace lux::editor::inspector
     {
         if (poisoned_ || active_ != nullptr || from.empty())
             return false;
-        try
         {
             to.reserve(to.size() + 1U);
-        }
-        catch (const std::bad_alloc&)
-        {
-            return false;
         }
         if (!from.back()->apply(context, use_after))
         {

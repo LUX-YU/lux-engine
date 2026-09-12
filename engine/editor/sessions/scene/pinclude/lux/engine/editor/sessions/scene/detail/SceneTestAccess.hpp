@@ -38,7 +38,6 @@ namespace lux::editor::sessions::detail
         static void rejectMaterialAfterSiblingUploads() noexcept;
         static std::optional<ResourceRequestKey> rejectedMaterialKey() noexcept;
         static std::size_t liveResourceHandles(const SceneSession &, const ResourceRequestKey &) noexcept;
-        static void failNextShaderPreparation() noexcept;
         static SceneResult<std::shared_ptr<const SceneResourceSnapshot>>
         resourceOwnerSnapshot(const SceneSession &) noexcept;
     };

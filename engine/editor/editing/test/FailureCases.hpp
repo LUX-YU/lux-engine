@@ -18,44 +18,9 @@ namespace lux::editor::editing::test
                 rejected(s, p, EEditError::PRECONDITION_FAILED);
             }
         );
-        check(
-            "F02",
-            []
-            {
-                for (std::size_t point = 1; point <= 2U; ++point)
-                {
-                    RecordSession s;
-                    execute(s, s.patch(1, {}, 2));
-                    assert(s.select(1));
-                    auto p = s.patch(1, 2, {});
-                    s.allocation_index = 0U;
-                    s.fail_allocation = point;
-                    rejected(s, p, EEditError::ALLOCATION_FAILURE);
-                    assert(s.allocation_index == point && s.stats.plans == s.stats.plans_destroyed);
-                    s.fail_allocation = 0U;
-                    assert(s.history->execute(p) && !p && s.records().empty());
-                }
-            }
-        );
+        // F02 OOM recovery requirement was withdrawn; no exception handling or death handler is installed.
 #if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
-        check(
-            "F03",
-            []
-            {
-                TextSession s;
-                branch(s);
-                auto p = s.replace(0U, "B", "D");
-                static_cast<Operation*>(p.get())->title.assign(128U, 'L');
-                static_cast<Operation*>(p.get())->charge += 256U;
-                allocation_call = 0U;
-                fail_call = 1U;
-                detail::editDiagnostics().allocation = allocationProbe;
-                rejected(s, p, EEditError::ALLOCATION_FAILURE);
-                assert(allocation_call == 1U);
-                detail::editDiagnostics() = {};
-                assert(s.history->execute(p));
-            }
-        );
+        // F03 OOM recovery requirement was withdrawn; no exception handling or death handler is installed.
 #endif
         check(
             "F04",
@@ -105,35 +70,8 @@ namespace lux::editor::editing::test
                 rejected(s, p, EEditError::CONTRACT_VIOLATION);
             }
         );
-        check(
-            "F07",
-            []
-            {
-                TextSession s;
-                auto p = s.replace(0U, "alpha", "B");
-                const auto* operation = static_cast<Operation*>(p.get());
-                assert(s.history->execute(p));
-                s.fail_allocation = s.allocation_index + 1U;
-                replayFailure(s, [&] { return s.history->undo(); }, EEditError::ALLOCATION_FAILURE, operation);
-                s.fail_allocation = 0U;
-                assert(s.history->undo() && s.text() == "alpha");
-            }
-        );
-        check(
-            "F08",
-            []
-            {
-                TextSession s;
-                change(s, "B");
-                auto p = s.replace(0U, "B", "C");
-                const auto* operation = static_cast<Operation*>(p.get());
-                assert(s.history->execute(p) && s.history->undo());
-                s.fail_allocation = s.allocation_index + 2U;
-                replayFailure(s, [&] { return s.history->redo(); }, EEditError::ALLOCATION_FAILURE, operation);
-                s.fail_allocation = 0U;
-                assert(s.history->redo() && s.text() == "C");
-            }
-        );
+        // F07 OOM recovery requirement was withdrawn; no exception handling or death handler is installed.
+        // F08 OOM recovery requirement was withdrawn; no exception handling or death handler is installed.
         check(
             "F09",
             []

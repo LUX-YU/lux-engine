@@ -100,28 +100,20 @@ namespace lux::editor::ui
             else return container.key_eq()(first, second);
         }
         template<class Container, class Mutation>
-        bool prepareContainer(Container &value, InspectorInteraction &state, Mutation mutation)
+        bool prepareContainer(Container &value, InspectorInteraction &state, Mutation mutation) noexcept
         {
-            try
+            Container prepared(value);
+            if (!mutation(prepared))
             {
-                Container prepared(value);
-                if (!mutation(prepared))
-                {
-                    state.fail("The container change is invalid or duplicates an existing key.");
-                    return false;
-                }
-                static_assert(std::is_nothrow_swappable_v<Container>);
-                using std::swap;
-                swap(value, prepared);
-                // Scratch may own the container being edited (for example an insertion key).
-                // Its lifetime ends with the Pane interaction, never inside this mutation.
-                return true;
-            }
-            catch (const std::bad_alloc &)
-            {
-                state.fail("Not enough memory to prepare the container change.");
+                state.fail("The container change is invalid or duplicates an existing key.");
                 return false;
             }
+            static_assert(std::is_nothrow_swappable_v<Container>);
+            using std::swap;
+            swap(value, prepared);
+            // Scratch may own the container being edited (for example an insertion key).
+            // Its lifetime ends with the Pane interaction, never inside this mutation.
+            return true;
         }
     } // namespace generated_support
 } // namespace lux::editor::ui

@@ -99,29 +99,6 @@ int main()
         const auto obsolete = sessions::SceneSession::openEditing(obsolete_input);
         assert(!obsolete && obsolete.error().code == sessions::ESceneError::UNSUPPORTED_EDIT);
         assert(obsolete_input.source.scene.get() == obsolete_owner && obsolete_input.objects.size() == 1);
-#if defined(LUX_EDITOR_DIAGNOSTICS)
-        auto failed_input = source(queue.dispatcherRef(), 9);
-        const auto original_scene = failed_input.source.scene.get();
-        std::size_t factory_points{};
-        for (; factory_points < 128; ++factory_points)
-        {
-            lux_er1_scene_allocation_fail_after(factory_points);
-            auto attempt = sessions::SceneSession::openEditing(failed_input);
-            const auto allocations = lux_er1_scene_allocation_disarm();
-            if (attempt)
-            {
-                assert(allocations == factory_points && !failed_input.source.scene);
-                close(*attempt);
-                break;
-            }
-            assert(allocations == factory_points + 1);
-            assert(attempt.error().code == sessions::ESceneError::ALLOCATION_FAILURE);
-            assert(failed_input.source.scene.get() == original_scene && failed_input.objects.size() == 1);
-            assert(failed_input.objects.front().transform->translation.isZero());
-        }
-        assert(factory_points > 8 && factory_points < 128);
-        std::printf("ER2 openEditing DLL allocation points=%zu ownership retained PASS\n", factory_points);
-#endif
         auto input = source(queue.dispatcherRef(), 1);
         const auto entity = input.objects.front().entity;
         const sessions::SceneObjectRef target{{1}, input.objects.front().object};
@@ -209,46 +186,6 @@ int main()
         assert(!session->commitTransformEdit(*token));
         assert(session->readAuthor(target)->transform->translation.x() == 100);
 #if defined(LUX_EDITOR_DIAGNOSTICS)
-        // Every real Scene DLL allocation in Operation + PreparedEdit: same token and pending operation retry.
-        for (std::size_t point = 0; point < 3; ++point)
-        {
-            token = session->beginTransformEdit(target);
-            value.translation.x() = 300 + point;
-            assert(token && session->previewTransform(*token, value));
-            const auto before = session->historyView()->history;
-            const auto author_before = session->readAuthor(target);
-            const auto preview_before = session->readAuthor(target, true);
-            const auto selected_before = session->selection();
-            const auto stamp_before = session->stamp();
-            lux_er1_scene_allocation_fail_after(point);
-            const auto failed = session->commitTransformEdit(*token);
-            const auto attempts = lux_er1_scene_allocation_disarm();
-            assert(!failed && attempts == point + 1);
-            assert(failed.error().code == (point == 0 ? sessions::ESceneError::ALLOCATION_FAILURE :
-                                                          sessions::ESceneError::HISTORY_FAILURE));
-            if (point) assert(failed.error().history->code == editing::EEditError::ALLOCATION_FAILURE);
-            const auto retained = sessions::detail::SceneTestAccess::pendingEditOperation(*session);
-            assert((point == 0) == (retained == nullptr));
-            const auto after = session->historyView()->history;
-            assert(after.current == before.current && after.saved == before.saved && after.revision == before.revision);
-            assert(after.cursor == before.cursor && after.entry_count == before.entry_count);
-            assert(after.event_sequence == before.event_sequence &&
-                after.charged_retained_bytes == before.charged_retained_bytes);
-            assert(session->stamp() == stamp_before && session->selection().current == selected_before.current);
-            assert(session->readAuthor(target)->transform->translation == author_before->transform->translation);
-            assert(session->readAuthor(target, true)->transform->translation == preview_before->transform->translation);
-            if (point)
-            {
-                lux_er1_scene_allocation_fail_after(0);
-                const auto failed_again = session->commitTransformEdit(*token);
-                assert(lux_er1_scene_allocation_disarm() == 1 && !failed_again);
-                assert(sessions::detail::SceneTestAccess::pendingEditOperation(*session) == retained);
-            }
-            assert(session->commitTransformEdit(*token));
-            assert(session->readAuthor(target)->transform->translation == value.translation);
-            assert(session->undo());
-            std::printf("ER2 commit DLL allocation point=%zu preserved state/token/operation; retry PASS\n", point);
-        }
         token = session->beginTransformEdit(target);
         value.translation.x() = 400;
         assert(token && session->previewTransform(*token, value) && session->commitTransformEdit(*token));

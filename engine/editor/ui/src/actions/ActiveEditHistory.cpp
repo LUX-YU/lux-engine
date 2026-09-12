@@ -139,7 +139,6 @@ namespace lux::editor::ui
         {
             return fail(EEditError::INVALID_LIMITS);
         }
-        try
         {
             auto state = std::make_unique<Impl>();
             state->registrations.resize(target_capacity);
@@ -156,10 +155,6 @@ namespace lux::editor::ui
             result->impl_->identity = issued + 1U;
             result->impl_->control->router = result.get();
             return result;
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(EEditError::ALLOCATION_FAILURE);
         }
     }
 

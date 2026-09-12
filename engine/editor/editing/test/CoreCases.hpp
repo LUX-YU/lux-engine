@@ -58,24 +58,7 @@ namespace lux::editor::editing::test
             }
         );
 #if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
-        check(
-            "C04",
-            []
-            {
-                detail::editDiagnostics().allocation = allocationProbe;
-                for (fail_call = 1U; fail_call <= 4U; ++fail_call)
-                {
-                    const auto before = detail::allocationStatistics();
-                    allocation_call = 0U;
-                    expectError(EditHistory::create({kLimits}), EEditError::ALLOCATION_FAILURE);
-                    assert(allocation_call == fail_call);
-                    assert(detail::allocationStatistics() == before);
-                    std::cout << "C04 allocation point " << fail_call << " retained no backing storage or objects\n";
-                }
-                detail::editDiagnostics() = {};
-                assert(EditHistory::create({kLimits}));
-            }
-        );
+        // C04 OOM recovery requirement was withdrawn; no exception handling or death handler is installed.
 #endif
         check(
             "C05",

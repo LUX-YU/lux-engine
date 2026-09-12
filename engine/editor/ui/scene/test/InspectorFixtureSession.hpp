@@ -52,14 +52,9 @@ namespace inspector_test
                     return lux::cxx::unexpected(ed::makeEditFailure(ed::EEditError::PRECONDITION_FAILED, 813));
                 auto reserved = budget.reserve(65536);
                 if (!reserved) return lux::cxx::unexpected(reserved.error());
-                try
                 {
                     return ed::PreparedEditPtr{std::make_unique<Plan>(owner,
                         context.direction == ed::EDirection::FORWARD ? after : before)};
-                }
-                catch (const std::bad_alloc &)
-                {
-                    return lux::cxx::unexpected(ed::makeEditFailure(ed::EEditError::ALLOCATION_FAILURE));
                 }
             }
         };

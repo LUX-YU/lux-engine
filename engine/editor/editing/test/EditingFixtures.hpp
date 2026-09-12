@@ -42,7 +42,6 @@ namespace lux::editor::editing::test
         std::function<void(EStage)> callback;
         std::function<void(const HistoryNotice&)> observer;
         std::function<void(std::string_view)> reclaimed;
-        std::size_t fail_allocation{}, allocation_index{};
         bool reject_prepare{}, empty_plan{}, force_no_change{}, blocked{}, preview{};
         std::array<char, 257> published_label{};
         std::vector<HistoryNotice> trace;
@@ -69,10 +68,6 @@ namespace lux::editor::editing::test
         void allocate()
         {
             ++stats.allocations;
-            if (++allocation_index == fail_allocation)
-            {
-                throw std::bad_alloc{};
-            }
         }
         [[nodiscard]] EditResult<void> writable() const noexcept
         {
@@ -360,7 +355,6 @@ namespace lux::editor::editing::test
             {
                 return PreparedEditPtr{};
             }
-            try
             {
                 session.allocate();
                 std::string image;
@@ -372,10 +366,6 @@ namespace lux::editor::editing::test
                 const auto effect =
                     before == after || session.force_no_change ? EEditEffect::NO_CHANGE : EEditEffect::CHANGE;
                 return PreparedEditPtr(new Plan(model_, std::move(image), effect));
-            }
-            catch (const std::bad_alloc&)
-            {
-                return Session::error(EEditError::ALLOCATION_FAILURE);
             }
         }
     };
@@ -503,7 +493,6 @@ namespace lux::editor::editing::test
             {
                 return PreparedEditPtr{};
             }
-            try
             {
                 session.allocate();
                 auto image = model_.records_;
@@ -528,10 +517,6 @@ namespace lux::editor::editing::test
                 const auto effect =
                     before == after || session.force_no_change ? EEditEffect::NO_CHANGE : EEditEffect::CHANGE;
                 return PreparedEditPtr(new Plan(model_, std::move(image), selected, effect));
-            }
-            catch (const std::bad_alloc&)
-            {
-                return Session::error(EEditError::ALLOCATION_FAILURE);
             }
         }
     };

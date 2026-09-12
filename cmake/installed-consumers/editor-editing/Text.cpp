@@ -77,14 +77,10 @@ namespace consumer::text
             {
                 return lux::cxx::unexpected(reserved.error());
             }
-            try
             {
                 return PreparedEditPtr(new Plan(model_, forward ? "beta" : "alpha"));
             }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(makeEditFailure(EEditError::ALLOCATION_FAILURE));
-            }
+
         }
     };
 } // namespace consumer::text

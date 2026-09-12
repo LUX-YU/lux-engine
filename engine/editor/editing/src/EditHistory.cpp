@@ -207,7 +207,6 @@ namespace lux::editor::editing
         {
             return failure(EEditError::INVALID_ARGUMENT);
         }
-        try
         {
             detail::allocationCheckpoint(detail::EEditAllocationSite::FACTORY, sizeof(Impl));
             auto state = std::make_unique<Impl>();
@@ -232,10 +231,6 @@ namespace lux::editor::editing
                 ready.saved = ready.current;
             }
             return result;
-        }
-        catch (const std::bad_alloc&)
-        {
-            return failure(EEditError::ALLOCATION_FAILURE);
         }
     }
 
@@ -334,14 +329,9 @@ namespace lux::editor::editing
             return state.reject(EEditError::ID_EXHAUSTED);
         }
         Entry incoming;
-        // This is a fallible entry factory; no catch spans business apply or publication.
-        try
+        // Prepare the owned title before business apply or publication. Allocation exhaustion is fatal.
         {
             incoming.label.assign(label.data(), label.size());
-        }
-        catch (const std::bad_alloc&)
-        {
-            return state.reject(EEditError::ALLOCATION_FAILURE);
         }
         const auto label_charge = incoming.label.capacity() + 1U;
         const bool is_charge_overflow =

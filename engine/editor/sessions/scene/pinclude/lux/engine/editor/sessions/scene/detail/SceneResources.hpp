@@ -89,15 +89,10 @@ namespace lux::editor::sessions::detail
         {
             if (close_)
                 return {};
-            try
             {
                 close_.reset(new CloseOperation(stdexec::connect(scope.close(), Receiver{this})));
                 stdexec::start(*close_);
                 return {};
-            }
-            catch (const std::bad_alloc &)
-            {
-                return lux::cxx::unexpected(SceneFailure{ESceneError::ALLOCATION_FAILURE});
             }
         }
         template <class T>

@@ -124,36 +124,6 @@ int main()
         assert(invalid.error().code == ESceneError::HISTORY_FAILURE && invalid.error().history);
         assert(invalid.error().history->code == editing::EEditError::INVALID_LIMITS);
         input.history_limits.max_entries = 1;
-#if defined(LUX_EDITOR_DIAGNOSTICS)
-        const auto original_labels = input.labels;
-        std::size_t failed_allocations{};
-        for (std::size_t index = 0; index < 512; ++index)
-        {
-            lux_er1_scene_allocation_fail_after(index);
-            auto attempted = SceneSession::openInspection(input);
-            const auto allocations = lux_er1_scene_allocation_disarm();
-            if (attempted)
-            {
-                assert(allocations == index && !input.scene);
-                assert((*attempted)->beginClose());
-                const auto closed = (*attempted)->advanceClose();
-                assert(closed && *closed == ECloseProgress::COMPLETE);
-                break;
-            }
-            ++failed_allocations;
-            assert(allocations == index + 1);
-            assert(attempted.error().code == ESceneError::ALLOCATION_FAILURE);
-            assert(input.scene.get() == original && input.labels == original_labels);
-            assert(input.initial_selection == initial && input.scene->registry().valid(*initial));
-            const auto &value = input.scene->registry().get<ExtraComponent>(*initial);
-            assert(value.name == "original" && value.enabled && value.value == 4.25);
-        }
-        assert(failed_allocations > 8 && failed_allocations < 512);
-        std::printf("Scene factory actual DLL allocation failures checked: %zu\n", failed_allocations);
-        // The successful final attempt consumed the first input. Subsequent protocol checks use new content.
-        input = source(queue.dispatcherRef());
-        input.history_limits.max_entries = 1;
-#endif
         auto opened = SceneSession::openInspection(input);
         assert(opened && !input.scene);
         auto session = std::move(*opened);

@@ -21,6 +21,7 @@ for call in ("InputScalar", "DragScalar", "SliderScalar", "Checkbox", "InputText
     assert "ImGui::" + call in combined, call
 assert "InspectorWidget<inspector_fixture::Angle" in combined
 assert "ReflectionRegistry" not in combined and "RefField" not in combined
+assert "catch (" not in combined and "try {" not in combined
 
 with tempfile.TemporaryDirectory(prefix="lux-inspector-codegen-") as directory:
     root = Path(directory)

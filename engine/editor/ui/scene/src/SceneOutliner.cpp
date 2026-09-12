@@ -116,14 +116,8 @@ namespace lux::editor::ui
             frame.textMuted("Scene query is not ready");
             return;
         }
-        try
         {
             impl_->refresh(*outline);
-        }
-        catch (const std::bad_alloc &)
-        {
-            frame.textMuted("Unable to prepare outline rows");
-            return;
         }
         if (impl_->hierarchy_cycle)
             frame.textMuted("Cyclic hierarchy: showing all entities");

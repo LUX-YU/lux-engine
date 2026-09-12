@@ -1,7 +1,6 @@
 #pragma once
 #include <lux/engine/simulation/ecs/ComponentAnnotations.hpp>
 #include <lux/engine/meta/MetaAnnotations.hpp>
-#include "AllocationProbe.hpp"
 #include <Eigen/Geometry>
 #include <array>
 #include <deque>
@@ -50,7 +49,7 @@ namespace inspector_fixture
         Nested nested;
         std::array<float, 3> fixed{1, 2, 3};
         int raw[2][2]{{4, 5}, {6, 7}};
-        std::vector<int, AllocationProbe<int>> failing{1, 2};
+        std::vector<int> growing{1, 2};
         std::vector<bool> bits{true, false};
         std::vector<Nested> records{{}};
         std::deque<int> deque{1, 2};

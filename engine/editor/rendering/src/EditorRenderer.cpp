@@ -203,7 +203,6 @@ namespace lux::editor::rendering
             config.diagnostic_capacity && config.diagnostic_capacity <= 65536;
         if (!valid_capacity || !window.isInitialized())
             return fail(ERendererError::INVALID_ARGUMENT);
-        try
         {
             auto impl = std::make_unique<Impl>(config);
             impl->identity = issue(next_renderer);
@@ -253,17 +252,10 @@ namespace lux::editor::rendering
             if (thread.startup.load(std::memory_order_acquire) != 1)
             {
                 result->impl_->worker.join();
-                return lux::cxx::unexpected(RendererFailure{thread.allocation_failed.load()
-                                                                ? ERendererError::ALLOCATION_FAILURE
-                                                                : ERendererError::DEVICE_FAILURE,
-                                                            thread.startup_error});
+                return lux::cxx::unexpected(RendererFailure{ERendererError::DEVICE_FAILURE, thread.startup_error});
             }
             result->impl_->joined = false;
             return result;
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ERendererError::ALLOCATION_FAILURE);
         }
     }
     ERendererState EditorRenderer::state() const noexcept
@@ -431,7 +423,6 @@ namespace lux::editor::rendering
             if (missing)
                 return fail(ERendererError::INCOMPLETE_FRAME_REFERENCES);
         }
-        try
         {
             auto storage = std::make_unique<EditorFramePacket::Storage>();
             storage->renderer = impl_->identity;
@@ -458,10 +449,6 @@ namespace lux::editor::rendering
             data.packet_sequence = storage->sequence;
             data.snapshot = std::move(snapshot);
             return EditorFramePacket{std::move(storage)};
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ERendererError::ALLOCATION_FAILURE);
         }
     }
     RenderResult<EFrameSubmit> EditorRenderer::trySubmitFrame(EditorFramePacket &packet) noexcept
@@ -496,11 +483,10 @@ namespace lux::editor::rendering
         const auto count = detail::pumpRendererReplies(*impl_->control, *impl_->programs, *impl_->uploads,
                                                        impl_->next_reply_lane, budget);
         const auto terminal_error = impl_->thread.sync->terminalError();
-        const bool allocation_failed = impl_->thread.allocation_failed.load(std::memory_order_acquire);
-        if (!impl_->terminal_diagnostic && (!terminal_error.ok() || allocation_failed))
+        if (!impl_->terminal_diagnostic && !terminal_error.ok())
         {
             impl_->recordDiagnostic(
-                {{allocation_failed ? ERendererError::ALLOCATION_FAILURE : ERendererError::DEVICE_FAILURE,
+                {{ERendererError::DEVICE_FAILURE,
                   terminal_error,
                   {},
                   impl_->thread.failed_packet.load(std::memory_order_acquire)},
@@ -511,13 +497,8 @@ namespace lux::editor::rendering
                  true});
             impl_->terminal_diagnostic = true;
         }
-        try
         {
             static_cast<void>(impl_->upload_queue->poll(*impl_->uploads, impl_->thread.sync->isStopping(), budget));
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(ERendererError::ALLOCATION_FAILURE);
         }
         if (impl_->thread.stopped.load(std::memory_order_acquire) && !impl_->terminal_frames_released)
         {
@@ -559,7 +540,6 @@ namespace lux::editor::rendering
             !impl_->thread.sync->isStopping())
         {
             // A finite renderer-owned empty frame advances its own fences and retires old draw attachments.
-            try
             {
                 lux::render::RenderProgram<> program;
                 lux::render::RenderProgramSession::Builder builder(program);
@@ -570,10 +550,6 @@ namespace lux::editor::rendering
                 builder.push(lux::render::opcodes::CommandOp, impl_->thread.submit_operation,
                              detail::SubmitDrawPayload{attachment});
                 static_cast<void>(impl_->programs->trySubmitPrepared(program));
-            }
-            catch (const std::bad_alloc &)
-            {
-                return fail(ERendererError::ALLOCATION_FAILURE);
             }
         }
         return count;

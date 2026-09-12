@@ -51,7 +51,8 @@ static lux::ui::EditResult draw(project::ComplexValue &draft,
 `draw_<组件身份>` 只修改调用方传入的草稿，并不代表作者内容已提交。调用前清理本帧 error；返回后若
 `InspectorInteraction.error` 非空，丢弃本次草稿，不向 Session 发送部分结果。选择、owner 或文档切换时
 由 Pane 重置交互暂存；增删容器不销毁正在使用的插入键暂存。容器结构修改先复制并准备完整结果，再以
-无异常 swap 更新草稿。分配错误被准备边界转为有限错误文字。
+无异常 swap 更新草稿。内存分配耗尽是致命失败，生成入口不捕获或恢复 `std::bad_alloc`；
+非法值、重复键等业务错误仍通过有限错误文字报告并保留已提交内容。
 
 SceneInspector 继续调用 SceneSession 的 Transform/Light begin / preview / commit / cancel。
 Session 拥有业务内容与 EditHistory；当前通用容器的编辑资格由独立测试业务提供，未新增材质/FlowForge

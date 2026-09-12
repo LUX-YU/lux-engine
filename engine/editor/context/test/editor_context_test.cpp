@@ -79,14 +79,6 @@ namespace
         return (static_cast<bool>(toolset.install<FillerTool<Ids>>()) && ...);
     }
 
-    struct ThrowingTool final
-    {
-        ThrowingTool()
-        {
-            throw 7;
-        }
-    };
-
     struct FrozenTool final
     {
     };
@@ -284,11 +276,6 @@ namespace
 
             assert(installFillers(toolset, std::make_index_sequence<64>{}));
             assert(toolset.find<OrderedTool<1>>() == stable_address);
-
-            const auto throwing = toolset.install<ThrowingTool>();
-            assert(!throwing);
-            assert(throwing.error().code == lux::editor::application::EToolsetError::CONSTRUCTION_FAILURE);
-            assert(toolset.find<ThrowingTool>() == nullptr);
 
             const auto first_opaque = lux::editor::application::detail::ToolsetTestAccess::installOpaque(
                 toolset, lux::cxx::TypeToken{0x12345678U, "lux.editor.test.first_collision"}

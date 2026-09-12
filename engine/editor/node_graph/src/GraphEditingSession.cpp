@@ -43,16 +43,11 @@ namespace lux::editor::node_graph
     {
         if (poisoned_ || in_transaction_ || topology_locked_)
             return false;
-        try
         {
             pending_ = Transaction{std::move(label), {}, false};
             undo_.reserve(undo_.size() + 1U);
             in_transaction_ = true;
             return true;
-        }
-        catch (const std::bad_alloc&)
-        {
-            return false;
         }
     }
 
@@ -66,7 +61,6 @@ namespace lux::editor::node_graph
             pending_ = {};
             return true;
         }
-        try
         {
             undo_.push_back(std::move(pending_));
             redo_.clear();
@@ -74,10 +68,6 @@ namespace lux::editor::node_graph
                 ++revision_;
             pending_ = {};
             return true;
-        }
-        catch (const std::bad_alloc&)
-        {
-            return fail();
         }
     }
 
@@ -88,21 +78,11 @@ namespace lux::editor::node_graph
         automatic = !in_transaction_;
         if (automatic && !beginTransaction(std::move(label)))
             return false;
-        try
         {
             pending_.operations.reserve(pending_.operations.size() + operation_capacity);
             if (automatic)
                 undo_.reserve(undo_.size() + 1U);
             return true;
-        }
-        catch (const std::bad_alloc&)
-        {
-            if (automatic)
-            {
-                pending_ = {};
-                in_transaction_ = false;
-            }
-            return false;
         }
     }
 
@@ -141,7 +121,6 @@ namespace lux::editor::node_graph
             return false;
 
         std::vector<graph::LinkRecord> displaced;
-        try
         {
             const auto* from_record = document_->topology().findPin(from);
             const auto* to_record = document_->topology().findPin(to);
@@ -156,10 +135,6 @@ namespace lux::editor::node_graph
                 if (displace_from || displace_to)
                     displaced.push_back(link);
             }
-        }
-        catch (const std::bad_alloc&)
-        {
-            return false;
         }
 
         bool automatic{};
@@ -209,7 +184,6 @@ namespace lux::editor::node_graph
     bool GraphEditingSession::applyRemove(graph::NodeId node)
     {
         std::vector<graph::LinkRecord> links;
-        try
         {
             for (const auto& link : document_->topology().links())
             {
@@ -218,10 +192,6 @@ namespace lux::editor::node_graph
                 if ((from != nullptr && from->owner == node) || (to != nullptr && to->owner == node))
                     links.push_back(link);
             }
-        }
-        catch (const std::bad_alloc&)
-        {
-            return false;
         }
         bool automatic{};
         if (!prepare("remove node", links.size() + 1U, automatic))
@@ -349,13 +319,8 @@ namespace lux::editor::node_graph
     {
         if (!canUndo() || in_transaction_ || topology_locked_)
             return false;
-        try
         {
             redo_.reserve(redo_.size() + 1U);
-        }
-        catch (const std::bad_alloc&)
-        {
-            return false;
         }
         auto& transaction = undo_.back();
         for (std::size_t index = transaction.operations.size(); index != 0U; --index)
@@ -367,7 +332,6 @@ namespace lux::editor::node_graph
                 return false;
             }
         }
-        try
         {
             redo_.push_back(std::move(transaction));
             undo_.pop_back();
@@ -375,25 +339,14 @@ namespace lux::editor::node_graph
                 ++revision_;
             return true;
         }
-        catch (const std::bad_alloc&)
-        {
-            if (!rollbackUndoPrefix(transaction, 0U))
-                poisoned_ = true;
-            return false;
-        }
     }
 
     bool GraphEditingSession::redo()
     {
         if (!canRedo() || in_transaction_ || topology_locked_)
             return false;
-        try
         {
             undo_.reserve(undo_.size() + 1U);
-        }
-        catch (const std::bad_alloc&)
-        {
-            return false;
         }
         auto& transaction = redo_.back();
         std::size_t applied{};
@@ -406,19 +359,12 @@ namespace lux::editor::node_graph
                 return false;
             }
         }
-        try
         {
             undo_.push_back(std::move(transaction));
             redo_.pop_back();
             if (undo_.back().structural)
                 ++revision_;
             return true;
-        }
-        catch (const std::bad_alloc&)
-        {
-            if (!rollbackRedoPrefix(transaction, applied))
-                poisoned_ = true;
-            return false;
         }
     }
 

@@ -205,7 +205,6 @@ namespace lux::editor::ui
             return fail(EWindowError::INVALID_ARGUMENT);
         if (window.frameOpen())
             return fail(EWindowError::BUSY);
-        try
         {
             auto impl = std::make_unique<Impl>(window, id, session);
             const auto dispatcher = window.uiSession().dispatcherRef();
@@ -251,10 +250,6 @@ namespace lux::editor::ui
             owner->impl_->view = std::move(view);
             owner->impl_->closed = false;
             return owner;
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(EWindowError::ALLOCATION_FAILURE);
         }
     }
     WorkspaceId SceneWorkspace::id() const noexcept

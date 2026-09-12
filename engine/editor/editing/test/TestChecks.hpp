@@ -89,15 +89,12 @@ namespace lux::editor::editing::test
         writeSnapshot("replay.failure.after", session);
     }
 #if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
-    inline std::size_t allocation_call{}, fail_call{};
+    inline std::size_t allocation_call{};
     inline bool deny_allocation{};
     inline void allocationProbe(detail::EEditAllocationSite, std::size_t)
     {
         assert(!deny_allocation);
-        if (++allocation_call == fail_call)
-        {
-            throw std::bad_alloc{};
-        }
+        ++allocation_call;
     }
 #endif
 } // namespace lux::editor::editing::test

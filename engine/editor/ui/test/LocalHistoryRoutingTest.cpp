@@ -85,25 +85,7 @@ int main()
         lux::object::ObjectMessageQueue messages;
         ui::WindowSpec spec;
         spec.visible = false;
-#if defined(LUX_EDITOR_DIAGNOSTICS)
-        std::size_t failed_allocations{};
-        for (std::size_t index = 0; index < 128; ++index)
-        {
-            lux_er1_ui_allocation_fail_after(index);
-            auto attempted = ui::EditorWindow::create(messages.dispatcherRef(), spec);
-            const auto allocations = lux_er1_ui_allocation_disarm();
-            if (attempted)
-            {
-                assert(allocations == index);
-                assert((*attempted)->closeAfterRendererStopped());
-                break;
-            }
-            ++failed_allocations;
-            assert(allocations == index + 1 && attempted.error().code == ui::EWindowError::ALLOCATION_FAILURE);
-        }
-        assert(failed_allocations > 2 && failed_allocations < 128);
-        std::printf("Window factory actual DLL allocation failures checked: %zu\n", failed_allocations);
-#endif
+
         auto made = ui::EditorWindow::create(messages.dispatcherRef(), spec);
         assert(made);
         auto &window = **made;

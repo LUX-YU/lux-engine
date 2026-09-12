@@ -17,7 +17,7 @@ namespace
             : Object(dispatcher, lux::ui::PaneId{"generated.test"}, lux::ui::PaneTypeId{"test"}, "Generated") {}
         inspector_test::FixtureSession model;
         inspector_fixture::Component value;
-        bool preview{}, inject_allocation{};
+        bool preview{};
         std::array<char, 192> last_error{};
         lux::editor::ui::InspectorInteraction interaction;
         unsigned calls{};
@@ -29,9 +29,7 @@ namespace
             // Generated names are deliberately referenced from a manifest checked by the CMake wrapper.
             if (!preview) value = model.value();
             interaction.error.fill('\0');
-            inspector_fixture::reject_allocation = inject_allocation;
             const auto edit = generatedDraw(value, interaction);
-            inspector_fixture::reject_allocation = false;
             if (interaction.error[0])
             {
                 last_error = interaction.error;
@@ -154,17 +152,8 @@ int main()
         assert(pane.model.value().variant.index() == 0);
         assert(pane.model.history->undo() && pane.model.value() == optional_before); step();
         const auto before_failure = pane.model.value();
-        const auto failure_stamp = pane.model.history->view()->snapshot;
-        pane.inject_allocation = true;
-        click("failing", "Add");
-        pane.inject_allocation = false;
-        assert(inspector_fixture::rejected_allocations == 1);
-        assert(std::string_view{pane.last_error.data()} == "Not enough memory to prepare the container change.");
-        assert(pane.model.value() == before_failure);
-        assert(pane.model.history->view()->snapshot.current == failure_stamp.current);
-        assert(pane.model.history->view()->snapshot.revision == failure_stamp.revision);
-        click("failing", "Add");
-        assert(pane.model.value().failing.size() == before_failure.failing.size() + 1);
+        click("growing", "Add");
+        assert(pane.model.value().growing.size() == before_failure.growing.size() + 1);
         assert(pane.model.history->undo() && pane.model.value() == before_failure);
         step();
         // Renaming a sorted key is staged until deactivation; sorting must not redirect the active drag.

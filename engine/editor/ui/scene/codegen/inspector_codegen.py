@@ -399,10 +399,9 @@ namespace
 using namespace generated_support;
 {''.join(self.functions)}
 }}
-lux::ui::EditResult draw_{suffix}({name}& value, InspectorInteraction& state)
+lux::ui::EditResult draw_{suffix}({name}& value, InspectorInteraction& state) noexcept
 {{
-    try {{ return {fn}(value, state); }}
-    catch (const std::bad_alloc&) {{ state.fail("Not enough memory to prepare this input."); return {{}}; }}
+    return {fn}(value, state);
 }}
 namespace
 {{
@@ -439,7 +438,7 @@ def generate(config, data):
         generator = Generator(data, config)
         suffix, text = generator.component(component)
         outputs[suffix + ".inspector.generated.cpp"] = text
-        declarations += [f"lux::ui::EditResult draw_{suffix}({component}&, InspectorInteraction&);",
+        declarations += [f"lux::ui::EditResult draw_{suffix}({component}&, InspectorInteraction&) noexcept;",
                          f"ComponentReadBinding binding_{suffix}();"]
         bindings.append(f"binding_{suffix}()")
     outputs[config["name"] + ".inspector.generated.hpp"] = (

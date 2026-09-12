@@ -109,14 +109,9 @@ namespace lux::editor::application
     {
         if (bool(input.source) == bool(input.editing_source) || !input.metadata)
             return fail(EApplicationError::INVALID_ARGUMENT);
-        try
         {
             auto impl = std::make_unique<Impl>(input);
             return std::unique_ptr<EditorApplication>(new EditorApplication(std::move(impl)));
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(EApplicationError::ALLOCATION_FAILURE);
         }
     }
     EApplicationState EditorApplication::state() const noexcept
@@ -150,7 +145,6 @@ namespace lux::editor::application
                     state = EApplicationState::START_FAILED;
             }
         } start_state{impl_->state};
-        try
         {
             impl_->messages.emplace();
             impl_->platform = std::make_unique<lux::window::GlfwRuntime>();
@@ -223,10 +217,6 @@ namespace lux::editor::application
                 return windowFailure(activated.error());
             impl_->state = EApplicationState::RUNNING;
             return {};
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(EApplicationError::ALLOCATION_FAILURE);
         }
     }
     ApplicationResult<void> EditorApplication::requestClose() noexcept

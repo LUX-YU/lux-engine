@@ -619,7 +619,6 @@ namespace lux::editor::rendering::detail
                                                    lux::ui::detail::UiFontAtlasSnapshot font,
                                                    const RendererConfig &config) noexcept
     {
-        try
         {
 #if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
             const auto fault = std::exchange(startup_fault, EStartupFault::NONE);
@@ -642,7 +641,6 @@ namespace lux::editor::rendering::detail
 #if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
                 ++workers_started;
 #endif
-                try
                 {
 #if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
                     ServerDestructionTrace destruction_trace;
@@ -707,13 +705,6 @@ namespace lux::editor::rendering::detail
                                 break;
                         }
                 }
-                catch (const std::bad_alloc &)
-                {
-                    state.allocation_failed.store(true, std::memory_order_release);
-                    state.startup.store(2, std::memory_order_release);
-                    state.startup.notify_all();
-                    ++state.statistics->events;
-                }
                 // Backend destruction has completed on its thread before this terminal fact is published.
                 state.sync->requestStop();
                 state.stopped.store(1, std::memory_order_release);
@@ -721,14 +712,6 @@ namespace lux::editor::rendering::detail
                 ++workers_exited;
 #endif
             });
-        }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(RendererFailure{ERendererError::ALLOCATION_FAILURE});
-        }
-        catch (const std::system_error &)
-        {
-            return lux::cxx::unexpected(RendererFailure{ERendererError::EXTERNAL_FAILURE});
         }
     }
 } // namespace lux::editor::rendering::detail

@@ -277,7 +277,6 @@ namespace lux::editor::ui
         const bool valid_size = spec.width && spec.height && spec.width <= INT_MAX && spec.height <= INT_MAX;
         if (!valid_size || spec.title.empty())
             return fail(EWindowError::INVALID_ARGUMENT);
-        try
         {
             auto impl = std::make_unique<Impl>();
             std::optional<lux::ui::UiFontSource> font;
@@ -337,10 +336,6 @@ namespace lux::editor::ui
                 input->feedInput(lux::ui::UiWindowFocus{false});
             };
             return std::unique_ptr<EditorWindow>(new EditorWindow(std::move(dispatcher), std::move(impl)));
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(EWindowError::ALLOCATION_FAILURE);
         }
     }
 
@@ -441,13 +436,8 @@ namespace lux::editor::ui
         impl_->entering = true;
         impl_->text_input_status = {};
         impl_->frame_size = info.display_size;
-        try
         {
             impl_->frame.emplace(impl_->ui->beginFrame(info));
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(EWindowError::ALLOCATION_FAILURE);
         }
         return {};
     }
@@ -458,7 +448,6 @@ namespace lux::editor::ui
         if (!impl_->frame || impl_->drawing)
             return fail(EWindowError::BUSY);
         impl_->drawing = true;
-        try
         {
             impl_->frame->drawPanes();
             // Route once after current-frame focus and text ownership have been established.
@@ -477,12 +466,6 @@ namespace lux::editor::ui
                 invoke(lux::ui::EKey::Z, lux::ui::UiCommandIdView{"lux.edit.undo"});
                 invoke(lux::ui::EKey::Y, lux::ui::UiCommandIdView{"lux.edit.redo"});
             }
-        }
-        catch (const std::bad_alloc &)
-        {
-            impl_->drawing = false;
-            static_cast<void>(discardFrame());
-            return fail(EWindowError::ALLOCATION_FAILURE);
         }
         impl_->drawing = false;
         return {};
@@ -520,13 +503,8 @@ namespace lux::editor::ui
             return fail(EWindowError::BUSY);
         if (!layout.workspace.value || layout.version != 1 || !impl_->ui->validateSplitLayout(layout.spec))
             return fail(EWindowError::LAYOUT_FAILURE);
-        try
         {
             impl_->ui->setSplitLayout(layout.spec);
-        }
-        catch (const std::bad_alloc &)
-        {
-            return fail(EWindowError::ALLOCATION_FAILURE);
         }
         return {};
     }

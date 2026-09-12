@@ -12,7 +12,6 @@ namespace lux::editor::inspector
     lux::cxx::expected<ComponentEditorBindingTable, ComponentEditorBindingFailure>
     buildFirstPartyComponentEditorBindings() noexcept
     {
-        try
         {
             std::vector<ComponentEditorBinding> bindings;
             const auto append = [&bindings](std::span<const ComponentEditorBinding> values) {
@@ -22,14 +21,6 @@ namespace lux::editor::inspector
             append(generated::hierarchyComponentEditorBindings());
             append(generated::visualComponentEditorBindings());
             return ComponentEditorBindingTable::build(std::move(bindings));
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(ComponentEditorBindingFailure{
-                EComponentEditorBindingError::ALLOCATION_FAILURE,
-                {},
-                {}
-            });
         }
     }
 } // namespace lux::editor::inspector

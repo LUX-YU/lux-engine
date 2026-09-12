@@ -291,6 +291,9 @@ struct Harness
             core.awaitable_record_bytes, core.event_waiter_record_bytes, vm.vm_coroutine_creations,
             vm.vm_coroutine_resumes, vm.vm_coroutine_releases);
 #if NA1_CANDIDATE
+        std::printf("WAIT_MEMORY phase=%s event_pages=%zu event_claims=%zu ready=%zu\n",
+                    phase, core.event_page_storage_bytes, core.event_claim_storage_bytes,
+                    core.resume_storage_bytes);
         const auto b = backend->stats();
         std::printf("NATIVE_MEMORY phase=%s composition=%zu frame=%zu metadata=%zu prepared=%zu association=%zu "
                     "active_frames=%zu frame_failures=%zu leases=%zu\n",

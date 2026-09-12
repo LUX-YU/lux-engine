@@ -4,6 +4,7 @@
 #include <lux/engine/resource/identity/AssetId.hpp>
 #include <Eigen/Geometry>
 #include <string>
+#include "PluginNested.hpp"
 namespace consumer
 {
     enum class LUX_ENUM_INFO(static) EMode { BASIC, DETAILED };
@@ -21,6 +22,7 @@ namespace consumer
         Eigen::Quaterniond LUX_MEMBER(display_name = Rotation) rotation{Eigen::Quaterniond::Identity()};
         Eigen::Matrix3d LUX_MEMBER(display_name = Matrix) matrix{Eigen::Matrix3d::Identity()};
         lux::asset::AssetId LUX_MEMBER(display_name = Resource) resource;
+        Nested nested;
         int LUX_NO_MEMBER() hidden{17};
     };
 }

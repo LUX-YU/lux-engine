@@ -42,7 +42,7 @@ function(engine_target_add_imgui_inspector_codegen)
         set(ARG_OUTPUT_ROOT "${CMAKE_CURRENT_BINARY_DIR}/inspector_gen/${ARG_NAME}")
     endif()
     set(ir_root "${CMAKE_CURRENT_BINARY_DIR}/inspector_ir/${ARG_NAME}")
-    lux_add_codegen_job(NAME ${ARG_NAME}_ir MARKER luxref SOURCE_FILE ${ARG_SOURCE_FILE}
+    lux_add_codegen_job(NAME ${ARG_NAME}_ir MARKER luxref SOURCE_FILE ${ARG_SOURCE_FILE} PARSE_INCLUDED_MARKED
         TARGET_FILES ${ARG_HEADER} LOGICAL_PATHS ${ARG_LOGICAL_PATH} DEPENDS ${ARG_DEPENDS})
     lux_codegen_add_projection(JOB ${ARG_NAME}_ir NAME editor_ir
         TEMPLATE "${generator_dir}/ir.template" OUTPUT_ROOT "${ir_root}" OUTPUT_SUFFIX .editor-ir SERIAL_META)
@@ -75,12 +75,18 @@ function(engine_target_add_imgui_inspector_codegen)
         string(SUBSTRING "${digest}" 0 8 digest)
         list(APPEND outputs "${ARG_OUTPUT_ROOT}/${component_symbol}_${digest}.inspector.generated.cpp")
     endforeach()
+    set(inspector_depfile "${CMAKE_CURRENT_BINARY_DIR}/lux_codegen/${ARG_NAME}.inspector.d")
     get_target_property(meta_generator ${ARG_NAME}_ir LUX_CODEGEN_GENERATOR)
     add_custom_command(OUTPUT ${outputs} "${ir}"
         COMMAND "${Python3_EXECUTABLE}" "${generator_dir}/inspector_codegen.py" --config "${config}" --ir "${ir}"
             --meta-generator "${meta_generator}" --meta-config "${CMAKE_CURRENT_BINARY_DIR}/lux_codegen/${ARG_NAME}_ir.json"
-        DEPENDS "${ir_root}/${logical_dir}/${stem}.editor-ir" "${config}" ${ARG_DEPENDS}
+            --source-depfile "${CMAKE_CURRENT_BINARY_DIR}/lux_codegen/${ARG_NAME}_ir.d"
+            --depfile "${inspector_depfile}"
+        DEPENDS "${ir_root}/${logical_dir}/${stem}.editor-ir" "${config}" ${ARG_DEPENDS} "${ARG_HEADER}"
+            "${CMAKE_BINARY_DIR}/compile_commands.json"
+            "${CMAKE_CURRENT_BINARY_DIR}/lux_codegen/${ARG_NAME}_ir.json"
             "${generator_dir}/inspector_codegen.py" "${generator_dir}/support/InspectorWidget.hpp"
+        DEPFILE "${inspector_depfile}"
         COMMENT "Generate Editor-only ImGui Inspector: ${ARG_NAME}" VERBATIM)
     target_sources(${ARG_TARGET} PRIVATE ${outputs})
     set_source_files_properties(${outputs} PROPERTIES GENERATED TRUE)

@@ -426,6 +426,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--ir", required=True)
+    parser.add_argument("--source-depfile")
+    parser.add_argument("--depfile")
     parser.add_argument("--meta-generator")
     parser.add_argument("--meta-config")
     args = parser.parse_args()
@@ -445,6 +447,16 @@ def main():
             temporary = path.with_suffix(path.suffix + ".tmp")
             temporary.write_bytes(encoded)
             temporary.replace(path)
+    if args.depfile and args.source_depfile:
+        # Carry the parser's complete transitive input set into this separate generation rule.
+        # The IR projection can remain byte-identical when only its JSON sidecar changes.
+        dependencies = Path(args.source_depfile).read_text(encoding="utf-8-sig")
+        separator = re.search(r"(?<!\\):(?=\s)", dependencies)
+        if not separator:
+            raise ValueError("parser dependency file has no target separator")
+        target = (root / (config["name"] + ".inspector.generated.hpp")).as_posix()
+        target = target.replace("$", "$$").replace("#", "\\#").replace(" ", "\\ ").replace(":", "\\:")
+        Path(args.depfile).write_text(target + dependencies[separator.start():], encoding="utf-8")
     print(f"Editor Inspector: {len(config['components'])} component implementation(s); no runtime target output")
 
 

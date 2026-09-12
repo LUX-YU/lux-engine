@@ -58,6 +58,8 @@ def compile_step(label, **kwargs):
 
 
 header = src / 'PluginComponent.hpp'
+nested_header = src / 'PluginNested.hpp'
+original_nested = nested_header.read_bytes()
 cmakelists = src / 'CMakeLists.txt'
 template = sdk / 'share/lux-engine-editor-scene-ui/editor_scene_ui/cmake_scripts/codegen/inspector_codegen.py'
 generated = build / ('inspector_gen/consumer_scene_readers/consumer__RichComponent_' +
@@ -82,6 +84,12 @@ assert 'ninja: no work to do' in compile_step('sidecar-restored-noop')
 header.write_bytes(original_header.replace(b'display_name = Caption', b'display_name = CaptionChanged'))
 compile_step('header')
 assert b'CaptionChanged' in generated.read_bytes()
+
+nested_header.write_bytes(original_nested.replace(b'NestedAmount', b'NestedChanged'))
+compile_step('transitive-header')
+assert b'NestedChanged' in generated.read_bytes()
+nested_header.write_bytes(original_nested)
+compile_step('transitive-header-restore')
 
 template.write_bytes(original_template.replace(b'Generated Editor-only ImGui implementation',
                                                b'ER2 generator dependency witness'))

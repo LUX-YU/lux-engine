@@ -503,6 +503,7 @@ endforeach()
 # A source root is either a leaf package or a collection. A leaf package may
 # use CMakeLists.txt below src/ for private implementation helpers, but it may
 # not also aggregate sibling production packages.
+include("${CMAKE_CURRENT_LIST_DIR}/ValidatePackageNesting.cmake")
 file(GLOB_RECURSE production_cmake_files LIST_DIRECTORIES false
     "${source_root}/modules/*/CMakeLists.txt"
     "${source_root}/engine/*/CMakeLists.txt"
@@ -542,9 +543,7 @@ foreach(cmake_file IN LISTS production_cmake_files)
             continue()
         endif()
         if(EXISTS "${child}/CMakeLists.txt")
-            message(FATAL_ERROR
-                "Architecture: package '${package_root}' also aggregates child package '${child_name}'."
-            )
+            lux_validate_package_nesting("${source_root}" "${package_root}" "${child}")
         endif()
     endforeach()
 endforeach()

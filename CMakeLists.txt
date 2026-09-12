@@ -144,6 +144,12 @@ add_custom_command(
 )
 add_custom_target(lux_source_style_check ALL DEPENDS "${lux_source_style_stamp}")
 
+if(BUILD_TESTING)
+    add_test(NAME source_package_nesting_contract
+        COMMAND ${CMAKE_COMMAND} "-DLUX_TEST_ROOT=${CMAKE_BINARY_DIR}/package-nesting-fixture"
+            -P "${CMAKE_SOURCE_DIR}/cmake/TestPackageNesting.cmake")
+endif()
+
 cmake_language(DEFER CALL lux_validate_foundation_targets)
 cmake_language(DEFER CALL lux_validate_target_dag)
 cmake_language(DEFER CALL lux_validate_all_production_targets)

@@ -1,5 +1,6 @@
 #include <lux/engine/editor/sessions/scene/SceneOpenInfo.hpp>
 #include <lux/engine/editor/sessions/scene/detail/SceneResources.hpp>
+#include <lux/engine/editor/sessions/scene/detail/SceneEditState.hpp>
 #include <lux/engine/editor/editing/EditHistory.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/simulation/ecs/Parent.hpp>
@@ -54,6 +55,7 @@ namespace lux::editor::sessions
         std::unique_ptr<lux::scene::Scene> scene;
         std::unique_ptr<lux::task::TaskExecutor> executor;
         std::unique_ptr<editing::EditHistory> history;
+        std::unique_ptr<detail::SceneEditState> edit_state;
         std::unique_ptr<detail::SceneResources> resources;
         lux::asset::AssetVfsView asset_catalog;
         rendering::EditorRenderer *renderer{};
@@ -117,6 +119,8 @@ namespace lux::editor::sessions
                 {
                     SceneRow row;
                     row.target = {identity, entity};
+                    if (edit_state)
+                        row.authored = edit_state->authored(entity);
                     if (const auto *parent = registry.try_get<lux::simulation::ecs::Parent>(entity);
                         parent && registry.valid(parent->entity))
                         row.parent = SceneEntityRef{identity, parent->entity};
@@ -162,6 +166,11 @@ namespace lux::editor::sessions
     }
     SceneResult<std::unique_ptr<SceneSession>> SceneSession::openInspection(SceneOpenInfo &input) noexcept
     {
+        return openPrepared(input, {});
+    }
+    SceneResult<std::unique_ptr<SceneSession>> SceneSession::openPrepared(
+        SceneOpenInfo &input, std::unique_ptr<detail::SceneEditState> author) noexcept
+    {
         if (!input.dispatcher || !input.dispatcher.isCurrent())
             return fail(ESceneError::WRONG_THREAD);
         if (!input.id.valid() || !input.scene || !input.metadata || !input.resource_capacity)
@@ -189,6 +198,7 @@ namespace lux::editor::sessions
             impl->identity = input.id;
             impl->stamp = {input.id, 0, 0};
             impl->metadata = input.metadata;
+            impl->edit_state = std::move(author);
             auto executor = lux::task::TaskExecutor::create(input.executor);
             if (!executor)
             {
@@ -197,7 +207,7 @@ namespace lux::editor::sessions
                 return lux::cxx::unexpected(failure);
             }
             impl->executor = std::make_unique<lux::task::TaskExecutor>(std::move(*executor));
-            auto history = editing::EditHistory::create({input.history_limits, {}, true});
+            auto history = editing::EditHistory::create({input.history_limits, {}, !impl->edit_state});
             if (!history)
             {
                 SceneFailure failure{ESceneError::HISTORY_FAILURE, input.id};
@@ -218,6 +228,12 @@ namespace lux::editor::sessions
             if (input.initial_selection)
                 impl->selected.current = SceneEntityRef{input.id, *input.initial_selection};
             auto owner = std::unique_ptr<SceneSession>(new SceneSession(input.dispatcher, std::move(impl)));
+            if (owner->impl_->edit_state)
+                owner->impl_->edit_state->bind(*owner->impl_->history, *owner,
+                    [](SceneSession &session, const editing::CommitInfo &info) noexcept {
+                        session.impl_->stamp.content_revision = info.revision.value;
+                        session.notify<contentChanged>(SceneContentNotice{session.stamp(), info.kind});
+                    });
             auto activated = owner->impl_->resources->activate();
             if (!activated)
                 return lux::cxx::unexpected(activated.error());
@@ -232,9 +248,14 @@ namespace lux::editor::sessions
             return fail(ESceneError::ALLOCATION_FAILURE, input.id);
         }
     }
-    SceneResult<std::unique_ptr<SceneSession>> SceneSession::openEditing(SceneEditInput &) noexcept
+    SceneResult<std::unique_ptr<SceneSession>> SceneSession::openEditing(SceneEditInput &input) noexcept
     {
-        return fail(ESceneError::UNSUPPORTED_EDIT);
+        if (!input.source.dispatcher || !input.source.dispatcher.isCurrent())
+            return fail(ESceneError::WRONG_THREAD);
+        auto author = detail::SceneEditState::prepare(input);
+        if (!author)
+            return lux::cxx::unexpected(author.error());
+        return openPrepared(input.source, std::move(*author));
     }
     SessionId SceneSession::id() const noexcept
     {
@@ -246,11 +267,14 @@ namespace lux::editor::sessions
     }
     ESceneAccess SceneSession::access() const noexcept
     {
-        return ESceneAccess::INSPECT_LIVE;
+        return impl_->edit_state ? ESceneAccess::EDIT_CONTENT : ESceneAccess::INSPECT_LIVE;
     }
     ChangeStamp SceneSession::stamp() const noexcept
     {
-        return impl_->stamp;
+        auto result = impl_->stamp;
+        if (impl_->edit_state)
+            result.preview_revision = impl_->edit_state->previewRevision();
+        return result;
     }
 
     SceneResult<void> SceneSession::updateAtOwnerSafePoint(const SceneOwnerUpdate &update) noexcept
@@ -271,7 +295,8 @@ namespace lux::editor::sessions
         if (!changed)
             return lux::cxx::unexpected(changed.error());
         impl_->resources_dirty |= *changed;
-        impl_->stamp.content_revision = impl_->scene->simulation().clock().snapshot().step_index;
+        if (!impl_->edit_state)
+            impl_->stamp.content_revision = impl_->scene->simulation().clock().snapshot().step_index;
         auto outline = impl_->outlineCurrent(*impl_->scene) ? SceneResult<SceneOutlineRef>{impl_->outline}
                                                             : impl_->prepareOutline(*impl_->scene);
         if (!outline)
@@ -296,6 +321,8 @@ namespace lux::editor::sessions
         impl_->read_window = true;
         if (invalid_selection)
         {
+            if (impl_->edit_state)
+                impl_->edit_state->cancel();
             impl_->selected.current.reset();
             ++impl_->selected.selection_revision;
             notify<selectionChanged>(impl_->selected);
@@ -324,6 +351,13 @@ namespace lux::editor::sessions
         impl_->read_window = false;
         // Mark before invoking domain code: even a failed phase is never replayed by an image retry.
         impl_->advanced = update.cycle;
+        if (impl_->edit_state)
+        {
+            // A display projection failure remains visible and retryable; author/history already committed.
+            const auto projected = impl_->edit_state->project(impl_->scene->registry());
+            if (!projected)
+                return {};
+        }
         const auto seconds = std::chrono::duration<double>{std::min(update.elapsed_seconds, 0.1)};
         const auto duration = std::chrono::duration_cast<lux::simulation::SimulationDuration>(seconds);
         auto simulation = impl_->scene->simulation().execute(*impl_->executor, duration);
@@ -378,7 +412,9 @@ namespace lux::editor::sessions
         {
             SceneReadData result;
             result.target = target;
-            result.stamp = impl_->stamp;
+            if (impl_->edit_state)
+                result.authored = impl_->edit_state->authored(target.entity);
+            result.stamp = stamp();
             const auto &registry = impl_->scene->registry();
             if (auto *value = registry.try_get<lux::simulation::ecs::Transform3D>(target.entity))
                 result.transform = *value;
@@ -390,7 +426,19 @@ namespace lux::editor::sessions
                 result.light = *value;
             for (const auto &schema : impl_->metadata->components().all())
                 if (schema.editor_visible && schema.operations.has(registry, target.entity))
-                    result.components.push_back({schema.id.name, schema.version, schema.id.name, true, false});
+                {
+                    bool editable = false;
+                    if (result.authored)
+                    {
+                        const auto author = impl_->edit_state->read(*result.authored);
+                        editable = author &&
+                            ((schema.cpp_type == lux::cxx::typeToken<lux::simulation::ecs::Transform3D>() &&
+                              author->transform.has_value()) ||
+                             (schema.cpp_type == lux::cxx::typeToken<lux::simulation::ecs::Light3D>() &&
+                              author->light.has_value()));
+                    }
+                    result.components.push_back({schema.id.name, schema.version, schema.id.name, true, editable});
+                }
             return result;
         }
         catch (const std::bad_alloc &)
@@ -414,6 +462,8 @@ namespace lux::editor::sessions
         if (impl_->selected.selection_revision == (std::numeric_limits<std::uint64_t>::max)())
             return fail(ESceneError::CONTRACT_FAILURE, id());
         Gate gate{impl_->busy};
+        if (impl_->edit_state)
+            impl_->edit_state->cancel();
         impl_->selected.current = target;
         ++impl_->selected.selection_revision;
         notify<selectionChanged>(impl_->selected);
@@ -487,26 +537,44 @@ namespace lux::editor::sessions
     {
         if (impl_->owner != std::this_thread::get_id())
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::WRONG_THREAD));
-        const auto history = impl_->history->view();
-        if (!history)
-            return lux::cxx::unexpected(history.error());
-        const auto availability = impl_->state == ESessionState::CLOSED ? editing::EHistoryActionAvailability::CLOSED
-                                                                        : editing::EHistoryActionAvailability::BLOCKED;
-        return editing::HistoryTargetView{history->snapshot, availability, availability, {}, {}};
+        const auto view = impl_->history->view();
+        if (!view)
+            return lux::cxx::unexpected(view.error());
+        using Availability = editing::EHistoryActionAvailability;
+        const auto available = [&](bool has_entry) {
+            if (impl_->state == ESessionState::CLOSED) return Availability::CLOSED;
+            if (impl_->busy || impl_->state != ESessionState::READY) return Availability::BUSY;
+            if (!impl_->edit_state) return Availability::BLOCKED;
+            return has_entry || impl_->edit_state->gesturing() ? Availability::READY : Availability::EMPTY;
+        };
+        return editing::HistoryTargetView{view->snapshot, available(view->can_undo), available(view->can_redo),
+                                         view->undo_label, view->redo_label};
     }
-    editing::EditResult<editing::HistoryTargetResult> SceneSession::undo() noexcept
+    editing::EditResult<editing::HistoryTargetResult> SceneSession::replay(bool redo_action) noexcept
     {
-        const auto code = impl_->owner != std::this_thread::get_id() ? editing::EEditError::WRONG_THREAD
-                          : impl_->busy                              ? editing::EEditError::BUSY
-                          : impl_->state == ESessionState::CLOSED    ? editing::EEditError::CLOSED
-                                                                     : editing::EEditError::BLOCKED_BY_HOST;
-        return lux::cxx::unexpected(editing::makeEditFailure(
-            code, 0, code == editing::EEditError::BLOCKED_BY_HOST ? "Live inspection is read-only" : ""));
+        if (const auto checked = impl_->check(); !checked)
+        {
+            const auto code = checked.error().code == ESceneError::WRONG_THREAD ? editing::EEditError::WRONG_THREAD :
+                checked.error().code == ESceneError::CLOSED ? editing::EEditError::CLOSED : editing::EEditError::BUSY;
+            return lux::cxx::unexpected(editing::makeEditFailure(code));
+        }
+        if (!impl_->edit_state)
+            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BLOCKED_BY_HOST));
+        if (impl_->state != ESessionState::READY)
+            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
+        Gate gate{impl_->busy};
+        if (impl_->edit_state->gesturing())
+        {
+            impl_->edit_state->cancel();
+            return editing::HistoryTargetResult{editing::EHistoryTargetOutcome::TRANSIENT_CANCELLED, {}};
+        }
+        const auto result = redo_action ? impl_->history->redo() : impl_->history->undo();
+        if (!result)
+            return lux::cxx::unexpected(result.error());
+        return editing::HistoryTargetResult{editing::EHistoryTargetOutcome::CONTENT_APPLIED, *result};
     }
-    editing::EditResult<editing::HistoryTargetResult> SceneSession::redo() noexcept
-    {
-        return undo();
-    }
+    editing::EditResult<editing::HistoryTargetResult> SceneSession::undo() noexcept { return replay(false); }
+    editing::EditResult<editing::HistoryTargetResult> SceneSession::redo() noexcept { return replay(true); }
     bool SceneSession::presentationPending() const noexcept
     {
         if (impl_->owner != std::this_thread::get_id() || !impl_->scene)
@@ -543,6 +611,8 @@ namespace lux::editor::sessions
         if (impl_->state == ESessionState::CLOSED)
             return {};
         Gate gate{impl_->busy};
+        if (impl_->edit_state)
+            impl_->edit_state->cancel();
         impl_->state = ESessionState::CLOSING;
         impl_->read_window = false;
         return impl_->resources->beginClose();
@@ -575,56 +645,154 @@ namespace lux::editor::sessions
         if (!closed)
             return fail(ESceneError::BUSY, id());
         impl_->resources.reset();
+        impl_->edit_state.reset();
         impl_->asset_catalog = {};
         impl_->executor.reset();
         impl_->metadata.reset();
         impl_->state = ESessionState::CLOSED;
         return ECloseProgress::COMPLETE;
     }
-    SceneResult<PropertyGesture> SceneSession::beginTransformEdit(SceneObjectRef) noexcept
+    SceneResult<PropertyGesture> SceneSession::beginTransformEdit(
+        SceneObjectRef target) noexcept
     {
-        if (auto result = impl_->check(); !result)
-            return lux::cxx::unexpected(result.error());
-        return fail(ESceneError::READ_ONLY, id());
+        if (const auto checked = impl_->check(); !checked)
+            return lux::cxx::unexpected(checked.error());
+        if (!impl_->edit_state)
+            return fail(ESceneError::READ_ONLY, id());
+        if (impl_->state != ESessionState::READY)
+            return fail(ESceneError::NOT_READY, id());
+        Gate gate{impl_->busy};
+        return impl_->edit_state->begin(target, detail::ESceneProperty::TRANSFORM);
     }
-    SceneResult<void> SceneSession::previewTransform(PropertyGesture,
-                                                     const lux::simulation::ecs::Transform3D &) noexcept
+    SceneResult<void> SceneSession::previewTransform(
+        PropertyGesture token, const lux::simulation::ecs::Transform3D &value) noexcept
     {
-        if (auto result = impl_->check(); !result)
-            return result;
-        return fail(ESceneError::READ_ONLY, id());
+        if (const auto checked = impl_->check(); !checked)
+            return lux::cxx::unexpected(checked.error());
+        if (!impl_->edit_state)
+            return fail(ESceneError::READ_ONLY, id());
+        if (impl_->state != ESessionState::READY)
+            return fail(ESceneError::NOT_READY, id());
+        Gate gate{impl_->busy};
+        return impl_->edit_state->preview(token, value);
     }
-    SceneResult<editing::ApplyResult> SceneSession::commitTransformEdit(PropertyGesture) noexcept
+    SceneResult<editing::ApplyResult> SceneSession::commitTransformEdit(
+        PropertyGesture token) noexcept
     {
-        if (auto result = impl_->check(); !result)
-            return lux::cxx::unexpected(result.error());
-        return fail(ESceneError::READ_ONLY, id());
+        if (const auto checked = impl_->check(); !checked)
+            return lux::cxx::unexpected(checked.error());
+        if (!impl_->edit_state)
+            return fail(ESceneError::READ_ONLY, id());
+        if (impl_->state != ESessionState::READY)
+            return fail(ESceneError::NOT_READY, id());
+        Gate gate{impl_->busy};
+        return impl_->edit_state->commit(token, detail::ESceneProperty::TRANSFORM);
     }
-    SceneResult<void> SceneSession::cancelTransformEdit(PropertyGesture) noexcept
+    SceneResult<void> SceneSession::cancelTransformEdit(
+        PropertyGesture token) noexcept
     {
-        if (auto result = impl_->check(); !result)
-            return result;
-        return fail(ESceneError::READ_ONLY, id());
+        if (const auto checked = impl_->check(); !checked)
+            return lux::cxx::unexpected(checked.error());
+        if (!impl_->edit_state)
+            return fail(ESceneError::READ_ONLY, id());
+        if (impl_->state != ESessionState::READY)
+            return fail(ESceneError::NOT_READY, id());
+        Gate gate{impl_->busy};
+        return impl_->edit_state->cancel(token, detail::ESceneProperty::TRANSFORM);
     }
-    SceneResult<PropertyGesture> SceneSession::beginLightEdit(SceneObjectRef ref) noexcept
+    SceneResult<PropertyGesture> SceneSession::beginLightEdit(
+        SceneObjectRef target) noexcept
     {
-        return beginTransformEdit(ref);
+        if (const auto checked = impl_->check(); !checked)
+            return lux::cxx::unexpected(checked.error());
+        if (!impl_->edit_state)
+            return fail(ESceneError::READ_ONLY, id());
+        if (impl_->state != ESessionState::READY)
+            return fail(ESceneError::NOT_READY, id());
+        Gate gate{impl_->busy};
+        return impl_->edit_state->begin(target, detail::ESceneProperty::LIGHT);
     }
-    SceneResult<void> SceneSession::previewLight(PropertyGesture, const lux::simulation::ecs::Light3D &) noexcept
+    SceneResult<void> SceneSession::previewLight(
+        PropertyGesture token, const lux::simulation::ecs::Light3D &value) noexcept
     {
-        if (auto result = impl_->check(); !result)
-            return result;
-        return fail(ESceneError::READ_ONLY, id());
+        if (const auto checked = impl_->check(); !checked)
+            return lux::cxx::unexpected(checked.error());
+        if (!impl_->edit_state)
+            return fail(ESceneError::READ_ONLY, id());
+        if (impl_->state != ESessionState::READY)
+            return fail(ESceneError::NOT_READY, id());
+        Gate gate{impl_->busy};
+        return impl_->edit_state->preview(token, value);
     }
-    SceneResult<editing::ApplyResult> SceneSession::commitLightEdit(PropertyGesture ref) noexcept
+    SceneResult<editing::ApplyResult> SceneSession::commitLightEdit(
+        PropertyGesture token) noexcept
     {
-        return commitTransformEdit(ref);
+        if (const auto checked = impl_->check(); !checked)
+            return lux::cxx::unexpected(checked.error());
+        if (!impl_->edit_state)
+            return fail(ESceneError::READ_ONLY, id());
+        if (impl_->state != ESessionState::READY)
+            return fail(ESceneError::NOT_READY, id());
+        Gate gate{impl_->busy};
+        return impl_->edit_state->commit(token, detail::ESceneProperty::LIGHT);
     }
-    SceneResult<void> SceneSession::cancelLightEdit(PropertyGesture ref) noexcept
+    SceneResult<void> SceneSession::cancelLightEdit(
+        PropertyGesture token) noexcept
     {
-        return cancelTransformEdit(ref);
+        if (const auto checked = impl_->check(); !checked)
+            return lux::cxx::unexpected(checked.error());
+        if (!impl_->edit_state)
+            return fail(ESceneError::READ_ONLY, id());
+        if (impl_->state != ESessionState::READY)
+            return fail(ESceneError::NOT_READY, id());
+        Gate gate{impl_->busy};
+        return impl_->edit_state->cancel(token, detail::ESceneProperty::LIGHT);
+    }
+    SceneResult<SceneAuthorObject> SceneSession::readAuthor(SceneObjectRef target, bool preview) const noexcept
+    {
+        if (const auto checked = impl_->check(false); !checked)
+            return lux::cxx::unexpected(checked.error());
+        if (!impl_->edit_state)
+            return fail(ESceneError::READ_ONLY, id());
+        return impl_->edit_state->read(target, preview);
+    }
+    SceneResult<std::optional<SceneFailure>> SceneSession::projectionFailure() const noexcept
+    {
+        if (const auto checked = impl_->check(false); !checked)
+            return lux::cxx::unexpected(checked.error());
+        return impl_->edit_state ? impl_->edit_state->projectionFailure() : std::optional<SceneFailure>{};
     }
 #if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
+    const void *detail::SceneTestAccess::pendingEditOperation(const SceneSession &session) noexcept
+    {
+        const auto &state = *session.impl_;
+        return state.check() && state.edit_state ? state.edit_state->pendingOperation() : nullptr;
+    }
+    SceneResult<void> detail::SceneTestAccess::setProjectionTransformPresent(
+        SceneSession &session, SceneObjectRef target, bool present) noexcept
+    {
+        auto &state = *session.impl_;
+        if (auto checked = state.check(); !checked) return checked;
+        if (!state.edit_state || state.state != ESessionState::READY)
+            return fail(ESceneError::NOT_READY, session.id());
+        const auto author = state.edit_state->read(target);
+        if (!author) return lux::cxx::unexpected(author.error());
+        if (!author->transform) return fail(ESceneError::UNSUPPORTED_EDIT, session.id());
+        Gate gate{state.busy};
+        try
+        {
+            auto &registry = state.scene->registry();
+            if (present)
+                registry.emplace_or_replace<lux::simulation::ecs::Transform3D>(author->entity, *author->transform);
+            else
+                registry.remove<lux::simulation::ecs::Transform3D>(author->entity);
+            return {};
+        }
+        catch (const std::bad_alloc &)
+        {
+            return fail(ESceneError::ALLOCATION_FAILURE, session.id());
+        }
+    }
     SceneResult<detail::ResourceAccounting>
     detail::SceneTestAccess::resourceAccounting(const SceneSession &session) noexcept
     {

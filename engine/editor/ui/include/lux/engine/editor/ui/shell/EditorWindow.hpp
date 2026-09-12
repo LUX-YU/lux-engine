@@ -35,6 +35,7 @@ namespace lux::editor::ui
         [[nodiscard]] WindowResult<void> discardFrame() noexcept;
         [[nodiscard]] WindowResult<void> installLayout(const WorkspaceLayout &) noexcept;
         [[nodiscard]] WindowResult<void> requestClose() noexcept;
+        [[nodiscard]] WindowResult<void> cancelCloseRequest() noexcept;
         [[nodiscard]] WindowResult<void> closeAfterRendererStopped() noexcept;
         [[nodiscard]] bool frameOpen() const noexcept;
         [[nodiscard]] bool closeRequested() const noexcept;

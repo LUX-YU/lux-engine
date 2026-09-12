@@ -267,6 +267,38 @@ namespace lux::editor::examples
     {
         return populate(id, std::move(dispatcher), renderer, std::move(assets), std::move(metadata), false);
     }
+    sessions::SceneResult<sessions::SceneEditInput> openDevelopmentEditingScene(
+        sessions::SessionId id, lux::object::ObjectDispatcherRef dispatcher, rendering::EditorRenderer &renderer,
+        lux::process::asset_loading::AssetReadPort assets,
+        std::shared_ptr<const lux::scene::SceneMetaManager> metadata) noexcept
+    {
+        auto scene = populate(id, std::move(dispatcher), renderer, std::move(assets), std::move(metadata), false);
+        if (!scene)
+            return lux::cxx::unexpected(scene.error());
+        try
+        {
+            sessions::SceneEditInput input;
+            auto &registry = scene->scene->registry();
+            std::uint8_t sequence{};
+            for (auto entity : registry.view<simulation::ecs::Transform3D>())
+            {
+                sessions::SceneAuthorObject author;
+                author.object = uuidId<world::WorldObjectId>(++sequence);
+                author.entity = entity;
+                author.transform = registry.get<simulation::ecs::Transform3D>(entity);
+                if (const auto *light = registry.try_get<simulation::ecs::Light3D>(entity))
+                    author.light = *light;
+                input.objects.push_back(std::move(author));
+            }
+            scene->history_limits = {128, 1024 * 1024, 64 * 1024, 128};
+            input.source = std::move(*scene);
+            return input;
+        }
+        catch (const std::bad_alloc &)
+        {
+            return lux::cxx::unexpected(sessions::SceneFailure{sessions::ESceneError::ALLOCATION_FAILURE, id});
+        }
+    }
     sessions::SceneResult<sessions::SceneOpenInfo> openSharedShadowScene(
         sessions::SessionId id, lux::object::ObjectDispatcherRef dispatcher, rendering::EditorRenderer &renderer,
         lux::process::asset_loading::AssetReadPort assets,

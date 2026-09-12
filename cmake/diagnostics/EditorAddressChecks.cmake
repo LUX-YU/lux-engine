@@ -6,7 +6,7 @@ function(lux_editor_address_checks)
     endif()
     foreach(target IN ITEMS meta ui ui_imgui_backend ui_vulkan_backend editor_ui editor_scene_session
             editor_rendering render_client scene_render scene_composition editor_application
-            editor_application_candidate lux_editor lux_editor_er1 editor_application_lifecycle_test
+            editor_legacy_application lux_editor editor_application_lifecycle_test
             editor_scene_gpu_test editor_foreign_renderer_test)
         if(NOT TARGET ${target})
             message(FATAL_ERROR "Address-check target missing: ${target}")

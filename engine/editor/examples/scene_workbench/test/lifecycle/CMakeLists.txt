@@ -1,5 +1,5 @@
 add_executable(editor_application_lifecycle_test ../ApplicationLifecycleTest.cpp ../../DevelopmentScene.cpp)
-target_link_libraries(editor_application_lifecycle_test PRIVATE editor_application_candidate
+target_link_libraries(editor_application_lifecycle_test PRIVATE editor_application
     lux::engine::simulation::transform_system lux::engine::scene::scene_render_meta
     lux::engine::function::render_client_meta lux::engine::simulation::ecs::hierarchy)
 target_compile_options(editor_application_lifecycle_test PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)

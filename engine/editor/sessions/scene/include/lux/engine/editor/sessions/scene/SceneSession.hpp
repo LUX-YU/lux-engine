@@ -1,6 +1,7 @@
 #pragma once
 // No Frame/Pane/ImGui/GLFW/Vulkan dependency. Editing core declarations are existing, not redefined.
 #include <lux/engine/editor/sessions/SessionTypes.hpp>
+#include <lux/engine/editor/sessions/scene/SceneAuthorState.hpp>
 #include <lux/engine/editor/sessions/scene/visibility.h>
 #include <lux/engine/object/ObjectAnnotations.hpp>
 #include <lux/engine/editor/rendering/RendererConfig.hpp>
@@ -24,7 +25,7 @@ namespace lux::editor::rendering
 }
 namespace lux::editor::sessions
 {
-    namespace detail { struct SceneTestAccess; }
+    namespace detail { struct SceneTestAccess; class SceneEditState; }
     enum class ESceneAccess : std::uint8_t
     {
         INSPECT_LIVE,
@@ -110,6 +111,7 @@ namespace lux::editor::sessions
     struct SceneReadData final
     {
         SceneEntityRef target;
+        std::optional<SceneObjectRef> authored;
         ChangeStamp stamp;
         std::optional<lux::simulation::ecs::Transform3D> transform;
         std::optional<lux::simulation::ecs::WorldTransform3D> world_transform;
@@ -164,6 +166,8 @@ namespace lux::editor::sessions
         [[nodiscard]] SceneResult<void> advanceScene(const SceneOwnerUpdate &) noexcept;
         [[nodiscard]] SceneResult<SceneOutlineRef> readOutline() const noexcept;
         [[nodiscard]] SceneResult<SceneReadData> readEntity(SceneEntityRef) const noexcept;
+        [[nodiscard]] SceneResult<SceneAuthorObject> readAuthor(SceneObjectRef, bool preview = false) const noexcept;
+        [[nodiscard]] SceneResult<std::optional<SceneFailure>> projectionFailure() const noexcept;
         // Bind only existing supported generated component readers. No arbitrary raw object copying.
         template <class T> [[nodiscard]] SceneResult<T> readComponent(SceneEntityRef) const noexcept;
         [[nodiscard]] SceneResult<void> select(std::optional<SceneEntityRef>) noexcept;
@@ -193,6 +197,9 @@ namespace lux::editor::sessions
         [[nodiscard]] SceneResult<ECloseProgress> advanceClose() noexcept;
 
     private:
+        static SceneResult<std::unique_ptr<SceneSession>> openPrepared(
+            SceneOpenInfo &, std::unique_ptr<detail::SceneEditState>) noexcept;
+        editing::EditResult<editing::HistoryTargetResult> replay(bool redo) noexcept;
         friend struct detail::SceneTestAccess;
         friend class SceneView; // Narrow lifetime/render association; never a public Registry accessor.
         [[nodiscard]] SceneResult<const void *> readComponentValue(SceneEntityRef, lux::cxx::TypeToken) const noexcept;

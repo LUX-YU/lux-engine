@@ -18,6 +18,9 @@ namespace lux::editor::examples
 
     [[nodiscard]] lux::cxx::expected<lux::scene::SceneMetaManager, EDemoBuildError>
     buildDevelopmentSceneMeta() noexcept;
+    [[nodiscard]] sessions::SceneResult<sessions::SceneEditInput> openDevelopmentEditingScene(
+        sessions::SessionId, lux::object::ObjectDispatcherRef, rendering::EditorRenderer &,
+        lux::process::asset_loading::AssetReadPort, std::shared_ptr<const lux::scene::SceneMetaManager>) noexcept;
     [[nodiscard]] sessions::SceneResult<sessions::SceneOpenInfo> openDevelopmentScene(
         sessions::SessionId, lux::object::ObjectDispatcherRef, rendering::EditorRenderer &,
         lux::process::asset_loading::AssetReadPort, std::shared_ptr<const lux::scene::SceneMetaManager>) noexcept;

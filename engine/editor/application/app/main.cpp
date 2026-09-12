@@ -1,158 +1,166 @@
-#include <lux/engine/editor/scene/SceneWorkbench.hpp>
-#if LUX_SV1_DIAGNOSTICS
-#include <lux/engine/editor/scene/SceneWorkbenchDiagnostics.hpp>
-#endif
-
-#include <lux/engine/editor/application/EditorApplication.hpp>
-#include <lux/engine/meta/Meta.hpp>
+#include "DevelopmentScene.hpp"
+#include "ShutdownDiagnostics.hpp"
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
-#include <filesystem>
-
 #include <charconv>
-#include <cstdio>
-#include <optional>
-#include <string_view>
 #include <chrono>
-
+#include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <thread>
 namespace
 {
-    struct Arguments final
+    void report(const lux::editor::application::ApplicationFailure &error)
     {
-        std::size_t frames{};
-        bool visible{true};
-        bool validation{};
-        std::filesystem::path assets;
-        std::filesystem::path verification;
-    };
-
-    [[nodiscard]] std::optional<Arguments> parseArguments(int argc, char** argv)
-    {
-        Arguments result;
-        for (int index = 1; index < argc; ++index)
+        std::fprintf(stderr, "ER1 failure application=%u\n", unsigned(error.code));
+        if (error.window)
+            std::fprintf(stderr, "window=%u\n", unsigned(error.window->code));
+        if (error.scene)
         {
-            const std::string_view argument{argv[index]};
-            if (argument == "--hidden")
-            {
-                result.visible = false;
-            }
-            else if (argument == "--validation")
-            {
-                result.validation = true;
-            }
-            else if (argument == "--assets" && index + 1 < argc)
-                result.assets = argv[++index];
-#if LUX_SV1_DIAGNOSTICS
-            else if (argument == "--verify-scene" && index + 1 < argc)
-                result.verification = argv[++index];
-#endif
-            else if (argument == "--frames" && index + 1 < argc)
-            {
-                const std::string_view value{argv[++index]};
-                const auto parsed = std::from_chars(value.data(), value.data() + value.size(), result.frames);
-                if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || result.frames == 0U)
-                    return std::nullopt;
-            }
-            else
-            {
-                return std::nullopt;
-            }
+            std::fprintf(stderr, "scene=%u session=%llu\n", unsigned(error.scene->code), error.scene->session.value);
+            if (error.scene->simulation)
+                std::fprintf(stderr, "simulation=%u\n", unsigned(error.scene->simulation->code));
         }
-        return result;
-    }
-
-    [[nodiscard]] lux::editor::EditorPresentationConfig presentationConfig(const Arguments& arguments)
-    {
-        return {
-            1600U,
-            900U,
-            "Lux Editor",
-            3U,
-            8U,
-            8U,
-            16U * 1024U * 1024U,
-            {8U, 4096U, 2U, 8U, 1024U},
-            arguments.visible,
-            arguments.validation
-        };
+        if (error.renderer)
+            std::fprintf(stderr, "renderer=%u\n", unsigned(error.renderer->code));
+        if (error.execution)
+            std::fprintf(stderr, "execution=%u\n", unsigned(*error.execution));
+        if (error.assets)
+            std::fprintf(stderr, "asset_endpoint=%u\n", unsigned(*error.assets));
     }
 } // namespace
-
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
-    const auto arguments = parseArguments(argc, argv);
-    if (!arguments)
+    using namespace lux::editor;
+    std::size_t frames{};
+    bool alternate{}, validation{}, hidden{}, inspect{};
+    std::optional<ui::WindowFontSpec> font;
+    auto asset_path =
+        std::filesystem::absolute(argv[0]).parent_path().parent_path() / "share/lux-engine/editor/sv1.luxpak";
+    for (int i = 1; i < argc; ++i)
     {
-        std::fprintf(stderr, "usage: lux_editor [--frames positive-count] [--hidden] [--validation] [--assets pak]\n");
-        return 2;
-    }
-
-    lux::meta::ReflectionRegistry::initRegistry();
-    auto meta = lux::editor::workbench::buildDevelopmentSceneMeta();
-    if (!meta)
-    {
-        lux::meta::ReflectionRegistry::destroyRegistry();
-        return 1;
-    }
-
-    const auto assets_path = arguments->assets.empty() ?
-        std::filesystem::absolute(argv[0]).parent_path().parent_path() / "share/lux-engine/editor/sv1.luxpak" :
-        arguments->assets;
-    auto provider = lux::asset::PakAssetProvider::loadFromFile(assets_path);
-    if (!provider)
-    {
-        std::fprintf(stderr, "Seed assets unavailable: %s\n", provider.error().c_str());
-        lux::meta::ReflectionRegistry::destroyRegistry();
-        return 1;
-    }
-    auto application = lux::editor::EditorApplication::create({
-        {2U, 64U, 64U, {64U}, lux::process::BlockingSchedulerConfig{2U, 64U}},
-        {64U},
-        std::move(*meta),
-        {{"/Seed", *provider, 0}},
-        presentationConfig(*arguments)
-    });
-    if (!application)
-    {
-        lux::meta::ReflectionRegistry::destroyRegistry();
-        return 1;
-    }
-
-    int result = 1;
-    if ((*application)->start())
-    {
-        auto context = (*application)->context();
-        if (context)
+        const std::string_view arg{argv[i]};
+        if (arg == "--validation")
+            validation = true;
+        else if (arg == "--hidden")
+            hidden = true;
+        else if (arg == "--alternate")
+            alternate = true;
+        else if (arg == "--inspect")
+            inspect = true;
+        else if (arg == "--assets" && i + 1 < argc)
+            asset_path = argv[++i];
+        else if (arg == "--font" && i + 1 < argc)
         {
-            auto bootstrap = lux::editor::workbench::SceneWorkbench::create(
-                context->get(), *(*application)->sceneViewRenderPort());
-            if (bootstrap)
-            {
-#if LUX_SV1_DIAGNOSTICS
-                if (!arguments->verification.empty())
-                    lux::editor::workbench::detail::SceneWorkbenchDiagnostics::enable(
-                        **bootstrap, arguments->verification);
-#endif
-                const auto started = std::chrono::steady_clock::now();
-                const auto run = (*application)->run(arguments->frames, bootstrap->get());
-                const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-                std::fprintf(stderr, "SV1 ui iterations=%zu elapsed_seconds=%.6f result=%s\n",
-                    run ? *run : 0, elapsed, run ? "success" : "failure");
-                result = run ? 0 : 1;
-#if LUX_SV1_DIAGNOSTICS
-                if (!arguments->verification.empty() &&
-                    !lux::editor::workbench::detail::SceneWorkbenchDiagnostics::passed(**bootstrap))
-                    result = 1;
-#endif
-                bootstrap->reset();
-            }
-            else
-                std::fprintf(stderr, "Workbench creation failed: %u\n", unsigned(bootstrap.error()));
+            font.emplace();
+            font->file = argv[++i];
+        }
+        else if (arg == "--frames" && i + 1 < argc)
+        {
+            const std::string_view text{argv[++i]};
+            const auto parsed = std::from_chars(text.data(), text.data() + text.size(), frames);
+            if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size() || !frames)
+                return 2;
+        }
+        else
+            return 2;
+    }
+    lux::meta::ReflectionRegistry::initRegistry();
+    auto metadata = examples::buildDevelopmentSceneMeta();
+    if (!metadata)
+    {
+        std::fprintf(stderr, "ER1 metadata error=%u\n", unsigned(metadata.error()));
+        return 1;
+    }
+    auto pak = lux::asset::PakAssetProvider::loadFromFile(asset_path);
+    if (!pak)
+    {
+        std::fprintf(stderr, "ER1 asset package: %s\n", pak.error().c_str());
+        return 1;
+    }
+    application::EditorApplicationCreateInfo config;
+    config.window.visible = !hidden;
+    config.window.font = std::move(font);
+    config.window.title = inspect || alternate ? "Lux Editor / Inspection" : "Lux Editor / Scene editing";
+    config.renderer.validation = validation;
+    config.renderer.validation_message_sink = [](std::uint32_t severity, std::string_view text) {
+        std::fprintf(stderr, "Vulkan severity=%u %.*s\n", severity, int(text.size()), text.data());
+    };
+    config.execution = {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}};
+    config.asset_read = {64};
+    config.mounts = {{"/Seed", *pak, 0}};
+    config.metadata = std::make_shared<lux::scene::SceneMetaManager>(std::move(*metadata));
+    if (inspect || alternate)
+        config.source = alternate ? &examples::openAlternateScene : &examples::openDevelopmentScene;
+    else
+        config.editing_source = &examples::openDevelopmentEditingScene;
+    auto created = application::EditorApplication::create(config);
+    if (!created)
+    {
+        report(created.error());
+        return 1;
+    }
+    auto app = std::move(*created);
+    const auto start = std::chrono::steady_clock::now();
+    const auto started = app->start();
+    int result = 1;
+    if (started)
+    {
+        const auto run = app->run(frames);
+        if (!run)
+            report(run.error());
+        else
+        {
+            std::fprintf(stderr, "ER1 ui_iterations=%zu\n", *run);
+            result = 0;
         }
     }
-    const auto shutdown = (*application)->shutdown();
-    if (!shutdown)
+    else
+        report(started.error());
+    static_cast<void>(app->requestClose());
+    const auto closing = std::chrono::steady_clock::now();
+    auto next_close_report = closing + std::chrono::seconds{1};
+    bool reported{};
+    for (;;)
+    {
+        const auto closed = app->advanceShutdown(64);
+        if (closed && *closed)
+            break;
+        if (!closed && !reported)
+        {
+            report(closed.error());
+            reported = true;
+            result = 1;
+        }
+        if (std::chrono::steady_clock::now() >= next_close_report)
+        {
+            const auto status = app->shutdownStatus();
+            if (status)
+                examples::reportShutdown(*status);
+            else
+                report(status.error());
+            next_close_report = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        }
+        if (frames && std::chrono::steady_clock::now() - closing > std::chrono::seconds{30})
+        {
+            std::fprintf(stderr, "ER1 shutdown incomplete; owners retained; diagnostic process exit is FAILURE\n");
+            std::fflush(stderr);
+            std::_Exit(3);
+        }
+        std::this_thread::yield();
+    }
+    const auto stats = app->rendererStatistics();
+    const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    std::fprintf(
+        stderr,
+        "ER1 seconds=%.6f frames=%llu fif_mask=%llu descriptors=%llu/%llu texture_misses=%llu "
+        "events=%llu dropped=%llu validation_errors=%llu gpu_completed=%llu leases=%zu views=%zu accepted=%zu\n",
+        elapsed, stats.frames, stats.slots, stats.descriptors_created, stats.descriptors_retired, stats.texture_misses,
+        stats.render_events, stats.dropped_events, stats.validation_errors, stats.gpu_completed, stats.runtime_leases,
+        stats.views, stats.accepted_frames);
+    if (stats.validation_errors || stats.texture_misses || stats.runtime_leases || stats.views)
         result = 1;
-    application->reset();
+    app.reset();
+    config.metadata.reset();
     lux::meta::ReflectionRegistry::destroyRegistry();
     return result;
 }

@@ -1,6 +1,6 @@
 # Separate finite owner traversal sample. It has zero Views and makes no rendering throughput claim.
 add_executable(editor_scene_idle_cost IdleSceneCost.cpp ../CostSample.cpp ../../DevelopmentScene.cpp)
-target_link_libraries(editor_scene_idle_cost PRIVATE editor_application_candidate lux::engine::platform::window
+target_link_libraries(editor_scene_idle_cost PRIVATE editor_application lux::engine::platform::window
     lux::engine::simulation::transform_system lux::engine::scene::scene_render_meta
     lux::engine::function::render_client_meta lux::engine::simulation::ecs::hierarchy)
 target_include_directories(editor_scene_idle_cost PRIVATE

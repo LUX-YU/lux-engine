@@ -1504,7 +1504,23 @@ foreach(source IN LISTS active_cmake)
             "Architecture: active CMake '${source}' references a retired post-cleanup target or package."
         )
     endif()
-    if(content MATCHES
+    set(archived_test_owner FALSE)
+    string(REPLACE "\r\n" "\n" production_content "${content}")
+    if(source STREQUAL "${source_root}/engine/editor/CMakeLists.txt")
+        # These exact archived Editor baselines are TEST products, excluded from non-testing profiles and SDKs.
+        # Other legacy references, including production links to these targets, remain prohibited.
+        string(REPLACE "if(BUILD_TESTING)\n    add_subdirectory(test/legacy_scene)\n    add_subdirectory(test/legacy_application)\nendif()"
+            "" production_content "${production_content}")
+    elseif(source STREQUAL "${source_root}/engine/editor/test/legacy_application/CMakeLists.txt")
+        if(NOT content MATCHES "PRODUCT[ \t\r\n]+TEST" OR content MATCHES "install[(]|install_components[(]")
+            message(FATAL_ERROR "Architecture: archived Editor application must remain an uninstalled TEST target.")
+        endif()
+        set(archived_test_owner TRUE)
+    elseif(source STREQUAL "${source_root}/engine/editor/examples/scene_workbench/benchmark/CMakeLists.txt")
+        string(REPLACE "target_link_libraries(editor_workbench_cost PRIVATE editor_legacy_application)"
+            "" production_content "${production_content}")
+    endif()
+    if(NOT archived_test_owner AND production_content MATCHES
        "add_subdirectory[ \t\r\n]*\\([^\\)]*legacy|target_link_libraries[ \t\r\n]*\\([^\\)]*legacy")
         message(FATAL_ERROR
             "Architecture: active CMake '${source}' configures or links legacy/."

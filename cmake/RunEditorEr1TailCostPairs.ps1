@@ -33,7 +33,7 @@ foreach ($mode in @('resize', 'retry')) {
     for ($pair = 1; $pair -le 5; ++$pair) {
         $order = if ($pair % 2) { @('legacy', 'scene') } else { @('scene', 'legacy') }
         foreach ($stack in $order) {
-            if (Get-Process -Name lux_editor_er1,editor_workbench_cost,editor_scene_cost -ErrorAction SilentlyContinue) {
+            if (Get-Process -Name lux_editor,lux_editor_er1,editor_workbench_cost,editor_scene_cost -ErrorAction SilentlyContinue) {
                 throw 'Another desktop or cost process is running; stop measurement without killing it'
             }
             $sample = "$OutputDirectory/$mode-$pair-$stack.json"

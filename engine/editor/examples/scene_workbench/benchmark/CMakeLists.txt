@@ -3,13 +3,13 @@ if(LUX_EDITOR_DIAGNOSTICS OR NOT WIN32)
     return()
 endif()
 add_executable(editor_workbench_cost LegacyCost.cpp CostSample.cpp)
-target_link_libraries(editor_workbench_cost PRIVATE editor_application)
-target_include_directories(editor_workbench_cost PRIVATE ${PROJECT_SOURCE_DIR}/engine/editor/scene/pinclude)
+target_link_libraries(editor_workbench_cost PRIVATE editor_legacy_application)
+target_include_directories(editor_workbench_cost PRIVATE ${PROJECT_SOURCE_DIR}/engine/editor/test/legacy_scene/pinclude)
 target_compile_options(editor_workbench_cost PRIVATE /UNDEBUG)
 lux_classify_target(TARGET editor_workbench_cost LAYER EDITOR PRODUCT TEST ROLE COMPOSITION)
 
 add_executable(editor_scene_cost SceneCost.cpp CostSample.cpp ../DevelopmentScene.cpp)
-target_link_libraries(editor_scene_cost PRIVATE editor_application_candidate lux::engine::platform::window
+target_link_libraries(editor_scene_cost PRIVATE editor_application lux::engine::platform::window
     lux::engine::simulation::transform_system lux::engine::scene::scene_render_meta
     lux::engine::function::render_client_meta lux::engine::simulation::ecs::hierarchy)
 target_include_directories(editor_scene_cost PRIVATE ${PROJECT_SOURCE_DIR}/engine/editor/rendering/pinclude)

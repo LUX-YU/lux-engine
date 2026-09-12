@@ -50,8 +50,14 @@ foreach(path application/src/Application.cpp application/sinclude/lux/engine/edi
 endforeach()
 file(GLOB_RECURSE scene_ui_sources LIST_DIRECTORIES false
     "${LUX_SOURCE_DIR}/engine/editor/ui/scene/src/*.cpp"
-    "${LUX_SOURCE_DIR}/engine/editor/ui/scene/include/*.hpp")
+    "${LUX_SOURCE_DIR}/engine/editor/ui/scene/include/*.hpp"
+    "${LUX_SOURCE_DIR}/engine/editor/ui/scene/pinclude/*.hpp")
 foreach(path IN LISTS scene_ui_sources)
     lux_check_er1_source(scene_ui "${path}")
 endforeach()
 message(STATUS "ER-1 responsibility check passed (${er1_sources_checked} generic/core source files plus Scene UI and Application)")
+
+file(READ "${LUX_SOURCE_DIR}/engine/editor/application/CMakeLists.txt" application_target)
+if(application_target MATCHES "editor_context|editor_inspector|editor_scene[) ]")
+    message(FATAL_ERROR "ER1_BOUNDARY: production Application links the historical editor stack")
+endif()

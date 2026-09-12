@@ -22,6 +22,8 @@ namespace lux::editor::sessions::detail
     };
     struct LUX_EDITOR_SCENE_SESSION_PUBLIC SceneTestAccess final
     {
+        static const void *pendingEditOperation(const SceneSession &) noexcept;
+        static SceneResult<void> setProjectionTransformPresent(SceneSession &, SceneObjectRef, bool) noexcept;
         struct ResourceBackpressure final { std::size_t control{}, upload{}; };
         static SceneResult<ResourceAccounting> resourceAccounting(const SceneSession &) noexcept;
         static ResourceBackpressure resourceBackpressure(bool reset = false) noexcept;

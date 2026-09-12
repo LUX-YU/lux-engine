@@ -2,6 +2,7 @@
 #include <lux/engine/editor/ui/scene/SceneLayout.hpp>
 #include <lux/engine/ui/CommandRouter.hpp>
 #include <array>
+#include <lux/engine/editor/ui/scene/SceneEditFailureDisplay.hpp>
 #include <thread>
 namespace lux::editor::ui
 {
@@ -14,9 +15,11 @@ namespace lux::editor::ui
         class SceneToolbar final : public lux::object::Object<SceneToolbar, lux::ui::Pane>
         {
         public:
-            SceneToolbar(lux::object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, EditorWindow &window)
+            SceneToolbar(lux::object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, EditorWindow &window,
+                         sessions::SceneSession &session)
                 : Object(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.scene.toolbar"}, "Workbench"),
-                  menu_(std::move(dispatcher), window.activeHistory()), commands_(window.uiSession().commandRouter())
+                  menu_(std::move(dispatcher), window.activeHistory()), commands_(window.uiSession().commandRouter()),
+                  session_(session)
             {
                 const auto define = [&](std::string name, std::string label) -> std::optional<lux::ui::CommandHandle>
                 {
@@ -42,6 +45,21 @@ namespace lux::editor::ui
                 redo_binding_ = std::move(*second);
                 valid_ = true;
             }
+            ~SceneToolbar() noexcept override
+            {
+                if (reset_gesture_)
+                    static_cast<void>(session_.cancelTransformEdit(*reset_gesture_));
+            }
+            void requestCloseDecision() noexcept
+            {
+                close_prompt_ = true;
+                close_decision_ = ESceneCloseDecision::PENDING;
+                setVisible(true);
+            }
+            ESceneCloseDecision takeCloseDecision() noexcept
+            {
+                return std::exchange(close_decision_, ESceneCloseDecision::PENDING);
+            }
             bool valid() const noexcept
             {
                 return valid_;
@@ -52,7 +70,42 @@ namespace lux::editor::ui
             }
 
         private:
-            bool restore_{};
+            bool restore_{}, close_prompt_{};
+            ESceneCloseDecision close_decision_{ESceneCloseDecision::PENDING};
+            sessions::SceneSession &session_;
+            std::optional<sessions::PropertyGesture> reset_gesture_;
+            std::optional<sessions::SceneFailure> reset_failure_;
+            void resetTransform() noexcept
+            {
+                if (!reset_gesture_)
+                {
+                    const auto selected = session_.selection().current;
+                    if (!selected) return;
+                    const auto data = session_.readEntity(*selected);
+                    if (!data || !data->authored) return;
+                    const auto token = session_.beginTransformEdit(*data->authored);
+                    if (!token)
+                    {
+                        reset_failure_ = token.error();
+                        return;
+                    }
+                    reset_gesture_ = *token;
+                    const auto preview = session_.previewTransform(*token, lux::simulation::ecs::Transform3D{});
+                    if (!preview)
+                    {
+                        reset_failure_ = preview.error();
+                        return;
+                    }
+                }
+                const auto result = session_.commitTransformEdit(*reset_gesture_);
+                if (!result)
+                {
+                    reset_failure_ = result.error();
+                    return;
+                }
+                reset_gesture_.reset();
+                reset_failure_.reset();
+            }
             HistoryMenuActions menu_;
             lux::ui::CommandRouter &commands_;
             lux::ui::CommandHandle undo_, redo_;
@@ -60,13 +113,58 @@ namespace lux::editor::ui
             bool valid_{};
             void draw(lux::ui::Frame &frame, lux::ui::PaneDrawContext &) override
             {
-                auto table = frame.table({lux::ui::WidgetIdView{"workbench-toolbar"}, 4, false, false, false});
+                if (close_prompt_)
+                {
+                    frame.openPopup(lux::ui::WidgetIdView{"Discard scene changes?"});
+                    close_prompt_ = false;
+                }
+                {
+                    auto popup = frame.popup({lux::ui::WidgetIdView{"Discard scene changes?"}, true});
+                    if (popup.visible())
+                    {
+                        frame.text("Scene edits are held in memory. Saving is not available yet.");
+                        if (frame.smallButton("Keep editing"))
+                        {
+                            close_decision_ = ESceneCloseDecision::CANCEL;
+                            popup.close();
+                        }
+                        if (frame.smallButton("Discard and close"))
+                        {
+                            close_decision_ = ESceneCloseDecision::DISCARD;
+                            popup.close();
+                        }
+                    }
+                }
+                auto table = frame.table({lux::ui::WidgetIdView{"workbench-toolbar"}, 5, false, false, false});
                 if (!table.visible())
                     return;
                 table.nextColumn();
                 frame.text("LUX / Scene Workbench");
                 table.nextColumn();
-                frame.textMuted("Live inspection | Read-only scene");
+                const bool editing = session_.access() == sessions::ESceneAccess::EDIT_CONTENT;
+                frame.textMuted(editing ? "Scene editing | In memory" : "Live inspection | Read-only scene");
+                table.nextColumn();
+                if (editing)
+                {
+                    if (frame.smallButton(reset_gesture_ ? "Retry reset transform" : "Reset selected transform"))
+                        resetTransform();
+                    if (reset_failure_)
+                        frame.openPopup(lux::ui::WidgetIdView{"Transform reset failed"});
+                    auto popup = frame.popup({lux::ui::WidgetIdView{"Transform reset failed"}, false});
+                    if (popup.visible() && reset_failure_)
+                        frame.textMuted(detail::propertyFailureText(*reset_failure_));
+                    if (popup.visible() && frame.smallButton("Dismiss / cancel reset"))
+                    {
+                        const auto cancelled = reset_gesture_ ? session_.cancelTransformEdit(*reset_gesture_) :
+                                                               sessions::SceneResult<void>{};
+                        if (cancelled || cancelled.error().code == sessions::ESceneError::STALE_CONTENT)
+                        {
+                            reset_gesture_.reset();
+                            reset_failure_.reset();
+                            popup.close();
+                        }
+                    }
+                }
                 table.nextColumn();
                 if (frame.smallButton("Window history") && menu_.capture())
                     frame.openPopup(lux::ui::WidgetIdView{"window-history"});
@@ -165,7 +263,8 @@ namespace lux::editor::ui
             impl->inspector = std::make_unique<SceneInspector>(dispatcher, lux::ui::PaneId{impl->pane_ids[2]}, session);
             impl->resources =
                 std::make_unique<SceneResourcesPane>(dispatcher, lux::ui::PaneId{impl->pane_ids[3]}, session);
-            impl->toolbar = std::make_unique<SceneToolbar>(dispatcher, lux::ui::PaneId{impl->pane_ids[4]}, window);
+            impl->toolbar =
+                std::make_unique<SceneToolbar>(dispatcher, lux::ui::PaneId{impl->pane_ids[4]}, window, session);
             if (!impl->toolbar->valid())
                 return fail(EWindowError::UI_FAILURE);
             impl->registrations.reserve(5);
@@ -211,6 +310,21 @@ namespace lux::editor::ui
     WorkspaceId SceneWorkspace::id() const noexcept
     {
         return impl_->identity;
+    }
+    WindowResult<void> SceneWorkspace::requestCloseDecision() noexcept
+    {
+        if (!impl_->correctThread()) return fail(EWindowError::WRONG_THREAD);
+        if (impl_->closing || impl_->closed) return fail(EWindowError::CLOSED);
+        if (impl_->window.frameOpen()) return fail(EWindowError::BUSY);
+        impl_->inspector->cancelEdit();
+        impl_->viewport->cancelCapture();
+        impl_->toolbar->requestCloseDecision();
+        return {};
+    }
+    ESceneCloseDecision SceneWorkspace::takeCloseDecision() noexcept
+    {
+        if (!impl_->correctThread() || impl_->closed) return ESceneCloseDecision::PENDING;
+        return impl_->toolbar->takeCloseDecision();
     }
     WindowResult<void> SceneWorkspace::activate() noexcept
     {
@@ -259,6 +373,7 @@ namespace lux::editor::ui
             return fail(EWindowError::BUSY);
         const auto input = impl_->window.uiSession().inputSnapshot();
         impl_->viewport->consumeInput(input, seconds, scale);
+        impl_->inspector->consumeInput(input);
         return {};
     }
     std::span<const rendering::ViewImage> SceneWorkspace::frameImages() const noexcept
@@ -300,6 +415,7 @@ namespace lux::editor::ui
             impl_->commands.clear();
             impl_->registrations.clear();
             impl_->viewport->cancelCapture();
+            impl_->inspector->cancelEdit();
             releaseFrameImages();
             auto result = impl_->view->beginClose();
             if (!result)

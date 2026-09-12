@@ -2,7 +2,7 @@
 add_subdirectory(${PROJECT_SOURCE_DIR}/engine/toolchain/scene_seed ${CMAKE_CURRENT_BINARY_DIR}/seed)
 
 add_executable(editor_scene_gpu_test SceneGpuTest.cpp ../DevelopmentScene.cpp)
-target_link_libraries(editor_scene_gpu_test PRIVATE editor_application_candidate
+target_link_libraries(editor_scene_gpu_test PRIVATE editor_application
     lux::engine::platform::window
     lux::engine::simulation::transform_system lux::engine::scene::scene_render_meta
     lux::engine::function::render_client_meta lux::engine::simulation::ecs::hierarchy)

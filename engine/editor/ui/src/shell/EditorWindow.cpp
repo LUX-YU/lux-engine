@@ -533,6 +533,16 @@ namespace lux::editor::ui
         impl_->text_input_status = {};
         return {};
     }
+    WindowResult<void> EditorWindow::cancelCloseRequest() noexcept
+    {
+        if (auto checked = impl_->check(); !checked)
+            return checked;
+        if (impl_->frame || impl_->drawing)
+            return fail(EWindowError::BUSY);
+        glfwSetWindowShouldClose(impl_->window->handle(), GLFW_FALSE);
+        impl_->close_requested = false;
+        return {};
+    }
     WindowResult<void> EditorWindow::closeAfterRendererStopped() noexcept
     {
         if (impl_->owner != std::this_thread::get_id())

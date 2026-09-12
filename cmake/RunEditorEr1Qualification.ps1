@@ -82,7 +82,7 @@ Copy-Item -LiteralPath "$build/Testing/Temporary/LastTest.log" -Destination "$lo
 foreach ($variant in @('base', 'alternate', 'multiple_equal', 'multiple_reverse', 'multiple_lifecycle',
                       'multiple_shared_equal', 'multiple_shared_reverse', 'multiple_shared_lifecycle',
                       'late_close', 'late_selection', 'reentrant_close', 'image_lifetime',
-                      'view_failure', 'coordinate_1024', 'coordinate_256', 'resolved_source', 'viewport_input')) {
+                      'view_failure', 'coordinate_1024', 'coordinate_256', 'resolved_source', 'viewport_input', 'editing')) {
     Invoke-Logged "gpu-$variant" "$build/bin/editor_scene_gpu_test.exe" @($SeedPak, "$qroot/images", $variant)
 }
 Invoke-Logged 'seed-missing-ground' "$build/bin/lux_scene_seed.exe" @("$qroot/missing-ground.luxpak", '--omit-ground')
@@ -95,7 +95,7 @@ Invoke-Logged 'gpu-application-lifecycle' "$build/bin/editor_application_lifecyc
 Invoke-Logged 'ui-cold-default' "$build/bin/ui_cold_input_test.exe" @()
 if ($TestFont) {
     Invoke-Logged 'ui-cold-font' "$build/bin/ui_cold_input_test.exe" @($TestFont)
-    Invoke-Logged 'gpu-cold-font' "$build/bin/lux_editor_er1.exe" @('--assets', $SeedPak, '--font', $TestFont,
+    Invoke-Logged 'gpu-cold-font' "$build/bin/lux_editor.exe" @('--assets', $SeedPak, '--font', $TestFont,
         '--hidden', '--frames', '100', '--validation')
 }
 $normalRules = Get-Content -LiteralPath "$build/build.ninja" -Raw
@@ -104,6 +104,11 @@ if ($normalRules -match 'LUX_SV1_DIAGNOSTICS=1|EditorAllocationDiagnostics\.cpp\
 }
 $sdk = Join-Path $qroot 'sdk'
 Invoke-Logged 'install' $CMake @('--install', $build, '--prefix', $sdk, '--config', 'RelWithDebInfo')
+foreach ($retired in @('bin/editor_scene.dll', 'include/lux/engine/editor/scene', 'share/lux-engine-editor-scene')) {
+    if (Test-Path -LiteralPath (Join-Path $sdk $retired)) {
+        throw "Retired Scene entry leaked into the normal SDK: $retired"
+    }
+}
 $relocated = Join-Path $qroot 'relocated-sdk'
 Copy-Item -LiteralPath $sdk -Destination $relocated -Recurse
 foreach ($location in @('sdk', 'relocated-sdk')) {
@@ -147,9 +152,10 @@ foreach ($location in @('sdk', 'relocated-sdk')) {
 }
 $identity = [ordered]@{ source_commit = $revision; source = $clone; build = $build;
     sdk = $sdk; relocated_sdk = $relocated; configuration = 'RelWithDebInfo'; diagnostics = $false;
-    er1_complete = $false; limitation = 'This qualifies the retained-entry continuation snapshot; deletion and cost gates are separate';
+    phase = 'ER-2'; durable_scene_save = $false;
+    limitation = 'Automated Scene editing and SDK qualification; no independent native property/close-dialog acceptance';
     artifacts = @(Get-ChildItem -LiteralPath "$build/bin" -File | Where-Object Extension -in '.dll','.exe' | ForEach-Object {
         @{ name = $_.Name; size = $_.Length; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
     }) }
 $identity | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$qroot/qualification.json" -Encoding utf8
-Write-Output "Clean candidate qualification PASS: $revision (ER-1 completion not asserted)"
+Write-Output "Clean candidate qualification PASS: $revision (Scene editing; native desktop and durable saving are separate)"

@@ -81,6 +81,7 @@ namespace lux::editor::application
         std::unique_ptr<ui::EditorWindow> window;
         std::unique_ptr<rendering::EditorRenderer> renderer;
         std::optional<sessions::SceneOpenInfo> source;
+        std::optional<sessions::SceneEditInput> editing_source;
         std::unique_ptr<sessions::SceneSession> session;
         std::unique_ptr<sessions::SceneView> unattached_view;
         std::unique_ptr<ui::SceneWorkspace> workspace;
@@ -106,7 +107,7 @@ namespace lux::editor::application
     ApplicationResult<std::unique_ptr<EditorApplication>> EditorApplication::create(
         EditorApplicationCreateInfo &input) noexcept
     {
-        if (!input.source || !input.metadata)
+        if (bool(input.source) == bool(input.editing_source) || !input.metadata)
             return fail(EApplicationError::INVALID_ARGUMENT);
         try
         {
@@ -179,18 +180,35 @@ namespace lux::editor::application
             if (!renderer)
                 return renderFailure(renderer.error());
             impl_->renderer = std::move(*renderer);
-            auto source = impl_->config.source(sessions::SessionId{impl_->next_session++},
-                                               impl_->window->uiSession().dispatcherRef(), *impl_->renderer,
-                                               impl_->assets->port(), impl_->config.metadata);
-            if (!source)
-                return sceneFailure(source.error());
-            impl_->source.emplace(std::move(*source));
-            impl_->source->asset_catalog = impl_->vfs.view();
-            auto session = sessions::SceneSession::openInspection(*impl_->source);
+            sessions::SceneResult<std::unique_ptr<sessions::SceneSession>> session =
+                lux::cxx::unexpected(sessions::SceneFailure{sessions::ESceneError::INVALID_ARGUMENT});
+            if (impl_->config.editing_source)
+            {
+                auto source = impl_->config.editing_source(sessions::SessionId{impl_->next_session++},
+                    impl_->window->uiSession().dispatcherRef(), *impl_->renderer,
+                    impl_->assets->port(), impl_->config.metadata);
+                if (!source)
+                    return sceneFailure(source.error());
+                impl_->editing_source.emplace(std::move(*source));
+                impl_->editing_source->source.asset_catalog = impl_->vfs.view();
+                session = sessions::SceneSession::openEditing(*impl_->editing_source);
+            }
+            else
+            {
+                auto source = impl_->config.source(sessions::SessionId{impl_->next_session++},
+                                                   impl_->window->uiSession().dispatcherRef(), *impl_->renderer,
+                                                   impl_->assets->port(), impl_->config.metadata);
+                if (!source)
+                    return sceneFailure(source.error());
+                impl_->source.emplace(std::move(*source));
+                impl_->source->asset_catalog = impl_->vfs.view();
+                session = sessions::SceneSession::openInspection(*impl_->source);
+            }
             if (!session)
                 return sceneFailure(session.error());
             impl_->session = std::move(*session);
             impl_->source.reset();
+            impl_->editing_source.reset();
             auto view = sessions::SceneView::create(impl_->window->uiSession().dispatcherRef(), *impl_->session,
                                                     *impl_->renderer);
             if (!view)
@@ -235,6 +253,14 @@ namespace lux::editor::application
             auto input = impl_->window->collectInput();
             if (!input)
                 return windowFailure(input.error());
+            if (impl_->window->closeRequested() &&
+                impl_->session->access() == sessions::ESceneAccess::EDIT_CONTENT)
+            {
+                const auto prompted = impl_->workspace->requestCloseDecision();
+                if (!prompted) return windowFailure(prompted.error());
+                const auto acknowledged = impl_->window->cancelCloseRequest();
+                if (!acknowledged) return windowFailure(acknowledged.error());
+            }
             if (impl_->window->closeRequested() || (max_frames && frames >= max_frames))
             {
                 impl_->close_requested = true;
@@ -310,6 +336,8 @@ namespace lux::editor::application
                     return renderFailure(submitted.error());
             }
             impl_->workspace->releaseFrameImages();
+            if (impl_->workspace->takeCloseDecision() == ui::ESceneCloseDecision::DISCARD)
+                impl_->close_requested = true;
             ++frames;
             // Pace owner/UI work independently of GPU completion; never waitIdle to regulate frames.
             // Overruns do not accumulate a catch-up queue. Minimized owners still advance pending close/resource work.
@@ -392,6 +420,7 @@ namespace lux::editor::application
             impl_->session.reset();
         }
         impl_->source.reset();
+        impl_->editing_source.reset();
         if (impl_->renderer)
         {
             impl_->state = EApplicationState::DRAINING_RENDERER;

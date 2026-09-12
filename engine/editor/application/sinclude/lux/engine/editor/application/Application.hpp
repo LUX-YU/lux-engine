@@ -3,6 +3,7 @@
 #include <lux/engine/editor/application/tooling/Toolset.hpp>
 #include <lux/engine/editor/rendering/EditorRenderer.hpp>
 #include <lux/engine/editor/sessions/scene/SceneOpenInfo.hpp>
+#include <lux/engine/editor/sessions/scene/SceneEditInput.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
 #include <optional>
@@ -49,6 +50,9 @@ namespace lux::editor::application
     using InspectionSourceFactory = sessions::SceneResult<sessions::SceneOpenInfo> (*)(
         sessions::SessionId, lux::object::ObjectDispatcherRef, rendering::EditorRenderer &,
         lux::process::asset_loading::AssetReadPort, std::shared_ptr<const lux::scene::SceneMetaManager>) noexcept;
+    using EditingSourceFactory = sessions::SceneResult<sessions::SceneEditInput> (*)(
+        sessions::SessionId, lux::object::ObjectDispatcherRef, rendering::EditorRenderer &,
+        lux::process::asset_loading::AssetReadPort, std::shared_ptr<const lux::scene::SceneMetaManager>) noexcept;
     struct EditorApplicationCreateInfo final
     {
         ui::WindowSpec window;
@@ -58,6 +62,7 @@ namespace lux::editor::application
         std::vector<lux::asset::MountDesc> mounts;
         std::shared_ptr<const lux::scene::SceneMetaManager> metadata;
         InspectionSourceFactory source{};
+        EditingSourceFactory editing_source{};
     };
     struct ApplicationShutdownStatus final
     {

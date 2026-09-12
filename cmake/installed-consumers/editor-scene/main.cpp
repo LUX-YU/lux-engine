@@ -17,6 +17,7 @@ template <class T> T identity(unsigned char tail)
     bytes.back() = tail;
     return T{uuids::uuid{bytes}};
 }
+void exerciseInstalledEditing();
 int main()
 {
     namespace sessions = lux::editor::sessions;
@@ -100,5 +101,6 @@ int main()
         std::puts(
             "Installed Scene SDK: independent content, failure retention, readonly history, owning snapshot passed");
     }
+    exerciseInstalledEditing();
     lux::meta::ReflectionRegistry::destroyRegistry();
 }

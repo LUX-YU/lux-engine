@@ -54,6 +54,8 @@ namespace lux::editor::ui
         SceneInspector(lux::object::ObjectDispatcherRef, lux::ui::PaneId, sessions::SceneSession &);
         ~SceneInspector() noexcept override;
         [[nodiscard]] WindowResult<void> installReaders(std::span<const struct ComponentReadBinding>) noexcept;
+        void consumeInput(const lux::ui::UiInputSnapshot &) noexcept;
+        void cancelEdit() noexcept;
 
     private:
         void draw(lux::ui::Frame &, lux::ui::PaneDrawContext &) override;
@@ -72,6 +74,7 @@ namespace lux::editor::ui
         struct Impl; // Status display/filter; retry is explicit Session operation.
         std::unique_ptr<Impl> impl_;
     };
+    enum class ESceneCloseDecision : std::uint8_t { PENDING, CANCEL, DISCARD };
     class LUX_EDITOR_SCENE_UI_PUBLIC SceneWorkspace final : public lux::object::Object<SceneWorkspace>
     {
     public:
@@ -84,6 +87,8 @@ namespace lux::editor::ui
         SceneWorkspace(SceneWorkspace &&) = delete;
         SceneWorkspace &operator=(SceneWorkspace &&) = delete;
         [[nodiscard]] WorkspaceId id() const noexcept;
+        [[nodiscard]] WindowResult<void> requestCloseDecision() noexcept;
+        [[nodiscard]] ESceneCloseDecision takeCloseDecision() noexcept;
         [[nodiscard]] SceneWorkspaceResult<void> updateBeforeFrame() noexcept;
         [[nodiscard]] WindowResult<void> afterDraw(double, lux::ui::Vec2) noexcept;
         // Foreign threads cannot borrow or release the Pane's current frame images.

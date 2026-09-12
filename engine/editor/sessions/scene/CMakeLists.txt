@@ -5,7 +5,7 @@ generate_visibility_header(
     GENERATE_FILE_PATH lux/engine/editor/sessions/scene/visibility.h)
 add_component(COMPONENT_NAME editor_scene_session NAMESPACE lux::engine::editor
     OUTPUT_NAME lux_engine_editor_scene_session
-    SOURCE_FILES src/SceneSession.cpp src/SceneResources.cpp src/SceneCamera.cpp src/SceneView.cpp)
+    SOURCE_FILES src/SceneSession.cpp src/SceneEditState.cpp src/SceneResources.cpp src/SceneCamera.cpp src/SceneView.cpp)
 component_include_directories(editor_scene_session
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude INSTALL_TIME include)
@@ -53,4 +53,17 @@ if(BUILD_TESTING)
     target_compile_options(editor_scene_session_test PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
     lux_classify_target(TARGET editor_scene_session_test LAYER EDITOR PRODUCT TEST ROLE INTEGRATION)
     add_test(NAME editor_scene_session_protocol COMMAND editor_scene_session_test)
+    add_executable(editor_scene_editing_test test/SceneEditingTest.cpp)
+    target_include_directories(editor_scene_editing_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
+    target_link_libraries(editor_scene_editing_test PRIVATE lux::engine::editor::editor_scene_session)
+    target_compile_options(editor_scene_editing_test PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    lux_classify_target(TARGET editor_scene_editing_test LAYER EDITOR PRODUCT TEST ROLE INTEGRATION)
+    add_test(NAME editor_scene_editing_protocol COMMAND editor_scene_editing_test)
+endif()
+
+if(BUILD_TESTING AND NOT LUX_EDITOR_DIAGNOSTICS)
+    add_executable(editor_scene_editing_cost test/SceneEditingCost.cpp)
+    target_link_libraries(editor_scene_editing_cost PRIVATE lux::engine::editor::editor_scene_session)
+    target_compile_options(editor_scene_editing_cost PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    lux_classify_target(TARGET editor_scene_editing_cost LAYER EDITOR PRODUCT TEST ROLE INTEGRATION)
 endif()

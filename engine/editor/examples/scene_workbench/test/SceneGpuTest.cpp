@@ -1,3 +1,4 @@
+#include <lux/engine/editor/sessions/scene/SceneEditInput.hpp>
 #include "../DevelopmentScene.hpp"
 #include "../ShutdownDiagnostics.hpp"
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
@@ -372,6 +373,7 @@ namespace
 
 #include "PreserveGpuTest.hpp"
 #include "ViewportInputTest.hpp"
+#include "EditingInputTest.hpp"
 
 int main(int argc, char **argv)
 {
@@ -409,6 +411,7 @@ int main(int argc, char **argv)
     const bool resource_publication_test =
         variant == "resource_publication" || resource_snapshot_test || resource_ready_test;
     std::uint64_t prepared_cycles{};
+    const bool editing_test = variant == "editing";
     const bool retry_test = variant == "retry";
     const bool dynamic_test = variant == "dynamic";
     const bool churn_test = variant == "churn";
@@ -859,7 +862,26 @@ int main(int argc, char **argv)
         if (churn_test)
             source->resource_capacity = 6;
         source->asset_catalog = vfs.view();
-        auto session_result = sessions::SceneSession::openInspection(*source);
+        sessions::SceneEditInput edit_input;
+        if (editing_test)
+        {
+            std::uint8_t sequence{};
+            const auto &registry = std::as_const(source->scene->registry());
+            for (const auto entity : registry.view<const lux::simulation::ecs::Transform3D>())
+            {
+                std::array<std::uint8_t, 16> bytes{};
+                bytes.back() = ++sequence;
+                sessions::SceneAuthorObject value{lux::world::WorldObjectId{uuids::uuid{bytes}}, entity,
+                    registry.get<lux::simulation::ecs::Transform3D>(entity), {}};
+                if (const auto *light = registry.try_get<lux::simulation::ecs::Light3D>(entity))
+                    value.light = *light;
+                edit_input.objects.push_back(std::move(value));
+            }
+            source->history_limits = {128, 1024 * 1024, 64 * 1024, 128};
+            edit_input.source = std::move(*source);
+        }
+        auto session_result = editing_test ? sessions::SceneSession::openEditing(edit_input) :
+                                             sessions::SceneSession::openInspection(*source);
         require(session_result && !source->scene, "Scene source transfer");
         auto session = std::move(*session_result);
         std::array<std::uint8_t, 16> display_asset_bytes{0x53, 0x56, 1};
@@ -868,6 +890,12 @@ int main(int argc, char **argv)
         const auto display_path = session->readAssetPath(display_asset);
         require(display_path && *display_path == vfs.view().pathOf(display_asset),
                 "Inspector asset display resolves the actual current mounted path");
+        if (editing_test)
+        {
+            require(display_path && *display_path && **display_path == "/Seed/Meshes/Ground",
+                "Inspector receives the real named asset path, not an unresolved placeholder");
+            std::printf("ER2 asset display path=%s\n", (**display_path).c_str());
+        }
         const auto empty_path = session->readAssetPath(lux::asset::NullAssetId);
         require(empty_path && !*empty_path, "null reference has no invented asset path");
         std::thread path_thread([&] {
@@ -1268,7 +1296,8 @@ int main(int argc, char **argv)
         Readback readback;
         Readback second_readback;
         std::array<std::uint64_t, 4> second_checksums{};
-        std::vector<std::uint64_t> checksums(churn_test ? 12 : (dynamic_test ? 5 : (multiple_lifecycle ? 4 : 2)));
+        const auto capture_count = editing_test ? 7 : churn_test ? 12 : dynamic_test ? 5 : multiple_lifecycle ? 4 : 2;
+        std::vector<std::uint64_t> checksums(capture_count);
         std::shared_ptr<const sessions::SceneResourceSnapshot> initial_resources;
         std::optional<sessions::detail::ESceneTestMutation> pending_mutation;
         unsigned phase{};
@@ -1452,7 +1481,40 @@ int main(int argc, char **argv)
                     require(separate_view->beginClose(), "close second view while first continues");
                     separate_closing = true;
                 }
-                if (churn_test && phase < checksums.size())
+                if (editing_test)
+                {
+                    if (phase == 1 || phase == 4)
+                    {
+                        const auto outline = session->readOutline();
+                        require(outline, "editing outline");
+                        const auto row = std::find_if((*outline)->rows.begin(), (*outline)->rows.end(),
+                            [&](const auto &item) { return phase == 1 ?
+                                item.target == *session->selection().current : item.has_light; });
+                        require(row != (*outline)->rows.end() && row->authored, "actual author target");
+                        auto author = session->readAuthor(*row->authored);
+                        require(author, "committed values before edit");
+                        const auto token = phase == 1 ? session->beginTransformEdit(*row->authored) :
+                                                       session->beginLightEdit(*row->authored);
+                        require(token, "GPU property gesture");
+                        if (phase == 1)
+                        {
+                            author->transform->translation.x() += 2.0;
+                            require(session->previewTransform(*token, *author->transform), "preview actual transform");
+                            require(session->commitTransformEdit(*token), "commit actual transform");
+                        }
+                        else
+                        {
+                            author->light->value.intensity *= 0.1F;
+                            require(session->previewLight(*token, *author->light), "preview actual light");
+                            require(session->commitLightEdit(*token), "commit actual light");
+                        }
+                    }
+                    else if (phase == 2 || phase == 5 || phase == 6)
+                        require(session->undo(), "GPU author undo");
+                    else if (phase == 3)
+                        require(session->redo(), "GPU author redo");
+                }
+                else if (churn_test && phase < checksums.size())
                     pending_mutation = sessions::detail::ESceneTestMutation::ROTATE_MESH_SOURCES;
                 else if (dynamic_test && phase == 1)
                     pending_mutation = sessions::detail::ESceneTestMutation::ADJUST_VISUALS;
@@ -1699,6 +1761,16 @@ int main(int argc, char **argv)
             }
             std::this_thread::sleep_for(std::chrono::milliseconds{1});
         }
+        if (editing_test)
+        {
+            require(checksums[0] != checksums[1] && checksums[0] == checksums[2] &&
+                checksums[1] == checksums[3] && checksums[3] != checksums[4] &&
+                checksums[3] == checksums[5] && checksums[0] == checksums[6],
+                "ER2 Transform/Light actual GPU changes and exact undo/redo pixel restoration");
+            require(session->historyView()->history.entry_count == 2 &&
+                session->historyView()->history.cursor == 0, "ER2 GPU edits share one history");
+            std::puts("ER2 GPU author projection and seven captured playback states PASS");
+        }
         if (coordinate_test)
             coordinate_contract &= checksums[0] != checksums[1];
         require(coordinate_test || late_close_test || !has_mesh || checksums[0] != checksums[1],
@@ -1857,6 +1929,11 @@ int main(int argc, char **argv)
                     "old owning failure snapshot survives successful retry");
             std::printf("resource retry PASS old_sequence=%llu original_storage_error=%u\n", failed_key->sequence,
                         unsigned(old->asset_failure->storage_error));
+        }
+        if (editing_test)
+        {
+            pending = {};
+            exerciseEditingInput(*renderer, *window, *execution, *session, *workspace, cycle);
         }
         if (variant == "viewport_input")
         {

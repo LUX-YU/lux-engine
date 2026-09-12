@@ -1,4 +1,6 @@
+# Historical regression/cost implementation; no SDK installation.
 find_package(Eigen3 CONFIG REQUIRED)
+set(LUX_GENERATE_HEADER_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/include)
 generate_visibility_header(
     ENABLE_MACRO_NAME LUX_EDITOR_SCENE_LIBRARY
     PUBLIC_MACRO_NAME LUX_EDITOR_SCENE_PUBLIC
@@ -10,7 +12,8 @@ add_component(
     NAMESPACE lux::engine::editor
     SOURCE_FILES src/SceneCamera.cpp src/SceneWorkbench.cpp
 )
-component_include_directories(editor_scene BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
+component_include_directories(editor_scene BUILD_TIME_EXPORT
+    ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude INSTALL_TIME include)
 target_compile_definitions(editor_scene PRIVATE LUX_EDITOR_SCENE_LIBRARY)
 target_compile_definitions(editor_scene PRIVATE LUX_SV1_DIAGNOSTICS=$<BOOL:${LUX_EDITOR_DIAGNOSTICS}>)
@@ -19,7 +22,8 @@ target_link_libraries(editor_scene PUBLIC Eigen3::Eigen lux::engine::editor::edi
     PRIVATE lux::engine::simulation::transform_system lux::engine::scene::scene_render_meta
     lux::engine::function::render_client_meta lux::engine::core::task)
 component_add_transitive_commands(editor_scene
-    "find_package(Eigen3 CONFIG REQUIRED)"
+    "find_package(Eigen3 CONFIG REQUIRED)
+set(LUX_GENERATE_HEADER_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/include)"
     "find_package(lux-engine-editor-inspector REQUIRED COMPONENTS editor_inspector)"
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
 )
@@ -29,9 +33,7 @@ engine_add_type_runtime_info(NAME editor_scene_transform_meta
     REGISTER_FUNC_NAME lux_editor_scene_transform)
 engine_target_add_type_runtime_info(TARGET editor_scene METAS editor_scene_transform_meta
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen)
-lux_classify_target(TARGET editor_scene LAYER EDITOR PRODUCT EDITOR ROLE INTEGRATION)
-install_components(PROJECT_NAME lux-engine-editor-scene VERSION ${PROJECT_VERSION}
-    NAMESPACE lux::engine::editor COMPONENTS editor_scene)
+lux_classify_target(TARGET editor_scene LAYER EDITOR PRODUCT TEST ROLE INTEGRATION)
 
 if(BUILD_TESTING)
     add_executable(editor_scene_camera_test test/scene_camera_test.cpp)

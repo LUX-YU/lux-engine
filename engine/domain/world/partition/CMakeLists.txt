@@ -38,7 +38,6 @@ component_add_transitive_commands(
     "add_library(lux::engine::world::partition INTERFACE IMPORTED GLOBAL)"
     "set_property(TARGET lux::engine::world::partition PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::world::world_partition)"
 )
-lux_classify_target(TARGET world_partition LAYER WORLD PRODUCT RUNTIME ROLE FOUNDATION)
 
 install_components(
     PROJECT_NAME lux-engine-world-partition

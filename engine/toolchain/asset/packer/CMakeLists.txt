@@ -12,13 +12,6 @@ target_link_libraries(
         lux::engine::toolchain::toolchain_model_cooker
 )
 
-lux_classify_target(
-    TARGET  lux_asset_packer
-    LAYER   TOOLCHAIN
-    PRODUCT BUILD_TOOL
-    ROLE    COMPOSITION
-)
-
 if(WIN32)
     add_custom_command(
         TARGET lux_asset_packer

@@ -19,7 +19,7 @@
  * Stage A: resource ownership only — the mesh / upload ops still ride the core
  * protocol; they move to feature-scoped typed-ops in the op-downloading stage.
  *
- * See .internal/feature-classification-and-2d-coupling-2026-06-21.md §1D.
+ * See the implementation §1D.
  */
 
 #include <lux/engine/render/RenderFeature.hpp>

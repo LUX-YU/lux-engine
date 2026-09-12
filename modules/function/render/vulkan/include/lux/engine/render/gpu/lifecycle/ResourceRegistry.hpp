@@ -279,7 +279,7 @@ namespace lux::render
         /// one is guaranteed", so ~26 sites grew `if (!x) return;` guards on conditions
         /// that cannot occur — turning an impossible state into a silent no-op, which is
         /// the failure mode the highlight-regression post-mortem warned about
-        /// (.internal/render-code-quality-audit.md §5.5 lesson 2).
+        /// (the implementation §5.5 lesson 2).
         ///
         /// Terminates through renderFatal, NOT assert: the editor and the player
         /// both ship RelWithDebInfo, which carries NDEBUG — an assert here would

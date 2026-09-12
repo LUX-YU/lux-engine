@@ -9,7 +9,7 @@
 /// build the first two moments of each warp. The compute blur pass that
 /// follows (shadow_evsm_blur_h/v.comp) Gaussian-filters these moments
 /// across the tile — pre-filtered moments are what makes EVSM bias-free
-/// at sampling time. See .internal/plan/evsm-shadow-implementation-guide.md
+/// at sampling time. See the implementation
 /// §2.4 for the math.
 ///
 /// Push-constant exponents (kEVSMPosExponent / kEVSMNegExponent) tune the

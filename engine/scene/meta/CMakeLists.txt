@@ -35,7 +35,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"
     "find_package(lux-engine-core REQUIRED COMPONENTS meta serialization)"
 )
-lux_classify_target(TARGET scene_meta LAYER SCENE PRODUCT RUNTIME ROLE COMPOSITION)
 
 install_components(
     PROJECT_NAME lux-engine-scene-meta

@@ -10,13 +10,6 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Navigation3DBackend.cpp
 )
 
-lux_classify_target(
-    TARGET  navigation_detour3d
-    LAYER   FUNCTION
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
-)
-
 component_include_directories(
     navigation_detour3d
     BUILD_TIME_EXPORT

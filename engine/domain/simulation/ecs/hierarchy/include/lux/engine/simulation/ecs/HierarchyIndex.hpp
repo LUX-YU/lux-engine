@@ -19,7 +19,6 @@ namespace lux::simulation::ecs
     {
         struct HierarchyMutation;
         class HierarchyMaintenance;
-        struct HierarchyIndexTestAccess;
     }
 
     enum class EHierarchyError : std::uint8_t
@@ -139,7 +138,6 @@ namespace lux::simulation::ecs
         friend class HierarchyChildren;
         friend class HierarchyChildren::Iterator;
         friend class detail::HierarchyMaintenance;
-        friend struct detail::HierarchyIndexTestAccess;
     };
 
     [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC lux::cxx::expected<void, EHierarchyError>

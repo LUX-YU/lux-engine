@@ -39,7 +39,6 @@ namespace lux::object
 
     namespace detail
     {
-        struct ObjectDiagnosticsAccess;
         using ObjectInvokeThunk = void (*)(LuxObject*, const void*, void*) noexcept;
 
         [[nodiscard]] LUX_CORE_PUBLIC bool sendEventErased(LuxObject& target, EventView& event) noexcept;
@@ -84,13 +83,6 @@ namespace lux::object
     private:
         template <class Derived, class Base> friend class Object;
         friend class ObjectWeakRef;
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-        friend struct detail::ObjectDiagnosticsAccess;
-        void closeForTest() noexcept;
-        [[nodiscard]] std::uint64_t storageGrowthCountForTest() const noexcept;
-        [[nodiscard]] std::size_t ownedConnectionCountForTest() const noexcept;
-        [[nodiscard]] std::size_t incomingConnectionCountForTest() const noexcept;
-#endif
         friend bool detail::sendEventErased(LuxObject&, EventView&) noexcept;
 
         friend lux::cxx::expected<Connection, EObserveError> detail::observeDynamicErased(

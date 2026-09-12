@@ -16,7 +16,7 @@
  * DeferredLighting), which read ViewCameraResource — owner-first ordering, like
  * StandardMeshStack.
  *
- * See .internal/feature-classification-and-2d-coupling-2026-06-21.md (decoupling View from 3D).
+ * See the implementation (decoupling View from 3D).
  */
 
 #include <lux/engine/render/RenderFeature.hpp>

@@ -25,7 +25,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS object serialization)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
-lux_classify_target(TARGET scene_system LAYER SCENE PRODUCT RUNTIME ROLE FOUNDATION)
 
 install_components(
     PROJECT_NAME lux-engine-scene-system

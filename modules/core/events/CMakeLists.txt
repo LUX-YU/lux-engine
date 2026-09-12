@@ -41,10 +41,3 @@ component_add_transitive_commands(
     events
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
-
-lux_classify_target(
-    TARGET  events
-    LAYER   CORE
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)

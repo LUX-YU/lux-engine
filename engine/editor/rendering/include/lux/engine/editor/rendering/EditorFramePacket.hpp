@@ -4,7 +4,6 @@ namespace lux::editor::rendering
 {
     namespace detail
     {
-        struct RendererTestAccess;
     }
     class LUX_EDITOR_RENDERING_PUBLIC EditorFramePacket final
     {
@@ -20,7 +19,6 @@ namespace lux::editor::rendering
 
       private:
         friend class EditorRenderer;
-        friend struct detail::RendererTestAccess;
         struct Storage;
         explicit EditorFramePacket(std::unique_ptr<Storage>) noexcept;
         std::unique_ptr<Storage> storage_;

@@ -11,7 +11,7 @@
  * the cmake `_shadow_variants` list, add an embed prefix in
  * BuiltinShaderRegistry, and ship a new `<Name>ShadowTechnique` impl.
  *
- * Design rationale: .internal/plan/evsm-shadow-implementation-guide.md §2-§8.
+ * Design rationale: the implementation §2-§8.
  */
 
 #include <cstdint>

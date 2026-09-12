@@ -10,7 +10,7 @@
 //
 //  Kept dependency-light (only <cstdint> + MetaAnnotations) so the editor-only
 //  meta generator parses it cleanly.  See
-//  .internal/feature-quality-tiers-design-2026-06-19.md.
+//  the implementation.
 // ============================================================================
 #include <cstdint>
 

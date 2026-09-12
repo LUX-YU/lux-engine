@@ -1,4 +1,0 @@
-TIMER_OVERFLOW local=0 input=9223372036.8547764 long_double_bytes=8 waits=1 errors=0 status=0 expected=2
-TIMER_CLEANUP local=0 creates=1 destroys=1 continuations_destroyed=1
-TIMER_OVERFLOW local=1 input=9223372036.8547764 long_double_bytes=8 waits=1 errors=0 status=0 expected=2
-TIMER_CLEANUP local=1 creates=1 destroys=1 continuations_destroyed=1

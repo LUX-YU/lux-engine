@@ -3,13 +3,6 @@ add_interface_component(
     NAMESPACE      lux::engine::function
 )
 
-lux_classify_target(
-    TARGET  navigation
-    LAYER   FUNCTION
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
-)
-
 component_include_directories(
     navigation
     BUILD_TIME_EXPORT

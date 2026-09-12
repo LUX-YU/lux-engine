@@ -23,13 +23,6 @@ add_component(
     SOURCE_FILES   ${LUX_NODE_GRAPH_EDITOR_SRCS}
 )
 
-lux_classify_target(
-    TARGET node_graph_editor
-    LAYER EDITOR
-    PRODUCT EDITOR
-    ROLE FOUNDATION
-)
-
 component_include_directories(
     node_graph_editor
     BUILD_TIME_EXPORT
@@ -69,8 +62,3 @@ install_components(
     NAMESPACE    lux::engine::editor
     COMPONENTS   node_graph_editor
 )
-
-if(BUILD_TESTING)
-    add_subdirectory(test)
-endif()
-

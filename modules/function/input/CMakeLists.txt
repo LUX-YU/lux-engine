@@ -30,13 +30,6 @@ add_component(
     SOURCE_FILES    ${LUX_INPUT_SRCS}
 )
 
-lux_classify_target(
-    TARGET input
-    LAYER FUNCTION
-    PRODUCT RUNTIME
-    ROLE DOMAIN
-)
-
 component_include_directories(
     input
     BUILD_TIME_EXPORT

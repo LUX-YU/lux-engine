@@ -7,7 +7,6 @@ namespace lux::simulation::script::detail
 {
     class ScriptCompletionIngress final
     {
-        friend struct ScriptCompletionIngressTestAccess;
         struct Transport final
         {
             ExternalCompletionRing completions;

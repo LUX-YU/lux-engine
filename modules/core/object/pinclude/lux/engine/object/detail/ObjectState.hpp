@@ -60,9 +60,6 @@ namespace lux::object::detail
         std::vector<lux::cxx::intrusive_ptr<ConnectionControl>> owned_connections;
         std::vector<ConnectionControl*> pending_removals;
         std::size_t active_notify_depth{0};
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-        std::uint64_t storage_growth_count{0};
-#endif
         std::mutex incoming_mutex;
         std::vector<IncomingLink> incoming;
 

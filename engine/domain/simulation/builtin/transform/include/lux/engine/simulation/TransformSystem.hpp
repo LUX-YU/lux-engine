@@ -23,7 +23,6 @@ namespace lux::simulation
 {
     namespace detail
     {
-        struct TransformSystemTestAccess;
     }
 
     enum class ETransformUpdateError : std::uint8_t
@@ -68,7 +67,6 @@ namespace lux::simulation
         [[nodiscard]] std::size_t retainedDenseBytes() const noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;
-        friend struct detail::TransformSystemTestAccess;
     };
 
     class LUX_ENGINE_SIMULATION_TRANSFORM_SYSTEM_PUBLIC Transform3DSystem final
@@ -105,7 +103,6 @@ namespace lux::simulation
         [[nodiscard]] std::size_t retainedDenseBytes() const noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;
-        friend struct detail::TransformSystemTestAccess;
     };
 
     struct LUX_TYPE_INFO(both) TransformSystemConfiguration final

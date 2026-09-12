@@ -3,7 +3,7 @@
 /// @brief Horizontal separable Gaussian blur over a single EVSM atlas tile.
 ///
 /// Pre-filtered moments are what give EVSM its bias-free sampling — see
-/// .internal/plan/evsm-shadow-implementation-guide.md §2.5. This pass reads
+/// the implementation §2.5. This pass reads
 /// raw moments from the caster output, blurs along X within the tile, and
 /// writes to scratch; shadow_evsm_blur_v.comp closes the separable pair.
 ///

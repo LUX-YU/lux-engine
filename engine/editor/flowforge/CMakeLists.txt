@@ -30,12 +30,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-editor-node-graph REQUIRED COMPONENTS node_graph_editor)"
     "find_package(lux-engine-function REQUIRED COMPONENTS flowforge)"
 )
-lux_classify_target(
-    TARGET  editor_flow_graph
-    LAYER   EDITOR
-    PRODUCT EDITOR
-    ROLE    INTEGRATION
-)
 
 install_components(
     PROJECT_NAME lux-engine-editor-flow-graph

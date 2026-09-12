@@ -9,7 +9,7 @@
 //  so convenience normalization (backslash fixup, trimming, case-tolerant
 //  completion) lives in editor UI code ONLY, never here.
 //
-//  Grammar (design: .internal/plan/virtual-path-pak-design.md §2):
+//  Grammar (design: the implementation §2):
 //      asset-path := "/" root ("/" segment)* "/" asset-name
 //      segment    := name-char+        ; no extension, no dots, no colons
 //      name-char  := any byte except / \ . : " | ? * < > and control chars

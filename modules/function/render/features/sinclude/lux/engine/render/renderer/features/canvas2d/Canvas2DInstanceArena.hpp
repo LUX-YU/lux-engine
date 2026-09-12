@@ -1,7 +1,7 @@
 #pragma once
 // ============================================================================
 //  Canvas2DInstanceArena.hpp — the scene's multi-KIND GPU-resident 2D instance
-//  store (Canvas2D v2 + C2D-R6a; .internal/2d-gpu-driven-rewrite.md §3.1/§3.7).
+//  store (Canvas2D v2 + C2D-R6a; the implementation §3.1/§3.7).
 //
 //  ONE shared ordering axis, N instance KINDS (image today; pixel-field chunk,
 //  tile chunk, particle emitter arrive with their slices). Every live+visible

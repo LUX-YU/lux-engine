@@ -16,7 +16,7 @@
  *
  * The interface is intentionally rich enough to host VSM-class techniques
  * (multi-pass with cross-frame state, feedback loops, per-page rendering).
- * See .internal/plan/evsm-shadow-implementation-guide.md §8 for the
+ * See the implementation §8 for the
  * compatibility argument.
  *
  * C2 status: the interface ships with empty default implementations for

@@ -52,7 +52,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core transform visual)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
 )
-lux_classify_target(TARGET scene_render LAYER SCENE PRODUCT RUNTIME ROLE INTEGRATION)
 
 add_component(
     COMPONENT_NAME scene_render_meta
@@ -70,7 +69,7 @@ target_link_libraries(
     scene_render_meta
     PRIVATE scene_render lux::engine::core::meta
 )
-lux_classify_target(TARGET scene_render_meta LAYER SCENE PRODUCT RUNTIME ROLE INTEGRATION)
+
 engine_add_type_runtime_info(
     NAME scene_runtime_render_configuration_meta
     REGISTER_FUNC_NAME scene_runtime_render_configuration

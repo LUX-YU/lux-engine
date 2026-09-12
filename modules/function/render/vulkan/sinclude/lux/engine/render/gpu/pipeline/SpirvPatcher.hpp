@@ -26,7 +26,7 @@
 //  literal substitution. All that's needed here is understanding a single
 //  instruction, OpDecorate.
 //
-//  Design: .internal/lux-engine-descriptor-layout-architecture.md §4.4
+//  Design: the implementation §4.4
 // =============================================================================
 
 #include <lux/engine/function/visibility.h>

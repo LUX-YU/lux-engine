@@ -24,10 +24,3 @@ component_add_transitive_commands(
     async_port
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
-
-lux_classify_target(
-    TARGET  async_port
-    LAYER   CORE
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)

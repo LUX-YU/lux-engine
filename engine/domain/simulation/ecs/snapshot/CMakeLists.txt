@@ -47,10 +47,3 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core schema)"
 )
-
-lux_classify_target(
-    TARGET  snapshot
-    LAYER   SIMULATION
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)

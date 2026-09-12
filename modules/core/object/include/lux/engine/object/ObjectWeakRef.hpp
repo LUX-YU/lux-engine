@@ -25,12 +25,6 @@ namespace lux::object
         [[nodiscard]] LuxObject* getOnCurrent() const noexcept;
         [[nodiscard]] ObjectDispatcherRef dispatcherRef() const noexcept;
 
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-        [[nodiscard]] const void* storageIdentityForTest() const noexcept
-        {
-            return state_.get();
-        }
-#endif
 
         template <class Type>
             requires std::derived_from<Type, LuxObject>

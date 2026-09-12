@@ -43,12 +43,6 @@ component_add_transitive_commands(
     "set_property(TARGET lux::engine::world::asset PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::world::world_asset)"
     "endif()"
 )
-lux_classify_target(
-    TARGET  world_asset
-    LAYER   WORLD
-    PRODUCT RUNTIME
-    ROLE    INTEGRATION
-)
 
 install_components(
     PROJECT_NAME lux-engine-world-asset

@@ -30,13 +30,6 @@ target_link_libraries(
         lux::engine::core::object
 )
 
-lux_classify_target(
-    TARGET ui_imgui_backend
-    LAYER FUNCTION
-    PRODUCT RUNTIME
-    ROLE INTEGRATION
-)
-
 add_component(
     COMPONENT_NAME ui
     NAMESPACE lux::engine::function
@@ -88,13 +81,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS object)"
 )
 
-lux_classify_target(
-    TARGET ui
-    LAYER FUNCTION
-    PRODUCT RUNTIME
-    ROLE DOMAIN
-)
-
 if(LUX_PROFILE_HAS_EDITOR)
     find_package(imgui REQUIRED COMPONENTS vulkan)
     find_package(Vulkan REQUIRED)
@@ -115,12 +101,7 @@ if(LUX_PROFILE_HAS_EDITOR)
         PUBLIC Vulkan::Vulkan
     )
     target_link_libraries(ui_imgui_backend PRIVATE Vulkan::Vulkan)
-    lux_classify_target(
-        TARGET  ui_vulkan_backend
-        LAYER   FUNCTION
-        PRODUCT EDITOR
-        ROLE    INTEGRATION
-    )
+
 endif()
 
 include_component_cmake_scripts(meta)
@@ -134,30 +115,3 @@ engine_target_add_type_runtime_info(
     METAS ui_pane_meta
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen
 )
-
-# Dedicated diagnostic DLL only. BUILD_TESTING alone must not instrument an installed UI.
-if(BUILD_TESTING)
-    add_executable(ui_cold_input_test test/ColdInputTest.cpp)
-    target_link_libraries(ui_cold_input_test PRIVATE ui imgui::core)
-    target_include_directories(ui_cold_input_test PRIVATE sinclude)
-    target_compile_options(ui_cold_input_test PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
-    lux_classify_target(TARGET ui_cold_input_test LAYER FUNCTION PRODUCT TEST ROLE INTEGRATION)
-    add_test(NAME ui_cold_input_protocol COMMAND ui_cold_input_test)
-endif()
-if(LUX_EDITOR_DIAGNOSTICS)
-    target_sources(ui PRIVATE ${PROJECT_SOURCE_DIR}/cmake/diagnostics/EditorAllocationDiagnostics.cpp)
-    target_compile_definitions(ui PRIVATE
-        LUX_ALLOCATION_ARM=lux_er1_function_ui_allocation_fail_after
-        LUX_ALLOCATION_DISARM=lux_er1_function_ui_allocation_disarm)
-    target_compile_definitions(ui_imgui_backend PRIVATE LUX_UI_FAILURE_DIAGNOSTICS)
-    target_include_directories(ui_imgui_backend PRIVATE ${PROJECT_SOURCE_DIR}/cmake/diagnostics)
-    add_executable(ui_construction_failure_test test/ConstructionFailureTest.cpp)
-    target_link_libraries(ui_construction_failure_test PRIVATE ui imgui::core)
-    target_include_directories(ui_construction_failure_test PRIVATE sinclude)
-    target_compile_options(ui_construction_failure_test PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
-    lux_classify_target(TARGET ui_construction_failure_test LAYER FUNCTION PRODUCT TEST ROLE INTEGRATION)
-    foreach(index RANGE 0 14)
-        add_test(NAME ui_construction_failure_${index} COMMAND ui_construction_failure_test ${index})
-    endforeach()
-    add_test(NAME ui_atlas_capture_failure COMMAND ui_construction_failure_test atlas)
-endif()

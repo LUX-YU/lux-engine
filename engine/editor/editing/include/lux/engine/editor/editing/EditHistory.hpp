@@ -6,7 +6,6 @@ namespace lux::editor::editing
 {
     namespace detail
     {
-        struct EditHistoryTestAccess;
     }
     // Owner-thread history. Queries borrow labels until mutation; snapshots own only scalar state.
     // Mutations reject reentry, including preparation, publication and resource reclamation.
@@ -37,7 +36,6 @@ namespace lux::editor::editing
         [[nodiscard]] EditResult<void> close() noexcept;
 
     private:
-        friend struct detail::EditHistoryTestAccess;
         [[nodiscard]] EditResult<ApplyResult> replay(EApplyKind kind) noexcept;
         struct Impl;
         explicit EditHistory(std::unique_ptr<Impl> impl) noexcept;

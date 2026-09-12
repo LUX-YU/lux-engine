@@ -59,10 +59,3 @@ component_add_transitive_commands(
     "find_package(stduuid CONFIG REQUIRED)"
     "find_package(Eigen3 CONFIG REQUIRED)"
 )
-
-lux_classify_target(
-    TARGET  serialization
-    LAYER   CORE
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)

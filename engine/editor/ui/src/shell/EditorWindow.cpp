@@ -2,9 +2,6 @@
 #include <lux/engine/window/LuxWindow.hpp>
 #include <lux/engine/ui/UiInputEvent.hpp>
 #include <GLFW/glfw3.h>
-#if defined(LUX_EDITOR_DIAGNOSTICS)
-#include <SelectedTextTrace.hpp>
-#endif
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -94,21 +91,6 @@ namespace lux::editor::ui
             result.state = result.composition_positioned && result.candidate_positioned
                                ? ETextInputPlatformState::APPLIED
                                : ETextInputPlatformState::PLATFORM_FAILURE;
-#if defined(LUX_EDITOR_DIAGNOSTICS)
-            static unsigned logged{};
-            static POINT last{-1, -1};
-            if (diagnostics::selectedTextTraceEnabled() && logged < 64 &&
-                (last.x != composition.ptCurrentPos.x || last.y != composition.ptCurrentPos.y))
-            {
-                ++logged;
-                last = composition.ptCurrentPos;
-                std::fprintf(stderr,
-                             "ER1 selected_text anchor frame=%llu ui=%.2f,%.2f client=%ld,%ld "
-                             "scale=%.3f,%.3f dpi=%u composition=%d candidate=%d\n",
-                             anchor.frame, anchor.caret.x, anchor.caret.y, last.x, last.y, scale_x, scale_y,
-                             GetDpiForWindow(handle), result.composition_positioned, result.candidate_positioned);
-            }
-#endif
 #else
             result.state = ETextInputPlatformState::UNAVAILABLE;
 #endif
@@ -397,9 +379,6 @@ namespace lux::editor::ui
                     }
                     else if constexpr (std::same_as<Value, window::WindowTextEvent>)
                     {
-#if defined(LUX_EDITOR_DIAGNOSTICS)
-                        diagnostics::traceCodepoint("WindowTextEvent", value.codepoint);
-#endif
                         impl_->ui->feedInput(lux::ui::UiText{static_cast<char32_t>(value.codepoint)});
                     }
                 },

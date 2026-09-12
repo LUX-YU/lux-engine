@@ -133,13 +133,6 @@ component_add_transitive_commands(
 
 component_add_internal_dependencies(render_vulkan render_client render_graph)
 
-lux_classify_target(
-    TARGET  render_vulkan
-    LAYER   FUNCTION
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
-)
-
 target_link_libraries(
     render_vulkan
     PUBLIC

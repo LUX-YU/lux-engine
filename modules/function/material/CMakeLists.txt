@@ -40,10 +40,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS graph)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity description)"
 )
-
-lux_classify_target(
-    TARGET  material_graph
-    LAYER   FUNCTION
-    PRODUCT TOOLCHAIN
-    ROLE    DOMAIN
-)

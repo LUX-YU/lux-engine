@@ -35,12 +35,6 @@ component_add_transitive_commands(
     "set_property(TARGET lux::engine::process::asset_loading PROPERTY
         INTERFACE_LINK_LIBRARIES lux::engine::process::process_asset_loading)"
 )
-lux_classify_target(
-    TARGET  process_asset_loading
-    LAYER   PROCESS
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
-)
 
 install_components(
     PROJECT_NAME lux-engine-process-asset-loading

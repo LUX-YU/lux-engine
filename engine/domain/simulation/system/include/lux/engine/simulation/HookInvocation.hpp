@@ -7,7 +7,6 @@
 namespace lux::simulation
 {
     class Simulation;
-    namespace detail { struct HookInvocationTestAccess; }
     template <class Signature> class HookPoint;
     template <class Route, class Payload> class HookChannel;
 
@@ -35,7 +34,6 @@ namespace lux::simulation
         bool script_capable_{};
         bool stable_resume_{};
         friend class Simulation;
-        friend struct detail::HookInvocationTestAccess;
         template <class> friend class HookPoint;
         template <class, class> friend class HookChannel;
     };

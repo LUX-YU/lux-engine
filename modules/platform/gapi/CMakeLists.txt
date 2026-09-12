@@ -42,10 +42,3 @@ component_add_transitive_commands(
     gapi
     "find_package(Vulkan    REQUIRED)"
 )
-
-lux_classify_target(
-    TARGET  gapi
-    LAYER   PLATFORM
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)

@@ -21,10 +21,3 @@ component_add_transitive_commands(
     identity
     "find_package(stduuid CONFIG REQUIRED)"
 )
-
-lux_classify_target(
-    TARGET  identity
-    LAYER   RESOURCE
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)

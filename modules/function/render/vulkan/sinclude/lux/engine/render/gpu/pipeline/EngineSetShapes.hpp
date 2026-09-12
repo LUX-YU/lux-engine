@@ -24,7 +24,7 @@
 //    LayoutContract  — what a shader-declared resource is called and what it means;
 //    EngineSetShapes — what an engine-shared set looks like.
 //
-//  Design: .internal/lux-engine-descriptor-layout-architecture.md §4.1/§4.2
+//  Design: the implementation §4.1/§4.2
 // =============================================================================
 
 #include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>

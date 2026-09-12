@@ -1,5 +1,6 @@
 #include <lux/engine/editor/editing/EditHistory.hpp>
-#include <lux/engine/editor/editing/detail/EditDiagnostics.hpp>
+#include <cstdlib>
+#include <string>
 
 #include <atomic>
 #include <limits>
@@ -25,7 +26,7 @@ namespace lux::editor::editing
         {
             EditOperationPtr operation;
             StateId before, after;
-            detail::EditLabel label;
+            std::string label;
             std::size_t charged{};
         };
 
@@ -48,8 +49,8 @@ namespace lux::editor::editing
 
     struct EditHistory::Impl final
     {
-        using Entries = std::vector<Entry, detail::EditAllocator<Entry, detail::EEditAllocationSite::ENTRIES>>;
-        using Retired = std::vector<Entry, detail::EditAllocator<Entry, detail::EEditAllocationSite::RECLAIM>>;
+        using Entries = std::vector<Entry>;
+        using Retired = std::vector<Entry>;
         const std::thread::id owner{std::this_thread::get_id()};
         HistoryCreateInfo info;
         HistoryId identity;
@@ -63,16 +64,6 @@ namespace lux::editor::editing
         Retired retired;
         std::size_t cursor{}, retained_bytes{}, applied_bytes{};
 
-#if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
-        Impl() noexcept
-        {
-            ++detail::allocationStatistics().live_objects;
-        }
-        ~Impl() noexcept
-        {
-            --detail::allocationStatistics().live_objects;
-        }
-#endif
 
         [[nodiscard]] EditResult<void> check(bool query = false) const noexcept
         {
@@ -147,49 +138,9 @@ namespace lux::editor::editing
         }
     };
 
-#if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
-    namespace detail
-    {
-        EditAllocationStatistics& allocationStatistics() noexcept
-        {
-            static thread_local EditAllocationStatistics statistics;
-            return statistics;
-        }
-        EditDiagnostics& editDiagnostics() noexcept
-        {
-            static thread_local EditDiagnostics diagnostics;
-            return diagnostics;
-        }
-        void EditHistoryTestAccess::counters(
-            EditHistory& history,
-            std::uint64_t serial,
-            std::uint64_t revision,
-            std::uint64_t event,
-            std::uint64_t request
-        ) noexcept
-        {
-            auto& state = *history.impl_;
-            if (!state.check())
-            {
-                failEditContract(EEditContract::HISTORY_LIFETIME);
-            }
-            state.serial = serial;
-            state.revision.value = revision;
-            state.event = event;
-            state.request = request;
-        }
-        void EditHistoryTestAccess::identityCounter(std::uint64_t value) noexcept
-        {
-            history_identity.store(value, std::memory_order_relaxed);
-        }
-    } // namespace detail
-#endif
 
     EditHistory::EditHistory(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl))
     {
-#if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
-        ++detail::allocationStatistics().live_objects;
-#endif
     }
 
     EditHistory::CreateResult EditHistory::create(HistoryCreateInfo info) noexcept
@@ -209,12 +160,12 @@ namespace lux::editor::editing
         }
         try
         {
-            detail::allocationCheckpoint(detail::EEditAllocationSite::FACTORY, sizeof(Impl));
+
             auto state = std::make_unique<Impl>();
             state->info = info;
             state->entries.reserve(limits.max_entries);
             state->retired.reserve(limits.max_entries + 1U);
-            detail::allocationCheckpoint(detail::EEditAllocationSite::FACTORY, sizeof(EditHistory));
+
             auto result = std::unique_ptr<EditHistory>(new EditHistory(std::move(state)));
             auto issued = history_identity.load(std::memory_order_relaxed);
             do
@@ -246,15 +197,12 @@ namespace lux::editor::editing
         const bool is_busy = state.phase != EHistoryPhase::IDLE && state.phase != EHistoryPhase::CLOSED;
         if (is_wrong_owner || is_busy)
         {
-            detail::failEditContract(detail::EEditContract::HISTORY_LIFETIME);
+            std::abort();
         }
         state.phase = EHistoryPhase::CLOSED;
         state.pending.reset();
         state.retireAll();
         state.collect();
-#if defined(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
-        --detail::allocationStatistics().live_objects;
-#endif
     }
 
     HistoryId EditHistory::id() const noexcept

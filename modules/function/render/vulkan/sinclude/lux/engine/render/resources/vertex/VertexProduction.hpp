@@ -4,7 +4,7 @@
  * @brief Per-scene registry of compute-vertex *producers* + type-safe RG keys.
  *
  * Stage S1.1 of the render-architecture review follow-up
- * (.internal/render_architecture_review.md, issues #1 / H1 / 3.1 / 3.2).
+ * (the implementation, issues #1 / H1 / 3.1 / 3.2).
  *
  * Problem this solves:
  *

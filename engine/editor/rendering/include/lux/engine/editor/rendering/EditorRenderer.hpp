@@ -12,7 +12,6 @@ namespace lux::ui
 } // namespace lux::ui
 namespace lux::editor::rendering
 {
-    namespace detail { struct RendererTestAccess; }
     class LUX_EDITOR_RENDERING_PUBLIC EditorRenderer final : public lux::scene::RenderRuntime
     {
     public:
@@ -56,7 +55,6 @@ namespace lux::editor::rendering
 
     private:
         friend class RenderView;
-        friend struct detail::RendererTestAccess;
         void release() noexcept override;
         lux::render::RenderControlSession &control() noexcept override;
         lux::render::RenderProgramSession &programs() noexcept override;

@@ -52,7 +52,7 @@ namespace lux::render
         /// switched at runtime via `ShadowMapFeature::setActiveTechnique`.
         /// PCF (current default) is depth-compare based and needs per-light
         /// shadow_bias tuning; EVSM is pre-filtered and bias-free. See
-        /// .internal/plan/evsm-shadow-implementation-guide.md.
+        /// the implementation.
         EShadowTechnique default_technique{EShadowTechnique::PCF};
         uint8_t LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER() _pad[3]{};
         /// EVSM-specific knobs. Ignored under PCF. Capped to RGBA16F's

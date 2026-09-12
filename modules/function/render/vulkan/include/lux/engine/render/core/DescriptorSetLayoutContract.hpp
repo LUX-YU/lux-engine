@@ -7,7 +7,7 @@
 // domain + canonical slots). This header's slot/binding enums remain the runtime
 // layout's authority until that migration completes; new code should reconcile
 // against LayoutContract entries first.
-// See .internal/lux-engine-descriptor-layout-implementation-checklist.md.
+// See the implementation.
 #include <lux/engine/description/LayoutContract.hpp>
 
 namespace lux::render

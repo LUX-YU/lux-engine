@@ -1,3 +1,0 @@
-add_subdirectory(physics2d_pixel)
-add_subdirectory(physics2d_script)
-add_subdirectory(presentation2d)

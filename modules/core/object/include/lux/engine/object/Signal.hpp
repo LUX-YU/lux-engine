@@ -43,7 +43,6 @@ namespace lux::object
 
     private:
         friend struct detail::GeneratedSignalAccess;
-        friend struct detail::ObjectDiagnosticsAccess;
         template <class Derived, class Base> friend class Object;
 
         constexpr Signal(std::size_t dense_index, std::size_t lineage_size) noexcept

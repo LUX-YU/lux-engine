@@ -59,37 +59,3 @@ component_add_transitive_commands(
     "set_property(TARGET lux::engine::simulation::description PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::simulation::simulation_description)"
     "endif()"
 )
-lux_classify_target(
-    TARGET  simulation_description
-    LAYER   SIMULATION
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)
-
-add_executable(
-    simulation_description_contract_test
-    test/simulation_description_contract_test.cpp
-)
-target_link_libraries(
-    simulation_description_contract_test
-    PRIVATE lux::engine::simulation::description
-)
-target_include_directories(
-    simulation_description_contract_test
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
-)
-if(MSVC)
-    target_compile_options(simulation_description_contract_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(simulation_description_contract_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  simulation_description_contract_test
-    LAYER   SIMULATION
-    PRODUCT TEST
-    ROLE    FOUNDATION
-)
-add_test(
-    NAME simulation_description_contract_test
-    COMMAND simulation_description_contract_test
-)

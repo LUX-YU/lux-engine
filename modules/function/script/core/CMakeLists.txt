@@ -24,13 +24,6 @@ target_compile_definitions(
         LUX_FUNCTION_LIBRARY
 )
 
-lux_classify_target(
-    TARGET  script_core
-    LAYER   CORE
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)
-
 find_package(lux-cxx REQUIRED COMPONENTS core compile_time)
 
 target_link_libraries(
@@ -59,5 +52,3 @@ install(
     DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/template/
     DESTINATION share/lux-engine-function/script_core/cmake_scripts/template
 )
-
-add_subdirectory(test)

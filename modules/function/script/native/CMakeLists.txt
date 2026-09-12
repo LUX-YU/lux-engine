@@ -38,14 +38,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
     "find_package(lux-engine-platform REQUIRED COMPONENTS dynamic_library)"
 )
-
-lux_classify_target(
-    TARGET  script_native
-    LAYER   FUNCTION
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
-)
-
-if(NOT ANDROID)
-    add_subdirectory(test)
-endif()

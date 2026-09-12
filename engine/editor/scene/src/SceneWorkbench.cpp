@@ -1,5 +1,4 @@
 #include <lux/engine/editor/scene/SceneWorkbench.hpp>
-#include <lux/engine/editor/scene/SceneWorkbenchMeasurement.hpp>
 #include <lux/engine/editor/scene/SceneCamera.hpp>
 #include <lux/engine/editor/scene/SceneResources.hpp>
 #include <lux/engine/scene/SceneRenderSchema.hpp>
@@ -35,10 +34,6 @@
 #include <cstdio>
 #include <limits>
 #include <thread>
-#if LUX_SV1_DIAGNOSTICS
-#include <lux/engine/editor/scene/SceneWorkbenchDiagnostics.hpp>
-#include <fstream>
-#endif
 
 namespace lux::editor::workbench
 {
@@ -212,134 +207,6 @@ namespace lux::editor::workbench
         std::vector<std::unique_ptr<detail::ResourceJob>> resources;
         std::array<std::uint64_t, 3> resource_serials{1, 1, 1};
         bool retry_requested{};
-#if LUX_SV1_DIAGNOSTICS
-        std::filesystem::path diagnostic_directory;
-        render::RenderRequest<render::ReadbackTargetReply> diagnostic_readback;
-        std::vector<std::uint8_t> diagnostic_pixels;
-        std::array<std::uint64_t, 5> diagnostic_checksums{};
-        unsigned diagnostic_phase{};
-        std::uint64_t diagnostic_next_frame{30};
-        bool diagnostic_passed{};
-        std::array<char, 262144> diagnostic_timing_text{};
-        render::RenderRequest<render::GpuTimingReply> diagnostic_timing;
-
-        void verifyScene()
-        {
-            if (diagnostic_directory.empty() || closing)
-                return;
-            if (diagnostic_timing.valid())
-            {
-                if (!diagnostic_timing.isReady())
-                    return;
-                const auto result = diagnostic_timing.tryResult();
-                if (result && result->get().status == 0 && result->get().written == result->get().needed &&
-                    result->get().written <= diagnostic_timing_text.size())
-                {
-                    std::ofstream output{diagnostic_directory /
-                        (diagnostic_phase == 2 ? "gpu-scene-timing.txt" : "gpu-timing.txt")};
-                    output.write(diagnostic_timing_text.data(), result->get().written);
-                }
-                diagnostic_timing = {};
-                if (diagnostic_phase == 2)
-                    return;
-                closing = true;
-                camera.releaseCapture();
-                port->setViewFrame({});
-                port->deferNewFrames(false);
-                return;
-            }
-            if (diagnostic_readback.valid())
-            {
-                if (!diagnostic_readback.isReady())
-                    return;
-                const auto result = diagnostic_readback.tryResult();
-                if (!result || result->get().status != 0 || result->get().bytes_per_pixel != 4)
-                {
-                    closing = true;
-                    return;
-                }
-                const auto& reply = result->get();
-                if (reply.width == 0 || reply.height == 0 || reply.bytes_written > diagnostic_pixels.size() ||
-                    reply.bytes_written != std::uint64_t(reply.width) * reply.height * 4)
-                {
-                    closing = true;
-                    return;
-                }
-                std::ofstream image{diagnostic_directory / ("scene-" + std::to_string(diagnostic_phase) + ".ppm"),
-                    std::ios::binary};
-                image << "P6\n" << reply.width << " " << reply.height << "\n255\n";
-                std::uint64_t checksum = 1469598103934665603ULL;
-                for (std::size_t offset = 0; offset < reply.bytes_written; offset += 4)
-                {
-                    // The actual offscreen target is BGRA8_SRGB; retain its encoded RGB bytes.
-                    const char rgb[]{char(diagnostic_pixels[offset + 2]), char(diagnostic_pixels[offset + 1]),
-                        char(diagnostic_pixels[offset])};
-                    image.write(rgb, 3);
-                    for (const auto channel : rgb)
-                        checksum = (checksum ^ static_cast<unsigned char>(channel)) * 1099511628211ULL;
-                }
-                diagnostic_checksums[diagnostic_phase] = checksum;
-                std::fprintf(stderr, "SV1 capture phase=%u extent=%ux%u checksum=%llu bytes=%llu\n",
-                    diagnostic_phase, reply.width, reply.height, static_cast<unsigned long long>(checksum),
-                    static_cast<unsigned long long>(reply.bytes_written));
-                diagnostic_readback = {};
-                if (!image)
-                {
-                    closing = true;
-                    return;
-                }
-                if (diagnostic_phase == 0)
-                {
-                    // Deliberate diagnostic mutation at the owner safe point, outside production Pane callbacks.
-                    const auto entity = resources[1]->entity;
-                    scene->registry().patch<simulation::ecs::Transform3D>(entity, [](auto& transform) {
-                        transform.translation.x() -= 2.0;
-                    });
-                    for (const auto light : scene->registry().view<simulation::ecs::Light3D>())
-                        scene->registry().patch<simulation::ecs::Light3D>(light, [](auto& value) {
-                            value.value.intensity *= 0.5F;
-                        });
-                }
-                else if (diagnostic_phase == 1)
-                    camera.focus({0, 1, 0}, 2.0);
-                else if (diagnostic_phase == 2)
-                {
-                    for (const auto& job : resources)
-                        scene->registry().remove<simulation::ecs::Mesh3D>(job->entity);
-                }
-                else if (diagnostic_phase == 3)
-                    scene->registry().clear();
-                ++diagnostic_phase;
-                diagnostic_next_frame = port->diagnostics().frames + 40;
-                if (diagnostic_phase == 2)
-                    diagnostic_timing = runtime.control().queryGpuTiming(render_scene,
-                        diagnostic_timing_text.data(), diagnostic_timing_text.size());
-                if (diagnostic_phase == 5)
-                {
-                    diagnostic_passed = diagnostic_checksums[0] != diagnostic_checksums[1] &&
-                        diagnostic_checksums[1] != diagnostic_checksums[2] &&
-                        diagnostic_checksums[2] != diagnostic_checksums[3] &&
-                        diagnostic_checksums[3] == diagnostic_checksums[4];
-                    diagnostic_timing = runtime.control().queryGpuTiming(render_scene,
-                        diagnostic_timing_text.data(), diagnostic_timing_text.size());
-                    if (!diagnostic_timing.valid())
-                    {
-                        diagnostic_passed = false;
-                        closing = true;
-                    }
-                }
-                return;
-            }
-            const bool ready = std::all_of(resources.begin(), resources.end(), [](const auto& job) {
-                return job->adopted;
-            });
-            if (!ready || !linked || pending_resize.valid() || port->diagnostics().frames < diagnostic_next_frame)
-                return;
-            diagnostic_pixels.resize(std::size_t(extent.width) * extent.height * 4);
-            diagnostic_readback = runtime.control().readbackTargetAsync(target.id(), diagnostic_pixels.data(),
-                diagnostic_pixels.size());
-        }
-#endif
 
         void layout()
         {
@@ -698,9 +565,6 @@ namespace lux::editor::workbench
             ready += resource->adopted;
         }
         impl_->retry_requested = false;
-#if LUX_SV1_DIAGNOSTICS
-        impl_->verifyScene();
-#endif
         if (impl_->linked && !impl_->closing)
         {
             const bool failed = std::any_of(impl_->resources.begin(), impl_->resources.end(),
@@ -835,12 +699,6 @@ namespace lux::editor::workbench
         state.port->pump();
         state.port->drainViewFrames();
         state.acceptView();
-#if LUX_SV1_DIAGNOSTICS
-        if (state.diagnostic_readback.valid() && !state.diagnostic_readback.isReady())
-            return false;
-        if (state.diagnostic_timing.valid() && !state.diagnostic_timing.isReady())
-            return false;
-#endif
         for (std::size_t index = 0; index < state.resources.size(); ++index)
         {
             auto& resource = state.resources[index];
@@ -885,25 +743,5 @@ namespace lux::editor::workbench
             return false;
         state.closed = true;
         return true;
-    }
-#if LUX_SV1_DIAGNOSTICS
-    void detail::SceneWorkbenchDiagnostics::enable(SceneWorkbench& workbench, const std::filesystem::path& directory)
-    {
-        std::filesystem::create_directories(directory);
-        workbench.impl_->diagnostic_directory = directory;
-    }
-
-    bool detail::SceneWorkbenchDiagnostics::passed(const SceneWorkbench& workbench) noexcept
-    {
-        return workbench.impl_->diagnostic_passed;
-    }
-#endif
-    detail::WorkbenchMeasurement detail::SceneWorkbenchMeasurement::read(const SceneWorkbench& workbench) noexcept
-    {
-        const auto& state = *workbench.impl_;
-        return {state.target.id(), state.cpu_lease, state.extent.width, state.extent.height,
-                state.resources.size(), static_cast<std::size_t>(std::count_if(state.resources.begin(),
-                    state.resources.end(), [](const auto& job) { return job->adopted; })),
-                state.pending_resize.valid()};
     }
 } // namespace lux::editor::workbench

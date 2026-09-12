@@ -11,7 +11,7 @@
  * The REAL backend (ANativeWindow surface + vkCreateAndroidSurfaceKHR +
  * GameActivity/ALooper pump + APP_CMD_INIT/TERM_WINDOW lifecycle) lands
  * after the LuxWindow.hpp header-neutralization surgery — see the 2026-07-20
- * progress notes in .internal/lux-engine-mobile-adaptation-investigation.md
+ * progress notes in the implementation
  * (§3.2 design, "统一头收敛是 3-3 的前置").
  */
 

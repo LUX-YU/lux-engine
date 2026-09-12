@@ -8,7 +8,7 @@
 //  — the grid pattern) and sent by a feature-scoped LightProxy. The core
 //  RenderProtocol.hpp no longer names light. NOTE: LightFeature owns the light
 //  DATA; DeferredLighting/Forward/Shadow are its CONSUMERS (find<LightResources>).
-//  (See .internal/render-architecture-decoupling-design-2026-06-19.md, contracts C2+C5.)
+//  (See the implementation, contracts C2+C5.)
 // ============================================================================
 
 #include <lux/engine/meta/MetaAnnotations.hpp>

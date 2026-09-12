@@ -107,7 +107,6 @@ jobs:
           -DCMAKE_C_COMPILER=gcc-12
           -DCMAKE_CXX_COMPILER=g++-12
           -DLUX_BUILD_PROFILE=PLAYER
-          -DBUILD_TESTING=OFF
           ${{ steps.ver.outputs.extra }}
 
       - name: Build

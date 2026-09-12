@@ -14,12 +14,6 @@ namespace lux::object
 
     namespace detail
     {
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-        LUX_CORE_PUBLIC void recordMessageStorageForTest(bool inline_value) noexcept;
-        LUX_CORE_PUBLIC void resetMessageStorageForTest() noexcept;
-        [[nodiscard]] LUX_CORE_PUBLIC std::size_t inlineMessageStorageCountForTest() noexcept;
-        [[nodiscard]] LUX_CORE_PUBLIC std::size_t heapMessageStorageCountForTest() noexcept;
-#endif
 
         class LUX_CORE_PUBLIC MessageEnvelope final
         {
@@ -94,9 +88,6 @@ namespace lux::object
                 }
                 inline_ = inline_value;
                 ops_ = std::addressof(ops<Stored, inline_value>());
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-                recordMessageStorageForTest(inline_value);
-#endif
             }
 
             void invoke() noexcept;

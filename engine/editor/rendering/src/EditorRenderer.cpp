@@ -10,9 +10,6 @@
 #include <limits>
 #include <mutex>
 #include <new>
-#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
-#include <lux/engine/editor/rendering/detail/RendererTestAccess.hpp>
-#endif
 
 namespace lux::editor::rendering
 {
@@ -558,10 +555,6 @@ namespace lux::editor::rendering
         if (auto check = impl_->check(); !check)
             return check;
         impl_->closing = true;
-#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
-        impl_->thread.pause_requested.store(false, std::memory_order_release);
-        impl_->thread.pause_requested.notify_all();
-#endif
         impl_->upload_queue->stop();
         return {};
     }
@@ -644,75 +637,4 @@ namespace lux::editor::rendering
     {
         return impl_->thread.catalog;
     }
-#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
-    RenderResult<void> detail::RendererTestAccess::rejectMaterialUpload(
-        EditorRenderer &renderer, lux::render::ShaderHandle forward, lux::render::ShaderHandle gbuffer) noexcept
-    {
-        if (auto checked = renderer.impl_->check(); !checked)
-            return checked;
-        auto &stats = *renderer.impl_->thread.statistics;
-        if (stats.reject_material.load(std::memory_order_acquire))
-            return fail(ERendererError::BUSY);
-        stats.rejected_forward = forward;
-        stats.rejected_gbuffer = gbuffer;
-        stats.reject_material.store(true, std::memory_order_release);
-        return {};
-    }
-    RenderResult<std::uint64_t>
-    detail::RendererTestAccess::rejectedMaterialUploads(const EditorRenderer &renderer) noexcept
-    {
-        if (auto checked = renderer.impl_->check(); !checked)
-            return lux::cxx::unexpected(checked.error());
-        return renderer.impl_->thread.statistics->material_rejections.load(std::memory_order_acquire);
-    }
-    RenderResult<void> detail::RendererTestAccess::observeResourceMemory(EditorRenderer &renderer) noexcept
-    {
-        if (auto checked = renderer.impl_->check(); !checked)
-            return checked;
-        renderer.impl_->thread.statistics->observe_memory.store(true, std::memory_order_release);
-        return {};
-    }
-    RenderResult<detail::ResourceMemoryTrace>
-    detail::RendererTestAccess::resourceMemoryTrace(const EditorRenderer &renderer) noexcept
-    {
-        if (auto checked = renderer.impl_->check(); !checked)
-            return lux::cxx::unexpected(checked.error());
-        return renderer.impl_->thread.statistics->memory_trace.load(std::memory_order_acquire);
-    }
-    RenderResult<void> detail::RendererTestAccess::observeSharedImports(EditorRenderer &renderer) noexcept
-    {
-        if (auto checked = renderer.impl_->check(); !checked)
-            return checked;
-        renderer.impl_->thread.statistics->observe_shared.store(true, std::memory_order_release);
-        return {};
-    }
-    RenderResult<detail::SharedImportTrace>
-    detail::RendererTestAccess::sharedImportTrace(const EditorRenderer &renderer) noexcept
-    {
-        if (auto checked = renderer.impl_->check(); !checked)
-            return lux::cxx::unexpected(checked.error());
-        const auto &s = *renderer.impl_->thread.statistics;
-        return SharedImportTrace{s.shared_pairs.load(), s.shared_write_sample.load(), s.shared_cross_view.load(),
-                                 s.shared_reads.load(), s.shared_writes.load(), s.shared_first_serial.load(),
-                                 s.shared_image.load()};
-    }
-    RenderResult<void> detail::RendererTestAccess::pauseConsumer(EditorRenderer &renderer, bool paused) noexcept
-    {
-        if (auto checked = renderer.impl_->check(); !checked)
-            return checked;
-        auto &thread = renderer.impl_->thread;
-        if (renderer.impl_->closing || thread.stopped.load(std::memory_order_acquire))
-            return fail(ERendererError::STOPPING);
-        thread.pause_requested.store(paused, std::memory_order_release);
-        thread.pause_requested.notify_all();
-        thread.sync->notifyRequestStateChanged();
-        return {};
-    }
-    bool detail::RendererTestAccess::consumerPaused(const EditorRenderer &renderer) noexcept
-    {
-        if (renderer.impl_->owner != std::this_thread::get_id())
-            return false;
-        return renderer.impl_->thread.pause_reached.load(std::memory_order_acquire);
-    }
-#endif
 } // namespace lux::editor::rendering

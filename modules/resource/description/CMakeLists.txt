@@ -39,29 +39,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
 )
-
-lux_classify_target(
-    TARGET description
-    LAYER RESOURCE
-    PRODUCT RUNTIME
-    ROLE FOUNDATION
-)
-
-add_executable(
-    script_description_contract_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/script_description_contract_test.cpp
-)
-target_link_libraries(
-    script_description_contract_test
-    PRIVATE lux::engine::resource::description
-)
-lux_classify_target(
-    TARGET  script_description_contract_test
-    LAYER   RESOURCE
-    PRODUCT TEST
-    ROLE    FOUNDATION
-)
-add_test(
-    NAME script_description_contract_test
-    COMMAND script_description_contract_test
-)

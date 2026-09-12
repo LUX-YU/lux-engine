@@ -30,12 +30,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-editor-node-graph REQUIRED COMPONENTS node_graph_editor)"
     "find_package(lux-engine-function REQUIRED COMPONENTS material_graph)"
 )
-lux_classify_target(
-    TARGET  editor_material_graph
-    LAYER   EDITOR
-    PRODUCT EDITOR
-    ROLE    INTEGRATION
-)
+
 install_components(
     PROJECT_NAME lux-engine-editor-material-graph
     VERSION      ${PROJECT_VERSION}

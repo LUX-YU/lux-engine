@@ -10,7 +10,6 @@
 
 namespace lux::editor::workbench
 {
-    namespace detail { struct SceneWorkbenchDiagnostics; struct SceneWorkbenchMeasurement; }
     enum class EWorkbenchError : std::uint8_t
     {
         SCHEMA_BUILD_FAILURE,
@@ -48,8 +47,6 @@ namespace lux::editor::workbench
         [[nodiscard]] bool advanceClose();
 
     private:
-        friend struct detail::SceneWorkbenchDiagnostics;
-        friend struct detail::SceneWorkbenchMeasurement;
         struct Impl;
         explicit SceneWorkbench(std::unique_ptr<Impl> impl) noexcept;
         std::unique_ptr<Impl> impl_;

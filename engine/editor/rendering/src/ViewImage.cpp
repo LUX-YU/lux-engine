@@ -1,8 +1,5 @@
 #include <lux/engine/editor/rendering/detail/ViewImageLifetime.hpp>
 #include <lux/engine/editor/rendering/detail/RenderFrameQueue.hpp>
-#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
-#include <lux/engine/editor/rendering/detail/RendererTestAccess.hpp>
-#endif
 
 namespace lux::editor::rendering
 {
@@ -31,20 +28,4 @@ namespace lux::editor::rendering
     {
         return storage_ ? storage_->sequence : 0;
     }
-#if defined(LUX_EDITOR_RENDERER_TEST_DIAGNOSTICS)
-    RenderResult<void> detail::RendererTestAccess::failRecord(EditorFramePacket &packet,
-                                                              lux::render::RenderError error) noexcept
-    {
-        if (!packet.valid() || error.ok())
-            return lux::cxx::unexpected(RendererFailure{ERendererError::INVALID_ARGUMENT});
-        for (auto &attachment : packet.storage_->program.attachments)
-        {
-            if (attachment.type_id != detail::kUiDrawAttachment)
-                continue;
-            static_cast<detail::FrameDrawData *>(attachment.object)->record_failure = error;
-            return {};
-        }
-        return lux::cxx::unexpected(RendererFailure{ERendererError::INVALID_ARGUMENT});
-    }
-#endif
 } // namespace lux::editor::rendering

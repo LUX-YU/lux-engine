@@ -44,10 +44,3 @@ component_add_transitive_commands(
     toolchain_shader_asset_cooker
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset description)"
 )
-
-lux_classify_target(
-    TARGET  toolchain_shader_asset_cooker
-    LAYER   TOOLCHAIN
-    PRODUCT BUILD_TOOL
-    ROLE    DOMAIN
-)

@@ -24,7 +24,6 @@ namespace lux::editor::rendering
 }
 namespace lux::editor::sessions
 {
-    namespace detail { struct SceneTestAccess; }
     enum class ESceneAccess : std::uint8_t
     {
         INSPECT_LIVE,
@@ -186,7 +185,6 @@ namespace lux::editor::sessions
         [[nodiscard]] SceneResult<ECloseProgress> advanceClose() noexcept;
 
     private:
-        friend struct detail::SceneTestAccess;
         friend class SceneView; // Narrow lifetime/render association; never a public Registry accessor.
         [[nodiscard]] SceneResult<const void *> readComponentValue(SceneEntityRef, lux::cxx::TypeToken) const noexcept;
         struct RenderBinding final

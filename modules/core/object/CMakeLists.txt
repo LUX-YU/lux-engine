@@ -46,10 +46,3 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time memory)"
     "find_package(lux-engine-core REQUIRED COMPONENTS meta)"
 )
-
-lux_classify_target(
-    TARGET object
-    LAYER CORE
-    PRODUCT RUNTIME
-    ROLE FOUNDATION
-)

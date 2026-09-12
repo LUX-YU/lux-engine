@@ -169,7 +169,6 @@ namespace lux::simulation
         const void* binding_owner_{};
         lux::system::SystemInstanceId binding_system_;
         HookPointId binding_hook_;
-        friend struct detail::HookInvocationTestAccess;
         template <class> friend class script::ScriptHookEndpoint;
     };
 

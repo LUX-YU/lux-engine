@@ -24,7 +24,6 @@ component_add_transitive_commands(
     domain_system_identity
     "find_package(lux-cxx REQUIRED COMPONENTS core)"
 )
-lux_classify_target(TARGET domain_system_identity LAYER DOMAIN PRODUCT RUNTIME ROLE FOUNDATION)
 
 install_components(
     PROJECT_NAME lux-engine-domain-system-identity

@@ -13,7 +13,7 @@
  *          integration after that
  *   - C4: shadow_evsm.glsl real sampling (Chebyshev + dual ESM warp)
  *
- * See .internal/plan/evsm-shadow-implementation-guide.md §2.3 (resource
+ * See the implementation §2.3 (resource
  * layout) and §2.4 (math) for context.
  */
 

@@ -22,9 +22,6 @@ namespace lux::ui
     namespace detail
     {
         struct CommandRouterControl;
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-        struct CommandRouterDiagnosticsAccess;
-#endif
     } // namespace detail
 
     enum class ECommandDefinitionError
@@ -198,9 +195,6 @@ namespace lux::ui
 
         friend class CommandRegistration;
         friend class UISession;
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-        friend struct detail::CommandRouterDiagnosticsAccess;
-#endif
         void updateRoute(lux::object::LuxObject* activation_scope, std::span<const UiContextIdView> contexts);
         [[nodiscard]] lux::cxx::expected<CommandRegistration, ECommandBindingError> bindErased(
             CommandHandle command,
@@ -212,12 +206,6 @@ namespace lux::ui
             StateThunk checked
         );
         void unbind(std::uint64_t token) noexcept;
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-        [[nodiscard]] std::uint64_t rebuildCountForTest() const noexcept;
-        [[nodiscard]] std::uint64_t rebuildElapsedForTest() const noexcept;
-        [[nodiscard]] std::uint64_t storageGrowthCountForTest() const noexcept;
-        [[nodiscard]] std::span<const UiContextIdView> activeContextsForTest() const noexcept;
-#endif
 
         struct Impl;
         std::unique_ptr<Impl> impl_;

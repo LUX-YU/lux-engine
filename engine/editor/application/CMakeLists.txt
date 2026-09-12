@@ -23,22 +23,13 @@ target_link_libraries(
         lux::engine::editor::editor_scene
         lux::engine::function::render_features
 )
-lux_classify_target(
-    TARGET  editor_application
-    LAYER   EDITOR
-    PRODUCT EDITOR
-    ROLE    COMPOSITION
-)
 
 add_executable(
     lux_editor
     app/main.cpp
 )
 target_include_directories(lux_editor PRIVATE app)
-if(LUX_EDITOR_DIAGNOSTICS)
-    target_include_directories(lux_editor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../scene/pinclude)
-    target_compile_definitions(lux_editor PRIVATE LUX_SV1_DIAGNOSTICS=1)
-endif()
+
 target_link_libraries(
     lux_editor
     PRIVATE
@@ -46,12 +37,7 @@ target_link_libraries(
         lux::engine::editor::editor_inspector
         lux::engine::scene::scene_meta
 )
-lux_classify_target(
-    TARGET  lux_editor
-    LAYER   EDITOR
-    PRODUCT EDITOR
-    ROLE    COMPOSITION
-)
+
 set_target_properties(lux_editor PROPERTIES OUTPUT_NAME "lux_editor")
 set(LUX_EDITOR_SEED_PAK "" CACHE FILEPATH "SV-1 asset package produced by lux_scene_seed")
 if(LUX_EDITOR_SEED_PAK)
@@ -78,4 +64,3 @@ target_include_directories(editor_application_candidate PUBLIC ${CMAKE_CURRENT_S
 target_link_libraries(editor_application_candidate PUBLIC lux::engine::editor::editor_scene_ui
     lux::engine::editor::editor_tooling
     PRIVATE lux::engine::platform::window)
-lux_classify_target(TARGET editor_application_candidate LAYER EDITOR PRODUCT EDITOR ROLE COMPOSITION)

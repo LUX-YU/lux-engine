@@ -22,7 +22,7 @@
  * Both calls are driven by `ShadowMapFeature::initAndAttachTo` once we have
  * a device + VmaAllocator + frames-in-flight count.
  *
- * Plan reference: .internal/plan/evsm-shadow-implementation-guide.md §2.3
+ * Plan reference: the implementation §2.3
  * (resource layout) and §3 / C3 (caster + blur compute).
  */
 

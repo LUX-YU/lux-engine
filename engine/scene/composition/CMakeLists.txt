@@ -42,27 +42,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-scene-meta REQUIRED COMPONENTS scene_meta)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
 )
-lux_classify_target(
-    TARGET  scene_composition
-    LAYER   SCENE
-    PRODUCT RUNTIME
-    ROLE    COMPOSITION
-)
-
-add_executable(scene_composition_test test/scene_composition_test.cpp)
-target_link_libraries(scene_composition_test PRIVATE lux::engine::scene::scene_composition)
-if(MSVC)
-    target_compile_options(scene_composition_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(scene_composition_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  scene_composition_test
-    LAYER   SCENE
-    PRODUCT TEST
-    ROLE    COMPOSITION
-)
-add_test(NAME scene_composition_test COMMAND scene_composition_test)
 
 install_components(
     PROJECT_NAME lux-engine-scene

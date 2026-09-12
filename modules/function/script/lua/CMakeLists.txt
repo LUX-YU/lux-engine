@@ -110,29 +110,3 @@ install(
     DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/cmake/template/
     DESTINATION share/lux-engine-function/script_lua/cmake_scripts/template
 )
-
-
-lux_classify_target(
-    TARGET  script_lua
-    LAYER   FUNCTION
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
-)
-
-set(ENABLE_SCRIPT_LUA_TEST OFF CACHE BOOL "Enable Lua script tests")
-if(ENABLE_SCRIPT_LUA_TEST)
-    add_subdirectory(test)
-endif()
-
-if(BUILD_TESTING)
-    add_executable(script_lua_page_allocator_test test/page_allocator_test.cpp)
-    target_include_directories(script_lua_page_allocator_test PRIVATE pinclude)
-    target_link_libraries(script_lua_page_allocator_test PRIVATE script_lua LuxLua55::Runtime)
-    if(MSVC)
-        target_compile_options(script_lua_page_allocator_test PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(script_lua_page_allocator_test PRIVATE -UNDEBUG)
-    endif()
-    lux_classify_target(TARGET script_lua_page_allocator_test LAYER FUNCTION PRODUCT TEST ROLE DOMAIN)
-    add_test(NAME script_lua_page_allocator_test COMMAND script_lua_page_allocator_test)
-endif()

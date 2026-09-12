@@ -40,7 +40,6 @@ component_add_transitive_commands(
     "add_library(lux::engine::world::description INTERFACE IMPORTED GLOBAL)"
     "set_property(TARGET lux::engine::world::description PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::world::world_description)"
 )
-lux_classify_target(TARGET world_description LAYER WORLD PRODUCT RUNTIME ROLE FOUNDATION)
 
 install_components(
     PROJECT_NAME lux-engine-world-description

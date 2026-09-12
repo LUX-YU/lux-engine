@@ -38,7 +38,7 @@
 //  change; changing the allocation strategy later only means replacing the
 //  single assignSlots step.
 //
-//  Design: .internal/lux-engine-descriptor-layout-architecture.md §4.2
+//  Design: the implementation §4.2
 // =============================================================================
 #include <lux/engine/render/graph/RenderGraphCompiler.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>

@@ -63,13 +63,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
 
-lux_classify_target(
-    TARGET  render_client
-    LAYER   FUNCTION
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
-)
-
 # Generated proxy declarations and method bodies are part of render_client's
 # backend-neutral public surface.  Generate them here for every profile so a
 # pure TOOLCHAIN configure never borrows genops headers from a Developer install
@@ -101,7 +94,7 @@ target_link_libraries(
     render_client_meta
     PRIVATE render_client lux::engine::core::meta
 )
-lux_classify_target(TARGET render_client_meta LAYER FUNCTION PRODUCT RUNTIME ROLE INTEGRATION)
+
 engine_enable_module_meta(
     TARGET render_client
     SIDECAR_TARGET render_client_meta

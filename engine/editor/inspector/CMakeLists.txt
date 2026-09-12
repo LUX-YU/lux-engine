@@ -92,21 +92,9 @@ engine_target_add_component_editor_codegen(
     SYMBOL visual
 )
 
-lux_classify_target(
-    TARGET  editor_inspector
-    LAYER   EDITOR
-    PRODUCT EDITOR
-    ROLE    INTEGRATION
-)
-
 install_components(
     PROJECT_NAME lux-engine-editor-inspector
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::editor
     COMPONENTS   editor_inspector
 )
-
-if(BUILD_TESTING)
-    add_subdirectory(test)
-endif()
-

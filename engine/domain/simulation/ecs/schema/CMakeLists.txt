@@ -45,12 +45,5 @@ component_add_transitive_commands(
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core)"
 )
 
-lux_classify_target(
-    TARGET  schema
-    LAYER   SIMULATION
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)
-
 include_component_cmake_scripts(meta)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_ecs_codegen.cmake)

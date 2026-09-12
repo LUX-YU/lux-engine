@@ -16,13 +16,6 @@ add_component(
     SOURCE_FILES   ${LUX_ANIMATION_SRCS}
 )
 
-lux_classify_target(
-    TARGET animation
-    LAYER FUNCTION
-    PRODUCT RUNTIME
-    ROLE DOMAIN
-)
-
 target_compile_definitions(
     animation
     PRIVATE

@@ -9,35 +9,6 @@
 
 namespace lux::object::detail
 {
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-    namespace
-    {
-        std::atomic_size_t inline_message_storage_count{0};
-        std::atomic_size_t heap_message_storage_count{0};
-    } // namespace
-
-    void recordMessageStorageForTest(bool inline_value) noexcept
-    {
-        (inline_value ? inline_message_storage_count : heap_message_storage_count)
-            .fetch_add(1, std::memory_order_relaxed);
-    }
-
-    void resetMessageStorageForTest() noexcept
-    {
-        inline_message_storage_count.store(0, std::memory_order_relaxed);
-        heap_message_storage_count.store(0, std::memory_order_relaxed);
-    }
-
-    std::size_t inlineMessageStorageCountForTest() noexcept
-    {
-        return inline_message_storage_count.load(std::memory_order_relaxed);
-    }
-
-    std::size_t heapMessageStorageCountForTest() noexcept
-    {
-        return heap_message_storage_count.load(std::memory_order_relaxed);
-    }
-#endif
 
     struct ObjectMessageQueueState final
     {

@@ -1,25 +1,11 @@
 #include <lux/engine/editor/sessions/scene/detail/SceneResources.hpp>
 #include <algorithm>
 #include <limits>
-#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
-#include <lux/engine/editor/sessions/scene/detail/SceneTestAccess.hpp>
-#include <lux/engine/editor/rendering/detail/RendererTestAccess.hpp>
-extern "C" __declspec(dllimport) void lux_er1_client_allocation_fail_after(std::size_t) noexcept;
-#endif
 
 namespace lux::editor::sessions::detail
 {
     namespace
     {
-#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
-        thread_local bool fail_shader_preparation{};
-        thread_local bool hold_resource_adoption{};
-        thread_local bool fail_shader_info_after_mesh{};
-        thread_local std::optional<ResourceRequestKey> failed_shader_key;
-        thread_local bool reject_material_after_siblings{};
-        thread_local std::optional<ResourceRequestKey> rejected_material_key;
-        thread_local SceneTestAccess::ResourceBackpressure backpressure;
-#endif
         auto fail(ESceneError code, SessionId id) noexcept
         {
             return lux::cxx::unexpected(SceneFailure{code, id});
@@ -74,41 +60,6 @@ namespace lux::editor::sessions::detail
                 row.state = ESceneResourceState::CANCELLED;
         }
     } // namespace
-#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
-    SceneTestAccess::ResourceBackpressure SceneTestAccess::resourceBackpressure(bool reset) noexcept
-    {
-        const auto result = backpressure;
-        if (reset)
-            backpressure = {};
-        return result;
-    }
-    void SceneTestAccess::failNextShaderPreparation() noexcept
-    {
-        fail_shader_preparation = true;
-    }
-    void SceneTestAccess::holdResourceAdoption(bool held) noexcept
-    {
-        hold_resource_adoption = held;
-    }
-    void SceneTestAccess::failShaderInfoAfterMeshUpload() noexcept
-    {
-        failed_shader_key.reset();
-        fail_shader_info_after_mesh = true;
-    }
-    std::optional<ResourceRequestKey> SceneTestAccess::failedShaderKey() noexcept
-    {
-        return failed_shader_key;
-    }
-    void SceneTestAccess::rejectMaterialAfterSiblingUploads() noexcept
-    {
-        rejected_material_key.reset();
-        reject_material_after_siblings = true;
-    }
-    std::optional<ResourceRequestKey> SceneTestAccess::rejectedMaterialKey() noexcept
-    {
-        return rejected_material_key;
-    }
-#endif
     void ResourceRequest::start(ResourceTasks &tasks, lux::process::asset_loading::AssetReadPort port) noexcept
     {
         if (row.key.mesh.isNull() || row.key.material.isNull())
@@ -182,9 +133,6 @@ namespace lux::editor::sessions::detail
             if (error == lux::render::ERenderUploadSubmitError::QUEUE_FULL ||
                 error == lux::render::ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED)
             {
-#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
-                ++backpressure.upload;
-#endif
                 return;
             }
             row.upload_failure = error;
@@ -201,30 +149,10 @@ namespace lux::editor::sessions::detail
         }
         if (terminal(row.state))
             return;
-#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
-        if (fail_shader_info_after_mesh && !mesh.isValid())
-            return;
-#endif
         const auto &material_data = material_read->value->data();
-#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
-        if ((!forward.isValid() && !forward_request.valid()) || (!gbuffer.isValid() && !gbuffer_request.valid()))
-            if (!renderer.controlAvailable())
-                ++backpressure.control;
-#endif
         if (!forward.isValid() && !forward_request.valid() && renderer.controlAvailable())
         {
             auto info = lux::rdesc::ShaderInfo::serialize(material_data.forward_info);
-#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
-            if (std::exchange(fail_shader_info_after_mesh, false))
-            {
-                // Actual mesh upload has completed. The real backend rejects this malformed metadata
-                // before shader module creation and returns ShaderCompiledReply.status == 1.
-                failed_shader_key = row.key;
-                info.assign(1, std::byte{0xff});
-            }
-            if (std::exchange(fail_shader_preparation, false))
-                lux_er1_client_allocation_fail_after(0);
-#endif
             forward_request =
                 runtime.control().compileShader(std::as_bytes(std::span{material_data.forward_spirv}), info);
         }
@@ -236,19 +164,6 @@ namespace lux::editor::sessions::detail
         }
         if (forward.isValid() && gbuffer.isValid() && !material.isValid() && !material_request.valid())
         {
-#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
-            if (reject_material_after_siblings)
-            {
-                if (!mesh.isValid())
-                    return;
-                const auto armed =
-                    rendering::detail::RendererTestAccess::rejectMaterialUpload(renderer, forward, gbuffer);
-                if (!armed)
-                    return;
-                rejected_material_key = row.key;
-                reject_material_after_siblings = false;
-            }
-#endif
             lux::render::GraphMaterialData data{};
             data.param_count = material_data.parameter_count;
             for (std::size_t i = 0; i < data.param_count; ++i)
@@ -319,65 +234,6 @@ namespace lux::editor::sessions::detail
         if (active_ && !closed_)
             std::terminate();
     }
-#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
-    ResourceAccounting SceneResources::accounting() const noexcept
-    {
-        ResourceAccounting result;
-        result.requests = requests_.size();
-        result.request_capacity = requests_.capacity();
-        result.associations = current_requests_.size();
-        result.association_buckets = current_requests_.bucket_count();
-        result.request_body_bytes = result.requests * sizeof(ResourceRequest);
-        result.request_array_bytes = result.request_capacity * sizeof(std::unique_ptr<ResourceRequest>);
-        result.result_body_bytes = result.requests *
-            (sizeof(AssetResult<lux::asset::MeshAsset>) + sizeof(AssetResult<lux::asset::MaterialAsset>));
-        result.scope_present = true;
-        result.scope_closed = tasks_.scope.closed();
-        for (const auto &request : requests_)
-        {
-            const auto mesh_state = request->mesh_read->state.load(std::memory_order_acquire);
-            const auto material_state = request->material_read->state.load(std::memory_order_acquire);
-            result.pending_reads += mesh_state == AssetResult<lux::asset::MeshAsset>::EState::PENDING;
-            result.pending_reads += material_state == AssetResult<lux::asset::MaterialAsset>::EState::PENDING;
-            result.pending_gpu_requests += request->mesh_request.valid() + request->material_request.valid() +
-                                           request->forward_request.valid() + request->gbuffer_request.valid();
-            result.gpu_handles += request->mesh.isValid() + request->material.isValid() + request->forward.isValid() +
-                                  request->gbuffer.isValid();
-            result.retirement_marker_refs += bool(request->retired_program_consumed);
-            if (mesh_state == AssetResult<lux::asset::MeshAsset>::EState::VALUE)
-                if (const auto &asset = request->mesh_read->value)
-                    result.mesh_payload_capacity_bytes += lux::rdesc::meshRetainedBytes(asset->data()).value_or(0);
-            if (material_state == AssetResult<lux::asset::MaterialAsset>::EState::VALUE)
-                if (const auto &asset = request->material_read->value)
-                    result.material_spirv_capacity_bytes +=
-                        (asset->data().forward_spirv.capacity() + asset->data().gbuffer_spirv.capacity()) *
-                        sizeof(std::uint32_t);
-        }
-        return result;
-    }
-    bool SceneResources::readsSettled() const noexcept
-    {
-        return !requests_.empty() && std::all_of(requests_.begin(), requests_.end(), [](const auto &request) {
-            return readDone(*request->mesh_read) && readDone(*request->material_read);
-        });
-    }
-    bool SceneResources::readyForAdoption() const noexcept
-    {
-        return std::any_of(requests_.begin(), requests_.end(), [](const auto &request) {
-            return request->row.state == ESceneResourceState::UPLOADING && request->mesh.isValid() &&
-                   request->material.isValid();
-        });
-    }
-    std::size_t SceneResources::liveHandles(const ResourceRequestKey &key) const noexcept
-    {
-        for (const auto &request : requests_)
-            if (request->row.key == key)
-                return std::size_t(request->mesh.isValid()) + request->material.isValid() + request->forward.isValid() +
-                       request->gbuffer.isValid() + request->mesh_request.valid() + request->material_request.valid() +
-                       request->forward_request.valid() + request->gbuffer_request.valid();
-        return 0;
-    }
-#endif
     SceneResult<void> SceneResources::activate() noexcept
     {
         if (renderer_)
@@ -484,9 +340,6 @@ namespace lux::editor::sessions::detail
                     request->prepareStep(*renderer_, runtime_);
                     if (request->mesh.isValid() && request->material.isValid() &&
                         request->row.state != ESceneResourceState::READY && !terminal(request->row.state)
-#if defined(LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
-                        && !hold_resource_adoption
-#endif
                     )
                     {
                         registry.emplace_or_replace<lux::scene::ResolvedMeshResources>(

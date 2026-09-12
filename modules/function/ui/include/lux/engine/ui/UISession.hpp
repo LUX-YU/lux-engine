@@ -23,9 +23,6 @@ namespace lux::ui
     {
         struct SessionControl;
         struct UISessionPresentationAccess;
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-        struct UISessionDiagnosticsAccess;
-#endif
     } // namespace detail
 
     enum class EUiRegistrationError
@@ -148,19 +145,12 @@ namespace lux::ui
         friend class PaneFactoryRegistration;
         friend class Frame;
         friend struct detail::UISessionPresentationAccess;
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-        friend struct detail::UISessionDiagnosticsAccess;
-#endif
         void updateCommandRoute(lux::object::LuxObject* activation_scope, std::span<const UiContextIdView> contexts);
         void drawPanes(Frame& frame);
         void endFrame(Frame& frame) noexcept;
         [[nodiscard]] const Theme& theme() const noexcept;
         void unregisterPane(std::uint64_t token) noexcept;
         void unregisterFactory(std::uint64_t token) noexcept;
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-        [[nodiscard]] std::uint64_t wrapperGrowthCountForTest() const noexcept;
-        [[nodiscard]] const void* contextIdentityForTest() const noexcept;
-#endif
 
         struct Impl;
         struct UninitializedTag {};

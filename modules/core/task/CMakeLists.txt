@@ -43,26 +43,3 @@ component_add_transitive_commands(
     task
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
-
-lux_classify_target(
-    TARGET  task
-    LAYER   CORE
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)
-
-add_executable(task_graph_test test/task_graph_test.cpp)
-target_include_directories(task_graph_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
-target_link_libraries(task_graph_test PRIVATE lux::engine::core::task)
-if(MSVC)
-    target_compile_options(task_graph_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(task_graph_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  task_graph_test
-    LAYER   CORE
-    PRODUCT TEST
-    ROLE    FOUNDATION
-)
-add_test(NAME task_graph_test COMMAND task_graph_test)

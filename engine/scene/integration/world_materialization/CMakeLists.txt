@@ -42,60 +42,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-world-storage REQUIRED COMPONENTS world_storage)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS schema)"
 )
-lux_classify_target(
-    TARGET  scene_world_materialization
-    LAYER   SCENE
-    PRODUCT RUNTIME
-    ROLE    INTEGRATION
-)
-
-add_executable(scene_world_materialization_test test/scene_world_materialization_test.cpp)
-target_link_libraries(
-    scene_world_materialization_test
-    PRIVATE
-        lux::engine::scene::scene_world_materialization
-        lux::engine::process::world_loading
-        lux::engine::simulation::ecs::transform
-)
-if(MSVC)
-    target_compile_options(scene_world_materialization_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(scene_world_materialization_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  scene_world_materialization_test
-    LAYER   SCENE
-    PRODUCT TEST
-    ROLE    INTEGRATION
-)
-add_test(NAME scene_world_materialization_test COMMAND scene_world_materialization_test)
-
-add_executable(
-    scene_world_materialization_deferred_test
-    test/scene_world_materialization_deferred_test.cpp
-)
-target_link_libraries(
-    scene_world_materialization_deferred_test
-    PRIVATE
-        lux::engine::scene::scene_world_materialization
-        lux::engine::process::world_loading
-        lux::engine::simulation::composition
-)
-if(MSVC)
-    target_compile_options(scene_world_materialization_deferred_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(scene_world_materialization_deferred_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  scene_world_materialization_deferred_test
-    LAYER   SCENE
-    PRODUCT TEST
-    ROLE    INTEGRATION
-)
-add_test(
-    NAME scene_world_materialization_deferred_test
-    COMMAND scene_world_materialization_deferred_test
-)
 
 install_components(
     PROJECT_NAME lux-engine-scene-world-materialization

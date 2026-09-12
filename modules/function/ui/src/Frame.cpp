@@ -3,9 +3,6 @@
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
-#if defined(LUX_UI_FAILURE_DIAGNOSTICS)
-#include <SelectedTextTrace.hpp>
-#endif
 
 #include <lux/engine/ui/detail/DragDropEncoding.hpp>
 #include <lux/engine/ui/detail/EditLifecycle.hpp>
@@ -371,10 +368,6 @@ namespace lux::ui
                                                      std::addressof(value),
                                                      flags
                                                  );
-#if defined(LUX_UI_FAILURE_DIAGNOSTICS)
-        if (changed && label == "Filter")
-            diagnostics::traceFilter(value);
-#endif
         return editResult<std::string>(changed);
     }
 

@@ -26,7 +26,7 @@
 //  is invoked through the thin CLI wrapper lux_shader_emitter
 //  (engine/asset_pipeline).
 //
-//  Design doc: .internal/lux-engine-descriptor-layout-architecture.md §4.4
+//  Design doc: the implementation §4.4
 // =============================================================================
 
 #include <lux/cxx/compile_time/expected.hpp>

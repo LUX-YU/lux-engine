@@ -21,7 +21,7 @@
 //  why the "contract fallback / hole fallback" mechanisms existed earlier in
 //  the migration — once the whole-graph union is in place, they can be retired.
 //
-//  Design: .internal/lux-engine-descriptor-layout-architecture.md §4.1/§4.2
+//  Design: the implementation §4.1/§4.2
 // =============================================================================
 
 #include <lux/engine/description/LayoutContract.hpp>

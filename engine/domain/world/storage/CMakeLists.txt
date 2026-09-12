@@ -50,13 +50,6 @@ component_add_transitive_commands(
     "endif()"
 )
 
-lux_classify_target(
-    TARGET  world_storage
-    LAYER   WORLD
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)
-
 install_components(
     PROJECT_NAME lux-engine-world-storage
     VERSION      ${PROJECT_VERSION}

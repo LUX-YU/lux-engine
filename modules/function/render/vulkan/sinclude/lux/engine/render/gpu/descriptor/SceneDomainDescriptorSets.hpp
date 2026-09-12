@@ -30,7 +30,7 @@
 //  waste. See the comment on the vertex pool's domain assignment in
 //  EngineSetShapes.
 //
-//  Design reference: .internal/lux-engine-descriptor-layout-current-state.md §8.0d
+//  Design reference: the implementation §8.0d
 // =============================================================================
 
 #include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>

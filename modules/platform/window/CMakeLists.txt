@@ -6,7 +6,7 @@ find_package(Vulkan  REQUIRED)
 # one public header set (LuxWindow.hpp / WindowEvents.hpp / ...), one backend
 # implementation chosen at configure time. An Android backend adds
 # src/LuxWindow.android.cpp (+ its runtime) here WITHOUT touching consumers —
-# see .internal/lux-engine-mobile-adaptation-investigation.md §3.
+# see the implementation §3.
 if(ANDROID)
     # Android backend. Deliberately thin: the Vulkan surface does NOT come from
     # here (see LuxWindow::createVulkanSurface's comment — the native window's
@@ -45,13 +45,6 @@ add_component(
     COMPONENT_NAME window
     NAMESPACE      lux::engine::platform
     SOURCE_FILES   ${WINDOW_SRCS}
-)
-
-lux_classify_target(
-    TARGET  window
-    LAYER   PLATFORM
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
 )
 
 component_include_directories(

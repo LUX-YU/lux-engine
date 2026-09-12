@@ -61,14 +61,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
-
-lux_classify_target(
-    TARGET  flowforge
-    LAYER   FUNCTION
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)
-
-if(BUILD_TESTING)
-    add_subdirectory(test)
-endif()

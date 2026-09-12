@@ -34,10 +34,3 @@ if(ANDROID)
     # keeps CMake from resolving the name against this very target.
     target_link_libraries(log PRIVATE "-llog")
 endif()
-
-lux_classify_target(
-    TARGET  log
-    LAYER   CORE
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)

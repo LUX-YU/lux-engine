@@ -17,12 +17,6 @@ component_add_transitive_commands(
     "add_library(lux::engine::partition::identity INTERFACE IMPORTED GLOBAL)"
     "set_property(TARGET lux::engine::partition::identity PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::partition::partition_identity)"
 )
-lux_classify_target(
-    TARGET  partition_identity
-    LAYER   DOMAIN
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)
 
 install_components(
     PROJECT_NAME lux-engine-partition-identity

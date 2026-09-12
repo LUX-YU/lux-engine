@@ -8,7 +8,7 @@
 //  `shadow_evsm_blur_{h,v}.comp`. Selected at SPIR-V variant build time via
 //  `LUX_SHADOW_TECHNIQUE_ID == 1` (see deferred_lighting.frag header).
 //
-//  Math (.internal/plan/evsm-shadow-implementation-guide.md §2.4):
+//  Math (the implementation §2.4):
 //    - Receiver depth z is warped through dual exponential:
 //        wpos = exp(c+ · z),   wneg = -exp(-c- · z)
 //    - Atlas stores E[wpos], E[wpos²], E[wneg], E[wneg²] (per-channel after

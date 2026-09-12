@@ -44,4 +44,3 @@ engine_target_add_ecs_component_codegen(
     LOGICAL_PATH lux/engine/simulation/ecs/Visual.hpp
     SYMBOL visual
 )
-lux_classify_target(TARGET visual LAYER SIMULATION PRODUCT RUNTIME ROLE DOMAIN)

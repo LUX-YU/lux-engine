@@ -19,10 +19,3 @@ target_compile_definitions(
     PRIVATE
         LUX_FUNCTION_LIBRARY
 )
-
-lux_classify_target(
-    TARGET  render_graph
-    LAYER   FUNCTION
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
-)

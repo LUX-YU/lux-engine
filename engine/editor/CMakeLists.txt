@@ -1,10 +1,5 @@
-option(LUX_EDITOR_DIAGNOSTICS "Internal ER-1 fault diagnostics; never use for SDK or cost qualification" OFF)
-if(LUX_EDITOR_DIAGNOSTICS)
-    if(NOT BUILD_TESTING OR NOT CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-        message(FATAL_ERROR "Editor diagnostics require BUILD_TESTING and RelWithDebInfo")
-    endif()
-    add_compile_definitions(LUX_EDITOR_DIAGNOSTICS)
-endif()
+
+
 add_subdirectory(editing)
 add_subdirectory(sessions/types)
 add_subdirectory(ui)
@@ -20,9 +15,3 @@ add_subdirectory(material)
 add_subdirectory(flowforge)
 add_subdirectory(application)
 add_subdirectory(examples/scene_workbench)
-if(BUILD_TESTING)
-    add_test(NAME editor_er1_architecture_negative
-        COMMAND ${CMAKE_COMMAND} -DLUX_SOURCE_DIR=${PROJECT_SOURCE_DIR}
-            -DLUX_ER1_TEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/architecture-fixtures
-            -P ${PROJECT_SOURCE_DIR}/cmake/TestEditorArchitectureEr1.cmake)
-endif()

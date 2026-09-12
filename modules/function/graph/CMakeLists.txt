@@ -30,10 +30,3 @@ component_add_transitive_commands(
     graph
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
-
-lux_classify_target(
-    TARGET  graph
-    LAYER   FUNCTION
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)

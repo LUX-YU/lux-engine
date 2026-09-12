@@ -47,10 +47,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
 )
-
-lux_classify_target(
-    TARGET  render_standard_content
-    LAYER   FUNCTION
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
-)

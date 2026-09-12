@@ -7,7 +7,7 @@
 //
 // Reflection is editor-only: this sidecar (and the meta generation that feeds
 // it) is gated behind the Editor product profile so a shipped render DLL embeds no
-// reflection symbols. See .internal/feature-quality-tiers-design-2026-06-19.md.
+// reflection symbols. See the implementation.
 namespace lux::render
 {
     namespace

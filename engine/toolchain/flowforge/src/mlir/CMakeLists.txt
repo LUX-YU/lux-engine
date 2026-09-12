@@ -95,13 +95,6 @@ add_library(_flowforge_dialect STATIC
     FlowForgeDialect.cpp
 )
 
-lux_classify_target(
-    TARGET _flowforge_dialect
-    LAYER TOOLCHAIN
-    PRODUCT TOOLCHAIN
-    ROLE DOMAIN
-)
-
 target_include_directories(_flowforge_dialect PRIVATE
     ${FLOWFORGE_MODULE_DIR}/include
     ${FLOWFORGE_MODULE_DIR}/pinclude

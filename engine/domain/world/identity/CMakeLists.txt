@@ -17,12 +17,6 @@ component_add_transitive_commands(
     "add_library(lux::engine::world::identity INTERFACE IMPORTED GLOBAL)"
     "set_property(TARGET lux::engine::world::identity PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::world::world_identity)"
 )
-lux_classify_target(
-    TARGET  world_identity
-    LAYER   DOMAIN
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)
 
 install_components(
     PROJECT_NAME lux-engine-world-identity

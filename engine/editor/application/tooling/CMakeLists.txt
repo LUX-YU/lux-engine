@@ -12,6 +12,6 @@ component_include_directories(editor_tooling
 target_compile_definitions(editor_tooling PRIVATE LUX_EDITOR_TOOLING_LIBRARY)
 target_link_libraries(editor_tooling PUBLIC lux::cxx::compile_time)
 component_add_transitive_commands(editor_tooling "find_package(lux-cxx REQUIRED COMPONENTS compile_time)")
-lux_classify_target(TARGET editor_tooling LAYER EDITOR PRODUCT EDITOR ROLE FOUNDATION)
+
 install_components(PROJECT_NAME lux-engine-editor-tooling VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_tooling)

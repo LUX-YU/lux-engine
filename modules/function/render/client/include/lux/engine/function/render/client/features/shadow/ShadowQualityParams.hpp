@@ -13,7 +13,7 @@
 //  meta generator parses it cleanly — the literal defaults mirror the kDefault*
 //  constants in ShadowMapTypes.hpp (NOT included here to stay light); the
 //  authoritative live values come from the feature's config via paramData().
-//  See .internal/feature-quality-tiers-design-2026-06-19.md.
+//  See the implementation.
 // ============================================================================
 #include <cstdint>
 

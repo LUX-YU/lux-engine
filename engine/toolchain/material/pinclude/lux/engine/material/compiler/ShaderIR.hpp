@@ -19,7 +19,7 @@
 //  "g_normal" / "radiance") that makes no assumption about whether it's a
 //  material property, a GBuffer channel, or a color -- so the same IR/Emitter
 //  can be reused across all three clients. See
-//  .internal/plan/shadergen-design.md for the design and rationale.
+//  the implementation for the design and rationale.
 // =============================================================================
 
 #include <cstddef>

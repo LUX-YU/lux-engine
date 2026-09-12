@@ -26,8 +26,4 @@ function(lux_script_semantic_schema)
     add_custom_command(OUTPUT "${ARGS_OUTPUT}" COMMAND ${ARGS_NAME}_writer "${ARGS_OUTPUT}"
         DEPENDS ${ARGS_NAME}_writer VERBATIM)
     add_custom_target(${ARGS_NAME} DEPENDS "${ARGS_OUTPUT}")
-    if(COMMAND lux_classify_target)
-        lux_classify_target(TARGET ${ARGS_NAME}_writer LAYER TOOLCHAIN PRODUCT BUILD_TOOL ROLE DOMAIN)
-        lux_classify_target(TARGET ${ARGS_NAME} LAYER TOOLCHAIN PRODUCT BUILD_TOOL ROLE DOMAIN)
-    endif()
 endfunction()

@@ -220,7 +220,7 @@ namespace lux::render
         // generically — no per-feature UI code. The empty defaults below keep
         // every existing feature compiling unchanged; a feature opts in by
         // overriding all three. See
-        // .internal/feature-quality-tiers-design-2026-06-19.md.
+        // the implementation.
 
         /// How costly applying a param snapshot was, so the scene/driver can
         /// decide whether to force a graph recompile or accept a free hot-apply.

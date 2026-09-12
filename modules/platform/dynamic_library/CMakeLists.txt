@@ -50,13 +50,6 @@ add_component(
     SOURCE_FILES    ${LUX_DYNAMIC_LIBRARY_SRCS}
 )
 
-lux_classify_target(
-    TARGET  dynamic_library
-    LAYER   PLATFORM
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)
-
 component_include_directories(
     dynamic_library
     BUILD_TIME_EXPORT

@@ -1,6 +1,5 @@
 #include <lux/engine/process/Timer.hpp>
 
-#include <lux/engine/process/detail/TimerFailureInjection.hpp>
 
 #include <algorithm>
 #include <condition_variable>
@@ -259,17 +258,12 @@ namespace lux::process
         if (config.capacity == 0U)
             return lux::cxx::unexpected(ETimerError::INVALID_ARGUMENT);
 
-        const auto injected = detail::testing::consumeTimerCreateFailure();
-        if (injected == detail::testing::ETimerCreateFailure::ALLOCATION)
-            return lux::cxx::unexpected(ETimerError::ALLOCATION_FAILURE);
 
         try
         {
             auto state = std::make_shared<detail::TimerState>(config.capacity);
-            if (injected == detail::testing::ETimerCreateFailure::WORKER)
-                return lux::cxx::unexpected(ETimerError::WORKER_CREATION_FAILURE);
-            if (injected == detail::testing::ETimerCreateFailure::BACKEND)
-                return lux::cxx::unexpected(ETimerError::BACKEND_FAILURE);
+
+
             state->startWorker();
             return TimerQueue{std::move(state)};
         }

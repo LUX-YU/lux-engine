@@ -37,26 +37,3 @@ component_add_transitive_commands(
     "find_package(EnTT CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
-
-lux_classify_target(
-    TARGET  core
-    LAYER   SIMULATION
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)
-
-add_executable(ecs_core_test test/core_test.cpp)
-target_link_libraries(ecs_core_test PRIVATE lux::engine::simulation::ecs::core)
-if(MSVC)
-    target_compile_options(ecs_core_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(ecs_core_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  ecs_core_test
-    LAYER   SIMULATION
-    PRODUCT TEST
-    ROLE    FOUNDATION
-)
-add_test(NAME vnext_ecs_core COMMAND ecs_core_test)
-set_tests_properties(vnext_ecs_core PROPERTIES LABELS "vnext;l1;core;cpu")

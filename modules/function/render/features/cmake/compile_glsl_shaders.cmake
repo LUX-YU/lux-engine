@@ -201,7 +201,7 @@ endfunction()
 	  Packs    → ${ASSET_OUT_DIR}/shaders/<SHADER>.<suffix>.luxasset
 
 	Designed for shadow-technique-style polymorphism (see
-	.internal/plan/evsm-shadow-implementation-guide.md): a single .frag source
+	the implementation): a single .frag source
 	produces multiple SPIR-V variants, each selecting a different
 	`shadow_<technique>.glsl` via LUX_SHADOW_SAMPLER_HEADER.
 ]]

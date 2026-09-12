@@ -77,11 +77,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity description)"
 )
-
-lux_classify_target(
-    TARGET  asset
-    LAYER   RESOURCE
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
-)
-

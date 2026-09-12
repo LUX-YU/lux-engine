@@ -1,9 +1,6 @@
 #include <lux/engine/ui/UISession.hpp>
 
 #include <imgui.h>
-#if defined(LUX_UI_FAILURE_DIAGNOSTICS)
-#include <SelectedTextTrace.hpp>
-#endif
 
 #include <algorithm>
 #include <cstring>
@@ -296,9 +293,6 @@ namespace lux::ui
         PaneHandle hovered_pane;
         PaneHandle pending_focus;
         std::uint64_t next_token{1};
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-        std::uint64_t wrapper_growth_count{0};
-#endif
         std::size_t factory_call_depth{0};
         bool frame_open{false};
         std::optional<SplitLayout> split_layout;
@@ -902,12 +896,6 @@ namespace lux::ui
                 }
                 else if constexpr (std::same_as<Value, UiText>)
                 {
-#if defined(LUX_UI_FAILURE_DIAGNOSTICS)
-                    auto *font = io.Fonts->Fonts[0];
-                    diagnostics::traceCodepoint("UiText", static_cast<unsigned>(value.codepoint),
-                                                font->FindGlyphNoFallback(static_cast<ImWchar>(value.codepoint)) !=
-                                                    nullptr);
-#endif
                     io.AddInputCharacter(static_cast<unsigned int>(value.codepoint));
                 }
                 else if constexpr (std::same_as<Value, UiWindowFocus>)
@@ -1068,9 +1056,6 @@ namespace lux::ui
             const bool toolbar = impl_->split_layout && pane->id().name() == impl_->split_layout->toolbar;
             if (toolbar)
                 flags |= ImGuiWindowFlags_NoDecoration;
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-            const auto scratch_capacity = impl_->frame_context_scratch.capacity();
-#endif
             impl_->frame_context_scratch.clear();
             PaneDrawContext draw_context{impl_->frame_context_scratch};
             const bool shown = ImGui::Begin(pane->window_label_.c_str(), toolbar ? nullptr : &visible, flags);
@@ -1092,20 +1077,11 @@ namespace lux::ui
             if (shown)
             {
                 pane->draw(frame, draw_context);
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-                impl_->wrapper_growth_count += impl_->frame_context_scratch.capacity() != scratch_capacity;
-#endif
                 pane = Impl::resolve(record);
                 if (pane && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
                 {
                     focused_candidate = current;
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-                    const auto focused_capacity = impl_->frame_focused_contexts.capacity();
-#endif
                     impl_->frame_focused_contexts = impl_->frame_context_scratch;
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-                    impl_->wrapper_growth_count += impl_->frame_focused_contexts.capacity() != focused_capacity;
-#endif
                 }
                 if (pane && ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows))
                 {
@@ -1257,17 +1233,6 @@ namespace lux::ui
             impl_->compactFactories();
     }
 
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-    std::uint64_t UISession::wrapperGrowthCountForTest() const noexcept
-    {
-        return impl_->wrapper_growth_count;
-    }
-
-    const void *UISession::contextIdentityForTest() const noexcept
-    {
-        return impl_->context;
-    }
-#endif
 
     lux::cxx::expected<UiFrameSnapshot, EUiCaptureError> UISession::captureFrame() noexcept
     {

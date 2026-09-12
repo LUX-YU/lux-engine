@@ -34,12 +34,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-partition-identity REQUIRED COMPONENTS partition_identity)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
-lux_classify_target(
-    TARGET  spatial3d_index
-    LAYER   DOMAIN
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
-)
 
 install_components(
     PROJECT_NAME lux-engine-domain-spatial3d

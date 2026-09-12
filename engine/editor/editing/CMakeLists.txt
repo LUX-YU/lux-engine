@@ -21,17 +21,10 @@ component_include_directories(
 target_compile_definitions(editor_editing PRIVATE LUX_EDITOR_EDITING_LIBRARY)
 target_link_libraries(editor_editing PUBLIC lux::cxx::compile_time)
 component_add_transitive_commands(editor_editing "find_package(lux-cxx REQUIRED COMPONENTS compile_time)")
-lux_classify_target(TARGET editor_editing LAYER EDITOR PRODUCT EDITOR ROLE FOUNDATION)
+
 install_components(
     PROJECT_NAME lux-engine-editor-editing
     VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor
     COMPONENTS editor_editing
 )
-option(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS "Enable private ED-1 fault injection" OFF)
-if(LUX_EDITOR_EDITING_TEST_DIAGNOSTICS)
-    target_compile_definitions(editor_editing PRIVATE LUX_EDITOR_EDITING_TEST_DIAGNOSTICS=1)
-endif()
-if(BUILD_TESTING)
-    add_subdirectory(test)
-endif()

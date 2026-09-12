@@ -89,37 +89,19 @@ namespace lux::object::detail
         {
             control.lane = EListenerLane::PENDING;
             control.position = bucket.pending.size();
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-            const auto capacity = bucket.pending.capacity();
-#endif
             bucket.pending.push_back(value);
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-            storage_growth_count += bucket.pending.capacity() != capacity;
-#endif
         }
         else if (delivery == EDelivery::QUEUED)
         {
             control.lane = EListenerLane::QUEUED;
             control.position = bucket.queued.size();
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-            const auto capacity = bucket.queued.capacity();
-#endif
             bucket.queued.push_back(value);
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-            storage_growth_count += bucket.queued.capacity() != capacity;
-#endif
         }
         else
         {
             control.lane = EListenerLane::DIRECT;
             control.position = bucket.direct.size();
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-            const auto capacity = bucket.direct.capacity();
-#endif
             bucket.direct.push_back(value);
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-            storage_growth_count += bucket.direct.capacity() != capacity;
-#endif
         }
     }
 
@@ -140,13 +122,7 @@ namespace lux::object::detail
         control->invoke = invoke_value;
         control->context = std::move(context_value);
 
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-        const auto connection_capacity = owned_connections.capacity();
-#endif
         owned_connections.push_back(control);
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-        storage_growth_count += owned_connections.capacity() != connection_capacity;
-#endif
         if (control->receiver)
         {
             control->receiver->addIncoming(lux::cxx::intrusive_ptr<ObjectState>{this}, control);
@@ -261,13 +237,7 @@ namespace lux::object::detail
     {
         if (buckets.size() < required_count)
         {
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-            const auto capacity = buckets.capacity();
-#endif
             buckets.resize(required_count);
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-            storage_growth_count += buckets.capacity() != capacity;
-#endif
         }
     }
 
@@ -339,13 +309,7 @@ namespace lux::object::detail
     )
     {
         std::scoped_lock lock{incoming_mutex};
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-        const auto capacity = incoming.capacity();
-#endif
         incoming.push_back({std::move(sender), std::move(control)});
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-        storage_growth_count += incoming.capacity() != capacity;
-#endif
     }
 
     void ObjectState::removeIncoming(const ObjectState* sender, const ConnectionControl* control) noexcept
@@ -487,33 +451,6 @@ namespace lux::object
         return ObjectWeakRef{ensureState()};
     }
 
-#if defined(LUX_OBJECT_TEST_DIAGNOSTICS)
-    void LuxObject::closeForTest() noexcept
-    {
-        ensureState()->object.store(nullptr, std::memory_order_release);
-    }
-
-    std::uint64_t LuxObject::storageGrowthCountForTest() const noexcept
-    {
-        const auto* state = state_.load(std::memory_order_acquire);
-        return state ? state->storage_growth_count : 0;
-    }
-
-    std::size_t LuxObject::ownedConnectionCountForTest() const noexcept
-    {
-        const auto* state = state_.load(std::memory_order_acquire);
-        return state ? state->owned_connections.size() : 0;
-    }
-
-    std::size_t LuxObject::incomingConnectionCountForTest() const noexcept
-    {
-        auto* state = state_.load(std::memory_order_acquire);
-        if (!state)
-            return 0;
-        std::scoped_lock lock{state->incoming_mutex};
-        return state->incoming.size();
-    }
-#endif
 
     lux::cxx::expected<Connection, EObserveError> LuxObject::observeIndexed(
         const detail::SignalDescriptor& signal,

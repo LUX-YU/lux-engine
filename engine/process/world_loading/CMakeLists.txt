@@ -37,12 +37,6 @@ component_add_transitive_commands(
     "add_library(lux::engine::process::world_loading INTERFACE IMPORTED GLOBAL)"
     "set_property(TARGET lux::engine::process::world_loading PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::process::process_world_loading)"
 )
-lux_classify_target(
-    TARGET  process_world_loading
-    LAYER   PROCESS
-    PRODUCT RUNTIME
-    ROLE    INTEGRATION
-)
 
 install_components(
     PROJECT_NAME lux-engine-process-world-loading

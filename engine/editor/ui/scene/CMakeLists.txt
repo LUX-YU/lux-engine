@@ -29,6 +29,6 @@ engine_target_add_scene_reader_codegen(NAME scene_visual_readers TARGET editor_s
     SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/CodegenInput.cpp
     HEADER ${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/visual/include/lux/engine/simulation/ecs/Visual.hpp
     LOGICAL_PATH lux/engine/simulation/ecs/Visual.hpp SYMBOL visual)
-lux_classify_target(TARGET editor_scene_ui LAYER EDITOR PRODUCT EDITOR ROLE INTEGRATION)
+
 install_components(PROJECT_NAME lux-engine-editor-scene-ui VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_scene_ui)

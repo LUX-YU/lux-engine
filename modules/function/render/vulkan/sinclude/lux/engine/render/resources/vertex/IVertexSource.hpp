@@ -4,7 +4,7 @@
  * @brief Vertex-source abstraction — the renderer's first-class concept for
  *        "where do this draw's vertices come from".
  *
- * Stage R1.1 of the render-refactor (.internal/render_refactor_plan.md).
+ * Stage R1.1 of the render-refactor (the implementation).
  *
  * Background:
  *

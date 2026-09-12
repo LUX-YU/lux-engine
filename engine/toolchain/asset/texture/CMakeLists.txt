@@ -74,10 +74,3 @@ else()
         PROPERTIES COMPILE_OPTIONS "-w"
     )
 endif()
-
-lux_classify_target(
-    TARGET  toolchain_texture_cooker
-    LAYER   TOOLCHAIN
-    PRODUCT BUILD_TOOL
-    ROLE    DOMAIN
-)

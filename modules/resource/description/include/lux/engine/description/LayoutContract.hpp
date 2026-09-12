@@ -29,8 +29,8 @@
 //  this table (and vice versa); entries are only ever added, never removed in
 //  spirit (retired resources are archived as comments, not deleted).
 //
-//  Design: .internal/lux-engine-descriptor-layout-architecture.md §4.1/§4.2
-//  Implementation checklist: .internal/lux-engine-descriptor-layout-implementation-checklist.md
+//  Design: the implementation §4.1/§4.2
+//  Implementation checklist: the implementation
 // =============================================================================
 
 #include "ShaderInfo.hpp" // EDescriptorType — shares its type family with reflection

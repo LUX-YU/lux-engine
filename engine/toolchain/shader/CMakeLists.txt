@@ -18,12 +18,6 @@ target_link_libraries(
         lux::engine::resource::description
         spirv-cross-core
 )
-lux_classify_target(
-    TARGET  toolchain_shader_reflection
-    LAYER   TOOLCHAIN
-    PRODUCT BUILD_TOOL
-    ROLE    FOUNDATION
-)
 
 add_component(
     STATIC
@@ -50,12 +44,6 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time core)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
-lux_classify_target(
-    TARGET  toolchain_shader_emitter
-    LAYER   TOOLCHAIN
-    PRODUCT BUILD_TOOL
-    ROLE    FOUNDATION
-)
 
 add_executable(
     lux_shader_emitter
@@ -64,12 +52,6 @@ add_executable(
 target_link_libraries(
     lux_shader_emitter
     PRIVATE lux::engine::toolchain::toolchain_shader_emitter
-)
-lux_classify_target(
-    TARGET  lux_shader_emitter
-    LAYER   TOOLCHAIN
-    PRODUCT BUILD_TOOL
-    ROLE    COMPOSITION
 )
 
 if(LUX_PROFILE_HAS_TOOLCHAIN)

@@ -26,9 +26,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-simulation-system REQUIRED COMPONENTS system)"
     "find_package(lux-engine-core REQUIRED COMPONENTS task)"
 )
-lux_classify_target(
-    TARGET  ecs_task
-    LAYER   SIMULATION
-    PRODUCT RUNTIME
-    ROLE    INTEGRATION
-)

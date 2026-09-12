@@ -22,7 +22,7 @@
  * Frustum / occlusion culling is still handled by per-instance cull + the
  * double-buffered HZB.
  *
- * See .internal/world-partition-design-2026-06-17.md (§3 design / §5 phased
+ * See the implementation (§3 design / §5 phased
  * rollout / §6 integration points / §7 architecture-fit: explicitly rules out
  * a per-instance octree, two-level GPU cull, and frustum-level cell culling).
  */

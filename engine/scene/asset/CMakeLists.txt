@@ -31,12 +31,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
 )
-lux_classify_target(
-    TARGET  scene_asset
-    LAYER   SCENE
-    PRODUCT RUNTIME
-    ROLE    INTEGRATION
-)
 
 install_components(
     PROJECT_NAME lux-engine-scene-asset

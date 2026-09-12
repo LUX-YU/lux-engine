@@ -1,7 +1,7 @@
 #pragma once
 /**
  * @file Canvas2DFeature.hpp
- * @brief The SinglePerScene GPU-driven 2D canvas (v2 — .internal/2d-gpu-driven-rewrite.md).
+ * @brief The SinglePerScene GPU-driven 2D canvas (v2 — the implementation).
  *
  * Images are GPU-RESIDENT instances in the scene's Canvas2DInstanceArena
  * (scene-registry-owned; this feature attaches/initializes it and registers it

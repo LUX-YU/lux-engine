@@ -1,7 +1,0 @@
-{
-  "stage_result_driver_sha256": "821274FA4FB01A156384D4325FE87A16E8C7A7347F3D6F56FF0F5D3E355A344D",
-  "byte_preservation": "Stage-local .gitattributes -text prevents autocrlf changing manifests",
-  "resolution": "Validated the applicable supplied schema constraints with stdlib; no dependency installed",
-  "original_postarchive_validation": "jsonschema module unavailable; no measurement or archive affected",
-  "immutable_archives_preserved": true
-}

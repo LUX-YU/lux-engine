@@ -16,7 +16,6 @@ namespace lux::editor::application
 {
     namespace detail
     {
-        struct ToolsetTestAccess;
 
         template<class Tool>
         concept HasRequestStop = requires(Tool& tool) { tool.requestStop(); };
@@ -154,7 +153,6 @@ namespace lux::editor::application
         [[nodiscard]] bool stopping() const noexcept;
 
     private:
-        friend struct detail::ToolsetTestAccess;
 
         using DestroyFn = void (*)(void*) noexcept;
         using RequestStopFn = void (*)(void*) noexcept;

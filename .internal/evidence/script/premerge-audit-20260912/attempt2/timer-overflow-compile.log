@@ -1,2 +1,0 @@
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-timer-overflow.cpp

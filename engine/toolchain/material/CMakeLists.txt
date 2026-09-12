@@ -60,12 +60,6 @@ add_custom_target(
         "${lux_material_shadow_common_emitted}"
         "${lux_material_cluster_common_emitted}"
 )
-lux_classify_target(
-    TARGET  toolchain_material_shader_includes
-    LAYER   TOOLCHAIN
-    PRODUCT BUILD_TOOL
-    ROLE    FOUNDATION
-)
 
 set(lux_material_embedded_includes
     "${CMAKE_CURRENT_BINARY_DIR}/generated/lux/engine/material/compiler/MaterialShaderIncludes.generated.hpp"
@@ -143,12 +137,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS material_graph)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
-lux_classify_target(
-    TARGET  toolchain_material_compiler
-    LAYER   TOOLCHAIN
-    PRODUCT TOOLCHAIN
-    ROLE    DOMAIN
-)
 
 add_component(
     STATIC
@@ -182,12 +170,6 @@ component_add_transitive_commands(
     toolchain_material_cooker
     "find_package(lux-engine-toolchain-material REQUIRED COMPONENTS toolchain_material_compiler)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
-)
-lux_classify_target(
-    TARGET  toolchain_material_cooker
-    LAYER   TOOLCHAIN
-    PRODUCT BUILD_TOOL
-    ROLE    DOMAIN
 )
 
 if(LUX_PROFILE_HAS_TOOLCHAIN)

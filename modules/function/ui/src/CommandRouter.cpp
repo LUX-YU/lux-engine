@@ -63,11 +63,6 @@ namespace lux::ui
         lux::object::LuxObject* active_scope_identity{nullptr};
         lux::object::ObjectWeakRef active_scope;
         std::uint64_t next_token{1};
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-        std::uint64_t rebuild_count{0};
-        std::uint64_t rebuild_elapsed_ns{0};
-        std::uint64_t storage_growth_count{0};
-#endif
         bool dirty{true};
 
         Impl()
@@ -77,10 +72,6 @@ namespace lux::ui
 
         void rebuildContextViews()
         {
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-            const auto view_capacity = active_contexts.capacity();
-            const auto rank_capacity = context_ranks.capacity();
-#endif
             active_contexts.clear();
             context_ranks.clear();
             active_contexts.reserve(active_context_ids.size());
@@ -91,10 +82,6 @@ namespace lux::ui
                 active_contexts.push_back(view);
                 context_ranks.emplace_back(view, index);
             }
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-            storage_growth_count += active_contexts.capacity() != view_capacity;
-            storage_growth_count += context_ranks.capacity() != rank_capacity;
-#endif
         }
 
         [[nodiscard]] bool sameContexts(std::span<const UiContextIdView> contexts) const noexcept
@@ -111,16 +98,10 @@ namespace lux::ui
 
         void setContexts(std::span<const UiContextIdView> contexts)
         {
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-            const auto id_capacity = active_context_ids.capacity();
-#endif
             active_context_ids.clear();
             active_context_ids.reserve(contexts.size());
             for (const auto context : contexts)
                 active_context_ids.emplace_back(context.name());
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-            storage_growth_count += active_context_ids.capacity() != id_capacity;
-#endif
             rebuildContextViews();
         }
 
@@ -142,21 +123,10 @@ namespace lux::ui
         {
             if (!dirty)
                 return;
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-            const auto begin = std::chrono::steady_clock::now();
-#endif
             std::erase_if(bindings, [](const Binding& binding) { return !binding.endpointsAlive(); });
 
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-            const auto effective_capacity = effective.capacity();
-            const auto rank_capacity = selected_ranks.capacity();
-#endif
             effective.assign(commands.size(), nullptr);
             selected_ranks.assign(commands.size(), (std::numeric_limits<std::size_t>::max)());
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-            storage_growth_count += effective.capacity() != effective_capacity;
-            storage_growth_count += selected_ranks.capacity() != rank_capacity;
-#endif
             for (auto& binding : bindings)
             {
                 if (!valid(binding.command))
@@ -175,12 +145,6 @@ namespace lux::ui
                 effective[binding.command.dense_index_] = std::addressof(binding);
             }
             dirty = false;
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-            ++rebuild_count;
-            rebuild_elapsed_ns += static_cast<std::uint64_t>(
-                std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - begin).count()
-            );
-#endif
         }
 
         [[nodiscard]] Binding* selected(CommandHandle command)
@@ -271,13 +235,7 @@ namespace lux::ui
             return lux::cxx::unexpected<ECommandDefinitionError>{ECommandDefinitionError::DUPLICATE_ID};
         }
         const auto handle = CommandHandle{static_cast<std::uint32_t>(impl_->commands.size()), impl_->owner_identity};
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-        const auto capacity = impl_->commands.capacity();
-#endif
         impl_->commands.push_back(std::move(command_value));
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-        impl_->storage_growth_count += impl_->commands.capacity() != capacity;
-#endif
         impl_->dirty = true;
         return handle;
     }
@@ -335,9 +293,6 @@ namespace lux::ui
         }
 
         const auto token = impl_->next_token++;
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-        const auto capacity = impl_->bindings.capacity();
-#endif
         impl_->bindings.push_back(Binding{
             token,
             command,
@@ -349,9 +304,6 @@ namespace lux::ui
             enabled,
             checked}
         );
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-        impl_->storage_growth_count += impl_->bindings.capacity() != capacity;
-#endif
         impl_->dirty = true;
         return CommandRegistration{control_, token};
     }
@@ -437,25 +389,4 @@ namespace lux::ui
         impl_->dirty = true;
     }
 
-#if defined(LUX_UI_TEST_DIAGNOSTICS)
-    std::uint64_t CommandRouter::rebuildCountForTest() const noexcept
-    {
-        return impl_->rebuild_count;
-    }
-
-    std::uint64_t CommandRouter::rebuildElapsedForTest() const noexcept
-    {
-        return impl_->rebuild_elapsed_ns;
-    }
-
-    std::uint64_t CommandRouter::storageGrowthCountForTest() const noexcept
-    {
-        return impl_->storage_growth_count;
-    }
-
-    std::span<const UiContextIdView> CommandRouter::activeContextsForTest() const noexcept
-    {
-        return impl_->active_contexts;
-    }
-#endif
 } // namespace lux::ui

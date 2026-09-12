@@ -150,14 +150,6 @@ function(lux_materialize_script_ability_schemas)
         add_executable(${exporter} EXCLUDE_FROM_ALL "${writer}")
         target_link_libraries(${exporter} PRIVATE ${ARGS_TARGET})
         add_dependencies(${exporter} "${job}_generate")
-        if(COMMAND lux_classify_target)
-            lux_classify_target(
-                TARGET  ${exporter}
-                LAYER   TOOLCHAIN
-                PRODUCT BUILD_TOOL
-                ROLE    DOMAIN
-            )
-        endif()
         add_custom_command(
             OUTPUT "${schema}"
             COMMAND ${CMAKE_COMMAND} -E make_directory "${schema_directory}"
@@ -169,14 +161,6 @@ function(lux_materialize_script_ability_schemas)
     endforeach()
     set(schema_target "${target_stem}_script_ability_schemas")
     add_custom_target(${schema_target} DEPENDS ${generated_schemas})
-    if(COMMAND lux_classify_target)
-        lux_classify_target(
-            TARGET  ${schema_target}
-            LAYER   TOOLCHAIN
-            PRODUCT BUILD_TOOL
-            ROLE    DOMAIN
-        )
-    endif()
     set_target_properties(${ARGS_TARGET} PROPERTIES
         LUX_SCRIPT_ABILITY_SCHEMA_TARGET "${schema_target}"
         LUX_SCRIPT_ABILITY_SCHEMA_FILES "${generated_schemas}"

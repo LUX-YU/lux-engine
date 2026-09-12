@@ -21,7 +21,7 @@
  * `if (domain)`. Large-world streaming is the canonical client, but anything that
  * wants distance/cell-based coarse cull can use it.
  *
- * See .internal/render-architecture-decoupling-design-2026-06-19.md (§4, category A;
+ * See the implementation (§4, category A;
  * Contract C2 — scene resources are feature-owned; C4 — domain-neutral scene primitives).
  */
 

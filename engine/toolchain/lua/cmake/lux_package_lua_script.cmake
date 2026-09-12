@@ -114,14 +114,6 @@ function(lux_package_lua_script)
     if(event_schema_targets)
         add_dependencies(${ARGS_NAME} ${event_schema_targets})
     endif()
-    if(COMMAND lux_classify_target)
-        lux_classify_target(
-            TARGET  ${ARGS_NAME}
-            LAYER   TOOLCHAIN
-            PRODUCT BUILD_TOOL
-            ROLE    DOMAIN
-        )
-    endif()
     set_target_properties(${ARGS_NAME} PROPERTIES LUX_LUA_SCRIPT_ARTIFACT "${output}")
     set_target_properties(${ARGS_NAME} PROPERTIES LUX_LUA_SCRIPT_BINDING_HINTS "${authoring_output}")
     if(ARGS_OUT_VAR)

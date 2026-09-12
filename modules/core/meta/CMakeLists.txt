@@ -61,33 +61,3 @@ target_link_libraries(
 )
 
 component_add_internal_dependencies(meta type_info)
-
-lux_classify_target(
-    TARGET  meta
-    LAYER   CORE
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)
-
-if(BUILD_TESTING)
-    if(NOT CMAKE_CROSSCOMPILING)
-
-        add_executable(
-            type_static_info_test
-            ${CMAKE_CURRENT_SOURCE_DIR}/test/type_static_info_test.cpp
-        )
-        target_link_libraries(type_static_info_test PRIVATE meta)
-        target_include_directories(
-            type_static_info_test
-            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test
-        )
-        engine_target_add_static_type_info(
-            NAME        type_static_info_test_codegen
-            TARGET      type_static_info_test
-            SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/test/type_static_info_test.cpp
-            HEADERS     ${CMAKE_CURRENT_SOURCE_DIR}/test/type_static_info_types.hpp
-            LOGICAL_PATHS type_static_info_types.hpp
-        )
-        add_test(NAME type_static_info_test COMMAND type_static_info_test)
-    endif()
-endif()

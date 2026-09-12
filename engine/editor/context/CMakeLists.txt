@@ -79,20 +79,9 @@ engine_target_add_type_runtime_info(
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen
 )
 
-lux_classify_target(
-    TARGET  editor_context
-    LAYER   EDITOR
-    PRODUCT EDITOR
-    ROLE    FOUNDATION
-)
-
 install_components(
     PROJECT_NAME lux-engine-editor-context
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::editor
     COMPONENTS   editor_context
 )
-
-if(BUILD_TESTING)
-    add_subdirectory(test)
-endif()

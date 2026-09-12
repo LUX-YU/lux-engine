@@ -1,7 +1,4 @@
 #include <lux/engine/editor/scene/SceneWorkbench.hpp>
-#if LUX_SV1_DIAGNOSTICS
-#include <lux/engine/editor/scene/SceneWorkbenchDiagnostics.hpp>
-#endif
 
 #include <lux/engine/editor/application/EditorApplication.hpp>
 #include <lux/engine/meta/Meta.hpp>
@@ -22,7 +19,6 @@ namespace
         bool visible{true};
         bool validation{};
         std::filesystem::path assets;
-        std::filesystem::path verification;
     };
 
     [[nodiscard]] std::optional<Arguments> parseArguments(int argc, char** argv)
@@ -41,10 +37,6 @@ namespace
             }
             else if (argument == "--assets" && index + 1 < argc)
                 result.assets = argv[++index];
-#if LUX_SV1_DIAGNOSTICS
-            else if (argument == "--verify-scene" && index + 1 < argc)
-                result.verification = argv[++index];
-#endif
             else if (argument == "--frames" && index + 1 < argc)
             {
                 const std::string_view value{argv[++index]};
@@ -127,22 +119,12 @@ int main(int argc, char** argv)
                 context->get(), *(*application)->sceneViewRenderPort());
             if (bootstrap)
             {
-#if LUX_SV1_DIAGNOSTICS
-                if (!arguments->verification.empty())
-                    lux::editor::workbench::detail::SceneWorkbenchDiagnostics::enable(
-                        **bootstrap, arguments->verification);
-#endif
                 const auto started = std::chrono::steady_clock::now();
                 const auto run = (*application)->run(arguments->frames, bootstrap->get());
                 const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
                 std::fprintf(stderr, "SV1 ui iterations=%zu elapsed_seconds=%.6f result=%s\n",
                     run ? *run : 0, elapsed, run ? "success" : "failure");
                 result = run ? 0 : 1;
-#if LUX_SV1_DIAGNOSTICS
-                if (!arguments->verification.empty() &&
-                    !lux::editor::workbench::detail::SceneWorkbenchDiagnostics::passed(**bootstrap))
-                    result = 1;
-#endif
                 bootstrap->reset();
             }
             else

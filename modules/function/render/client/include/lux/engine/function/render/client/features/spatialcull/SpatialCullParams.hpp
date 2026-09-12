@@ -11,7 +11,7 @@
 //
 //  Kept dependency-light (only MetaAnnotations) so the editor-only meta
 //  generator parses it cleanly. See
-//  .internal/feature-classification-and-2d-coupling-2026-06-21.md §3 / §6.
+//  the implementation §3 / §6.
 // ============================================================================
 #include <lux/engine/meta/MetaAnnotations.hpp>
 

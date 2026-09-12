@@ -2,7 +2,7 @@ add_library(editor_session_types INTERFACE)
 add_library(lux::engine::editor::editor_session_types ALIAS editor_session_types)
 target_include_directories(editor_session_types INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>)
-lux_classify_target(TARGET editor_session_types LAYER EDITOR PRODUCT EDITOR ROLE FOUNDATION)
+
 install(DIRECTORY include/ DESTINATION include)
 install(TARGETS editor_session_types EXPORT editor_session_types_export)
 install(EXPORT editor_session_types_export FILE lux-engine-editor-session-types-config.cmake

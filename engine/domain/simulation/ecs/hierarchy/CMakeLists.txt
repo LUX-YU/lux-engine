@@ -52,10 +52,3 @@ engine_target_add_ecs_component_codegen(
     LOGICAL_PATH lux/engine/simulation/ecs/Parent.hpp
     SYMBOL hierarchy
 )
-
-lux_classify_target(
-    TARGET  hierarchy
-    LAYER   SIMULATION
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
-)

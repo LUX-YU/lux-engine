@@ -20,7 +20,6 @@ namespace lux::object
 
     namespace detail
     {
-        struct ObjectDiagnosticsAccess;
 
         using QueuedMessageFactory =
             MessageEnvelope (*)(lux::cxx::intrusive_ptr<ConnectionControl>, const void*) noexcept;
@@ -32,7 +31,6 @@ namespace lux::object
             friend class ::lux::object::LuxObject;
             friend class ::lux::object::reflection::SignalView;
             friend struct ObjectState;
-            friend struct ObjectDiagnosticsAccess;
 
             constexpr SignalDescriptor(
                 std::size_t dense_index,

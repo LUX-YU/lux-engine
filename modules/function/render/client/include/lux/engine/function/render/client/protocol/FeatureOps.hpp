@@ -15,7 +15,7 @@
 //  half — binding handlers + generating the factory's register/unregister fns —
 //  lives in comm/server/FeatureOpRegistrar.hpp.
 //
-//  See .internal/feature-classification-and-2d-coupling-2026-06-21.md Part II §9.
+//  See the implementation Part II §9.
 // ============================================================================
 
 #include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>

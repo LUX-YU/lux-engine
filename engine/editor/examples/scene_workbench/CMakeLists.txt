@@ -8,8 +8,3 @@ engine_add_type_runtime_info(NAME editor_demo_transform_meta
     REGISTER_FUNC_NAME lux_editor_demo_transform)
 engine_target_add_type_runtime_info(TARGET lux_editor_er1 METAS editor_demo_transform_meta
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen)
-lux_classify_target(TARGET lux_editor_er1 LAYER EDITOR PRODUCT EDITOR ROLE COMPOSITION)
-if(BUILD_TESTING)
-    add_subdirectory(test)
-    add_subdirectory(benchmark)
-endif()

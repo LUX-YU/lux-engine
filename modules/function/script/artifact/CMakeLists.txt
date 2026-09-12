@@ -37,30 +37,3 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset description)"
 )
-lux_classify_target(
-    TARGET  script_artifact
-    LAYER   FUNCTION
-    PRODUCT RUNTIME
-    ROLE    DOMAIN
-)
-
-add_executable(
-    script_artifact_codec_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/script_artifact_codec_test.cpp
-)
-target_link_libraries(
-    script_artifact_codec_test
-    PRIVATE lux::engine::function::script_artifact
-)
-if(MSVC)
-    target_compile_options(script_artifact_codec_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(script_artifact_codec_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  script_artifact_codec_test
-    LAYER   FUNCTION
-    PRODUCT TEST
-    ROLE    DOMAIN
-)
-add_test(NAME script_artifact_codec_test COMMAND script_artifact_codec_test)

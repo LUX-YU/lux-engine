@@ -36,7 +36,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-domain-system-description REQUIRED COMPONENTS domain_system_description)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
-lux_classify_target(TARGET scene_description LAYER SCENE PRODUCT RUNTIME ROLE FOUNDATION)
 
 install_components(
     PROJECT_NAME lux-engine-scene-description

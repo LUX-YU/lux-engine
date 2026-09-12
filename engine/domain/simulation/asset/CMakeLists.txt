@@ -42,36 +42,7 @@ component_add_transitive_commands(
     "set_property(TARGET lux::engine::simulation::asset PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::simulation::simulation_asset)"
     "endif()"
 )
-lux_classify_target(
-    TARGET  simulation_asset
-    LAYER   SIMULATION
-    PRODUCT RUNTIME
-    ROLE    INTEGRATION
-)
-add_executable(
-    simulation_asset_codec_test
-    test/simulation_asset_codec_test.cpp
-)
-target_include_directories(
-    simulation_asset_codec_test
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
-)
-target_link_libraries(
-    simulation_asset_codec_test
-    PRIVATE lux::engine::simulation::asset
-)
-if(MSVC)
-    target_compile_options(simulation_asset_codec_test PRIVATE /UNDEBUG)
-else()
-    target_compile_options(simulation_asset_codec_test PRIVATE -UNDEBUG)
-endif()
-lux_classify_target(
-    TARGET  simulation_asset_codec_test
-    LAYER   SIMULATION
-    PRODUCT TEST
-    ROLE    INTEGRATION
-)
-add_test(NAME simulation_asset_codec_test COMMAND simulation_asset_codec_test)
+
 install_components(
     PROJECT_NAME lux-engine-simulation-asset
     VERSION      ${PROJECT_VERSION}

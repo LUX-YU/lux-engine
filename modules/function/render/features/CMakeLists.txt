@@ -37,12 +37,6 @@ if(NOT LUX_BUILD_PACKED_RENDER_CONTENT)
         "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
         "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"
     )
-    lux_classify_target(
-        TARGET  render_features
-        LAYER   FUNCTION
-        PRODUCT RUNTIME
-        ROLE    DOMAIN
-    )
 
     return()
 endif()
@@ -200,13 +194,6 @@ component_add_transitive_commands(
     render_features
     "find_package(lux-cxx REQUIRED COMPONENTS core)"
 )
-
-lux_classify_target(
-        TARGET  render_features
-        LAYER   FUNCTION
-        PRODUCT RUNTIME
-        ROLE    DOMAIN
-    )
 
 target_link_libraries(
     render_features
@@ -379,11 +366,9 @@ compile_and_pack_shaders(
 	SHADERS
 		# Grid
 
-
 		# Depth prepass
 
 		# Point cloud
-
 
 		# Point cloud compute
 		point_cloud/pointcloud_culling.comp
@@ -432,8 +417,6 @@ compile_and_pack_shaders(
 		shadow/shadow_evsm_blur_v.comp
 		# Deferred rendering — P3.2 R6: single _vp gbuffer vertex shader.
 
-
-
 		# deferred_lighting.frag is compiled below via compile_and_pack_shader_variants
 		# (PCF / EVSM variants of LUX_SHADOW_SAMPLER_HEADER).
 		deferred/deferred_lighting.vert
@@ -445,14 +428,9 @@ compile_and_pack_shaders(
 
 		# Gizmo
 
-
 		# Canvas2D (GPU-driven 2D instances: image + pixel-field kinds)
 
-
-
-
 		# Highlight outline
-
 
 )
 
@@ -517,7 +495,7 @@ list(APPEND RENDER_SHADER_SPVS ${RENDER_LGLSL_SPVS})
 # ---------------------------------------------------------------------------
 # Shadow technique variants — single .frag source compiled with different
 # LUX_SHADOW_SAMPLER_HEADER injections (PCF / EVSM / future MSM, VSM ...).
-# See .internal/plan/evsm-shadow-implementation-guide.md.
+# See the implementation.
 # ---------------------------------------------------------------------------
 set(_shadow_variants
 	"pcf|LUX_SHADOW_TECHNIQUE_ID=0"
@@ -778,7 +756,7 @@ component_register_runtime_assets(
 # library `render_meta` that ONLY the editor links, so shipped runtime render
 # components embed no reflection symbols / type-name strings / registrar statics.
 # Editor-only parameter reflection sidecar.
-# See .internal/feature-quality-tiers-design-2026-06-19.md.
+# See the implementation.
 # ---------------------------------------------------------------------------
 if(LUX_PROFILE_HAS_EDITOR)
     include_component_cmake_scripts(meta)
@@ -788,12 +766,7 @@ if(LUX_PROFILE_HAS_EDITOR)
     # include paths / flags from; every other .cpp it ships is generated.
     add_library(render_meta SHARED
         ${CMAKE_CURRENT_SOURCE_DIR}/src/meta_sidecar_anchor.cpp)
-    lux_classify_target(
-        TARGET render_meta
-        LAYER FUNCTION
-        PRODUCT EDITOR
-        ROLE INTEGRATION
-    )
+
     set_target_properties(render_meta PROPERTIES
         OUTPUT_NAME lux_engine_function_render_meta)
     target_link_libraries(render_meta

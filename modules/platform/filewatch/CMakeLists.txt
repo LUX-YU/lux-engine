@@ -49,10 +49,3 @@ component_add_transitive_commands(
     filewatch
     "find_package(efsw CONFIG REQUIRED)"
 )
-
-lux_classify_target(
-    TARGET  filewatch
-    LAYER   PLATFORM
-    PRODUCT RUNTIME
-    ROLE    FOUNDATION
-)

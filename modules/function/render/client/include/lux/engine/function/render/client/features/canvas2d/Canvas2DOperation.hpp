@@ -3,7 +3,7 @@
 //  Canvas2DOperation.hpp — the public protocol between the 2D renderable bridges
 //  (gameplay d2) and the render-side Canvas2DFeature (SinglePerScene).
 //
-//  v2 (C2D-R0, GPU-DRIVEN — .internal/2d-gpu-driven-rewrite.md): images are
+//  v2 (C2D-R0, GPU-DRIVEN — the implementation): images are
 //  GPU-RESIDENT instances in the scene's Canvas2D instance arena, maintained by
 //  create / destroy / delta commands (the MeshStack paradigm).
 //

@@ -28,29 +28,6 @@ engine_add_type_runtime_info(NAME editor_scene_view_meta
     REGISTER_FUNC_NAME lux_editor_scene_view)
 engine_target_add_type_runtime_info(TARGET editor_scene_session METAS editor_scene_session_meta editor_scene_view_meta
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen)
-lux_classify_target(TARGET editor_scene_session LAYER EDITOR PRODUCT EDITOR ROLE INTEGRATION)
+
 install_components(PROJECT_NAME lux-engine-editor-scene-session VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_scene_session)
-if(LUX_EDITOR_DIAGNOSTICS)
-    target_include_directories(editor_scene_session PRIVATE
-        ${PROJECT_SOURCE_DIR}/engine/editor/rendering/pinclude)
-    add_executable(editor_resource_completion_test test/ResourceCompletionTest.cpp)
-    target_include_directories(editor_resource_completion_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
-    target_link_libraries(editor_resource_completion_test PRIVATE lux::engine::editor::editor_scene_session)
-    target_compile_definitions(editor_resource_completion_test PRIVATE LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
-    target_compile_options(editor_resource_completion_test PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
-    lux_classify_target(TARGET editor_resource_completion_test LAYER EDITOR PRODUCT TEST ROLE INTEGRATION)
-    target_compile_definitions(editor_scene_session PRIVATE LUX_EDITOR_SCENE_TEST_DIAGNOSTICS)
-    target_sources(editor_scene_session PRIVATE ${PROJECT_SOURCE_DIR}/cmake/diagnostics/EditorAllocationDiagnostics.cpp)
-    target_compile_definitions(editor_scene_session PRIVATE
-        LUX_ALLOCATION_ARM=lux_er1_scene_allocation_fail_after
-        LUX_ALLOCATION_DISARM=lux_er1_scene_allocation_disarm)
-endif()
-if(BUILD_TESTING)
-    add_executable(editor_scene_session_test test/SceneSessionTest.cpp)
-    target_include_directories(editor_scene_session_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
-    target_link_libraries(editor_scene_session_test PRIVATE lux::engine::editor::editor_scene_session)
-    target_compile_options(editor_scene_session_test PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
-    lux_classify_target(TARGET editor_scene_session_test LAYER EDITOR PRODUCT TEST ROLE INTEGRATION)
-    add_test(NAME editor_scene_session_protocol COMMAND editor_scene_session_test)
-endif()

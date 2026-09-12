@@ -124,7 +124,7 @@ namespace lux::window
         // must not touch handle() or the windowing library directly — that
         // is what keeps a future Android (ANativeWindow) backend a pure
         // source swap of this class. See
-        // .internal/lux-engine-mobile-adaptation-investigation.md §3.
+        // the implementation §3.
 
         /// Create a Vulkan surface for this window using the active window
         /// backend. Writes VK_NULL_HANDLE and returns false on failure.

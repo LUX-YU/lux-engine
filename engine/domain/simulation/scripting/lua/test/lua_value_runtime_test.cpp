@@ -468,7 +468,8 @@ static int conversionAuthorityCase(EConversionAuthorityCase selected)
     assert(synchronous && stop ? !stable : static_cast<bool>(stable));
     const auto expected_calls = static_cast<std::size_t>(stop || retains_instance);
     std::printf("CONVERSION_AUTHORITY mode=%u conversions=%zu body=%zu provider=%zu expected=%zu\n",
-        static_cast<unsigned>(selected), resume_conversions, conversion_body_calls, provider.zero_calls, expected_calls);
+        static_cast<unsigned>(selected), resume_conversions, conversion_body_calls, provider.zero_calls, expected_calls
+    );
     assert(resume_conversions == 1U && provider.zero_calls == expected_calls);
     if (synchronous) assert(conversion_body_calls == expected_calls);
     assert(system->activeContinuationCount() == 0U && system->activeAwaitableCount() == 0U);
@@ -490,8 +491,10 @@ static int conversionAuthorityCase(EConversionAuthorityCase selected)
 
 int main(int argc, char** argv)
 {
-    if (argc == 2 && std::string_view{argv[1]} == "--resume-retire") return conversionAuthorityCase(EConversionAuthorityCase::RESUME_RETIRE);
-    if (argc == 2 && std::string_view{argv[1]} == "--resume-stop") return conversionAuthorityCase(EConversionAuthorityCase::RESUME_STOP);
+    if (argc == 2 && std::string_view{argv[1]} == "--resume-retire")
+        return conversionAuthorityCase(EConversionAuthorityCase::RESUME_RETIRE);
+    if (argc == 2 && std::string_view{argv[1]} == "--resume-stop")
+        return conversionAuthorityCase(EConversionAuthorityCase::RESUME_STOP);
     if (argc == 2 && std::string_view{argv[1]} == "--sync-valid")
         return conversionAuthorityCase(EConversionAuthorityCase::SYNC_VALID);
     if (argc == 2 && std::string_view{argv[1]} == "--sync-retire")

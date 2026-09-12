@@ -71,6 +71,27 @@ class Generator:
             "\n    return result;\n}\n")
         return name
 
+    @staticmethod
+    def scalar_row(items, tooltip=None):
+        lines = ['{', '    ImGui::BeginGroup();',
+                 '    const auto& style = ImGui::GetStyle();', '    const float labels_width =']
+        for i, (label, _, _) in enumerate(items):
+            lines.append(f'        ImGui::CalcTextSize({literal(label)}).x' +
+                         (';' if i + 1 == len(items) else ' +'))
+        lines += [f'    const float spacing = style.ItemInnerSpacing.x * {len(items)}.0F +',
+                  f'        style.ItemSpacing.x * {len(items) - 1}.0F;',
+                  '    const float item_width = std::max(1.0F,',
+                  f'        (ImGui::GetContentRegionAvail().x - labels_width - spacing) / {len(items)}.0F);']
+        for i, (_, call, identity) in enumerate(items):
+            if i:
+                lines.append('    ImGui::SameLine();')
+            lines += ['    {', f'        IdScope id{{{identity}}};',
+                      '        ImGui::SetNextItemWidth(item_width);', f'        merge(result, {call});']
+            if tooltip:
+                lines += ['        if (ImGui::IsItemHovered())', f'            ImGui::SetTooltip({literal(tooltip)});']
+            lines.append('    }')
+        return lines + ['    ImGui::EndGroup();', '}']
+
     def body(self, t, attrs):
         kind, tid = t["__kind"], t["id"]
         widget = attrs.get("widget", "color" if attrs.get("color") == "true" else "default")
@@ -175,22 +196,30 @@ class Generator:
                 return [f'result = edited(ImGui::ColorEdit{rows}("##value", value.data()));']
             axes = str(attrs.get("axis_labels", "X|Y|Z|W")).split("|")
             lines = []
+            vector = rows == 1 or cols == 1
+            items = []
             for r in range(rows):
                 for c in range(cols):
-                    label = axes[r] if cols == 1 and r < len(axes) else f"[{r},{c}]"
+                    index = r * cols + c
+                    label = axes[index] if vector and index < len(axes) else f"[{r},{c}]"
                     fn = self.draw_function(scalar, dict(attrs, _item_label=label))
-                    lines += [f'{{ IdScope id{{{r * cols + c}}}; merge(result, {fn}(value({r}, {c}), state)); }}']
+                    items.append((label, f'{fn}(value({r}, {c}), state)', index))
+                if not vector:
+                    lines += self.scalar_row(items)
+                    items = []
+            if vector:
+                lines += self.scalar_row(items)
             return lines
         if template == "Eigen::Quaternion":
             if widget not in ("default", "drag", "input"):
                 raise ValueError("quaternion widget must edit rotation")
             scalar = args[0]["type_id"]
             functions = [self.draw_function(scalar, dict(attrs, speed=attrs.get("speed", "0.25"),
-                         _item_label=f"{axis} (deg)")) for axis in ("X", "Y", "Z")]
+                         _item_label=axis)) for axis in ("X", "Y", "Z")]
             return ["auto degrees = (value.toRotationMatrix().eulerAngles(0, 1, 2) *",
-                    "    (180.0 / std::numbers::pi)).eval();"] + [
-                    f'{{ IdScope id{{{i}}}; merge(result, {fn}(degrees[{i}], state)); }}'
-                    for i, fn in enumerate(functions)] + [
+                    "    (180.0 / std::numbers::pi)).eval();"] + self.scalar_row([
+                    (axis, f'{fn}(degrees[{i}], state)', i)
+                    for i, (axis, fn) in enumerate(zip(("X", "Y", "Z"), functions))], "Degrees") + [
                     "if (result.changed)", "{",
                     "    const auto radians = (degrees * (std::numbers::pi / 180.0)).eval();",
                     f"    using Scalar = {scalar};",

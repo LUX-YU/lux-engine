@@ -23,6 +23,8 @@ engine_target_add_imgui_inspector_codegen(NAME project_inspectors TARGET project
 无范围 slider、非有限参数、反向范围、非正 step 都使生成失败。隐藏成员使用 `LUX_NO_MEMBER()`。
 数值输入超出注解范围或产生非有限值时保留该字段原值并返回输入错误；业务规则仍由 Session 校验。
 控件 ID 使用字段完整身份，不使用显示名称作为唯一身份。
+固定向量的各分量在同一行按可用宽度等分；固定矩阵逐行显示。四元数显示为一行 X/Y/Z 欧拉角，
+悬停提示单位 Degrees。每个分量保留独立控件身份、范围校验和手势结果。
 
 支持 bool、常见有符号/无符号整数、float/double、UTF-8 std::string、已解析枚举、固定 Eigen 向量/矩阵、
 四元数、嵌套反射记录、C 多维数组、std::array、vector（含 bool）、deque、list、map/unordered_map、

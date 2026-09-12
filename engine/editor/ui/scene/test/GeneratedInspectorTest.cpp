@@ -71,9 +71,10 @@ int main()
         auto registration = session.registerPane(pane);
         assert(registration);
         session.setSplitLayout({"", "generated.test", "", ""});
+        float viewport_width = 1000;
         const auto step = [&] {
             inspector_test::count = 0;
-            auto frame = session.beginFrame({{1000, 4200}, 1.0F / 60.0F, {1, 1}});
+            auto frame = session.beginFrame({{viewport_width, 4200}, 1.0F / 60.0F, {1, 1}});
             frame.drawPanes();
             frame.finish();
             auto snapshot = session.captureFrame();
@@ -94,6 +95,35 @@ int main()
         for (unsigned i = 0; i < 4; ++i) step();
         const auto original = pane.model.value();
         assert(original.precise == 2 && original.map.at(1) == "one");
+        for (const float width : {340.0F, 1000.0F})
+        {
+            viewport_width = width;
+            for (unsigned i = 0; i < 4; ++i) step();
+            for (const auto field : {"vector", "rotation"})
+            {
+                const auto x = inspector_test::find(field, "value", 0);
+                const auto y = inspector_test::find(field, "value", 1);
+                const auto z = inspector_test::find(field, "value", 2);
+                assert(x.low.y == y.low.y && y.low.y == z.low.y);
+                assert(x.high.x < y.low.x && y.high.x < z.low.x && z.high.x <= width);
+                std::printf("compact %s width=%.0f y=%.1f bounds=%.1f..%.1f\n",
+                    field, width, x.low.y, x.low.x, z.high.x);
+            }
+        }
+        for (unsigned axis = 0; axis < 3; ++axis)
+        {
+            const auto item = inspector_test::find("vector", "value", axis);
+            const float x = (item.low.x + item.high.x) / 2, y = (item.low.y + item.high.y) / 2;
+            session.feedInput(lux::ui::UiPointerMove{{x, y}}); step();
+            session.feedInput(lux::ui::UiPointerButton{lux::ui::EPointerButton::LEFT, true}); step();
+            session.feedInput(lux::ui::UiPointerMove{{x + 30, y}}); step();
+            session.feedInput(lux::ui::UiPointerButton{lux::ui::EPointerButton::LEFT, false}); step();
+            assert(pane.model.value().vector[axis] != original.vector[axis]);
+            for (unsigned other = 0; other < 3; ++other)
+                if (other != axis) assert(pane.model.value().vector[other] == original.vector[other]);
+            assert(pane.model.history->undo() && pane.model.value() == original);
+            for (unsigned i = 0; i < 24; ++i) step();
+        }
         click("enabled", "value");
         assert(pane.model.value().enabled && pane.model.history->view()->snapshot.entry_count == 1);
         assert(pane.model.history->undo() && pane.model.value() == original);

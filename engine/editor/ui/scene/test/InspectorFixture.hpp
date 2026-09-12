@@ -2,6 +2,7 @@
 #include <lux/engine/simulation/ecs/ComponentAnnotations.hpp>
 #include <lux/engine/meta/MetaAnnotations.hpp>
 #include "AllocationProbe.hpp"
+#include <Eigen/Geometry>
 #include <array>
 #include <deque>
 #include <list>
@@ -63,6 +64,8 @@ namespace inspector_fixture
         std::pair<int, std::string> pair{3, "pair"};
         std::tuple<int, double, Nested> tuple{1, 2, {}};
         Angle LUX_MEMBER(widget = custom) angle{0.5};
+        Eigen::Vector3d vector{1, 2, 3};
+        Eigen::Quaterniond rotation{Eigen::Quaterniond::Identity()};
         double LUX_MEMBER(readonly = true) derived{9};
         int LUX_NO_MEMBER() hidden{42};
     };

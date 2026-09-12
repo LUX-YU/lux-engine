@@ -160,3 +160,12 @@ target_link_libraries(
 if(ANDROID)
     target_link_libraries(render_vulkan PRIVATE android)
 endif()
+
+if(BUILD_TESTING)
+    add_executable(render_forward_reference_test test/ForwardReferenceTest.cpp)
+    target_link_libraries(render_forward_reference_test PRIVATE render_vulkan)
+    target_include_directories(render_forward_reference_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
+    target_compile_options(render_forward_reference_test PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>)
+    lux_classify_target(TARGET render_forward_reference_test LAYER FUNCTION PRODUCT TEST ROLE INTEGRATION)
+    add_test(NAME render_forward_reference_protocol COMMAND render_forward_reference_test)
+endif()

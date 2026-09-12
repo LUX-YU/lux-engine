@@ -11,6 +11,7 @@
 #include <lux/engine/render/graph/RGBarrierUtils.hpp>
 #include <lux/engine/render/graph/vk_type_converter.hpp> // convertVkImageLayout (neutral DS layout)
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -876,9 +877,19 @@ namespace lux::render
         {
             for (auto& tex : pass.textures)
             {
+                if (tex.resource.index >= resource_count)
+                    continue; // The graph validation phase owns invalid handles.
                 if (remap[tex.resource.index] != tex.resource.index)
                 {
                     tex.resource.index = remap[tex.resource.index];
+                    if (tex.range.layer_count == (std::numeric_limits<uint32_t>::max)())
+                    {
+                        const auto* description =
+                            std::get_if<RGTextureDescription>(&graph.resources[tex.resource.index].desc);
+                        tex.range.layer_count = description &&
+                            description->dimension == lux::rdesc::ETextureDimension::TEX_2D_ARRAY
+                            ? description->array_layers : 1U;
+                    }
                 }
             }
             for (auto& buf : pass.buffers)

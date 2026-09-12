@@ -366,6 +366,7 @@ namespace
 } // namespace
 
 #include "PreserveGpuTest.hpp"
+#include "ViewportInputTest.hpp"
 
 int main(int argc, char **argv)
 {
@@ -379,6 +380,8 @@ int main(int argc, char **argv)
     bool workspace_failure_contract = true;
     bool resolved_source_contract = true;
     bool shared_gpu_contract = true;
+    bool shadow_order_contract = true;
+    bool viewport_input_contract = true;
     bool preserve_gpu_contract = true;
     bool validation_contract = true;
     bool renderer_events_contract = true;
@@ -1818,6 +1821,12 @@ int main(int argc, char **argv)
             std::printf("resource retry PASS old_sequence=%llu original_storage_error=%u\n", failed_key->sequence,
                         unsigned(old->asset_failure->storage_error));
         }
+        if (variant == "viewport_input")
+        {
+            pending = {};
+            viewport_input_contract = exerciseViewportInput(*renderer, *window, *execution, *session, *camera,
+                                                            *workspace, runtime, cycle, output);
+        }
         if (variant == "preserve")
         {
             auto overlay = examples::openDevelopmentScene(
@@ -1852,6 +1861,14 @@ int main(int argc, char **argv)
             std::ofstream graph_file(output / (std::string(variant) + "-graph.txt"), std::ios::binary);
             graph_file.write(graph_text.data(), dumped->get().written);
             require(graph_file.good(), "save owning graph dump before closing Scene");
+            const std::string_view text{graph_text.data(), dumped->get().written};
+            const auto compiled = text.find("[Compiled Passes]");
+            const auto shadow = text.find("Name : MeshShadowDraw\n", compiled);
+            const auto forward = text.find("Name : ForwardMeshForwardDraw\n", compiled);
+            shadow_order_contract = compiled != text.npos && shadow != text.npos &&
+                                    forward != text.npos && shadow < forward;
+            std::printf("shadow draw precedes Forward in actual execution order: %u\n",
+                        unsigned(shadow_order_contract));
         }
         pending = {};
         if (multiple_views_test)
@@ -2094,6 +2111,16 @@ int main(int argc, char **argv)
     if (!renderer_events_contract)
     {
         std::fputs("F15 FAIL: unexpected Renderer events; all owners closed\n", stderr);
+        return 1;
+    }
+    if (!viewport_input_contract)
+    {
+        std::fputs("viewport input FAIL: camera or local input isolation; all owners closed\n", stderr);
+        return 1;
+    }
+    if (!shadow_order_contract)
+    {
+        std::fputs("shadow order FAIL: MeshShadowDraw must precede Forward sampling; all owners closed\n", stderr);
         return 1;
     }
     if (!shared_gpu_contract)

@@ -52,6 +52,7 @@ $toolchain = "$VcpkgRoot/scripts/buildsystems/vcpkg.cmake"
 Invoke-Logged 'configure' $CMake @('-S', $clone, '-B', $build, '-G', 'Ninja', "-DCMAKE_MAKE_PROGRAM=$Ninja",
     "-DCMAKE_CXX_COMPILER=$compiler",
     '-DCMAKE_BUILD_TYPE=RelWithDebInfo', "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
+    "-DCMAKE_INSTALL_PREFIX=$qroot/sdk",
     "-DCMAKE_PREFIX_PATH=$ToolsetPrefix;$CxxPrefix;$BuildDependencyPrefix", '-DLUX_BUILD_PROFILE=EDITOR',
     '-DBUILD_TESTING=ON', '-DLUX_EDITOR_DIAGNOSTICS=OFF', '-DLUX_EDITOR_EDITING_TEST_DIAGNOSTICS=OFF',
     '-DLUX_BUILD_PACKED_RENDER_CONTENT=ON', "-DLUX_EDITOR_SEED_PAK=$SeedPak")
@@ -78,8 +79,9 @@ $env:PATH = "$build/bin;$parserRuntime;$CxxPrefix/bin;$VcpkgRoot/installed/x64-w
 Invoke-Logged 'ctest' $ctest @('--test-dir', $build, '--output-on-failure', '-j', '1')
 Copy-Item -LiteralPath "$build/Testing/Temporary/LastTest.log" -Destination "$logs/ctest-details.log"
 foreach ($variant in @('base', 'alternate', 'multiple_equal', 'multiple_reverse', 'multiple_lifecycle',
+                      'multiple_shared_equal', 'multiple_shared_reverse', 'multiple_shared_lifecycle',
                       'late_close', 'late_selection', 'reentrant_close', 'image_lifetime',
-                      'view_failure', 'coordinate_1024', 'coordinate_256', 'resolved_source')) {
+                      'view_failure', 'coordinate_1024', 'coordinate_256', 'resolved_source', 'viewport_input')) {
     Invoke-Logged "gpu-$variant" "$build/bin/editor_scene_gpu_test.exe" @($SeedPak, "$qroot/images", $variant)
 }
 Invoke-Logged 'gpu-foreign' "$build/bin/editor_foreign_renderer_test.exe" @()

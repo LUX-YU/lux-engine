@@ -20,6 +20,7 @@
 #include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp>       // appendVertexLayoutSpecs
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp> // kShadowViewUploadPassName
+#include <lux/engine/function/render/client/features/shadow/MeshShadowOperation.hpp> // kMeshShadowDrawPassName
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/VulkanCheck.hpp>
 #include <lux/engine/render/resources/material/MaterialFamily.hpp>
@@ -240,6 +241,7 @@ namespace lux::render
             auto shadow_atlas = builder.referenceTexture(cfg_.shadow_atlas);
             draw_pass.read(shadow_atlas, lux::render::ETextureRole::SAMPLED);
             draw_pass.after(kShadowViewUploadPassName);
+            draw_pass.after(kMeshShadowDrawPassName);
         }
 
         // The variant array is one pipeline per VARIANT BUCKET (each resolved by

@@ -1,3 +1,6 @@
+# Reuse the production cooker to regenerate the GPU fixture from this checkout.
+add_subdirectory(${PROJECT_SOURCE_DIR}/engine/toolchain/scene_seed ${CMAKE_CURRENT_BINARY_DIR}/seed)
+
 add_executable(editor_scene_gpu_test SceneGpuTest.cpp ../DevelopmentScene.cpp)
 target_link_libraries(editor_scene_gpu_test PRIVATE editor_application_candidate
     lux::engine::platform::window

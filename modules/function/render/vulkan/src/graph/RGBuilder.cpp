@@ -5,6 +5,7 @@
 #include <lux/cxx/container/HeterogeneousLookup.hpp>
 
 #include <string>
+#include <limits>
 
 namespace lux::render
 {
@@ -469,11 +470,14 @@ namespace lux::render
         return *this;
     }
 
-    // Helper: resolve array_layers for a texture resource (returns 1 for non-array / non-texture).
+    // Forward declarations have no dimension yet. Keep the implicit whole-array range unresolved
+    // until the compiler has the actual description; an explicit one-layer range stays distinguishable.
     static uint32_t resolveLayerCount(const RGGraphDescription& graph, RGResourceHandle handle)
     {
         if (handle.index < graph.resources.size())
         {
+            if (graph.resources[handle.index].lifetime == ERGResourceLifetime::FORWARD_REFERENCE)
+                return (std::numeric_limits<uint32_t>::max)();
             const auto* tex = std::get_if<RGTextureDescription>(&graph.resources[handle.index].desc);
             if (tex && tex->dimension == lux::rdesc::ETextureDimension::TEX_2D_ARRAY)
                 return tex->array_layers;

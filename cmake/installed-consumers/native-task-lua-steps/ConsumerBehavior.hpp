@@ -19,9 +19,11 @@ struct LUX_TYPE_INFO(compile_time) CoroutineBehavior final
     {
         Frame lifetime;
         ++starts;
+        auto step = context.bindStep<std::int32_t(std::int32_t)>(0U);
+        if (!step) co_await context.fail(step.error());
         const auto payload = co_await context.wait(*pulse_event);
         co_await context.delay().nextStep();
-        auto result = context.callStep<std::int32_t(std::int32_t)>(0U, payload);
+        auto result = (*step)(payload);
         if (!result) co_await context.fail(result.error());
         observed = *result;
         ++ends;

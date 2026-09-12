@@ -8,6 +8,16 @@ namespace lux::simulation::script::detail
     class ScriptRuntimeAccess final
     {
     public:
+        static void bindSyncStepLifetime(ScriptSyncStepSetView& view) noexcept
+        {
+            view.instance_owned_ = true;
+        }
+        // Only in the no-user-code interval immediately after capture. This is
+        // not a later validity test and cannot renew a captured invocation.
+        [[nodiscard]] static bool hasCapturedInvocation(const ScriptInvocationValidity& value) noexcept
+        {
+            return value.check_ != nullptr;
+        }
         static void bindInvocation(ScriptBehavior& behavior, const void* context,
             ScriptInvocationValidity (*capture)(const void*) noexcept) noexcept
         {

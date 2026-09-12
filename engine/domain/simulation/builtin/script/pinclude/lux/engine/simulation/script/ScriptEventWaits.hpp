@@ -33,7 +33,6 @@ namespace lux::simulation::script::detail
 
     struct ScriptClaimedEventWait final
     {
-        ScriptInstanceId instance;
         ScriptAwaitableId awaitable;
         std::uint32_t endpoint{};
     };
@@ -112,7 +111,7 @@ namespace lux::simulation::script::detail
                 current->state_ = Link::EState::CLAIMED;
                 ++active_claimed_;
                 if (claimed_.size() == claimed_.capacity()) std::terminate();
-                claimed_.push_back({current->wait_->instance, current->wait_->id, endpoint});
+                claimed_.push_back(current->wait_->id);
                 current = next;
             }
             removeEmptyRoute(endpoint, target);
@@ -142,7 +141,8 @@ namespace lux::simulation::script::detail
             ClaimBatch(const ClaimBatch&) = delete;
             ClaimBatch& operator=(const ClaimBatch&) = delete;
             ClaimBatch(ClaimBatch&& other) noexcept
-                : owner_(std::exchange(other.owner_, nullptr)), begin_(other.begin_), end_(other.end_) {}
+                : owner_(std::exchange(other.owner_, nullptr)), begin_(other.begin_),
+                  end_(other.end_), endpoint_(other.endpoint_) {}
             ~ClaimBatch() noexcept
             {
                 if (owner_) owner_->finishClaim(begin_, end_);
@@ -153,15 +153,16 @@ namespace lux::simulation::script::detail
                 // Private traversal supplies an in-range offset. The value snapshot
                 // survives cancellation, SlotMap reuse and nested dispatch. Execution
                 // checks the original wait generation before accessing the result.
-                return owner_->claimed_[begin_ + offset];
+                return {owner_->claimed_[begin_ + offset], endpoint_};
             }
         private:
             friend class ScriptEventWaits;
-            ClaimBatch(ScriptEventWaits& owner, std::size_t begin, std::size_t end) noexcept
-                : owner_(&owner), begin_(begin), end_(end) {}
+            ClaimBatch(ScriptEventWaits& owner, std::size_t begin, std::size_t end, std::uint32_t endpoint) noexcept
+                : owner_(&owner), begin_(begin), end_(end), endpoint_(endpoint) {}
             ScriptEventWaits* owner_{};
             std::size_t begin_{};
             std::size_t end_{};
+            std::uint32_t endpoint_{};
         };
 
         void prepare(std::size_t capacity, std::size_t instance_capacity, std::size_t endpoint_count);
@@ -214,7 +215,7 @@ namespace lux::simulation::script::detail
         {
             const auto begin = claimed_.size();
             claimRoute(endpoint, target);
-            return ClaimBatch{*this, begin, claimed_.size()};
+            return ClaimBatch{*this, begin, claimed_.size(), endpoint};
         }
         [[nodiscard]] std::optional<ScriptSourceCancellation> cancel(Link& link) noexcept
         {
@@ -249,7 +250,7 @@ namespace lux::simulation::script::detail
         }
         EventRouteIndex routes_;
         std::vector<EventRouteHead> broadcast_routes_;
-        std::vector<ScriptClaimedEventWait> claimed_;
+        std::vector<ScriptAwaitableId> claimed_;
         std::vector<InstanceIndex> instances_;
         std::size_t capacity_{};
         std::size_t active_{};

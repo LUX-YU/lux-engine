@@ -1,4 +1,5 @@
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
+#include <lux/engine/simulation/scripting/ScriptRuntimeAccess.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp>
 
@@ -21,27 +22,51 @@ lux::cxx::expected<void, ScriptSyncStepError> ScriptCoroutineContext::invokeSync
                                                                                      const void* const* arguments,
                                                                                      void* output) noexcept
 {
+    const auto entry = resolveSyncStep(ordinal, shape);
+    if (!entry) return lux::cxx::unexpected(entry.error());
+    return invokeResolvedSyncStep(**entry, ordinal, arguments, output);
+}
+
+lux::cxx::expected<const PreparedScriptSyncStep*, ScriptSyncStepError>
+ScriptCoroutineContext::resolveSyncStep(std::uint32_t ordinal, const ScriptSyncStepShape& shape) noexcept
+{
     const auto error = [ordinal](EScriptSyncStepError category, std::int32_t status) {
         return lux::cxx::unexpected(ScriptSyncStepError{ordinal, category, status});
     };
     const auto* view = sync_steps_;
     const bool invalid_context = active_step_ == nullptr || view == nullptr;
     if (invalid_context) return error(EScriptSyncStepError::INVALID_CONTEXT, -32001);
-    const auto identity = active_step_->instance;
-    const bool invalid_publication = view->instance != identity || view->publication != sync_publication_ ||
-        !view->current || !view->current(view->owner, identity, sync_publication_);
-    if (invalid_publication) return error(EScriptSyncStepError::INVALID_CONTEXT, -32001);
     if (ordinal >= view->steps.size()) return error(EScriptSyncStepError::INVALID_STEP, -32002);
     const auto& entry = view->steps[ordinal];
-    if (entry.shape != &shape)
-        return error(EScriptSyncStepError::SIGNATURE_MISMATCH, -32003);
-    auto* behavior = view->behavior;
-    const bool bound = behavior && behavior->hasInvocationAuthority();
-    const auto qualification = bound ? behavior->captureInvocation() : ScriptInvocationValidity{};
-    if (!bound || !qualification.valid()) return error(EScriptSyncStepError::INVOCATION_REVOKED, -32004);
+    if (entry.shape != &shape) return error(EScriptSyncStepError::SIGNATURE_MISMATCH, -32003);
+    return &entry;
+}
+
+lux::cxx::expected<void, ScriptSyncStepError>
+ScriptCoroutineContext::invokeResolvedSyncStep(const PreparedScriptSyncStep& entry, std::uint32_t ordinal,
+                                              const void* const* arguments, void* output) noexcept
+{
+    const auto error = [ordinal](EScriptSyncStepError category, std::int32_t status) {
+        return lux::cxx::unexpected(ScriptSyncStepError{ordinal, category, status});
+    };
+    if (active_step_ == nullptr) return error(EScriptSyncStepError::INVALID_CONTEXT, -32001);
+    const auto* view = sync_steps_;
+    const auto identity = active_step_->instance;
+    const bool checked_publication = !view->hasInstanceLifetime();
+    if (checked_publication)
+    {
+        const bool invalid = view->instance != identity || view->publication != sync_publication_ ||
+            !view->current(view->owner, identity, sync_publication_);
+        if (invalid) return error(EScriptSyncStepError::INVALID_CONTEXT, -32001);
+    }
+    // No user code between capture and this check. Later checks always validate
+    // the original capture, including Lua stack growth and converter reentry.
+    const auto qualification = sync_steps_->behavior->captureInvocation();
+    if (!detail::ScriptRuntimeAccess::hasCapturedInvocation(qualification))
+        return error(EScriptSyncStepError::INVOCATION_REVOKED, -32004);
     const auto status = entry.invoke(entry.context, arguments, output, qualification);
     if (status != 0) return error(EScriptSyncStepError::BACKEND_FAILURE, status);
-    if (!view->current(view->owner, identity, sync_publication_) || !qualification.valid())
+    if ((checked_publication && !view->current(view->owner, identity, sync_publication_)) || !qualification.valid())
         return error(EScriptSyncStepError::INVOCATION_REVOKED, -32004);
     return {};
 }
@@ -299,7 +324,7 @@ struct CppStaticScriptBackend::State final
         std::span<const PreparedScriptApiCapability> capabilities;
         std::span<const detail::ScriptCoroutineAbilityAccess> prepared_abilities;
         std::size_t binding_block{};
-        std::span<const ScriptEventAdmissionHandle> prepared_events;
+        detail::CppStaticPreparedEvents prepared_events;
         const ScriptSyncStepSetView* sync_steps{};
         const lux::script::ScriptArtifact* artifact{};
         ArtifactAssociation* association{};
@@ -610,19 +635,6 @@ struct CppStaticScriptBackend::State final
         free_continuations.push_back(slot);
     }
 
-    [[nodiscard]] static bool resolveEvent(void* opaque, std::uint32_t slot, const CppStaticContract* layout,
-        std::uint32_t local, ScriptEventAdmissionHandle& result) noexcept
-    {
-        auto& self = *static_cast<State*>(opaque);
-        if (slot >= self.instances.size()) return false;
-        const auto& instance = self.instances[slot];
-        const bool invalid_layout = instance.descriptor == nullptr || instance.descriptor->descriptor != layout ||
-                                    local >= instance.prepared_events.size();
-        if (invalid_layout) return false;
-        result = instance.prepared_events[local];
-        return true;
-    }
-
     void destroyCoroutine(CoroutineContinuation &continuation) noexcept
     {
         if (!continuation.active)
@@ -645,7 +657,7 @@ struct CppStaticScriptBackend::State final
         continuation.instance = std::addressof(instance);
         continuation.context = CppStaticCoroutineAccess::context(
             this, instance.slot, &State::findAbility, &State::resolveAbility, descriptor.coroutine_frames, {0U},
-            descriptor.frame_limit, descriptor.frame_alignment, &State::resolveEvent, instance.sync_steps);
+            descriptor.frame_limit, descriptor.frame_alignment, &instance.prepared_events, instance.sync_steps);
         continuation.slot = static_cast<std::uint32_t>(slot);
         continuation.active = true;
         ++descriptor.active_coroutines;
@@ -799,6 +811,18 @@ struct CppStaticScriptBackend::State final
                                                const lux::script::ScriptArtifact &artifact,
                                                ScriptBackendInstance &result) noexcept
     {
+        if (const auto* view = context.sync_steps)
+        {
+            const bool invalid_view = view->instance != context.instance || view->behavior != context.behavior ||
+                view->behavior == nullptr || !view->behavior->hasInvocationAuthority() ||
+                !view->current;
+            if (invalid_view) return EScriptBackendResult::HOST_CONTEXT_MISMATCH;
+            for (const auto& step : view->steps)
+            {
+                const bool invalid_step = step.shape == nullptr || step.signature == nullptr || step.invoke == nullptr;
+                if (invalid_step) return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
+            }
+        }
         auto &self = *static_cast<State *>(opaque);
         auto *descriptor_index = self.find(artifact);
         if (!descriptor_index)
@@ -923,7 +947,7 @@ struct CppStaticScriptBackend::State final
                                                                                descriptor.events.size());
             for (std::size_t local{}; local < events.size(); ++local)
                 events[local] = context.events[instance->association->event_slots[local]].admission;
-            instance->prepared_events = events;
+            instance->prepared_events = {&descriptor, events};
         }
         ++descriptor_index->active_instances;
         ++self.active_instances;
@@ -996,7 +1020,7 @@ struct CppStaticScriptBackend::State final
             instance->descriptor->descriptor->object.destroy(instance->object);
             instance->descriptor->free_objects.push_back(instance->object_slot);
         }
-        if (!instance->prepared_abilities.empty() || !instance->prepared_events.empty())
+        if (!instance->prepared_abilities.empty() || !instance->prepared_events.entries.empty())
             instance->descriptor->free_binding_blocks.push_back(instance->binding_block);
         --instance->descriptor->active_instances;
         self.releaseAssociation(*instance->association);

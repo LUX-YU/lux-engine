@@ -80,11 +80,39 @@ namespace lux::simulation::script
     // invoke user code.
     struct ScriptSyncStepSetView final
     {
+        ScriptSyncStepSetView() noexcept = default;
+        ScriptSyncStepSetView(ScriptInstanceId identity, std::uint64_t epoch, ScriptBehavior* host,
+            std::span<const PreparedScriptSyncStep> entries, const void* context,
+            bool (*check)(const void*, ScriptInstanceId, std::uint64_t) noexcept) noexcept
+            : instance(identity), publication(epoch), behavior(host), steps(entries), owner(context), current(check) {}
+        ScriptSyncStepSetView(const ScriptSyncStepSetView& other) noexcept
+            : ScriptSyncStepSetView(other.instance, other.publication, other.behavior, other.steps,
+                other.owner, other.current) {}
+        ScriptSyncStepSetView& operator=(const ScriptSyncStepSetView& other) noexcept
+        {
+            if (this != &other)
+            {
+                instance = other.instance;
+                publication = other.publication;
+                behavior = other.behavior;
+                steps = other.steps;
+                owner = other.owner;
+                current = other.current;
+                instance_owned_ = false;
+            }
+            return *this;
+        }
+        [[nodiscard]] bool hasInstanceLifetime() const noexcept { return instance_owned_; }
         ScriptInstanceId instance;
         std::uint64_t publication{};
         ScriptBehavior* behavior{};
         std::span<const PreparedScriptSyncStep> steps;
         const void* owner{};
         bool (*current)(const void*, ScriptInstanceId, std::uint64_t) noexcept{};
+    private:
+        // Only the engine's owning composition may establish this lifetime. A
+        // copied/public producer view is checked, even when copied from this view.
+        friend class detail::ScriptRuntimeAccess;
+        bool instance_owned_{};
     };
 } // namespace lux::simulation::script

@@ -1,5 +1,7 @@
 #include <lux/engine/simulation/scripting/native_lua_tasks/NativeLuaTaskBackend.hpp>
 
+#include <lux/engine/simulation/scripting/ScriptRuntimeAccess.hpp>
+
 #include <algorithm>
 #include <limits>
 #include <new>
@@ -219,6 +221,7 @@ struct NativeLuaTaskBackend::Impl final
         }
         instance.step_view = {context.instance, instance.publication, context.behavior, instance.steps, &instance,
                               &current};
+        detail::ScriptRuntimeAccess::bindSyncStepLifetime(instance.step_view);
         const ScriptInstanceCreateContext native_context{plan.native_asset,  context.scope,         context.behavior,
                                                          context.instance,   instance.capabilities, instance.events,
                                                          &instance.step_view};

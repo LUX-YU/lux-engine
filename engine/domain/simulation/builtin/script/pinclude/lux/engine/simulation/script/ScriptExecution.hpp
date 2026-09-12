@@ -1119,12 +1119,12 @@ namespace lux::simulation::script::detail
         void completeClaimedEventWaiter(const ScriptClaimedEventWait& waiter, lux_script_call_frame& frame) noexcept
         {
             const ScriptSourceId id{waiter.awaitable.slot, waiter.awaitable.generation};
-            const auto instance = waiter.instance;
             const auto awaitable = waiter.awaitable;
             auto* record = awaitables_.find(awaitableKey(awaitable));
-            const bool is_stale = record == nullptr || record->instance != instance || record->release_pending ||
+            const bool is_stale = record == nullptr || record->release_pending ||
                 record->source != ScriptWaitSource{id, EScriptWaitSource::EVENT};
             if (is_stale) return;
+            const auto instance = record->instance;
             auto* owner = record->owner;
             const ExecutionAccess execution{owner, instance};
             if (!execution.current())

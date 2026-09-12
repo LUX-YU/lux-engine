@@ -53,10 +53,12 @@ struct LUX_TYPE_INFO(compile_time) Tasks final
     LUX_METHOD(script_export = "na1.long", script_coroutine = true)
     ScriptCoroutine longTask(ScriptCoroutineContext &c) noexcept
     {
+        auto bound = c.bindStep<void(std::int32_t)>(0U);
+        if (!bound) co_await c.fail(bound.error());
         for (std::uint32_t i{}; i < 32U; ++i)
         {
             const auto payload = co_await c.wait(*source);
-            auto error = step<void(std::int32_t)>(c, 0U, payload);
+            auto error = (*bound)(payload);
             if (!error)
                 co_await c.fail(error.error());
         }

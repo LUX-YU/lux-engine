@@ -38,6 +38,8 @@ struct LUX_TYPE_INFO(compile_time) NativeTask final
             co_await context.fail({0U, script::EScriptSyncStepError::BACKEND_FAILURE, -771});
             ++unreachable;
         }
+        auto bound = context.bindStep<std::int32_t(std::int32_t)>(0U);
+        if (!bound) co_await context.fail(bound.error());
         const auto count = mode == 3U ? 32U : 1U;
         for (std::uint32_t i{}; i < count; ++i)
         {
@@ -47,7 +49,7 @@ struct LUX_TYPE_INFO(compile_time) NativeTask final
                 co_await context.fail({0U, script::EScriptSyncStepError::BACKEND_FAILURE, -772});
                 ++unreachable;
             }
-            const auto value = context.callStep<std::int32_t(std::int32_t)>(0U, payload);
+            const auto value = (*bound)(payload);
             if (!value)
             {
                 co_await context.fail(value.error());

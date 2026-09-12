@@ -50,6 +50,11 @@ namespace lux::simulation::script
     struct CppStaticContract;
     namespace detail
     {
+        struct CppStaticPreparedEvents final
+        {
+            const CppStaticContract* layout{};
+            std::span<const ScriptEventAdmissionHandle> entries;
+        };
         [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC
         lux::cxx::expected<std::uint32_t, EScriptCoroutineError> prepareCppEventImport(
             const CppStaticContract& contract, const lux::script::ScriptEventSourceDescription& source) noexcept;
@@ -90,6 +95,24 @@ namespace lux::simulation::script
         friend class ScriptCoroutineContext;
     };
 
+    class ScriptCoroutineContext;
+
+    // An immutable binding borrowed by one live task. Like its context, this must
+    // not escape the owning coroutine's lifetime. It conveys no call permission.
+    template <class Signature>
+    class ScriptCoroutineSyncStep final
+    {
+    public:
+        template <class... Args> [[nodiscard]] auto operator()(Args&&... args) const noexcept;
+    private:
+        friend class ScriptCoroutineContext;
+        ScriptCoroutineSyncStep(ScriptCoroutineContext& context, const PreparedScriptSyncStep& entry,
+            std::uint32_t ordinal) noexcept : context_(&context), entry_(&entry), ordinal_(ordinal) {}
+        ScriptCoroutineContext* context_{};
+        const PreparedScriptSyncStep* entry_{};
+        std::uint32_t ordinal_{};
+    };
+
     class ScriptCoroutine;
     class ScriptCoroutineFailure;
     struct ScriptCoroutinePromiseAccess;
@@ -103,6 +126,15 @@ namespace lux::simulation::script
         [[nodiscard]] auto callStep(std::uint32_t ordinal, Args&&... args) noexcept
         {
             return detail::ScriptSyncStepCall<Signature>::invoke(*this, ordinal, std::forward<Args>(args)...);
+        }
+
+        template <class Signature>
+        [[nodiscard]] lux::cxx::expected<ScriptCoroutineSyncStep<Signature>, ScriptSyncStepError>
+        bindStep(std::uint32_t ordinal) noexcept
+        {
+            const auto entry = resolveSyncStep(ordinal, detail::ScriptSyncStepCall<Signature>::Shape);
+            if (!entry) return lux::cxx::unexpected<ScriptSyncStepError>(entry.error());
+            return ScriptCoroutineSyncStep<Signature>{*this, **entry, ordinal};
         }
 
         [[nodiscard]] ScriptCoroutineFailure fail(ScriptSyncStepError error) noexcept;
@@ -124,13 +156,17 @@ namespace lux::simulation::script
                                                                                  const ScriptSyncStepShape& shape,
                                                                                  const void* const* arguments,
                                                                                  void* output) noexcept;
+      [[nodiscard]] lux::cxx::expected<const PreparedScriptSyncStep*, ScriptSyncStepError>
+      resolveSyncStep(std::uint32_t ordinal, const ScriptSyncStepShape& shape) noexcept;
+      [[nodiscard]] lux::cxx::expected<void, ScriptSyncStepError>
+      invokeResolvedSyncStep(const PreparedScriptSyncStep& entry, std::uint32_t ordinal,
+          const void* const* arguments, void* output) noexcept;
+      template <class Signature> friend class ScriptCoroutineSyncStep;
       template <class Signature> friend struct detail::ScriptSyncStepCall;
 
       using FindAbilityFn = bool (*)(void*, std::uint32_t, std::uint64_t, std::uint32_t&) noexcept;
       using ResolveAbilityFn = bool (*)(void*, std::uint32_t, std::uint32_t,
                                         detail::ScriptCoroutineAbilityAccess&) noexcept;
-      using ResolveEventFn = bool (*)(void*, std::uint32_t, const CppStaticContract*, std::uint32_t,
-                                      ScriptEventAdmissionHandle&) noexcept;
 
       template <class Result, class Invoker>
       [[nodiscard]] auto invokeAbility(std::uint32_t ability_slot, Invoker&& invoker) noexcept;
@@ -166,7 +202,7 @@ namespace lux::simulation::script
             detail::BoundedClassStorage::ClassHandle frame_class,
             std::size_t frame_limit,
             std::size_t alignment_limit,
-            ResolveEventFn resolve_event,
+            const detail::CppStaticPreparedEvents* events,
             const ScriptSyncStepSetView* sync_steps
         ) noexcept
             : sync_steps_(sync_steps), sync_publication_(sync_steps ? sync_steps->publication : 0U),
@@ -174,7 +210,7 @@ namespace lux::simulation::script
               instance_slot_(instance_slot),
               find_ability_(find_ability),
               resolve_ability_(resolve_ability),
-              resolve_event_(resolve_event),
+              events_(events),
               frame_storage_(std::addressof(frame_storage)), frame_class_(frame_class),
               frame_limit_(frame_limit), alignment_limit_(alignment_limit)
         {
@@ -241,7 +277,7 @@ namespace lux::simulation::script
         std::uint32_t instance_slot_{};
         FindAbilityFn find_ability_{};
         ResolveAbilityFn resolve_ability_{};
-        ResolveEventFn resolve_event_{};
+        const detail::CppStaticPreparedEvents* events_{};
         detail::BoundedClassStorage* frame_storage_{};
         detail::BoundedClassStorage::ClassHandle frame_class_;
         std::size_t frame_limit_{};
@@ -257,6 +293,17 @@ namespace lux::simulation::script
         template <class Result, class Admission>
         friend class ScriptCoroutineAwaiter;
     };
+
+    template <class Signature>
+    template <class... Args>
+    auto ScriptCoroutineSyncStep<Signature>::operator()(Args&&... args) const noexcept
+    {
+        return detail::ScriptSyncStepCall<Signature>::apply(
+            [this](const void* const* arguments, void* result) noexcept {
+                return context_->invokeResolvedSyncStep(*entry_, ordinal_, arguments, result);
+            }, std::forward<Args>(args)...
+        );
+    }
 
     struct ScriptCoroutinePromiseAccess final
     {
@@ -504,11 +551,10 @@ namespace lux::simulation::script
     {
         return makeAwaiter<Payload>([layout = source.layout_, slot = source.local_slot_](
             ScriptCoroutineContext& context, ScriptStepContext& step) noexcept {
-            ScriptEventAdmissionHandle admission;
-            if (context.resolve_event_ == nullptr ||
-                !context.resolve_event_(context.backend_, context.instance_slot_, layout, slot, admission))
-                return ScriptStepResult::failed(-1);
-            const auto waiting = step.event_waits.wait(admission);
+            const auto* events = context.events_;
+            const bool wrong_source = events == nullptr || events->layout != layout || slot >= events->entries.size();
+            if (wrong_source) return ScriptStepResult::failed(-1);
+            const auto waiting = step.event_waits.wait(events->entries[slot]);
             return waiting ? ScriptStepResult::suspended(*waiting) : ScriptStepResult::failed(-1);
         });
     }
@@ -643,12 +689,12 @@ namespace lux::simulation::script
             detail::BoundedClassStorage::ClassHandle frame_class,
             std::size_t frame_limit,
             std::size_t alignment_limit,
-            ScriptCoroutineContext::ResolveEventFn resolve_event,
+            const detail::CppStaticPreparedEvents* events,
             const ScriptSyncStepSetView* sync_steps = nullptr
         ) noexcept
         {
             return {backend, instance_slot, find_ability, resolve_ability, frame_storage,
-                frame_class, frame_limit, alignment_limit, resolve_event, sync_steps};
+                frame_class, frame_limit, alignment_limit, events, sync_steps};
         }
 
         [[nodiscard]] static constexpr std::size_t frameOverhead(std::size_t alignment) noexcept

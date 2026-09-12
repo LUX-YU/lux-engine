@@ -53,15 +53,23 @@ namespace lux::simulation::script::detail
         [[nodiscard]] static Result invoke(Context& context, std::uint32_t ordinal,
                                            const std::remove_cvref_t<Args>&... values) noexcept
         {
+            return apply([&](const void* const* arguments, void* result) noexcept {
+                return context.invokeSyncStep(ordinal, Shape, arguments, result);
+            }, values...);
+        }
+
+        template <class Call>
+        [[nodiscard]] static Result apply(Call&& call, const std::remove_cvref_t<Args>&... values) noexcept
+        {
             const std::array<const void*, sizeof...(Args)> arguments{std::addressof(values)...};
             if constexpr (std::is_void_v<R>)
             {
-                return context.invokeSyncStep(ordinal, Shape, arguments.data(), nullptr);
+                return call(arguments.data(), nullptr);
             }
             else
             {
                 R value;
-                const auto invoked = context.invokeSyncStep(ordinal, Shape, arguments.data(), &value);
+                const auto invoked = call(arguments.data(), &value);
                 if (!invoked) return lux::cxx::unexpected<ScriptSyncStepError>(invoked.error());
                 return value;
             }

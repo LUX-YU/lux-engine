@@ -48,3 +48,17 @@
 
 尚未测量本轮性能。全局事件任务数组、按事件批次压缩通知及大 payload 共享需要独立核对：
 现有链已直接访问稳定结果，不再查第二个目录；不能仅为替换容器增加按 endpoint 成倍预留。
+
+## 步骤与发布边界
+
+- `ScriptCoroutineContext::bindStep<Signature>(ordinal)` 一次解析，绑定借用仅在所属 coroutine 生命期内有效；
+  每次实际调用仍捕获原资格并在 Lua 返回后重验。动态 `callStep` 和绑定调用共用执行内核。
+  32 次等待业务、真实 native-lua fixture 和安装消费者已迁移；参数与结果规则未改。
+- CppStatic 的 Event import 改为稳定只读 view，删除每次等待的 backend instance slot 回查与 resolver 调用。
+- Lua/core 资格上下文直接指向 Instances 独占的 InvocationState，生命周期标志、退休 epoch 与关闭权限
+  也归到该状态，避免通过冷 Mount 再寻找热状态。初始 capture 后无用户代码区间不再立刻调用同一检查。
+- 组合模块持有的步骤发布与其 native 子对象共同存活；此事实只由内部装配设置，公开 view 的复制不继承。
+  外部可变 producer 保留 publication/身份检查，零 epoch 与空 owner 的合法 producer 仍支持。
+- `local-bindings-tests` 保留错误地在构造期要求 ACTIVE publication 的失败；
+  `local-bound-step-tests` 保留生成器 alias-template CTAD 和误拒绝零 epoch 的失败。
+  修正未改变业务断言。`local-publication-boundary-build/tests`：all 成功，88/88。

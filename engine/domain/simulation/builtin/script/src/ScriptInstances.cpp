@@ -69,7 +69,10 @@ namespace lux::simulation::script::detail
             mounts_.resize(capacity.mount_capacity);
             invocation_states_.resize(capacity.mount_capacity);
             for (std::size_t slot{}; slot < mounts_.size(); ++slot)
+            {
                 mounts_[slot].invocation = &invocation_states_[slot];
+                invocation_states_[slot].accepting_invocations = &accepting_invocations_;
+            }
             methods_.reserve(capacity.method_capacity);
             prepared_invocations_.resize(capacity.method_capacity);
             identities_.reserve(instance_capacity);
@@ -488,27 +491,26 @@ namespace lux::simulation::script::detail
         mount.status.reclaimed = false;
         markStatus(slot);
         ScriptRuntimeAccess::attach(mount.behavior, mount.scope, host_);
-        mount.owner = this;
-        ScriptRuntimeAccess::bindInvocation(mount.behavior, &mount, [](const void* context) noexcept {
-            const auto& current = *static_cast<const Mount*>(context);
-            const auto state = current.invocation->state;
+        ScriptRuntimeAccess::bindInvocation(mount.behavior, mount.invocation, [](const void* context) noexcept {
+            const auto& current = *static_cast<const InvocationState*>(context);
+            const auto state = current.state;
             const bool lifecycle = current.lifecycle_call &&
                 (state == EScriptMountState::INITIALIZED || state == EScriptMountState::RETIRING);
             if (state != EScriptMountState::ACTIVE && !lifecycle) return ScriptInvocationValidity{};
             const auto instance = state == EScriptMountState::RETIRING ?
-                current.invocation->retiring_instance : current.invocation->instance;
-            if (!instance.valid() || (state == EScriptMountState::ACTIVE && !current.owner->accepting_invocations_))
+                current.retiring_instance : current.instance;
+            if (!instance.valid() || (state == EScriptMountState::ACTIVE && !*current.accepting_invocations))
                 return ScriptInvocationValidity{};
             return ScriptRuntimeAccess::invocation(context, instance, current.retirement_epoch,
                 static_cast<std::uint8_t>(state),
                 [](const void* data, ScriptInstanceId id, std::uint64_t epoch, std::uint8_t category) noexcept {
-                    const auto& value = *static_cast<const Mount*>(data);
+                    const auto& value = *static_cast<const InvocationState*>(data);
                     const auto expected = static_cast<EScriptMountState>(category);
-                    if (value.invocation->state != expected || value.retirement_epoch != epoch) return false;
+                    if (value.state != expected || value.retirement_epoch != epoch) return false;
                     if (expected == EScriptMountState::ACTIVE)
-                      return id.valid() && value.owner->accepting_invocations_ && value.invocation->instance == id;
+                      return id.valid() && *value.accepting_invocations && value.instance == id;
                     const auto actual = expected == EScriptMountState::RETIRING ?
-                        value.invocation->retiring_instance : value.invocation->instance;
+                        value.retiring_instance : value.instance;
                     return value.lifecycle_call && actual == id;
                 });
         });
@@ -582,7 +584,7 @@ namespace lux::simulation::script::detail
         Retirement result;
         result.slot_ = slot;
         result.instance_ = mount.invocation->retiring_instance;
-        result.epoch_ = ++mount.retirement_epoch;
+        result.epoch_ = ++mount.invocation->retirement_epoch;
         result.reason_ = reason;
         result.final_state_ = final_state;
         return result;
@@ -603,9 +605,9 @@ namespace lux::simulation::script::detail
 
         Protection protection{*this};
         auto& mount = mounts_[slot];
-        mount.lifecycle_call = true;
+        mount.invocation->lifecycle_call = true;
         const auto result = call.invoke(call.context, &frame);
-        mount.lifecycle_call = false;
+        mount.invocation->lifecycle_call = false;
         return result;
     }
     ScriptInstances::LifecycleResult ScriptInstances::beginPlay(std::uint32_t slot) noexcept
@@ -627,7 +629,7 @@ namespace lux::simulation::script::detail
     ScriptInstances::LifecycleResult ScriptInstances::endPlay(const Retirement& retirement) noexcept
     {
         auto& mount = mounts_[retirement.slot_];
-        if (!mount.cleanup_claimed || mount.retirement_epoch != retirement.epoch_)
+        if (!mount.cleanup_claimed || mount.invocation->retirement_epoch != retirement.epoch_)
             std::terminate();
         if (!std::exchange(mount.end_play_claimed, false) || mount.end_play_method == kInvalidPreparedMethod)
             return {};
@@ -678,7 +680,7 @@ namespace lux::simulation::script::detail
     void ScriptInstances::finishRetirement(const Retirement& retirement) noexcept
     {
         auto& mount = mounts_[retirement.slot_];
-        if (!mount.cleanup_claimed || mount.retirement_epoch != retirement.epoch_ || mount.end_play_claimed)
+        if (!mount.cleanup_claimed || mount.invocation->retirement_epoch != retirement.epoch_ || mount.end_play_claimed)
             std::terminate();
         Protection protection{*this};
         if (mount.backend != nullptr && mount.backend_instance)

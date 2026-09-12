@@ -245,11 +245,12 @@ namespace lux::simulation::script::detail
             ScriptInstanceId instance;
             ScriptInstanceId retiring_instance;
             EScriptMountState state{EScriptMountState::INACTIVE};
+            bool lifecycle_call{};
+            std::uint64_t retirement_epoch{};
+            const bool* accepting_invocations{};
         };
         struct Mount final
         {
-            ScriptInstances* owner{};
-            bool lifecycle_call{};
             InvocationState* invocation{};
             ScriptMountId id;
             lux::asset::AssetId asset;
@@ -274,7 +275,6 @@ namespace lux::simulation::script::detail
             bool gameplay_lifetime_started{};
             bool cleanup_claimed{};
             bool end_play_claimed{};
-            std::uint64_t retirement_epoch{};
             EScriptEndPlayReason pending_end_reason{EScriptEndPlayReason::OBJECT_UNMATERIALIZED};
         };
         struct IdentityTag;

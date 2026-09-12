@@ -4,7 +4,11 @@ if(NOT DEFINED LUX_SOURCE_DIR)
     message(FATAL_ERROR "LUX_SOURCE_DIR is required")
 endif()
 
-file(TO_CMAKE_PATH "${LUX_SOURCE_DIR}" source_root)
+get_filename_component(source_root "${LUX_SOURCE_DIR}" ABSOLUTE)
+file(TO_CMAKE_PATH "${source_root}" source_root)
+if(NOT IS_DIRECTORY "${source_root}/engine")
+    message(FATAL_ERROR "Engine source directory does not exist: ${source_root}/engine")
+endif()
 file(GLOB_RECURSE engine_sources LIST_DIRECTORIES false
     "${source_root}/engine/*.c"
     "${source_root}/engine/*.cpp"
@@ -14,6 +18,9 @@ file(GLOB_RECURSE engine_sources LIST_DIRECTORIES false
     "${source_root}/engine/*.ipp"
 )
 list(FILTER engine_sources EXCLUDE REGEX "/third_party/")
+if(NOT engine_sources)
+    message(FATAL_ERROR "No engine sources found for style validation: ${source_root}/engine")
+endif()
 
 set(violations)
 foreach(source IN LISTS engine_sources)

@@ -804,7 +804,8 @@ namespace
             }
             assert(system->shutdown() && backend.creates == 1U && backend.destroys == 1U);
             assert(backend.continuation_destroys == static_cast<std::size_t>(!overflow));
-            std::printf("TIMER_ROUNDING local=%u overflow=%u resumes=%zu PASS\n", local, overflow, backend.resume_calls);
+            std::printf("TIMER_ROUNDING local=%u overflow=%u resumes=%zu PASS\n",
+                local, overflow, backend.resume_calls);
         }
     }
 
@@ -826,7 +827,8 @@ namespace
             } probe;
             const ScriptRealDelayEndpoint endpoint{&probe,
                 [](void* context, std::chrono::nanoseconds duration,
-                   lux::script::ScriptAbilityCompletion<void> completion) noexcept -> lux::script::ScriptAbilityStartResult {
+                   lux::script::ScriptAbilityCompletion<void> completion) noexcept
+                   -> lux::script::ScriptAbilityStartResult {
                     auto& probe = *static_cast<Probe*>(context);
                     ++probe.calls;
                     probe.duration = duration;

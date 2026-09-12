@@ -223,6 +223,7 @@ namespace
         std::optional<lux::script::ScriptAbilityStarter<DelayAbility>> delay;
         std::vector<lux::script::ScriptAbilityCompletion<void>> timer_completions;
         bool simulation_timer{};
+        bool real_timer{};
         bool local_timer{};
         bool seconds_alias{};
         PreparedLocalAsyncStart local_next, local_seconds, local_simulation;
@@ -576,7 +577,7 @@ namespace
             ScriptRuntimeLimits limits,
             std::span<const ScriptApiCapabilityPublication> capabilities,
             bool include_endpoint = true,
-            const SimulationClock* clock_override = nullptr) noexcept
+            const SimulationClock* clock_override = nullptr, ScriptRealDelayEndpoint real_delay = {}) noexcept
         {
             return ScriptSystem::create(
                 simulation,
@@ -590,7 +591,8 @@ namespace
                 std::span{&backend, 1U},
                 include_endpoint ? std::span<const ScriptHookEndpointDescriptor>{endpoints}
                 : std::span<const ScriptHookEndpointDescriptor>{},
-                large_bridge ? std::span{&large_endpoint, 1U} : std::span<const ScriptEventEndpointDescriptor>{}
+                large_bridge ? std::span{&large_endpoint, 1U} : std::span<const ScriptEventEndpointDescriptor>{},
+                {}, real_delay
             );
         }
 
@@ -713,7 +715,8 @@ namespace
             auto result = invokeScriptAbilityAsync<void>(context,
                 [&state](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
                     state.timer_completions.push_back(completion);
-                    auto started = state.simulation_timer
+                    auto started = state.real_timer ? state.delay->realSeconds(state.timer_seconds, completion) :
+                        state.simulation_timer
                         ? state.delay->simulationSeconds(state.timer_seconds, completion)
                         : state.delay->nextStep(completion);
                     if (started && state.reject_after_timer)
@@ -766,6 +769,80 @@ namespace
                 assert(backend.continuation_destroys == static_cast<std::size_t>(accepted));
                 assert(system->activeAwaitableCount() == 0U && system->activeContinuationCount() == 0U);
             }
+        }
+    }
+
+    void testTimerRoundingAndDeadline()
+    {
+        for (const bool local : {false, true})
+        for (const bool overflow : {false, true})
+        {
+            Harness harness{false};
+            lux::simulation::script::test::ScriptTestClock clock{harness.registry};
+            configureTimerHarness(harness);
+            auto& backend = harness.backend_state;
+            backend.local_timer = local;
+            backend.simulation_timer = true;
+            backend.timer_seconds = overflow ? std::nextafter(std::ldexp(1.0, 63) / 1e9, 0.0) : 1.1e-9;
+            if (overflow) clock.advance(SimulationDuration{1'000'000'000});
+            auto system = harness.create(limits(), {}, true, &clock.clock());
+            assert(system && system->prepare() && dispatchRuntimeHook(*system, harness.hook) == 1U);
+            if (overflow)
+            {
+                assert(system->stats().simulation_delay_waits == 0U && system->failures().size() == 1U);
+                assert(system->failures().front().status == static_cast<int>(EScriptDelayStatus::DURATION_OVERFLOW));
+            }
+            else
+            {
+                clock.advance(SimulationDuration{1});
+                assert(executeRuntimeStablePoint(*system));
+                assert(backend.resume_calls == 0U && system->stats().simulation_delay_waits == 1U);
+                clock.advance(SimulationDuration{1});
+                assert(executeRuntimeStablePoint(*system));
+                assert(backend.resume_calls == 1U && system->stats().simulation_delay_waits == 0U);
+                assert(system->failures().empty());
+            }
+            assert(system->shutdown() && backend.creates == 1U && backend.destroys == 1U);
+            assert(backend.continuation_destroys == static_cast<std::size_t>(!overflow));
+            std::printf("TIMER_ROUNDING local=%u overflow=%u resumes=%zu PASS\n", local, overflow, backend.resume_calls);
+        }
+    }
+
+    void testRealTimerDurationBoundary()
+    {
+        const double boundary = std::ldexp(1.0, 63) / 1e9;
+        for (const bool accepted : {true, false})
+        {
+            Harness harness{false};
+            configureTimerHarness(harness);
+            auto& backend = harness.backend_state;
+            backend.real_timer = true;
+            backend.timer_seconds = accepted ? std::nextafter(boundary, 0.0) : boundary;
+            struct Probe final
+            {
+                std::size_t calls{};
+                std::chrono::nanoseconds duration{};
+                lux::script::ScriptAbilityCompletion<void> completion;
+            } probe;
+            const ScriptRealDelayEndpoint endpoint{&probe,
+                [](void* context, std::chrono::nanoseconds duration,
+                   lux::script::ScriptAbilityCompletion<void> completion) noexcept -> lux::script::ScriptAbilityStartResult {
+                    auto& probe = *static_cast<Probe*>(context);
+                    ++probe.calls;
+                    probe.duration = duration;
+                    probe.completion = std::move(completion);
+                    return {};
+                }};
+            auto system = harness.create(limits(), {}, true, nullptr, endpoint);
+            assert(system && system->prepare() && dispatchRuntimeHook(*system, harness.hook) == 1U);
+            assert(probe.calls == static_cast<std::size_t>(accepted));
+            assert(system->activeAwaitableCount() == static_cast<std::size_t>(accepted));
+            if (accepted) assert(probe.duration.count() > 0 && probe.completion.active());
+            else assert(system->failures().front().status == static_cast<int>(EScriptDelayStatus::DURATION_OVERFLOW));
+            assert(system->shutdown() && !probe.completion.active());
+            assert(backend.continuation_destroys == static_cast<std::size_t>(accepted));
+            assert(backend.creates == 1U && backend.destroys == 1U);
+            std::printf("REAL_TIMER_BOUNDARY accept=%u endpoint_calls=%zu late_active=0 PASS\n", accepted, probe.calls);
         }
     }
 
@@ -1667,6 +1744,8 @@ void testExternalAdmission()
 int main()
 {
     testTimerDurationBoundaries();
+    testTimerRoundingAndDeadline();
+    testRealTimerDurationBoundary();
     testTimerSourceCancellation();
     testLocalTimerCapacityAndReuse();
     testLocalTimerRetirementReuse();

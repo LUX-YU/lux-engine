@@ -1,0 +1,9 @@
+SYNC_CONVERTER_RETIRE conversions=1 body_calls=1 entity_valid=1 expected_body_calls=1
+SYNC_STABLE stop=0 control=1 success=1
+SYNC_RETIRE_CLEANUP prepared_abilities=0 threads=0 released=0
+SYNC_CONVERTER_RETIRE conversions=1 body_calls=1 entity_valid=1 expected_body_calls=1
+SYNC_STABLE stop=1 control=0 success=0
+SYNC_RETIRE_CLEANUP prepared_abilities=0 threads=0 released=0
+SYNC_CONVERTER_RETIRE conversions=1 body_calls=1 entity_valid=0 expected_body_calls=0
+SYNC_STABLE stop=0 control=0 success=1
+SYNC_RETIRE_CLEANUP prepared_abilities=0 threads=0 released=0

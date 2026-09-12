@@ -1,0 +1,2 @@
+# Raw evidence keeps original bytes, including compiler output whitespace and CRLF.
+* -text -whitespace

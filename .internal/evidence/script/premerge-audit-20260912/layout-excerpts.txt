@@ -1,0 +1,84 @@
+class lux::simulation::script::ScriptOwnedBytes	size(64):
+	+---
+ 0	| ?$array@W4byte@std@@$0CA@ inline_
+32	| spill_
+40	| size_
+48	| spill_capacity_
+56	| spill_alignment_
+	+---
+
+class lux::simulation::script::PreparedResumeType	size(24):
+	+---
+ 0	| type_id
+ 8	| size
+12	| alignment
+16	| abi_kind
+17	| owned
+  	| <alignment member> (size=6)
+	+---
+
+class lux::simulation::script::ScriptOwnedResumeValue	size(88):
+	+---
+ 0	| PreparedResumeType type
+24	| ScriptOwnedBytes bytes
+	+---
+
+class lux::simulation::script::detail::ScriptExecution::ExecutionInstance	size(104):
+	+---
+ 0	| ScriptInstanceId id
+ 8	| mount_slot
+  	| <alignment member> (size=4)
+16	| active_continuations
+24	| ScriptContinuationId first_continuation
+32	| first_awaitable
+40	| admission_revoked
+  	| <alignment member> (size=7)
+48	| AuthorityAccess authority
+64	| ScriptEventImports events
+	+---
+
+class lux::simulation::script::detail::ScriptExecution::ExecutionAccess	size(16):
+	+---
+ 0	| record
+ 8	| ScriptInstanceId identity
+	+---
+
+class lux::simulation::script::detail::ScriptExecution::ContinuationRecord	size(72):
+	+---
+ 0	| ScriptContinuationId id
+ 8	| ScriptInstanceId instance
+16	| ScriptBackendContinuation backend
+40	| ScriptAwaitableId waiting_on
+48	| method_slot
+52	| hook_single_flight
+  	| <alignment member> (size=3)
+56	| ScriptContinuationId instance_previous
+64	| ScriptContinuationId instance_next
+	+---
+
+class lux::simulation::script::detail::ScriptExecution::AwaitableRecord	size(240):
+	+---
+ 0	| +--- (base class lux::simulation::script::detail::ScriptWaitIdentity)
+ 0	| | ScriptAwaitableId id
+ 8	| | ScriptInstanceId instance
+	| +---
+16	| owner
+24	| next_free
+28	| ScriptContinuationId continuation
+36	| EScriptAwaitableState state
+  	| <alignment member> (size=3)
+40	| ?$optional@UPreparedResumeType@script@simulation@lux@@ result_type
+72	| ScriptOwnedResumeValue value
+160	| ScriptStepError error
+164	| resume_enqueued
+165	| external_completion
+166	| release_pending
+  	| <alignment member> (size=1)
+168	| write_pins
+  	| <alignment member> (size=4)
+176	| instance_previous
+184	| instance_next
+192	| ScriptWaitSource source
+  	| <alignment member> (size=4)
+208	| ScriptEventWaitLink event_link
+	+---

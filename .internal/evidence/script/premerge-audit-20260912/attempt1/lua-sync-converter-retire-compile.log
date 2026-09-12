@@ -1,0 +1,4 @@
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+lua-sync-converter-retire.cpp
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\premerge-audit-20260912\lua-sync-converter-retire.cpp(356): error C3861: 'lua_pushcfunction': identifier not found
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\premerge-audit-20260912\lua-sync-converter-retire.cpp(357): error C3861: 'lua_setfield': identifier not found

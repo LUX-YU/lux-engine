@@ -1,0 +1,120 @@
+{
+  "fixture_source": "841320a36e864145eda43fd6b775a10a696d8e7f",
+  "production_source": "841320a36e864145eda43fd6b775a10a696d8e7f",
+  "images": {
+    "simulation_script_native_lua_tasks_test.exe": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\simulation_script_native_lua_tasks_test.exe",
+      "sha256": "66e31181d78a3221a770b3694f92b3d326a8e5351213a78194310a771eac0e8d"
+    },
+    "lux_lua55.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_lua55.dll",
+      "sha256": "34f11df8679a46b2d956462a99a9a3ba49ee29e88b85bb27b1c2b3c5a78bb29e"
+    },
+    "lux_engine_function_script_lua.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_function_script_lua.dll",
+      "sha256": "b2440610824c3902a519d54de55a4b55f361728c41f265917c10f692e36ac362"
+    },
+    "lux_engine_function_script_artifact.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_function_script_artifact.dll",
+      "sha256": "336058ab939eb83fb779e0f5480f3d958225c2182688df5a09a583dc1f0fc812"
+    },
+    "lux_engine_asset.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_asset.dll",
+      "sha256": "32a94af43e804a3de7fca559286be9a292ecf7e05bd1978aef528d67cf66a2a1"
+    },
+    "description.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\description.dll",
+      "sha256": "c1f2913a3bb59403da000fca450370e8c74efda3000167884a2ee0c183f28cb5"
+    },
+    "lux_engine_simulation_description.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_simulation_description.dll",
+      "sha256": "ec29ac633f411300915eb19fd59e4ccb4403f5f126e9e650b298397ab7ea91af"
+    },
+    "lux_engine_domain_system_identity.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_domain_system_identity.dll",
+      "sha256": "c26eaaa5071c63940c2ab9a7c5676552ae326ad620ae2dea893be3e164290cbd"
+    },
+    "lux_engine_simulation_system.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_simulation_system.dll",
+      "sha256": "b8d8b5ca68f15b377d0543d65feacb3692809e46f85b662c8cada03b881a24d4"
+    },
+    "lux_engine_simulation_script.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_simulation_script.dll",
+      "sha256": "21b40951f2f5a30afa84989a16fe03b3d56af778f7204205ca203508f24832e5"
+    },
+    "lux_engine_simulation_script_lua.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_simulation_script_lua.dll",
+      "sha256": "231821da281d02d10d73ad51af5103c6bb307e10ec08234e34e31d14913a255b"
+    },
+    "lux_engine_core_task.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_core_task.dll",
+      "sha256": "1d5a7e8a6b425dbb384cc03d912240d94f0e9f233f22eae0dc83f149891baf38"
+    },
+    "lux_engine_simulation_script_cpp_static.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_simulation_script_cpp_static.dll",
+      "sha256": "4fcd9049b7c1aa946918201f39b809fb6e2a0164cb8f2cc41adf835c2573a4ab"
+    },
+    "lux_engine_simulation_composition.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_simulation_composition.dll",
+      "sha256": "5211c46229d37fe585c9d983ad3b1575bcfd509bb02d0470a556c05f03a9a04b"
+    },
+    "lux_engine_simulation_ecs_core.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_simulation_ecs_core.dll",
+      "sha256": "5fb019b569141a0b13d466ece02573ccda5a0a6339474689e8bee81aa4b13980"
+    },
+    "lux_engine_domain_system_description.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_domain_system_description.dll",
+      "sha256": "cd62d117255d35b59d243d073d50e5d992c88f82f6ae0fe41e84469c47209a2e"
+    },
+    "lux_engine_simulation_script_native_lua_tasks.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_simulation_script_native_lua_tasks.dll",
+      "sha256": "810c83097ddf7ef344ce530e9826d6732172bd9a60a5ea2703e7692fd68a954c"
+    },
+    "physics2d_script_benchmark.exe": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\physics2d_script_benchmark.exe",
+      "sha256": "87e71a46ce3581aa64a6787fda3cfee0e18d516442adb3a023ae41f0129b787f"
+    },
+    "lux_engine_function_script_native.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_function_script_native.dll",
+      "sha256": "3dc9607ae43b93dfd787a47f935b56585a4fb9ab2cd7bf1613468df651622614"
+    },
+    "dynamic_library.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\dynamic_library.dll",
+      "sha256": "710381ae66715179b84f205f13568ef39ea7a868879c7bc14d355a34bece529e"
+    },
+    "lux_engine_simulation_script_native.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_simulation_script_native.dll",
+      "sha256": "de6175bed374d60d7e4dd8cf53206866833e3769d2fd232a43dc4359bf73d56f"
+    },
+    "lux_engine_physics2d_simulation.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\lux_engine_physics2d_simulation.dll",
+      "sha256": "55e6e14cb3f31bacc41805d90eaac74c0a5ac2269d3d2b58b8b68dd7583b9787"
+    },
+    "box2d.dll": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\box2d.dll",
+      "sha256": "15d6d30e44ffbd9a90b466139384fa34fa82231c079ad78964416d68e1dd12b0"
+    },
+    "script_runtime_benchmark.exe": {
+      "source": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\bin\\script_runtime_benchmark.exe",
+      "sha256": "c84749093fc80237f36ab26617cba83782d4940a4b948fb6add1754067bcd6a7"
+    }
+  },
+  "system_imports": [
+    "KERNEL32.dll",
+    "MSVCP140.dll",
+    "MSVCP140_ATOMIC_WAIT.dll",
+    "VCRUNTIME140.dll",
+    "VCRUNTIME140_1.dll",
+    "api-ms-win-crt-convert-l1-1-0.dll",
+    "api-ms-win-crt-environment-l1-1-0.dll",
+    "api-ms-win-crt-filesystem-l1-1-0.dll",
+    "api-ms-win-crt-heap-l1-1-0.dll",
+    "api-ms-win-crt-locale-l1-1-0.dll",
+    "api-ms-win-crt-math-l1-1-0.dll",
+    "api-ms-win-crt-runtime-l1-1-0.dll",
+    "api-ms-win-crt-stdio-l1-1-0.dll",
+    "api-ms-win-crt-string-l1-1-0.dll",
+    "api-ms-win-crt-time-l1-1-0.dll",
+    "api-ms-win-crt-utility-l1-1-0.dll"
+  ]
+}

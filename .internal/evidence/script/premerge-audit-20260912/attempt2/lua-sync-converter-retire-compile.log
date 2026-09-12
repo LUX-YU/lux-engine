@@ -1,0 +1,3 @@
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+lua-sync-converter-retire.cpp
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\premerge-audit-20260912\lua-sync-converter-retire.cpp(1): fatal error C1083: Cannot open include file: 'lua.hpp': No such file or directory

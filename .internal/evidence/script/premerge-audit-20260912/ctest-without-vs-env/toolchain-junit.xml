@@ -1,0 +1,2236 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="Win32-ninja"
+	tests="110"
+	failures="29"
+	disabled="0"
+	skipped="0"
+	hostname="LuxDesktop"
+	time="13"
+	timestamp="2026-09-12T09:21:50"
+	>
+	<testcase name="architecture_world_domain_positive" classname="architecture_world_domain_positive" time="0.123182" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- Configuring done (0.0s)
+-- Generating done (0.1s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/architecture-layer-probes/architecture_world_domain_positive
+</system-out>
+	</testcase>
+	<testcase name="architecture_simulation_domain_positive" classname="architecture_simulation_domain_positive" time="0.113447" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- Configuring done (0.0s)
+-- Generating done (0.1s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/architecture-layer-probes/architecture_simulation_domain_positive
+</system-out>
+	</testcase>
+	<testcase name="architecture_simulation_world_negative" classname="architecture_simulation_world_negative" time="0.053127" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/TargetArchitecture.cmake:278 (message):
+  Architecture DAG: SIMULATION target 'probe_consumer' may not link WORLD
+  target 'probe_dependency'
+Call Stack (most recent call first):
+  CMakeLists.txt:27 (lux_validate_target_dag)
+
+
+-- Configuring incomplete, errors occurred!
+</system-out>
+	</testcase>
+	<testcase name="architecture_domain_world_negative" classname="architecture_domain_world_negative" time="0.0572204" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/TargetArchitecture.cmake:278 (message):
+  Architecture DAG: DOMAIN target 'probe_consumer' may not link WORLD target
+  'probe_dependency'
+Call Stack (most recent call first):
+  CMakeLists.txt:27 (lux_validate_target_dag)
+
+
+-- Configuring incomplete, errors occurred!
+</system-out>
+	</testcase>
+	<testcase name="architecture_domain_simulation_negative" classname="architecture_domain_simulation_negative" time="0.0571659" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/TargetArchitecture.cmake:278 (message):
+  Architecture DAG: DOMAIN target 'probe_consumer' may not link SIMULATION
+  target 'probe_dependency'
+Call Stack (most recent call first):
+  CMakeLists.txt:27 (lux_validate_target_dag)
+
+
+-- Configuring incomplete, errors occurred!
+</system-out>
+	</testcase>
+	<testcase name="architecture_process_world_loading_positive" classname="architecture_process_world_loading_positive" time="0.117432" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- Configuring done (0.0s)
+-- Generating done (0.1s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/architecture-layer-probes/architecture_process_world_loading_positive
+</system-out>
+	</testcase>
+	<testcase name="architecture_scene_process_positive" classname="architecture_scene_process_positive" time="0.117861" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- Configuring done (0.0s)
+-- Generating done (0.1s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/architecture-layer-probes/architecture_scene_process_positive
+</system-out>
+	</testcase>
+	<testcase name="architecture_process_scene_negative" classname="architecture_process_scene_negative" time="0.0507794" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/TargetArchitecture.cmake:278 (message):
+  Architecture DAG: PROCESS target 'probe_consumer' may not link SCENE target
+  'probe_dependency'
+Call Stack (most recent call first):
+  CMakeLists.txt:27 (lux_validate_target_dag)
+
+
+-- Configuring incomplete, errors occurred!
+</system-out>
+	</testcase>
+	<testcase name="architecture_scene_editor_negative" classname="architecture_scene_editor_negative" time="0.0566185" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/TargetArchitecture.cmake:278 (message):
+  Architecture DAG: SCENE target 'probe_consumer' may not link EDITOR target
+  'probe_dependency'
+Call Stack (most recent call first):
+  CMakeLists.txt:27 (lux_validate_target_dag)
+
+
+-- Configuring incomplete, errors occurred!
+</system-out>
+	</testcase>
+	<testcase name="architecture_toolchain_function_positive" classname="architecture_toolchain_function_positive" time="0.118022" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- Configuring done (0.0s)
+-- Generating done (0.1s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/architecture-layer-probes/architecture_toolchain_function_positive
+</system-out>
+	</testcase>
+	<testcase name="architecture_toolchain_editor_negative" classname="architecture_toolchain_editor_negative" time="0.048969" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/TargetArchitecture.cmake:278 (message):
+  Architecture DAG: TOOLCHAIN target 'probe_consumer' may not link EDITOR
+  target 'probe_dependency'
+Call Stack (most recent call first):
+  CMakeLists.txt:27 (lux_validate_target_dag)
+
+
+-- Configuring incomplete, errors occurred!
+</system-out>
+	</testcase>
+	<testcase name="architecture_editor_toolchain_positive" classname="architecture_editor_toolchain_positive" time="0.118506" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- Configuring done (0.0s)
+-- Generating done (0.1s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/architecture-layer-probes/architecture_editor_toolchain_positive
+</system-out>
+	</testcase>
+	<testcase name="architecture_function_toolchain_negative" classname="architecture_function_toolchain_negative" time="0.0505155" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/TargetArchitecture.cmake:278 (message):
+  Architecture DAG: FUNCTION target 'probe_consumer' may not link TOOLCHAIN
+  target 'probe_dependency'
+Call Stack (most recent call first):
+  CMakeLists.txt:27 (lux_validate_target_dag)
+
+
+-- Configuring incomplete, errors occurred!
+</system-out>
+	</testcase>
+	<testcase name="script_core_contract_test" classname="script_core_contract_test" time="0.0070361" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="type_static_info_test" classname="type_static_info_test" time="0.007652" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="task_graph_test" classname="task_graph_test" time="0.0631093" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="script_description_contract_test" classname="script_description_contract_test" time="0.0070016" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="flowforge_dynamism" classname="flowforge_dynamism" time="0.022438" status="run">
+		<properties/>
+		<system-out>-- AutoSparseSet::try_emplace_at --
+[ ok ] auto keys allocate monotonically from the offset
+[ ok ] erase recycles the key into the free list
+[ ok ] claiming a previously erased key succeeds
+[ ok ] claimed key holds the new value
+[ ok ] the claim reclaimed the key from the free list
+[ ok ] claiming an occupied key fails
+[ ok ] failed claim does not disturb the occupant
+[ ok ] later auto-allocation cannot hand out the claimed key again
+[ ok ] claiming beyond next_id_ succeeds (gap fill)
+[ ok ] next_id_ advanced past the claimed key
+[ ok ] skipped keys [5,8) stay allocatable via the free list
+[ ok ] auto-allocation reuses a gap key, not the claimed one
+[ ok ] claiming below the offset fails
+-- FlowGraph::insertNodeAt --
+[ ok ] graph indices allocate from 1
+[ ok ] removeNode succeeds
+[ ok ] removed index is gone
+[ ok ] insertNodeAt restores the original index
+[ ok ] restored index is live
+[ ok ] restored NodeStorage carries its index
+[ ok ] later addNodes cannot double-allocate the restored index
+[ ok ] insertNod...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="flowforge_script_ability_node" classname="flowforge_script_ability_node" time="0.0074606" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="script_artifact_codec_test" classname="script_artifact_codec_test" time="0.0586759" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="script_native_runtime_contract_test" classname="script_native_runtime_contract_test" time="0.131745" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_description_contract_test" classname="simulation_description_contract_test" time="0.0377777" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_asset_codec_test" classname="simulation_asset_codec_test" time="0.023974" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="vnext_ecs_core" classname="vnext_ecs_core" time="0.021582" status="run">
+		<properties>
+			<property name="cmake_labels" value="core;cpu;l1;vnext"/>
+		</properties>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="vnext_ecs_system_registry" classname="vnext_ecs_system_registry" time="0.0229048" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_endpoint_point_test" classname="simulation_endpoint_point_test" time="0.0108144" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_throwing_event_payload_rejected" classname="simulation_throwing_event_payload_rejected" time="0.290302" status="run">
+		<properties>
+			<property name="cmake_labels" value="exception;l1;negative;simulation"/>
+		</properties>
+		<system-out>-- Target 'simulation_throwing_event_payload_negative' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_unscoped_hook_rejected" classname="simulation_unscoped_hook_rejected" time="0.249069" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_unscoped_hook_negative' failed, but not for the expected
+  reason ('function does not take 0 arguments|no matching.*dispatch').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\domain\simulation\system\CMakeFiles\simulation_unscoped_hook_negative.dir\test\unscoped_hook_negative.cpp.obj
+
+  FAILED:
+  engine/domain/simulation/system/CMakeFiles/simulation_unscoped_hook_negative.dir/test/unscoped_hook_negative.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DENTT_NO_ETO
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\system\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\semantic\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\serialization\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\type_info\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\sinclude
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3
+  -external:ID:\Development\vcpkg\installed\x64-windows\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid
+  -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD
+  /utf-8 /showIncludes
+  /Foengine\domain\simulation\system\CMakeFiles\simulation_unscoped_hook_negative.dir\test\unscoped_hook_negative.cpp.obj
+  /Fdengine\domain\simulation\system\CMakeFiles\simulation_unscoped_hook_negative.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\system\test\unscoped_hook_negative.cpp
+
+  
+  E:\SyncForder\CodeRepos\install\q2\c\include\lux/cxx/container/SlotMap.hpp(28):
+  fatal error C1083: Cannot open include file: 'vector': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_object_boundary_test" classname="simulation_object_boundary_test" time="0.0249921" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_script_coroutine_alignment_contract_test" classname="simulation_script_coroutine_alignment_contract_test" time="0.0076493" status="run">
+		<properties/>
+		<system-out>size_only=1 aligned_overload=0 bytes=240 local_mod64=0 stable_address=1
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_class_storage_test" classname="simulation_script_class_storage_test" time="0.0077592" status="run">
+		<properties/>
+		<system-out>STORAGE_TICKET,observe=0,owner=1,generation=1,allocation_checks=1,exhaustion=1,ticket=24
+STORAGE_TICKET,observe=1,owner=1,generation=1,allocation_checks=1,exhaustion=1,ticket=24
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_class_storage_move_test" classname="simulation_script_class_storage_move_test" time="0.0077917" status="run">
+		<properties/>
+		<system-out>requests=0 arena_deletes=1 expected=1
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_class_storage_failure_1_test" classname="simulation_script_class_storage_failure_1_test" time="0.0066907" status="run">
+		<properties/>
+		<system-out>requests=1 arena_deletes=0 expected=0
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_class_storage_failure_2_test" classname="simulation_script_class_storage_failure_2_test" time="0.0107773" status="run">
+		<properties/>
+		<system-out>requests=2 arena_deletes=1 expected=1
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_class_storage_failure_3_test" classname="simulation_script_class_storage_failure_3_test" time="0.0068968" status="run">
+		<properties/>
+		<system-out>requests=3 arena_deletes=1 expected=1
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_class_storage_failure_4_test" classname="simulation_script_class_storage_failure_4_test" time="0.0077221" status="run">
+		<properties/>
+		<system-out>requests=4 arena_deletes=1 expected=1
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_prepared_shape_test" classname="simulation_script_cpp_prepared_shape_test" time="0.0221141" status="run">
+		<properties/>
+		<system-out>prepared=10000 rare_arity=0 bytes=320000 generated_calls=10012
+prepared=10000 rare_arity=64 bytes=320000 generated_calls=10001
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_static_test" classname="simulation_script_cpp_static_test" time="0.0127659" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_generated_integration_test" classname="simulation_script_cpp_generated_integration_test" time="0.0357771" status="run">
+		<properties/>
+		<system-out>generated attach -&gt; two objects -&gt; caller Hook -&gt; coroutine -&gt; rematerialize -&gt; EndPlay: PASS
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_generated_host-failure" classname="simulation_script_cpp_generated_host-failure" time="0.0175959" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_generated_construct-failure" classname="simulation_script_cpp_generated_construct-failure" time="0.0113967" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_generated_prepare-failure" classname="simulation_script_cpp_generated_prepare-failure" time="0.120926" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_1" classname="simulation_script_cpp_codegen_negative_1" time="0.283934" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_1' failed, but not for the
+  expected reason ('const-reference must be trivial').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_1.dir\6d68651202303f95f9788573c5a81b70\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/CMakeFiles/simulation_script_cpp_codegen_negative_1.dir/6d68651202303f95f9788573c5a81b70/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DCPP_INVALID_CASE=1 -DENTT_NO_ETO
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\test
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\lux_codegen\validation
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_1\cpp_scripts\InvalidBehavior
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\builtin\script\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\builtin\script\generated\simulation_script\script_abilities
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\semantic\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\system\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\serialization\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\type_info\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\artifact\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\math\include
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3
+  -external:ID:\Development\vcpkg\installed\x64-windows\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid
+  -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD
+  /utf-8 /showIncludes
+  /Foengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_1.dir\6d68651202303f95f9788573c5a81b70\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+  /Fdengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_1.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_1\cpp_scripts\InvalidBehavior\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+
+  
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include\lux/engine/function/script/abi/lux_script_abi.h(17):
+  fatal error C1083: Cannot open include file: 'stdint.h': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_2" classname="simulation_script_cpp_codegen_negative_2" time="0.267958" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_2' failed, but not for the
+  expected reason ('Unsupported CppStatic').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_2.dir\24280eeac4d45ac6adc1f4c14d29a317\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/CMakeFiles/simulation_script_cpp_codegen_negative_2.dir/24280eeac4d45ac6adc1f4c14d29a317/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DCPP_INVALID_CASE=2 -DENTT_NO_ETO
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\test
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\lux_codegen\validation
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_2\cpp_scripts\InvalidBehavior
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\builtin\script\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\builtin\script\generated\simulation_script\script_abilities
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\semantic\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\system\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\serialization\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\type_info\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\artifact\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\math\include
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3
+  -external:ID:\Development\vcpkg\installed\x64-windows\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid
+  -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD
+  /utf-8 /showIncludes
+  /Foengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_2.dir\24280eeac4d45ac6adc1f4c14d29a317\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+  /Fdengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_2.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_2\cpp_scripts\InvalidBehavior\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+
+  
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include\lux/engine/function/script/abi/lux_script_abi.h(17):
+  fatal error C1083: Cannot open include file: 'stdint.h': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_3" classname="simulation_script_cpp_codegen_negative_3" time="0.255273" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_3' failed, but not for the
+  expected reason ('Unsupported CppStatic').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_3.dir\163dd07f7a3399833c2ff6edf2dc8834\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/CMakeFiles/simulation_script_cpp_codegen_negative_3.dir/163dd07f7a3399833c2ff6edf2dc8834/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DCPP_INVALID_CASE=3 -DENTT_NO_ETO
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\test
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\lux_codegen\validation
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_3\cpp_scripts\InvalidBehavior
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\builtin\script\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\builtin\script\generated\simulation_script\script_abilities
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\semantic\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\system\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\serialization\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\type_info\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\artifact\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\math\include
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3
+  -external:ID:\Development\vcpkg\installed\x64-windows\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid
+  -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD
+  /utf-8 /showIncludes
+  /Foengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_3.dir\163dd07f7a3399833c2ff6edf2dc8834\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+  /Fdengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_3.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_3\cpp_scripts\InvalidBehavior\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+
+  
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include\lux/engine/function/script/abi/lux_script_abi.h(17):
+  fatal error C1083: Cannot open include file: 'stdint.h': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_4" classname="simulation_script_cpp_codegen_negative_4" time="0.262337" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_4' failed, but not for the
+  expected reason ('static_cast').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_4.dir\524c3a4b794e382c2840ededf4a3fec9\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/CMakeFiles/simulation_script_cpp_codegen_negative_4.dir/524c3a4b794e382c2840ededf4a3fec9/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DCPP_INVALID_CASE=4 -DENTT_NO_ETO
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\test
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\lux_codegen\validation
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_4\cpp_scripts\InvalidBehavior
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\builtin\script\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\builtin\script\generated\simulation_script\script_abilities
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\semantic\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\system\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\serialization\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\type_info\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\artifact\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\math\include
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3
+  -external:ID:\Development\vcpkg\installed\x64-windows\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid
+  -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD
+  /utf-8 /showIncludes
+  /Foengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_4.dir\524c3a4b794e382c2840ededf4a3fec9\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+  /Fdengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_4.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_4\cpp_scripts\InvalidBehavior\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+
+  
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include\lux/engine/function/script/abi/lux_script_abi.h(17):
+  fatal error C1083: Cannot open include file: 'stdint.h': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_5" classname="simulation_script_cpp_codegen_negative_5" time="0.252421" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_5' failed, but not for the
+  expected reason ('Invalid Script export').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/4] [lux_target_add_codegen]
+  simulation_script_cpp_codegen_negative_5_cpp_script_aa88a900e4bf785d: parse
+  once, render 4 projection(s)
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_5/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_5/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_5/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_5/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_5/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_5/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+
+  C:\WINDOWS\system32\cmd.exe /C "cd /D
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static
+  &amp;&amp; E:\SyncForder\CodeRepos\install\q2\c\bin\lux_meta_generator.exe
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_5_cpp_script_aa88a900e4bf785d.json
+  &amp;&amp; D:\Development\CMake\bin\cmake.exe -E cmake_transform_depfile Ninja
+  gccdepfile
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_5_cpp_script_aa88a900e4bf785d.d
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/CMakeFiles/d/9e6ba6d6378f23e725b0dee474b145f61ba57b370ef148f05b6ab97802f0362d.d"
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_6" classname="simulation_script_cpp_codegen_negative_6" time="0.253445" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_6' failed, but not for the
+  expected reason ('Invalid Script export').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/4] [lux_target_add_codegen]
+  simulation_script_cpp_codegen_negative_6_cpp_script_2b61cb00ce2e1c23: parse
+  once, render 4 projection(s)
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_6/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_6/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_6/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_6/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_6/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_6/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+
+  C:\WINDOWS\system32\cmd.exe /C "cd /D
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static
+  &amp;&amp; E:\SyncForder\CodeRepos\install\q2\c\bin\lux_meta_generator.exe
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_6_cpp_script_2b61cb00ce2e1c23.json
+  &amp;&amp; D:\Development\CMake\bin\cmake.exe -E cmake_transform_depfile Ninja
+  gccdepfile
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_6_cpp_script_2b61cb00ce2e1c23.d
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/CMakeFiles/d/5f48df460ea313c12ca53dc2eb321e4a0825e06317349b9b7a01249cba425afb.d"
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_7" classname="simulation_script_cpp_codegen_negative_7" time="0.247607" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_7' failed, but not for the
+  expected reason ('Invalid Script export').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/4] [lux_target_add_codegen]
+  simulation_script_cpp_codegen_negative_7_cpp_script_043299c494c2367f: parse
+  once, render 4 projection(s)
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_7/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_7/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_7/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_7/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_7/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_7/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+
+  C:\WINDOWS\system32\cmd.exe /C "cd /D
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static
+  &amp;&amp; E:\SyncForder\CodeRepos\install\q2\c\bin\lux_meta_generator.exe
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_7_cpp_script_043299c494c2367f.json
+  &amp;&amp; D:\Development\CMake\bin\cmake.exe -E cmake_transform_depfile Ninja
+  gccdepfile
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_7_cpp_script_043299c494c2367f.d
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/CMakeFiles/d/077a1cfbf1ec05b15e9b6f6b120682419152753c55e71d011aed5bb201c1d8dd.d"
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_8" classname="simulation_script_cpp_codegen_negative_8" time="0.263703" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_8' failed, but not for the
+  expected reason ('EndPlay requires the semantic reason').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_8.dir\8f1cae739a27bf698bd5f4e01f020170\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/CMakeFiles/simulation_script_cpp_codegen_negative_8.dir/8f1cae739a27bf698bd5f4e01f020170/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DCPP_INVALID_CASE=8 -DENTT_NO_ETO
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\test
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\lux_codegen\validation
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_8\cpp_scripts\InvalidBehavior
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\builtin\script\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\builtin\script\generated\simulation_script\script_abilities
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\semantic\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\system\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\serialization\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\type_info\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\artifact\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\math\include
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3
+  -external:ID:\Development\vcpkg\installed\x64-windows\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid
+  -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD
+  /utf-8 /showIncludes
+  /Foengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_8.dir\8f1cae739a27bf698bd5f4e01f020170\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+  /Fdengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_8.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_8\cpp_scripts\InvalidBehavior\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+
+  
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include\lux/engine/function/script/abi/lux_script_abi.h(17):
+  fatal error C1083: Cannot open include file: 'stdint.h': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_9" classname="simulation_script_cpp_codegen_negative_9" time="0.269206" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_9' failed, but not for the
+  expected reason ('owned value').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_9.dir\faed769436e312de5283c697ee7f82b3\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/CMakeFiles/simulation_script_cpp_codegen_negative_9.dir/faed769436e312de5283c697ee7f82b3/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DCPP_INVALID_CASE=9 -DENTT_NO_ETO
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\test
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\lux_codegen\validation
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_9\cpp_scripts\InvalidBehavior
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\builtin\script\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\builtin\script\generated\simulation_script\script_abilities
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\semantic\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\system\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\serialization\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\type_info\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\artifact\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\math\include
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3
+  -external:ID:\Development\vcpkg\installed\x64-windows\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid
+  -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD
+  /utf-8 /showIncludes
+  /Foengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_9.dir\faed769436e312de5283c697ee7f82b3\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+  /Fdengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_9.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_9\cpp_scripts\InvalidBehavior\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+
+  
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include\lux/engine/function/script/abi/lux_script_abi.h(17):
+  fatal error C1083: Cannot open include file: 'stdint.h': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_10" classname="simulation_script_cpp_codegen_negative_10" time="0.265566" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_10' failed, but not for the
+  expected reason ('CppStaticCoroutineEntry').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_10.dir\621d74d47c5d6269c97b2404569e5989\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/CMakeFiles/simulation_script_cpp_codegen_negative_10.dir/621d74d47c5d6269c97b2404569e5989/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DCPP_INVALID_CASE=10 -DENTT_NO_ETO
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\test
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\lux_codegen\validation
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_10\cpp_scripts\InvalidBehavior
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\builtin\script\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\builtin\script\generated\simulation_script\script_abilities
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\semantic\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\system\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\serialization\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\type_info\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\artifact\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\math\include
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3
+  -external:ID:\Development\vcpkg\installed\x64-windows\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid
+  -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD
+  /utf-8 /showIncludes
+  /Foengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_10.dir\621d74d47c5d6269c97b2404569e5989\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+  /Fdengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_10.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_10\cpp_scripts\InvalidBehavior\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+
+  
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include\lux/engine/function/script/abi/lux_script_abi.h(17):
+  fatal error C1083: Cannot open include file: 'stdint.h': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_11" classname="simulation_script_cpp_codegen_negative_11" time="0.275247" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_11' failed, but not for the
+  expected reason ('Unsupported CppStatic').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_11.dir\4a77c1f3fbbc4376af7c592d4d96d651\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/CMakeFiles/simulation_script_cpp_codegen_negative_11.dir/4a77c1f3fbbc4376af7c592d4d96d651/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DCPP_INVALID_CASE=11 -DENTT_NO_ETO
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\test
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\lux_codegen\validation
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_11\cpp_scripts\InvalidBehavior
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\builtin\script\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\builtin\script\generated\simulation_script\script_abilities
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\semantic\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\system\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\serialization\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\type_info\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\artifact\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\math\include
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3
+  -external:ID:\Development\vcpkg\installed\x64-windows\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid
+  -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD
+  /utf-8 /showIncludes
+  /Foengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_11.dir\4a77c1f3fbbc4376af7c592d4d96d651\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+  /Fdengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_11.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_11\cpp_scripts\InvalidBehavior\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+
+  
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include\lux/engine/function/script/abi/lux_script_abi.h(17):
+  fatal error C1083: Cannot open include file: 'stdint.h': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_12" classname="simulation_script_cpp_codegen_negative_12" time="0.250011" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_12' failed, but not for the
+  expected reason ('Invalid Script export').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/4] [lux_target_add_codegen]
+  simulation_script_cpp_codegen_negative_12_cpp_script_dd9779f2c1c07747:
+  parse once, render 4 projection(s)
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_12/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_12/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_12/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_12/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_12/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_12/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+
+  C:\WINDOWS\system32\cmd.exe /C "cd /D
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static
+  &amp;&amp; E:\SyncForder\CodeRepos\install\q2\c\bin\lux_meta_generator.exe
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_12_cpp_script_dd9779f2c1c07747.json
+  &amp;&amp; D:\Development\CMake\bin\cmake.exe -E cmake_transform_depfile Ninja
+  gccdepfile
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_12_cpp_script_dd9779f2c1c07747.d
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/CMakeFiles/d/21fd2ce0f763ccf5bec162bd06d009b05b4df5ff0c014f93947c1d94445ae05d.d"
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_13" classname="simulation_script_cpp_codegen_negative_13" time="0.246" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_13' failed, but not for the
+  expected reason ('duplicate Script export source identity').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/4] [lux_target_add_codegen]
+  simulation_script_cpp_codegen_negative_13_cpp_script_afdf80c466d68948:
+  parse once, render 4 projection(s)
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_13/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_13/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_13/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_13/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_13/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_13/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+
+  C:\WINDOWS\system32\cmd.exe /C "cd /D
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static
+  &amp;&amp; E:\SyncForder\CodeRepos\install\q2\c\bin\lux_meta_generator.exe
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_13_cpp_script_afdf80c466d68948.json
+  &amp;&amp; D:\Development\CMake\bin\cmake.exe -E cmake_transform_depfile Ninja
+  gccdepfile
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_13_cpp_script_afdf80c466d68948.d
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/CMakeFiles/d/bb4ca3ed78d22b93742ee2e749ce8fec173767fcd2e880af789fa3b126ce059f.d"
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_14" classname="simulation_script_cpp_codegen_negative_14" time="0.242543" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_14' failed, but not for the
+  expected reason ('Invalid Script attach').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/4] [lux_target_add_codegen]
+  simulation_script_cpp_codegen_negative_14_cpp_script_491cf9b8a229c636:
+  parse once, render 4 projection(s)
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_14/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_14/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_14/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_14/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_14/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_14/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+
+  C:\WINDOWS\system32\cmd.exe /C "cd /D
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static
+  &amp;&amp; E:\SyncForder\CodeRepos\install\q2\c\bin\lux_meta_generator.exe
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_14_cpp_script_491cf9b8a229c636.json
+  &amp;&amp; D:\Development\CMake\bin\cmake.exe -E cmake_transform_depfile Ninja
+  gccdepfile
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_14_cpp_script_491cf9b8a229c636.d
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/CMakeFiles/d/4afd0e9785b8734696e8e408f07cd48965f3246e9332e173b1f8e28ef088f12e.d"
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_15" classname="simulation_script_cpp_codegen_negative_15" time="0.248293" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_15' failed, but not for the
+  expected reason ('Invalid Script attach').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/4] [lux_target_add_codegen]
+  simulation_script_cpp_codegen_negative_15_cpp_script_7f80f1556d3e10e1:
+  parse once, render 4 projection(s)
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_15/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_15/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_15/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_15/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_15/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_15/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+
+  C:\WINDOWS\system32\cmd.exe /C "cd /D
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static
+  &amp;&amp; E:\SyncForder\CodeRepos\install\q2\c\bin\lux_meta_generator.exe
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_15_cpp_script_7f80f1556d3e10e1.json
+  &amp;&amp; D:\Development\CMake\bin\cmake.exe -E cmake_transform_depfile Ninja
+  gccdepfile
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_15_cpp_script_7f80f1556d3e10e1.d
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/CMakeFiles/d/3fcca39c1069fc2127daa6696509ce5f61e4b2941ec92c9764ff0512911f3393.d"
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_16" classname="simulation_script_cpp_codegen_negative_16" time="0.247633" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_16' failed, but not for the
+  expected reason ('Invalid Script attach').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/4] [lux_target_add_codegen]
+  simulation_script_cpp_codegen_negative_16_cpp_script_59d7c7a5f390fb67:
+  parse once, render 4 projection(s)
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_16/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_16/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_16/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_16/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_16/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_16/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+
+  C:\WINDOWS\system32\cmd.exe /C "cd /D
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static
+  &amp;&amp; E:\SyncForder\CodeRepos\install\q2\c\bin\lux_meta_generator.exe
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_16_cpp_script_59d7c7a5f390fb67.json
+  &amp;&amp; D:\Development\CMake\bin\cmake.exe -E cmake_transform_depfile Ninja
+  gccdepfile
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_16_cpp_script_59d7c7a5f390fb67.d
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/CMakeFiles/d/c2b6cabb346c1e487259f08e24e2aa3ea3c1e4553bef62dfd603234c647e0ea5.d"
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_17" classname="simulation_script_cpp_codegen_negative_17" time="0.261558" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_17' failed, but not for the
+  expected reason ('static_cast').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_17.dir\173461bcb26baac4ed406003ec472fbc\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/CMakeFiles/simulation_script_cpp_codegen_negative_17.dir/173461bcb26baac4ed406003ec472fbc/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DCPP_INVALID_CASE=17 -DENTT_NO_ETO
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\test
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\lux_codegen\validation
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_17\cpp_scripts\InvalidBehavior
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\builtin\script\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\builtin\script\generated\simulation_script\script_abilities
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\semantic\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\system\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\serialization\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\type_info\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\artifact\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\math\include
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3
+  -external:ID:\Development\vcpkg\installed\x64-windows\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid
+  -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD
+  /utf-8 /showIncludes
+  /Foengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_17.dir\173461bcb26baac4ed406003ec472fbc\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+  /Fdengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_17.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_17\cpp_scripts\InvalidBehavior\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+
+  
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include\lux/engine/function/script/abi/lux_script_abi.h(17):
+  fatal error C1083: Cannot open include file: 'stdint.h': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_18" classname="simulation_script_cpp_codegen_negative_18" time="0.261613" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_18' failed, but not for the
+  expected reason ('static_cast').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_18.dir\8d716ec5017c7c0da5903b9bc9f8f328\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/CMakeFiles/simulation_script_cpp_codegen_negative_18.dir/8d716ec5017c7c0da5903b9bc9f8f328/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DCPP_INVALID_CASE=18 -DENTT_NO_ETO
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\test
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\lux_codegen\validation
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_18\cpp_scripts\InvalidBehavior
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\builtin\script\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\builtin\script\generated\simulation_script\script_abilities
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\semantic\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\system\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\serialization\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\type_info\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\artifact\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\math\include
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3
+  -external:ID:\Development\vcpkg\installed\x64-windows\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid
+  -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD
+  /utf-8 /showIncludes
+  /Foengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_18.dir\8d716ec5017c7c0da5903b9bc9f8f328\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+  /Fdengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_18.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_18\cpp_scripts\InvalidBehavior\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+
+  
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include\lux/engine/function/script/abi/lux_script_abi.h(17):
+  fatal error C1083: Cannot open include file: 'stdint.h': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_19" classname="simulation_script_cpp_codegen_negative_19" time="0.243663" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_19' failed, but not for the
+  expected reason ('Invalid Script attach').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/4] [lux_target_add_codegen]
+  simulation_script_cpp_codegen_negative_19_cpp_script_8a4103252e94ded6:
+  parse once, render 4 projection(s)
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_19/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_19/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_19/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_19/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_19/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_19/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+
+  C:\WINDOWS\system32\cmd.exe /C "cd /D
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static
+  &amp;&amp; E:\SyncForder\CodeRepos\install\q2\c\bin\lux_meta_generator.exe
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_19_cpp_script_8a4103252e94ded6.json
+  &amp;&amp; D:\Development\CMake\bin\cmake.exe -E cmake_transform_depfile Ninja
+  gccdepfile
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_19_cpp_script_8a4103252e94ded6.d
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/CMakeFiles/d/a3629cf8eb502a251f72768a2af9da4125b8fa630e58aa75d03e87d83df8062c.d"
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_20" classname="simulation_script_cpp_codegen_negative_20" time="0.251539" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_20' failed, but not for the
+  expected reason ('Invalid Script attach').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/4] [lux_target_add_codegen]
+  simulation_script_cpp_codegen_negative_20_cpp_script_af1a89c849fb50ab:
+  parse once, render 4 projection(s)
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_20/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_20/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_20/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_20/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_20/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/generated/simulation_script_cpp_codegen_negative_20/cpp_scripts/InvalidBehavior/InvalidGeneratedScript.InvalidBehavior.bindings.json
+
+  C:\WINDOWS\system32\cmd.exe /C "cd /D
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static
+  &amp;&amp; E:\SyncForder\CodeRepos\install\q2\c\bin\lux_meta_generator.exe
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_20_cpp_script_af1a89c849fb50ab.json
+  &amp;&amp; D:\Development\CMake\bin\cmake.exe -E cmake_transform_depfile Ninja
+  gccdepfile
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/scripting/cpp_static/lux_codegen/simulation_script_cpp_codegen_negative_20_cpp_script_af1a89c849fb50ab.d
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/CMakeFiles/d/841b7fcc7d84e28efe458ea36333362f88a3963d8a6aa38ae4a23b5bc10ee4b1.d"
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_21" classname="simulation_script_cpp_codegen_negative_21" time="0.259244" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_cpp_codegen_negative_21' failed, but not for the
+  expected reason ('static_cast').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_21.dir\f55a29cd4bd7b29286e55b082b465292\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  FAILED:
+  engine/domain/simulation/scripting/cpp_static/CMakeFiles/simulation_script_cpp_codegen_negative_21.dir/f55a29cd4bd7b29286e55b082b465292/InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DCPP_INVALID_CASE=21 -DENTT_NO_ETO
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\test
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\lux_codegen\validation
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_21\cpp_scripts\InvalidBehavior
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\cpp_static\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\builtin\script\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\builtin\script\generated\simulation_script\script_abilities
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\semantic\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\system\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\serialization\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\type_info\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\artifact\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\math\include
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3
+  -external:ID:\Development\vcpkg\installed\x64-windows\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid
+  -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD
+  /utf-8 /showIncludes
+  /Foengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_21.dir\f55a29cd4bd7b29286e55b082b465292\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp.obj
+  /Fdengine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_codegen_negative_21.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\scripting\cpp_static\generated\simulation_script_cpp_codegen_negative_21\cpp_scripts\InvalidBehavior\InvalidGeneratedScript.InvalidBehavior.script.generated.cpp
+
+  
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include\lux/engine/function/script/abi/lux_script_abi.h(17):
+  fatal error C1083: Cannot open include file: 'stdint.h': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_native_population_state" classname="simulation_script_native_population_state" time="0.0487206" status="run">
+		<properties/>
+		<system-out>population: reverse=0 frames=0 success=3 recycled=1 state_bytes=96 frame_bytes=0
+population: reverse=1 frames=0 success=3 recycled=1 state_bytes=96 frame_bytes=0
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_native_population_frames" classname="simulation_script_native_population_frames" time="0.0105705" status="run">
+		<properties/>
+		<system-out>NATIVE_FRAME_FAILURE,start_cleanup=1,destroy_reentry_held_capacity=1,once=1
+population: reverse=0 frames=1 success=3 recycled=1 state_bytes=96 frame_bytes=2176
+NATIVE_FRAME_FAILURE,start_cleanup=1,destroy_reentry_held_capacity=1,once=1
+population: reverse=1 frames=1 success=3 recycled=1 state_bytes=96 frame_bytes=2176
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_native_population_sync" classname="simulation_script_native_population_sync" time="0.0104051" status="run">
+		<properties/>
+		<system-out>population: reverse=0 frames=0 success=3 recycled=1 state_bytes=96 frame_bytes=0
+population: reverse=1 frames=0 success=3 recycled=1 state_bytes=96 frame_bytes=0
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_native_population_shared" classname="simulation_script_native_population_shared" time="0.0144922" status="run">
+		<properties/>
+		<system-out>NATIVE_FRAME_FAILURE,start_cleanup=1,destroy_reentry_held_capacity=1,once=1
+population: reverse=0 frames=1 success=3 recycled=1 state_bytes=96 frame_bytes=3072
+NATIVE_FRAME_FAILURE,start_cleanup=1,destroy_reentry_held_capacity=1,once=1
+population: reverse=1 frames=1 success=3 recycled=1 state_bytes=96 frame_bytes=3072
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_native_test" classname="simulation_script_native_test" time="0.0352693" status="run">
+		<properties/>
+		<system-out>modules=1 instances=128 state_arena=8192 metadata=3376 acquire=386 release=386
+modules=8 instances=128 state_arena=8192 metadata=3376 acquire=386 release=386
+modules=32 instances=128 state_arena=8192 metadata=3376 acquire=386 release=386
+modules=64 instances=128 state_arena=8192 metadata=3376 acquire=386 release=386
+NATIVE_SPECIALIZATION_REJECTED,context=1,dispatch=1,provider=0
+NATIVE_BINDING_REUSE,cycles=32,retained=48,zeroed_state=1,closed=1
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_native_frame_storage_test" classname="simulation_script_native_frame_storage_test" time="0.0082795" status="run">
+		<properties/>
+		<system-out>NATIVE_REGIONS,observe=0,reserved=8192,metadata=976,all_large=8,excess_rejected=1,mixed=4096,small_regions=1,layout_reuse=32,lease=32,ticket=24
+NATIVE_REGIONS,observe=1,reserved=8192,metadata=976,all_large=8,excess_rejected=1,mixed=4096,small_regions=1,layout_reuse=32,lease=32,ticket=24
+NATIVE_REGION_IDENTITY,domain_isolation=1,tiny=1,owner=1,generation=1,metadata_budget=1 PASS
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_bindings_test" classname="simulation_script_bindings_test" time="0.0102604" status="run">
+		<properties/>
+		<system-out>INVOCATION_AUTHORITY_OK,bounds=2,identity=2,move_pin=1,retired_denied=1,reused_denied=1,stable=1
+HOOK_ORDER_OK,registrations=64,swap_pop=1,nested_withdraw=1,republish=1
+HOOK_ORDER_OK,registrations=65,swap_pop=1,nested_withdraw=1,republish=1
+HOOK_ORDER_OK,registrations=4097,swap_pop=1,nested_withdraw=1,republish=1
+BINDINGS_OK,rollback=1,aborted_ticket=1,rebuilds=128,calls=130
+HOT_LAYOUT prepared_invocation=32 method_reference=32
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_ingress_frontier_test" classname="simulation_script_ingress_frontier_test" time="0.0083638" status="run">
+		<properties/>
+		<system-out>INGRESS_WINDOW empty=pass unpublished=pass frontier=pass bounded_retry=pass
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_runtime_test" classname="simulation_script_runtime_test" time="0.010629" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_script_continuation_test" classname="simulation_script_continuation_test" time="0.0224417" status="run">
+		<properties/>
+		<system-out>LOCAL_TIMER_CAPACITY,local=0,awaitable_full=0,repeats=32,rollback=1,live=0
+LOCAL_TIMER_CAPACITY,local=0,awaitable_full=1,repeats=32,rollback=1,live=0
+LOCAL_TIMER_CAPACITY,local=1,awaitable_full=0,repeats=32,rollback=1,live=0
+LOCAL_TIMER_CAPACITY,local=1,awaitable_full=1,repeats=32,rollback=1,live=0
+LOCAL_TIMER_RETIRE,simulation=0,rebuilds=32,capabilities=0,cleaned=33,live=0
+LOCAL_TIMER_RETIRE,simulation=1,rebuilds=32,capabilities=0,cleaned=33,live=0
+LOCAL_TIMER,enabled=0,capabilities=6,resumes=2,source_unlinked=1
+TIMER_RETRY,mode=0,due_step=1,retry_step=2,resumes=2,waits=0
+LOCAL_TIMER,enabled=0,capabilities=6,resumes=2,source_unlinked=1
+TIMER_RETRY,mode=1,due_step=1,retry_step=2,resumes=2,waits=0
+LOCAL_TIMER,enabled=0,capabilities=6,resumes=2,source_unlinked=1
+TIMER_RETRY,mode=2,due_step=2,retry_step=3,resumes=2,waits=0
+LOCAL_TIMER,enabled=1,capabilities=0,resumes=2,source_unlinked=1
+TIMER_RETRY,mode=0,due_step=1,retry_step=2,resumes=2,waits=0
+LOCAL_TIMER,enabled=1,capabilities=0,resumes=2,source_unlinked=1
+T...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_event_wait_test" classname="simulation_script_event_wait_test" time="0.18318" status="run">
+		<properties/>
+		<system-out>EVENT_PROJECTION default=31 custom=36 invalid_provider_calls=0 malformed_size=rejected
+EVENT_CASE testBroadcastSemantics()
+EVENT_REUSE cycles=37 waiters=74 resumes=74 callbacks=37 high_water=2 backlog=0
+EVENT_CASE testRegistrationCutoff()
+EVENT_CASE testSealedBatchAndOwnedResultAcrossSteps()
+SEALED_STEP,step=1,resumes=1,queue=1,last=10
+SEALED_STEP,step=2,resumes=2,queue=0,last=20
+EVENT_CASE testTargetedAndRetirement()
+EVENT_CASE testTargetedScopeRejection()
+EVENT_CASE testCapacityFailure()
+EVENT_CASE testAwaitableCapacityFailure()
+EVENT_CASE testResumeQueueFailure()
+EVENT_CASE testResumeBudget()
+EVENT_CASE testPayloadFailures()
+EVENT_CASE testArtifactSchemaDriftFailsBeforeInstanceCreation()
+EVENT_CASE testNestedDispatch()
+EVENT_CASE testShutdownWithPendingWaiter()
+EVENT_CASE testIdleWaiterComplexity(10'000U)
+EVENT_CASE testIdleWaiterComplexity(50'000U)
+EVENT_CASE testIdleWaiterComplexity(100'000U)
+EVENT_CASE testOutputSensitiveRetirement()
+EVENT_CASE testPreparedAdmissionProvenance()
+EVENT_CASE testCopyRetire...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_event_wait_race_test" classname="simulation_script_event_wait_race_test" time="0.0125813" status="run">
+		<properties/>
+		<system-out>EVENT_PROJECTION default=31 custom=36 invalid_provider_calls=0 malformed_size=rejected
+EVENT_CASE testBroadcastSemantics()
+EVENT_REUSE cycles=37 waiters=74 resumes=74 callbacks=37 high_water=2 backlog=0
+EVENT_CASE testRegistrationCutoff()
+EVENT_CASE testSealedBatchAndOwnedResultAcrossSteps()
+SEALED_STEP,step=1,resumes=1,queue=1,last=10
+SEALED_STEP,step=2,resumes=2,queue=0,last=20
+EVENT_CASE testTargetedAndRetirement()
+EVENT_CASE testTargetedScopeRejection()
+EVENT_CASE testCapacityFailure()
+EVENT_CASE testAwaitableCapacityFailure()
+EVENT_CASE testResumeQueueFailure()
+EVENT_CASE testResumeBudget()
+EVENT_CASE testPayloadFailures()
+EVENT_CASE testArtifactSchemaDriftFailsBeforeInstanceCreation()
+EVENT_CASE testNestedDispatch()
+EVENT_CASE testShutdownWithPendingWaiter()
+EVENT_CASE testPreparedAdmissionProvenance()
+EVENT_CASE testCopyRetirementPin()
+EVENT_CASE testCopyOtherRecordRemoval()
+EVENT_CASE testCopyShutdownAndFailure()
+EVENT_CASE testCopyNestedAdmission()
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_lifecycle_test" classname="simulation_script_lifecycle_test" time="0.0112617" status="run">
+		<properties/>
+		<system-out>REGION commands accepted=3 rejected=2 late_rejected=1 calls=4 copied=19 destroys=2 PASS
+REGION stop accepted=2 calls=4 ends=2 destroys=2 PASS
+REGION fault calls=3 failures=1 survivors=1 destroys=2 PASS
+MOVE_REPLACEMENT suspended=0 old_end=1 release=3 destroy=1 lease=1 frame=0
+MOVE_FINAL suspended=0 order=verified old=1 incoming=1
+MOVE_REPLACEMENT suspended=1 old_end=1 release=3 destroy=1 lease=1 frame=1
+MOVE_OLD_COMPLETION STOPPING
+MOVE_FINAL suspended=1 order=verified old=1 incoming=1
+MOVE_EMPTY_CLOSED_SELF old=1 incoming=1 verified
+REENTRY_CASE,1
+REENTRY_OK,1,1,2,2,0
+REENTRY_CASE,2
+REENTRY_OK,2,1,2,2,0
+REENTRY_CASE,3
+REENTRY_OK,3,1,2,2,0
+REENTRY_CASE,4
+REENTRY_OK,4,1,2,2,3
+REENTRY_CASE,5
+REENTRY_OK,5,1,2,2,0
+REENTRY_CASE,6
+REENTRY_OK,6,1,2,2,0
+REENTRY_CASE,7
+REENTRY_OK,7,1,2,2,0
+REENTRY_CASE,3
+REENTRY_OK,3,1,2,2,0
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_move_busy_test" classname="simulation_script_move_busy_test" time="0.0245238" status="run">
+		<properties/>
+		<system-out>-- MOVE_BUSY terminate retained=1
+
+</system-out>
+	</testcase>
+	<testcase name="script_runtime_benchmark_smoke" classname="script_runtime_benchmark_smoke" time="0.68448" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_composition_test" classname="simulation_composition_test" time="0.0105184" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_hook_execution_test" classname="simulation_hook_execution_test" time="0.0124175" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_hook_regions_test" classname="simulation_hook_regions_test" time="0.0177792" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_hook_return_negative" classname="simulation_hook_return_negative" time="0.25287" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_hook_return_negative' failed, but not for the expected
+  reason ('Simulation Hook callable must return void or bool').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\domain\simulation\composition\CMakeFiles\simulation_hook_return_negative.dir\test\hook_return_negative.cpp.obj
+
+  FAILED:
+  engine/domain/simulation/composition/CMakeFiles/simulation_hook_return_negative.dir/test/hook_return_negative.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DENTT_NO_ETO
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\composition\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\semantic\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\system\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\system\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\serialization\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\type_info\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\ecs\task\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\task\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\task\pinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\scripting\core\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\identity\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\function\script\artifact\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\asset\sinclude
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\resource\description\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\math\include
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3
+  -external:ID:\Development\vcpkg\installed\x64-windows\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid
+  -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD
+  /utf-8 /showIncludes
+  /Foengine\domain\simulation\composition\CMakeFiles\simulation_hook_return_negative.dir\test\hook_return_negative.cpp.obj
+  /Fdengine\domain\simulation\composition\CMakeFiles\simulation_hook_return_negative.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\composition\test\hook_return_negative.cpp
+
+  
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\domain\simulation\description\include\lux/engine/simulation/SimulationClock.hpp(3):
+  fatal error C1083: Cannot open include file: 'chrono': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_ability_codegen_test" classname="simulation_script_ability_codegen_test" time="0.0110779" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_script_ability_borrowed_async_negative" classname="simulation_script_ability_borrowed_async_negative" time="0.244887" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_ability_borrowed_async_negative' failed, but not
+  for the expected reason ('BORROWED_STEP').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/3] [lux_target_add_codegen]
+  simulation_script_ability_borrowed_async_negative_script_abilities: parse
+  once, render 5 projection(s)
+
+  FAILED:
+  engine/domain/simulation/composition/generated/simulation_script_ability_borrowed_async_negative/script_abilities/InvalidBorrowedAsyncAbility.ability.generated.hpp
+  engine/domain/simulation/composition/generated/simulation_script_ability_borrowed_async_negative/script_abilities/schema_writer/InvalidBorrowedAsyncAbility.ability.schema.cpp
+  engine/domain/simulation/composition/generated/simulation_script_ability_borrowed_async_negative/script_abilities/InvalidBorrowedAsyncAbility.ability.lua.generated.hpp
+  engine/domain/simulation/composition/generated/simulation_script_ability_borrowed_async_negative/script_abilities/InvalidBorrowedAsyncAbility.ability.native.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_borrowed_async_negative/script_abilities/InvalidBorrowedAsyncAbility.ability.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_borrowed_async_negative/script_abilities/schema_writer/InvalidBorrowedAsyncAbility.ability.schema.cpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_borrowed_async_negative/script_abilities/InvalidBorrowedAsyncAbility.ability.lua.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_borrowed_async_negative/script_abilities/InvalidBorrowedAsyncAbility.ability.native.generated.hpp
+
+  C:\WINDOWS\system32\cmd.exe /C "cd /D
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\composition
+  &amp;&amp; E:\SyncForder\CodeRepos\install\q2\c\bin\lux_meta_generator.exe
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/lux_codegen/simulation_script_ability_borrowed_async_negative_script_abilities.json
+  &amp;&amp; D:\Development\CMake\bin\cmake.exe -E cmake_transform_depfile Ninja
+  gccdepfile
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/engine/domain/simulation/composition
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/lux_codegen/simulation_script_ability_borrowed_async_negative_script_abilities.d
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/CMakeFiles/d/ecd530eafb813f4ebbdbab589b6e94bab88cac80d9319a1f0c82470ab156b270.d"
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_ability_duplicate_method_negative" classname="simulation_script_ability_duplicate_method_negative" time="0.232628" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_ability_duplicate_method_negative' failed, but
+  not for the expected reason ('duplicate.Script.Ability.MethodId').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/3] [lux_target_add_codegen]
+  simulation_script_ability_duplicate_method_negative_script_abilities: parse
+  once, render 5 projection(s)
+
+  FAILED:
+  engine/domain/simulation/composition/generated/simulation_script_ability_duplicate_method_negative/script_abilities/DuplicateMethodIdAbility.ability.generated.hpp
+  engine/domain/simulation/composition/generated/simulation_script_ability_duplicate_method_negative/script_abilities/schema_writer/DuplicateMethodIdAbility.ability.schema.cpp
+  engine/domain/simulation/composition/generated/simulation_script_ability_duplicate_method_negative/script_abilities/DuplicateMethodIdAbility.ability.lua.generated.hpp
+  engine/domain/simulation/composition/generated/simulation_script_ability_duplicate_method_negative/script_abilities/DuplicateMethodIdAbility.ability.native.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_duplicate_method_negative/script_abilities/DuplicateMethodIdAbility.ability.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_duplicate_method_negative/script_abilities/schema_writer/DuplicateMethodIdAbility.ability.schema.cpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_duplicate_method_negative/script_abilities/DuplicateMethodIdAbility.ability.lua.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_duplicate_method_negative/script_abilities/DuplicateMethodIdAbility.ability.native.generated.hpp
+
+  C:\WINDOWS\system32\cmd.exe /C "cd /D
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\composition
+  &amp;&amp; E:\SyncForder\CodeRepos\install\q2\c\bin\lux_meta_generator.exe
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/lux_codegen/simulation_script_ability_duplicate_method_negative_script_abilities.json
+  &amp;&amp; D:\Development\CMake\bin\cmake.exe -E cmake_transform_depfile Ninja
+  gccdepfile
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/engine/domain/simulation/composition
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/lux_codegen/simulation_script_ability_duplicate_method_negative_script_abilities.d
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/CMakeFiles/d/cb74cd9c32175cd3f7a83700213a77fe9ea251403452a4f16e6a70b2f426aadc.d"
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_ability_mutable_parameter_negative" classname="simulation_script_ability_mutable_parameter_negative" time="0.238818" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_ability_mutable_parameter_negative' failed, but
+  not for the expected reason
+  ('unsupported.mutable.rvalue.volatile.Script.Ability').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/3] [lux_target_add_codegen]
+  simulation_script_ability_mutable_parameter_negative_script_abilities:
+  parse once, render 5 projection(s)
+
+  FAILED:
+  engine/domain/simulation/composition/generated/simulation_script_ability_mutable_parameter_negative/script_abilities/MutableParameterAbility.ability.generated.hpp
+  engine/domain/simulation/composition/generated/simulation_script_ability_mutable_parameter_negative/script_abilities/schema_writer/MutableParameterAbility.ability.schema.cpp
+  engine/domain/simulation/composition/generated/simulation_script_ability_mutable_parameter_negative/script_abilities/MutableParameterAbility.ability.lua.generated.hpp
+  engine/domain/simulation/composition/generated/simulation_script_ability_mutable_parameter_negative/script_abilities/MutableParameterAbility.ability.native.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_mutable_parameter_negative/script_abilities/MutableParameterAbility.ability.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_mutable_parameter_negative/script_abilities/schema_writer/MutableParameterAbility.ability.schema.cpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_mutable_parameter_negative/script_abilities/MutableParameterAbility.ability.lua.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_mutable_parameter_negative/script_abilities/MutableParameterAbility.ability.native.generated.hpp
+
+  C:\WINDOWS\system32\cmd.exe /C "cd /D
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\composition
+  &amp;&amp; E:\SyncForder\CodeRepos\install\q2\c\bin\lux_meta_generator.exe
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/lux_codegen/simulation_script_ability_mutable_parameter_negative_script_abilities.json
+  &amp;&amp; D:\Development\CMake\bin\cmake.exe -E cmake_transform_depfile Ninja
+  gccdepfile
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/engine/domain/simulation/composition
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/lux_codegen/simulation_script_ability_mutable_parameter_negative_script_abilities.d
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/CMakeFiles/d/71297be99b28b4742ef914994052ba13b824a5f778ea263910ed0349d4de7a6e.d"
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_ability_mutable_result_negative" classname="simulation_script_ability_mutable_result_negative" time="0.239089" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'simulation_script_ability_mutable_result_negative' failed, but not
+  for the expected reason
+  ('unsupported.mutable.rvalue.volatile.Script.Ability').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/3] [lux_target_add_codegen]
+  simulation_script_ability_mutable_result_negative_script_abilities: parse
+  once, render 5 projection(s)
+
+  FAILED:
+  engine/domain/simulation/composition/generated/simulation_script_ability_mutable_result_negative/script_abilities/MutableResultAbility.ability.generated.hpp
+  engine/domain/simulation/composition/generated/simulation_script_ability_mutable_result_negative/script_abilities/schema_writer/MutableResultAbility.ability.schema.cpp
+  engine/domain/simulation/composition/generated/simulation_script_ability_mutable_result_negative/script_abilities/MutableResultAbility.ability.lua.generated.hpp
+  engine/domain/simulation/composition/generated/simulation_script_ability_mutable_result_negative/script_abilities/MutableResultAbility.ability.native.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_mutable_result_negative/script_abilities/MutableResultAbility.ability.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_mutable_result_negative/script_abilities/schema_writer/MutableResultAbility.ability.schema.cpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_mutable_result_negative/script_abilities/MutableResultAbility.ability.lua.generated.hpp
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/generated/simulation_script_ability_mutable_result_negative/script_abilities/MutableResultAbility.ability.native.generated.hpp
+
+  C:\WINDOWS\system32\cmd.exe /C "cd /D
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\engine\domain\simulation\composition
+  &amp;&amp; E:\SyncForder\CodeRepos\install\q2\c\bin\lux_meta_generator.exe
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/lux_codegen/simulation_script_ability_mutable_result_negative_script_abilities.json
+  &amp;&amp; D:\Development\CMake\bin\cmake.exe -E cmake_transform_depfile Ninja
+  gccdepfile
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/engine/domain/simulation/composition
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/engine/domain/simulation/composition/lux_codegen/simulation_script_ability_mutable_result_negative_script_abilities.d
+  E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/CMakeFiles/d/627520b1b9f5db03abb467d4e4cdad0834061d1f36aba27715552818498485bb.d"
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="vnext_transform_decode" classname="vnext_transform_decode" time="0.0247402" status="run">
+		<properties>
+			<property name="cmake_labels" value="cpu;l1;schema;transform;vnext"/>
+		</properties>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="vnext_transform_system" classname="vnext_transform_system" time="0.0289766" status="run">
+		<properties>
+			<property name="cmake_labels" value="cpu;l1;transform;vnext"/>
+		</properties>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="physics2d_simulation_test" classname="physics2d_simulation_test" time="0.0308387" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="process_timer_test" classname="process_timer_test" time="0.118146" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="process_port_sender_test" classname="process_port_sender_test" time="0.0085817" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="process_execution_runtime_test" classname="process_execution_runtime_test" time="0.0110453" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="process_task_scope_test" classname="process_task_scope_test" time="0.0753776" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="task_scope_unconsumed_value_negative" classname="task_scope_unconsumed_value_negative" time="0.257038" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'task_scope_unconsumed_value_negative' failed, but not for the
+  expected reason ('TaskScopeLifetimeSender').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\process\execution\CMakeFiles\task_scope_unconsumed_value_negative.dir\test\task_scope_unconsumed_value_negative.cpp.obj
+
+  FAILED:
+  engine/process/execution/CMakeFiles/task_scope_unconsumed_value_negative.dir/test/task_scope_unconsumed_value_negative.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DSTDEXEC_ENABLE_WINDOWS_THREAD_POOL
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\process\execution\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\async_port\include
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include -external:W0
+  /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /utf-8
+  /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr /showIncludes
+  /Foengine\process\execution\CMakeFiles\task_scope_unconsumed_value_negative.dir\test\task_scope_unconsumed_value_negative.cpp.obj
+  /Fdengine\process\execution\CMakeFiles\task_scope_unconsumed_value_negative.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\process\execution\test\task_scope_unconsumed_value_negative.cpp
+
+  
+  E:\SyncForder\CodeRepos\install\q2\c\include\lux/cxx/compile_time/expected.hpp(6):
+  fatal error C1083: Cannot open include file: 'version': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="task_scope_unconsumed_error_negative" classname="task_scope_unconsumed_error_negative" time="0.260656" status="fail">
+		<failure message="Failed"/>
+		<properties/>
+		<system-out>CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/ExpectTargetCompileFailure.cmake:19 (message):
+  Target 'task_scope_unconsumed_error_negative' failed, but not for the
+  expected reason ('TaskScopeLifetimeSender').
+
+  [0/2] Re-checking globbed directories...
+
+  [1/2] Building CXX object
+  engine\process\execution\CMakeFiles\task_scope_unconsumed_error_negative.dir\test\task_scope_unconsumed_error_negative.cpp.obj
+
+  FAILED:
+  engine/process/execution/CMakeFiles/task_scope_unconsumed_error_negative.dir/test/task_scope_unconsumed_error_negative.cpp.obj
+
+  
+  D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe
+  /nologo /TP -DSTDEXEC_ENABLE_WINDOWS_THREAD_POOL
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\process\execution\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\o\w\t\gen\include
+  -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\modules\core\async_port\include
+  -external:IE:\SyncForder\CodeRepos\install\q2\c\include
+  -external:ID:\Development\vcpkg\installed\x64-windows\include -external:W0
+  /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /utf-8
+  /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr /showIncludes
+  /Foengine\process\execution\CMakeFiles\task_scope_unconsumed_error_negative.dir\test\task_scope_unconsumed_error_negative.cpp.obj
+  /Fdengine\process\execution\CMakeFiles\task_scope_unconsumed_error_negative.dir\
+  /FS -c
+  E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\local-source\engine\process\execution\test\task_scope_unconsumed_error_negative.cpp
+
+  
+  E:\SyncForder\CodeRepos\install\q2\c\include\lux/cxx/compile_time/expected.hpp(6):
+  fatal error C1083: Cannot open include file: 'version': No such file or
+  directory
+
+  ninja: build stopped: subcommand failed.
+
+
+
+
+
+</system-out>
+	</testcase>
+	<testcase name="scene_composition_test" classname="scene_composition_test" time="0.125139" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="scene_world_materialization_test" classname="scene_world_materialization_test" time="0.0205798" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="scene_world_materialization_deferred_test" classname="scene_world_materialization_deferred_test" time="0.0131311" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="scene_script_description_test" classname="scene_script_description_test" time="0.0204511" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="script_binding_authoring_test" classname="script_binding_authoring_test" time="0.0134567" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="scene_script_runtime_test" classname="scene_script_runtime_test" time="0.0720163" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="lua_script_packager_contract_test" classname="lua_script_packager_contract_test" time="0.0152556" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="lua_script_packager_negative_test" classname="lua_script_packager_negative_test" time="0.278773" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="flowforge_script_artifact_test" classname="flowforge_script_artifact_test" time="0.753362" status="run">
+		<properties/>
+		<system-out>Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.exp
+Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-2\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-2\flowforge-script.exp
+Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-3\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-3\flowforge-script.exp
+Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\Chen...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="flowforge_jit_optimization_test" classname="flowforge_jit_optimization_test" time="0.032093" status="run">
+		<properties/>
+		<system-out>[ ok ] sequential cross-cut values permit one shared frame slot
+[ ok ] both sequential values really survive their respective cut
+[ ok ] loop backedge keeps first value alive across second value writes
+[ ok ] escaping frame address cannot share storage
+FlowForge while-condition test
+==============================
+---- IR ----
+module {
+  func.func private @lux_test_sink_int(i32)
+  func.func @main(%arg0: !llvm.ptr, %arg1: !llvm.ptr) {
+    %0 = "flowforge.start"() : () -&gt; !flowforge.token
+    %bodyExec, %doneExec = "flowforge.while_loop"(%0) ({
+    ^bb0(%arg2: !flowforge.token):
+      %5 = llvm.getelementptr %arg0[0] : (!llvm.ptr) -&gt; !llvm.ptr, i8
+      %6 = llvm.load %5 : !llvm.ptr -&gt; i32
+      %7 = llvm.mlir.constant(5 : i32) : i32
+      %8 = arith.cmpi slt, %6, %7 : i32
+      flowforge.cond_yield %arg2, %8 : !flowforge.token
+    }, {
+    ^bb0(%arg2: !flowforge.token):
+      %5 = llvm.getelementptr %arg0[0] : (!llvm.ptr) -&gt; !llvm.ptr, i8
+      %6 = llvm.load %5 : !llvm.ptr -&gt; i32
+      func.call @lux_test_sink...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="physics2d_flowforge_integration_test" classname="physics2d_flowforge_integration_test" time="0.244865" status="run">
+		<properties/>
+		<system-out>Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.exp
+FLOWFORGE_TIMER,local=0,captures=1,result=1,capabilities=0,live=0
+Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-2\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-2\flowforge-script.exp
+FLOWFORGE_TIMER,local=1,captures=1,result=1,capabilities=0,live=0
+</system-out>
+	</testcase>
+	<testcase name="flowforge_script_runtime_integration_test" classname="flowforge_script_runtime_integration_test" time="0.310718" status="run">
+		<properties/>
+		<system-out>Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.exp
+FLOWFORGE_PACKING,variant=0,small=16,large=528,accepted=8,excess=1,reserved=4224,metadata=784,occupied=128,regions=528,provider_calls=8,checksum=56,closed=1
+FLOWFORGE_PACKING,variant=1,small=16,large=528,accepted=8,excess=1,reserved=4224,metadata=784,occupied=4224,regions=4224,provider_calls=2048,checksum=66048,closed=1
+FLOWFORGE_PACKING,variant=0,small=16,large=528,accepted=8,excess=1,reserved=4224,metadata=784,occupied=128,regions=528,provider_calls=8,checksum=56,closed=1
+Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-2\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Tem...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="flowforge_script_runtime_benchmark_smoke" classname="flowforge_script_runtime_benchmark_smoke" time="0.0910763" status="run">
+		<properties/>
+		<system-out>Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.exp
+INTEGRITY,begin,calls=16,invocation_errors=0,started=0,resumes=0,suspensions=0,queue=0,continuations=0,awaitables=0,waiters=0
+NATIVE_STORAGE_OBSERVATION,collected=0,active_region_bytes=0,retained_bindings=768
+NATIVE_STORAGE,steady,backing=0,metadata=0,reserved=0,active=0,live=0,occupied=0,high_water=0,capacity_failures=0,heap_frames=0
+ERRORS,steady,invocation_errors=0
+INTEGRITY,steady,retained=0,calls=48,checksum=816,queue=0,continuations=0,awaitables=0,waiters=0
+NATIVE_STORAGE,shutdown,active=0,live=0,occupied=0,acquires=0,releases=0
+ERRORS,shutdown,invocation_errors=0
+INTEGRITY,shutdown,retained=0,calls=48,checksum=816,queue=0,continuations=0,awaitables=0,waiters=0
+</system-out>
+	</testcase>
+	<testcase name="flowforge_script_sequence_benchmark_smoke" classname="flowforge_script_sequence_benchmark_smoke" time="0.0825067" status="run">
+		<properties/>
+		<system-out>Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.exp
+INTEGRITY,begin,calls=0,invocation_errors=0,started=32,resumes=8,suspensions=40,queue=24,continuations=32,awaitables=32,waiters=8
+NATIVE_STORAGE_OBSERVATION,collected=0,active_region_bytes=0,retained_bindings=5888
+NATIVE_STORAGE,steady,backing=768,metadata=4112,reserved=32,active=0,live=0,occupied=0,high_water=0,capacity_failures=0,heap_frames=0
+ERRORS,steady,invocation_errors=0
+INTEGRITY,steady,retained=0,calls=64,checksum=2144,queue=0,continuations=0,awaitables=0,waiters=0
+NATIVE_STORAGE,shutdown,active=0,live=0,occupied=0,acquires=0,releases=0
+ERRORS,shutdown,invocation_errors=0
+INTEGRITY,shutdown,retained=0,calls=64,checksum=2144,queue=0,continuations=0,awaitables=0,waiters=0
+</system-out>
+	</testcase>
+</testsuite>

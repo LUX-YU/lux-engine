@@ -16,13 +16,14 @@ namespace lux::simulation::script::detail
                 return EScriptSystemError::ALLOCATION_FAILURE;
             return EScriptSystemError::BACKEND_FAILURE;
         }
-    }
+    } // namespace
 
     ScriptPreparer::Result ScriptPreparer::prepareCatalog(
         ScriptArtifactResolver artifacts,
         std::span<const ScriptBackendDescriptor> backends,
         std::span<const ScriptApiCapabilityPublication> capabilities,
-        const ScriptApiCapabilityPublication& delay
+        const ScriptApiCapabilityPublication& delay,
+        PreparedLocalAsyncCatalog local_delay
     ) noexcept
     {
         artifacts_ = artifacts;
@@ -54,6 +55,7 @@ namespace lux::simulation::script::detail
                     return result;
             if (const auto result = add(delay); !result)
                 return result;
+            capabilities_.back().local_async = local_delay;
             std::sort(capabilities_.begin(), capabilities_.end(), [](const auto& left, const auto& right) noexcept {
                 return left.contract.hash() < right.contract.hash() ||
                     (left.contract.hash() == right.contract.hash() && left.contract.name() < right.contract.name());
@@ -178,8 +180,12 @@ namespace lux::simulation::script::detail
                 EventPointId{requirement.event_id});
             if (!eventMatches(requirement, described, bindings.eventEndpoint(*endpoint_slot)))
                 return lux::cxx::unexpected(EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH);
-            construction.addEvent({&requirement, {}, *endpoint_slot, {requirement.payload.type_id,
-                requirement.payload.abi_kind, requirement.payload.size, requirement.payload.alignment}});
+            const PreparedResumeType payload{requirement.payload.type_id, requirement.payload.abi_kind,
+                                             requirement.payload.size, requirement.payload.alignment};
+            if (!payload.valid())
+                return lux::cxx::unexpected(EScriptSystemError::SCRIPT_EVENT_SCHEMA_MISMATCH);
+            const bool targeted = requirement.route == lux::script::EScriptEventRoute::ENTITY_TARGETED;
+            construction.addEvent({&requirement, {}, *endpoint_slot, targeted, payload});
         }
         if (const auto result = construction.allocateIdentity(); !result)
             return result;
@@ -257,4 +263,4 @@ namespace lux::simulation::script::detail
             owned.abi_kind == requirement.payload.abi_kind && owned.size == requirement.payload.size &&
             owned.alignment == requirement.payload.alignment && endpoint.payload_projection.copy != nullptr;
     }
-}
+} // namespace lux::simulation::script::detail

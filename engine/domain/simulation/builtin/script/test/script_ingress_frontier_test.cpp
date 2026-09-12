@@ -1,10 +1,73 @@
 #include <lux/engine/simulation/script/ExternalCompletionRing.hpp>
+#include <lux/engine/simulation/script/ScriptCompletionIngress.hpp>
 
 #include <cassert>
 #include <thread>
+#include <cstdio>
+
+namespace lux::simulation::script::detail
+{
+    struct ScriptCompletionIngressTestAccess final
+    {
+        static ExternalCompletionRing& ring(ScriptCompletionIngress& ingress) noexcept
+        {
+            return ingress.transport_->completions;
+        }
+    };
+}
+
+static void testIngressWindow()
+{
+    using namespace lux::simulation::script;
+    using namespace lux::simulation::script::detail;
+    ScriptCompletionIngress ingress;
+    ingress.prepare(2U, 4U);
+    auto& ring = ScriptCompletionIngressTestAccess::ring(ingress);
+    const ScriptInstanceId instance{1U, 1U};
+    const ScriptAwaitableId first{1U, 1U}, second{2U, 1U}, third{3U, 1U};
+    for (auto id : {first, second, third})
+        ingress.open(id, std::nullopt);
+    ingress.capture();
+    ingress.beginDrain();
+    assert(!ingress.hasPendingInWindow() && ingress.peek() == nullptr);
+
+    // Reserve before capture, publish after a failed peek. It must remain eligible.
+    ring.tickets[0].state.store(ExternalCompletionRing::ticketState(first, EExternalCompletionTicketState::CLAIMED));
+    ring.count.fetch_add(1U);
+    assert(ring.enqueue_position.fetch_add(1U) == 0U);
+    assert(ring.push({instance, second, EScriptAwaitableState::READY}));
+    assert(!ingress.hasPendingInWindow()); // The previous empty window is unchanged.
+    ingress.capture();
+    ingress.beginDrain();
+    for (unsigned i{}; i < 100U; ++i)
+        assert(ingress.hasPendingInWindow() && ingress.peek() == nullptr);
+    ring.cells[0].record = {instance, first, EScriptAwaitableState::READY};
+    ring.cells[0].sequence.store(1U, std::memory_order_release);
+    assert(ingress.peek()->awaitable == first);
+    ingress.ack();
+    assert(ring.push({instance, third, EScriptAwaitableState::READY}));
+    assert(ingress.hasPendingInWindow() && ingress.peek()->awaitable == second);
+    ingress.ack();
+    assert(!ingress.hasPendingInWindow() && ingress.peek() == nullptr);
+    assert(ring.count.load() == 1U); // Post-frontier work is still queued.
+
+    ingress.beginDrain(); // A new stable window accepts third.
+    assert(ingress.hasPendingInWindow() && ingress.peek()->awaitable == third);
+    // Simulate owner queue backpressure: no ack. Retry is bounded, even at the same head.
+    assert(ingress.hasPendingInWindow() && ingress.peek()->awaitable == third);
+    assert(!ingress.hasPendingInWindow() && ingress.peek() == nullptr);
+    assert(ring.count.load() == 1U);
+    ingress.beginDrain();
+    assert(ingress.peek()->awaitable == third);
+    ingress.ack();
+    assert(!ingress.hasPendingInWindow() && ring.count.load() == 0U);
+    ingress.stop();
+    std::puts("INGRESS_WINDOW empty=pass unpublished=pass frontier=pass bounded_retry=pass");
+}
 
 int main()
 {
+    testIngressWindow();
     using namespace lux::simulation::script;
     using namespace lux::simulation::script::detail;
     ExternalCompletionRing ring;

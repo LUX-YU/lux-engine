@@ -17,6 +17,7 @@ component_include_directories(
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
 )
+target_include_directories(simulation_script_native PRIVATE pinclude)
 target_compile_definitions(
     simulation_script_native
     PRIVATE LUX_ENGINE_SIMULATION_SCRIPT_NATIVE_LIBRARY
@@ -57,7 +58,7 @@ if(TARGET script_native_fixture)
         lux_classify_target(TARGET native_population_${variant} LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
     endforeach()
     add_executable(simulation_script_native_population_test test/native_population_test.cpp)
-    target_link_libraries(simulation_script_native_population_test PRIVATE simulation_script_native)
+    target_link_libraries(simulation_script_native_population_test PRIVATE simulation_script_native native_population_wide)
     add_dependencies(simulation_script_native_population_test native_population_aligned native_population_compact
         native_population_wide native_population_narrow)
     lux_classify_target(TARGET simulation_script_native_population_test LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
@@ -108,4 +109,17 @@ if(TARGET script_native_fixture)
         NAME simulation_script_native_test
         COMMAND simulation_script_native_test
     )
+endif()
+
+if(BUILD_TESTING)
+    add_executable(simulation_script_native_frame_storage_test test/native_frame_storage_test.cpp)
+    target_include_directories(simulation_script_native_frame_storage_test PRIVATE pinclude)
+    target_link_libraries(simulation_script_native_frame_storage_test PRIVATE simulation_script)
+    if(MSVC)
+        target_compile_options(simulation_script_native_frame_storage_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(simulation_script_native_frame_storage_test PRIVATE -UNDEBUG)
+    endif()
+    lux_classify_target(TARGET simulation_script_native_frame_storage_test LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
+    add_test(NAME simulation_script_native_frame_storage_test COMMAND simulation_script_native_frame_storage_test)
 endif()

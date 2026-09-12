@@ -1,3 +1,7 @@
+#include "../../../builtin/script/test/ScriptRuntimeTestRegion.hpp"
+using lux::simulation::script::test::dispatchRuntimeHook;
+using lux::simulation::script::test::deliverRuntimeEvent;
+using lux::simulation::script::test::executeRuntimeStablePoint;
 #include "../../../system/test/HookInvocationTestAccess.hpp"
 using lux::simulation::test::dispatchHookForTest;
 #include "../../core/test/ScriptEndpointTestAccess.hpp"
@@ -21,16 +25,26 @@ using lux::simulation::script::test::deliverEndpoint;
 #include <string>
 #include <string_view>
 #include <utility>
+#include <lua.hpp>
+#include <cstdio>
+#include <cstdlib>
 
 namespace
 {
-    lux::script::lua::ELuaExecutionPolicy g_execution_policy{
-        lux::script::lua::ELuaExecutionPolicy::DEFAULT
-    };
     using namespace lux::simulation;
     using namespace lux::simulation::script;
     using Ability = lux::simulation::script::test::LuaRuntimeTestAbility;
     using AbilityTraits = lux::script::ScriptAbilityTraits<Ability>;
+
+    lua_State* g_observed_vm{};
+    std::size_t g_observed_read_entries{};
+    LuxLuaTypedWorker g_original_read{};
+    LuxLuaBoundaryOutcome observeRead(lua_State* state) noexcept
+    {
+        g_observed_vm = state;
+        ++g_observed_read_entries;
+        return g_original_read(state);
+    }
 
     inline constexpr lux::system::SystemInstanceId kSystem{0x4C554101U};
     inline constexpr HookPointId kSyncHook{0x4C554102U};
@@ -48,6 +62,27 @@ namespace
     inline constexpr lux::script::ScriptSymbolId kScalarSymbol{0x4C55410BU};
     inline constexpr lux::script::ScriptSymbolId kEventWaitSymbol{0x4C55410DU};
     inline constexpr lux::script::ScriptSymbolId kTargetWaitSymbol{0x4C554110U};
+
+    decltype(ScriptBackendDescriptor{}.prepareMethod) g_original_prepare{};
+    decltype(BoundScriptStepCall{}.invoke) g_original_step{};
+    ScriptStepResult g_observed_step;
+    std::size_t g_observed_steps{};
+    EScriptBackendResult observePreparedStep(void* context, ScriptBackendInstance instance,
+        const lux::rdesc::ScriptFunction& function, ScriptBackendPreparedMethod& result) noexcept
+    {
+        const auto status = g_original_prepare(context, instance, function, result);
+        if (status == EScriptBackendResult::SUCCESS && function.symbol_id == kAsyncSymbol)
+        {
+            g_original_step = result.resumable.invoke;
+            result.resumable.invoke = [](void* opaque, lux_script_call_frame& frame, ScriptStepContext& step,
+                ScriptBackendContinuation& continuation) noexcept {
+                ++g_observed_steps;
+                g_observed_step = g_original_step(opaque, frame, step, continuation);
+                return g_observed_step;
+            };
+        }
+        return status;
+    }
 
     SimulationDescription makeSimulation();
 
@@ -368,7 +403,8 @@ namespace
         explicit Harness(
             bool require_ability = true,
             std::size_t lua_continuation_capacity = 4U,
-            bool declare_event = true
+            bool declare_event = true,
+            bool observe_vm = false
         )
             : simulation(makeSimulation()),
               artifact(makeArtifact(require_ability, declare_event)),
@@ -426,6 +462,20 @@ namespace
             assert(projected);
             event_sources[1] = std::move(*projected);
             contribution = lux::script::lua::makeScriptAbilityLuaContribution<Ability>();
+            if (observe_vm)
+            {
+                observed_methods.assign(contribution.methods.begin(), contribution.methods.end());
+                for (auto& method : observed_methods)
+                {
+                    if (method.method.name() == "lux.test.lua_runtime.read")
+                    {
+                        g_original_read = method.entry;
+                        method.entry = &observeRead;
+                    }
+                }
+                assert(g_original_read);
+                contribution.methods = observed_methods;
+            }
             auto created_backend = LuaScriptBackend::create({
                 .instance_capacity = 1U,
                 .prepared_call_capacity = 16U,
@@ -434,7 +484,6 @@ namespace
                 .ability_catalog_method_capacity = AbilityTraits::Description.methods.size(),
                 .prepared_ability_capacity = AbilityTraits::Description.methods.size(),
                 .abilities = std::span{&contribution, 1U},
-                .execution_policy = g_execution_policy,
                 .event_catalog_capacity = event_sources.size(),
                 .prepared_event_capacity = event_sources.size(),
                 .events = event_sources,
@@ -460,9 +509,13 @@ namespace
             backend.emplace(std::move(*created_backend));
             const auto runtime = backend->runtimeInfo();
             assert(!runtime.vm.empty() && !runtime.version.empty());
-            assert(g_execution_policy != lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY ||
-                !runtime.jit_enabled);
             descriptor = backend->descriptor();
+            if (observe_vm)
+            {
+                g_original_prepare = descriptor.prepareMethod;
+                descriptor.prepareMethod = &observePreparedStep;
+                g_observed_steps = 0U;
+            }
         }
 
         [[nodiscard]] lux::cxx::expected<ScriptSystem, EScriptSystemError> create(
@@ -523,16 +576,250 @@ namespace
         std::array<ScriptHookEndpointDescriptor, 5U> endpoints;
         std::array<ScriptEventEndpointDescriptor, 2U> event_endpoints;
         lux::script::lua::ScriptAbilityLuaContribution contribution;
+        std::vector<lux::script::lua::ScriptAbilityLuaMethodProjection> observed_methods;
         std::array<lux::script::ScriptEventSourceDescription, 2U> event_sources;
         std::optional<LuaScriptBackend> backend;
         ScriptBackendDescriptor descriptor;
     };
+
+    struct CreationAllocator final
+    {
+        lua_Alloc original{};
+        void* context{};
+        std::size_t permitted{};
+        std::size_t growths{}, failures{};
+        bool armed{};
+        void* observation_context{};
+        void (*observe_growth)(void*) noexcept{};
+        static void* allocate(void* opaque, void* pointer, std::size_t old_size, std::size_t size) noexcept
+        {
+            auto& self = *static_cast<CreationAllocator*>(opaque);
+            if (self.armed && size != 0U && (pointer == nullptr || size > old_size))
+            {
+                if (self.observe_growth)
+                {
+                    const auto callback = self.observe_growth;
+                    self.observe_growth = nullptr;
+                    callback(self.observation_context);
+                }
+                const auto index = self.growths++;
+                std::printf("CREATE_ALLOCATION,index=%zu,old=%zu,new=%zu,kind=%s\n",
+                    index, old_size, size, pointer ? "grow" : "new");
+                std::fflush(stdout);
+                if (index >= self.permitted)
+                {
+                    ++self.failures;
+                    return nullptr;
+                }
+            }
+            return self.original(self.context, pointer, old_size, size);
+        }
+    };
+
+    struct RegistryGrowth final { std::size_t padding{}; int reference{}; };
+
+    RegistryGrowth observeRegistryGrowth()
+    {
+        Harness harness{true, 1U, true, true};
+        Provider provider;
+        const auto binding = lux::script::bindScriptAbility<Ability>(provider);
+        const std::array publications{publishScriptAbility(binding)};
+        auto system = harness.create(publications);
+        assert(system && system->prepare());
+        assert(dispatchRuntimeHook(*system, harness.sync_hook) == 1U);
+        auto* vm = g_observed_vm;
+        CreationAllocator allocation;
+        allocation.original = lua_getallocf(vm, &allocation.context);
+        allocation.permitted = (std::numeric_limits<std::size_t>::max)();
+        lua_setallocf(vm, &CreationAllocator::allocate, &allocation);
+        allocation.armed = true;
+        RegistryGrowth boundary;
+        for (std::size_t index{}; index < 8192U; ++index)
+        {
+            const auto before = allocation.growths;
+            lua_pushboolean(vm, true);
+            const auto reference = luaL_ref(vm, LUA_REGISTRYINDEX);
+            if (reference >= 256 && allocation.growths != before)
+            {
+                boundary = {index, reference};
+                break;
+            }
+        }
+        allocation.armed = false;
+        lua_setallocf(vm, allocation.original, allocation.context);
+        assert(boundary.reference >= 256 && system->shutdown());
+        std::printf("REGISTRY_CALIBRATION,padding=%zu,next_reference=%d\n", boundary.padding, boundary.reference);
+        return boundary;
+    }
+
+    int testFixedRootAtRegistryBoundary()
+    {
+        const auto boundary = observeRegistryGrowth();
+        Harness harness{true, 1U, true, true};
+        Provider provider;
+        const auto binding = lux::script::bindScriptAbility<Ability>(provider);
+        const std::array publications{publishScriptAbility(binding)};
+        auto system = harness.create(publications);
+        assert(system && system->prepare());
+        assert(dispatchRuntimeHook(*system, harness.sync_hook) == 1U);
+        auto* vm = g_observed_vm;
+        std::vector<int> padding;
+        for (std::size_t index{}; index < boundary.padding; ++index)
+        {
+            lua_pushboolean(vm, true);
+            padding.push_back(luaL_ref(vm, LUA_REGISTRYINDEX));
+        }
+        assert(padding.back() + 1 == boundary.reference);
+        assert(dispatchRuntimeHook(*system, harness.async_hook) == 1U);
+        assert(provider.pending && provider.reads == 2U && provider.writes == 2U);
+        lua_rawgeti(vm, LUA_REGISTRYINDEX, boundary.reference);
+        assert(lua_isnil(vm, -1));
+        lua_pop(vm, 1);
+        assert(system->shutdown());
+        for (const auto reference : padding) luaL_unref(vm, LUA_REGISTRYINDEX, reference);
+        const auto stats = harness.backend->stats();
+        assert(stats.vm_coroutine_creations == 1U && stats.vm_coroutine_releases == 1U);
+        std::puts("FIXED_ROOT_PASS,registry_boundary_untouched=1,provider_calls=4,roots=1,releases=1");
+        return 0;
+    }
+
+    int testCreationOom(std::size_t permitted)
+    {
+        Harness harness{true, 1U, true, true};
+        Provider provider;
+        const auto binding = lux::script::bindScriptAbility<Ability>(provider);
+        const std::array publications{publishScriptAbility(binding)};
+        auto created = harness.create(publications);
+        assert(created);
+        auto system = std::move(*created);
+        assert(system.prepare());
+        assert(dispatchRuntimeHook(system, harness.sync_hook) == 1U);
+        assert(g_observed_vm && provider.reads == 1U && provider.writes == 1U);
+        auto* vm = g_observed_vm;
+        const auto base = lua_gettop(vm);
+        CreationAllocator allocation;
+        allocation.original = lua_getallocf(vm, &allocation.context);
+        allocation.permitted = permitted;
+        const auto panic = lua_atpanic(vm, [](lua_State*) -> int {
+            std::puts("UNPROTECTED_CREATION_PANIC,provider_calls_before=2,thread_roots_before=0");
+            std::fflush(stdout);
+            std::_Exit(86);
+        });
+        lua_setallocf(vm, &CreationAllocator::allocate, &allocation);
+        allocation.armed = true;
+        std::puts("CASE,creation-oom,prepared=1,continuation_capacity=1");
+        std::fflush(stdout);
+        assert(dispatchRuntimeHook(system, harness.async_hook) == 1U);
+        allocation.armed = false;
+        lua_setallocf(vm, allocation.original, allocation.context);
+        lua_atpanic(vm, panic);
+        assert(allocation.failures != 0U);
+        assert(lua_gettop(vm) == base);
+        assert(provider.reads == 1U && provider.writes == 1U && !provider.pending);
+        assert(system.activeContinuationCount() == 0U && system.activeAwaitableCount() == 0U);
+        assert(system.stats().invocation_failures == 1U);
+        assert(g_observed_steps == 1U && g_observed_step.state == EScriptStepState::FAILED);
+        assert(g_observed_step.error.status == -10);
+        assert(system.failures().size() == 1U && system.failures().front().status == -10);
+        assert(system.shutdown());
+        const auto after = harness.backend->stats();
+        assert(after.vm_coroutine_creations == after.vm_coroutine_releases);
+        assert(after.prepared_ability_slots == 0U && after.prepared_event_slots == 0U);
+        // Reuse the same backend's only continuation slot with a fresh runtime identity.
+        harness.entity = harness.registry.create();
+        harness.description.front().scope = EntityScriptScope{harness.entity};
+        auto next = harness.create(publications);
+        assert(next && next->prepare());
+        assert(dispatchRuntimeHook(*next, harness.async_hook) == 1U);
+        assert(provider.pending && provider.reads == 2U && provider.writes == 2U);
+        assert(next->activeContinuationCount() == 1U && next->activeAwaitableCount() == 1U);
+        assert(next->shutdown());
+        const auto final = harness.backend->stats();
+        assert(final.vm_coroutine_creations == final.vm_coroutine_releases);
+        assert(final.prepared_ability_slots == 0U && final.prepared_event_slots == 0U);
+        std::printf(
+            "CREATION_OOM_PASS,permitted=%zu,failures=%zu,provider_during_failure=0,stack_delta=0,"
+            "slot_reused=1,roots=%zu,releases=%zu\n",
+            permitted, allocation.failures,
+            final.vm_coroutine_creations, final.vm_coroutine_releases
+        );
+        return 0;
+    }
+
+    int testCreationReentry(bool stop)
+    {
+        Harness harness{true, 1U, true, true};
+        Provider provider;
+        const auto binding = lux::script::bindScriptAbility<Ability>(provider);
+        const std::array publications{publishScriptAbility(binding)};
+        auto created = harness.create(publications);
+        assert(created);
+        auto system = std::move(*created);
+        assert(system.prepare());
+        g_observed_read_entries = 0U;
+        assert(dispatchRuntimeHook(system, harness.sync_hook) == 1U);
+        assert(g_observed_vm && g_observed_read_entries == 1U);
+        auto* vm = g_observed_vm;
+        const auto base = lua_gettop(vm);
+        CreationAllocator allocation;
+        allocation.original = lua_getallocf(vm, &allocation.context);
+        allocation.permitted = (std::numeric_limits<std::size_t>::max)();
+        struct Observation final { Harness& harness; ScriptSystem& system; bool stop; };
+        Observation observation{harness, system, stop};
+        allocation.observation_context = &observation;
+        allocation.observe_growth = [](void* context) noexcept {
+            auto& value = *static_cast<Observation*>(context);
+            if (value.stop)
+            {
+                assert(value.system.requestStop());
+                const auto busy = value.system.shutdown();
+                assert(!busy && busy.error() == EScriptSystemError::ENDPOINT_BUSY);
+            }
+            else
+                value.harness.registry.destroy(value.harness.entity);
+            assert(value.harness.backend->stats().prepared_ability_slots == AbilityTraits::Description.methods.size());
+        };
+        lua_setallocf(vm, &CreationAllocator::allocate, &allocation);
+        allocation.armed = true;
+        assert(dispatchRuntimeHook(system, harness.async_hook) == 1U);
+        allocation.armed = false;
+        lua_setallocf(vm, allocation.original, allocation.context);
+        assert(allocation.observe_growth == nullptr && allocation.failures == 0U && lua_gettop(vm) == base);
+        if (stop)
+        {
+            assert(g_observed_read_entries == 2U && provider.reads == 2U && provider.writes == 2U);
+            assert(provider.pending && system.activeContinuationCount() == 1U && system.failures().empty());
+        }
+        else
+        {
+            assert(g_observed_read_entries == 1U && provider.reads == 1U && provider.writes == 1U);
+            assert(!provider.pending && system.activeContinuationCount() == 0U);
+            assert(g_observed_steps == 1U && g_observed_step.state == EScriptStepState::FAILED);
+            assert(g_observed_step.error.status == -1);
+            // Existing invokeStep discards a returned step after native retirement. Its failure
+            // log differs from invokeSync; observe the actual backend result before that boundary.
+            assert(system.failures().empty());
+        }
+        assert(system.shutdown());
+        const auto final = harness.backend->stats();
+        assert(final.vm_coroutine_creations == final.vm_coroutine_releases);
+        assert(final.prepared_ability_slots == 0U && final.prepared_event_slots == 0U);
+        std::printf("CREATION_REENTRY_PASS,mode=%s,read_entries=%zu,reads=%zu,writes=%zu,roots=%zu,releases=%zu\n",
+            stop ? "deferred-stop" : "native-retire", g_observed_read_entries, provider.reads, provider.writes,
+            final.vm_coroutine_creations, final.vm_coroutine_releases);
+        std::printf("CREATION_STEP_RESULT,observed=%zu,status=%d,runtime_errors=%zu\n",
+            g_observed_steps, g_observed_step.error.status, system.failures().size());
+        return 0;
+    }
 } // namespace
 
 int main(int argc, char** argv)
 {
-    if (argc == 2 && std::string_view{argv[1]} == "--interpreter-only")
-        g_execution_policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
+    if (argc == 3 && std::string_view{argv[1]} == "--creation-oom")
+        return testCreationOom(static_cast<std::size_t>(std::strtoul(argv[2], nullptr, 10)));
+    if (argc == 2 && std::string_view{argv[1]} == "--fixed-root-registry") return testFixedRootAtRegistryBoundary();
+    if (argc == 2 && std::string_view{argv[1]} == "--creation-retire") return testCreationReentry(false);
+    if (argc == 2 && std::string_view{argv[1]} == "--creation-stop") return testCreationReentry(true);
     Provider provider;
     static_assert(AbilityTraits::Description.name == "LuaRuntimeTest");
     static_assert(AbilityTraits::Description.display_name == "Lua Runtime Test");
@@ -547,12 +834,12 @@ int main(int argc, char** argv)
     assert(harness.backend->stats().vm_allocations.allocations != 0U);
     assert(harness.backend->stats().vm_allocations.requested_bytes != 0U);
 
-    assert(dispatchHookForTest(harness.sync_hook) == 1U);
+    assert(dispatchRuntimeHook(system, harness.sync_hook) == 1U);
     assert(provider.reads == 1U && provider.writes == 1U && provider.value == 12);
     assert(system.activeContinuationCount() == 0U);
     assert(system.activeAwaitableCount() == 0U);
     assert(harness.backend->stats().vm_coroutine_creations == 0U);
-    assert(dispatchHookForTest(harness.scalar_hook) == 1U);
+    assert(dispatchRuntimeHook(system, harness.scalar_hook) == 1U);
     assert(provider.bool_value);
     assert(provider.i32_value == (std::numeric_limits<std::int32_t>::max)());
     assert(provider.u32_value == (std::numeric_limits<std::uint32_t>::max)());
@@ -560,22 +847,22 @@ int main(int argc, char** argv)
     assert(provider.f64_value == 1234.125);
 
     provider.value = 7;
-    assert(dispatchHookForTest(harness.async_hook) == 1U);
+    assert(dispatchRuntimeHook(system, harness.async_hook) == 1U);
     assert(provider.pending.has_value());
     assert(provider.reads == 2U && provider.writes == 2U && provider.value == 12);
     assert(system.activeContinuationCount() == 1U);
     assert(system.activeAwaitableCount() == 1U);
-    assert(dispatchHookForTest(harness.async_hook) == 1U);
+    assert(dispatchRuntimeHook(system, harness.async_hook) == 1U);
     assert(provider.reads == 2U);
 
     provider.value = 100;
     assert(provider.pending->success(7));
     assert(provider.value == 100);
-    assert(system.executeStablePoint());
+    assert(executeRuntimeStablePoint(system));
     assert(provider.value == 19);
     assert(provider.writes == 3U);
     assert(provider.pending->success(3));
-    assert(system.executeStablePoint());
+    assert(executeRuntimeStablePoint(system));
     assert(provider.value == 22);
     assert(harness.backend->stats().vm_coroutine_creations == 1U);
     assert(harness.backend->stats().vm_coroutine_resumes == 2U);
@@ -595,14 +882,14 @@ int main(int argc, char** argv)
     assert(eager_created);
     auto eager_system = std::move(*eager_created);
     assert(eager_system.prepare());
-    assert(dispatchHookForTest(eager.async_hook) == 1U);
+    assert(dispatchRuntimeHook(eager_system, eager.async_hook) == 1U);
     assert(eager_provider.value == 12);
     assert(eager_provider.eager_result.has_value() && *eager_provider.eager_result);
     assert(eager_system.activeContinuationCount() == 1U);
-    assert(eager_system.executeStablePoint());
+    assert(executeRuntimeStablePoint(eager_system));
     assert(eager_provider.value == 25);
     assert(eager_system.activeContinuationCount() == 1U);
-    assert(eager_system.executeStablePoint());
+    assert(executeRuntimeStablePoint(eager_system));
     assert(eager_provider.value == 39);
     assert(eager_system.activeContinuationCount() == 0U);
     assert(eager_system.shutdown());
@@ -620,12 +907,12 @@ int main(int argc, char** argv)
         assert(writer.record(2));
         assert(writer.record(3));
     }
-    assert(deliverEndpoint(events.event_endpoint) == 2U);
+    assert(deliverRuntimeEvent(event_system, events.event_endpoint) == 2U);
     assert(event_provider.completion_count == 2U);
     assert(event_system.activeContinuationCount() == 2U);
     assert(event_provider.completions[0].success(10));
     assert(event_provider.completions[1].success(20));
-    assert(event_system.executeStablePoint());
+    assert(executeRuntimeStablePoint(event_system));
     assert(event_provider.value == 32);
     assert(event_system.activeContinuationCount() == 0U);
     assert(event_system.shutdown());
@@ -638,7 +925,7 @@ int main(int argc, char** argv)
     assert(waiter_created);
     auto waiter_system = std::move(*waiter_created);
     assert(waiter_system.prepare());
-    assert(dispatchHookForTest(waiter.event_wait_hook) == 1U);
+    assert(dispatchRuntimeHook(waiter_system, waiter.event_wait_hook) == 1U);
     assert(waiter_system.activeContinuationCount() == 1U);
     assert(waiter_system.stats().active_event_waiters == 1U);
     std::int32_t payload{41};
@@ -647,11 +934,11 @@ int main(int argc, char** argv)
         assert(writer.record(payload));
     }
     payload = 99;
-    assert(deliverEndpoint(waiter.event_endpoint) == 1U);
+    assert(deliverRuntimeEvent(waiter_system, waiter.event_endpoint) == 1U);
     assert(waiter_provider.value == 7);
     assert(waiter_system.stats().active_event_waiters == 0U);
     assert(waiter_system.activeContinuationCount() == 2U);
-    assert(waiter_system.executeStablePoint());
+    assert(executeRuntimeStablePoint(waiter_system));
     assert(waiter_provider.value == 41);
     assert(waiter_system.activeContinuationCount() == 1U);
     assert(waiter_system.shutdown());
@@ -664,24 +951,24 @@ int main(int argc, char** argv)
     assert(targeted_created);
     auto targeted_system = std::move(*targeted_created);
     assert(targeted_system.prepare());
-    assert(dispatchHookForTest(targeted.target_wait_hook) == 1U);
+    assert(dispatchRuntimeHook(targeted_system, targeted.target_wait_hook) == 1U);
     assert(targeted_system.stats().active_event_waiters == 1U);
     const auto other = targeted.registry.create();
     {
         auto writer = targeted.target_event.begin(0U);
         assert(writer.record(other, 71));
     }
-    assert(deliverEndpoint(targeted.target_event_endpoint) == 1U);
+    assert(deliverRuntimeEvent(targeted_system, targeted.target_event_endpoint) == 1U);
     assert(targeted_system.stats().active_event_waiters == 1U);
-    assert(targeted_system.executeStablePoint());
+    assert(executeRuntimeStablePoint(targeted_system));
     assert(targeted_provider.value == 7);
     {
         auto writer = targeted.target_event.begin(0U);
         assert(writer.record(targeted.entity, 88));
     }
-    assert(deliverEndpoint(targeted.target_event_endpoint) == 1U);
+    assert(deliverRuntimeEvent(targeted_system, targeted.target_event_endpoint) == 1U);
     assert(targeted_provider.value == 7);
-    assert(targeted_system.executeStablePoint());
+    assert(executeRuntimeStablePoint(targeted_system));
     assert(targeted_provider.value == 88);
     assert(targeted_system.stats().active_event_waiters == 0U);
     assert(targeted_system.shutdown());
@@ -694,10 +981,10 @@ int main(int argc, char** argv)
     assert(event_retirement_created);
     auto event_retirement_system = std::move(*event_retirement_created);
     assert(event_retirement_system.prepare());
-    assert(dispatchHookForTest(event_retirement.event_wait_hook) == 1U);
+    assert(dispatchRuntimeHook(event_retirement_system, event_retirement.event_wait_hook) == 1U);
     assert(event_retirement_system.stats().active_event_waiters == 1U);
     event_retirement.registry.destroy(event_retirement.entity);
-    const auto event_retired = event_retirement_system.executeStablePoint();
+    const auto event_retired = executeRuntimeStablePoint(event_retirement_system);
     assert(event_retired);
     assert(event_retirement_system.stats().active_event_waiters == 0U);
     const auto writes_before_late_event = event_retirement_provider.writes;
@@ -705,8 +992,8 @@ int main(int argc, char** argv)
         auto writer = event_retirement.async_event.begin(0U);
         assert(writer.record(109));
     }
-    assert(deliverEndpoint(event_retirement.event_endpoint) == 1U);
-    static_cast<void>(event_retirement_system.executeStablePoint());
+    assert(deliverRuntimeEvent(event_retirement_system, event_retirement.event_endpoint) == 1U);
+    static_cast<void>(executeRuntimeStablePoint(event_retirement_system));
     assert(event_retirement_provider.writes == writes_before_late_event);
     assert(event_retirement_system.shutdown());
 
@@ -723,7 +1010,7 @@ int main(int argc, char** argv)
         assert(writer.record(2));
         assert(writer.record(3));
     }
-    assert(deliverEndpoint(limited.event_endpoint) == 2U);
+    assert(deliverRuntimeEvent(limited_system, limited.event_endpoint) == 2U);
     assert(!limited_system.failures().empty());
     assert(limited_system.activeContinuationCount() <= 1U);
     assert(limited_system.shutdown());
@@ -736,11 +1023,11 @@ int main(int argc, char** argv)
     assert(retiring_created);
     auto retiring_system = std::move(*retiring_created);
     assert(retiring_system.prepare());
-    assert(dispatchHookForTest(retiring.async_hook) == 1U);
+    assert(dispatchRuntimeHook(retiring_system, retiring.async_hook) == 1U);
     assert(retiring_provider.pending.has_value());
     const auto late_completion = *retiring_provider.pending;
     retiring.registry.destroy(retiring.entity);
-    const auto retired = retiring_system.executeStablePoint();
+    const auto retired = executeRuntimeStablePoint(retiring_system);
     assert(retired);
     assert(retiring_system.activeContinuationCount() == 0U);
     const auto late = late_completion.success(9);
@@ -755,11 +1042,11 @@ int main(int argc, char** argv)
     assert(failed_created);
     auto failed_system = std::move(*failed_created);
     assert(failed_system.prepare());
-    assert(dispatchHookForTest(failed.async_hook) == 1U);
+    assert(dispatchRuntimeHook(failed_system, failed.async_hook) == 1U);
     assert(failed_provider.pending.has_value());
     assert(failed_provider.pending->fail({91}));
-    const auto failed_stable = failed_system.executeStablePoint();
-    assert(!failed_stable && failed_stable.error() == EScriptSystemError::INVOCATION_FAILURE);
+    const auto failed_stable = executeRuntimeStablePoint(failed_system);
+    assert(failed_stable && failed_stable->first_instance_error == EScriptSystemError::INVOCATION_FAILURE);
     assert(failed_system.failures().back().status == 91);
     assert(failed_system.activeContinuationCount() == 0U);
     assert(failed_system.shutdown());
@@ -773,7 +1060,7 @@ int main(int argc, char** argv)
     assert(rejected_created);
     auto rejected_system = std::move(*rejected_created);
     assert(rejected_system.prepare());
-    assert(dispatchHookForTest(rejected.async_hook) == 1U);
+    assert(dispatchRuntimeHook(rejected_system, rejected.async_hook) == 1U);
     assert(!rejected_system.failures().empty());
     assert(rejected_system.failures().back().status == 81);
     assert(rejected_system.activeContinuationCount() == 0U);
@@ -786,7 +1073,7 @@ int main(int argc, char** argv)
     assert(raw_yield_created);
     auto raw_yield_system = std::move(*raw_yield_created);
     assert(raw_yield_system.prepare());
-    assert(dispatchHookForTest(raw_yield.async_hook) == 1U);
+    assert(dispatchRuntimeHook(raw_yield_system, raw_yield.async_hook) == 1U);
     assert(!raw_yield_system.failures().empty());
     assert(raw_yield_system.activeContinuationCount() == 0U);
     assert(raw_yield_system.activeAwaitableCount() == 0U);
@@ -797,7 +1084,7 @@ int main(int argc, char** argv)
     assert(undeclared_created);
     auto undeclared_system = std::move(*undeclared_created);
     assert(undeclared_system.prepare());
-    assert(dispatchHookForTest(undeclared.sync_hook) == 1U);
+    assert(dispatchRuntimeHook(undeclared_system, undeclared.sync_hook) == 1U);
     assert(!undeclared_system.failures().empty());
     assert(undeclared_system.failures().front().error == EScriptSystemError::INVOCATION_FAILURE);
     assert(undeclared_system.shutdown());

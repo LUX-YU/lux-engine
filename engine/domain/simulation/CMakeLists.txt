@@ -36,6 +36,9 @@ if(TARGET simulation_script_lua)
         simulation_script_lua
     )
 endif()
+if(TARGET simulation_script_native_lua_tasks)
+    list(APPEND LUX_SIMULATION_COMPONENTS simulation_script_native_lua_tasks)
+endif()
 install_components(
     PROJECT_NAME lux-engine-simulation
     VERSION      ${PROJECT_VERSION}

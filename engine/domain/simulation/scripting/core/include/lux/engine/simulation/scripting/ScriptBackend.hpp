@@ -6,6 +6,7 @@
 #include <lux/engine/simulation/ecs/Entity.hpp>
 #include <lux/engine/simulation/scripting/ScriptApiCapability.hpp>
 #include <lux/engine/simulation/scripting/ScriptRuntime.hpp>
+#include <lux/engine/simulation/scripting/ScriptSyncStep.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -63,13 +64,14 @@ namespace lux::simulation::script
             ecs::Entity,
             std::uint64_t
         ) noexcept{};
-        bool (*patch)(
+        // Mutation callbacks accept owned deferred commands. They must not mutate the Registry inline.
+        bool (*record_patch)(
             void*,
             ecs::Entity,
             std::uint64_t,
             const void*
         ) noexcept{};
-        bool (*command)(
+        bool (*record_command)(
             void*,
             EScriptHostCommand,
             ecs::Entity,
@@ -83,10 +85,29 @@ namespace lux::simulation::script
         ) noexcept{};
     };
 
+    // Read-only borrowed qualification. Valid only within the protected backend call that captured it.
+    class ScriptInvocationValidity final
+    {
+    public:
+        [[nodiscard]] bool valid() const noexcept
+        { return check_ && check_(context_, instance_, epoch_, category_); }
+    private:
+        const void* context_{};
+        ScriptInstanceId instance_;
+        std::uint64_t epoch_{};
+        std::uint8_t category_{};
+        bool (*check_)(const void*, ScriptInstanceId, std::uint64_t, std::uint8_t) noexcept{};
+        friend class detail::ScriptRuntimeAccess;
+    };
+
     class ScriptBehavior final
     {
       public:
         [[nodiscard]] bool isAttached() const noexcept { return api_ != nullptr; }
+        // Configuration, not current permission: an installed but invalid authority is never standalone.
+        [[nodiscard]] bool hasInvocationAuthority() const noexcept { return capture_invocation_ != nullptr; }
+        [[nodiscard]] ScriptInvocationValidity captureInvocation() const noexcept
+        { return capture_invocation_ ? capture_invocation_(invocation_context_) : ScriptInvocationValidity{}; }
 
         [[nodiscard]] bool hasSelf() const noexcept
         {
@@ -113,8 +134,8 @@ namespace lux::simulation::script
             const void* value
         ) const noexcept
         {
-            return hasSelf() && api_ && api_->patch &&
-                api_->patch(api_->context, self(), component_type, value);
+            return hasSelf() && api_ && api_->record_patch &&
+                api_->record_patch(api_->context, self(), component_type, value);
         }
 
         [[nodiscard]] bool command(
@@ -123,7 +144,7 @@ namespace lux::simulation::script
             const void* value = nullptr
         ) const noexcept
         {
-            return api_ && api_->command && api_->command(
+            return api_ && api_->record_command && api_->record_command(
                 api_->context,
                 command,
                 self(),
@@ -148,6 +169,8 @@ namespace lux::simulation::script
       private:
         ScriptInstanceScope scope_;
         const ScriptHostApi* api_{};
+        const void* invocation_context_{};
+        ScriptInvocationValidity (*capture_invocation_)(const void*) noexcept{};
 
         void attach(
             ScriptInstanceScope scope,
@@ -191,6 +214,7 @@ namespace lux::simulation::script
         ScriptInstanceId instance;
         std::span<const PreparedScriptApiCapability> capabilities;
         std::span<const PreparedScriptEventAdmission> events;
+        const ScriptSyncStepSetView* sync_steps{};
     };
 
     struct BoundScriptStepCall final

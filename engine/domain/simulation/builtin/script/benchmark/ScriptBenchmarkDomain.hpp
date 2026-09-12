@@ -12,11 +12,13 @@ namespace lux::simulation::benchmark_domain
 {
     inline constexpr lux::system::SystemInstanceId kSystem{0xB001U};
     inline constexpr HookPointId kHook{0xB002U};
+    inline constexpr HookPointId kReadHook{0xB00BU};
     inline constexpr EventPointId kEvent{0xB009U};
     inline constexpr EventPointId kTargetEvent{0xB00AU};
-    [[nodiscard]] inline SimulationDescription scriptDescription(std::size_t extra_events = 0U)
+    [[nodiscard]] inline SimulationDescription scriptDescription(std::size_t extra_events = 0U, bool oracle = false)
     {
-        constexpr std::array hooks{makeHookPointSpec<void()>(kHook, "benchmark-update")};
+        std::vector hooks{makeHookPointSpec<void()>(kHook, "benchmark-update")};
+        if (oracle) hooks.push_back(makeHookPointSpec<void()>(kReadHook, "benchmark-readback"));
         std::vector events{
             makeEventPointSpec<std::int32_t>(
                 kEvent,

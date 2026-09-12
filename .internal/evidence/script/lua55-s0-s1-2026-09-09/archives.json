@@ -1,0 +1,27 @@
+[
+  {
+    "path": "qualification.zip",
+    "bytes": 2778735,
+    "sha256": "acbf56ed571e37ac4200ea8dded2d107227e3df2c64a6a9cefc8339c7bc84a9c"
+  },
+  {
+    "path": "identities.zip",
+    "bytes": 606303,
+    "sha256": "eddf0ac4e0cb01a14cb8310fa028c1c83dfe20a49be28fa085638a344ed94b51"
+  },
+  {
+    "path": "installation.zip",
+    "bytes": 732391,
+    "sha256": "9deb27a4420caff68c4a83416690709c9d5c79d31d132ee01c67d832d540a6cb"
+  },
+  {
+    "path": "costs.zip",
+    "bytes": 8656188,
+    "sha256": "4192bf9350821aa0cdd35cd013a36976090885f5816c4222243aec3022149f3d"
+  },
+  {
+    "path": "vtune.zip",
+    "bytes": 2858362,
+    "sha256": "e33ba77790fdcbdba5498c86a90270ac37a45f909d4f9f3238526eceac42690d"
+  }
+]

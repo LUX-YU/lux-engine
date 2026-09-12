@@ -1,0 +1,33 @@
+id,operation,status,actual_change,evidence_and_limit
+O01,syncStepSlot 每次计算 typeId,IMPLEMENTED,consteval syncStepType/静态 Shape；删除 syncStepSlot 热循环,冷期 shape 负例；B1 无 typed-slot 符号
+O02,await_suspend 每次计算 expected_type,IMPLEMENTED,constexpr expected_type，仍逐等待写入实际期望类型,awaiter-int 旧 FNV prime/新常量；Event/Timer/sequence
+O03,C++ ordinal/参数数量/type/kind/size/alignment/pass,IMPLEMENTED,generated contract 声明实际 C++ shapes；冷期完整比对；热期只比 shape 身份,cold-native-step-shape 13/14；INVALID_STEP/错误 Signature；SDK shape 增量
+O04,Lua入口重复ABI数量/类型/对齐验证,IMPLEMENTED,内部 Lua invoke 接受上游已验证的 typed 形状与原资格,scalar/custom/OOM/重入；B1 cpp-invoke 和 scalar adapter 无 divq
+O05,24B值槽+40B调用frame+16B Passes span的构造/元数据复制与清零,IMPLEMENTED,移除 value_slot/call_frame/passes，传本次地址与静态 shape,Tasks/Physics/consumer 同迁；P4 machine-code
+O06,成功expected再转换为12B错误结构(status0)再检查,IMPLEMENTED,step helper 直接传 expected；成功不构造 status=0 的错误结构,native fail/后续业务为零/一次 frame destroy
+O07,void调用仍带80B通用request及输出存储/返回类型分支,IMPLEMENTED,scalar 没有 SyncInvocationRequest；record request 只保留借用,Lua scalar-int-void 适配器/record TBC/OOM
+O08,运行时参数循环、kind switch、entity_scope与return_count选择,IMPLEMENTED,scope/return/push 冷期绑定；零参数和单内建 scalar 独立适配器,B1 scalar-int-void；多参数仍按顺序处理
+O09,Cpp和Lua各capture一次调用资格,IMPLEMENTED,Cpp 只 capture 原资格一次，借给 Lua,publication/reentrant retirement/standalone authority 回归
+O10,两层入口/返回上连续重复valid,IMPLEMENTED,正常路径 5→3 次原资格检查：入口、潜在回调后、返回清理后,原 identity/publication 不变；后端非零错误优先
+O11,Lua栈扩容/转换后、真正执行Lua前的原资格重验,RETAINED,保留动态 publication、完整 identity、ordinal、原资格,旧代次/错误 ordinal/current publication/retirement
+O12,publication/完整实例代次与当前权限,RETAINED,保留转换及 allocator/Lua 用户代码后的原资格检查,不跨用户代码缓存 ACTIVE，不重新 capture 放行
+O13,每次从registry取固定私有traceback函数,IMPLEMENTED,固定私有 traceback 直接 pushcfunction，免 registry 查询,保留 traceback 错误；no new C closure allocation
+O14,"void成功callback中的lua_settop(vm,1)",IMPLEMENTED_PARTIAL,scalar 整个 C callback 消失；record 内 settop(1) 保留,converter TBC 清理不可顺手删除
+O15,pcall调用中间C callback，再lua_call真正Lua函数,IMPLEMENTED,内建 scalar 直接 protected Lua call，删除中间 C trampoline/第二 CallInfo,flat-void failure/yield/Event/TBC/recovery；P4 采样无 executeSyncStep
+O16,每次registry查询函数和self,NOT_SELECTED,未另建 closure/upvalue roots，与已采用直接 pcall 不叠加,无新增 roots/VM 可观察对象或无依据收益宣称
+O17,ExecutionScope保存恢复active_execution/base/重入深度,RETAINED,ExecutionScope/准确 base/嵌套恢复保持,合法嵌套、身份、TBC、撤权
+O18,lua_checkstack动态安全额度,RETAINED,保留实际需要的 checkstack；scalar 删除的 callback 不再需要内层额度,record/custom 的 W0 callback quota 仍独立建立
+O19,prepareResume已验证后result<int>再次走nullable链/零值fallback/通用data分支,IMPLEMENTED,prepareResume 校验后借用当前 data；私有 typed result 直接复制,READY/type/size 边界、取消、混合等待；借用仅本次 resume
+O20,AwaitableOutcome/optional/OwnedBytes间可能多余搬运,NOT_CONFIRMED,未凭源码删除结果 move，未认定为真实额外成本,优化产物/原结果 owner 和逻辑释放时点不变
+O21,每次恢复先读取仅故障需要的methodSymbol,NOT_CONFIRMED,未无依据改错误 symbol load,保留真实错误归属
+O22,C++ Event contract→local→actual slot→admission解析,IMPLEMENTED,CppStatic 按 import 冷期保存 Event admission，省关联二次映射,resolveEvent profile/contract provenance/真实四后端
+O23,prepared Event结果又走通用result_type.valid/布局分支,IMPLEMENTED,prepared Event 与任意 result 描述分别进入边界，共用 admitAwaitable,source preflight→A→commit；Timer 优先级、capacity/pin/frontier
+O24,新插入结果只返回key后立即find回同一记录,IMPLEMENTED_PARTIAL,Event waiter 插入后直接使用 dense 尾项；StableSlotMap A insert→find 保留,固定依赖 API 无返回记录入口；不缓存 moving 指针
+O25,每次resume重建带固定函数指针的ScriptStepContext,NOT_SELECTED,未改 StepContext ops 构造或新建持久 context,无充分独立证据，不改变恢复入口
+O26,每步更新execution_depth_high_water,RETAINED,公开统计/高水位合同保留,未采集字段为 null，不静默写零
+O27,同步helper被内联后ABI暂存进入coroutine frame,MEASURED_MIXED,消除重复暂存后重新量 frame；P4/pose 缩小，前三种增大,frame 176/240/352/352/512→224/288/416/224/304；pool 512 不变
+O28,lua_pushcfunction每次分配closure的假设,ALREADY_NO_ALLOCATION,n=0 pushcfunction 原本不分配 closure,不把 API 调用数称 heap 分配数
+O29,Lua self.value读取/写入与用户业务,RETAINED,Lua table 业务读写不删,同业务 provider/per-instance/workload oracle
+O30,等待/结果拥有、取消/pin、A先释放、claim顺序、FIFO/预算/frontier,RETAINED,等待 owner/slot/pin/cancel/cutoff/queue/frontier/预算保持,全量真实 Event/pin/ingress/Timer/生命周期测试
+O31,VTune每个模板inline frame都算真实函数调用的假设,ALREADY_INLINE,inline 调试名不当成额外物理调用栈,未全局 forceinline/单侧 LTO/改编译参数
+O32,真正Lua返回值检查与结果后置发布,RETAINED,Lua 实际结果与动态输入仍检验；原 OwnedBytes 策略不改,output-reject provider=1 result-unpublished；input recovery

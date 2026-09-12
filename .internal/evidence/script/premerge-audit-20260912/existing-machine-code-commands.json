@@ -1,0 +1,128 @@
+[
+  {
+    "kind": "layout",
+    "side": "E",
+    "command": [
+      "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\Llvm\\x64\\bin\\llvm-pdbutil.exe",
+      "pretty",
+      "--classes",
+      "--class-definitions=layout",
+      "--class-recurse-depth=2",
+      "--include-types=ScriptExecution|ScriptEventWaits|ScriptTimers|ScriptInstances|ScriptBindings|ScriptCompletionIngress|ExternalCompletion",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\images\\E-common\\lux_engine_simulation_script.pdb"
+    ],
+    "exit": 0,
+    "pdb_sha256": "994b03a5112a080d62d9c3f813ef7e10788e9b52c9dd70125bd4903498fb7266"
+  },
+  {
+    "kind": "layout",
+    "side": "E",
+    "command": [
+      "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\Llvm\\x64\\bin\\llvm-pdbutil.exe",
+      "pretty",
+      "--classes",
+      "--class-definitions=layout",
+      "--class-recurse-depth=2",
+      "--include-types=CppStaticScriptBackend|ScriptCoroutineContext|ScriptSyncStep",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\images\\E-common\\lux_engine_simulation_script_cpp_static.pdb"
+    ],
+    "exit": 0,
+    "pdb_sha256": "4fb608cb9889096f016d646701052316a5ae563d598a412062ae0e1c0f26ed38"
+  },
+  {
+    "kind": "layout",
+    "side": "E",
+    "command": [
+      "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\Llvm\\x64\\bin\\llvm-pdbutil.exe",
+      "pretty",
+      "--classes",
+      "--class-definitions=layout",
+      "--class-recurse-depth=2",
+      "--include-types=LuaScriptBackend",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\images\\E-common\\lux_engine_simulation_script_lua.pdb"
+    ],
+    "exit": 0,
+    "pdb_sha256": "5c6f1de9840233d6063a69060ee763da8f00d5064df11b38b559b34ac80a705f"
+  },
+  {
+    "kind": "layout",
+    "side": "E",
+    "command": [
+      "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\Llvm\\x64\\bin\\llvm-pdbutil.exe",
+      "pretty",
+      "--classes",
+      "--class-definitions=layout",
+      "--class-recurse-depth=2",
+      "--include-types=lux::simulation::na1::cost::Tasks",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\images\\E-common\\native_lua_complete_tasks.pdb"
+    ],
+    "exit": 0,
+    "pdb_sha256": "9b413932d6d6305b02cf701b13ae2abd45ab2044400d6203bc9d0a14fd44bcc7"
+  },
+  {
+    "kind": "disassembly",
+    "command": [
+      "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\Llvm\\x64\\bin\\llvm-objdump.exe",
+      "-dr",
+      "--demangle",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\engine\\domain\\simulation\\scripting\\cpp_static\\CMakeFiles\\simulation_script_cpp_static.dir\\src\\CppStaticScriptBridge.cpp.obj"
+    ],
+    "exit": 0,
+    "object_sha256": "1e93e8ffeee26fdb0720bbc28a4647a5710cc9abe9be18d53d891b10ee663736"
+  },
+  {
+    "kind": "disassembly",
+    "command": [
+      "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\Llvm\\x64\\bin\\llvm-objdump.exe",
+      "-dr",
+      "--demangle",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\engine\\domain\\simulation\\scripting\\lua\\CMakeFiles\\simulation_script_lua.dir\\src\\LuaScriptBackend.cpp.obj"
+    ],
+    "exit": 0,
+    "object_sha256": "9d4af50ff822b128cbdb9cdc93deb1911da85eaa5896d3e49e3ee8a804176ad6"
+  },
+  {
+    "kind": "disassembly",
+    "command": [
+      "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\Llvm\\x64\\bin\\llvm-objdump.exe",
+      "-dr",
+      "--demangle",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\engine\\domain\\simulation\\scripting\\native_lua_tasks\\CMakeFiles\\simulation_script_native_lua_tasks.dir\\src\\NativeLuaTaskBackend.cpp.obj"
+    ],
+    "exit": 0,
+    "object_sha256": "d53e11675a59589539f48de4c30b5c5b7044bfea22750b9ec5b43a5e2538cc16"
+  },
+  {
+    "kind": "disassembly",
+    "command": [
+      "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\Llvm\\x64\\bin\\llvm-objdump.exe",
+      "-dr",
+      "--demangle",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\o\\w\\d\\engine\\domain\\simulation\\builtin\\script\\CMakeFiles\\simulation_script.dir\\src\\ScriptSystem.cpp.obj"
+    ],
+    "exit": 0,
+    "object_sha256": "05ff92dcd7e6c01e4b9f426cac0afe02686c83b3b98162f68595044485b5b6dc"
+  },
+  {
+    "kind": "disassembly",
+    "command": [
+      "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\Llvm\\x64\\bin\\llvm-objdump.exe",
+      "-dr",
+      "--demangle",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\benchmark-slots\\B\\CMakeFiles\\native_lua_complete_tasks.dir\\generated\\native_lua_complete_tasks\\cpp_scripts\\CompleteTasks\\Tasks.CompleteTasks.script.generated.cpp.obj"
+    ],
+    "exit": 0,
+    "object_sha256": "9622fbdb4812f493e72455d1a1724d0be06608d960bdf831089886dad23f9e48"
+  },
+  {
+    "kind": "disassembly",
+    "command": [
+      "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\Llvm\\x64\\bin\\llvm-objdump.exe",
+      "-dr",
+      "--demangle",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\benchmark-slots\\B\\CMakeFiles\\native_lua_complete_tasks.dir\\2813bb2d70f061290a0115b1acdcfa56\\local-source\\engine\\domain\\simulation\\scripting\\native_lua_tasks\\benchmark\\main.cpp.obj"
+    ],
+    "exit": 0,
+    "object_sha256": "a486a9bbfc0b602a772a8ccb3beb81c0c4b2dc5ee30939395086cf3f981232e4"
+  }
+]

@@ -181,23 +181,44 @@ namespace lux::physics2d::test
     }
 
     template <class Runtime>
+    struct ScriptRuntimeHookContext final
+    {
+        Runtime& system;
+        std::optional<typename Runtime::ExecutionRegion> region;
+    };
+
+    template <class Runtime>
     [[nodiscard]] inline auto bindScriptRuntime(
-        lux::simulation::Simulation& simulation, Runtime& runtime
+        lux::simulation::Simulation& simulation, ScriptRuntimeHookContext<Runtime>& host
     ) noexcept
     {
-        return simulation.bindHookCallbacks({&runtime,
+        return simulation.bindHookCallbacks({&host,
             [](void* context, const lux::simulation::SimulationClockSnapshot&, bool stable) noexcept {
-                auto& runtime = *static_cast<Runtime*>(context);
+                auto& host = *static_cast<ScriptRuntimeHookContext<Runtime>*>(context);
+                auto& runtime = host.system;
                 if (stable)
                     runtime.beginStableAdmission();
-                return static_cast<bool>(runtime.processLifecycle());
+                if (!runtime.processLifecycle()) return false;
+                auto region = runtime.beginExecutionRegion();
+                if (!region) return false;
+                host.region.emplace(std::move(*region));
+                return true;
             },
             [](void* context, const lux::simulation::SimulationClockSnapshot&, bool stable) noexcept {
-                return !stable || static_cast<bool>(
-                    static_cast<Runtime*>(context)->executeStablePoint());
+                auto& host = *static_cast<ScriptRuntimeHookContext<Runtime>*>(context);
+                const bool result = !stable || static_cast<bool>(host.system.executeStablePoint());
+                if (!host.region || !host.region->finish()) return false;
+                host.region.reset();
+                return result;
             },
             [](void* context, const lux::simulation::SimulationClockSnapshot&) noexcept {
-                return static_cast<bool>(static_cast<Runtime*>(context)->processLifecycle());
+                auto& host = *static_cast<ScriptRuntimeHookContext<Runtime>*>(context);
+                return static_cast<bool>(host.system.processLifecycle());
+            },
+            [](void* context, const lux::simulation::SimulationClockSnapshot&) noexcept {
+                auto& host = *static_cast<ScriptRuntimeHookContext<Runtime>*>(context);
+                if (host.region && !host.region->finish()) std::terminate();
+                host.region.reset();
             }});
     }
 

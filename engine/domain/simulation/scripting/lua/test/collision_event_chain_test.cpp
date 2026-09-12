@@ -1,3 +1,4 @@
+#include "CollisionValue.lua.value.generated.hpp"
 #include "../../../system/test/HookChannelTestDriver.hpp"
 #include <lux/engine/function/script/native/NativeModule.hpp>
 #include <lux/engine/simulation/HookChannel.hpp>
@@ -24,11 +25,7 @@ namespace
     using namespace lux::simulation;
     using namespace lux::simulation::script;
 
-    struct CollisionEvent final
-    {
-        std::int32_t body{};
-        float impulse{};
-    };
+
 
     constexpr std::string_view kCollisionName{
         "lux.physics.CollisionEvent"};
@@ -60,29 +57,12 @@ namespace
             nullptr,
             0U,
             0U,
-            nullptr,
-            subscriber.method.synchronous.context};
-        if (subscriber.method.synchronous.invoke(&frame) == 0)
+            nullptr};
+        if (subscriber.method.synchronous.invoke(subscriber.method.synchronous.context, &frame) == 0)
             ++subscriber.callbacks;
     }
 
-    bool pushCollision(
-        void*,
-        void* opaque_state,
-        const void* opaque_value
-    ) noexcept
-    {
-        auto* state = static_cast<lua_State*>(opaque_state);
-        const auto& collision = *static_cast<const CollisionEvent*>(
-            opaque_value
-        );
-        lua_createtable(state, 0, 2);
-        lua_pushinteger(state, collision.body);
-        lua_setfield(state, -2, "body");
-        lua_pushnumber(state, collision.impulse);
-        lua_setfield(state, -2, "impulse");
-        return true;
-    }
+
 
     bool resolveRecord(
         void*,
@@ -217,13 +197,7 @@ int main()
         }};
     assert(native_backend);
 
-    const LuaRecordMarshaller marshaller{
-        lux::semantic::typeId(kCollisionName),
-        std::string{kCollisionName},
-        sizeof(CollisionEvent),
-        alignof(CollisionEvent),
-        nullptr,
-        &pushCollision};
+    constexpr auto marshaller = lux::script::lua::makeLuaValueOperation<CollisionEvent>();
     auto lua_created = LuaScriptBackend::create(
         {
             .instance_capacity = 1U,
@@ -231,7 +205,7 @@ int main()
             .continuation_capacity = 1U,
             .execution_depth_capacity = 4U,
             .ability_catalog_method_capacity = 1U,
-            .record_marshallers = std::span{&marshaller, 1U}
+            .values = std::span{&marshaller, 1U}
         }
     );
     assert(lua_created);

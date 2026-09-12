@@ -68,6 +68,7 @@ namespace lux::simulation::script::generated
 {% if script.owner != "" %}        detail::cppStaticObject<::{{ script.owner }}{% if attach_name != "" %}, static_cast<void (::{{ script.owner }}::*)(ScriptBehavior&) noexcept>(&::{{ script.owner }}::{{ attach_name }}){% endif %}>(),{% else %}        {},{% endif %}
         {{ script.name }}Operations::Exports, { {{ begin_symbol }}ULL, {{ end_symbol }}ULL },
         {{ script.name }}Operations::Abilities, {{ script.name }}Operations::Events,
-        &{{ script.name }}Operations::resolveAbility
+        &{{ script.name }}Operations::resolveAbility,
+{% if script.owner != "" %}        detail::cppStaticSyncStepShapes<::{{ script.owner }}>(){% else %}        {}{% endif %}
     };
 }

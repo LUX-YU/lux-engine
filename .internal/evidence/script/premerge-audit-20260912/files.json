@@ -1,0 +1,207 @@
+[
+  {
+    "path": ".gitattributes",
+    "bytes": 106,
+    "sha256": "852dc92c3afb124079c06e0dfdf65caeb9b6138befdef59c8a1ac23a89d54199"
+  },
+  {
+    "path": "attempt1/lua-sync-converter-retire-compile.log",
+    "bytes": 465,
+    "sha256": "9fe55e260d844e3bd015dba72062b5ab10a74d90cafb3cfd771be63a9f99e5a8"
+  },
+  {
+    "path": "attempt1/lua-sync-converter-retire.cpp",
+    "bytes": 23881,
+    "sha256": "902e6a0b1de66c45e2c69c4c295d81820aff7a2297268b83a844a1bff1f18ad5"
+  },
+  {
+    "path": "attempt1/probes.json",
+    "bytes": 11541,
+    "sha256": "b965e73b772735f0cb4e5d66db3b01489ddda1cb1074d0633a4061c130b5c4fb"
+  },
+  {
+    "path": "attempt1/timer-overflow-compile.log",
+    "bytes": 13903,
+    "sha256": "4eae6db7c7afc0061f2efbfd6de8426cf3d403ad3f596f8c2a5d5a920e927be7"
+  },
+  {
+    "path": "attempt1/timer-overflow.cpp",
+    "bytes": 83634,
+    "sha256": "c0de1f2fe3ae5ce60b1155ed09f8b88be539b3e47b579db2c44973050cb44c4d"
+  },
+  {
+    "path": "attempt2/lua-sync-converter-retire-compile.log",
+    "bytes": 312,
+    "sha256": "11ab5ec1609c26f4228cf0b0bd5c652b9eafe4f40f1f199fe1cb7c8e19e3db9f"
+  },
+  {
+    "path": "attempt2/probes.json",
+    "bytes": 13536,
+    "sha256": "76a3fe4be4f5a973729b2c36dcf39fed5671143b5d7cdd92ec4780e6044c4ce9"
+  },
+  {
+    "path": "attempt2/timer-overflow-compile.log",
+    "bytes": 93,
+    "sha256": "7f37e82485941b00f6c739b942aa63c47881b7c1c5d24c4f38e706903874cd07"
+  },
+  {
+    "path": "attempt2/timer-overflow-link.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "audit-identity.json",
+    "bytes": 23571,
+    "sha256": "87090db052be17b1c8f7ce3329b03732669007d06175ede616c6aa4406793b9f"
+  },
+  {
+    "path": "compile-commands-selected.json",
+    "bytes": 13429,
+    "sha256": "50c751855b8ac87e2a85911c5265e54005b85f5bae745468d92b4542be44e18a"
+  },
+  {
+    "path": "ctest-results.json",
+    "bytes": 150,
+    "sha256": "bb6deda59606816cbf36b8100d0c8cccd5514c8ac7e9cdccdc066d23ae90bf4d"
+  },
+  {
+    "path": "ctest-without-vs-env/ctest-results.json",
+    "bytes": 123,
+    "sha256": "06eab3563c1241137375e198019ad9d29484362fb7a83b0fe7865c15b40280e2"
+  },
+  {
+    "path": "ctest-without-vs-env/developer-ctest.log",
+    "bytes": 134875,
+    "sha256": "13dcc513bbb6cbae7e8e275ea1c15d0c99f3e180258d7dc8d266562668f64837"
+  },
+  {
+    "path": "ctest-without-vs-env/developer-junit.xml",
+    "bytes": 165099,
+    "sha256": "76750ad2c2411b44993dab3584336e00af144ce292c4b488aaec85a02c23c389"
+  },
+  {
+    "path": "ctest-without-vs-env/toolchain-ctest.log",
+    "bytes": 132180,
+    "sha256": "4dd30d75497dc3b7314c1d61f4e4f5eb632147e7e29c4d8772417be30159c44d"
+  },
+  {
+    "path": "ctest-without-vs-env/toolchain-junit.xml",
+    "bytes": 156306,
+    "sha256": "592e660c02bf87e8108fb0c2f5581840d4fb3a1310a2826c0e046a48b844252e"
+  },
+  {
+    "path": "developer-ctest.log",
+    "bytes": 20350,
+    "sha256": "f2f8c6fa833649be0d981bfbf9de252b428219e1318eb233ad9ac5e8fb888893"
+  },
+  {
+    "path": "developer-junit.xml",
+    "bytes": 54073,
+    "sha256": "a98f8eea7700ea29c1e23bd40265ba5aa2e658f1d29286f6ba0995e103d9d5d5"
+  },
+  {
+    "path": "existing-machine-code-commands.json",
+    "bytes": 5521,
+    "sha256": "3ed4319dc321e429d9b36bdf6191cebcf2daa5b7b07d6ac7c710ae6b6a04a3ce"
+  },
+  {
+    "path": "existing-P4-E-hotspots.csv",
+    "bytes": 21106,
+    "sha256": "2017d15af611157c1855a822601fab97b892b68e32169e167bf6b41f9c375bd1"
+  },
+  {
+    "path": "existing-profile-runs.json",
+    "bytes": 2751,
+    "sha256": "8805eb3ca3543a84a6abe2445d0d3c09b47ff1f8e41f0e82939471f624c5abd4"
+  },
+  {
+    "path": "findings.csv",
+    "bytes": 2592,
+    "sha256": "e6b5596b90d6b6404a341ebc3f31580f6759b13449142ba03471c1a79c781d1b"
+  },
+  {
+    "path": "layout-excerpts.txt",
+    "bytes": 2271,
+    "sha256": "bfa0b9f9253765ac13203e4b94e43eada2a87687f6eb1a5332882c4f05db0a1d"
+  },
+  {
+    "path": "lua-sync-converter-retire-compile.log",
+    "bytes": 104,
+    "sha256": "962930c47ab3255788c639e04e593e9e18040fe76f2a155c9978b9572972de31"
+  },
+  {
+    "path": "lua-sync-converter-retire-link.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "lua-sync-converter-retire.cpp",
+    "bytes": 24448,
+    "sha256": "6b25c20a4730693e88fea83d834e04e035153bf496228c637e95ce4fe9f95119"
+  },
+  {
+    "path": "lua-sync-converter-retire.log",
+    "bytes": 570,
+    "sha256": "f3a42c2f45a18a47ff1aa353ab1d2495551dad9858f8f223bac3c7c7e5394198"
+  },
+  {
+    "path": "machine-code-excerpts.asm",
+    "bytes": 53961,
+    "sha256": "cbeb0b6c044914cd3ff46ca473a22c4510e23dd8a1f4836d9627b993ece2efa9"
+  },
+  {
+    "path": "probes.json",
+    "bytes": 16115,
+    "sha256": "5cc3517dea93bf2e9610d6fa539cef802e1f40dd45e02c0628b1b6dc46b89692"
+  },
+  {
+    "path": "reproduce.py",
+    "bytes": 9614,
+    "sha256": "9e66bac42e44833328b4a90ccece30e0da60b3d83489c4a04ad59034d2459ea8"
+  },
+  {
+    "path": "result.json",
+    "bytes": 2396,
+    "sha256": "0aa303dc06ac8fb8b3f7dacef04ded9f98f51a4c53b78986160d3062c5a6f324"
+  },
+  {
+    "path": "sealed-image-E.json",
+    "bytes": 6803,
+    "sha256": "18f1c09d52d3ed28d6faa9cd13827379897f0801233a4afe651132db28a7f309"
+  },
+  {
+    "path": "symbol-usage.txt",
+    "bytes": 2048,
+    "sha256": "05acd9de9357fd08165801535cd89781bc59422af9324607fce4349b236983fa"
+  },
+  {
+    "path": "timer-overflow-compile.log",
+    "bytes": 93,
+    "sha256": "7f37e82485941b00f6c739b942aa63c47881b7c1c5d24c4f38e706903874cd07"
+  },
+  {
+    "path": "timer-overflow-link.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "timer-overflow.cpp",
+    "bytes": 83806,
+    "sha256": "1d87e78d6bf6c1b0828bfca0f311f0a9b55d293d5e7a33877eb0cb17a7da042c"
+  },
+  {
+    "path": "timer-overflow.log",
+    "bytes": 352,
+    "sha256": "bfb0484115e0564189fce89d3511b72a981c242fcf5221898684581a57cbb092"
+  },
+  {
+    "path": "toolchain-ctest.log",
+    "bytes": 17655,
+    "sha256": "310101ed7e0bdd2e76859f4fa5d623de458f5ccd9288440f589651592f412a5a"
+  },
+  {
+    "path": "toolchain-junit.xml",
+    "bytes": 45290,
+    "sha256": "e52f3b9890cdc3d12353a9dc7b78e8c2e6678cad4e0d34bdd819da3010351bc3"
+  }
+]

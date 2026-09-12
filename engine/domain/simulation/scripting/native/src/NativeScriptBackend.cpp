@@ -3,6 +3,7 @@
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
 #include <lux/engine/simulation/scripting/ScriptContractValidation.hpp>
 #include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
+#include <lux/engine/simulation/scripting/native/NativeFrameStorage.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -31,7 +32,7 @@ namespace lux::simulation::script
             void* lease{};
             void (*release)(void*) noexcept{};
             detail::BoundedClassStorage::ClassHandle state_class;
-            detail::BoundedClassStorage::ClassHandle frame_class;
+            detail::NativeFrameStorage::Layout frame_class;
         };
 
         struct Instance final
@@ -48,8 +49,35 @@ namespace lux::simulation::script
             std::size_t state_align{1U};
             detail::BoundedClassStorage::Allocation state_allocation;
             std::vector<lux_script_prepared_ability> abilities;
+            std::vector<PreparedLocalAsyncStart> local_abilities;
             std::vector<PreparedEvent> events;
             lux_script_native_instance_context native_context{};
+            [[nodiscard]] std::size_t bindingBytes() const noexcept
+            {
+                return abilities.capacity() * sizeof(lux_script_prepared_ability) +
+                    local_abilities.capacity() * sizeof(PreparedLocalAsyncStart) +
+                    events.capacity() * sizeof(PreparedEvent);
+            }
+            void resetForReuse() noexcept
+            {
+                native_context = {};
+                abilities.clear();
+                local_abilities.clear();
+                events.clear();
+                module = nullptr;
+                state = nullptr;
+                state_size = 0U;
+                state_align = 1U;
+                state_allocation = {};
+            }
+        };
+
+        struct BindingCapacityUpdate final
+        {
+            std::size_t& total;
+            const Instance& instance;
+            const std::size_t previous{instance.bindingBytes()};
+            ~BindingCapacityUpdate() { total += instance.bindingBytes() - previous; }
         };
 
         struct PreparedCall final
@@ -57,21 +85,21 @@ namespace lux::simulation::script
             State* owner{};
             Instance* instance{};
             const lux_script_function_desc* function{};
-            detail::BoundedClassStorage::ClassHandle frame_class;
+            detail::NativeFrameStorage::Layout frame_class;
         };
 
         struct NativeContinuation final
         {
             State* owner{};
             PreparedCall* call{};
-            detail::BoundedClassStorage::Allocation frame;
+            detail::NativeFrameStorage::Lease frame;
             std::size_t slot{(std::numeric_limits<std::size_t>::max)()};
             const lux_script_type_desc* waiting_event_payload{};
         };
 
         struct StepAdapter final
         {
-            PreparedCall* call{};
+            std::span<const Instance::PreparedEvent> events;
             ScriptStepContext* context{};
             NativeContinuation* continuation{};
         };
@@ -79,7 +107,7 @@ namespace lux::simulation::script
         State(
             NativeModuleResolver source_resolver,
             NativeScriptBackendConfig source_config,
-            detail::BoundedClassStorage source_frame_storage,
+            detail::NativeFrameStorage source_frame_storage,
             detail::BoundedClassStorage source_state_storage,
             std::span<const detail::StorageClassPlan> frame_plans,
             std::span<const detail::StorageClassPlan> state_plans
@@ -99,7 +127,6 @@ namespace lux::simulation::script
                     layouts.push_back(StorageLayout{plans[index].size, plans[index].alignment, {index}});
             };
             remember(state_layouts, state_plans);
-            remember(frame_layouts, frame_plans);
             modules.reserve(module_capacity);
             module_index.reserve(module_capacity);
             instances.resize(instance_capacity);
@@ -158,7 +185,7 @@ namespace lux::simulation::script
                 frame_alignment = (std::max)(frame_alignment, static_cast<std::size_t>(function.step->frame_align));
             }
             if (frame_size == 0U) return true;
-            entry.frame_class = findStorageClass(frame_layouts, frame_size, frame_alignment);
+            entry.frame_class = frame_storage.domain(frame_size, frame_alignment);
             return static_cast<bool>(entry.frame_class);
         }
 
@@ -230,11 +257,43 @@ namespace lux::simulation::script
                 native_type.align == semantic.alignment;
         }
 
+        static int finishLocalStart(void* invocation, lux_script_async_token* waiting,
+            const PreparedLocalAsyncStart& local, std::span<const lux::script::ScriptAbilityInputSlot> inputs) noexcept
+        {
+            auto* step = detail::NativeAbilityProjectionAccess::step(invocation);
+            if (!step || !waiting) return -1;
+            detail::NativeAbilityProjectionAccess::beginAbility(invocation);
+            const auto result = local.start(*step, inputs);
+            if (result.state == EScriptStepState::SUSPENDED && result.valid())
+            {
+                *waiting = {result.waiting_on.slot, result.waiting_on.generation};
+                return 0;
+            }
+            return result.state == EScriptStepState::FAILED && result.error.valid() ? result.error.status : -1;
+        }
+        static int startLocalNext(
+            void* invocation, void* provider, const void*, lux_script_async_token* waiting
+        ) noexcept
+        {
+            return finishLocalStart(
+                invocation, waiting, *static_cast<const PreparedLocalAsyncStart*>(provider), {}
+            );
+        }
+        static int startLocalSeconds(void* invocation, void* provider, const void*, double duration,
+            lux_script_async_token* waiting) noexcept
+        {
+            const lux::script::ScriptAbilityInputSlot input{lux::semantic::TypeTraits<double>::AbiKind, {},
+                sizeof(double), lux::semantic::typeId(lux::semantic::TypeTraits<double>::CanonicalName), &duration};
+            return finishLocalStart(invocation, waiting, *static_cast<const PreparedLocalAsyncStart*>(provider),
+                std::span{&input, 1U});
+        }
+
         [[nodiscard]] EScriptBackendResult bindAbilities(
             Instance& instance,
             const ScriptInstanceCreateContext& context
         ) noexcept
         {
+            BindingCapacityUpdate observation{retained_binding_bytes, instance};
             const auto imports = instance.module->module->abilityImports();
             if (imports.size() > config.max_ability_imports_per_module)
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
@@ -244,6 +303,8 @@ namespace lux::simulation::script
             {
                 instance.abilities.clear();
                 instance.abilities.reserve(imports.size());
+                instance.local_abilities.clear();
+                instance.local_abilities.reserve(imports.size());
                 for (const auto& import : imports)
                 {
                     const auto contribution = std::ranges::find_if(ability_contributions, [&](const auto& candidate) {
@@ -280,6 +341,12 @@ namespace lux::simulation::script
                         return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                     }
 
+                    const bool mismatched_specialization = contribution->expected_dispatch != nullptr &&
+                        (contribution->expected_context != capability->context ||
+                         contribution->expected_dispatch != capability->dispatch);
+                    if (mismatched_specialization)
+                        return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+
                     const lux::script::ScriptAbilityErasedMethodBinding* method{};
                     for (const auto& candidate : capability->methods)
                     {
@@ -305,11 +372,20 @@ namespace lux::simulation::script
                         if (!sameType(import.results[index], method->results[index]))
                             return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                     }
-                    instance.abilities.push_back({
-                        capability->context,
-                        capability->dispatch,
-                        projected->entry
-                    });
+                    const auto local = capability->local_async.resolve(method->method,
+                        capability->context, capability->dispatch);
+                    instance.local_abilities.push_back(local);
+                    if (local)
+                    {
+                        const bool invalid_shape = method->kind != lux::script::EScriptApiMethodKind::ASYNC_OPERATION ||
+                            !method->results.empty() || method->parameters.size() != local.argumentCount();
+                        if (invalid_shape) return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                        const auto entry = local.argumentCount() == 0U ?
+                            reinterpret_cast<lux_script_ability_direct_entry_fn>(&startLocalNext) :
+                            reinterpret_cast<lux_script_ability_direct_entry_fn>(&startLocalSeconds);
+                        instance.abilities.push_back({&instance.local_abilities.back(), capability->dispatch, entry});
+                    }
+                    else instance.abilities.push_back({capability->context, capability->dispatch, projected->entry});
                 }
             }
             catch (const std::bad_alloc&)
@@ -330,6 +406,7 @@ namespace lux::simulation::script
             const ScriptInstanceCreateContext& context
         ) noexcept
         {
+            BindingCapacityUpdate observation{retained_binding_bytes, instance};
             const auto imports = instance.module->module->eventWaitImports();
             if (imports.size() != context.events.size() || imports.size() > config.max_event_wait_imports_per_module)
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
@@ -355,23 +432,6 @@ namespace lux::simulation::script
             }
         }
 
-        static int invokePrepared(lux_script_call_frame* frame) noexcept
-        {
-            if (frame == nullptr || frame->user_context == nullptr)
-                return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
-            auto& prepared = *static_cast<PreparedCall*>(frame->user_context);
-            if (prepared.instance == nullptr || prepared.function == nullptr || prepared.function->invoke == nullptr)
-                return static_cast<std::int32_t>(lux::script::EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS);
-            const auto* previous_native = frame->native_instance;
-            void* previous_user = frame->user_context;
-            frame->native_instance = std::addressof(prepared.instance->native_context);
-            frame->user_context = prepared.instance->state;
-            const auto status = prepared.function->invoke(frame);
-            frame->user_context = previous_user;
-            frame->native_instance = previous_native;
-            return status;
-        }
-
         static int startEventWait(
             void* opaque,
             std::uint32_t ordinal,
@@ -379,17 +439,9 @@ namespace lux::simulation::script
         ) noexcept
         {
             auto& adapter = *static_cast<StepAdapter*>(opaque);
-            if (adapter.call == nullptr || adapter.call->instance == nullptr || adapter.context == nullptr ||
-                adapter.call->instance->module == nullptr || adapter.call->instance->module->module == nullptr ||
-                waiting_on == nullptr)
-            {
+            if (adapter.context == nullptr || waiting_on == nullptr || ordinal >= adapter.events.size())
                 return -1;
-            }
-            if (ordinal >= adapter.call->instance->events.size())
-                return -1;
-            const auto& prepared = adapter.call->instance->events[ordinal];
-            if (prepared.import == nullptr)
-                return -1;
+            const auto& prepared = adapter.events[ordinal];
             const auto result = adapter.context->event_waits.wait(prepared.admission);
             if (!result)
                 return -1000 - static_cast<std::int32_t>(result.error());
@@ -415,24 +467,26 @@ namespace lux::simulation::script
             }
         }
 
-        [[nodiscard]] NativeContinuation* createNativeContinuation(PreparedCall& call) noexcept
+        [[nodiscard]] NativeContinuation* createNativeContinuation(
+            PreparedCall& call, const lux_script_step_desc& step
+        ) noexcept
         {
-            if (free_continuations.empty() || call.function == nullptr || call.function->step == nullptr)
+            // Loader and preparation fixed this layout; frame capacity and lifetime remain dynamic.
+            if (free_continuations.empty())
                 return nullptr;
-            const auto& step = *call.function->step;
-            if (step.frame_size == 0U || step.frame_size > config.max_continuation_frame_bytes ||
-                step.frame_align == 0U || (step.frame_align & (step.frame_align - 1U)) != 0U)
+            const auto slot = free_continuations.back();
+            free_continuations.pop_back(); // Logical slot is reserved before any physical frame relationship.
+            auto& continuation = continuations[slot];
+            if (!frame_storage.acquire(call.frame_class, continuation.frame))
             {
+                free_continuations.push_back(slot);
                 return nullptr;
             }
-            auto frame = frame_storage.acquire(call.frame_class, step.frame_size);
-            if (!frame)
-                return nullptr;
-            std::memset(frame->data, 0, step.frame_size);
-            const auto slot = free_continuations.back();
-            free_continuations.pop_back();
-            auto& continuation = continuations[slot];
-            continuation = {this, std::addressof(call), *frame, slot};
+            if (step.initialization == LUX_SCRIPT_FRAME_ZEROED_BY_HOST)
+                std::memset(continuation.frame.data, 0, step.frame_size);
+            continuation.owner = this;
+            continuation.call = std::addressof(call);
+            continuation.slot = slot;
             return std::addressof(continuation);
         }
 
@@ -448,7 +502,10 @@ namespace lux::simulation::script
             const auto slot = continuation.slot;
             if (owner != nullptr)
                 static_cast<void>(owner->frame_storage.release(continuation.frame));
-            continuation = {};
+            continuation.owner = nullptr;
+            continuation.call = nullptr;
+            continuation.slot = (std::numeric_limits<std::size_t>::max)();
+            continuation.waiting_event_payload = nullptr;
             if (owner != nullptr && slot < owner->continuations.size())
                 owner->free_continuations.push_back(slot);
         }
@@ -499,7 +556,8 @@ namespace lux::simulation::script
                     const_cast<std::byte*>(packet.value->bytes.data())
                 };
             }
-            StepAdapter adapter{continuation.call, std::addressof(context), std::addressof(continuation)};
+            StepAdapter adapter{
+                continuation.call->instance->events, std::addressof(context), std::addressof(continuation)};
             const lux_script_step_host host{std::addressof(adapter), &startEventWait};
             lux_script_step_outcome outcome{};
             const auto status = continuation.call->function->step->resume(
@@ -528,25 +586,21 @@ namespace lux::simulation::script
             if (prepared.owner == nullptr || prepared.instance == nullptr || prepared.function == nullptr ||
                 prepared.function->step == nullptr)
                 return ScriptStepResult::failed(-1);
-            auto* continuation = prepared.owner->createNativeContinuation(prepared);
+            const auto& step = *prepared.function->step;
+            auto* continuation = prepared.owner->createNativeContinuation(prepared, step);
             if (continuation == nullptr)
                 return ScriptStepResult::failed(-1);
 
-            const auto* previous_native = frame.native_instance;
-            void* previous_user = frame.user_context;
-            frame.native_instance = std::addressof(prepared.instance->native_context);
-            frame.user_context = prepared.instance->state;
-            StepAdapter adapter{std::addressof(prepared), std::addressof(context), continuation};
+            StepAdapter adapter{prepared.instance->events, std::addressof(context), continuation};
             const lux_script_step_host host{std::addressof(adapter), &startEventWait};
             lux_script_step_outcome outcome{};
-            const auto status = prepared.function->step->start(
+            const auto status = step.start(
+                std::addressof(prepared.instance->native_context),
                 std::addressof(frame),
                 std::addressof(host),
                 continuation->frame.data,
                 std::addressof(outcome)
             );
-            frame.user_context = previous_user;
-            frame.native_instance = previous_native;
             if (status != 0)
             {
                 destroyNativeContinuation(*continuation);
@@ -743,7 +797,7 @@ namespace lux::simulation::script
             const auto instance_slot = self.free_instances.back();
             self.free_instances.pop_back();
             auto* instance = std::addressof(self.instances[instance_slot]);
-            *instance = {};
+            instance->resetForReuse();
             instance->module = module;
             instance->state_size = body->state_size;
             instance->state_align = body->state_align;
@@ -752,7 +806,7 @@ namespace lux::simulation::script
                 const auto allocation = self.state_storage.acquire(module->state_class, body->state_size);
                 if (!allocation)
                 {
-                    *instance = {};
+                    instance->resetForReuse();
                     self.free_instances.push_back(instance_slot);
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
                 }
@@ -773,7 +827,7 @@ namespace lux::simulation::script
             {
                 if (instance->state)
                     static_cast<void>(self.state_storage.release(instance->state_allocation));
-                *instance = {};
+                instance->resetForReuse();
                 self.free_instances.push_back(instance_slot);
                 return abilities;
             }
@@ -782,7 +836,7 @@ namespace lux::simulation::script
             {
                 if (instance->state)
                     static_cast<void>(self.state_storage.release(instance->state_allocation));
-                *instance = {};
+                instance->resetForReuse();
                 self.free_instances.push_back(instance_slot);
                 return events;
             }
@@ -824,7 +878,8 @@ namespace lux::simulation::script
                     return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
                 }
             }
-            detail::BoundedClassStorage::ClassHandle frame_class;
+            if (self.free_prepared_calls.empty()) return EScriptBackendResult::CAPACITY_EXCEEDED;
+            detail::NativeFrameStorage::Layout frame_class;
             if (function->step != nullptr)
             {
                 const auto& step = *function->step;
@@ -833,19 +888,19 @@ namespace lux::simulation::script
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
                 // The executable's envelope owns the prepared population. A small method must not
                 // steal a different population's small-frame capacity.
-                frame_class = instance->module->frame_class;
+                frame_class = self.frame_storage.prepare(
+                    instance->module->frame_class, step.frame_size, step.frame_align
+                );
                 if (!frame_class)
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
             }
-            if (self.free_prepared_calls.empty())
-                return EScriptBackendResult::CAPACITY_EXCEEDED;
             const auto slot = self.free_prepared_calls.back();
             self.free_prepared_calls.pop_back();
             auto& prepared = self.prepared_calls[slot];
             prepared = {std::addressof(self), instance, function, frame_class};
             result = {
                 std::addressof(prepared),
-                lux::script::BoundScriptCall{&invokePrepared, std::addressof(prepared)},
+                lux::script::BoundScriptCall{function->invoke, std::addressof(instance->native_context)},
                 function->step == nullptr
                     ? BoundScriptStepCall{}
                     : BoundScriptStepCall{std::addressof(prepared), &invokePreparedStep}
@@ -872,6 +927,7 @@ namespace lux::simulation::script
             const auto slot = static_cast<std::size_t>(prepared - self.prepared_calls.data());
             if (prepared->instance == nullptr)
                 return;
+            if (prepared->frame_class && !self.frame_storage.releaseLayout(prepared->frame_class)) return;
             *prepared = {};
             self.free_prepared_calls.push_back(slot);
         }
@@ -894,7 +950,7 @@ namespace lux::simulation::script
             const auto instance_slot = static_cast<std::size_t>(
                 instance - self.instances.data()
             );
-            *instance = {};
+            instance->resetForReuse();
             self.free_instances.push_back(instance_slot);
             if (self.live_instances != 0U)
                 --self.live_instances;
@@ -905,11 +961,11 @@ namespace lux::simulation::script
         std::size_t module_capacity{};
         std::size_t instance_capacity{};
         std::size_t live_instances{};
+        std::size_t retained_binding_bytes{};
         NativeScriptRecordLayoutResolver record_layouts;
         std::vector<lux::script::native::ScriptAbilityNativeContribution> ability_contributions;
         std::vector<ModuleEntry> modules;
         std::vector<StorageLayout> state_layouts;
-        std::vector<StorageLayout> frame_layouts;
         std::unordered_map<lux::asset::AssetId, std::size_t> module_index;
         std::vector<Instance> instances;
         std::vector<std::size_t> free_instances;
@@ -917,7 +973,7 @@ namespace lux::simulation::script
         std::vector<std::size_t> free_prepared_calls;
         std::vector<NativeContinuation> continuations;
         std::vector<std::size_t> free_continuations;
-        detail::BoundedClassStorage frame_storage;
+        detail::NativeFrameStorage frame_storage;
         detail::BoundedClassStorage state_storage;
     };
 
@@ -1018,11 +1074,12 @@ namespace lux::simulation::script
                 }
                 if (!append(frame_plans, frame_size, frame_alignment, population.continuations)) return;
             }
-            detail::BoundedClassStorage frame_storage;
+            detail::NativeFrameStorage frame_storage;
             if (!frame_plans.empty())
             {
-                auto created = detail::BoundedClassStorage::create(
-                    frame_plans, config.continuation_frame_storage_bytes, config.continuation_capacity);
+                auto created = detail::NativeFrameStorage::create(
+                    frame_plans, config.continuation_frame_storage_bytes, config.continuation_capacity,
+                    config.prepared_call_capacity, config.observe_storage);
                 if (!created) return;
                 frame_storage = std::move(*created);
             }
@@ -1030,7 +1087,9 @@ namespace lux::simulation::script
             if (!state_plans.empty())
             {
                 auto created = detail::BoundedClassStorage::create(
-                    state_plans, config.state_storage_bytes, config.instance_capacity);
+                    state_plans, config.state_storage_bytes, config.instance_capacity,
+                    UINT64_MAX, config.observe_storage
+                );
                 if (!created)
                     return;
                 state_storage = std::move(*created);
@@ -1080,7 +1139,7 @@ namespace lux::simulation::script
             states.allocation_high_water,
             states.acquire_steps,
             states.release_steps,
-            stats.metadata_bytes + state_->frame_layouts.capacity() * sizeof(State::StorageLayout),
+            stats.metadata_bytes,
             stats.acquire_steps,
             stats.release_steps,
             states.reserved_slots,
@@ -1088,7 +1147,10 @@ namespace lux::simulation::script
             states.live_bytes,
             stats.live_bytes,
             stats.occupied_bytes,
-            states.capacity_failures
+            states.capacity_failures,
+            state_->config.observe_storage,
+            state_->retained_binding_bytes,
+            stats.active_region_bytes
         };
     }
 

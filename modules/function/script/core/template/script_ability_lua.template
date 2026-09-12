@@ -13,20 +13,22 @@ namespace lux::script::lua
     struct ScriptAbilityLuaTraits<::{{ rec.fq_name }}> final
     {
         using AbilityTraits = ScriptAbilityTraits<::{{ rec.fq_name }}>;
+        using Policy = typename ScriptAbilityLuaPolicy<::{{ rec.fq_name }}>::Type;
 {% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}
-        [[nodiscard]] static int {{ method.spelling }}(lua_State* state) noexcept
+        using Values_{{ method.spelling }} = LuaAbilityValueSignature<Policy, {{ method.result_type_id }}{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }}{% endfor %}>;
+        [[nodiscard]] static LuxLuaBoundaryOutcome {{ method.spelling }}(lua_State* state) noexcept
         {
-{% if kind == "async_operation" %}            return lux::simulation::script::detail::startLuaAbility<{{ method.result_type_id }}{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }}{% endfor %}>(
+{% if kind == "async_operation" %}            return lux::simulation::script::detail::startLuaValueAbility<Policy, {{ method.result_type_id }}{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }}{% endfor %}>(
                 state,
-                [](lux::simulation::script::detail::LuaPreparedAbilityAccess access{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, std::remove_cvref_t<{{ type.id }}> {{ param.name }}{% endfor %}, ScriptAbilityCompletion<{{ method.result_type_id }}> completion) noexcept
+                [](lux::simulation::script::detail::LuaPreparedAbilityAccess access{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }} {{ param.name }}{% endfor %}, ScriptAbilityCompletion<{{ method.result_type_id }}> completion) noexcept
                 {
                     const auto& dispatch = *static_cast<const AbilityTraits::Dispatch*>(access.dispatch);
                     return dispatch.{{ method.spelling }}(access.context{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %}, std::move(completion));
                 }
             );
-{% else %}            return lux::simulation::script::detail::invokeLuaAbility<{{ method.result_type_id }}{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }}{% endfor %}>(
+{% else %}            return lux::simulation::script::detail::invokeLuaValueAbility<Policy, {{ method.result_type_id }}{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }}{% endfor %}>(
                 state,
-                [](lux::simulation::script::detail::LuaPreparedAbilityAccess access{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, std::remove_cvref_t<{{ type.id }}> {{ param.name }}{% endfor %}) noexcept -> {{ method.result_type_id }}
+                [](lux::simulation::script::detail::LuaPreparedAbilityAccess access{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }} {{ param.name }}{% endfor %}) noexcept -> {{ method.result_type_id }}
                 {
                     const auto& dispatch = *static_cast<const AbilityTraits::Dispatch*>(access.dispatch);
 {% if method.result_type_id == "void" %}                    dispatch.{{ method.spelling }}(access.context{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %});
@@ -39,7 +41,7 @@ namespace lux::script::lua
 {% set emitted = false %}{% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% if emitted %},
 {% endif %}            ScriptAbilityLuaMethodProjection{
                 ScriptApiMethodIdView{"{{ cxx_str(annotation_get_for_or(method, "luxability::method", "id", "")) }}"},
-                &{{ method.spelling }}
+                &{{ method.spelling }}, Values_{{ method.spelling }}::Parameters, Values_{{ method.spelling }}::Results
             }{% set emitted = true %}{% endif %}{% endfor %}
         };
     };

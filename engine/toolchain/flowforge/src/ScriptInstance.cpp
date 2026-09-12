@@ -6,6 +6,7 @@
 #include <lux/engine/meta/Meta.hpp>
 
 #include <mlir/ExecutionEngine/ExecutionEngine.h>
+#include <mlir/ExecutionEngine/OptUtils.h>
 #include <mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h>
 #include <mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h>
 #include <llvm/ADT/Hashing.h>
@@ -101,6 +102,8 @@ namespace lux::flowforge
 
             mlir::ExecutionEngineOptions engine_options;
             engine_options.jitCodeGenOptLevel = llvm::CodeGenOptLevel::Default;
+            const auto optimize = mlir::makeOptimizingTransformer(2U, 0U, nullptr);
+            engine_options.transformer = optimize;
             auto maybe_engine = mlir::ExecutionEngine::create(module, engine_options);
             if (!maybe_engine)
             {
@@ -213,9 +216,11 @@ namespace lux::flowforge
             // local void* holding the block's base address (null when the graph
             // is stateless — generated code then never dereferences it).
             void* state_base = state_.empty() ? nullptr : static_cast<void*>(state_.data());
+            void* prepared_abilities = nullptr;
             llvm::SmallVector<void*, 8> packed;
-            packed.reserve(args.size() + 1);
+            packed.reserve(args.size() + 2);
             packed.push_back(&state_base);
+            packed.push_back(&prepared_abilities);
             packed.append(args.begin(), args.end());
             if (llvm::Error error = engine_->invokePacked(entry->symbol, packed))
             {

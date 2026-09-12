@@ -1,0 +1,11 @@
+{
+  "remote": "git@github.com:LUX-YU/lux-engine.git",
+  "branch": "codex/s6-deep-optimization",
+  "download_commit": "10f69062cbd04fbeb6ff9939362009e7f794a2f8",
+  "bytes": 8072323,
+  "entries": 1488,
+  "sha256": "624c592916c9e32b0f81aff7c9048ddd56008759f0d91fb2c506141a447a26d4",
+  "all_entry_hashes_match": true,
+  "compiled_binaries_in_archive": false,
+  "method": "fresh bare fetch from GitHub; git show of immutable commit; every archive entry checked"
+}

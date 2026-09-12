@@ -1,11 +1,13 @@
 #include <lux/engine/simulation/scripting/lua/LuaScriptAbilityProjection.hpp>
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
+#include <lua.hpp>
 
 #include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cstdio>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -14,15 +16,33 @@
 namespace
 {
     using namespace lux::simulation::script;
-    lux::script::lua::ELuaExecutionPolicy policy{lux::script::lua::ELuaExecutionPolicy::DEFAULT};
+    lua_State* observed_vm{};
+
+    struct DenyGrowth final
+    {
+        lua_Alloc original{};
+        void* context{};
+        std::size_t failures{};
+        static void* allocate(void* opaque, void* pointer, std::size_t old_size, std::size_t size) noexcept
+        {
+            auto& self = *static_cast<DenyGrowth*>(opaque);
+            if (size != 0U && (pointer == nullptr || size > old_size))
+            {
+                ++self.failures;
+                return nullptr;
+            }
+            return self.original(self.context, pointer, old_size, size);
+        }
+    };
 
     struct Dispatch final
     {
         void (*call)(void*) noexcept;
     };
 
-    int call(lua_State* state) noexcept
+    LuxLuaBoundaryOutcome call(lua_State* state) noexcept
     {
+        observed_vm = state;
         return detail::invokeLuaAbility<void>(state, [](detail::LuaPreparedAbilityAccess& access) noexcept {
             static_cast<const Dispatch*>(access.dispatch)->call(access.context);
         });
@@ -99,7 +119,6 @@ void testAbilityProvenance()
         .ability_catalog_method_capacity = 2U,
         .prepared_ability_capacity = 4U,
         .abilities = contributions,
-        .execution_policy = policy,
         .prepared_ability_blocks = std::array{
             lux::simulation::script::LuaPreparedBlockClass{
                 1U,
@@ -143,8 +162,8 @@ void testAbilityProvenance()
         ScriptBackendPreparedMethod prepared;
         assert(runtime.prepareMethod(runtime.context, instance, artifact.description().exports[method], prepared) ==
             EScriptBackendResult::SUCCESS);
-        lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, prepared.synchronous.context};
-        const auto result = prepared.synchronous.invoke(&frame);
+        lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+        const auto result = prepared.synchronous.invoke(prepared.synchronous.context, &frame);
         runtime.releaseMethod(runtime.context, instance, prepared);
         return result;
     };
@@ -165,9 +184,63 @@ void testAbilityProvenance()
     assert(invoke(rebuilt, alpha_artifact, 2U) != 0);
     assert(alpha_calls == 0 && beta_calls == 2);
     runtime.destroyInstance(runtime.context, rebuilt);
+    auto new_content = makeArtifact(alpha,
+        "return {save=function() end, own=function() lux.Alpha.call() end,"
+        "foreign=function() table.lux_saved() end}"
+    );
+    const auto before = backend->stats();
+    const auto top = lua_gettop(observed_vm);
+    DenyGrowth allocator;
+    allocator.original = lua_getallocf(observed_vm, &allocator.context);
+    lua_setallocf(observed_vm, &DenyGrowth::allocate, &allocator);
+    ScriptBackendInstance rejected;
+    const auto rejected_prototype = runtime.createInstance(runtime.context,
+        {assetId(1U), SimulationScriptScope{}, nullptr, {1U, 2U}, {&alpha_capability, 1U}, {}}, new_content, rejected);
+    const auto rejected_self = runtime.createInstance(runtime.context,
+        {assetId(1U), SimulationScriptScope{}, nullptr, {1U, 2U}, {&alpha_capability, 1U}, {}},
+        alpha_artifact, rejected);
+    lua_setallocf(observed_vm, allocator.original, allocator.context);
+    assert(rejected_prototype == EScriptBackendResult::CONSTRUCTION_FAILURE);
+    assert(rejected_self == EScriptBackendResult::ALLOCATION_FAILURE && allocator.failures != 0U);
+    assert(lua_gettop(observed_vm) == top && backend->stats().cached_prototypes == before.cached_prototypes);
+    assert(backend->stats().prepared_ability_slots == before.prepared_ability_slots);
+    auto replaced = create(1U, new_content, alpha_capability);
+    assert(invoke(replaced, new_content, 2U) != 0 && alpha_calls == 0);
+    assert(invoke(replaced, new_content, 1U) == 0 && alpha_calls == 1);
+    runtime.destroyInstance(runtime.context, replaced);
+    const auto cached_count = backend->stats().cached_prototypes;
+    for (std::size_t index{}; index < 32U; ++index)
+    {
+        auto repeated = create(1U, new_content, alpha_capability);
+        assert(invoke(repeated, new_content, 1U) == 0);
+        runtime.destroyInstance(runtime.context, repeated);
+    }
+    assert(alpha_calls == 33 && backend->stats().cached_prototypes == cached_count);
+    std::printf("COLD_CONTENT,oom=%zu,rebuilds=32,new_content_isolated=1,cache_growth=0,provider=33\n",
+        allocator.failures);
+    auto held = create(1U, new_content, alpha_capability);
+    ScriptBackendPreparedMethod held_method;
+    assert(runtime.prepareMethod(runtime.context, held, new_content.description().exports[1U], held_method) ==
+        EScriptBackendResult::SUCCESS);
+    for (std::size_t index{}; index < 32U; ++index)
+    {
+        auto loaded = makeArtifact(alpha,
+            "return {save=function() end, own=function() lux.Alpha.call() end,"
+            "foreign=function() table.lux_saved() end}"
+        );
+        auto repeated = create(1U, loaded, alpha_capability);
+        assert(invoke(repeated, loaded, 2U) != 0);
+        assert(invoke(repeated, loaded, 1U) == 0);
+        runtime.destroyInstance(runtime.context, repeated);
+        lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+        assert(held_method.synchronous.invoke(held_method.synchronous.context, &frame) == 0);
+        assert(backend->stats().cached_prototypes <= cached_count + 1U);
+    }
+    runtime.releaseMethod(runtime.context, held, held_method);
+    runtime.destroyInstance(runtime.context, held);
+    assert(alpha_calls == 97 && backend->stats().cached_prototypes == cached_count);
+    std::printf("COLD_RELOAD,reloads=32,held_calls=32,stale_provider=0,provider=97,cache_growth=0\n");
     runtime.destroyInstance(runtime.context, second);
-    assert(backend->stats().wrapper_factory_compilations == 1U);
-    assert(backend->stats().wrapper_closures_created >= 3U);
     assert(backend->stats().prepared_ability_slots == 0U);
 }
 
@@ -187,7 +260,6 @@ void testEventProvenance()
         .continuation_capacity = 2U,
         .execution_depth_capacity = 4U,
         .ability_catalog_method_capacity = 1U,
-        .execution_policy = policy,
         .event_catalog_capacity = 2U,
         .prepared_event_capacity = 2U,
         .events = sources,
@@ -226,7 +298,7 @@ void testEventProvenance()
     const std::array artifacts{&first_artifact, &second_artifact};
     for (std::size_t index{}; index < instances.size(); ++index)
     {
-        const PreparedScriptEventAdmission event{&sources[index], {}, {}, {}};
+        const PreparedScriptEventAdmission event{&sources[index], {}, {}, false, {}};
         assert(runtime.createInstance(runtime.context,
             {assetId(static_cast<std::uint8_t>(index + 1U)), SimulationScriptScope{}, nullptr,
                 {static_cast<std::uint32_t>(index + 1U), 1U}, {}, {&event, 1U}},
@@ -235,8 +307,8 @@ void testEventProvenance()
     ScriptBackendPreparedMethod save;
     assert(runtime.prepareMethod(runtime.context, instances[0], first_artifact.description().exports[0], save) ==
         EScriptBackendResult::SUCCESS);
-    lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, save.synchronous.context};
-    assert(save.synchronous.invoke(&frame) == 0);
+    lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+    assert(save.synchronous.invoke(save.synchronous.context, &frame) == 0);
     runtime.releaseMethod(runtime.context, instances[0], save);
     ScriptBackendPreparedMethod wait;
     assert(runtime.prepareMethod(runtime.context, instances[1], second_artifact.description().exports[1], wait) ==
@@ -257,7 +329,6 @@ void testEventProvenance()
     for (auto instance : instances)
         runtime.destroyInstance(runtime.context, instance);
     assert(backend->stats().prepared_event_slots == 0U);
-    assert(backend->stats().wrapper_factory_compilations == 1U);
 }
 
 void testNestedScopes()
@@ -274,7 +345,7 @@ void testNestedScopes()
     auto backend = LuaScriptBackend::create({
         .instance_capacity = 2U, .prepared_call_capacity = 4U, .continuation_capacity = 1U,
         .execution_depth_capacity = 4U, .ability_catalog_method_capacity = 2U, .prepared_ability_capacity = 2U,
-        .abilities = contributions, .execution_policy = policy,
+        .abilities = contributions,
         .event_catalog_capacity = 1U, .prepared_event_capacity = 1U, .events = {&event, 1U},
         .prepared_ability_blocks = std::array{
             lux::simulation::script::LuaPreparedBlockClass{
@@ -312,6 +383,8 @@ void testNestedScopes()
         int status{};
         std::size_t waits{};
         bool coroutine{};
+        bool probe_depth{};
+        int depth_rejections{};
         ScriptStepResult result;
         ScriptBackendContinuation continuation;
         static ScriptStepContext context(Nested& self) noexcept
@@ -327,6 +400,19 @@ void testNestedScopes()
     int inner_calls{};
     const Dispatch outer_dispatch{[](void* opaque) noexcept {
         auto& self = *static_cast<Nested*>(opaque);
+        if (self.probe_depth)
+        {
+            ++self.calls;
+            lux_script_call_frame frame{};
+
+            const auto status = self.method->synchronous.invoke(self.method->synchronous.context, &frame);
+            if (status != 0)
+            {
+                assert(status == -8); // Existing execution-depth capacity error, not a Lua script error.
+                ++self.depth_rejections;
+            }
+            return;
+        }
         if (++self.calls != 1)
             return;
         lux_script_call_frame frame{};
@@ -337,8 +423,8 @@ void testNestedScopes()
         }
         else
         {
-            frame.user_context = self.method->synchronous.context;
-            self.status = self.method->synchronous.invoke(&frame);
+
+            self.status = self.method->synchronous.invoke(self.method->synchronous.context, &frame);
         }
     }};
     const Dispatch inner_dispatch{[](void* opaque) noexcept { ++*static_cast<int*>(opaque); }};
@@ -350,7 +436,7 @@ void testNestedScopes()
         &inner_calls, &inner_dispatch, 1U, beta.bindings};
     const auto runtime = backend->descriptor();
     ScriptBackendInstance outer_instance, inner_instance;
-    const PreparedScriptEventAdmission prepared_event{&event, {}, {}, {}};
+    const PreparedScriptEventAdmission prepared_event{&event, {}, {}, false, {}};
     assert(runtime.createInstance(runtime.context,
         {assetId(11U), SimulationScriptScope{}, nullptr, {1U, 1U}, {&outer_capability, 1U}, {}},
         outer, outer_instance) == EScriptBackendResult::SUCCESS);
@@ -371,8 +457,8 @@ void testNestedScopes()
         nested.calls = 0;
         nested.coroutine = mode == 2U;
         lux_script_call_frame frame{};
-        frame.user_context = outer_method.synchronous.context;
-        assert(outer_method.synchronous.invoke(&frame) == 0 && nested.calls == 2);
+
+        assert(outer_method.synchronous.invoke(outer_method.synchronous.context, &frame) == 0 && nested.calls == 2);
         if (mode == 0U)
             assert(nested.status == 0 && inner_calls == 1);
         else if (mode == 1U)
@@ -394,6 +480,19 @@ void testNestedScopes()
         runtime.releaseMethod(runtime.context, inner_instance, inner_method);
     }
     assert(backend->stats().execution_depth_high_water == 2U);
+    nested.method = &outer_method;
+    nested.calls = 0;
+    nested.probe_depth = true;
+    lux_script_call_frame depth_frame{};
+
+    assert(outer_method.synchronous.invoke(outer_method.synchronous.context, &depth_frame) == 0);
+    assert(nested.calls == 30 && nested.depth_rejections == 16);
+    assert(backend->stats().execution_depth_high_water == 4U);
+    nested.calls = 0;
+    nested.depth_rejections = 0;
+    assert(outer_method.synchronous.invoke(outer_method.synchronous.context, &depth_frame) == 0);
+    assert(nested.calls == 30 && nested.depth_rejections == 16);
+    std::puts("DEPTH_RECOVERY,depth=4,providers=30,rejected=16,repeat=1 PASS");
     runtime.releaseMethod(runtime.context, outer_instance, outer_method);
     runtime.destroyInstance(runtime.context, inner_instance);
     runtime.destroyInstance(runtime.context, outer_instance);
@@ -401,8 +500,6 @@ void testNestedScopes()
 
 int main(int argc, char** argv)
 {
-    if (argc == 2 && std::string_view{argv[1]} == "--interpreter-only")
-        policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
     testAbilityProvenance();
     testEventProvenance();
     testNestedScopes();

@@ -30,9 +30,9 @@ namespace
         return {};
     }
 
-    int project(lua_State*) noexcept
+    LuxLuaBoundaryOutcome project(lua_State*) noexcept
     {
-        return 0;
+        return {LUX_LUA_BOUNDARY_RETURN, 0, 0};
     }
 
     [[nodiscard]] lux::script::ScriptArtifact artifact(
@@ -220,7 +220,7 @@ int main(int argc, char**)
             assert(storage_backend);
             const auto runtime = storage_backend->descriptor();
             const auto initial_bytes = storage_backend->stats().prepared_binding_bytes;
-            const PreparedScriptEventAdmission prepared_event{&event, {}, {}, {}};
+            const PreparedScriptEventAdmission prepared_event{&event, {}, {}, false, {}};
             std::vector<ScriptBackendInstance> instances(population);
             const auto create = [&](std::size_t index, std::uint32_t generation) {
                 const auto result = runtime.createInstance(runtime.context,

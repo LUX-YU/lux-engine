@@ -83,16 +83,24 @@ namespace lux::simulation::script
         std::uint64_t event_route_claim_lookups{};
         std::uint64_t event_payload_copy_bytes{};
         std::uint64_t completion_capability_constructions{};
+        std::uint64_t invocation_failures{};
         std::size_t result_write_pins{};
         std::size_t deferred_awaitable_releases{};
         std::size_t awaitable_record_bytes{};
         std::size_t event_waiter_record_bytes{};
         std::size_t awaitable_reserved_slots{};
         std::size_t awaitable_storage_bytes{};
+        // Event links are included in awaitable_storage_bytes, not counted twice.
+        std::size_t event_page_storage_bytes{};
+        std::size_t event_claim_storage_bytes{};
+        std::size_t resume_storage_bytes{};
         std::size_t external_ticket_storage_bytes{};
         // Cumulative assembly work, including rejected preflights; not instance resource counts.
         std::uint64_t assembly_configuration_slot_visits{};
         std::uint64_t assembly_endpoint_count_visits{};
+        bool hook_observation_enabled{};
+        std::uint64_t hook_candidates{};
+        std::uint64_t hook_handler_visits{};
     };
 
     namespace detail
@@ -175,6 +183,12 @@ namespace lux::simulation::script
         std::size_t remaining{};
     };
 
+    struct ScriptStablePointReport final
+    {
+        // Instance failures are recorded and isolated; the owner must still commit accepted ECS commands.
+        std::optional<EScriptSystemError> first_instance_error;
+    };
+
     // Cold composition helper. The loader includes unresolved configurations when computing its plan.
     [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC
     lux::cxx::expected<ScriptRuntimeCapacityPlan, EScriptSystemError>
@@ -183,6 +197,27 @@ namespace lux::simulation::script
     class LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptSystem final
     {
     public:
+        // One serial script region. Ending the region does not apply ECS commands or run lifecycle code.
+        // The owner applies its existing command barrier, then calls processLifecycle().
+        class LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ExecutionRegion final
+        {
+        public:
+            ExecutionRegion(const ExecutionRegion&) = delete;
+            ExecutionRegion& operator=(const ExecutionRegion&) = delete;
+            ExecutionRegion(ExecutionRegion&& other) noexcept;
+            ExecutionRegion& operator=(ExecutionRegion&&) = delete;
+            ~ExecutionRegion() noexcept;
+            [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> finish() noexcept;
+        private:
+            friend class ScriptSystem;
+            explicit ExecutionRegion(ScriptSystem& owner) noexcept : owner_(&owner) {}
+            ScriptSystem* owner_{};
+        };
+
+        [[nodiscard]] lux::cxx::expected<ExecutionRegion, EScriptSystemError> beginExecutionRegion() noexcept;
+        // Acceptance only. The current region remains callable until its owner's lifecycle commit.
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> requestStop() noexcept;
+
         inline static constexpr auto Access = makeSystemAccessSpec<ComponentWrite<detail::ScriptAttachment>>();
         inline static constexpr std::array<HookPointSpec, 0U> Hooks{};
         inline static constexpr std::array<EventPointSpec, 0U> Events{};
@@ -224,7 +259,7 @@ namespace lux::simulation::script
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
         prepare() noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
+        [[nodiscard]] lux::cxx::expected<ScriptStablePointReport, EScriptSystemError>
         executeStablePoint() noexcept;
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
         processLifecycle(EScriptLifecycleAdmission admission = EScriptLifecycleAdmission::ALLOW) noexcept;
@@ -243,6 +278,9 @@ namespace lux::simulation::script
 
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
         shutdown() noexcept;
+
+        [[nodiscard]] bool isShutdown() const noexcept;
+        [[nodiscard]] bool inExecutionRegion() const noexcept;
 
         [[nodiscard]] std::size_t activeInstanceCount() const noexcept;
 

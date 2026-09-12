@@ -1,0 +1,2 @@
+# Preserve the exact evidence/manifest bytes used by SHA-256 and remote verification.
+* -text -whitespace

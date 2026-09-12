@@ -1,0 +1,7 @@
+{"diagnostics":[{% set emitted = false %}
+{% for index in marked_record_decls %}{% set rec = decl_from_index(index) %}
+{% if rec.tag_kind == "Union" or length(rec.bases) != 0 or rec.is_template or length(rec.field_decls) > 64 %}{% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(rec.fq_name) }},"message":"Lua value base/template/field capacity is unsupported"}{% set emitted = true %}{% endif %}
+{% for id in rec.field_decls %}{% set field = decl_from_id(id) %}
+{% if field.visibility != 1 and annotation_has(field, "luxlua::field") and annotation_get_for_or(field, "luxlua::field", "export", true) %}{% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(field.name) }},"message":"Cannot export a non-public Lua value field"}{% set emitted = true %}{% endif %}
+{% for other_id in rec.field_decls %}{% set other = decl_from_id(other_id) %}{% if id != other_id and field.visibility == 1 and other.visibility == 1 and annotation_get_for_or(field, "luxlua::field", "export", true) and annotation_get_for_or(other, "luxlua::field", "export", true) and annotation_get_for_or(field, "luxlua::field", "name", field.name) == annotation_get_for_or(other, "luxlua::field", "name", other.name) %}{% if emitted %},{% endif %}{"severity":"error","declaration":{{ json_str(field.name) }},"message":"Duplicate Lua value field name"}{% set emitted = true %}{% endif %}{% endfor %}
+{% endfor %}{% endfor %}]}

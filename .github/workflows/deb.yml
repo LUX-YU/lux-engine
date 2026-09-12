@@ -39,10 +39,21 @@ jobs:
         run: >
           sudo apt-get update && sudo apt-get install -y
           cmake ninja-build g++ g++-12 dpkg-dev pkg-config
-          libeigen3-dev libglfw3-dev libvulkan-dev libassimp-dev libluajit-5.1-dev
+          libeigen3-dev libglfw3-dev libvulkan-dev libassimp-dev
           libspirv-cross-c-shared-dev libstb-dev libasio-dev libtbb-dev
           libclang-dev libfmt-dev sol2
           lux-cmake-toolset lux-cxx imgui stduuid entt vulkanmemoryallocator
+
+      - name: Build unique Lua55 dependency
+        run: |
+          curl --fail --location https://www.lua.org/ftp/lua-5.5.1.tar.gz -o lua-5.5.1.tar.gz
+          python3 lux-engine/cmake/dependencies/lua55/prepare.py --archive lua-5.5.1.tar.gz --output "$PWD/lua55-source"
+          cmake -S lux-engine/cmake/dependencies/lua55 -B lua55-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr \
+            -DLUX_LUA55_SOURCE_DIR="$PWD/lua55-source"
+          cmake --build lua55-build --target all -j 4 -- -k 0
+          ctest --test-dir lua55-build --output-on-failure
+          sudo cmake --install lua55-build
 
       # shaderc is a host BUILD_TOOL dependency used while generating built-in
       # runtime shaders. It is not linked into the Player runtime closure.

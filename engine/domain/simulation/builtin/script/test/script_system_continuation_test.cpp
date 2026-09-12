@@ -1,3 +1,7 @@
+#include "ScriptRuntimeTestRegion.hpp"
+using lux::simulation::script::test::dispatchRuntimeHook;
+using lux::simulation::script::test::deliverRuntimeEvent;
+using lux::simulation::script::test::executeRuntimeStablePoint;
 #if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
 #include "ScriptTestClock.hpp"
 #endif
@@ -219,12 +223,17 @@ namespace
         std::optional<lux::script::ScriptAbilityStarter<DelayAbility>> delay;
         std::vector<lux::script::ScriptAbilityCompletion<void>> timer_completions;
         bool simulation_timer{};
+        bool real_timer{};
+        bool local_timer{};
+        bool seconds_alias{};
+        PreparedLocalAsyncStart local_next, local_seconds, local_simulation;
         double timer_seconds{1000.0};
         bool check_timer_errors{true};
         std::vector<ScriptInstanceId> resumed_instances;
         bool discard_timer{};
         bool reject_after_timer{};
         bool enable_step{};
+        bool synchronous_second{};
         bool enable_ability_async{};
         bool eager_first{};
         bool eager_resuspend{};
@@ -251,11 +260,14 @@ namespace
         std::size_t expected_payload_size{};
         void* resume_probe_context{};
         void (*resume_probe)(void*) noexcept{};
+        void* destroy_probe_context{};
+        void (*destroy_probe)(void*) noexcept{};
+        std::size_t blocked_instances{};
     };
 
-    int invokeSync(lux_script_call_frame* frame)
+    int invokeSync(void* invocation_context, lux_script_call_frame* frame)
     {
-        auto& call = *static_cast<PreparedSync*>(frame->user_context);
+        auto& call = *static_cast<PreparedSync*>(invocation_context);
         ++call.instance->owner->sync_calls;
         if (call.instance->dispatch != nullptr)
         {
@@ -286,6 +298,19 @@ namespace
             });
             assert(starter);
             state.delay = std::move(*starter);
+            const auto local = [&](const char* method) noexcept {
+                return capability.local_async.resolve(lux::script::ScriptApiMethodIdView{method},
+                    capability.context, capability.dispatch);
+            };
+            state.local_next = local("lux.simulation.delay.next_step");
+            state.local_seconds = local("lux.simulation.delay.seconds");
+            state.local_simulation = local("lux.simulation.delay.simulation_seconds");
+            assert(state.local_next && state.local_seconds && state.local_simulation);
+            assert(!local("lux.simulation.delay.real_seconds"));
+            assert(!capability.local_async.resolve(lux::script::ScriptApiMethodIdView{"lux.simulation.delay.next_step"},
+                &state, capability.dispatch));
+            assert(!capability.local_async.resolve(lux::script::ScriptApiMethodIdView{"lux.simulation.delay.next_step"},
+                capability.context, &state));
         }
         else if (!create.capabilities.empty())
         {
@@ -319,7 +344,7 @@ namespace
 
     EScriptBackendResult prepareMethod(void*,
                                        ScriptBackendInstance instance,
-                                       const lux::rdesc::ScriptFunction&,
+                                       const lux::rdesc::ScriptFunction& function,
                                        ScriptBackendPreparedMethod& output) noexcept
     {
         auto* prepared = new (std::nothrow) PreparedSync();
@@ -327,10 +352,12 @@ namespace
             return EScriptBackendResult::ALLOCATION_FAILURE;
         prepared->instance = static_cast<BackendInstance*>(instance.value);
         auto* state = prepared->instance->owner;
+        const bool resumable = state->enable_step &&
+            (!state->synchronous_second || function.symbol_id != kSymbolSecond);
         output = {
             prepared,
             lux::script::BoundScriptCall{&invokeSync, prepared},
-            state->enable_step ? BoundScriptStepCall{state, &invokeStep} : BoundScriptStepCall{}
+            resumable ? BoundScriptStepCall{state, &invokeStep} : BoundScriptStepCall{}
         };
         return EScriptBackendResult::SUCCESS;
     }
@@ -351,6 +378,8 @@ namespace
     {
         auto* continuation = static_cast<ContinuationState*>(value);
         ++continuation->owner->continuation_destroys;
+        if (const auto probe = std::exchange(continuation->owner->destroy_probe, nullptr))
+            probe(continuation->owner->destroy_probe_context);
         delete continuation;
     }
 
@@ -548,7 +577,7 @@ namespace
             ScriptRuntimeLimits limits,
             std::span<const ScriptApiCapabilityPublication> capabilities,
             bool include_endpoint = true,
-            const SimulationClock* clock_override = nullptr) noexcept
+            const SimulationClock* clock_override = nullptr, ScriptRealDelayEndpoint real_delay = {}) noexcept
         {
             return ScriptSystem::create(
                 simulation,
@@ -562,7 +591,8 @@ namespace
                 std::span{&backend, 1U},
                 include_endpoint ? std::span<const ScriptHookEndpointDescriptor>{endpoints}
                 : std::span<const ScriptHookEndpointDescriptor>{},
-                large_bridge ? std::span{&large_endpoint, 1U} : std::span<const ScriptEventEndpointDescriptor>{}
+                large_bridge ? std::span{&large_endpoint, 1U} : std::span<const ScriptEventEndpointDescriptor>{},
+                {}, real_delay
             );
         }
 
@@ -640,6 +670,32 @@ namespace
         auto& backend = harness.backend_state;
         backend.enable_step = true;
         backend.custom_step = [](BackendState& state, ScriptStepContext& context) noexcept {
+            if (state.local_timer)
+            {
+                if (std::exchange(state.check_timer_errors, false))
+                {
+                    const std::array bad{-1.0, std::numeric_limits<double>::quiet_NaN(),
+                        std::numeric_limits<double>::infinity(), (std::numeric_limits<double>::max)()};
+                    for (std::size_t i{}; i < bad.size(); ++i)
+                    {
+                        const auto result = state.local_simulation.startTyped(context, bad[i]);
+                        const auto expected = i == 3U ? EScriptDelayStatus::DURATION_OVERFLOW :
+                            EScriptDelayStatus::INVALID_DURATION;
+                        assert(result.state == EScriptStepState::FAILED);
+                        assert(result.error.status == static_cast<std::int32_t>(expected));
+                    }
+                }
+                const auto route = state.seconds_alias ? state.local_seconds : state.local_simulation;
+                auto result = state.simulation_timer ? route.startTyped(context, state.timer_seconds) :
+                    state.local_next.startTyped(context);
+                if (state.discard_timer && result.state == EScriptStepState::SUSPENDED)
+                {
+                    context.awaitables.discard(result.waiting_on);
+                    context.awaitables.discard(result.waiting_on);
+                    return ScriptStepResult::completed();
+                }
+                return result;
+            }
             if (std::exchange(state.check_timer_errors, false))
             {
                 const std::array bad_durations{-1.0, std::numeric_limits<double>::quiet_NaN(),
@@ -659,7 +715,8 @@ namespace
             auto result = invokeScriptAbilityAsync<void>(context,
                 [&state](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
                     state.timer_completions.push_back(completion);
-                    auto started = state.simulation_timer
+                    auto started = state.real_timer ? state.delay->realSeconds(state.timer_seconds, completion) :
+                        state.simulation_timer
                         ? state.delay->simulationSeconds(state.timer_seconds, completion)
                         : state.delay->nextStep(completion);
                     if (started && state.reject_after_timer)
@@ -676,6 +733,205 @@ namespace
             }
             return result;
         };
+    }
+
+    void testTimerDurationBoundaries()
+    {
+        const double exclusive_seconds = std::ldexp(1.0, 63) / 1'000'000'000.0;
+        const std::array durations{std::nextafter(exclusive_seconds, 0.0), exclusive_seconds,
+            std::nextafter(exclusive_seconds, std::numeric_limits<double>::infinity())};
+        for (const bool local : {false, true})
+        {
+            for (std::size_t i{}; i < durations.size(); ++i)
+            {
+                Harness harness{false};
+                configureTimerHarness(harness);
+                auto& backend = harness.backend_state;
+                backend.local_timer = local;
+                backend.simulation_timer = true;
+                backend.timer_seconds = durations[i];
+                auto system = harness.create(limits(), {});
+                assert(system && system->prepare());
+                assert(dispatchRuntimeHook(*system, harness.hook) == 1U);
+                const auto stats = system->stats();
+                const bool accepted = i == 0U;
+                std::printf("TIMER_BOUNDARY local=%u index=%zu waits=%zu errors=%llu expected_accept=%u\n",
+                    local, i, stats.simulation_delay_waits, stats.invocation_failures, accepted);
+                assert(stats.simulation_delay_waits == static_cast<std::size_t>(accepted));
+                assert(system->activeAwaitableCount() == static_cast<std::size_t>(accepted));
+                assert(system->activeContinuationCount() == static_cast<std::size_t>(accepted));
+                assert(stats.invocation_failures == static_cast<std::size_t>(!accepted));
+                if (!accepted)
+                    assert(system->failures().front().status ==
+                        static_cast<int>(EScriptDelayStatus::DURATION_OVERFLOW));
+                assert(system->shutdown());
+                assert(backend.creates == 1U && backend.destroys == 1U);
+                assert(backend.continuation_destroys == static_cast<std::size_t>(accepted));
+                assert(system->activeAwaitableCount() == 0U && system->activeContinuationCount() == 0U);
+            }
+        }
+    }
+
+    void testTimerRoundingAndDeadline()
+    {
+        for (const bool local : {false, true})
+        for (const bool overflow : {false, true})
+        {
+            Harness harness{false};
+            lux::simulation::script::test::ScriptTestClock clock{harness.registry};
+            configureTimerHarness(harness);
+            auto& backend = harness.backend_state;
+            backend.local_timer = local;
+            backend.simulation_timer = true;
+            backend.timer_seconds = overflow ? std::nextafter(std::ldexp(1.0, 63) / 1e9, 0.0) : 1.1e-9;
+            if (overflow) clock.advance(SimulationDuration{1'000'000'000});
+            auto system = harness.create(limits(), {}, true, &clock.clock());
+            assert(system && system->prepare() && dispatchRuntimeHook(*system, harness.hook) == 1U);
+            if (overflow)
+            {
+                assert(system->stats().simulation_delay_waits == 0U && system->failures().size() == 1U);
+                assert(system->failures().front().status == static_cast<int>(EScriptDelayStatus::DURATION_OVERFLOW));
+            }
+            else
+            {
+                clock.advance(SimulationDuration{1});
+                assert(executeRuntimeStablePoint(*system));
+                assert(backend.resume_calls == 0U && system->stats().simulation_delay_waits == 1U);
+                clock.advance(SimulationDuration{1});
+                assert(executeRuntimeStablePoint(*system));
+                assert(backend.resume_calls == 1U && system->stats().simulation_delay_waits == 0U);
+                assert(system->failures().empty());
+            }
+            assert(system->shutdown() && backend.creates == 1U && backend.destroys == 1U);
+            assert(backend.continuation_destroys == static_cast<std::size_t>(!overflow));
+            std::printf("TIMER_ROUNDING local=%u overflow=%u resumes=%zu PASS\n",
+                local, overflow, backend.resume_calls);
+        }
+    }
+
+    void testRealTimerDurationBoundary()
+    {
+        const double boundary = std::ldexp(1.0, 63) / 1e9;
+        for (const bool accepted : {true, false})
+        {
+            Harness harness{false};
+            configureTimerHarness(harness);
+            auto& backend = harness.backend_state;
+            backend.real_timer = true;
+            backend.timer_seconds = accepted ? std::nextafter(boundary, 0.0) : boundary;
+            struct Probe final
+            {
+                std::size_t calls{};
+                std::chrono::nanoseconds duration{};
+                lux::script::ScriptAbilityCompletion<void> completion;
+            } probe;
+            const ScriptRealDelayEndpoint endpoint{&probe,
+                [](void* context, std::chrono::nanoseconds duration,
+                   lux::script::ScriptAbilityCompletion<void> completion) noexcept
+                   -> lux::script::ScriptAbilityStartResult {
+                    auto& probe = *static_cast<Probe*>(context);
+                    ++probe.calls;
+                    probe.duration = duration;
+                    probe.completion = std::move(completion);
+                    return {};
+                }};
+            auto system = harness.create(limits(), {}, true, nullptr, endpoint);
+            assert(system && system->prepare() && dispatchRuntimeHook(*system, harness.hook) == 1U);
+            assert(probe.calls == static_cast<std::size_t>(accepted));
+            assert(system->activeAwaitableCount() == static_cast<std::size_t>(accepted));
+            if (accepted) assert(probe.duration.count() > 0 && probe.completion.active());
+            else assert(system->failures().front().status == static_cast<int>(EScriptDelayStatus::DURATION_OVERFLOW));
+            assert(system->shutdown() && !probe.completion.active());
+            assert(backend.continuation_destroys == static_cast<std::size_t>(accepted));
+            assert(backend.creates == 1U && backend.destroys == 1U);
+            std::printf("REAL_TIMER_BOUNDARY accept=%u endpoint_calls=%zu late_active=0 PASS\n", accepted, probe.calls);
+        }
+    }
+
+    void testLocalTimerCapacityAndReuse()
+    {
+        for (const bool local : {false, true})
+        for (const bool awaitable_full : {false, true})
+        {
+            Harness harness{false};
+            configureTimerHarness(harness);
+            auto& backend = harness.backend_state;
+            backend.local_timer = local;
+            backend.seconds_alias = awaitable_full;
+            backend.custom_step = [](BackendState& state, ScriptStepContext& context) noexcept {
+                const auto start = [&](double duration) noexcept {
+                    if (state.local_timer) return state.local_simulation.startTyped(context, duration);
+                    return invokeScriptAbilityAsync<void>(context,
+                        [&](lux::script::ScriptAbilityCompletion<void> completion) noexcept {
+                            return state.delay->simulationSeconds(duration, std::move(completion));
+                        });
+                };
+                for (std::size_t i{}; i < 32U; ++i)
+                {
+                    const auto first = start(1000.0);
+                    assert(first.state == EScriptStepState::SUSPENDED);
+                    const auto rejected = start(state.seconds_alias ? -1.0 : 1000.0);
+                    const auto expected = state.seconds_alias
+                        ? static_cast<std::int32_t>(EScriptAbilityInvocationStatus::AWAITABLE_CAPACITY_EXCEEDED)
+                        : static_cast<std::int32_t>(EScriptDelayStatus::CAPACITY_EXCEEDED);
+                    assert(rejected.state == EScriptStepState::FAILED && rejected.error.status == expected);
+                    context.awaitables.discard(first.waiting_on);
+                    context.awaitables.discard(first.waiting_on);
+                }
+                return ScriptStepResult::completed();
+            };
+            auto configured = limits(1U, 2U, awaitable_full ? 1U : 2U);
+            configured.simulation_delay_capacity = 1U;
+            auto system = harness.create(configured, {});
+            assert(system && system->prepare());
+            assert(dispatchRuntimeHook(*system, harness.hook) == 1U);
+            assert(system->activeAwaitableCount() == 0U && system->stats().simulation_delay_waits == 0U);
+            assert(system->failures().empty() && backend.resume_calls == 0U);
+            assert(system->stats().completion_capability_constructions == (local ? 0U : awaitable_full ? 32U : 64U));
+            assert(system->shutdown() && backend.creates == backend.destroys);
+            std::printf("LOCAL_TIMER_CAPACITY,local=%d,awaitable_full=%d,repeats=32,rollback=1,live=0\n",
+                local, awaitable_full);
+        }
+    }
+
+    void testLocalTimerRetirementReuse()
+    {
+        for (const bool simulation : {false, true})
+        {
+            Harness harness{false, 2U, false, true};
+            auto entity = harness.registry.create();
+            harness.description[0].scope = EntityScriptScope{entity};
+            harness.description[1].scope = EntityScriptScope{harness.registry.create()};
+            configureTimerHarness(harness);
+            auto& backend = harness.backend_state;
+            backend.local_timer = true;
+            backend.simulation_timer = simulation;
+            auto configured = limits(2U, 2U, 2U);
+            configured.next_step_wait_capacity = configured.simulation_delay_capacity = 2U;
+            auto system = harness.create(configured, {});
+            assert(system && system->prepare());
+            std::array<ScriptMountStatus, 2U> changes;
+            assert(system->collectMountStatusChanges(changes));
+            assert(dispatchRuntimeHook(*system, harness.hook_third) == 1U);
+            for (std::size_t repeat{}; repeat < 32U; ++repeat)
+            {
+                assert(dispatchRuntimeHook(*system, harness.hook) == 1U);
+                assert(system->activeAwaitableCount() == 2U);
+                harness.registry.destroy(entity);
+                assert(system->activeAwaitableCount() == 1U);
+                assert(system->stats().next_step_waits + system->stats().simulation_delay_waits == 1U);
+                assert(system->processLifecycle() && system->collectMountStatusChanges(changes));
+                entity = harness.registry.create();
+                harness.description[0].scope = EntityScriptScope{entity};
+                assert(system->mountResolvedBatch(std::span{harness.description.data(), 1U}));
+                assert(system->processLifecycle() && system->collectMountStatusChanges(changes));
+            }
+            assert(system->stats().completion_capability_constructions == 0U);
+            assert(system->failures().empty() && system->shutdown());
+            assert(system->activeAwaitableCount() == 0U && backend.resume_calls == 0U);
+            assert(backend.continuation_destroys == 33U && backend.creates == backend.destroys);
+            std::printf("LOCAL_TIMER_RETIRE,simulation=%d,rebuilds=32,capabilities=0,cleaned=33,live=0\n", simulation);
+        }
     }
 
     void testTimerSourceCancellation()
@@ -702,13 +958,13 @@ namespace
             };
             std::array<ScriptMountStatus, 2U> changes;
             assert(system.collectMountStatusChanges(changes));
-            assert(dispatchHookForTest(harness.hook_third) == 1U);
+            assert(dispatchRuntimeHook(system, harness.hook_third) == 1U);
             assert(waits() == 1U && system.activeContinuationCount() == 1U);
             const auto other_completion = backend.timer_completions.front();
             backend.discard_timer = true;
             for (std::size_t repeat{}; repeat < 32U; ++repeat)
             {
-                assert(dispatchHookForTest(harness.hook) == 1U);
+                assert(dispatchRuntimeHook(system, harness.hook) == 1U);
                 assert(waits() == 1U && system.activeAwaitableCount() == 1U);
                 assert(other_completion.active());
                 assert(!backend.timer_completions.back().active());
@@ -716,7 +972,7 @@ namespace
             backend.discard_timer = false;
             for (std::size_t repeat{}; repeat < 32U; ++repeat)
             {
-                assert(dispatchHookForTest(harness.hook) == 1U);
+                assert(dispatchRuntimeHook(system, harness.hook) == 1U);
                 assert(waits() == 2U && system.activeContinuationCount() == 2U);
                 const auto old_completion = backend.timer_completions.back();
                 harness.registry.destroy(entity);
@@ -740,12 +996,12 @@ namespace
             // An external terminal result also unlinks the Timer source before its deadline.
             assert(other_completion.success());
             assert(waits() == 1U && backend.resume_calls == 0U);
-            assert(system.executeStablePoint());
+            assert(executeRuntimeStablePoint(system));
             assert(waits() == 0U && backend.resume_calls == 1U);
-            assert(dispatchHookForTest(harness.hook_third) == 1U);
+            assert(dispatchRuntimeHook(system, harness.hook_third) == 1U);
             assert(waits() == 1U);
             backend.reject_after_timer = true;
-            assert(dispatchHookForTest(harness.hook) == 1U);
+            assert(dispatchRuntimeHook(system, harness.hook) == 1U);
             assert(waits() == 1U && system.activeAwaitableCount() == 1U);
             assert(system.failures().size() == 1U && system.failures().front().status == 87);
             assert(system.processLifecycle());
@@ -766,12 +1022,15 @@ namespace
 #if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
     void testTimerDeadlineOrderAndBackpressure()
     {
-        for (const unsigned mode : {0U, 1U, 2U}) // NextStep, zero simulation delay, positive delay.
+        for (const bool local : {false, true})
+        for (const unsigned mode : {0U, 1U, 2U}) // NextStep, zero alias, positive simulation delay.
         {
             Harness harness{false, 2U, false, true};
             lux::simulation::script::test::ScriptTestClock clock_owner{harness.registry};
             configureTimerHarness(harness);
             auto& backend = harness.backend_state;
+            backend.local_timer = local;
+            backend.seconds_alias = mode == 1U;
             backend.simulation_timer = mode != 0U;
             backend.timer_seconds = mode == 2U ? 1.0 : 0.0;
             auto configured = limits(2U, 4U, 4U, 1U, 1U);
@@ -780,31 +1039,34 @@ namespace
             auto& system = *created;
             const auto first = (**system.queryMountStatus({1U})).instance;
             const auto second = (**system.queryMountStatus({2U})).instance;
-            assert(dispatchHookForTest(harness.hook) == 1U);
-            assert(dispatchHookForTest(harness.hook_third) == 1U);
+            assert(dispatchRuntimeHook(system, harness.hook) == 1U);
+            assert(dispatchRuntimeHook(system, harness.hook_third) == 1U);
             assert(system.stats().next_step_waits + system.stats().simulation_delay_waits == 2U);
             assert(backend.step_calls == 2U);
             if (mode == 2U)
             {
                 clock_owner.advance(SimulationDuration{});
-                assert(system.executeStablePoint());
+                assert(executeRuntimeStablePoint(system));
                 assert(backend.resume_calls == 0U && system.stats().simulation_delay_waits == 2U);
             }
             clock_owner.advance(mode == 2U ? SimulationDuration{1'000'000'000} : SimulationDuration{});
-            assert(system.executeStablePoint());
+            assert(executeRuntimeStablePoint(system));
             assert(backend.resumed_instances == std::vector<ScriptInstanceId>{first});
             assert(system.stats().next_step_waits + system.stats().simulation_delay_waits == 1U);
-            assert(backend.timer_completions.back().active()); // Second source hit real ResumeRing backpressure.
-            assert(system.executeStablePoint());
+            if (!local) assert(backend.timer_completions.back().active()); // Real ResumeRing backpressure.
+            assert(executeRuntimeStablePoint(system));
             assert(backend.resume_calls == 1U); // No Timer retry in a duplicate stable point or after a pop.
             const auto due_step = clock_owner.clock().snapshot().step_index;
             clock_owner.advance(SimulationDuration{});
-            assert(system.executeStablePoint());
+            assert(executeRuntimeStablePoint(system));
             assert(clock_owner.clock().snapshot().step_index == due_step + 1U);
             assert(backend.resumed_instances == std::vector<ScriptInstanceId>({first, second}));
             assert(system.stats().next_step_waits + system.stats().simulation_delay_waits == 0U);
             assert(system.activeAwaitableCount() == 0U && system.failures().empty());
+            assert(system.stats().completion_capability_constructions == (local ? 0U : 6U));
             assert(system.shutdown() && backend.continuation_destroys == 2U);
+            std::printf("LOCAL_TIMER,enabled=%d,capabilities=%llu,resumes=2,source_unlinked=1\n",
+                local, system.stats().completion_capability_constructions);
             std::printf("TIMER_RETRY,mode=%u,due_step=%llu,retry_step=%llu,resumes=2,waits=0\n",
                 mode, due_step, clock_owner.clock().snapshot().step_index);
         }
@@ -823,8 +1085,8 @@ namespace
             assert(created);
             auto system = std::move(*created);
             assert(system.prepare());
-            assert(dispatchHookForTest(available.hook) == 1U);
-            assert(dispatchHookForTest(available.hook) == 1U);
+            assert(dispatchRuntimeHook(system, available.hook) == 1U);
+            assert(dispatchRuntimeHook(system, available.hook) == 1U);
             assert(provider.calls == 2);
             assert(available.backend_state.capability_bind_scans == 1U);
             assert(system.shutdown());
@@ -877,19 +1139,19 @@ namespace
         auto created = harness.create(limits(2U, 8U, 8U, 8U, 1U), {});
         assert(created && created->prepare());
         auto& system = *created;
-        assert(dispatchHookForTest(harness.hook) == 1U);
+        assert(dispatchRuntimeHook(system, harness.hook) == 1U);
         for (std::size_t count{}; count < 16U; ++count)
-            assert(dispatchHookForTest(harness.hook) == 1U);
+            assert(dispatchRuntimeHook(system, harness.hook) == 1U);
         assert(state.step_calls == 1U && state.completions.size() == 1U);
         assert(system.activeContinuationCount() == 1U && system.activeAwaitableCount() == 1U);
-        assert(dispatchHookForTest(harness.hook_second) == 1U); // Different method of the same instance.
-        assert(dispatchHookForTest(harness.hook_third) == 1U); // Different instance.
+        assert(dispatchRuntimeHook(system, harness.hook_second) == 1U); // Different method of the same instance.
+        assert(dispatchRuntimeHook(system, harness.hook_third) == 1U); // Different instance.
         assert(state.step_calls == 3U && state.completions.size() == 3U);
         const auto old_completion = state.completions.front();
         assert(old_completion.ready());
-        assert(system.executeStablePoint());
+        assert(executeRuntimeStablePoint(system));
         assert(state.resume_calls == 1U && state.continuation_destroys == 1U);
-        assert(dispatchHookForTest(harness.hook) == 1U);
+        assert(dispatchRuntimeHook(system, harness.hook) == 1U);
         assert(state.step_calls == 4U && system.activeContinuationCount() == 3U);
         assert(!old_completion.ready());
         assert(system.failures().empty() && system.shutdown());
@@ -899,7 +1161,7 @@ namespace
         reused.backend_state.enable_step = true;
         auto replacement = reused.create(limits(), {});
         assert(replacement && replacement->prepare());
-        assert(dispatchHookForTest(reused.hook) == 1U);
+        assert(dispatchRuntimeHook(*replacement, reused.hook) == 1U);
         const auto old_status = replacement->queryMountStatus(reused.description[0].id);
         assert(old_status && old_status->has_value());
         const auto old_id = (*old_status)->instance;
@@ -917,11 +1179,135 @@ namespace
         const auto new_id = (*new_status)->instance;
         assert(new_id.slot == old_id.slot && new_id.generation != old_id.generation);
         assert(!retired_completion.ready());
-        assert(dispatchHookForTest(reused.hook) == 1U);
+        assert(dispatchRuntimeHook(*replacement, reused.hook) == 1U);
         assert(reused.backend_state.step_calls == 2U && replacement->activeContinuationCount() == 1U);
         assert(replacement->failures().empty() && replacement->shutdown());
         assert(reused.backend_state.continuation_destroys == 2U && reused.backend_state.destroys == 2U);
         std::puts("SINGLE_FLIGHT_OK,skipped=16,methods=2,instances=2,resume_budget=1,reused_generation=1");
+    }
+
+    void testSharedHookMethod()
+    {
+        Harness harness{false};
+        harness.description[0].bindings.push_back({kSymbol, HookScriptTarget{kSystem, kHookSecond}});
+        auto& state = harness.backend_state;
+        state.enable_step = true;
+        auto created = harness.create(limits(), {});
+        assert(created && created->prepare());
+        assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
+        assert(dispatchRuntimeHook(*created, harness.hook_second) == 1U && state.step_calls == 1U);
+        assert(state.completions.front().ready());
+        assert(dispatchRuntimeHook(*created, harness.hook_second) == 1U && state.step_calls == 1U);
+        struct Probe { ScriptSystem* system; Harness* harness; } probe{&*created, &harness};
+        state.destroy_probe_context = &probe;
+        state.destroy_probe = [](void* context) noexcept {
+            const auto& value = *static_cast<Probe*>(context);
+            assert(dispatchRuntimeHook(*value.system, value.harness->hook_second) == 1U);
+            assert(value.harness->backend_state.step_calls == 2U);
+        };
+        assert(executeRuntimeStablePoint(*created));
+        assert(state.resume_calls == 1U && state.continuation_destroys == 1U);
+        assert(created->activeContinuationCount() == 1U && state.step_calls == 2U);
+        assert(dispatchRuntimeHook(*created, harness.hook) == 1U && state.step_calls == 2U);
+        assert(created->shutdown() && state.continuation_destroys == 2U && state.destroys == 1U);
+        std::puts("HOOK_SHARED_METHOD_OK,aliases=2,ready_still_blocked=1,destroy_reentry=1,destroys=2");
+    }
+
+    void testMixedHookEntryShapes()
+    {
+        Harness harness{false, 2U};
+        harness.description[1].bindings[0].symbol = kSymbolSecond;
+        auto& state = harness.backend_state;
+        state.enable_step = true;
+        state.synchronous_second = true;
+        auto created = harness.create(limits(2U), {});
+        assert(created && created->prepare());
+        for (std::size_t batch{}; batch < 65U; ++batch)
+            assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
+        assert(state.step_calls == 1U && state.sync_calls == 65U);
+        assert(created->activeContinuationCount() == 1U && state.completions.front().ready());
+        assert(executeRuntimeStablePoint(*created));
+        assert(state.resume_calls == 1U && state.continuation_destroys == 1U);
+        assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
+        assert(state.step_calls == 2U && state.sync_calls == 66U && created->failures().empty());
+        assert(created->shutdown() && state.continuation_destroys == 2U && state.destroys == 2U);
+        std::puts("HOOK_MIXED_SHAPES sync=66 step=2 resumes=1 destroyed=2 PASS");
+    }
+
+    void testHookRatios()
+    {
+        constexpr std::size_t count = 1000U, batches = 64U;
+        for (const auto percent : {0U, 50U, 99U, 100U})
+        {
+            Harness harness{false, count};
+            auto& state = harness.backend_state;
+            state.enable_step = true;
+            state.blocked_instances = count * percent / 100U;
+            state.custom_step = [](BackendState& owner, ScriptStepContext& step) noexcept {
+                if (step.instance.slot > owner.blocked_instances)
+                    return ScriptStepResult::completed();
+                const auto awaiting = step.awaitables.create(std::nullopt);
+                assert(awaiting);
+                owner.completions.push_back(awaiting->completion);
+                return ScriptStepResult::suspended(awaiting->id);
+            };
+            auto created = harness.create(limits(count, count, count, count, 1U), {});
+            assert(created && created->prepare());
+            assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
+            const auto before = created->stats();
+            for (std::size_t batch{}; batch < batches; ++batch)
+                assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
+            const auto after = created->stats();
+            const auto starts = (count - state.blocked_instances) * batches;
+            assert(state.step_calls == count + starts && after.active_continuations == state.blocked_instances);
+            if (after.hook_observation_enabled)
+            {
+                assert(after.hook_candidates - before.hook_candidates == count * batches);
+                assert(after.hook_handler_visits - before.hook_handler_visits == starts);
+            }
+            std::printf("HOOK_RATIO percent=%u batches=%zu population=%zu new_calls=%zu resume=0 waiting=%zu "
+                "backlog=0 observed=%u candidates=%llu visits=%llu\n", percent, batches, count, starts,
+                state.blocked_instances, after.hook_observation_enabled,
+                after.hook_candidates - before.hook_candidates, after.hook_handler_visits - before.hook_handler_visits);
+            for (auto& completion : state.completions) assert(completion.ready());
+            assert(created->stats().resume_queue_depth == 0U);
+            assert(created->stats().external_completion_queue_depth == state.blocked_instances);
+            for (std::size_t resumed{}; resumed < state.blocked_instances; ++resumed)
+            {
+                assert(executeRuntimeStablePoint(*created));
+                assert(state.resume_calls == resumed + 1U);
+                assert(created->stats().external_completion_queue_depth == 0U);
+                assert(created->stats().resume_queue_depth == state.blocked_instances - resumed - 1U);
+            }
+            assert(state.resume_calls == state.blocked_instances &&
+                state.continuation_destroys == state.blocked_instances && created->failures().empty());
+            assert(created->shutdown() && state.destroys == count);
+        }
+    }
+
+    void testNonPowerOfTwoResumeWrap()
+    {
+        Harness harness{false, 3U};
+        auto& state = harness.backend_state;
+        state.enable_step = true;
+        auto created = harness.create(limits(3U, 3U, 3U, 3U, 2U), {});
+        assert(created && created->prepare());
+        std::size_t completed{};
+        for (std::size_t cycle{}; cycle < 17U; ++cycle)
+        {
+            assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
+            while (completed < state.completions.size())
+                assert(state.completions[completed++].ready());
+            assert(executeRuntimeStablePoint(*created));
+            assert(state.resume_calls == (cycle + 1U) * 2U);
+            assert(created->stats().resume_queue_depth == 1U);
+        }
+        assert(executeRuntimeStablePoint(*created));
+        assert(state.step_calls == 35U && state.resume_calls == 35U && state.continuation_destroys == 35U);
+        assert(created->activeContinuationCount() == 0U && created->activeAwaitableCount() == 0U);
+        assert(created->stats().resume_queue_depth == 0U && created->failures().empty());
+        assert(created->shutdown() && state.destroys == 3U);
+        std::puts("RESUME_WRAP capacity=3 budget=2 cycles=17 calls=35 resumes=35 destroyed=35 backlog=0");
     }
 
     void testSyncAndContinuation()
@@ -931,7 +1317,7 @@ namespace
         assert(sync_created);
         auto sync_system = std::move(*sync_created);
         assert(sync_system.prepare());
-        assert(dispatchHookForTest(synchronous.hook) == 1U);
+        assert(dispatchRuntimeHook(sync_system, synchronous.hook) == 1U);
         assert(synchronous.backend_state.sync_calls == 1U);
         assert(sync_system.activeContinuationCount() == 0U);
         assert(sync_system.activeAwaitableCount() == 0U);
@@ -946,14 +1332,14 @@ namespace
         assert(eager_created);
         auto eager_system = std::move(*eager_created);
         assert(eager_system.prepare());
-        assert(dispatchHookForTest(eager.hook) == 1U);
+        assert(dispatchRuntimeHook(eager_system, eager.hook) == 1U);
         assert(eager.backend_state.resume_calls == 0U);
         assert(eager_system.activeContinuationCount() == 1U);
-        assert(dispatchHookForTest(eager.hook) == 1U);
+        assert(dispatchRuntimeHook(eager_system, eager.hook) == 1U);
         assert(eager.backend_state.step_calls == 1U);
-        assert(eager_system.executeStablePoint());
+        assert(executeRuntimeStablePoint(eager_system));
         assert(eager.backend_state.resume_calls == 1U);
-        assert(eager_system.executeStablePoint());
+        assert(executeRuntimeStablePoint(eager_system));
         assert(eager.backend_state.resume_calls == 2U);
         assert(eager.backend_state.max_resume_depth == 1U);
         assert(eager.backend_state.continuation_destroys == 1U);
@@ -971,13 +1357,13 @@ namespace
         assert(budgeted_created);
         auto budgeted_system = std::move(*budgeted_created);
         assert(budgeted_system.prepare());
-        assert(dispatchHookForTest(budgeted.hook) == 1U);
-        assert(budgeted_system.executeStablePoint());
+        assert(dispatchRuntimeHook(budgeted_system, budgeted.hook) == 1U);
+        assert(executeRuntimeStablePoint(budgeted_system));
         assert(budgeted.backend_state.resume_calls == 1U);
         assert(budgeted_system.activeContinuationCount() == 1U);
-        assert(budgeted_system.executeStablePoint());
+        assert(executeRuntimeStablePoint(budgeted_system));
         assert(budgeted.backend_state.resume_calls == 2U);
-        assert(budgeted_system.executeStablePoint());
+        assert(executeRuntimeStablePoint(budgeted_system));
         assert(budgeted.backend_state.resume_calls == 3U);
         assert(budgeted_system.activeContinuationCount() == 0U);
         assert(budgeted_system.shutdown());
@@ -989,12 +1375,12 @@ namespace
         assert(typed_created);
         auto typed_system = std::move(*typed_created);
         assert(typed_system.prepare());
-        assert(dispatchHookForTest(typed.hook) == 1U);
+        assert(dispatchRuntimeHook(typed_system, typed.hook) == 1U);
         ScriptOwnedResumeValue value;
         value.type = lux::rdesc::makeScriptValueType<std::int32_t>();
         assert(value.bytes.resize(sizeof(std::int32_t)));
         assert(typed.backend_state.completions.front().ready(std::move(value)));
-        assert(typed_system.executeStablePoint());
+        assert(executeRuntimeStablePoint(typed_system));
         assert(typed.backend_state.saw_typed_result);
         assert(typed_system.shutdown());
 
@@ -1004,9 +1390,9 @@ namespace
         assert(failed_created);
         auto failed_system = std::move(*failed_created);
         assert(failed_system.prepare());
-        assert(dispatchHookForTest(failed.hook) == 1U);
+        assert(dispatchRuntimeHook(failed_system, failed.hook) == 1U);
         assert(failed.backend_state.completions.front().fail({93}));
-        assert(failed_system.executeStablePoint());
+        assert(executeRuntimeStablePoint(failed_system));
         assert(failed.backend_state.saw_failure);
         assert(failed_system.shutdown());
     }
@@ -1027,7 +1413,7 @@ namespace
             assert(created);
             auto system = std::move(*created);
             assert(system.prepare());
-            assert(dispatchHookForTest(delayed.hook) == 1U);
+            assert(dispatchRuntimeHook(system, delayed.hook) == 1U);
             assert(provider.pending.has_value());
             assert(system.activeAwaitableCount() == 1U);
             assert(system.activeContinuationCount() == 1U);
@@ -1040,7 +1426,7 @@ namespace
             const auto duplicate = completion.success(43U);
             assert(!duplicate && duplicate.error() == lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED);
             assert(delayed.backend_state.resume_calls == 0U);
-            assert(system.executeStablePoint());
+            assert(executeRuntimeStablePoint(system));
             assert(delayed.backend_state.resume_calls == 1U);
             assert(delayed.backend_state.ability_result == 42U);
             assert(delayed.backend_state.resume_thread == std::this_thread::get_id());
@@ -1062,10 +1448,10 @@ namespace
             assert(created);
             auto system = std::move(*created);
             assert(system.prepare());
-            assert(dispatchHookForTest(eager.hook) == 1U);
+            assert(dispatchRuntimeHook(system, eager.hook) == 1U);
             assert(provider.eager_completion.has_value() && *provider.eager_completion);
             assert(eager.backend_state.resume_calls == 0U);
-            assert(system.executeStablePoint());
+            assert(executeRuntimeStablePoint(system));
             assert(eager.backend_state.resume_calls == 1U);
             assert(eager.backend_state.ability_result == 42U);
             assert(eager.backend_state.max_resume_depth == 1U);
@@ -1085,9 +1471,9 @@ namespace
             assert(created);
             auto system = std::move(*created);
             assert(system.prepare());
-            assert(dispatchHookForTest(failed.hook) == 1U);
+            assert(dispatchRuntimeHook(system, failed.hook) == 1U);
             assert(provider.eager_completion.has_value() && *provider.eager_completion);
-            assert(system.executeStablePoint());
+            assert(executeRuntimeStablePoint(system));
             assert(failed.backend_state.saw_failure);
             assert(failed.backend_state.failure_status == 91);
             assert(system.shutdown());
@@ -1106,7 +1492,7 @@ namespace
             assert(created);
             auto system = std::move(*created);
             assert(system.prepare());
-            assert(dispatchHookForTest(rejected.hook) == 1U);
+            assert(dispatchRuntimeHook(system, rejected.hook) == 1U);
             assert(system.activeAwaitableCount() == 0U);
             assert(system.activeContinuationCount() == 0U);
             assert(!system.failures().empty());
@@ -1128,7 +1514,7 @@ namespace
             assert(created);
             auto system = std::move(*created);
             assert(system.prepare());
-            assert(dispatchHookForTest(late.hook) == 1U);
+            assert(dispatchRuntimeHook(system, late.hook) == 1U);
             assert(provider.pending.has_value());
             const auto completion = *provider.pending;
             assert(system.shutdown());
@@ -1144,8 +1530,8 @@ namespace
             assert(created);
             auto system = std::move(*created);
             assert(system.prepare());
-            assert(dispatchHookForTest(concurrent.hook) == 1U);
-            assert(dispatchHookForTest(concurrent.hook_third) == 1U);
+            assert(dispatchRuntimeHook(system, concurrent.hook) == 1U);
+            assert(dispatchRuntimeHook(system, concurrent.hook_third) == 1U);
             assert(concurrent.backend_state.completions.size() == 2U);
             std::array<std::optional<lux::cxx::expected<void, EScriptAwaitableCompletionError>>, 2U> results;
             std::array<std::thread, 2U> producers{
@@ -1157,7 +1543,7 @@ namespace
             assert(results[0].has_value() && *results[0]);
             assert(results[1].has_value() && *results[1]);
             assert(system.stats().external_completion_queue_depth == 2U);
-            assert(system.executeStablePoint());
+            assert(executeRuntimeStablePoint(system));
             assert(concurrent.backend_state.resume_calls == 2U);
             assert(system.shutdown());
         }
@@ -1206,10 +1592,10 @@ namespace
         assert(per_instance_created);
         auto per_instance_system = std::move(*per_instance_created);
         assert(per_instance_system.prepare());
-        assert(dispatchHookForTest(per_instance.hook) == 1U);
-        assert(dispatchHookForTest(per_instance.hook_third) == 1U);
+        assert(dispatchRuntimeHook(per_instance_system, per_instance.hook) == 1U);
+        assert(dispatchRuntimeHook(per_instance_system, per_instance.hook_third) == 1U);
         assert(per_instance_system.activeContinuationCount() == 2U);
-        assert(dispatchHookForTest(per_instance.hook_second) == 1U);
+        assert(dispatchRuntimeHook(per_instance_system, per_instance.hook_second) == 1U);
         assert(per_instance_system.activeContinuationCount() == 2U);
         assert(std::any_of(
             per_instance_system.failures().begin(),
@@ -1219,10 +1605,10 @@ namespace
             }
         ));
         assert(per_instance.backend_state.completions.size() == 3U);
-        assert(per_instance_system.executeStablePoint());
+        assert(executeRuntimeStablePoint(per_instance_system));
         assert(per_instance_system.activeContinuationCount() == 1U);
         assert(per_instance.backend_state.completions[1].ready());
-        assert(per_instance_system.executeStablePoint());
+        assert(executeRuntimeStablePoint(per_instance_system));
         assert(per_instance_system.activeContinuationCount() == 0U);
         assert(per_instance_system.shutdown());
 
@@ -1232,14 +1618,14 @@ namespace
         assert(quota_return_created);
         auto quota_return_system = std::move(*quota_return_created);
         assert(quota_return_system.prepare());
-        assert(dispatchHookForTest(quota_return.hook) == 1U);
+        assert(dispatchRuntimeHook(quota_return_system, quota_return.hook) == 1U);
         assert(quota_return.backend_state.completions.front().ready());
-        assert(quota_return_system.executeStablePoint());
+        assert(executeRuntimeStablePoint(quota_return_system));
         assert(quota_return_system.activeContinuationCount() == 0U);
-        assert(dispatchHookForTest(quota_return.hook_second) == 1U);
+        assert(dispatchRuntimeHook(quota_return_system, quota_return.hook_second) == 1U);
         assert(quota_return_system.activeContinuationCount() == 1U);
         assert(quota_return.backend_state.completions[1].ready());
-        assert(quota_return_system.executeStablePoint());
+        assert(executeRuntimeStablePoint(quota_return_system));
         assert(quota_return_system.activeContinuationCount() == 0U);
         assert(quota_return_system.shutdown());
 
@@ -1249,7 +1635,7 @@ namespace
         assert(limited_created);
         auto limited_system = std::move(*limited_created);
         assert(limited_system.prepare());
-        assert(dispatchHookForTest(limited.hook) == 1U);
+        assert(dispatchRuntimeHook(limited_system, limited.hook) == 1U);
         assert(limited_system.activeContinuationCount() == 1U);
         assert(!limited_system.failures().empty());
         assert(limited_system.failures().front().error == EScriptSystemError::CONTINUATION_CAPACITY_EXCEEDED ||
@@ -1262,7 +1648,7 @@ namespace
         assert(awaitable_created);
         auto awaitable_system = std::move(*awaitable_created);
         assert(awaitable_system.prepare());
-        assert(dispatchHookForTest(awaitable_limited.hook) == 1U);
+        assert(dispatchRuntimeHook(awaitable_system, awaitable_limited.hook) == 1U);
         assert(awaitable_system.activeAwaitableCount() == 1U);
         assert(!awaitable_system.failures().empty());
         assert(awaitable_system.shutdown());
@@ -1273,14 +1659,14 @@ namespace
         assert(queue_created);
         auto queue_system = std::move(*queue_created);
         assert(queue_system.prepare());
-        assert(dispatchHookForTest(queue_limited.hook) == 1U);
+        assert(dispatchRuntimeHook(queue_system, queue_limited.hook) == 1U);
         assert(queue_limited.backend_state.completions.size() == 2U);
         assert(queue_limited.backend_state.completions[0].ready());
         const auto full = queue_limited.backend_state.completions[1].ready();
         assert(!full && full.error() == EScriptAwaitableCompletionError::RESUME_QUEUE_FULL);
-        assert(queue_system.executeStablePoint());
+        assert(executeRuntimeStablePoint(queue_system));
         assert(queue_limited.backend_state.completions[1].ready());
-        assert(queue_system.executeStablePoint());
+        assert(executeRuntimeStablePoint(queue_system));
         assert(queue_system.activeContinuationCount() == 0U);
         assert(queue_system.shutdown());
 
@@ -1290,11 +1676,11 @@ namespace
         assert(stale_created);
         auto stale_system = std::move(*stale_created);
         assert(stale_system.prepare());
-        assert(dispatchHookForTest(stale.hook) == 1U);
+        assert(dispatchRuntimeHook(stale_system, stale.hook) == 1U);
         assert(stale.backend_state.completions.size() == 1U);
         const auto completion = stale.backend_state.completions.front();
         stale.registry.destroy(stale.entity);
-        const auto detached = stale_system.executeStablePoint();
+        const auto detached = executeRuntimeStablePoint(stale_system);
         assert(detached);
         const auto stale_completion = completion.ready();
         assert(!stale_completion && stale_completion.error() == EScriptAwaitableCompletionError::INVALID_ID);
@@ -1309,12 +1695,12 @@ namespace
             assert(race_created);
             auto race_system = std::move(*race_created);
             assert(race_system.prepare());
-            assert(dispatchHookForTest(race.hook) == 1U);
+            assert(dispatchRuntimeHook(race_system, race.hook) == 1U);
             const auto race_completion = race.backend_state.completions.front();
             std::optional<lux::cxx::expected<void, EScriptAwaitableCompletionError>> completion_result;
             std::thread completing([&]() noexcept { completion_result = race_completion.ready(); });
             race.registry.destroy(race.entity);
-            static_cast<void>(race_system.executeStablePoint());
+            static_cast<void>(executeRuntimeStablePoint(race_system));
             completing.join();
             assert(completion_result.has_value());
             assert(*completion_result || completion_result->error() == EScriptAwaitableCompletionError::INVALID_ID);
@@ -1347,11 +1733,11 @@ void testExternalAdmission()
     assert(created);
     auto& system = *created;
     assert(system.prepare());
-    assert(dispatchHookForTest(harness.hook) == 1U);
+    assert(dispatchRuntimeHook(system, harness.hook) == 1U);
     assert(harness.backend_state.provider_starts == (Supported ? 1U : 0U));
     assert(system.activeAwaitableCount() == (Supported ? 1U : 0U));
     assert(system.activeContinuationCount() == (Supported ? 1U : 0U));
-    static_cast<void>(system.executeStablePoint());
+    static_cast<void>(executeRuntimeStablePoint(system));
     assert(harness.backend_state.resume_calls == (Supported ? 1U : 0U));
     assert(system.activeAwaitableCount() == 0U && system.activeContinuationCount() == 0U);
     assert(system.shutdown());
@@ -1359,7 +1745,12 @@ void testExternalAdmission()
 
 int main()
 {
+    testTimerDurationBoundaries();
+    testTimerRoundingAndDeadline();
+    testRealTimerDurationBoundary();
     testTimerSourceCancellation();
+    testLocalTimerCapacityAndReuse();
+    testLocalTimerRetirementReuse();
 #if defined(LUX_SCRIPT_SOURCE_PROTOCOL_CLOCK)
     testTimerDeadlineOrderAndBackpressure();
 #endif
@@ -1378,9 +1769,9 @@ int main()
             assert(active.harness->backend_state.continuation_destroys == 0U);
             assert(active.harness->backend_state.destroys == 0U);
         };
-        assert(dispatchHookForTest(harness.hook) == 1U);
+        assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
         assert(harness.backend_state.completions.front().ready());
-        assert(created->executeStablePoint());
+        assert(executeRuntimeStablePoint(*created));
         assert(harness.backend_state.resume_calls == 1U);
         static_cast<void>(created->processLifecycle());
         assert(harness.backend_state.continuation_destroys == 1U);
@@ -1402,19 +1793,23 @@ int main()
         };
         auto created = harness.create(limits(), {});
         assert(created && created->prepare());
-        assert(dispatchHookForTest(harness.hook) == 1U);
+        assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
         {
             auto writer = harness.large_event.begin(0U);
             assert(writer.record(LargePayload{}));
         }
-        assert(deliverEndpoint(harness.large_bridge) == 1U);
+        assert(deliverRuntimeEvent(*created, harness.large_bridge) == 1U);
         assert(harness.backend_state.resume_calls == 0U);
-        assert(created->executeStablePoint());
+        assert(executeRuntimeStablePoint(*created));
         assert(harness.backend_state.resume_calls == 1U);
         assert(created->shutdown());
     }
     testCapabilities();
     testSingleFlightIsolation();
+    testSharedHookMethod();
+    testMixedHookEntryShapes();
+    testHookRatios();
+    testNonPowerOfTwoResumeWrap();
     testSyncAndContinuation();
     testAsyncAbilityInvocation();
     testCapacityAndCancellation();

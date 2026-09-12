@@ -1,3 +1,4 @@
+#include "CollisionValue.lua.value.generated.hpp"
 #include "LuaUnsupportedIntegerAbility.hpp"
 #include "LuaUnsupportedIntegerAbility.ability.generated.hpp"
 #include "LuaUnsupportedIntegerAbility.ability.lua.generated.hpp"
@@ -34,9 +35,9 @@ namespace
         }
     };
 
-    int noOpAbility(lua_State*) noexcept
+    LuxLuaBoundaryOutcome noOpAbility(lua_State*) noexcept
     {
-        return 0;
+        return {LUX_LUA_BOUNDARY_RETURN, 0, 0};
     }
 
     inline constexpr std::array kNameLuaMethods{
@@ -68,27 +69,9 @@ namespace
         };
     }
 
-    struct CollisionEvent final
-    {
-        std::int32_t body{};
-        float impulse{};
-    };
 
-    bool pushCollisionEvent(
-        void*,
-        void* opaque_state,
-        const void* opaque_value
-    ) noexcept
-    {
-        auto* state = static_cast<lua_State*>(opaque_state);
-        const auto& value = *static_cast<const CollisionEvent*>(opaque_value);
-        lua_createtable(state, 0, 2);
-        lua_pushinteger(state, value.body);
-        lua_setfield(state, -2, "body");
-        lua_pushnumber(state, value.impulse);
-        lua_setfield(state, -2, "impulse");
-        return true;
-    }
+
+
 
     lux_script_call_frame makeFrame(
         std::int32_t delta,
@@ -122,7 +105,6 @@ namespace
             &return_slot,
             1U,
             0U,
-            nullptr,
             nullptr};
     }
 }
@@ -135,16 +117,6 @@ int main()
     const auto missing_capacity = LuaScriptBackend::create({});
     assert(!missing_capacity);
     assert(missing_capacity.error() == ELuaScriptBindingBackendError::INVALID_CAPACITY);
-    const auto invalid_policy = LuaScriptBackend::create({
-        .instance_capacity = 1U,
-        .prepared_call_capacity = 1U,
-        .continuation_capacity = 1U,
-        .execution_depth_capacity = 1U,
-        .ability_catalog_method_capacity = 1U,
-        .execution_policy = static_cast<lux::script::lua::ELuaExecutionPolicy>(0xFFU)
-    });
-    assert(!invalid_policy);
-    assert(invalid_policy.error() == ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE);
 
     constexpr auto physics_name = nameDescription(
         "lux.test.lua_name.physics",
@@ -214,30 +186,31 @@ int main()
     assert(!duplicate_name_backend);
     assert(duplicate_name_backend.error() == ELuaScriptBindingBackendError::DUPLICATE_ABILITY_NAME);
 
-    constexpr auto reserved_name = nameDescription("lux.test.lua_name.reserved", "end", "End");
-    const auto reserved_contribution = lux::script::lua::ScriptAbilityLuaContribution{
-        &reserved_name,
-        kNameLuaMethods
-    };
-    const auto reserved_name_backend = LuaScriptBackend::create({
-        .instance_capacity = 1U,
-        .prepared_call_capacity = 1U,
-        .continuation_capacity = 1U,
-        .execution_depth_capacity = 4U,
-        .ability_catalog_method_capacity = 1U,
-        .prepared_ability_capacity = 1U,
-        .abilities = {&reserved_contribution, 1U},
-        .prepared_ability_blocks = std::array{
-            lux::simulation::script::LuaPreparedBlockClass{
-                (1U) / ((1U) == 0U ? 1U : (1U)),
-                1U
-            }
-        },
-        .prepared_ability_storage_bytes =
-            64U * 1024U * 1024U
-    });
-    assert(!reserved_name_backend);
-    assert(reserved_name_backend.error() == ELuaScriptBindingBackendError::INVALID_ABILITY_CONTRIBUTION);
+    for (const auto keyword : {"end", "global"})
+    {
+        const auto reserved_name = nameDescription("lux.test.lua_name.reserved", keyword, "Reserved");
+        const auto reserved_contribution = lux::script::lua::ScriptAbilityLuaContribution{
+            &reserved_name, kNameLuaMethods
+        };
+        const auto reserved_name_backend = LuaScriptBackend::create({
+            .instance_capacity = 1U,
+            .prepared_call_capacity = 1U,
+            .continuation_capacity = 1U,
+            .execution_depth_capacity = 4U,
+            .ability_catalog_method_capacity = 1U,
+            .prepared_ability_capacity = 1U,
+            .abilities = {&reserved_contribution, 1U},
+            .prepared_ability_blocks = std::array{LuaPreparedBlockClass{1U, 1U}},
+            .prepared_ability_storage_bytes = 64U * 1024U * 1024U
+        });
+        if (std::string_view{keyword} == "global")
+            assert(reserved_name_backend); // Lua55 uses its official LUA_COMPAT_GLOBAL=1 default.
+        else
+        {
+            assert(!reserved_name_backend);
+            assert(reserved_name_backend.error() == ELuaScriptBindingBackendError::INVALID_ABILITY_CONTRIBUTION);
+        }
+    }
 
     const auto unsupported_integer = lux::script::lua::makeScriptAbilityLuaContribution<
         test::LuaUnsupportedIntegerAbility
@@ -347,13 +320,7 @@ int main()
     health_binding.name.clear();
     health_binding.canonical_name.clear();
 
-    const LuaRecordMarshaller collision_marshaller{
-        lux::semantic::typeId("lux.physics.CollisionEvent"),
-        "lux.physics.CollisionEvent",
-        sizeof(CollisionEvent),
-        alignof(CollisionEvent),
-        nullptr,
-        &pushCollisionEvent};
+    constexpr auto collision_marshaller = lux::script::lua::makeLuaValueOperation<CollisionEvent>();
     auto created_backend = LuaScriptBackend::create(
         {
             .instance_capacity = 4U,
@@ -361,7 +328,7 @@ int main()
             .continuation_capacity = 4U,
             .execution_depth_capacity = 8U,
             .ability_catalog_method_capacity = 1U,
-            .record_marshallers = std::span{&collision_marshaller, 1U}
+            .values = std::span{&collision_marshaller, 1U}
         }
     );
     assert(created_backend);
@@ -564,11 +531,11 @@ int main()
         second_end
     ) == EScriptBackendResult::SUCCESS);
     lux_script_call_frame first_begin_frame{
-        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, first_begin.synchronous.context};
+        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
     lux_script_call_frame second_begin_frame{
-        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, second_begin.synchronous.context};
-    assert(first_begin.synchronous.invoke(&first_begin_frame) == 0);
-    assert(second_begin.synchronous.invoke(&second_begin_frame) == 0);
+        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+    assert(first_begin.synchronous.invoke(first_begin.synchronous.context, &first_begin_frame) == 0);
+    assert(second_begin.synchronous.invoke(second_begin.synchronous.context, &second_begin_frame) == 0);
 
     ScriptBackendPreparedMethod scalar_call;
     assert(descriptor.prepareMethod(
@@ -608,10 +575,8 @@ int main()
         scalar_results.data(),
         static_cast<std::uint32_t>(scalar_results.size()),
         0U,
-        nullptr,
-        scalar_call.synchronous.context
-    };
-    assert(scalar_call.synchronous.invoke(&scalar_frame) == 0);
+        nullptr};
+    assert(scalar_call.synchronous.invoke(scalar_call.synchronous.context, &scalar_frame) == 0);
     assert(!bool_output);
     assert(i32_output == i32_input && u32_output == u32_input);
     assert(f32_output == f32_input && f64_output == f64_input);
@@ -659,9 +624,8 @@ int main()
         nullptr,
         0U,
         0U,
-        nullptr,
-        collision_call.synchronous.context};
-    assert(collision_call.synchronous.invoke(&collision_frame) == 0);
+        nullptr};
+    assert(collision_call.synchronous.invoke(collision_call.synchronous.context, &collision_frame) == 0);
     std::int32_t collision_count_value{};
     lux_script_value_slot collision_count_slot{
         LUX_SCRIPT_VK_INT32,
@@ -676,9 +640,9 @@ int main()
         &collision_count_slot,
         1U,
         0U,
-        nullptr,
-        collision_count_call.synchronous.context};
-    assert(collision_count_call.synchronous.invoke(&collision_count_frame) == 0);
+        nullptr};
+    assert(collision_count_call.synchronous.invoke(
+        collision_count_call.synchronous.context, &collision_count_frame) == 0);
     assert(collision_count_value == 1);
 
     ScriptBackendPreparedMethod bad_return_call;
@@ -697,8 +661,8 @@ int main()
         &bad_result};
     lux_script_call_frame bad_return_frame{
         nullptr, 0U, 0U, &bad_result_slot, 1U, 0U,
-        nullptr, bad_return_call.synchronous.context};
-    assert(bad_return_call.synchronous.invoke(&bad_return_frame) != 0);
+        nullptr};
+    assert(bad_return_call.synchronous.invoke(bad_return_call.synchronous.context, &bad_return_frame) != 0);
 
     std::array<lux_script_value_slot, 2U> arguments{};
     std::array<std::int32_t, 2U> values{};
@@ -712,8 +676,8 @@ int main()
         return_slot,
         result
     );
-    frame.user_context = first.synchronous.context;
-    assert(first.synchronous.invoke(&frame) == 0);
+
+    assert(first.synchronous.invoke(first.synchronous.context, &frame) == 0);
     assert(result == 1);
     frame = makeFrame(
         1,
@@ -723,8 +687,8 @@ int main()
         return_slot,
         result
     );
-    frame.user_context = first.synchronous.context;
-    assert(first.synchronous.invoke(&frame) == 0);
+
+    assert(first.synchronous.invoke(first.synchronous.context, &frame) == 0);
     assert(result == 2);
     frame = makeFrame(
         1,
@@ -734,8 +698,8 @@ int main()
         return_slot,
         result
     );
-    frame.user_context = second.synchronous.context;
-    assert(second.synchronous.invoke(&frame) == 0);
+
+    assert(second.synchronous.invoke(second.synchronous.context, &frame) == 0);
     assert(result == 1);
 
     frame = makeFrame(
@@ -746,8 +710,8 @@ int main()
         return_slot,
         result
     );
-    frame.user_context = second.synchronous.context;
-    assert(second.synchronous.invoke(&frame) != 0);
+
+    assert(second.synchronous.invoke(second.synchronous.context, &frame) != 0);
 
     const EScriptEndPlayReason end_reason{EScriptEndPlayReason::RUNTIME_STOPPED};
     lux_script_value_slot end_reason_slot{
@@ -757,11 +721,11 @@ int main()
         lux::semantic::typeId("lux.simulation.ScriptEndPlayReason"),
         const_cast<EScriptEndPlayReason*>(std::addressof(end_reason))};
     lux_script_call_frame first_end_frame{
-        &end_reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, first_end.synchronous.context};
+        &end_reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr};
     lux_script_call_frame second_end_frame{
-        &end_reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, second_end.synchronous.context};
-    assert(first_end.synchronous.invoke(&first_end_frame) == 0);
-    assert(second_end.synchronous.invoke(&second_end_frame) == 0);
+        &end_reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr};
+    assert(first_end.synchronous.invoke(first_end.synchronous.context, &first_end_frame) == 0);
+    assert(second_end.synchronous.invoke(second_end.synchronous.context, &second_end_frame) == 0);
 
     auto unsupported = function;
     unsupported.symbol_id = 12U;
@@ -814,8 +778,8 @@ int main()
         probe_call
     ) == EScriptBackendResult::SUCCESS);
     lux_script_call_frame escape_frame{
-        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, escape_call.synchronous.context};
-    assert(escape_call.synchronous.invoke(&escape_frame) == 0);
+        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+    assert(escape_call.synchronous.invoke(escape_call.synchronous.context, &escape_frame) == 0);
 
     ScriptBackendPreparedMethod exhausted_call;
     assert(descriptor.prepareMethod(
@@ -859,9 +823,8 @@ int main()
         &escaped_result_slot,
         1U,
         0U,
-        nullptr,
-        probe_call.synchronous.context};
-    assert(probe_call.synchronous.invoke(&probe_frame) == 0);
+        nullptr};
+    assert(probe_call.synchronous.invoke(probe_call.synchronous.context, &probe_frame) == 0);
     assert(escaped_is_dead);
 
     descriptor.releaseMethod(descriptor.context, second_instance, second);

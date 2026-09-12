@@ -105,10 +105,11 @@ host-tools prefix must contain the complete `lux_meta_generator` runtime closure
 `VULKAN_SDK`: its current platform-neutral headers are used at compile time while
 the target still links the NDK Vulkan loader.
 
-`LUX_SCRIPT_HAS_LUA` selects the optional LuaJIT backend. It defaults to `ON` for
-desktop products and `OFF` for Android until the Android triplet supplies a
-target-built LuaJIT package. The backend-neutral ScriptSystem and native script
-backend remain available when it is off.
+`LUX_SCRIPT_HAS_LUA` enables the optional Lua 5.5.1 backend. Lua 5.4 and LuaJIT are no longer supported
+by active builds. Supply the single `LuxLua55::Runtime` dependency using the
+[verified recipe](cmake/dependencies/lua55/README.md). Desktop products default to `ON`; Android
+defaults to `OFF` and has no qualified Lua55 dependency recipe. ScriptSystem and native backends
+remain available without Lua.
 
 Example with Ninja and vcpkg:
 

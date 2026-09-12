@@ -260,7 +260,7 @@ int main()
             .storage_populations = std::array{
                 lux::simulation::script::NativeScriptStoragePopulation{module.get(), 3U, 4U}
             },
-            .state_storage_bytes = 64U * 1024U * 1024U
+            .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = true
         }
     );
     assert(*backend);
@@ -326,7 +326,7 @@ int main()
                 .storage_populations = std::array{
                     lux::simulation::script::NativeScriptStoragePopulation{module.get(), Population, 1U}
                 },
-                .state_storage_bytes = 64U * 1024U * 1024U
+                .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = true
             }
         };
         assert(spread_backend);
@@ -497,12 +497,12 @@ int main()
         lux::semantic::typeId("lux.f32"),
         &delta};
     lux_script_call_frame frame{
-        &argument, 1U, 0U, nullptr, 0U, 0U, nullptr, first.context};
-    assert(first.invoke(&frame) == 0);
-    frame.user_context = second.context;
-    assert(second.invoke(&frame) == 0);
-    frame.user_context = third.context;
-    assert(third.invoke(&frame) == 0);
+        &argument, 1U, 0U, nullptr, 0U, 0U, nullptr};
+    assert(first.invoke(first.context, &frame) == 0);
+
+    assert(second.invoke(second.context, &frame) == 0);
+
+    assert(third.invoke(third.context, &frame) == 0);
 
     ScriptBackendPreparedMethod begin_method;
     ScriptBackendPreparedMethod end_method;
@@ -521,8 +521,8 @@ int main()
     const auto begin_call = begin_method.synchronous;
     const auto end_call = end_method.synchronous;
     lux_script_call_frame begin_frame{
-        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, begin_call.context};
-    assert(begin_call.invoke(&begin_frame) == 0);
+        nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+    assert(begin_call.invoke(begin_call.context, &begin_frame) == 0);
     const EScriptEndPlayReason end_reason{EScriptEndPlayReason::RUNTIME_STOPPED};
     lux_script_value_slot end_slot{
         LUX_SCRIPT_VK_UINT32,
@@ -531,8 +531,8 @@ int main()
         lux::semantic::typeId("lux.simulation.ScriptEndPlayReason"),
         const_cast<EScriptEndPlayReason*>(std::addressof(end_reason))};
     lux_script_call_frame end_frame{
-        &end_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, end_call.context};
-    assert(end_call.invoke(&end_frame) == 0);
+        &end_slot, 1U, 0U, nullptr, 0U, 0U, nullptr};
+    assert(end_call.invoke(end_call.context, &end_frame) == 0);
 
     auto mismatched = function;
     mismatched.args[0].canonical_name = "lux.f64";
@@ -605,7 +605,7 @@ int main()
             .storage_populations = std::array{
                 lux::simulation::script::NativeScriptStoragePopulation{step_module.get(), 1U, 2U}
             },
-            .state_storage_bytes = 64U * 1024U * 1024U
+            .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = true
         }
     };
     assert(step_backend);
@@ -659,6 +659,33 @@ int main()
     ScriptBackendInstance step_instance;
     std::array<std::uint8_t, 16U> step_id_bytes{};
     step_id_bytes[0] = 4U;
+    // Specialized entries must never silently accept a different publication at cold binding.
+    for (const bool wrong_context : {false, true})
+    {
+        auto contribution = AsyncContribution;
+        AsyncProvider foreign;
+        contribution.expected_context = wrong_context ? &foreign : &async_provider;
+        contribution.expected_dispatch = wrong_context ? &async_provider : &foreign;
+        NativeScriptBackend rejected{
+            NativeModuleResolver{&step_modules, &Provider::resolve},
+            NativeScriptBackendConfig{
+                .module_capacity = 1U, .instance_capacity = 1U, .prepared_call_capacity = 4U,
+                .continuation_capacity = 2U, .max_ability_imports_per_module = 2U,
+                .max_continuation_frame_bytes = 256U, .continuation_frame_storage_bytes = 5120U,
+                .abilities = std::span{&contribution, 1U},
+                .storage_populations = std::array{NativeScriptStoragePopulation{step_module.get(), 1U, 2U}},
+                .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = true
+            }
+        };
+        assert(rejected);
+        const auto candidate = rejected.descriptor();
+        ScriptBackendInstance output;
+        assert(candidate.createInstance(candidate.context, ScriptInstanceCreateContext{
+            lux::asset::AssetId{step_id_bytes}, SimulationScriptScope{}, nullptr, {1U, 1U}, capabilities},
+            *step_artifact_result, output) == EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH);
+        assert(!output && !async_provider.completion);
+    }
+    std::puts("NATIVE_SPECIALIZATION_REJECTED,context=1,dispatch=1,provider=0");
     assert(step_descriptor.createInstance(
         step_descriptor.context,
         ScriptInstanceCreateContext{
@@ -731,11 +758,31 @@ int main()
     lux_script_call_frame read_frame{};
     read_frame.returns = std::addressof(state_result);
     read_frame.return_count = 1U;
-    read_frame.user_context = read_call.context;
-    assert(read_call.invoke(std::addressof(read_frame)) == 0);
+
+    assert(read_call.invoke(read_call.context, std::addressof(read_frame)) == 0);
     assert(state_value == 1U);
 
     step_descriptor.releaseMethod(step_descriptor.context, step_instance, step_method);
     step_descriptor.releaseMethod(step_descriptor.context, step_instance, read_method);
     step_descriptor.destroyInstance(step_descriptor.context, step_instance);
+    const auto retained = step_backend.stats().retained_binding_bytes;
+    assert(retained > 0U);
+    for (std::uint32_t i{}; i < 32U; ++i)
+    {
+        ScriptBackendInstance replacement;
+        ScriptInstanceCreateContext context{lux::asset::AssetId{step_id_bytes}, SimulationScriptScope{}, nullptr,
+            {i + 2U, i + 2U}, capabilities};
+        assert(step_descriptor.createInstance(step_descriptor.context, context, *step_artifact_result, replacement) ==
+            EScriptBackendResult::SUCCESS);
+        ScriptBackendPreparedMethod read;
+        assert(step_descriptor.prepareMethod(step_descriptor.context, replacement, read_state, read) ==
+            EScriptBackendResult::SUCCESS);
+        state_value = 99U;
+        assert(read.synchronous.invoke(read.synchronous.context, &read_frame) == 0 && state_value == 0U);
+        step_descriptor.releaseMethod(step_descriptor.context, replacement, read);
+        step_descriptor.destroyInstance(step_descriptor.context, replacement);
+        assert(step_backend.stats().active_states == 0U && step_backend.stats().active_frames == 0U);
+        assert(step_backend.stats().retained_binding_bytes == retained);
+    }
+    std::printf("NATIVE_BINDING_REUSE,cycles=32,retained=%zu,zeroed_state=1,closed=1\n", retained);
 }

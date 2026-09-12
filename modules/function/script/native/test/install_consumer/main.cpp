@@ -14,9 +14,10 @@ main()
         return 2;
 
     std::int32_t value = 41;
+    lux_script_native_instance_context context{&value};
     lux_script_call_frame frame{};
-    frame.user_context = &value;
-    if (increment->invoke(&frame) != 0 || value != 42)
+
+    if (increment->invoke(&context, &frame) != 0 || value != 42)
         return 3;
     return 0;
 }

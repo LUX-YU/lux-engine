@@ -1,0 +1,75 @@
+{
+  "status": "PASS",
+  "remote": "git@github.com:LUX-YU/lux-engine.git",
+  "branch": "codex/s6-native-task-lua-steps",
+  "archive_commit": "841aae662a6d25975f4051559221119a986e229c",
+  "qualification_source": "21d106014e05cf0a7746d45fd05eac8ae01575f2",
+  "archive_path": ".internal/script-native-lua-na1/evidence/hotpath.zip",
+  "archive_sha256": "7b5fbf5f4326fb1bb9fd91525d8caf40e603e21013329449d4f6c8abdfe9e6b3",
+  "entries_verified": 601,
+  "bytes": 3867145,
+  "method": "fresh remote fetch into existing separate bare readback repository; git show; archive and all entry hashes verified",
+  "download": "https://github.com/LUX-YU/lux-engine/raw/841aae662a6d25975f4051559221119a986e229c/.internal/script-native-lua-na1/evidence/hotpath.zip",
+  "commands": [
+    {
+      "command": [
+        "git",
+        "-C",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\remote-readback",
+        "remote",
+        "get-url",
+        "origin"
+      ],
+      "exit": 0,
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\remote-readback",
+        "fetch",
+        "--no-tags",
+        "--depth",
+        "1",
+        "origin",
+        "refs/heads/codex/s6-native-task-lua-steps"
+      ],
+      "exit": 0,
+      "stderr": "From github.com:LUX-YU/lux-engine\n * branch            codex/s6-native-task-lua-steps -> FETCH_HEAD\n + c734758...841aae6 codex/s6-native-task-lua-steps -> origin/codex/s6-native-task-lua-steps  (forced update)\n"
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\remote-readback",
+        "rev-parse",
+        "FETCH_HEAD"
+      ],
+      "exit": 0,
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\remote-readback",
+        "show",
+        "841aae662a6d25975f4051559221119a986e229c:.internal/script-native-lua-na1/evidence/hotpath.zip"
+      ],
+      "exit": 0,
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\remote-readback",
+        "show",
+        "841aae662a6d25975f4051559221119a986e229c:.internal/script-native-lua-na1/evidence/hotpath.json"
+      ],
+      "exit": 0,
+      "stderr": ""
+    }
+  ]
+}

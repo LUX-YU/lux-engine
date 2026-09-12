@@ -1,3 +1,6 @@
+#include "PhysicsLuaTask.hpp"
+#include "PhysicsLuaTask.PhysicsLuaTask.script.generated.hpp"
+#include <lux/engine/simulation/scripting/native_lua_tasks/NativeLuaTaskBackend.hpp>
 #include "PhysicsCppScript.hpp"
 #include "PhysicsCppScript.PhysicsCpp.script.generated.hpp"
 #include "PhysicsQuery2D.ability.generated.hpp"
@@ -72,8 +75,9 @@ namespace
         std::uint64_t seed{0x5EED2026ULL};
         std::filesystem::path output{"physics2d_script_pb3.csv"};
         std::filesystem::path lua_artifact;
+        bool vm_accounting{};
+        bool lua_incremental_gc{true};
         std::filesystem::path flowforge_artifact;
-        lux::script::lua::ELuaExecutionPolicy lua_policy{lux::script::lua::ELuaExecutionPolicy::DEFAULT};
     };
 
     struct Row final
@@ -157,19 +161,20 @@ namespace
                     return std::nullopt;
                 result.trace = value == "on";
             }
+            else if (key == "--lua-gc")
+            {
+                if (value != "gen" && value != "inc") return std::nullopt;
+                result.lua_incremental_gc = value == "inc";
+            }
+            else if (key == "--vm-accounting")
+            {
+                if (value != "on" && value != "off") return std::nullopt;
+                result.vm_accounting = value == "on";
+            }
             else if (key == "--lua-artifact")
                 result.lua_artifact = value;
             else if (key == "--flowforge-artifact")
                 result.flowforge_artifact = value;
-            else if (key == "--lua-policy")
-            {
-                if (value == "default")
-                    result.lua_policy = lux::script::lua::ELuaExecutionPolicy::DEFAULT;
-                else if (value == "interpreter-only")
-                    result.lua_policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
-                else
-                    return std::nullopt;
-            }
             else if (key == "--mode")
             {
                 if (value == "performance")
@@ -307,9 +312,18 @@ namespace
         std::optional<CppStaticScriptBackend> backend;
     };
 
+    [[nodiscard]] asset::AssetId luaTaskAssetId()
+    {
+        std::array<std::uint8_t, 16U> bytes{};
+        bytes.front() = 0x2DU;
+        bytes.back() = 0xC1U;
+        return asset::AssetId{bytes};
+    }
+
     struct Sources final
     {
         const lux::script::ScriptArtifact* cpp{};
+        const lux::script::ScriptArtifact* lua_task{};
         const lux::script::ScriptArtifact* flow{};
         const lux::script::ScriptArtifact* lua{};
         const lux::script::NativeModule* flow_module{};
@@ -321,7 +335,9 @@ namespace
                                     ResolvedScriptArtifact& output) noexcept
         {
             const auto& self = *static_cast<Sources*>(context);
-            if (requested == cppAssetId())
+            if (requested == luaTaskAssetId())
+                output.artifact = self.lua_task;
+            else if (requested == cppAssetId())
                 output.artifact = self.cpp;
             else if (requested == self.flow_id)
                 output.artifact = self.flow;
@@ -371,8 +387,11 @@ namespace
             if (physics == nullptr)
                 throw std::runtime_error("Physics2D benchmark provider is absent");
 
-            flow_module.emplace(*lux::script::loadNativeModule(flow_asset->data().payload(),
-                                                               flow_asset->data().description().module_name));
+            auto loaded_flow = lux::script::loadNativeModule(flow_asset->data().payload(),
+                flow_asset->data().description().module_name);
+            if (!loaded_flow)
+                throw std::runtime_error("Physics2D FlowForge module rejected; regenerate the artifact for ABI v6");
+            flow_module.emplace(std::move(*loaded_flow));
             sources.cpp = std::addressof(*cpp.artifact);
             sources.flow = std::addressof(flow_asset->data());
             sources.lua = std::addressof(lua_asset->data());
@@ -457,18 +476,43 @@ namespace
             const auto lua_count = options.size - cpp_count - flow_count;
             const auto requirements = describeLuaPreparedRequirements(lua_asset->data().description(), contributions);
             if (!requirements) throw std::runtime_error("Lua Physics requirements are incompatible");
-            lua.emplace(*LuaScriptBackend::create({
+            const auto& task_contract = lux::simulation::script::generated::PhysicsLuaTask;
+            auto task_description = materializeCppStaticScript(task_contract);
+            if (!task_description) throw std::runtime_error("Physics Lua task contract rejected");
+            auto task_artifact = lux::script::ScriptArtifact::create(std::move(*task_description), {});
+            if (!task_artifact) throw std::runtime_error("Physics Lua task artifact rejected");
+            lua_task_artifact.emplace(std::move(*task_artifact));
+            sources.lua_task = &*lua_task_artifact;
+            auto typed_event = CppScriptEventSource<std::int32_t>::create(task_contract, event_sources.front());
+            if (!typed_event) throw std::runtime_error("Physics Lua task Event contract rejected");
+            lux::physics2d::benchmark::lua_task_event = *typed_event;
+            const std::array routes{NativeLuaTaskRoute{TickSymbol, 1345138945U}};
+            std::array<lux::rdesc::ScriptFunction, 3U> steps;
+            for (std::size_t i{}; i < steps.size(); ++i)
+            {
+                const auto* step = sources.lua->findExport(
+                    lux::script::ScriptSymbolId{1345130501U + static_cast<std::uint32_t>(i)});
+                if (!step) throw std::runtime_error("Physics Lua synchronous step absent");
+                steps[i] = *step;
+            }
+            const std::array plans{NativeLuaTaskPlan{sources.lua_id, sources.lua->contentIdentity(),
+                luaTaskAssetId(), sources.lua_task->contentIdentity(), &task_contract, routes, steps}};
+            const std::array pools{CppStaticScriptPoolDescription{&task_contract, lua_count, lua_count,
+                lua_count * 1024U + 4096U, alignof(std::max_align_t), lua_count, 512U}};
+            auto composed = NativeLuaTaskBackend::create({.lua = {
                 .instance_capacity = lua_count,
                 .prepared_call_capacity = lua_count * 5U,
-                .continuation_capacity = lua_count,
+                .continuation_capacity = 0U,
                 .execution_depth_capacity = 4U,
                 .ability_catalog_method_capacity = 5U,
                 .prepared_ability_capacity = lua_count * requirements->ability_methods,
                 .abilities = contributions,
-                .execution_policy = options.lua_policy,
                 .event_catalog_capacity = 1U,
                 .prepared_event_capacity = lua_count * requirements->event_sources,
                 .events = event_sources,
+                .track_vm_allocations = options.vm_accounting,
+                .vm = {.gc_mode = options.lua_incremental_gc ? lux::script::lua::ELuaGcMode::INCREMENTAL :
+                    lux::script::lua::ELuaGcMode::GENERATIONAL},
                 .prepared_ability_blocks = std::array{
                     lux::simulation::script::LuaPreparedBlockClass{
                         requirements->ability_methods,
@@ -485,7 +529,11 @@ namespace
                 },
                 .prepared_event_storage_bytes =
                     64U * 1024U * 1024U
-            }));
+            }, .native_pools = pools, .plans = plans,
+                .artifacts = {&sources, &Sources::resolveArtifact}, .instance_capacity = lua_count,
+                .prepared_method_capacity = lua_count * 2U});
+            if (!composed) throw std::runtime_error("Physics native Lua composition rejected");
+            lua.emplace(std::move(*composed));
             backends = {cpp.backend->descriptor(), native->descriptor(), lua->descriptor()};
             const auto bounded = (std::max)(options.size, std::size_t{1U});
             auto created = ScriptSystem::create(
@@ -522,6 +570,10 @@ namespace
                     if (stable)
                         self.system->beginStableAdmission();
                     const auto result = self.system->processLifecycle();
+                    if (!result) return false;
+                    auto region = self.system->beginExecutionRegion();
+                    if (!region) return false;
+                    self.execution_region.emplace(std::move(*region));
                     if (self.trace)
                     {
                         self.phase_end = Clock::now();
@@ -534,6 +586,8 @@ namespace
                     auto& self = *static_cast<MixedHarness*>(context);
                     const auto begin = self.trace ? Clock::now() : Clock::time_point{};
                     const bool result = !stable || static_cast<bool>(self.system->executeStablePoint());
+                    if (!self.execution_region->finish()) return false;
+                    self.execution_region.reset();
                     if (self.trace)
                     {
                         self.phase.dispatch_ns = elapsed(self.phase_end, begin);
@@ -553,7 +607,13 @@ namespace
                         self.phase.lifecycle_after_ns = elapsed(begin, self.phase_end);
                     }
                     return static_cast<bool>(result);
-                }, nullptr});
+                },
+                [](void* context, const SimulationClockSnapshot&) noexcept {
+                    auto& self = *static_cast<MixedHarness*>(context);
+                    if (self.execution_region && !self.execution_region->finish()) std::terminate();
+                    self.execution_region.reset();
+                    static_cast<void>(self.system->processLifecycle(EScriptLifecycleAdmission::RETIRE_ONLY));
+                }});
             if (!connection)
                 throw std::runtime_error("Physics2D benchmark Hook binding failed");
             hook_connection = std::move(*connection);
@@ -564,6 +624,31 @@ namespace
             hook_connection.reset();
             if (system)
                 static_cast<void>(system->shutdown());
+            const auto composition = lua->stats();
+            const auto stats = composition.lua;
+            if (stats.vm_coroutine_creations || stats.vm_coroutine_resumes || composition.native.active_frames)
+                std::terminate();
+            const auto& memory = stats.vm_allocations;
+            std::printf("VM_FINAL,accounting=%d,alloc=%llu,realloc=%llu,free=%llu,failures=%llu,"
+                "heap_alloc=%llu,heap_free=%llu,slot_reuses=%llu,in_place=%llu,live=%zu,peak_live=%zu,"
+                "idle_page_backing=%zu,peak_idle_page_backing=%zu,threads=%zu,resumes=%zu,released=%zu,"
+                "leaf_available=%d,leaf_observed=%d,leaf=%llu,standard=%llu\n",
+                memory.enabled, memory.allocations, memory.reallocations, memory.frees, memory.failures,
+                memory.system_allocations, memory.system_frees, memory.slot_reuses, memory.in_place,
+                memory.live_bytes, memory.peak_live_bytes, memory.idle_page_backing_bytes,
+                memory.peak_idle_page_backing_bytes,
+                stats.vm_coroutine_creations, stats.vm_coroutine_resumes, stats.vm_coroutine_releases,
+                stats.leaf_yield_available, stats.leaf_statistics_enabled,
+                stats.leaf_return_yields, stats.standard_leaf_yields
+            );
+            if (memory.enabled)
+                std::printf("VM_PAGES,active=%zu,idle=%zu,pinned_free=%zu,rounding=%zu,metadata=%zu,large=%zu,"
+                    "large_requested=%zu,page_alloc=%llu,page_free=%llu,page_reuse=%llu,direct_alloc=%llu,"
+                    "direct_free=%llu,page_fallback=%llu\n",
+                    memory.active_page_backing_bytes, memory.idle_page_backing_bytes, memory.pinned_free_slot_bytes,
+                    memory.class_rounding_bytes, memory.metadata_and_header_bytes, memory.large_block_backing_bytes,
+                    memory.large_requested_live_bytes, memory.page_allocations, memory.page_frees, memory.page_reuses,
+                    memory.direct_allocations, memory.direct_frees, memory.page_fallbacks);
         }
 
         [[nodiscard]] bool frame()
@@ -610,9 +695,11 @@ namespace
         Sources sources;
         std::optional<std::vector<ScriptRuntimeMount>> description;
         std::optional<NativeScriptBackend> native;
-        std::optional<LuaScriptBackend> lua;
+        std::optional<lux::script::ScriptArtifact> lua_task_artifact;
+        std::optional<NativeLuaTaskBackend> lua;
         std::array<ScriptBackendDescriptor, 3U> backends;
         std::optional<ScriptSystem> system;
+        std::optional<ScriptSystem::ExecutionRegion> execution_region;
         bool trace{};
         std::uint64_t graph_compile_ns{};
         Clock::time_point frame_begin;
@@ -750,6 +837,19 @@ namespace
         if (harness.system->activeInstanceCount() != options.size ||
             harness.physics->stats().overlap_queries == query_start)
             throw std::runtime_error("Physics2D mixed observation mismatch");
+        const auto steady = harness.system->stats();
+        std::printf("INTEGRITY,physics,steady,invocation_errors=%llu,instances=%zu,resumes=%llu,queue=%zu\n",
+            steady.invocation_failures, steady.active_instances,
+            steady.backend_resume_calls, steady.resume_queue_depth);
+        if (steady.invocation_failures != 0U || !harness.system->shutdown())
+            throw std::runtime_error("Physics2D mixed shutdown failed");
+        const auto closed = harness.system->stats();
+        const bool retained = closed.active_instances != 0U || closed.active_continuations != 0U ||
+            closed.active_awaitables != 0U || closed.active_event_waiters != 0U || closed.resume_queue_depth != 0U;
+        if (retained || closed.invocation_failures != 0U)
+            throw std::runtime_error("Physics2D mixed cleanup or error count mismatch");
+        std::printf("INTEGRITY,physics,shutdown,invocation_errors=%llu,instances=0,backlog=0\n",
+            closed.invocation_failures);
     }
 }
 

@@ -1,0 +1,4 @@
+@PACKAGE_INIT@
+include("${CMAKE_CURRENT_LIST_DIR}/LuxLua55Targets.cmake")
+set_property(TARGET LuxLua55::Runtime PROPERTY IMPORTED_GLOBAL TRUE)
+check_required_components(LuxLua55)

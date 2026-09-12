@@ -1,0 +1,172 @@
+--- a/src/ldo.c
++++ b/src/ldo.c
+@@ -654,8 +654,11 @@
+     luaD_hook(L, LUA_HOOKCALL, -1, 1, narg);
+   }
+   lua_unlock(L);
++  ci->callstatus |= CIST_LUXCALL;
+   n = (*f)(L);  /* do the actual call */
+   lua_lock(L);
++  ci->callstatus &= ~CIST_LUXCALL;
++  if (n == -1 && L->status == LUA_YIELD) return n; /* retained C CallInfo */
+   api_checknelems(L, n);
+   luaD_poscall(L, ci, n);
+   return n;
+@@ -837,7 +840,8 @@
+ ** conservative and use LUA_MULTRET (always adjust).
+ */
+ static void finishCcall (lua_State *L, CallInfo *ci) {
+-  int n;  /* actual number of results from C function */
++  int n;
++  ci->callstatus &= ~CIST_LUXCALL;  /* actual number of results from C function */
+   if (ci->callstatus & CIST_CLSRET) {  /* was closing TBC variable? */
+     lua_assert(ci->callstatus & CIST_TBC);
+     n = ci->u2.nres;  /* just redo 'luaD_poscall' */
+@@ -868,7 +872,7 @@
+ static void unroll (lua_State *L, void *ud) {
+   CallInfo *ci;
+   UNUSED(ud);
+-  while ((ci = L->ci) != &L->base_ci) {  /* something in the stack */
++  while (L->status == LUA_OK && (ci = L->ci) != &L->base_ci) {
+     if (!isLua(ci))  /* C function? */
+       finishCcall(L, ci);  /* complete its execution */
+     else {  /* Lua function */
+@@ -919,6 +923,8 @@
+   int n = *(cast(int*, ud));  /* number of arguments */
+   StkId firstArg = L->top.p - n;  /* first argument */
+   CallInfo *ci = L->ci;
++  L->lux_resume_boundary = L->errorJmp;
++  ci->callstatus &= ~CIST_LUXCALL;
+   if (L->status == LUA_OK)  /* starting a coroutine? */
+     ccall(L, firstArg - 1, LUA_MULTRET, 0);  /* just call its body */
+   else {  /* resuming from previous yield */
+@@ -984,6 +990,8 @@
+   luai_userstateresume(L, nargs);
+   api_checkpop(L, (L->status == LUA_OK) ? nargs + 1 : nargs);
+   status = luaD_rawrunprotected(L, resume, &nargs);
++  L->lux_resume_boundary = NULL; /* also on a standard longjmp/error */
++  if (status == LUA_OK && L->status == LUA_YIELD) status = LUA_YIELD;
+    /* continue running after recoverable errors */
+   status = precover(L, status);
+   if (l_likely(!errorstatus(status)))
+@@ -999,6 +1007,45 @@
+   return APIstatus(status);
+ }
+ 
++
++static int lux_leaf_eligible (lua_State *L) {
++  CallInfo *ci = L->ci;
++  const l_uint32 top_allowed = CIST_C | CIST_NRESULTS | CIST_LUXCALL;
++  if (!yieldable(L) || L->status != LUA_OK || L->hookmask != 0 ||
++      L->tbclist.p != L->stack.p || L->lux_resume_boundary == NULL ||
++      L->errorJmp != L->lux_resume_boundary || !(ci->callstatus & CIST_LUXCALL) ||
++      (ci->callstatus & ~top_allowed) != 0) return 0;
++  ci = ci->previous;
++  if (ci == &L->base_ci) return 0;
++  for (; ci != &L->base_ci; ci = ci->previous) {
++    if (!isLua(ci) || (ci->callstatus & ~(CIST_NRESULTS | CIST_FRESH)) != 0 ||
++        GET_OPCODE(ci->u.l.savedpc[-1]) != OP_CALL) return 0;
++    if ((ci->callstatus & CIST_FRESH) && ci->previous != &L->base_ci) return 0;
++  }
++  return 1;
++}
++
++LUA_API int luxlua_yieldleaf (lua_State *L, lua_KContext ctx, lua_KFunction k) {
++  lua_lock(L);
++  if (k == NULL || !lux_leaf_eligible(L)) {
++    L->lux_leaf_fallbacks++;
++    lua_unlock(L);
++    return lua_yieldk(L, 0, ctx, k);
++  }
++  luai_userstateyield(L, 0);
++  L->ci->u.c.k = k;
++  L->ci->u.c.ctx = ctx;
++  L->ci->u2.nyield = 0;
++  L->status = LUA_YIELD;
++  L->lux_leaf_yields++;
++  lua_unlock(L);
++  return -1; /* interpreted only by the enclosing precallC/OP_CALL pair */
++}
++
++LUA_API void luxlua_leafstats (lua_State *L, unsigned long long *fast, unsigned long long *fallback) {
++  *fast = L->lux_leaf_yields;
++  *fallback = L->lux_leaf_fallbacks;
++}
+ 
+ LUA_API int lua_isyieldable (lua_State *L) {
+   return yieldable(L);
+--- a/src/lstate.c
++++ b/src/lstate.c
+@@ -235,6 +235,8 @@
+   L->twups = L;  /* thread has no upvalues */
+   L->nCcalls = 0;
+   L->errorJmp = NULL;
++  L->lux_resume_boundary = NULL;
++  L->lux_leaf_yields = L->lux_leaf_fallbacks = 0;
+   L->hook = NULL;
+   L->hookmask = 0;
+   L->basehookcount = 0;
+--- a/src/lstate.h
++++ b/src/lstate.h
+@@ -249,6 +249,7 @@
+ #define CIST_HOOKYIELD	(CIST_TAIL << 1)
+ /* function "called" a finalizer */
+ #define CIST_FIN	(CIST_HOOKYIELD << 1)
++#define CIST_LUXCALL (CIST_FIN << 1) /* actual precallC C stack, never a resumed K function */
+ 
+ 
+ #define get_nresults(cs)  (cast_int((cs) & CIST_NRESULTS) - 1)
+@@ -296,6 +297,8 @@
+   GCObject *gclist;
+   struct lua_State *twups;  /* list of threads with open upvalues */
+   struct lua_longjmp *errorJmp;  /* current error recover point */
++  struct lua_longjmp *lux_resume_boundary;
++  unsigned long long lux_leaf_yields, lux_leaf_fallbacks;
+   CallInfo base_ci;  /* CallInfo for first level (C host) */
+   volatile lua_Hook hook;
+   ptrdiff_t errfunc;  /* current error handling function (stack index) */
+--- a/src/lvm.c
++++ b/src/lvm.c
+@@ -1200,6 +1200,18 @@
+ #define vmcase(l)	case l:
+ #define vmbreak		break
+ 
++
++typedef enum { LUX_LUA_FRAME, LUX_C_COMPLETE, LUX_LEAF_YIELD } LuxPrecallKind;
++typedef struct { LuxPrecallKind kind; CallInfo *frame; } LuxPrecallResult;
++
++/* OP_CALL alone may consume a normally returned engine leaf wait. */
++static LuxPrecallResult lux_precall (lua_State *L, StkId function, int nresults) {
++  LuxPrecallResult result;
++  result.frame = luaD_precall(L, function, nresults);
++  result.kind = result.frame != NULL ? LUX_LUA_FRAME :
++                L->status == LUA_YIELD ? LUX_LEAF_YIELD : LUX_C_COMPLETE;
++  return result;
++}
+ 
+ void luaV_execute (lua_State *L, CallInfo *ci) {
+   LClosure *cl;
+@@ -1725,17 +1737,19 @@
+       }
+       vmcase(OP_CALL) {
+         StkId ra = RA(i);
+-        CallInfo *newci;
++        LuxPrecallResult call;
+         int b = GETARG_B(i);
+         int nresults = GETARG_C(i) - 1;
+         if (b != 0)  /* fixed number of arguments? */
+           L->top.p = ra + b;  /* top signals number of arguments */
+         /* else previous instruction set top */
+         savepc(ci);  /* in case of errors */
+-        if ((newci = luaD_precall(L, ra, nresults)) == NULL)
+-          updatetrap(ci);  /* C call; nothing else to be done */
++        call = lux_precall(L, ra, nresults);
++        if (call.kind == LUX_LEAF_YIELD) return; /* retain the suspended C frame */
++        if (call.kind == LUX_C_COMPLETE)
++          updatetrap(ci);
+         else {  /* Lua call: run function in this same C frame */
+-          ci = newci;
++          ci = call.frame;
+           goto startfunc;
+         }
+         vmbreak;

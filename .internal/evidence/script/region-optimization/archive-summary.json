@@ -1,0 +1,10 @@
+{
+  "archive": "region-optimization-raw-evidence.zip",
+  "bytes": 46184160,
+  "sha256": "e298cbb859fc77503f8d3b559be87c7336d128370b6dbe0bf8bc350cc283a035",
+  "files": 3273,
+  "verified_all_items": true,
+  "compiled_binaries_in_archive": false,
+  "vtune_projects": 18,
+  "qualification_source": "402d5ca5ba0c2728bb4bdedda289f9eb36ce7e4e"
+}

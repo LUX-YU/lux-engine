@@ -1,0 +1,842 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="Win32-ninja"
+	tests="110"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname="LuxDesktop"
+	time="32"
+	timestamp="2026-09-12T09:24:24"
+	>
+	<testcase name="architecture_world_domain_positive" classname="architecture_world_domain_positive" time="0.0783331" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/architecture-layer-probes/architecture_world_domain_positive
+</system-out>
+	</testcase>
+	<testcase name="architecture_simulation_domain_positive" classname="architecture_simulation_domain_positive" time="0.0751725" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/architecture-layer-probes/architecture_simulation_domain_positive
+</system-out>
+	</testcase>
+	<testcase name="architecture_simulation_world_negative" classname="architecture_simulation_world_negative" time="0.0401328" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/TargetArchitecture.cmake:278 (message):
+  Architecture DAG: SIMULATION target 'probe_consumer' may not link WORLD
+  target 'probe_dependency'
+Call Stack (most recent call first):
+  CMakeLists.txt:27 (lux_validate_target_dag)
+
+
+-- Configuring incomplete, errors occurred!
+</system-out>
+	</testcase>
+	<testcase name="architecture_domain_world_negative" classname="architecture_domain_world_negative" time="0.0404891" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/TargetArchitecture.cmake:278 (message):
+  Architecture DAG: DOMAIN target 'probe_consumer' may not link WORLD target
+  'probe_dependency'
+Call Stack (most recent call first):
+  CMakeLists.txt:27 (lux_validate_target_dag)
+
+
+-- Configuring incomplete, errors occurred!
+</system-out>
+	</testcase>
+	<testcase name="architecture_domain_simulation_negative" classname="architecture_domain_simulation_negative" time="0.0407207" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/TargetArchitecture.cmake:278 (message):
+  Architecture DAG: DOMAIN target 'probe_consumer' may not link SIMULATION
+  target 'probe_dependency'
+Call Stack (most recent call first):
+  CMakeLists.txt:27 (lux_validate_target_dag)
+
+
+-- Configuring incomplete, errors occurred!
+</system-out>
+	</testcase>
+	<testcase name="architecture_process_world_loading_positive" classname="architecture_process_world_loading_positive" time="0.0769135" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/architecture-layer-probes/architecture_process_world_loading_positive
+</system-out>
+	</testcase>
+	<testcase name="architecture_scene_process_positive" classname="architecture_scene_process_positive" time="0.0732396" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/architecture-layer-probes/architecture_scene_process_positive
+</system-out>
+	</testcase>
+	<testcase name="architecture_process_scene_negative" classname="architecture_process_scene_negative" time="0.0430216" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/TargetArchitecture.cmake:278 (message):
+  Architecture DAG: PROCESS target 'probe_consumer' may not link SCENE target
+  'probe_dependency'
+Call Stack (most recent call first):
+  CMakeLists.txt:27 (lux_validate_target_dag)
+
+
+-- Configuring incomplete, errors occurred!
+</system-out>
+	</testcase>
+	<testcase name="architecture_scene_editor_negative" classname="architecture_scene_editor_negative" time="0.0390031" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/TargetArchitecture.cmake:278 (message):
+  Architecture DAG: SCENE target 'probe_consumer' may not link EDITOR target
+  'probe_dependency'
+Call Stack (most recent call first):
+  CMakeLists.txt:27 (lux_validate_target_dag)
+
+
+-- Configuring incomplete, errors occurred!
+</system-out>
+	</testcase>
+	<testcase name="architecture_toolchain_function_positive" classname="architecture_toolchain_function_positive" time="0.0779408" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/architecture-layer-probes/architecture_toolchain_function_positive
+</system-out>
+	</testcase>
+	<testcase name="architecture_toolchain_editor_negative" classname="architecture_toolchain_editor_negative" time="0.0404337" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/TargetArchitecture.cmake:278 (message):
+  Architecture DAG: TOOLCHAIN target 'probe_consumer' may not link EDITOR
+  target 'probe_dependency'
+Call Stack (most recent call first):
+  CMakeLists.txt:27 (lux_validate_target_dag)
+
+
+-- Configuring incomplete, errors occurred!
+</system-out>
+	</testcase>
+	<testcase name="architecture_editor_toolchain_positive" classname="architecture_editor_toolchain_positive" time="0.0750353" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/o/w/t/architecture-layer-probes/architecture_editor_toolchain_positive
+</system-out>
+	</testcase>
+	<testcase name="architecture_function_toolchain_negative" classname="architecture_function_toolchain_negative" time="0.0401734" status="run">
+		<properties>
+			<property name="cmake_labels" value="architecture;l1"/>
+		</properties>
+		<system-out>-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.
+CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/script-native-lua-na1/local-source/cmake/TargetArchitecture.cmake:278 (message):
+  Architecture DAG: FUNCTION target 'probe_consumer' may not link TOOLCHAIN
+  target 'probe_dependency'
+Call Stack (most recent call first):
+  CMakeLists.txt:27 (lux_validate_target_dag)
+
+
+-- Configuring incomplete, errors occurred!
+</system-out>
+	</testcase>
+	<testcase name="script_core_contract_test" classname="script_core_contract_test" time="0.0076321" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="type_static_info_test" classname="type_static_info_test" time="0.0065634" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="task_graph_test" classname="task_graph_test" time="0.0512914" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="script_description_contract_test" classname="script_description_contract_test" time="0.0105531" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="flowforge_dynamism" classname="flowforge_dynamism" time="0.0078296" status="run">
+		<properties/>
+		<system-out>-- AutoSparseSet::try_emplace_at --
+[ ok ] auto keys allocate monotonically from the offset
+[ ok ] erase recycles the key into the free list
+[ ok ] claiming a previously erased key succeeds
+[ ok ] claimed key holds the new value
+[ ok ] the claim reclaimed the key from the free list
+[ ok ] claiming an occupied key fails
+[ ok ] failed claim does not disturb the occupant
+[ ok ] later auto-allocation cannot hand out the claimed key again
+[ ok ] claiming beyond next_id_ succeeds (gap fill)
+[ ok ] next_id_ advanced past the claimed key
+[ ok ] skipped keys [5,8) stay allocatable via the free list
+[ ok ] auto-allocation reuses a gap key, not the claimed one
+[ ok ] claiming below the offset fails
+-- FlowGraph::insertNodeAt --
+[ ok ] graph indices allocate from 1
+[ ok ] removeNode succeeds
+[ ok ] removed index is gone
+[ ok ] insertNodeAt restores the original index
+[ ok ] restored index is live
+[ ok ] restored NodeStorage carries its index
+[ ok ] later addNodes cannot double-allocate the restored index
+[ ok ] insertNod...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="flowforge_script_ability_node" classname="flowforge_script_ability_node" time="0.0105311" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="script_artifact_codec_test" classname="script_artifact_codec_test" time="0.0123139" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="script_native_runtime_contract_test" classname="script_native_runtime_contract_test" time="0.0355482" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_description_contract_test" classname="simulation_description_contract_test" time="0.0128409" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_asset_codec_test" classname="simulation_asset_codec_test" time="0.011808" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="vnext_ecs_core" classname="vnext_ecs_core" time="0.007724" status="run">
+		<properties>
+			<property name="cmake_labels" value="core;cpu;l1;vnext"/>
+		</properties>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="vnext_ecs_system_registry" classname="vnext_ecs_system_registry" time="0.0076798" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_endpoint_point_test" classname="simulation_endpoint_point_test" time="0.013478" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_throwing_event_payload_rejected" classname="simulation_throwing_event_payload_rejected" time="0.826493" status="run">
+		<properties>
+			<property name="cmake_labels" value="exception;l1;negative;simulation"/>
+		</properties>
+		<system-out>-- Target 'simulation_throwing_event_payload_negative' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_unscoped_hook_rejected" classname="simulation_unscoped_hook_rejected" time="0.7275" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_unscoped_hook_negative' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_object_boundary_test" classname="simulation_object_boundary_test" time="0.0135954" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_script_coroutine_alignment_contract_test" classname="simulation_script_coroutine_alignment_contract_test" time="0.0106043" status="run">
+		<properties/>
+		<system-out>size_only=1 aligned_overload=0 bytes=240 local_mod64=0 stable_address=1
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_class_storage_test" classname="simulation_script_class_storage_test" time="0.0102627" status="run">
+		<properties/>
+		<system-out>STORAGE_TICKET,observe=0,owner=1,generation=1,allocation_checks=1,exhaustion=1,ticket=24
+STORAGE_TICKET,observe=1,owner=1,generation=1,allocation_checks=1,exhaustion=1,ticket=24
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_class_storage_move_test" classname="simulation_script_class_storage_move_test" time="0.0129533" status="run">
+		<properties/>
+		<system-out>requests=0 arena_deletes=1 expected=1
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_class_storage_failure_1_test" classname="simulation_script_class_storage_failure_1_test" time="0.0063803" status="run">
+		<properties/>
+		<system-out>requests=1 arena_deletes=0 expected=0
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_class_storage_failure_2_test" classname="simulation_script_class_storage_failure_2_test" time="0.0068025" status="run">
+		<properties/>
+		<system-out>requests=2 arena_deletes=1 expected=1
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_class_storage_failure_3_test" classname="simulation_script_class_storage_failure_3_test" time="0.0059663" status="run">
+		<properties/>
+		<system-out>requests=3 arena_deletes=1 expected=1
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_class_storage_failure_4_test" classname="simulation_script_class_storage_failure_4_test" time="0.0060134" status="run">
+		<properties/>
+		<system-out>requests=4 arena_deletes=1 expected=1
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_prepared_shape_test" classname="simulation_script_cpp_prepared_shape_test" time="0.0141767" status="run">
+		<properties/>
+		<system-out>prepared=10000 rare_arity=0 bytes=320000 generated_calls=10012
+prepared=10000 rare_arity=64 bytes=320000 generated_calls=10001
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_static_test" classname="simulation_script_cpp_static_test" time="0.0118302" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_generated_integration_test" classname="simulation_script_cpp_generated_integration_test" time="0.0264521" status="run">
+		<properties/>
+		<system-out>generated attach -&gt; two objects -&gt; caller Hook -&gt; coroutine -&gt; rematerialize -&gt; EndPlay: PASS
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_generated_host-failure" classname="simulation_script_cpp_generated_host-failure" time="0.0103015" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_generated_construct-failure" classname="simulation_script_cpp_generated_construct-failure" time="0.0097981" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_generated_prepare-failure" classname="simulation_script_cpp_generated_prepare-failure" time="0.0223958" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_1" classname="simulation_script_cpp_codegen_negative_1" time="1.11887" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_1' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_2" classname="simulation_script_cpp_codegen_negative_2" time="1.12695" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_2' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_3" classname="simulation_script_cpp_codegen_negative_3" time="1.12165" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_3' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_4" classname="simulation_script_cpp_codegen_negative_4" time="1.12278" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_4' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_5" classname="simulation_script_cpp_codegen_negative_5" time="1.11078" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_5' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_6" classname="simulation_script_cpp_codegen_negative_6" time="1.06569" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_6' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_7" classname="simulation_script_cpp_codegen_negative_7" time="1.10499" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_7' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_8" classname="simulation_script_cpp_codegen_negative_8" time="1.16692" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_8' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_9" classname="simulation_script_cpp_codegen_negative_9" time="1.12954" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_9' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_10" classname="simulation_script_cpp_codegen_negative_10" time="1.1328" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_10' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_11" classname="simulation_script_cpp_codegen_negative_11" time="1.12954" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_11' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_12" classname="simulation_script_cpp_codegen_negative_12" time="1.08921" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_12' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_13" classname="simulation_script_cpp_codegen_negative_13" time="1.11352" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_13' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_14" classname="simulation_script_cpp_codegen_negative_14" time="1.09737" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_14' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_15" classname="simulation_script_cpp_codegen_negative_15" time="1.08412" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_15' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_16" classname="simulation_script_cpp_codegen_negative_16" time="1.09053" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_16' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_17" classname="simulation_script_cpp_codegen_negative_17" time="1.11469" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_17' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_18" classname="simulation_script_cpp_codegen_negative_18" time="1.11793" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_18' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_19" classname="simulation_script_cpp_codegen_negative_19" time="1.07538" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_19' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_20" classname="simulation_script_cpp_codegen_negative_20" time="1.09975" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_20' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_cpp_codegen_negative_21" classname="simulation_script_cpp_codegen_negative_21" time="1.10807" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_cpp_codegen_negative_21' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_native_population_state" classname="simulation_script_native_population_state" time="0.122739" status="run">
+		<properties/>
+		<system-out>population: reverse=0 frames=0 success=3 recycled=1 state_bytes=96 frame_bytes=0
+population: reverse=1 frames=0 success=3 recycled=1 state_bytes=96 frame_bytes=0
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_native_population_frames" classname="simulation_script_native_population_frames" time="0.0108057" status="run">
+		<properties/>
+		<system-out>NATIVE_FRAME_FAILURE,start_cleanup=1,destroy_reentry_held_capacity=1,once=1
+population: reverse=0 frames=1 success=3 recycled=1 state_bytes=96 frame_bytes=2176
+NATIVE_FRAME_FAILURE,start_cleanup=1,destroy_reentry_held_capacity=1,once=1
+population: reverse=1 frames=1 success=3 recycled=1 state_bytes=96 frame_bytes=2176
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_native_population_sync" classname="simulation_script_native_population_sync" time="0.0098334" status="run">
+		<properties/>
+		<system-out>population: reverse=0 frames=0 success=3 recycled=1 state_bytes=96 frame_bytes=0
+population: reverse=1 frames=0 success=3 recycled=1 state_bytes=96 frame_bytes=0
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_native_population_shared" classname="simulation_script_native_population_shared" time="0.0100826" status="run">
+		<properties/>
+		<system-out>NATIVE_FRAME_FAILURE,start_cleanup=1,destroy_reentry_held_capacity=1,once=1
+population: reverse=0 frames=1 success=3 recycled=1 state_bytes=96 frame_bytes=3072
+NATIVE_FRAME_FAILURE,start_cleanup=1,destroy_reentry_held_capacity=1,once=1
+population: reverse=1 frames=1 success=3 recycled=1 state_bytes=96 frame_bytes=3072
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_native_test" classname="simulation_script_native_test" time="0.0160804" status="run">
+		<properties/>
+		<system-out>modules=1 instances=128 state_arena=8192 metadata=3376 acquire=386 release=386
+modules=8 instances=128 state_arena=8192 metadata=3376 acquire=386 release=386
+modules=32 instances=128 state_arena=8192 metadata=3376 acquire=386 release=386
+modules=64 instances=128 state_arena=8192 metadata=3376 acquire=386 release=386
+NATIVE_SPECIALIZATION_REJECTED,context=1,dispatch=1,provider=0
+NATIVE_BINDING_REUSE,cycles=32,retained=48,zeroed_state=1,closed=1
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_native_frame_storage_test" classname="simulation_script_native_frame_storage_test" time="0.0111812" status="run">
+		<properties/>
+		<system-out>NATIVE_REGIONS,observe=0,reserved=8192,metadata=976,all_large=8,excess_rejected=1,mixed=4096,small_regions=1,layout_reuse=32,lease=32,ticket=24
+NATIVE_REGIONS,observe=1,reserved=8192,metadata=976,all_large=8,excess_rejected=1,mixed=4096,small_regions=1,layout_reuse=32,lease=32,ticket=24
+NATIVE_REGION_IDENTITY,domain_isolation=1,tiny=1,owner=1,generation=1,metadata_budget=1 PASS
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_bindings_test" classname="simulation_script_bindings_test" time="0.0155152" status="run">
+		<properties/>
+		<system-out>INVOCATION_AUTHORITY_OK,bounds=2,identity=2,move_pin=1,retired_denied=1,reused_denied=1,stable=1
+HOOK_ORDER_OK,registrations=64,swap_pop=1,nested_withdraw=1,republish=1
+HOOK_ORDER_OK,registrations=65,swap_pop=1,nested_withdraw=1,republish=1
+HOOK_ORDER_OK,registrations=4097,swap_pop=1,nested_withdraw=1,republish=1
+BINDINGS_OK,rollback=1,aborted_ticket=1,rebuilds=128,calls=130
+HOT_LAYOUT prepared_invocation=32 method_reference=32
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_ingress_frontier_test" classname="simulation_script_ingress_frontier_test" time="0.022968" status="run">
+		<properties/>
+		<system-out>INGRESS_WINDOW empty=pass unpublished=pass frontier=pass bounded_retry=pass
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_runtime_test" classname="simulation_script_runtime_test" time="0.0172351" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_script_continuation_test" classname="simulation_script_continuation_test" time="0.0452459" status="run">
+		<properties/>
+		<system-out>LOCAL_TIMER_CAPACITY,local=0,awaitable_full=0,repeats=32,rollback=1,live=0
+LOCAL_TIMER_CAPACITY,local=0,awaitable_full=1,repeats=32,rollback=1,live=0
+LOCAL_TIMER_CAPACITY,local=1,awaitable_full=0,repeats=32,rollback=1,live=0
+LOCAL_TIMER_CAPACITY,local=1,awaitable_full=1,repeats=32,rollback=1,live=0
+LOCAL_TIMER_RETIRE,simulation=0,rebuilds=32,capabilities=0,cleaned=33,live=0
+LOCAL_TIMER_RETIRE,simulation=1,rebuilds=32,capabilities=0,cleaned=33,live=0
+LOCAL_TIMER,enabled=0,capabilities=6,resumes=2,source_unlinked=1
+TIMER_RETRY,mode=0,due_step=1,retry_step=2,resumes=2,waits=0
+LOCAL_TIMER,enabled=0,capabilities=6,resumes=2,source_unlinked=1
+TIMER_RETRY,mode=1,due_step=1,retry_step=2,resumes=2,waits=0
+LOCAL_TIMER,enabled=0,capabilities=6,resumes=2,source_unlinked=1
+TIMER_RETRY,mode=2,due_step=2,retry_step=3,resumes=2,waits=0
+LOCAL_TIMER,enabled=1,capabilities=0,resumes=2,source_unlinked=1
+TIMER_RETRY,mode=0,due_step=1,retry_step=2,resumes=2,waits=0
+LOCAL_TIMER,enabled=1,capabilities=0,resumes=2,source_unlinked=1
+T...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_event_wait_test" classname="simulation_script_event_wait_test" time="0.0783081" status="run">
+		<properties/>
+		<system-out>EVENT_PROJECTION default=31 custom=36 invalid_provider_calls=0 malformed_size=rejected
+EVENT_CASE testBroadcastSemantics()
+EVENT_REUSE cycles=37 waiters=74 resumes=74 callbacks=37 high_water=2 backlog=0
+EVENT_CASE testRegistrationCutoff()
+EVENT_CASE testSealedBatchAndOwnedResultAcrossSteps()
+SEALED_STEP,step=1,resumes=1,queue=1,last=10
+SEALED_STEP,step=2,resumes=2,queue=0,last=20
+EVENT_CASE testTargetedAndRetirement()
+EVENT_CASE testTargetedScopeRejection()
+EVENT_CASE testCapacityFailure()
+EVENT_CASE testAwaitableCapacityFailure()
+EVENT_CASE testResumeQueueFailure()
+EVENT_CASE testResumeBudget()
+EVENT_CASE testPayloadFailures()
+EVENT_CASE testArtifactSchemaDriftFailsBeforeInstanceCreation()
+EVENT_CASE testNestedDispatch()
+EVENT_CASE testShutdownWithPendingWaiter()
+EVENT_CASE testIdleWaiterComplexity(10'000U)
+EVENT_CASE testIdleWaiterComplexity(50'000U)
+EVENT_CASE testIdleWaiterComplexity(100'000U)
+EVENT_CASE testOutputSensitiveRetirement()
+EVENT_CASE testPreparedAdmissionProvenance()
+EVENT_CASE testCopyRetire...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_event_wait_race_test" classname="simulation_script_event_wait_race_test" time="0.011483" status="run">
+		<properties/>
+		<system-out>EVENT_PROJECTION default=31 custom=36 invalid_provider_calls=0 malformed_size=rejected
+EVENT_CASE testBroadcastSemantics()
+EVENT_REUSE cycles=37 waiters=74 resumes=74 callbacks=37 high_water=2 backlog=0
+EVENT_CASE testRegistrationCutoff()
+EVENT_CASE testSealedBatchAndOwnedResultAcrossSteps()
+SEALED_STEP,step=1,resumes=1,queue=1,last=10
+SEALED_STEP,step=2,resumes=2,queue=0,last=20
+EVENT_CASE testTargetedAndRetirement()
+EVENT_CASE testTargetedScopeRejection()
+EVENT_CASE testCapacityFailure()
+EVENT_CASE testAwaitableCapacityFailure()
+EVENT_CASE testResumeQueueFailure()
+EVENT_CASE testResumeBudget()
+EVENT_CASE testPayloadFailures()
+EVENT_CASE testArtifactSchemaDriftFailsBeforeInstanceCreation()
+EVENT_CASE testNestedDispatch()
+EVENT_CASE testShutdownWithPendingWaiter()
+EVENT_CASE testPreparedAdmissionProvenance()
+EVENT_CASE testCopyRetirementPin()
+EVENT_CASE testCopyOtherRecordRemoval()
+EVENT_CASE testCopyShutdownAndFailure()
+EVENT_CASE testCopyNestedAdmission()
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_lifecycle_test" classname="simulation_script_lifecycle_test" time="0.0165212" status="run">
+		<properties/>
+		<system-out>REGION commands accepted=3 rejected=2 late_rejected=1 calls=4 copied=19 destroys=2 PASS
+REGION stop accepted=2 calls=4 ends=2 destroys=2 PASS
+REGION fault calls=3 failures=1 survivors=1 destroys=2 PASS
+MOVE_REPLACEMENT suspended=0 old_end=1 release=3 destroy=1 lease=1 frame=0
+MOVE_FINAL suspended=0 order=verified old=1 incoming=1
+MOVE_REPLACEMENT suspended=1 old_end=1 release=3 destroy=1 lease=1 frame=1
+MOVE_OLD_COMPLETION STOPPING
+MOVE_FINAL suspended=1 order=verified old=1 incoming=1
+MOVE_EMPTY_CLOSED_SELF old=1 incoming=1 verified
+REENTRY_CASE,1
+REENTRY_OK,1,1,2,2,0
+REENTRY_CASE,2
+REENTRY_OK,2,1,2,2,0
+REENTRY_CASE,3
+REENTRY_OK,3,1,2,2,0
+REENTRY_CASE,4
+REENTRY_OK,4,1,2,2,3
+REENTRY_CASE,5
+REENTRY_OK,5,1,2,2,0
+REENTRY_CASE,6
+REENTRY_OK,6,1,2,2,0
+REENTRY_CASE,7
+REENTRY_OK,7,1,2,2,0
+REENTRY_CASE,3
+REENTRY_OK,3,1,2,2,0
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_move_busy_test" classname="simulation_script_move_busy_test" time="0.0241551" status="run">
+		<properties/>
+		<system-out>-- MOVE_BUSY terminate retained=1
+
+</system-out>
+	</testcase>
+	<testcase name="script_runtime_benchmark_smoke" classname="script_runtime_benchmark_smoke" time="0.570783" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_composition_test" classname="simulation_composition_test" time="0.0157005" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_hook_execution_test" classname="simulation_hook_execution_test" time="0.0187408" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_hook_regions_test" classname="simulation_hook_regions_test" time="0.0156367" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_hook_return_negative" classname="simulation_hook_return_negative" time="1.1987" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_hook_return_negative' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_ability_codegen_test" classname="simulation_script_ability_codegen_test" time="0.0148601" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="simulation_script_ability_borrowed_async_negative" classname="simulation_script_ability_borrowed_async_negative" time="0.28117" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_ability_borrowed_async_negative' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_ability_duplicate_method_negative" classname="simulation_script_ability_duplicate_method_negative" time="0.278728" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_ability_duplicate_method_negative' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_ability_mutable_parameter_negative" classname="simulation_script_ability_mutable_parameter_negative" time="0.274853" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_ability_mutable_parameter_negative' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="simulation_script_ability_mutable_result_negative" classname="simulation_script_ability_mutable_result_negative" time="0.272389" status="run">
+		<properties/>
+		<system-out>-- Target 'simulation_script_ability_mutable_result_negative' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="vnext_transform_decode" classname="vnext_transform_decode" time="0.0100256" status="run">
+		<properties>
+			<property name="cmake_labels" value="cpu;l1;schema;transform;vnext"/>
+		</properties>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="vnext_transform_system" classname="vnext_transform_system" time="0.0119283" status="run">
+		<properties>
+			<property name="cmake_labels" value="cpu;l1;transform;vnext"/>
+		</properties>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="physics2d_simulation_test" classname="physics2d_simulation_test" time="0.0114744" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="process_timer_test" classname="process_timer_test" time="0.0940265" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="process_port_sender_test" classname="process_port_sender_test" time="0.0081024" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="process_execution_runtime_test" classname="process_execution_runtime_test" time="0.0171224" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="process_task_scope_test" classname="process_task_scope_test" time="0.0738828" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="task_scope_unconsumed_value_negative" classname="task_scope_unconsumed_value_negative" time="0.922685" status="run">
+		<properties/>
+		<system-out>-- Target 'task_scope_unconsumed_value_negative' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="task_scope_unconsumed_error_negative" classname="task_scope_unconsumed_error_negative" time="0.927659" status="run">
+		<properties/>
+		<system-out>-- Target 'task_scope_unconsumed_error_negative' failed compilation for the expected reason
+</system-out>
+	</testcase>
+	<testcase name="scene_composition_test" classname="scene_composition_test" time="0.0161135" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="scene_world_materialization_test" classname="scene_world_materialization_test" time="0.0150136" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="scene_world_materialization_deferred_test" classname="scene_world_materialization_deferred_test" time="0.0206367" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="scene_script_description_test" classname="scene_script_description_test" time="0.013847" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="script_binding_authoring_test" classname="script_binding_authoring_test" time="0.0153885" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="scene_script_runtime_test" classname="scene_script_runtime_test" time="0.0650131" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="lua_script_packager_contract_test" classname="lua_script_packager_contract_test" time="0.016378" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="lua_script_packager_negative_test" classname="lua_script_packager_negative_test" time="0.0980135" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="flowforge_script_artifact_test" classname="flowforge_script_artifact_test" time="0.529479" status="run">
+		<properties/>
+		<system-out>Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.exp
+Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-2\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-2\flowforge-script.exp
+Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-3\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-3\flowforge-script.exp
+Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\Chen...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="flowforge_jit_optimization_test" classname="flowforge_jit_optimization_test" time="0.0413557" status="run">
+		<properties/>
+		<system-out>[ ok ] sequential cross-cut values permit one shared frame slot
+[ ok ] both sequential values really survive their respective cut
+[ ok ] loop backedge keeps first value alive across second value writes
+[ ok ] escaping frame address cannot share storage
+FlowForge while-condition test
+==============================
+---- IR ----
+module {
+  func.func private @lux_test_sink_int(i32)
+  func.func @main(%arg0: !llvm.ptr, %arg1: !llvm.ptr) {
+    %0 = "flowforge.start"() : () -&gt; !flowforge.token
+    %bodyExec, %doneExec = "flowforge.while_loop"(%0) ({
+    ^bb0(%arg2: !flowforge.token):
+      %5 = llvm.getelementptr %arg0[0] : (!llvm.ptr) -&gt; !llvm.ptr, i8
+      %6 = llvm.load %5 : !llvm.ptr -&gt; i32
+      %7 = llvm.mlir.constant(5 : i32) : i32
+      %8 = arith.cmpi slt, %6, %7 : i32
+      flowforge.cond_yield %arg2, %8 : !flowforge.token
+    }, {
+    ^bb0(%arg2: !flowforge.token):
+      %5 = llvm.getelementptr %arg0[0] : (!llvm.ptr) -&gt; !llvm.ptr, i8
+      %6 = llvm.load %5 : !llvm.ptr -&gt; i32
+      func.call @lux_test_sink...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="physics2d_flowforge_integration_test" classname="physics2d_flowforge_integration_test" time="0.0995276" status="run">
+		<properties/>
+		<system-out>Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.exp
+FLOWFORGE_TIMER,local=0,captures=1,result=1,capabilities=0,live=0
+Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-2\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-2\flowforge-script.exp
+FLOWFORGE_TIMER,local=1,captures=1,result=1,capabilities=0,live=0
+</system-out>
+	</testcase>
+	<testcase name="flowforge_script_runtime_integration_test" classname="flowforge_script_runtime_integration_test" time="0.399661" status="run">
+		<properties/>
+		<system-out>Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.exp
+FLOWFORGE_PACKING,variant=0,small=16,large=528,accepted=8,excess=1,reserved=4224,metadata=784,occupied=128,regions=528,provider_calls=8,checksum=56,closed=1
+FLOWFORGE_PACKING,variant=1,small=16,large=528,accepted=8,excess=1,reserved=4224,metadata=784,occupied=4224,regions=4224,provider_calls=2048,checksum=66048,closed=1
+FLOWFORGE_PACKING,variant=0,small=16,large=528,accepted=8,excess=1,reserved=4224,metadata=784,occupied=128,regions=528,provider_calls=8,checksum=56,closed=1
+Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-2\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Tem...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="flowforge_script_runtime_benchmark_smoke" classname="flowforge_script_runtime_benchmark_smoke" time="0.0817045" status="run">
+		<properties/>
+		<system-out>Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.exp
+INTEGRITY,begin,calls=16,invocation_errors=0,started=0,resumes=0,suspensions=0,queue=0,continuations=0,awaitables=0,waiters=0
+NATIVE_STORAGE_OBSERVATION,collected=0,active_region_bytes=0,retained_bindings=768
+NATIVE_STORAGE,steady,backing=0,metadata=0,reserved=0,active=0,live=0,occupied=0,high_water=0,capacity_failures=0,heap_frames=0
+ERRORS,steady,invocation_errors=0
+INTEGRITY,steady,retained=0,calls=48,checksum=816,queue=0,continuations=0,awaitables=0,waiters=0
+NATIVE_STORAGE,shutdown,active=0,live=0,occupied=0,acquires=0,releases=0
+ERRORS,shutdown,invocation_errors=0
+INTEGRITY,shutdown,retained=0,calls=48,checksum=816,queue=0,continuations=0,awaitables=0,waiters=0
+</system-out>
+	</testcase>
+	<testcase name="flowforge_script_sequence_benchmark_smoke" classname="flowforge_script_sequence_benchmark_smoke" time="0.0655445" status="run">
+		<properties/>
+		<system-out>Microsoft (R) Incremental Linker Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+   Creating library C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.lib and object C:\Users\ChenHui\AppData\Local\Temp\lux-flowforge-1\flowforge-script.exp
+INTEGRITY,begin,calls=0,invocation_errors=0,started=32,resumes=8,suspensions=40,queue=24,continuations=32,awaitables=32,waiters=8
+NATIVE_STORAGE_OBSERVATION,collected=0,active_region_bytes=0,retained_bindings=5888
+NATIVE_STORAGE,steady,backing=768,metadata=4112,reserved=32,active=0,live=0,occupied=0,high_water=0,capacity_failures=0,heap_frames=0
+ERRORS,steady,invocation_errors=0
+INTEGRITY,steady,retained=0,calls=64,checksum=2144,queue=0,continuations=0,awaitables=0,waiters=0
+NATIVE_STORAGE,shutdown,active=0,live=0,occupied=0,acquires=0,releases=0
+ERRORS,shutdown,invocation_errors=0
+INTEGRITY,shutdown,retained=0,calls=64,checksum=2144,queue=0,continuations=0,awaitables=0,waiters=0
+</system-out>
+	</testcase>
+</testsuite>

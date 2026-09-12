@@ -183,6 +183,20 @@ namespace lux::scene
                 if (!capacity || !resolved)
                     return lux::cxx::unexpected(failure(ESceneSystemBuildError::CONSTRUCTION_FAILURE,
                         description.instanceId()));
+                std::unique_ptr<simulation::ecs::EcsCommandBuffer> commands;
+                std::unique_ptr<simulation::script::DeferredScriptHost> deferred_host;
+                const bool has_entity_mount = std::ranges::any_of(owned_description->mounts(), [](const auto& mount) {
+                    return mount.enabled && std::holds_alternative<script::EntityScriptMount>(mount.scope);
+                });
+                if (has_entity_mount)
+                {
+                    commands = std::make_unique<simulation::ecs::EcsCommandBuffer>();
+                    if (!commands->prepare(std::span{&host->command_capacity, 1U}))
+                        return lux::cxx::unexpected(failure(ESceneSystemBuildError::CONSTRUCTION_FAILURE,
+                            description.instanceId()));
+                    deferred_host = std::make_unique<simulation::script::DeferredScriptHost>(
+                        builder.registry(), host->components);
+                }
                 auto created = simulation::script::ScriptSystem::create(
                     builder.simulation().description(),
                     *capacity,
@@ -195,7 +209,7 @@ namespace lux::scene
                     host->backends,
                     builder.simulation().scriptHookEndpoints(),
                     builder.simulation().scriptEventEndpoints(),
-                    host->host,
+                    deferred_host ? deferred_host->api() : simulation::script::ScriptHostApi{},
                     (*real_delay)->endpoint()
                 );
                 if (!created)
@@ -206,7 +220,19 @@ namespace lux::scene
                         static_cast<std::uint64_t>(created.error())
                     ));
                 }
-                auto prepared = created->prepare();
+                // Initial lifecycle has the same owned command surface. Commands wait for the first
+                // named Hook barrier, after the initial initialize/BeginPlay/publish/activate batch.
+                auto prepared = [&]() noexcept -> lux::cxx::expected<void, simulation::script::EScriptSystemError> {
+                    if (!commands)
+                        return created->prepare();
+                    auto writer = commands->begin(0U, simulation::ecs::EEcsCommandPolicy::CONTINUE_ON_INVALID_TARGET);
+                    if (!writer)
+                        return lux::cxx::unexpected(simulation::script::EScriptSystemError::CAPACITY_EXCEEDED);
+                    auto batch = deferred_host->begin(*writer);
+                    if (!batch)
+                        return lux::cxx::unexpected(simulation::script::EScriptSystemError::ENDPOINT_BUSY);
+                    return created->prepare();
+                }();
                 if (!prepared)
                 {
                     return lux::cxx::unexpected(failure(
@@ -220,7 +246,7 @@ namespace lux::scene
                     description.instanceId(),
                     std::move(*real_delay),
                     std::move(owned_description),
-                    std::move(*created), host->world, builder.registry()
+                    std::move(*created), host->world, builder.registry(), std::move(commands), std::move(deferred_host)
                 );
                 if (!installed)
                     return lux::cxx::unexpected(installed.error());
@@ -577,10 +603,13 @@ namespace lux::scene
         std::unique_ptr<scene::script::ScriptSystemDescription> description,
         simulation::script::ScriptSystem system,
         script::WorldObjectResolver world,
-        simulation::ecs::Registry& registry
+        simulation::ecs::Registry& registry,
+        std::unique_ptr<simulation::ecs::EcsCommandBuffer> commands,
+        std::unique_ptr<simulation::script::DeferredScriptHost> host
     ) noexcept
         : world_(world), registry_(&registry), real_delay_(std::move(real_delay)),
-          description_(std::move(description)), system_(std::move(system))
+          description_(std::move(description)), commands_(std::move(commands)), host_(std::move(host)),
+          system_(std::move(system))
     {
     }
 
@@ -588,10 +617,46 @@ namespace lux::scene
     {
         hook_connection_.reset();
         real_delay_->requestStop();
+        if (!beginCommands())
+            std::terminate();
         if (!system_.shutdown())
+            std::terminate();
+        endCommands();
+        if (!commitCommands())
             std::terminate();
         if (!real_delay_->join())
             std::terminate();
+    }
+
+    bool ScriptRuntimeSystem::beginCommands() noexcept
+    {
+        if (!commands_)
+            return true;
+        auto writer = commands_->begin(0U, simulation::ecs::EEcsCommandPolicy::CONTINUE_ON_INVALID_TARGET);
+        if (!writer)
+            return false;
+        command_writer_.emplace(std::move(*writer));
+        auto batch = host_->begin(*command_writer_);
+        if (!batch)
+        {
+            command_writer_.reset();
+            return false;
+        }
+        command_batch_.emplace(std::move(*batch));
+        return true;
+    }
+
+    void ScriptRuntimeSystem::endCommands() noexcept
+    {
+        command_batch_.reset();
+        command_writer_.reset();
+    }
+
+    bool ScriptRuntimeSystem::commitCommands() noexcept
+    {
+        // Same caller-thread Hook barrier, after native producers and before lifecycle reconciliation.
+        // Signals may enqueue native follow-up work; it belongs to the next barrier, never this apply.
+        return !commands_ || static_cast<bool>(simulation::ecs::applyEcsCommands(*registry_, *commands_));
     }
 
     bool ScriptRuntimeSystem::bindSimulation(simulation::Simulation& simulation) noexcept
@@ -602,6 +667,10 @@ namespace lux::scene
             [](void* context, const simulation::SimulationClockSnapshot&, bool stable) noexcept {
                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
                 auto& system = runtime.system_;
+                if (system.isShutdown())
+                    return true;
+                if (!runtime.beginCommands())
+                    return false;
                 if (stable)
                 {
                     if (!runtime.real_delay_->drainCompletions())
@@ -611,27 +680,65 @@ namespace lux::scene
                 if (!runtime.submitResolved())
                     return false;
                 const auto result = system.processLifecycle();
-                return static_cast<bool>(result);
+                if (!result && result.error() != simulation::script::EScriptSystemError::INVOCATION_FAILURE)
+                    return false;
+                if (system.isShutdown())
+                    return true;
+                auto region = system.beginExecutionRegion();
+                if (!region)
+                    return false;
+                runtime.execution_region_.emplace(std::move(*region));
+                return true;
             },
             [](void* context, const simulation::SimulationClockSnapshot&, bool stable_resume) noexcept {
-                if (!stable_resume)
-                    return true;
                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
-                return static_cast<bool>(runtime.system_.executeStablePoint());
+                if (!runtime.execution_region_)
+                {
+                    runtime.endCommands();
+                    return runtime.system_.isShutdown();
+                }
+                const auto resumed = stable_resume ? runtime.system_.executeStablePoint() :
+                    lux::cxx::expected<simulation::script::ScriptStablePointReport,
+                        simulation::script::EScriptSystemError>{};
+                if (!runtime.execution_region_ || !runtime.execution_region_->finish())
+                    return false;
+                runtime.execution_region_.reset();
+                runtime.endCommands();
+                return static_cast<bool>(resumed);
             },
             [](void* context, const simulation::SimulationClockSnapshot&) noexcept {
                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
-                if (!runtime.submitResolved())
+                if (!runtime.commitCommands())
                     return false;
+                if (runtime.system_.isShutdown())
+                    return true;
+                if (!runtime.beginCommands())
+                    return false;
+                if (!runtime.submitResolved())
+                {
+                    runtime.endCommands();
+                    return false;
+                }
                 const auto result = runtime.system_.processLifecycle();
+                runtime.endCommands();
                 runtime.stats_exchange_.write() = runtime.system_.stats();
                 runtime.stats_exchange_.publish();
-                return static_cast<bool>(result);
+                return result || result.error() == simulation::script::EScriptSystemError::INVOCATION_FAILURE;
             },
             [](void* context, const simulation::SimulationClockSnapshot&) noexcept {
                 auto& runtime = *static_cast<ScriptRuntimeSystem*>(context);
+                if (runtime.execution_region_)
+                {
+                    if (!runtime.execution_region_->finish())
+                        std::terminate();
+                    runtime.execution_region_.reset();
+                }
+                runtime.endCommands();
+                if (!runtime.commitCommands() || !runtime.beginCommands())
+                    std::terminate();
                 static_cast<void>(runtime.system_.processLifecycle(
                     simulation::script::EScriptLifecycleAdmission::RETIRE_ONLY));
+                runtime.endCommands();
                 runtime.stats_exchange_.write() = runtime.system_.stats();
                 runtime.stats_exchange_.publish();
             }});
@@ -644,6 +751,13 @@ namespace lux::scene
     const simulation::script::ScriptSystem& ScriptRuntimeSystem::scriptSystem() const noexcept
     {
         return system_;
+    }
+
+    ScriptRuntimeCommandStats ScriptRuntimeSystem::commandStats() const noexcept
+    {
+        return host_ ? ScriptRuntimeCommandStats{host_->accepted(), host_->rejected(),
+            commands_->rejectedAtCommit(), commands_->discarded(), commands_->lastRejection()} :
+            ScriptRuntimeCommandStats{};
     }
 
     bool ScriptRuntimeSystem::acquireStats(simulation::script::ScriptRuntimeStats& output) noexcept

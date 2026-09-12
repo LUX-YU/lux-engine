@@ -296,7 +296,7 @@ namespace
         BackendState* owner{};
     };
 
-    int invokeSync(lux_script_call_frame*)
+    int invokeSync(void* invocation_context, lux_script_call_frame*)
     {
         return 0;
     }

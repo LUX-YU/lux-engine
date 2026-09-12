@@ -21,40 +21,45 @@ namespace
         std::uint32_t* state{};
     };
 
-    int unavailableSync(lux_script_call_frame*) noexcept
+    int unavailableSync(void* invocation_context, lux_script_call_frame*) noexcept
     {
+        const auto* native = static_cast<const lux_script_native_instance_context*>(invocation_context);
+        void* state = native ? native->state : nullptr;
         return 91;
     }
 
-    int readState(lux_script_call_frame* frame) noexcept
+    int readState(void* invocation_context, lux_script_call_frame* frame) noexcept
     {
-        if (frame == nullptr || frame->user_context == nullptr || frame->return_count != 1U ||
+        const auto* native = static_cast<const lux_script_native_instance_context*>(invocation_context);
+        void* state = native ? native->state : nullptr;
+        if (frame == nullptr || state == nullptr || frame->return_count != 1U ||
             frame->returns == nullptr || frame->returns[0].data == nullptr)
         {
             return 96;
         }
         *static_cast<std::uint32_t*>(frame->returns[0].data) =
-            *static_cast<const std::uint32_t*>(frame->user_context);
+            *static_cast<const std::uint32_t*>(state);
         return 0;
     }
 
     int startStep(
+        const lux_script_native_instance_context* instance,
         lux_script_call_frame* call,
         const lux_script_step_host* host,
         void* frame_value,
         lux_script_step_outcome* outcome
     ) noexcept
     {
-        if (call == nullptr || call->native_instance == nullptr || call->native_instance->state == nullptr ||
-            call->native_instance->abilities == nullptr || call->native_instance->ability_count != 1U ||
+        if (call == nullptr || instance == nullptr || instance->state == nullptr ||
+            instance->abilities == nullptr || instance->ability_count != 1U ||
             host == nullptr || frame_value == nullptr || outcome == nullptr)
         {
             return 92;
         }
         auto& frame = *static_cast<StepFrame*>(frame_value);
-        frame.state = static_cast<std::uint32_t*>(call->native_instance->state);
+        frame.state = static_cast<std::uint32_t*>(instance->state);
         lux_script_async_token waiting{};
-        const auto& prepared = call->native_instance->abilities[0];
+        const auto& prepared = instance->abilities[0];
         using Start = int (*)(void*, void*, const void*, lux_script_async_token*) noexcept;
         const auto start = reinterpret_cast<Start>(prepared.direct_entry);
         const auto status = start(

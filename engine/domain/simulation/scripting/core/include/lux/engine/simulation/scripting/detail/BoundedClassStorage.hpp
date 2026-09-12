@@ -51,8 +51,28 @@ namespace lux::simulation::script::detail
             [[nodiscard]] explicit operator bool() const noexcept { return data != nullptr; }
         };
 
+        struct Ticket final
+        {
+            BoundedClassStorage* owner{};
+            std::uint64_t generation{};
+            std::uint32_t page{Invalid}, slot{Invalid};
+        };
+        [[nodiscard]] Ticket ticket(Allocation allocation) noexcept
+        {
+            return {this, allocation.generation, allocation.page, allocation.slot};
+        }
+        [[nodiscard]] bool release(Ticket value) noexcept
+        {
+            if (value.owner != this || value.page >= pages_.size()) return false;
+            auto& page = pages_[value.page];
+            if (value.slot >= page.slot_count) return false;
+            auto& slot = slots_[page.metadata_first + value.slot];
+            return releaseResolved(value.page, value.slot, value.generation, page, slot);
+        }
+
         struct Stats final
         {
+            bool observation_collected{};
             std::size_t arena_bytes{};
             std::size_t metadata_bytes{};
             std::size_t reserved_slots{};
@@ -70,7 +90,7 @@ namespace lux::simulation::script::detail
 
         [[nodiscard]] static lux::cxx::expected<BoundedClassStorage, EClassStorageError> create(
             std::span<const StorageClassPlan> plans, std::size_t max_bytes, std::size_t allocation_capacity,
-            std::uint64_t generation_limit = (std::numeric_limits<std::uint64_t>::max)()
+            std::uint64_t generation_limit = (std::numeric_limits<std::uint64_t>::max)(), bool observe = false
         ) noexcept
         {
             const bool is_invalid_input = plans.empty() || plans.size() > 64U || allocation_capacity == 0U ||
@@ -136,10 +156,9 @@ namespace lux::simulation::script::detail
                 result.pages_.resize(page_count);
                 result.slots_.resize(slot_count);
                 result.capacity_ = allocation_capacity;
+                result.stats_.observation_collected = observe;
                 result.generation_limit_ = generation_limit;
                 result.stats_.arena_bytes = arena_bytes;
-                result.stats_.reserved_slots = slot_count;
-                result.stats_.pages = page_count;
                 result.stats_.metadata_bytes = sizeof(BoundedClassStorage) +
                     result.classes_.capacity() * sizeof(Class) + result.pages_.capacity() * sizeof(Page) +
                     result.slots_.capacity() * sizeof(Slot);
@@ -190,7 +209,7 @@ namespace lux::simulation::script::detail
             ClassHandle best;
             for (std::uint32_t index{}; index < classes_.size(); ++index)
             {
-                ++stats_.selection_steps;
+                if (stats_.observation_collected) ++stats_.selection_steps;
                 const auto& candidate = classes_[index];
                 const bool fits = candidate.size >= size && candidate.alignment >= alignment;
                 if (fits && (!best || candidate.stride < classes_[best.index].stride))
@@ -205,7 +224,7 @@ namespace lux::simulation::script::detail
         {
             const bool is_invalid_class = handle.index >= classes_.size();
             if (is_invalid_class || size == 0U || size > classes_[handle.index].size ||
-                stats_.active_allocations >= capacity_ || next_generation_ == generation_limit_)
+                active_ >= capacity_ || next_generation_ == generation_limit_)
                 return fail();
             auto& prepared = classes_[handle.index];
             const auto page_index = prepared.nonfull;
@@ -214,18 +233,24 @@ namespace lux::simulation::script::detail
             auto& page = pages_[page_index];
             const auto local_slot = page.free_head;
             auto& slot = slots_[page.metadata_first + local_slot];
-            stats_.acquire_steps += 3U;
+            if (stats_.observation_collected) stats_.acquire_steps += 3U;
             page.free_head = slot.next;
             if (page.free_head == Invalid)
-                stats_.acquire_steps += unlinkPage(page_index);
+            {
+                const auto steps = unlinkPage(page_index);
+                if (stats_.observation_collected) stats_.acquire_steps += steps;
+            }
             slot.active = true;
             slot.size = size;
             slot.generation = ++next_generation_;
             ++page.active;
-            ++stats_.active_allocations;
-            stats_.allocation_high_water = (std::max)(stats_.allocation_high_water, stats_.active_allocations);
-            stats_.live_bytes += size;
-            stats_.occupied_bytes += prepared.stride;
+            ++active_;
+            if (stats_.observation_collected)
+            {
+                stats_.allocation_high_water = (std::max)(stats_.allocation_high_water, active_);
+                stats_.live_bytes += size;
+                stats_.occupied_bytes += prepared.stride;
+            }
             return Allocation{
                 static_cast<std::byte*>(arena_.data) + page.offset + prepared.stride * local_slot,
                 page_index, local_slot, slot.generation, size
@@ -243,25 +268,21 @@ namespace lux::simulation::script::detail
             const auto& prepared = classes_[page.class_index];
             const auto* expected = static_cast<std::byte*>(arena_.data) + page.offset +
                 prepared.stride * allocation.slot;
-            const bool is_invalid_slot = !slot.active || slot.generation != allocation.generation ||
-                slot.size != allocation.size || allocation.data != expected;
-            if (is_invalid_slot)
+            const bool is_invalid_allocation = slot.size != allocation.size || allocation.data != expected;
+            if (is_invalid_allocation)
                 return false;
-            stats_.release_steps += 3U;
-            slot.active = false;
-            --page.active;
-            --stats_.active_allocations;
-            stats_.live_bytes -= slot.size;
-            stats_.occupied_bytes -= prepared.stride;
-            slot.size = 0U;
-            if (page.free_head == Invalid)
-                stats_.release_steps += linkPage(allocation.page);
-            slot.next = page.free_head;
-            page.free_head = allocation.slot;
-            return true;
+            return releaseResolved(allocation.page, allocation.slot, allocation.generation, page, slot);
         }
 
-        [[nodiscard]] Stats stats() const noexcept { return stats_; }
+        [[nodiscard]] Stats stats() const noexcept
+        {
+            return {
+                stats_.observation_collected, stats_.arena_bytes, stats_.metadata_bytes, slots_.size(), pages_.size(),
+                active_, stats_.allocation_high_water, stats_.live_bytes, stats_.occupied_bytes,
+                stats_.capacity_failures, stats_.selection_steps, stats_.acquire_steps,
+                stats_.release_steps, stats_.maintenance_steps
+            };
+        }
 
     private:
         struct Arena final
@@ -315,6 +336,33 @@ namespace lux::simulation::script::detail
             bool active{};
         };
 
+        // The checked adapters resolve storage once; this operation owns the generation check and free-list update.
+        [[nodiscard]] bool releaseResolved(
+            std::uint32_t page_index, std::uint32_t slot_index, std::uint64_t generation, Page& page, Slot& slot
+        ) noexcept
+        {
+            if (!slot.active || slot.generation != generation)
+                return false;
+            slot.active = false;
+            --page.active;
+            --active_;
+            if (stats_.observation_collected)
+            {
+                stats_.release_steps += 3U;
+                stats_.live_bytes -= slot.size;
+                stats_.occupied_bytes -= classes_[page.class_index].stride;
+            }
+            slot.size = 0U;
+            if (page.free_head == Invalid)
+            {
+                const auto steps = linkPage(page_index);
+                if (stats_.observation_collected) stats_.release_steps += steps;
+            }
+            slot.next = page.free_head;
+            page.free_head = slot_index;
+            return true;
+        }
+
         [[nodiscard]] static bool powerOfTwo(std::size_t value) noexcept
         {
             return value != 0U && (value & (value - 1U)) == 0U;
@@ -329,11 +377,12 @@ namespace lux::simulation::script::detail
             for (std::uint32_t slot{}; slot < page.slot_count; ++slot)
             {
                 slots_[page.metadata_first + slot] = Slot{0U, 0U, slot + 1U, false};
-                ++stats_.maintenance_steps;
+                if (stats_.observation_collected) ++stats_.maintenance_steps;
             }
             slots_[page.metadata_first + page.slot_count - 1U].next = Invalid;
             page.free_head = 0U;
-            stats_.maintenance_steps += linkPage(index);
+            const auto steps = linkPage(index);
+            if (stats_.observation_collected) stats_.maintenance_steps += steps;
         }
         [[nodiscard]] std::uint64_t linkPage(std::uint32_t index) noexcept
         {
@@ -370,9 +419,15 @@ namespace lux::simulation::script::detail
         std::vector<Class> classes_;
         std::vector<Page> pages_;
         std::vector<Slot> slots_;
-        std::size_t capacity_{};
+        std::size_t capacity_{}, active_{};
         std::uint64_t next_generation_{};
         std::uint64_t generation_limit_{(std::numeric_limits<std::uint64_t>::max)()};
-        Stats stats_;
+        struct Observation final
+        {
+            bool observation_collected{};
+            std::size_t arena_bytes{}, metadata_bytes{}, allocation_high_water{}, live_bytes{}, occupied_bytes{};
+            std::size_t capacity_failures{};
+            std::uint64_t selection_steps{}, acquire_steps{}, release_steps{}, maintenance_steps{};
+        } stats_;
     };
 }

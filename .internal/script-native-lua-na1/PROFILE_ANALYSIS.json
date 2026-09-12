@@ -1,0 +1,295 @@
+[
+  {
+    "leg": "P1",
+    "side": "A",
+    "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\profiles2\\P1-A",
+    "samples": [
+      {
+        "stack": "                                   traversestrongtable",
+        "inclusive_percent": 8.426123,
+        "self_cpu_seconds": 0.835655
+      },
+      {
+        "stack": "                                stack_init",
+        "inclusive_percent": 3.499099,
+        "self_cpu_seconds": 0.1652
+      },
+      {
+        "stack": "                       lua_resume",
+        "inclusive_percent": 21.952704,
+        "self_cpu_seconds": 0.051455
+      },
+      {
+        "stack": "                            luaH_Hgetshortstr",
+        "inclusive_percent": 1.966843,
+        "self_cpu_seconds": 0.242901
+      },
+      {
+        "stack": "                  lua_resume",
+        "inclusive_percent": 5.342359,
+        "self_cpu_seconds": 0.027205
+      },
+      {
+        "stack": "                       luaH_Hgetshortstr",
+        "inclusive_percent": 2.220294,
+        "self_cpu_seconds": 0.274202
+      },
+      {
+        "stack": "                       luaH_Hgetshortstr",
+        "inclusive_percent": 0.343824,
+        "self_cpu_seconds": 0.042462
+      }
+    ],
+    "nested_inclusive_values_must_not_be_summed": true
+  },
+  {
+    "leg": "P1",
+    "side": "B",
+    "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\profiles2\\P1-B",
+    "samples": [
+      {
+        "stack": "                      lux::simulation::script::ScriptCoroutineContext::invokeSyncStep",
+        "inclusive_percent": 26.610499,
+        "self_cpu_seconds": 0.349875
+      },
+      {
+        "stack": "                       lux::simulation::script::LuaScriptBackend::Impl::invokeSyncStep",
+        "inclusive_percent": 20.705474,
+        "self_cpu_seconds": 0.117678
+      },
+      {
+        "stack": "                              lux::simulation::script::LuaScriptBackend::Impl::executeSyncStep",
+        "inclusive_percent": 16.997873,
+        "self_cpu_seconds": 0.013054
+      },
+      {
+        "stack": "                                   luaH_Hgetshortstr",
+        "inclusive_percent": 13.202343,
+        "self_cpu_seconds": 1.301593
+      },
+      {
+        "stack": "                        lux::simulation::script::LuaScriptBackend::Impl::invokeSyncStep::__l2::<lambda_1>::operator()",
+        "inclusive_percent": 0.157245,
+        "self_cpu_seconds": 0.015503
+      },
+      {
+        "stack": "                       lux::simulation::script::ScriptCoroutineContext::invokeSyncStep::__l2::<lambda_2>::operator()",
+        "inclusive_percent": 0.147318,
+        "self_cpu_seconds": 0.014524
+      }
+    ],
+    "nested_inclusive_values_must_not_be_summed": true
+  },
+  {
+    "leg": "P3",
+    "side": "A",
+    "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\profiles2\\P3-A",
+    "samples": [
+      {
+        "stack": "                  lua_resume",
+        "inclusive_percent": 31.085151,
+        "self_cpu_seconds": 0.0
+      },
+      {
+        "stack": "                       luaH_Hgetshortstr",
+        "inclusive_percent": 9.217735,
+        "self_cpu_seconds": 0.375105
+      },
+      {
+        "stack": "                       lua_resume",
+        "inclusive_percent": 15.35787,
+        "self_cpu_seconds": 0.0
+      },
+      {
+        "stack": "                            luaH_Hgetshortstr",
+        "inclusive_percent": 6.843904,
+        "self_cpu_seconds": 0.278504
+      },
+      {
+        "stack": "                                   traversestrongtable",
+        "inclusive_percent": 2.428428,
+        "self_cpu_seconds": 0.06987
+      },
+      {
+        "stack": "                                stack_init",
+        "inclusive_percent": 3.89079,
+        "self_cpu_seconds": 0.116306
+      }
+    ],
+    "nested_inclusive_values_must_not_be_summed": true
+  },
+  {
+    "leg": "P3",
+    "side": "B",
+    "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\profiles2\\P3-B",
+    "samples": [
+      {
+        "stack": "                      lux::simulation::script::ScriptCoroutineContext::invokeSyncStep",
+        "inclusive_percent": 12.810851,
+        "self_cpu_seconds": 0.0298
+      },
+      {
+        "stack": "                       lux::simulation::script::LuaScriptBackend::Impl::invokeSyncStep",
+        "inclusive_percent": 11.512608,
+        "self_cpu_seconds": 0.015233
+      },
+      {
+        "stack": "                              lux::simulation::script::LuaScriptBackend::Impl::executeSyncStep",
+        "inclusive_percent": 8.640168,
+        "self_cpu_seconds": 0.012756
+      },
+      {
+        "stack": "                                   luaH_Hgetshortstr",
+        "inclusive_percent": 5.370949,
+        "self_cpu_seconds": 0.183672
+      },
+      {
+        "stack": "                             lux::simulation::script::ScriptCoroutineContext::invokeSyncStep",
+        "inclusive_percent": 8.953318,
+        "self_cpu_seconds": 0.043027
+      },
+      {
+        "stack": "                              lux::simulation::script::LuaScriptBackend::Impl::invokeSyncStep",
+        "inclusive_percent": 6.903624,
+        "self_cpu_seconds": 0.041525
+      },
+      {
+        "stack": "                                     lux::simulation::script::LuaScriptBackend::Impl::executeSyncStep",
+        "inclusive_percent": 3.659822,
+        "self_cpu_seconds": 0.0
+      },
+      {
+        "stack": "                                          luaH_Hgetshortstr",
+        "inclusive_percent": 2.047094,
+        "self_cpu_seconds": 0.070005
+      }
+    ],
+    "nested_inclusive_values_must_not_be_summed": true
+  },
+  {
+    "leg": "P5",
+    "side": "A",
+    "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\profiles-pose\\P5-A",
+    "samples": [
+      {
+        "stack": "                          lux::script::lua::detail::LuaValueAccess::writePlan",
+        "inclusive_percent": 45.35896,
+        "self_cpu_seconds": 0.0
+      },
+      {
+        "stack": "                                   lux::script::lua::detail::`anonymous namespace'::writePlain",
+        "inclusive_percent": 40.911695,
+        "self_cpu_seconds": 0.0
+      },
+      {
+        "stack": "                                           traversestrongtable",
+        "inclusive_percent": 7.107159,
+        "self_cpu_seconds": 0.054224
+      },
+      {
+        "stack": "                       lua_resume",
+        "inclusive_percent": 25.920388,
+        "self_cpu_seconds": 0.0
+      },
+      {
+        "stack": "                            luaH_Hgetshortstr",
+        "inclusive_percent": 6.070961,
+        "self_cpu_seconds": 0.057836
+      },
+      {
+        "stack": "                                stack_init",
+        "inclusive_percent": 2.93737,
+        "self_cpu_seconds": 0.0
+      },
+      {
+        "stack": "                  lua_resume",
+        "inclusive_percent": 1.634876,
+        "self_cpu_seconds": 0.0
+      },
+      {
+        "stack": "                       luaH_Hgetshortstr",
+        "inclusive_percent": 1.634876,
+        "self_cpu_seconds": 0.015575
+      }
+    ],
+    "nested_inclusive_values_must_not_be_summed": true
+  },
+  {
+    "leg": "P5",
+    "side": "B",
+    "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\profiles-pose\\P5-B",
+    "samples": [
+      {
+        "stack": "                             lux::simulation::script::ScriptCoroutineContext::invokeSyncStep",
+        "inclusive_percent": 41.067515,
+        "self_cpu_seconds": 0.0
+      },
+      {
+        "stack": "                              lux::simulation::script::LuaScriptBackend::Impl::invokeSyncStep",
+        "inclusive_percent": 38.92561,
+        "self_cpu_seconds": 0.014614
+      },
+      {
+        "stack": "                                     lux::simulation::script::LuaScriptBackend::Impl::executeSyncStep",
+        "inclusive_percent": 28.933802,
+        "self_cpu_seconds": 0.0
+      },
+      {
+        "stack": "                                          lux::script::lua::detail::LuaValueAccess::writePlan",
+        "inclusive_percent": 19.715652,
+        "self_cpu_seconds": 0.028764
+      },
+      {
+        "stack": "                                                   lux::script::lua::detail::`anonymous namespace'::writePlain",
+        "inclusive_percent": 16.756376,
+        "self_cpu_seconds": 0.0
+      },
+      {
+        "stack": "                                          luaH_Hgetshortstr",
+        "inclusive_percent": 2.985325,
+        "self_cpu_seconds": 0.042914
+      },
+      {
+        "stack": "                              lux::simulation::script::ScriptCoroutineContext::invokeSyncStep::__l2::<lambda_2>::operator()",
+        "inclusive_percent": 1.043265,
+        "self_cpu_seconds": 0.014997
+      },
+      {
+        "stack": "                      lux::simulation::script::ScriptCoroutineContext::invokeSyncStep",
+        "inclusive_percent": 36.412207,
+        "self_cpu_seconds": 0.013978
+      },
+      {
+        "stack": "                       lux::simulation::script::LuaScriptBackend::Impl::invokeSyncStep",
+        "inclusive_percent": 34.489162,
+        "self_cpu_seconds": 0.043242
+      },
+      {
+        "stack": "                              lux::simulation::script::LuaScriptBackend::Impl::executeSyncStep",
+        "inclusive_percent": 24.517127,
+        "self_cpu_seconds": 0.0
+      },
+      {
+        "stack": "                                   lux::script::lua::detail::LuaValueAccess::writePlan",
+        "inclusive_percent": 19.561719,
+        "self_cpu_seconds": 0.015082
+      },
+      {
+        "stack": "                                            lux::script::lua::detail::`anonymous namespace'::writePlain",
+        "inclusive_percent": 17.485868,
+        "self_cpu_seconds": 0.0
+      },
+      {
+        "stack": "                                                    traversestrongtable",
+        "inclusive_percent": 1.993906,
+        "self_cpu_seconds": 0.014283
+      },
+      {
+        "stack": "                       lux::simulation::script::ScriptCoroutineContext::invokeSyncStep::__l2::<lambda_2>::operator()",
+        "inclusive_percent": 0.950641,
+        "self_cpu_seconds": 0.013665
+      }
+    ],
+    "nested_inclusive_values_must_not_be_summed": true
+  }
+]

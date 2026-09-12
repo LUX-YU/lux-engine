@@ -41,6 +41,7 @@ namespace lux::simulation::script::detail
         result.awaitable_record_bytes = sizeof(AwaitableRecord);
         result.awaitable_reserved_slots = awaitables_.capacity();
         result.awaitable_storage_bytes = awaitables_.storageBytes();
+        result.resume_storage_bytes = resumes_.records.capacity() * sizeof(ScriptAwaitableId);
         result.resume_queue_depth = resumes_.count;
         result.resume_queue_high_water = resumes_.high_water;
     }

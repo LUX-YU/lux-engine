@@ -49,13 +49,14 @@ main()
     assert(loaded.value().abiVersion() == LUX_SCRIPT_ABI_VERSION);
 
     std::int32_t counter = 0;
+    lux_script_native_instance_context context{&counter};
     lux_script_call_frame raw{};
-    raw.user_context = &counter;
-    assert(function->invoke(&raw) == 0);
+
+    assert(function->invoke(&context, &raw) == 0);
     assert(counter == 1);
 
     lux_script_call_frame failing_raw{};
-    assert(function->invoke(&failing_raw) != 0);
+    assert(function->invoke(nullptr, &failing_raw) != 0);
 
     const auto bytes = readFile(fixture);
     auto memory_loaded = lux::script::loadNativeModule(bytes, "native_fixture_memory");

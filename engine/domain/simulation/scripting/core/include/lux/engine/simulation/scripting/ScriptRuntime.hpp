@@ -130,7 +130,8 @@ namespace lux::simulation::script
     public:
         static constexpr std::size_t InlineCapacity{32U};
 
-        ScriptOwnedBytes() noexcept = default;
+        // Payload becomes readable only after a successful producer writes the valid byte range.
+        ScriptOwnedBytes() noexcept {}
         ScriptOwnedBytes(const ScriptOwnedBytes&) = delete;
         ScriptOwnedBytes& operator=(const ScriptOwnedBytes&) = delete;
 
@@ -163,8 +164,8 @@ namespace lux::simulation::script
                 return false;
             if (size <= InlineCapacity && alignment <= alignof(std::max_align_t))
             {
-                if (size_ != 0U)
-                    std::memcpy(inline_.data(), data(), (std::min)(size_, size));
+                if (spill_ != nullptr && size_ != 0U && size != 0U)
+                    std::memcpy(inline_.data(), spill_, (std::min)(size_, size));
                 releaseSpill();
                 size_ = size;
                 return true;
@@ -190,6 +191,8 @@ namespace lux::simulation::script
             size_ = size;
             return true;
         }
+
+        void clear() noexcept { reset(); }
 
         [[nodiscard]] std::byte* data() noexcept
         {
@@ -252,7 +255,7 @@ namespace lux::simulation::script
             }
         }
 
-        alignas(std::max_align_t) std::array<std::byte, InlineCapacity> inline_{};
+        alignas(std::max_align_t) std::array<std::byte, InlineCapacity> inline_;
         std::byte* spill_{};
         std::size_t size_{};
         std::size_t spill_capacity_{};
@@ -513,6 +516,8 @@ namespace lux::simulation::script
             std::optional<PreparedResumeType>) noexcept;
         using DiscardFn = void (*)(void*, ScriptInstanceId, ScriptAwaitableId) noexcept;
 
+        [[nodiscard]] bool belongsTo(const void* owner) const noexcept { return context_ == owner; }
+
     private:
         ScriptAwaitableFactory(void* context, CreateFn create, DiscardFn discard, ScriptInstanceId instance) noexcept
             : context_(context), create_(create), discard_(discard), instance_(instance)
@@ -544,8 +549,8 @@ namespace lux::simulation::script
         PAYLOAD_TOO_LARGE,
         WAITER_CAPACITY_EXCEEDED,
         AWAITABLE_CAPACITY_EXCEEDED,
-        SEQUENCE_EXHAUSTED,
-        ALLOCATION_FAILURE,
+        // Value 9 was the removed per-wait registration sequence limit.
+        ALLOCATION_FAILURE = 10,
         STOPPING,
     };
 
@@ -576,6 +581,7 @@ namespace lux::simulation::script
         const lux::script::ScriptEventSourceDescription* source{};
         ScriptEventAdmissionHandle admission;
         std::uint32_t endpoint_slot{};
+        bool entity_targeted{};
         PreparedResumeType payload;
     };
 

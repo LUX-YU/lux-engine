@@ -246,7 +246,12 @@ int main(int argc, char** argv)
             .continuation_capacity = 1U, .execution_depth_capacity = 8U, .ability_catalog_method_capacity = 1U,
             .prepared_ability_capacity = 1U, .abilities = lua_contributions,
             .prepared_ability_blocks = lua_blocks, .prepared_ability_storage_bytes = 4096U});
-        const std::array native_contributions{lux::script::native::makeScriptAbilityNativeContribution<Ability>()};
+        const auto& publication = simulation->scriptApiCapabilities().front();
+        auto& provider = *static_cast<Host*>(publication.context);
+        const auto native_contribution = lux::script::native::makeScriptAbilityNativeContribution<Ability>(
+            provider, lux::script::bindScriptAbility<Ability>(provider));
+        need(static_cast<bool>(native_contribution), "typed Native provider binding");
+        const std::array native_contributions{*native_contribution};
         const std::array populations{NativeScriptStoragePopulation{&*module, 1U, 0U}};
         NativeScriptBackend native_backend{{&sources, &Sources::native}, {.module_capacity = 1U,
             .instance_capacity = 1U, .prepared_call_capacity = 1U, .max_ability_imports_per_module = 1U,
@@ -274,17 +279,47 @@ int main(int argc, char** argv)
             return runtime->shutdown() ? 0 : 4;
         }
         need(static_cast<bool>(prepared), "mount admission");
-        auto callbacks = simulation->bindHookCallbacks({&*runtime,
-            [](void* state, const SimulationClockSnapshot&, bool stable) noexcept {
-                auto& value = *static_cast<ScriptSystem*>(state);
-                if (stable) value.beginStableAdmission();
-                return static_cast<bool>(value.processLifecycle());
+        struct HookContext final
+        {
+            ScriptSystem& system;
+            std::optional<ScriptSystem::ExecutionRegion> region;
+        } hook_context{*runtime, {}};
+        auto callbacks = simulation->bindHookCallbacks({&hook_context,
+            [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+                auto& host = *static_cast<HookContext*>(context);
+                if (host.system.isShutdown()) return true;
+                if (stable) host.system.beginStableAdmission();
+                const auto lifecycle = host.system.processLifecycle();
+                if (!lifecycle && lifecycle.error() != EScriptSystemError::INVOCATION_FAILURE) return false;
+                if (host.system.isShutdown()) return true;
+                auto region = host.system.beginExecutionRegion();
+                if (!region) return false;
+                host.region.emplace(std::move(*region));
+                return true;
             },
-            [](void* state, const SimulationClockSnapshot&, bool stable) noexcept {
-                return !stable || static_cast<bool>(static_cast<ScriptSystem*>(state)->executeStablePoint());
+            [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+                auto& host = *static_cast<HookContext*>(context);
+                if (!host.region) return host.system.isShutdown();
+                const bool resumed = !stable || static_cast<bool>(host.system.executeStablePoint());
+                if (!host.region->finish()) return false;
+                host.region.reset();
+                return resumed;
             },
-            [](void* state, const SimulationClockSnapshot&) noexcept {
-                return static_cast<bool>(static_cast<ScriptSystem*>(state)->processLifecycle());
+            [](void* context, const SimulationClockSnapshot&) noexcept {
+                auto& system = static_cast<HookContext*>(context)->system;
+                if (system.isShutdown()) return true;
+                const auto result = system.processLifecycle();
+                return result || result.error() == EScriptSystemError::INVOCATION_FAILURE;
+            },
+            [](void* context, const SimulationClockSnapshot&) noexcept {
+                auto& host = *static_cast<HookContext*>(context);
+                if (host.region)
+                {
+                    if (!host.region->finish()) std::terminate();
+                    host.region.reset();
+                }
+                if (!host.system.isShutdown())
+                    static_cast<void>(host.system.processLifecycle(EScriptLifecycleAdmission::RETIRE_ONLY));
             }});
         auto executor = lux::task::TaskExecutor::create({2U, 32U});
         need(callbacks && executor, "execution graph binding");

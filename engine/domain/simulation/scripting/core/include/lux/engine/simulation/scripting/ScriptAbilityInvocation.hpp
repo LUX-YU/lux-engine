@@ -2,6 +2,7 @@
 
 #include <lux/engine/function/script/ScriptAbilityAsync.hpp>
 #include <lux/engine/simulation/scripting/ScriptRuntime.hpp>
+#include <lux/engine/simulation/scripting/ScriptLocalAsync.hpp>
 
 #include <functional>
 #include <new>
@@ -84,6 +85,16 @@ namespace lux::simulation::script
             );
         }
         return ScriptStepResult::failed(started.error().status);
+    }
+
+    // Only prepared projections call this overload. User starter lambdas retain the external protocol.
+    template<class Result, class Starter, class... Arguments>
+    [[nodiscard]] ScriptStepResult invokePreparedScriptAbilityAsync(ScriptStepContext& context,
+        PreparedLocalAsyncStart local, Starter&& starter, Arguments&... arguments) noexcept
+    {
+        if constexpr (std::is_void_v<Result>)
+            if (local) return local.startTyped(context, arguments...);
+        return invokeScriptAbilityAsync<Result>(context, std::forward<Starter>(starter));
     }
 
     [[nodiscard]] inline ScriptStepResult invokeScriptAbilityAsyncErased(

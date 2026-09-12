@@ -169,8 +169,15 @@ LIFECYCLE = re.compile(r"^\s*---@lux\.lifecycle\s+(begin_play|end_play)\s*$")
 COROUTINE = re.compile(r"^\s*---@lux\.coroutine\s*$")
 
 
+LUA_KEYWORDS = frozenset("""
+and break do else elseif end false for function goto if in local nil not
+or repeat return then true until while
+""".split())
+
+
 def code_identifier(value: str) -> bool:
-    return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value))
+    # Official Lua 5.5.1 defaults to LUA_COMPAT_GLOBAL=1; global remains a legal name.
+    return value not in LUA_KEYWORDS and bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value))
 
 
 def load_ability_schemas(paths: list[pathlib.Path]) -> dict[str, AbilitySchema]:
@@ -405,6 +412,8 @@ def collect_exports(
         if not marked:
             continue
         owner, separator, member, raw_arguments = match.groups()
+        if not code_identifier(owner) or (member and not code_identifier(member)):
+            raise ValueError(f"line {line_number}: invalid Lua export identifier")
         if scope == ENTITY_SCOPE:
             if owner != entry or separator != ":" or not member:
                 raise ValueError(
@@ -422,6 +431,8 @@ def collect_exports(
         arguments = [value.strip() for value in raw_arguments.split(",") if value.strip()]
         if "..." in arguments:
             raise ValueError(f"{name}: variadic parameters are unsupported")
+        if any(not code_identifier(argument) for argument in arguments):
+            raise ValueError(f"{name}: invalid Lua parameter identifier")
         if [value[0] for value in parameters] != arguments:
             raise ValueError(f"{name}: every parameter requires an ordered @param")
         argument_names = [value[1] for value in parameters]

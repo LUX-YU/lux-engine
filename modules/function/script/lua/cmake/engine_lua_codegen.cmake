@@ -136,16 +136,16 @@ function(engine_target_add_lua_binding)
     endif()
 
     find_package(sol2 CONFIG REQUIRED)
-    if(NOT TARGET lux::engine::function::script_lua_vm)
+    if(NOT TARGET LuxLua55::Runtime)
         message(FATAL_ERROR
-            "[engine_target_add_lua_binding] selected Lux Lua VM target is unavailable"
+            "[engine_target_add_lua_binding] Lua 5.5 runtime target is unavailable"
         )
     endif()
     target_link_libraries(
         ${ARGS_TARGET}
         PRIVATE
             sol2::sol2
-            lux::engine::function::script_lua_vm
+            LuxLua55::Runtime
     )
 
     foreach(binding ${ARGS_LUA_BINDINGS})

@@ -38,8 +38,8 @@ std::size_t run(std::size_t population, bool include_wide)
         assert(runtime.prepareMethod(runtime.context, instances[index], artifact->description().exports[0],
                                      methods[index]) == EScriptBackendResult::SUCCESS);
         lux_script_call_frame frame{};
-        frame.user_context = methods[index].synchronous.context;
-        assert(methods[index].synchronous.invoke(&frame) == 0);
+
+        assert(methods[index].synchronous.invoke(methods[index].synchronous.context, &frame) == 0);
     }
     const auto stats = backend->stats();
     assert(stats.active_prepared_methods == population);
@@ -59,10 +59,10 @@ std::size_t run(std::size_t population, bool include_wide)
         std::int32_t result{};
         lux_script_value_slot output{
             LUX_SCRIPT_VK_INT32, {}, sizeof(result), lux::semantic::typeId("lux.i32"), &result};
-        lux_script_call_frame frame{slots.data(), 64U, 0U, &output, 1U, 0U, nullptr, methods[0].synchronous.context};
-        assert(methods[0].synchronous.invoke(&frame) == 0 && result == 2016);
+        lux_script_call_frame frame{slots.data(), 64U, 0U, &output, 1U, 0U, nullptr};
+        assert(methods[0].synchronous.invoke(methods[0].synchronous.context, &frame) == 0 && result == 2016);
         slots[0].type_id = lux::semantic::typeId("lux.f32");
-        assert(methods[0].synchronous.invoke(&frame) != 0);
+        assert(methods[0].synchronous.invoke(methods[0].synchronous.context, &frame) != 0);
     }
     for (std::size_t index{}; index < population; ++index)
     {
@@ -111,8 +111,8 @@ void validateAssociationLifetime()
         assert(api.createInstance(api.context, context, *mismatch, transient) ==
             EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH);
         lux_script_call_frame frame{};
-        frame.user_context = prepared.synchronous.context;
-        assert(prepared.synchronous.invoke(&frame) == 0);
+
+        assert(prepared.synchronous.invoke(prepared.synchronous.context, &frame) == 0);
     }
     assert(backend->stats().contract_validations == 25U);
     api.releaseMethod(api.context, retained, prepared);

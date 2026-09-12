@@ -1,0 +1,83 @@
+{
+  "status": "PASS",
+  "remote": "git@github.com:LUX-YU/lux-engine.git",
+  "branch": "codex/s6-native-task-lua-steps",
+  "archive_commit": "0cf93879faa13e9741d2511d2368b06dd71632a8",
+  "qualification_source": "841320a36e864145eda43fd6b775a10a696d8e7f",
+  "baseline_source": "7f20191692d3f5e1037a14273a61fc99eef95714",
+  "archive_sha256": "e14fc09449b0371cb1765013afd9274fc5a6a03cf21f40dc5dc8aa53f9dfa5fb",
+  "bytes": 5093734,
+  "entries_verified": 646,
+  "method": "fetch into existing separate bare readback repository; git show; archive and all entry SHA-256 checked",
+  "download": "https://github.com/LUX-YU/lux-engine/raw/0cf93879faa13e9741d2511d2368b06dd71632a8/.internal/script-native-lua-na1/evidence/local-waits.zip",
+  "commands": [
+    {
+      "command": [
+        "git",
+        "-C",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\source",
+        "rev-parse",
+        "HEAD"
+      ],
+      "exit": 0,
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\remote-readback",
+        "remote",
+        "get-url",
+        "origin"
+      ],
+      "exit": 0,
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\remote-readback",
+        "fetch",
+        "origin",
+        "refs/heads/codex/s6-native-task-lua-steps"
+      ],
+      "exit": 0,
+      "stderr": "From github.com:LUX-YU/lux-engine\n * branch            codex/s6-native-task-lua-steps -> FETCH_HEAD\n   e23d623..0cf9387  codex/s6-native-task-lua-steps -> origin/codex/s6-native-task-lua-steps\n"
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\remote-readback",
+        "rev-parse",
+        "FETCH_HEAD"
+      ],
+      "exit": 0,
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\remote-readback",
+        "show",
+        "0cf93879faa13e9741d2511d2368b06dd71632a8:.internal/script-native-lua-na1/evidence/local-waits.zip"
+      ],
+      "exit": 0,
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-native-lua-na1\\remote-readback",
+        "show",
+        "0cf93879faa13e9741d2511d2368b06dd71632a8:.internal/script-native-lua-na1/evidence/local-waits.json"
+      ],
+      "exit": 0,
+      "stderr": ""
+    }
+  ]
+}

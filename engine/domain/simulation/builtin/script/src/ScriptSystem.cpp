@@ -81,11 +81,14 @@ namespace lux::simulation::script
         std::vector<RetirementRecord> lifecycle_retirements;
         std::uint64_t last_stable_step{};
         std::uint64_t event_occurrences{};
+        std::uint64_t invocation_failures{};
         std::size_t endpoint_dispatch_depth{};
         entt::connection constructed;
         entt::connection updated;
         entt::connection destroyed;
         bool stopping{};
+        bool stop_requested{};
+        bool region_active{};
         EPrepareState prepare_state{EPrepareState::CREATED};
 #if defined(LUX_SCRIPT_OWNER_AFFINITY_PROBE)
         std::thread::id execution_owner_thread;
@@ -193,6 +196,7 @@ namespace lux::simulation::script
         void faultInvocation(std::uint32_t slot, lux::script::ScriptSymbolId symbol,
             EScriptSystemError error, std::int32_t status = 0) noexcept
         {
+            ++invocation_failures;
             execution_owner.invalidateAdmission(instance_owner.fault(slot));
             binding_owner.withdraw(slot);
             queueRetirement(slot);
@@ -205,12 +209,19 @@ namespace lux::simulation::script
             static_cast<FailurePort*>(context)->owner->faultInvocation(slot, symbol, error, status);
         }
         struct BindingPort final { State* owner{}; } binding_port{this};
+        static bool prepareBinding(void* context, Handler& handler) noexcept
+        {
+            return static_cast<BindingPort*>(context)->owner->execution_owner.prepareInvocation(handler);
+        }
         static void invokeHookLane(void* context, std::uint32_t bucket, lux_script_call_frame& frame) noexcept
         {
             auto& owner = *static_cast<BindingPort*>(context)->owner;
             ExecutionOwnerScope execution{owner};
-            if (!execution)
+            if (!execution || owner.stopping)
                 return;
+            if (!owner.region_active && owner.instance_owner.protectedCount() == 0U)
+                std::terminate(); // Native caller violated the explicit execution-region contract.
+            detail::ScriptInstances::Protection region{owner.instance_owner};
             ++owner.endpoint_dispatch_depth;
             owner.binding_owner.visitHook(bucket,
                 [&](const Handler& handler) noexcept { owner.execution_owner.invoke(handler, frame, true); });
@@ -221,8 +232,11 @@ namespace lux::simulation::script
         {
             auto& owner = *static_cast<BindingPort*>(context)->owner;
             ExecutionOwnerScope execution{owner};
-            if (!execution)
+            if (!execution || owner.stopping)
                 return;
+            if (!owner.region_active && owner.instance_owner.protectedCount() == 0U)
+                std::terminate();
+            detail::ScriptInstances::Protection region{owner.instance_owner};
             ++owner.event_occurrences;
             ++owner.endpoint_dispatch_depth;
             {
@@ -231,9 +245,16 @@ namespace lux::simulation::script
                 auto claimed = owner.event_owner.claim(bucket, target);
                 owner.binding_owner.visitEvent(bucket, entity,
                     [&](const Handler& handler) noexcept { owner.execution_owner.invoke(handler, frame, false); });
-                for (std::size_t index{}; index < claimed.size(); ++index)
-                    if (const auto waiter = claimed.at(index))
-                        owner.execution_owner.completeClaimedEventWaiter(*waiter, frame);
+                if (endpoint.payload_projection.mayReenter())
+                {
+                    for (std::size_t index{}; index < claimed.size(); ++index)
+                        owner.execution_owner.completeClaimedEventWaiter<true>(claimed.at(index), frame);
+                }
+                else
+                {
+                    for (std::size_t index{}; index < claimed.size(); ++index)
+                        owner.execution_owner.completeClaimedEventWaiter<false>(claimed.at(index), frame);
+                }
             }
             --owner.endpoint_dispatch_depth;
         }
@@ -284,7 +305,6 @@ namespace lux::simulation::script
             if (mount.state == EScriptMountState::INITIALIZED)
             {
                 execution_owner.beginInstance(mount.instance, slot);
-                event_owner.beginInstance(mount.instance);
                 timer_owner.beginInstance(mount.instance);
             }
             return {};
@@ -381,20 +401,23 @@ namespace lux::simulation::script
             prepare_state = EPrepareState::CREATED;
             return {};
         }
-        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> drainResumes() noexcept
+        [[nodiscard]] lux::cxx::expected<ScriptStablePointReport, EScriptSystemError> drainResumes() noexcept
         {
-            std::optional<EScriptSystemError> first_error;
+            ScriptStablePointReport report;
+            bool completion_failed{};
             auto batch = execution_owner.resumeBatch();
-            while (const auto resumed = batch.next())
+            detail::ScriptExecution::Result resumed;
+            while (batch.next(resumed))
             {
-                if (!*resumed && !first_error)
-                    first_error = resumed->error();
+                if (!resumed && !report.first_instance_error)
+                    report.first_instance_error = resumed.error();
                 // Do not recapture: completion admission after EVERY pop uses the same bounded frontier.
-                if (!execution_owner.drainExternalCompletions() && !first_error)
-                    first_error = EScriptSystemError::INVOCATION_FAILURE;
+                if (execution_owner.hasPendingExternalCompletions() && !execution_owner.drainExternalCompletions())
+                    completion_failed = true;
             }
-            return first_error ? lux::cxx::expected<void, EScriptSystemError>{lux::cxx::unexpected(*first_error)} :
-                lux::cxx::expected<void, EScriptSystemError>{};
+            if (completion_failed)
+                return lux::cxx::unexpected(EScriptSystemError::INVOCATION_FAILURE);
+            return report;
         }
     };
 
@@ -453,6 +476,8 @@ namespace lux::simulation::script
                                     limits.continuation_capacity_per_instance == 0U ||
                                     limits.continuation_capacity_per_instance > limits.continuation_capacity ||
                                     limits.awaitable_capacity == 0U ||
+                                    limits.awaitable_capacity > std::numeric_limits<std::uint32_t>::max() ||
+                                    limits.event_wait_capacity > std::numeric_limits<std::uint32_t>::max() ||
                                     limits.resume_queue_capacity == 0U || limits.max_resume_payload_bytes == 0U ||
                                     limits.resumes_per_stable_point == 0U || limits.next_step_wait_capacity == 0U ||
                                     limits.simulation_delay_capacity == 0U || limits.event_wait_capacity == 0U ||
@@ -490,7 +515,8 @@ namespace lux::simulation::script
 
             const auto delay_binding = lux::script::bindScriptAbility<DelayAbility>(state->timer_owner);
             const auto delay_publication = publishScriptAbility(delay_binding);
-            const auto catalog = state->preparer.prepareCatalog(artifacts, backends, capabilities, delay_publication);
+            const auto catalog = state->preparer.prepareCatalog(artifacts, backends, capabilities, delay_publication,
+                state->timer_owner.localCatalog(delay_publication));
             if (!catalog)
                 return lux::cxx::unexpected(catalog.error());
             const auto instance_layout = state->instance_owner.prepare(
@@ -500,14 +526,16 @@ namespace lux::simulation::script
                 return lux::cxx::unexpected(instance_layout.error());
             state->execution_owner.prepare(limits, state->instance_owner.identityCapacity(), capacity.method_capacity,
                 {&state->failure_port, &State::faultErased});
-            state->event_owner.prepare(limits.event_wait_capacity, state->instance_owner.identityCapacity());
+            state->event_owner.prepare(
+                limits.event_wait_capacity, events.size()
+            );
             state->timer_owner.prepare(clock, limits, real_delay, state->execution_owner,
                 state->instance_owner.identityCapacity());
             state->ingress.prepare(
                 limits.external_completion_capacity, state->execution_owner.physicalAwaitableCapacity()
             );
             const auto binding_layout = state->binding_owner.prepare(simulation, capacity, hooks, events,
-                {&state->binding_port, &State::invokeHookLane, &State::dispatchEvent},
+                {&state->binding_port, &State::prepareBinding, &State::invokeHookLane, &State::dispatchEvent},
                 limits.max_resume_payload_bytes);
             if (!binding_layout)
                 return lux::cxx::unexpected(binding_layout.error());
@@ -528,8 +556,25 @@ namespace lux::simulation::script
 
     ScriptSystem::ScriptSystem(std::unique_ptr<State> state) noexcept : state_(std::move(state)) {}
 
-    ScriptSystem::ScriptSystem(ScriptSystem&&) noexcept = default;
-    ScriptSystem& ScriptSystem::operator=(ScriptSystem&&) noexcept = default;
+    ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
+    {
+        if (other.state_ && other.state_->region_active)
+            std::terminate();
+        state_ = std::move(other.state_);
+    }
+    ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept
+    {
+        if (this == &other)
+            return *this;
+        if (other.state_ && other.state_->region_active)
+            std::terminate();
+        // Replacement has the same owner-boundary and noexcept failure policy as destruction.
+        // Keep both States owned until the old destination has completed its shutdown protocol.
+        if (state_ && state_->prepare_state != EPrepareState::SHUT_DOWN && !shutdown())
+            std::terminate();
+        state_ = std::move(other.state_);
+        return *this;
+    }
 
     ScriptSystem::~ScriptSystem() noexcept
     {
@@ -633,9 +678,12 @@ namespace lux::simulation::script
         State::ExecutionOwnerScope execution{*state_};
         if (!execution)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
-        if (state_->endpoint_dispatch_depth != 0U || state_->instance_owner.protectedCount() != 0U ||
+        if (state_->region_active || state_->endpoint_dispatch_depth != 0U ||
+            state_->instance_owner.protectedCount() != 0U ||
             state_->execution_owner.resultPins() != 0U || state_->event_owner.claimedCount() != 0U)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
+        if (state_->stop_requested)
+            return shutdown();
         if (state_->stopping)
             return admission == EScriptLifecycleAdmission::RETIRE_ONLY ? shutdown() :
                 lux::cxx::expected<void, EScriptSystemError>{lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY)};
@@ -764,23 +812,22 @@ namespace lux::simulation::script
                            : lux::cxx::expected<void, EScriptSystemError>{};
     }
 
-    lux::cxx::expected<void, EScriptSystemError> ScriptSystem::executeStablePoint() noexcept
+    lux::cxx::expected<ScriptStablePointReport, EScriptSystemError> ScriptSystem::executeStablePoint() noexcept
     {
         if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
         State::ExecutionOwnerScope execution{*state_};
         if (!execution || state_->endpoint_dispatch_depth != 0U || state_->instance_owner.protectedCount() != 0U)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
+        if (!state_->region_active)
+            return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
         const auto step = state_->clock->snapshot().step_index;
         // Step zero is the standalone, not-yet-executing test/preparation boundary.
         if (step != 0U && step == state_->last_stable_step)
             return {};
         state_->last_stable_step = step;
         state_->ingress.beginDrain();
-        const auto lifecycle = processLifecycle();
         std::optional<EScriptSystemError> first_error;
-        if (!lifecycle)
-            first_error = lifecycle.error();
         if (!state_->timer_owner.promoteNextStep() && !first_error)
             first_error = EScriptSystemError::INVOCATION_FAILURE;
         if (!state_->timer_owner.promoteSimulationDelay() && !first_error)
@@ -788,12 +835,12 @@ namespace lux::simulation::script
         if (!state_->execution_owner.drainExternalCompletions() && !first_error)
             first_error = EScriptSystemError::INVOCATION_FAILURE;
 
-        const auto resumed = state_->drainResumes();
+        auto resumed = state_->drainResumes();
         if (!resumed && !first_error)
             first_error = resumed.error();
-
-        return first_error ? lux::cxx::expected<void, EScriptSystemError>(lux::cxx::unexpected(*first_error))
-                           : lux::cxx::expected<void, EScriptSystemError>{};
+        if (first_error)
+            return lux::cxx::unexpected(*first_error);
+        return resumed;
     }
 
     lux::cxx::expected<void, EScriptSystemError>
@@ -802,7 +849,7 @@ namespace lux::simulation::script
         if (!state_ || state_->stopping || state_->prepare_state == EPrepareState::SHUT_DOWN)
             return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
         State::ExecutionOwnerScope execution{*state_};
-        const bool busy = !execution || state_->prepare_state != EPrepareState::PREPARED ||
+        const bool busy = !execution || state_->region_active || state_->prepare_state != EPrepareState::PREPARED ||
             state_->endpoint_dispatch_depth != 0U || state_->instance_owner.protectedCount() != 0U;
         if (busy)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
@@ -838,6 +885,48 @@ namespace lux::simulation::script
         state_->ingress.capture();
     }
 
+    ScriptSystem::ExecutionRegion::ExecutionRegion(ExecutionRegion&& other) noexcept
+        : owner_(std::exchange(other.owner_, nullptr)) {}
+
+    ScriptSystem::ExecutionRegion::~ExecutionRegion() noexcept
+    {
+        if (owner_ != nullptr && !finish())
+            std::terminate();
+    }
+
+    lux::cxx::expected<void, EScriptSystemError> ScriptSystem::ExecutionRegion::finish() noexcept
+    {
+        if (owner_ == nullptr)
+            return {};
+        auto& state = *owner_->state_;
+        if (state.endpoint_dispatch_depth != 0U || state.instance_owner.protectedCount() != 0U ||
+            state.execution_owner.resultPins() != 0U || state.event_owner.claimedCount() != 0U)
+            return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
+        state.region_active = false;
+        owner_ = nullptr;
+        return {};
+    }
+
+    lux::cxx::expected<ScriptSystem::ExecutionRegion, EScriptSystemError>
+    ScriptSystem::beginExecutionRegion() noexcept
+    {
+        if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN || state_->stopping)
+            return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
+        if (state_->region_active || state_->prepare_state != EPrepareState::PREPARED ||
+            state_->endpoint_dispatch_depth != 0U || state_->instance_owner.protectedCount() != 0U)
+            return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
+        state_->region_active = true;
+        return ExecutionRegion{*this};
+    }
+
+    lux::cxx::expected<void, EScriptSystemError> ScriptSystem::requestStop() noexcept
+    {
+        if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
+            return {};
+        state_->stop_requested = true;
+        return {};
+    }
+
     lux::cxx::expected<void, EScriptSystemError> ScriptSystem::shutdown() noexcept
     {
         if (!state_ || state_->prepare_state == EPrepareState::SHUT_DOWN)
@@ -846,12 +935,15 @@ namespace lux::simulation::script
         if (!execution)
             return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
 
+        if (state_->region_active || state_->instance_owner.protectedCount() != 0U ||
+            state_->execution_owner.resultPins() != 0U)
+            return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
+
         state_->stopping = true;
+        state_->instance_owner.stopInvocations();
         state_->execution_owner.stop();
         state_->timer_owner.stop();
         state_->ingress.stop();
-        if (state_->instance_owner.protectedCount() != 0U || state_->execution_owner.resultPins() != 0U)
-            return lux::cxx::unexpected(EScriptSystemError::ENDPOINT_BUSY);
         const auto disconnected = state_->disconnectEndpoints();
         if (!disconnected)
             return disconnected;
@@ -897,6 +989,16 @@ namespace lux::simulation::script
         return state_ ? state_->instance_owner.activeCount() : 0U;
     }
 
+    bool ScriptSystem::isShutdown() const noexcept
+    {
+        return !state_ || state_->prepare_state == EPrepareState::SHUT_DOWN;
+    }
+
+    bool ScriptSystem::inExecutionRegion() const noexcept
+    {
+        return state_ && state_->region_active;
+    }
+
     std::size_t ScriptSystem::activeContinuationCount() const noexcept
     {
         return state_ ? state_->execution_owner.activeContinuations() : 0U;
@@ -919,7 +1021,9 @@ namespace lux::simulation::script
         result.binding_backing_bytes = state_->binding_owner.backingBytes();
         result.assembly_endpoint_count_visits = state_->binding_owner.assemblyEndpointCountVisits();
         result.event_occurrences = state_->event_occurrences;
+        result.invocation_failures = state_->invocation_failures;
         state_->execution_owner.writeStats(result);
+        state_->binding_owner.writeInvocationStats(result);
         state_->event_owner.writeStats(result);
         state_->timer_owner.writeStats(result);
         state_->ingress.writeStats(result);

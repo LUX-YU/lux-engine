@@ -1,7 +1,12 @@
+#include "ScriptRuntimeTestRegion.hpp"
+using lux::simulation::script::test::dispatchRuntimeHook;
+using lux::simulation::script::test::deliverRuntimeEvent;
+using lux::simulation::script::test::executeRuntimeStablePoint;
 #include "../../../system/test/HookInvocationTestAccess.hpp"
 using lux::simulation::test::dispatchHookForTest;
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/engine/simulation/scripting/DeferredScriptHost.hpp>
 #include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
 
 #include <algorithm>
@@ -10,6 +15,9 @@ using lux::simulation::test::dispatchHookForTest;
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <exception>
 #include <memory>
 #include <new>
 #include <optional>
@@ -129,6 +137,10 @@ namespace
         bool fail_create{};
         bool fail_end{};
         bool async_tick{};
+        std::vector<int>* move_trace{};
+        int move_tag{};
+        ScriptSystem* move_destination{};
+        ScriptSystem* move_source{};
         HookPoint<void()>* hook{};
         std::vector<std::uint32_t> end_values;
         std::vector<EScriptEndPlayReason> end_reasons;
@@ -144,7 +156,14 @@ namespace
         std::size_t reentry_host{};
         std::size_t reentry_calls{};
         HookPoint<void()>* reentry_hook{};
+        void (*on_tick)(BackendState&) noexcept{};
     };
+
+    void recordMove(BackendState& state, int event) noexcept
+    {
+        if (state.move_trace)
+            state.move_trace->push_back(state.move_tag + event);
+    }
 
     void reenter(BackendState& state, EReentryPoint point) noexcept
     {
@@ -175,12 +194,12 @@ namespace
         assert(state.destroys == destroys && state.releases == releases);
         assert(host->isAttached() && host->self() == state.reentry_entity);
         const auto closed = system.mountResolvedBatch({});
-        assert(!closed && closed.error() == EScriptSystemError::SHUT_DOWN);
+        assert(!closed && closed.error() == EScriptSystemError::ENDPOINT_BUSY);
     }
 
-    int invokePrepared(lux_script_call_frame* frame) noexcept
+    int invokePrepared(void* invocation_context, lux_script_call_frame* frame) noexcept
     {
-        auto& call = *static_cast<PreparedCall*>(frame->user_context);
+        auto& call = *static_cast<PreparedCall*>(invocation_context);
         auto& instance = *call.instance;
         auto& state = *instance.owner;
         if (call.symbol == kBegin)
@@ -196,6 +215,10 @@ namespace
         if (call.symbol == kTick)
         {
             ++state.tick_calls;
+            if (state.on_tick)
+                state.on_tick(state);
+            if (state.move_source)
+                *state.move_destination = std::move(*state.move_source);
             reenter(state, EReentryPoint::INVOKE);
             if (state.fail_tick_serial == instance.serial)
                 return 32;
@@ -208,6 +231,7 @@ namespace
             assert(frame->args[0].kind == LUX_SCRIPT_VK_UINT32);
             const auto reason = *static_cast<const EScriptEndPlayReason*>(frame->args[0].data);
             ++state.ends;
+            recordMove(state, 2);
             state.end_values.push_back(instance.value);
             state.end_reasons.push_back(reason);
             const auto calls_before = state.tick_calls;
@@ -279,6 +303,7 @@ namespace
     void releaseMethod(void* context, ScriptBackendInstance, ScriptBackendPreparedMethod method) noexcept
     {
         ++static_cast<BackendState*>(context)->releases;
+        recordMove(*static_cast<BackendState*>(context), 3);
         reenter(*static_cast<BackendState*>(context), EReentryPoint::RELEASE_METHOD);
         delete static_cast<PreparedCall*>(method.token);
     }
@@ -286,6 +311,7 @@ namespace
     void destroyInstance(void* context, ScriptBackendInstance instance) noexcept
     {
         ++static_cast<BackendState*>(context)->destroys;
+        recordMove(*static_cast<BackendState*>(context), 4);
         reenter(*static_cast<BackendState*>(context), EReentryPoint::BACKEND_DESTROY);
         delete static_cast<Instance*>(instance.value);
     }
@@ -302,6 +328,7 @@ namespace
     {
         auto* continuation = static_cast<Continuation*>(opaque);
         ++continuation->owner->continuation_destroys;
+        recordMove(*continuation->owner, 1);
         reenter(*continuation->owner, EReentryPoint::CONTINUATION_DESTROY);
         delete continuation;
     }
@@ -396,7 +423,7 @@ namespace
                 {},
                 std::span{&backend, 1U},
                 std::span{endpoints}.first(enable_reentry ? 2U : 1U),
-                {}
+                {}, host
             );
         }
 
@@ -422,6 +449,7 @@ namespace
             output.release = [](void* lease) noexcept {
                 auto& harness = *static_cast<Harness*>(lease);
                 ++harness.leases_released;
+                recordMove(harness.backend_state, 5);
                 reenter(harness.backend_state, EReentryPoint::LEASE_RELEASE);
             };
             ++self.leases_acquired;
@@ -447,9 +475,136 @@ namespace
         std::unique_ptr<ScriptHookEndpoint<void()>> reentry_bridge;
         ScriptHookEndpointDescriptor reentry_endpoint;
         bool invalid_artifact{};
+        ScriptHostApi host;
         std::size_t leases_acquired{};
         std::size_t leases_released{};
     };
+
+    void testMoveReplacement(bool suspended)
+    {
+        Harness old{1U, true, true, true};
+        Harness incoming{1U, true, true, true};
+        std::vector<int> trace;
+        trace.reserve(32U);
+        old.backend_state.move_trace = incoming.backend_state.move_trace = &trace;
+        old.backend_state.move_tag = 100;
+        incoming.backend_state.move_tag = 200;
+        old.backend_state.async_tick = incoming.backend_state.async_tick = suspended;
+        incoming.backend_state.capture_prepared_locations = true;
+        {
+            auto first = old.create();
+            auto second = incoming.create();
+            assert(first && second);
+            auto destination = std::move(*first);
+            std::optional<ScriptSystem> source{std::move(*second)};
+            assert(destination.prepare() && source->prepare());
+            const auto before = source->queryMountStatus({1U});
+            assert(before && *before);
+            auto* const host = incoming.backend_state.hosts.front();
+            const auto prepared = incoming.backend_state.prepared_locations;
+            assert(dispatchRuntimeHook(destination, old.hook) == 1U);
+            assert(dispatchRuntimeHook(*source, incoming.hook) == 1U);
+            assert(destination.activeContinuationCount() == (suspended ? 1U : 0U));
+            assert(destination.activeAwaitableCount() == (suspended ? 1U : 0U));
+            const auto old_completion = suspended ? old.backend_state.completions.front() : ScriptAwaitableCompletion{};
+            destination = std::move(*source);
+            std::printf("MOVE_REPLACEMENT suspended=%d old_end=%zu release=%zu destroy=%zu lease=%zu frame=%zu\n",
+                suspended, old.backend_state.ends, old.backend_state.releases, old.backend_state.destroys,
+                old.leases_released, old.backend_state.continuation_destroys);
+            std::fflush(stdout);
+            // This assertion precedes any use of a potentially dangling old endpoint in the failing baseline.
+            assert(old.backend_state.ends == 1U);
+            assert(old.backend_state.releases == 3U && old.backend_state.destroys == 1U && old.leases_released == 1U);
+            assert(old.backend_state.continuation_destroys == (suspended ? 1U : 0U));
+            const std::vector<int> expected = suspended ? std::vector<int>{101, 102, 103, 103, 103, 104, 105}
+                                                       : std::vector<int>{102, 103, 103, 103, 104, 105};
+            assert(trace == expected);
+            assert(incoming.backend_state.begins == 1U && incoming.backend_state.ends == 0U);
+            const auto after = destination.queryMountStatus({1U});
+            assert(after && *after && (*after)->instance == (*before)->instance &&
+                (*after)->state == EScriptMountState::ACTIVE);
+            assert(host == incoming.backend_state.hosts.front() && host->isAttached());
+            assert(prepared == incoming.backend_state.prepared_locations && incoming.backend_state.prepares == 3U);
+            assert(source->activeInstanceCount() == 0U && source->shutdown());
+            source.reset();
+            assert(incoming.backend_state.ends == 0U && incoming.backend_state.destroys == 0U);
+            assert(dispatchRuntimeHook(destination, old.hook) == 0U);
+            old.registry.destroy(old.entities.front()); // Old signal connection must have been revoked.
+            if (suspended)
+            {
+                const auto late = old_completion.ready();
+                // Whole-runtime shutdown closes ingress before checking an individual ticket's generation.
+                assert(!late && late.error() == EScriptAwaitableCompletionError::STOPPING);
+                std::puts("MOVE_OLD_COMPLETION STOPPING");
+                assert(incoming.backend_state.completions.front().ready());
+                assert(executeRuntimeStablePoint(destination));
+                assert(incoming.backend_state.resumes == 1U && old.backend_state.resumes == 0U);
+                assert(destination.activeContinuationCount() == 0U && destination.activeAwaitableCount() == 0U);
+            }
+            assert(dispatchRuntimeHook(destination, incoming.hook) == 1U);
+            assert(incoming.backend_state.tick_calls == 2U);
+            assert(destination.activeContinuationCount() == (suspended ? 1U : 0U));
+            trace.clear();
+        } // Facade destruction closes transferred resources while both dependency owners are still alive.
+        assert(old.backend_state.ends == 1U && old.leases_released == 1U);
+        assert(incoming.backend_state.ends == 1U && incoming.backend_state.releases == 3U);
+        assert(incoming.backend_state.destroys == 1U && incoming.leases_released == 1U);
+        assert(incoming.backend_state.continuation_destroys == (suspended ? 2U : 0U));
+        const std::vector<int> expected = suspended ? std::vector<int>{201, 202, 203, 203, 203, 204, 205}
+                                                   : std::vector<int>{202, 203, 203, 203, 204, 205};
+        assert(trace == expected);
+        assert(dispatchHookForTest(incoming.hook) == 0U);
+        std::printf("MOVE_FINAL suspended=%d order=verified old=1 incoming=1\n", suspended);
+    }
+
+    void testMoveEmptyClosedAndSelf()
+    {
+        Harness old{1U, true, true, true};
+        Harness incoming{1U, true, true, true};
+        auto first = old.create();
+        auto second = incoming.create();
+        assert(first && second && first->prepare() && second->prepare());
+        auto original = std::move(*first); // first is an empty destination.
+        *first = std::move(*second);
+        assert(incoming.backend_state.begins == 1U && incoming.backend_state.ends == 0U);
+        auto* self = &*first;
+        *first = std::move(*self);
+        assert(dispatchRuntimeHook(*first, incoming.hook) == 1U && incoming.backend_state.tick_calls == 1U);
+        assert(first->shutdown());
+        assert(incoming.backend_state.ends == 1U && incoming.leases_released == 1U);
+        *first = std::move(original); // Previously closed target does not repeat cleanup.
+        assert(incoming.backend_state.ends == 1U && incoming.leases_released == 1U);
+        assert(dispatchRuntimeHook(*first, old.hook) == 1U && old.backend_state.tick_calls == 1U);
+        *first = std::move(*second); // Empty source still closes an active target.
+        assert(first->activeInstanceCount() == 0U && first->shutdown());
+        *first = std::move(*self); // Empty self-move.
+        assert(old.backend_state.ends == 1U && old.backend_state.releases == 3U && old.leases_released == 1U);
+        std::puts("MOVE_EMPTY_CLOSED_SELF old=1 incoming=1 verified");
+    }
+
+    BackendState* busy_old{};
+    BackendState* busy_incoming{};
+    void testMoveBusy()
+    {
+        Harness old{1U, true, true, true};
+        Harness incoming{1U, true, true, true};
+        auto first = old.create();
+        auto second = incoming.create();
+        assert(first && second && first->prepare() && second->prepare());
+        busy_old = &old.backend_state;
+        busy_incoming = &incoming.backend_state;
+        std::set_terminate([]() noexcept {
+            const bool retained = busy_old->ends == 0U && busy_old->destroys == 0U && busy_old->releases == 0U &&
+                busy_incoming->ends == 0U && busy_incoming->destroys == 0U && busy_incoming->begins == 1U;
+            std::fprintf(stderr, "MOVE_BUSY terminate retained=%d\n", retained);
+            std::fflush(stderr);
+            std::_Exit(retained ? 73 : 74);
+        });
+        old.backend_state.move_destination = &*first;
+        old.backend_state.move_source = &*second;
+        static_cast<void>(dispatchRuntimeHook(*first, old.hook));
+        std::_Exit(75); // Returning from an illegal replacement is not success.
+    }
 
     void testPendingDoesNotMaskFatal()
     {
@@ -463,13 +618,13 @@ namespace
         for (unsigned step{}; step < 8U; ++step)
         {
             assert(system.processLifecycle());
-            assert(system.executeStablePoint());
+            assert(executeRuntimeStablePoint(system));
             assert(system.activeInstanceCount() == 2U);
             assert(harness.backend_state.begins == 3U);
         }
         harness.entities[0] = harness.registry.create();
         harness.submitEntity(system, 0U);
-        assert(system.executeStablePoint());
+        assert(executeRuntimeStablePoint(system));
         assert(harness.backend_state.begins == 4U);
         assert(system.activeInstanceCount() == 3U);
 
@@ -480,7 +635,7 @@ namespace
         harness.entities[1] = harness.registry.create();
         harness.submitEntity(system, 1U);
         harness.backend_state.fail_begin_serial = harness.backend_state.creates + 1U;
-        const auto result = system.executeStablePoint();
+        const auto result = executeRuntimeStablePoint(system);
         assert(!result && result.error() == EScriptSystemError::INVOCATION_FAILURE);
         assert(system.activeInstanceCount() == 1U);
         assert(system.shutdown());
@@ -495,7 +650,7 @@ namespace
         harness.description.clear();
         harness.description.shrink_to_fit();
         assert(created->prepare());
-        assert(dispatchHookForTest(harness.hook) == 1U);
+        assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
         assert(harness.backend_state.begins == 1U && harness.backend_state.tick_calls == 1U);
         assert(created->shutdown());
         assert(harness.backend_state.ends == 1U && harness.backend_state.destroys == 1U);
@@ -546,7 +701,7 @@ namespace
         assert(harness.backend_state.creates == 3U && harness.backend_state.begins == 3U);
         assert(first_host == harness.backend_state.hosts.front());
         assert(first_host->self() == harness.entities.front());
-        assert(dispatchHookForTest(harness.hook) == 1U && harness.backend_state.tick_calls == 3U);
+        assert(dispatchRuntimeHook(system, harness.hook) == 1U && harness.backend_state.tick_calls == 3U);
 
         harness.registry.destroy(harness.entities[1]);
         harness.entities[1] = harness.registry.create();
@@ -572,6 +727,37 @@ namespace
         assert(system.queryMountStatus({2U}));
         const auto closed = system.mountResolvedBatch({});
         assert(!closed && closed.error() == EScriptSystemError::SHUT_DOWN);
+    }
+
+    void testFeedbackWrapAndRedirty()
+    {
+        Harness harness{3U, true, true, true};
+        auto created = harness.create();
+        assert(created && created->prepare());
+        auto& system = *created;
+        const auto backing = system.stats().mount_feedback_backing_bytes;
+        std::array<ScriptMountStatus, 1U> one;
+        const auto first = system.collectMountStatusChanges(one);
+        assert(first && first->written == 1U && first->remaining == 2U && one[0].id.value == 1U);
+        harness.registry.destroy(harness.entities[0]);
+        assert(system.processLifecycle());
+        const auto status = system.queryMountStatus({1U});
+        assert(status && *status && (**status).reclaimed);
+        const auto zero = system.collectMountStatusChanges({});
+        assert(zero && zero->written == 0U && zero->remaining == 3U);
+        for (const auto id : {2U, 3U, 1U})
+        {
+            const auto collected = system.collectMountStatusChanges(one);
+            assert(collected && collected->written == 1U && one[0].id.value == id);
+            if (id == 1U) assert(one[0].reclaimed && collected->remaining == 0U);
+        }
+        assert(system.stats().mount_feedback_backing_bytes == backing);
+        assert(system.shutdown());
+        assert(harness.backend_state.creates == 3U && harness.backend_state.destroys == 3U);
+        assert(system.collectMountStatusChanges(one)->written == 1U);
+        assert(system.collectMountStatusChanges(one)->written == 1U);
+        assert(system.collectMountStatusChanges(one)->remaining == 0U);
+        std::puts("FEEDBACK_WRAP first=1 redirty=1 order=2,3,1 zero_no_consume=1 backing_stable=1 PASS");
     }
 
     void testMixedReassociationRollback()
@@ -609,7 +795,7 @@ namespace
         for (std::size_t method{}; method < 3U; ++method)
             assert(harness.backend_state.prepared_locations[method] ==
                 harness.backend_state.prepared_locations[method + 3U]);
-        assert(dispatchHookForTest(harness.hook) && harness.backend_state.tick_calls == 3U);
+        assert(dispatchRuntimeHook(system, harness.hook) && harness.backend_state.tick_calls == 3U);
         assert(system.shutdown());
         assert(harness.backend_state.destroys == 4U && harness.backend_state.ends == 4U);
         assert(harness.backend_state.prepares == 12U && harness.backend_state.releases == 12U);
@@ -718,7 +904,7 @@ namespace
             const auto remaining = system.collectMountStatusChanges(output);
             assert(remaining && remaining->written == 1U && remaining->remaining == 0U);
             assert(output[0].id.value == 2U);
-            assert(dispatchHookForTest(harness.hook) == 1U && harness.backend_state.tick_calls == 1U);
+            assert(dispatchRuntimeHook(system, harness.hook) == 1U && harness.backend_state.tick_calls == 1U);
         }
         const auto empty = system.collectMountStatusChanges(output);
         assert(empty && empty->written == 0U && empty->remaining == 0U);
@@ -799,10 +985,10 @@ namespace
             auto& system = *created;
             if (state.async_tick)
             {
-                assert(dispatchHookForTest(harness.hook) == 1U);
+                assert(dispatchRuntimeHook(system, harness.hook) == 1U);
                 assert(system.activeContinuationCount() == 2U);
                 assert(state.completions[1].ready());
-                assert(system.executeStablePoint());
+                assert(executeRuntimeStablePoint(system));
                 assert(state.continuation_destroys == 1U);
             }
             state.reentry_system = &system;
@@ -819,7 +1005,7 @@ namespace
             }
             else if (point == EReentryPoint::INVOKE)
             {
-                assert(dispatchHookForTest(harness.hook) == 1U);
+                assert(dispatchRuntimeHook(system, harness.hook) == 1U);
                 assert(state.destroys == 0U && state.releases == 0U);
                 if (synchronous_failure)
                 {
@@ -861,7 +1047,7 @@ namespace
         assert(harness.backend_state.first_begin_create_count == 3U);
         assert(harness.backend_state.begins == 3U);
         assert(system.activeInstanceCount() == 3U);
-        assert(dispatchHookForTest(harness.hook) == 1U);
+        assert(dispatchRuntimeHook(system, harness.hook) == 1U);
         assert(system.shutdown());
         assert(harness.backend_state.ends == 3U);
         assert(harness.backend_state.destroys == 3U);
@@ -931,9 +1117,9 @@ namespace
         assert(normal_created);
         auto normal_system = std::move(*normal_created);
         assert(normal_system.prepare());
-        assert(dispatchHookForTest(normal_failure.hook) == 1U);
+        assert(dispatchRuntimeHook(normal_system, normal_failure.hook) == 1U);
         assert(normal_system.activeInstanceCount() == 0U);
-        assert(normal_system.executeStablePoint());
+        assert(executeRuntimeStablePoint(normal_system));
         assert(normal_failure.backend_state.ends == 1U);
         assert(normal_failure.backend_state.destroys == 1U);
         assert(normal_failure.backend_state.end_reasons.front() == EScriptEndPlayReason::FAULTED);
@@ -969,7 +1155,7 @@ namespace
         assert(created);
         auto system = std::move(*created);
         assert(system.prepare());
-        assert(dispatchHookForTest(harness.hook) == 1U);
+        assert(dispatchRuntimeHook(system, harness.hook) == 1U);
         assert(system.activeContinuationCount() == 2U);
         const auto late_completion = harness.backend_state.completions.front();
 
@@ -979,7 +1165,7 @@ namespace
             entity = harness.registry.create();
         for (std::size_t index{}; index < harness.entities.size(); ++index)
             harness.submitEntity(system, index);
-        assert(system.executeStablePoint());
+        assert(executeRuntimeStablePoint(system));
         assert(harness.backend_state.ends == 2U);
         assert(harness.backend_state.destroys == 2U);
         assert(harness.backend_state.continuation_destroys == 2U);
@@ -1003,13 +1189,145 @@ namespace
     }
 } // namespace
 
-int main()
+namespace
 {
+    void testDeferredScriptMutation()
+    {
+        struct Value final { std::int32_t value{}; };
+        struct Observation final
+        {
+            std::int32_t destroyed_value{};
+            void destroyed(Registry& registry, Entity entity)
+            { destroyed_value = registry.get<Value>(entity).value; }
+        } observation;
+        Harness harness(2U, true, true, true);
+        const auto first = harness.entities[0];
+        harness.registry.emplace<Value>(first, Value{4});
+        harness.registry.on_destroy<Value>().connect<&Observation::destroyed>(observation);
+        const std::array components{scriptDeferredComponent<Value>({43, 44, "test.Value", LUX_SCRIPT_VK_INT32})};
+        DeferredScriptHost host{harness.registry, components};
+        harness.host = host.api();
+        EcsCommandBuffer commands;
+        const std::array capacities{EcsCommandProducerCapacity{3, 256}};
+        assert(commands.prepare(capacities));
+        auto system = harness.create();
+        assert(system && system->prepare());
+        auto* behavior = harness.backend_state.hosts.front();
+        assert(!behavior->command(EScriptHostCommand::DESTROY_ENTITY));
+        {
+            auto writer = commands.begin(0, EEcsCommandPolicy::CONTINUE_ON_INVALID_TARGET);
+            assert(writer);
+            auto host_batch = host.begin(*writer);
+            assert(host_batch);
+            auto region = system->beginExecutionRegion();
+            assert(region);
+            harness.backend_state.on_tick = [](BackendState& state) noexcept {
+                state.on_tick = nullptr;
+                auto* behavior = state.hosts.front();
+                Value value{19};
+                assert(behavior->patch(43, &value));
+                value.value = 77;
+                assert(static_cast<const Value*>(behavior->read(43))->value == 4);
+                assert(behavior->command(EScriptHostCommand::DESTROY_ENTITY));
+                assert(behavior->command(EScriptHostCommand::DESTROY_ENTITY));
+                assert(!behavior->patch(43, &value)); // Capacity rejects only this request.
+                assert(behavior->captureInvocation().valid());
+            };
+            assert(dispatchRuntimeHook(*system, harness.hook) == 1U);
+            assert(dispatchRuntimeHook(*system, harness.hook) == 1U);
+            assert(harness.backend_state.tick_calls == 4U);
+            assert(harness.registry.valid(first) && harness.registry.get<Value>(first).value == 4);
+            assert(system->activeInstanceCount() == 2U && harness.backend_state.destroys == 0U);
+            assert(region->finish());
+        }
+        assert(!commands.failed() && applyEcsCommands(harness.registry, commands));
+        assert(!harness.registry.valid(first) && observation.destroyed_value == 19);
+        assert(commands.rejectedAtCommit() == 1U && commands.lastRejection()->command == 2U);
+        assert(host.accepted() == 3U && host.rejected() == 2U);
+        assert(system->processLifecycle());
+        assert(system->activeInstanceCount() == 1U && harness.backend_state.destroys == 1U);
+        assert(system->shutdown() && harness.backend_state.destroys == 2U);
+        std::puts("REGION commands accepted=3 rejected=2 late_rejected=1 calls=4 copied=19 destroys=2 PASS");
+    }
+
+    void testExecutionRegionStop()
+    {
+        Harness harness(2U, true, true, true);
+        auto created = harness.create();
+        assert(created && created->prepare());
+        auto& system = *created;
+        auto& state = harness.backend_state;
+        state.reentry_system = &system;
+        state.on_tick = [](BackendState& value) noexcept {
+            value.on_tick = nullptr;
+            auto& runtime = *value.reentry_system;
+            assert(runtime.requestStop() && runtime.requestStop());
+            const auto closed = runtime.shutdown();
+            assert(!closed && closed.error() == EScriptSystemError::ENDPOINT_BUSY);
+            const auto lifecycle = runtime.processLifecycle();
+            assert(!lifecycle && lifecycle.error() == EScriptSystemError::ENDPOINT_BUSY);
+            for (const auto* host : value.hosts)
+                assert(host->captureInvocation().valid());
+            assert(value.ends == 0U && value.destroys == 0U && runtime.activeInstanceCount() == 2U);
+        };
+        auto region = system.beginExecutionRegion();
+        assert(region);
+        assert(!system.beginExecutionRegion());
+        assert(dispatchRuntimeHook(system, harness.hook) == 1U);
+        assert(state.tick_calls == 2U && state.ends == 0U && state.destroys == 0U);
+        // Stop acceptance does not revoke another callback in this same region.
+        assert(dispatchRuntimeHook(system, harness.hook) == 1U);
+        assert(state.tick_calls == 4U && system.activeInstanceCount() == 2U);
+        assert(region->finish() && region->finish());
+        assert(state.ends == 0U && state.destroys == 0U);
+        assert(system.processLifecycle());
+        assert(state.ends == 2U && state.destroys == 2U && state.releases == state.prepares);
+        assert(system.activeInstanceCount() == 0U && !system.beginExecutionRegion());
+        assert(system.requestStop() && system.shutdown());
+        std::puts("REGION stop accepted=2 calls=4 ends=2 destroys=2 PASS");
+    }
+
+    void testExecutionRegionFaultIsolation()
+    {
+        Harness harness(2U, true, true, true);
+        auto created = harness.create();
+        assert(created && created->prepare());
+        harness.backend_state.fail_tick_serial = 1U;
+        auto region = created->beginExecutionRegion();
+        assert(region);
+        assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
+        assert(harness.backend_state.tick_calls == 2U);
+        assert(dispatchRuntimeHook(*created, harness.hook) == 1U);
+        assert(harness.backend_state.tick_calls == 3U);
+        assert(harness.backend_state.destroys == 0U);
+        assert(created->failures().size() == 1U);
+        assert(region->finish() && created->processLifecycle());
+        assert(harness.backend_state.destroys == 1U && created->activeInstanceCount() == 1U);
+        assert(created->shutdown() && harness.backend_state.destroys == 2U);
+        std::puts("REGION fault calls=3 failures=1 survivors=1 destroys=2 PASS");
+    }
+}
+
+int main(int argc, char** argv)
+{
+    testDeferredScriptMutation();
+    testExecutionRegionStop();
+    testExecutionRegionFaultIsolation();
+    if (argc == 2 && std::strcmp(argv[1], "--region-only") == 0)
+        return 0;
+    if (argc == 2 && std::strcmp(argv[1], "--move-busy") == 0)
+        testMoveBusy();
+    testMoveReplacement(false);
+    testMoveReplacement(true);
+    testMoveEmptyClosedAndSelf();
+    if (argc == 2 && std::strcmp(argv[1], "--move-only") == 0)
+        return 0;
     testResolvedAssetFailure(true);
     testResolvedAssetFailure(false);
     testResolvedPreparationFailures();
     testOwnedRuntimeInput();
     testResolvedBatchProtocol();
+    testFeedbackWrapAndRedirty();
     testMixedReassociationRollback();
     testResolvedInputExpiryAndReuse();
     testInitialLifecycle();

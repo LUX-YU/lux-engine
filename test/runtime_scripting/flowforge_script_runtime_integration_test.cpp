@@ -170,24 +170,39 @@ namespace
     struct RuntimeBinding final
     {
         ScriptSystem* runtime{};
+        std::optional<ScriptSystem::ExecutionRegion> region;
         [[nodiscard]] auto bind(Simulation& simulation) noexcept
         {
             return simulation.bindHookCallbacks({this,
                 [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
-                    auto* runtime = static_cast<RuntimeBinding*>(context)->runtime;
+                    auto& host = *static_cast<RuntimeBinding*>(context);
+                    auto* runtime = host.runtime;
                     if (runtime == nullptr)
                         return true;
                     if (stable)
                         runtime->beginStableAdmission();
-                    return static_cast<bool>(runtime->processLifecycle());
+                    if (!runtime->processLifecycle()) return false;
+                    auto region = runtime->beginExecutionRegion();
+                    if (!region) return false;
+                    host.region.emplace(std::move(*region));
+                    return true;
                 },
                 [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
-                    auto* runtime = static_cast<RuntimeBinding*>(context)->runtime;
-                    return runtime == nullptr || !stable || static_cast<bool>(runtime->executeStablePoint());
+                    auto& host = *static_cast<RuntimeBinding*>(context);
+                    if (host.runtime == nullptr) return true;
+                    const bool result = !stable || static_cast<bool>(host.runtime->executeStablePoint());
+                    if (!host.region || !host.region->finish()) return false;
+                    host.region.reset();
+                    return result;
                 },
                 [](void* context, const SimulationClockSnapshot&) noexcept {
                     auto* runtime = static_cast<RuntimeBinding*>(context)->runtime;
                     return runtime == nullptr || static_cast<bool>(runtime->processLifecycle());
+                },
+                [](void* context, const SimulationClockSnapshot&) noexcept {
+                    auto& host = *static_cast<RuntimeBinding*>(context);
+                    if (host.region && !host.region->finish()) std::terminate();
+                    host.region.reset();
                 }});
         }
     };
@@ -696,9 +711,241 @@ namespace
         }
     };
 
+    struct PackingAwaitable final
+    {
+        lux::simulation::script::ScriptInstanceId instance{1U, 1U};
+        lux::simulation::script::ScriptAwaitableId awaiting{1U, 1U};
+        std::shared_ptr<void> lease{std::make_shared<int>(0)};
+        bool completed{};
+
+        static lux::cxx::expected<lux::simulation::script::ScriptAwaitableRegistration,
+                                  lux::simulation::script::EScriptAwaitableCreateError>
+        create(
+            void* opaque,
+            lux::simulation::script::ScriptInstanceId instance,
+            std::optional<lux::simulation::script::PreparedResumeType> result
+        ) noexcept
+        {
+            auto& self = *static_cast<PackingAwaitable*>(opaque);
+            if (instance != self.instance || result)
+            {
+                return lux::cxx::unexpected(
+                    lux::simulation::script::EScriptAwaitableCreateError::INVALID_RESULT_TYPE
+                );
+            }
+            return lux::simulation::script::ScriptAwaitableRegistration{
+                self.awaiting,
+                lux::simulation::script::ScriptAwaitableCompletion{
+                    self.lease,
+                    std::addressof(self),
+                    &complete,
+                    &active,
+                    self.instance,
+                    self.awaiting,
+                    &abilitySuccess,
+                    &abilityFailure,
+                    &abilityActive
+                }
+            };
+        }
+
+        static void discard(
+            void*,
+            lux::simulation::script::ScriptInstanceId,
+            lux::simulation::script::ScriptAwaitableId
+        ) noexcept
+        {
+        }
+
+        static lux::cxx::expected<void, lux::simulation::script::EScriptAwaitableCompletionError> complete(
+            void* opaque,
+            lux::simulation::script::ScriptInstanceId,
+            lux::simulation::script::ScriptAwaitableId,
+            lux::simulation::script::EScriptAwaitableState state,
+            lux::simulation::script::ScriptOwnedResumeValue,
+            lux::simulation::script::ScriptStepError
+        ) noexcept
+        {
+            auto& self = *static_cast<PackingAwaitable*>(opaque);
+            if (self.completed)
+            {
+                return lux::cxx::unexpected(
+                    lux::simulation::script::EScriptAwaitableCompletionError::ALREADY_TERMINAL
+                );
+            }
+            self.completed = state == lux::simulation::script::EScriptAwaitableState::READY;
+            return {};
+        }
+
+        static bool active(
+            void* opaque,
+            lux::simulation::script::ScriptInstanceId,
+            lux::simulation::script::ScriptAwaitableId
+        ) noexcept
+        {
+            return !static_cast<PackingAwaitable*>(opaque)->completed;
+        }
+
+        static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> abilitySuccess(
+            void* opaque,
+            std::uint64_t,
+            std::uint64_t,
+            lux::semantic::TypeId type,
+            const void* data,
+            std::uint32_t size
+        ) noexcept
+        {
+            auto& self = *static_cast<PackingAwaitable*>(opaque);
+            if (self.completed)
+                return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED);
+            if (type != lux::semantic::InvalidTypeId || data != nullptr || size != 0U)
+                return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::INVALID_VALUE);
+            self.completed = true;
+            return {};
+        }
+
+        static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> abilityFailure(
+            void*,
+            std::uint64_t,
+            std::uint64_t,
+            lux::script::ScriptAbilityOperationError
+        ) noexcept
+        {
+            return {};
+        }
+
+        static bool abilityActive(void* opaque, std::uint64_t, std::uint64_t) noexcept
+        {
+            return !static_cast<PackingAwaitable*>(opaque)->completed;
+        }
+    };
+
+    void testPackedGeneratedFrames()
+    {
+        using namespace flowforge;
+        FlowGraph graph;
+        constexpr std::uint32_t WideValues = 128U;
+        constexpr std::array symbols{lux::script::ScriptSymbolId{0x8F10U}, lux::script::ScriptSymbolId{0x8F11U}};
+        for (std::size_t variant{}; variant < symbols.size(); ++variant)
+        {
+            auto event = std::make_unique<OnEventNode>(variant == 0U ? "small" : "large");
+            auto* tail = &event->execOutPin();
+            const auto entry = graph.addNodes(std::move(event));
+            LastLink previous;
+            std::vector<DataOutPin*> values;
+            const auto count = variant == 0U ? 0U : WideValues;
+            for (std::uint32_t i{}; i < count; ++i)
+            {
+                auto read = std::make_unique<ScriptAbilityNode>(kTestNodes[1]);
+                assert(read->parameterPins().front()->setConstantData(meta::RuntimeObject(std::int32_t(i + 1U))));
+                auto* node = read.get();
+                graph.addNodes(std::move(read));
+                assert(tail->linkTo(&node->execInPin(), previous) == ELinkError::SUCCESS);
+                tail = &node->execOutPin();
+                values.push_back(node->resultPins().front().get());
+            }
+            auto wait = std::make_unique<ScriptAbilityNode>(kTestNodes[2]);
+            auto* wait_node = wait.get();
+            graph.addNodes(std::move(wait));
+            assert(tail->linkTo(&wait_node->execInPin(), previous) == ELinkError::SUCCESS);
+            tail = &wait_node->execOutPin();
+            for (std::uint32_t i{}; i < (std::max)(1U, count); ++i)
+            {
+                auto write = std::make_unique<ScriptAbilityNode>(kTestNodes.front());
+                auto* node = write.get();
+                graph.addNodes(std::move(write));
+                assert(tail->linkTo(&node->execInPin(), previous) == ELinkError::SUCCESS);
+                tail = &node->execOutPin();
+                if (count) assert(values[i]->linkTo(node->parameterPins().front().get(), previous) == ELinkError::SUCCESS);
+                else assert(node->parameterPins().front()->setConstantData(meta::RuntimeObject(std::int32_t{7})));
+            }
+            assert(graph.addExport({FlowForgeExportNodeId{static_cast<std::uint32_t>(variant + 1U)},
+                graph.getNode(entry).node->id(), symbols[variant]}));
+        }
+        ScriptAbilityNodeCatalog catalog;
+        assert(catalog.add({kTestNodes}));
+        auto artifact = compileFlowForgeScript(graph,
+            {.module_name = "lux.test.packed.frames", .script_abilities = catalog.view()});
+        if (!artifact) std::fprintf(stderr, "packing compile: %s\n", artifact.error().message.c_str());
+        assert(artifact);
+        auto module = lux::script::loadNativeModule(artifact->payload(), "lux.test.packed.frames");
+        assert(module);
+        const auto small_size = module->findFunction(symbols[0])->step->frame_size;
+        const auto large_size = module->findFunction(symbols[1])->step->frame_size;
+        assert(large_size > small_size);
+        ArtifactSource source{&*artifact, &*module};
+        constexpr std::size_t Count = 8U;
+        NativeScriptBackend backend{{&source, &ArtifactSource::resolveModule}, {
+            .module_capacity = 1U, .instance_capacity = 1U, .prepared_call_capacity = 2U,
+            .continuation_capacity = Count, .max_ability_imports_per_module = 4U,
+            .max_continuation_frame_bytes = 8192U, .continuation_frame_storage_bytes = 65536U,
+            .abilities = std::span{&kTestNativeContribution, 1U},
+            .storage_populations = std::array{NativeScriptStoragePopulation{&*module, 1U, Count}},
+            .state_storage_bytes = 65536U, .observe_storage = true}};
+        assert(backend);
+        TestProvider provider;
+        const lux::script::ScriptAbilityBinding binding{&kTestAbility, &provider, &provider, kTestErasedMethods};
+        const auto publication = publishScriptAbility(binding);
+        const std::array capabilities{PreparedScriptApiCapability{
+            lux::script::ScriptApiContractId{publication.contract.name()}, publication.schema_hash,
+            publication.context, publication.dispatch, publication.schema_version, publication.methods}};
+        const auto api = backend.descriptor();
+        ScriptBackendInstance instance;
+        assert(api.createInstance(api.context, {assetId(), SimulationScriptScope{}, nullptr, {1U, 1U}, capabilities},
+            *artifact, instance) == EScriptBackendResult::SUCCESS);
+        std::array<ScriptBackendPreparedMethod, 2U> methods;
+        for (std::size_t i{}; i < methods.size(); ++i)
+            assert(api.prepareMethod(api.context, instance, *artifact->findExport(symbols[i]), methods[i]) ==
+                EScriptBackendResult::SUCCESS);
+        std::array<PackingAwaitable, Count> sources;
+        const std::array variants{0U, 1U, 0U};
+        for (const auto variant : variants)
+        {
+            provider = {};
+            std::array<ScriptBackendContinuation, Count> continuations;
+            lux_script_call_frame frame{};
+            for (std::size_t i{}; i < Count; ++i)
+            {
+                sources[i].completed = false;
+                sources[i].awaiting = {static_cast<std::uint32_t>(i + 1U), variant + 1U};
+                ScriptStepContext step{{1U, 1U}, &sources[i], &PackingAwaitable::create, &PackingAwaitable::discard};
+                const auto& call = methods[variant].resumable;
+                assert(call.invoke(call.context, frame, step, continuations[i]).state == EScriptStepState::SUSPENDED);
+                assert(sources[i].completed);
+            }
+            const auto active = backend.stats();
+            assert(active.active_frames == Count && active.frame_occupied_bytes == Count * (variant ? large_size : small_size));
+            if (variant == 0U) assert(active.active_frame_region_bytes < active.frame_storage_bytes);
+            ScriptBackendContinuation excess;
+            ScriptStepContext unused{{1U, 1U}, nullptr, nullptr, nullptr};
+            const auto& call = methods[1].resumable;
+            assert(call.invoke(call.context, frame, unused, excess).state == EScriptStepState::FAILED && !excess);
+            const ScriptOwnedResumeValue no_value;
+            for (std::size_t i{}; i < Count; ++i)
+            {
+                ScriptStepContext step{{1U, 1U}, &sources[i], &PackingAwaitable::create, &PackingAwaitable::discard};
+                const ScriptResumePacket packet{sources[i].awaiting, EScriptAwaitableState::READY, &no_value, {}};
+                assert(continuations[i].resume(continuations[i].state, step, packet).state == EScriptStepState::COMPLETED);
+                continuations[i].destroy(continuations[i].state);
+            }
+            assert(provider.eager_starts == Count);
+            assert(provider.calls == Count * (variant ? WideValues * 2U : 1U));
+            assert(provider.checksum == Count * (variant ? WideValues * (WideValues + 1U) / 2U : 7U));
+            assert(backend.stats().active_frames == 0U && backend.stats().active_frame_region_bytes == 0U);
+            std::printf("FLOWFORGE_PACKING,variant=%u,small=%u,large=%u,accepted=8,excess=1,reserved=%zu,"
+                "metadata=%zu,occupied=%zu,regions=%zu,provider_calls=%zu,checksum=%llu,closed=1\n", variant,
+                small_size, large_size, active.frame_storage_bytes, active.frame_metadata_bytes,
+                active.frame_occupied_bytes, active.active_frame_region_bytes, provider.calls, provider.checksum);
+        }
+        for (auto method : methods) api.releaseMethod(api.context, instance, method);
+        api.destroyInstance(api.context, instance);
+        assert(backend.stats().active_states == 0U);
+    }
+
     struct BenchmarkOptions final
     {
         std::string group;
+        bool storage_accounting{};
         std::size_t size{2500U};
         std::size_t frames{30U};
         std::size_t warmups{5U};
@@ -726,6 +973,11 @@ namespace
             const std::string_view value{argv[index]};
             if (key == "--group")
                 result.group = value;
+            else if (key == "--storage-accounting")
+            {
+                if (value != "on" && value != "off") return std::nullopt;
+                result.storage_accounting = value == "on";
+            }
             else if (key == "--size")
             {
                 if (!parseSize(value, result.size))
@@ -914,7 +1166,7 @@ namespace
                         std::addressof(*native_module), options.size, options.size
                     }
                 },
-                .state_storage_bytes = 64U * 1024U * 1024U
+                .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = options.storage_accounting
             }
         };
         if (!backend)
@@ -1012,6 +1264,14 @@ namespace
                   "continuation_frame_bytes,artifact_bytes,checksum,started,resumes,suspensions,completed,phase\n";
         const auto* exported = native_module->findFunction(event_mode ? kEventWaitSymbol : kTickSymbol);
         const auto frame_bytes = exported != nullptr && exported->step != nullptr ? exported->step->frame_size : 0U;
+        const auto initial_stats = system->stats();
+        std::printf("INTEGRITY,begin,calls=%zu,invocation_errors=%llu,started=%llu,resumes=%llu,suspensions=%llu,"
+            "queue=%zu,continuations=%zu,awaitables=%zu,waiters=%zu\n", provider.calls,
+            static_cast<unsigned long long>(initial_stats.invocation_failures),
+            static_cast<unsigned long long>(initial_stats.step_invocations),
+            static_cast<unsigned long long>(initial_stats.backend_resume_calls),
+            static_cast<unsigned long long>(initial_stats.suspensions_admitted), initial_stats.resume_queue_depth,
+            initial_stats.active_continuations, initial_stats.active_awaitables, initial_stats.active_event_waiters);
         bool draining{};
         const auto record = [&](std::size_t frame, std::uint64_t nanoseconds) {
             const auto stats = system->stats();
@@ -1084,6 +1344,36 @@ namespace
         // not a total-error counter; a full bounded log may have omitted additional failures.
         const auto retained = system->failures().size();
         const auto stopped_at = system->stats();
+        if (options.group == "scene-flowforge-event" && options.resume_budget >= options.size)
+        {
+            const auto cycles = static_cast<std::uint64_t>(options.warmups) + options.frames;
+            const auto expected = cycles * options.size;
+            const bool invalid_business = provider.calls != expected || provider.checksum != expected * 31U ||
+                stopped_at.step_invocations != expected || stopped_at.backend_resume_calls != expected ||
+                stopped_at.active_continuations != 0U || stopped_at.active_awaitables != 0U ||
+                stopped_at.active_event_waiters != 0U || stopped_at.resume_queue_depth != 0U;
+            if (invalid_business)
+            {
+                std::fprintf(stderr, "FlowForge Event business oracle failed: calls=%zu expected=%llu checksum=%llu\n",
+                    provider.calls, static_cast<unsigned long long>(expected),
+                    static_cast<unsigned long long>(provider.checksum));
+                return 36;
+            }
+            std::printf("BUSINESS_ORACLE,flowforge-event,instances=%zu,cycles=%llu,completed=%llu,checksum=%llu,"
+                "source=provider-payload,outside_timing=1\n", options.size,
+                static_cast<unsigned long long>(cycles), static_cast<unsigned long long>(expected),
+                static_cast<unsigned long long>(provider.checksum));
+        }
+        const auto storage = backend.stats();
+        std::printf("NATIVE_STORAGE_OBSERVATION,collected=%d,active_region_bytes=%zu,retained_bindings=%zu\n",
+            storage.observation_collected, storage.active_frame_region_bytes, storage.retained_binding_bytes);
+        std::printf("NATIVE_STORAGE,steady,backing=%zu,metadata=%zu,reserved=%zu,active=%zu,live=%zu,"
+            "occupied=%zu,high_water=%zu,capacity_failures=%zu,heap_frames=%zu\n",
+            storage.frame_storage_bytes, storage.frame_metadata_bytes, storage.frame_reserved_slots,
+            storage.active_frames, storage.frame_live_bytes, storage.frame_occupied_bytes, storage.frame_high_water,
+            storage.frame_capacity_failures, storage.heap_frame_allocations);
+        std::printf("ERRORS,steady,invocation_errors=%llu\n",
+            static_cast<unsigned long long>(stopped_at.invocation_failures));
         std::printf("INTEGRITY,steady,retained=%zu,calls=%zu,checksum=%llu,queue=%zu,continuations=%zu,"
             "awaitables=%zu,waiters=%zu\n", retained, provider.calls, static_cast<unsigned long long>(provider.checksum),
             stopped_at.resume_queue_depth, stopped_at.active_continuations,
@@ -1091,13 +1381,23 @@ namespace
         const bool closed = system->shutdown().has_value();
         const auto final = system->stats();
         const auto retained_after = system->failures().size();
+        const auto released_storage = backend.stats();
+        std::printf("NATIVE_STORAGE,shutdown,active=%zu,live=%zu,occupied=%zu,acquires=%llu,releases=%llu\n",
+            released_storage.active_frames, released_storage.frame_live_bytes, released_storage.frame_occupied_bytes,
+            static_cast<unsigned long long>(released_storage.frame_acquire_steps),
+            static_cast<unsigned long long>(released_storage.frame_release_steps));
+        std::printf("ERRORS,shutdown,invocation_errors=%llu\n",
+            static_cast<unsigned long long>(final.invocation_failures));
         std::printf("INTEGRITY,shutdown,retained=%zu,calls=%zu,checksum=%llu,queue=%zu,continuations=%zu,"
             "awaitables=%zu,waiters=%zu\n", retained_after, provider.calls,
             static_cast<unsigned long long>(provider.checksum),
             final.resume_queue_depth, final.active_continuations, final.active_awaitables, final.active_event_waiters);
         const bool released = final.active_instances == 0U && final.active_continuations == 0U &&
             final.active_awaitables == 0U && final.active_event_waiters == 0U && final.resume_queue_depth == 0U;
-        if (retained != 0U || retained_after != 0U || !released)
+        const bool frames_released = released_storage.active_frames == 0U &&
+            released_storage.frame_live_bytes == 0U && released_storage.frame_occupied_bytes == 0U;
+        if (retained != 0U || retained_after != 0U || stopped_at.invocation_failures != 0U ||
+            final.invocation_failures != 0U || !released || !frames_released || storage.frame_capacity_failures != 0U)
             return 35;
         return closed ? 0 : 30;
     }
@@ -1110,6 +1410,7 @@ int main(int argc, char** argv)
         const auto options = parseBenchmarkOptions(argc, argv);
         return options ? runBenchmark(*options) : 2;
     }
+    testPackedGeneratedFrames();
     using namespace lux;
     using namespace lux::simulation;
     using namespace lux::simulation::script;
@@ -1208,7 +1509,7 @@ int main(int argc, char** argv)
                     std::addressof(*native_module), 1U, 2U
                 }
             },
-            .state_storage_bytes = 64U * 1024U * 1024U
+            .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = true
         }
     };
     assert(backend);
@@ -1356,7 +1657,7 @@ int main(int argc, char** argv)
                     std::addressof(*event_module), 1U, 2U
                 }
             },
-            .state_storage_bytes = 64U * 1024U * 1024U
+            .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = true
         }
     };
     assert(event_backend);
@@ -1386,7 +1687,7 @@ int main(int argc, char** argv)
                     std::addressof(*event_module), 1U, 2U
                 }
             },
-            .state_storage_bytes = 64U * 1024U * 1024U
+            .state_storage_bytes = 64U * 1024U * 1024U, .observe_storage = true
         }
     };
     assert(mismatched_backend);

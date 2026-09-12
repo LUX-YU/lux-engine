@@ -7,6 +7,7 @@ namespace lux::simulation::script::detail
 {
     class ScriptCompletionIngress final
     {
+        friend struct ScriptCompletionIngressTestAccess;
         struct Transport final
         {
             ExternalCompletionRing completions;
@@ -201,6 +202,7 @@ namespace lux::simulation::script::detail
         {
             frontier_ = transport_->completions.enqueue_position.load(std::memory_order_acquire);
             remaining_ = transport_->completions.capacity;
+            pending_in_window_ = transport_->completions.dequeue_position < frontier_ && remaining_ != 0U;
             prepared_ = true;
         }
         void beginDrain() noexcept
@@ -214,14 +216,21 @@ namespace lux::simulation::script::detail
         // The attempt consumes the captured window's allowance even if owner admission is backpressured.
         [[nodiscard]] const ExternalCompletionRecord* peek() noexcept
         {
-            if (transport_->completions.dequeue_position >= frontier_ || remaining_ == 0U)
+            if (!pending_in_window_)
                 return nullptr;
             const auto* result = transport_->completions.front();
-            if (result != nullptr)
-                --remaining_;
+            if (result != nullptr && --remaining_ == 0U)
+                pending_in_window_ = false;
+            // A reserved but unpublished head remains eligible for a later retry.
             return result;
         }
-        void ack() noexcept { transport_->completions.pop(); }
+        void ack() noexcept
+        {
+            transport_->completions.pop();
+            if (transport_->completions.dequeue_position >= frontier_)
+                pending_in_window_ = false;
+        }
+        [[nodiscard]] bool hasPendingInWindow() const noexcept { return pending_in_window_; }
 
         [[nodiscard]] static ScriptInstanceId unpackInstance(std::uint64_t value) noexcept
         {
@@ -244,6 +253,7 @@ namespace lux::simulation::script::detail
         std::size_t frontier_{};
         std::size_t remaining_{};
         bool prepared_{};
+        bool pending_in_window_{};
         std::uint64_t capability_constructions_{};
     };
 }

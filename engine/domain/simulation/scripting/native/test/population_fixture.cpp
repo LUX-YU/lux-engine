@@ -6,27 +6,39 @@
 
 namespace
 {
+    void (*destroy_probe)(void*) noexcept{};
+    void* probe_context{};
+    bool fail_start{};
     struct Frame final { std::uint32_t* object{}; };
 
-    int read(lux_script_call_frame* call) noexcept
+    int read(void* invocation_context, lux_script_call_frame* call) noexcept
     {
-        const bool invalid = call == nullptr || call->user_context == nullptr || call->return_count != 1U ||
+        const auto* native = static_cast<const lux_script_native_instance_context*>(invocation_context);
+        void* state = native ? native->state : nullptr;
+        const bool invalid = call == nullptr || state == nullptr || call->return_count != 1U ||
             call->returns == nullptr || call->returns[0].data == nullptr;
         if (invalid) return 1;
-        *static_cast<std::uint32_t*>(call->returns[0].data) = *static_cast<std::uint32_t*>(call->user_context);
+        *static_cast<std::uint32_t*>(call->returns[0].data) = *static_cast<std::uint32_t*>(state);
         return 0;
     }
 
-    int synchronous(lux_script_call_frame*) noexcept { return 2; }
+    int synchronous(void* invocation_context, lux_script_call_frame*) noexcept { return 2; }
 
-    int start(lux_script_call_frame* call, const lux_script_step_host*, void* storage,
+    int start(
+        const lux_script_native_instance_context* instance, lux_script_call_frame* call,
+        const lux_script_step_host*, void* storage,
               lux_script_step_outcome* outcome) noexcept
     {
-        const bool invalid = call == nullptr || call->native_instance == nullptr ||
-            call->native_instance->state == nullptr || storage == nullptr || outcome == nullptr;
+        const bool invalid = call == nullptr || instance == nullptr ||
+            instance->state == nullptr || storage == nullptr || outcome == nullptr;
         if (invalid) return 3;
-        auto& frame = *new (storage) Frame{static_cast<std::uint32_t*>(call->native_instance->state)};
+        auto& frame = *new (storage) Frame{static_cast<std::uint32_t*>(instance->state)};
         ++*frame.object;
+        if (fail_start)
+        {
+            fail_start = false;
+            return 97;
+        }
         outcome->state = LUX_SCRIPT_STEP_SUSPENDED;
         outcome->waiting_on = {1U, 1U};
         return 0;
@@ -42,6 +54,7 @@ namespace
     void destroy(void* storage) noexcept
     {
         auto& frame = *static_cast<Frame*>(storage);
+        if (destroy_probe) destroy_probe(probe_context);
         ++*frame.object;
         frame.~Frame();
     }
@@ -63,3 +76,10 @@ namespace
 }
 
 extern "C" LUX_SCRIPT_EXPORT const lux_script_module_desc* lux_script_get_module() { return &Module; }
+
+extern "C" LUX_SCRIPT_EXPORT void lux_population_set_destroy_probe(void (*probe)(void*) noexcept, void* context)
+{
+    destroy_probe = probe;
+    probe_context = context;
+}
+extern "C" LUX_SCRIPT_EXPORT void lux_population_fail_start() { fail_start = true; }

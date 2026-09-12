@@ -1,0 +1,20 @@
+#pragma once
+// Generated typed value operations and immutable CodecPlan specializations.
+// Member thunks preserve non-standard-layout and const-member construction; no runtime reflection interpretation.
+#include <lux/engine/function/script/lua/LuaValue.hpp>
+{% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
+{% for header in rule_headers %}#include "{{ header }}"
+{% endfor %}
+namespace lux::script::lua
+{
+{% for index in marked_enum_decls %}{% set e = decl_from_index(index) %}
+template <> struct LuaGeneratedValue<::{{ e.fq_name }}> : LuaEnumValue<::{{ e.fq_name }}{% for value in e.enumerators %}, ::{{ e.fq_name }}::{{ value.name }}{% endfor %}> {};
+{% endfor %}
+{% for index in marked_record_decls %}{% set rec = decl_from_index(index) %}{% set omitted = false %}
+template <> struct LuaGeneratedValue<::{{ rec.fq_name }}> : LuaRecordValue<::{{ rec.fq_name }}{% for id in rec.field_decls %}{% set field = decl_from_id(id) %}{% if field.visibility == 1 and annotation_get_for_or(field, "luxlua::field", "export", true) %},
+    LuaValueField<&::{{ rec.fq_name }}::{{ field.name }}, "{{ cxx_str(annotation_get_for_or(field, "luxlua::field", "name", field.name)) }}">{% else %}{% set omitted = true %}{% endif %}{% endfor %}>
+{
+{% if omitted %}    static LuaValueResult<::{{ rec.fq_name }}> read(LuaValueReader&) = delete; // Explicit factory/override required for omitted members.
+{% endif %}};
+static_assert(LuaValueCodec<::{{ rec.fq_name }}>::bounded, "Lua value expanded frame exceeds 64 KiB or depth 32");
+{% endfor %}}

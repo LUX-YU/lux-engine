@@ -23,6 +23,7 @@ namespace
         ecs::Entity entity{ecs::NullEntity};
         std::size_t calls{};
         bool withdraw{};
+        static bool prepare(void*, ScriptMethodReference&) noexcept { return true; }
         static void hook(void* context, std::uint32_t slot, lux_script_call_frame& frame) noexcept
         {
             static_cast<Dispatch*>(context)->bindings->visitHook(slot, [&](auto reference) noexcept {
@@ -54,6 +55,83 @@ namespace
             assert(self.bindings->connect());
         }
     };
+    // Cross a bitmap word and its summary boundary. Dense erase order is the contract,
+    // including changes made by a nested dispatch; publication cannot move a live traversal.
+    template <std::size_t Count> void testDenseTraversalOrder(const SimulationDescription& simulation,
+        std::span<const ScriptHookEndpointDescriptor> endpoints)
+    {
+        constexpr std::size_t count = Count;
+        std::vector<ScriptRuntimeMount> inputs;
+        std::vector<ScriptMountPlacement> placements;
+        std::array<std::uint8_t, 16U> bytes{};
+        bytes.front() = 1U;
+        for (std::size_t index{}; index < count; ++index)
+        {
+            inputs.push_back({ScriptMountId{index + 1U}, lux::asset::AssetId{bytes}, SimulationScriptScope{},
+                {{lux::script::ScriptSymbolId{1U}, HookScriptTarget{kSystem, kHook}}}});
+            placements.push_back({static_cast<std::uint32_t>(index), false});
+        }
+        const auto capacity = planScriptRuntimeCapacity(inputs);
+        assert(capacity);
+        ScriptBindings bindings;
+        assert(bindings.prepare(simulation, *capacity, endpoints, {}, {nullptr, &Dispatch::prepare}, 64U));
+        const auto backing_bytes = bindings.backingBytes();
+        auto ticket = bindings.reserveBatch(inputs, placements);
+        assert(ticket);
+        bindings.commitBatch(std::move(*ticket));
+        for (std::uint32_t index{}; index < count; ++index)
+            assert(bindings.publish(index, {index + 1U, 1U}, ecs::NullEntity));
+        std::vector<std::uint32_t> trace;
+        trace.reserve(count);
+        bindings.visitHook(0U, [&](auto method) noexcept { trace.push_back(method.mount_slot); });
+        assert(trace.size() == count);
+        for (std::uint32_t index{}; index < count; ++index)
+            assert(trace[index] == index);
+        for (std::uint32_t index{}; index < count; ++index)
+            bindings.setMethodRunnable(static_cast<std::uint32_t>(bindings.layout(index).method_first),
+                {index + 1U, 1U}, false);
+        std::size_t visits{};
+        bindings.visitHook(0U, [&](auto) noexcept { ++visits; });
+        assert(visits == 0U);
+        std::vector<std::uint32_t> ready;
+        for (const auto index : {0U, 63U, 64U, 4095U, 4096U})
+            if (index < count) ready.push_back(index);
+        for (const auto index : ready)
+            bindings.setMethodRunnable(static_cast<std::uint32_t>(bindings.layout(index).method_first),
+                {index + 1U, 1U}, true);
+        trace.clear();
+        bindings.visitHook(0U, [&](auto method) noexcept { trace.push_back(method.mount_slot); });
+        assert(std::equal(trace.begin(), trace.end(), ready.begin(), ready.end()));
+        for (std::uint32_t index{}; index < count; ++index)
+            bindings.setMethodRunnable(static_cast<std::uint32_t>(bindings.layout(index).method_first),
+                {index + 1U, 1U}, true);
+        bindings.withdraw(1U); // The last registration takes the erased dense position.
+        trace.clear();
+        bindings.visitHook(0U, [&](auto method) noexcept { trace.push_back(method.mount_slot); });
+        assert(trace.size() == count - 1U && trace[0] == 0U && trace[1] == count - 1U && trace[2] == 2U);
+        assert(bindings.publish(1U, {2U, 2U}, ecs::NullEntity));
+        trace.clear();
+        bindings.visitHook(0U, [&](auto method) noexcept {
+            trace.push_back(method.mount_slot);
+            if (method.mount_slot == 0U)
+            {
+                bindings.withdraw(2U);
+                std::size_t nested{};
+                bindings.visitHook(0U, [&](auto inner) noexcept {
+                    assert(inner.mount_slot != 2U);
+                    ++nested;
+                });
+                assert(nested == count - 1U);
+            }
+        });
+        assert(trace.size() == count - 1U && trace[1] == count - 1U && trace.back() == 1U);
+        trace.clear();
+        bindings.visitHook(0U, [&](auto method) noexcept { trace.push_back(method.mount_slot); });
+        assert(trace[2] == 1U && trace.back() == count - 2U);
+        assert(bindings.backingBytes() == backing_bytes);
+        std::printf("HOOK_ORDER_OK,registrations=%zu,swap_pop=1,nested_withdraw=1,republish=1\n", count);
+    }
+
     // Owner-level admission test; lifecycle_test exercises actual prepared calls and foreign reentry.
     void testInvocationAuthority(const ScriptRuntimeCapacityPlan& capacity, const ScriptBindings& bindings,
         std::span<const ScriptRuntimeMount> inputs, ecs::Registry& registry)
@@ -79,6 +157,7 @@ namespace
         assert(instances.protectedCount() == 0U);
         const ScriptPreparedMethod* address{};
         {
+            ScriptInstances::Protection region{instances};
             auto access = instances.invokeAccess(reference);
             assert(access && access.current() && instances.protectedCount() == 1U);
             address = &access.method();
@@ -111,6 +190,7 @@ namespace
         assert(next_id.slot == id.slot && next_id.generation != id.generation);
         assert(!instances.invokeAccess(reference) && !instances.resumeAccess(id));
         {
+            ScriptInstances::Protection region{instances};
             auto access = instances.invokeAccess({0U, reference.method_slot, next_id});
             assert(access && access.current() && &access.method() == address);
         }
@@ -157,7 +237,7 @@ int main()
     ScriptBindings bindings;
     Dispatch dispatch{&bindings, entity};
     assert(bindings.prepare(*simulation, *capacity, hook_endpoints, event_endpoints,
-        {&dispatch, &Dispatch::hook, &Dispatch::event}, 64U));
+        {&dispatch, &Dispatch::prepare, &Dispatch::hook, &Dispatch::event}, 64U));
     const std::array placements{ScriptMountPlacement{0U, false}};
     const auto bytes = bindings.backingBytes();
     const std::array rejected_inputs{inputs[0], inputs[0]};
@@ -206,6 +286,9 @@ int main()
     bindings.withdraw(0U);
     assert(bindings.disconnect());
     testInvocationAuthority(*capacity, bindings, inputs, registry);
+    testDenseTraversalOrder<64U>(*simulation, hook_endpoints);
+    testDenseTraversalOrder<65U>(*simulation, hook_endpoints);
+    testDenseTraversalOrder<4097U>(*simulation, hook_endpoints);
     assert(bindings.disconnect());
     assert(bindings.connect());
     assert(bindings.publish(0U, instance, entity));
@@ -214,4 +297,6 @@ int main()
     bindings.withdraw(0U);
     assert(bindings.disconnect());
     std::printf("BINDINGS_OK,rollback=1,aborted_ticket=1,rebuilds=128,calls=%zu\n", dispatch.calls);
+    std::printf("HOT_LAYOUT prepared_invocation=%zu method_reference=%zu\n",
+        sizeof(PreparedInvocation), sizeof(ScriptMethodReference));
 }

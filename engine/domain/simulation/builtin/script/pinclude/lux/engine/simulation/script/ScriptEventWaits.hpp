@@ -1,329 +1,275 @@
 #pragma once
 
-#include <lux/engine/simulation/ScriptSystem.hpp>
-#include <lux/engine/simulation/script/ScriptWaitSource.hpp>
-#include <lux/cxx/container/SlotMap.hpp>
 #include <entt/container/dense_map.hpp>
+#include <array>
 #include <limits>
 #include <utility>
 
+#include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/engine/simulation/script/ScriptWaitSource.hpp>
+
 namespace lux::simulation::script::detail
 {
+    // Borrowed only while the result exists. Execution owns these identities;
+    // EventWaits owns only the embedded routing links below.
+    struct ScriptWaitIdentity
+    {
+        ScriptAwaitableId id;
+        ScriptInstanceId instance;
+    };
+
+    class ScriptEventWaitLink final
+    {
+        friend class ScriptEventWaits;
+        enum class EState : std::uint8_t { DETACHED, ACTIVE, CLAIMED };
+        ScriptAwaitableId awaitable_;
+        std::uint32_t page_{};
+        std::uint8_t position_{};
+        ecs::Entity target_{ecs::NullEntity};
+        std::uint32_t endpoint_{};
+        EState state_{EState::DETACHED};
+    };
+
     struct ScriptClaimedEventWait final
     {
-        ScriptSourceId id;
-        ScriptInstanceId instance;
         ScriptAwaitableId awaitable;
         std::uint32_t endpoint{};
     };
 
     class ScriptEventWaits final
     {
-        enum class EEventWaiterState : std::uint8_t
+        using Link = ScriptEventWaitLink;
+        static constexpr std::uint32_t NoPage = (std::numeric_limits<std::uint32_t>::max)();
+        static constexpr std::size_t PageSize = 4U;
+        struct WaitPage final
         {
-            ACTIVE,
-            CLAIMED,
+            std::array<Link*, PageSize> entries;
+            std::uint32_t previous{NoPage};
+            std::uint32_t next{NoPage};
+            std::uint32_t count{};
         };
-
         struct EventRouteKey final
         {
             std::uint32_t bucket_slot{};
             ecs::Entity target{ecs::NullEntity};
-
             friend bool operator==(EventRouteKey, EventRouteKey) noexcept = default;
         };
-
         struct EventRouteKeyHash final
         {
             [[nodiscard]] std::size_t operator()(EventRouteKey key) const noexcept
             {
-                const auto bucket_hash = std::hash<std::uint32_t>{}(key.bucket_slot);
-                const auto entity_hash = std::hash<std::uint64_t>{}(ecs::entityBits(key.target));
-                return bucket_hash ^ (entity_hash + 0x9e3779b9U + (bucket_hash << 6U) + (bucket_hash >> 2U));
+                const auto a = std::hash<std::uint32_t>{}(key.bucket_slot);
+                const auto b = std::hash<std::uint64_t>{}(ecs::entityBits(key.target));
+                return a ^ (b + 0x9e3779b9U + (a << 6U) + (a >> 2U));
             }
         };
-
         struct EventRouteHead final
         {
-            ScriptSourceId first;
-            ScriptSourceId last;
+            std::uint32_t first{NoPage};
+            std::uint32_t last{NoPage};
         };
-
-        struct EventWaiterRecord final
-        {
-            ScriptSourceId id;
-            ScriptInstanceId instance;
-            ScriptAwaitableId awaitable;
-            std::uint32_t bucket_slot{};
-            ecs::Entity target{ecs::NullEntity};
-            std::uint64_t sequence{};
-            EEventWaiterState state{EEventWaiterState::ACTIVE};
-            ScriptSourceId route_previous;
-            ScriptSourceId route_next;
-            ScriptSourceId instance_previous;
-            ScriptSourceId instance_next;
-        };
-
-
-        struct EventWaiterTag;
-        using EventWaiterStorage = lux::cxx::SlotMap<EventWaiterRecord, EventWaiterTag>;
-        using EventWaiterKey = EventWaiterStorage::key_type;
         using EventRouteIndex = entt::dense_map<EventRouteKey, EventRouteHead, EventRouteKeyHash>;
-        struct InstanceIndex final
+
+        [[nodiscard]] EventRouteHead* findRoute(std::uint32_t endpoint, ecs::Entity target) noexcept
         {
-            ScriptInstanceId id;
-            ScriptSourceId first_event_waiter;
-        };
-        [[nodiscard]] static constexpr ScriptSourceId eventWaiterId(EventWaiterKey key) noexcept
-        {
-            return {key.index + 1U, key.gen};
+            if (target == ecs::NullEntity) return &broadcast_routes_[endpoint];
+            const auto found = routes_.find(EventRouteKey{endpoint, target});
+            return found == routes_.end() ? nullptr : &found->second;
         }
-        [[nodiscard]] static constexpr EventWaiterKey eventWaiterKey(ScriptSourceId id) noexcept
+        void removeEmptyRoute(std::uint32_t endpoint, ecs::Entity target) noexcept
         {
-            return id.valid() ? EventWaiterKey{id.slot - 1U, id.generation} : EventWaiterKey::invalid();
+            if (target == ecs::NullEntity) broadcast_routes_[endpoint] = {};
+            else routes_.erase(EventRouteKey{endpoint, target});
         }
-        [[nodiscard]] InstanceIndex* instanceRecord(ScriptInstanceId instance) noexcept
+        [[nodiscard]] std::uint32_t appendPage(EventRouteHead& route) noexcept
         {
-            if (!instance.valid() || instance.slot > instances_.size())
-                return nullptr;
-            auto& result = instances_[instance.slot - 1U];
-            return result.id == instance ? &result : nullptr;
+            // At most one nonempty page per ACTIVE wait. The source preflight
+            // guarantees a free page without imposing a per-event capacity.
+            if (free_page_ == NoPage) std::terminate();
+            const auto index = free_page_;
+            auto& page = pages_[index];
+            free_page_ = page.next;
+            page.previous = route.last;
+            page.next = NoPage;
+            page.count = 0U;
+            if (route.last != NoPage) pages_[route.last].next = index;
+            else route.first = index;
+            route.last = index;
+            return index;
         }
-        void unlinkEventWaiterRoute(EventWaiterRecord& waiter) noexcept
+        void releasePage(std::uint32_t index) noexcept
         {
-            if (waiter.state != EEventWaiterState::ACTIVE)
-                return;
-            const EventRouteKey key{waiter.bucket_slot, waiter.target};
-            auto route = routes_.find(key);
-            if (route == routes_.end())
-                std::terminate();
-            if (waiter.route_previous.valid())
-            {
-                auto* previous = waiters_.find(eventWaiterKey(waiter.route_previous));
-                if (previous == nullptr)
-                    std::terminate();
-                previous->route_next = waiter.route_next;
-            }
-            else
-            {
-                route->second.first = waiter.route_next;
-            }
-            if (waiter.route_next.valid())
-            {
-                auto* next = waiters_.find(eventWaiterKey(waiter.route_next));
-                if (next == nullptr)
-                    std::terminate();
-                next->route_previous = waiter.route_previous;
-            }
-            else
-            {
-                route->second.last = waiter.route_previous;
-            }
-            waiter.route_previous = {};
-            waiter.route_next = {};
-            if (!route->second.first.valid())
-                routes_.erase(key);
+            auto& page = pages_[index];
+            page.count = 0U;
+            page.next = free_page_;
+            free_page_ = index;
         }
-        void unlinkEventWaiterOwnership(EventWaiterRecord& waiter) noexcept
+        void unlinkRoute(Link& link) noexcept
         {
-            auto* owner = instanceRecord(waiter.instance);
-            if (waiter.instance_previous.valid())
+            auto& page = pages_[link.page_];
+            const auto last = --page.count;
+            if (link.position_ != last)
             {
-                auto* previous = waiters_.find(eventWaiterKey(waiter.instance_previous));
-                if (previous != nullptr)
-                    previous->instance_next = waiter.instance_next;
+                auto* moved = page.entries[last];
+                page.entries[link.position_] = moved;
+                moved->position_ = link.position_;
             }
-            else if (owner != nullptr && owner->first_event_waiter == waiter.id)
-            {
-                owner->first_event_waiter = waiter.instance_next;
-            }
-            if (waiter.instance_next.valid())
-            {
-                auto* next = waiters_.find(eventWaiterKey(waiter.instance_next));
-                if (next != nullptr)
-                    next->instance_previous = waiter.instance_previous;
-            }
-            waiter.instance_previous = {};
-            waiter.instance_next = {};
+            if (page.count != 0U) return;
+            auto* route = findRoute(link.endpoint_, link.target_);
+            if (route == nullptr) std::terminate();
+            if (page.previous != NoPage) pages_[page.previous].next = page.next;
+            else route->first = page.next;
+            if (page.next != NoPage) pages_[page.next].previous = page.previous;
+            else route->last = page.previous;
+            releasePage(link.page_);
+            if (route->first == NoPage) removeEmptyRoute(link.endpoint_, link.target_);
         }
-        void claimEventWaiters(std::uint32_t bucket, ecs::Entity target, std::uint64_t cutoff) noexcept
+        void claimRoute(std::uint32_t endpoint, ecs::Entity target) noexcept
         {
             ++claim_lookups_;
-            auto route = routes_.find(EventRouteKey{bucket, target});
-            if (route == routes_.end())
-                return;
-
-            auto current = route->second.first;
-            while (current.valid())
+            auto* route = findRoute(endpoint, target);
+            if (route == nullptr) return;
+            auto current = route->first;
+            // Each page contains a dense range. Task order inside one occurrence
+            // is unspecified; cancellation swaps the last page entry into its gap.
+            // Claim is still complete before any user callback can register again.
+            while (current != NoPage)
             {
-                auto* waiter = waiters_.find(eventWaiterKey(current));
-                if (waiter == nullptr || waiter->state != EEventWaiterState::ACTIVE)
-                    std::terminate();
-                ++dispatch_visits_;
-                if (waiter->sequence > cutoff)
-                    break;
-                const auto next = waiter->route_next;
-                waiter->route_previous = {};
-                waiter->route_next = {};
-                waiter->state = EEventWaiterState::CLAIMED;
-                ++active_claimed_;
-                if (claimed_.size() >= claimed_.capacity())
-                    std::terminate();
-                claimed_.push_back(current);
+                auto& page = pages_[current];
+                const auto next = page.next;
+                for (std::uint32_t i{}; i < page.count; ++i)
+                {
+                    auto& link = *page.entries[i];
+                    ++dispatch_visits_;
+                    link.state_ = Link::EState::CLAIMED;
+                    ++active_claimed_;
+                    if (claimed_.size() == claimed_.capacity()) std::terminate();
+                    claimed_.push_back(link.awaitable_);
+                }
+                releasePage(current);
                 current = next;
             }
-            if (current.valid())
-            {
-                route->second.first = current;
-                waiters_[eventWaiterKey(current)].route_previous = {};
-            }
-            else
-                routes_.erase(route);
+            removeEmptyRoute(endpoint, target);
         }
-
     public:
+        class Admission final
+        {
+        public:
+            Admission(const Admission&) = delete;
+            Admission& operator=(const Admission&) = delete;
+            Admission(Admission&& other) noexcept
+                : owner_(std::exchange(other.owner_, nullptr)), endpoint_(other.endpoint_), target_(other.target_) {}
+        private:
+            friend class ScriptEventWaits;
+            Admission(ScriptEventWaits& owner, std::uint32_t endpoint,
+                ecs::Entity target) noexcept
+                : owner_(&owner), endpoint_(endpoint), target_(target) {}
+            ScriptEventWaits* owner_{};
+            std::uint32_t endpoint_{};
+            ecs::Entity target_{ecs::NullEntity};
+        };
         class ClaimBatch final
         {
         public:
             ClaimBatch(const ClaimBatch&) = delete;
             ClaimBatch& operator=(const ClaimBatch&) = delete;
             ClaimBatch(ClaimBatch&& other) noexcept
-                : owner_(std::exchange(other.owner_, nullptr)), begin_(other.begin_), end_(other.end_) {}
+                : owner_(std::exchange(other.owner_, nullptr)), begin_(other.begin_),
+                  end_(other.end_), endpoint_(other.endpoint_) {}
             ~ClaimBatch() noexcept
             {
-                if (owner_ != nullptr)
-                    owner_->finishClaim(begin_, end_);
+                if (owner_) owner_->finishClaim(begin_, end_);
             }
             [[nodiscard]] std::size_t size() const noexcept { return end_ - begin_; }
-            [[nodiscard]] std::optional<ScriptClaimedEventWait> at(std::size_t offset) const noexcept
+            [[nodiscard]] ScriptClaimedEventWait at(std::size_t offset) const noexcept
             {
-                if (owner_ == nullptr || offset >= size())
-                    return std::nullopt;
-                return owner_->claimedValue(owner_->claimed_[begin_ + offset]);
+                // Private traversal supplies an in-range offset. The value snapshot
+                // survives cancellation, SlotMap reuse and nested dispatch. Execution
+                // checks the original wait generation before accessing the result.
+                return {owner_->claimed_[begin_ + offset], endpoint_};
             }
         private:
             friend class ScriptEventWaits;
-            ClaimBatch(ScriptEventWaits& owner, std::size_t begin, std::size_t end) noexcept
-                : owner_(&owner), begin_(begin), end_(end) {}
+            ClaimBatch(ScriptEventWaits& owner, std::size_t begin, std::size_t end, std::uint32_t endpoint) noexcept
+                : owner_(&owner), begin_(begin), end_(end), endpoint_(endpoint) {}
             ScriptEventWaits* owner_{};
             std::size_t begin_{};
             std::size_t end_{};
+            std::uint32_t endpoint_{};
         };
 
-        void prepare(std::size_t capacity, std::size_t instance_capacity);
-        void beginInstance(ScriptInstanceId instance) noexcept
+        void prepare(std::size_t capacity, std::size_t endpoint_count);
+        [[nodiscard]] lux::cxx::expected<Admission, EScriptEventWaitError> reserve(
+            std::uint32_t endpoint, ecs::Entity target) noexcept
         {
-            auto& index = instances_[instance.slot - 1U];
-            if (index.first_event_waiter.valid())
-                std::terminate();
-            index = {instance, {}};
-        }
-        [[nodiscard]] lux::cxx::expected<void, EScriptEventWaitError> preflight() const noexcept
-        {
-            const auto reserved = waiters_.size() - active_claimed_ + claimed_.size();
+            if (endpoint >= broadcast_routes_.size())
+                return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
+            const auto reserved = active_ - active_claimed_ + claimed_.size();
             if (reserved >= capacity_)
                 return lux::cxx::unexpected(EScriptEventWaitError::WAITER_CAPACITY_EXCEEDED);
-            if (sequence_ == std::numeric_limits<std::uint64_t>::max())
-                return lux::cxx::unexpected(EScriptEventWaitError::SEQUENCE_EXHAUSTED);
-            return {};
+            return Admission{*this, endpoint, target};
         }
-        [[nodiscard]] lux::cxx::expected<ScriptSourceId, EScriptEventWaitError> registerWait(
-            ScriptInstanceId instance, ScriptAwaitableId awaitable, std::uint32_t endpoint, ecs::Entity target) noexcept
+        [[nodiscard]] ScriptSourceId registerWait(
+            Admission&& admission, Link& link, const ScriptWaitIdentity& wait) noexcept
         {
-            auto* owner = instanceRecord(instance);
-            if (owner == nullptr)
-                return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
-            const auto checked = preflight();
-            if (!checked)
-                return lux::cxx::unexpected(checked.error());
-            const EventRouteKey key{endpoint, target};
-            const auto [unused, inserted_route] = routes_.try_emplace(key, EventRouteHead{});
-            const auto inserted = waiters_.tryEmplace(EventWaiterRecord{
-                {}, instance, awaitable, endpoint, target, ++sequence_, EEventWaiterState::ACTIVE, {}, {}, {}, {}
-            });
-            if (!inserted)
-            {
-                if (inserted_route)
-                    routes_.erase(key);
-                return lux::cxx::unexpected(EScriptEventWaitError::ALLOCATION_FAILURE);
-            }
-            const auto id = eventWaiterId(*inserted);
-            auto& waiter = waiters_[*inserted];
-            waiter.id = id;
-            auto route = routes_.find(key);
-            waiter.route_previous = route->second.last;
-            if (waiter.route_previous.valid())
-                waiters_[eventWaiterKey(waiter.route_previous)].route_next = id;
-            else
-                route->second.first = id;
-            route->second.last = id;
-            waiter.instance_next = owner->first_event_waiter;
-            if (waiter.instance_next.valid())
-                waiters_[eventWaiterKey(waiter.instance_next)].instance_previous = id;
-            owner->first_event_waiter = id;
-            high_water_ = (std::max)(high_water_, waiters_.size());
-            return id;
+            if (std::exchange(admission.owner_, nullptr) != this || link.state_ != Link::EState::DETACHED)
+                std::terminate();
+            const auto endpoint = admission.endpoint_;
+            const auto target = admission.target_;
+            auto& route = target == ecs::NullEntity ? broadcast_routes_[endpoint] :
+                routes_.try_emplace(EventRouteKey{endpoint, target}, EventRouteHead{}).first->second;
+            link.awaitable_ = wait.id;
+            link.endpoint_ = endpoint;
+            link.target_ = target;
+            link.state_ = Link::EState::ACTIVE;
+            const auto page_index = route.last == NoPage || pages_[route.last].count == PageSize ?
+                appendPage(route) : route.last;
+            auto& page = pages_[page_index];
+            link.page_ = page_index;
+            link.position_ = static_cast<std::uint8_t>(page.count);
+            page.entries[page.count++] = &link;
+            high_water_ = (std::max)(high_water_, ++active_);
+            return {wait.id.slot, wait.id.generation};
         }
-
         [[nodiscard]] ClaimBatch claim(std::uint32_t endpoint, ecs::Entity target) noexcept
         {
             const auto begin = claimed_.size();
-            claimEventWaiters(endpoint, target, sequence_);
-            return ClaimBatch{*this, begin, claimed_.size()};
+            claimRoute(endpoint, target);
+            return ClaimBatch{*this, begin, claimed_.size(), endpoint};
         }
-
-        [[nodiscard]] std::optional<ScriptSourceCancellation> cancel(ScriptSourceId id) noexcept
+        void cancel(Link& link) noexcept
         {
-            auto* waiter = waiters_.find(eventWaiterKey(id));
-            if (waiter == nullptr)
-                return std::nullopt;
-            const ScriptSourceCancellation result{waiter->instance, waiter->awaitable, {id, EScriptWaitSource::EVENT}};
-            if (waiter->state == EEventWaiterState::ACTIVE)
-                unlinkEventWaiterRoute(*waiter);
-            else
-                --active_claimed_;
-            unlinkEventWaiterOwnership(*waiter);
-            static_cast<void>(waiters_.erase(eventWaiterKey(id)));
-            return result;
+            if (link.state_ == Link::EState::DETACHED) return;
+            if (link.state_ == Link::EState::ACTIVE) unlinkRoute(link);
+            else --active_claimed_;
+            link.state_ = Link::EState::DETACHED;
+            --active_;
         }
-        [[nodiscard]] std::optional<ScriptSourceCancellation> cancelNext(ScriptInstanceId instance) noexcept
+        void cancelForRetirement(Link& link) noexcept
         {
-            auto* owner = instanceRecord(instance);
-            if (owner == nullptr || !owner->first_event_waiter.valid())
-                return std::nullopt;
-            const auto result = cancel(owner->first_event_waiter);
-            if (!result)
-                std::terminate();
             ++cleanup_visits_;
-            return result;
+            cancel(link);
         }
         [[nodiscard]] std::size_t claimedCount() const noexcept { return active_claimed_; }
         void shutdown() noexcept;
         void writeStats(ScriptRuntimeStats& result) const noexcept;
     private:
-        [[nodiscard]] std::optional<ScriptClaimedEventWait> claimedValue(ScriptSourceId id) const noexcept
-        {
-            const auto* waiter = waiters_.find(eventWaiterKey(id));
-            if (waiter == nullptr || waiter->state != EEventWaiterState::CLAIMED)
-                return std::nullopt;
-            return ScriptClaimedEventWait{id, waiter->instance, waiter->awaitable, waiter->bucket_slot};
-        }
         void finishClaim(std::size_t begin, std::size_t end) noexcept
         {
-            if (claimed_.size() != end)
-                std::terminate();
+            if (claimed_.size() != end) std::terminate();
             claimed_.resize(begin);
         }
-        EventWaiterStorage waiters_;
+        std::vector<WaitPage> pages_;
+        std::uint32_t free_page_{NoPage};
         EventRouteIndex routes_;
-        std::vector<ScriptSourceId> claimed_;
-        std::vector<InstanceIndex> instances_;
+        std::vector<EventRouteHead> broadcast_routes_;
+        std::vector<ScriptAwaitableId> claimed_;
         std::size_t capacity_{};
-        std::uint64_t sequence_{};
+        std::size_t active_{};
         std::size_t active_claimed_{};
         std::size_t high_water_{};
         std::size_t dispatch_visits_{};
         std::size_t cleanup_visits_{};
         std::uint64_t claim_lookups_{};
     };
-}
+} // namespace lux::simulation::script::detail

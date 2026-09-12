@@ -12,9 +12,11 @@ namespace
         float impulse{};
     };
 
-    int onCollision(lux_script_call_frame* frame) noexcept
+    int onCollision(void* invocation_context, lux_script_call_frame* frame) noexcept
     {
-        const bool invalid_frame = !frame || !frame->user_context ||
+        const auto* native = static_cast<const lux_script_native_instance_context*>(invocation_context);
+        void* state = native ? native->state : nullptr;
+        const bool invalid_frame = !frame || !state ||
             frame->arg_count != 1U || !frame->args ||
             !frame->args[0].data;
         if (invalid_frame)
@@ -24,7 +26,7 @@ namespace
         );
         if (collision.body != 42 || collision.impulse != 3.5F)
             return 2;
-        ++*static_cast<std::uint32_t*>(frame->user_context);
+        ++*static_cast<std::uint32_t*>(state);
         return 0;
     }
 

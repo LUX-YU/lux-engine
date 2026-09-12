@@ -238,3 +238,25 @@ if(TARGET physics2d_script_benchmark)
             lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp
         DEPENDS physics2d_simulation_script_abilities_generate simulation_script_script_abilities_generate)
 endif()
+
+if(TARGET physics2d_script_benchmark AND TARGET simulation_script_native_lua_tasks)
+    target_link_libraries(physics2d_script_benchmark PRIVATE simulation_script_native_lua_tasks)
+    add_executable(physics_lua_task_event_schema_writer benchmark/PhysicsLuaTaskEventSchema.cpp)
+    target_include_directories(physics_lua_task_event_schema_writer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test)
+    target_link_libraries(physics_lua_task_event_schema_writer PRIVATE physics2d_simulation simulation_composition)
+    lux_classify_target(TARGET physics_lua_task_event_schema_writer LAYER SIMULATION PRODUCT BUILD_TOOL ROLE DOMAIN)
+    set(task_event_schema "${CMAKE_CURRENT_BINARY_DIR}/physics-lua-task.events.json")
+    add_custom_command(OUTPUT "${task_event_schema}"
+        COMMAND physics_lua_task_event_schema_writer "${task_event_schema}"
+        DEPENDS physics_lua_task_event_schema_writer VERBATIM)
+    add_custom_target(physics_lua_task_event_schema DEPENDS "${task_event_schema}")
+    lux_classify_target(TARGET physics_lua_task_event_schema LAYER SIMULATION PRODUCT BUILD_TOOL ROLE DOMAIN)
+    lux_cpp_static_scripts(TARGET physics2d_script_benchmark NAME PhysicsLuaTask
+        SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/PhysicsLuaTask.hpp LOGICAL_PATH PhysicsLuaTask.hpp
+        MODULE lux.physics2d.lua-task DESCRIPTOR physics2d-lua-task-v1
+        OWNER lux::physics2d::benchmark::PhysicsLuaTask SCOPE SIMULATION
+        SYMBOL_LEDGER ${CMAKE_CURRENT_SOURCE_DIR}/benchmark/lua-task.symbols.json
+        ABILITY_TYPES lux::simulation::script::DelayAbility
+        ABILITY_HEADERS lux/engine/simulation/scripting/cpp_static/ScriptDelayCoroutine.hpp
+        EVENT_SCHEMA "${task_event_schema}" EVENT_NAMES PhysicsBenchmark.pulse DEPENDS physics_lua_task_event_schema)
+endif()

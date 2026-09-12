@@ -1,0 +1,10 @@
+{
+  "qualification": "e06208deb29b9b1de52fe49a129091f693bb7e08",
+  "vm_test_source": "5985cc4d49fba8aecfcb40fa9bdb70ea0204f55a",
+  "sha256": "137ec433458c23eff4f53d8db8eb57f78508b641364ae6a0d2bb494ac6d4f483",
+  "bytes": 2043487,
+  "files": 479,
+  "binary_products_included": false,
+  "all_file_hashes_reverified": true,
+  "archive_commit": "ca3b891ccda8d8608fa225e9f8899915c4bb2d05"
+}

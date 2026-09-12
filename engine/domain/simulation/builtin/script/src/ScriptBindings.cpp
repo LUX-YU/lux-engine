@@ -76,6 +76,7 @@ namespace lux::simulation::script::detail
             events_.resize(events.size());
             configurations_.resize(capacity.mount_capacity);
             bindings_.reserve(binding_capacity_);
+            method_hooks_.assign(method_capacity_, (std::numeric_limits<std::uint32_t>::max)());
             descriptions_.reserve(binding_capacity_);
             symbols_.reserve(method_capacity_);
             pending_unlinks_.reserve(capacity.mount_capacity);
@@ -114,8 +115,13 @@ namespace lux::simulation::script::detail
                     events_[*endpoint].capacity = planned.handler_capacity;
                 }
             }
+            runnable_backing_bytes_ = 0U;
             for (auto& bucket : hooks_)
+            {
                 bucket.handlers.reserve(bucket.capacity);
+                bucket.runnable.prepare(bucket.capacity);
+                runnable_backing_bytes_ += bucket.runnable.backingBytes();
+            }
             for (auto& bucket : events_)
                 if (bucket.handlers.prepare(bucket.capacity) == EEndpointMutationError::ALLOCATION_FAILURE)
                     return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
@@ -241,6 +247,8 @@ namespace lux::simulation::script::detail
                 {
                     runtime.kind = EBindingKind::HOOK;
                     runtime.bucket = *findHook(*target);
+                    runtime.next_hook = method_hooks_[runtime.method];
+                    method_hooks_[runtime.method] = static_cast<std::uint32_t>(bindings_.size());
                 }
                 else
                 {
@@ -282,9 +290,22 @@ namespace lux::simulation::script::detail
         return symbols_[method_slot] != lux::script::InvalidScriptSymbolId;
     }
 
+    void ScriptBindings::writeInvocationStats(ScriptRuntimeStats& output) const noexcept
+    {
+#if defined(LUX_SCRIPT_HOTPATH_OBSERVATION)
+        output.hook_observation_enabled = true;
+        output.hook_candidates = hook_candidates_;
+        output.hook_handler_visits = hook_handler_visits_;
+#else
+        static_cast<void>(output);
+#endif
+    }
+
     std::size_t ScriptBindings::backingBytes() const noexcept
     {
-        return bindings_.capacity() * sizeof(Binding) + descriptions_.capacity() * sizeof(ScriptBindingDescription) +
+        const auto index_bytes = method_hooks_.capacity() * sizeof(std::uint32_t) + runnable_backing_bytes_;
+        return index_bytes + bindings_.capacity() * sizeof(Binding) +
+            descriptions_.capacity() * sizeof(ScriptBindingDescription) +
             configurations_.capacity() * sizeof(Configuration) +
             symbols_.capacity() * sizeof(lux::script::ScriptSymbolId);
     }
@@ -324,7 +345,12 @@ namespace lux::simulation::script::detail
         for (std::size_t index{config.first}; index < config.first + config.count; ++index)
         {
             auto& binding = bindings_[index];
-            const ScriptMethodReference handler{slot, binding.method, instance};
+            ScriptMethodReference handler{slot, binding.method, instance};
+            if (dispatch_.prepare == nullptr || !dispatch_.prepare(dispatch_.context, handler))
+            {
+                unlink(slot);
+                return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
+            }
             EScriptSystemError error{};
             bool failed{};
             if (binding.kind == EBindingKind::HOOK)
@@ -336,7 +362,10 @@ namespace lux::simulation::script::detail
                     error = EScriptSystemError::CAPACITY_EXCEEDED;
                 }
                 else if (const auto inserted = bucket.handlers.tryEmplace(handler))
+                {
                     binding.registration = {inserted->index, inserted->gen};
+                    bucket.runnable.set(bucket.handlers.size() - 1U, true);
+                }
                 else
                 {
                     failed = true;
@@ -381,8 +410,19 @@ namespace lux::simulation::script::detail
             if (!binding.registration.valid())
                 continue;
             if (binding.kind == EBindingKind::HOOK)
-                hooks_[binding.bucket].handlers.erase(HandlerKey{binding.registration.slot,
-                    binding.registration.generation});
+            {
+                auto& bucket = hooks_[binding.bucket];
+                const HandlerKey key{binding.registration.slot, binding.registration.generation};
+                const auto* handler = bucket.handlers.find(key);
+                if (handler == nullptr)
+                    std::terminate();
+                const auto position = static_cast<std::size_t>(handler - bucket.handlers.values().data());
+                const auto last = bucket.handlers.size() - 1U;
+                const bool moved_runnable = bucket.runnable.test(last);
+                bucket.runnable.set(last, false);
+                bucket.runnable.set(position, position != last && moved_runnable);
+                bucket.handlers.erase(key);
+            }
             else
                 static_cast<void>(events_[binding.bucket].handlers.disconnect(binding.registration));
             binding.registration = {};
@@ -395,12 +435,39 @@ namespace lux::simulation::script::detail
     {
         auto& config = configurations_[slot];
         config.published = false;
+        for (std::size_t index{config.first}; index < config.first + config.count; ++index)
+        {
+            const auto& binding = bindings_[index];
+            if (binding.kind != EBindingKind::HOOK || !binding.registration.valid())
+                continue;
+            auto& bucket = hooks_[binding.bucket];
+            const auto* handler = bucket.handlers.find({binding.registration.slot, binding.registration.generation});
+            if (handler != nullptr)
+                bucket.runnable.set(static_cast<std::size_t>(handler - bucket.handlers.values().data()), false);
+        }
         if (traversal_depth_ == 0U)
             unlink(slot);
         else if (!config.pending_unlink)
         {
             config.pending_unlink = true;
             pending_unlinks_.push_back(slot);
+        }
+    }
+
+    void ScriptBindings::setMethodRunnable(std::uint32_t method, ScriptInstanceId instance, bool runnable) noexcept
+    {
+        for (auto index = method_hooks_[method]; index != (std::numeric_limits<std::uint32_t>::max)();
+             index = bindings_[index].next_hook)
+        {
+            const auto& binding = bindings_[index];
+            if (!binding.registration.valid())
+                continue;
+            auto& bucket = hooks_[binding.bucket];
+            const auto* handler = bucket.handlers.find({binding.registration.slot, binding.registration.generation});
+            if (handler == nullptr || handler->instance != instance)
+                continue;
+            const auto position = static_cast<std::size_t>(handler - bucket.handlers.values().data());
+            bucket.runnable.set(position, runnable && configurations_[handler->mount_slot].published);
         }
     }
 

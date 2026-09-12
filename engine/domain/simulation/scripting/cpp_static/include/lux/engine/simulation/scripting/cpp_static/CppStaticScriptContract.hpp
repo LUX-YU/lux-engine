@@ -12,12 +12,13 @@
 
 namespace lux::simulation::script
 {
-// Non-owning views of canonical Script facts. Generated tables have static lifetime;
-// no registry, reflected declarations, provider addresses or runtime slots are stored here.
-struct CppStaticValueView final
-{
-    lux::semantic::Layout layout;
-    lux::semantic::EValuePass pass{};
+    // Non-owning views of canonical Script facts. Generated tables have static
+    // lifetime; no registry, reflected declarations, provider addresses or runtime
+    // slots are stored here.
+    struct CppStaticValueView final
+    {
+        lux::semantic::Layout layout;
+        lux::semantic::EValuePass pass{};
 };
 
 struct CppStaticExportEntry final
@@ -62,6 +63,7 @@ struct CppStaticContract final
     std::span<const CppStaticApiRequirement> abilities;
     std::span<const lux::script::ScriptEventSourceView> events;
     bool (*resolve_ability)(std::uint64_t contract_hash, std::uint32_t& local_slot) noexcept{};
+    std::span<const ScriptSyncStepShape* const> sync_step_shapes;
 };
 
 namespace detail
@@ -155,11 +157,11 @@ template <auto Function> struct CppStaticSyncEntry;
 template <class Owner, class Result, class... Args, Result (Owner::*Function)(Args...) noexcept>
 struct CppStaticSyncEntry<Function> : CppStaticSyncShape<Result, Args...>
 {
-    static int invoke(lux_script_call_frame *frame) noexcept
+    static int invoke(void* invocation_context, lux_script_call_frame *frame) noexcept
     {
-        if (frame == nullptr || frame->user_context == nullptr)
+        if (frame == nullptr || invocation_context == nullptr)
             return -1;
-        auto *object = static_cast<Owner *>(frame->user_context);
+        auto *object = static_cast<Owner *>(invocation_context);
         return CppStaticSyncShape<Result, Args...>::call(
             *frame,
             [object](const std::remove_cvref_t<Args> &...args) noexcept -> Result {
@@ -172,11 +174,11 @@ struct CppStaticSyncEntry<Function> : CppStaticSyncShape<Result, Args...>
 template <class Owner, class Result, class... Args, Result (Owner::*Function)(Args...) const noexcept>
 struct CppStaticSyncEntry<Function> : CppStaticSyncShape<Result, Args...>
 {
-    static int invoke(lux_script_call_frame *frame) noexcept
+    static int invoke(void* invocation_context, lux_script_call_frame *frame) noexcept
     {
-        if (frame == nullptr || frame->user_context == nullptr)
+        if (frame == nullptr || invocation_context == nullptr)
             return -1;
-        auto *object = static_cast<const Owner *>(frame->user_context);
+        auto *object = static_cast<const Owner *>(invocation_context);
         return CppStaticSyncShape<Result, Args...>::call(
             *frame,
             [object](const std::remove_cvref_t<Args> &...args) noexcept -> Result {
@@ -189,7 +191,7 @@ struct CppStaticSyncEntry<Function> : CppStaticSyncShape<Result, Args...>
 template <class Result, class... Args, Result (*Function)(Args...) noexcept>
 struct CppStaticSyncEntry<Function> : CppStaticSyncShape<Result, Args...>
 {
-    static int invoke(lux_script_call_frame *frame) noexcept
+    static int invoke(void* invocation_context, lux_script_call_frame *frame) noexcept
     {
         if (frame == nullptr)
             return -1;
@@ -200,7 +202,8 @@ struct CppStaticSyncEntry<Function> : CppStaticSyncShape<Result, Args...>
 template <class... Args> struct CppStaticOwnedArguments : CppStaticArguments<Args...>
 {
     static_assert((cppStaticPersistentArgumentSupported<Args> && ...),
-                  "CppStatic coroutine const-reference must be trivial; pointers and mutable references are forbidden");
+                  "CppStatic coroutine const-reference must be trivial; pointers "
+                  "and mutable references are forbidden");
     struct Layout final
     {
         std::array<std::size_t, sizeof...(Args)> offsets{};
@@ -309,7 +312,8 @@ template <class Owner, auto Attach = nullptr>
     if constexpr (!std::is_same_v<decltype(Attach), std::nullptr_t>)
     {
         static_assert(std::is_same_v<decltype(Attach), void (Owner::*)(ScriptBehavior&) noexcept>,
-            "Script attach must be void(ScriptBehavior&) noexcept on a mutable object");
+                      "Script attach must be void(ScriptBehavior&) noexcept on a "
+                      "mutable object");
         result.requires_host = true;
         result.attach = [](void* object, ScriptBehavior& behavior) noexcept {
             std::invoke(Attach, *static_cast<Owner*>(object), behavior);

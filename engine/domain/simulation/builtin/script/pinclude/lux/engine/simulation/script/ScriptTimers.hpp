@@ -17,6 +17,7 @@ namespace lux::simulation::script::detail
         void prepare(const SimulationClock& clock, ScriptRuntimeLimits limits, ScriptRealDelayEndpoint real_delay,
             ScriptExecution& execution, std::size_t instance_capacity);
         void beginInstance(ScriptInstanceId instance) noexcept;
+        [[nodiscard]] PreparedLocalAsyncCatalog localCatalog(const ScriptApiCapabilityPublication& binding) noexcept;
         [[nodiscard]] StartResult nextStep(Completion completion) noexcept;
         [[nodiscard]] StartResult seconds(double duration, Completion completion) noexcept;
         [[nodiscard]] StartResult simulationSeconds(double duration, Completion completion) noexcept;
@@ -31,12 +32,16 @@ namespace lux::simulation::script::detail
 
     private:
         enum class ETimerKind : std::uint8_t { NEXT_STEP, SIMULATION_DELAY };
+        enum class ETimerRoute : std::uint8_t { OWNER_LOCAL, EXTERNAL_CAPABILITY };
         struct TimerTag;
+        struct ExternalTag;
+        using ExternalStorage = lux::cxx::SlotMap<Completion, ExternalTag>;
         struct Wait final
         {
             ScriptSourceId id;
             ScriptTimerAssociation association;
-            Completion completion;
+            ExternalStorage::key_type external{ExternalStorage::key_type::invalid()};
+            ETimerRoute route{};
             ETimerKind kind{};
             SimulationDuration deadline{};
             std::uint64_t minimum_step{};
@@ -59,8 +64,14 @@ namespace lux::simulation::script::detail
             return id.valid() ? Key{id.slot - 1U, id.generation} : Key::invalid();
         }
         [[nodiscard]] static StartResult error(EScriptDelayStatus status) noexcept;
-        [[nodiscard]] StartResult registerWait(ETimerKind kind, ScriptTimerAssociation association,
+        [[nodiscard]] StartResult registerWait(ETimerKind kind, const ScriptTimerAdmission& admission,
             Completion completion, SimulationDuration deadline, std::uint64_t step) noexcept;
+        struct Schedule final { SimulationDuration deadline; std::uint64_t step{}; };
+        [[nodiscard]] StartResult planWait(ETimerKind kind, double duration, Schedule& result) const noexcept;
+        [[nodiscard]] static PreparedLocalAsyncStart resolveLocal(void*, lux::script::ScriptApiMethodIdView) noexcept;
+        template<ETimerKind Kind>
+        [[nodiscard]] static ScriptStepResult startLocal(void*, ScriptStepContext&,
+            std::span<const lux::script::ScriptAbilityInputSlot>) noexcept;
         [[nodiscard]] bool earlier(ScriptSourceId left, ScriptSourceId right) const noexcept;
         void swapHeap(std::size_t left, std::size_t right) noexcept;
         void siftUp(std::size_t index) noexcept;
@@ -72,6 +83,7 @@ namespace lux::simulation::script::detail
         ScriptExecution* execution_{};
         ScriptRealDelayEndpoint real_delay_;
         Storage waits_;
+        ExternalStorage external_;
         std::vector<ScriptSourceId> heap_;
         std::vector<InstanceIndex> instances_;
         ScriptSourceId next_first_;

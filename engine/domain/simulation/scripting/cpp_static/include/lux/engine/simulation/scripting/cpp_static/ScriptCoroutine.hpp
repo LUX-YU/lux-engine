@@ -1,8 +1,9 @@
 #pragma once
 
 #include <lux/engine/simulation/scripting/ScriptAbilityInvocation.hpp>
-#include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
+#include <lux/engine/simulation/scripting/cpp_static/ScriptSyncStepCall.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/visibility.h>
+#include <lux/engine/simulation/scripting/detail/BoundedClassStorage.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -33,8 +34,9 @@ namespace lux::simulation::script
         {
             void* context{};
             const void* dispatch{};
+            PreparedLocalAsyncCatalog local_async;
         };
-    }
+    } // namespace detail
 
     enum class EScriptCoroutineError : std::uint8_t
     {
@@ -48,6 +50,11 @@ namespace lux::simulation::script
     struct CppStaticContract;
     namespace detail
     {
+        struct CppStaticPreparedEvents final
+        {
+            const CppStaticContract* layout{};
+            std::span<const ScriptEventAdmissionHandle> entries;
+        };
         [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC
         lux::cxx::expected<std::uint32_t, EScriptCoroutineError> prepareCppEventImport(
             const CppStaticContract& contract, const lux::script::ScriptEventSourceDescription& source) noexcept;
@@ -88,13 +95,50 @@ namespace lux::simulation::script
         friend class ScriptCoroutineContext;
     };
 
+    class ScriptCoroutineContext;
+
+    // An immutable binding borrowed by one live task. Like its context, this must
+    // not escape the owning coroutine's lifetime. It conveys no call permission.
+    template <class Signature>
+    class ScriptCoroutineSyncStep final
+    {
+    public:
+        template <class... Args> [[nodiscard]] auto operator()(Args&&... args) const noexcept;
+    private:
+        friend class ScriptCoroutineContext;
+        ScriptCoroutineSyncStep(ScriptCoroutineContext& context, const PreparedScriptSyncStep& entry,
+            std::uint32_t ordinal) noexcept : context_(&context), entry_(&entry), ordinal_(ordinal) {}
+        ScriptCoroutineContext* context_{};
+        const PreparedScriptSyncStep* entry_{};
+        std::uint32_t ordinal_{};
+    };
+
     class ScriptCoroutine;
+    class ScriptCoroutineFailure;
     struct ScriptCoroutinePromiseAccess;
 
     class LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC ScriptCoroutineContext final
     {
     public:
         ScriptCoroutineContext() noexcept = default;
+
+        template<class Signature, class... Args>
+        [[nodiscard]] auto callStep(std::uint32_t ordinal, Args&&... args) noexcept
+        {
+            return detail::ScriptSyncStepCall<Signature>::invoke(*this, ordinal, std::forward<Args>(args)...);
+        }
+
+        template <class Signature>
+        [[nodiscard]] lux::cxx::expected<ScriptCoroutineSyncStep<Signature>, ScriptSyncStepError>
+        bindStep(std::uint32_t ordinal) noexcept
+        {
+            const auto entry = resolveSyncStep(ordinal, detail::ScriptSyncStepCall<Signature>::Shape);
+            if (!entry) return lux::cxx::unexpected<ScriptSyncStepError>(entry.error());
+            return ScriptCoroutineSyncStep<Signature>{*this, **entry, ordinal};
+        }
+
+        [[nodiscard]] ScriptCoroutineFailure fail(ScriptSyncStepError error) noexcept;
+
 
         template <class Payload>
         [[nodiscard]] auto wait(const CppScriptEventSource<Payload>& source) noexcept;
@@ -108,38 +152,45 @@ namespace lux::simulation::script
         [[nodiscard]] lux::script::ScriptAbilityCoroutine<DelayAbility, ScriptCoroutineContext> delay() noexcept;
 
     private:
-        using FindAbilityFn = bool (*)(void*, std::uint32_t, std::uint64_t, std::uint32_t&) noexcept;
-        using ResolveAbilityFn = bool (*)(
-            void*,
-            std::uint32_t,
-            std::uint32_t,
-            detail::ScriptCoroutineAbilityAccess&
-        ) noexcept;
-        using ResolveEventFn = bool (*)(void*, std::uint32_t, const CppStaticContract*, std::uint32_t,
-            ScriptEventAdmissionHandle&) noexcept;
+      [[nodiscard]] lux::cxx::expected<void, ScriptSyncStepError> invokeSyncStep(std::uint32_t ordinal,
+                                                                                 const ScriptSyncStepShape& shape,
+                                                                                 const void* const* arguments,
+                                                                                 void* output) noexcept;
+      [[nodiscard]] lux::cxx::expected<const PreparedScriptSyncStep*, ScriptSyncStepError>
+      resolveSyncStep(std::uint32_t ordinal, const ScriptSyncStepShape& shape) noexcept;
+      [[nodiscard]] lux::cxx::expected<void, ScriptSyncStepError>
+      invokeResolvedSyncStep(const PreparedScriptSyncStep& entry, std::uint32_t ordinal,
+          const void* const* arguments, void* output) noexcept;
+      template <class Signature> friend class ScriptCoroutineSyncStep;
+      template <class Signature> friend struct detail::ScriptSyncStepCall;
 
-        template <class Result, class Invoker>
-        [[nodiscard]] auto invokeAbility(std::uint32_t ability_slot, Invoker&& invoker) noexcept;
+      using FindAbilityFn = bool (*)(void*, std::uint32_t, std::uint64_t, std::uint32_t&) noexcept;
+      using ResolveAbilityFn = bool (*)(void*, std::uint32_t, std::uint32_t,
+                                        detail::ScriptCoroutineAbilityAccess&) noexcept;
 
-        template <class Result, class Starter>
-        [[nodiscard]] auto awaitAbility(std::uint32_t ability_slot, Starter starter) noexcept;
+      template <class Result, class Invoker>
+      [[nodiscard]] auto invokeAbility(std::uint32_t ability_slot, Invoker&& invoker) noexcept;
 
-        template <class Result, class Admission>
-        [[nodiscard]] auto makeAwaiter(Admission admission) noexcept;
+      template <class Result, class Starter>
+      [[nodiscard]] auto awaitAbility(std::uint32_t ability_slot, Starter starter) noexcept;
 
-        [[nodiscard]] bool resolveAbility(
-            std::uint32_t ability_slot,
-            detail::ScriptCoroutineAbilityAccess& result
-        ) const noexcept
-        {
-            return active_step_ != nullptr && resolve_ability_ != nullptr &&
-                resolve_ability_(backend_, instance_slot_, ability_slot, result);
-        }
+      template <class Result, class Arguments, class Starter>
+      [[nodiscard]] auto awaitPreparedAbility(std::uint32_t ability_slot,
+                                              const lux::script::ScriptApiMethodIdView& method, Arguments arguments,
+                                              Starter starter) noexcept;
+
+      template <class Result, class Admission> [[nodiscard]] auto makeAwaiter(Admission admission) noexcept;
+
+      [[nodiscard]] bool resolveAbility(std::uint32_t ability_slot,
+                                        detail::ScriptCoroutineAbilityAccess& result) const noexcept
+      {
+          return active_step_ != nullptr && resolve_ability_ != nullptr &&
+                 resolve_ability_(backend_, instance_slot_, ability_slot, result);
+      }
 
         struct FrameHeader final
         {
-            detail::BoundedClassStorage* storage{};
-            detail::BoundedClassStorage::Allocation allocation;
+            detail::BoundedClassStorage::Ticket ticket;
         };
 
         ScriptCoroutineContext(
@@ -151,13 +202,15 @@ namespace lux::simulation::script
             detail::BoundedClassStorage::ClassHandle frame_class,
             std::size_t frame_limit,
             std::size_t alignment_limit,
-            ResolveEventFn resolve_event
+            const detail::CppStaticPreparedEvents* events,
+            const ScriptSyncStepSetView* sync_steps
         ) noexcept
-            : backend_(backend),
+            : sync_steps_(sync_steps), sync_publication_(sync_steps ? sync_steps->publication : 0U),
+              backend_(backend),
               instance_slot_(instance_slot),
               find_ability_(find_ability),
               resolve_ability_(resolve_ability),
-              resolve_event_(resolve_event),
+              events_(events),
               frame_storage_(std::addressof(frame_storage)), frame_class_(frame_class),
               frame_limit_(frame_limit), alignment_limit_(alignment_limit)
         {
@@ -179,6 +232,7 @@ namespace lux::simulation::script
             {
                 return nullptr;
             }
+            alignment = (std::max)(alignment, alignof(FrameHeader));
             const auto padding = sizeof(FrameHeader) + alignment - 1U;
             if (size > (std::numeric_limits<std::size_t>::max)() - padding)
                 return nullptr;
@@ -188,7 +242,7 @@ namespace lux::simulation::script
             const auto raw = reinterpret_cast<std::uintptr_t>(allocation->data) + sizeof(FrameHeader);
             const auto aligned = (raw + alignment - 1U) & ~(static_cast<std::uintptr_t>(alignment) - 1U);
             auto* header = reinterpret_cast<FrameHeader*>(aligned - sizeof(FrameHeader));
-            std::construct_at(header, FrameHeader{frame_storage_, *allocation});
+            std::construct_at(header, FrameHeader{frame_storage_->ticket(*allocation)});
             return reinterpret_cast<void*>(aligned);
         }
 
@@ -199,11 +253,10 @@ namespace lux::simulation::script
             auto* header = reinterpret_cast<FrameHeader*>(
                 static_cast<std::byte*>(frame) - sizeof(FrameHeader)
             );
-            auto* storage = header->storage;
-            const auto allocation = header->allocation;
+            const auto ticket = header->ticket;
             std::destroy_at(header);
-            if (storage != nullptr)
-                static_cast<void>(storage->release(allocation));
+            if (ticket.owner != nullptr)
+                static_cast<void>(ticket.owner->release(ticket));
         }
 
         void activate(ScriptStepContext& step, const ScriptResumePacket* packet) noexcept
@@ -218,11 +271,13 @@ namespace lux::simulation::script
             resume_packet_ = nullptr;
         }
 
+        const ScriptSyncStepSetView* sync_steps_{};
+        std::uint64_t sync_publication_{};
         void* backend_{};
         std::uint32_t instance_slot_{};
         FindAbilityFn find_ability_{};
         ResolveAbilityFn resolve_ability_{};
-        ResolveEventFn resolve_event_{};
+        const detail::CppStaticPreparedEvents* events_{};
         detail::BoundedClassStorage* frame_storage_{};
         detail::BoundedClassStorage::ClassHandle frame_class_;
         std::size_t frame_limit_{};
@@ -238,6 +293,17 @@ namespace lux::simulation::script
         template <class Result, class Admission>
         friend class ScriptCoroutineAwaiter;
     };
+
+    template <class Signature>
+    template <class... Args>
+    auto ScriptCoroutineSyncStep<Signature>::operator()(Args&&... args) const noexcept
+    {
+        return detail::ScriptSyncStepCall<Signature>::apply(
+            [this](const void* const* arguments, void* result) noexcept {
+                return context_->invokeResolvedSyncStep(*entry_, ordinal_, arguments, result);
+            }, std::forward<Args>(args)...
+        );
+    }
 
     struct ScriptCoroutinePromiseAccess final
     {
@@ -342,30 +408,35 @@ namespace lux::simulation::script
                     outcome = ScriptStepResult::failed(-1);
                     return false;
                 }
-                resume_packet = std::addressof(packet);
+                resume_data = expects_value ? packet.value->bytes.data() : nullptr;
                 outcome = ScriptStepResult::completed();
                 return true;
             }
 
-            void clearResume() noexcept
-            {
-                resume_packet = nullptr;
-            }
+            void clearResume() noexcept { resume_data = nullptr; }
 
+          private:
             template <class Result>
             [[nodiscard]] Result result() const noexcept
             {
                 static_assert(std::is_trivially_copyable_v<Result>);
-                Result value{};
-                if (resume_packet != nullptr && resume_packet->value != nullptr)
-                    std::memcpy(std::addressof(value), resume_packet->value->bytes.data(), sizeof(Result));
+                // Only the suspended typed awaiter reads this, after prepareResume
+                // validated state/type/size. The packet owner outlives this synchronous
+                // resume window.
+                Result value;
+                std::memcpy(std::addressof(value), resume_data, sizeof(Result));
                 return value;
             }
 
+            template <class Result, class Admission> friend class ScriptCoroutineAwaiter;
+
+          public:
             ScriptStepResult outcome;
             lux::semantic::TypeId expected_type{lux::semantic::InvalidTypeId};
             std::size_t expected_size{};
-            const ScriptResumePacket* resume_packet{};
+
+          private:
+            const void* resume_data{};
         };
 
         ScriptCoroutine() noexcept = default;
@@ -447,11 +518,8 @@ namespace lux::simulation::script
             }
             else
             {
-                promise_->suspend(
-                    result,
-                    lux::semantic::typeId(lux::semantic::TypeTraits<Result>::CanonicalName),
-                    sizeof(Result)
-                );
+                constexpr auto result_type = lux::semantic::typeId(lux::semantic::TypeTraits<Result>::CanonicalName);
+                promise_->suspend(result, result_type, sizeof(Result));
             }
         }
 
@@ -483,11 +551,10 @@ namespace lux::simulation::script
     {
         return makeAwaiter<Payload>([layout = source.layout_, slot = source.local_slot_](
             ScriptCoroutineContext& context, ScriptStepContext& step) noexcept {
-            ScriptEventAdmissionHandle admission;
-            if (context.resolve_event_ == nullptr ||
-                !context.resolve_event_(context.backend_, context.instance_slot_, layout, slot, admission))
-                return ScriptStepResult::failed(-1);
-            const auto waiting = step.event_waits.wait(admission);
+            const auto* events = context.events_;
+            const bool wrong_source = events == nullptr || events->layout != layout || slot >= events->entries.size();
+            if (wrong_source) return ScriptStepResult::failed(-1);
+            const auto waiting = step.event_waits.wait(events->entries[slot]);
             return waiting ? ScriptStepResult::suspended(*waiting) : ScriptStepResult::failed(-1);
         });
     }
@@ -560,6 +627,48 @@ namespace lux::simulation::script
         );
     }
 
+    template<class Result, class Arguments, class Starter>
+    auto ScriptCoroutineContext::awaitPreparedAbility(
+        std::uint32_t slot, const lux::script::ScriptApiMethodIdView& method, Arguments arguments, Starter starter
+    ) noexcept
+    {
+        // Generated projection supplies a static immutable descriptor; no per-frame
+        // copy of its name/hash.
+        return makeAwaiter<Result>([
+            slot, method = &method, arguments = std::move(arguments), starter = std::move(starter)
+        ](
+            ScriptCoroutineContext& context, ScriptStepContext& step) mutable noexcept {
+            detail::ScriptCoroutineAbilityAccess access;
+            if (!context.resolveAbility(slot, access)) return ScriptStepResult::failed(-1);
+            const auto local = access.local_async.resolve(*method, access.context, access.dispatch);
+            return std::apply([&](auto&... values) noexcept {
+                return invokePreparedScriptAbilityAsync<Result>(step, local,
+                    [&](lux::script::ScriptAbilityCompletion<Result> completion) noexcept {
+                        return starter(access.context, access.dispatch, std::move(completion), values...);
+                    }, values...);
+            }, arguments);
+        });
+    }
+
+    class ScriptCoroutineFailure final
+    {
+    public:
+        explicit ScriptCoroutineFailure(std::int32_t status) noexcept : status_(status != 0 ? status : -1) {}
+        [[nodiscard]] bool await_ready() const noexcept { return false; }
+        void await_suspend(std::coroutine_handle<ScriptCoroutine::promise_type> handle) const noexcept
+        {
+            handle.promise().suspend(ScriptStepResult::failed(status_), lux::semantic::InvalidTypeId, 0U);
+        }
+        [[noreturn]] void await_resume() const noexcept { std::terminate(); }
+    private:
+        std::int32_t status_;
+    };
+
+    inline ScriptCoroutineFailure ScriptCoroutineContext::fail(ScriptSyncStepError error) noexcept
+    {
+        return ScriptCoroutineFailure(error.status);
+    }
+
     struct CppStaticCoroutineAccess final
     {
         template <class Result, class Admission>
@@ -580,16 +689,18 @@ namespace lux::simulation::script
             detail::BoundedClassStorage::ClassHandle frame_class,
             std::size_t frame_limit,
             std::size_t alignment_limit,
-            ScriptCoroutineContext::ResolveEventFn resolve_event
+            const detail::CppStaticPreparedEvents* events,
+            const ScriptSyncStepSetView* sync_steps = nullptr
         ) noexcept
         {
             return {backend, instance_slot, find_ability, resolve_ability, frame_storage,
-                frame_class, frame_limit, alignment_limit, resolve_event};
+                frame_class, frame_limit, alignment_limit, events, sync_steps};
         }
 
         [[nodiscard]] static constexpr std::size_t frameOverhead(std::size_t alignment) noexcept
         {
-            return sizeof(ScriptCoroutineContext::FrameHeader) + alignment - 1U;
+            return sizeof(ScriptCoroutineContext::FrameHeader) +
+                (std::max)(alignment, alignof(ScriptCoroutineContext::FrameHeader)) - 1U;
         }
 
         static void activate(
@@ -613,4 +724,4 @@ namespace lux::simulation::script
             return coroutine.release();
         }
     };
-}
+} // namespace lux::simulation::script

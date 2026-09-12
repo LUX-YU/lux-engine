@@ -13,6 +13,7 @@
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
+#include <lux/engine/simulation/scripting/ScriptLifecycle.hpp>
 #include "DelayAbility.ability.generated.hpp"
 #include "DelayAbility.ability.lua.generated.hpp"
 #include <lux/engine/simulation/scripting/lua/LuaScriptBackend.hpp>
@@ -37,9 +38,6 @@
 
 namespace
 {
-    lux::script::lua::ELuaExecutionPolicy g_execution_policy{
-        lux::script::lua::ELuaExecutionPolicy::DEFAULT
-    };
     using namespace lux;
     using namespace lux::scene;
     using namespace lux::simulation;
@@ -59,6 +57,9 @@ namespace
     ProbeSystem* g_probe_system{};
     std::int32_t g_last_written{};
     std::size_t g_total_writes{};
+    ecs::Registry* g_mutation_registry{};
+    ecs::Entity g_mutation_target{ecs::NullEntity};
+    std::size_t g_live_during_provider{};
 
     [[nodiscard]] asset::AssetId assetId(std::uint8_t value)
     {
@@ -91,10 +92,18 @@ namespace
 
         void execute() noexcept
         {
+            // Native System code retains direct component access under its declared schedule.
+            if (g_mutation_registry && g_mutation_registry->valid(g_mutation_target))
+                ++g_mutation_registry->get<std::int32_t>(g_mutation_target);
         }
 
         std::int32_t readValue(std::int32_t input) noexcept
         {
+            if (g_mutation_registry)
+            {
+                assert(g_mutation_registry->valid(g_mutation_target));
+                ++g_live_during_provider;
+            }
             ++reads;
             return value + input;
         }
@@ -323,7 +332,7 @@ namespace
 
     struct Fixture final
     {
-        Fixture() : artifact(makeArtifactAsset())
+        explicit Fixture(std::span<const LuaComponentBinding> components = {}) : artifact(makeArtifactAsset())
         {
             contributions = {
                 lux::script::lua::makeScriptAbilityLuaContribution<DelayAbility>(),
@@ -338,8 +347,8 @@ namespace
                     DelayTraits::Description.methods.size() + TestAbilityTraits::Description.methods.size(),
                 .prepared_ability_capacity =
                     4U * (DelayTraits::Description.methods.size() + TestAbilityTraits::Description.methods.size()),
+                .components = components,
                 .abilities = contributions,
-                .execution_policy = g_execution_policy,
                 .prepared_ability_blocks = std::array{
                     lux::simulation::script::LuaPreparedBlockClass{
                         DelayTraits::Description.methods.size() + TestAbilityTraits::Description.methods.size(),
@@ -353,8 +362,6 @@ namespace
             });
             assert(created);
             backend.emplace(std::move(*created));
-            assert(g_execution_policy != lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY ||
-                !backend->runtimeInfo().jit_enabled);
             descriptor = backend->descriptor();
         }
 
@@ -376,6 +383,135 @@ namespace
         std::optional<LuaScriptBackend> backend;
         ScriptBackendDescriptor descriptor;
     };
+
+    void testDeferredScene(const SceneMetaManager& meta, process::TimerClient timer, task::TaskExecutor& executor)
+    {
+        constexpr std::uint64_t score_type{0x4C53F1U};
+        const std::array components{LuaComponentBinding{"score", score_type, lux::semantic::typeId("lux.i32"),
+            "lux.i32", LUX_SCRIPT_VK_INT32, sizeof(std::int32_t), alignof(std::int32_t)}};
+        const std::array host_components{scriptDeferredComponent<std::int32_t>({score_type,
+            lux::semantic::typeId("lux.i32"), "lux.i32", LUX_SCRIPT_VK_INT32})};
+        for (const bool fault : {false, true})
+        {
+            Fixture fixture{components};
+            rdesc::Script description;
+            description.module_name = "lux.test.scene-deferred";
+            description.body = rdesc::LuaSourceScript{"Deferred", {kTickSymbol}};
+            constexpr lux::script::ScriptSymbolId begin{0x4C53F2U}, end{0x4C53F3U};
+            description.exports = {{"tick", kTickSymbol, {}, {}}, {"begin", begin, {}, {}},
+                {"finish", end, {rdesc::makeScriptValueType<EScriptEndPlayReason>()}, {}}};
+            description.lifecycle = {begin, end};
+            description.api_requirements = {
+                {lux::script::ScriptApiContractId{DelayTraits::Description.id.name()},
+                    DelayTraits::Description.schema_hash},
+                {lux::script::ScriptApiContractId{TestAbilityTraits::Description.id.name()},
+                    TestAbilityTraits::Description.schema_hash}
+            };
+            const std::string source = "return {begin=function(self) lux.LuaRuntimeTest.writeValue(100) end,"
+                "finish=function(self,reason) lux.LuaRuntimeTest.writeValue(-1) end,tick=function(self) "
+                "local score=self:get_component('score'); lux.Delay.nextStep();"
+                "if score==11 then assert(self:get_component('score')==12);"
+                "assert(self:patch_component('score',25)); assert(self:destroy());"
+                "assert(self:get_component('score')==12); assert(lux.LuaRuntimeTest.readValue(1)==101);" +
+                std::string{fault ? "error('after accepted mutations');" : ""} +
+                "else assert(score==20); assert(lux.LuaRuntimeTest.readValue(2)==102) end end}";
+            const auto bytes = std::as_bytes(std::span{source.data(), source.size()});
+            auto artifact = lux::script::ScriptArtifact::create(std::move(description), {bytes.begin(), bytes.end()});
+            assert(artifact);
+            auto asset = lux::script::ScriptArtifactAsset::create(
+                asset::AssetInfo{assetId(0xF0U + fault), lux::script::ScriptArtifactAsset::asset_type, 0U},
+                std::make_shared<const lux::script::ScriptArtifact>(std::move(*artifact)));
+            assert(asset);
+            fixture.artifact = *asset;
+            SimulationDescriptionBuilder sim_builder;
+            assert(sim_builder.addSystem(kProbeSystem, "probe", ProbeSystem::Description));
+            auto base = std::move(sim_builder).build();
+            assert(base);
+            const std::array objects{worldId<world::WorldObjectId>(0xF1U), worldId<world::WorldObjectId>(0xF2U)};
+            ScriptSystemDescriptionBuilder mounts;
+            for (std::size_t index{}; index < objects.size(); ++index)
+                assert(mounts.addMount({ScriptMountId{index + 1U}, fixture.artifact->id(),
+                    EntityScriptMount{objects[index]}, true,
+                    {{kTickSymbol, HookScriptTarget{kProbeSystem, kTickHook}}}
+                }));
+            const auto script = std::move(mounts).build(*base);
+            assert(script);
+            const ScriptSystemCodecLimits codec_limits{4096U, 4096U, 4096U};
+            SimulationDescriptionBuilder simulation_builder;
+            assert(simulation_builder.addSystem(kProbeSystem, "probe", ProbeSystem::Description));
+            assert(simulation_builder.addExecutionDependency(SimulationExecutionPoint::task(kProbeSystem),
+                SimulationExecutionPoint::hook(kProbeSystem, kTickHook)));
+            assert(addScriptSystemData(simulation_builder, *script, codec_limits));
+            auto simulation = std::move(simulation_builder).build();
+            assert(simulation);
+            SceneDescriptionBuilder scene_builder;
+            scene_builder.setWorld(assetId(1U));
+            scene_builder.setSimulation(assetId(2U));
+            assert(scene_builder.addSystem(kScriptRuntime, "scripts",
+                system::systemTypeId(ScriptRuntimeSystem::Description.canonical_name), 1U, {}, 0U));
+            assert(scene_builder.bindRequirement(kScriptRuntime, "script_runtime_host", "host.script"));
+            assert(scene_builder.bindRequirement(kScriptRuntime, "timer", "host.timer"));
+            auto scene_description = std::move(scene_builder).build();
+            assert(scene_description);
+            struct Resolution final
+            {
+                const std::array<world::WorldObjectId, 2U>* objects;
+                std::array<ecs::Entity, 2U> entities{ecs::NullEntity, ecs::NullEntity};
+            } resolution{&objects};
+            const std::array backends{fixture.descriptor};
+            ScriptRuntimeHost host{
+                {8U, 2U, 8U, 4U, 8U, 8U, 64U, 8U, 8U, 8U, 8U, 8U}, codec_limits, 2U,
+                {&fixture, &Fixture::resolve},
+                {&resolution, [](void* context, const world::WorldObjectId& object, ecs::Entity& output) noexcept {
+                    const auto& value = *static_cast<Resolution*>(context);
+                    for (std::size_t index{}; index < value.entities.size(); ++index)
+                        if ((*value.objects)[index] == object)
+                        {
+                            output = value.entities[index];
+                            return output != ecs::NullEntity;
+                        }
+                    return false;
+                }}, backends, host_components, {2U, 64U}
+            };
+            const std::array providers{
+                makeSceneCapabilityProvider<ScriptRuntimeHost>("host.script", "lux.script.runtime.host", host),
+                makeSceneCapabilityProvider<process::TimerClient>("host.timer", "lux.process.timer", timer)
+            };
+            const auto writes_before = g_total_writes;
+            auto scene = Scene::create({std::make_shared<SceneDescription>(std::move(*scene_description)), makeWorld(),
+                std::make_shared<SimulationDescription>(std::move(*simulation)), meta, providers});
+            assert(scene);
+            auto& registry = (*scene)->registry();
+            for (std::size_t index{}; index < resolution.entities.size(); ++index)
+            {
+                resolution.entities[index] = registry.create();
+                registry.emplace<std::int32_t>(
+                    resolution.entities[index], static_cast<std::int32_t>((index + 1U) * 10U)
+                );
+            }
+            g_mutation_registry = &registry;
+            g_mutation_target = resolution.entities.front();
+            g_live_during_provider = 0U;
+            auto* runtime = (*scene)->findSceneSystem<ScriptRuntimeSystem>();
+            assert(runtime);
+            assert((*scene)->simulation().execute(executor, SimulationDuration{1}));
+            assert(runtime->scriptSystem().stats().next_step_waits == 2U && g_probe_system->reads == 0U);
+            assert((*scene)->simulation().execute(executor, SimulationDuration{1}));
+            assert(g_probe_system->reads == 2U && g_live_during_provider == 2U);
+            assert(!registry.valid(g_mutation_target) && registry.valid(resolution.entities.back()));
+            assert(runtime->scriptSystem().activeInstanceCount() == 1U);
+            assert(runtime->scriptSystem().stats().backend_resume_calls == 2U);
+            assert(runtime->scriptSystem().stats().invocation_failures == static_cast<std::uint64_t>(fault));
+            assert(runtime->scriptSystem().stats().resume_queue_depth == 0U);
+            const auto commands = runtime->commandStats();
+            assert(commands.accepted == 2U && commands.rejected == 0U && commands.rejected_at_commit == 0U);
+            assert(g_total_writes - writes_before == 3U); // Two BeginPlay and the retired/faulted instance's EndPlay.
+            g_mutation_registry = nullptr;
+            scene->reset();
+            assert(g_total_writes - writes_before == 4U && fixture.backend->stats().prepared_ability_slots == 0U);
+            std::printf("SCENE_DEFERRED fault=%u resumed=2 provider=2 accepted=2 endplay=2 backlog=0 PASS\n", fault);
+        }
+    }
 } // namespace
 
 int main(int argc, char** argv)
@@ -384,9 +520,7 @@ int main(int argc, char** argv)
     for (int index = 1; index < argc; ++index)
     {
         const std::string_view argument{argv[index]};
-        if (argument == "--interpreter-only")
-            g_execution_policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
-        else if (argument == "--workers" && index + 1 < argc)
+        if (argument == "--workers" && index + 1 < argc)
         {
             const std::string_view value{argv[++index]};
             if (value != "0" && value != "1" && value != "2" && value != "4")
@@ -479,6 +613,8 @@ int main(int argc, char** argv)
         assert(stats.next_step_waits == expected.next_step && stats.simulation_delay_waits == expected.delay);
         assert(stats.external_completion_queue_depth == expected.external && stats.resume_queue_depth == 0U);
         assert(stats.active_continuations == expected.active && stats.active_awaitables == expected.active);
+        // The eager custom provider is external; subsequent built-in NextStep and seconds are owner-local.
+        assert(stats.completion_capability_constructions == 1U);
         assert(runtime->scriptSystem().failures().empty());
         assert(g_probe_system != nullptr && g_probe_system->async_starts == 1U);
         assert(g_probe_system->reads == 0U && g_probe_system->writes == expected.writes);
@@ -533,7 +669,7 @@ int main(int argc, char** argv)
         check_step(expected);
     }
 #else
-    assert(!(*scene)->simulation().execute(*executor, SimulationDuration{1}));
+    assert((*scene)->simulation().execute(*executor, SimulationDuration{1}));
     const auto stable = (*scene)->executeStablePoint();
     assert(stable);
     assert(runtime->scriptSystem().activeContinuationCount() == 0U);
@@ -548,6 +684,7 @@ int main(int argc, char** argv)
     assert(g_last_written == -1);
     assert(g_total_writes == 3U);
 #endif
+    testDeferredScene(*meta, timer, *executor);
     execution->requestStop();
     assert(execution->join());
     meta::ReflectionRegistry::destroyRegistry();

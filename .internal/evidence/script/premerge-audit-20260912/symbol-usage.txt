@@ -1,0 +1,16 @@
+PATTERN resume_enqueued
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\source\engine\domain\simulation\builtin\script\pinclude\lux\engine\simulation\script\ScriptExecution.hpp:120:            bool resume_enqueued{};
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\source\engine\domain\simulation\builtin\script\pinclude\lux\engine\simulation\script\ScriptExecution.hpp:185:                record.resume_enqueued = false;
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\source\engine\domain\simulation\builtin\script\pinclude\lux\engine\simulation\script\ScriptExecution.hpp:407:                record.resume_enqueued = true;
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\source\engine\domain\simulation\builtin\script\pinclude\lux\engine\simulation\script\ScriptExecution.hpp:547:                record->resume_enqueued = true;
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\source\engine\domain\simulation\builtin\script\pinclude\lux\engine\simulation\script\ScriptExecution.hpp:1119:                record.resume_enqueued = true;
+
+PATTERN readAbilityArgument
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\source\engine\domain\simulation\scripting\lua\src\LuaScriptBackend.cpp:1634:        [[nodiscard]] static bool readAbilityArgument(
+
+PATTERN ScalarStorage
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\source\engine\domain\simulation\scripting\lua\src\LuaScriptBackend.cpp:1624:        union ScalarStorage final
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\source\engine\domain\simulation\scripting\lua\src\LuaScriptBackend.cpp:1638:            ScalarStorage& storage,
+
+PATTERN awaitableId\(
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\script-native-lua-na1\source\engine\domain\simulation\builtin\script\pinclude\lux\engine\simulation\script\ScriptExecution.hpp:240:        [[nodiscard]] static constexpr ScriptAwaitableId awaitableId(AwaitableKey key) noexcept

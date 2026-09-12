@@ -134,9 +134,9 @@ namespace
     {
         Probe* probe;
         lux::script::ScriptArtifact artifact;
-        static int invoke(lux_script_call_frame* frame) noexcept
+        static int invoke(void* invocation_context, lux_script_call_frame* frame) noexcept
         {
-            auto& probe = *static_cast<Probe*>(frame->user_context);
+            auto& probe = *static_cast<Probe*>(invocation_context);
             assert(std::this_thread::get_id() == probe.caller);
             assert(probe.active.load() == 0U && probe.finished.load() == 7U);
             ++probe.script_calls;
@@ -244,15 +244,48 @@ namespace
         assert(executor && !simulation->execute(*executor, SimulationDuration{1}));
         assert(probe.script_calls == 0U && probe.finished.load() == 0U);
         assert(simulation->clock().snapshot().step_index == 0U);
-        auto connection = simulation->bindHookCallbacks({&*runtime,
-            [](void* context, const SimulationClockSnapshot&, bool) noexcept {
-                auto& runtime = *static_cast<ScriptSystem*>(context);
-                runtime.beginStableAdmission();
-                return static_cast<bool>(runtime.processLifecycle());
+        struct HookContext final
+        {
+            ScriptSystem& system;
+            std::optional<ScriptSystem::ExecutionRegion> region;
+        } hook_context{*runtime, {}};
+        auto connection = simulation->bindHookCallbacks({&hook_context,
+            [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+                auto& host = *static_cast<HookContext*>(context);
+                if (host.system.isShutdown()) return true;
+                if (stable) host.system.beginStableAdmission();
+                const auto lifecycle = host.system.processLifecycle();
+                if (!lifecycle && lifecycle.error() != EScriptSystemError::INVOCATION_FAILURE) return false;
+                if (host.system.isShutdown()) return true;
+                auto region = host.system.beginExecutionRegion();
+                if (!region) return false;
+                host.region.emplace(std::move(*region));
+                return true;
             },
-            [](void* context, const SimulationClockSnapshot&, bool) noexcept {
-                return static_cast<bool>(static_cast<ScriptSystem*>(context)->executeStablePoint());
-            }, nullptr});
+            [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+                auto& host = *static_cast<HookContext*>(context);
+                if (!host.region) return host.system.isShutdown();
+                const bool resumed = !stable || static_cast<bool>(host.system.executeStablePoint());
+                if (!host.region->finish()) return false;
+                host.region.reset();
+                return resumed;
+            },
+            [](void* context, const SimulationClockSnapshot&) noexcept {
+                auto& system = static_cast<HookContext*>(context)->system;
+                if (system.isShutdown()) return true;
+                const auto result = system.processLifecycle();
+                return result || result.error() == EScriptSystemError::INVOCATION_FAILURE;
+            },
+            [](void* context, const SimulationClockSnapshot&) noexcept {
+                auto& host = *static_cast<HookContext*>(context);
+                if (host.region)
+                {
+                    if (!host.region->finish()) std::terminate();
+                    host.region.reset();
+                }
+                if (!host.system.isShutdown())
+                    static_cast<void>(host.system.processLifecycle(EScriptLifecycleAdmission::RETIRE_ONLY));
+            }});
         assert(connection);
         assert(executor && simulation->execute(*executor, SimulationDuration{1}));
         assert(probe.script_calls == 1U && probe.consumer_saw_script);

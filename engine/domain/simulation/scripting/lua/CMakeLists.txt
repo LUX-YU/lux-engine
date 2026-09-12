@@ -21,14 +21,13 @@ target_compile_definitions(
     simulation_script_lua
     PRIVATE
         LUX_ENGINE_SIMULATION_SCRIPT_LUA_LIBRARY
-        LUX_SCRIPT_LUA_VM_${LUX_LUA_VM}=1
 )
 target_link_libraries(
     simulation_script_lua
     PUBLIC
         lux::engine::simulation::simulation_script
         lux::engine::function::script_lua
-    PRIVATE lux::engine::function::script_lua_vm
+    PRIVATE LuxLua55::Runtime
 )
 component_add_transitive_commands(
     simulation_script_lua
@@ -50,7 +49,7 @@ target_link_libraries(
     simulation_script_lua_test
     PRIVATE
         lux::engine::simulation::simulation_script_lua
-        lux::engine::function::script_lua_vm
+        LuxLua55::Runtime
 )
 if(MSVC)
     target_compile_options(simulation_script_lua_test PRIVATE /UNDEBUG)
@@ -70,7 +69,7 @@ add_test(
 
 add_executable(simulation_script_lua_closure_provenance_test test/lua_closure_provenance_test.cpp)
 target_link_libraries(simulation_script_lua_closure_provenance_test
-    PRIVATE lux::engine::simulation::simulation_script_lua)
+    PRIVATE lux::engine::simulation::simulation_script_lua LuxLua55::Runtime)
 if(MSVC)
     target_compile_options(simulation_script_lua_closure_provenance_test PRIVATE /UNDEBUG)
 else()
@@ -79,8 +78,7 @@ endif()
 lux_classify_target(TARGET simulation_script_lua_closure_provenance_test
     LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
 add_test(NAME simulation_script_lua_closure_provenance_test COMMAND simulation_script_lua_closure_provenance_test)
-add_test(NAME simulation_script_lua_closure_interpreter_test
-    COMMAND simulation_script_lua_closure_provenance_test --interpreter-only)
+
 
 add_executable(
     simulation_script_lua_prepared_storage_test
@@ -114,7 +112,7 @@ target_link_libraries(
     simulation_script_lua_vm_coroutine_contract_test
     PRIVATE
         lux::engine::function::script_lua
-        lux::engine::function::script_lua_vm
+        LuxLua55::Runtime
 )
 target_include_directories(
     simulation_script_lua_test
@@ -141,10 +139,7 @@ add_test(
     NAME simulation_script_lua_vm_coroutine_contract_test
     COMMAND simulation_script_lua_vm_coroutine_contract_test
 )
-add_test(
-    NAME simulation_script_lua_vm_interpreter_contract_test
-    COMMAND simulation_script_lua_vm_coroutine_contract_test --interpreter-only
-)
+
 
 add_executable(
     simulation_script_lua_coroutine_integration_test
@@ -152,7 +147,7 @@ add_executable(
 )
 target_link_libraries(
     simulation_script_lua_coroutine_integration_test
-    PRIVATE lux::engine::simulation::simulation_script_lua
+    PRIVATE lux::engine::simulation::simulation_script_lua LuxLua55::Runtime
 )
 target_include_directories(
     simulation_script_lua_coroutine_integration_test
@@ -178,10 +173,17 @@ add_test(
     NAME simulation_script_lua_coroutine_integration_test
     COMMAND simulation_script_lua_coroutine_integration_test
 )
-add_test(
-    NAME simulation_script_lua_coroutine_interpreter_integration_test
-    COMMAND simulation_script_lua_coroutine_integration_test --interpreter-only
-)
+
+foreach(_creation_failure 0 1)
+    add_test(NAME simulation_script_lua_creation_oom_${_creation_failure}
+        COMMAND simulation_script_lua_coroutine_integration_test --creation-oom ${_creation_failure})
+endforeach()
+add_test(NAME simulation_script_lua_creation_retire_test
+    COMMAND simulation_script_lua_coroutine_integration_test --creation-retire)
+add_test(NAME simulation_script_lua_creation_stop_test
+    COMMAND simulation_script_lua_coroutine_integration_test --creation-stop)
+add_test(NAME simulation_script_lua_fixed_root_registry_test
+    COMMAND simulation_script_lua_coroutine_integration_test --fixed-root-registry)
 
 if(TARGET script_native_collision_fixture)
     add_executable(
@@ -193,7 +195,7 @@ if(TARGET script_native_collision_fixture)
         PRIVATE
             lux::engine::simulation::simulation_script_lua
             lux::engine::simulation::simulation_script_native
-            lux::engine::function::script_lua_vm
+            LuxLua55::Runtime
             lux::engine::core::task
     )
     target_compile_definitions(
@@ -227,3 +229,48 @@ if(TARGET script_native_collision_fixture)
         COMMAND simulation_script_collision_event_test
     )
 endif()
+
+# SR-5 fixtures have one generated value owner shared by their real consumers.
+include_component_cmake_scripts(script_lua)
+add_library(simulation_script_lua_value_fixtures STATIC test/lua_value_fixtures.cpp)
+target_link_libraries(simulation_script_lua_value_fixtures PUBLIC lux::engine::simulation::simulation_script_lua)
+target_include_directories(simulation_script_lua_value_fixtures PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/test)
+lux_script_lua_values(TARGET simulation_script_lua_value_fixtures
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test/CollisionValue.hpp ${CMAKE_CURRENT_SOURCE_DIR}/test/LuaValueTestTypes.hpp
+    RULE_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/test/LuaValueTestRules.hpp)
+lux_classify_target(TARGET simulation_script_lua_value_fixtures LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
+target_link_libraries(simulation_script_lua_test PRIVATE simulation_script_lua_value_fixtures)
+if(TARGET simulation_script_collision_event_test)
+    target_link_libraries(simulation_script_collision_event_test PRIVATE simulation_script_lua_value_fixtures)
+endif()
+add_executable(simulation_script_lua_value_boundary_test
+    ${PROJECT_SOURCE_DIR}/modules/function/script/lua/test/lua_value_test.cpp)
+target_link_libraries(simulation_script_lua_value_boundary_test PRIVATE lux::engine::function::script_lua
+    LuxLua55::Runtime)
+if(MSVC)
+    target_compile_options(simulation_script_lua_value_boundary_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_script_lua_value_boundary_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(TARGET simulation_script_lua_value_boundary_test LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
+add_test(NAME simulation_script_lua_value_boundary_test COMMAND simulation_script_lua_value_boundary_test)
+
+add_executable(simulation_script_lua_value_runtime_test test/lua_value_runtime_test.cpp)
+target_link_libraries(simulation_script_lua_value_runtime_test PRIVATE simulation_script_lua_value_fixtures LuxLua55::Runtime)
+lux_script_abilities(TARGET simulation_script_lua_value_runtime_test
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test/LuaValueTestAbility.hpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/LuaPushOnlyAbility.hpp)
+if(MSVC)
+    target_compile_options(simulation_script_lua_value_runtime_test PRIVATE /UNDEBUG)
+else()
+    target_compile_options(simulation_script_lua_value_runtime_test PRIVATE -UNDEBUG)
+endif()
+lux_classify_target(TARGET simulation_script_lua_value_runtime_test LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
+add_test(NAME simulation_script_lua_value_runtime_test COMMAND simulation_script_lua_value_runtime_test)
+add_test(NAME simulation_script_lua_resume_retire_test COMMAND simulation_script_lua_value_runtime_test --resume-retire)
+add_test(NAME simulation_script_lua_resume_stop_test COMMAND simulation_script_lua_value_runtime_test --resume-stop)
+
+foreach(_sync_case valid retire stop error)
+    add_test(NAME simulation_script_lua_sync_${_sync_case}_test
+        COMMAND simulation_script_lua_value_runtime_test --sync-${_sync_case})
+endforeach()

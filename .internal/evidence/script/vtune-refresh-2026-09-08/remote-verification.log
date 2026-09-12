@@ -1,0 +1,7 @@
+["git", "-C", "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-region-opt\\evidence-remote.git", "remote", "get-url", "origin"]
+["git", "-C", "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-region-opt\\evidence-remote.git", "fetch", "--depth=1", "--filter=blob:none", "origin", "67fc38d3db7d686fa79cae9ee846e8ee3709c156"]
+From github.com:LUX-YU/lux-engine
+ * branch            67fc38d3db7d686fa79cae9ee846e8ee3709c156 -> FETCH_HEAD
+["git", "-C", "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-region-opt\\evidence-remote.git", "rev-parse", "FETCH_HEAD"]
+["git", "-C", "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-region-opt\\evidence-remote.git", "show", "67fc38d3db7d686fa79cae9ee846e8ee3709c156:.internal/evidence/script/vtune-refresh-2026-09-08/vtune-current-raw.zip"]
+["git", "-C", "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-region-opt\\evidence-remote.git", "show", "67fc38d3db7d686fa79cae9ee846e8ee3709c156:.internal/evidence/script/vtune-refresh-2026-09-08/raw-files.json"]

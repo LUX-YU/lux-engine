@@ -52,6 +52,11 @@ target_link_libraries(
         lux::cxx::container
 )
 
+option(LUX_SCRIPT_HOTPATH_OBSERVATION "Count Script Hook candidate and visited records (diagnostics only)" OFF)
+if(LUX_SCRIPT_HOTPATH_OBSERVATION)
+    target_compile_definitions(simulation_script PRIVATE LUX_SCRIPT_HOTPATH_OBSERVATION=1)
+endif()
+
 find_package(lux-cxx REQUIRED COMPONENTS container)
 
 add_executable(simulation_script_bindings_test
@@ -67,9 +72,9 @@ endif()
 lux_classify_target(TARGET simulation_script_bindings_test LAYER SIMULATION PRODUCT TEST ROLE DOMAIN)
 add_test(NAME simulation_script_bindings_test COMMAND simulation_script_bindings_test)
 
-add_executable(simulation_script_ingress_frontier_test test/script_ingress_frontier_test.cpp)
+add_executable(simulation_script_ingress_frontier_test test/script_ingress_frontier_test.cpp src/ScriptCompletionIngress.cpp)
 target_include_directories(simulation_script_ingress_frontier_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
-target_link_libraries(simulation_script_ingress_frontier_test PRIVATE lux::engine::simulation::simulation_scripting_core)
+target_link_libraries(simulation_script_ingress_frontier_test PRIVATE simulation_script)
 if(MSVC)
     target_compile_options(simulation_script_ingress_frontier_test PRIVATE /UNDEBUG)
 else()
@@ -216,6 +221,12 @@ lux_classify_target(
 add_test(
     NAME simulation_script_lifecycle_test
     COMMAND simulation_script_lifecycle_test
+)
+add_test(
+    NAME simulation_script_move_busy_test
+    COMMAND ${CMAKE_COMMAND}
+        -DTEST_EXECUTABLE=$<TARGET_FILE:simulation_script_lifecycle_test>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/test/move_busy_test.cmake
 )
 
 add_library(

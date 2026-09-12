@@ -1,3 +1,7 @@
+#include "../test/ScriptRuntimeTestRegion.hpp"
+using lux::simulation::script::test::dispatchRuntimeHook;
+using lux::simulation::script::test::deliverRuntimeEvent;
+using lux::simulation::script::test::executeRuntimeStablePoint;
 #include "CppBenchmarkScripts.hpp"
 #include "ScriptBenchmarkDomain.hpp"
 #include "CppBenchmarkScripts.CppLifecycle.script.generated.hpp"
@@ -126,12 +130,10 @@ namespace
         std::uint64_t seed{0x5EED2026ULL};
         std::filesystem::path output{"script_runtime_benchmark.csv"};
         std::filesystem::path lua_artifact;
+        bool lua_incremental_gc{true};
         bool vm_accounting{};
-#if LUX_BENCHMARK_HAS_LUA
-        lux::script::lua::ELuaExecutionPolicy lua_policy{
-            lux::script::lua::ELuaExecutionPolicy::DEFAULT
-        };
-#endif
+        int gc_pause{-1};
+        std::size_t idle_page_budget{16U * 1024U * 1024U};
     };
 
     [[nodiscard]] bool parseSize(std::string_view text, std::size_t& output) noexcept
@@ -183,6 +185,16 @@ namespace
                     return std::nullopt;
                 warmups_supplied = true;
             }
+            else if (key == "--gc-pause")
+            {
+                const auto parsed = std::from_chars(value.data(), value.data() + value.size(), result.gc_pause);
+                if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || result.gc_pause < -1)
+                    return std::nullopt;
+            }
+            else if (key == "--idle-page-budget")
+            {
+                if (!parseSize(value, result.idle_page_budget)) return std::nullopt;
+            }
             else if (key == "--vm-accounting")
             {
                 if (value != "on" && value != "off")
@@ -231,19 +243,13 @@ namespace
             }
             else if (key == "--output")
                 result.output = value;
+            else if (key == "--lua-gc")
+            {
+                if (value != "gen" && value != "inc") return std::nullopt;
+                result.lua_incremental_gc = value == "inc";
+            }
             else if (key == "--lua-artifact")
                 result.lua_artifact = value;
-#if LUX_BENCHMARK_HAS_LUA
-            else if (key == "--lua-policy")
-            {
-                if (value == "default")
-                    result.lua_policy = lux::script::lua::ELuaExecutionPolicy::DEFAULT;
-                else if (value == "interpreter-only")
-                    result.lua_policy = lux::script::lua::ELuaExecutionPolicy::INTERPRETER_ONLY;
-                else
-                    return std::nullopt;
-            }
-#endif
             else
                 return std::nullopt;
         }
@@ -368,7 +374,7 @@ namespace
         if (!output)
             throw std::runtime_error("cannot open benchmark output");
         output << "benchmark_schema_version,git_commit,build_type,compiler,os,logical_cpu_count,"
-                  "lua_vm,lua_version,jit_available,jit_enabled,scenario,backend,"
+                  "lua_vm,lua_version,scenario,backend,"
                   "size,seed,sample,nanoseconds,"
                   "allocations,active_instances,calls,ability_calls,events,suspensions,resumes,continuations,"
                   "awaitables,event_waiters,event_dispatch_visits,payload_bytes,queue_depth,queue_high_water,"
@@ -385,10 +391,8 @@ namespace
                    << LUX_BENCHMARK_COMPILER << ",windows," << std::thread::hardware_concurrency() << ','
 #if LUX_BENCHMARK_HAS_LUA
                    << g_lua_runtime_info.vm << ',' << g_lua_runtime_info.version << ','
-                   << (g_lua_runtime_info.jit_available ? 1 : 0) << ','
-                   << (g_lua_runtime_info.jit_enabled ? 1 : 0) << ','
 #else
-                   << ",,0,0,"
+                   << ",,,"
 #endif
                    << row.scenario << ',' << row.backend << ',' << row.size << ',' << options.seed << ','
                    << row.sample << ','
@@ -435,6 +439,7 @@ namespace
     inline constexpr lux::script::ScriptSymbolId kLuaQuery{0xB008U};
     inline constexpr lux::script::ScriptSymbolId kLuaEventWait{0xB009U};
     inline constexpr lux::script::ScriptSymbolId kLuaSequence{0xB00AU};
+    inline constexpr lux::script::ScriptSymbolId kLuaReadValue{0xB00BU};
     inline constexpr EventPointId kEvent{0xB009U};
     inline constexpr EventPointId kTargetEvent{0xB00AU};
 
@@ -457,6 +462,8 @@ namespace
         std::size_t calls{};
         std::uint64_t checksum{};
         std::int32_t value{7};
+        std::span<std::int32_t> oracle_values;
+        std::size_t oracle_count{};
 
         std::int32_t read(std::int32_t input) noexcept
         {
@@ -467,6 +474,11 @@ namespace
 
         void write(std::int32_t input) noexcept
         {
+            if (!oracle_values.empty())
+            {
+                if (oracle_count < oracle_values.size()) oracle_values[oracle_count] = input;
+                ++oracle_count;
+            }
             ++calls;
             value = input;
             checksum += static_cast<std::uint32_t>(input);
@@ -536,9 +548,9 @@ namespace
         }
     }
 
-    int invokePrepared(lux_script_call_frame* frame) noexcept
+    int invokePrepared(void* invocation_context, lux_script_call_frame* frame) noexcept
     {
-        auto& prepared = *static_cast<PreparedCall*>(frame->user_context);
+        auto& prepared = *static_cast<PreparedCall*>(invocation_context);
         auto& object = *prepared.object;
         auto& state = *object.owner;
         if (prepared.symbol == kBegin)
@@ -1030,7 +1042,7 @@ namespace
 
         void stablePoint()
         {
-            if (!system->executeStablePoint())
+            if (!executeRuntimeStablePoint(*system))
                 throw std::runtime_error("benchmark stable point failed");
         }
 
@@ -1057,7 +1069,7 @@ namespace
                     if (!writer.record(payload))
                         throw std::runtime_error("benchmark Event record failed");
                 }
-                if (deliverEndpoint(event_bridge) == 0U)
+                if (deliverRuntimeEvent(*system, event_bridge) == 0U)
                     throw std::runtime_error("benchmark Event delivery failed");
                 return;
             }
@@ -1068,7 +1080,7 @@ namespace
                 if (!writer.record(entities[*target], payload))
                     throw std::runtime_error("benchmark targeted Event record failed");
             }
-            if (deliverEndpoint(target_event_bridge) == 0U)
+            if (deliverRuntimeEvent(*system, target_event_bridge) == 0U)
                 throw std::runtime_error("benchmark targeted Event delivery failed");
         }
 
@@ -1076,7 +1088,7 @@ namespace
         {
             if (!multi_flight_target)
             {
-                static_cast<void>(dispatchHookForTest(hook));
+                static_cast<void>(dispatchRuntimeHook(*system, hook));
                 return;
             }
             // One entity/mount, K independent Event callback invocations. No invented multi-mount ownership.
@@ -1085,7 +1097,7 @@ namespace
                 for (std::size_t index{}; index < waiter_count; ++index)
                     if (!writer.record(0)) throw std::runtime_error("Event callback admission record failed");
             }
-            if (deliverEndpoint(event_bridge) != waiter_count)
+            if (deliverRuntimeEvent(*system, event_bridge) != waiter_count)
                 throw std::runtime_error("Event callback admission count mismatch");
         }
 
@@ -1100,7 +1112,7 @@ namespace
                     throw std::runtime_error("benchmark targeted Event batch record failed");
             }
             writer = {};
-            if (deliverEndpoint(target_event_bridge) != count)
+            if (deliverRuntimeEvent(*system, target_event_bridge) != count)
                 throw std::runtime_error("benchmark targeted Event batch delivery failed");
         }
 
@@ -1190,9 +1202,13 @@ namespace
             std::size_t count,
             lux::script::ScriptSymbolId symbol,
             std::size_t resume_budget,
-            lux::script::lua::ELuaExecutionPolicy execution_policy, bool vm_accounting = false
+            bool vm_accounting = false,
+            bool lua_incremental_gc = true,
+            int gc_pause = -1,
+            std::size_t idle_page_budget = 16U * 1024U * 1024U
         )
-            : simulation_description(scriptDescription()), artifact_asset(loadLuaArtifact(artifact_path))
+            : simulation_description(lux::simulation::benchmark_domain::scriptDescription(
+                  0U, symbol == kLuaEventWait)), artifact_asset(loadLuaArtifact(artifact_path))
         {
             auto clock_simulation = Simulation::create(registry, emptyDescription(), empty_system_types);
             if (!clock_simulation)
@@ -1215,6 +1231,9 @@ namespace
                 {
                     throw std::runtime_error("Lua benchmark mount rejected");
                 }
+                if (symbol == kLuaEventWait)
+                    description_builder.back().bindings.push_back({kLuaReadValue,
+                        HookScriptTarget{kSystem, lux::simulation::benchmark_domain::kReadHook}});
             }
             auto built = std::optional{std::move(description_builder)};
             if (!built)
@@ -1228,6 +1247,15 @@ namespace
                 throw std::runtime_error("Lua benchmark EventPoint prepare failed");
             hook_bridge = std::make_unique<ScriptHookEndpoint<void()>>(kSystem, kHook, hook);
             hook_descriptor = hook_bridge->descriptor();
+            hook_descriptors.push_back(hook_descriptor);
+            if (symbol == kLuaEventWait)
+            {
+                if (read_hook.prepare(1U) != EEndpointMutationError::NONE)
+                    throw std::runtime_error("Lua oracle HookPoint prepare failed");
+                read_bridge = std::make_unique<ScriptHookEndpoint<void()>>(
+                    kSystem, lux::simulation::benchmark_domain::kReadHook, read_hook);
+                hook_descriptors.push_back(read_bridge->descriptor());
+            }
             event_bridge = std::make_unique<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>>(
                 kSystem,
                 kEvent,
@@ -1261,11 +1289,14 @@ namespace
                 .ability_catalog_method_capacity = 6U,
                 .prepared_ability_capacity = bounded_count * requirements->ability_methods,
                 .abilities = contributions,
-                .execution_policy = execution_policy,
                 .event_catalog_capacity = 1U,
                 .prepared_event_capacity = bounded_count * requirements->event_sources,
                 .events = std::span{&event_source, 1U},
                 .track_vm_allocations = vm_accounting,
+                .vm = {.idle_page_budget_bytes = idle_page_budget,
+                    .gc_mode = lua_incremental_gc ? lux::script::lua::ELuaGcMode::INCREMENTAL :
+                        lux::script::lua::ELuaGcMode::GENERATIONAL,
+                    .gc_parameters = {-1, -1, -1, gc_pause, -1, -1}},
                 .prepared_ability_blocks = std::array{
                     lux::simulation::script::LuaPreparedBlockClass{
                         requirements->ability_methods,
@@ -1314,7 +1345,7 @@ namespace
                 {this, &resolveArtifact},
                 publications,
                 std::span{&backend_descriptor, 1U},
-                std::span{&hook_descriptor, 1U},
+                hook_descriptors,
                 std::span{&event_descriptor, 1U}
             );
             if (!created)
@@ -1325,10 +1356,94 @@ namespace
             lifecycle_begins = count;
         }
 
+        struct PagePhase final
+        {
+            std::size_t cycle{}, phase{}, active{}, idle{}, live{}, pinned{}, rounding{};
+            std::uint64_t supply{}, release{}, reuse{};
+        };
+        std::unique_ptr<std::array<PagePhase, 16384U>> page_phases;
+        std::size_t page_phase_count{}, page_phase_dropped{};
+        void capturePagePhase(std::size_t cycle, std::size_t phase)
+        {
+            if (!page_phases) return;
+            if (page_phase_count == page_phases->size())
+            {
+                ++page_phase_dropped;
+                return;
+            }
+            const auto m = backend->stats().vm_allocations;
+            (*page_phases)[page_phase_count++] = {cycle, phase, m.active_page_backing_bytes,
+                m.idle_page_backing_bytes, m.live_bytes, m.pinned_free_slot_bytes, m.class_rounding_bytes,
+                m.page_allocations, m.page_frees, m.page_reuses};
+        }
+        void printPagePhases() const
+        {
+            if (!page_phases) return;
+            for (std::size_t i{}; i < page_phase_count; ++i)
+            {
+                const auto& p = (*page_phases)[i];
+                std::printf("PAGE_PHASE,cycle=%zu,phase=%zu,active=%zu,idle=%zu,live=%zu,pinned=%zu,rounding=%zu,"
+                    "supply=%llu,release=%llu,reuse=%llu,gc_state=null,gc_debt=null,gc_cycle=null\n",
+                    p.cycle, p.phase, p.active, p.idle, p.live, p.pinned, p.rounding, p.supply, p.release, p.reuse);
+            }
+            std::printf("PAGE_PHASE_END,count=%zu,dropped=%zu\n", page_phase_count, page_phase_dropped);
+        }
+
+        void memorySnapshot(const char* phase) const
+        {
+            const auto stats = backend->stats();
+            const auto& m = stats.vm_allocations;
+            if (!m.enabled) return;
+            std::printf("VM_GCPARAM,phase=%s,minor=%d,major_minor=%d,minor_major=%d,"
+                "pause=%d,step_mul=%d,step_size=%d\n",
+                phase, m.gc_parameters[0], m.gc_parameters[1], m.gc_parameters[2], m.gc_parameters[3],
+                m.gc_parameters[4], m.gc_parameters[5]);
+            for (const auto& c : m.classes)
+            {
+                if (!c.payload) continue;
+                std::printf("VM_CLASS,phase=%s,payload=%zu,stride=%zu,capacity=%zu,tail=%zu,active=%zu,idle=%zu,"
+                    "requests=%llu,frees=%llu,bytes=%llu,supply=%llu,same=%llu,cross=%llu,idle_limit=%llu,"
+                    "trim=%llu,shutdown=%llu,fallback=%llu,header_writes=%llu,page_header=%zu,block_header=%zu\n",
+                    phase, c.payload, c.stride, c.capacity, c.tail, c.active_pages, c.idle_pages, c.requests, c.frees,
+                    c.requested_bytes, c.supplied, c.same_reuses, c.cross_reuses, c.idle_limit_releases,
+                    c.trim_releases, c.shutdown_releases, c.fallback, c.header_writes,
+                    m.page_header_bytes, m.block_header_bytes);
+            }
+            std::printf("VM_ROI,phase=%s,alloc=%llu,realloc=%llu,free=%llu,heap_alloc=%llu,heap_free=%llu,"
+                "requested_live=%zu,active=%zu,idle=%zu,pinned_free=%zu,rounding=%zu,metadata=%zu,large=%zu,"
+                "large_requested=%zu,page_alloc=%llu,page_free=%llu,direct_alloc=%llu,direct_free=%llu\n",
+                phase, m.allocations, m.reallocations, m.frees, m.system_allocations, m.system_frees,
+                m.live_bytes, m.active_page_backing_bytes, m.idle_page_backing_bytes, m.pinned_free_slot_bytes,
+                m.class_rounding_bytes, m.metadata_and_header_bytes, m.large_block_backing_bytes,
+                m.large_requested_live_bytes, m.page_allocations, m.page_frees, m.direct_allocations, m.direct_frees);
+        }
+
         ~LuaRuntimeHarness()
         {
             if (system)
                 static_cast<void>(system->shutdown());
+            const auto stats = backend->stats();
+            const auto& memory = stats.vm_allocations;
+            std::printf("VM_FINAL,accounting=%d,alloc=%llu,realloc=%llu,free=%llu,failures=%llu,"
+                "heap_alloc=%llu,heap_free=%llu,slot_reuses=%llu,in_place=%llu,live=%zu,peak_live=%zu,"
+                "idle_page_backing=%zu,peak_idle_page_backing=%zu,threads=%zu,resumes=%zu,released=%zu,"
+                "leaf_available=%d,leaf_observed=%d,leaf=%llu,standard=%llu\n",
+                memory.enabled, memory.allocations, memory.reallocations, memory.frees, memory.failures,
+                memory.system_allocations, memory.system_frees, memory.slot_reuses, memory.in_place,
+                memory.live_bytes, memory.peak_live_bytes, memory.idle_page_backing_bytes,
+                memory.peak_idle_page_backing_bytes,
+                stats.vm_coroutine_creations, stats.vm_coroutine_resumes, stats.vm_coroutine_releases,
+                stats.leaf_yield_available, stats.leaf_statistics_enabled,
+                stats.leaf_return_yields, stats.standard_leaf_yields
+            );
+            if (memory.enabled)
+                std::printf("VM_PAGES,active=%zu,idle=%zu,pinned_free=%zu,rounding=%zu,metadata=%zu,large=%zu,"
+                    "large_requested=%zu,page_alloc=%llu,page_free=%llu,page_reuse=%llu,direct_alloc=%llu,"
+                    "direct_free=%llu,page_fallback=%llu\n",
+                    memory.active_page_backing_bytes, memory.idle_page_backing_bytes, memory.pinned_free_slot_bytes,
+                    memory.class_rounding_bytes, memory.metadata_and_header_bytes, memory.large_block_backing_bytes,
+                    memory.large_requested_live_bytes, memory.page_allocations, memory.page_frees, memory.page_reuses,
+                    memory.direct_allocations, memory.direct_frees, memory.page_fallbacks);
         }
 
         static bool resolveArtifact(
@@ -1348,7 +1463,7 @@ namespace
 
         void dispatch()
         {
-            static_cast<void>(dispatchHookForTest(hook));
+            static_cast<void>(dispatchRuntimeHook(*system, hook));
             ++dispatches;
         }
 
@@ -1360,7 +1475,7 @@ namespace
 
         void stablePoint()
         {
-            if (!system->executeStablePoint())
+            if (!executeRuntimeStablePoint(*system))
                 throw std::runtime_error("Lua benchmark stable point failed");
         }
 
@@ -1371,7 +1486,7 @@ namespace
                 if (!writer.record(payload))
                     throw std::runtime_error("Lua benchmark Event record failed");
             }
-            if (deliverEndpoint(event_bridge) == 0U)
+            if (deliverRuntimeEvent(*system, event_bridge) == 0U)
                 throw std::runtime_error("Lua benchmark Event delivery failed");
         }
 
@@ -1400,6 +1515,9 @@ namespace
         std::optional<lux::task::TaskExecutor> executor;
         std::optional<std::vector<ScriptRuntimeMount>> system_description;
         HookPoint<void()> hook;
+        HookPoint<void()> read_hook;
+        std::unique_ptr<ScriptHookEndpoint<void()>> read_bridge;
+        std::vector<ScriptHookEndpointDescriptor> hook_descriptors;
         HookChannel<SimulationBroadcastRoute, std::int32_t> event;
         std::unique_ptr<ScriptHookEndpoint<void()>> hook_bridge;
         std::unique_ptr<ScriptEventEndpoint<SimulationBroadcastRoute, std::int32_t>> event_bridge;
@@ -1485,8 +1603,8 @@ namespace
             for (auto& value : calls)
             {
                 lux_script_call_frame frame{
-                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, value.begin.synchronous.context};
-                if (value.begin.synchronous.invoke(&frame) != 0)
+                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+                if (value.begin.synchronous.invoke(value.begin.synchronous.context, &frame) != 0)
                     throw std::runtime_error(backend_name + " lifecycle benchmark BeginPlay failed");
                 ++successful;
             }
@@ -1498,8 +1616,8 @@ namespace
             for (auto& value : calls)
             {
                 lux_script_call_frame frame{
-                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, value.tick.synchronous.context};
-                if (value.tick.synchronous.invoke(&frame) != 0)
+                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+                if (value.tick.synchronous.invoke(value.tick.synchronous.context, &frame) != 0)
                     throw std::runtime_error(backend_name + " lifecycle benchmark steady call failed");
                 ++successful;
             }
@@ -1519,8 +1637,8 @@ namespace
             {
                 auto& value = calls[index];
                 lux_script_call_frame frame{
-                    &reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr, value.end.synchronous.context};
-                if (value.end.synchronous.invoke(&frame) != 0)
+                    &reason_slot, 1U, 0U, nullptr, 0U, 0U, nullptr};
+                if (value.end.synchronous.invoke(value.end.synchronous.context, &frame) != 0)
                     throw std::runtime_error(backend_name + " lifecycle benchmark EndPlay failed");
                 descriptor.releaseMethod(descriptor.context, instances[index], value.end);
                 descriptor.releaseMethod(descriptor.context, instances[index], value.tick);
@@ -1558,10 +1676,7 @@ namespace
 #if LUX_BENCHMARK_HAS_LUA
     struct LuaLifecycleFixture final
     {
-        LuaLifecycleFixture(
-            std::size_t capacity,
-            lux::script::lua::ELuaExecutionPolicy execution_policy
-        )
+        explicit LuaLifecycleFixture(std::size_t capacity)
         {
             lux::rdesc::Script description;
             description.module_name = "lux.benchmark.lua-lifecycle";
@@ -1595,7 +1710,6 @@ namespace
                 .continuation_capacity = capacity,
                 .execution_depth_capacity = 8U,
                 .ability_catalog_method_capacity = 1U,
-                .execution_policy = execution_policy
             });
             if (!created_backend)
                 throw std::runtime_error("Lua lifecycle backend creation failed");
@@ -1702,6 +1816,29 @@ namespace
             std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
         result.allocations = g_allocation_count.load(std::memory_order_relaxed);
         return result;
+    }
+
+    void finishRuntimeBenchmark(ScriptSystem& system, const char* scenario)
+    {
+        const auto report = [&](const char* phase) {
+            const auto stats = system.stats();
+            std::printf("INTEGRITY,%s,%s,invocation_errors=%llu,retained_failures=%zu,instances=%zu,continuations=%zu,"
+                "awaitables=%zu,waiters=%zu,queue=%zu,calls=%llu,resumes=%llu\n", scenario, phase,
+                static_cast<unsigned long long>(stats.invocation_failures), system.failures().size(),
+                stats.active_instances, stats.active_continuations, stats.active_awaitables, stats.active_event_waiters,
+                stats.resume_queue_depth,
+                static_cast<unsigned long long>(stats.sync_invocations + stats.step_invocations),
+                static_cast<unsigned long long>(stats.backend_resume_calls));
+            if (stats.invocation_failures != 0U || !system.failures().empty())
+                throw std::runtime_error("benchmark observed a runtime error outside the timing interval");
+            return stats;
+        };
+        static_cast<void>(report("steady"));
+        if (!system.shutdown()) throw std::runtime_error("benchmark shutdown busy or failed");
+        const auto final = report("shutdown");
+        if (final.active_instances != 0U || final.active_continuations != 0U || final.active_awaitables != 0U ||
+            final.active_event_waiters != 0U || final.resume_queue_depth != 0U)
+            throw std::runtime_error("benchmark shutdown did not reclaim execution resources");
     }
 
     void appendRuntimeStats(Row& row, RuntimeHarness& harness)
@@ -1919,7 +2056,7 @@ namespace
         std::uint64_t previous_resumes{};
         const auto step = [&](bool admit) {
             harness.advance(SimulationDuration{16'666'667});
-            if (admit) static_cast<void>(dispatchHookForTest(harness.hook));
+            if (admit) static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
             harness.deliverEvent(31);
             harness.stablePoint();
             const auto stats = harness.system->stats();
@@ -1961,7 +2098,16 @@ namespace
             stats.step_invocations != harness.value_provider.calls ||
             stats.suspensions_admitted != 3U * stats.step_invocations ||
             stats.backend_resume_calls != 3U * stats.step_invocations;
-        if (leaked || missed_work) throw std::runtime_error("sequence completion/copy/lifetime counts disagree");
+        if (leaked || missed_work)
+        {
+            std::fprintf(stderr, "SEQUENCE_FAILURE,calls=%llu,provider=%zu,suspensions=%llu,resumes=%llu,errors=%llu\n",
+                stats.step_invocations, harness.value_provider.calls, stats.suspensions_admitted,
+                stats.backend_resume_calls, stats.invocation_failures
+            );
+            for (const auto& failure : harness.system->failures())
+                std::fprintf(stderr, "SEQUENCE_STATUS,%d\n", failure.status);
+            throw std::runtime_error("sequence completion/copy/lifetime counts disagree");
+        }
     }
 
     void runCppSequence(const Options& options, std::vector<Row>& rows)
@@ -2082,6 +2228,10 @@ namespace
             if (iteration < options.warmups) rows.resize(first);
         }
         lux::simulation::benchmark::event_only_source.reset();
+        std::printf("BUSINESS_ORACLE,cpp-event,instances=%zu,cycles=%zu,completed=%zu,checksum=%zu,"
+            "source=script-payload,outside_timing=1\n", options.size, options.warmups + options.frames,
+            options.size * (options.warmups + options.frames),
+            31U * options.size * (options.warmups + options.frames));
     }
 
     void runHookChannelMicro(const Options& options, std::vector<Row>& rows)
@@ -2143,8 +2293,8 @@ namespace
         std::uint64_t direct_checksum{};
         std::uint64_t bound_checksum{};
         const lux::script::BoundScriptCall bound{
-            [](lux_script_call_frame* frame) noexcept {
-                ++*static_cast<std::uint64_t*>(frame->user_context);
+            [](void* invocation_context, lux_script_call_frame* frame) noexcept {
+                ++*static_cast<std::uint64_t*>(invocation_context);
                 return 0;
             },
             &bound_checksum
@@ -2156,7 +2306,7 @@ namespace
             throw std::runtime_error("benchmark direct HookPoint rejected");
         }
 #if LUX_BENCHMARK_HAS_LUA
-        LuaLifecycleFixture lua{1U, options.lua_policy};
+        LuaLifecycleFixture lua{1U};
         auto lua_descriptor = lua.backend->descriptor();
         ScriptBackendInstance lua_instance;
         if (lua_descriptor.createInstance(
@@ -2188,8 +2338,8 @@ namespace
         const auto lua_begin = lua_begin_method.synchronous;
         const auto lua_tick = lua_tick_method.synchronous;
         lux_script_call_frame lua_begin_frame{
-            nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, lua_begin.context};
-        if (lua_begin.invoke(&lua_begin_frame) != 0)
+            nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
+        if (lua_begin.invoke(lua_begin.context, &lua_begin_frame) != 0)
             throw std::runtime_error("Lua micro BeginPlay failed");
         std::uint64_t lua_checksum{};
 #endif
@@ -2206,9 +2356,9 @@ namespace
                 return Row{.calls = options.size, .ability_calls = options.size, .checksum = direct_checksum};
             }));
             rows.push_back(measureRow("micro-sync", "bound-script-call", options.size, sample, [&] {
-                lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, bound.context};
+                lux_script_call_frame frame{nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
                 for (std::size_t index{}; index < options.size; ++index)
-                    static_cast<void>(bound.invoke(&frame));
+                    static_cast<void>(bound.invoke(bound.context, &frame));
                 return Row{.calls = options.size, .checksum = bound_checksum};
             }));
             rows.push_back(measureRow("micro-sync", "hook-point", options.size, sample, [&] {
@@ -2219,10 +2369,10 @@ namespace
 #if LUX_BENCHMARK_HAS_LUA
             rows.push_back(measureRow("micro-sync", "lua-prepared-call", options.size, sample, [&] {
                 lux_script_call_frame frame{
-                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr, lua_tick.context};
+                    nullptr, 0U, 0U, nullptr, 0U, 0U, nullptr};
                 for (std::size_t index{}; index < options.size; ++index)
                 {
-                    if (lua_tick.invoke(&frame) != 0)
+                    if (lua_tick.invoke(lua_tick.context, &frame) != 0)
                         throw std::runtime_error("Lua micro invocation failed");
                     ++lua_checksum;
                 }
@@ -2249,7 +2399,7 @@ namespace
         RuntimeHarness harness{options.size, mode, options.resume_budget};
         for (std::size_t frame{}; frame < options.warmups; ++frame)
         {
-            static_cast<void>(dispatchHookForTest(harness.hook));
+            static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
             if (mode == EScenarioMode::MIXED)
                 harness.completePending(harness.backend_state.completions.size());
             harness.advance(std::chrono::milliseconds{16});
@@ -2259,7 +2409,7 @@ namespace
         for (std::size_t frame{}; frame < options.frames; ++frame)
         {
             rows.push_back(measureRow(std::string{scenario}, "synthetic-object", options.size, frame, [&] {
-                static_cast<void>(dispatchHookForTest(harness.hook));
+                static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
                 if (mode == EScenarioMode::MIXED)
                     harness.completePending(harness.backend_state.completions.size());
                 harness.advance(std::chrono::milliseconds{16});
@@ -2282,7 +2432,7 @@ namespace
     {
         RuntimeHarness harness{options.size, EScenarioMode::EXTERNAL_AWAIT, options.resume_budget};
         rows.push_back(measureRow("micro-async-suspend", "synthetic-continuation", options.size, 0U, [&] {
-            static_cast<void>(dispatchHookForTest(harness.hook));
+            static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
             Row row;
             appendRuntimeStats(row, harness);
             return row;
@@ -2325,7 +2475,7 @@ namespace
 
         RuntimeHarness eager{options.size, EScenarioMode::EAGER_AWAIT, options.resume_budget};
         rows.push_back(measureRow("micro-async-eager-complete", "stable-point-tail-queue", options.size, 0U, [&] {
-            static_cast<void>(dispatchHookForTest(eager.hook));
+            static_cast<void>(dispatchRuntimeHook(*eager.system, eager.hook));
             if (eager.backend_state.resumes != 0U)
                 throw std::runtime_error("eager benchmark completion resumed recursively");
             eager.stablePoint();
@@ -2365,7 +2515,7 @@ namespace
             true
         );
 #if LUX_BENCHMARK_HAS_LUA
-        LuaLifecycleFixture lua{options.size, options.lua_policy};
+        LuaLifecycleFixture lua{options.size};
         runBackendLifecycle(
             options,
             rows,
@@ -2394,7 +2544,7 @@ namespace
     void runSuspendedIdle(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EXTERNAL_AWAIT, options.resume_budget};
-        static_cast<void>(dispatchHookForTest(harness.hook));
+        static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
         for (std::size_t frame{}; frame < options.warmups; ++frame)
             harness.stablePoint();
         for (std::size_t frame{}; frame < options.frames; ++frame)
@@ -2455,6 +2605,8 @@ namespace
                 appendRuntimeStats(row, cancellation);
                 return row;
             }));
+            finishRuntimeBenchmark(*harness.system, "micro-event");
+            finishRuntimeBenchmark(*cancellation.system, "micro-event-cancel");
             if (iteration < options.warmups)
                 rows.resize(first_row);
             else
@@ -2466,7 +2618,7 @@ namespace
     void runEventIdle(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.resume_budget};
-        static_cast<void>(dispatchHookForTest(harness.hook));
+        static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
         const auto before = harness.system->stats();
         for (std::size_t frame{}; frame < options.warmups; ++frame)
             harness.stablePoint();
@@ -2491,7 +2643,7 @@ namespace
     void runEventFanout(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.resume_budget};
-        static_cast<void>(dispatchHookForTest(harness.hook));
+        static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
         rows.push_back(measureRow("scene-event-fanout-delivery", "script-event-waiter", options.size, 0U, [&] {
             harness.deliverEvent(23);
             Row row;
@@ -2514,12 +2666,13 @@ namespace
         const auto expected_frames = (options.size + options.resume_budget - 1U) / options.resume_budget;
         if (frame != expected_frames || harness.backend_state.resumes != options.size)
             throw std::runtime_error("Event fan-out benchmark violated the resume budget");
+        finishRuntimeBenchmark(*harness.system, "event-fanout");
     }
 
     void runEventSparse(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EVENT_WAIT, options.resume_budget, true};
-        static_cast<void>(dispatchHookForTest(harness.hook));
+        static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
         rows.push_back(measureRow("scene-event-sparse-delivery", "targeted-event-waiter", options.size, 0U, [&] {
             harness.deliverTargetedBatch(options.ready_count, 29);
             Row row;
@@ -2541,7 +2694,7 @@ namespace
     void runResumeStorm(const Options& options, std::vector<Row>& rows)
     {
         RuntimeHarness harness{options.size, EScenarioMode::EXTERNAL_AWAIT, options.resume_budget};
-        static_cast<void>(dispatchHookForTest(harness.hook));
+        static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
         harness.completePending(options.ready_count);
         std::size_t frame{};
         while (harness.system->stats().resume_queue_depth != 0U ||
@@ -2598,7 +2751,7 @@ namespace
     {
         const bool next_step = mode == EScenarioMode::NEXT_STEP;
         RuntimeHarness harness{options.size, mode, options.resume_budget};
-        static_cast<void>(dispatchHookForTest(harness.hook));
+        static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
         rows.push_back(measureRow(
             next_step ? "scheduler-next-step-idle" : "scheduler-simulation-delay-idle",
             "bounded-heap",
@@ -2639,7 +2792,7 @@ namespace
     {
         RuntimeHarness harness{options.size, EScenarioMode::REAL_DELAY, options.resume_budget};
         rows.push_back(measureRow("integration-real-delay-start", "fake-monotonic-provider", options.size, 0U, [&] {
-            static_cast<void>(dispatchHookForTest(harness.hook));
+            static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
             if (harness.backend_state.real_delay_starts != options.size)
                 throw std::runtime_error("real-delay benchmark start count mismatch");
             Row row;
@@ -2691,7 +2844,7 @@ namespace
             options.size,
             symbol,
             options.resume_budget,
-            options.lua_policy, options.vm_accounting
+            options.vm_accounting, options.lua_incremental_gc, options.gc_pause, options.idle_page_budget
         };
         for (std::size_t frame{}; frame < options.warmups; ++frame)
         {
@@ -2712,6 +2865,7 @@ namespace
             throw std::runtime_error("Lua synchronous benchmark observation mismatch");
         if ((symbol == kTick || symbol == kLuaQuery) && harness.value_provider.calls == 0U)
             throw std::runtime_error("Lua Ability benchmark did not call the prepared provider");
+        finishRuntimeBenchmark(*harness.system, "lua-sync");
     }
 
     void runLuaCoroutineFrames(const Options& options, std::vector<Row>& rows)
@@ -2721,7 +2875,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.lua_policy, options.vm_accounting
+            options.vm_accounting, options.lua_incremental_gc, options.gc_pause, options.idle_page_budget
         };
         for (std::size_t frame{}; frame < options.warmups; ++frame)
         {
@@ -2742,6 +2896,7 @@ namespace
         }
         if (harness.system->activeInstanceCount() != options.size)
             throw std::runtime_error("Lua coroutine scene benchmark lost instances");
+        finishRuntimeBenchmark(*harness.system, "lua-coroutine");
     }
 
     void runLuaCoroutineMicro(const Options& options, std::vector<Row>& rows)
@@ -2751,7 +2906,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.lua_policy, options.vm_accounting
+            options.vm_accounting, options.lua_incremental_gc, options.gc_pause, options.idle_page_budget
         };
         rows.push_back(measureRow("micro-lua-coroutine-start", "lua-coroutine", options.size, 0U, [&] {
             harness.dispatch();
@@ -2781,7 +2936,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.lua_policy, options.vm_accounting
+            options.vm_accounting, options.lua_incremental_gc, options.gc_pause, options.idle_page_budget
         };
         harness.dispatch();
         for (std::size_t frame{}; frame < options.warmups; ++frame)
@@ -2806,7 +2961,7 @@ namespace
             options.size,
             kLuaAsync,
             options.resume_budget,
-            options.lua_policy, options.vm_accounting
+            options.vm_accounting, options.lua_incremental_gc, options.gc_pause, options.idle_page_budget
         };
         harness.dispatch();
         std::size_t frame{};
@@ -2832,14 +2987,21 @@ namespace
             options.size,
             kLuaEventWait,
             options.size,
-            options.lua_policy, options.vm_accounting
+            options.vm_accounting, options.lua_incremental_gc, options.gc_pause, options.idle_page_budget
         };
+        if (options.vm_accounting) harness.page_phases =
+            std::make_unique<std::array<LuaRuntimeHarness::PagePhase, 16384U>>();
         const auto execute_cycle = [&](std::size_t frame, bool record) {
             const auto operation = [&] {
+                const auto cycle = frame + (record ? options.warmups : 0U);
+                harness.capturePagePhase(cycle, 0U);
                 harness.dispatch();
+                harness.capturePagePhase(cycle, 1U);
                 harness.deliverEvent(31);
+                harness.capturePagePhase(cycle, 2U);
                 harness.advance(SimulationDuration{0});
                 harness.stablePoint();
+                harness.capturePagePhase(cycle, 3U);
                 Row row;
                 appendLuaStats(row, harness);
                 row.events = 1U;
@@ -2864,10 +3026,44 @@ namespace
         for (std::size_t frame{}; frame < options.warmups; ++frame)
             execute_cycle(frame, false);
         const auto frames = micro ? std::size_t{1U} : options.frames;
+        if (options.vm_accounting) harness.memorySnapshot("warm");
         for (std::size_t frame{}; frame < frames; ++frame)
             execute_cycle(frame, true);
+        if (options.vm_accounting) harness.memorySnapshot("end");
         if (harness.system->activeContinuationCount() != 0U || harness.system->stats().active_event_waiters != 0U)
             throw std::runtime_error("Lua Event benchmark left pending runtime state");
+        const auto cycles = static_cast<std::uint64_t>(options.warmups) + frames;
+        const auto completed = cycles * options.size;
+        const auto stats = harness.system->stats();
+        const auto vm = harness.backend->stats();
+        const bool invalid_work = stats.step_invocations != completed || stats.backend_resume_calls != completed ||
+            stats.suspensions_admitted != completed || stats.active_awaitables != 0U ||
+            stats.resume_queue_depth != 0U || vm.vm_coroutine_creations != completed ||
+            vm.vm_coroutine_releases != completed;
+        if (invalid_work) throw std::runtime_error("Lua Event benchmark work count mismatch");
+        const auto expected = 1U + cycles * 31U;
+        if (expected > static_cast<std::uint64_t>((std::numeric_limits<std::int32_t>::max)()))
+            throw std::runtime_error("Lua Event oracle exceeds its declared i32 range");
+        std::vector<std::int32_t> values(options.size, -1);
+        harness.value_provider.oracle_values = values;
+        dispatchRuntimeHook(*harness.system, harness.read_hook);
+        harness.value_provider.oracle_values = {};
+        if (harness.value_provider.oracle_count != options.size)
+            throw std::runtime_error("Lua Event oracle did not visit every instance exactly once");
+        std::uint64_t checksum{};
+        for (std::size_t index{}; index < values.size(); ++index)
+        {
+            if (values[index] != expected)
+                throw std::runtime_error("Lua Event instance value mismatch at " + std::to_string(index));
+            checksum += static_cast<std::uint32_t>(values[index]);
+        }
+        std::printf("BUSINESS_ORACLE,lua-event,instances=%zu,cycles=%llu,completed=%llu,per_instance=%llu,"
+            "checksum=%llu,source=script-readback,outside_timing=1\n", options.size,
+            static_cast<unsigned long long>(cycles), static_cast<unsigned long long>(completed),
+            static_cast<unsigned long long>(expected), static_cast<unsigned long long>(checksum));
+        finishRuntimeBenchmark(*harness.system, "lua-event");
+        harness.memorySnapshot("shutdown");
+        harness.printPagePhases();
     }
 
     void runLuaChurn(const Options& options, std::vector<Row>& rows)
@@ -2877,7 +3073,7 @@ namespace
             options.size,
             kLuaPlain,
             options.resume_budget,
-            options.lua_policy, options.vm_accounting
+            options.vm_accounting, options.lua_incremental_gc, options.gc_pause, options.idle_page_budget
         };
         const auto churn_count = (std::max)(std::size_t{1U}, (std::min)(std::size_t{100U}, options.size / 10U));
         for (std::size_t frame{}; frame < options.warmups; ++frame)
@@ -2916,7 +3112,7 @@ namespace
         for (std::size_t frame{}; frame < options.warmups + options.frames; ++frame)
         {
             auto row = measureRow("scene-cpp-update-heavy", "cpp-static", options.size, frame, [&] {
-                static_cast<void>(dispatchHookForTest(harness.hook));
+                static_cast<void>(dispatchRuntimeHook(*harness.system, harness.hook));
                 harness.advance(std::chrono::milliseconds{16});
                 harness.stablePoint();
                 Row result;
@@ -2930,7 +3126,8 @@ namespace
                 rows.push_back(std::move(row));
             }
         }
-        if (!harness.system->shutdown() || lux::simulation::benchmark::cpp_update_checksum !=
+        finishRuntimeBenchmark(*harness.system, "cpp-update");
+        if (lux::simulation::benchmark::cpp_update_checksum !=
             options.size * (options.warmups + options.frames)) throw std::runtime_error("C++ update observation");
         if (!rows.empty()) rows.back().checksum = lux::simulation::benchmark::cpp_update_checksum;
     }
@@ -2949,7 +3146,7 @@ namespace
                 return Row{.active_instances = options.size, .lifecycle_begins = options.size};
             }));
             rows.push_back(measureRow(name + "-invoke", name, options.size, cycle, [&] {
-                static_cast<void>(dispatchHookForTest(harness->hook));
+                static_cast<void>(dispatchRuntimeHook(*harness->system, harness->hook));
                 harness->advance(SimulationDuration{1});
                 harness->stablePoint();
                 return Row{.active_instances = options.size, .calls = options.size};
@@ -3193,17 +3390,47 @@ namespace
             simulation->scriptEventEndpoints()
         );
         if (!runtime || !runtime->prepare()) throw std::runtime_error("region Script preparation");
-        auto connection = simulation->bindHookCallbacks({&*runtime,
-            [](void* value, const SimulationClockSnapshot&, bool stable) noexcept {
-                auto& script = *static_cast<ScriptSystem*>(value);
-                if (stable) script.beginStableAdmission();
-                return static_cast<bool>(script.processLifecycle());
+        struct HookContext final
+        {
+            ScriptSystem& system;
+            std::optional<ScriptSystem::ExecutionRegion> region;
+        } hook_context{*runtime, {}};
+        auto connection = simulation->bindHookCallbacks({&hook_context,
+            [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+                auto& host = *static_cast<HookContext*>(context);
+                if (host.system.isShutdown()) return true;
+                if (stable) host.system.beginStableAdmission();
+                const auto lifecycle = host.system.processLifecycle();
+                if (!lifecycle && lifecycle.error() != EScriptSystemError::INVOCATION_FAILURE) return false;
+                if (host.system.isShutdown()) return true;
+                auto region = host.system.beginExecutionRegion();
+                if (!region) return false;
+                host.region.emplace(std::move(*region));
+                return true;
             },
-            [](void* value, const SimulationClockSnapshot&, bool stable) noexcept {
-                return !stable || static_cast<bool>(static_cast<ScriptSystem*>(value)->executeStablePoint());
+            [](void* context, const SimulationClockSnapshot&, bool stable) noexcept {
+                auto& host = *static_cast<HookContext*>(context);
+                if (!host.region) return host.system.isShutdown();
+                const bool resumed = !stable || static_cast<bool>(host.system.executeStablePoint());
+                if (!host.region->finish()) return false;
+                host.region.reset();
+                return resumed;
             },
-            [](void* value, const SimulationClockSnapshot&) noexcept {
-                return static_cast<bool>(static_cast<ScriptSystem*>(value)->processLifecycle());
+            [](void* context, const SimulationClockSnapshot&) noexcept {
+                auto& system = static_cast<HookContext*>(context)->system;
+                if (system.isShutdown()) return true;
+                const auto result = system.processLifecycle();
+                return result || result.error() == EScriptSystemError::INVOCATION_FAILURE;
+            },
+            [](void* context, const SimulationClockSnapshot&) noexcept {
+                auto& host = *static_cast<HookContext*>(context);
+                if (host.region)
+                {
+                    if (!host.region->finish()) std::terminate();
+                    host.region.reset();
+                }
+                if (!host.system.isShutdown())
+                    static_cast<void>(host.system.processLifecycle(EScriptLifecycleAdmission::RETIRE_ONLY));
             }});
         if (!connection) throw std::runtime_error("region bind");
         Row setup;
@@ -3439,14 +3666,18 @@ int main(int argc, char** argv)
         else if (options->group == "scene-lua-sequence")
         {
             LuaRuntimeHarness harness{options->lua_artifact, options->size, kLuaSequence,
-                options->resume_budget, options->lua_policy, options->vm_accounting};
+                options->resume_budget, options->vm_accounting, options->lua_incremental_gc,
+                options->gc_pause, options->idle_page_budget
+            };
             runSequenceFrames(*options, rows, harness, "scene-lua-sequence");
         }
         else if (options->group == "scene-lua-population")
         {
             runPopulationCycles(*options, rows, "lua-population", [&] {
                 return std::make_unique<LuaRuntimeHarness>(options->lua_artifact, options->size, kLuaPlain,
-                    options->resume_budget, options->lua_policy, options->vm_accounting);
+                    options->resume_budget, options->vm_accounting, options->lua_incremental_gc,
+                    options->gc_pause, options->idle_page_budget
+                );
             });
         }
         else if (options->group == "scene-lua-event")

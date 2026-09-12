@@ -1,0 +1,191 @@
+{
+  "memory": [
+    {
+      "label": "s0-jit",
+      "source": "aabbabbca5a02b535a608e8d43594fe448a48cdf",
+      "measured_cycles": 19990000,
+      "allocations_per_cycle": 2.0,
+      "bytes_requested_per_cycle": 480.0,
+      "reallocation_delta": 0,
+      "process_peaks": {
+        "PeakWorkingSetSize": 84140032,
+        "WorkingSetSize": 84049920,
+        "PagefileUsage": 85504000,
+        "PeakPagefileUsage": 85766144,
+        "PrivateUsage": 85504000
+      },
+      "vm_allocator_failures": null,
+      "final_live_bytes": null,
+      "scope": "Tracker installed after VM construction; last row before oracle/shutdown; process peaks include dependency closure"
+    },
+    {
+      "label": "corrected-jit",
+      "source": "c72d88ce4c17a5f81f85e278610a3f987d4b828d",
+      "measured_cycles": 19990000,
+      "allocations_per_cycle": 2.0,
+      "bytes_requested_per_cycle": 480.0,
+      "reallocation_delta": 0,
+      "process_peaks": {
+        "PeakWorkingSetSize": 85082112,
+        "WorkingSetSize": 84844544,
+        "PagefileUsage": 86077440,
+        "PeakPagefileUsage": 86208512,
+        "PrivateUsage": 86077440
+      },
+      "vm_allocator_failures": null,
+      "final_live_bytes": null,
+      "scope": "Tracker installed after VM construction; last row before oracle/shutdown; process peaks include dependency closure"
+    },
+    {
+      "label": "s0-lua54",
+      "source": "aabbabbca5a02b535a608e8d43594fe448a48cdf",
+      "measured_cycles": 19990000,
+      "allocations_per_cycle": 5.0,
+      "bytes_requested_per_cycle": 1120.0,
+      "reallocation_delta": 0,
+      "process_peaks": {
+        "PeakWorkingSetSize": 83943424,
+        "WorkingSetSize": 82063360,
+        "PagefileUsage": 84344832,
+        "PeakPagefileUsage": 86609920,
+        "PrivateUsage": 84344832
+      },
+      "vm_allocator_failures": null,
+      "final_live_bytes": null,
+      "scope": "Tracker installed after VM construction; last row before oracle/shutdown; process peaks include dependency closure"
+    },
+    {
+      "label": "corrected-lua54",
+      "source": "c72d88ce4c17a5f81f85e278610a3f987d4b828d",
+      "measured_cycles": 19990000,
+      "allocations_per_cycle": 5.0,
+      "bytes_requested_per_cycle": 1120.0,
+      "reallocation_delta": 0,
+      "process_peaks": {
+        "PeakWorkingSetSize": 86908928,
+        "WorkingSetSize": 86798336,
+        "PagefileUsage": 90959872,
+        "PeakPagefileUsage": 91115520,
+        "PrivateUsage": 90959872
+      },
+      "vm_allocator_failures": null,
+      "final_live_bytes": null,
+      "scope": "Tracker installed after VM construction; last row before oracle/shutdown; process peaks include dependency closure"
+    },
+    {
+      "label": "final-lua55",
+      "source": "55dcb3fa85a9a2b7dcc87b178dd9ff76ba75c644",
+      "measured_cycles": 19990000,
+      "allocations_per_cycle": 5.0,
+      "bytes_requested_per_cycle": 1128.0,
+      "reallocation_delta": 0,
+      "process_peaks": {
+        "PeakWorkingSetSize": 103653376,
+        "WorkingSetSize": 103370752,
+        "PagefileUsage": 109371392,
+        "PeakPagefileUsage": 109555712,
+        "PrivateUsage": 109371392
+      },
+      "vm_allocator_failures": null,
+      "final_live_bytes": null,
+      "scope": "Tracker installed after VM construction; last row before oracle/shutdown; process peaks include dependency closure"
+    }
+  ],
+  "profile": {
+    "filtered_cpu_seconds": 56.680456,
+    "modules": [
+      {
+        "Module": "lux_lua55.dll",
+        "CPU Time": "19.549381",
+        "CPU Time:Effective Time": "19.549381",
+        "CPU Time:Spin Time": "0.0",
+        "CPU Time:Overhead Time": "0.0",
+        "Module Path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-lua55-s0-s1-20260909\\images\\final-lua55\\d\\lux_lua55.dll",
+        "percent_of_filtered_cpu": 34.49051468463839
+      },
+      {
+        "Module": "VCRUNTIME140.dll",
+        "CPU Time": "15.055385",
+        "CPU Time:Effective Time": "15.055385",
+        "CPU Time:Spin Time": "0.0",
+        "CPU Time:Overhead Time": "0.0",
+        "Module Path": "C:\\WINDOWS\\SYSTEM32\\VCRUNTIME140.dll",
+        "percent_of_filtered_cpu": 26.56186287562683
+      },
+      {
+        "Module": "lux_engine_simulation_script.dll",
+        "CPU Time": "10.039721",
+        "CPU Time:Effective Time": "10.039721",
+        "CPU Time:Spin Time": "0.0",
+        "CPU Time:Overhead Time": "0.0",
+        "Module Path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-lua55-s0-s1-20260909\\images\\final-lua55\\d\\lux_engine_simulation_script.dll",
+        "percent_of_filtered_cpu": 17.712844441477323
+      },
+      {
+        "Module": "ucrtbase.dll",
+        "CPU Time": "9.165852",
+        "CPU Time:Effective Time": "9.150527",
+        "CPU Time:Spin Time": "0.015325",
+        "CPU Time:Overhead Time": "0.0",
+        "Module Path": "C:\\WINDOWS\\System32\\ucrtbase.dll",
+        "percent_of_filtered_cpu": 16.17109784720151
+      },
+      {
+        "Module": "lux_engine_simulation_script_lua.dll",
+        "CPU Time": "2.488814",
+        "CPU Time:Effective Time": "2.488814",
+        "CPU Time:Spin Time": "0.0",
+        "CPU Time:Overhead Time": "0.0",
+        "Module Path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-lua55-s0-s1-20260909\\images\\final-lua55\\d\\lux_engine_simulation_script_lua.dll",
+        "percent_of_filtered_cpu": 4.3909562054334925
+      },
+      {
+        "Module": "lux_engine_function_script_lua.dll",
+        "CPU Time": "0.190824",
+        "CPU Time:Effective Time": "0.190824",
+        "CPU Time:Spin Time": "0.0",
+        "CPU Time:Overhead Time": "0.0",
+        "Module Path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-lua55-s0-s1-20260909\\images\\final-lua55\\d\\lux_engine_function_script_lua.dll",
+        "percent_of_filtered_cpu": 0.3366663105180382
+      },
+      {
+        "Module": "script_runtime_benchmark.exe",
+        "CPU Time": "0.161037",
+        "CPU Time:Effective Time": "0.161037",
+        "CPU Time:Spin Time": "0.0",
+        "CPU Time:Overhead Time": "0.0",
+        "Module Path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\script-lua55-s0-s1-20260909\\images\\final-lua55\\d\\script_runtime_benchmark.exe",
+        "percent_of_filtered_cpu": 0.28411380458901037
+      },
+      {
+        "Module": "MSVCP140.dll",
+        "CPU Time": "0.029442",
+        "CPU Time:Effective Time": "0.014775",
+        "CPU Time:Spin Time": "0.014667",
+        "CPU Time:Overhead Time": "0.0",
+        "Module Path": "C:\\WINDOWS\\SYSTEM32\\MSVCP140.dll",
+        "percent_of_filtered_cpu": 0.05194383051540728
+      }
+    ],
+    "crt_rva": "0x1d6d0",
+    "identification": "Internal longjmp restoration; exported longjmp at 0x19b50 jumps here",
+    "evidence": [
+      "vcruntime-exports.txt",
+      "vcruntime-longjmp-export.txt",
+      "vcruntime-setjmp-disassembly.txt",
+      "lua55-imports.txt",
+      "lua55-protected-disassembly.txt",
+      "top-down.csv"
+    ],
+    "PMU": false,
+    "scope": "Whole child lifetime, not previous phase ROI"
+  },
+  "physics_original_empty_exit": {
+    "exit": 1,
+    "cause": null,
+    "reproduced": false,
+    "original_group_complete": false,
+    "repeat_group_complete": true,
+    "debugger_exit": 0
+  }
+}

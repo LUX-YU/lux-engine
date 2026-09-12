@@ -120,6 +120,9 @@ add_executable(
     lua_script_packager_contract_test
     test/lua_script_packager_contract_test.cpp
 )
+if(TARGET script_runtime_benchmark)
+    add_dependencies(script_runtime_benchmark lua_runtime_benchmark_fixture)
+endif()
 target_link_libraries(
     lua_script_packager_contract_test
     PRIVATE

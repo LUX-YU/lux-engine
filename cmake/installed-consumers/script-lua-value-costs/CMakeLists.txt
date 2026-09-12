@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.22)
+project(script_lua_value_cost LANGUAGES CXX)
+find_package(lux-cmake-toolset CONFIG REQUIRED)
+find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_script_lua)
+add_executable(script_lua_value_cost main.cpp)
+target_compile_features(script_lua_value_cost PRIVATE cxx_std_20)
+target_compile_options(script_lua_value_cost PRIVATE /UNDEBUG)
+target_link_libraries(script_lua_value_cost PRIVATE lux::engine::simulation::simulation_script_lua
+    LuxLua55::Runtime)
+target_include_directories(script_lua_value_cost PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+include_component_cmake_scripts(lux::engine::function::script_lua)
+lux_script_lua_values(TARGET script_lua_value_cost SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/CollisionValue.hpp)

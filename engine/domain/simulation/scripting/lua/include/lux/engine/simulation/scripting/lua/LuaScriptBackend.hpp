@@ -1,8 +1,10 @@
 #pragma once
+#include <lux/engine/function/script/lua/LuaAllocation.hpp>
+
+#include <lux/engine/function/script/ScriptEvent.hpp>
 
 #include <lux/engine/function/script/lua/LuaVm.hpp>
 #include <lux/engine/function/script/lua/ScriptAbilityLua.hpp>
-#include <lux/engine/function/script/ScriptEvent.hpp>
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
 #include <lux/engine/simulation/scripting/lua/visibility.h>
 
@@ -31,27 +33,13 @@ namespace lux::simulation::script
         std::size_t alignment{};
     };
 
-    struct LuaRecordMarshaller final
-    {
-        std::uint64_t semantic_type{};
-        std::string canonical_name;
-        std::size_t size{};
-        std::size_t alignment{};
-        void* context{};
-        bool (*push)(
-            void* context,
-            void* lua_state,
-            const void* value
-        ) noexcept{};
-    };
-
     enum class ELuaScriptBindingBackendError : std::uint8_t
     {
         INVALID_CAPACITY,
         INVALID_COMPONENT_CONTRACT,
         DUPLICATE_COMPONENT_NAME,
-        INVALID_RECORD_MARSHALLER,
-        DUPLICATE_RECORD_MARSHALLER,
+        INVALID_VALUE_OPERATION,
+        DUPLICATE_VALUE_OPERATION,
         INVALID_ABILITY_CONTRIBUTION,
         DUPLICATE_ABILITY_CONTRACT,
         DUPLICATE_ABILITY_NAME,
@@ -93,30 +81,17 @@ namespace lux::simulation::script
         std::size_t ability_catalog_method_capacity{};
         std::size_t prepared_ability_capacity{};
         std::span<const LuaComponentBinding> components;
-        std::span<const LuaRecordMarshaller> record_marshallers;
+        std::span<const lux::script::lua::LuaValueOperation> values;
         std::span<const lux::script::lua::ScriptAbilityLuaContribution> abilities;
-        lux::script::lua::ELuaExecutionPolicy execution_policy{
-            lux::script::lua::ELuaExecutionPolicy::DEFAULT
-        };
         std::size_t event_catalog_capacity{1U};
         std::size_t prepared_event_capacity{};
         std::span<const lux::script::ScriptEventSourceDescription> events;
         bool track_vm_allocations{};
+        lux::script::lua::LuaVmConfiguration vm;
         std::span<const LuaPreparedBlockClass> prepared_ability_blocks;
         std::size_t prepared_ability_storage_bytes{};
         std::span<const LuaPreparedBlockClass> prepared_event_blocks;
         std::size_t prepared_event_storage_bytes{};
-    };
-
-    struct LuaVmAllocationStats final
-    {
-        bool enabled{};
-        std::uint64_t allocations{};
-        std::uint64_t reallocations{};
-        std::uint64_t frees{};
-        std::uint64_t failures{};
-        std::uint64_t requested_bytes{};
-        std::uint64_t released_bytes{};
     };
 
     struct LuaScriptBackendStats final
@@ -130,12 +105,15 @@ namespace lux::simulation::script
         std::size_t execution_depth_high_water{};
         std::size_t vm_coroutine_resumes{};
         std::size_t vm_coroutine_releases{};
-        LuaVmAllocationStats vm_allocations;
+        lux::script::lua::LuaAllocationStats vm_allocations;
         std::uint64_t prepared_acquire_steps{};
         std::uint64_t prepared_release_steps{};
-        std::uint64_t wrapper_factory_compilations{};
-        std::uint64_t wrapper_closures_created{};
         std::size_t cached_prototypes{};
+        // VM-wide counters include live and released threads; unavailable when
+        // diagnostics are disabled.
+        bool leaf_yield_available{};
+        bool leaf_statistics_enabled{};
+        std::uint64_t leaf_return_yields{}, standard_leaf_yields{};
     };
 
     class LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC LuaScriptBackend final
@@ -157,12 +135,18 @@ namespace lux::simulation::script
         [[nodiscard]] lux::script::lua::LuaRuntimeInfo runtimeInfo() const noexcept;
         [[nodiscard]] LuaScriptBackendStats stats() const noexcept;
         [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
+        [[nodiscard]] EScriptBackendResult prepareSyncStep(ScriptBackendInstance instance,
+                                                           const lux::rdesc::ScriptFunction& function,
+                                                           const ScriptSyncStepShape& shape,
+                                                           ScriptBackendPreparedMethod& method,
+                                                           PreparedScriptSyncStep& result) noexcept;
+
       private:
-        struct State;
+        struct Impl;
         explicit LuaScriptBackend(
-            std::unique_ptr<State> state
+            std::unique_ptr<Impl> state
         ) noexcept;
-        std::unique_ptr<State> state_;
+        std::unique_ptr<Impl> state_;
         friend struct detail::LuaAbilityProjectionAccess;
     };
-}
+} // namespace lux::simulation::script

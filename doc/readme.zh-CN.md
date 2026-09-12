@@ -90,9 +90,10 @@ ECS extraction 与 `FrameCoordinator` 只依赖 `render_client`；headless
 `zlib1.dll` 和 `zstd.dll`。Android 还要求设置 `VULKAN_SDK`：编译使用其中当前的
 平台中立 Vulkan 头，目标端仍链接 NDK 的 Vulkan loader。
 
-`LUX_SCRIPT_HAS_LUA` 只控制可选 LuaJIT backend。桌面默认开启；Android 在 triplet
-提供目标端 LuaJIT 包之前默认关闭。关闭后，backend-neutral ScriptSystem 与 native
-script backend 仍然存在。
+`LUX_SCRIPT_HAS_LUA` 控制可选 Lua 5.5.1 backend，活动构建不再支持 Lua5.4/LuaJIT。
+唯一依赖为 `LuxLua55::Runtime`，配置见 [Lua55 recipe](../cmake/dependencies/lua55/README.md)。
+桌面默认开启；Android 默认关闭，尚无通过资格的 Lua55 依赖 recipe。
+关闭后 ScriptSystem 与 native backend 仍然存在。
 
 ```powershell
 cmake -S . -B ../build/RelWithDebInfo/lux-engine -G Ninja `

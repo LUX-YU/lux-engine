@@ -56,7 +56,7 @@
                 "build_dir": "{build_root}/Android/{project_name}",
                 "install_dir": "{install_root}/lux-engine",
                 "build_type": "RelWithDebInfo",
-                "prefix_path": "{install_root}/lux-cxx;{install_root}/luajit;{host_install}",
+                "prefix_path": "{install_root}/lux-cxx;{host_install}",
                 "toolchain_file": "{vcpkg_path}/scripts/buildsystems/vcpkg.cmake",
                 "generator": "Ninja",
                 "c_compiler": "",

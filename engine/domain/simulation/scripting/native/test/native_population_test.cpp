@@ -5,6 +5,9 @@
 #include <cstdio>
 #include <string_view>
 
+extern "C" void lux_population_set_destroy_probe(void (*probe)(void*) noexcept, void* context);
+extern "C" void lux_population_fail_start();
+
 namespace
 {
     using namespace lux::simulation::script;
@@ -63,7 +66,7 @@ namespace
             .max_continuation_frame_bytes = zero_coroutines ? 0U : 1024U,
             .continuation_frame_storage_bytes = zero_coroutines ? 0U : 16384U,
             .continuation_frame_storage_alignment = 16U,
-            .storage_populations = populations, .state_storage_bytes = 16384U
+            .storage_populations = populations, .state_storage_bytes = 16384U, .observe_storage = true
         };
         NativeScriptBackend backend{{&modules, &Modules::resolve}, config};
         if (!backend)
@@ -125,13 +128,38 @@ namespace
             }
             assert(backend.stats().active_frames == 3U && backend.stats().heap_frame_allocations == 0U);
             assert(backend.stats().frame_reserved_slots == 3U);
-            const auto occupied = 2U * a.findFunction(3U)->step->frame_size + b.findFunction(3U)->step->frame_size;
+            // All three calls use the actual 128-byte method; the maximum envelope remains reserved.
+            const auto occupied = 3U * a.findFunction(2U)->step->frame_size;
             assert(backend.stats().frame_live_bytes == 384U && backend.stats().frame_occupied_bytes == occupied);
+            assert(backend.stats().active_frame_region_bytes <= backend.stats().frame_storage_bytes);
             ScriptBackendContinuation over_capacity;
             const auto& full_call = calls[0].resumable;
             assert(full_call.invoke(full_call.context, frame, step, over_capacity).state == EScriptStepState::FAILED);
             assert(!over_capacity);
+            struct DestroyProbe final
+            {
+                NativeScriptBackend& backend;
+                const BoundScriptStepCall& call;
+                ScriptStepContext& step;
+                std::size_t count{};
+                static void invoke(void* opaque) noexcept
+                {
+                    auto& self = *static_cast<DestroyProbe*>(opaque);
+                    lux_population_set_destroy_probe(nullptr, nullptr);
+                    ++self.count;
+                    assert(self.backend.stats().active_frames == 3U);
+                    ScriptBackendContinuation nested;
+                    lux_script_call_frame frame{};
+                    const auto result = self.call.invoke(self.call.context, frame, self.step, nested);
+                    assert(result.state == EScriptStepState::FAILED);
+                    assert(!nested && self.backend.stats().active_frames == 3U);
+                }
+            } probe{backend, calls[0].resumable, step};
+            const bool wide_fixture = a.findFunction(3U)->step->frame_size > 128U;
+            if (wide_fixture) lux_population_set_destroy_probe(&DestroyProbe::invoke, &probe);
             for (auto continuation : continuations) continuation.destroy(continuation.state);
+            lux_population_set_destroy_probe(nullptr, nullptr);
+            if (wide_fixture) assert(probe.count == 1U);
             assert(backend.stats().active_frames == 0U);
             assert(backend.stats().frame_live_bytes == 0U && backend.stats().frame_occupied_bytes == 0U);
             const auto& recycled_call = calls[0].resumable;
@@ -147,10 +175,21 @@ namespace
             lux_script_value_slot output{LUX_SCRIPT_VK_UINT32, {}, sizeof(observed),
                 lux::semantic::typeId("lux.u32"), &observed};
             lux_script_call_frame read_frame{};
-            read_frame.user_context = read_method.synchronous.context;
+
             read_frame.return_count = 1U;
             read_frame.returns = &output;
-            assert(read_method.synchronous.invoke(&read_frame) == 0 && observed == 6U);
+            assert(read_method.synchronous.invoke(read_method.synchronous.context, &read_frame) == 0 && observed == 6U);
+            if (wide_fixture)
+            {
+                lux_population_fail_start();
+                ScriptBackendContinuation failed;
+                const auto failed_result = recycled_call.invoke(recycled_call.context, frame, step, failed);
+                assert(failed_result.state == EScriptStepState::FAILED);
+                assert(!failed && backend.stats().active_frames == 0U);
+                const auto read_result = read_method.synchronous.invoke(read_method.synchronous.context, &read_frame);
+                assert(read_result == 0 && observed == 8U);
+                std::puts("NATIVE_FRAME_FAILURE,start_cleanup=1,destroy_reentry_held_capacity=1,once=1");
+            }
             api.releaseMethod(api.context, instances[2], read_method);
             for (std::size_t i{}; i < calls.size(); ++i)
                 api.releaseMethod(api.context, instances[i == 0U ? 2U : 0U], calls[i]);

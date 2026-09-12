@@ -20,10 +20,25 @@ namespace lux::simulation::script
     using ScriptHookLane = void (*)(void *, lux_script_call_frame &) noexcept;
     using ScriptEventLane = void (*)(void *, ecs::Entity, lux_script_call_frame &) noexcept;
 
+    template <class Route, class Payload> class ScriptEventEndpoint;
+
     struct ScriptEventPayloadProjection final
     {
+        using Copy = bool (*)(void*, const lux_script_value_slot&, std::span<std::byte>) noexcept;
+        ScriptEventPayloadProjection() noexcept = default;
+        ScriptEventPayloadProjection(lux::semantic::Layout layout, Copy projection) noexcept
+            : owned_layout(layout), copy(projection) {}
+        [[nodiscard]] bool mayReenter() const noexcept
+        {
+            return non_reentrant_copy_ == nullptr || copy != non_reentrant_copy_;
+        }
         lux::semantic::Layout owned_layout;
-        bool (*copy)(void*, const lux_script_value_slot&, std::span<std::byte>) noexcept{};
+        Copy copy{};
+    private:
+        template <class Route, class Payload> friend class ScriptEventEndpoint;
+        // A callback identity proved by the typed endpoint factory. Replacing the
+        // public copy callback invalidates this fact automatically.
+        Copy non_reentrant_copy_{};
     };
 
     struct ScriptHookEndpointDescriptor final
@@ -203,7 +218,6 @@ namespace lux::simulation::script
                 nullptr,
                 0U,
                 0U,
-                nullptr,
                 nullptr};
             self.lane_(self.lane_context_, frame);
         }
@@ -248,9 +262,21 @@ namespace lux::simulation::script
         {
             constexpr auto route = std::is_same_v<Route, SimulationBroadcastRoute>
                 ? EEventRoute::SIMULATION_BROADCAST : EEventRoute::ENTITY_TARGETED;
+            auto copy = payload_copy_ != nullptr ? &copyPayload<false> : nullptr;
+            constexpr bool is_default_scalar_layout = detail::defaultEventPayloadCopy<Payload>() != nullptr &&
+                lux::semantic::TypeTraits<Payload>::Size == sizeof(Payload);
+            if constexpr (is_default_scalar_layout)
+            {
+                if (payload_copy_ == detail::defaultEventPayloadCopy<Payload>())
+                    copy = &copyPayload<true>;
+            }
+            ScriptEventPayloadProjection projection{detail::eventPayloadLayout<Payload>(), copy};
+            if constexpr (is_default_scalar_layout)
+                if (payload_copy_ == detail::defaultEventPayloadCopy<Payload>())
+                    projection.non_reentrant_copy_ = copy;
             return {system_, id_, route,
                 lux::semantic::makeType<Payload>(lux::semantic::EValuePass::CONST_REF),
-                {detail::eventPayloadLayout<Payload>(), payload_copy_ != nullptr ? &copyPayload : nullptr},
+                projection,
                 this, &connect, &disconnect,
                 &consume,
                 [](void* context) noexcept { return self(context).channel_->failed(); },
@@ -305,7 +331,7 @@ namespace lux::simulation::script
                 for (const auto& occurrence : endpoint.channel_->lane(lane))
                 {
                     auto slot = detail::argumentSlot(occurrence.payload);
-                    lux_script_call_frame frame{&slot, 1U, 0U, nullptr, 0U, 0U, nullptr, nullptr};
+                    lux_script_call_frame frame{&slot, 1U, 0U, nullptr, 0U, 0U, nullptr};
                     if constexpr (std::is_same_v<Route, SimulationBroadcastRoute>)
                         endpoint.lane_(endpoint.lane_context_, ecs::NullEntity, frame);
                     else
@@ -317,14 +343,25 @@ namespace lux::simulation::script
             return calls;
         }
 
+        template <bool DefaultScalar>
         static bool copyPayload(void* context, const lux_script_value_slot& input, std::span<std::byte> output) noexcept
         {
-            const auto& endpoint = self(context);
             using Traits = lux::semantic::TypeTraits<Payload>;
-            const bool invalid = input.data == nullptr || input.kind != Traits::AbiKind ||
-                input.type_id != lux::semantic::typeId(Traits::CanonicalName) || input.size != Traits::Size ||
-                output.size() != Traits::Size || endpoint.payload_copy_ == nullptr;
-            return !invalid && endpoint.payload_copy_(*static_cast<const Payload*>(input.data), output);
+            constexpr auto type = lux::semantic::typeId(Traits::CanonicalName);
+            const bool is_invalid_input = input.data == nullptr || input.kind != Traits::AbiKind ||
+                input.type_id != type || input.size != Traits::Size || output.size() != Traits::Size;
+            if (is_invalid_input)
+                return false;
+            if constexpr (DefaultScalar)
+            {
+                std::memcpy(output.data(), input.data, sizeof(Payload));
+                return true;
+            }
+            else
+            {
+                // The immutable callback was selected when this descriptor was prepared.
+                return self(context).payload_copy_(*static_cast<const Payload*>(input.data), output);
+            }
         }
 
         lux::system::SystemInstanceId system_;

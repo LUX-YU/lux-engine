@@ -189,7 +189,7 @@ foreach(entry IN LISTS installed_text)
         )
     endif()
     if(normalized MATCHES "[/]share[/]lux-engine-function[/]script_lua[/].*config-targets[.]cmake$" AND
-       content MATCHES "LuaJIT::LuaJIT|Lua::Lua")
+       content MATCHES "LuxLua55::Runtime")
         message(FATAL_ERROR
             "Installed script_lua semantic target publicly propagates a concrete Lua VM target: ${entry}"
         )

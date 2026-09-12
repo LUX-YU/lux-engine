@@ -146,7 +146,8 @@ int main()
         simulation->scriptEventEndpoints()
     );
     assert(system && system->prepare());
-    auto connection = bindScriptRuntime(*simulation, *system);
+    ScriptRuntimeHookContext hook_context{*system};
+    auto connection = bindScriptRuntime(*simulation, hook_context);
     assert(connection);
     ActiveProbe->emit_pulse = false;
     assert(simulation->execute(*executor, SimulationDuration{}));

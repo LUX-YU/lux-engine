@@ -43,15 +43,29 @@ namespace lux::simulation::script::detail
         std::int32_t status{};
     };
 
-    struct ScriptEventSourceAccess final
+    class ScriptEventImports final
     {
-        std::uint32_t endpoint{};
-        PreparedResumeType payload;
-        ScriptInstanceScope scope;
+    public:
+        // Immutable incarnation borrow, protected by the same owner region as
+        // prepared methods. Permission is checked by Execution before resolve.
+        [[nodiscard]] const PreparedScriptEventAdmission* resolve(
+            ScriptInstanceId instance, ScriptEventAdmissionHandle handle) const noexcept
+        {
+            const auto local = ScriptRuntimeAccess::matchAdmission(handle, scope_, instance, epoch_, sources_.size());
+            return local ? &sources_[*local] : nullptr;
+        }
+        [[nodiscard]] ecs::Entity target() const noexcept { return target_; }
+    private:
+        friend class ScriptInstances;
+        ScriptEventAdmissionScope scope_;
+        std::uint64_t epoch_{};
+        std::span<const PreparedScriptEventAdmission> sources_;
+        ecs::Entity target_{ecs::NullEntity};
     };
 
     class ScriptInstances final
     {
+        friend class PreparedInvocation;
         struct InvocationState;
     public:
         [[nodiscard]] bool validEntity(ecs::Entity entity) const noexcept;
@@ -62,6 +76,22 @@ namespace lux::simulation::script::detail
         ScriptInstances& operator=(const ScriptInstances&) = delete;
         ScriptInstances(ScriptInstances&&) = delete;
         ScriptInstances& operator=(ScriptInstances&&) = delete;
+
+        // Stable, read-only authority. The owner alone writes InvocationState; every query re-reads it.
+        class AuthorityAccess final
+        {
+        public:
+            AuthorityAccess() = default;
+            [[nodiscard]] bool valid() const noexcept;
+            [[nodiscard]] bool current() const noexcept;
+        private:
+            friend class ScriptInstances;
+            AuthorityAccess(const InvocationState* state, ScriptInstanceId identity) noexcept
+                : state_(state), identity_(identity) {}
+            const InvocationState* state_{};
+            ScriptInstanceId identity_;
+        };
+        [[nodiscard]] AuthorityAccess authorityAccess(ScriptInstanceId identity, std::uint32_t slot) const noexcept;
 
         class Protection final
         {
@@ -81,7 +111,7 @@ namespace lux::simulation::script::detail
             Invocation& operator=(const Invocation&) = delete;
             Invocation(Invocation&& other) noexcept;
             Invocation& operator=(Invocation&&) = delete;
-            ~Invocation() noexcept;
+            ~Invocation() noexcept = default;
             [[nodiscard]] explicit operator bool() const noexcept { return owner_ != nullptr; }
             [[nodiscard]] bool current() const noexcept;
             [[nodiscard]] bool sameIncarnation() const noexcept;
@@ -175,19 +205,23 @@ namespace lux::simulation::script::detail
         void commitBatch(BatchTicket&& ticket, const ScriptBindings& bindings) noexcept;
         [[nodiscard]] lux::cxx::expected<std::optional<Construction>, EScriptSystemError>
         beginConstruction(std::uint32_t slot) noexcept;
+        // Cold publication resolves immutable structure once; the returned record stays at a fixed address.
+        [[nodiscard]] const PreparedInvocation*
+        prepareInvocation(ScriptMethodReference method, bool& resumable) noexcept;
         [[nodiscard]] Invocation invokeAccess(ScriptMethodReference method) noexcept;
         [[nodiscard]] Invocation resumeAccess(ScriptInstanceId instance) noexcept;
+        [[nodiscard]] Invocation resumeAccess(ScriptInstanceId instance, std::uint32_t mount_slot) noexcept;
         [[nodiscard]] ScriptMountView view(std::uint32_t slot) const noexcept;
         [[nodiscard]] std::size_t capacity() const noexcept { return mounts_.size(); }
         [[nodiscard]] std::size_t identityCapacity() const noexcept { return identities_.capacity(); }
         [[nodiscard]] std::optional<std::uint32_t> findMount(ScriptMountId id) const noexcept;
         [[nodiscard]] bool valid(ScriptInstanceId instance) const noexcept;
         [[nodiscard]] bool active(ScriptInstanceId instance) const noexcept;
+        void stopInvocations() noexcept { accepting_invocations_ = false; }
         [[nodiscard]] std::size_t protectedCount() const noexcept { return protection_count_; }
         [[nodiscard]] std::size_t activeCount() const noexcept { return active_count_; }
         [[nodiscard]] lux::script::ScriptSymbolId methodSymbol(std::uint32_t slot) const noexcept;
-        [[nodiscard]] lux::cxx::expected<ScriptEventSourceAccess, EScriptEventWaitError>
-        eventSource(ScriptInstanceId instance, ScriptEventAdmissionHandle handle) const noexcept;
+        [[nodiscard]] ScriptEventImports eventImports(std::uint32_t mount_slot) const noexcept;
 
         [[nodiscard]] LifecycleResult beginPlay(std::uint32_t slot) noexcept;
         void activate(std::uint32_t slot) noexcept;
@@ -220,6 +254,9 @@ namespace lux::simulation::script::detail
             ScriptInstanceId instance;
             ScriptInstanceId retiring_instance;
             EScriptMountState state{EScriptMountState::INACTIVE};
+            bool lifecycle_call{};
+            std::uint64_t retirement_epoch{};
+            const bool* accepting_invocations{};
         };
         struct Mount final
         {
@@ -247,7 +284,6 @@ namespace lux::simulation::script::detail
             bool gameplay_lifetime_started{};
             bool cleanup_claimed{};
             bool end_play_claimed{};
-            std::uint64_t retirement_epoch{};
             EScriptEndPlayReason pending_end_reason{EScriptEndPlayReason::OBJECT_UNMATERIALIZED};
         };
         struct IdentityTag;
@@ -262,18 +298,22 @@ namespace lux::simulation::script::detail
         void discardReservation() noexcept;
         [[nodiscard]] lux::cxx::expected<std::uint32_t, EScriptSystemError>
         claimMethod(Mount& mount, lux::script::ScriptSymbolId symbol) noexcept;
-        [[nodiscard]] int invokeLifecycle(std::uint32_t method, const EScriptEndPlayReason* reason) noexcept;
+        [[nodiscard]] int
+        invokeLifecycle(std::uint32_t slot, std::uint32_t method, const EScriptEndPlayReason* reason) noexcept;
 
         ecs::Registry* registry_{};
         ScriptHostApi host_;
+        bool accepting_invocations_{true};
         IdentityStorage identities_;
         std::vector<Mount> mounts_;
         std::vector<InvocationState> invocation_states_;
         std::vector<ScriptPreparedMethod> methods_;
+        std::vector<PreparedInvocation> prepared_invocations_;
         std::vector<std::pair<std::uint64_t, std::uint32_t>> mount_index_;
         entt::dense_map<ecs::Entity, std::uint32_t> entity_associations_;
         std::uint64_t assembly_configuration_slot_visits_{};
         std::vector<std::uint32_t> changes_;
+        std::size_t changes_first_{}, changes_count_{};
         std::vector<std::uint8_t> changed_;
         std::vector<std::uint64_t> batch_ids_;
         std::vector<ScriptMountPlacement> batch_slots_;
@@ -293,6 +333,34 @@ namespace lux::simulation::script::detail
         bool reservation_active_{};
     };
 
+    // Private, read-only capability. Only Instances can write authority or refresh the fixed record.
+    // Endpoint/ResumeBatch protection covers every borrow through backend return and cleanup.
+    class PreparedInvocation final
+    {
+    public:
+        PreparedInvocation() = default;
+        [[nodiscard]] bool current() const noexcept
+        {
+            return authority_->state == EScriptMountState::ACTIVE && authority_->instance == instance_;
+        }
+        [[nodiscard]] bool sameIncarnation() const noexcept
+        {
+            return authority_->instance == instance_ || authority_->retiring_instance == instance_;
+        }
+        [[nodiscard]] const ScriptPreparedMethod& resumableMethod() const noexcept { return *entry_.resumable; }
+        [[nodiscard]] const lux::script::BoundScriptCall& synchronous() const noexcept { return entry_.synchronous; }
+        [[nodiscard]] ScriptInstanceId instance() const noexcept { return instance_; }
+    private:
+        friend class ScriptInstances;
+        const ScriptInstances::InvocationState* authority_{};
+        ScriptInstanceId instance_;
+        union Entry final
+        {
+            lux::script::BoundScriptCall synchronous{};
+            const ScriptPreparedMethod* resumable;
+        } entry_;
+    };
+
     // Inline access preserves owner-only writes without a cross-TU call per script invocation.
     inline ScriptInstances::IdentityKey ScriptInstances::key(ScriptInstanceId id) noexcept
     {
@@ -308,18 +376,12 @@ namespace lux::simulation::script::detail
         const ScriptPreparedMethod* method, const InvocationState& mount
     ) noexcept : owner_(&owner), instance_(instance), method_(method), mount_(&mount)
     {
-        // Both arrays have their complete backing before publication. This pin covers these readonly
-        // borrows through result handling; current()/sameIncarnation() still reload dynamic authority.
-        ++owner_->protection_count_;
+        // The caller's dispatch/resume region protects both arrays through result handling.
+        // This value only borrows; it does not acquire another per-handler lifetime pin.
     }
     inline ScriptInstances::Invocation::Invocation(Invocation&& other) noexcept
         : owner_(std::exchange(other.owner_, nullptr)), instance_(other.instance_), method_(other.method_),
           mount_(other.mount_) {}
-    inline ScriptInstances::Invocation::~Invocation() noexcept
-    {
-        if (owner_ != nullptr)
-            --owner_->protection_count_;
-    }
     inline bool ScriptInstances::Invocation::current() const noexcept
     {
         if (owner_ == nullptr)
@@ -337,6 +399,21 @@ namespace lux::simulation::script::detail
             return false;
         const auto& mount = *mount_;
         return mount.instance == instance_ || mount.retiring_instance == instance_;
+    }
+    inline bool ScriptInstances::AuthorityAccess::valid() const noexcept
+    {
+        return state_ != nullptr && state_->instance == identity_;
+    }
+    inline bool ScriptInstances::AuthorityAccess::current() const noexcept
+    {
+        return valid() && state_->state == EScriptMountState::ACTIVE;
+    }
+    inline ScriptInstances::AuthorityAccess
+    ScriptInstances::authorityAccess(ScriptInstanceId identity, std::uint32_t slot) const noexcept
+    {
+        if (slot >= invocation_states_.size() || !identity.valid()) return {};
+        const auto& state = invocation_states_[slot];
+        return state.instance == identity ? AuthorityAccess{&state, identity} : AuthorityAccess{};
     }
     inline bool ScriptInstances::valid(ScriptInstanceId instance) const noexcept
     {
@@ -378,25 +455,29 @@ namespace lux::simulation::script::detail
         // No allocation or user code between validation and acquiring the protection ticket.
         return Invocation{*this, instance, nullptr, invocation_states_[*slot]};
     }
+    inline ScriptInstances::Invocation
+    ScriptInstances::resumeAccess(ScriptInstanceId instance, std::uint32_t mount_slot) noexcept
+    {
+        // Execution resolved and owns this stable configuration association. Recheck authority,
+        // not the identity directory. The ResumeBatch already holds physical reclamation protection.
+        const auto& authority = invocation_states_[mount_slot];
+        if (authority.state != EScriptMountState::ACTIVE || authority.instance != instance)
+            return {};
+        return Invocation{*this, instance, nullptr, authority};
+    }
     inline lux::script::ScriptSymbolId ScriptInstances::methodSymbol(std::uint32_t slot) const noexcept
     {
         return methods_[slot].symbol;
     }
-    inline lux::cxx::expected<ScriptEventSourceAccess, EScriptEventWaitError>
-    ScriptInstances::eventSource(
-        ScriptInstanceId instance, ScriptEventAdmissionHandle handle
-    ) const noexcept
+    inline ScriptEventImports ScriptInstances::eventImports(std::uint32_t mount_slot) const noexcept
     {
-        const auto* slot = findActiveSlot(instance);
-        if (slot == nullptr)
-            return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
-        const auto& mount = mounts_[*slot];
-        const auto local = ScriptRuntimeAccess::matchAdmission(handle, event_scope_, instance,
-            mount.event_layout_epoch, mount.event_sources.size());
-        if (!local)
-            return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
-        const auto& source = mount.event_sources[*local];
-        return ScriptEventSourceAccess{source.endpoint_slot, source.payload, mount.scope};
+        const auto& mount = mounts_[mount_slot];
+        ScriptEventImports result;
+        result.scope_ = event_scope_;
+        result.epoch_ = mount.event_layout_epoch;
+        result.sources_ = mount.event_sources;
+        if (const auto* entity = std::get_if<EntityScriptScope>(&mount.scope)) result.target_ = entity->self;
+        return result;
     }
 
 }

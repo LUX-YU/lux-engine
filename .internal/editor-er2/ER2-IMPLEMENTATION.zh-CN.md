@@ -71,3 +71,5 @@ MSVC RelWithDebInfo 专用诊断 all/no-op 通过；CTest 157/157 通过，包�
 Workspace 原失败、资源发布/快照、独立 material/shader 子失败、背压、shared GPU、输入与关闭。
 普通开发构建 all/no-op、受影响 Scene 测试、编辑 GPU 路径及一次 1,000 手势成本预检通过。
 这些是开发验证；最终 clean clone / SDK / 五组正式成本结果由交付 manifest 单独绑定候选。
+
+最终候选和安装资格结果见同目录 QUALIFICATION.zh-CN.md；本文件的开发结果保留原阶段含义。

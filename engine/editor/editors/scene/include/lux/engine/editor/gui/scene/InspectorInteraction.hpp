@@ -19,6 +19,31 @@ namespace lux::editor::gui
         {
         }
 
+        class ComponentDraw final
+        {
+          public:
+            explicit ComponentDraw(InspectorInteraction &owner) : owner_(owner)
+            {
+                owner_.draw_active_ = true;
+                owner_.borrow_valid_ = false;
+            }
+            ~ComponentDraw()
+            {
+                owner_.draw_active_ = false;
+                owner_.borrow_valid_ = false;
+            }
+            ComponentDraw(const ComponentDraw &) = delete;
+            ComponentDraw &operator=(const ComponentDraw &) = delete;
+
+          private:
+            InspectorInteraction &owner_;
+        };
+
+        [[nodiscard]] ComponentDraw componentDraw()
+        {
+            return ComponentDraw{*this};
+        }
+
         template <class Value> Value &input(std::uint64_t id)
         {
             const ScratchKey key{id, lux::cxx::typeToken<Value>().hash()};
@@ -64,6 +89,7 @@ namespace lux::editor::gui
             {
                 return true;
             }
+            borrow_valid_ = false;
             const auto finished = commit ? [&]() -> editing::EditResult<void>
             {
                 auto result = document.commitPreview(gesture->token);
@@ -87,14 +113,83 @@ namespace lux::editor::gui
         {
             scratch_.clear();
             error.fill('\0');
+            invalidateContainerIterators();
+        }
+
+        void invalidateContainerIterators() noexcept
+        {
+            ++container_epoch_;
+        }
+
+        [[nodiscard]] std::uint64_t containerEpoch() const noexcept
+        {
+            return container_epoch_;
+        }
+
+        template <class Component> const Component *read(lux::world::WorldObjectId object)
+        {
+            return static_cast<const Component *>(readComponent(object, lux::cxx::typeToken<Component>()).value);
+        }
+
+        bool beginTree(const char *identity, const char *label)
+        {
+            auto &expansion = input<Expansion>(ImGui::GetID(identity));
+            ImGui::SetNextItemOpen(expansion.open, ImGuiCond_Always);
+            const bool requested = ImGui::TreeNodeEx(identity, ImGuiTreeNodeFlags_NoTreePushOnOpen, "%s", label);
+            if (requested != expansion.open && finish(document, true))
+            {
+                expansion.open = requested;
+            }
+            if (expansion.open)
+            {
+                ImGui::TreePush(identity);
+            }
+            return expansion.open;
+        }
+
+        template <class Component, class Access, class Mutation>
+        bool mutateField(lux::world::WorldObjectId object, const char *identity, const char *label, Access access,
+                         Mutation mutate)
+        {
+            if (!finish(document, true))
+            {
+                return false;
+            }
+            const auto *component = read<Component>(object);
+            if (!component)
+            {
+                fail("The component is no longer available.");
+                return false;
+            }
+            auto next = *access(*component);
+            if (!mutate(next))
+            {
+                fail("The container structure changed before this action.");
+                return false;
+            }
+            const auto target = document.writeTarget(object);
+            if (!target)
+            {
+                fail(target.error());
+                return false;
+            }
+            borrow_valid_ = false;
+            const auto result = document.setField<Component>(*target, identity, label, access, next);
+            if (!result)
+            {
+                fail(result.error());
+                return false;
+            }
+            invalidateContainerIterators();
+            return true;
         }
 
         template <class Component, class Value, class Access, class Draw>
         void field(scene::SceneEditor &document, lux::world::WorldObjectId object, lux::ui::Frame &frame,
                    const char *identity, const char *label, Access access, Draw draw, bool immutable)
         {
-            const auto *component =
-                static_cast<const Component *>(document.component(object, lux::cxx::typeToken<Component>()));
+            const auto snapshot = readComponent(object, lux::cxx::typeToken<Component>());
+            const auto *component = static_cast<const Component *>(snapshot.value);
             if (!component)
             {
                 return;
@@ -105,12 +200,13 @@ namespace lux::editor::gui
                 return;
             }
             auto &draft = input<Draft<Value>>(ImGui::GetID(identity));
-            const auto sequence = document.componentVersion(object, lux::cxx::typeToken<Component>());
+            const auto sequence = snapshot.sequence;
             const auto *gesture = std::get_if<Gesture>(&gesture_);
             const bool owns_gesture = gesture && gesture->field == identity;
             if (!owns_gesture && (draft.sequence != sequence || draft.object != object || draft.reload))
             {
                 draft.value = *live;
+                invalidateContainerIterators();
                 draft.object = object;
                 draft.sequence = sequence;
                 draft.reload = false;
@@ -119,13 +215,11 @@ namespace lux::editor::gui
             frame.propertyRow(label);
             ImGui::PushID(identity);
             const bool disabled = immutable || !document.writeRestriction().empty() || (gesture && !owns_gesture);
-            ImGui::BeginDisabled(disabled);
             const auto previous_read_only = std::exchange(read_only, disabled);
             const auto previous_error = error;
             error[0] = '\0';
             const auto change = draw(draft.value, *this);
             read_only = previous_read_only;
-            ImGui::EndDisabled();
             ImGui::PopID();
             if (error[0])
             {
@@ -146,6 +240,7 @@ namespace lux::editor::gui
                     draft.reload = true;
                     return;
                 }
+                borrow_valid_ = false;
                 auto begun = document.beginPreview<Component, Value>(*target, origin_, identity, label, access);
                 if (!begun)
                 {
@@ -159,11 +254,22 @@ namespace lux::editor::gui
             {
                 if (change.changed)
                 {
+                    borrow_valid_ = false;
                     const auto updated = document.updatePreview(current->token, draft.value);
                     if (!updated)
                     {
                         fail(updated.error());
-                        draft.value = *live;
+                        // Notification callbacks end the earlier component borrow, even on failure.
+                        const auto restored = readComponent(object, lux::cxx::typeToken<Component>());
+                        if (restored.value)
+                        {
+                            if (const auto *value = access(*static_cast<const Component *>(restored.value)))
+                            {
+                                draft.value = *value;
+                                invalidateContainerIterators();
+                            }
+                        }
+                        draft.reload = true;
                         return;
                     }
                     error[0] = '\0';
@@ -183,6 +289,35 @@ namespace lux::editor::gui
         scene::SceneEditor &document;
 
       private:
+        struct Expansion final
+        {
+            bool open{true};
+        };
+
+        struct ComponentRead final
+        {
+            lux::world::WorldObjectId object;
+            lux::cxx::TypeToken type;
+            const void *value{};
+            std::uint64_t sequence{};
+        };
+
+        ComponentRead readComponent(lux::world::WorldObjectId object, lux::cxx::TypeToken type)
+        {
+            if (draw_active_ && borrow_valid_ && borrow_.object == object && borrow_.type == type)
+            {
+                return borrow_;
+            }
+            ComponentRead result{object, type, document.component(object, type),
+                                 document.componentVersion(object, type)};
+            if (draw_active_)
+            {
+                borrow_ = result;
+                borrow_valid_ = true;
+            }
+            return result;
+        }
+
         struct ScratchKey final
         {
             std::uint64_t item;
@@ -216,5 +351,8 @@ namespace lux::editor::gui
         std::unordered_map<ScratchKey, std::any, ScratchHash> scratch_;
         std::variant<std::monostate, Gesture> gesture_;
         editing::EditFailure failure_;
+        ComponentRead borrow_;
+        bool draw_active_{}, borrow_valid_{};
+        std::uint64_t container_epoch_{1};
     };
 } // namespace lux::editor::gui

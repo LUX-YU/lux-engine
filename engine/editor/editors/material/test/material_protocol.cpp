@@ -1,3 +1,4 @@
+#include "FiniteCost.hpp"
 #include "TestExit.hpp"
 #include <cassert>
 #include <chrono>
@@ -140,6 +141,8 @@ class Probe final : public EditorFrontend
                 assert(doc.undo() && doc.source().graph.shading_model == initial_shading);
                 assert(!doc.setShadingModel(static_cast<lux::rdesc::ELightingTechnique>(255)));
                 const auto node = doc.source().graph.topology().nodes().front().id;
+                measureEdits("Material.constant", doc, [&](unsigned index)
+                             { return doc.setConstant(node, {0.01F * (index + 1), 0.25F, 0.125F, 0}); });
 
                 {
                     const auto output = doc.source().graph.topology().nodes().back().id;

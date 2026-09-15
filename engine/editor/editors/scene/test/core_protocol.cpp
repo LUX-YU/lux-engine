@@ -1,6 +1,3 @@
-#include <lux/engine/editor/gui/scene/SceneDocumentProvider.hpp>
-#include <lux/engine/editor/gui/flowforge/FlowForgeDocumentProvider.hpp>
-#include <lux/engine/editor/gui/material/MaterialDocumentProvider.hpp>
 #include "TestExit.hpp"
 #include "flow_metadata.hpp"
 #include "model_placement_checks.hpp"
@@ -16,6 +13,9 @@
 #include <lux/engine/editor/gui/GuiFrontend.hpp>
 #include <lux/engine/editor/gui/GuiView.hpp>
 #include <lux/engine/editor/gui/actions/HistoryActions.hpp>
+#include <lux/engine/editor/gui/flowforge/FlowForgeDocumentProvider.hpp>
+#include <lux/engine/editor/gui/material/MaterialDocumentProvider.hpp>
+#include <lux/engine/editor/gui/scene/SceneDocumentProvider.hpp>
 #include <lux/engine/editor/material/MaterialEditor.hpp>
 #include <lux/engine/editor/project/Project.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
@@ -37,6 +37,8 @@ struct Evidence final
     rendering::EditorRenderer *renderer{};
     gui::EditorWindow *window{};
     std::size_t checks{}, frames{};
+    std::size_t expected_objects{4}, cost_draws{};
+    std::chrono::nanoseconds cost_draw_time{};
     bool closed{}, rollback{};
     std::string mode{"basic"};
     std::atomic_bool failed{};
@@ -265,7 +267,7 @@ class Probe final : public EditorFrontend
             const auto doc = editor_->document(handle_);
             assert(doc);
             auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(doc->get());
-            assert(scene.objects().size() == 4);
+            assert(scene.objects().size() == evidence_.expected_objects);
             assert(scene.coordinatePageSize() == (evidence_.mode == "cpu" ? 0 : 2048));
             const auto snapshot = scene.resources();
             if (!snapshot || snapshot->rows.size() != 3)
@@ -575,7 +577,8 @@ class Probe final : public EditorFrontend
         {
             auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
             assert(scene.resources()->revision == hidden_revision_);
-            const auto selection = scene.objects().back().object;
+            const auto selection =
+                evidence_.mode == "cost" ? scene.objects().front().object : scene.objects().back().object;
             assert(scene.select(selection));
             for (const auto &view : scene.views())
             {
@@ -839,7 +842,7 @@ class Probe final : public EditorFrontend
             }
             return;
         }
-        if (stage_ == 3 && evidence_.frames >= 50)
+        if (stage_ == 3 && (evidence_.mode == "cost" ? evidence_.cost_draws == 120 : evidence_.frames >= 50))
         {
             const auto stats = evidence_.renderer->statistics();
             std::printf("real scene: checks=%zu frames=%zu gpu_completed=%llu views=%zu leases=%zu\n", evidence_.checks,
@@ -852,7 +855,16 @@ class Probe final : public EditorFrontend
     void draw(Editor &editor, PollBudget &budget) override
     {
         SampleTime sample{evidence_.callbacks};
+        const auto begin = std::chrono::steady_clock::now();
         inner_->draw(editor, budget);
+        if (evidence_.mode == "cost" && stage_ == 3 && evidence_.cost_draws < 120)
+        {
+            if (evidence_.cost_draws >= 20)
+            {
+                evidence_.cost_draw_time += std::chrono::steady_clock::now() - begin;
+            }
+            ++evidence_.cost_draws;
+        }
         ++evidence_.frames;
     }
     void wait() override
@@ -926,12 +938,17 @@ class Probe final : public EditorFrontend
 int main(int argc, char **argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
-    assert(argc == 2 || argc == 3);
+    assert(argc >= 2 && argc <= 4);
     lux::meta::ReflectionRegistry::initRegistry();
     Evidence evidence;
-    if (argc == 3)
+    if (argc >= 3)
     {
         evidence.mode = argv[2];
+    }
+    if (argc == 4)
+    {
+        assert(evidence.mode == "cost");
+        evidence.expected_objects = std::stoul(argv[3]);
     }
     gui::GuiConfig gui;
     gui.window.visible = false;
@@ -1027,4 +1044,11 @@ int main(int argc, char **argv)
     std::printf("timing: exec_ms=%.3f frontend_callbacks_ms=%.3f frontend_wait_ms=%.3f\n",
                 milliseconds(std::chrono::steady_clock::now() - begin), milliseconds(evidence.callbacks),
                 milliseconds(evidence.waits));
+    if (evidence.mode == "cost")
+    {
+        assert(evidence.cost_draws == 120);
+        std::printf("MEASURE desktop objects=%zu render_objects=4 warmup=20 draws=100 active_draw_ms=%.3f "
+                    "width=1600 height=900 scene_views=1\n",
+                    evidence.expected_objects, milliseconds(evidence.cost_draw_time));
+    }
 }

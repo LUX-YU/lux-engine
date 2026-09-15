@@ -17,6 +17,13 @@ component_include_directories(editor_core
     INSTALL_TIME include
 )
 target_compile_definitions(editor_core PRIVATE LUX_EDITOR_CORE_LIBRARY TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0)
+option(LUX_EDITOR_PUBLICATION_DIAGNOSTICS "Private publication interruption probes; never enable for a normal SDK" OFF)
+if(LUX_EDITOR_PUBLICATION_DIAGNOSTICS)
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        message(FATAL_ERROR "Editor publication diagnostics require RelWithDebInfo")
+    endif()
+    target_compile_definitions(editor_core PRIVATE LUX_EDITOR_PUBLICATION_DIAGNOSTICS)
+endif()
 target_include_directories(editor_core PRIVATE $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
 target_link_libraries(editor_core PUBLIC
     lux::engine::editor::editor_editing

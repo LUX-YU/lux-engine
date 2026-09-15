@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <imgui.h>
 #include <lux/engine/editor/gui/scene/InspectorPane.hpp>
+#include <lux/engine/editor/gui/scene/UiMeasurement.hpp>
 #include <lux/engine/ui/Frame.hpp>
 
 namespace lux::editor::gui
@@ -22,6 +23,7 @@ namespace lux::editor::gui
 
     void InspectorPane::draw(lux::ui::Frame &frame, lux::ui::PaneDrawContext &context)
     {
+        LUX_UI_MEASURE(UiMeasurement measurement{"Inspector"});
         context.activateContext(lux::ui::UiContextIdView{id()});
         const auto history = document_.historyView();
         if (const auto reason = document_.writeRestriction(); !reason.empty())
@@ -29,9 +31,15 @@ namespace lux::editor::gui
             frame.text(reason);
         }
         frame.textMuted(history && history->history.clean ? "Scene editing" : "Scene editing | Unsaved changes");
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape) && interaction_.active())
+        const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+        if (focused && ImGui::IsKeyPressed(ImGuiKey_Escape) && interaction_.active())
         {
             static_cast<void>(interaction_.finish(document_, false));
+            return;
+        }
+        if (!focused && interaction_.active() && !interaction_.finish(document_, true))
+        {
+            frame.text(interaction_.error.data());
             return;
         }
         const auto current = document_.selection();
@@ -48,7 +56,18 @@ namespace lux::editor::gui
                 return;
             }
             interaction_.reset();
-            components_ = document_.components(selection_.object);
+            components_.clear();
+            LUX_UI_MEASURE(++measurement.directory_rebuilds);
+            for (auto &component : document_.components(selection_.object))
+            {
+                LUX_UI_MEASURE(++measurement.binding_queries);
+                const auto binding =
+                    std::ranges::lower_bound(*bindings_, component.type.hash(), {},
+                                             [](const ComponentBinding &value) { return value.type.hash(); });
+                const auto *found =
+                    binding != bindings_->end() && binding->type == component.type ? &*binding : nullptr;
+                components_.push_back({std::move(component), found});
+            }
             directory_dirty_ = false;
         }
         if (!selection_.object.valid())
@@ -56,19 +75,29 @@ namespace lux::editor::gui
             frame.textMuted("Select an object in the Outliner");
             return;
         }
-        for (const auto &component : components_)
+        for (auto &row : components_)
         {
-            const auto binding = std::ranges::lower_bound(
-                *bindings_, component.type.hash(), {}, [](const ComponentBinding &value) { return value.type.hash(); });
-            const bool has_binding = binding != bindings_->end() && binding->type == component.type;
-            const auto title = has_binding ? binding->name.c_str() : component.name.c_str();
-            if (ImGui::CollapsingHeader(title, ImGuiTreeNodeFlags_DefaultOpen))
+            LUX_UI_MEASURE(++measurement.rows);
+            const auto &component = row.info;
+            const auto *binding = row.binding;
+            const auto title = binding ? binding->name.c_str() : component.name.c_str();
+            ImGui::SetNextItemOpen(row.open, ImGuiCond_Always);
+            const bool open = ImGui::CollapsingHeader(title);
+            if (open != row.open && interaction_.finish(document_, true))
+            {
+                row.open = open;
+            }
+            if (row.open)
             {
                 auto table = frame.table({lux::ui::WidgetIdView{component.name}, 2, false, false, false, 110});
-                if (table.visible() && has_binding)
+                if (table.visible() && binding)
                 {
                     binding->draw(document_, selection_.object, frame, interaction_);
                 }
+            }
+            if (directory_dirty_)
+            {
+                break;
             }
         }
         if (interaction_.error[0])
@@ -84,6 +113,10 @@ namespace lux::editor::gui
 
     void InspectorPane::poll(PollBudget &budget)
     {
+        if (!closing_ && !visible() && !interaction_.finish(document_, true))
+        {
+            return;
+        }
         if (closing_ && !interaction_.finish(document_, false))
         {
             return;

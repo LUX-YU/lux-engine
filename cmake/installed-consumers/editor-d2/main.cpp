@@ -3,11 +3,11 @@
 #include <consumer/Gui.hpp>
 #include <cstdio>
 #include <fstream>
-#include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/editor/scene/FieldEdit.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/simulation/ecs/ComponentDecode.hpp>
 
-int sceneWorkflow(const std::filesystem::path &);
+int sceneWorkflow(const std::filesystem::path &, bool);
 
 void pakRoundTrip(const std::filesystem::path &root)
 {
@@ -20,12 +20,14 @@ void pakRoundTrip(const std::filesystem::path &root)
     auto bytes = std::make_shared<const std::string>("payload");
     const auto owned = lux::cxx::SharedBytes<>::fromOwner(bytes, std::as_bytes(std::span(*bytes)));
     std::vector<PakWriteEntry> entries{{first, 17, "Shared/Path", {}, owned},
-        {second, 17, "Shared/Path", {}, {}, true}, {third, 17, {}, {}, {}, true}};
+                                       {second, 17, "Shared/Path", {}, {}, true},
+                                       {third, 17, {}, {}, {}, true}};
     std::string error;
     const auto path = root / "tombstones.luxpak";
     assert(writePakFile(path, entries, "/Game", &error));
     std::ifstream file(path, std::ios::binary);
-    auto image = std::make_shared<const std::string>(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    auto image =
+        std::make_shared<const std::string>(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
     auto decoded = decodePak(lux::cxx::SharedBytes<>::fromOwner(image, std::as_bytes(std::span(*image))), 3);
     if (!decoded)
     {
@@ -72,9 +74,9 @@ int main(int argc, char **argv)
 
     std::puts("PASS installed component: separate domain/GUI DLLs, typed generated binding, nested codec and immutable "
               "capture");
-    assert(argc == 2);
+    assert(argc == 2 || (argc == 3 && std::string_view(argv[2]) == "cost"));
     const auto run = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     const auto root = std::filesystem::u8path(argv[1]) / run;
     pakRoundTrip(root / "pak");
-    return sceneWorkflow(root / "scene");
+    return sceneWorkflow(root / "scene", argc == 3);
 }

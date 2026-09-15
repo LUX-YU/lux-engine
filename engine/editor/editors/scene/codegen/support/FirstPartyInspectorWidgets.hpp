@@ -1,23 +1,24 @@
 #pragma once
 #include <InspectorWidget.hpp>
 #include <lux/engine/description/Visual.hpp>
-#include <lux/engine/simulation/ecs/Entity.hpp>
-#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
-#include <lux/engine/resource/asset/material/MaterialAssets.hpp>
 #include <lux/engine/editor/gui/asset/AssetReference.hpp>
+#include <lux/engine/resource/asset/material/MaterialAssets.hpp>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
+#include <lux/engine/simulation/ecs/Entity.hpp>
 
 namespace lux::editor::gui
 {
     template <> struct InspectorWidget<lux::asset::AssetId>
     {
-        static lux::ui::EditResult draw(lux::asset::AssetId &value, InspectorInteraction &state, const InspectorField &field)
+        static lux::ui::EditResult draw(lux::asset::AssetId &value, InspectorInteraction &state,
+                                        const InspectorField &field)
         {
             const auto result = drawAssetReference(state.document.project(), value, field.asset_magic);
             if (!result)
             {
-                state.fail(result.error().message.empty() ?
-                    "The asset belongs to another project, changed during the drag, or has the wrong type." :
-                    result.error().message.c_str());
+                state.fail(result.error().message.empty()
+                               ? "The asset belongs to another project, changed during the drag, or has the wrong type."
+                               : result.error().message.c_str());
                 return {};
             }
             return generated_support::immediate(*result);
@@ -40,16 +41,18 @@ namespace lux::editor::gui
             using namespace generated_support;
             lux::ui::EditResult result;
             {
-                FieldScope field{{"Mesh"}, state.read_only || spec.read_only};
-                merge(result, InspectorWidget<lux::asset::AssetId>::draw(value.mesh, state,
-                    {"Mesh", nullptr, 0.1, false, lux::asset::MeshAsset::primary_magic}));
+                FieldScope field{{"Mesh", nullptr, 0.1, spec.read_only}, state.read_only};
+                merge(result,
+                      InspectorWidget<lux::asset::AssetId>::draw(
+                          value.mesh, state, {"Mesh", nullptr, 0.1, false, lux::asset::MeshAsset::primary_magic}));
             }
             {
-                FieldScope field{{"Material"}, state.read_only || spec.read_only};
-                merge(result, InspectorWidget<lux::asset::AssetId>::draw(value.material, state,
-                    {"Material", nullptr, 0.1, false, lux::asset::MaterialAsset::primary_magic}));
+                FieldScope field{{"Material", nullptr, 0.1, spec.read_only}, state.read_only};
+                merge(result, InspectorWidget<lux::asset::AssetId>::draw(
+                                  value.material, state,
+                                  {"Material", nullptr, 0.1, false, lux::asset::MaterialAsset::primary_magic}));
             }
-            FieldScope flags{{"Flags"}, state.read_only || spec.read_only};
+            FieldScope flags{{"Flags", nullptr, 0.1, spec.read_only}, state.read_only};
             merge(result, immediate(ImGui::Checkbox("Visible", &value.visible)));
             merge(result, immediate(ImGui::Checkbox("Cast shadow", &value.cast_shadow)));
             merge(result, immediate(ImGui::Checkbox("Receive shadow", &value.receive_shadow)));

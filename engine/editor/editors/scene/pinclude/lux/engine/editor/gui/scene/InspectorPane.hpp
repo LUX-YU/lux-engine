@@ -15,10 +15,17 @@ namespace lux::editor::gui
         [[nodiscard]] EditorResult<void> finishInteraction() override;
 
       private:
+        struct ComponentRow final
+        {
+            scene::SceneComponentInfo info;
+            const ComponentBinding *binding{};
+            bool open{true};
+        };
+
         void draw(lux::ui::Frame &, lux::ui::PaneDrawContext &) override;
         std::shared_ptr<const std::vector<ComponentBinding>> bindings_;
         InspectorInteraction interaction_;
-        std::vector<scene::SceneComponentInfo> components_;
+        std::vector<ComponentRow> components_;
         scene::SelectionNotice selection_;
         bool directory_dirty_{true};
         object::ScopedConnection selection_connection_;

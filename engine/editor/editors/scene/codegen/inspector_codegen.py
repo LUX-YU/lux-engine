@@ -65,6 +65,14 @@ class Generator:
         self.counter += 1
         typename = t["id"]
         body = self.body(t, attrs)
+        aggregates = {"std::array", "std::vector", "std::deque", "std::list", "std::map", "std::unordered_map",
+                      "std::set", "std::unordered_set", "std::optional", "std::variant", "std::pair", "std::tuple"}
+        aggregate = (t.get("template_name") in aggregates or t.get("__kind") in ("ConstantArrayType", "ArrayType") or
+                     (t.get("__kind") == "RecordType" and
+                      "luxref::class" in annotations(self.decls.get(t.get("decl_id"), {}))))
+        if not aggregate or typename in self.custom_types or attrs.get("widget") in ("asset", "custom"):
+            body.insert(0, "ReadOnlyScope read_only{state.read_only};")
+        body = [re.sub(r'ImGui::SmallButton\(("[^"]*")\)', r'readOnlyButton(\1, state)', line) for line in body]
         self.functions.append(
             f"lux::ui::EditResult {name}(std::type_identity_t<{typename}>& value, InspectorInteraction& state)\n{{\n"
             "    lux::ui::EditResult result;\n" + "\n".join("    " + x for x in body) +
@@ -238,7 +246,9 @@ class Generator:
             fn = self.draw_function(element)
             fixed = template == "std::array" or not template
             proxy = template == "std::vector" and element == "bool"
-            lines = ["std::size_t index{};", "for (auto&& item : value)", "{",
+            lines = ["const auto page = containerPage(value, state);", "auto current = page.begin;",
+                     "for (auto index = page.first; index < page.end; ++index, ++current)", "{",
+                     "    auto&& item = *current;",
                      "    IdScope id{static_cast<int>(index)};"]
             if proxy:
                 lines += ["    bool bit = item;", f"    const auto edit = {fn}(bit, state);",
@@ -264,7 +274,7 @@ class Generator:
                           "            next.erase(std::next(next.begin(), static_cast<std::ptrdiff_t>(index)));",
                           "            return true; });",
                           "        merge(result, immediate(changed));", "        return result;", "    }"]
-            lines += ["    ++index;", "}"]
+            lines += ["}"]
             if not fixed:
                 lines += ['const bool add = ImGui::SmallButton("Add");', 'if (add)', '{',
                           "    merge(result, immediate(prepareContainer(value, state, [](auto& next) {",
@@ -274,7 +284,7 @@ class Generator:
             return self.associative(t)
         if template == "std::optional":
             fn = self.draw_function(args[0]["type_id"])
-            return ["bool present = value.has_value();", 'const bool toggled = ImGui::Checkbox("Present", &present);',
+            return ["bool present = value.has_value();", 'const bool toggled = readOnlyCheckbox("Present", &present, state);',
                     'if (toggled)', '{',
                     "    merge(result, immediate(prepareContainer(value, state, [&](auto& next) {",
                     "        if (present) next.emplace(); else next.reset(); return true; })));", "}",
@@ -286,7 +296,7 @@ class Generator:
                 lines += [f'{{ IdScope id{{{i}}}; merge(result, {fn}(std::get<{i}>(value), state)); }}']
             return lines
         if template == "std::variant":
-            lines = ['const auto selected = std::to_string(value.index());',
+            lines = ['const auto selected = std::to_string(value.index());', '{ ReadOnlyScope read_only{state.read_only};',
                      'const bool open = ImGui::BeginCombo("Type", selected.c_str());',
                      'if (open)', '{']
             alternatives = self.type_arguments(args)
@@ -296,7 +306,7 @@ class Generator:
                           f'    if (selected_{i})', '    {',
                           '        merge(result, immediate(prepareContainer(value, state, [](auto& next) {',
                           f'            next.template emplace<{i}>(); return true; }})));', '    }', '    }']
-            lines += ['    ImGui::EndCombo();', '}']
+            lines += ['    ImGui::EndCombo();', '}', '}']
             for i, arg in enumerate(alternatives):
                 fn = self.draw_function(arg)
                 lines += [f'if (value.index() == {i}) merge(result, {fn}(std::get<{i}>(value), state));']
@@ -328,8 +338,9 @@ class Generator:
         key = args[0]["type_id"]
         key_fn = self.draw_function(key)
         value_fn = self.draw_function(args[1]["type_id"]) if mapping else None
-        lines = ['std::size_t index{};', 'for (auto& item : value)', '{',
-                 '    IdScope id{static_cast<int>(index++)};',
+        lines = ['const auto page = containerPage(value, state);', 'auto current = page.begin;',
+                 'for (auto index = page.first; index < page.end; ++index, ++current)', '{',
+                 '    auto& item = *current;', '    IdScope id{static_cast<int>(index)};',
                  f'    auto original_key = {"item.first" if mapping else "item"};',
                  '    IdScope key_scope{0};',
                  f'    auto& key_draft = state.input<KeyDraft<{key}>>(ImGui::GetID("key-draft"));',
@@ -400,6 +411,10 @@ class Generator:
         def field_binding(tid, properties, identity, label, access_path, immutable):
             resolved = self.resolve(tid)
             kind = resolved.get("__kind", resolved.get("kind"))
+            if resolved.get("template_name") == "std::vector":
+                element = resolved["template_arguments"][0]["type_id"]
+                if element != "bool":
+                    return self.vector_binding(name, element, identity, label, access_path, immutable)
             if kind in ("ConstantArrayType", "ArrayType"):
                 element = resolved.get("element_type_id")
                 count = resolved.get("array_size", resolved.get("size_value"))
@@ -414,7 +429,7 @@ class Generator:
                 record = self.decls.get(resolved.get("decl_id"))
                 if record and "luxref::class" in annotations(record):
                     lines = [f'        frame.propertyRow({literal(label)});',
-                             f'        if (ImGui::TreeNodeEx({literal(identity)}, ImGuiTreeNodeFlags_DefaultOpen, "Details"))',
+                             f'        if (state.beginTree({literal(identity)}, "Details"))',
                              '        {']
                     for child_id in record.get("field_decls", []):
                         child = self.decls[child_id]
@@ -459,6 +474,7 @@ using namespace generated_support;
 void draw_{suffix}(scene::SceneEditor& document, lux::world::WorldObjectId target,
                    lux::ui::Frame& frame, InspectorInteraction& state)
 {{
+    auto component_draw = state.componentDraw();
 {chr(10).join(draws)}
 }}
 }}
@@ -470,6 +486,64 @@ ComponentBinding binding_{suffix}()
 }}
 '''
         return suffix, text
+
+    def vector_binding(self, component, element, identity, label, access_path, immutable):
+        draw = self.draw_function(element)
+        member = f'component.{access_path}'
+        return [
+            '    {',
+            f'        frame.propertyRow({literal(label)});',
+            f'        ImGui::PushID({literal(identity)});',
+            f'        const auto* component = state.read<{component}>(target);',
+            f'        const auto count = component ? component->{access_path}.size() : 0;',
+            '        const auto page = containerPageBounds(count, state);',
+            '        for (auto index = page.first; index < page.end; ++index)',
+            '        {',
+            '            IdScope element_id{static_cast<int>(index)};',
+            f'            const auto path = std::string({literal(identity)}) + "[" + std::to_string(index) + "]";',
+            '            const auto label = "[" + std::to_string(index) + "]";',
+            f'            state.field<{component}, {element}>(document, target, frame, path.c_str(), label.c_str(),',
+            '                [index, count](auto& component) noexcept',
+            '                {',
+            f'                    using Item = std::remove_reference_t<decltype({member}[index])>;',
+            f'                    return {member}.size() == count && index < count ? &{member}[index] : static_cast<Item*>(nullptr);',
+            f'                }}, {draw}, {str(immutable).lower()});',
+            f'            ImGui::BeginDisabled({str(immutable).lower()} || !document.writeRestriction().empty());',
+            '            ImGui::BeginDisabled(index == 0);',
+            '            const bool up = ImGui::SmallButton("Up");',
+            '            ImGui::EndDisabled();',
+            '            ImGui::SameLine();',
+            '            ImGui::BeginDisabled(index + 1 == count);',
+            '            const bool down = ImGui::SmallButton("Down");',
+            '            ImGui::EndDisabled();',
+            '            ImGui::SameLine();',
+            '            const bool remove = ImGui::SmallButton("Remove");',
+            '            ImGui::EndDisabled();',
+            '            if (up || down || remove)',
+            '            {',
+            f'                state.mutateField<{component}>(target, {literal(identity)}, {literal(label)},',
+            f'                    [](auto& component) noexcept {{ return &{member}; }},',
+            '                    [=](auto& next)',
+            '                    {',
+            '                        if (next.size() != count || index >= count) { return false; }',
+            '                        if (remove) { next.erase(next.begin() + static_cast<std::ptrdiff_t>(index)); }',
+            '                        else { std::swap(next[index], next[up ? index - 1 : index + 1]); }',
+            '                        return true;',
+            '                    });',
+            '                break;',
+            '            }',
+            '        }',
+            f'        ImGui::BeginDisabled({str(immutable).lower()} || !document.writeRestriction().empty());',
+            '        if (ImGui::SmallButton("Add"))',
+            '        {',
+            f'            state.mutateField<{component}>(target, {literal(identity)}, {literal(label)},',
+            f'                [](auto& component) noexcept {{ return &{member}; }},',
+            '                [](auto& next) { next.emplace_back(); return true; });',
+            '        }',
+            '        ImGui::EndDisabled();',
+            '        ImGui::PopID();',
+            '    }',
+        ]
 
 
 def generate(config, data):

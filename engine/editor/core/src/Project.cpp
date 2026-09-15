@@ -1,9 +1,10 @@
+#include <algorithm>
+#include <atomic>
+#include <fstream>
+#include <lux/engine/editor/PublicationProbe.hpp>
 #include <lux/engine/editor/project/Project.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
-#include <algorithm>
-#include <fstream>
 #include <unordered_set>
-#include <atomic>
 
 namespace lux::editor
 {
@@ -22,7 +23,7 @@ namespace lux::editor
             }
             return lux::cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "project.identity"});
         }
-    }
+    } // namespace
     EditorResult<ProjectSource> readProjectSource(const std::filesystem::path &file)
     {
         std::error_code error;
@@ -51,12 +52,13 @@ namespace lux::editor
             if (error)
             {
                 return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "project.publication",
-                    static_cast<std::uint64_t>(error.value()), error.message()});
+                                                          static_cast<std::uint64_t>(error.value()), error.message()});
             }
             if (publishing)
             {
-                return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "project.publication", 0,
-                    "The writer is publishing this project; retry after it reaches a stable state"});
+                return lux::cxx::unexpected(
+                    EditorFailure{EEditorError::BUSY, "project.publication", 0,
+                                  "The writer is publishing this project; retry after it reaches a stable state"});
             }
         }
         const auto size = std::filesystem::file_size(absolute, error);
@@ -74,6 +76,7 @@ namespace lux::editor
             return lux::cxx::unexpected(
                 EditorFailure{EEditorError::SOURCE_FAILURE, "project.read", 0, "Cannot read the project manifest"});
         }
+        LUX_EDITOR_IO("manifest-read", absolute, bytes.size());
         auto decoded = decodeProjectManifest(bytes);
         if (!decoded)
         {
@@ -118,7 +121,9 @@ namespace lux::editor
     }
 
     Project::Project(object::ObjectDispatcherRef dispatcher, std::uint64_t instance)
-        : Object(std::move(dispatcher)), instance_(instance) {}
+        : Object(std::move(dispatcher)), instance_(instance)
+    {
+    }
 
     EditorResult<std::unique_ptr<Project>> Project::open(ProjectSource &source, process::BlockingScheduler blocking,
                                                          object::ObjectDispatcherRef dispatcher)
@@ -179,17 +184,19 @@ namespace lux::editor
         catalog_.clear();
         catalog_by_id_.clear();
         catalog_.reserve(source_.manifest.assets.size());
-        for (const auto& entry : source_.manifest.assets)
+        for (const auto &entry : source_.manifest.assets)
         {
             catalog_by_id_.emplace(entry.id, catalog_.size());
-            catalog_.push_back({entry.id, entry.id, 0, entry.mount_path.empty() ? entry.source_path : entry.mount_path});
+            catalog_.push_back(
+                {entry.id, entry.id, 0, entry.mount_path.empty() ? entry.source_path : entry.mount_path});
         }
         std::unordered_set<asset::AssetId> claimed;
         for (auto package = mounts_.rbegin(); package != mounts_.rend(); ++package)
         {
-            const auto source = std::ranges::find(source_.manifest.assets, package->path, &ProjectAssetEntry::cooked_path);
+            const auto source =
+                std::ranges::find(source_.manifest.assets, package->path, &ProjectAssetEntry::cooked_path);
             const auto source_id = source == source_.manifest.assets.end() ? asset::AssetId{} : source->id;
-            for (const auto& entry : package->entries)
+            for (const auto &entry : package->entries)
             {
                 if (!claimed.insert(entry.id).second || entry.tombstone)
                 {
@@ -214,7 +221,7 @@ namespace lux::editor
         ++catalog_revision_;
     }
 
-    const AssetCatalogEntry* Project::catalogAsset(asset::AssetId id) const noexcept
+    const AssetCatalogEntry *Project::catalogAsset(asset::AssetId id) const noexcept
     {
         const auto found = catalog_by_id_.find(id);
         return found == catalog_by_id_.end() ? nullptr : &catalog_[found->second];
@@ -222,7 +229,7 @@ namespace lux::editor
 
     std::string_view Project::assetName(asset::AssetId id) const noexcept
     {
-        if (const auto* entry = catalogAsset(id))
+        if (const auto *entry = catalogAsset(id))
         {
             return entry->path;
         }
@@ -238,8 +245,8 @@ namespace lux::editor
     {
         const auto fail = [](EAssetReferenceError code)
         {
-            return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "project.asset-reference",
-                static_cast<std::uint64_t>(code), {}, code});
+            return lux::cxx::unexpected(EditorFailure{
+                EEditorError::INVALID_ARGUMENT, "project.asset-reference", static_cast<std::uint64_t>(code), {}, code});
         };
         if (reference.project_instance != instance_)
         {
@@ -249,7 +256,7 @@ namespace lux::editor
         {
             return fail(EAssetReferenceError::STALE_CATALOG);
         }
-        const auto* entry = catalogAsset(reference.asset);
+        const auto *entry = catalogAsset(reference.asset);
         if (!entry)
         {
             return fail(EAssetReferenceError::MISSING_ASSET);
@@ -269,12 +276,15 @@ namespace lux::editor
         }
     }
 
-    ProjectPublication::ProjectPublication(ProjectPublication&& other) noexcept
+    ProjectPublication::ProjectPublication(ProjectPublication &&other) noexcept
         : root(std::move(other.root)), manifest_path(std::move(other.manifest_path)),
           before_manifest_digest(std::move(other.before_manifest_digest)), manifest(std::move(other.manifest)),
-          files(std::move(other.files)), package_paths(std::move(other.package_paths)), owner_(std::exchange(other.owner_, nullptr)) {}
+          files(std::move(other.files)), package_paths(std::move(other.package_paths)),
+          owner_(std::exchange(other.owner_, nullptr))
+    {
+    }
 
-    ProjectPublication& ProjectPublication::operator=(ProjectPublication&& other) noexcept
+    ProjectPublication &ProjectPublication::operator=(ProjectPublication &&other) noexcept
     {
         if (this != &other)
         {
@@ -292,11 +302,11 @@ namespace lux::editor
 
     std::string_view Project::sourceDigest(std::string_view path) const noexcept
     {
-        const auto found = std::ranges::find(source_.source_digests, path, [](const auto& pair) { return pair.first; });
+        const auto found = std::ranges::find(source_.source_digests, path, [](const auto &pair) { return pair.first; });
         return found == source_.source_digests.end() ? std::string_view{"missing"} : std::string_view{found->second};
     }
 
-    EditorResult<ProjectPublication> Project::preparePublication(ProjectUpdate& update)
+    EditorResult<ProjectPublication> Project::preparePublication(ProjectUpdate &update)
     {
         if (!writable())
         {
@@ -313,9 +323,9 @@ namespace lux::editor
         auto next = source_.manifest;
         for (const auto id : update.removed)
         {
-            std::erase_if(next.assets, [id](const auto& asset) { return asset.id == id; });
+            std::erase_if(next.assets, [id](const auto &asset) { return asset.id == id; });
         }
-        for (const auto& asset : update.assets)
+        for (const auto &asset : update.assets)
         {
             const auto existing = std::ranges::find(next.assets, asset.id, &ProjectAssetEntry::id);
             if (existing == next.assets.end())
@@ -331,13 +341,15 @@ namespace lux::editor
         if (!valid)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "project.manifest",
-                static_cast<std::uint64_t>(valid.error().code), valid.error().field, valid.error()});
+                                                      static_cast<std::uint64_t>(valid.error().code),
+                                                      valid.error().field, valid.error()});
         }
-        for (const auto& file : update.files)
+        for (const auto &file : update.files)
         {
             if (!validProjectPath(file.path) || file.before_digest.empty())
             {
-                return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "project.publication", 0, file.path});
+                return lux::cxx::unexpected(
+                    EditorFailure{EEditorError::INVALID_ARGUMENT, "project.publication", 0, file.path});
             }
         }
         ProjectPublication publication;
@@ -346,18 +358,19 @@ namespace lux::editor
         publication.before_manifest_digest = source_.manifest_digest;
         publication.manifest = std::move(next);
         std::unordered_set<std::string> packages;
-        for (const auto& entry : publication.manifest.assets)
+        for (const auto &entry : publication.manifest.assets)
         {
             if (entry.cooked_path.empty() || !packages.insert(entry.cooked_path).second)
             {
                 continue;
             }
-            const bool already_mounted = std::ranges::find(mounts_, entry.cooked_path, &MountedPackage::path) != mounts_.end();
+            const bool already_mounted =
+                std::ranges::find(mounts_, entry.cooked_path, &MountedPackage::path) != mounts_.end();
             const auto written = std::ranges::find(update.files, entry.cooked_path, &ProjectFileChange::path);
             if (already_mounted && written != update.files.end())
             {
-                return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "project.package.immutable", 0,
-                    entry.cooked_path});
+                return lux::cxx::unexpected(
+                    EditorFailure{EEditorError::INVALID_ARGUMENT, "project.package.immutable", 0, entry.cooked_path});
             }
             if (!already_mounted)
             {
@@ -370,7 +383,7 @@ namespace lux::editor
         return publication;
     }
 
-    EditorResult<void> Project::adoptPublication(ProjectPublication& publication, ProjectPublicationReceipt& receipt)
+    EditorResult<void> Project::adoptPublication(ProjectPublication &publication, ProjectPublicationReceipt &receipt)
     {
         if (publication.owner_ != this || !publishing_)
         {
@@ -384,35 +397,37 @@ namespace lux::editor
         added.reserve(receipt.packages.size());
         for (std::size_t index{}; index < receipt.packages.size(); ++index)
         {
-            const auto& package = receipt.packages[index];
+            const auto &package = receipt.packages[index];
             if (package.path != publication.package_paths[index])
             {
-                return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "project.publication.package"});
+                return lux::cxx::unexpected(
+                    EditorFailure{EEditorError::INVALID_ARGUMENT, "project.publication.package"});
             }
             added.push_back(package.mount);
         }
         std::vector<asset::MountId> removed;
-        for (const auto& package : mounts_)
+        for (const auto &package : mounts_)
         {
-            if (std::ranges::find(receipt.manifest.assets, package.path, &ProjectAssetEntry::cooked_path) == receipt.manifest.assets.end())
+            if (std::ranges::find(receipt.manifest.assets, package.path, &ProjectAssetEntry::cooked_path) ==
+                receipt.manifest.assets.end())
             {
                 removed.push_back(package.id);
             }
         }
         std::unordered_set<asset::AssetId> changed_assets;
-        for (const auto& package : mounts_)
+        for (const auto &package : mounts_)
         {
             if (std::ranges::find(removed, package.id) != removed.end())
             {
-                for (const auto& entry : package.entries)
+                for (const auto &entry : package.entries)
                 {
                     changed_assets.insert(entry.id);
                 }
             }
         }
-        for (const auto& package : receipt.packages)
+        for (const auto &package : receipt.packages)
         {
-            for (const auto& entry : package.entries)
+            for (const auto &entry : package.entries)
             {
                 changed_assets.insert(entry.id);
             }
@@ -420,23 +435,24 @@ namespace lux::editor
         auto mounted = vfs_.replaceMounts(removed, added);
         if (!mounted)
         {
-            return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "project.mount",
-                static_cast<std::uint64_t>(mounted.error()), {}, mounted.error()});
+            return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE,
+                                                      "project.mount",
+                                                      static_cast<std::uint64_t>(mounted.error()),
+                                                      {},
+                                                      mounted.error()});
         }
-        std::erase_if(mounts_, [&](const auto& package)
-        {
-            return std::ranges::find(removed, package.id) != removed.end();
-        });
+        std::erase_if(mounts_,
+                      [&](const auto &package) { return std::ranges::find(removed, package.id) != removed.end(); });
         for (std::size_t index{}; index < receipt.packages.size(); ++index)
         {
-            auto& package = receipt.packages[index];
+            auto &package = receipt.packages[index];
             mounts_.push_back({std::move(package.path), (*mounted)[index], std::move(package.entries)});
         }
         source_.manifest = std::move(receipt.manifest);
         source_.manifest_digest = std::move(receipt.manifest_digest);
-        for (auto& [path, digest] : receipt.file_digests)
+        for (auto &[path, digest] : receipt.file_digests)
         {
-            auto found = std::ranges::find(source_.source_digests, path, [](const auto& pair) { return pair.first; });
+            auto found = std::ranges::find(source_.source_digests, path, [](const auto &pair) { return pair.first; });
             if (found == source_.source_digests.end())
             {
                 source_.source_digests.emplace_back(std::move(path), std::move(digest));
@@ -472,7 +488,7 @@ namespace lux::editor
             return lux::cxx::unexpected(EditorFailure{EEditorError::EXECUTION_FAILURE, "asset.read.join",
                                                       static_cast<std::uint64_t>(joined.error())});
         }
-        for (const auto& package : mounts_)
+        for (const auto &package : mounts_)
         {
             vfs_.unmount(package.id);
         }

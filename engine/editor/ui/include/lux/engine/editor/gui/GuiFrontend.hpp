@@ -7,22 +7,23 @@
 
 namespace lux::editor::gui
 {
-struct GuiDocumentProvider final
-{
-    std::string type;
-    std::function<bool(const ProjectAssetEntry &)> accepts;
-    std::function<EditorResult<void>(Editor &, process::ExecutionRuntime &, rendering::EditorRenderer &)> register_type;
-    std::function<EditorResult<void>(DocumentEditor &, EditorWindow &, rendering::EditorRenderer &,
-                                     process::ExecutionRuntime &)>
-        attach;
-};
+    struct GuiDocumentProvider final
+    {
+        std::string type;
+        std::function<bool(const ProjectAssetEntry &)> accepts;
+        std::function<EditorResult<void>(Editor &, process::ExecutionRuntime &, rendering::EditorRenderer &)>
+            register_type;
+        std::function<EditorResult<void>(DocumentEditor &, EditorWindow &, rendering::EditorRenderer &,
+                                         process::ExecutionRuntime &)>
+            attach;
+    };
 
-struct GuiConfig final
-{
-    WindowSpec window;
-    rendering::RendererConfig renderer;
-    std::vector<GuiDocumentProvider> providers;
-};
+    struct GuiConfig final
+    {
+        WindowSpec window;
+        rendering::RendererConfig renderer;
+        std::vector<GuiDocumentProvider> providers;
+    };
 
-[[nodiscard]] LUX_EDITOR_UI_PUBLIC std::unique_ptr<EditorFrontend> makeGuiFrontend(GuiConfig);
+    [[nodiscard]] LUX_EDITOR_UI_PUBLIC std::unique_ptr<EditorFrontend> makeGuiFrontend(GuiConfig);
 } // namespace lux::editor::gui

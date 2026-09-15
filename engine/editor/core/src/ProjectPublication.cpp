@@ -1,13 +1,14 @@
-#include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
+#include <lux/engine/editor/PublicationProbe.hpp>
 #include <lux/engine/editor/project/ProjectPublication.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 
-#include <lux/cxx/algorithm/Sha256.hpp>
-#include <toml++/toml.hpp>
 #include <array>
 #include <fstream>
-#include <sstream>
-#include <unordered_set>
+#include <lux/cxx/algorithm/Sha256.hpp>
 #include <set>
+#include <sstream>
+#include <toml++/toml.hpp>
+#include <unordered_set>
 #include <utility>
 
 #if defined(_WIN32)
@@ -29,23 +30,24 @@ namespace lux::editor
 
         struct PathLess final
         {
-            bool operator()(const std::filesystem::path& first, const std::filesystem::path& second) const noexcept
+            bool operator()(const std::filesystem::path &first, const std::filesystem::path &second) const noexcept
             {
 #if defined(_WIN32)
                 return CompareStringOrdinal(first.c_str(), static_cast<int>(first.native().size()), second.c_str(),
-                    static_cast<int>(second.native().size()), TRUE) == CSTR_LESS_THAN;
+                                            static_cast<int>(second.native().size()), TRUE) == CSTR_LESS_THAN;
 #else
                 return first < second;
 #endif
             }
         };
 
-        auto failed(EProjectPublicationError code, const std::filesystem::path& path,
-                    std::uint64_t platform = 0, std::size_t published = 0)
+        auto failed(EProjectPublicationError code, const std::filesystem::path &path, std::uint64_t platform = 0,
+                    std::size_t published = 0)
         {
             ProjectPublicationFailure cause{code, path, platform, published};
             return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "project.publication",
-                static_cast<std::uint64_t>(code), path.string(), std::move(cause)});
+                                                      static_cast<std::uint64_t>(code), path.string(),
+                                                      std::move(cause)});
         }
 
         void release(std::intptr_t handle) noexcept
@@ -61,7 +63,7 @@ namespace lux::editor
 #endif
         }
 
-        std::string hexDigest(const lux::cxx::algorithm::Sha256Digest& value)
+        std::string hexDigest(const lux::cxx::algorithm::Sha256Digest &value)
         {
             constexpr char hex[] = "0123456789abcdef";
             std::string result;
@@ -82,7 +84,7 @@ namespace lux::editor
             return hexDigest(hash.digest());
         }
 
-        EditorResult<std::vector<std::byte>> read(const std::filesystem::path& path)
+        EditorResult<std::vector<std::byte>> read(const std::filesystem::path &path)
         {
             std::error_code error;
             const auto size = std::filesystem::file_size(path, error);
@@ -92,25 +94,27 @@ namespace lux::editor
             }
             std::vector<std::byte> bytes(static_cast<std::size_t>(size));
             std::ifstream file(path, std::ios::binary);
-            if (!file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())))
+            if (!file.read(reinterpret_cast<char *>(bytes.data()), static_cast<std::streamsize>(bytes.size())))
             {
                 return failed(EProjectPublicationError::READ, path);
             }
+            LUX_EDITOR_IO("publication-read", path, bytes.size());
             return bytes;
         }
 
-        EditorResult<void> write(const std::filesystem::path& path, std::span<const std::byte> bytes)
+        EditorResult<void> write(const std::filesystem::path &path, std::span<const std::byte> bytes)
         {
 #if defined(_WIN32)
-            const auto file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
-                FILE_ATTRIBUTE_NORMAL, nullptr);
+            const auto file =
+                CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
             if (file == INVALID_HANDLE_VALUE)
             {
                 return failed(EProjectPublicationError::WRITE, path, GetLastError());
             }
             DWORD count{};
             const bool written = bytes.size() <= MAXDWORD &&
-                WriteFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &count, nullptr) && count == bytes.size();
+                                 WriteFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &count, nullptr) &&
+                                 count == bytes.size();
             const auto write_error = GetLastError();
             const bool flushed = written && FlushFileBuffers(file);
             const auto flush_error = GetLastError();
@@ -149,10 +153,11 @@ namespace lux::editor
                 return failed(EProjectPublicationError::FLUSH, path, error);
             }
 #endif
+            LUX_EDITOR_IO("publication-write", path, bytes.size());
             return {};
         }
 
-        EditorResult<void> replace(const std::filesystem::path& staged, const std::filesystem::path& target)
+        EditorResult<void> replace(const std::filesystem::path &staged, const std::filesystem::path &target)
         {
 #if defined(_WIN32)
             if (!MoveFileExW(staged.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
@@ -170,16 +175,14 @@ namespace lux::editor
             return {};
         }
 
-        EditorResult<std::filesystem::path> targetPath(const std::filesystem::path& root, std::string_view path)
+        EditorResult<std::filesystem::path> targetPath(const std::filesystem::path &root, std::string_view path)
         {
             const std::filesystem::path relative_path{path};
             const auto first = relative_path.begin();
-            const auto equivalent = [](const auto& left, const auto& right)
-            {
-                return !PathLess{}(left, right) && !PathLess{}(right, left);
-            };
+            const auto equivalent = [](const auto &left, const auto &right)
+            { return !PathLess{}(left, right) && !PathLess{}(right, left); };
             const bool reserved = first != relative_path.end() &&
-                (equivalent(*first, ".lux-editor.lock") || equivalent(*first, journal_directory));
+                                  (equivalent(*first, ".lux-editor.lock") || equivalent(*first, journal_directory));
             if (!validProjectPath(path) || reserved)
             {
                 return failed(EProjectPublicationError::INVALID_PATH, root / path);
@@ -211,15 +214,16 @@ namespace lux::editor
             std::vector<Record> records;
         };
 
-        EditorResult<void> writeJournal(const std::filesystem::path& directory, const Journal& journal)
+        EditorResult<void> writeJournal(const std::filesystem::path &directory, const Journal &journal)
         {
             toml::array records;
-            for (const auto& record : journal.records)
+            for (const auto &record : journal.records)
             {
-                records.push_back(toml::table{{"path", record.path}, {"before", record.before}, {"after", record.after}});
+                records.push_back(
+                    toml::table{{"path", record.path}, {"before", record.before}, {"after", record.after}});
             }
-            const toml::table table{{"format", "lux.editor.publication.v1"}, {"phase", journal.phase},
-                {"files", std::move(records)}};
+            const toml::table table{
+                {"format", "lux.editor.publication.v1"}, {"phase", journal.phase}, {"files", std::move(records)}};
             std::ostringstream text;
             text << table;
             const auto bytes = text.str();
@@ -232,35 +236,35 @@ namespace lux::editor
             return replace(staged, directory / "journal.toml");
         }
 
-        EditorResult<Journal> readJournal(const std::filesystem::path& directory)
+        EditorResult<Journal> readJournal(const std::filesystem::path &directory)
         {
             auto bytes = read(directory / "journal.toml");
             if (!bytes || bytes->size() > 1024U * 1024U)
             {
                 return failed(EProjectPublicationError::JOURNAL, directory);
             }
-            auto parsed = toml::parse(std::string_view(reinterpret_cast<const char*>(bytes->data()), bytes->size()));
+            auto parsed = toml::parse(std::string_view(reinterpret_cast<const char *>(bytes->data()), bytes->size()));
             if (!parsed || parsed["format"].value_or(std::string_view{}) != "lux.editor.publication.v1")
             {
                 return failed(EProjectPublicationError::JOURNAL, directory);
             }
             Journal result{parsed["phase"].value_or(std::string{}), {}};
-            const auto* files = parsed["files"].as_array();
+            const auto *files = parsed["files"].as_array();
             if (!files || files->empty() || files->size() > 4096 ||
                 (result.phase != "PREPARING" && result.phase != "PREPARED" && result.phase != "COMMITTED"))
             {
                 return failed(EProjectPublicationError::JOURNAL, directory);
             }
             std::set<std::filesystem::path, PathLess> unique;
-            for (const auto& item : *files)
+            for (const auto &item : *files)
             {
-                const auto* row = item.as_table();
+                const auto *row = item.as_table();
                 if (!row)
                 {
                     return failed(EProjectPublicationError::JOURNAL, directory);
                 }
                 Record record{(*row)["path"].value_or(std::string{}), (*row)["before"].value_or(std::string{}),
-                    (*row)["after"].value_or(std::string{})};
+                              (*row)["after"].value_or(std::string{})};
                 if (!validProjectPath(record.path) || !unique.emplace(record.path).second ||
                     (record.before != "missing" && record.before.size() != 64) || record.after.size() != 64)
                 {
@@ -271,7 +275,7 @@ namespace lux::editor
             return result;
         }
 
-        EditorResult<void> cleanJournal(const std::filesystem::path& directory, const Journal& journal)
+        EditorResult<void> cleanJournal(const std::filesystem::path &directory, const Journal &journal)
         {
             std::error_code error;
             for (std::size_t index{}; index < journal.records.size(); ++index)
@@ -284,8 +288,9 @@ namespace lux::editor
                         return failed(EProjectPublicationError::JOURNAL, directory, error.value());
                     }
                 }
+                LUX_EDITOR_PUBLICATION_BOUNDARY("cleanup-record", index);
             }
-            for (const auto* name : {"journal.next", "journal.toml"})
+            for (const auto *name : {"journal.next", "journal.toml"})
             {
                 std::filesystem::remove(directory / name, error);
                 if (error)
@@ -293,6 +298,7 @@ namespace lux::editor
                     return failed(EProjectPublicationError::JOURNAL, directory, error.value());
                 }
             }
+            LUX_EDITOR_PUBLICATION_BOUNDARY("cleanup-journal", 0);
             std::filesystem::remove(directory, error);
             if (error)
             {
@@ -300,12 +306,16 @@ namespace lux::editor
             }
             return {};
         }
-    }
+    } // namespace
 
-    ProjectWriteLease::~ProjectWriteLease() { release(handle_); }
-    ProjectWriteLease::ProjectWriteLease(ProjectWriteLease&& other) noexcept
-        : handle_(std::exchange(other.handle_, -1)) {}
-    ProjectWriteLease& ProjectWriteLease::operator=(ProjectWriteLease&& other) noexcept
+    ProjectWriteLease::~ProjectWriteLease()
+    {
+        release(handle_);
+    }
+    ProjectWriteLease::ProjectWriteLease(ProjectWriteLease &&other) noexcept : handle_(std::exchange(other.handle_, -1))
+    {
+    }
+    ProjectWriteLease &ProjectWriteLease::operator=(ProjectWriteLease &&other) noexcept
     {
         if (this != &other)
         {
@@ -315,12 +325,12 @@ namespace lux::editor
         return *this;
     }
 
-    EditorResult<ProjectWriteLease> ProjectWriteLease::acquire(const std::filesystem::path& root)
+    EditorResult<ProjectWriteLease> ProjectWriteLease::acquire(const std::filesystem::path &root)
     {
         const auto path = root / ".lux-editor.lock";
 #if defined(_WIN32)
         const auto file = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_ALWAYS,
-            FILE_ATTRIBUTE_HIDDEN, nullptr);
+                                      FILE_ATTRIBUTE_HIDDEN, nullptr);
         if (file == INVALID_HANDLE_VALUE)
         {
             const auto error = GetLastError();
@@ -351,7 +361,7 @@ namespace lux::editor
 #endif
     }
 
-    EditorResult<std::string> projectFileDigest(const std::filesystem::path& path)
+    EditorResult<std::string> projectFileDigest(const std::filesystem::path &path)
     {
         std::error_code error;
         const bool exists = std::filesystem::exists(path, error);
@@ -378,7 +388,7 @@ namespace lux::editor
         std::uint64_t total{};
         while (file)
         {
-            file.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
+            file.read(reinterpret_cast<char *>(buffer.data()), buffer.size());
             const auto count = static_cast<std::size_t>(file.gcount());
             total += count;
             if (total > file_limit)
@@ -391,6 +401,7 @@ namespace lux::editor
         {
             return failed(EProjectPublicationError::READ, path);
         }
+        LUX_EDITOR_IO("hash-read", path, total);
         return hexDigest(hash.digest());
     }
 
@@ -399,7 +410,7 @@ namespace lux::editor
         return digest(bytes);
     }
 
-    EditorResult<void> recoverProjectFiles(const std::filesystem::path& root)
+    EditorResult<void> recoverProjectFiles(const std::filesystem::path &root)
     {
         const auto directory = root / journal_directory;
         std::error_code error;
@@ -456,7 +467,7 @@ namespace lux::editor
             return lux::cxx::unexpected(journal.error());
         }
         // Validate every target before undoing any publication. External edits are never overwritten.
-        for (const auto& record : journal->records)
+        for (const auto &record : journal->records)
         {
             auto path = targetPath(root, record.path);
             if (!path)
@@ -480,7 +491,7 @@ namespace lux::editor
         {
             for (std::size_t index{}; index < journal->records.size(); ++index)
             {
-                const auto& record = journal->records[index];
+                const auto &record = journal->records[index];
                 const auto path = root / record.path;
                 auto current = projectFileDigest(path);
                 if (!current)
@@ -520,42 +531,46 @@ namespace lux::editor
         return cleanJournal(directory, *journal);
     }
 
-    EditorResult<ProjectPackage> readProjectPackage(const std::filesystem::path& root, std::string path)
+    EditorResult<ProjectPackage> readProjectPackage(const std::filesystem::path &root, std::string path)
     {
         auto provider = asset::PakAssetProvider::loadFromFile(root / path);
         if (!provider)
         {
-            return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "project.pak", 0,
-                path + ": " + provider.error()});
+            return lux::cxx::unexpected(
+                EditorFailure{EEditorError::SOURCE_FAILURE, "project.pak", 0, path + ": " + provider.error()});
         }
         const auto mount_root = (*provider)->mountHint();
         ProjectPackage package{std::move(path), {mount_root, *provider, 0}, {}};
         package.entries.reserve((*provider)->assetCount());
-        (*provider)->enumerate([&](const asset::ProviderEntry& entry)
-        {
-            package.entries.push_back(entry);
-            package.entries.back().vpath = mount_root + "/" + entry.vpath;
-        });
+        (*provider)->enumerate(
+            [&](const asset::ProviderEntry &entry)
+            {
+                package.entries.push_back(entry);
+                package.entries.back().vpath = mount_root + "/" + entry.vpath;
+            });
         if (package.entries.size() != (*provider)->assetCount())
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "project.pak.index", 0,
-                package.path + ": incomplete package enumeration"});
+                                                      package.path + ": incomplete package enumeration"});
         }
         return package;
     }
 
-    EditorResult<ProjectPublicationReceipt> publishProjectFiles(const ProjectPublication& publication, std::stop_token stop)
+    EditorResult<ProjectPublicationReceipt> publishProjectFiles(const ProjectPublication &publication,
+                                                                std::stop_token stop)
     {
         auto manifest = encodeProjectManifest(publication.manifest);
         if (!manifest)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "project.codec",
-                static_cast<std::uint64_t>(manifest.error().code), manifest.error().field, manifest.error()});
+                                                      static_cast<std::uint64_t>(manifest.error().code),
+                                                      manifest.error().field, manifest.error()});
         }
         auto manifest_owner = std::make_shared<const std::string>(std::move(*manifest));
         auto files = publication.files;
-        files.push_back({publication.manifest_path, publication.before_manifest_digest,
-            lux::cxx::SharedBytes<>::fromOwner(manifest_owner, std::as_bytes(std::span(*manifest_owner)))});
+        files.push_back(
+            {publication.manifest_path, publication.before_manifest_digest,
+             lux::cxx::SharedBytes<>::fromOwner(manifest_owner, std::as_bytes(std::span(*manifest_owner)))});
         if (files.size() > 4096)
         {
             return failed(EProjectPublicationError::JOURNAL, publication.root);
@@ -568,7 +583,7 @@ namespace lux::editor
         }
         Journal journal{"PREPARING", {}};
         std::set<std::filesystem::path, PathLess> unique;
-        for (const auto& file : files)
+        for (const auto &file : files)
         {
             auto path = targetPath(publication.root, file.path);
             if (!path)
@@ -585,9 +600,10 @@ namespace lux::editor
                 return lux::cxx::unexpected(current.error());
             }
             const auto after = digest(file.bytes.view());
-            const bool immutable_package = std::ranges::find(publication.package_paths, file.path) != publication.package_paths.end();
-            const bool reuse_identical = (immutable_package || file.reuse_identical) &&
-                file.before_digest == "missing" && *current == after;
+            const bool immutable_package =
+                std::ranges::find(publication.package_paths, file.path) != publication.package_paths.end();
+            const bool reuse_identical =
+                (immutable_package || file.reuse_identical) && file.before_digest == "missing" && *current == after;
             if (*current != file.before_digest && !reuse_identical)
             {
                 return failed(EProjectPublicationError::CONFLICT, *path);
@@ -605,13 +621,14 @@ namespace lux::editor
         {
             return lux::cxx::unexpected(staged.error());
         }
+        LUX_EDITOR_PUBLICATION_BOUNDARY("preparing", 0);
         for (std::size_t index{}; index < files.size(); ++index)
         {
             if (stop.stop_requested())
             {
                 return failed(EProjectPublicationError::CANCELLED, directory);
             }
-            const auto& file = files[index];
+            const auto &file = files[index];
             if (journal.records[index].before != "missing")
             {
                 auto original = read(publication.root / file.path);
@@ -630,6 +647,7 @@ namespace lux::editor
             {
                 return lux::cxx::unexpected(staged.error());
             }
+            LUX_EDITOR_PUBLICATION_BOUNDARY("staged", index);
         }
         journal.phase = "PREPARED";
         staged = writeJournal(directory, journal);
@@ -637,6 +655,7 @@ namespace lux::editor
         {
             return lux::cxx::unexpected(staged.error());
         }
+        LUX_EDITOR_PUBLICATION_BOUNDARY("prepared", 0);
         for (std::size_t index{}; index < files.size(); ++index)
         {
             const auto target = publication.root / files[index].path;
@@ -645,7 +664,7 @@ namespace lux::editor
             {
                 return failed(EProjectPublicationError::CONFLICT, target, 0, index);
             }
-            const auto& record = journal.records[index];
+            const auto &record = journal.records[index];
             if (record.before == record.after)
             {
                 continue;
@@ -664,15 +683,16 @@ namespace lux::editor
             if (!published)
             {
                 auto failure = std::move(published.error());
-                std::any_cast<ProjectPublicationFailure&>(failure.cause).published_files = index;
+                std::any_cast<ProjectPublicationFailure &>(failure.cause).published_files = index;
                 return lux::cxx::unexpected(std::move(failure));
             }
+            LUX_EDITOR_PUBLICATION_BOUNDARY("published", index);
         }
         // Each immutable package must be usable before the durable commit decision.
         // If preparation fails, the journal still owns rollback; retry uses the same source capture.
         std::vector<ProjectPackage> packages;
         packages.reserve(publication.package_paths.size());
-        for (const auto& path : publication.package_paths)
+        for (const auto &path : publication.package_paths)
         {
             auto package = readProjectPackage(publication.root, path);
             if (!package)
@@ -686,19 +706,20 @@ namespace lux::editor
         if (!committed)
         {
             auto failure = std::move(committed.error());
-            std::any_cast<ProjectPublicationFailure&>(failure.cause).published_files = files.size();
+            std::any_cast<ProjectPublicationFailure &>(failure.cause).published_files = files.size();
             return lux::cxx::unexpected(std::move(failure));
         }
         // COMMITTED is the durable decision. Cleanup can be completed on the next open.
+        LUX_EDITOR_PUBLICATION_BOUNDARY("committed", 0);
         auto cleaned = cleanJournal(directory, journal);
         std::vector<std::pair<std::string, std::string>> digests;
         digests.reserve(publication.files.size());
         for (std::size_t index{}; index < publication.files.size(); ++index)
         {
-            const auto& record = journal.records[index];
+            const auto &record = journal.records[index];
             digests.emplace_back(record.path, record.after);
         }
         return ProjectPublicationReceipt{publication.manifest, journal.records.back().after, files.size(),
-            std::move(cleaned), std::move(digests), std::move(packages)};
+                                         std::move(cleaned),   std::move(digests),           std::move(packages)};
     }
-}
+} // namespace lux::editor

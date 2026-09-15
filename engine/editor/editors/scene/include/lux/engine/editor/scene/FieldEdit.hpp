@@ -358,11 +358,17 @@ namespace lux::editor::scene
                 {
                     return lux::cxx::unexpected(valid.error());
                 }
-                if (auto reserved = budget.reserve(sizeof(Prepared) + FieldValue<Value>::bytes(next)); !reserved)
+                const auto staging =
+                    preview_commit ? sizeof(Prepared) : sizeof(Prepared) + FieldValue<Value>::bytes(next);
+                if (auto reserved = budget.reserve(staging); !reserved)
                 {
                     return lux::cxx::unexpected(reserved.error());
                 }
-                return editing::PreparedEditPtr{new Prepared(*this, **live, next, preview_commit)};
+                if (preview_commit)
+                {
+                    return editing::PreparedEditPtr{new Prepared(*this)};
+                }
+                return editing::PreparedEditPtr{new Prepared(*this, **live, next)};
             }
 
             editing::EditResult<void> update(lux::cxx::TypeToken type, const void *value) override
@@ -453,8 +459,10 @@ namespace lux::editor::scene
             class Prepared final : public editing::PreparedEdit
             {
               public:
-                Prepared(const FieldEdit &operation, Value &live, const Value &next, bool adopted)
-                    : operation_(operation), live_(live), next_(next), adopted_(adopted)
+                explicit Prepared(const FieldEdit &operation) : operation_(operation), commit_(AdoptPreview{}) {}
+
+                Prepared(const FieldEdit &operation, Value &live, const Value &next)
+                    : operation_(operation), commit_(std::in_place_type<ReplaceValue>, live, next)
                 {
                 }
 
@@ -468,10 +476,7 @@ namespace lux::editor::scene
               private:
                 void apply() noexcept override
                 {
-                    if (!adopted_)
-                    {
-                        FieldValue<Value>::swap(live_, next_);
-                    }
+                    std::visit([](auto &commit) noexcept { commit.apply(); }, commit_);
                 }
 
                 void publish(const editing::CommitInfo &) noexcept override
@@ -479,10 +484,26 @@ namespace lux::editor::scene
                     operation_.owner_.fieldChanged(operation_.target_, lux::cxx::typeToken<Component>(), false);
                 }
 
+                struct AdoptPreview final
+                {
+                    // The validated value is already in the document. Only history and notice remain.
+                    void apply() noexcept {}
+                };
+                struct ReplaceValue final
+                {
+                    ReplaceValue(Value &live, const Value &next) : live(live), next(next) {}
+
+                    void apply() noexcept
+                    {
+                        FieldValue<Value>::swap(live, next);
+                    }
+
+                    Value &live;
+                    Value next;
+                };
+
                 const FieldEdit &operation_;
-                Value &live_;
-                Value next_;
-                bool adopted_;
+                std::variant<AdoptPreview, ReplaceValue> commit_;
             };
 
             SceneEditor &owner_;

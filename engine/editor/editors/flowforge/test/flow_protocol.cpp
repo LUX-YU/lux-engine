@@ -1,3 +1,4 @@
+#include "FiniteCost.hpp"
 #include "TestExit.hpp"
 #include "flow_metadata.hpp"
 #include <cassert>
@@ -66,6 +67,17 @@ struct Evidence final
     bool completed{}, closed{};
     std::weak_ptr<const void> metadata;
 };
+class CompileReceiver final : public lux::object::Object<CompileReceiver>
+{
+  public:
+    explicit CompileReceiver(lux::object::ObjectDispatcherRef dispatcher) : Object(dispatcher) {}
+    void completed(const flow::FlowCompileId &id) noexcept
+    {
+        values.push_back(id);
+    }
+    std::vector<flow::FlowCompileId> values;
+};
+
 class Probe final : public EditorFrontend
 {
     TestExit exit_;
@@ -131,8 +143,17 @@ class Probe final : public EditorFrontend
                 [this, &doc](const flow::FlowCompileId &id) noexcept
                 {
                     notified_ = id;
+                    if (stage_ != 6)
+                    {
+                        expected_notices_.push_back(id);
+                    }
                     const auto acknowledgment = doc.acknowledgeCompile(id);
                     assert(!acknowledgment && acknowledgment.error().code == EEditorError::BUSY);
+                    if (stage_ == 6)
+                    {
+                        doc.requestClose();
+                        assert(editor_->document(document_) && doc.compileStatus(id));
+                    }
                     ++first_notices_;
                 });
             second_notice_ = doc.observeScoped<flow::FlowForgeEditor::compileFinished>(
@@ -141,6 +162,10 @@ class Probe final : public EditorFrontend
                     assert(id == notified_ && doc.compileStatus(id));
                     ++second_notices_;
                 });
+            auto queued = doc.observe<flow::FlowForgeEditor::compileFinished, &CompileReceiver::completed,
+                                      lux::object::EDelivery::QUEUED>(receiver_);
+            assert(queued);
+            queued_notice_ = lux::object::ScopedConnection{std::move(*queued)};
             if (stage_ == 0)
             {
                 auto shared = editor_->requestOpen({doc.summary().key, "duplicate"});
@@ -148,6 +173,14 @@ class Probe final : public EditorFrontend
                 assert(editor_->acknowledgeOpen(*shared));
                 const auto original = doc.capture();
                 assert(original && doc.views().empty() && doc.historyView()->history.clean);
+                measureEdits("Flow.node-layout", doc,
+                             [&](unsigned index)
+                             {
+                                 const std::array moved{
+                                     lux::graph::GraphLayoutEntry{lux::graph::NodeId{original->nodes.front().id.value},
+                                                                  {static_cast<float>(index + 1), 32, true}}};
+                                 return doc.moveNodes(moved);
+                             });
                 assert(!evidence_.metadata.expired() && doc.metadata().classes.size() == 1);
                 {
                     auto foreign = std::make_shared<MetadataOwner>();
@@ -421,7 +454,7 @@ class Probe final : public EditorFrontend
             {
                 auto stale = doc.compiled(compile_);
                 assert(!stale && stale.error().code == EEditorError::STALE_REQUEST);
-                assert(doc.acknowledgeCompile(compile_));
+                acknowledge(doc);
                 doc.requestClose();
                 stage_ = 3;
             }
@@ -440,7 +473,7 @@ class Probe final : public EditorFrontend
                 assert(published);
                 save_ = *published;
                 saved_ = doc.historyView()->history.current;
-                assert(doc.acknowledgeCompile(compile_)); // Save owns its byte captures after compile retirement.
+                acknowledge(doc); // Save owns its byte captures after compile retirement.
                 assert(doc.rename("Source newer than artifact"));
                 stage_ = 7;
             }
@@ -484,6 +517,7 @@ class Probe final : public EditorFrontend
             {
                 assert(entry->compiled_source_digest == compiled_digest_ && entry->source_digest != compiled_digest_);
                 assert(doc.historyView()->history.clean && doc.acknowledgeSave(save_));
+                queued_notice_.reset();
                 assert(doc.requestCompile(linker));
                 doc.requestClose();
                 stage_ = 6;
@@ -505,6 +539,10 @@ class Probe final : public EditorFrontend
             else
             {
                 assert(first_notices_ >= 3 && first_notices_ == second_notices_);
+                // A late drain after disconnect and owner retirement cannot target
+                // the next document incarnation.
+                assert(observer_queue_.dispatchPending(64) == 0);
+                assert(receiver_.values == expected_notices_);
                 evidence_.completed = true;
                 exit_.request(*editor_);
             }
@@ -525,6 +563,15 @@ class Probe final : public EditorFrontend
     }
 
   private:
+    void acknowledge(flow::FlowForgeEditor &doc)
+    {
+        assert(doc.acknowledgeCompile(compile_));
+        const auto duplicate = doc.acknowledgeCompile(compile_);
+        assert(!duplicate && duplicate.error().code == EEditorError::STALE_REQUEST);
+        static_cast<void>(observer_queue_.dispatchPending(expected_notices_.size()));
+        assert(receiver_.values == expected_notices_);
+    }
+
     flow::FlowForgeEditor &document()
     {
         auto value = editor_->document(document_);
@@ -553,7 +600,11 @@ class Probe final : public EditorFrontend
     std::chrono::steady_clock::time_point began_{std::chrono::steady_clock::now()};
     flow::FlowCompileId notified_;
     unsigned first_notices_{}, second_notices_{};
+    std::vector<flow::FlowCompileId> expected_notices_;
+    lux::object::ObjectMessageQueue observer_queue_;
+    CompileReceiver receiver_{observer_queue_.dispatcherRef()};
     lux::object::ScopedConnection first_notice_, second_notice_;
+    lux::object::ScopedConnection queued_notice_;
 };
 int main(int argc, char **argv)
 {

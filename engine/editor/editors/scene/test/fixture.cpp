@@ -1,5 +1,3 @@
-#include <lux/engine/simulation/ecs/VisualSchema.hpp>
-#include <lux/engine/simulation/ecs/TransformSchema.hpp>
 #include "scene_source_checks.hpp"
 #include <algorithm>
 #include <cassert>
@@ -8,6 +6,7 @@
 #include <lux/engine/editor/project/ProjectManifest.hpp>
 #include <lux/engine/function/render/client/core/RenderFeatureMetaModule.hpp>
 #include <lux/engine/function/render/client/core/RenderFeatureRegistration.hpp>
+#include <lux/engine/material/graph/MaterialSource.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
@@ -19,7 +18,9 @@
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/TransformSystem.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
+#include <lux/engine/simulation/ecs/TransformSchema.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
+#include <lux/engine/simulation/ecs/VisualSchema.hpp>
 #include <lux/engine/simulation/ecs/WorldComponentArchive.hpp>
 #include <lux/engine/world/WorldAssetCodec.hpp>
 #include <lux/engine/world/WorldDescriptionBuilder.hpp>
@@ -37,7 +38,7 @@ int main(int argc, char **argv)
     using namespace lux;
     using namespace lux::world;
 
-    assert(argc == 3);
+    assert(argc >= 3 && argc <= 5);
     const std::filesystem::path root{argv[1]};
     if (std::string_view(argv[2]) == "verify-preservation")
     {
@@ -70,9 +71,11 @@ int main(int argc, char **argv)
         using Component = std::remove_cvref_t<decltype(component)>;
         const auto entity = registry.create();
         registry.emplace<Component>(entity, component);
-        for (const auto registered : {simulation::ecs::transformComponentSchemas(), simulation::ecs::visualComponentSchemas()})
+        for (const auto registered :
+             {simulation::ecs::transformComponentSchemas(), simulation::ecs::visualComponentSchemas()})
         {
-            const auto found = std::ranges::find(registered, cxx::typeToken<Component>(), &simulation::ecs::ComponentSchema::cpp_type);
+            const auto found =
+                std::ranges::find(registered, cxx::typeToken<Component>(), &simulation::ecs::ComponentSchema::cpp_type);
             if (found != registered.end())
             {
                 assert(found->capture);
@@ -88,14 +91,16 @@ int main(int argc, char **argv)
     };
     std::array<std::array<std::vector<std::byte>, 3>, 4> payloads;
     std::array<std::vector<WorldEncodedDataRecord>, 4> data;
-    std::array<WorldEncodedObjectRecord, 4> objects;
+    const auto object_count = argc >= 4 ? std::stoul(argv[3]) : 4;
+    assert(object_count >= 4 && object_count <= 4096);
+    std::vector<WorldEncodedObjectRecord> objects(object_count);
     const auto seed = [](std::uint8_t tail)
     {
         std::array<std::uint8_t, 16> bytes{0x53, 0x56, 1};
         bytes.back() = tail;
         return asset::AssetId{bytes};
     };
-    for (std::size_t index{}; index < objects.size(); ++index)
+    for (std::size_t index{}; index < 4; ++index)
     {
         simulation::ecs::Transform3D transform;
         if (index == 0)
@@ -143,6 +148,13 @@ int main(int argc, char **argv)
         }
         std::ranges::sort(data[index], {}, &WorldEncodedDataRecord::schema_ordinal);
         objects[index] = {identity<WorldObjectId>(static_cast<std::uint8_t>(index + 1)), data[index]};
+    }
+    for (std::size_t index = 4; index < objects.size(); ++index)
+    {
+        std::array<std::uint8_t, 16> bytes{};
+        bytes[14] = static_cast<std::uint8_t>((index + 1) >> 8);
+        bytes[15] = static_cast<std::uint8_t>(index + 1);
+        objects[index] = {WorldObjectId{uuids::uuid{bytes}}, {}};
     }
     std::vector<std::vector<std::byte>> partition_bytes;
     std::vector<WorldPartitionRecord> records;
@@ -258,10 +270,30 @@ int main(int argc, char **argv)
         "Main.luxscene",
         {{identity<asset::AssetId>(12), editor::EProjectAssetKind::SCENE, "Main.luxscene", {}, {}, {}, "Scenes/Main"},
          {seed(10), editor::EProjectAssetKind::MODEL, "Cube.obj", "Seed.luxpak", {}, {}, "Seed"}}};
+    const std::size_t unopened = argc == 5 ? std::stoul(argv[4]) : 0;
+    std::size_t unopened_bytes{};
+    for (std::size_t index{}; index < unopened; ++index)
+    {
+        std::array<std::uint8_t, 16> id_bytes{};
+        id_bytes[0] = 0x72;
+        id_bytes[14] = static_cast<std::uint8_t>(index >> 8);
+        id_bytes[15] = static_cast<std::uint8_t>(index);
+        const asset::AssetId id{id_bytes};
+        const auto path = "Unopened-" + std::to_string(index) + ".luxmaterial";
+        auto source = material::encodeMaterialSource({id, std::string(4096, 'x'), {}});
+        assert(source);
+        std::ofstream file(root / path, std::ios::binary);
+        file << *source;
+        assert(file.good());
+        unopened_bytes += source->size();
+        project.assets.push_back({id, editor::EProjectAssetKind::MATERIAL_GRAPH, path, {}, {}, {}, path});
+    }
     auto encoded = editor::encodeProjectManifest(project);
     assert(encoded);
     std::ofstream manifest(root / "Project.luxproject", std::ios::binary);
     manifest << *encoded;
     assert(manifest.good());
     std::printf("native fixture: %zu objects, render=%d, page=2048\n", objects.size(), rendered);
+    std::printf("unopened sources=%zu encoded_bytes=%zu manifest_bytes=%zu\n", unopened, unopened_bytes,
+                encoded->size());
 }

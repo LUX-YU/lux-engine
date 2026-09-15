@@ -1,4 +1,3 @@
-#include <lux/engine/editor/gui/scene/SceneDocumentProvider.hpp>
 #include "TestExit.hpp"
 #include <cassert>
 #include <consumer/Domain.hpp>
@@ -7,6 +6,7 @@
 #include <fstream>
 #include <lux/engine/editor/Editor.hpp>
 #include <lux/engine/editor/gui/GuiFrontend.hpp>
+#include <lux/engine/editor/gui/scene/SceneDocumentProvider.hpp>
 #include <lux/engine/editor/scene/FieldEdit.hpp>
 #include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
@@ -138,6 +138,7 @@ namespace
         bool closed{};
         std::size_t draws{};
         bool indexed{};
+        bool measure{};
     };
 
     template <class Scalar> void checkRotation(scene::SceneEditor &document, lux::world::WorldObjectId object)
@@ -190,6 +191,74 @@ namespace
         std::printf(
             "PASS typed generated Quaternion%s: twelve Eigen rotations, preview rejection retains value, Undo/Redo\n",
             std::is_same_v<Scalar, float> ? "f" : "d");
+    }
+
+    void checkVectorElements(scene::SceneEditor &document, lux::world::WorldObjectId object)
+    {
+        const auto whole = [](auto &component) noexcept { return &component.sequence; };
+        const auto read = [&]() -> const consumer::Component &
+        {
+            return *static_cast<const consumer::Component *>(
+                document.component(object, lux::cxx::typeToken<consumer::Component>()));
+        };
+        const auto original = read().sequence;
+        const auto initial = document.historyView()->history.current;
+        for (const std::size_t count : {256U, 4096U})
+        {
+            std::vector<consumer::Settings> values(count);
+            assert(document.setField<consumer::Component>(*document.writeTarget(object), "sequence", "Sequence", whole,
+                                                          values));
+            const auto element = [count](auto &component) noexcept
+            {
+                using Item = std::remove_reference_t<decltype(component.sequence.front())>;
+                return component.sequence.size() == count ? &component.sequence.front() : static_cast<Item *>(nullptr);
+            };
+            const auto before = document.historyView()->history;
+            auto preview = document.beginPreview<consumer::Component, consumer::Settings>(
+                *document.writeTarget(object), "vector-element-test", "sequence[0]", "[0]", element);
+            assert(preview);
+            auto next = values.front();
+            const auto begin = std::chrono::steady_clock::now();
+            for (unsigned update = 1; update <= 100; ++update)
+            {
+                next.gain = 0.01 * update;
+                assert(document.updatePreview(*preview, next));
+            }
+#if defined(CONSUMER_MEASURE_COPIES)
+            const auto copies_before = consumer::settings_copies.load(std::memory_order_relaxed);
+#endif
+            assert(document.commitPreview(*preview));
+#if defined(CONSUMER_MEASURE_COPIES)
+            const auto copies = consumer::settings_copies.load(std::memory_order_relaxed) - copies_before;
+            assert(copies == CONSUMER_EXPECT_ADOPT_COPIES);
+            std::printf("DIAGNOSTIC adopted preview copies=%llu size=%zu\n", static_cast<unsigned long long>(copies),
+                        count);
+#endif
+            const auto elapsed =
+                std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - begin).count();
+            const auto applied = document.historyView()->history;
+            assert(applied.cursor == before.cursor + 1 && read().sequence.front().gain == 1.0);
+            assert(read().sequence.back().gain == 1.5);
+            const auto retained = applied.charged_retained_bytes - before.charged_retained_bytes;
+            assert(retained < 4096);
+
+            // A structural edit and its Undo change the temporary component version.
+            // Earlier element history must still replay after the exact structure returns.
+            auto resized = read().sequence;
+            resized.emplace_back();
+            assert(document.setField<consumer::Component>(*document.writeTarget(object), "sequence", "Sequence", whole,
+                                                          resized));
+            assert(document.undo() && read().sequence.size() == count);
+            assert(document.undo() && read().sequence.front().gain == 1.5);
+            assert(document.redo() && read().sequence.front().gain == 1.0);
+            assert(document.redo() && read().sequence.size() == count + 1);
+            assert(document.undo() && document.undo() && document.undo());
+            assert(document.historyView()->history.current == initial);
+            assert(scene::FieldValue<std::vector<consumer::Settings>>::equal(read().sequence, original));
+            std::printf("PASS vector element: size=%zu updates=100 entries=1 retained=%zu active_us=%.3f "
+                        "structural-undo-then-element-replay=1\n",
+                        count, retained, elapsed);
+        }
     }
 
     class Probe final : public EditorFrontend
@@ -304,8 +373,49 @@ namespace
                               "before effects");
                     return;
                 }
+                if (evidence_.measure && sample_stage_ < 3)
+                {
+                    const auto sequence = [](auto &value) noexcept { return &value.sequence; };
+                    if (sample_stage_ == 0)
+                    {
+                        assert(document.setField<consumer::Component>(*document.writeTarget(object), "sequence",
+                                                                      "Sequence", sequence,
+                                                                      std::vector<consumer::Settings>(256)));
+                        consumer::beginDrawSample();
+                        sample_stage_ = 1;
+                        return;
+                    }
+                    const auto sample = consumer::drawSample();
+                    if (sample.draws != 100)
+                    {
+                        return;
+                    }
+                    const auto count = sample_stage_ == 1 ? 256U : 4096U;
+                    const auto &value = read().sequence;
+                    assert(value.size() == count);
+                    double checksum{};
+                    for (const auto &element : value)
+                    {
+                        checksum += element.gain;
+                    }
+                    assert(checksum == 1.5 * count);
+                    std::printf("MEASURE generated-inspector size=%u warmup=%zu draws=%zu active_us=%.3f "
+                                "checksum=%.1f width=1000 height=700 scene_views=1\n",
+                                count, sample.warmup, sample.draws, sample.active_microseconds, checksum);
+                    assert(document.undo());
+                    ++sample_stage_;
+                    if (sample_stage_ == 2)
+                    {
+                        assert(document.setField<consumer::Component>(*document.writeTarget(object), "sequence",
+                                                                      "Sequence", sequence,
+                                                                      std::vector<consumer::Settings>(4096)));
+                        consumer::beginDrawSample();
+                        return;
+                    }
+                }
                 checkRotation<float>(document, object);
                 checkRotation<double>(document, object);
+                checkVectorElements(document, object);
                 const auto before = read();
                 const auto initial = document.historyView()->history.current;
                 assert(document.eraseObjects(initial, std::span(&object, 1)));
@@ -408,6 +518,7 @@ namespace
         SaveRequestId save_;
         OpenRequestId request_;
         std::uint32_t stage_{};
+        std::uint32_t sample_stage_{};
         bool closing_{};
         std::chrono::steady_clock::time_point began_{std::chrono::steady_clock::now()};
     };
@@ -482,11 +593,12 @@ namespace
     };
 } // namespace
 
-int sceneWorkflow(const std::filesystem::path &root)
+int sceneWorkflow(const std::filesystem::path &root, bool measure)
 {
     createProject(root);
     lux::meta::ReflectionRegistry::initRegistry();
     Evidence evidence;
+    evidence.measure = measure;
     lux::editor::EditorConfig config;
     config.project_file = root / "Project.luxproject";
     config.execution = {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}};

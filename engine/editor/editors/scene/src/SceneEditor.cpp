@@ -1109,7 +1109,7 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "scene.selection"});
         }
-        if (data_->close != ECloseState::OPEN)
+        if (data_->close_requested || data_->close != ECloseState::OPEN)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::CLOSING, "scene.selection"});
         }
@@ -2077,7 +2077,7 @@ namespace lux::editor::scene
 
     EditorResult<void> SceneEditor::addViews(std::vector<std::unique_ptr<DocumentView>> &batch)
     {
-        if (data_->close != ECloseState::OPEN)
+        if (data_->close_requested || data_->close != ECloseState::OPEN)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::CLOSING, "scene.views"});
         }

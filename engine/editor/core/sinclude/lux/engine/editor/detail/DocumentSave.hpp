@@ -293,7 +293,7 @@ namespace lux::editor::detail
             {
                 retry &= publication->code != EProjectPublicationError::INVALID_PATH &&
                          publication->code != EProjectPublicationError::CONFLICT &&
-                         publication->code != EProjectPublicationError::RECOVERY_CONFLICT;
+                         (publication->code != EProjectPublicationError::RECOVERY_CONFLICT || abandoning_);
             }
             status_ = SaveRetryable{std::move(error), ticket_.state(), attempt_, retry};
         }

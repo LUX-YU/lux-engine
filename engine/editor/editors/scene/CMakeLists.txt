@@ -55,6 +55,13 @@ component_include_directories(editor_scene_ui
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${PROJECT_SOURCE_DIR}/engine/editor/ui/sinclude INSTALL_TIME include)
 target_compile_definitions(editor_scene_ui PRIVATE LUX_EDITOR_SCENE_UI_LIBRARY)
+option(LUX_EDITOR_UI_DIAGNOSTICS "Private UI work counters; exclude from normal SDK and timing" OFF)
+if(LUX_EDITOR_UI_DIAGNOSTICS)
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        message(FATAL_ERROR "Editor UI diagnostics require RelWithDebInfo")
+    endif()
+    target_compile_definitions(editor_scene_ui PRIVATE LUX_EDITOR_UI_DIAGNOSTICS)
+endif()
 target_link_libraries(editor_scene_ui PUBLIC lux::engine::editor::editor_scene lux::engine::editor::editor_ui lux::engine::editor::editor_assets lux::engine::function::ui imgui::core
     PRIVATE lux::engine::editor::editor_ui lux::engine::platform::window lux::engine::simulation::transform_system
     lux::engine::scene::scene_render_meta lux::engine::function::render_client_meta)

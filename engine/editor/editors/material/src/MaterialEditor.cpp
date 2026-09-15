@@ -2,8 +2,8 @@
 #include <cmath>
 #include <lux/engine/editor/detail/DocumentSave.hpp>
 #include <lux/engine/editor/detail/DocumentSource.hpp>
+#include <lux/engine/editor/material/MaterialCompilation.hpp>
 #include <lux/engine/editor/material/MaterialEditor.hpp>
-#include <lux/engine/material/Compiler.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/resource/asset/material/MaterialAssets.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
@@ -18,27 +18,6 @@ namespace lux::editor::material
             return {
                 EEditorError::INVALID_STATE, "material.history", static_cast<std::uint64_t>(failure.code), {}, failure};
         }
-        struct MaterialEncoder final
-        {
-            EditorResult<lux::cxx::SharedBytes<>> operator()(const lux::material::MaterialSourceDocument &capture,
-                                                             std::stop_token stop) const noexcept
-            {
-                if (stop.stop_requested())
-                {
-                    return lux::cxx::unexpected(EditorFailure{EEditorError::CANCELLED, "material.encode"});
-                }
-                auto result = lux::material::encodeMaterialSource(capture);
-                if (!result)
-                {
-                    return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "material.encode",
-                                                              static_cast<std::uint64_t>(result.error().code),
-                                                              result.error().field, result.error()});
-                }
-                auto owner = std::make_shared<const std::string>(std::move(*result));
-                return lux::cxx::SharedBytes<>::fromOwner(owner,
-                                                          std::as_bytes(std::span{owner->data(), owner->size()}));
-            }
-        };
         using MaterialSave = detail::DocumentSave<lux::material::MaterialSourceDocument, MaterialEncoder>;
 
         struct NameAccess final
@@ -478,66 +457,6 @@ namespace lux::editor::material
             return history->execute(operation);
         }
 
-        using Compiled = detail::CompiledDocument<asset::MaterialAsset>;
-        struct CompileWork final
-        {
-            const lux::material::MaterialSourceDocument *source;
-            std::string path;
-            std::stop_token stop;
-            EditorResult<Compiled> operator()() const noexcept
-            {
-                if (stop.stop_requested())
-                {
-                    return lux::cxx::unexpected(EditorFailure{EEditorError::CANCELLED, "material.compile"});
-                }
-                auto result = lux::material::compileMaterial(source->graph);
-                if (!result)
-                {
-                    return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "material.compile",
-                                                              static_cast<std::uint64_t>(result.error().code),
-                                                              result.error().message, std::move(result.error())});
-                }
-                auto source_bytes = MaterialEncoder{}(*source, stop);
-                if (!source_bytes)
-                {
-                    return lux::cxx::unexpected(source_bytes.error());
-                }
-                auto material = std::make_shared<const lux::rdesc::MaterialDescription>(std::move(*result));
-                auto asset =
-                    asset::MaterialAsset::create({source->id, asset::MaterialAsset::asset_type}, std::move(material));
-                if (!asset)
-                {
-                    return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE,
-                                                              "material.artifact",
-                                                              static_cast<std::uint64_t>(asset.error().code),
-                                                              {},
-                                                              asset.error()});
-                }
-                return detail::encodeCompiledDocument(std::move(*asset), std::move(*source_bytes), path);
-            }
-        };
-        struct Compilation final
-        {
-            Compilation(MaterialCompileId request, const editing::HistorySnapshot &history,
-                        const lux::material::MaterialSourceDocument &source, std::string path,
-                        process::ExecutionRuntime &runtime)
-                : id(request), state(history.current), revision(history.revision),
-                  capture{source.id, source.name, source.graph.clone()},
-                  task(runtime, stdexec::then(stdexec::schedule(runtime.cpu()),
-                                              CompileWork{&capture, std::move(path), stop.get_token()}))
-            {
-                task.start();
-            }
-            MaterialCompileId id;
-            editing::StateId state;
-            editing::Revision revision;
-            lux::material::MaterialSourceDocument capture;
-            std::stop_source stop;
-            detail::ScheduledDocumentTask<process::CpuScheduler, CompileWork> task;
-            MaterialCompileStatus status{MaterialCompilePending{}};
-            std::variant<std::monostate, Compiled> output;
-        };
-
         Data(lux::material::MaterialSourceDocument value, Project &project_owner, process::ExecutionRuntime &execution,
              std::unique_ptr<editing::EditHistory> edits)
             : source(std::move(value)), project(project_owner), runtime(execution), history(std::move(edits))
@@ -578,7 +497,7 @@ namespace lux::editor::material
         std::unique_ptr<editing::EditHistory> history;
         std::vector<std::unique_ptr<DocumentView>> views;
         std::variant<std::monostate, MaterialSave> save;
-        std::variant<std::monostate, Compilation> compilation;
+        std::variant<std::monostate, MaterialCompilation> compilation;
         std::uint64_t next_save{1}, next_compile{1};
         ECloseState close{ECloseState::OPEN};
         bool close_requested{}, busy{};
@@ -1110,7 +1029,7 @@ namespace lux::editor::material
             return lux::cxx::unexpected(historyFailure(view.error()));
         }
         const MaterialCompileId id{handle(), data_->next_compile++};
-        data_->compilation.emplace<Data::Compilation>(
+        data_->compilation.emplace<MaterialCompilation>(
             id, view->snapshot, data_->source, std::string(data_->project.assetName(data_->source.id)), data_->runtime);
         return id;
     }
@@ -1143,8 +1062,8 @@ namespace lux::editor::material
             return lux::cxx::unexpected(historyFailure(ticket.error()));
         }
         const SaveRequestId id{handle(), data_->next_save++};
-        const auto &job = std::get<Data::Compilation>(data_->compilation);
-        const auto &image = std::get<Data::Compiled>(job.output).image;
+        const auto &job = std::get<MaterialCompilation>(data_->compilation);
+        const auto &image = std::get<MaterialCompiled>(job.output).image;
         data_->save.emplace<MaterialSave>(id, *ticket, job.revision, data_->source.id, image, data_->project,
                                           data_->runtime, *data_->history);
         return id;
@@ -1152,7 +1071,7 @@ namespace lux::editor::material
 
     EditorResult<MaterialCompileStatus> MaterialEditor::compileStatus(MaterialCompileId id) const
     {
-        const auto *job = std::get_if<Data::Compilation>(&data_->compilation);
+        const auto *job = std::get_if<MaterialCompilation>(&data_->compilation);
         if (!job || job->id != id)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "material.compile"});
@@ -1184,7 +1103,7 @@ namespace lux::editor::material
                 EditorFailure{success ? EEditorError::STALE_REQUEST : EEditorError::BUSY, "material.compile"});
         }
         return std::cref(
-            std::get<Data::Compiled>(std::get<Data::Compilation>(data_->compilation).output).artifact->data());
+            std::get<MaterialCompiled>(std::get<MaterialCompilation>(data_->compilation).output).artifact->data());
     }
     EditorResult<void> MaterialEditor::acknowledgeCompile(MaterialCompileId id)
     {
@@ -1192,7 +1111,7 @@ namespace lux::editor::material
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "material.compile"});
         }
-        auto *job = std::get_if<Data::Compilation>(&data_->compilation);
+        auto *job = std::get_if<MaterialCompilation>(&data_->compilation);
         if (!job || job->id != id)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "material.compile"});
@@ -1299,7 +1218,7 @@ namespace lux::editor::material
         {
             save->abandon();
         }
-        if (auto *job = std::get_if<Data::Compilation>(&data_->compilation))
+        if (auto *job = std::get_if<MaterialCompilation>(&data_->compilation))
         {
             job->stop.request_stop();
         }
@@ -1335,13 +1254,13 @@ namespace lux::editor::material
         {
             save->poll();
         }
-        if (auto *job = std::get_if<Data::Compilation>(&data_->compilation);
+        if (auto *job = std::get_if<MaterialCompilation>(&data_->compilation);
             job && job->task.ready() && std::holds_alternative<MaterialCompilePending>(job->status))
         {
             auto result = job->task.take();
             if (result)
             {
-                job->output.emplace<Data::Compiled>(std::move(*result));
+                job->output.emplace<MaterialCompiled>(std::move(*result));
                 job->status = MaterialCompileSucceeded{job->state, job->revision,
                                                        data_->history->view()->snapshot.current == job->state};
             }
@@ -1371,7 +1290,7 @@ namespace lux::editor::material
         {
             return;
         }
-        if (const auto *job = std::get_if<Data::Compilation>(&data_->compilation); job && !job->task.ready())
+        if (const auto *job = std::get_if<MaterialCompilation>(&data_->compilation); job && !job->task.ready())
         {
             return;
         }

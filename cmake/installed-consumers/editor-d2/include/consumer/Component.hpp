@@ -13,9 +13,15 @@
 #include <unordered_set>
 #include <variant>
 #include <vector>
+#if defined(CONSUMER_MEASURE_COPIES)
+#include <atomic>
+#endif
 
 namespace consumer
 {
+#if defined(CONSUMER_MEASURE_COPIES)
+    inline std::atomic_uint64_t settings_copies{};
+#endif
     enum class LUX_ENUM_INFO(compile_time) EMode
     {
         FIRST,
@@ -24,6 +30,23 @@ namespace consumer
 
     struct LUX_TYPE_INFO(compile_time) Settings final
     {
+#if defined(CONSUMER_MEASURE_COPIES)
+        Settings() = default;
+        Settings(const Settings &other) : gain(other.gain), name(other.name), mode(other.mode)
+        {
+            settings_copies.fetch_add(1, std::memory_order_relaxed);
+        }
+        Settings &operator=(const Settings &other)
+        {
+            gain = other.gain;
+            name = other.name;
+            mode = other.mode;
+            settings_copies.fetch_add(1, std::memory_order_relaxed);
+            return *this;
+        }
+        Settings(Settings &&) noexcept = default;
+        Settings &operator=(Settings &&) noexcept = default;
+#endif
         double LUX_MEMBER(widget = slider, min = 0, max = 10) gain{1.5};
         std::string LUX_MEMBER() name { "Unicode 中文" };
         EMode LUX_MEMBER() mode { EMode::FIRST };

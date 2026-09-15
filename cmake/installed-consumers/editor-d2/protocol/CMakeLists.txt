@@ -32,7 +32,7 @@ foreach(feature editors/material editors/flowforge editors/scene assets)
     endforeach()
 endforeach()
 
-set(protocols fixture core_protocol foundation_protocol process_completion publication_protocol review_regressions
+set(protocols fixture core_protocol foundation_protocol process_completion publication_protocol publication_boundaries review_regressions
     container_protocol material_protocol flow_object_protocol flow_protocol vfs_protocol model_protocol import_protocol)
 foreach(protocol IN LISTS protocols)
     if("${protocol}.cpp" IN_LIST collected_test_names)
@@ -54,6 +54,25 @@ foreach(protocol IN LISTS protocols)
     target_compile_options(d2_${protocol} PRIVATE /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr)
 endforeach()
 target_link_libraries(d2_fixture PRIVATE lux::engine::simulation::ecs::visual lux::engine::simulation::ecs::transform)
+
+add_test(NAME editor.d2c.publication-format COMMAND d2_publication_boundaries
+    "${CMAKE_CURRENT_BINARY_DIR}/publication-format" ordinary)
+option(D2_PUBLICATION_DIAGNOSTICS "Run against a dedicated SDK with publication boundary probes" OFF)
+if(D2_PUBLICATION_DIAGNOSTICS)
+    foreach(boundary preparing:0 staged:0 staged:1 staged:2 prepared:0 published:0 published:1 published:2
+        committed:0 cleanup-record:0 cleanup-record:1 cleanup-record:2 cleanup-journal:0)
+        string(REPLACE ":" "-" name "${boundary}")
+        add_test(NAME editor.d2c.publication-boundary-${name}
+            COMMAND "${D2_POWERSHELL}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/RunPublicationBoundary.ps1"
+                -Executable "$<TARGET_FILE:d2_publication_boundaries>"
+                -Root "${CMAKE_CURRENT_BINARY_DIR}/publication-boundaries" -Boundary "${boundary}")
+        set_tests_properties(editor.d2c.publication-boundary-${name} PROPERTIES RUN_SERIAL TRUE TIMEOUT 30)
+    endforeach()
+    add_test(NAME editor.d2c.publication-boundary-conflict
+        COMMAND "${D2_POWERSHELL}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/RunPublicationBoundary.ps1"
+            -Executable "$<TARGET_FILE:d2_publication_boundaries>"
+            -Root "${CMAKE_CURRENT_BINARY_DIR}/publication-boundaries" -Boundary "published:1" -Conflict)
+endif()
 
 foreach(mode compile-notice close-intent exit-review)
     add_test(NAME editor.d2c.${mode}

@@ -35,3 +35,17 @@ component_add_transitive_commands(editor_material_ui
     "find_package(lux-engine-editor-ui REQUIRED COMPONENTS editor_ui)")
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-material VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_material editor_material_ui)
+
+if(BUILD_TESTING)
+    enable_testing()
+    add_executable(editor_node_canvas_protocol test/canvas_protocol.cpp)
+    target_include_directories(editor_node_canvas_protocol PRIVATE ${PROJECT_SOURCE_DIR}/engine/editor/ui/sinclude)
+    target_link_libraries(editor_node_canvas_protocol PRIVATE imgui::node_editor)
+    target_compile_features(editor_node_canvas_protocol PRIVATE cxx_std_20)
+    if(MSVC)
+        target_compile_options(editor_node_canvas_protocol PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(editor_node_canvas_protocol PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME editor.d2c.node_canvas COMMAND editor_node_canvas_protocol)
+endif()

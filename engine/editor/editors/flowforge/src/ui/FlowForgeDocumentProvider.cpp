@@ -6,6 +6,7 @@
 #include <lux/engine/editor/flowforge/FlowForgeEditor.hpp>
 #include <lux/engine/editor/gui/DocumentPane.hpp>
 #include <lux/engine/editor/gui/GuiFrontend.hpp>
+#include <lux/engine/editor/gui/NodeCanvasIds.hpp>
 #include <lux/engine/editor/gui/PublicationControls.hpp>
 #include <lux/engine/editor/gui/flowforge/FlowForgeDocumentProvider.hpp>
 #include <lux/engine/editor/project/Project.hpp>
@@ -946,11 +947,11 @@ namespace lux::editor::gui
                             layout.placed
                                 ? layout
                                 : lux::graph::GraphNodeLayout{float(ordinal % 4) * 240, float(ordinal / 4) * 280, true};
-                        canvas::SetNodePosition(canvas::NodeId{record.id.value},
+                        canvas::SetNodePosition(canvas_ids_.node(record.id.value),
                                                 {position->second.display.x, position->second.display.y});
                     }
                     ++ordinal;
-                    canvas::BeginNode(canvas::NodeId{record.id.value});
+                    canvas::BeginNode(canvas_ids_.node(record.id.value));
                     const auto name = document_.nodeName(record.id);
                     if (name.empty())
                     {
@@ -963,7 +964,7 @@ namespace lux::editor::gui
                     for (const auto &pin : pin_groups_[record.id])
                     {
                         const bool input = pin.direction == lux::graph::EPinDirection::INPUT;
-                        canvas::BeginPin(canvas::PinId{pin.id.value},
+                        canvas::BeginPin(canvas_ids_.pin(pin.id.value),
                                          input ? canvas::PinKind::Input : canvas::PinKind::Output);
                         const auto label = document_.pinName(pin.id);
                         const auto type = document_.pinType(pin.id);
@@ -988,8 +989,8 @@ namespace lux::editor::gui
                     {
                         ++next_link_;
                     }
-                    canvas::Link(canvas::LinkId{found->second}, canvas::PinId{link.from.value},
-                                 canvas::PinId{link.to.value});
+                    canvas::Link(canvas_ids_.link(found->second), canvas_ids_.pin(link.from.value),
+                                 canvas_ids_.pin(link.to.value));
                 }
                 lux::graph::LinkRecord created;
                 if (writable && canvas::BeginCreate())
@@ -997,7 +998,7 @@ namespace lux::editor::gui
                     canvas::PinId first, second;
                     if (canvas::QueryNewLink(&first, &second) && first && second && canvas::AcceptNewItem())
                     {
-                        created = {{first.Get()}, {second.Get()}};
+                        created = {{canvas_ids_.source(first)}, {canvas_ids_.source(second)}};
                         const auto pins = document_.pins();
                         const auto pin = std::ranges::find(pins, created.from, &lux::graph::PinRecord::id);
                         if (pin != pins.end() && pin->direction == lux::graph::EPinDirection::INPUT)
@@ -1016,14 +1017,14 @@ namespace lux::editor::gui
                     {
                         if (canvas::AcceptDeletedItem())
                         {
-                            removed_nodes.push_back(lux::flowforge::NodeId{node.Get()});
+                            removed_nodes.push_back(lux::flowforge::NodeId{canvas_ids_.source(node)});
                         }
                     }
                     canvas::LinkId link;
                     while (canvas::QueryDeletedLink(&link))
                     {
-                        const auto found =
-                            std::ranges::find_if(links_, [&](const auto &value) { return value.second == link.Get(); });
+                        const auto found = std::ranges::find_if(links_, [&](const auto &value)
+                                                                { return value.second == canvas_ids_.source(link); });
                         if (found != links_.end() && canvas::AcceptDeletedItem())
                         {
                             removed_links.push_back({{found->first.first}, {found->first.second}});
@@ -1049,7 +1050,7 @@ namespace lux::editor::gui
                         {
                             continue;
                         }
-                        const auto value = canvas::GetNodePosition(canvas::NodeId{node.value});
+                        const auto value = canvas::GetNodePosition(canvas_ids_.node(node.value));
                         if (value.x != position.display.x || value.y != position.display.y)
                         {
                             moved.push_back({node, {value.x, value.y, true}});
@@ -1060,7 +1061,7 @@ namespace lux::editor::gui
                         for (const auto &item : moved)
                         {
                             const auto &position = positions_.at(item.node).display;
-                            canvas::SetNodePosition(canvas::NodeId{item.node.value}, {position.x, position.y});
+                            canvas::SetNodePosition(canvas_ids_.node(item.node.value), {position.x, position.y});
                         }
                     }
                 }
@@ -1076,6 +1077,7 @@ namespace lux::editor::gui
                                          document_.links().end();
                               });
             }
+            NodeCanvasIds canvas_ids_;
             std::unique_ptr<canvas::EditorContext, CanvasDelete> canvas_;
             std::unordered_map<lux::flowforge::NodeId, Position> positions_;
             std::map<std::pair<std::uint64_t, std::uint64_t>, std::uint64_t> links_;

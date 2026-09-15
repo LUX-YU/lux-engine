@@ -19,6 +19,9 @@
 
 namespace lux::simulation
 {
+    // Fixed at construction. A derived-data owner cannot later become an evolution owner.
+    enum class ESimulationMode : std::uint8_t { EVOLUTION, DERIVATION };
+
     enum class ESimulationExecutionError : std::uint8_t
     {
         INVALID_STEP_TIME,
@@ -27,6 +30,7 @@ namespace lux::simulation
         ECS_COMMAND_FAILURE,
         NOT_SEALED,
         STOPPED,
+        WRONG_MODE,
     };
 
     struct SimulationExecutionFailure final
@@ -102,7 +106,8 @@ namespace lux::simulation
         [[nodiscard]] static lux::cxx::expected<Simulation, SimulationSystemBuildFailure> create(
             ecs::Registry& registry,
             std::shared_ptr<const SimulationDescription> description,
-            const SimulationSystemRegistry& system_types
+            const SimulationSystemRegistry& system_types,
+            ESimulationMode mode = ESimulationMode::EVOLUTION
         ) noexcept;
 
         [[nodiscard]] const SimulationDescription& description() const noexcept;
@@ -117,6 +122,7 @@ namespace lux::simulation
         scriptEventEndpoints() const noexcept;
 
         [[nodiscard]] const SimulationClock& clock() const noexcept;
+        [[nodiscard]] ESimulationMode mode() const noexcept;
         [[nodiscard]] std::size_t taskCount() const noexcept;
         [[nodiscard]] std::size_t dependencyCount() const noexcept;
         [[nodiscard]] SimulationGraphPreparationStats graphPreparationStats() const noexcept;
@@ -129,10 +135,16 @@ namespace lux::simulation
 
         [[nodiscard]] lux::cxx::expected<void, SimulationExecutionFailure>
         execute(task::TaskExecutor& executor, SimulationDuration effective_delta) noexcept;
+        // Executes only opted-in derivation tasks, through the same compiled graph and command barrier.
+        // Neither the clock nor evolution tasks/hooks advance; wrong-mode calls preserve all state.
+        [[nodiscard]] lux::cxx::expected<void, SimulationExecutionFailure>
+        refresh(task::TaskExecutor& executor) noexcept;
 
     private:
         struct Impl;
         explicit Simulation(std::unique_ptr<Impl> impl) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, SimulationExecutionFailure>
+        executePreparedGraph(task::TaskExecutor&, SimulationDuration) noexcept;
 
         std::unique_ptr<Impl> impl_;
 

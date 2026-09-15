@@ -26,6 +26,7 @@ namespace lux::scene
         SIMULATION_BUILD_FAILURE,
         SCENE_SYSTEM_BUILD_FAILURE,
         ALLOCATION_FAILURE,
+        INVALID_DERIVATION_ACCESS,
     };
 
     struct SceneBuildFailure final
@@ -54,6 +55,7 @@ namespace lux::scene
         std::shared_ptr<const simulation::SimulationDescription> simulation;
         const SceneMetaManager& meta;
         std::span<const SceneCapabilityProvider> providers;
+        simulation::ESimulationMode simulation_mode{simulation::ESimulationMode::EVOLUTION};
     };
 
     class LUX_ENGINE_SCENE_PUBLIC Scene final

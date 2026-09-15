@@ -104,6 +104,10 @@ namespace lux::ui
         // Fallible cold initialization; a supplied font must succeed, with no silent default-font fallback.
         [[nodiscard]] static lux::cxx::expected<std::unique_ptr<UISession>, EUiInitError>
         create(const UISessionCreateInfo& info = {}, const UiFontSource* font = nullptr) noexcept;
+        // The caller owns dispatch and close. An invalid/foreign dispatcher is rejected.
+        [[nodiscard]] static lux::cxx::expected<std::unique_ptr<UISession>, EUiInitError>
+        create(const UISessionCreateInfo& info, lux::object::ObjectDispatcherRef dispatcher,
+               const UiFontSource* font = nullptr) noexcept;
         ~UISession();
         UISession(const UISession&) = delete;
         UISession& operator=(const UISession&) = delete;
@@ -155,6 +159,7 @@ namespace lux::ui
         struct Impl;
         struct UninitializedTag {};
         UISession(const UISessionCreateInfo&, UninitializedTag);
+        UISession(const UISessionCreateInfo&, lux::object::ObjectDispatcherRef, UninitializedTag);
         [[nodiscard]] lux::cxx::expected<void, EUiInitError> initialize(const UiFontSource* font);
         std::unique_ptr<Impl> impl_;
         std::shared_ptr<detail::SessionControl> control_;

@@ -577,7 +577,8 @@ namespace lux::simulation
                 .description = &RegisteredTransformSystem::Description,
                 .access = RegisteredTransformSystem::Access.spec(),
                 .configuration = lux::serialization::makePortableValueCodec<TransformSystemConfiguration>(),
-                .install = &installTransformSystem
+                .install = &installTransformSystem,
+                .supports_derivation = true
             }
         };
         return registrations;

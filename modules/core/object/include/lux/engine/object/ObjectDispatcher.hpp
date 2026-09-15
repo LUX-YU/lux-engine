@@ -60,6 +60,8 @@ namespace lux::object
 
         [[nodiscard]] ObjectDispatcherRef dispatcherRef() const noexcept;
         [[nodiscard]] std::size_t dispatchPending();
+        // Consumes at most this many queued envelopes. Reentrant posts stay in the queue.
+        [[nodiscard]] std::size_t dispatchPending(std::size_t max_messages);
         void close() noexcept;
 
     private:

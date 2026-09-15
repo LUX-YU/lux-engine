@@ -139,6 +139,10 @@ namespace lux::asset::detail
     LUX_ASSET_PUBLIC bool
     readPakHeader(std::istream& stream, std::uint64_t file_size, PakHeader& output, std::string* error_out = nullptr);
 
+    bool readPakHeader(std::span<const std::byte> image, PakHeader& output, std::string* error_out);
+    bool readPakPage(std::span<const std::byte> image, std::uint64_t file_size, std::uint64_t offset,
+        PakPage& output, std::string* error_out);
+
     LUX_ASSET_PUBLIC bool readPakPage(
         std::istream& stream,
         std::uint64_t file_size,
@@ -173,4 +177,8 @@ namespace lux::asset::detail
         std::vector<PakEntry>& output,
         std::string* error_out = nullptr
     );
+    bool readAllPakEntries(std::span<const std::byte> image, const PakHeader& header,
+        std::vector<PakEntry>& output, std::string* error_out);
+    bool readAllPakPaths(std::span<const std::byte> image, const PakHeader& header,
+        std::vector<PakPathRow>& output, std::string* error_out);
 } // namespace lux::asset::detail

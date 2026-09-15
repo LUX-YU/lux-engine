@@ -76,6 +76,7 @@ namespace lux::world
         [[nodiscard]] WorldBundleGeneration generation() const noexcept;
         [[nodiscard]] partition::PartitionOrdinal partition() const noexcept;
         [[nodiscard]] std::size_t objectCount() const noexcept;
+        [[nodiscard]] std::size_t retainedBytes() const noexcept;
         [[nodiscard]] WorldPartitionObjectView objectAt(std::size_t index) const noexcept;
 
     private:

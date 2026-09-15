@@ -11,6 +11,7 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <variant>
 
 #include <lux/engine/ui/detail/UiContract.hpp>
 #include <lux/engine/ui/detail/ImGuiContextLease.hpp>
@@ -255,6 +256,20 @@ namespace lux::ui
         {
         }
 
+        Impl(UISession* value, Theme theme_value, lux::object::ObjectDispatcherRef dispatcher)
+            : owner(value), theme(std::move(theme_value)), messages(std::move(dispatcher))
+        {
+        }
+
+        [[nodiscard]] lux::object::ObjectDispatcherRef dispatcherRef() const noexcept
+        {
+            if (const auto* owned = std::get_if<lux::object::ObjectMessageQueue>(&messages))
+            {
+                return owned->dispatcherRef();
+            }
+            return std::get<lux::object::ObjectDispatcherRef>(messages);
+        }
+
         ~Impl()
         {
             // This owner also runs when UISession construction has not completed.
@@ -278,7 +293,7 @@ namespace lux::ui
         std::uint64_t frame_sequence{};
         bool window_focused{true};
         Theme theme;
-        lux::object::ObjectMessageQueue messages;
+        std::variant<lux::object::ObjectMessageQueue, lux::object::ObjectDispatcherRef> messages;
         CommandRouter command_router;
         std::vector<PaneRecord> panes;
         std::vector<PaneRecord> pending_panes;
@@ -642,6 +657,41 @@ namespace lux::ui
     {
     }
 
+    UISession::UISession(const UISessionCreateInfo& info, lux::object::ObjectDispatcherRef dispatcher,
+                         UninitializedTag)
+        : impl_(std::make_unique<Impl>(this, info.theme, std::move(dispatcher))),
+          control_(std::make_shared<detail::SessionControl>(this))
+    {
+    }
+
+    lux::cxx::expected<std::unique_ptr<UISession>, EUiInitError>
+    UISession::create(const UISessionCreateInfo& info, lux::object::ObjectDispatcherRef dispatcher,
+                      const UiFontSource* font) noexcept
+    {
+        if (!dispatcher)
+        {
+            return lux::cxx::unexpected(EUiInitError::INVALID_DISPATCHER);
+        }
+        if (!dispatcher.isCurrent())
+        {
+            return lux::cxx::unexpected(EUiInitError::WRONG_THREAD);
+        }
+        if (font)
+        {
+            if (const auto valid = detail::validateFont(*font); !valid)
+            {
+                return lux::cxx::unexpected(valid.error());
+            }
+        }
+
+        auto result = std::unique_ptr<UISession>(new UISession(info, std::move(dispatcher), UninitializedTag{}));
+        if (const auto initialized = result->initialize(font); !initialized)
+        {
+            return lux::cxx::unexpected(initialized.error());
+        }
+        return result;
+    }
+
     lux::cxx::expected<std::unique_ptr<UISession>, EUiInitError> UISession::create(const UISessionCreateInfo &info,
                                                                                    const UiFontSource *font) noexcept
     {
@@ -728,7 +778,10 @@ namespace lux::ui
         control_->session = nullptr;
         impl_->clearFocus();
         impl_->commitHover({});
-        impl_->messages.close();
+        if (auto* owned = std::get_if<lux::object::ObjectMessageQueue>(&impl_->messages))
+        {
+            owned->close();
+        }
     }
 
     void UISession::updateCommandRoute(lux::object::LuxObject *activation_scope,
@@ -753,7 +806,7 @@ namespace lux::ui
         {
             return lux::cxx::unexpected<EUiRegistrationError>{EUiRegistrationError::DUPLICATE_PANE_ID};
         }
-        if (pane.dispatcherRef() != impl_->messages.dispatcherRef())
+        if (pane.dispatcherRef() != impl_->dispatcherRef())
         {
             return lux::cxx::unexpected<EUiRegistrationError>{EUiRegistrationError::FOREIGN_SESSION};
         }
@@ -818,7 +871,7 @@ namespace lux::ui
             }
         } scope{*impl_};
 
-        return found->factory.create(impl_->messages.dispatcherRef(), std::move(id));
+        return found->factory.create(impl_->dispatcherRef(), std::move(id));
     }
 
     CommandRouter &UISession::commandRouter() noexcept
@@ -836,7 +889,7 @@ namespace lux::ui
     lux::object::ObjectDispatcherRef UISession::dispatcherRef() const noexcept
     {
         LUX_UI_CHECK_OWNER(control_->owner, control_->owner_token);
-        return impl_->messages.dispatcherRef();
+        return impl_->dispatcherRef();
     }
 
     bool UISession::requestFocus(PaneIdView pane)
@@ -918,7 +971,10 @@ namespace lux::ui
             ++impl_->frame_sequence;
         ScopedImGuiContext context{impl_->context};
         impl_->publishPendingPanes();
-        static_cast<void>(impl_->messages.dispatchPending());
+        if (auto* owned = std::get_if<lux::object::ObjectMessageQueue>(&impl_->messages))
+        {
+            static_cast<void>(owned->dispatchPending());
+        }
         impl_->compactPaneRecords();
         if (impl_->focused_pane && !impl_->resolveRegistered(impl_->focused_pane))
         {

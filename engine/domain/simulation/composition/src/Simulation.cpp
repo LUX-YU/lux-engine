@@ -112,6 +112,7 @@ namespace lux::simulation
         bool sealed{};
         bool stopped{};
         bool executing{};
+        ESimulationMode mode{ESimulationMode::EVOLUTION};
         std::vector<std::unique_ptr<detail::PreparedHookInvocation>> hook_invocations;
         [[nodiscard]] bool hasUnboundScriptEndpoints() const noexcept
         {
@@ -717,10 +718,11 @@ namespace lux::simulation
     lux::cxx::expected<Simulation, SimulationSystemBuildFailure> Simulation::create(
         ecs::Registry& registry,
         std::shared_ptr<const SimulationDescription> description,
-        const SimulationSystemRegistry& system_types
+        const SimulationSystemRegistry& system_types,
+        ESimulationMode mode
     ) noexcept
     {
-        if (!description)
+        if (!description || mode > ESimulationMode::DERIVATION)
         {
             return lux::cxx::unexpected(
                 buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION)
@@ -730,6 +732,7 @@ namespace lux::simulation
         try
         {
             auto impl = std::make_unique<Impl>(registry, std::move(description));
+            impl->mode = mode;
             impl->systems.reserve(impl->description->systemCount());
 
             SimulationBuilder::Impl build(*impl);
@@ -1012,12 +1015,39 @@ namespace lux::simulation
             }
             const task::TaskResourceKey fence{lux::cxx::Fnv1a64::hash("lux.simulation.execution"), 1U};
             std::vector<task::TaskHandle> handles(count);
+            // Preserve ordering through omitted evolution nodes: A -> skipped B -> C still orders A before C.
+            // Only the retained nodes enter this owner's graph; there are no per-frame skipped-task callbacks.
+            std::vector<std::vector<std::size_t>> retained_predecessors(
+                mode == ESimulationMode::DERIVATION ? count : 0);
             for (const auto ordinal : execution_order)
             {
                 auto& item = pending[ordinal];
+                auto dependencies_from = std::span<const std::size_t>{before[ordinal]};
+                std::vector<std::size_t> retained;
+                if (mode == ESimulationMode::DERIVATION)
+                {
+                    for (const auto predecessor : before[ordinal])
+                    {
+                        const auto& incoming = retained_predecessors[predecessor];
+                        retained.insert(retained.end(), incoming.begin(), incoming.end());
+                    }
+                    std::ranges::sort(retained);
+                    retained.erase(std::unique(retained.begin(), retained.end()), retained.end());
+                    const auto system = impl->description->findSystem(item.point.system);
+                    const auto* registration = system_types.find(system.type());
+                    const bool selected = item.point.kind == ESimulationExecutionPoint::SYSTEM_TASK &&
+                        registration->supports_derivation;
+                    if (!selected)
+                    {
+                        retained_predecessors[ordinal] = std::move(retained);
+                        continue;
+                    }
+                    retained_predecessors[ordinal].push_back(ordinal);
+                    dependencies_from = retained;
+                }
                 std::vector<task::TaskHandle> dependencies;
-                dependencies.reserve(before[ordinal].size());
-                for (const auto predecessor : before[ordinal])
+                dependencies.reserve(dependencies_from.size());
+                for (const auto predecessor : dependencies_from)
                     dependencies.push_back(handles[predecessor]);
                 const auto hook = item.point.kind == ESimulationExecutionPoint::HOOK
                     ? impl->description->findHookPoint(item.point.system, HookPointId{item.point.point})
@@ -1047,6 +1077,9 @@ namespace lux::simulation
                     for (auto& producer : channel.producers)
                         if (producer->point == item.point)
                             producer_slots.push_back(&producer->slot);
+                if (mode == ESimulationMode::DERIVATION && !producer_slots.empty())
+                    return lux::cxx::unexpected(buildFailure(
+                        ESimulationSystemBuildError::INVALID_EXECUTION_POINT, item.point.system));
                 std::vector<detail::SimulationCommandSlot*> command_slots;
                 for (auto& producer : impl->command_producers)
                     if (producer->point == item.point)
@@ -1199,7 +1232,7 @@ namespace lux::simulation
                     }
                     // A scripted graph commits at its named Hooks. Observer follow-up commands from its
                     // final commit belong to the next step, never after final derived-data propagation.
-                    if (owner->script_hook_count != 0U)
+                    if (owner->mode == ESimulationMode::EVOLUTION && owner->script_hook_count != 0U)
                         return;
                     auto applied = ecs::applyEcsCommands(*owner->registry, *owner->commands);
                     if (!applied)
@@ -1281,7 +1314,7 @@ namespace lux::simulation
     {
         const bool is_invalid = impl_->executing || impl_->stopped || impl_->hook_callbacks.context != nullptr ||
             callbacks.context == nullptr || callbacks.before == nullptr || callbacks.after == nullptr ||
-            impl_->stable_hook_count != 1U;
+            impl_->stable_hook_count != 1U || impl_->mode == ESimulationMode::DERIVATION;
         if (is_invalid)
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT));
         impl_->hook_callbacks = callbacks;
@@ -1296,7 +1329,8 @@ namespace lux::simulation
 
     lux::cxx::expected<void, SimulationSystemBuildFailure> Simulation::seal() noexcept
     {
-        if (impl_->stopped || impl_->hasUnboundScriptEndpoints())
+        const bool missing_hooks = impl_->mode == ESimulationMode::EVOLUTION && impl_->hasUnboundScriptEndpoints();
+        if (impl_->stopped || missing_hooks)
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT));
         impl_->sealed = true;
         return {};
@@ -1312,9 +1346,26 @@ namespace lux::simulation
     lux::cxx::expected<void, SimulationExecutionFailure>
     Simulation::execute(task::TaskExecutor& executor, SimulationDuration effective_delta) noexcept
     {
+        if (impl_->mode != ESimulationMode::EVOLUTION)
+            return lux::cxx::unexpected(SimulationExecutionFailure{ESimulationExecutionError::WRONG_MODE});
+        return executePreparedGraph(executor, effective_delta);
+    }
+
+    ESimulationMode Simulation::mode() const noexcept { return impl_->mode; }
+
+    lux::cxx::expected<void, SimulationExecutionFailure> Simulation::refresh(task::TaskExecutor& executor) noexcept
+    {
+        if (impl_->mode != ESimulationMode::DERIVATION)
+            return lux::cxx::unexpected(SimulationExecutionFailure{ESimulationExecutionError::WRONG_MODE});
+        return executePreparedGraph(executor, SimulationDuration{});
+    }
+
+    lux::cxx::expected<void, SimulationExecutionFailure>
+    Simulation::executePreparedGraph(task::TaskExecutor& executor, SimulationDuration effective_delta) noexcept
+    {
         if (impl_->stopped)
             return lux::cxx::unexpected(SimulationExecutionFailure{ESimulationExecutionError::STOPPED});
-        if (impl_->hasUnboundScriptEndpoints())
+        if (impl_->mode == ESimulationMode::EVOLUTION && impl_->hasUnboundScriptEndpoints())
             return lux::cxx::unexpected(SimulationExecutionFailure{ESimulationExecutionError::NOT_SEALED});
         if (!impl_->sealed)
         {
@@ -1325,7 +1376,8 @@ namespace lux::simulation
         const auto delta_count = effective_delta.count();
         const auto elapsed_count = clock.elapsed.count();
         const bool is_negative_delta = delta_count < 0;
-        const bool is_step_overflow = clock.step_index == std::numeric_limits<std::uint64_t>::max();
+        const bool is_step_overflow = impl_->mode == ESimulationMode::EVOLUTION &&
+            clock.step_index == std::numeric_limits<std::uint64_t>::max();
         const bool is_time_overflow = delta_count > 0 &&
             elapsed_count > std::numeric_limits<SimulationDuration::rep>::max() - delta_count;
         if (is_negative_delta || is_step_overflow || is_time_overflow)
@@ -1334,7 +1386,7 @@ namespace lux::simulation
                 SimulationExecutionFailure{ESimulationExecutionError::INVALID_STEP_TIME, {}, {}, {}}
             );
         }
-        impl_->clock.advance(effective_delta);
+        if (impl_->mode == ESimulationMode::EVOLUTION) impl_->clock.advance(effective_delta);
         impl_->execution.system_failure.store(0U, std::memory_order_release);
         impl_->execution.command_failure.reset();
         impl_->executing = true;

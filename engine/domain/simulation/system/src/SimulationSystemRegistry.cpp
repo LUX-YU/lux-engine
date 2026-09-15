@@ -63,6 +63,9 @@ namespace lux::simulation
                 return false;
             }
             const auto canonical_name = registration.description->type.canonical_name;
+            const bool has_execution_endpoints = !registration.description->hooks.empty() ||
+                !registration.description->events.empty();
+            if (registration.supports_derivation && has_execution_endpoints) return false;
             if (registration.type.name != canonical_name ||
                 registration.type.hash != lux::cxx::Fnv1a64::hash(canonical_name))
             {

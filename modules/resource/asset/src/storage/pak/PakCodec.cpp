@@ -8,6 +8,7 @@
 #include <fstream>
 #include <limits>
 #include <new>
+#include <optional>
 #include <stdexcept>
 #include <system_error>
 #include <unordered_set>
@@ -746,47 +747,78 @@ namespace lux::asset::detail
         return false;
     }
 
+    namespace
+    {
+        bool decodeHeader(std::span<const std::byte> bytes, std::uint64_t file_size,
+            PakHeader& output, std::string* error_out)
+        {
+            output = {};
+            if (file_size < kHeaderBytes + 2u * kPakPageSize || bytes.size() < kHeaderBytes)
+                return fail(error_out, "Pak is too small");
+            ByteReader reader(bytes, error_out);
+            const bool has_valid_header =
+                reader.bytes(output.magic, sizeof(output.magic)) && reader.u32(output.endian_tag) &&
+                reader.u32(output.version) && reader.u32(output.page_size) && reader.u32(output.flags) &&
+                reader.u64(output.entry_root_offset) && reader.u64(output.path_root_offset) &&
+                reader.u64(output.entry_count) && reader.u64(output.path_count) &&
+                reader.u64(output.index_page_count) &&
+                reader.u64(output.payload_end) && reader.u32(output.mount_hint_size) &&
+                reader.bytes(output.mount_hint, sizeof(output.mount_hint)) &&
+                readDigest(reader, output.entry_root_digest) && readDigest(reader, output.path_root_digest) &&
+                reader.bytes(output.reserved, sizeof(output.reserved));
+            if (!has_valid_header)
+            {
+                return fail(error_out, "truncated Pak header");
+            }
+            const bool is_invalid_identity =
+                !std::equal(std::begin(output.magic), std::end(output.magic), std::begin(kPakFileMagic)) ||
+                output.endian_tag != kPakEndianTag || output.version != kPakVersion || output.page_size != kPakPageSize;
+            const bool is_invalid_capacity = output.mount_hint_size > kPakMountHintBytes ||
+                output.entry_count > kMaxPakEntries || output.path_count > output.entry_count ||
+                output.index_page_count < 2u;
+            const bool is_invalid_offsets = output.payload_end < kHeaderBytes ||
+                output.entry_root_offset < output.payload_end || output.path_root_offset < output.payload_end ||
+                output.entry_root_offset > file_size - kPakPageSize ||
+                output.path_root_offset > file_size - kPakPageSize;
+            const bool is_invalid_header = is_invalid_identity || is_invalid_capacity || is_invalid_offsets;
+            if (is_invalid_header)
+            {
+                return fail(error_out, "invalid Pak v2 header contract");
+            }
+            return true;
+        }
+    }
+
     bool readPakHeader(std::istream& stream, std::uint64_t file_size, PakHeader& output, std::string* error_out)
     {
         output = {};
-        if (file_size < kHeaderBytes + 2u * kPakPageSize)
-            return fail(error_out, "Pak is too small");
+        if (file_size < kHeaderBytes + 2u * kPakPageSize) return fail(error_out, "Pak is too small");
         std::array<std::byte, kHeaderBytes> bytes{};
         stream.clear();
         stream.seekg(0, std::ios::beg);
         if (!stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())))
-        {
             return fail(error_out, "cannot read Pak header");
-        }
-        ByteReader reader(bytes, error_out);
-        const bool has_valid_header =
-            reader.bytes(output.magic, sizeof(output.magic)) && reader.u32(output.endian_tag) &&
-            reader.u32(output.version) && reader.u32(output.page_size) && reader.u32(output.flags) &&
-            reader.u64(output.entry_root_offset) && reader.u64(output.path_root_offset) &&
-            reader.u64(output.entry_count) && reader.u64(output.path_count) && reader.u64(output.index_page_count) &&
-            reader.u64(output.payload_end) && reader.u32(output.mount_hint_size) &&
-            reader.bytes(output.mount_hint, sizeof(output.mount_hint)) &&
-            readDigest(reader, output.entry_root_digest) && readDigest(reader, output.path_root_digest) &&
-            reader.bytes(output.reserved, sizeof(output.reserved));
-        if (!has_valid_header)
+        return decodeHeader(bytes, file_size, output, error_out);
+    }
+
+    bool readPakHeader(std::span<const std::byte> image, PakHeader& output, std::string* error_out)
+    {
+        return decodeHeader(image.first((std::min)(image.size(), kHeaderBytes)), image.size(), output, error_out);
+    }
+
+    namespace
+    {
+        bool validatePage(const PakPage& output, std::string* error_out)
         {
-            return fail(error_out, "truncated Pak header");
+            const auto header = pakPageHeader(output);
+            const bool is_invalid_header = header.magic != kPakPageMagic || header.version != kPakVersion ||
+                header.used_bytes < kPageHeaderBytes || header.used_bytes > kPakPageSize;
+            if (is_invalid_header)
+            {
+                return fail(error_out, "invalid Pak index page header");
+            }
+            return true;
         }
-        const bool is_invalid_identity =
-            !std::equal(std::begin(output.magic), std::end(output.magic), std::begin(kPakFileMagic)) ||
-            output.endian_tag != kPakEndianTag || output.version != kPakVersion || output.page_size != kPakPageSize;
-        const bool is_invalid_capacity = output.mount_hint_size > kPakMountHintBytes ||
-            output.entry_count > kMaxPakEntries || output.path_count > output.entry_count ||
-            output.index_page_count < 2u;
-        const bool is_invalid_offsets = output.payload_end < kHeaderBytes ||
-            output.entry_root_offset < output.payload_end || output.path_root_offset < output.payload_end ||
-            output.entry_root_offset > file_size - kPakPageSize || output.path_root_offset > file_size - kPakPageSize;
-        const bool is_invalid_header = is_invalid_identity || is_invalid_capacity || is_invalid_offsets;
-        if (is_invalid_header)
-        {
-            return fail(error_out, "invalid Pak v2 header contract");
-        }
-        return true;
     }
 
     bool readPakPage(
@@ -797,7 +829,7 @@ namespace lux::asset::detail
         std::string* error_out
     )
     {
-        if (offset % kPakPageSize != 0u || offset > file_size - kPakPageSize)
+        if (file_size < kPakPageSize || offset % kPakPageSize != 0u || offset > file_size - kPakPageSize)
             return fail(error_out, "Pak index page offset is out of bounds");
         stream.clear();
         stream.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
@@ -805,14 +837,17 @@ namespace lux::asset::detail
         {
             return fail(error_out, "cannot read Pak index page");
         }
-        const auto header = pakPageHeader(output);
-        const bool is_invalid_header = header.magic != kPakPageMagic || header.version != kPakVersion ||
-            header.used_bytes < kPageHeaderBytes || header.used_bytes > kPakPageSize;
-        if (is_invalid_header)
-        {
-            return fail(error_out, "invalid Pak index page header");
-        }
-        return true;
+        return validatePage(output, error_out);
+    }
+
+    bool readPakPage(std::span<const std::byte> image, std::uint64_t file_size, std::uint64_t offset,
+        PakPage& output, std::string* error_out)
+    {
+        if (file_size != image.size() || file_size < kPakPageSize || offset % kPakPageSize != 0 ||
+            offset > file_size - kPakPageSize)
+            return fail(error_out, "Pak index page offset is out of bounds");
+        std::copy_n(image.data() + static_cast<std::size_t>(offset), output.size(), output.data());
+        return validatePage(output, error_out);
     }
 
     bool verifyPakPageDigest(const PakPage& page, const lux::cxx::algorithm::Sha256Digest& expected) noexcept
@@ -937,62 +972,94 @@ namespace lux::asset::detail
         return true;
     }
 
-    bool readAllPakEntries(
-        std::istream& stream,
-        std::uint64_t file_size,
-        const PakHeader& header,
-        std::vector<PakEntry>& output,
-        std::string* error_out
-    )
+    namespace
     {
-        output.clear();
-        struct Pending final
+        template<bool Paths, class Source, class Row>
+        bool readTree(Source& source, std::uint64_t file_size, const PakHeader& header,
+            std::vector<Row>& output, std::string* error_out)
         {
-            std::uint64_t offset;
-            lux::cxx::algorithm::Sha256Digest digest;
-        };
-        std::vector<Pending> pending{Pending{header.entry_root_offset, header.entry_root_digest}};
-        std::unordered_set<std::uint64_t> visited;
-        while (!pending.empty())
-        {
-            const auto current = pending.back();
-            pending.pop_back();
-            if (!visited.insert(current.offset).second)
-                return fail(error_out, "cycle in Pak entry tree");
-            if (visited.size() > header.index_page_count)
-                return fail(error_out, "Pak entry tree exceeds page count");
-            PakPage page;
-            if (!readPakPage(stream, file_size, current.offset, page, error_out) ||
-                !verifyPakPageDigest(page, current.digest))
+            output.clear();
+            using Key = std::conditional_t<Paths, std::string, AssetId>;
+            const auto key = [](const Row& row) -> const Key& {
+                if constexpr (Paths) return row.vpath;
+                else return row.id;
+            };
+            struct Pending final
             {
-                return fail(error_out, "Pak entry page digest mismatch");
-            }
-            const auto page_header = pakPageHeader(page);
-            if (page_header.kind == EPakPageKind::ENTRY_LEAF)
+                std::uint64_t offset;
+                lux::cxx::algorithm::Sha256Digest digest;
+                std::optional<Key> maximum;
+            };
+            const auto count = Paths ? header.path_count : header.entry_count;
+            std::vector<Pending> pending{{Paths ? header.path_root_offset : header.entry_root_offset,
+                Paths ? header.path_root_digest : header.entry_root_digest, {}}};
+            std::unordered_set<std::uint64_t> visited;
+            while (!pending.empty())
             {
-                std::vector<PakEntry> rows;
-                if (!decodeEntryLeaf(page, rows, error_out))
-                    return false;
-                output.insert(output.end(), std::make_move_iterator(rows.begin()), std::make_move_iterator(rows.end()));
+                const auto current = pending.back();
+                pending.pop_back();
+                if (!visited.insert(current.offset).second)
+                    return fail(error_out, Paths ? "cycle in Pak path tree" : "cycle in Pak entry tree");
+                if (visited.size() > header.index_page_count)
+                    return fail(error_out, "Pak tree exceeds page count");
+                PakPage page;
+                if (!readPakPage(source, file_size, current.offset, page, error_out) ||
+                    !verifyPakPageDigest(page, current.digest))
+                    return fail(error_out, Paths ? "Pak path page digest mismatch" : "Pak entry page digest mismatch");
+                const auto kind = pakPageHeader(page).kind;
+                if (kind == (Paths ? EPakPageKind::PATH_LEAF : EPakPageKind::ENTRY_LEAF))
+                {
+                    std::vector<Row> rows;
+                    if constexpr (Paths) { if (!decodePathLeaf(page, rows, error_out)) return false; }
+                    else { if (!decodeEntryLeaf(page, rows, error_out)) return false; }
+                    if (current.maximum && (rows.empty() || key(rows.back()) != *current.maximum))
+                        return fail(error_out, "Pak tree maximum key mismatch");
+                    if (output.size() > count || rows.size() > count - output.size())
+                        return fail(error_out, "Pak tree exceeds row count");
+                    output.insert(output.end(), std::make_move_iterator(rows.begin()),
+                        std::make_move_iterator(rows.end()));
+                }
+                else if (kind == (Paths ? EPakPageKind::PATH_INTERNAL : EPakPageKind::ENTRY_INTERNAL))
+                {
+                    std::vector<std::conditional_t<Paths, PakPathChild, PakEntryChild>> children;
+                    if constexpr (Paths) { if (!decodePathInternal(page, children, error_out)) return false; }
+                    else { if (!decodeEntryInternal(page, children, error_out)) return false; }
+                    if (current.maximum && children.back().maximum_key != *current.maximum)
+                        return fail(error_out, "Pak tree maximum key mismatch");
+                    for (std::size_t index = 1; index < children.size(); ++index)
+                        if (!(children[index - 1].maximum_key < children[index].maximum_key))
+                            return fail(error_out, "Pak tree child ordering mismatch");
+                    for (auto it = children.rbegin(); it != children.rend(); ++it)
+                        pending.push_back({it->offset, it->digest, it->maximum_key});
+                }
+                else return fail(error_out, "wrong page kind in Pak tree");
             }
-            else if (page_header.kind == EPakPageKind::ENTRY_INTERNAL)
-            {
-                std::vector<PakEntryChild> children;
-                if (!decodeEntryInternal(page, children, error_out))
-                    return false;
-                for (auto it = children.rbegin(); it != children.rend(); ++it)
-                    pending.push_back(Pending{it->offset, it->digest});
-            }
-            else
-            {
-                return fail(error_out, "wrong page kind in Pak entry tree");
-            }
+            const auto less = [](const auto& left, const auto& right) {
+                if constexpr (Paths) return left.vpath < right.vpath;
+                else return left.id < right.id;
+            };
+            const auto unordered = std::adjacent_find(output.begin(), output.end(), [&](const auto& a, const auto& b) {
+                return !less(a, b);
+            });
+            if (output.size() != count || unordered != output.end())
+                return fail(error_out, "Pak tree cardinality or ordering mismatch");
+            return true;
         }
-        if (output.size() != header.entry_count ||
-            !std::is_sorted(output.begin(), output.end(), [](const auto& a, const auto& b) { return a.id < b.id; }))
-        {
-            return fail(error_out, "Pak entry tree cardinality or ordering mismatch");
-        }
-        return true;
+    }
+
+    bool readAllPakEntries(std::istream& stream, std::uint64_t file_size, const PakHeader& header,
+        std::vector<PakEntry>& output, std::string* error_out)
+    {
+        return readTree<false>(stream, file_size, header, output, error_out);
+    }
+    bool readAllPakEntries(std::span<const std::byte> image, const PakHeader& header,
+        std::vector<PakEntry>& output, std::string* error_out)
+    {
+        return readTree<false>(image, image.size(), header, output, error_out);
+    }
+    bool readAllPakPaths(std::span<const std::byte> image, const PakHeader& header,
+        std::vector<PakPathRow>& output, std::string* error_out)
+    {
+        return readTree<true>(image, image.size(), header, output, error_out);
     }
 } // namespace lux::asset::detail

@@ -4,10 +4,10 @@
 #include <lux/engine/serialization/Serialization.hpp>
 #include <lux/engine/serialization/external_support/Eigen.hpp>
 #include <lux/engine/simulation/ecs/ComponentSchema.hpp>
+#include <lux/engine/simulation/ecs/WorldComponentArchive.hpp>
 
 #include <array>
 #include <concepts>
-#include <new>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -105,7 +105,9 @@ namespace lux::simulation::ecs
         consteval bool directMaterializableValue()
         {
             using Value = std::remove_cvref_t<Type>;
-            if constexpr (SemanticArchiveOnly<Value>)
+            if constexpr (std::same_as<Value, Entity>)
+                return true;
+            else if constexpr (SemanticArchiveOnly<Value>)
                 return false;
             else if constexpr (std::is_arithmetic_v<Value> || std::is_enum_v<Value> ||
                                std::same_as<Value, std::string>)
@@ -151,6 +153,7 @@ namespace lux::simulation::ecs
         template <class Component, std::uint32_t Version>
         [[nodiscard]] lux::cxx::expected<void, ComponentDecodeFailure> decodeEmplaceComponent(
             Registry& registry,
+            const WorldEntityMap& identities,
             Entity entity,
             std::uint32_t encoded_schema_version,
             std::span<const std::byte> encoded_payload
@@ -169,7 +172,8 @@ namespace lux::simulation::ecs
                 );
             }
 
-            lux::serialization::BinaryReader reader(encoded_payload);
+            lux::serialization::BinaryReader binary(encoded_payload);
+            WorldComponentArchive reader(binary, identities, registry);
             const lux::serialization::SerializationBudget budget{
                 encoded_payload.size(),
                 encoded_payload.size(),
@@ -178,6 +182,9 @@ namespace lux::simulation::ecs
             auto decoded = lux::serialization::read<Component>(reader, budget);
             if (!decoded)
             {
+                if (reader.unresolvedReference().valid())
+                    return lux::cxx::unexpected(ComponentDecodeFailure{EComponentDecodeError::UNRESOLVED_REFERENCE,
+                        decoded.error().offset, reader.unresolvedReference()});
                 const auto code = decoded.error().code == lux::serialization::ESerializationError::UNSUPPORTED_TYPE
                     ? EComponentDecodeError::UNSUPPORTED_TYPE
                     : EComponentDecodeError::MALFORMED_PAYLOAD;
@@ -190,23 +197,8 @@ namespace lux::simulation::ecs
                 );
             }
 
-            try
-            {
-                registry.emplace_or_replace<Component>(entity, std::move(*decoded));
-                return {};
-            }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(
-                    decodeFailure(EComponentDecodeError::ALLOCATION_FAILURE)
-                );
-            }
-            catch (...)
-            {
-                return lux::cxx::unexpected(
-                    decodeFailure(EComponentDecodeError::COMPONENT_CONSTRUCTION_FAILURE)
-                );
-            }
+            registry.emplace_or_replace<Component>(entity, std::move(*decoded));
+            return {};
         }
     } // namespace detail
 

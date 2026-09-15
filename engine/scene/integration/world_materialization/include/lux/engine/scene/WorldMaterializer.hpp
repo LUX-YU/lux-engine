@@ -2,6 +2,7 @@
 
 #include <lux/engine/scene/world_materialization/visibility.h>
 #include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
+#include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
 #include <lux/engine/world/WorldDescription.hpp>
 #include <lux/engine/world/WorldPartitionData.hpp>
 
@@ -20,6 +21,7 @@ namespace lux::scene
         INVALID_OBJECT,
         COMPONENT_DECODE_FAILURE,
         ALLOCATION_FAILURE,
+        DUPLICATE_OBJECT,
     };
 
     struct WorldMaterializeFailure final
@@ -40,16 +42,30 @@ namespace lux::scene
 
         [[nodiscard]] lux::cxx::expected<simulation::ecs::Entity, WorldMaterializeFailure> object(
             simulation::ecs::Registry& registry,
+            simulation::ecs::WorldEntityMap& identities,
             world::WorldPartitionObjectView object
         ) const noexcept;
 
+        // One Registry/identity index at its structural safe point. Resolves the complete incoming
+        // partition before decode; failures retain resident content, source data and the created output.
         [[nodiscard]] lux::cxx::expected<void, WorldMaterializeFailure> partition(
             simulation::ecs::Registry& registry,
+            simulation::ecs::WorldEntityMap& identities,
             const world::WorldPartitionData& data,
             std::vector<simulation::ecs::Entity>* created = nullptr
         ) const noexcept;
 
+        // One batch may span partitions. Every input identity is bound before component decoding.
+        // The failure's object index refers to this span; all newly created entities roll back together.
+        [[nodiscard]] lux::cxx::expected<void, WorldMaterializeFailure> objects(
+            simulation::ecs::Registry& registry, simulation::ecs::WorldEntityMap& identities,
+            std::span<const world::WorldPartitionObjectView> input,
+            std::vector<simulation::ecs::Entity>* created = nullptr) const noexcept;
+
     private:
+        [[nodiscard]] lux::cxx::expected<void, WorldMaterializeFailure> decode(
+            simulation::ecs::Registry&, const simulation::ecs::WorldEntityMap&, simulation::ecs::Entity,
+            world::WorldPartitionObjectView) const noexcept;
         WorldMaterializer(
             std::shared_ptr<const world::WorldDescription> world,
             simulation::ecs::ComponentSchemaSet components,

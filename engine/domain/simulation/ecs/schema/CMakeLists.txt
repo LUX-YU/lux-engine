@@ -34,6 +34,7 @@ target_link_libraries(
         lux::engine::simulation::ecs::core
         lux::engine::core::serialization
         lux::engine::core::type_info
+        lux::engine::world::world_identity
         lux::cxx::core
         lux::cxx::compile_time
 )
@@ -43,6 +44,7 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization type_info)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core)"
+    "find_package(lux-engine-world-identity REQUIRED COMPONENTS world_identity)"
 )
 
 include_component_cmake_scripts(meta)

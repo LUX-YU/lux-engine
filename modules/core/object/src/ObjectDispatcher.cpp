@@ -2,6 +2,7 @@
 #include <lux/engine/object/detail/MessageEnvelope.hpp>
 
 #include <atomic>
+#include <algorithm>
 #include <cstdlib>
 #include <deque>
 #include <mutex>
@@ -125,6 +126,36 @@ namespace lux::object
         const auto count = local.size();
         for (auto& message : local)
             message.invoke();
+        return count;
+    }
+
+    std::size_t ObjectMessageQueue::dispatchPending(std::size_t max_messages)
+    {
+        if (!state_ || state_->owner != std::this_thread::get_id())
+        {
+            std::abort();
+        }
+        if (max_messages == 0)
+        {
+            return 0;
+        }
+
+        std::deque<detail::MessageEnvelope> local;
+        {
+            std::scoped_lock lock{state_->mutex};
+            const auto count = std::min(max_messages, state_->messages.size());
+            for (std::size_t index = 0; index < count; ++index)
+            {
+                local.push_back(std::move(state_->messages.front()));
+                state_->messages.pop_front();
+            }
+        }
+
+        const auto count = local.size();
+        for (auto& message : local)
+        {
+            message.invoke();
+        }
         return count;
     }
 

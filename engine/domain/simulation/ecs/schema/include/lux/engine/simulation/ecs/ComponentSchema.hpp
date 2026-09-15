@@ -3,6 +3,7 @@
 #include <lux/engine/simulation/ecs/ComponentOperations.hpp>
 #include <lux/engine/simulation/ecs/ComponentSchemaId.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
+#include <lux/engine/world/WorldObjectId.hpp>
 
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
@@ -15,6 +16,7 @@
 
 namespace lux::simulation::ecs
 {
+    class WorldEntityMap;
     enum class EComponentSnapshotPolicy : std::uint8_t
     {
         COPY,
@@ -37,16 +39,19 @@ namespace lux::simulation::ecs
         UNSUPPORTED_TYPE,
         COMPONENT_CONSTRUCTION_FAILURE,
         ALLOCATION_FAILURE,
+        UNRESOLVED_REFERENCE,
     };
 
     struct ComponentDecodeFailure final
     {
         EComponentDecodeError code{EComponentDecodeError::MALFORMED_PAYLOAD};
         std::size_t offset{};
+        world::WorldObjectId reference;
     };
 
     using DecodeEmplaceComponentFn = lux::cxx::expected<void, ComponentDecodeFailure> (*)(
         Registry& registry,
+        const WorldEntityMap& identities,
         Entity entity,
         std::uint32_t encoded_schema_version,
         std::span<const std::byte> encoded_payload

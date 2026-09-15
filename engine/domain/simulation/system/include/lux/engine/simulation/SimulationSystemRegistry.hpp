@@ -62,6 +62,10 @@ namespace lux::simulation
         SystemAccessSpec access{};
         lux::serialization::PortableValueCodec configuration{};
         InstallSimulationSystemFn install{};
+        // Runtime code contract: tasks only recompute derived data from current facts. Such a system
+        // must not evolve persistent content, advance private time, or publish execution hooks/events.
+        // This capability belongs to the implementation, not to untrusted document configuration.
+        bool supports_derivation{};
     };
 
     enum class ESimulationSystemRegistrationError : std::uint8_t

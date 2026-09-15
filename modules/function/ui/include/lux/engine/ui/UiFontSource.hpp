@@ -29,6 +29,7 @@ namespace lux::ui
         FONT_LIMIT,
         ATLAS_FAILURE,
         ATLAS_LIMIT,
-        WRONG_THREAD
+        WRONG_THREAD,
+        INVALID_DISPATCHER
     };
 }

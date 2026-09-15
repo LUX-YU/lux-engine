@@ -5,6 +5,7 @@
 
 #include <lux/cxx/core/Format.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -125,5 +126,68 @@ namespace lux::asset
             );
         }
         return info;
+    }
+
+    lux::cxx::expected<PakDecodedImage, std::string> decodePak(
+        const lux::cxx::SharedBytes<>& image, std::size_t entry_limit)
+    {
+        detail::PakHeader header;
+        std::string error;
+        if (!detail::readPakHeader(image.view(), header, &error))
+            return lux::cxx::unexpected(std::move(error));
+        if (header.entry_count > entry_limit)
+            return lux::cxx::unexpected(std::string{"Pak entry limit exceeded"});
+        std::vector<detail::PakEntry> entries;
+        std::vector<detail::PakPathRow> paths;
+        if (!detail::readAllPakEntries(image.view(), header, entries, &error) ||
+            !detail::readAllPakPaths(image.view(), header, paths, &error))
+            return lux::cxx::unexpected(std::move(error));
+        PakDecodedImage decoded;
+        decoded.mount_hint.assign(header.mount_hint, header.mount_hint_size);
+        if (!VirtualPath::isLegalRoot(decoded.mount_hint))
+            return lux::cxx::unexpected(std::string{"invalid Pak mount hint"});
+        std::size_t live_paths{};
+        for (const auto& entry : entries)
+        {
+            if (entry.id.isNull() || !entry.asset_magic)
+                return lux::cxx::unexpected(std::string{"invalid Pak entry identity"});
+            if (!entry.tombstone() && !entry.vpath.empty())
+            {
+                if (VirtualPath::validateRelative(entry.vpath))
+                    return lux::cxx::unexpected(std::string{"non-canonical Pak virtual path"});
+                ++live_paths;
+            }
+        }
+        if (paths.size() != live_paths)
+            return lux::cxx::unexpected(std::string{"Pak path and entry cardinality mismatch"});
+        for (const auto& path : paths)
+        {
+            const auto found = std::lower_bound(entries.begin(), entries.end(), path.id,
+                [](const auto& entry, const auto& id) { return entry.id < id; });
+            const bool missing = found == entries.end() || found->id != path.id;
+            if (missing || found->tombstone() || found->vpath != path.vpath)
+                return lux::cxx::unexpected(std::string{"Pak path and entry identity mismatch"});
+        }
+        decoded.entries.reserve(entries.size());
+        for (auto& entry : entries)
+        {
+            lux::cxx::SharedBytes<> payload;
+            if (!entry.tombstone())
+            {
+                if (entry.compression != detail::kPakCompressionNone)
+                    return lux::cxx::unexpected(std::string{"unsupported Pak payload compression"});
+                const bool invalid_size = !entry.size || entry.size != entry.uncompressed_size;
+                const bool invalid_range = entry.offset < 256 || entry.offset > header.payload_end ||
+                    entry.size > header.payload_end - entry.offset;
+                if (invalid_size || invalid_range)
+                    return lux::cxx::unexpected(std::string{"Pak payload range is out of bounds"});
+                payload = image.subspan(static_cast<std::size_t>(entry.offset), static_cast<std::size_t>(entry.size));
+                if (lux::cxx::algorithm::Sha256::hash(payload.view()) != entry.content_digest)
+                    return lux::cxx::unexpected(std::string{"Pak payload digest mismatch"});
+            }
+            decoded.entries.push_back({{entry.id, entry.asset_magic, std::move(entry.vpath), entry.offset,
+                entry.size, entry.compression, entry.tombstone(), entry.content_digest}, std::move(payload)});
+        }
+        return decoded;
     }
 } // namespace lux::asset

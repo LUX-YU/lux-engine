@@ -108,6 +108,29 @@ namespace lux::scene
         {
             return lux::cxx::unexpected(buildFailure(ESceneBuildError::INVALID_SIMULATION));
         }
+        if (info.simulation_mode == simulation::ESimulationMode::DERIVATION)
+        {
+            for (std::size_t index{}; index < info.simulation->systemCount(); ++index)
+            {
+                const auto system = info.simulation->systemAt(index);
+                const auto* registration = info.meta.simulationSystems().find(system.type());
+                // Unknown types retain Simulation::create's original error identity below.
+                if (!registration || !registration->supports_derivation) continue;
+                for (const auto& access : registration->access.components)
+                {
+                    if (access.mode != simulation::ESystemAccessMode::WRITE) continue;
+                    const auto* schema = info.meta.components().find(access.type);
+                    const bool derived = schema &&
+                        schema->semantic_kind == simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED;
+                    if (!derived)
+                    {
+                        auto error = buildFailure(ESceneBuildError::INVALID_DERIVATION_ACCESS, access.type.hash());
+                        error.simulation.system = system.instanceId();
+                        return lux::cxx::unexpected(error);
+                    }
+                }
+            }
+        }
         for (std::size_t index{}; index < info.providers.size(); ++index)
         {
             const auto& provider = info.providers[index];
@@ -134,7 +157,8 @@ namespace lux::scene
             auto simulation = simulation::Simulation::create(
                 impl->registry,
                 std::move(info.simulation),
-                info.meta.simulationSystems()
+                info.meta.simulationSystems(),
+                info.simulation_mode
             );
             if (!simulation)
             {

@@ -51,6 +51,22 @@ namespace lux::asset
         std::vector<PakInspectEntry> entries;
     };
 
+    struct PakDecodedEntry final
+    {
+        PakInspectEntry metadata;
+        lux::cxx::SharedBytes<> bytes; // Owning slice of the input image; empty for tombstones.
+    };
+    struct PakDecodedImage final
+    {
+        std::string mount_hint;
+        std::vector<PakDecodedEntry> entries; // Sorted by AssetId, as in the on-disk entry index.
+    };
+
+    // Pure, bounded decoding after a Process read. Validates both index trees and payload digests;
+    // payload slices retain the exact input image without re-reading a mutable filesystem path.
+    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<PakDecodedImage, std::string>
+    decodePak(const lux::cxx::SharedBytes<>& image, std::size_t entry_limit);
+
     [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<PakInspectInfo, std::string>
     inspectPak(const std::filesystem::path& pak_path);
 } // namespace lux::asset

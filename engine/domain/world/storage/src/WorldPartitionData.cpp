@@ -2,6 +2,12 @@
 
 namespace lux::world
 {
+    std::size_t WorldPartitionData::retainedBytes() const noexcept
+    {
+        return objects_.capacity() * sizeof(detail::WorldDecodedObjectRecord) +
+            data_.capacity() * sizeof(detail::WorldDecodedDataRecord) + payload_.capacity();
+    }
+
     WorldPartitionObjectView::WorldPartitionObjectView(
         const WorldPartitionData& data,
         std::size_t object_index

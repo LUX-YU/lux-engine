@@ -17,13 +17,16 @@ find_package(lux-cmake-toolset CONFIG REQUIRED)
 find_package(lux-cxx REQUIRED COMPONENTS reflection_generator)
 find_package(lux-engine-core REQUIRED COMPONENTS meta serialization)
 find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS schema)
-find_package(lux-engine-editor-gui REQUIRED COMPONENTS editor_gui)
+find_package(lux-engine-editor-scene REQUIRED COMPONENTS editor_scene editor_scene_ui)
+find_package(lux-engine-editor-material REQUIRED COMPONENTS editor_material editor_material_ui)
+find_package(lux-engine-editor-flowforge REQUIRED COMPONENTS editor_flowforge editor_flowforge_ui)
+find_package(lux-engine-editor-assets REQUIRED COMPONENTS editor_assets)
 if(TARGET assimp::assimp)
     set_property(TARGET assimp::assimp PROPERTY MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
 endif()
 include_component_cmake_scripts(lux::engine::core::meta)
 include_component_cmake_scripts(lux::engine::simulation::ecs::schema)
-include_component_cmake_scripts(lux::engine::editor::editor_gui)
+include_component_cmake_scripts(lux::engine::editor::editor_scene_ui)
 
 add_library(consumer_domain SHARED Domain.cpp)
 target_compile_definitions(consumer_domain PRIVATE CONSUMER_DOMAIN_LIBRARY)
@@ -37,7 +40,7 @@ engine_target_add_ecs_component_codegen(NAME consumer_schema TARGET consumer_dom
 add_library(consumer_gui SHARED Gui.cpp)
 set_property(TARGET consumer_gui PROPERTY LUX_ARCH_LAYER EDITOR)
 target_compile_definitions(consumer_gui PRIVATE CONSUMER_GUI_LIBRARY)
-target_link_libraries(consumer_gui PUBLIC consumer_domain lux::engine::editor::editor_gui)
+target_link_libraries(consumer_gui PUBLIC consumer_domain lux::engine::editor::editor_scene_ui)
 engine_target_add_imgui_inspector_codegen(NAME consumer TARGET consumer_gui
     SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/Gui.cpp"
     HEADER "${CMAKE_CURRENT_SOURCE_DIR}/include/consumer/Component.hpp"

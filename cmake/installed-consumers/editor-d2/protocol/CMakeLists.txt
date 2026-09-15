@@ -8,12 +8,43 @@ find_program(D2_FLOW_LINKER NAMES lld-link REQUIRED)
 find_program(D2_POWERSHELL NAMES pwsh powershell REQUIRED)
 file(TO_CMAKE_PATH "${D2_FLOW_LINKER}" D2_FLOW_LINKER_PATH)
 
+# Feature tests have one maintained source next to their implementation. The
+# consumer compiles staged test sources exclusively against installed packages.
+set(D2_FEATURE_TEST_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../engine/editor" CACHE PATH
+    "Source root containing the feature test directories; no production includes are imported")
+cmake_path(ABSOLUTE_PATH D2_FEATURE_TEST_ROOT NORMALIZE)
+set(feature_test_sources "${CMAKE_CURRENT_BINARY_DIR}/feature-tests")
+file(MAKE_DIRECTORY "${feature_test_sources}")
+set(collected_test_names)
+foreach(feature editors/material editors/flowforge editors/scene assets)
+    file(GLOB sources CONFIGURE_DEPENDS "${D2_FEATURE_TEST_ROOT}/${feature}/test/*.cpp"
+        "${D2_FEATURE_TEST_ROOT}/${feature}/test/*.hpp")
+    if(NOT sources)
+        message(FATAL_ERROR "Missing maintained feature tests: ${feature}")
+    endif()
+    foreach(source IN LISTS sources)
+        get_filename_component(name "${source}" NAME)
+        if(name IN_LIST collected_test_names)
+            message(FATAL_ERROR "Duplicate maintained feature test: ${name}")
+        endif()
+        list(APPEND collected_test_names "${name}")
+        configure_file("${source}" "${feature_test_sources}/${name}" COPYONLY)
+    endforeach()
+endforeach()
+
 set(protocols fixture core_protocol foundation_protocol process_completion publication_protocol review_regressions
     container_protocol material_protocol flow_object_protocol flow_protocol vfs_protocol model_protocol import_protocol)
 foreach(protocol IN LISTS protocols)
-    add_executable(d2_${protocol} ${protocol}.cpp)
+    if("${protocol}.cpp" IN_LIST collected_test_names)
+        set(source "${feature_test_sources}/${protocol}.cpp")
+    else()
+        set(source "${CMAKE_CURRENT_SOURCE_DIR}/${protocol}.cpp")
+    endif()
+    add_executable(d2_${protocol} "${source}")
+    target_include_directories(d2_${protocol} PRIVATE "${feature_test_sources}" "${CMAKE_CURRENT_SOURCE_DIR}/..")
     target_link_libraries(d2_${protocol} PRIVATE
-        lux::engine::editor::editor_gui
+        lux::engine::editor::editor_scene_ui lux::engine::editor::editor_material_ui
+        lux::engine::editor::editor_flowforge_ui lux::engine::editor::editor_assets
         lux::engine::flowforge::flowforge_compiler
         lux::engine::toolchain::toolchain_material_compiler
         lux::engine::scene::scene_render lux::engine::scene::scene_render_meta

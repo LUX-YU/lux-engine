@@ -653,11 +653,33 @@ namespace lux::editor::gui
 
             void drawCloseChoice()
             {
+                constexpr auto popup = "Close documents";
                 if (close_choice_ == ECloseChoice::NONE)
+                {
+                    if (ImGui::BeginPopupModal(popup, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+                    {
+                        ImGui::CloseCurrentPopup();
+                        ImGui::EndPopup();
+                    }
+                    return;
+                }
+                if (!ImGui::IsPopupOpen(popup))
+                {
+                    ImGui::OpenPopup(popup);
+                }
+                const auto *viewport = ImGui::GetMainViewport();
+                ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, {0.5F, 0.5F});
+                if (!ImGui::BeginPopupModal(popup, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
                 {
                     return;
                 }
-                ImGui::Separator();
+                struct PopupScope final
+                {
+                    ~PopupScope()
+                    {
+                        ImGui::EndPopup();
+                    }
+                } popup_scope;
                 ImGui::TextWrapped("Save changes before closing?");
                 if (close_choice_ == ECloseChoice::REVIEW)
                 {
@@ -728,6 +750,7 @@ namespace lux::editor::gui
                     close_decisions_.clear();
                     exit_review_ = {};
                     window_->cancelCloseRequest();
+                    ImGui::CloseCurrentPopup();
                 }
             }
 

@@ -457,8 +457,26 @@ class Probe final : public EditorFrontend
 };
 int main(int argc, char **argv)
 {
-    assert(argc == 2);
+    assert(argc == 2 || (argc == 3 && std::string_view(argv[2]) == "verify"));
     std::setvbuf(stdout, nullptr, _IONBF, 0);
+    if (argc == 3)
+    {
+        const std::filesystem::path root{argv[1]};
+        auto project = readProjectSource(root / "Project.luxproject");
+        assert(project && !project->mounts.empty());
+        std::ifstream input(root / "Material.luxmaterial", std::ios::binary);
+        const std::string bytes{std::istreambuf_iterator<char>{input}, {}};
+        auto decoded = source::decodeMaterialSource(bytes);
+        assert(decoded && decoded->id == identity(2) && decoded->name == "Saved S1");
+        assert(decoded->graph.nodes().size() == 2);
+        const auto entry = std::ranges::find(project->manifest.assets, identity(2), &ProjectAssetEntry::id);
+        assert(entry != project->manifest.assets.end());
+        assert(entry->source_digest == *projectFileDigest(root / "Material.luxmaterial"));
+        assert(entry->source_digest == entry->compiled_source_digest && !entry->cooked_path.empty());
+        std::puts("PASS new-process Material reopen: actual codec, Saved S1, graph, identity, source/artifact digests "
+                  "and package");
+        return 0;
+    }
     lux::meta::ReflectionRegistry::initRegistry();
     fixture(argv[1]);
     Evidence evidence;

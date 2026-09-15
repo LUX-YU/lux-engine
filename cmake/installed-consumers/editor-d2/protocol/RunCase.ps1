@@ -34,6 +34,9 @@ if ($Case.StartsWith('publication-')) {
 }
 if ($Case -in @('material_protocol', 'flow_protocol', 'model_protocol', 'import_protocol')) {
     Invoke-Checked @($caseRoot)
+    if ($Case -in @('material_protocol', 'flow_protocol')) {
+        Invoke-Checked @($caseRoot, 'verify') '^PASS new-process '
+    }
     exit 0
 }
 if ($Case.EndsWith('_protocol') -or $Case -eq 'process_completion') {

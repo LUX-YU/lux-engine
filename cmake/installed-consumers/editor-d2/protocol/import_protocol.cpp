@@ -1,3 +1,4 @@
+#include "../TestExit.hpp"
 #include <cassert>
 #include <cstdio>
 #include <fstream>
@@ -27,6 +28,8 @@ struct Evidence
 };
 class Probe final : public EditorFrontend
 {
+    TestExit exit_;
+
   public:
     Probe(std::filesystem::path source, Evidence &evidence) : source_(std::move(source)), evidence_(evidence) {}
     EditorResult<void> beginStartup(Editor &editor, lux::process::ExecutionRuntime &,
@@ -55,6 +58,7 @@ class Probe final : public EditorFrontend
     void draw(Editor &, PollBudget &) override {}
     void poll(PollBudget &budget) override
     {
+        exit_.poll();
         if (importer_.index() == 0)
         {
             return;
@@ -124,7 +128,7 @@ class Probe final : public EditorFrontend
             assert(next);
             id_ = *next;
             evidence_.done = true;
-            editor_->requestExit();
+            exit_.request(*editor_);
             return;
         }
         assert(done->asset == identity(2) && done->model && done->cleanup);
@@ -245,10 +249,7 @@ int main(int argc, char **argv)
     EditorConfig config;
     config.project_file = root / "project/Project.luxproject";
     config.execution = {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}};
-    config.frontend = [&]
-    {
-        return std::make_unique<Probe>(source, evidence);
-    };
+    config.frontend = [&] { return std::make_unique<Probe>(source, evidence); };
     Editor editor(std::move(config));
     const auto result = editor.exec();
     assert(result == 0 && evidence.done && evidence.closed);

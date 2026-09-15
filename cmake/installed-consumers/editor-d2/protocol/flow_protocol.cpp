@@ -1,3 +1,4 @@
+#include "../TestExit.hpp"
 #include "flow_metadata.hpp"
 #include <cassert>
 #include <chrono>
@@ -67,6 +68,8 @@ struct Evidence final
 };
 class Probe final : public EditorFrontend
 {
+    TestExit exit_;
+
   public:
     explicit Probe(Evidence &evidence) : evidence_(evidence) {}
     EditorResult<void> beginStartup(Editor &editor, lux::process::ExecutionRuntime &runtime,
@@ -76,11 +79,10 @@ class Probe final : public EditorFrontend
         evidence_.metadata = owner;
         auto environment = flowMetadata(owner);
         assert(source::validateFlowSourceEnvironment(environment));
-        return editor.registerDocument({std::string(flow::kFlowForgeDocumentType),
-                                        [&runtime, environment](Project &project, const OpenDocumentRequest &request)
-                                        {
-                                            return flow::openFlowForgeDocument(project, request, runtime, environment);
-                                        }});
+        return editor.registerDocument(
+            {std::string(flow::kFlowForgeDocumentType),
+             [&runtime, environment](Project &project, const OpenDocumentRequest &request)
+             { return flow::openFlowForgeDocument(project, request, runtime, environment); }});
     }
     EditorResult<void> enterProject(Editor &editor, Project &project, lux::process::ExecutionRuntime &runtime,
                                     lux::object::ObjectDispatcherRef) override
@@ -103,6 +105,7 @@ class Probe final : public EditorFrontend
     void draw(Editor &, PollBudget &) override {}
     void poll(PollBudget &) override
     {
+        exit_.poll();
         assert(std::chrono::steady_clock::now() - began_ < std::chrono::seconds(60));
         if (!project_ || evidence_.completed)
         {
@@ -488,7 +491,7 @@ class Probe final : public EditorFrontend
             else
             {
                 evidence_.completed = true;
-                editor_->requestExit();
+                exit_.request(*editor_);
             }
         }
     }
@@ -544,10 +547,7 @@ int main(int argc, char **argv)
     EditorConfig config;
     config.project_file = std::filesystem::path(argv[1]) / "Project.luxproject";
     config.execution = {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}};
-    config.frontend = [&]
-    {
-        return std::make_unique<Probe>(evidence);
-    };
+    config.frontend = [&] { return std::make_unique<Probe>(evidence); };
     {
         Editor editor(std::move(config));
         const auto result = editor.exec();

@@ -1,10 +1,10 @@
 #pragma once
 
+#include <any>
+#include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/editor/DocumentIdentity.hpp>
 #include <lux/engine/editor/editing/EditTypes.hpp>
-#include <lux/cxx/compile_time/expected.hpp>
 #include <variant>
-#include <any>
 
 namespace lux::editor
 {
@@ -43,6 +43,27 @@ namespace lux::editor
         std::string origin;
     };
 
+    struct ExitReviewId final
+    {
+        std::uint64_t editor{};
+        std::uint64_t serial{};
+        friend bool operator==(ExitReviewId, ExitReviewId) = default;
+    };
+
+    enum class EDocumentCloseDecision : std::uint8_t
+    {
+        CLOSE_CLEAN,
+        DISCARD_THIS_STATE
+    };
+
+    struct DocumentCloseDecision final
+    {
+        DocumentHandle document;
+        editing::StateId state;
+        editing::Revision revision;
+        EDocumentCloseDecision decision{EDocumentCloseDecision::CLOSE_CLEAN};
+    };
+
     struct OpenPending final
     {
     };
@@ -60,7 +81,13 @@ namespace lux::editor
         friend bool operator==(SaveRequestId, SaveRequestId) = default;
     };
 
-    enum class ESaveStage : std::uint8_t { ENCODING, WAITING_FOR_PROJECT, PUBLISHING, ABANDONING };
+    enum class ESaveStage : std::uint8_t
+    {
+        ENCODING,
+        WAITING_FOR_PROJECT,
+        PUBLISHING,
+        ABANDONING
+    };
     struct SavePending final
     {
         ESaveStage stage;
@@ -71,6 +98,7 @@ namespace lux::editor
         EditorFailure failure;
         editing::StateId captured;
         std::uint64_t attempt{};
+        bool retry_allowed{true};
     };
     struct SaveSucceeded final
     {
@@ -78,7 +106,9 @@ namespace lux::editor
         editing::Revision revision;
         EditorResult<void> cleanup;
     };
-    struct SaveAbandoned final {};
+    struct SaveAbandoned final
+    {
+    };
     using SaveRequestStatus = std::variant<SavePending, SaveRetryable, SaveSucceeded, SaveAbandoned>;
 
     enum class ECloseState : std::uint8_t

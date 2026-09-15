@@ -1,8 +1,8 @@
 #pragma once
 
 #include <lux/engine/editor/DocumentRequests.hpp>
-#include <lux/engine/editor/editing/EditHistoryTarget.hpp>
 #include <lux/engine/editor/core/visibility.h>
+#include <lux/engine/editor/editing/EditHistoryTarget.hpp>
 #include <memory>
 #include <span>
 
@@ -16,6 +16,7 @@ namespace lux::editor
         DocumentKey key;
         std::string title;
         bool read_only{true};
+        std::string read_only_reason;
     };
 
     class LUX_EDITOR_CORE_PUBLIC DocumentView
@@ -45,6 +46,8 @@ namespace lux::editor
         [[nodiscard]] virtual EditorResult<void> retrySave(SaveRequestId);
         [[nodiscard]] virtual EditorResult<void> abandonSave(SaveRequestId);
         [[nodiscard]] virtual EditorResult<void> acknowledgeSave(SaveRequestId);
+        // Read-only: never stops work, finishes gestures, or publishes callbacks.
+        [[nodiscard]] virtual EditorResult<editing::HistorySnapshot> reviewClose() const;
         virtual void requestClose() noexcept = 0;
         [[nodiscard]] virtual CloseStatus closeStatus() const = 0;
         virtual void poll(PollBudget &) = 0;

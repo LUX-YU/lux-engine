@@ -52,6 +52,11 @@ namespace lux::editor::gui
             return gesture_.index() != 0;
         }
 
+        [[nodiscard]] const editing::EditFailure &failure() const noexcept
+        {
+            return failure_;
+        }
+
         bool finish(scene::SceneEditor &document, bool commit)
         {
             auto *gesture = std::get_if<Gesture>(&gesture_);
@@ -113,7 +118,7 @@ namespace lux::editor::gui
 
             frame.propertyRow(label);
             ImGui::PushID(identity);
-            const bool disabled = immutable || !document.project().writable() || (gesture && !owns_gesture);
+            const bool disabled = immutable || !document.writeRestriction().empty() || (gesture && !owns_gesture);
             ImGui::BeginDisabled(disabled);
             const auto previous_read_only = std::exchange(read_only, disabled);
             const auto previous_error = error;

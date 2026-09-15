@@ -8,7 +8,7 @@ find_program(D2_FLOW_LINKER NAMES lld-link REQUIRED)
 find_program(D2_POWERSHELL NAMES pwsh powershell REQUIRED)
 file(TO_CMAKE_PATH "${D2_FLOW_LINKER}" D2_FLOW_LINKER_PATH)
 
-set(protocols fixture core_protocol foundation_protocol process_completion publication_protocol
+set(protocols fixture core_protocol foundation_protocol process_completion publication_protocol review_regressions
     container_protocol material_protocol flow_object_protocol flow_protocol vfs_protocol model_protocol import_protocol)
 foreach(protocol IN LISTS protocols)
     add_executable(d2_${protocol} ${protocol}.cpp)
@@ -23,6 +23,12 @@ foreach(protocol IN LISTS protocols)
     target_compile_options(d2_${protocol} PRIVATE /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr)
 endforeach()
 target_link_libraries(d2_fixture PRIVATE lux::engine::simulation::ecs::visual lux::engine::simulation::ecs::transform)
+
+foreach(mode compile-notice close-intent exit-review)
+    add_test(NAME editor.d2c.${mode}
+        COMMAND d2_review_regressions "${mode}" "${CMAKE_CURRENT_BINARY_DIR}/review-runs")
+    set_tests_properties(editor.d2c.${mode} PROPERTIES RUN_SERIAL TRUE TIMEOUT 60)
+endforeach()
 
 function(d2_case name executable)
     add_test(NAME editor.d2.${name}

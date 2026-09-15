@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Eigen/Geometry>
 #include <array>
 #include <deque>
 #include <list>
@@ -43,6 +44,8 @@ namespace consumer
         std::unordered_set<int> LUX_MEMBER() values { 1, 2 };
         std::variant<std::monostate, int, int, std::vector<std::string>> LUX_MEMBER() choice;
         int LUX_MEMBER(readonly = true) identity{42};
+        Eigen::Quaternionf LUX_MEMBER() rotation_float { Eigen::Quaternionf::Identity() };
+        Eigen::Quaterniond LUX_MEMBER() rotation_double { Eigen::Quaterniond::Identity() };
     };
 
     struct LUX_COMPONENT(schema = "consumer.Derived", version = 1, snapshot = REBUILD, semantic = RUNTIME_DERIVED,

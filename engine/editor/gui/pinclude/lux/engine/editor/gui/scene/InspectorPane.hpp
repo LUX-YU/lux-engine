@@ -1,8 +1,8 @@
 #pragma once
-#include <lux/engine/editor/gui/scene/ComponentBinding.hpp>
 #include <lux/engine/editor/gui/DocumentPane.hpp>
-#include <lux/engine/editor/scene/SceneEditor.hpp>
+#include <lux/engine/editor/gui/scene/ComponentBinding.hpp>
 #include <lux/engine/editor/gui/scene/InspectorInteraction.hpp>
+#include <lux/engine/editor/scene/SceneEditor.hpp>
 
 namespace lux::editor::gui
 {
@@ -11,6 +11,8 @@ namespace lux::editor::gui
       public:
         InspectorPane(scene::SceneEditor &, std::string id, std::shared_ptr<const std::vector<ComponentBinding>>);
         void requestClose() noexcept override;
+        void poll(PollBudget &) override;
+        [[nodiscard]] EditorResult<void> finishInteraction() override;
 
       private:
         void draw(lux::ui::Frame &, lux::ui::PaneDrawContext &) override;

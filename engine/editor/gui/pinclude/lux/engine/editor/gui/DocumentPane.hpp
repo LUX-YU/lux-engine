@@ -1,16 +1,17 @@
 #pragma once
 
-#include <lux/engine/editor/gui/actions/HistoryActions.hpp>
-#include <lux/engine/ui/UISession.hpp>
-#include <lux/engine/ui/Pane.hpp>
-#include <lux/engine/editor/gui/GuiView.hpp>
-#include <lux/engine/ui/Frame.hpp>
 #include <imgui.h>
+#include <lux/engine/editor/gui/GuiView.hpp>
+#include <lux/engine/editor/gui/actions/HistoryActions.hpp>
+#include <lux/engine/ui/Frame.hpp>
+#include <lux/engine/ui/Pane.hpp>
+#include <lux/engine/ui/UISession.hpp>
 
 namespace lux::editor::gui
 {
     // Shares registration/close mechanics; concrete Pane classes own their drawing and interaction.
-    template <class Derived, class Document> class DocumentPane : public object::Object<Derived, lux::ui::Pane>, public GuiView
+    template <class Derived, class Document>
+    class DocumentPane : public object::Object<Derived, lux::ui::Pane>, public GuiView
     {
       public:
         DocumentPane(Document &document, std::string name, std::string title)
@@ -72,12 +73,15 @@ namespace lux::editor::gui
         void requestClose() noexcept override
         {
             closing_ = true;
-            commands_.clear();
-            registration_.reset();
         }
 
         void poll(PollBudget &) override
         {
+            if (closing_)
+            {
+                commands_.clear();
+                registration_.reset();
+            }
             if (!published_save_.serial)
             {
                 return;
@@ -88,10 +92,11 @@ namespace lux::editor::gui
                 publication_message_ = status.error().domain + ": " + status.error().message;
                 return;
             }
-            if (const auto* done = std::get_if<SaveSucceeded>(&*status))
+            if (const auto *done = std::get_if<SaveSucceeded>(&*status))
             {
-                publication_message_ = done->cleanup ? "Source and compiled asset published" :
-                    "Published; cleanup requires attention: " + done->cleanup.error().message;
+                publication_message_ = done->cleanup
+                                           ? "Source and compiled asset published"
+                                           : "Published; cleanup requires attention: " + done->cleanup.error().message;
             }
             else if (std::holds_alternative<SaveAbandoned>(*status))
             {
@@ -109,7 +114,9 @@ namespace lux::editor::gui
 
         CloseStatus closeStatus() const override
         {
-            return {closing_ ? ECloseState::CLOSED : ECloseState::OPEN, {}};
+            return {closing_ ? (!registration_ && commands_.empty() ? ECloseState::CLOSED : ECloseState::CLOSING)
+                             : ECloseState::OPEN,
+                    {}};
         }
 
       protected:
@@ -118,7 +125,7 @@ namespace lux::editor::gui
             published_save_ = request;
             publication_message_.clear();
         }
-        void drawPublication(lux::ui::Frame& frame)
+        void drawPublication(lux::ui::Frame &frame)
         {
             if (!publication_message_.empty())
             {
@@ -134,10 +141,12 @@ namespace lux::editor::gui
                 frame.text(status.error().message);
                 return;
             }
-            if (const auto* failed = std::get_if<SaveRetryable>(&*status))
+            if (const auto *failed = std::get_if<SaveRetryable>(&*status))
             {
                 ImGui::TextWrapped("Publication failed: %s (%llu) %s", failed->failure.domain.c_str(),
-                    static_cast<unsigned long long>(failed->failure.reason), failed->failure.message.c_str());
+                                   static_cast<unsigned long long>(failed->failure.reason),
+                                   failed->failure.message.c_str());
+                ImGui::BeginDisabled(!failed->retry_allowed);
                 if (ImGui::SmallButton("Retry publication"))
                 {
                     const auto retried = document_.retrySave(published_save_);
@@ -146,6 +155,7 @@ namespace lux::editor::gui
                         publication_message_ = retried.error().domain + ": " + retried.error().message;
                     }
                 }
+                ImGui::EndDisabled();
                 ImGui::SameLine();
                 if (ImGui::SmallButton("Abandon publication"))
                 {

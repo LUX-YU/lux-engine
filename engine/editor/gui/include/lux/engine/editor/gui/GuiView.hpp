@@ -11,6 +11,12 @@ namespace lux::editor::gui
       public:
         virtual lux::ui::Pane &pane() noexcept = 0;
 
+        // Called by the frontend at an owner boundary before save/close review.
+        [[nodiscard]] virtual EditorResult<void> finishInteraction()
+        {
+            return {};
+        }
+
         virtual void appendFrameImages(std::vector<rendering::ViewImage> &) const {}
 
         virtual void releaseFrameImages() noexcept {}

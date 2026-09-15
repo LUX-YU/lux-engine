@@ -1,11 +1,11 @@
-#include <lux/engine/editor/Editor.hpp>
-#include <lux/engine/editor/project/Project.hpp>
-#include <lux/engine/process/TaskScope.hpp>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <limits>
+#include <lux/engine/editor/Editor.hpp>
+#include <lux/engine/editor/project/Project.hpp>
+#include <lux/engine/process/TaskScope.hpp>
 #include <thread>
 
 namespace lux::editor
@@ -15,6 +15,20 @@ namespace lux::editor
         auto failed(EEditorError code)
         {
             return lux::cxx::unexpected(EditorFailure{code, "editor"});
+        }
+
+        std::uint64_t issueEditorIdentity() noexcept
+        {
+            static std::atomic<std::uint64_t> next{1};
+            auto value = next.load(std::memory_order_relaxed);
+            while (value != UINT64_MAX)
+            {
+                if (next.compare_exchange_weak(value, value + 1, std::memory_order_relaxed))
+                {
+                    return value;
+                }
+            }
+            return 0;
         }
 
         void report(const EditorFailure &error)
@@ -53,7 +67,7 @@ namespace lux::editor
         OpenRequestStatus status{OpenPending{}};
     };
 
-    Editor::Editor(EditorConfig config) : config_(std::move(config))
+    Editor::Editor(EditorConfig config) : config_(std::move(config)), identity_(issueEditorIdentity())
     {
         requests_.reserve(config_.limits.open_requests);
         openings_.reserve(config_.limits.documents);
@@ -82,7 +96,7 @@ namespace lux::editor
 
     EditorResult<OpenRequestId> Editor::requestOpen(const OpenDocumentRequest &request)
     {
-        if (state_ != EState::RUNNING || !project_ || exit_requested_)
+        if (state_ != EState::RUNNING || !project_ || exit_requested_ || review_.serial)
         {
             return failed(EEditorError::CLOSING);
         }
@@ -231,9 +245,98 @@ namespace lux::editor
         return result;
     }
 
-    void Editor::requestExit() noexcept
+    EditorResult<void> Editor::cancelStartup() noexcept
     {
+        if (project_ || state_ != EState::RUNNING || exit_requested_)
+        {
+            return failed(EEditorError::INVALID_STATE);
+        }
         exit_requested_ = true;
+        return {};
+    }
+
+    EditorResult<ExitReviewId> Editor::beginExitReview()
+    {
+        if (state_ != EState::RUNNING || exit_requested_)
+        {
+            return failed(EEditorError::CLOSING);
+        }
+        if (review_.serial)
+        {
+            return failed(EEditorError::BUSY);
+        }
+        if (!identity_ || next_review_ == UINT64_MAX)
+        {
+            return failed(EEditorError::CAPACITY);
+        }
+        review_ = {identity_, next_review_++};
+        return review_;
+    }
+
+    EditorResult<void> Editor::cancelExitReview(ExitReviewId id)
+    {
+        if (!id.serial || id != review_)
+        {
+            return failed(EEditorError::STALE_REQUEST);
+        }
+        if (exit_requested_)
+        {
+            return failed(EEditorError::CLOSING);
+        }
+        review_ = {};
+        return {};
+    }
+
+    EditorResult<void> Editor::commitExitReview(ExitReviewId id, std::span<const DocumentCloseDecision> decisions)
+    {
+        if (!id.serial || id != review_)
+        {
+            return failed(EEditorError::STALE_REQUEST);
+        }
+        if (exit_requested_ || state_ != EState::RUNNING)
+        {
+            return failed(EEditorError::CLOSING);
+        }
+        if (!openings_.empty())
+        {
+            return failed(EEditorError::BUSY);
+        }
+        if (decisions.size() != documents_.size())
+        {
+            return failed(EEditorError::STALE_DOCUMENT);
+        }
+
+        // No callbacks or close effects occur until every current owner has been reviewed.
+        for (const auto &document : documents_.values())
+        {
+            const auto count = std::ranges::count(decisions, document->handle(), &DocumentCloseDecision::document);
+            if (count != 1)
+            {
+                return failed(EEditorError::STALE_DOCUMENT);
+            }
+            const auto &decision = *std::ranges::find(decisions, document->handle(), &DocumentCloseDecision::document);
+            const auto current = document->reviewClose();
+            if (!current)
+            {
+                return lux::cxx::unexpected(current.error());
+            }
+            if (current->current != decision.state || current->revision != decision.revision)
+            {
+                return failed(EEditorError::STALE_REQUEST);
+            }
+            if (decision.decision != EDocumentCloseDecision::DISCARD_THIS_STATE &&
+                (decision.decision != EDocumentCloseDecision::CLOSE_CLEAN || !current->clean))
+            {
+                return failed(EEditorError::INVALID_STATE);
+            }
+        }
+
+        exit_requested_ = true;
+        for (const auto &document : documents_.values())
+        {
+            document->requestClose();
+        }
+        return {};
     }
 
     void Editor::fail(EditorFailure failure)
@@ -243,7 +346,7 @@ namespace lux::editor
             report(failure);
             outcome_ = lux::cxx::unexpected(std::move(failure));
         }
-        requestExit();
+        exit_requested_ = true;
     }
 
     void Editor::acceptOpenings()
@@ -446,7 +549,6 @@ namespace lux::editor
                 {
                     fail(entered.error());
                     exit_code = 5;
-                    requestExit();
                 }
 
                 bool frontend_closing{};

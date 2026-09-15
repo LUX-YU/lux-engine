@@ -1,10 +1,10 @@
 #pragma once
 
+#include <filesystem>
+#include <functional>
 #include <lux/engine/editor/DocumentEditor.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
-#include <filesystem>
-#include <functional>
 #include <vector>
 
 namespace lux::editor
@@ -66,7 +66,10 @@ namespace lux::editor
         [[nodiscard]] EditorResult<void> acknowledgeOpen(OpenRequestId);
         [[nodiscard]] EditorResult<std::reference_wrapper<DocumentEditor>> document(DocumentHandle);
         [[nodiscard]] std::vector<DocumentSummary> documents() const;
-        void requestExit() noexcept;
+        [[nodiscard]] EditorResult<ExitReviewId> beginExitReview();
+        [[nodiscard]] EditorResult<void> cancelExitReview(ExitReviewId);
+        [[nodiscard]] EditorResult<void> commitExitReview(ExitReviewId, std::span<const DocumentCloseDecision>);
+        [[nodiscard]] EditorResult<void> cancelStartup() noexcept;
         [[nodiscard]] bool closing() const noexcept
         {
             return exit_requested_;
@@ -101,6 +104,9 @@ namespace lux::editor
         Project *project_{}; // Borrowed only within exec's Project lifetime.
         EState state_{EState::COLD};
         std::uint64_t next_request_{1};
+        const std::uint64_t identity_;
+        std::uint64_t next_review_{1};
+        ExitReviewId review_;
         bool exit_requested_{};
         EditorResult<void> outcome_;
         std::size_t poll_cursor_{};

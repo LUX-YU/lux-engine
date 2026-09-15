@@ -1,3 +1,4 @@
+#include "../TestExit.hpp"
 #include <cassert>
 #include <chrono>
 #include <cstdio>
@@ -80,6 +81,8 @@ struct Evidence final
 };
 class Probe final : public EditorFrontend
 {
+    TestExit exit_;
+
   public:
     explicit Probe(Evidence &evidence) : evidence_(evidence) {}
     EditorResult<void> beginStartup(Editor &editor, lux::process::ExecutionRuntime &runtime,
@@ -88,9 +91,7 @@ class Probe final : public EditorFrontend
         runtime_ = &runtime;
         return editor.registerDocument({std::string(mat::kMaterialDocumentType),
                                         [&runtime](Project &project, const OpenDocumentRequest &request)
-                                        {
-                                            return mat::openMaterialDocument(project, request, runtime);
-                                        }});
+                                        { return mat::openMaterialDocument(project, request, runtime); }});
     }
     EditorResult<void> enterProject(Editor &editor, Project &project, lux::process::ExecutionRuntime &,
                                     lux::object::ObjectDispatcherRef) override
@@ -103,6 +104,7 @@ class Probe final : public EditorFrontend
     void collectInput(Editor &) override {}
     void poll(PollBudget &) override
     {
+        exit_.poll();
         assert(std::chrono::steady_clock::now() - began_ < std::chrono::seconds(60));
         if (!project_ || evidence_.completed)
         {
@@ -403,7 +405,7 @@ class Probe final : public EditorFrontend
             compile_ = *doc.requestCompile();
             doc.requestClose();
             evidence_.completed = true;
-            editor_->requestExit();
+            exit_.request(*editor_);
         }
     }
     void draw(Editor &, PollBudget &) override {}
@@ -460,10 +462,7 @@ int main(int argc, char **argv)
     EditorConfig config;
     config.project_file = std::filesystem::path(argv[1]) / "Project.luxproject";
     config.execution = {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}};
-    config.frontend = [&]
-    {
-        return std::make_unique<Probe>(evidence);
-    };
+    config.frontend = [&] { return std::make_unique<Probe>(evidence); };
     Editor editor(std::move(config));
     const auto result = editor.exec();
     assert(result == 0 && evidence.completed && evidence.closed);

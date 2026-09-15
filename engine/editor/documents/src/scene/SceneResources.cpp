@@ -664,7 +664,10 @@ namespace lux::editor::scene::detail
 
     void SceneResources::afterPresentation(bool source_update_pending) noexcept
     {
-        if (!renderer_ || source_update_pending || renderer_->state() != rendering::ERendererState::READY)
+        // A document can close before its first poll activates the resource owner.
+        // In that state there is no runtime lease or submitted program to advance.
+        if (!active_ || closed_ || !renderer_ || source_update_pending ||
+            renderer_->state() != rendering::ERendererState::READY)
         {
             return;
         }

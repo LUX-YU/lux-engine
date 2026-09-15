@@ -71,7 +71,8 @@ namespace lux::editor::detail
             EditorResult<Encoded> operator()() const noexcept
             {
                 auto encoded = std::visit(
-                    [&](const auto &value) -> EditorResult<lux::cxx::SharedBytes<>> {
+                    [&](const auto &value) -> EditorResult<lux::cxx::SharedBytes<>>
+                    {
                         if constexpr (std::is_same_v<std::decay_t<decltype(value)>, Capture>)
                         {
                             return Encoder{}(value, stop);
@@ -116,18 +117,35 @@ namespace lux::editor::detail
         DocumentSave(const DocumentSave &) = delete;
         DocumentSave(DocumentSave &&) = delete;
 
-        SaveRequestId id() const noexcept { return id_; }
-        std::span<const SaveRequestId> requests() const noexcept { return {&id_, 1}; }
-        const SaveRequestStatus &status() const noexcept { return status_; }
+        SaveRequestId id() const noexcept
+        {
+            return id_;
+        }
+        std::span<const SaveRequestId> requests() const noexcept
+        {
+            return {&id_, 1};
+        }
+        const SaveRequestStatus &status() const noexcept
+        {
+            return status_;
+        }
         bool terminal() const noexcept
         {
             return std::holds_alternative<SaveSucceeded>(status_) || std::holds_alternative<SaveAbandoned>(status_);
         }
-        EditorResult<void> retry()
+        EditorResult<void> retry(bool allow_new_work = true)
         {
+            if (!allow_new_work && !abandoning_)
+            {
+                return lux::cxx::unexpected(EditorFailure{EEditorError::CLOSING, "document.save.retry"});
+            }
             if (!std::holds_alternative<SaveRetryable>(status_) || finishing_)
             {
                 return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "document.save.retry"});
+            }
+            if (const auto &failure = std::get<SaveRetryable>(status_); !failure.retry_allowed)
+            {
+                return lux::cxx::unexpected(failure.failure);
             }
             ++attempt_;
             if (auto *write = std::get_if<ProjectWrite>(&work_))
@@ -192,7 +210,9 @@ namespace lux::editor::detail
                 }
                 if (!result)
                 {
-                    failed(std::move(result.error()));
+                    const bool retry = result.error().code == EEditorError::EXECUTION_FAILURE ||
+                                       result.error().code == EEditorError::BUSY;
+                    failed(std::move(result.error()), retry);
                     return;
                 }
                 image_ = std::move(*result);
@@ -264,7 +284,19 @@ namespace lux::editor::detail
                     runtime_, stdexec::then(stdexec::schedule(runtime_.cpu()), Encode{&capture_, stop_.get_token()}))
                 .start();
         }
-        void failed(EditorFailure error) { status_ = SaveRetryable{std::move(error), ticket_.state(), attempt_}; }
+        void failed(EditorFailure error, bool retry = true)
+        {
+            retry &= error.code != EEditorError::READ_ONLY && error.code != EEditorError::MISSING_PROVIDER &&
+                     error.code != EEditorError::INVALID_ARGUMENT && error.code != EEditorError::STALE_REQUEST &&
+                     error.code != EEditorError::STALE_DOCUMENT;
+            if (const auto *publication = std::any_cast<ProjectPublicationFailure>(&error.cause))
+            {
+                retry &= publication->code != EProjectPublicationError::INVALID_PATH &&
+                         publication->code != EProjectPublicationError::CONFLICT &&
+                         publication->code != EProjectPublicationError::RECOVERY_CONFLICT;
+            }
+            status_ = SaveRetryable{std::move(error), ticket_.state(), attempt_, retry};
+        }
         void finishTicket()
         {
             if (finishing_)

@@ -1,3 +1,4 @@
+#include "../TestExit.hpp"
 #include "flow_metadata.hpp"
 #include "model_placement_checks.hpp"
 #include "scene_edit_checks.hpp"
@@ -86,6 +87,8 @@ void checkLocalHistory(lux::editor::scene::SceneEditor &scene, DocumentEditor &o
 
 class Probe final : public EditorFrontend
 {
+    TestExit exit_;
+
   public:
     Probe(Evidence &evidence, gui::GuiConfig config)
         : evidence_(evidence), inner_(gui::makeGuiFrontend(std::move(config)))
@@ -123,7 +126,7 @@ class Probe final : public EditorFrontend
         }
         if (evidence_.mode == "cancel-startup")
         {
-            editor.requestExit();
+            exit_.request(editor);
         }
         if (evidence_.mode == "invalid-window")
         {
@@ -156,6 +159,7 @@ class Probe final : public EditorFrontend
     }
     void poll(PollBudget &budget) override
     {
+        exit_.poll();
         SampleTime sample{evidence_.callbacks};
         inner_->poll(budget);
         if (extra_view_ && evidence_.failed)
@@ -180,7 +184,7 @@ class Probe final : public EditorFrontend
                 std::fprintf(stderr, "FAIL deadline stage=%u\n", stage_);
             }
             evidence_.failed = true;
-            editor_->requestExit();
+            exit_.request(*editor_);
             return;
         }
         if (evidence_.renderer->state() != rendering::ERendererState::READY)
@@ -220,7 +224,7 @@ class Probe final : public EditorFrontend
                     std::printf("expected version rejection: %s:%llu component=%u objects=0\n", failure->domain.c_str(),
                                 failure->reason, unsigned(original->component.code));
                     evidence_.checks += 3;
-                    editor_->requestExit();
+                    exit_.request(*editor_);
                     return;
                 }
                 if (evidence_.mode == "missing-provider")
@@ -232,13 +236,13 @@ class Probe final : public EditorFrontend
                                 failure->reason, evidence_.renderer->statistics().views);
                     assert(editor_->documents().empty());
                     evidence_.checks += 2;
-                    editor_->requestExit();
+                    exit_.request(*editor_);
                     return;
                 }
                 std::fprintf(stderr, "FAIL open %s:%llu %s\n", failure->domain.c_str(), failure->reason,
                              failure->message.c_str());
                 evidence_.failed = true;
-                editor_->requestExit();
+                exit_.request(*editor_);
                 return;
             }
             if (const auto *handle = std::get_if<DocumentHandle>(&*status))
@@ -289,7 +293,7 @@ class Probe final : public EditorFrontend
                                      !row.failed_dependency.isNull(), row.backend_status);
                     }
                     evidence_.failed = true;
-                    editor_->requestExit();
+                    exit_.request(*editor_);
                     return;
                 }
                 if (row.state != lux::editor::scene::ESceneResourceState::READY)
@@ -309,10 +313,7 @@ class Probe final : public EditorFrontend
             const auto selected = scene.objects().front().object;
             std::size_t notices{};
             auto connection = scene.observeScoped<lux::editor::scene::SceneEditor::selectionChanged>(
-                [&](const lux::editor::scene::SelectionNotice &) noexcept
-                {
-                    ++notices;
-                });
+                [&](const lux::editor::scene::SelectionNotice &) noexcept { ++notices; });
             assert(scene.select(selected));
             assert(notices == 1 && scene.selection().object == selected);
             assert(scene.select(selected) && notices == 1);
@@ -350,10 +351,7 @@ class Probe final : public EditorFrontend
             if (evidence_.mode == "close-signal")
             {
                 auto closing = scene.observeScoped<lux::editor::scene::SceneEditor::selectionChanged>(
-                    [&](const auto &) noexcept
-                    {
-                        scene.requestClose();
-                    });
+                    [&](const auto &) noexcept { scene.requestClose(); });
                 assert(scene.select({}));
                 assert(editor_->document(handle_));
                 assert(scene.closeStatus().state == ECloseState::CLOSING);
@@ -442,7 +440,7 @@ class Probe final : public EditorFrontend
                 placement_checks_.closeWithPending(dynamic_cast<lux::editor::scene::SceneEditor &>(current->get()));
             }
             stage_ = 43;
-            editor_->requestExit();
+            exit_.request(*editor_);
             return;
         }
         if (stage_ == 10 && !editor_->document(handle_))
@@ -554,7 +552,7 @@ class Probe final : public EditorFrontend
             extra_view_.reset();
             evidence_.checks += 8;
             stage_ = 24;
-            editor_->requestExit();
+            exit_.request(*editor_);
         }
         if (stage_ == 11)
         {
@@ -566,7 +564,7 @@ class Probe final : public EditorFrontend
                 assert(editor_->acknowledgeOpen(second_));
                 evidence_.checks += 3;
                 stage_ = 12;
-                editor_->requestExit();
+                exit_.request(*editor_);
             }
             return;
         }
@@ -637,7 +635,7 @@ class Probe final : public EditorFrontend
                 std::puts("FlowForge GUI: continued drawing after Scene closed; local FlowForge owner and history "
                           "remain usable");
                 assert(doc.rename("Still editable") && doc.undo());
-                editor_->requestExit();
+                exit_.request(*editor_);
                 stage_ = 63;
             }
             return;
@@ -737,11 +735,7 @@ class Probe final : public EditorFrontend
                         value.material = doc.summary().key.source;
                         auto edit = scene.setField<Mesh>(
                             *scene.writeTarget(row->object), "Mesh3D.value", "Material",
-                            [](auto &mesh) noexcept
-                            {
-                                return &mesh.value;
-                            },
-                            value);
+                            [](auto &mesh) noexcept { return &mesh.value; }, value);
                         assert(edit);
                     }
                     ++stage_;
@@ -786,11 +780,8 @@ class Probe final : public EditorFrontend
                         return;
                     }
                     const bool retired =
-                        std::ranges::none_of(resources->rows,
-                                             [](const auto &row)
-                                             {
-                                                 return row.state == scene::ESceneResourceState::SUPERSEDED;
-                                             });
+                        std::ranges::none_of(resources->rows, [](const auto &row)
+                                             { return row.state == scene::ESceneResourceState::SUPERSEDED; });
                     if (!retired || evidence_.renderer->statistics().gpu_completed < material_watermark_ + 5)
                     {
                         return;
@@ -840,7 +831,7 @@ class Probe final : public EditorFrontend
                 std::puts("Material GUI: continued drawing after Scene closed; local material owner and history remain "
                           "usable");
                 assert(doc.rename("Still editable") && doc.undo());
-                editor_->requestExit();
+                exit_.request(*editor_);
                 stage_ = 63;
             }
             return;
@@ -851,7 +842,7 @@ class Probe final : public EditorFrontend
             std::printf("real scene: checks=%zu frames=%zu gpu_completed=%llu views=%zu leases=%zu\n", evidence_.checks,
                         evidence_.frames, stats.gpu_completed, stats.views, stats.runtime_leases);
             assert(stats.views == (evidence_.mode == "cpu" ? 0 : 1) && stats.gpu_completed > 0);
-            editor_->requestExit();
+            exit_.request(*editor_);
             ++stage_;
         }
     }
@@ -1011,10 +1002,7 @@ int main(int argc, char **argv)
     EditorConfig config;
     config.project_file = argv[1];
     config.execution = {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}};
-    config.frontend = [&evidence, gui]
-    {
-        return std::make_unique<Probe>(evidence, gui);
-    };
+    config.frontend = [&evidence, gui] { return std::make_unique<Probe>(evidence, gui); };
     Editor editor(std::move(config));
     const auto begin = std::chrono::steady_clock::now();
     const auto result = editor.exec();
@@ -1032,10 +1020,7 @@ int main(int argc, char **argv)
     }
     std::printf("mode=%s exit=%d closed=%d\n", evidence.mode.c_str(), result, evidence.closed);
     std::printf("PASS case=%s checks=%zu\n", evidence.mode.c_str(), evidence.checks);
-    const auto milliseconds = [](auto value)
-    {
-        return std::chrono::duration<double, std::milli>(value).count();
-    };
+    const auto milliseconds = [](auto value) { return std::chrono::duration<double, std::milli>(value).count(); };
     std::printf("timing: exec_ms=%.3f frontend_callbacks_ms=%.3f frontend_wait_ms=%.3f\n",
                 milliseconds(std::chrono::steady_clock::now() - begin), milliseconds(evidence.callbacks),
                 milliseconds(evidence.waits));

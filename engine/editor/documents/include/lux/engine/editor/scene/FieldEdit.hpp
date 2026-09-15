@@ -130,7 +130,13 @@ namespace lux::editor::scene
                                    value.squaredNorm();
                                })
             {
-                return value.coeffs().allFinite() && std::abs(value.squaredNorm() - 1.0) < 1e-8;
+                using Scalar = typename Value::Scalar;
+                // Four products and their sum accumulate Scalar roundoff. Retain
+                // the existing double tolerance without rejecting valid float rotations.
+                constexpr double tolerance = (std::max)(1e-8, 16.0 * std::numeric_limits<Scalar>::epsilon());
+                const double norm = value.coeffs().template cast<double>().squaredNorm();
+                return value.coeffs().allFinite() && std::isfinite(norm) &&
+                       norm > std::numeric_limits<Scalar>::epsilon() && std::abs(norm - 1.0) <= tolerance;
             }
             else if constexpr (requires { value.allFinite(); })
             {

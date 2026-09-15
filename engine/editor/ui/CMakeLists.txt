@@ -8,5 +8,5 @@ component_include_directories(editor_ui
 target_compile_definitions(editor_ui PRIVATE LUX_EDITOR_UI_LIBRARY)
 target_link_libraries(editor_ui PUBLIC lux::engine::function::ui)
 component_add_transitive_commands(editor_ui "find_package(lux-engine-function REQUIRED COMPONENTS ui)")
-install_components(PROJECT_NAME lux-engine-editor-ui VERSION ${PROJECT_VERSION}
+lux_engine_install_components(PROJECT_NAME lux-engine-editor-ui VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_ui)

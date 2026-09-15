@@ -86,7 +86,7 @@ if(TARGET material_graph)
 endif()
 
 if(LUX_FUNCTION_COMPONENTS)
-    install_components(
+    lux_engine_install_components(
         PROJECT_NAME lux-engine-function
         VERSION      0.0.1
         NAMESPACE    lux::engine::function

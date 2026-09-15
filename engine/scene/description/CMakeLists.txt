@@ -37,7 +37,7 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-scene-description
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::scene

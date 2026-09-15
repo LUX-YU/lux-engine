@@ -40,5 +40,5 @@ engine_add_type_runtime_info(NAME editor_scene_document_meta
     REGISTER_FUNC_NAME lux_editor_scene_document)
 engine_target_add_type_runtime_info(TARGET editor_documents METAS editor_scene_document_meta
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen)
-install_components(PROJECT_NAME lux-engine-editor-documents VERSION ${PROJECT_VERSION}
+lux_engine_install_components(PROJECT_NAME lux-engine-editor-documents VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_documents)

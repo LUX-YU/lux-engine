@@ -23,6 +23,7 @@ include(TargetPlatform)
 include(HostTools)
 
 find_package(lux-cmake-toolset CONFIG REQUIRED)
+include(InstallComponents)
 
 if(CMAKE_CROSSCOMPILING)
     find_package(lux-cxx REQUIRED COMPONENTS

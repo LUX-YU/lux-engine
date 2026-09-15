@@ -55,7 +55,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS flowforge script_artifact)"
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-flowforge-compiler
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::flowforge

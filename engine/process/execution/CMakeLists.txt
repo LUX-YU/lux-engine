@@ -41,7 +41,7 @@ component_add_transitive_commands(
     "find_package(stdexec CONFIG REQUIRED)"
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-process-execution
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::process

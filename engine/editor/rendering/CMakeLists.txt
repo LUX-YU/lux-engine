@@ -30,5 +30,5 @@ component_add_transitive_commands(editor_rendering
     "find_package(lux-engine-function REQUIRED COMPONENTS ui)"
 )
 
-install_components(PROJECT_NAME lux-engine-editor-rendering VERSION ${PROJECT_VERSION}
+lux_engine_install_components(PROJECT_NAME lux-engine-editor-rendering VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_rendering)

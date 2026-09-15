@@ -1,0 +1,14 @@
+if(NOT TARGET @COMPONENT_TARGET@)
+    @COMPONENT_TRANSITIVE_COMMANDS@
+    foreach(_component_dependency IN ITEMS @COMPONENT_DEPENDENCIES@)
+        include("${CMAKE_CURRENT_LIST_DIR}/../${_component_dependency}/@PACKAGE_PROJECT_NAME@-${_component_dependency}-import.cmake")
+    endforeach()
+    include("${CMAKE_CURRENT_LIST_DIR}/@PACKAGE_PROJECT_NAME@-@COMPONENT_NAME@-config-targets.cmake")
+    get_filename_component(COMPONENT_IMPORT_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+    set_target_properties(@COMPONENT_TARGET@ PROPERTIES
+        IMPORTED_GLOBAL TRUE
+        IMPORTED_COMPONENT TRUE
+        IMPORTED_ASSETS_PREFIX "${CMAKE_CURRENT_LIST_DIR}"
+        IMPORTED_ASSET_TYPES "@COMPONENT_ASSET_TYPES@"
+        @COMPONENT_EXPORT_PROPERTIES@)
+endif()

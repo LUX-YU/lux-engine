@@ -8,7 +8,7 @@ component_include_directories(
     INSTALL_TIME include
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-scene-presentation
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::scene

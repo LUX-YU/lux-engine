@@ -25,7 +25,7 @@ install(
     DESTINATION share/lux-engine-toolchain/lua_script_packager/cmake_scripts
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-toolchain
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::toolchain

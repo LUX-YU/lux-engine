@@ -29,7 +29,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-domain-system-identity REQUIRED COMPONENTS domain_system_identity)"
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-domain-system-description
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::system

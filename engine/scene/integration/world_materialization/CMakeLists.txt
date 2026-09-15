@@ -43,7 +43,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS schema)"
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-scene-world-materialization
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::scene

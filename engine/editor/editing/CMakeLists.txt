@@ -22,7 +22,7 @@ target_compile_definitions(editor_editing PRIVATE LUX_EDITOR_EDITING_LIBRARY)
 target_link_libraries(editor_editing PUBLIC lux::cxx::compile_time)
 component_add_transitive_commands(editor_editing "find_package(lux-cxx REQUIRED COMPONENTS compile_time)")
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-editor-editing
     VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor

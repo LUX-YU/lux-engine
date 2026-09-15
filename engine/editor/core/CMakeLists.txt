@@ -34,5 +34,5 @@ component_add_transitive_commands(editor_core
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time container)"
 )
-install_components(PROJECT_NAME lux-engine-editor-core VERSION ${PROJECT_VERSION}
+lux_engine_install_components(PROJECT_NAME lux-engine-editor-core VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_core)

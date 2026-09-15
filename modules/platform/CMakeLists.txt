@@ -26,7 +26,7 @@ else()
 endif()
 
 if(LUX_PLATFORM_COMPONENTS)
-    install_components(
+    lux_engine_install_components(
         PROJECT_NAME lux-engine-platform
         VERSION      0.0.1
         NAMESPACE    lux::engine::platform

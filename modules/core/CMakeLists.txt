@@ -17,7 +17,7 @@ add_subdirectory(log)
 add_subdirectory(events)
 add_subdirectory(task)
 
-install_components(
+lux_engine_install_components(
 	PROJECT_NAME	lux-engine-core
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::core

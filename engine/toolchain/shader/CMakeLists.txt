@@ -60,7 +60,7 @@ if(LUX_PROFILE_HAS_TOOLCHAIN)
         RUNTIME DESTINATION bin
         COMPONENT lux_toolchain
     )
-    install_components(
+    lux_engine_install_components(
         PROJECT_NAME lux-engine-toolchain-shader
         VERSION      ${PROJECT_VERSION}
         NAMESPACE    lux::engine::toolchain

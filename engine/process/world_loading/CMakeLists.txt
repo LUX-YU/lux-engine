@@ -38,7 +38,7 @@ component_add_transitive_commands(
     "set_property(TARGET lux::engine::process::world_loading PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::process::process_world_loading)"
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-process-world-loading
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::process

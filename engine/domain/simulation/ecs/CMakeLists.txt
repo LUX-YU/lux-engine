@@ -14,7 +14,7 @@ foreach(component IN ITEMS
 endforeach()
 
 if(_lux_ecs_components)
-    install_components(
+    lux_engine_install_components(
         PROJECT_NAME lux-engine-simulation-ecs
         VERSION      ${PROJECT_VERSION}
         NAMESPACE    lux::engine::simulation::ecs

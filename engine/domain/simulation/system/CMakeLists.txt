@@ -44,7 +44,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core)"
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-simulation-system
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::simulation

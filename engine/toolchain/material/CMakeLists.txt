@@ -173,7 +173,7 @@ component_add_transitive_commands(
 )
 
 if(LUX_PROFILE_HAS_TOOLCHAIN)
-    install_components(
+    lux_engine_install_components(
         PROJECT_NAME lux-engine-toolchain-material
         VERSION      ${PROJECT_VERSION}
         NAMESPACE    lux::engine::toolchain

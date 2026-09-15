@@ -36,7 +36,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS meta serialization)"
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-scene-meta
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::scene

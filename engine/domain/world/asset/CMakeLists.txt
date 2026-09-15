@@ -44,7 +44,7 @@ component_add_transitive_commands(
     "endif()"
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-world-asset
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::world

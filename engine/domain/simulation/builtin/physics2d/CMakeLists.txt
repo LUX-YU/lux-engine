@@ -82,7 +82,7 @@ install(
     COMPONENT lux_sdk
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-physics2d
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::physics2d

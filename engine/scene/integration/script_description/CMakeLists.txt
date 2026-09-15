@@ -27,7 +27,7 @@ component_add_transitive_commands(scene_script_description
     "find_package(lux-engine-world-identity REQUIRED COMPONENTS world_identity)"
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-scene-script-description
     VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::scene

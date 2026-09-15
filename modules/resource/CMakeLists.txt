@@ -11,7 +11,7 @@ add_subdirectory(identity)
 add_subdirectory(description)
 add_subdirectory(asset)
 
-install_components(
+lux_engine_install_components(
 	PROJECT_NAME	lux-engine-resource
 	VERSION			0.0.1
 	NAMESPACE		lux::engine::resource

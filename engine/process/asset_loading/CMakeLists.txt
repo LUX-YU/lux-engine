@@ -36,7 +36,7 @@ component_add_transitive_commands(
         INTERFACE_LINK_LIBRARIES lux::engine::process::process_asset_loading)"
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-process-asset-loading
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::process

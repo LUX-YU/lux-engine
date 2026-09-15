@@ -39,7 +39,7 @@ component_add_transitive_commands(
     "set_property(TARGET lux::engine::world::partition PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::world::world_partition)"
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-world-partition
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::world

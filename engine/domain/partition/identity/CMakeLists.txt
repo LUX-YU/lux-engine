@@ -18,7 +18,7 @@ component_add_transitive_commands(
     "set_property(TARGET lux::engine::partition::identity PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::partition::partition_identity)"
 )
 
-install_components(
+lux_engine_install_components(
     PROJECT_NAME lux-engine-partition-identity
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::partition

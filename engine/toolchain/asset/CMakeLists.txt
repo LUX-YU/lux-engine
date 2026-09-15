@@ -7,7 +7,7 @@ add_subdirectory(model)
 add_subdirectory(packer)
 
 if(LUX_PROFILE_HAS_TOOLCHAIN)
-    install_components(
+    lux_engine_install_components(
         PROJECT_NAME lux-engine-toolchain-asset
         VERSION      ${PROJECT_VERSION}
         NAMESPACE    lux::engine::toolchain

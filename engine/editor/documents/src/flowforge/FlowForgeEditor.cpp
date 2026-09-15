@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <cmath>
-#include <lux/engine/editor/DocumentSave.hpp>
-#include <lux/engine/editor/DocumentSource.hpp>
+#include <lux/engine/editor/detail/DocumentSave.hpp>
+#include <lux/engine/editor/detail/DocumentSource.hpp>
 #include <lux/engine/editor/flowforge/FlowForgeEditor.hpp>
 #include <lux/engine/flowforge/Compiler.hpp>
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>

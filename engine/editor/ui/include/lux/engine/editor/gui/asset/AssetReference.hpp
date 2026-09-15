@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstring>
 #include <lux/engine/editor/DocumentRequests.hpp>
-#include <lux/engine/editor/gui/visibility.h>
+#include <lux/engine/editor/ui/visibility.h>
 #include <lux/engine/editor/project/AssetCatalog.hpp>
 #include <span>
 #include <type_traits>
@@ -36,6 +36,6 @@ static_assert(std::is_trivially_copyable_v<AssetReference>);
 }
 
 // Draw in the current UI frame/ID scope. Rejected references retain the input value.
-[[nodiscard]] LUX_EDITOR_GUI_PUBLIC EditorResult<bool> drawAssetReference(const Project &, asset::AssetId &,
+[[nodiscard]] LUX_EDITOR_UI_PUBLIC EditorResult<bool> drawAssetReference(const Project &, asset::AssetId &,
                                                                           std::uint32_t required_magic);
 } // namespace lux::editor::gui

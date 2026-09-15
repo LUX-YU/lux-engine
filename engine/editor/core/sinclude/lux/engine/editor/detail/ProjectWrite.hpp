@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/editor/DocumentTask.hpp>
+#include <lux/engine/editor/detail/DocumentTask.hpp>
 #include <lux/engine/editor/project/Project.hpp>
 
 namespace lux::editor::detail

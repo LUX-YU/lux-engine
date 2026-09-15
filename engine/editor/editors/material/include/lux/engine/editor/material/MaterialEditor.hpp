@@ -2,7 +2,7 @@
 
 #include <array>
 #include <lux/engine/editor/DocumentEditor.hpp>
-#include <lux/engine/editor/documents/visibility.h>
+#include <lux/engine/editor/material/visibility.h>
 #include <lux/engine/material/graph/MaterialSource.hpp>
 #include <lux/engine/object/Object.hpp>
 #include <lux/engine/object/ObjectAnnotations.hpp>
@@ -47,7 +47,7 @@ namespace lux::editor::material
     };
     using MaterialCompileStatus = std::variant<MaterialCompilePending, MaterialCompileSucceeded, MaterialCompileFailed>;
 
-    class LUX_EDITOR_DOCUMENTS_PUBLIC LUX_OBJECT() MaterialEditor final : public object::Object<MaterialEditor>,
+    class LUX_EDITOR_MATERIAL_PUBLIC LUX_OBJECT() MaterialEditor final : public object::Object<MaterialEditor>,
                                                                           public DocumentEditor
     {
       public:
@@ -116,6 +116,6 @@ namespace lux::editor::material
         std::unique_ptr<Data> data_;
     };
 
-    [[nodiscard]] LUX_EDITOR_DOCUMENTS_PUBLIC EditorResult<std::unique_ptr<DocumentOpening>> openMaterialDocument(
+    [[nodiscard]] LUX_EDITOR_MATERIAL_PUBLIC EditorResult<std::unique_ptr<DocumentOpening>> openMaterialDocument(
         Project &, const OpenDocumentRequest &, process::ExecutionRuntime &);
 } // namespace lux::editor::material

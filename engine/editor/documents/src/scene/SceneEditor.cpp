@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <limits>
-#include <lux/engine/editor/DocumentSave.hpp>
+#include <lux/engine/editor/detail/DocumentSave.hpp>
 #include <lux/engine/editor/editing/EditHistory.hpp>
 #include <lux/engine/editor/rendering/EditorRenderer.hpp>
 #include <lux/engine/editor/scene/NativeScene.hpp>

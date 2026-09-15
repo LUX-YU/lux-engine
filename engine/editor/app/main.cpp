@@ -1,3 +1,6 @@
+#include <lux/engine/editor/gui/scene/SceneDocumentProvider.hpp>
+#include <lux/engine/editor/gui/flowforge/FlowForgeDocumentProvider.hpp>
+#include <lux/engine/editor/gui/material/MaterialDocumentProvider.hpp>
 #include <algorithm>
 #include <cstdio>
 #include <lux/cxx/arguments/Arguments.hpp>

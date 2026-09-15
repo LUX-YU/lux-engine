@@ -1,9 +1,10 @@
+#include <lux/engine/editor/gui/PublicationControls.hpp>
 #include <algorithm>
 #include <imgui.h>
 #include <imgui_node_editor.h>
 #include <imgui_stdlib.h>
 #include <lux/engine/editor/gui/DocumentPane.hpp>
-#include <lux/engine/editor/gui/GuiFrontend.hpp>
+#include <lux/engine/editor/gui/material/MaterialDocumentProvider.hpp>
 #include <lux/engine/editor/gui/asset/AssetReference.hpp>
 #include <lux/engine/editor/material/MaterialEditor.hpp>
 #include <lux/engine/editor/project/Project.hpp>
@@ -110,7 +111,15 @@ class MaterialPane final : public DocumentPane<MaterialPane, material::MaterialE
     {
     }
 
+    void poll(PollBudget &budget) override
+    {
+        publication_.poll(document_);
+        DocumentPane::poll(budget);
+    }
+
   private:
+    PublicationControls publication_;
+
     template <class Result> bool accept(const Result &result)
     {
         if (result)
@@ -233,7 +242,7 @@ class MaterialPane final : public DocumentPane<MaterialPane, material::MaterialE
                         const auto publication = document_.requestPublish(compile_, "desktop");
                         if (accept(publication))
                         {
-                            trackPublication(*publication);
+                            publication_.track(*publication);
                         }
                     }
                     ImGui::EndDisabled();
@@ -245,7 +254,7 @@ class MaterialPane final : public DocumentPane<MaterialPane, material::MaterialE
                 }
             }
         }
-        drawPublication(frame);
+        publication_.draw(document_, frame);
         drawSettings(history->history.current);
         drawProperties(history->history.current);
         if (!error_.empty())

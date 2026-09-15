@@ -5,7 +5,7 @@
 #include <fstream>
 #include <limits>
 #include <lux/cxx/algorithm/Sha256.hpp>
-#include <lux/engine/editor/ProjectWrite.hpp>
+#include <lux/engine/editor/detail/ProjectWrite.hpp>
 #include <lux/engine/editor/asset/AssetImporter.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>

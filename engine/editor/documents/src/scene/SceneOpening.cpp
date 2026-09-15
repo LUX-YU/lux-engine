@@ -1,4 +1,4 @@
-#include <lux/engine/editor/DocumentSource.hpp>
+#include <lux/engine/editor/detail/DocumentSource.hpp>
 #include <lux/engine/editor/scene/NativeScene.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
 

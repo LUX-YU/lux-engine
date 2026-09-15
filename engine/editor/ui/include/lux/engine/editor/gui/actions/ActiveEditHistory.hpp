@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/editor/gui/visibility.h>
+#include <lux/engine/editor/ui/visibility.h>
 #include <lux/engine/editor/editing/EditHistoryTarget.hpp>
 #include <memory>
 
@@ -23,7 +23,7 @@ namespace lux::editor::gui
     };
     class ActiveEditHistory;
 
-    class LUX_EDITOR_GUI_PUBLIC HistoryTargetRegistration final
+    class LUX_EDITOR_UI_PUBLIC HistoryTargetRegistration final
     {
       public:
         HistoryTargetRegistration() noexcept = default;
@@ -50,7 +50,7 @@ namespace lux::editor::gui
         editing::HistoryTargetView target;
     };
 
-    class LUX_EDITOR_GUI_PUBLIC ActiveEditHistory final
+    class LUX_EDITOR_UI_PUBLIC ActiveEditHistory final
     {
       public:
         using CreateResult = editing::EditResult<std::unique_ptr<ActiveEditHistory>>;

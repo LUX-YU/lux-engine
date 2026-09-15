@@ -1,3 +1,5 @@
+#include <lux/engine/editor/gui/PublicationControls.hpp>
+#include <lux/engine/editor/gui/flowforge/FlowForgeDocumentProvider.hpp>
 #include <algorithm>
 #include <charconv>
 #include <imgui.h>
@@ -720,7 +722,15 @@ class FlowForgePane final : public DocumentPane<FlowForgePane, flowforge::FlowFo
     {
     }
 
+    void poll(PollBudget &budget) override
+    {
+        publication_.poll(document_);
+        DocumentPane::poll(budget);
+    }
+
   private:
+    PublicationControls publication_;
+
     template <class Result> bool accept(const Result &result)
     {
         if (result)
@@ -852,7 +862,7 @@ class FlowForgePane final : public DocumentPane<FlowForgePane, flowforge::FlowFo
                         const auto publication = document_.requestPublish(compile_, "desktop");
                         if (accept(publication))
                         {
-                            trackPublication(*publication);
+                            publication_.track(*publication);
                         }
                     }
                     ImGui::EndDisabled();
@@ -868,7 +878,7 @@ class FlowForgePane final : public DocumentPane<FlowForgePane, flowforge::FlowFo
                 }
             }
         }
-        drawPublication(frame);
+        publication_.draw(document_, frame);
         drawVariables();
         drawFunctions();
         drawExports();

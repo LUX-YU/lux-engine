@@ -1,3 +1,4 @@
+#include <lux/engine/editor/gui/scene/SceneDocumentProvider.hpp>
 #include <lux/engine/editor/gui/GuiFrontend.hpp>
 #include <lux/engine/editor/gui/scene/ScenePane.hpp>
 #include <lux/engine/editor/gui/scene/OutlinerPane.hpp>

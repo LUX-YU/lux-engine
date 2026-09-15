@@ -1,3 +1,4 @@
+#include <lux/engine/editor/gui/scene/SceneDocumentProvider.hpp>
 #include "TestExit.hpp"
 #include <cassert>
 #include <consumer/Domain.hpp>

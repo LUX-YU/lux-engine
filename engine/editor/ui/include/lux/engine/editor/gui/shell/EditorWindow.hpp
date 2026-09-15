@@ -2,7 +2,7 @@
 
 #include <lux/engine/editor/gui/actions/ActiveEditHistory.hpp>
 #include <lux/engine/editor/gui/shell/WindowSpec.hpp>
-#include <lux/engine/editor/gui/visibility.h>
+#include <lux/engine/editor/ui/visibility.h>
 #include <lux/engine/object/Object.hpp>
 #include <lux/engine/object/ObjectAnnotations.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
@@ -15,7 +15,7 @@ class LuxWindow;
 
 namespace lux::editor::gui
 {
-class LUX_EDITOR_GUI_PUBLIC LUX_OBJECT() EditorWindow final : public lux::object::Object<EditorWindow>
+class LUX_EDITOR_UI_PUBLIC LUX_OBJECT() EditorWindow final : public lux::object::Object<EditorWindow>
 {
   public:
     static const signal_type<asset::AssetId> assetOpenRequested;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/editor/gui/visibility.h>
+#include <lux/engine/editor/ui/visibility.h>
 #include <lux/engine/editor/editing/EditHistoryTarget.hpp>
 #include <lux/engine/editor/gui/actions/ActiveEditHistory.hpp>
 #include <lux/engine/object/Object.hpp>
@@ -16,7 +16,7 @@ namespace lux::editor::gui
         editing::EditFailure failure;
     };
 
-    class LUX_EDITOR_GUI_PUBLIC LUX_OBJECT() HistoryActions final : public lux::object::Object<HistoryActions>
+    class LUX_EDITOR_UI_PUBLIC LUX_OBJECT() HistoryActions final : public lux::object::Object<HistoryActions>
     {
       public:
         static const signal_type<HistoryActionFailure> failed;
@@ -42,7 +42,7 @@ namespace lux::editor::gui
         mutable bool busy_{};
     };
 
-    class LUX_EDITOR_GUI_PUBLIC LUX_OBJECT() HistoryMenuActions final : public lux::object::Object<HistoryMenuActions>
+    class LUX_EDITOR_UI_PUBLIC LUX_OBJECT() HistoryMenuActions final : public lux::object::Object<HistoryMenuActions>
     {
       public:
         static const signal_type<HistoryActionFailure> failed;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/editor/ProjectWrite.hpp>
+#include <lux/engine/editor/detail/ProjectWrite.hpp>
 #include <lux/engine/editor/editing/EditHistory.hpp>
 #include <lux/engine/editor/project/Project.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>

@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <cmath>
-#include <lux/engine/editor/DocumentSave.hpp>
-#include <lux/engine/editor/DocumentSource.hpp>
+#include <lux/engine/editor/detail/DocumentSave.hpp>
+#include <lux/engine/editor/detail/DocumentSource.hpp>
 #include <lux/engine/editor/material/MaterialEditor.hpp>
 #include <lux/engine/material/Compiler.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>

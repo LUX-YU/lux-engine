@@ -1,3 +1,4 @@
+#include "flow_metadata.hpp"
 #include "model_placement_checks.hpp"
 #include "scene_edit_checks.hpp"
 #include "scene_save_checks.hpp"
@@ -10,6 +11,7 @@
 #include <lux/engine/editor/flowforge/FlowForgeEditor.hpp>
 #include <lux/engine/editor/gui/GuiFrontend.hpp>
 #include <lux/engine/editor/gui/GuiView.hpp>
+#include <lux/engine/editor/gui/actions/HistoryActions.hpp>
 #include <lux/engine/editor/material/MaterialEditor.hpp>
 #include <lux/engine/editor/project/Project.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
@@ -21,6 +23,7 @@
 #include <lux/engine/scene/WorldMaterializer.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
+#include <lux/engine/ui/CommandRouter.hpp>
 #include <lux/engine/ui/Pane.hpp>
 
 using namespace lux::editor;
@@ -45,6 +48,41 @@ struct SampleTime final
         elapsed += std::chrono::steady_clock::now() - start;
     }
 };
+
+void checkLocalHistory(lux::editor::scene::SceneEditor &scene, DocumentEditor &other)
+{
+    const auto before = other.historyView()->history;
+    const auto scene_before = scene.historyView()->history;
+    assert(scene.historyView()->undo == editing::EHistoryActionAvailability::EMPTY);
+    assert(other.historyView()->undo == editing::EHistoryActionAvailability::READY);
+    gui::HistoryActions local(scene.dispatcherRef(), scene);
+    gui::HistoryActions remote(scene.dispatcherRef(), other);
+    std::size_t failures{};
+    auto connection = local.observeScoped<gui::HistoryActions::failed>(
+        [&](const gui::HistoryActionFailure &failure) noexcept
+        {
+            assert(failure.target == scene.historyId() && failure.failure.code == editing::EEditError::NO_UNDO);
+            ++failures;
+        });
+    lux::ui::CommandRouter router;
+    const auto a = router.defineCommand({lux::ui::UiCommandId{"test.scene.undo"}, "Scene Undo"});
+    const auto b = router.defineCommand({lux::ui::UiCommandId{"test.other.undo"}, "Other Undo"});
+    assert(a && b);
+    auto bind_a = router.bindGlobal<&gui::HistoryActions::undo, &gui::HistoryActions::canUndo>(*a, local);
+    auto bind_b = router.bindGlobal<&gui::HistoryActions::undo, &gui::HistoryActions::canUndo>(*b, remote);
+    assert(bind_a && bind_b && !router.state(*a).enabled && router.state(*b).enabled);
+    assert(router.invoke(*a) == lux::ui::ECommandDispatchResult::DISABLED && failures == 0);
+    local.undo();
+    assert(failures == 1 && other.historyView()->history.current == before.current);
+    assert(other.historyView()->history.cursor == before.cursor &&
+           other.historyView()->history.revision == before.revision);
+    assert(router.invoke(*b) == lux::ui::ECommandDispatchResult::EXECUTED);
+    assert(other.redo() && other.historyView()->history.current == before.current);
+    assert(scene.historyView()->history.current == scene_before.current &&
+           scene.historyView()->history.revision == scene_before.revision);
+    std::puts("PASS real CommandRouter: disabled local Undo never dispatched; entered empty action emitted NO_UNDO; "
+              "other real document unchanged; explicit other binding executed");
+}
 
 class Probe final : public EditorFrontend
 {
@@ -572,6 +610,10 @@ class Probe final : public EditorFrontend
                     }
                     material_ = summary.handle;
                     assert(doc.rename("FlowForge pane binding") && doc.undo());
+                    assert(doc.redo());
+                    checkLocalHistory(
+                        dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get()), doc);
+                    assert(doc.undo());
                     std::unique_ptr<lux::flowforge::Node> branch = std::make_unique<lux::flowforge::BranchNode>(0);
                     assert(doc.insertNode(branch, {280, 80, true}));
                     material_frame_ = evidence_.frames;
@@ -627,6 +669,10 @@ class Probe final : public EditorFrontend
                     }
                     material_ = summary.handle;
                     assert(doc.rename("Material pane binding") && doc.undo());
+                    assert(doc.redo());
+                    checkLocalHistory(
+                        dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get()), doc);
+                    assert(doc.undo());
                     material_frame_ = evidence_.frames;
                     stage_ = 61;
                     if (evidence_.mode == "material-publish")
@@ -960,7 +1006,7 @@ int main(int argc, char **argv)
     }
     if (evidence.mode == "flow-gui")
     {
-        gui.providers.push_back(gui::flowForgeDocumentProvider());
+        gui.providers.push_back(gui::flowForgeDocumentProvider(flowMetadata(std::make_shared<MetadataOwner>())));
     }
     EditorConfig config;
     config.project_file = argv[1];

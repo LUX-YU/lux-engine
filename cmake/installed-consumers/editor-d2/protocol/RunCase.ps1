@@ -2,6 +2,8 @@ param(
     [Parameter(Mandatory)][string]$Case,
     [Parameter(Mandatory)][string]$Executable,
     [Parameter(Mandatory)][string]$Fixture,
+    [Parameter(Mandatory)][string]$MaterialFixture,
+    [Parameter(Mandatory)][string]$FlowFixture,
     [Parameter(Mandatory)][string]$Root,
     [Parameter(Mandatory)][string]$Seed
 )
@@ -40,10 +42,36 @@ if ($Case.EndsWith('_protocol') -or $Case -eq 'process_completion') {
 }
 
 $fixtureMode = if ($Case -in @('save-hierarchy', 'save-structure')) { 'gpu-hierarchy' }
-    elseif ($Case -eq 'save-preservation') { 'gpu-preservation' } else { 'gpu' }
+    elseif ($Case -eq 'save-preservation') { 'gpu-preservation' }
+    elseif ($Case -eq 'cpu') { 'cpu' } else { 'gpu' }
 & $Fixture $caseRoot $fixtureMode
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Copy-Item -LiteralPath $Seed -Destination (Join-Path $caseRoot 'Seed.luxpak')
+if ($Case -in @('material-gui', 'flow-gui', 'material-publish')) {
+    $flow = $Case -eq 'flow-gui'
+    $inputRoot = $caseRoot + '-input'
+    $inputLog = $caseRoot + '-input.log'
+    $inputTool = if ($flow) { $FlowFixture } else { $MaterialFixture }
+    & $inputTool $inputRoot *> $inputLog
+    $result = $LASTEXITCODE
+    Get-Content -LiteralPath $inputLog
+    if ($result -ne 0) { exit $result }
+    $source = if ($flow) { 'Logic.luxflow' } else { 'Material.luxmaterial' }
+    $kind = if ($flow) { 'flow_graph' } else { 'material_graph' }
+    Copy-Item -LiteralPath (Join-Path $inputRoot $source) -Destination $caseRoot
+    $entry = @"
+
+[[assets]]
+id = "00000000-0000-0000-0000-000000000002"
+kind = "$kind"
+source_path = "$source"
+cooked_path = ""
+source_digest = ""
+compiled_source_digest = ""
+mount_path = "Editable"
+"@
+    Add-Content -LiteralPath (Join-Path $caseRoot 'Project.luxproject') -Value $entry
+}
 if ($Case -eq 'save-preservation') {
     Copy-Item -LiteralPath (Join-Path $caseRoot 'Main.luxscene') -Destination (Join-Path $caseRoot 'Main.before.luxscene')
 }

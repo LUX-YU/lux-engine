@@ -18,6 +18,7 @@ struct SceneSaveChecks final
     using Transform = lux::simulation::ecs::Transform3D;
     using Value = decltype(Transform::translation);
     lux::editor::SaveRequestId request;
+    lux::editor::scene::PreviewToken retired_preview;
     lux::editor::editing::StateId captured;
     lux::world::WorldObjectId object;
     HANDLE denied{INVALID_HANDLE_VALUE};
@@ -142,6 +143,10 @@ struct SceneSaveChecks final
         }
         auto target = scene.writeTarget(object);
         assert(target);
+        auto preview =
+            scene.beginPreview<Transform, Value>(*target, "retired-pane", "translation", "Translation", access());
+        assert(preview && scene.cancelPreview(*preview));
+        retired_preview = *preview;
         const Value first{4, 5, 6};
         assert(scene.setField<Transform>(*target, "Transform.translation", "Translation", access(), first));
         captured = scene.historyView()->history.current;
@@ -213,6 +218,12 @@ struct SceneSaveChecks final
         const auto *value = static_cast<const Transform *>(scene.component(object, lux::cxx::typeToken<Transform>()));
         assert(value && value->translation == Value(4, 5, 6));
         assert(scene.historyView()->history.clean);
+        const auto before_late = scene.historyView()->history;
+        const auto late = scene.commitPreview(retired_preview);
+        assert(!late && late.error().code == lux::editor::editing::EEditError::STALE_TARGET);
+        assert(scene.historyView()->history.current == before_late.current &&
+               scene.historyView()->history.revision == before_late.revision);
+
         if (mode == "save-model" || mode == "save-hierarchy" || mode == "save-preservation")
         {
             assert(scene.objects().size() == model_count + placed.size());

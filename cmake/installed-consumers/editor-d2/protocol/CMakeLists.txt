@@ -29,6 +29,7 @@ function(d2_case name executable)
         COMMAND "${D2_POWERSHELL}" -NoProfile -File "${CMAKE_CURRENT_SOURCE_DIR}/RunCase.ps1"
             -Case "${name}" -Executable "$<TARGET_FILE:${executable}>"
             -Fixture "$<TARGET_FILE:d2_fixture>" -Root "${CMAKE_CURRENT_BINARY_DIR}/runs"
+            -MaterialFixture "$<TARGET_FILE:d2_material_protocol>" -FlowFixture "$<TARGET_FILE:d2_flow_protocol>"
             -Seed "${CMAKE_CURRENT_SOURCE_DIR}/Seed.luxpak")
     set_tests_properties(editor.d2.${name} PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
 endfunction()
@@ -43,5 +44,8 @@ foreach(mode recovery cancel conflict crash)
     d2_case(publication-${mode} d2_publication_protocol)
 endforeach()
 foreach(mode save save-retry save-partial save-model save-hierarchy save-preservation save-structure save-import-model attach-rollback)
+    d2_case(${mode} d2_core_protocol)
+endforeach()
+foreach(mode material-gui flow-gui material-publish close-signal cpu)
     d2_case(${mode} d2_core_protocol)
 endforeach()

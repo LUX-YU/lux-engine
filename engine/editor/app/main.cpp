@@ -49,7 +49,6 @@ int main(int argc, char **argv)
     lux::cxx::Parser arguments("lux_editor");
     arguments.add<std::string>("project", "p").desc("Open an existing .luxproject");
     arguments.add<std::string>("font").desc("Explicit cold UI font file");
-    arguments.add<bool>("help", "h").desc("Show usage");
     const auto parsed = arguments.parse(argc, argv);
     if (!parsed)
     {

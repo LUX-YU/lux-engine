@@ -13,6 +13,8 @@ namespace lux::editor::gui
         std::function<bool(const ProjectAssetEntry &)> accepts;
         std::function<EditorResult<void>(Editor &, process::ExecutionRuntime &, rendering::EditorRenderer &)>
             register_type;
+        // Repeated opens retain existing panes and restore missing ones. A closing
+        // instance must finish before its identity can be registered again.
         std::function<EditorResult<void>(DocumentEditor &, EditorWindow &, rendering::EditorRenderer &,
                                          process::ExecutionRuntime &)>
             attach;

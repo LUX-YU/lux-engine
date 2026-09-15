@@ -1,21 +1,21 @@
-#include <lux/engine/editor/gui/scene/SceneDocumentProvider.hpp>
+#include <algorithm>
 #include <lux/engine/editor/gui/GuiFrontend.hpp>
-#include <lux/engine/editor/gui/scene/ScenePane.hpp>
-#include <lux/engine/editor/gui/scene/OutlinerPane.hpp>
 #include <lux/engine/editor/gui/scene/InspectorPane.hpp>
+#include <lux/engine/editor/gui/scene/OutlinerPane.hpp>
 #include <lux/engine/editor/gui/scene/ResourcePane.hpp>
+#include <lux/engine/editor/gui/scene/SceneDocumentProvider.hpp>
+#include <lux/engine/editor/gui/scene/ScenePane.hpp>
 #include <lux/engine/editor/ui/SceneLayout.hpp>
+#include <lux/engine/function/render/client/core/RenderFeatureMetaModule.hpp>
 #include <lux/engine/meta/Meta.hpp>
-#include <lux/engine/scene/SceneRenderSchema.hpp>
 #include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
-#include <lux/engine/simulation/TransformSystem.hpp>
-#include <lux/engine/simulation/ecs/TransformSchema.hpp>
-#include <lux/engine/simulation/ecs/HierarchySchema.hpp>
-#include <lux/engine/simulation/ecs/VisualSchema.hpp>
-#include <lux/engine/function/render/client/core/RenderFeatureMetaModule.hpp>
+#include <lux/engine/scene/SceneRenderSchema.hpp>
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
-#include <algorithm>
+#include <lux/engine/simulation/TransformSystem.hpp>
+#include <lux/engine/simulation/ecs/HierarchySchema.hpp>
+#include <lux/engine/simulation/ecs/TransformSchema.hpp>
+#include <lux/engine/simulation/ecs/VisualSchema.hpp>
 
 namespace lux::editor::gui
 {
@@ -82,8 +82,19 @@ namespace lux::editor::gui
 
         template <class Pane, class... Arguments>
         EditorResult<void> attachPane(PaneAttachment &batch, scene::SceneEditor &document, EditorWindow &window,
-                                      Arguments &&...args)
+                                      std::string_view id, Arguments &&...args)
         {
+            const auto existing =
+                std::ranges::find_if(document.views(), [id](const auto &view) { return view->id() == id; });
+            if (existing != document.views().end())
+            {
+                if ((*existing)->closeStatus().state != ECloseState::OPEN)
+                {
+                    return lux::cxx::unexpected(
+                        EditorFailure{EEditorError::BUSY, "scene.views", 0, "The previous pane is still closing"});
+                }
+                return {};
+            }
             auto pane = std::make_unique<Pane>(document, std::forward<Arguments>(args)...);
             auto attached = pane->attach(window.uiSession());
             if (!attached)
@@ -97,19 +108,19 @@ namespace lux::editor::gui
     } // namespace
 
     GuiDocumentProvider sceneDocumentProvider(std::span<const lux::simulation::ecs::ComponentSchema> components,
-                                               std::span<const ComponentBinding> additional_bindings)
+                                              std::span<const ComponentBinding> additional_bindings)
     {
         auto bindings = firstPartyComponentBindings();
         bindings.insert(bindings.end(), additional_bindings.begin(), additional_bindings.end());
-        std::ranges::sort(bindings, {}, [](const ComponentBinding& value) { return value.type.hash(); });
+        std::ranges::sort(bindings, {}, [](const ComponentBinding &value) { return value.type.hash(); });
         auto shared_bindings = std::make_shared<const std::vector<ComponentBinding>>(std::move(bindings));
 
         return {
             std::string(scene::kSceneDocumentType),
             [](const ProjectAssetEntry &asset) { return asset.kind == EProjectAssetKind::SCENE; },
-            [schemas = std::vector(components.begin(), components.end()), shared_bindings]
-            (Editor &editor, process::ExecutionRuntime &runtime,
-               rendering::EditorRenderer &renderer) -> EditorResult<void>
+            [schemas = std::vector(components.begin(), components.end()),
+             shared_bindings](Editor &editor, process::ExecutionRuntime &runtime,
+                              rendering::EditorRenderer &renderer) -> EditorResult<void>
             {
                 auto metadata = sceneMetadata(schemas);
                 if (!metadata)
@@ -117,14 +128,15 @@ namespace lux::editor::gui
                     return lux::cxx::unexpected(metadata.error());
                 }
                 std::uint64_t previous{};
-                for (const auto& binding : *shared_bindings)
+                for (const auto &binding : *shared_bindings)
                 {
-                    const auto* schema = (*metadata)->getComponentMeta(binding.type);
+                    const auto *schema = (*metadata)->getComponentMeta(binding.type);
                     const bool invalid = !schema || !schema->editor_visible || !binding.draw || binding.name.empty();
                     if (invalid || previous == binding.type.hash())
                     {
-                        return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "inspector.binding",
-                            binding.type.hash(), "Inspector bindings require unique visible component schemas"});
+                        return lux::cxx::unexpected(
+                            EditorFailure{EEditorError::INVALID_ARGUMENT, "inspector.binding", binding.type.hash(),
+                                          "Inspector bindings require unique visible component schemas"});
                     }
                     previous = binding.type.hash();
                 }
@@ -133,7 +145,8 @@ namespace lux::editor::gui
                                                                  Project &project, const OpenDocumentRequest &request)
                      { return scene::openSceneDocument(project, request, runtime, renderer, metadata); }});
             },
-            [shared_bindings](DocumentEditor &base, EditorWindow &window, rendering::EditorRenderer &renderer, process::ExecutionRuntime& runtime) -> EditorResult<void>
+            [shared_bindings](DocumentEditor &base, EditorWindow &window, rendering::EditorRenderer &renderer,
+                              process::ExecutionRuntime &runtime) -> EditorResult<void>
             {
                 auto *document = dynamic_cast<scene::SceneEditor *>(&base);
                 if (!document)
@@ -143,25 +156,33 @@ namespace lux::editor::gui
                 const auto prefix = "scene-" + std::to_string(document->historyId().value);
                 PaneAttachment batch;
                 batch.views.reserve(4);
-                auto outliner = attachPane<OutlinerPane>(batch, *document, window, prefix + "-outliner");
+                auto outliner =
+                    attachPane<OutlinerPane>(batch, *document, window, prefix + "-outliner", prefix + "-outliner");
                 if (!outliner)
                 {
                     return outliner;
                 }
-                auto inspector = attachPane<InspectorPane>(batch, *document, window, prefix + "-inspector", shared_bindings);
+                auto inspector = attachPane<InspectorPane>(batch, *document, window, prefix + "-inspector",
+                                                           prefix + "-inspector", shared_bindings);
                 if (!inspector)
                 {
                     return inspector;
                 }
-                auto resources = attachPane<ResourcePane>(batch, *document, window, window, runtime, prefix + "-resources");
+                auto resources = attachPane<ResourcePane>(batch, *document, window, prefix + "-resources", window,
+                                                          runtime, prefix + "-resources");
                 if (!resources)
                 {
                     return resources;
                 }
-                auto scene = attachPane<ScenePane>(batch, *document, window, renderer, prefix + "-view");
+                auto scene =
+                    attachPane<ScenePane>(batch, *document, window, prefix + "-view", renderer, prefix + "-view");
                 if (!scene)
                 {
                     return scene;
+                }
+                if (batch.views.empty())
+                {
+                    return {};
                 }
                 const auto layout = window.installLayout(ui::sceneLayout(prefix));
                 if (!layout)

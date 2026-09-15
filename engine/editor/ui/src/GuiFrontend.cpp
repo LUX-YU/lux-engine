@@ -767,14 +767,14 @@ namespace lux::editor::gui
                 {
                     return;
                 }
+                const auto attached = found->attach(document->get(), *window_, *renderer_, *runtime_);
+                if (!attached)
+                {
+                    fail(attached.error());
+                    return;
+                }
                 if (std::ranges::find(documents_, handle) == documents_.end())
                 {
-                    const auto attached = found->attach(document->get(), *window_, *renderer_, *runtime_);
-                    if (!attached)
-                    {
-                        fail(attached.error());
-                        return;
-                    }
                     documents_.push_back(handle);
                 }
                 restorePanes();

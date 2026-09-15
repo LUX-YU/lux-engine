@@ -90,6 +90,78 @@ void checkLocalHistory(lux::editor::scene::SceneEditor &scene, DocumentEditor &o
               "other real document unchanged; explicit other binding executed");
 }
 
+void checkThreeHistories(lux::editor::scene::SceneEditor &scene, material::MaterialEditor &a,
+                         material::MaterialEditor &b)
+{
+    using Transform = lux::simulation::ecs::Transform3D;
+    const auto object = scene.objects().front().object;
+    const auto field = [](auto &value) noexcept { return &value.translation; };
+    const auto original =
+        static_cast<const Transform *>(scene.component(object, lux::cxx::typeToken<Transform>()))->translation;
+    const Eigen::Vector3d edited = original + Eigen::Vector3d{3, 0, 0};
+    assert(
+        scene.setField<Transform>(*scene.writeTarget(object), "Transform3D.translation", "Translation", field, edited));
+    assert(a.rename("A local history") && b.rename("B must stay unchanged"));
+    const auto scene_before = scene.historyView()->history;
+    const auto b_before = b.historyView()->history;
+    std::size_t scene_notices{}, b_notices{}, failures{};
+    auto scene_connection =
+        scene.observeScoped<scene::SceneEditor::componentChanged>([&](const auto &) noexcept { ++scene_notices; });
+    auto b_connection =
+        b.observeScoped<material::MaterialEditor::contentChanged>([&](const auto &) noexcept { ++b_notices; });
+    gui::HistoryActions action(a.dispatcherRef(), a);
+    auto failure_connection = action.observeScoped<gui::HistoryActions::failed>(
+        [&](const gui::HistoryActionFailure &failure) noexcept
+        {
+            assert(failure.target == a.historyId() && failure.failure.code == editing::EEditError::NO_UNDO);
+            ++failures;
+        });
+    lux::ui::CommandRouter commands;
+    const auto command = commands.defineCommand({lux::ui::UiCommandId{"three.a.undo"}, "A Undo"});
+    assert(command);
+    auto binding = commands.bindGlobal<&gui::HistoryActions::undo, &gui::HistoryActions::canUndo>(*command, action);
+    assert(binding && commands.invoke(*command) == lux::ui::ECommandDispatchResult::EXECUTED);
+    assert(a.historyView()->undo == editing::EHistoryActionAvailability::EMPTY);
+    assert(commands.invoke(*command) == lux::ui::ECommandDispatchResult::DISABLED);
+    action.undo();
+    assert(failures == 1 && b_notices == 0 && scene_notices == 0);
+    assert(b.historyView()->history.current == b_before.current &&
+           b.historyView()->history.revision == b_before.revision);
+    assert(scene.historyView()->history.current == scene_before.current &&
+           scene.historyView()->history.revision == scene_before.revision);
+
+    assert(a.redo());
+    auto histories = gui::ActiveEditHistory::create(3);
+    assert(histories);
+    auto registered_a = (*histories)->registerTarget(a);
+    auto registered_b = (*histories)->registerTarget(b);
+    auto registered_scene = (*histories)->registerTarget(scene);
+    assert(registered_a && registered_b && registered_scene);
+    gui::HistoryMenuActions menu(a.dispatcherRef(), **histories);
+    assert((*histories)->activate(registered_a->handle()) && menu.capture());
+    assert((*histories)->activate(registered_b->handle()));
+    menu.undo();
+    assert(a.historyView()->undo == editing::EHistoryActionAvailability::EMPTY);
+    assert(b_notices == 0 && scene_notices == 0);
+    std::size_t stale{};
+    auto stale_connection = menu.observeScoped<gui::HistoryMenuActions::failed>(
+        [&](const gui::HistoryActionFailure &failure) noexcept
+        {
+            assert(failure.target == a.historyId() && failure.failure.code == editing::EEditError::STALE_TARGET);
+            ++stale;
+        });
+    assert(registered_a->reset());
+    auto replacement = (*histories)->registerTarget(a);
+    assert(replacement && (*histories)->activate(replacement->handle()));
+    menu.undo();
+    assert(stale == 1 && b_notices == 0 && scene_notices == 0);
+    scene_connection.reset();
+    b_connection.reset();
+    assert(scene.undo() && b.undo());
+    std::puts("PASS three real documents: A local/EMPTY Undo never changes B or Scene; captured menu stays on A "
+              "after activation changes; retired registration rejected as STALE_TARGET after slot reuse");
+}
+
 class Probe final : public EditorFrontend
 {
     TestExit exit_;
@@ -588,6 +660,61 @@ class Probe final : public EditorFrontend
             evidence_.checks += 3;
             stage_ = 3;
         }
+        if (evidence_.mode == "pane-lifecycle" && (stage_ == 3 || stage_ >= 80))
+        {
+            auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
+            const auto inspector_id = "scene-" + std::to_string(scene.historyId().value) + "-inspector";
+            if (stage_ == 3)
+            {
+                assert(scene.views().size() == 4);
+                const auto inspector =
+                    std::ranges::find_if(scene.views(), [&](const auto &view) { return view->id() == inspector_id; });
+                assert(inspector != scene.views().end());
+                (*inspector)->requestClose();
+                const auto pending =
+                    gui::sceneDocumentProvider().attach(scene, *evidence_.window, *evidence_.renderer, *runtime_);
+                assert(!pending && pending.error().code == EEditorError::BUSY);
+                assert(scene.views().size() == 4);
+                before_revision_ = scene.historyView()->history.revision;
+                material_frame_ = evidence_.frames;
+                stage_ = 80;
+                return;
+            }
+            if (stage_ == 80 && scene.views().size() == 3)
+            {
+                assert(scene.closeStatus().state == ECloseState::OPEN);
+                assert(scene.historyView()->history.revision == before_revision_);
+                checkSceneEditing(scene);
+                const auto before = scene.historyView()->history;
+                const auto rebuilt =
+                    gui::sceneDocumentProvider().attach(scene, *evidence_.window, *evidence_.renderer, *runtime_);
+                if (!rebuilt)
+                {
+                    std::fprintf(stderr, "Inspector rebuild rejected: domain=%s reason=%llu views=%zu revision=%llu\n",
+                                 rebuilt.error().domain.c_str(), rebuilt.error().reason, scene.views().size(),
+                                 before.revision.value);
+                }
+                assert(rebuilt && scene.views().size() == 4);
+                assert(scene.historyView()->history.current == before.current);
+                assert(scene.historyView()->history.revision == before.revision);
+                assert(gui::sceneDocumentProvider().attach(scene, *evidence_.window, *evidence_.renderer, *runtime_));
+                assert(scene.views().size() == 4);
+                material_frame_ = evidence_.frames;
+                stage_ = 81;
+                return;
+            }
+            if (stage_ == 81 && evidence_.frames >= material_frame_ + 10)
+            {
+                checkSceneEditing(scene);
+                std::puts(
+                    "PASS Pane lifecycle: Inspector alone destroyed and rebuilt; other three views retained; "
+                    "document and history survive; editing and Undo/Redo remain usable; repeat attach adds no views");
+                evidence_.checks += 8;
+                stage_ = 82;
+                exit_.request(*editor_);
+            }
+            return;
+        }
         if (evidence_.mode == "flow-gui")
         {
             if (stage_ == 3 && evidence_.frames >= 50)
@@ -684,8 +811,38 @@ class Probe final : public EditorFrontend
                         material_compile_ = *doc.requestCompile();
                         stage_ = 70;
                     }
+                    else
+                    {
+                        const auto &assets = project_->manifest().assets;
+                        const auto second =
+                            std::ranges::find(assets, "Unfinished.luxmaterial", &ProjectAssetEntry::source_path);
+                        assert(second != assets.end());
+                        evidence_.window->openAsset(second->id);
+                        stage_ = 65;
+                    }
                     std::puts("Material GUI: Project/Window asset signal opened real MaterialEditor and attached node "
                               "canvas");
+                }
+            }
+            if (stage_ == 65)
+            {
+                for (const auto &summary : editor_->documents())
+                {
+                    if (summary.key.type == material::kMaterialDocumentType && summary.handle != material_)
+                    {
+                        auto &second =
+                            dynamic_cast<material::MaterialEditor &>(editor_->document(summary.handle)->get());
+                        if (second.views().empty())
+                        {
+                            return;
+                        }
+                        checkThreeHistories(
+                            dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get()),
+                            dynamic_cast<material::MaterialEditor &>(editor_->document(material_)->get()), second);
+                        material_frame_ = evidence_.frames;
+                        stage_ = 61;
+                        break;
+                    }
                 }
             }
             if (stage_ >= 70 && stage_ <= 75)

@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <imgui.h>
 #include <limits>
@@ -38,11 +39,19 @@ int main()
     config.SettingsFile = nullptr;
     config.CanvasSizeMode = ax::NodeEditor::CanvasSizeMode::CenterOnly;
     auto *graph = ax::NodeEditor::CreateEditor(&config);
+    auto *other_graph = ax::NodeEditor::CreateEditor(&config);
+    lux::editor::gui::NodeCanvasIds other_ids;
+    const auto other_node = other_ids.node(1);
+    const auto other_pin = other_ids.pin(1);
     ax::NodeEditor::SetCurrentEditor(graph);
+    ax::NodeEditor::SetNodePosition(node, {40, 60});
+    ax::NodeEditor::SetCurrentEditor(other_graph);
+    ax::NodeEditor::SetNodePosition(other_node, {180, 120});
 
     for (int frame = 0; frame < 3; ++frame)
     {
         ImGui::NewFrame();
+        ax::NodeEditor::SetCurrentEditor(graph);
         ImGui::SetNextWindowPos({0, 0});
         ImGui::SetNextWindowSize(frame == 0 ? ImVec2{440, 80} : ImVec2{900, 600});
         ImGui::Begin("Canvas protocol");
@@ -53,14 +62,47 @@ int main()
         ImGui::TextUnformatted("Pin 1");
         ax::NodeEditor::EndPin();
         ax::NodeEditor::EndNode();
+        const auto screen = ax::NodeEditor::CanvasToScreen({40, 60});
+        const auto roundtrip = ax::NodeEditor::ScreenToCanvas(screen);
+        assert(std::abs(roundtrip.x - 40) < 0.01F && std::abs(roundtrip.y - 60) < 0.01F);
         ax::NodeEditor::End();
         ImGui::End();
-        ImGui::Render();
         assert(ax::NodeEditor::GetCurrentZoom() == 1.0F);
         assert(ax::NodeEditor::GetNodeSize(node).x > 0);
+        ax::NodeEditor::SelectNode(node);
+
+        ax::NodeEditor::SetCurrentEditor(other_graph);
+        ImGui::SetNextWindowPos({450, 80});
+        ImGui::SetNextWindowSize({400, 300});
+        ImGui::Begin("Second document");
+        ax::NodeEditor::Begin("Graph");
+        ax::NodeEditor::BeginNode(other_node);
+        ImGui::TextUnformatted("Node 1");
+        ax::NodeEditor::BeginPin(other_pin, ax::NodeEditor::PinKind::Output);
+        ImGui::TextUnformatted("Pin 1");
+        ax::NodeEditor::EndPin();
+        ax::NodeEditor::EndNode();
+        ax::NodeEditor::End();
+        ImGui::End();
+        assert(!ax::NodeEditor::IsNodeSelected(other_node));
+        const auto other_position = ax::NodeEditor::GetNodePosition(other_node);
+        assert(other_position.x == 180 && other_position.y == 120);
+        ImGui::Render();
+
+        if (frame == 1)
+        {
+            // Recreate only the first pane, restoring its persisted business position.
+            ax::NodeEditor::DestroyEditor(graph);
+            graph = ax::NodeEditor::CreateEditor(&config);
+            ax::NodeEditor::SetCurrentEditor(graph);
+            ax::NodeEditor::SetNodePosition(node, {40, 60});
+            assert(!ax::NodeEditor::IsNodeSelected(node));
+        }
     }
 
     ax::NodeEditor::DestroyEditor(graph);
+    ax::NodeEditor::DestroyEditor(other_graph);
     ImGui::DestroyContext(context);
-    std::puts("PASS node canvas: disjoint IDs, full-width source identity, stable restoration, resize preserves zoom");
+    std::puts("PASS node canvas: disjoint IDs, full-width source identity, resize preserves zoom; two contexts with "
+              "same local IDs keep positions/selection isolated; pane recreation and coordinate roundtrip");
 }

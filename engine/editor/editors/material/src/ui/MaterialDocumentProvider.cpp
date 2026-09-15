@@ -839,8 +839,19 @@ namespace lux::editor::gui
                 {
                     return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "material.gui"});
                 }
-                auto pane = std::make_unique<MaterialPane>(*document,
-                                                           "material-" + std::to_string(document->historyId().value));
+                const auto id = "material-" + std::to_string(document->historyId().value);
+                for (const auto &view : document->views())
+                {
+                    if (view->id() == id)
+                    {
+                        if (view->closeStatus().state != ECloseState::OPEN)
+                        {
+                            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "material.views"});
+                        }
+                        return {};
+                    }
+                }
+                auto pane = std::make_unique<MaterialPane>(*document, id);
                 auto attached = pane->attach(window.uiSession());
                 if (!attached)
                 {

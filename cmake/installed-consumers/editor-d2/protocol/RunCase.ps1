@@ -74,6 +74,20 @@ compiled_source_digest = ""
 mount_path = "Editable"
 "@
     Add-Content -LiteralPath (Join-Path $caseRoot 'Project.luxproject') -Value $entry
+    if ($Case -eq 'material-gui') {
+        Copy-Item -LiteralPath (Join-Path $inputRoot 'Unfinished.luxmaterial') -Destination $caseRoot
+        Add-Content -LiteralPath (Join-Path $caseRoot 'Project.luxproject') -Value @"
+
+[[assets]]
+id = "00000000-0000-0000-0000-000000000003"
+kind = "material_graph"
+source_path = "Unfinished.luxmaterial"
+cooked_path = ""
+source_digest = ""
+compiled_source_digest = ""
+mount_path = "Editable B"
+"@
+    }
 }
 if ($Case -eq 'save-preservation') {
     Copy-Item -LiteralPath (Join-Path $caseRoot 'Main.luxscene') -Destination (Join-Path $caseRoot 'Main.before.luxscene')

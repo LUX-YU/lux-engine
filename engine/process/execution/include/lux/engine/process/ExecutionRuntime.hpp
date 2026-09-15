@@ -61,100 +61,101 @@ namespace lux::process
         struct ScheduleRequest
         {
             std::atomic_bool cancel_requested{false};
-            void (*complete)(ScheduleRequest*, bool stopped) noexcept {};
+            void (*complete)(ScheduleRequest *, bool stopped) noexcept {};
+            bool retained_terminal{};
+            bool terminal_reserved{};
         };
 
         using ScheduleSubmitResult = lux::cxx::expected<void, EExecutionError>;
 
         [[nodiscard]] LUX_PROCESS_EXECUTION_PUBLIC ScheduleSubmitResult submitSchedule(
-            const std::shared_ptr<ExecutionState>& state,
-            EExecutionQueue queue,
-            ScheduleRequest& request
-        ) noexcept;
+            const std::shared_ptr<ExecutionState> &state, EExecutionQueue queue, ScheduleRequest &request) noexcept;
 
-        template<EExecutionQueue Queue>
-        class ScheduleSender;
+        template <EExecutionQueue Queue> class ScheduleSender;
+        template <class Sender> class MainCompletionSender;
+
+        [[nodiscard]] LUX_PROCESS_EXECUTION_PUBLIC ScheduleSubmitResult
+        reserveMainCompletion(const std::shared_ptr<ExecutionState> &, ScheduleRequest &) noexcept;
+        LUX_PROCESS_EXECUTION_PUBLIC void publishMainCompletion(const std::shared_ptr<ExecutionState> &,
+                                                                ScheduleRequest &) noexcept;
     } // namespace detail
 
     class CpuScheduler final
     {
-    public:
+      public:
         CpuScheduler() noexcept = default;
 
         [[nodiscard]] detail::ScheduleSender<detail::EExecutionQueue::CPU> schedule() const noexcept;
 
-        [[nodiscard]] stdexec::forward_progress_guarantee
-        query(stdexec::get_forward_progress_guarantee_t) const noexcept
+        [[nodiscard]] stdexec::forward_progress_guarantee query(
+            stdexec::get_forward_progress_guarantee_t) const noexcept
         {
             return stdexec::forward_progress_guarantee::parallel;
         }
 
-        [[nodiscard]] CpuScheduler
-        query(stdexec::get_completion_scheduler_t<stdexec::set_value_t>) const noexcept
+        [[nodiscard]] CpuScheduler query(stdexec::get_completion_scheduler_t<stdexec::set_value_t>) const noexcept
         {
             return *this;
         }
 
-        [[nodiscard]] bool operator==(const CpuScheduler& other) const noexcept
+        [[nodiscard]] bool operator==(const CpuScheduler &other) const noexcept
         {
             return identity_ == other.identity_;
         }
 
-    private:
+      private:
         friend class ExecutionRuntime;
-        template<detail::EExecutionQueue>
-        friend class detail::ScheduleSender;
+        template <detail::EExecutionQueue> friend class detail::ScheduleSender;
 
-        explicit CpuScheduler(const std::shared_ptr<detail::ExecutionState>& state) noexcept
+        explicit CpuScheduler(const std::shared_ptr<detail::ExecutionState> &state) noexcept
             : state_(state), identity_(state.get())
         {
         }
 
         std::weak_ptr<detail::ExecutionState> state_;
-        const void* identity_{};
+        const void *identity_{};
     };
 
     class MainScheduler final
     {
-    public:
+      public:
         MainScheduler() noexcept = default;
 
         [[nodiscard]] detail::ScheduleSender<detail::EExecutionQueue::MAIN> schedule() const noexcept;
 
-        [[nodiscard]] stdexec::forward_progress_guarantee
-        query(stdexec::get_forward_progress_guarantee_t) const noexcept
+        [[nodiscard]] stdexec::forward_progress_guarantee query(
+            stdexec::get_forward_progress_guarantee_t) const noexcept
         {
             return stdexec::forward_progress_guarantee::weakly_parallel;
         }
 
-        [[nodiscard]] MainScheduler
-        query(stdexec::get_completion_scheduler_t<stdexec::set_value_t>) const noexcept
+        [[nodiscard]] MainScheduler query(stdexec::get_completion_scheduler_t<stdexec::set_value_t>) const noexcept
         {
             return *this;
         }
 
-        [[nodiscard]] bool operator==(const MainScheduler& other) const noexcept
+        [[nodiscard]] bool operator==(const MainScheduler &other) const noexcept
         {
             return identity_ == other.identity_;
         }
 
-    private:
+      private:
         friend class ExecutionRuntime;
-        template<detail::EExecutionQueue>
-        friend class detail::ScheduleSender;
+        template <class Sender> friend class detail::MainCompletionSender;
+        template <detail::EExecutionQueue> friend class detail::ScheduleSender;
 
-        explicit MainScheduler(const std::shared_ptr<detail::ExecutionState>& state) noexcept
+        explicit MainScheduler(const std::shared_ptr<detail::ExecutionState> &state) noexcept
             : state_(state), identity_(state.get())
         {
         }
 
         std::weak_ptr<detail::ExecutionState> state_;
-        const void* identity_{};
+        const void *identity_{};
     };
 
     class BlockingScheduler final
     {
-    public:
+      public:
         BlockingScheduler() noexcept = default;
 
         [[nodiscard]] detail::ScheduleSender<detail::EExecutionQueue::BLOCKING> schedule() const noexcept;
@@ -164,69 +165,60 @@ namespace lux::process
             return identity_ != nullptr && !state_.expired();
         }
 
-        [[nodiscard]] stdexec::forward_progress_guarantee
-        query(stdexec::get_forward_progress_guarantee_t) const noexcept
+        [[nodiscard]] stdexec::forward_progress_guarantee query(
+            stdexec::get_forward_progress_guarantee_t) const noexcept
         {
             return stdexec::forward_progress_guarantee::parallel;
         }
 
-        [[nodiscard]] BlockingScheduler
-        query(stdexec::get_completion_scheduler_t<stdexec::set_value_t>) const noexcept
+        [[nodiscard]] BlockingScheduler query(stdexec::get_completion_scheduler_t<stdexec::set_value_t>) const noexcept
         {
             return *this;
         }
 
-        [[nodiscard]] bool operator==(const BlockingScheduler& other) const noexcept
+        [[nodiscard]] bool operator==(const BlockingScheduler &other) const noexcept
         {
             return identity_ == other.identity_;
         }
 
-    private:
+      private:
         friend class ExecutionRuntime;
-        template<detail::EExecutionQueue>
-        friend class detail::ScheduleSender;
+        template <detail::EExecutionQueue> friend class detail::ScheduleSender;
 
-        explicit BlockingScheduler(const std::shared_ptr<detail::ExecutionState>& state) noexcept
+        explicit BlockingScheduler(const std::shared_ptr<detail::ExecutionState> &state) noexcept
             : state_(state), identity_(state.get())
         {
         }
 
         std::weak_ptr<detail::ExecutionState> state_;
-        const void* identity_{};
+        const void *identity_{};
     };
 
     namespace detail
     {
-        template<EExecutionQueue Queue>
-        class ScheduleSender final
+        template <EExecutionQueue Queue> class ScheduleSender final
         {
-        public:
+          public:
             using sender_concept = stdexec::sender_t;
-            using completion_signatures = stdexec::completion_signatures<
-                stdexec::set_value_t(),
-                stdexec::set_error_t(EExecutionError),
-                stdexec::set_stopped_t()
-            >;
+            using completion_signatures =
+                stdexec::completion_signatures<stdexec::set_value_t(), stdexec::set_error_t(EExecutionError),
+                                               stdexec::set_stopped_t()>;
             using Scheduler = std::conditional_t<
-                Queue == EExecutionQueue::CPU,
-                CpuScheduler,
-                std::conditional_t<Queue == EExecutionQueue::MAIN, MainScheduler, BlockingScheduler>
-            >;
+                Queue == EExecutionQueue::CPU, CpuScheduler,
+                std::conditional_t<Queue == EExecutionQueue::MAIN, MainScheduler, BlockingScheduler>>;
 
             class Env final
             {
-            public:
-                explicit Env(Scheduler scheduler) noexcept : scheduler_(std::move(scheduler))
-                {
-                }
+              public:
+                explicit Env(Scheduler scheduler) noexcept : scheduler_(std::move(scheduler)) {}
 
-                template<class Completion>
+                template <class Completion>
                 [[nodiscard]] Scheduler query(stdexec::get_completion_scheduler_t<Completion>) const noexcept
                 {
                     return scheduler_;
                 }
 
-            private:
+              private:
                 Scheduler scheduler_;
             };
 
@@ -237,16 +229,15 @@ namespace lux::process
                 return Env{scheduler_};
             }
 
-            template<class Receiver>
-            class Operation final : private ScheduleRequest
+            template <class Receiver> class Operation final : private ScheduleRequest
             {
-            public:
+              public:
                 using operation_state_concept = stdexec::operation_state_t;
                 using StopToken = stdexec::stop_token_of_t<stdexec::env_of_t<Receiver>>;
 
                 struct Cancel final
                 {
-                    Operation* operation{};
+                    Operation *operation{};
 
                     void operator()() noexcept
                     {
@@ -262,10 +253,10 @@ namespace lux::process
                     this->complete = &Operation::completeRequest;
                 }
 
-                Operation(const Operation&) = delete;
-                Operation& operator=(const Operation&) = delete;
-                Operation(Operation&&) = delete;
-                Operation& operator=(Operation&&) = delete;
+                Operation(const Operation &) = delete;
+                Operation &operator=(const Operation &) = delete;
+                Operation(Operation &&) = delete;
+                Operation &operator=(Operation &&) = delete;
 
                 void start() & noexcept
                 {
@@ -287,14 +278,14 @@ namespace lux::process
                     {
                         stop_callback_.emplace(token, Cancel{this});
                     }
-                    catch (const std::bad_alloc&)
+                    catch (const std::bad_alloc &)
                     {
                         state_.reset();
                         stdexec::set_error(std::move(receiver_), EExecutionError::ALLOCATION_FAILURE);
                         return;
                     }
 
-                    auto submitted = submitSchedule(state_, Queue, static_cast<ScheduleRequest&>(*this));
+                    auto submitted = submitSchedule(state_, Queue, static_cast<ScheduleRequest &>(*this));
                     if (!submitted)
                     {
                         stop_callback_.reset();
@@ -303,17 +294,21 @@ namespace lux::process
                     }
                 }
 
-            private:
-                static void completeRequest(ScheduleRequest* request, bool stopped) noexcept
+              private:
+                static void completeRequest(ScheduleRequest *request, bool stopped) noexcept
                 {
-                    auto& self = *static_cast<Operation*>(request);
+                    auto &self = *static_cast<Operation *>(request);
                     const bool is_stopped = stopped || self.cancel_requested.load(std::memory_order_acquire);
                     auto state = std::move(self.state_);
                     self.stop_callback_.reset();
                     if (is_stopped)
+                    {
                         stdexec::set_stopped(std::move(self.receiver_));
+                    }
                     else
+                    {
                         stdexec::set_value(std::move(self.receiver_));
+                    }
                 }
 
                 std::weak_ptr<ExecutionState> state_weak_;
@@ -322,13 +317,12 @@ namespace lux::process
                 std::optional<StopCallback> stop_callback_;
             };
 
-            template<class Receiver>
-            [[nodiscard]] Operation<std::decay_t<Receiver>> connect(Receiver&& receiver) const
+            template <class Receiver> [[nodiscard]] Operation<std::decay_t<Receiver>> connect(Receiver &&receiver) const
             {
                 return Operation<std::decay_t<Receiver>>{state_, std::forward<Receiver>(receiver)};
             }
 
-        private:
+          private:
             friend class CpuScheduler;
             friend class MainScheduler;
             friend class BlockingScheduler;
@@ -360,30 +354,31 @@ namespace lux::process
 
     class LUX_PROCESS_EXECUTION_PUBLIC ExecutionRuntime final
     {
-    public:
+      public:
         using CreateResult = lux::cxx::expected<ExecutionRuntime, EExecutionError>;
 
         [[nodiscard]] static CreateResult create(ExecutionRuntimeConfig config) noexcept;
 
         ~ExecutionRuntime() noexcept;
-        ExecutionRuntime(ExecutionRuntime&& other) noexcept;
-        ExecutionRuntime& operator=(ExecutionRuntime&& other) noexcept;
-        ExecutionRuntime(const ExecutionRuntime&) = delete;
-        ExecutionRuntime& operator=(const ExecutionRuntime&) = delete;
+        ExecutionRuntime(ExecutionRuntime &&other) noexcept;
+        ExecutionRuntime &operator=(ExecutionRuntime &&other) noexcept;
+        ExecutionRuntime(const ExecutionRuntime &) = delete;
+        ExecutionRuntime &operator=(const ExecutionRuntime &) = delete;
 
         [[nodiscard]] CpuScheduler cpu() const noexcept;
         [[nodiscard]] MainScheduler main() const noexcept;
         [[nodiscard]] TimerClient timer() const noexcept;
         [[nodiscard]] lux::cxx::expected<BlockingScheduler, EExecutionError> blocking() const noexcept;
 
-        [[nodiscard]] lux::cxx::expected<std::size_t, EExecutionError>
-        drainMain(std::size_t budget = static_cast<std::size_t>(-1)) noexcept;
+        [[nodiscard]] lux::cxx::expected<std::size_t, EExecutionError> drainMain(
+            std::size_t budget = static_cast<std::size_t>(-1)) noexcept;
 
         void requestStop() noexcept;
         [[nodiscard]] lux::cxx::expected<void, EExecutionError> join() noexcept;
 
-    private:
+      private:
         ExecutionRuntime(std::shared_ptr<detail::ExecutionState> state, TimerQueue timer) noexcept;
+        void finishShutdown() noexcept;
 
         std::shared_ptr<detail::ExecutionState> state_;
         TimerQueue timer_;

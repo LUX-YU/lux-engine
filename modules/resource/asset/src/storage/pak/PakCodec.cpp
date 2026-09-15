@@ -535,6 +535,91 @@ namespace lux::asset::detail
         }
     }
 
+    lux::cxx::expected<std::vector<std::byte>, std::string> encodePakImpl(
+        std::vector<PakWriteEntry> entries, std::size_t byte_limit, std::string_view mount_hint
+    )
+    {
+        const auto rejected = [](std::string message) { return lux::cxx::unexpected(std::move(message)); };
+        if (mount_hint.size() > kPakMountHintBytes || entries.size() > kMaxPakEntries)
+            return rejected("Pak metadata limit exceeded");
+        std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) { return a.id < b.id; });
+        std::vector<PakEntry> cooked;
+        std::vector<PakPathRow> paths;
+        cooked.reserve(entries.size());
+        paths.reserve(entries.size());
+        std::uint64_t cursor = kHeaderBytes;
+        for (const auto& input : entries)
+        {
+            if (input.vpath.size() > kMaximumPathBytes)
+                return rejected("Pak virtual path is too long");
+            const auto padding = (kPakPayloadAlign - cursor % kPakPayloadAlign) % kPakPayloadAlign;
+            if (cursor > byte_limit || padding > byte_limit - cursor)
+                return rejected("Pak image byte limit exceeded");
+            cursor += padding;
+            if (input.source_bytes.size() > byte_limit - cursor)
+                return rejected("Pak image byte limit exceeded");
+            PakEntry entry;
+            entry.id = input.id;
+            entry.offset = cursor;
+            entry.size = input.source_bytes.size();
+            entry.uncompressed_size = entry.size;
+            entry.asset_magic = input.asset_magic;
+            entry.vpath = input.vpath;
+            entry.flags = input.tombstone ? kPakEntryFlagTombstone : 0;
+            lux::cxx::algorithm::Sha256 hasher;
+            hasher.update(std::span<const std::byte>{input.source_bytes.data(), input.source_bytes.size()});
+            entry.content_digest = hasher.digest();
+            cursor += entry.size;
+            cooked.push_back(std::move(entry));
+            if (!input.tombstone && !input.vpath.empty())
+            {
+                paths.push_back({input.vpath, input.id});
+            }
+        }
+        std::sort(paths.begin(), paths.end(), [](const auto& a, const auto& b) { return a.vpath < b.vpath; });
+        const auto payload_end = cursor;
+        const auto padding = (kPakPageSize - cursor % kPakPageSize) % kPakPageSize;
+        if (cursor > byte_limit || padding > byte_limit - cursor)
+            return rejected("Pak image byte limit exceeded");
+        cursor += padding;
+        std::vector<PageNode> pages;
+        TreeRoot entry_root, path_root;
+        std::string error;
+        if (!appendEntryTree(cooked, cursor, pages, entry_root, &error) ||
+            !appendPathTree(paths, cursor, pages, path_root, &error)) return rejected(std::move(error));
+        if (cursor > byte_limit) return rejected("Pak image byte limit exceeded");
+
+        PakHeader header{};
+        std::copy(std::begin(kPakFileMagic), std::end(kPakFileMagic), header.magic);
+        header.endian_tag = kPakEndianTag;
+        header.version = kPakVersion;
+        header.page_size = kPakPageSize;
+        header.entry_root_offset = entry_root.offset;
+        header.path_root_offset = path_root.offset;
+        header.entry_count = cooked.size();
+        header.path_count = paths.size();
+        header.index_page_count = pages.size();
+        header.payload_end = payload_end;
+        header.mount_hint_size = static_cast<std::uint32_t>(mount_hint.size());
+        std::memcpy(header.mount_hint, mount_hint.data(), mount_hint.size());
+        header.entry_root_digest = entry_root.digest;
+        header.path_root_digest = path_root.digest;
+        const auto encoded_header = encodeHeader(header);
+        if (!encoded_header) return rejected("Pak header encoding failed");
+        std::vector<std::byte> image(static_cast<std::size_t>(cursor));
+        std::memcpy(image.data(), encoded_header->data(), encoded_header->size());
+        for (std::size_t index{}; index < entries.size(); ++index)
+        {
+            if (cooked[index].size)
+            {
+                std::memcpy(image.data() + cooked[index].offset, entries[index].source_bytes.data(), cooked[index].size);
+            }
+        }
+        for (const auto& page : pages)
+            std::memcpy(image.data() + page.offset, page.page.data(), page.page.size());
+        return image;
+    }
+
     bool writePakFileImpl(
         const std::filesystem::path& out_pak,
         std::vector<PakWriteEntry> entries,
@@ -579,7 +664,7 @@ namespace lux::asset::detail
         path_rows.reserve(entries.size());
         for (const auto& entry : entries)
         {
-            if (!entry.vpath.empty())
+            if (!entry.tombstone && !entry.vpath.empty())
                 path_rows.push_back(PakPathRow{entry.vpath, entry.id});
         }
         std::sort(path_rows.begin(), path_rows.end(), [](const auto& a, const auto& b) { return a.vpath < b.vpath; });
@@ -611,6 +696,16 @@ namespace lux::asset::detail
         cooked_entries.reserve(entries.size());
         for (const auto& input : entries)
         {
+            if (input.tombstone)
+            {
+                PakEntry entry;
+                entry.id = input.id;
+                entry.asset_magic = input.asset_magic;
+                entry.vpath = input.vpath;
+                entry.flags = kPakEntryFlagTombstone;
+                cooked_entries.push_back(std::move(entry));
+                continue;
+            }
             auto cursor = static_cast<std::uint64_t>(output.tellp());
             const auto aligned = (cursor + kPakPayloadAlign - 1u) & ~(kPakPayloadAlign - 1u);
             std::array<std::byte, kPakPayloadAlign> padding{};

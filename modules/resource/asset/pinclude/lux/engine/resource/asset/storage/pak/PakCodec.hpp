@@ -129,6 +129,9 @@ namespace lux::asset::detail
         lux::cxx::algorithm::Sha256Digest digest;
     };
 
+    lux::cxx::expected<std::vector<std::byte>, std::string> encodePakImpl(
+        std::vector<PakWriteEntry> entries, std::size_t byte_limit, std::string_view mount_hint);
+
     bool writePakFileImpl(
         const std::filesystem::path& out_pak,
         std::vector<PakWriteEntry> entries,

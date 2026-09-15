@@ -487,7 +487,7 @@ namespace lux::editor
                             frontend_closing = true;
                         }
                     }
-                    else
+                    if (!frontend_closing)
                     {
                         frontend->draw(*this, budget);
                     }
@@ -495,11 +495,23 @@ namespace lux::editor
                 }
                 registrations_.clear();
                 (*project)->requestClose();
-                const auto closed = (*project)->advanceClose();
-                if (!closed)
+                while (true)
                 {
-                    report(closed.error());
-                    exit_code = 6;
+                    const auto closed = (*project)->advanceClose();
+                    if (closed && *closed)
+                    {
+                        break;
+                    }
+                    if (!closed && outcome_)
+                    {
+                        fail(closed.error());
+                        exit_code = 6;
+                    }
+                    auto budget = config_.limits.turn;
+                    static_cast<void>(runtime->drainMain(budget.main_completions));
+                    frontend->poll(budget);
+                    static_cast<void>(messages_.dispatchPending(budget.object_messages));
+                    frontend->wait();
                 }
                 project_ = nullptr;
             }

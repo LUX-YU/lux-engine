@@ -2,9 +2,13 @@
 
 #include <lux/engine/editor/DocumentRequests.hpp>
 #include <lux/engine/editor/project/ProjectManifest.hpp>
+#include <lux/engine/editor/project/ProjectPublication.hpp>
+#include <lux/engine/editor/project/AssetCatalog.hpp>
 #include <lux/engine/object/Object.hpp>
+#include <lux/engine/object/ObjectAnnotations.hpp>
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
 #include <filesystem>
+#include <unordered_map>
 
 namespace lux::editor
 {
@@ -12,15 +16,20 @@ namespace lux::editor
     {
         ProjectManifest manifest;
         std::filesystem::path file;
-        std::vector<asset::MountDesc> mounts;
+        std::vector<ProjectPackage> mounts;
+        ProjectWriteLease write_lease;
+        std::string manifest_digest;
+        std::vector<std::pair<std::string, std::string>> source_digests;
     };
 
     // Blocking source preparation, invoked through Process before Project adoption.
     [[nodiscard]] LUX_EDITOR_CORE_PUBLIC EditorResult<ProjectSource> readProjectSource(const std::filesystem::path &);
 
-    class LUX_EDITOR_CORE_PUBLIC Project final : public object::Object<Project>
+    class LUX_EDITOR_CORE_PUBLIC LUX_OBJECT() Project final : public object::Object<Project>
     {
       public:
+        static const signal_type<std::uint64_t> catalogChanged;
+        static const signal_type<asset::AssetId> assetContentChanged;
         [[nodiscard]] static EditorResult<std::unique_ptr<Project>> open(ProjectSource &, process::BlockingScheduler,
                                                                          object::ObjectDispatcherRef);
         ~Project() override;
@@ -43,16 +52,38 @@ namespace lux::editor
             return vfs_.view();
         }
 
-        [[nodiscard]] std::string assetName(asset::AssetId) const;
+        [[nodiscard]] std::string_view assetName(asset::AssetId) const noexcept;
+        [[nodiscard]] std::span<const AssetCatalogEntry> catalog() const noexcept { return catalog_; }
+        [[nodiscard]] std::uint64_t catalogRevision() const noexcept { return catalog_revision_; }
+        [[nodiscard]] const AssetCatalogEntry* catalogAsset(asset::AssetId) const noexcept;
+        [[nodiscard]] AssetReference reference(asset::AssetId) const noexcept;
+        [[nodiscard]] EditorResult<asset::AssetId> resolveReference(AssetReference, std::uint32_t required_magic) const;
+        [[nodiscard]] bool writable() const noexcept { return source_.write_lease.writable(); }
+        [[nodiscard]] std::string_view sourceDigest(std::string_view path) const noexcept;
+        [[nodiscard]] EditorResult<ProjectPublication> preparePublication(ProjectUpdate&);
+        [[nodiscard]] EditorResult<void> adoptPublication(ProjectPublication&, ProjectPublicationReceipt&);
         void requestClose() noexcept;
         [[nodiscard]] EditorResult<bool> advanceClose();
 
       private:
-        explicit Project(object::ObjectDispatcherRef);
+        friend struct ProjectPublication;
+        Project(object::ObjectDispatcherRef, std::uint64_t instance);
+        void rebuildCatalog();
         ProjectSource source_;
         std::filesystem::path root_;
         asset::AssetVfs vfs_;
-        std::vector<asset::MountId> mounts_;
+        struct MountedPackage final
+        {
+            std::string path;
+            asset::MountId id;
+            std::vector<asset::ProviderEntry> entries;
+        };
+        std::vector<MountedPackage> mounts_;
         std::shared_ptr<process::asset_loading::VfsAssetReadEndpoint> reads_;
+        bool publishing_{};
+        std::uint64_t instance_{};
+        std::uint64_t catalog_revision_{};
+        std::vector<AssetCatalogEntry> catalog_;
+        std::unordered_map<asset::AssetId, std::size_t> catalog_by_id_;
     };
 } // namespace lux::editor

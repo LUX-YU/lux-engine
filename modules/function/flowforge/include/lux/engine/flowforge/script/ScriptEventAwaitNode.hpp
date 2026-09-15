@@ -14,6 +14,7 @@ namespace lux::flowforge
         ScriptEventAwaitNode(std::uint64_t id, const lux::script::ScriptEventSourceDescription& source);
         explicit ScriptEventAwaitNode(const lux::script::ScriptEventSourceDescription& source);
         ~ScriptEventAwaitNode() override;
+        [[nodiscard]] std::size_t descriptionBytes() const noexcept;
 
         [[nodiscard]] const lux::script::ScriptEventSourceDescription& source() const noexcept
         {

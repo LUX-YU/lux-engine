@@ -72,7 +72,7 @@ namespace lux::flowforge
     /// it into a shared library at out_dll. Cook-time only — spawns the
     /// linker as an external process.
     [[nodiscard]] FlowForgeResult<void> linkSharedLibrary(
-        const AotArtifact& artifact,
+        std::span<const std::byte> object,
         const std::filesystem::path& out_dll,
         const FlowForgeCompileOptions& options
     ) noexcept;

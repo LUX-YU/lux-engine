@@ -1,0 +1,101 @@
+#pragma once
+#include <array>
+#include <cassert>
+#include <cstdio>
+#include <lux/engine/editor/scene/SceneEditor.hpp>
+#include <lux/engine/simulation/ecs/Parent.hpp>
+#include <lux/engine/simulation/ecs/Transform.hpp>
+#include <lux/engine/simulation/ecs/Visual.hpp>
+
+inline void checkSceneStructure(lux::editor::scene::SceneEditor &scene, bool opaque)
+{
+    using namespace lux;
+    using namespace lux::editor;
+    using namespace lux::editor::scene;
+    const auto initial = scene.historyView()->history;
+    const auto count = scene.objects().size();
+    const auto original = scene.objects().front().object;
+    const auto state = [&]
+    {
+        return scene.historyView()->history.current;
+    };
+    const auto row = [&](world::WorldObjectId id) -> const SceneObjectRow &
+    {
+        const auto found = std::ranges::find(scene.objects(), id, &SceneObjectRow::object);
+        assert(found != scene.objects().end());
+        return *found;
+    };
+    const auto invalid = scene.createObject(state(), partition::PartitionOrdinal{999}, EObjectSpace::NONE);
+    assert(!invalid && invalid.error().domain_code == static_cast<unsigned>(ESceneStructureError::INVALID_PARTITION));
+    assert(!scene.supportsObjectSpace(EObjectSpace::SPACE_2D));
+    auto unsupported = scene.createObject(state(), partition::PartitionOrdinal{0}, EObjectSpace::SPACE_2D);
+    assert(!unsupported &&
+           unsupported.error().domain_code == static_cast<unsigned>(ESceneStructureError::MISSING_PROVIDER));
+    assert(state() == initial.current && scene.objects().size() == count);
+
+    const auto first = scene.createObject(state(), partition::PartitionOrdinal{0}, EObjectSpace::SPACE_3D);
+    assert(first && scene.component(*first, cxx::typeToken<simulation::ecs::Transform3D>()));
+    auto stale = scene.createObject(initial.current, partition::PartitionOrdinal{0}, EObjectSpace::NONE);
+    assert(!stale && stale.error().code == editing::EEditError::STALE_BASE);
+    const auto second = scene.createObject(state(), partition::PartitionOrdinal{0}, EObjectSpace::NONE);
+    assert(second && !scene.component(*second, cxx::typeToken<simulation::ecs::Transform3D>()));
+    const auto target = scene.writeTarget(*second);
+    assert(target);
+    if (scene.supportsHierarchy())
+    {
+        auto attached = scene.reparent(*target, *first);
+        assert(attached && row(*second).parent == *first);
+        const auto before = scene.historyView()->history;
+        auto cycle = scene.reparent(*scene.writeTarget(*first), *second);
+        assert(!cycle && cycle.error().domain_code == static_cast<unsigned>(ESceneStructureError::HIERARCHY_CYCLE));
+        auto dangling = scene.eraseObjects(state(), std::span(&*first, 1));
+        assert(!dangling &&
+               dangling.error().domain_code == static_cast<unsigned>(ESceneStructureError::REFERENCE_IN_USE));
+        assert(state() == before.current && scene.historyView()->history.revision == before.revision);
+        assert(row(*second).parent == *first && scene.objects().size() == count + 2);
+        const std::array removed{*first, *second};
+        assert(scene.eraseObjects(state(), removed));
+        assert(scene.objects().size() == count);
+        for (unsigned iteration{}; iteration < 32; ++iteration)
+        {
+            assert(scene.undo() && row(*second).parent == *first);
+            const auto *child = static_cast<const simulation::ecs::Parent *>(
+                scene.component(*second, cxx::typeToken<simulation::ecs::Parent>()));
+            assert(child && child->entity != simulation::ecs::NullEntity);
+            assert(scene.component(*first, cxx::typeToken<simulation::ecs::Transform3D>()));
+            assert(scene.redo() && scene.objects().size() == count);
+        }
+        assert(scene.undo() && scene.undo() && !row(*second).parent.valid());
+        assert(scene.redo() && row(*second).parent == *first);
+        assert(scene.undo() && !row(*second).parent.valid());
+    }
+    else
+    {
+        auto rejected = scene.reparent(*target, *first);
+        assert(!rejected &&
+               rejected.error().domain_code == static_cast<unsigned>(ESceneStructureError::HIERARCHY_UNSUPPORTED));
+    }
+    assert(scene.undo() && scene.undo() && scene.objects().size() == count);
+    assert(state() == initial.current);
+
+    const auto deletion_base = scene.historyView()->history;
+    const std::array removed{original};
+    auto deletion = scene.eraseObjects(state(), removed);
+    if (opaque)
+    {
+        assert(!deletion &&
+               deletion.error().domain_code == static_cast<unsigned>(ESceneStructureError::MISSING_PROVIDER));
+        assert(scene.objects().size() == count && state() == deletion_base.current);
+        assert(scene.historyView()->history.revision == deletion_base.revision);
+    }
+    else
+    {
+        assert(deletion && scene.objects().size() == count - 1);
+        assert(scene.undo() && scene.objects().size() == count);
+        assert(scene.component(original, cxx::typeToken<simulation::ecs::Transform3D>()));
+        assert(state() == deletion_base.current);
+    }
+    std::printf("scene structure: hierarchy=%d opaque=%d create/delete/restore, exact stale/provider/reference/cycle "
+                "rejection; owner content/history preserved\n",
+                scene.supportsHierarchy(), opaque);
+}

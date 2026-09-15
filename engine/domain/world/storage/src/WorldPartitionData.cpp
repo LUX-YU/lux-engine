@@ -2,12 +2,6 @@
 
 namespace lux::world
 {
-    std::size_t WorldPartitionData::retainedBytes() const noexcept
-    {
-        return objects_.capacity() * sizeof(detail::WorldDecodedObjectRecord) +
-            data_.capacity() * sizeof(detail::WorldDecodedDataRecord) + payload_.capacity();
-    }
-
     WorldPartitionObjectView::WorldPartitionObjectView(
         const WorldPartitionData& data,
         std::size_t object_index
@@ -85,9 +79,20 @@ namespace lux::world
         return partition_;
     }
 
+    WorldPartitionId WorldPartitionData::id() const noexcept
+    {
+        return id_;
+    }
+
     std::size_t WorldPartitionData::objectCount() const noexcept
     {
         return objects_.size();
+    }
+
+    std::size_t WorldPartitionData::retainedBytes() const noexcept
+    {
+        return objects_.capacity() * sizeof(detail::WorldDecodedObjectRecord) +
+            data_.capacity() * sizeof(detail::WorldDecodedDataRecord) + payload_.capacity();
     }
 
     WorldPartitionObjectView WorldPartitionData::objectAt(std::size_t index) const noexcept

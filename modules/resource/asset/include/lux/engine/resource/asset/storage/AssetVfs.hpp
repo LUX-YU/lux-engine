@@ -14,8 +14,10 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace lux::asset
 {
@@ -27,6 +29,14 @@ namespace lux::asset
         std::string root;
         std::shared_ptr<IAssetProvider> provider;
         int priority{};
+    };
+
+    enum class EMountUpdateError : std::uint8_t
+    {
+        INVALID_DESCRIPTOR,
+        UNKNOWN_MOUNT,
+        DUPLICATE_MOUNT,
+        CAPACITY
     };
 
     namespace detail
@@ -66,6 +76,11 @@ namespace lux::asset
 
         [[nodiscard]] MountId mount(MountDesc desc);
         void unmount(MountId id);
+
+        // One control-plane publication. Failure leaves the table and descriptors unchanged;
+        // readers already inside a provider retain the previous table until their read completes.
+        [[nodiscard]] lux::cxx::expected<std::vector<MountId>, EMountUpdateError>
+        replaceMounts(std::span<const MountId> removed, std::span<const MountDesc> added);
 
         [[nodiscard]] AssetVfsView view() const noexcept;
         [[nodiscard]] std::size_t mountCount() const noexcept;

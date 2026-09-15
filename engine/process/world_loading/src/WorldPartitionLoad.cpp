@@ -76,10 +76,10 @@ namespace lux::process::world_loading
         }
 
         [[nodiscard]] WorldStorageRuntimeFailure mapFailure(
-            lux::world::detail::WorldStorageCodecFailure failure
+            lux::world::WorldStorageCodecFailure failure
         ) const noexcept
         {
-            using Input = lux::world::detail::EWorldStorageCodecError;
+            using Input = lux::world::EWorldStorageCodecError;
             EWorldStorageRuntimeError code{EWorldStorageRuntimeError::DECODE_FAILURE};
             switch (failure.code)
             {
@@ -126,9 +126,9 @@ namespace lux::process::world_loading
                 set_stopped(receiver);
         }
 
-        void finishCodecFailure(lux::world::detail::WorldStorageCodecFailure failure) noexcept
+        void finishCodecFailure(lux::world::WorldStorageCodecFailure failure) noexcept
         {
-            if (failure.code == lux::world::detail::EWorldStorageCodecError::CANCELLED)
+            if (failure.code == lux::world::EWorldStorageCodecError::CANCELLED)
                 finishStopped();
             else
                 finishError(mapFailure(failure));
@@ -259,7 +259,7 @@ namespace lux::process::world_loading
             }
             if (reading_table)
             {
-                if (descriptor.kind != lux::world::detail::EWorldStorageChunkKind::PARTITION_TABLE_PAGE)
+                if (descriptor.kind != lux::world::EWorldStorageChunkKind::PARTITION_TABLE_PAGE)
                 {
                     finishError({EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR, current.volume});
                     return;
@@ -298,7 +298,7 @@ namespace lux::process::world_loading
                 return;
             }
 
-            if (descriptor.kind != lux::world::detail::EWorldStorageChunkKind::WORLD_PARTITION_DATA)
+            if (descriptor.kind != lux::world::EWorldStorageChunkKind::WORLD_PARTITION_DATA)
             {
                 finishError({EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR, current.volume});
                 return;
@@ -377,11 +377,18 @@ namespace lux::process::world_loading
 
         void finishPartition() noexcept
         {
-            auto data = lux::world::detail::decodeWorldPartitionData(
+            const auto* record = partition_page.find(partition);
+            if (!record)
+            {
+                finishError({EWorldStorageRuntimeError::INVALID_PARTITION});
+                return;
+            }
+            auto data = lux::world::decodeWorldPartitionData(
                 partition_bytes,
                 source.world().bundleId(),
                 source.world().generation(),
                 partition,
+                record->id,
                 static_cast<std::uint32_t>(source.world().schemas().size()),
                 max_bytes,
                 stop

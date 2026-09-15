@@ -1,1 +1,1 @@
-#include <lux/engine/editor/gui/scene/ComponentReadBinding.hpp>
+#include <lux/engine/editor/gui/scene/ComponentBinding.hpp>

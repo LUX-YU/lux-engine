@@ -617,6 +617,7 @@ namespace lux::editor::scene::detail
                                    {
                                        return request->row.state == ESceneResourceState::READING ||
                                               request->row.state == ESceneResourceState::UPLOADING ||
+                                              request->row.state == ESceneResourceState::SUPERSEDED ||
                                               !request->settled() || request->refresh_sequence ||
                                               (request->row.state != ESceneResourceState::READY &&
                                                request->liveHandles() != 0);

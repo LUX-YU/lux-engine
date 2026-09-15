@@ -10,10 +10,10 @@
 #include <unordered_set>
 #include <utility>
 
-namespace lux::world::detail
+namespace lux::world
 {
-    using world::WorldObjectId;
-    using world::WorldObjectIdLess;
+    using detail::kWorldStorageVolumeHeaderWireSize;
+    using detail::kWorldStorageChunkDescriptorWireSize;
     using partition::PartitionOrdinal;
 
     namespace
@@ -115,7 +115,8 @@ namespace lux::world::detail
         WorldBundleId bundle,
         WorldBundleGeneration generation,
         std::uint32_t volume,
-        std::span<const WorldStorageChunkInput> chunks
+        std::span<const WorldStorageChunkInput> chunks,
+        std::size_t max_encoded_bytes
     ) noexcept
     {
         if (!bundle.valid() || !generation.valid() ||
@@ -147,7 +148,7 @@ namespace lux::world::detail
                 );
             }
         }
-        if (file_size > std::numeric_limits<std::size_t>::max())
+        if (file_size > max_encoded_bytes)
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::SIZE_LIMIT, volume));
 
         try
@@ -204,8 +205,8 @@ namespace lux::world::detail
         }
     }
 
-    lux::cxx::expected<WorldStorageVolumeHeader, WorldStorageCodecFailure>
-    decodeWorldStorageVolumeHeader(
+    lux::cxx::expected<detail::WorldStorageVolumeHeader, WorldStorageCodecFailure>
+    detail::decodeWorldStorageVolumeHeader(
         std::span<const std::byte> wire,
         WorldBundleId expected_bundle,
         WorldBundleGeneration expected_generation,
@@ -287,8 +288,8 @@ namespace lux::world::detail
         return result;
     }
 
-    lux::cxx::expected<WorldStorageChunkDescriptor, WorldStorageCodecFailure>
-    decodeWorldStorageChunkDescriptor(
+    lux::cxx::expected<detail::WorldStorageChunkDescriptor, WorldStorageCodecFailure>
+    detail::decodeWorldStorageChunkDescriptor(
         std::span<const std::byte> wire,
         const WorldStorageVolumeHeader& header,
         std::uint32_t chunk
@@ -355,7 +356,7 @@ namespace lux::world::detail
     }
 
     lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
-    decodeWorldStorageChunkPayload(
+    detail::decodeWorldStorageChunkPayload(
         std::span<const std::byte> stored_payload,
         const WorldStorageChunkDescriptor& descriptor,
         std::size_t decoded_limit,
@@ -398,7 +399,7 @@ namespace lux::world::detail
     }
 
     const WorldPartitionRecord*
-    WorldPartitionTablePage::find(PartitionOrdinal partition) const noexcept
+    detail::WorldPartitionTablePage::find(PartitionOrdinal partition) const noexcept
     {
         if (partition.value < first.value)
             return nullptr;
@@ -407,7 +408,7 @@ namespace lux::world::detail
     }
 
     std::span<const WorldPartitionExtent>
-    WorldPartitionTablePage::partitionExtents(const WorldPartitionRecord& record) const noexcept
+    detail::WorldPartitionTablePage::partitionExtents(const WorldPartitionRecord& record) const noexcept
     {
         const std::size_t first_extent = record.first_extent;
         const std::size_t extent_count = record.extent_count;
@@ -500,8 +501,8 @@ namespace lux::world::detail
         }
     }
 
-    lux::cxx::expected<WorldPartitionTablePage, WorldStorageCodecFailure>
-    decodeWorldPartitionTablePage(
+    lux::cxx::expected<detail::WorldPartitionTablePage, WorldStorageCodecFailure>
+    detail::decodeWorldPartitionTablePage(
         std::span<const std::byte> wire,
         PartitionOrdinal expected_first,
         std::uint32_t expected_count,
@@ -714,19 +715,48 @@ namespace lux::world::detail
         }
     }
 
+    lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
+    encodeWorldPartitionData(const WorldPartitionData& partition)
+    {
+        if (!partition.bundle().valid() || !partition.generation().valid() || !partition.id().valid())
+            return lux::cxx::unexpected(failure(EWorldStorageCodecError::INVALID_INPUT));
+        std::size_t data_count{};
+        for (std::size_t index{}; index < partition.objectCount(); ++index)
+        {
+            if (!addChecked(data_count, partition.objectAt(index).dataCount()))
+                return lux::cxx::unexpected(failure(EWorldStorageCodecError::SIZE_LIMIT));
+        }
+        std::vector<WorldEncodedDataRecord> data;
+        std::vector<WorldEncodedObjectRecord> objects;
+        data.reserve(data_count);
+        objects.reserve(partition.objectCount());
+        for (std::size_t index{}; index < partition.objectCount(); ++index)
+        {
+            const auto object = partition.objectAt(index);
+            const auto first = data.size();
+            for (std::size_t item{}; item < object.dataCount(); ++item)
+                data.push_back({object.schemaOrdinalAt(item), object.schemaVersionAt(item), object.payloadAt(item)});
+            objects.push_back({object.id(), std::span<const WorldEncodedDataRecord>(data).subspan(first)});
+        }
+        return encodeWorldPartitionData(partition.partition(), objects);
+    }
+
     lux::cxx::expected<WorldPartitionData, WorldStorageCodecFailure> decodeWorldPartitionData(
         std::span<const std::byte> wire,
         WorldBundleId bundle,
         WorldBundleGeneration generation,
         PartitionOrdinal expected_partition,
+        WorldPartitionId partition_id,
         std::uint32_t schema_count,
         std::size_t decoded_limit,
         std::stop_token stop
     ) noexcept
     {
+        using detail::WorldDecodedObjectRecord;
+        using detail::WorldDecodedDataRecord;
         if (stop.stop_requested())
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::CANCELLED));
-        if (!bundle.valid() || !generation.valid())
+        if (!bundle.valid() || !generation.valid() || !partition_id.valid())
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::INVALID_INPUT));
         if (wire.size() > decoded_limit || wire.size() < kPartitionDataHeaderSize)
             return lux::cxx::unexpected(failure(EWorldStorageCodecError::SIZE_LIMIT));
@@ -868,11 +898,12 @@ namespace lux::world::detail
                 return lux::cxx::unexpected(failure(EWorldStorageCodecError::CANCELLED));
 
             WorldPartitionData result;
-            WorldPartitionDataAccess::assign(
+            detail::WorldPartitionDataAccess::assign(
                 result,
                 bundle,
                 generation,
                 expected_partition,
+                partition_id,
                 std::move(objects),
                 std::move(data),
                 std::move(payload)
@@ -885,11 +916,12 @@ namespace lux::world::detail
         }
     }
 
-    void WorldPartitionDataAccess::assign(
+    void detail::WorldPartitionDataAccess::assign(
         WorldPartitionData& target,
         WorldBundleId bundle,
         WorldBundleGeneration generation,
         PartitionOrdinal partition,
+        WorldPartitionId partition_id,
         std::vector<WorldDecodedObjectRecord> objects,
         std::vector<WorldDecodedDataRecord> data,
         std::vector<std::byte> payload
@@ -898,8 +930,9 @@ namespace lux::world::detail
         target.bundle_ = bundle;
         target.generation_ = generation;
         target.partition_ = partition;
+        target.id_ = partition_id;
         target.objects_ = std::move(objects);
         target.data_ = std::move(data);
         target.payload_ = std::move(payload);
     }
-} // namespace lux::world::detail
+} // namespace lux::world

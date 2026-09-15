@@ -61,6 +61,15 @@ namespace lux::material
         out_pins_.push_back(makePin("out", EValueType::VEC2, EPinDirection::OUTPUT));
     }
 
+    void InputNode::setInput(EMaterialInput value)
+    {
+        input = value;
+        if (const auto* description = materialInputDescription(value); description && !out_pins_.empty())
+        {
+            out_pins_.front().type = description->type;
+        }
+    }
+
     // ---- SampleTextureNode --------------------------------------------------
     SampleTextureNode::SampleTextureNode() : Node(ConstructionKey{}, EMatNodeKind::SAMPLE_TEXTURE)
     {
@@ -149,6 +158,24 @@ namespace lux::material
         for (int i = 0; i < n; ++i)
             in_pins_.push_back(makePin(kComp[i], EValueType::FLOAT, EPinDirection::INPUT));
         out_pins_.push_back(makePin("out", out, EPinDirection::OUTPUT));
+    }
+
+    void ConstructNode::setType(EValueType value)
+    {
+        if (value > EValueType::VEC4)
+        {
+            out_type = value;
+            return;
+        }
+        const auto count = static_cast<std::size_t>(value) + 1;
+        constexpr const char* names[]{"x", "y", "z", "w"};
+        while (in_pins_.size() < count)
+        {
+            in_pins_.push_back(makePin(names[in_pins_.size()], EValueType::FLOAT, EPinDirection::INPUT));
+        }
+        in_pins_.resize(count);
+        out_type = value;
+        out_pins_.front().type = value;
     }
 
     // ---- OutputSurfaceNode --------------------------------------------------

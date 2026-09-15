@@ -67,6 +67,10 @@ namespace lux::editor
         [[nodiscard]] EditorResult<std::reference_wrapper<DocumentEditor>> document(DocumentHandle);
         [[nodiscard]] std::vector<DocumentSummary> documents() const;
         void requestExit() noexcept;
+        [[nodiscard]] bool closing() const noexcept
+        {
+            return exit_requested_;
+        }
         void fail(EditorFailure);
 
         [[nodiscard]] const EditorResult<void> &outcome() const noexcept

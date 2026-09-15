@@ -39,6 +39,12 @@ namespace lux::editor
         }
 
         [[nodiscard]] virtual DocumentSummary summary() const = 0;
+        [[nodiscard]] virtual EditorResult<SaveRequestId> requestSave(std::string origin);
+        [[nodiscard]] virtual std::span<const SaveRequestId> saveRequests() const noexcept;
+        [[nodiscard]] virtual EditorResult<SaveRequestStatus> saveStatus(SaveRequestId) const;
+        [[nodiscard]] virtual EditorResult<void> retrySave(SaveRequestId);
+        [[nodiscard]] virtual EditorResult<void> abandonSave(SaveRequestId);
+        [[nodiscard]] virtual EditorResult<void> acknowledgeSave(SaveRequestId);
         virtual void requestClose() noexcept = 0;
         [[nodiscard]] virtual CloseStatus closeStatus() const = 0;
         virtual void poll(PollBudget &) = 0;

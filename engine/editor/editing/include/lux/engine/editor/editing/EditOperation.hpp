@@ -20,7 +20,10 @@ namespace lux::editor::editing
 
     private:
         friend class EditHistory;
-        // Only prepared noexcept swaps/scalars: no allocations, callbacks, I/O or fallible model APIs.
+        // Preparation resolves every normal business rejection. Commit performs no I/O or fallible
+        // business calls. ECS allocation and internal dirty/index notifications are permitted under
+        // the host's allocation policy; the host must hide intermediate content from public queries.
+        // User-facing callbacks belong in publish, after both content and history are consistent.
         virtual void apply() noexcept = 0;
         // Called after both content and history commit. Borrowed labels cannot be queued.
         virtual void publish(const CommitInfo&) noexcept = 0;

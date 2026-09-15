@@ -246,6 +246,7 @@ namespace lux::flowforge
     {
         friend class Node;
         friend class FlowGraph;
+        friend class FlowGraphEdit;
 
     public:
         /**
@@ -826,6 +827,10 @@ namespace lux::flowforge
         const ExecOutPin& execOutPin() const { return fix_out_pin_; }
 
 		std::span<ExecOutPin*> extraOutPins() { return extra_out_pins_; }
+        [[nodiscard]] std::size_t extraOutPinStorageBytes() const noexcept
+        {
+            return extra_out_pins_.capacity() * sizeof(ExecOutPin*);
+        }
 		std::span<const ExecOutPin* const> extraOutPins() const { return extra_out_pins_; }
 
     private:

@@ -82,14 +82,14 @@ namespace lux::meta
         create(const RefClass* cls) noexcept
         {
             if (cls == nullptr || !validHeapType(cls->type))
-                return lux::cxx::unexpected(ERuntimeObjectError::INVALID_TYPE);
+                return lux::cxx::unexpected<ERuntimeObjectError>(ERuntimeObjectError::INVALID_TYPE);
             if (!cls->construct || !cls->destruct)
-                return lux::cxx::unexpected(ERuntimeObjectError::CONSTRUCTION_UNAVAILABLE);
+                return lux::cxx::unexpected<ERuntimeObjectError>(ERuntimeObjectError::CONSTRUCTION_UNAVAILABLE);
 
             RuntimeObject result;
             void* storage = allocate(cls->type);
             if (storage == nullptr)
-                return lux::cxx::unexpected(ERuntimeObjectError::ALLOCATION_FAILURE);
+                return lux::cxx::unexpected<ERuntimeObjectError>(ERuntimeObjectError::ALLOCATION_FAILURE);
             try
             {
                 cls->construct(storage);
@@ -97,7 +97,7 @@ namespace lux::meta
             catch (...)
             {
                 deallocate(storage, cls->type);
-                return lux::cxx::unexpected(ERuntimeObjectError::CONSTRUCTION_FAILURE);
+                return lux::cxx::unexpected<ERuntimeObjectError>(ERuntimeObjectError::CONSTRUCTION_FAILURE);
             }
             result.setTagged(&cls->type, true);
             result.storage_.heap = storage;
@@ -115,12 +115,12 @@ namespace lux::meta
                 (string_class_meta->type.size != sizeof(std::string) ||
                  string_class_meta->type.alignment != alignof(std::string));
             if (is_invalid_metadata || is_layout_mismatch)
-                return lux::cxx::unexpected(ERuntimeObjectError::INVALID_TYPE);
+                return lux::cxx::unexpected<ERuntimeObjectError>(ERuntimeObjectError::INVALID_TYPE);
 
             RuntimeObject result;
             void* storage = allocate(string_class_meta->type);
             if (storage == nullptr)
-                return lux::cxx::unexpected(ERuntimeObjectError::ALLOCATION_FAILURE);
+                return lux::cxx::unexpected<ERuntimeObjectError>(ERuntimeObjectError::ALLOCATION_FAILURE);
             new (storage) std::string(std::move(value));
             result.setTagged(&string_class_meta->type, true);
             result.storage_.heap = storage;

@@ -69,6 +69,7 @@ namespace lux::material
         [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<InputNode>(*this); }
 
         EMaterialInput input = EMaterialInput::UV0;
+        void setInput(EMaterialInput);
     };
 
     /// Samples a bindless texture (set 2); `texture_slot` indexes the texture
@@ -173,6 +174,7 @@ namespace lux::material
         [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<ConstructNode>(*this); }
 
         EValueType out_type;
+        void setType(EValueType);
     };
 
     /// Terminal node: one input pin per EMaterialAttribute (in contract order).

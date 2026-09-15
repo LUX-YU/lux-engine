@@ -160,6 +160,11 @@ namespace lux::flowforge
          */
         const lux::meta::RefInvokable& info() const;
 
+        [[nodiscard]] const lux::meta::RefType* ownerType() const noexcept
+        {
+            return self_type_;
+        }
+
         /**
          * @brief Sets the user-defined name for this NativeFuncCall.
          * @param name The new name string.

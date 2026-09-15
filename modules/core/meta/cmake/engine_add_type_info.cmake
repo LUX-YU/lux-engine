@@ -1,3 +1,7 @@
+function(engine_type_static_info_template out)
+    set(${out} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../template/type_static_info.template" PARENT_SCOPE)
+endfunction()
+
 function(engine_target_add_static_type_info)
     set(one_value_args NAME TARGET OUT_DIR SOURCE_FILE)
     set(multi_value_args HEADERS LOGICAL_PATHS EXTRA_COMPILE_OPTIONS)
@@ -25,10 +29,11 @@ function(engine_target_add_static_type_info)
         LOGICAL_PATHS         ${ARGS_LOGICAL_PATHS}
         EXTRA_COMPILE_OPTIONS ${ARGS_EXTRA_COMPILE_OPTIONS}
     )
+    engine_type_static_info_template(static_info_template)
     lux_codegen_add_projection(
         JOB           "${ARGS_NAME}"
         NAME          type_static_info
-        TEMPLATE      "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../template/type_static_info.template"
+        TEMPLATE      "${static_info_template}"
         OUTPUT_ROOT   "${ARGS_OUT_DIR}"
         OUTPUT_SUFFIX .type_static_info.hpp
     )

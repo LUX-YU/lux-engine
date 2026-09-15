@@ -612,7 +612,7 @@ namespace lux::material::compiler
                         if (output)
                             return fail("material graph has more than one OutputSurface node",
                                         EMaterialCompileError::INVALID_GRAPH, id);
-                        output = np.get();
+                        output = np;
                     }
                 }
                 if (!output)

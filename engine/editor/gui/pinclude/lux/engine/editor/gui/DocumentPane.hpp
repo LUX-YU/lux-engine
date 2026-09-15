@@ -1,18 +1,19 @@
 #pragma once
 
-#include <lux/engine/editor/scene/SceneEditor.hpp>
 #include <lux/engine/editor/gui/actions/HistoryActions.hpp>
 #include <lux/engine/ui/UISession.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/editor/gui/GuiView.hpp>
+#include <lux/engine/ui/Frame.hpp>
+#include <imgui.h>
 
 namespace lux::editor::gui
 {
     // Shares registration/close mechanics; concrete Pane classes own their drawing and interaction.
-    template <class Derived> class DocumentPane : public object::Object<Derived, lux::ui::Pane>, public GuiView
+    template <class Derived, class Document> class DocumentPane : public object::Object<Derived, lux::ui::Pane>, public GuiView
     {
       public:
-        DocumentPane(scene::SceneEditor &document, std::string name, std::string title)
+        DocumentPane(Document &document, std::string name, std::string title)
             : object::Object<Derived, lux::ui::Pane>(document.dispatcherRef(), lux::ui::PaneId{std::move(name)},
                                                      lux::ui::PaneTypeId{"lux.editor.document-pane"}, std::move(title)),
               document_(document), history_(document.dispatcherRef(), document)
@@ -75,7 +76,36 @@ namespace lux::editor::gui
             registration_.reset();
         }
 
-        void poll(PollBudget &) override {}
+        void poll(PollBudget &) override
+        {
+            if (!published_save_.serial)
+            {
+                return;
+            }
+            const auto status = document_.saveStatus(published_save_);
+            if (!status)
+            {
+                publication_message_ = status.error().domain + ": " + status.error().message;
+                return;
+            }
+            if (const auto* done = std::get_if<SaveSucceeded>(&*status))
+            {
+                publication_message_ = done->cleanup ? "Source and compiled asset published" :
+                    "Published; cleanup requires attention: " + done->cleanup.error().message;
+            }
+            else if (std::holds_alternative<SaveAbandoned>(*status))
+            {
+                publication_message_ = "Publication abandoned";
+            }
+            else
+            {
+                return;
+            }
+            if (document_.acknowledgeSave(published_save_))
+            {
+                published_save_ = {};
+            }
+        }
 
         CloseStatus closeStatus() const override
         {
@@ -83,10 +113,60 @@ namespace lux::editor::gui
         }
 
       protected:
-        scene::SceneEditor &document_;
+        void trackPublication(SaveRequestId request)
+        {
+            published_save_ = request;
+            publication_message_.clear();
+        }
+        void drawPublication(lux::ui::Frame& frame)
+        {
+            if (!publication_message_.empty())
+            {
+                frame.text(publication_message_);
+            }
+            if (!published_save_.serial)
+            {
+                return;
+            }
+            const auto status = document_.saveStatus(published_save_);
+            if (!status)
+            {
+                frame.text(status.error().message);
+                return;
+            }
+            if (const auto* failed = std::get_if<SaveRetryable>(&*status))
+            {
+                ImGui::TextWrapped("Publication failed: %s (%llu) %s", failed->failure.domain.c_str(),
+                    static_cast<unsigned long long>(failed->failure.reason), failed->failure.message.c_str());
+                if (ImGui::SmallButton("Retry publication"))
+                {
+                    const auto retried = document_.retrySave(published_save_);
+                    if (!retried)
+                    {
+                        publication_message_ = retried.error().domain + ": " + retried.error().message;
+                    }
+                }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Abandon publication"))
+                {
+                    const auto abandoned = document_.abandonSave(published_save_);
+                    if (!abandoned)
+                    {
+                        publication_message_ = abandoned.error().domain + ": " + abandoned.error().message;
+                    }
+                }
+            }
+            else
+            {
+                frame.textMuted("Publishing captured source and compiled asset...");
+            }
+        }
+        Document &document_;
         bool closing_{};
 
       private:
+        SaveRequestId published_save_;
+        std::string publication_message_;
         HistoryActions history_;
         lux::ui::PaneRegistration registration_;
         std::vector<lux::ui::CommandRegistration> commands_;

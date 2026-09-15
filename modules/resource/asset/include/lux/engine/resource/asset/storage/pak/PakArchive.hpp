@@ -24,6 +24,7 @@ namespace lux::asset
         std::string vpath;
         std::filesystem::path source_file;
         lux::cxx::SharedBytes<> source_bytes;
+        bool tombstone{}; // Memory encoding preserves deletion records without a payload.
     };
 
     [[nodiscard]] LUX_ASSET_PUBLIC bool writePakFile(
@@ -32,6 +33,11 @@ namespace lux::asset
         std::string_view mount_hint = "/Game",
         std::string* error_out = nullptr
     );
+
+    // Pure CPU encoding over owning byte captures; no filesystem access.
+    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<std::vector<std::byte>, std::string>
+    encodePak(const std::vector<PakWriteEntry>& entries, std::size_t byte_limit,
+              std::string_view mount_hint = "/Game");
 
     struct PakInspectEntry final
     {

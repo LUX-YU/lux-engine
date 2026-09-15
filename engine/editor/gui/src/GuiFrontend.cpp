@@ -34,6 +34,7 @@ namespace lux::editor::gui
                                             object::ObjectDispatcherRef dispatcher) override
             {
                 editor_ = &editor;
+                runtime_ = &runtime;
                 if (!platform_.valid())
                 {
                     return lux::cxx::unexpected(EditorFailure{EEditorError::FRONTEND_FAILURE, "glfw.init"});
@@ -44,6 +45,16 @@ namespace lux::editor::gui
                     return windowFailure(window.error());
                 }
                 window_ = std::move(*window);
+                open_connection_ = window_->observeScoped<EditorWindow::assetOpenRequested>([this](asset::AssetId id) noexcept
+                {
+                    if (project_)
+                    {
+                        if (const auto* entry = project_->asset(id))
+                        {
+                            open(*entry);
+                        }
+                    }
+                });
                 auto renderer =
                     rendering::EditorRenderer::create(window_->nativeWindow(), window_->uiSession(), config_.renderer);
                 if (!renderer)
@@ -93,7 +104,17 @@ namespace lux::editor::gui
                     }
                     if (window_->closeRequested())
                     {
-                        editor.requestExit();
+                        if (!project_)
+                        {
+                            editor.requestExit();
+                        }
+                        else if (close_choice_ == ECloseChoice::NONE)
+                        {
+                            closing_documents_ = documents_;
+                            exit_after_close_ = true;
+                            close_choice_ = ECloseChoice::REVIEW;
+                            project_pane_->setVisible(true);
+                        }
                     }
                 }
             }
@@ -182,6 +203,8 @@ namespace lux::editor::gui
                         ++request;
                     }
                 }
+                pollSaves();
+                advanceDocumentClose();
             }
 
             void draw(Editor &, PollBudget &) override
@@ -315,6 +338,7 @@ namespace lux::editor::gui
                     }
                     return;
                 }
+                ImGui::BeginDisabled(editor_->closing());
                 for (const auto &asset : project_->manifest().assets)
                 {
                     ImGui::SameLine();
@@ -325,6 +349,83 @@ namespace lux::editor::gui
                         open(asset);
                     }
                 }
+                ImGui::EndDisabled();
+                for (const auto handle : documents_)
+                {
+                    auto document = editor_->document(handle);
+                    if (!document)
+                    {
+                        continue;
+                    }
+                    const auto summary = document->get().summary();
+                    const auto history = document->get().historyView();
+                    const auto key = std::to_string(document->get().historyId().value);
+                    ImGui::PushID(key.c_str());
+                    ImGui::TextUnformatted(summary.title.c_str());
+                    ImGui::SameLine();
+                    ImGui::BeginDisabled(summary.read_only || !document->get().saveRequests().empty());
+                    if (frame.smallButton("Save"))
+                    {
+                        beginSave(handle);
+                    }
+                    ImGui::EndDisabled();
+                    ImGui::SameLine();
+                    if (frame.smallButton("Close"))
+                    {
+                        closing_documents_ = {handle};
+                        exit_after_close_ = false;
+                        close_choice_ = ECloseChoice::REVIEW;
+                    }
+                    if (history && !history->history.clean)
+                    {
+                        ImGui::SameLine();
+                        ImGui::TextDisabled("Unsaved changes");
+                    }
+                    for (const auto save : document->get().saveRequests())
+                    {
+                        const auto status = document->get().saveStatus(save);
+                        if (status)
+                        {
+                            if (const auto* failed = std::get_if<SaveRetryable>(&*status))
+                            {
+                                ImGui::TextWrapped("Save failed: %s (%llu) %s", failed->failure.domain.c_str(),
+                                    static_cast<unsigned long long>(failed->failure.reason), failed->failure.message.c_str());
+                                if (frame.smallButton("Retry save"))
+                                {
+                                    const auto retry = document->get().retrySave(save);
+                                    if (!retry)
+                                    {
+                                        fail(retry.error());
+                                    }
+                                }
+                                ImGui::SameLine();
+                                if (frame.smallButton("Abandon save"))
+                                {
+                                    const auto abandon = document->get().abandonSave(save);
+                                    if (!abandon)
+                                    {
+                                        fail(abandon.error());
+                                    }
+                                }
+                            }
+                            else if (const auto* done = std::get_if<SaveSucceeded>(&*status))
+                            {
+                                ImGui::TextDisabled(done->cleanup ? "Saved; awaiting request acknowledgment" :
+                                    "Saved; publication cleanup requires attention");
+                            }
+                            else if (std::holds_alternative<SaveAbandoned>(*status))
+                            {
+                                ImGui::TextDisabled("Save abandoned; awaiting request acknowledgment");
+                            }
+                            else
+                            {
+                                ImGui::TextDisabled("Saving captured content...");
+                            }
+                        }
+                    }
+                    ImGui::PopID();
+                }
+                drawCloseChoice();
             }
 
             void restorePanes()
@@ -333,6 +434,179 @@ namespace lux::editor::gui
             }
 
           private:
+            enum class ECloseChoice : std::uint8_t { NONE, REVIEW, SAVING, DISCARDING };
+
+            std::vector<SaveRequestId>::iterator saveFor(DocumentHandle handle)
+            {
+                return std::ranges::find(saves_, handle, &SaveRequestId::document);
+            }
+
+            void beginSave(DocumentHandle handle)
+            {
+                if (saveFor(handle) != saves_.end())
+                {
+                    return;
+                }
+                auto document = editor_->document(handle);
+                if (!document)
+                {
+                    fail(document.error());
+                    return;
+                }
+                const auto accepted = document->get().requestSave("desktop");
+                if (!accepted)
+                {
+                    fail(accepted.error());
+                    close_choice_ = ECloseChoice::REVIEW;
+                    return;
+                }
+                saves_.push_back(*accepted);
+            }
+
+            void pollSaves()
+            {
+                std::erase_if(saves_, [&](SaveRequestId id)
+                {
+                    auto document = editor_->document(id.document);
+                    if (!document)
+                    {
+                        return true;
+                    }
+                    auto status = document->get().saveStatus(id);
+                    if (!status)
+                    {
+                        fail(status.error());
+                        return true;
+                    }
+                    if (const auto* done = std::get_if<SaveSucceeded>(&*status))
+                    {
+                        if (!done->cleanup)
+                        {
+                            fail(done->cleanup.error());
+                        }
+                        else
+                        {
+                            status_ = "Saved " + document->get().summary().title;
+                        }
+                    }
+                    else if (!std::holds_alternative<SaveAbandoned>(*status))
+                    {
+                        return false;
+                    }
+                    const auto acknowledged = document->get().acknowledgeSave(id);
+                    if (!acknowledged)
+                    {
+                        fail(acknowledged.error());
+                        return false;
+                    }
+                    return true;
+                });
+            }
+
+            void advanceDocumentClose()
+            {
+                if (close_choice_ == ECloseChoice::NONE)
+                {
+                    return;
+                }
+                bool dirty{};
+                bool saving{};
+                for (const auto handle : closing_documents_)
+                {
+                    auto document = editor_->document(handle);
+                    if (!document)
+                    {
+                        continue;
+                    }
+                    const auto history = document->get().historyView();
+                    dirty |= !history || !history->history.clean;
+                    for (const auto request : document->get().saveRequests())
+                    {
+                        const auto status = document->get().saveStatus(request);
+                        const bool pending = !status || std::holds_alternative<SavePending>(*status) ||
+                            std::holds_alternative<SaveRetryable>(*status);
+                        saving |= pending;
+                        if (pending && close_choice_ == ECloseChoice::DISCARDING)
+                        {
+                            const auto abandoned = document->get().abandonSave(request);
+                            if (!abandoned)
+                            {
+                                fail(abandoned.error());
+                            }
+                        }
+                    }
+                }
+                if (saving)
+                {
+                    return;
+                }
+                if (dirty && close_choice_ != ECloseChoice::DISCARDING)
+                {
+                    close_choice_ = ECloseChoice::REVIEW;
+                    return;
+                }
+                if (exit_after_close_)
+                {
+                    editor_->requestExit();
+                }
+                else
+                {
+                    for (const auto handle : closing_documents_)
+                    {
+                        if (auto document = editor_->document(handle))
+                        {
+                            document->get().requestClose();
+                        }
+                    }
+                }
+                close_choice_ = ECloseChoice::NONE;
+                closing_documents_.clear();
+            }
+
+            void drawCloseChoice()
+            {
+                if (close_choice_ == ECloseChoice::NONE)
+                {
+                    return;
+                }
+                ImGui::Separator();
+                ImGui::TextWrapped("Save changes before closing?");
+                if (close_choice_ == ECloseChoice::REVIEW)
+                {
+                    if (ImGui::Button("Save changes"))
+                    {
+                        close_choice_ = ECloseChoice::SAVING;
+                        for (const auto handle : closing_documents_)
+                        {
+                            if (auto document = editor_->document(handle))
+                            {
+                                const auto history = document->get().historyView();
+                                if (history && !history->history.clean)
+                                {
+                                    beginSave(handle);
+                                }
+                            }
+                        }
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Discard changes"))
+                    {
+                        close_choice_ = ECloseChoice::DISCARDING;
+                    }
+                    ImGui::SameLine();
+                }
+                else
+                {
+                    ImGui::TextDisabled("Waiting for the current save or recovery to finish.");
+                }
+                if (ImGui::Button("Cancel close"))
+                {
+                    close_choice_ = ECloseChoice::NONE;
+                    closing_documents_.clear();
+                    window_->cancelCloseRequest();
+                }
+            }
+
             static EditorResult<void> windowFailure(WindowFailure failure)
             {
                 return lux::cxx::unexpected(EditorFailure{EEditorError::FRONTEND_FAILURE,
@@ -371,7 +645,7 @@ namespace lux::editor::gui
                 }
                 if (std::ranges::find(documents_, handle) == documents_.end())
                 {
-                    const auto attached = found->attach(document->get(), *window_, *renderer_);
+                    const auto attached = found->attach(document->get(), *window_, *renderer_, *runtime_);
                     if (!attached)
                     {
                         fail(attached.error());
@@ -463,13 +737,19 @@ namespace lux::editor::gui
             GuiConfig config_;
             lux::window::GlfwRuntime platform_;
             std::unique_ptr<EditorWindow> window_;
+            object::ScopedConnection open_connection_;
             std::unique_ptr<rendering::EditorRenderer> renderer_;
             Editor *editor_{};
             Project *project_{};
+            process::ExecutionRuntime* runtime_{};
             std::unique_ptr<ProjectPane> project_pane_;
             lux::ui::PaneRegistration project_registration_;
             std::vector<DocumentHandle> documents_;
             std::vector<OpenRequestId> requests_;
+            std::vector<SaveRequestId> saves_;
+            std::vector<DocumentHandle> closing_documents_;
+            ECloseChoice close_choice_{ECloseChoice::NONE};
+            bool exit_after_close_{};
             std::variant<std::monostate, lux::ui::UiFrameSnapshot> frame_;
             rendering::EditorFramePacket packet_;
             std::vector<rendering::ViewImage> images_;

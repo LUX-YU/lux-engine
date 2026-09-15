@@ -142,6 +142,48 @@ namespace lux::serialization
         [[nodiscard]] SerializationResult
         readValue(Reader& reader, T& value, const SerializationContext& context) noexcept;
 
+        template <class Reader, class Variant, std::size_t Index = 0>
+        SerializationResult readAlternative(Reader& reader, Variant& value, std::uint32_t index,
+                                            const SerializationContext& context) noexcept
+        {
+            if constexpr (Index == std::variant_size_v<Variant>)
+            {
+                return lux::cxx::unexpected<SerializationFailure>(SerializationFailure{ESerializationError::INVALID_VALUE, reader.offset()});
+            }
+            else
+            {
+                if (index == Index)
+                {
+                    std::variant_alternative_t<Index, Variant> prepared{};
+                    auto result = readValue(reader, prepared, context.nested());
+                    if (result)
+                    {
+                        value.template emplace<Index>(std::move(prepared));
+                    }
+                    return result;
+                }
+                return readAlternative<Reader, Variant, Index + 1>(reader, value, index, context);
+            }
+        }
+
+        template <class Container> Container emptyContainer(const Container& source)
+        {
+            if constexpr (requires { source.hash_function(); source.key_eq(); })
+            {
+                Container result(0, source.hash_function(), source.key_eq(), source.get_allocator());
+                result.max_load_factor(source.max_load_factor());
+                return result;
+            }
+            else if constexpr (requires { source.key_comp(); })
+            {
+                return Container(source.key_comp(), source.get_allocator());
+            }
+            else
+            {
+                return Container(source.get_allocator());
+            }
+        }
+
         template <class Writer, class Tuple, std::size_t... Indices>
         [[nodiscard]] SerializationResult writeTuple(
             Writer& writer,
@@ -257,7 +299,7 @@ namespace lux::serialization
                 }
                 return writer.writeBytes(std::as_bytes(std::span(value)));
             }
-            else if constexpr (IsVector<U>::value)
+            else if constexpr (SequenceContainer<U> || MapContainer<U> || SetContainer<U>)
             {
                 if (value.size() > context.budget().max_container_elements)
                 {
@@ -272,9 +314,33 @@ namespace lux::serialization
                     {
                         return result;
                     }
-                    result = writeValue(writer, item, context.nested());
+                    if constexpr (SequenceContainer<U> && std::same_as<typename U::value_type, bool>)
+                    {
+                        result = writeValue(writer, static_cast<bool>(item), context.nested());
+                    }
+                    else
+                    {
+                        result = writeValue(writer, item, context.nested());
+                    }
                 }
                 return result;
+            }
+            else if constexpr (std::same_as<U, std::monostate>)
+            {
+                return {};
+            }
+            else if constexpr (VariantValue<U>)
+            {
+                if (value.valueless_by_exception())
+                {
+                    return lux::cxx::unexpected<SerializationFailure>(SerializationFailure{ESerializationError::INVALID_VALUE, writer.offset()});
+                }
+                auto result = writer.template writeUnsigned<std::uint32_t>(static_cast<std::uint32_t>(value.index()));
+                if (!result)
+                {
+                    return result;
+                }
+                return std::visit([&](const auto& item) { return writeValue(writer, item, context.nested()); }, value);
             }
             else if constexpr (IsOptional<U>::value)
             {
@@ -449,7 +515,7 @@ namespace lux::serialization
                 }
                 return reader.readBytes(std::as_writable_bytes(std::span(value)));
             }
-            else if constexpr (IsVector<U>::value)
+            else if constexpr (SequenceContainer<U> || MapContainer<U> || SetContainer<U>)
             {
                 auto size = reader.template readUnsigned<std::uint64_t>();
                 if (!size)
@@ -462,32 +528,66 @@ namespace lux::serialization
                         SerializationFailure{ESerializationError::LIMIT_EXCEEDED, reader.offset()}
                     );
                 }
-                try
+                auto prepared = emptyContainer(value);
+                if (*size > prepared.max_size())
                 {
-                    value.resize(static_cast<std::size_t>(*size));
+                    return lux::cxx::unexpected<SerializationFailure>(SerializationFailure{ESerializationError::LIMIT_EXCEEDED, reader.offset()});
                 }
-                catch (const std::bad_alloc&)
+                if constexpr (requires { prepared.reserve(static_cast<std::size_t>(*size)); })
                 {
-                    return lux::cxx::unexpected<SerializationFailure>(
-                        SerializationFailure{ESerializationError::ALLOCATION_FAILURE, reader.offset()}
-                    );
+                    prepared.reserve(static_cast<std::size_t>(*size));
                 }
-                catch (...)
+                for (std::uint64_t index{}; index < *size; ++index)
                 {
-                    return lux::cxx::unexpected<SerializationFailure>(
-                        SerializationFailure{ESerializationError::LIMIT_EXCEEDED, reader.offset()}
-                    );
-                }
-                SerializationResult result{};
-                for (auto& item : value)
-                {
-                    if (!result)
+                    if constexpr (MapContainer<U>)
                     {
-                        return result;
+                        std::pair<typename U::key_type, typename U::mapped_type> item;
+                        auto decoded = readValue(reader, item, context.nested());
+                        if (!decoded)
+                        {
+                            return decoded;
+                        }
+                        if (!prepared.try_emplace(std::move(item.first), std::move(item.second)).second)
+                        {
+                            return lux::cxx::unexpected<SerializationFailure>(SerializationFailure{ESerializationError::INVALID_VALUE, reader.offset()});
+                        }
                     }
-                    result = readValue(reader, item, context.nested());
+                    else
+                    {
+                        typename U::value_type item{};
+                        auto decoded = readValue(reader, item, context.nested());
+                        if (!decoded)
+                        {
+                            return decoded;
+                        }
+                        if constexpr (SetContainer<U>)
+                        {
+                            if (!prepared.insert(std::move(item)).second)
+                            {
+                                return lux::cxx::unexpected<SerializationFailure>(SerializationFailure{ESerializationError::INVALID_VALUE, reader.offset()});
+                            }
+                        }
+                        else
+                        {
+                            prepared.push_back(std::move(item));
+                        }
+                    }
                 }
-                return result;
+                value = std::move(prepared);
+                return {};
+            }
+            else if constexpr (std::same_as<U, std::monostate>)
+            {
+                return {};
+            }
+            else if constexpr (VariantValue<U>)
+            {
+                auto index = reader.template readUnsigned<std::uint32_t>();
+                if (!index)
+                {
+                    return lux::cxx::unexpected<SerializationFailure>(index.error());
+                }
+                return readAlternative(reader, value, *index, context);
             }
             else if constexpr (IsOptional<U>::value)
             {

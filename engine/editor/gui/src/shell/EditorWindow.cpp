@@ -15,6 +15,7 @@
 #define NOMINMAX
 #endif
 #include <Windows.h>
+#include <commdlg.h>
 #include <imm.h>
 #endif
 
@@ -263,6 +264,45 @@ namespace lux::editor::gui
         }
     }
 
+    WindowResult<bool> EditorWindow::selectExistingFile(std::filesystem::path &selection)
+    {
+        if (auto allowed = impl_->check(); !allowed)
+        {
+            return lux::cxx::unexpected(allowed.error());
+        }
+#if defined(_WIN32)
+        std::vector<wchar_t> buffer(32768);
+        const auto &initial = selection.native();
+        if (initial.size() >= buffer.size())
+        {
+            return fail(EWindowError::INVALID_ARGUMENT);
+        }
+        std::copy(initial.begin(), initial.end(), buffer.begin());
+        OPENFILENAMEW dialog{};
+        dialog.lStructSize = sizeof(dialog);
+        dialog.hwndOwner = static_cast<HWND>(impl_->window->win32Handle());
+        dialog.lpstrTitle = L"Choose source file";
+        dialog.lpstrFilter = L"All files\0*.*\0\0";
+        dialog.lpstrFile = buffer.data();
+        dialog.nMaxFile = static_cast<DWORD>(buffer.size());
+        dialog.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_HIDEREADONLY;
+        if (!GetOpenFileNameW(&dialog))
+        {
+            const auto error = CommDlgExtendedError();
+            if (error)
+            {
+                return lux::cxx::unexpected(WindowFailure{EWindowError::PLATFORM_FAILURE, error});
+            }
+            return false;
+        }
+        std::filesystem::path chosen(buffer.data());
+        selection.swap(chosen);
+        return true;
+#else
+        return fail(EWindowError::PLATFORM_FAILURE);
+#endif
+    }
+
     WindowResult<std::unique_ptr<EditorWindow>> EditorWindow::create(lux::object::ObjectDispatcherRef dispatcher,
                                                                      const WindowSpec &spec) noexcept
     {
@@ -350,6 +390,11 @@ namespace lux::editor::gui
         return *impl_->ui;
     }
 
+    void EditorWindow::openAsset(asset::AssetId source)
+    {
+        notify<assetOpenRequested>(source);
+    }
+
     lux::window::LuxWindow &EditorWindow::nativeWindow() noexcept
     {
         return *impl_->window;
@@ -368,6 +413,12 @@ namespace lux::editor::gui
     bool EditorWindow::closeRequested() const noexcept
     {
         return impl_->close_requested;
+    }
+
+    void EditorWindow::cancelCloseRequest() noexcept
+    {
+        impl_->close_requested = false;
+        glfwSetWindowShouldClose(impl_->window->handle(), GLFW_FALSE);
     }
 
     WindowResult<TextInputPlatformStatus> EditorWindow::textInputPlatformStatus() const noexcept

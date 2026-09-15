@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <atomic>
 #include <mutex>
-#include <new>
+#include <limits>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -135,38 +135,74 @@ namespace lux::asset
 
     MountId AssetVfs::mount(MountDesc desc)
     {
-        if (!desc.provider || !VirtualPath::isLegalRoot(desc.root))
-            return kInvalidMountId;
+        const auto mounted = replaceMounts({}, std::span(&desc, 1));
+        return mounted ? mounted->front() : kInvalidMountId;
+    }
+
+    lux::cxx::expected<std::vector<MountId>, EMountUpdateError>
+    AssetVfs::replaceMounts(std::span<const MountId> removed, std::span<const MountDesc> added)
+    {
+        for (const auto& descriptor : added)
+        {
+            if (!descriptor.provider || !VirtualPath::isLegalRoot(descriptor.root))
+            {
+                return lux::cxx::unexpected(EMountUpdateError::INVALID_DESCRIPTOR);
+            }
+        }
 
         std::lock_guard lock{state_->control_mutex};
-        if (state_->next_id == kInvalidMountId || state_->next_sequence == 0U)
-            return kInvalidMountId;
+        const auto current = state_->published.load(std::memory_order_acquire);
+        std::unordered_set<MountId> retiring;
+        retiring.reserve(removed.size());
+        for (const auto id : removed)
+        {
+            if (!retiring.insert(id).second)
+            {
+                return lux::cxx::unexpected(EMountUpdateError::DUPLICATE_MOUNT);
+            }
+            if (std::ranges::find(current->mounts, id, &detail::Mount::id) == current->mounts.end())
+            {
+                return lux::cxx::unexpected(EMountUpdateError::UNKNOWN_MOUNT);
+            }
+        }
+        const bool ids_exhausted = added.size() > std::numeric_limits<MountId>::max() - state_->next_id;
+        const bool sequences_exhausted = added.size() > UINT64_MAX - state_->next_sequence;
+        if (ids_exhausted || sequences_exhausted)
+        {
+            return lux::cxx::unexpected(EMountUpdateError::CAPACITY);
+        }
+        if (removed.empty() && added.empty())
+        {
+            return std::vector<MountId>{};
+        }
 
-        try
+        auto next = std::make_shared<detail::MountTable>();
+        next->mounts.reserve(current->mounts.size() - removed.size() + added.size());
+        for (const auto& mount : current->mounts)
         {
-            const auto current = state_->published.load(std::memory_order_acquire);
-            auto next = std::make_shared<detail::MountTable>(*current);
-            detail::Mount mount{
-                state_->next_id,
-                std::move(desc.root),
-                std::move(desc.provider),
-                desc.priority,
-                state_->next_sequence
-            };
-            const auto position = std::ranges::find_if(next->mounts, [&](const detail::Mount& other) noexcept {
-                return other.priority < mount.priority ||
-                    (other.priority == mount.priority && other.sequence < mount.sequence);
-            });
-            next->mounts.insert(position, std::move(mount));
-            const auto result = state_->next_id++;
-            ++state_->next_sequence;
-            state_->published.store(std::move(next), std::memory_order_release);
-            return result;
+            if (!retiring.contains(mount.id))
+            {
+                next->mounts.push_back(mount);
+            }
         }
-        catch (const std::bad_alloc&)
+        std::vector<MountId> result;
+        result.reserve(added.size());
+        auto next_id = state_->next_id;
+        auto sequence = state_->next_sequence;
+        for (const auto& descriptor : added)
         {
-            return kInvalidMountId;
+            result.push_back(next_id);
+            next->mounts.push_back({next_id++, descriptor.root, descriptor.provider, descriptor.priority, sequence++});
         }
+        std::ranges::sort(next->mounts, [](const detail::Mount& left, const detail::Mount& right)
+        {
+            return left.priority > right.priority || (left.priority == right.priority && left.sequence > right.sequence);
+        });
+
+        state_->next_id = next_id;
+        state_->next_sequence = sequence;
+        state_->published.store(std::move(next), std::memory_order_release);
+        return result;
     }
 
     void AssetVfs::unmount(MountId id)

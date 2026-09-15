@@ -10,6 +10,7 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 namespace lux::serialization
 {
@@ -24,6 +25,35 @@ namespace lux::serialization
 
     template <class T>
     concept HasSerializerDefinition = requires { sizeof(Serializer<std::remove_cvref_t<T>>); };
+
+    template <class T>
+    concept SequenceContainer = requires(T value, std::size_t size)
+    {
+        typename T::value_type;
+        value.resize(size);
+        value.begin();
+        value.end();
+        value.get_allocator();
+    };
+
+    template <class T>
+    concept MapContainer = requires(T value, typename T::key_type key, typename T::mapped_type mapped)
+    {
+        value.try_emplace(std::move(key), std::move(mapped)).second;
+        value.find(key);
+        value.get_allocator();
+    };
+
+    template <class T>
+    concept SetContainer = !MapContainer<T> && requires(T value, typename T::key_type key)
+    {
+        value.insert(std::move(key)).second;
+        value.find(key);
+        value.get_allocator();
+    };
+
+    template <class T>
+    concept VariantValue = requires { std::variant_size<T>::value; };
 
     namespace detail
     {

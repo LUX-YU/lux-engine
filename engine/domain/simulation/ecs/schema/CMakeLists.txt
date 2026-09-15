@@ -49,3 +49,6 @@ component_add_transitive_commands(
 
 include_component_cmake_scripts(meta)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_ecs_codegen.cmake)
+component_add_cmake_scripts(schema ${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_ecs_codegen.cmake)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/template/
+    DESTINATION share/lux-engine-simulation-ecs/schema/template)

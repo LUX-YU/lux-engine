@@ -9,7 +9,7 @@ generate_visibility_header(
 )
 add_component(COMPONENT_NAME editor_core NAMESPACE lux::engine::editor
     OUTPUT_NAME lux_engine_editor_core
-    SOURCE_FILES src/Editor.cpp src/DocumentEditor.cpp src/Project.cpp src/ProjectManifest.cpp
+    SOURCE_FILES src/Editor.cpp src/DocumentEditor.cpp src/Project.cpp src/ProjectManifest.cpp src/ProjectPublication.cpp
 )
 component_include_directories(editor_core
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
@@ -34,5 +34,12 @@ component_add_transitive_commands(editor_core
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time container)"
 )
+include_component_cmake_scripts(meta)
+engine_add_type_runtime_info(NAME editor_project_meta
+    TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/project/Project.hpp
+    EXTRA_COMPILE_OPTIONS -fdelayed-template-parsing
+    REGISTER_FUNC_NAME lux_editor_project)
+engine_target_add_type_runtime_info(TARGET editor_core METAS editor_project_meta
+    OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-core VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_core)

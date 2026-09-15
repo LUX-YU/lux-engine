@@ -1,4 +1,6 @@
 function(engine_target_add_ecs_component_codegen)
+    get_filename_component(schema_root "${CMAKE_CURRENT_FUNCTION_LIST_DIR}" DIRECTORY)
+    engine_type_static_info_template(static_info_template)
     set(one_value_args NAME TARGET HEADER LOGICAL_PATH SYMBOL SOURCE_FILE)
     cmake_parse_arguments(ARGS "" "${one_value_args}" "" ${ARGN})
     if(NOT ARGS_NAME OR NOT ARGS_TARGET OR NOT ARGS_HEADER OR
@@ -19,19 +21,19 @@ function(engine_target_add_ecs_component_codegen)
     lux_codegen_add_validation(
         JOB ${ARGS_NAME}
         NAME ecs_component_semantics
-        TEMPLATE ${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/schema/template/ecs_component.validation.template
+        TEMPLATE "${schema_root}/template/ecs_component.validation.template"
     )
     lux_codegen_add_projection(
         JOB ${ARGS_NAME}
         NAME type_static_info
-        TEMPLATE ${PROJECT_SOURCE_DIR}/modules/core/meta/template/type_static_info.template
+        TEMPLATE "${static_info_template}"
         OUTPUT_ROOT ${LUX_GENERATE_HEADER_DIR}
         OUTPUT_SUFFIX .type_static_info.hpp
     )
     lux_codegen_add_projection(
         JOB ${ARGS_NAME}
         NAME ecs_schema
-        TEMPLATE ${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/schema/template/ecs_schema.template
+        TEMPLATE "${schema_root}/template/ecs_schema.template"
         OUTPUT_ROOT ${LUX_GENERATE_HEADER_DIR}
         OUTPUT_SUFFIX .ecs_schema.hpp
         JSON_FIELD "{\"projection_symbol\":\"${ARGS_SYMBOL}\"}"
@@ -39,7 +41,7 @@ function(engine_target_add_ecs_component_codegen)
     lux_codegen_add_projection(
         JOB ${ARGS_NAME}
         NAME ecs_snapshot
-        TEMPLATE ${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/schema/template/ecs_snapshot.template
+        TEMPLATE "${schema_root}/template/ecs_snapshot.template"
         OUTPUT_ROOT ${LUX_GENERATE_HEADER_DIR}
         OUTPUT_SUFFIX .ecs_snapshot.hpp
         JSON_FIELD "{\"projection_symbol\":\"${ARGS_SYMBOL}\"}"

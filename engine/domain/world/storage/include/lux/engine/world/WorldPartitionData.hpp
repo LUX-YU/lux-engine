@@ -75,7 +75,9 @@ namespace lux::world
         [[nodiscard]] WorldBundleId bundle() const noexcept;
         [[nodiscard]] WorldBundleGeneration generation() const noexcept;
         [[nodiscard]] partition::PartitionOrdinal partition() const noexcept;
+        [[nodiscard]] WorldPartitionId id() const noexcept;
         [[nodiscard]] std::size_t objectCount() const noexcept;
+        // Dynamic storage owned by this value, using vector capacities; excludes sizeof(*this).
         [[nodiscard]] std::size_t retainedBytes() const noexcept;
         [[nodiscard]] WorldPartitionObjectView objectAt(std::size_t index) const noexcept;
 
@@ -83,6 +85,7 @@ namespace lux::world
         WorldBundleId bundle_;
         WorldBundleGeneration generation_;
         partition::PartitionOrdinal partition_;
+        WorldPartitionId id_;
         std::vector<detail::WorldDecodedObjectRecord> objects_;
         std::vector<detail::WorldDecodedDataRecord> data_;
         std::vector<std::byte> payload_;

@@ -51,14 +51,18 @@ namespace lux::flowforge
 
             ~TemporaryCompileDirectory()
             {
-                std::error_code error;
-                std::filesystem::remove_all(path_, error);
+                if (!path_.empty())
+                {
+                    std::error_code error;
+                    std::filesystem::remove_all(path_, error);
+                }
             }
 
             TemporaryCompileDirectory(const TemporaryCompileDirectory&) = delete;
             TemporaryCompileDirectory& operator=(const TemporaryCompileDirectory&) = delete;
-            TemporaryCompileDirectory(TemporaryCompileDirectory&&) noexcept = default;
-            TemporaryCompileDirectory& operator=(TemporaryCompileDirectory&&) noexcept = default;
+            TemporaryCompileDirectory(TemporaryCompileDirectory&& other) noexcept
+                : path_(std::exchange(other.path_, {})) {}
+            TemporaryCompileDirectory& operator=(TemporaryCompileDirectory&&) = delete;
 
             [[nodiscard]] const std::filesystem::path& path() const noexcept
             {
@@ -394,101 +398,113 @@ namespace lux::flowforge
         }
     }
 
-    FlowForgeResult<lux::script::ScriptArtifact> compileFlowForgeScript(
-        const FlowGraph& graph,
-        FlowForgeCompileOptions options
-    ) noexcept
+    FlowForgeResult<FlowForgeObject> compileFlowForgeObject(const FlowGraph& graph,
+        const FlowForgeCompileOptions& options) noexcept
     {
-        try
+        if (options.module_name.empty())
         {
-            if (options.module_name.empty())
-            {
-                return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::INVALID_MODULE_NAME});
-            }
-            if (graph.exports().empty() || !validFlowForgeExports(graph))
-            {
-                return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::GRAPH_INVALID});
-            }
-
-            auto requirements = deriveAbilityRequirements(graph, options.script_abilities);
-            if (!requirements)
-                return lux::cxx::unexpected(std::move(requirements.error()));
-            auto event_requirements = deriveEventRequirements(graph, options.script_events);
-            if (!event_requirements)
-                return lux::cxx::unexpected(std::move(event_requirements.error()));
-            auto suspension_analysis = SuspensionAnalysis::create(graph);
-            if (!suspension_analysis)
-                return lux::cxx::unexpected(std::move(suspension_analysis.error()));
-            auto lifetime = validateAbilityLifetimes(graph, options, *suspension_analysis);
-            if (!lifetime)
-                return lux::cxx::unexpected(std::move(lifetime.error()));
-
-            auto context = IRContext::create();
-            if (!context)
-            {
-                return lux::cxx::unexpected(std::move(context.error()));
-            }
-            auto object = compileToObject(*context, graph, options, *suspension_analysis);
-            if (!object)
-            {
-                return lux::cxx::unexpected(std::move(object.error()));
-            }
-            const bool is_invalid_state_size = object->state_size > std::numeric_limits<std::uint32_t>::max();
-            const bool is_invalid_state_defaults = object->state_defaults.size() > object->state_size;
-            if (is_invalid_state_size || is_invalid_state_defaults)
-            {
-                return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::INVALID_DESCRIPTION});
-            }
-
-            auto temporary = createTemporaryDirectory();
-            if (!temporary)
-            {
-                return lux::cxx::unexpected(std::move(temporary.error()));
-            }
-            const auto module_path = temporary->path() / "flowforge-script.dll";
-            auto linked = linkSharedLibrary(*object, module_path, options);
-            if (!linked)
-            {
-                return lux::cxx::unexpected(std::move(linked.error()));
-            }
-            auto payload = readModule(module_path);
-            if (!payload)
-            {
-                return lux::cxx::unexpected(std::move(payload.error()));
-            }
-
-            lux::rdesc::Script description;
-            description.schema_version = lux::rdesc::Script::kSchemaVersion;
-            description.module_name = options.module_name;
-            description.exports = std::move(object->exports);
-            description.lifecycle = options.lifecycle;
-            description.api_requirements = std::move(*requirements);
-            description.event_requirements = std::move(*event_requirements);
-            description.body = lux::rdesc::NativeModuleScript{
-                LUX_SCRIPT_ABI_VERSION,
-                object->state_hash,
-                static_cast<std::uint32_t>(object->state_size),
-                object->state_align,
-                std::move(object->state_defaults)
-            };
-
-            auto artifact = lux::script::ScriptArtifact::create(std::move(description), std::move(*payload));
-            if (!artifact)
-            {
-                const auto code = artifact.error() == lux::script::EScriptArtifactError::ALLOCATION_FAILURE
-                    ? EFlowForgeError::ALLOCATION_FAILURE
-                    : EFlowForgeError::INVALID_DESCRIPTION;
-                return lux::cxx::unexpected(FlowForgeFailure{.code = code});
-            }
-            return std::move(*artifact);
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::INVALID_MODULE_NAME});
         }
-        catch (const std::bad_alloc&)
+        if (graph.exports().empty() || !validFlowForgeExports(graph))
         {
-            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::GRAPH_INVALID});
         }
-        catch (...)
+        auto requirements = deriveAbilityRequirements(graph, options.script_abilities);
+        if (!requirements)
         {
-            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::FOREIGN_EXCEPTION});
+            return lux::cxx::unexpected(std::move(requirements.error()));
         }
+        auto event_requirements = deriveEventRequirements(graph, options.script_events);
+        if (!event_requirements)
+        {
+            return lux::cxx::unexpected(std::move(event_requirements.error()));
+        }
+        auto suspension_analysis = SuspensionAnalysis::create(graph);
+        if (!suspension_analysis)
+        {
+            return lux::cxx::unexpected(std::move(suspension_analysis.error()));
+        }
+        auto lifetime = validateAbilityLifetimes(graph, options, *suspension_analysis);
+        if (!lifetime)
+        {
+            return lux::cxx::unexpected(std::move(lifetime.error()));
+        }
+        auto context = IRContext::create();
+        if (!context)
+        {
+            return lux::cxx::unexpected(std::move(context.error()));
+        }
+        auto object = compileToObject(*context, graph, options, *suspension_analysis);
+        if (!object)
+        {
+            return lux::cxx::unexpected(std::move(object.error()));
+        }
+        const bool invalid_size = object->state_size > std::numeric_limits<std::uint32_t>::max();
+        const bool invalid_defaults = object->state_defaults.size() > object->state_size;
+        if (invalid_size || invalid_defaults)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::INVALID_DESCRIPTION});
+        }
+        lux::rdesc::Script description;
+        description.schema_version = lux::rdesc::Script::kSchemaVersion;
+        description.module_name = options.module_name;
+        description.exports = std::move(object->exports);
+        description.lifecycle = options.lifecycle;
+        description.api_requirements = std::move(*requirements);
+        description.event_requirements = std::move(*event_requirements);
+        description.body = lux::rdesc::NativeModuleScript{
+            LUX_SCRIPT_ABI_VERSION,
+            object->state_hash,
+            static_cast<std::uint32_t>(object->state_size),
+            object->state_align,
+            std::move(object->state_defaults)
+        };
+        return FlowForgeObject{std::move(object->object), std::move(description)};
+    }
+
+    FlowForgeResult<lux::script::ScriptArtifact> linkFlowForgeObject(const FlowForgeObject& object,
+        const std::filesystem::path& linker) noexcept
+    {
+        if (object.object.empty() || object.description.module_name.empty())
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::INVALID_DESCRIPTION});
+        }
+        auto temporary = createTemporaryDirectory();
+        if (!temporary)
+        {
+            return lux::cxx::unexpected(std::move(temporary.error()));
+        }
+        const auto module_path = temporary->path() / "flowforge-script.dll";
+        FlowForgeCompileOptions options;
+        options.linker = linker;
+        auto linked = linkSharedLibrary(object.object, module_path, options);
+        if (!linked)
+        {
+            return lux::cxx::unexpected(std::move(linked.error()));
+        }
+        auto payload = readModule(module_path);
+        if (!payload)
+        {
+            return lux::cxx::unexpected(std::move(payload.error()));
+        }
+        auto artifact = lux::script::ScriptArtifact::create(object.description, std::move(*payload));
+        if (!artifact)
+        {
+            const auto code = artifact.error() == lux::script::EScriptArtifactError::ALLOCATION_FAILURE
+                ? EFlowForgeError::ALLOCATION_FAILURE : EFlowForgeError::INVALID_DESCRIPTION;
+            return lux::cxx::unexpected(FlowForgeFailure{.code = code});
+        }
+        return std::move(*artifact);
+    }
+
+    FlowForgeResult<lux::script::ScriptArtifact> compileFlowForgeScript(const FlowGraph& graph,
+        FlowForgeCompileOptions options) noexcept
+    {
+        auto object = compileFlowForgeObject(graph, options);
+        if (!object)
+        {
+            return lux::cxx::unexpected(std::move(object.error()));
+        }
+        return linkFlowForgeObject(*object, options.linker);
     }
 }

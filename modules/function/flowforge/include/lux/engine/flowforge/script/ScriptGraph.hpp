@@ -30,6 +30,7 @@ namespace lux::flowforge
         lux::graph::NodeId entry_node_id{};
         lux::script::ScriptSymbolId symbol{};
         std::vector<lux::script::ScriptBindingHintTarget> binding_hints;
+        bool operator==(const ExportMethodNode&) const = default;
     };
 
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_PUBLIC

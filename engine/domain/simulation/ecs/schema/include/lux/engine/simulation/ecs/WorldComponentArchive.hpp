@@ -14,7 +14,13 @@ namespace lux::simulation::ecs
     {
     public:
         WorldComponentArchive(Binary& binary, const WorldEntityMap& identities, const Registry& registry) noexcept
-            : binary_(binary), identities_(identities), registry_(registry) {}
+            : binary_(binary), identities_(identities), registry_(&registry) {}
+
+        // A frozen identity map is sufficient when encoding an owned capture on another lane.
+        // It is captured at the same structural safe point as the component values.
+        WorldComponentArchive(Binary& binary, const WorldEntityMap& captured_identities) noexcept
+            requires std::same_as<Binary, serialization::BinaryWriter>
+            : binary_(binary), identities_(captured_identities) {}
 
         [[nodiscard]] std::size_t offset() const noexcept { return binary_.offset(); }
         [[nodiscard]] world::WorldObjectId unresolvedReference() const noexcept { return unresolved_; }
@@ -44,7 +50,7 @@ namespace lux::simulation::ecs
             requires std::same_as<Binary, serialization::BinaryWriter>
         {
             const auto identity = identities_.object(value);
-            if (value != NullEntity && (!identity.valid() || !registry_.valid(value)))
+            if (value != NullEntity && (!identity.valid() || (registry_ && !registry_->valid(value))))
             {
                 invalid_ = value;
                 return lux::cxx::unexpected(serialization::SerializationFailure{
@@ -61,7 +67,7 @@ namespace lux::simulation::ecs
             if (!read) return read;
             const world::WorldObjectId identity{uuids::uuid(bytes)};
             const auto entity = identities_.entity(identity);
-            if (identity.valid() && (entity == NullEntity || !registry_.valid(entity)))
+            if (identity.valid() && (entity == NullEntity || !registry_->valid(entity)))
             {
                 unresolved_ = identity;
                 return lux::cxx::unexpected(serialization::SerializationFailure{
@@ -74,7 +80,7 @@ namespace lux::simulation::ecs
     private:
         Binary& binary_;
         const WorldEntityMap& identities_;
-        const Registry& registry_;
+        const Registry* registry_{};
         world::WorldObjectId unresolved_;
         Entity invalid_{NullEntity};
     };

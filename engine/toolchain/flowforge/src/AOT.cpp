@@ -1833,7 +1833,7 @@ namespace lux::flowforge
     }
 
     static bool linkSharedLibraryImpl(
-        const AotArtifact& artifact,
+        std::span<const std::byte> object,
         const std::filesystem::path& out_dll,
         const FlowForgeCompileOptions& options,
         std::string* error_out
@@ -1844,7 +1844,7 @@ namespace lux::flowforge
                 *error_out = std::move(msg);
             return false;
         };
-        if (artifact.object.empty())
+        if (object.empty())
             return fail("artifact has no object bytes");
 
         const std::string linker = findLinker(options);
@@ -1865,9 +1865,14 @@ namespace lux::flowforge
             if (!os)
                 return fail("cannot write " + obj_path.string());
             os.write(
-                reinterpret_cast<const char*>(artifact.object.data()),
-                static_cast<std::streamsize>(artifact.object.size())
+                reinterpret_cast<const char*>(object.data()),
+                static_cast<std::streamsize>(object.size())
             );
+            os.close();
+            if (!os)
+            {
+                return fail("cannot finish writing " + obj_path.string());
+            }
         }
 
         // Generated code is freestanding (no CRT): imports come through
@@ -1949,7 +1954,7 @@ namespace lux::flowforge
     }
 
     FlowForgeResult<void> linkSharedLibrary(
-        const AotArtifact& artifact,
+        std::span<const std::byte> object,
         const std::filesystem::path& out_dll,
         const FlowForgeCompileOptions& options
     ) noexcept
@@ -1957,7 +1962,7 @@ namespace lux::flowforge
         try
         {
             std::string message;
-            if (!linkSharedLibraryImpl(artifact, out_dll, options, &message))
+            if (!linkSharedLibraryImpl(object, out_dll, options, &message))
             {
                 return lux::cxx::unexpected(
                     FlowForgeFailure{.code = EFlowForgeError::LINK_FAILED, .message = std::move(message)}

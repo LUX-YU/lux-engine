@@ -2,10 +2,15 @@
 
 #include <lux/engine/editor/DocumentRequests.hpp>
 #include <lux/engine/editor/editing/EditTypes.hpp>
+#include <lux/engine/function/render/client/core/RenderError.hpp>
 #include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/process/asset_loading/AssetLoadSender.hpp>
-#include <lux/engine/editor/rendering/RendererConfig.hpp>
 #include <lux/engine/simulation/ecs/Entity.hpp>
+
+namespace lux::render
+{
+    enum class ERenderUploadSubmitError : std::uint8_t;
+}
 
 namespace lux::editor::scene
 {

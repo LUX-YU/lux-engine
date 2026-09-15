@@ -1,4 +1,5 @@
 find_package(lux-cxx REQUIRED COMPONENTS algorithm container reflection_runtime)
+find_package(tomlplusplus CONFIG REQUIRED)
 
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_FLOWFORGE_LIBRARY
@@ -20,6 +21,8 @@ add_component(
         src/ObjectNode.cpp
         src/ArithmeticNode.cpp
         src/FlowGraph.cpp
+        src/FlowSource.cpp
+        src/FlowSourceGraph.cpp
         src/StateLayout.cpp
         src/script/ScriptGraph.cpp
         src/script/ScriptAbilityCatalog.cpp
@@ -52,6 +55,8 @@ target_link_libraries(
         lux::engine::function::script_core
         lux::engine::resource::description
 )
+target_compile_definitions(flowforge PRIVATE TOML_EXCEPTIONS=0 TOML_HEADER_ONLY=1)
+target_include_directories(flowforge PRIVATE $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
 
 component_add_transitive_commands(
     flowforge

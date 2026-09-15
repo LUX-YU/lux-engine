@@ -6,22 +6,32 @@ generate_visibility_header(
 )
 add_component(COMPONENT_NAME editor_documents NAMESPACE lux::engine::editor
     OUTPUT_NAME lux_engine_editor_documents
-    SOURCE_FILES src/scene/NativeScene.cpp src/scene/SceneEditor.cpp src/scene/SceneOpening.cpp src/scene/SceneResources.cpp
+    SOURCE_FILES src/asset/AssetImporter.cpp src/flowforge/FlowForgeEditor.cpp src/material/MaterialEditor.cpp src/scene/NativeScene.cpp src/scene/SceneCapture.cpp src/scene/SceneEditor.cpp src/scene/SceneOpening.cpp src/scene/SceneResources.cpp
 )
 component_include_directories(editor_documents
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
     INSTALL_TIME include
 )
-target_compile_definitions(editor_documents PRIVATE LUX_EDITOR_DOCUMENTS_LIBRARY)
+find_package(tomlplusplus CONFIG REQUIRED)
+target_compile_definitions(editor_documents PRIVATE LUX_EDITOR_DOCUMENTS_LIBRARY TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0)
+target_include_directories(editor_documents PRIVATE $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
 target_link_libraries(editor_documents PUBLIC
     lux::engine::editor::editor_core lux::engine::editor::editor_rendering
     lux::engine::scene::scene_composition lux::engine::scene::scene_meta
     lux::engine::scene::scene_world_materialization lux::engine::process::world_loading
     lux::engine::scene::scene_asset lux::engine::world::world_asset lux::engine::simulation::simulation_asset
     lux::engine::simulation::ecs::hierarchy
+    lux::engine::function::material_graph
+    lux::engine::function::flowforge
+    lux::engine::toolchain::toolchain_model_cooker
 )
+target_link_libraries(editor_documents PRIVATE lux::engine::toolchain::toolchain_material_compiler)
+target_link_libraries(editor_documents PRIVATE lux::engine::flowforge::flowforge_compiler)
 component_add_transitive_commands(editor_documents
+    "find_package(lux-engine-toolchain-asset REQUIRED COMPONENTS toolchain_model_cooker)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS material_graph)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS flowforge)"
     "find_package(lux-engine-editor-core REQUIRED COMPONENTS editor_core)"
     "find_package(lux-engine-editor-rendering REQUIRED COMPONENTS editor_rendering)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
@@ -38,7 +48,15 @@ engine_add_type_runtime_info(NAME editor_scene_document_meta
     TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/SceneEditor.hpp
     EXTRA_COMPILE_OPTIONS -fdelayed-template-parsing
     REGISTER_FUNC_NAME lux_editor_scene_document)
-engine_target_add_type_runtime_info(TARGET editor_documents METAS editor_scene_document_meta
+engine_add_type_runtime_info(NAME editor_material_document_meta
+    TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/material/MaterialEditor.hpp
+    EXTRA_COMPILE_OPTIONS -fdelayed-template-parsing
+    REGISTER_FUNC_NAME lux_editor_material_document)
+engine_add_type_runtime_info(NAME editor_flow_document_meta
+    TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/flowforge/FlowForgeEditor.hpp
+    EXTRA_COMPILE_OPTIONS -fdelayed-template-parsing
+    REGISTER_FUNC_NAME lux_editor_flow_document)
+engine_target_add_type_runtime_info(TARGET editor_documents METAS editor_scene_document_meta editor_material_document_meta editor_flow_document_meta
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-documents VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_documents)

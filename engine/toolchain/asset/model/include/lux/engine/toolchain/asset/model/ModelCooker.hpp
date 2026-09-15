@@ -17,6 +17,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace lux::toolchain
@@ -35,6 +36,7 @@ namespace lux::toolchain
         INVALID_MODEL,
         IO_FAILURE,
         ALLOCATION_FAILURE,
+        AMBIGUOUS_SOURCE_IDENTITY,
     };
 
     struct ModelCookFailure final
@@ -62,12 +64,45 @@ namespace lux::toolchain
         std::vector<std::shared_ptr<const lux::asset::AnimationClipAsset>> animations;
     };
 
-    [[nodiscard]] LUX_ENGINE_TOOLCHAIN_MODEL_PUBLIC lux::cxx::expected<
-        ModelCookProduct,
-        ModelCookFailure
-    > cookModel(
-        lux::asset::AssetInfo model_info,
-        const std::filesystem::path& source,
-        const ModelCookConfiguration& configuration = {}
-    ) noexcept;
+    enum class EModelSourceState : std::uint8_t
+    {
+        PRESENT,
+        MISSING
+    };
+
+    struct ModelSourceFile final
+    {
+        std::string path;
+        EModelSourceState state{EModelSourceState::PRESENT};
+        lux::cxx::SharedBytes<> bytes;
+    };
+
+    struct ModelSource final
+    {
+        std::string entry;
+        std::vector<ModelSourceFile> files;
+    };
+
+    struct ModelSourceRequests final
+    {
+        std::vector<std::string> paths;
+    };
+
+    // A CPU attempt never accesses the filesystem. Missing dependencies are read on Blocking,
+    // appended to the immutable capture, then the same import is resumed with those bytes.
+    using ModelCookAttempt = std::variant<ModelCookProduct, ModelSourceRequests, ModelCookFailure>;
+
+    [[nodiscard]] LUX_ENGINE_TOOLCHAIN_MODEL_PUBLIC ModelCookAttempt cookModel(lux::asset::AssetInfo,
+                                                                               const ModelSource &,
+                                                                               const ModelCookConfiguration & = {});
+
+    // Missing files are retained as explicit negative lookups (Assimp also probes optional files).
+    // Other I/O errors reject the batch without changing its caller's previously captured files.
+    [[nodiscard]] LUX_ENGINE_TOOLCHAIN_MODEL_PUBLIC lux::cxx::expected<std::vector<ModelSourceFile>, ModelCookFailure>
+    readModelSourceFiles(const std::filesystem::path &root, std::span<const std::string> paths,
+                         std::size_t max_bytes = 256U * 1024U * 1024U);
+
+    [[nodiscard]] LUX_ENGINE_TOOLCHAIN_MODEL_PUBLIC lux::cxx::expected<ModelCookProduct, ModelCookFailure> cookModel(
+        lux::asset::AssetInfo model_info, const std::filesystem::path &source,
+        const ModelCookConfiguration &configuration = {}) noexcept;
 } // namespace lux::toolchain

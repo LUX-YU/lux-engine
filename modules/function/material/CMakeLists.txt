@@ -4,6 +4,7 @@ generate_visibility_header(
     DISABLE_DLL_MACRO_NAME  LUX_ENGINE_MATERIAL_GRAPH_DLL_DISABLE
     GENERATE_FILE_PATH      lux/engine/material/graph/visibility.h
 )
+find_package(tomlplusplus CONFIG REQUIRED)
 
 add_component(
     COMPONENT_NAME material_graph
@@ -12,6 +13,7 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Node.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialGraph.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialSource.cpp
 )
 
 component_include_directories(
@@ -24,8 +26,9 @@ component_include_directories(
 
 target_compile_definitions(
     material_graph
-    PRIVATE LUX_ENGINE_MATERIAL_GRAPH_LIBRARY
+    PRIVATE LUX_ENGINE_MATERIAL_GRAPH_LIBRARY TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0
 )
+target_include_directories(material_graph PRIVATE $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
 
 target_link_libraries(
     material_graph

@@ -33,7 +33,9 @@ namespace lux::ui
         fromBytes(std::span<const std::byte> bytes)
         {
             if (bytes.empty())
-                return lux::cxx::unexpected(ELayoutError::INVALID_DATA);
+            {
+                return lux::cxx::unexpected<ELayoutError>(ELayoutError::INVALID_DATA);
+            }
             return LayoutSnapshot{std::vector<std::byte>{bytes.begin(), bytes.end()}};
         }
 

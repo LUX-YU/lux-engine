@@ -32,6 +32,12 @@ namespace lux::flowforge
         lux::meta::RefType type;
     };
 
+    std::size_t ScriptEventAwaitNode::descriptionBytes() const noexcept
+    {
+        return sizeof(TypeStorage) + type_->name.capacity() + source_.system_name.capacity() +
+            source_.event_name.capacity() + source_.payload.canonical_name.capacity() + 4;
+    }
+
     ScriptEventAwaitNode::ScriptEventAwaitNode(
         std::uint64_t id,
         const lux::script::ScriptEventSourceDescription& source

@@ -14,12 +14,14 @@
 #include <lux/engine/simulation/ecs/VisualSchema.hpp>
 #include <lux/engine/function/render/client/core/RenderFeatureMetaModule.hpp>
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
+#include <algorithm>
 
 namespace lux::editor::gui
 {
     namespace
     {
-        EditorResult<std::shared_ptr<const lux::scene::SceneMetaManager>> sceneMetadata()
+        EditorResult<std::shared_ptr<const lux::scene::SceneMetaManager>> sceneMetadata(
+            std::span<const lux::simulation::ecs::ComponentSchema> additional)
         {
             lux::meta::ReflectionRegistry::drainPending();
             lux::scene::initializeBuiltinRenderSystemMeta();
@@ -31,6 +33,7 @@ namespace lux::editor::gui
             append(lux::simulation::ecs::hierarchyComponentSchemas());
             append(lux::simulation::ecs::visualComponentSchemas());
             append(lux::scene::sceneRenderComponentSchemas());
+            append(additional);
             auto set = lux::simulation::ecs::ComponentSchemaSet::build(std::move(schemas));
             if (!set)
             {
@@ -92,25 +95,44 @@ namespace lux::editor::gui
         }
     } // namespace
 
-    GuiDocumentProvider sceneDocumentProvider()
+    GuiDocumentProvider sceneDocumentProvider(std::span<const lux::simulation::ecs::ComponentSchema> components,
+                                               std::span<const ComponentBinding> additional_bindings)
     {
+        auto bindings = firstPartyComponentBindings();
+        bindings.insert(bindings.end(), additional_bindings.begin(), additional_bindings.end());
+        std::ranges::sort(bindings, {}, [](const ComponentBinding& value) { return value.type.hash(); });
+        auto shared_bindings = std::make_shared<const std::vector<ComponentBinding>>(std::move(bindings));
+
         return {
             std::string(scene::kSceneDocumentType),
             [](const ProjectAssetEntry &asset) { return asset.kind == EProjectAssetKind::SCENE; },
-            [](Editor &editor, process::ExecutionRuntime &runtime,
+            [schemas = std::vector(components.begin(), components.end()), shared_bindings]
+            (Editor &editor, process::ExecutionRuntime &runtime,
                rendering::EditorRenderer &renderer) -> EditorResult<void>
             {
-                auto metadata = sceneMetadata();
+                auto metadata = sceneMetadata(schemas);
                 if (!metadata)
                 {
                     return lux::cxx::unexpected(metadata.error());
+                }
+                std::uint64_t previous{};
+                for (const auto& binding : *shared_bindings)
+                {
+                    const auto* schema = (*metadata)->getComponentMeta(binding.type);
+                    const bool invalid = !schema || !schema->editor_visible || !binding.draw || binding.name.empty();
+                    if (invalid || previous == binding.type.hash())
+                    {
+                        return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "inspector.binding",
+                            binding.type.hash(), "Inspector bindings require unique visible component schemas"});
+                    }
+                    previous = binding.type.hash();
                 }
                 return editor.registerDocument(
                     {std::string(scene::kSceneDocumentType), [&runtime, &renderer, metadata = std::move(*metadata)](
                                                                  Project &project, const OpenDocumentRequest &request)
                      { return scene::openSceneDocument(project, request, runtime, renderer, metadata); }});
             },
-            [](DocumentEditor &base, EditorWindow &window, rendering::EditorRenderer &renderer) -> EditorResult<void>
+            [shared_bindings](DocumentEditor &base, EditorWindow &window, rendering::EditorRenderer &renderer, process::ExecutionRuntime& runtime) -> EditorResult<void>
             {
                 auto *document = dynamic_cast<scene::SceneEditor *>(&base);
                 if (!document)
@@ -125,12 +147,12 @@ namespace lux::editor::gui
                 {
                     return outliner;
                 }
-                auto inspector = attachPane<InspectorPane>(batch, *document, window, prefix + "-inspector");
+                auto inspector = attachPane<InspectorPane>(batch, *document, window, prefix + "-inspector", shared_bindings);
                 if (!inspector)
                 {
                     return inspector;
                 }
-                auto resources = attachPane<ResourcePane>(batch, *document, window, prefix + "-resources");
+                auto resources = attachPane<ResourcePane>(batch, *document, window, window, runtime, prefix + "-resources");
                 if (!resources)
                 {
                     return resources;

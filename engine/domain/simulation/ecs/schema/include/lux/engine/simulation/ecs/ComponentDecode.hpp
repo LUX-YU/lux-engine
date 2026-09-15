@@ -114,8 +114,30 @@ namespace lux::simulation::ecs
                 return true;
             else if constexpr (lux::serialization::HasSerializerDefinition<Value>)
                 return true;
-            else if constexpr (IsVector<Value>::value)
-                return directMaterializableValue<typename IsVector<Value>::Value>();
+            else if constexpr (std::is_bounded_array_v<Value>)
+            {
+                return directMaterializableValue<std::remove_extent_t<Value>>();
+            }
+            else if constexpr (lux::serialization::SequenceContainer<Value> || lux::serialization::SetContainer<Value>)
+            {
+                return directMaterializableValue<typename Value::value_type>();
+            }
+            else if constexpr (lux::serialization::MapContainer<Value>)
+            {
+                return directMaterializableValue<typename Value::key_type>() &&
+                    directMaterializableValue<typename Value::mapped_type>();
+            }
+            else if constexpr (std::same_as<Value, std::monostate>)
+            {
+                return true;
+            }
+            else if constexpr (lux::serialization::VariantValue<Value>)
+            {
+                return []<std::size_t... Index>(std::index_sequence<Index...>)
+                {
+                    return (directMaterializableValue<std::variant_alternative_t<Index, Value>>() && ...);
+                }(std::make_index_sequence<std::variant_size_v<Value>>{});
+            }
             else if constexpr (IsOptional<Value>::value)
                 return directMaterializableValue<typename IsOptional<Value>::Value>();
             else if constexpr (IsArray<Value>::value)
@@ -209,5 +231,47 @@ namespace lux::simulation::ecs
             return &detail::decodeEmplaceComponent<Component, Version>;
         else
             return nullptr;
+    }
+
+    template <class Component>
+    [[nodiscard]] consteval CaptureComponentFn directComponentCapture() noexcept
+    {
+        if constexpr (detail::directMaterializableComponent<Component>() && std::is_copy_constructible_v<Component>)
+        {
+            return +[](const Registry& registry, Entity entity, std::shared_ptr<const void> code)
+                -> lux::cxx::expected<ComponentCapture, ComponentDecodeFailure>
+            {
+                const auto* value = registry.try_get<Component>(entity);
+                if (!value)
+                {
+                    return lux::cxx::unexpected(ComponentDecodeFailure{EComponentDecodeError::INVALID_ENTITY});
+                }
+                struct Owned final
+                {
+                    std::shared_ptr<const void> code;
+                    Component value;
+                };
+                auto owned = std::make_shared<const Owned>(std::move(code), *value);
+                auto captured = std::shared_ptr<const void>(owned, &owned->value);
+                return ComponentCapture{std::move(captured),
+                    +[](const void* capture, const WorldEntityMap& identities, std::size_t limit) -> ComponentEncodeResult
+                    {
+                        std::vector<std::byte> bytes;
+                        serialization::BinaryWriter binary(bytes);
+                        WorldComponentArchive writer(binary, identities);
+                        const auto encoded = serialization::write(writer, *static_cast<const Component*>(capture),
+                            serialization::SerializationBudget{limit, limit, 64});
+                        if (!encoded)
+                        {
+                            return lux::cxx::unexpected(encoded.error());
+                        }
+                        return bytes;
+                    }};
+            };
+        }
+        else
+        {
+            return nullptr;
+        }
     }
 } // namespace lux::simulation::ecs

@@ -215,6 +215,7 @@ namespace lux::editor::scene
                 return failed(ENativeSceneError::CANCELLED);
             }
         }
+        result.package = std::move(*package);
         return result;
     }
 } // namespace lux::editor::scene

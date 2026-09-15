@@ -32,6 +32,20 @@ namespace lux::flowforge
         lux::meta::RefType type;
     };
 
+    std::size_t ScriptAbilityNode::descriptionBytes() const noexcept
+    {
+        // StableNameId owns immutable strings constructed once. Include SBO and allocation rounding.
+        std::size_t bytes = 2 * (contract_.name().size() + method_.name().size() + 2 * sizeof(std::string)) +
+            parameters_.capacity() * sizeof(lux::script::ScriptAbilityParameterDescription) +
+            results_.capacity() * sizeof(lux::script::ScriptAbilityValueDescription) +
+            (types_.capacity() + parameter_pins_.capacity() + result_pins_.capacity()) * sizeof(void*);
+        for (const auto& type : types_)
+        {
+            bytes += sizeof(TypeStorage) + type->name.capacity() + 1;
+        }
+        return bytes;
+    }
+
     ScriptAbilityNode::ScriptAbilityNode(std::uint64_t id, const ScriptAbilityNodeDescription& description)
         : ExecIntermediateNode(id, ENodeOperation::SCRIPT_ABILITY_CALL, "Execute", "Completed"),
           contract_(description.contract.name()),

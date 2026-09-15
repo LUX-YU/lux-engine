@@ -6,6 +6,7 @@
 // =============================================================================
 
 #include <memory>
+#include <ranges>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -18,12 +19,14 @@
 
 namespace lux::material
 {
+    class MaterialGraphEdit;
     /// A texture slot declared by the graph (-> ShadingModelDescriptor + descriptor
     /// layout set 2).
     struct TextureSlotDecl
     {
         std::string name;
         lux::asset::AssetId texture;
+        friend bool operator==(const TextureSlotDecl&, const TextureSlotDecl&) = default;
     };
 
     /// A scalar/vector parameter declared by the graph (-> material SSBO set 4).
@@ -32,6 +35,7 @@ namespace lux::material
         std::string   name;
         EValueType type    = EValueType::FLOAT;
         float         dflt[4] = { 0, 0, 0, 0 };
+        friend bool operator==(const ParamSlotDecl&, const ParamSlotDecl&) = default;
     };
 
     /// Render state (pipeline-related, not a surface attribute): alpha blend mode,
@@ -93,9 +97,13 @@ namespace lux::material
         [[nodiscard]] lux::graph::GraphLayout& layout() noexcept { return layout_; }
         [[nodiscard]] const lux::graph::GraphLayout& layout() const noexcept { return layout_; }
 
-        const std::unordered_map<NodeId, std::unique_ptr<Node>>& nodes() const noexcept
+        // A const graph lends const nodes. const unique_ptr alone would still expose mutable pointees.
+        [[nodiscard]] auto nodes() const noexcept
         {
-            return nodes_;
+            return std::views::transform(nodes_, [](const auto& entry)
+            {
+                return std::pair<NodeId, const Node*>{entry.first, entry.second.get()};
+            });
         }
 
         lux::rdesc::ELightingTechnique shading_model = lux::rdesc::ELightingTechnique::PbrMetallicRoughness;
@@ -104,11 +112,52 @@ namespace lux::material
         RenderState                  render_state;
 
     private:
+        friend class MaterialGraphEdit;
         [[nodiscard]] bool registerNodeStructure(Node& node, bool preserve_pin_ids) noexcept;
 
         std::unordered_map<NodeId, std::unique_ptr<Node>> nodes_;
         lux::graph::GraphTopology topology_;
         lux::graph::GraphLayout layout_;
+    };
+
+    // A transaction describes only affected nodes, links and positions. Node inputs remain borrowed.
+    // An unassigned inserted node receives fresh node/pin identities during preparation.
+    struct MaterialGraphChange final
+    {
+        std::span<const Node* const> insert;
+        std::span<const NodeId> erase;
+        std::span<const lux::graph::LinkRecord> connect;
+        std::span<const lux::graph::LinkRecord> disconnect;
+        std::span<const lux::graph::GraphLayoutEntry> place;
+        std::span<const NodeId> unplace;
+    };
+
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialGraphEdit final
+    {
+      public:
+        [[nodiscard]] static lux::cxx::expected<MaterialGraphEdit, lux::graph::GraphTopologyFailure> prepare(
+            MaterialGraph&, const MaterialGraphChange&);
+        ~MaterialGraphEdit();
+        MaterialGraphEdit(MaterialGraphEdit&&) noexcept;
+        MaterialGraphEdit(const MaterialGraphEdit&) = delete;
+        MaterialGraphEdit& operator=(const MaterialGraphEdit&) = delete;
+
+        [[nodiscard]] std::span<const Node* const> insertedNodes() const noexcept;
+        [[nodiscard]] lux::cxx::expected<void, lux::graph::GraphTopologyFailure> place(NodeId, lux::graph::GraphNodeLayout);
+        // Source must remain exclusively borrowed from prepare until this single commit.
+        // Reserved node handles and vector swaps allocate nothing and invoke no observers.
+        void commit() noexcept;
+
+      private:
+        using NodeStorage = std::unordered_map<NodeId, std::unique_ptr<Node>>;
+        explicit MaterialGraphEdit(MaterialGraph&);
+        MaterialGraph* target_;
+        lux::graph::GraphTopology topology_;
+        lux::graph::GraphLayout layout_;
+        std::vector<std::pair<NodeId, NodeStorage::node_type>> nodes_;
+        std::vector<const Node*> inserted_;
+        bool committed_{};
+        bool topology_changed_{};
     };
 
 } // namespace lux::material

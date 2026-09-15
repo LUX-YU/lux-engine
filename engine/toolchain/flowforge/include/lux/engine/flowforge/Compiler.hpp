@@ -67,6 +67,20 @@ namespace lux::flowforge
         std::span<const lux::script::ScriptEventSourceDescription> script_events;
     };
 
+    // CPU compilation output. No LLVM objects, source borrows, paths or process handles escape.
+    struct FlowForgeObject final
+    {
+        std::vector<std::byte> object;
+        lux::rdesc::Script description;
+    };
+
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowForgeResult<FlowForgeObject>
+    compileFlowForgeObject(const FlowGraph&, const FlowForgeCompileOptions&) noexcept;
+
+    // Blocking linker/file work. Failure retains the compiled object for a later retry.
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowForgeResult<lux::script::ScriptArtifact>
+    linkFlowForgeObject(const FlowForgeObject&, const std::filesystem::path& linker = {}) noexcept;
+
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC
     FlowForgeResult<lux::script::ScriptArtifact>
     compileFlowForgeScript(

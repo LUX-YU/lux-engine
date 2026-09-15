@@ -47,6 +47,8 @@ namespace lux::editor::gui
         {
             canvas::Config config;
             config.SettingsFile = nullptr;
+            // Resizing the surrounding Pane preserves the user's graph zoom.
+            config.CanvasSizeMode = canvas::CanvasSizeMode::CenterOnly;
             return std::unique_ptr<canvas::EditorContext, CanvasDelete>(canvas::CreateEditor(&config));
         }
         std::unique_ptr<lux::flowforge::Node> createNode(lux::flowforge::ENodeOperation operation)

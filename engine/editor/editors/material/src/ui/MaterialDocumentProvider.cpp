@@ -42,6 +42,8 @@ namespace lux::editor::gui
         {
             canvas::Config config;
             config.SettingsFile = nullptr;
+            // Pane layout changes must not magnify a canvas first opened with little available height.
+            config.CanvasSizeMode = canvas::CanvasSizeMode::CenterOnly;
             return std::unique_ptr<canvas::EditorContext, CanvasDelete>(canvas::CreateEditor(&config));
         }
         std::unique_ptr<lux::material::Node> createNode(lux::material::EMatNodeKind kind)

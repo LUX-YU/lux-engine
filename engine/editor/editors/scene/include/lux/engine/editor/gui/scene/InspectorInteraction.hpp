@@ -82,6 +82,18 @@ namespace lux::editor::gui
             return failure_;
         }
 
+        // A clipped or paged-out widget cannot report its own deactivation.
+        // End its preview here; a rejected commit retains the token for retry.
+        bool finishDraw()
+        {
+            const bool drawn = std::exchange(gesture_drawn_, false);
+            if (active() && (!drawn || !ImGui::IsAnyItemActive()))
+            {
+                return finish(document, true);
+            }
+            return true;
+        }
+
         bool finish(scene::SceneEditor &document, bool commit)
         {
             auto *gesture = std::get_if<Gesture>(&gesture_);
@@ -252,6 +264,7 @@ namespace lux::editor::gui
             }
             if (auto *current = std::get_if<Gesture>(&gesture_); current && current->field == identity)
             {
+                gesture_drawn_ = true;
                 if (change.changed)
                 {
                     borrow_valid_ = false;
@@ -353,6 +366,7 @@ namespace lux::editor::gui
         editing::EditFailure failure_;
         ComponentRead borrow_;
         bool draw_active_{}, borrow_valid_{};
+        bool gesture_drawn_{};
         std::uint64_t container_epoch_{1};
     };
 } // namespace lux::editor::gui

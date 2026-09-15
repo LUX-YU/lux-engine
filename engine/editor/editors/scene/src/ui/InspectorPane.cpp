@@ -100,6 +100,7 @@ namespace lux::editor::gui
                 break;
             }
         }
+        static_cast<void>(interaction_.finishDraw());
         if (interaction_.error[0])
         {
             frame.text(interaction_.error.data());

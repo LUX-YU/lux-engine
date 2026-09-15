@@ -249,6 +249,11 @@ namespace
                                             lux::object::EDelivery::QUEUED>(receiver_);
                 assert(queued);
                 queued_connection_ = lux::object::ScopedConnection{std::move(*queued)};
+                replacement_ = std::make_unique<NoticeReceiver>(observer_queue_.dispatcherRef(), replacement_evidence_);
+                auto retiring = owner.observe<material::MaterialEditor::compileFinished, &NoticeReceiver::completed,
+                                              lux::object::EDelivery::QUEUED>(*replacement_);
+                assert(retiring);
+                replacement_connection_ = lux::object::ScopedConnection{std::move(*retiring)};
                 const auto compile = owner.requestCompile();
                 assert(compile);
                 compile_ = *compile;
@@ -260,12 +265,13 @@ namespace
                 advanceReview();
                 return;
             }
-            if (!evidence_.notifications)
+            const unsigned expected = notice_stage_ + 1;
+            if (evidence_.notifications < expected)
             {
                 return;
             }
             evidence_.correct = !evidence_.acknowledged && evidence_.acknowledgment == EEditorError::BUSY &&
-                                evidence_.notified == compile_ && evidence_.notifications == 1;
+                                evidence_.notified == compile_ && evidence_.notifications == expected;
             std::printf("compile-notice: listeners=%u ack_success=%u error=%u identity_match=%u\n",
                         evidence_.notifications, evidence_.acknowledged,
                         static_cast<unsigned>(evidence_.acknowledgment), evidence_.notified == compile_);
@@ -275,10 +281,35 @@ namespace
                 const auto duplicate = document().acknowledgeCompile(compile_);
                 assert(!duplicate && duplicate.error().code == EEditorError::STALE_REQUEST);
             }
-            assert(evidence_.queued_notifications == 0);
-            assert(observer_queue_.dispatchPending(1) == 1);
-            evidence_.correct &= evidence_.second_notifications == 1 && evidence_.queued_notifications == 1;
-            std::puts("compile-notice: second DIRECT matched; QUEUED retained identity after outer acknowledgment");
+            if (notice_stage_ == 0)
+            {
+                // The old receiver has a queued delivery. Destroy it before creating the replacement.
+                replacement_connection_.reset();
+                replacement_.reset();
+                replacement_ = std::make_unique<NoticeReceiver>(observer_queue_.dispatcherRef(), replacement_evidence_);
+                auto connected = document()
+                                     .observe<material::MaterialEditor::compileFinished, &NoticeReceiver::completed,
+                                              lux::object::EDelivery::QUEUED>(*replacement_);
+                assert(connected);
+                replacement_connection_ = lux::object::ScopedConnection{std::move(*connected)};
+                assert(evidence_.queued_notifications == 0);
+                const auto consumed = observer_queue_.dispatchPending(8);
+                assert(consumed == 2 && evidence_.queued_notifications == 1);
+                assert(replacement_evidence_.queued_notifications == 0);
+                assert(evidence_.second_notifications == 1);
+                second_connection_.reset();
+                const auto compile = document().requestCompile();
+                assert(compile);
+                compile_ = *compile;
+                ++notice_stage_;
+                return;
+            }
+            replacement_evidence_.notified = compile_;
+            assert(observer_queue_.dispatchPending(8) == 2);
+            evidence_.correct &= evidence_.second_notifications == 1 && evidence_.queued_notifications == 2 &&
+                                 replacement_evidence_.queued_notifications == 1;
+            std::puts("compile-notice: disconnected DIRECT receives no second event; destroyed QUEUED receiver's "
+                      "old event never reaches replacement; surviving and new receivers each receive the new identity");
             finish();
         }
         void draw(Editor &, PollBudget &) override {}
@@ -419,6 +450,9 @@ namespace
         Evidence &evidence_;
         lux::object::ObjectMessageQueue observer_queue_;
         NoticeReceiver receiver_{observer_queue_.dispatcherRef(), evidence_};
+        Evidence replacement_evidence_;
+        std::unique_ptr<NoticeReceiver> replacement_;
+        lux::object::ScopedConnection replacement_connection_;
         Editor *editor_{};
         OpenRequestId open_;
         DocumentHandle handle_;
@@ -433,6 +467,7 @@ namespace
         SaveRequestId save_;
         editing::StateId saved_;
         unsigned review_stage_{};
+        unsigned notice_stage_{};
         std::chrono::steady_clock::time_point started_{std::chrono::steady_clock::now()};
     };
 } // namespace

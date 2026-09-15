@@ -10,6 +10,8 @@
 
 namespace consumer
 {
+    void checkClippedGesture(lux::editor::scene::SceneEditor &, lux::world::WorldObjectId, lux::ui::Frame &);
+
     namespace
     {
         std::size_t draws{};
@@ -147,6 +149,10 @@ namespace consumer
                   lux::editor::gui::InspectorInteraction &interaction)
         {
             ++draws;
+            if (draws == 1 && !document.summary().read_only)
+            {
+                checkClippedGesture(document, object, frame);
+            }
 #if defined(CONSUMER_WIDGET_DIAGNOSTICS)
             if (draws == 1)
             {

@@ -37,7 +37,7 @@ engine_target_add_ecs_component_codegen(NAME consumer_schema TARGET consumer_dom
     HEADER "${CMAKE_CURRENT_SOURCE_DIR}/include/consumer/Component.hpp"
     LOGICAL_PATH consumer/Component.hpp SYMBOL Consumer)
 
-add_library(consumer_gui SHARED Gui.cpp)
+add_library(consumer_gui SHARED Gui.cpp GuiGesture.cpp)
 set_property(TARGET consumer_gui PROPERTY LUX_ARCH_LAYER EDITOR)
 target_compile_definitions(consumer_gui PRIVATE CONSUMER_GUI_LIBRARY)
 target_link_libraries(consumer_gui PUBLIC consumer_domain lux::engine::editor::editor_scene_ui)

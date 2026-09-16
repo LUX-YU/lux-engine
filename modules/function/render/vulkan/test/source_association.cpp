@@ -110,7 +110,7 @@ int main()
                             &descriptors,
                             std::span(&set, 1)}));
         const auto anonymous = lights.submit(PointLightDesc{});
-        assert(anonymous && !lights.findSource(RenderEntityId{}).valid());
+        assert(anonymous && lights.findSource(RenderEntityId{}).isNull());
         lights.remove(*anonymous);
         assert(lights.lightCount(ELightSetBindings::LIGHT_POINT) == 0);
         const auto next = lights.submit(PointLightDesc{});
@@ -119,7 +119,7 @@ int main()
         lights.remove(*anonymous);
         assert(lights.findSource(RenderEntityId{}) == *next && lights.lightCount(ELightSetBindings::LIGHT_POINT) == 1);
         lights.shutdown();
-        assert(!lights.findSource(RenderEntityId{}).valid() && lights.lightCount(ELightSetBindings::LIGHT_POINT) == 0);
+        assert(lights.findSource(RenderEntityId{}).isNull() && lights.lightCount(ELightSetBindings::LIGHT_POINT) == 0);
     }
     retire.collect(0);
     assert(retire.pendingCount() == 0);

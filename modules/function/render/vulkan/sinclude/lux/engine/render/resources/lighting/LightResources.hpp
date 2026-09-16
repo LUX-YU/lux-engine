@@ -1,29 +1,31 @@
 #pragma once
-#include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
-#include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
-#include <lux/engine/render/gpu/descriptor/DescriptorService.hpp> // shared shading-input sampler
-#include <lux/engine/render/gpu/VmaFwd.hpp>
-#include <lux/engine/render/core/FrameServices.hpp>
-#include <lux/engine/function/render/client/core/ResourceHandle.hpp>   // LightHandle
-#include <lux/engine/function/render/client/core/ShadingInputSlot.hpp> // EShadingInputSlot (Light b11)
-#include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
-#include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
-#include <lux/engine/function/render/client/resources/lighting/LightDescriptor.hpp>
-#include <lux/engine/render/core/LayoutTypes.hpp> // aligned16vec*, ELightSetBindings
-#include <lux/engine/function/render/client/core/Errors.hpp>
-#include <lux/engine/render/gpu/utils/SlotMetaVector.hpp>
-#include <lux/engine/function/render/client/core/FrameStamp.hpp>
-#include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
-#include <lux/engine/function/visibility.h>
 #include <Eigen/Geometry>
-#include <variant>
 #include <array>
 #include <cstdint>
 #include <limits>
+#include <lux/engine/function/render/client/core/Errors.hpp>
+#include <lux/engine/function/render/client/core/FrameStamp.hpp>
+#include <lux/engine/function/render/client/core/RenderEntityId.hpp>
+#include <lux/engine/function/render/client/core/ResourceHandle.hpp>   // LightHandle
+#include <lux/engine/function/render/client/core/ShadingInputSlot.hpp> // EShadingInputSlot (Light b11)
+#include <lux/engine/function/render/client/resources/lighting/LightDescriptor.hpp>
+#include <lux/engine/function/visibility.h>
+#include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
+#include <lux/engine/render/core/FrameServices.hpp>
+#include <lux/engine/render/core/LayoutTypes.hpp> // aligned16vec*, ELightSetBindings
+#include <lux/engine/render/gpu/VmaFwd.hpp>
+#include <lux/engine/render/gpu/descriptor/DescriptorService.hpp> // shared shading-input sampler
+#include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
+#include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
+#include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
+#include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
+#include <lux/engine/render/gpu/utils/SlotMetaVector.hpp>
+#include <numbers>
+#include <optional>
 #include <span>
 #include <tuple>
-#include <optional>
-#include <numbers>
+#include <unordered_map>
+#include <variant>
 #include <vector>
 
 namespace lux::render
@@ -240,6 +242,18 @@ namespace lux::render
             }
         }
 
+        enum class ESourceBindResult : std::uint8_t
+        {
+            INSERTED,
+            ALREADY_BOUND,
+            CONFLICT,
+            INVALID_OBJECT
+        };
+
+        [[nodiscard]] LightHandle findSource(RenderEntityId source) const noexcept;
+        [[nodiscard]] ESourceBindResult bindSource(RenderEntityId source, LightHandle light);
+        [[nodiscard]] bool unbindSource(RenderEntityId source, LightHandle expected) noexcept;
+
         // Submit a render-domain light descriptor, return LightHandle
         Expected<LightHandle> submit(const LightDescriptor& desc);
 
@@ -291,6 +305,8 @@ namespace lux::render
             // 附带:这些 reset 也**不能**用于 shutdown→init 复用 —— destroy() 从不清
             // device_ctx_,再 init 会撞 assert(!device_ctx_ && "Init called twice")。)
             destroyShadingInputResources();
+            source_lights_.clear();
+            light_sources_.clear();
             binding_map_.clear();
             handle_generations_.clear();
             handle_alive_.clear();
@@ -373,7 +389,12 @@ namespace lux::render
                 refreshDescriptors(current_frame_);
         }
 
-    private:
+      private:
+        // Both maps describe only the active association. Anonymous and retiring instances need none.
+        std::unordered_map<RenderEntityId, LightHandle> source_lights_;
+        std::unordered_map<std::uint64_t, RenderEntityId> light_sources_;
+
+      private:
         [[nodiscard]] LightHandle allocateGlobalHandle();
         void releaseGlobalHandle(LightHandle h) noexcept;
         [[nodiscard]] std::optional<float> intensity(LightHandle handle) const noexcept;

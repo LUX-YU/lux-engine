@@ -87,7 +87,7 @@ namespace lux::editor::scene
         bool mesh_read_pending{}, material_read_pending{};
         bool mesh_upload_pending{}, material_upload_pending{}, forward_upload_pending{}, gbuffer_upload_pending{};
         bool retirement_pending{};
-        std::size_t live_handles{};
+        std::size_t live_handles{}, run_pins{};
         std::size_t texture_reads_pending{}, texture_uploads_pending{};
     };
 

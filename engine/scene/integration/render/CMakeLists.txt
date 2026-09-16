@@ -14,6 +14,7 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Builtin3DRenderStages.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderRuntime.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderBinding.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderSchema.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSyncPipeline.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystem.cpp
@@ -28,6 +29,7 @@ engine_target_add_static_type_info(
 component_include_directories(
     scene_render
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
     INSTALL_TIME include
 )
 target_compile_definitions(scene_render PRIVATE LUX_ENGINE_SCENE_RENDER_LIBRARY)

@@ -1,7 +1,6 @@
 find_package(Vulkan REQUIRED)
 find_package(lux-cxx REQUIRED COMPONENTS core container concurrent memory)
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)
-find_package(EnTT CONFIG REQUIRED)
 
 set(RENDER_VULKAN_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/comm/FeatureRegistration.cpp
@@ -146,7 +145,6 @@ target_link_libraries(
         lux::engine::resource::description
     PRIVATE
         GPUOpen::VulkanMemoryAllocator
-        EnTT::EnTT
 )
 
 # libandroid provides ANativeWindow_getWidth/Height for RenderSurface.

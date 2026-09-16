@@ -1,10 +1,11 @@
 #pragma once
 
+#include <lux/engine/serialization/SerializationError.hpp>
 #include <lux/engine/simulation/ecs/ComponentOperations.hpp>
 #include <lux/engine/simulation/ecs/ComponentSchemaId.hpp>
+#include <lux/engine/simulation/ecs/DecodedComponent.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 #include <lux/engine/world/WorldObjectId.hpp>
-#include <lux/engine/serialization/SerializationError.hpp>
 
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
@@ -80,8 +81,18 @@ namespace lux::simulation::ecs
         EncodeFn encode_;
     };
 
+    struct ComponentEntityResolver final
+    {
+        const void *state;
+        lux::cxx::expected<Entity, ComponentDecodeFailure> (*resolve)(const void *, world::WorldObjectId) noexcept;
+    };
+
+    using DecodeComponentValueFn = lux::cxx::expected<DecodedComponent, ComponentDecodeFailure> (*)(
+        std::uint32_t, std::span<const std::byte>, ComponentEntityResolver, std::shared_ptr<const void>);
+
     using CaptureComponentFn = lux::cxx::expected<ComponentCapture, ComponentDecodeFailure> (*)(
         const Registry&, Entity, std::shared_ptr<const void>);
+    using CaptureComponentValueFn = ComponentCapture (*)(const void *, std::shared_ptr<const void>);
 
     struct ComponentSchema final
     {
@@ -95,29 +106,28 @@ namespace lux::simulation::ecs
         bool editor_visible{true};
         std::shared_ptr<const void> code_lifetime;
         CaptureComponentFn capture{};
+        DecodeComponentValueFn decode_value{};
+        CaptureComponentValueFn capture_value{};
     };
 
     template <class Component>
     [[nodiscard]] ComponentSchema makeComponentSchema(
-        ComponentSchemaId id,
-        std::uint32_t version,
-        EComponentSnapshotPolicy snapshot,
-        std::shared_ptr<const void> code_lifetime,
-        DecodeEmplaceComponentFn decode_emplace,
-        EComponentSemanticKind semantic_kind,
-        bool editor_visible,
-        CaptureComponentFn capture = nullptr
-    )
+        ComponentSchemaId id, std::uint32_t version, EComponentSnapshotPolicy snapshot,
+        std::shared_ptr<const void> code_lifetime, DecodeEmplaceComponentFn decode_emplace,
+        EComponentSemanticKind semantic_kind, bool editor_visible, CaptureComponentFn capture = nullptr,
+        DecodeComponentValueFn decode_value = nullptr, CaptureComponentValueFn capture_value = nullptr)
     {
-        return ComponentSchema{
-            lux::cxx::typeToken<Component>(),
-            std::move(id),
-            version,
-            componentOperations<Component>(),
-            decode_emplace,
-            snapshot,
-            semantic_kind,
-            editor_visible,
-            std::move(code_lifetime), capture};
+        return ComponentSchema{lux::cxx::typeToken<Component>(),
+                               std::move(id),
+                               version,
+                               componentOperations<Component>(),
+                               decode_emplace,
+                               snapshot,
+                               semantic_kind,
+                               editor_visible,
+                               std::move(code_lifetime),
+                               capture,
+                               decode_value,
+                               capture_value};
     }
 } // namespace lux::simulation::ecs

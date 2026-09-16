@@ -2,6 +2,7 @@
 #include <array>
 #include <cassert>
 #include <cstdio>
+#include <chrono>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
 #include <lux/engine/simulation/ecs/Parent.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
@@ -12,6 +13,7 @@ inline void checkSceneStructure(lux::editor::scene::SceneEditor &scene, bool opa
     using namespace lux;
     using namespace lux::editor;
     using namespace lux::editor::scene;
+    const auto measured_begin = std::chrono::steady_clock::now();
     const auto initial = scene.historyView()->history;
     const auto count = scene.objects().size();
     const auto original = scene.objects().front().object;
@@ -98,4 +100,9 @@ inline void checkSceneStructure(lux::editor::scene::SceneEditor &scene, bool opa
     std::printf("scene structure: hierarchy=%d opaque=%d create/delete/restore, exact stale/provider/reference/cycle "
                 "rejection; owner content/history preserved\n",
                 scene.supportsHierarchy(), opaque);
+    std::printf("structure active: objects=%zu hierarchy=%d opaque=%d elapsed_us=%.3f revision_delta=%llu retained=%zu\n",
+                count, scene.supportsHierarchy(), opaque,
+                std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - measured_begin).count(),
+                static_cast<unsigned long long>(scene.historyView()->history.revision.value - initial.revision.value),
+                scene.historyView()->history.charged_retained_bytes);
 }

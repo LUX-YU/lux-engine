@@ -45,20 +45,6 @@ namespace lux::render
             return sc ? sc->resources().find<LightResources>() : nullptr;
         }
 
-        void eraseLightBinding(RenderScene& scene, RenderEntityId entity) noexcept
-        {
-            auto& entities = scene.entities();
-            if (!entities.valid(entity))
-            {
-                return;
-            }
-            entities.remove<LightBinding>(entity);
-            if (!entities.all_of<MeshBinding>(entity))
-            {
-                entities.destroy(entity);
-            }
-        }
-
         void applyLightUpsert(Ctx& ctx, const UpsertLightPayload& payload)
         {
             auto* scene = lookupScene(ctx.user_state, payload.scene_id);
@@ -69,11 +55,14 @@ namespace lux::render
                 return;
             }
 
-            auto& entities = scene->entities();
-            if (auto* binding = entities.valid(payload.entity) ? entities.try_get<LightBinding>(payload.entity)
-                                                                : nullptr)
+            const auto existing = lights->findSource(payload.entity);
+            if (existing.isValid())
             {
-                lights->modify(handle_cast<LightHandle>(binding->light), fromLightPayload(payload));
+                const auto result = lights->modify(existing, fromLightPayload(payload));
+                if (!result.ok())
+                {
+                    ctx.markDispatchError(result);
+                }
                 return;
             }
 
@@ -91,14 +80,11 @@ namespace lux::render
                     static_cast<float>(payload.transition_milliseconds) / 1000.0F
                 );
             }
-            if (!entities.valid(payload.entity))
+            if (lights->bindSource(payload.entity, *created) != LightResources::ESourceBindResult::INSERTED)
             {
-                (void)entities.create(payload.entity);
+                lights->remove(*created);
+                ctx.markDispatchError(renderError<err::resource::ModifyFailed>());
             }
-            entities.emplace<LightBinding>(
-                payload.entity,
-                RLightHandle{created->index, created->gen}
-            );
         }
     } // anonymous namespace (helpers)
 
@@ -110,21 +96,18 @@ namespace lux::render
     void handleRemoveLight(GeneralRenderServer::Dispatcher::Ctx& ctx, const RemoveLightPayload& payload)
     {
         auto* scene = lookupScene(ctx.user_state, payload.scene_id);
-        auto* binding = scene && scene->entities().valid(payload.entity)
-            ? scene->entities().try_get<LightBinding>(payload.entity)
-            : nullptr;
-        if (scene == nullptr || binding == nullptr)
+        auto *lights = resolveLights(ctx, payload.scene_id);
+        const auto handle = lights ? lights->findSource(payload.entity) : LightHandle{};
+        if (!scene || !lights || !handle.isValid())
         {
             return;
         }
-        if (auto* light_res = resolveLights(ctx, payload.scene_id))
+        (void)lights->unbindSource(payload.entity, handle);
+        const float duration = static_cast<float>(payload.transition_milliseconds) / 1000.0F;
+        if (!lights->beginFadeOut(handle, scene->sceneTime(), duration))
         {
-            const auto handle = handle_cast<LightHandle>(binding->light);
-            const float duration = static_cast<float>(payload.transition_milliseconds) / 1000.0F;
-            if (!light_res->beginFadeOut(handle, scene->sceneTime(), duration))
-                light_res->remove(handle);
+            lights->remove(handle);
         }
-        eraseLightBinding(*scene, payload.entity);
     }
 
     void handleLightStats(GeneralRenderServer::Dispatcher::Ctx& ctx, const LightStatsPayload& payload)

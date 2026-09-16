@@ -17,6 +17,45 @@
 
 namespace lux::render
 {
+    RenderObjectHandle InstanceResources::findSource(RenderEntityId source) const noexcept
+    {
+        const auto found = source_objects_.find(source);
+        return found == source_objects_.end() ? RenderObjectHandle{} : found->second;
+    }
+
+    InstanceResources::ESourceBindResult InstanceResources::bindSource(RenderEntityId source, RenderObjectHandle object)
+    {
+        if (!isAlive(object))
+        {
+            return ESourceBindResult::INVALID_OBJECT;
+        }
+        const auto found = source_objects_.find(source);
+        if (found != source_objects_.end())
+        {
+            return found->second == object ? ESourceBindResult::ALREADY_BOUND : ESourceBindResult::CONFLICT;
+        }
+        const auto key = (static_cast<std::uint64_t>(object.gen) << 32U) | object.index;
+        if (object_sources_.contains(key))
+        {
+            return ESourceBindResult::CONFLICT;
+        }
+        source_objects_.emplace(source, object);
+        object_sources_.emplace(key, source);
+        return ESourceBindResult::INSERTED;
+    }
+
+    bool InstanceResources::unbindSource(RenderEntityId source, RenderObjectHandle expected) noexcept
+    {
+        const auto found = source_objects_.find(source);
+        if (found == source_objects_.end() || found->second != expected)
+        {
+            return false;
+        }
+        object_sources_.erase((static_cast<std::uint64_t>(expected.gen) << 32U) | expected.index);
+        source_objects_.erase(found);
+        return true;
+    }
+
     // =========================================================================
     //  Lifecycle
     // =========================================================================
@@ -149,6 +188,8 @@ namespace lux::render
         local_bsphere_.clear();
         dense_dynamic_slots_.clear();
         dynamic_positions_.clear();
+        source_objects_.clear();
+        object_sources_.clear();
         resource_bindings_.clear();
         fade_retirements_.clear();
         transparent_hard_cut_count_ = 0u;
@@ -305,6 +346,12 @@ namespace lux::render
         if (!registry_.isAlive(slot))
             return;
 
+        const auto handle = handleForSlot(slot);
+        const auto source = object_sources_.find((static_cast<std::uint64_t>(handle.gen) << 32U) | handle.index);
+        if (source != object_sources_.end())
+        {
+            (void)unbindSource(source->second, handle);
+        }
         auto& cull = cull_meta_stream_.at(slot.index);
         unregisterInstanceLods(cull);
         removeDynamicSlot(slot.index);
@@ -452,6 +499,8 @@ namespace lux::render
         result.reserve(resource_bindings_.size());
         for (const auto& [_, binding] : resource_bindings_)
             result.push_back(binding);
+        source_objects_.clear();
+        object_sources_.clear();
         resource_bindings_.clear();
         fade_retirements_.clear();
         return result;

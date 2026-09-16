@@ -80,4 +80,12 @@ namespace consumer
 
 #if !defined(__LUX_PARSE_TIME__)
 #include <consumer/Component.type_static_info.hpp>
+#include <lux/engine/simulation/ecs/DecodedComponent.hpp>
+
+namespace lux::simulation::ecs
+{
+    // Component has implicit memberwise moves. Its standard containers and Eigen
+    // values perform no domain validation; MSVC deque may allocate its sentinel.
+    template <> inline constexpr bool componentInstallHasNoBusinessFailure<consumer::Component> = true;
+} // namespace lux::simulation::ecs
 #endif

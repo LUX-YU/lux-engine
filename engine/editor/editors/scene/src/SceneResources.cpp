@@ -5,6 +5,70 @@
 
 namespace lux::editor::scene::detail
 {
+    SceneResourcePins::~SceneResourcePins()
+    {
+        reset();
+    }
+    SceneResourcePins::SceneResourcePins(SceneResourcePins &&other) noexcept
+        : requests_(std::exchange(other.requests_, {})), values_(std::move(other.values_))
+    {
+    }
+    SceneResourcePins &SceneResourcePins::operator=(SceneResourcePins &&other) noexcept
+    {
+        if (this != &other)
+        {
+            reset();
+            requests_ = std::exchange(other.requests_, {});
+            values_ = std::move(other.values_);
+        }
+        return *this;
+    }
+    void SceneResourcePins::reset() noexcept
+    {
+        for (auto *request : requests_)
+        {
+            assert(request->run_pins != 0);
+            --request->run_pins;
+        }
+        requests_.clear();
+        values_.clear();
+    }
+
+    SceneResult<SceneResourcePins> SceneResources::freeze(const lux::simulation::ecs::Registry &registry,
+                                                          const lux::simulation::ecs::WorldEntityMap &identities)
+    {
+        SceneResourcePins pins;
+        if (closing_ || closed_)
+        {
+            return lux::cxx::unexpected(SceneFailure{ESceneError::CLOSED, history_});
+        }
+        for (const auto entity : registry.view<const lux::simulation::ecs::Mesh3D>())
+        {
+            const auto association = current_requests_.find(entity);
+            const auto *resolved = registry.try_get<lux::scene::ResolvedMeshResources>(entity);
+            const auto &visual = registry.get<lux::simulation::ecs::Mesh3D>(entity).value;
+            const auto object = identities.object(entity);
+            if (association == current_requests_.end() || !resolved || !object.valid() ||
+                visual.mesh != resolved->mesh_source || visual.material != resolved->material_source ||
+                association->second->row.state != ESceneResourceState::READY || !association->second->adopted ||
+                association->second->refresh_sequence || association->second->mesh != resolved->mesh ||
+                association->second->material != resolved->material)
+            {
+                return lux::cxx::unexpected(SceneFailure{ESceneError::NOT_READY, history_});
+            }
+            pins.values_.push_back({object, *resolved});
+        }
+        // All rejection and vector preparation precedes pin acquisition.
+        pins.requests_.reserve(pins.values_.size());
+        for (const auto &value : pins.values_)
+        {
+            auto *request = current_requests_.at(identities.entity(value.object));
+            pins.requests_.push_back(request);
+            ++request->run_pins;
+        }
+        return pins;
+    }
+
     namespace
     {
         auto fail(ESceneError code, editing::HistoryId id) noexcept
@@ -338,6 +402,10 @@ namespace lux::editor::scene::detail
 
     void ResourceRequest::releaseStep(rendering::EditorRenderer &renderer, lux::scene::RenderRuntimeLease &runtime)
     {
+        if (run_pins != 0)
+        {
+            return;
+        }
         if (!settled())
         {
             return;
@@ -488,7 +556,8 @@ namespace lux::editor::scene::detail
                                                [](const auto &request)
                                                {
                                                    return request->row.state == ESceneResourceState::SUPERSEDED &&
-                                                          request->settled() && request->liveHandles() == 0;
+                                                          request->settled() && request->liveHandles() == 0 &&
+                                                          request->run_pins == 0;
                                                });
             changed |= removed != 0;
             for (const auto entity : registry.view<lux::simulation::ecs::Mesh3D>())
@@ -768,7 +837,7 @@ namespace lux::editor::scene::detail
         {
             return fail(ESceneError::STALE_CONTENT, history_);
         }
-        if (old.refresh_sequence || !terminal(old.row.state) || !old.settled() || old.liveHandles())
+        if (old.refresh_sequence || !terminal(old.row.state) || !old.settled() || old.liveHandles() || old.run_pins)
         {
             return fail(ESceneError::BUSY, history_);
         }
@@ -835,6 +904,7 @@ namespace lux::editor::scene::detail
                 row.retirement_pending = request->retired_program_consumed &&
                                          !request->retired_program_consumed->load(std::memory_order_acquire);
                 row.live_handles = request->liveHandles();
+                row.run_pins = request->run_pins;
                 for (const auto &texture : request->textures)
                 {
                     row.texture_reads_pending += !readDone(*texture.read);
@@ -877,7 +947,7 @@ namespace lux::editor::scene::detail
             {
                 request->acceptReplies();
                 request->releaseStep(*renderer_, runtime_);
-                if (!request->settled() || request->liveHandles())
+                if (!request->settled() || request->liveHandles() || request->run_pins)
                 {
                     return false;
                 }

@@ -9,6 +9,45 @@
 
 namespace lux::render
 {
+    LightHandle LightResources::findSource(RenderEntityId source) const noexcept
+    {
+        const auto found = source_lights_.find(source);
+        return found == source_lights_.end() ? LightHandle{} : found->second;
+    }
+
+    LightResources::ESourceBindResult LightResources::bindSource(RenderEntityId source, LightHandle light)
+    {
+        if (binding_map_.find(light) == nullptr)
+        {
+            return ESourceBindResult::INVALID_OBJECT;
+        }
+        const auto found = source_lights_.find(source);
+        if (found != source_lights_.end())
+        {
+            return found->second == light ? ESourceBindResult::ALREADY_BOUND : ESourceBindResult::CONFLICT;
+        }
+        const auto key = (static_cast<std::uint64_t>(light.gen) << 32U) | light.index;
+        if (light_sources_.contains(key))
+        {
+            return ESourceBindResult::CONFLICT;
+        }
+        source_lights_.emplace(source, light);
+        light_sources_.emplace(key, source);
+        return ESourceBindResult::INSERTED;
+    }
+
+    bool LightResources::unbindSource(RenderEntityId source, LightHandle expected) noexcept
+    {
+        const auto found = source_lights_.find(source);
+        if (found == source_lights_.end() || found->second != expected)
+        {
+            return false;
+        }
+        light_sources_.erase((static_cast<std::uint64_t>(expected.gen) << 32U) | expected.index);
+        source_lights_.erase(found);
+        return true;
+    }
+
     bool LightResources::canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept
     {
         const auto can_rebase = [origin_delta](const auto& ssbo) {
@@ -617,6 +656,11 @@ namespace lux::render
         if (!rec)
             return;
 
+        const auto source = light_sources_.find((static_cast<std::uint64_t>(handle.gen) << 32U) | handle.index);
+        if (source != light_sources_.end())
+        {
+            (void)unbindSource(source->second, handle);
+        }
         const auto binding = rec->binding;
         cancelIntensityTransition(handle);
 

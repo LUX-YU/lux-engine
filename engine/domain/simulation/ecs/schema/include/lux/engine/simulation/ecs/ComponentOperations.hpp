@@ -83,23 +83,6 @@ class ComponentOperations final
         notify_updated_(registry, entity);
     }
 
-    [[nodiscard]] bool canTransfer() const noexcept
-    {
-        return transfer_ != nullptr;
-    }
-
-    // The caller has prepared the value and its final Entity references in a
-    // private Registry. Destination identity and component absence are commit
-    // preconditions, not recoverable errors.
-    void transfer(Registry &destination, Registry &prepared, Entity entity) const noexcept
-    {
-        if (!transfer_)
-        {
-            std::terminate();
-        }
-        transfer_(destination, prepared, entity);
-    }
-
   private:
     using HasFn = bool (*)(const Registry &, Entity) noexcept;
     using GetFn = const void *(*)(const Registry &, Entity) noexcept;
@@ -107,7 +90,6 @@ class ComponentOperations final
     using EraseFn = void (*)(Registry &, Entity) noexcept;
     using ReserveFn = void (*)(Registry &, std::size_t);
     using NotifyUpdatedFn = void (*)(Registry &, Entity) noexcept;
-    using TransferFn = void (*)(Registry &, Registry &, Entity) noexcept;
 
     std::uint64_t storage_key_{};
     HasFn has_{};
@@ -116,7 +98,6 @@ class ComponentOperations final
     EraseFn erase_{};
     ReserveFn reserve_{};
     NotifyUpdatedFn notify_updated_{};
-    TransferFn transfer_{};
 
     friend struct detail::ComponentOperationsAccess;
 
@@ -152,20 +133,6 @@ template <class Component> [[nodiscard]] ComponentOperations componentOperations
     {
         registry.template patch<Component>(entity);
     };
-    if constexpr (std::is_move_constructible_v<Component>)
-    {
-        result.transfer_ = [](Registry &destination, Registry &prepared, Entity entity) noexcept
-        {
-                if constexpr (std::is_void_v<decltype(prepared.template get<Component>(entity))>)
-            {
-                destination.template emplace<Component>(entity);
-            }
-            else
-            {
-                destination.template emplace<Component>(entity, std::move(prepared.template get<Component>(entity)));
-            }
-        };
-    }
     return result;
 }
 } // namespace lux::simulation::ecs

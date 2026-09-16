@@ -1,7 +1,8 @@
 #pragma once
+#include <lux/engine/serialization/Serialization.hpp>
+#include <lux/engine/simulation/ecs/ComponentSchema.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 #include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
-#include <lux/engine/serialization/Serialization.hpp>
 
 namespace lux::simulation::ecs
 {
@@ -13,14 +14,24 @@ namespace lux::simulation::ecs
     class WorldComponentArchive final
     {
     public:
-        WorldComponentArchive(Binary& binary, const WorldEntityMap& identities, const Registry& registry) noexcept
-            : binary_(binary), identities_(identities), registry_(&registry) {}
+      WorldComponentArchive(Binary &binary, const WorldEntityMap &identities, const Registry &registry) noexcept
+          : binary_(binary), identities_(&identities), registry_(&registry)
+      {
+      }
+
+      WorldComponentArchive(Binary &binary, ComponentEntityResolver resolver) noexcept
+          requires std::same_as<Binary, serialization::BinaryReader>
+          : binary_(binary), resolver_(resolver)
+      {
+      }
 
         // A frozen identity map is sufficient when encoding an owned capture on another lane.
         // It is captured at the same structural safe point as the component values.
-        WorldComponentArchive(Binary& binary, const WorldEntityMap& captured_identities) noexcept
-            requires std::same_as<Binary, serialization::BinaryWriter>
-            : binary_(binary), identities_(captured_identities) {}
+      WorldComponentArchive(Binary &binary, const WorldEntityMap &captured_identities) noexcept
+          requires std::same_as<Binary, serialization::BinaryWriter>
+          : binary_(binary), identities_(&captured_identities)
+      {
+      }
 
         [[nodiscard]] std::size_t offset() const noexcept { return binary_.offset(); }
         [[nodiscard]] world::WorldObjectId unresolvedReference() const noexcept { return unresolved_; }
@@ -49,7 +60,7 @@ namespace lux::simulation::ecs
         [[nodiscard]] serialization::SerializationResult writeEntity(Entity value) noexcept
             requires std::same_as<Binary, serialization::BinaryWriter>
         {
-            const auto identity = identities_.object(value);
+            const auto identity = identities_->object(value);
             if (value != NullEntity && (!identity.valid() || (registry_ && !registry_->valid(value))))
             {
                 invalid_ = value;
@@ -64,23 +75,45 @@ namespace lux::simulation::ecs
             const auto start = offset();
             std::array<std::uint8_t, 16> bytes{};
             auto read = binary_.readBytes(std::as_writable_bytes(std::span(bytes)));
-            if (!read) return read;
+            if (!read)
+            {
+                return read;
+            }
             const world::WorldObjectId identity{uuids::uuid(bytes)};
-            const auto entity = identities_.entity(identity);
-            if (identity.valid() && (entity == NullEntity || !registry_->valid(entity)))
+            if (!identity.valid())
+            {
+                value = NullEntity;
+                return {};
+            }
+            const auto resolved =
+                resolver_.resolve ? resolver_.resolve(resolver_.state, identity) : resolveCurrent(identity);
+            if (!resolved)
             {
                 unresolved_ = identity;
                 return lux::cxx::unexpected(serialization::SerializationFailure{
                     serialization::ESerializationError::INVALID_VALUE, start});
             }
-            value = entity;
+            value = *resolved;
             return {};
         }
 
     private:
         Binary& binary_;
-        const WorldEntityMap& identities_;
+        [[nodiscard]] lux::cxx::expected<Entity, ComponentDecodeFailure> resolveCurrent(
+            world::WorldObjectId identity) const noexcept
+        {
+            const auto entity = identities_->entity(identity);
+            if (entity == NullEntity || !registry_->valid(entity))
+            {
+                return lux::cxx::unexpected(
+                    ComponentDecodeFailure{EComponentDecodeError::UNRESOLVED_REFERENCE, offset(), identity});
+            }
+            return entity;
+        }
+
+        const WorldEntityMap *identities_{};
         const Registry* registry_{};
+        ComponentEntityResolver resolver_{};
         world::WorldObjectId unresolved_;
         Entity invalid_{NullEntity};
     };

@@ -31,7 +31,7 @@ namespace lux::editor::gui
             return *this;
         }
 
-        [[nodiscard]] EditorResult<void> attach(lux::ui::UISession &ui)
+        [[nodiscard]] EditorResult<void> attach(lux::ui::UISession &ui, bool bind_history = true)
         {
             auto registered = ui.registerPane(*this);
             if (!registered)
@@ -40,6 +40,10 @@ namespace lux::editor::gui
                                                           static_cast<std::uint64_t>(registered.error())});
             }
             registration_ = std::move(*registered);
+            if (!bind_history)
+            {
+                return {};
+            }
             auto &router = ui.commandRouter();
             const auto bind = [&](std::string_view name, auto action, auto enabled) -> EditorResult<void>
             {

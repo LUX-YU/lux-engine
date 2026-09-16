@@ -43,7 +43,6 @@
 #include <lux/cxx/container/SparseSet.hpp>
 #include <lux/cxx/container/BasicSparseSet.hpp> // SlotKeyAutoSparseSet (generational views)
 
-#include <entt/entity/registry.hpp>
 
 #include <Eigen/Core>
 
@@ -91,20 +90,9 @@ namespace lux::render
     //  RenderScene
     // ─────────────────────────────────────────────────────────────────────
 
-    struct MeshBinding final
-    {
-        RenderObjectHandle object{};
-    };
-
-    struct LightBinding final
-    {
-        RLightHandle light{};
-    };
-
     class LUX_FUNCTION_PUBLIC RenderScene
     {
     public:
-        using EntityRegistry = entt::basic_registry<RenderEntityId>;
 
         struct Config
         {
@@ -495,18 +483,6 @@ namespace lux::render
         }
 
         // ================================================================
-        //  Primitive Registry
-        // ================================================================
-
-        [[nodiscard]] EntityRegistry& entities() noexcept
-        {
-            return entities_;
-        }
-        [[nodiscard]] const EntityRegistry& entities() const noexcept
-        {
-            return entities_;
-        }
-
         // ================================================================
         //  Scene Resource Registry
         // ================================================================
@@ -612,7 +588,6 @@ namespace lux::render
 
         // Stable cross-lane entities own only bindings to specialized Render
         // resources; resource payloads remain in their dedicated stores.
-        EntityRegistry entities_;
 
         /// 特性容器、查询与每(特性,视图)状态账本(纯数据;事务编排留在本类)。
         RenderFeatureSet feature_set_;

@@ -14,6 +14,7 @@ add_component(
     OUTPUT_NAME    lux_engine_simulation_ecs_core
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/EcsCommandBuffer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/EntityCreationPlan.cpp
 )
 
 component_include_directories(

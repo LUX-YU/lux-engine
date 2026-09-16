@@ -180,6 +180,30 @@ namespace lux::editor::gui
     void ScenePane::draw(lux::ui::Frame &frame, lux::ui::PaneDrawContext &context)
     {
         context.activateContext(lux::ui::UiContextIdView{id()});
+        const auto run = document_.runStatus();
+        if (run.state == scene::ERunState::IDLE || run.state == scene::ERunState::FINISHED ||
+            run.state == scene::ERunState::FAILED)
+        {
+            if (ImGui::Button("Play"))
+            {
+                auto started = document_.play();
+                if (!started)
+                {
+                    status_ = started.error().domain + ": " + started.error().message;
+                }
+            }
+        }
+        else
+        {
+            if (ImGui::Button("Stop Run"))
+            {
+                static_cast<void>(document_.stopRun(run.id));
+            }
+        }
+        if (!run.result)
+        {
+            frame.textWrapped(run.result.error().domain + ": " + run.result.error().message);
+        }
         if (closing_ || !view_)
         {
             frame.textWrapped(status_.empty() ? "Preparing scene view..." : status_);

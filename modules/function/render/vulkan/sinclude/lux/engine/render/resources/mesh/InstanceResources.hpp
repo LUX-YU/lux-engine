@@ -24,6 +24,7 @@ namespace lux::render
 
 #include <array>
 #include <cstdint>
+#include <lux/engine/function/render/client/core/RenderEntityId.hpp>
 #include <memory>
 #include <optional>
 #include <span>
@@ -121,9 +122,9 @@ namespace lux::render
      * Three-stream GPU instance storage with stable slot allocation.
      *
      * Streams:
-     *   0. **Transform** (64 B)  — mat4 model, read by vertex shader.
-     *   1. **CullMeta**  (32 B)  — bsphere + draw params, read by cull compute.
-     *   2. **Property**   (32 B)  — material + flags, read by vertex/fragment.
+     *   0. **Transform** (64 B) — page-relative spatial transform, read by vertex shader.
+     *   1. **CullMeta**  (64 B) — page-relative sphere and LOD/MDC lookup, read by cull compute.
+     *   2. **Property**  (80 B) — material, vertex source, transition and tint, read by vertex/fragment.
      *
      * Each stream has independent dirty tracking; uploads are incremental
      * (coalesced consecutive-run copy via staging buffer) unless a full
@@ -157,6 +158,18 @@ namespace lux::render
 
         void init(const InitInfo& info);
         void shutdown();
+
+        enum class ESourceBindResult : std::uint8_t
+        {
+            INSERTED,
+            ALREADY_BOUND,
+            CONFLICT,
+            INVALID_OBJECT
+        };
+
+        [[nodiscard]] RenderObjectHandle findSource(RenderEntityId source) const noexcept;
+        [[nodiscard]] ESourceBindResult bindSource(RenderEntityId source, RenderObjectHandle object);
+        [[nodiscard]] bool unbindSource(RenderEntityId source, RenderObjectHandle expected) noexcept;
 
         // ─── Slot management ────────────────────────────────────────────
         [[nodiscard]] InstanceSlot allocate();
@@ -418,7 +431,12 @@ namespace lux::render
             mesh_section_table_.setDeferredQueue(q);
         }
 
-    private:
+      private:
+        // Both maps describe only the active association. Anonymous and retiring instances need none.
+        std::unordered_map<RenderEntityId, RenderObjectHandle> source_objects_;
+        std::unordered_map<std::uint64_t, RenderEntityId> object_sources_;
+
+      private:
         static constexpr uint32_t kInvalidObjectId = ~0u;
         [[nodiscard]] bool ensureCapacity(uint32_t required);
         void refreshDescriptorSet();

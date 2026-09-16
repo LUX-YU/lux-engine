@@ -6,12 +6,16 @@
 #include <lux/engine/editor/rendering/EditorRenderer.hpp>
 #include <lux/engine/editor/scene/NativeScene.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
+#include <lux/engine/editor/scene/detail/SceneObjectEdits.hpp>
 #include <lux/engine/editor/scene/detail/SceneResources.hpp>
+#include <lux/engine/editor/scene/detail/SceneRun.hpp>
 #include <lux/engine/resource/asset/material/MaterialAssets.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/Scene.hpp>
+#include <lux/engine/scene/SceneRenderBinding.hpp>
 #include <lux/engine/scene/WorldMaterializer.hpp>
+#include <lux/engine/simulation/ecs/EntityCreationPlan.hpp>
 #include <lux/engine/simulation/ecs/Parent.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
@@ -124,13 +128,13 @@ namespace lux::editor::scene
         process::ExecutionRuntime &runtime;
         std::shared_ptr<const NativeScene> source;
         std::shared_ptr<const lux::scene::SceneMetaManager> metadata;
+        std::unique_ptr<lux::scene::SceneRenderBinding> render_binding;
         std::unique_ptr<lux::scene::Scene> scene;
-        lux::simulation::ecs::WorldEntityMap identities;
+        detail::SceneObjects objects;
         std::unique_ptr<editing::EditHistory> history;
         lux::task::TaskExecutor executor;
         detail::SceneResources resources;
-        std::vector<SceneObjectRow> rows;
-        SelectionNotice selection;
+        detail::SceneRun run;
         std::shared_ptr<const SceneResourceSnapshot> resource_snapshot;
         std::variant<std::monostate, SceneFailure, lux::simulation::SimulationExecutionFailure,
                      lux::scene::SceneExecutionFailure, editing::EditFailure>
@@ -141,12 +145,8 @@ namespace lux::editor::scene
         std::vector<std::unique_ptr<DocumentView>> views;
         std::variant<std::monostate, Preview> preview;
         std::uint64_t next_preview{1};
-        std::uint64_t next_component_change{1};
         bool editing_busy{};
-        bool structural_commit{};
-        bool structure_changed{};
         bool close_requested{};
-        std::vector<ComponentNotice> component_versions;
         std::variant<std::monostate, SceneSave> save;
         std::uint64_t next_save{1};
         std::vector<asset::AssetId> changed_assets;
@@ -199,382 +199,11 @@ namespace lux::editor::scene
             lux::world::WorldObjectId object;
             lux::simulation::ecs::Mesh3D value;
         };
-        struct ObjectComponent final
-        {
-            const lux::simulation::ecs::ComponentSchema *schema;
-            std::vector<std::byte> bytes;
-        };
-        struct ObjectContent final
-        {
-            SceneObjectRow row;
-            std::vector<ObjectComponent> components;
-        };
-
         static auto structureFailure(ESceneStructureError code, std::string_view message)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::PRECONDITION_FAILED,
                                                                  static_cast<std::uint64_t>(code), message));
         }
-
-        editing::EditResult<ObjectContent> captureObject(SceneObjectRow row,
-                                                         const lux::simulation::ecs::Registry &registry,
-                                                         const lux::simulation::ecs::WorldEntityMap &mapping) const
-        {
-            namespace ecs = lux::simulation::ecs;
-            ObjectContent result{std::move(row), {}};
-            const auto entity = mapping.entity(result.row.object);
-            std::size_t retained{};
-            for (const auto &schema : metadata->components().all())
-            {
-                if (schema.semantic_kind == ecs::EComponentSemanticKind::RUNTIME_DERIVED ||
-                    !schema.operations.has(registry, entity))
-                {
-                    continue;
-                }
-                const bool declared =
-                    std::ranges::find(source->world->data().schemas(), schema.id.name,
-                                      &lux::world::WorldDataSchemaId::name) != source->world->data().schemas().end();
-                if (!declared || !schema.capture || !schema.decode_emplace || !schema.operations.canTransfer())
-                {
-                    return structureFailure(ESceneStructureError::MISSING_PROVIDER, schema.id.name);
-                }
-                auto capture = schema.capture(registry, entity, schema.code_lifetime);
-                if (!capture)
-                {
-                    return structureFailure(ESceneStructureError::CODEC_FAILURE, schema.id.name);
-                }
-                auto bytes = capture->encode(mapping, kHistoryLimits.max_staging_bytes - retained);
-                if (!bytes)
-                {
-                    return structureFailure(ESceneStructureError::CODEC_FAILURE, schema.id.name);
-                }
-                retained += bytes->size();
-                result.components.push_back({&schema, std::move(*bytes)});
-            }
-            return result;
-        }
-
-        class ObjectEdit final : public editing::EditOperation
-        {
-            using Id = lux::world::WorldObjectId;
-            using Members = std::unordered_set<Id, lux::world::WorldObjectIdHash>;
-            class Plan final : public editing::PreparedEdit
-            {
-              public:
-                Plan(const ObjectEdit &edit, const editing::ApplyContext &context)
-                    : edit_(edit), insert_(edit.creation_ == (context.direction == editing::EDirection::FORWARD)),
-                      rows_(edit.owner_.rows), versions_(edit.owner_.component_versions),
-                      selection_(edit.owner_.selection), revision_(context.next_revision)
-                {
-                }
-                editing::EditResult<void> prepare()
-                {
-                    namespace ecs = lux::simulation::ecs;
-                    auto &owner = edit_.owner_;
-                    const auto &registry = owner.scene->registry();
-                    Members members;
-                    members.reserve(edit_.objects_.size());
-                    for (const auto &object : edit_.objects_)
-                    {
-                        const auto entity = owner.identities.entity(object.row.object);
-                        if (!members.insert(object.row.object).second ||
-                            (insert_ ? entity != ecs::NullEntity : entity == ecs::NullEntity))
-                        {
-                            return structureFailure(ESceneStructureError::INVALID_OBJECT,
-                                                    "The object identity changed");
-                        }
-                    }
-                    identities_.reserve(owner.identities.size() + edit_.objects_.size());
-                    for (const auto &[id, entity] : owner.identities.entries())
-                    {
-                        if (insert_ || !members.contains(id))
-                        {
-                            if (!identities_.bind(id, entity))
-                            {
-                                std::terminate();
-                            }
-                            if (insert_ && prepared_.create(entity) != entity)
-                            {
-                                std::terminate();
-                            }
-                        }
-                    }
-                    if (insert_)
-                    {
-                        // EnTT honors an unused explicit identity. Reuse its retired pool
-                        // first, including the current generation; neither the live Registry
-                        // nor its free list changes here.
-                        const auto *pool = registry.storage<ecs::Entity>();
-                        std::size_t available = pool->free_list();
-                        using Traits = entt::entt_traits<ecs::Entity>;
-                        typename Traits::entity_type next{};
-                        for (std::size_t index{}; index < pool->size(); ++index)
-                        {
-                            next = (std::max)(next, Traits::to_entity(pool->data()[index]) + 1);
-                        }
-                        for (const auto &object : edit_.objects_)
-                        {
-                            if (available == pool->size() && next >= Traits::entity_mask)
-                            {
-                                return lux::cxx::unexpected(
-                                    editing::makeEditFailure(editing::EEditError::ID_EXHAUSTED));
-                            }
-                            const auto entity =
-                                available < pool->size() ? pool->data()[available++] : Traits::construct(next++, 0);
-                            if (prepared_.create(entity) != entity || !identities_.bind(object.row.object, entity))
-                            {
-                                std::terminate();
-                            }
-                        }
-                        for (const auto &object : edit_.objects_)
-                        {
-                            const auto entity = identities_.entity(object.row.object);
-                            for (const auto &component : object.components)
-                            {
-                                const auto &schema = *component.schema;
-                                auto decoded = schema.decode_emplace(prepared_, identities_, entity, schema.version,
-                                                                     component.bytes);
-                                if (!decoded)
-                                {
-                                    return structureFailure(
-                                        ESceneStructureError::CODEC_FAILURE,
-                                        schema.id.name + ": decode error " +
-                                            std::to_string(static_cast<unsigned>(decoded.error().code)) + " at byte " +
-                                            std::to_string(decoded.error().offset));
-                                }
-                                versions_.push_back({object.row.object, schema.cpp_type, revision_});
-                            }
-                            rows_.push_back(object.row);
-                        }
-                        std::ranges::sort(rows_, lux::world::WorldObjectIdLess{}, &SceneObjectRow::object);
-                        std::ranges::sort(versions_, Data::componentLess);
-                    }
-                    else
-                    {
-                        // Unknown payloads can contain references. Only a provider can
-                        // establish their safety; silently deleting around them would corrupt
-                        // the preserved author source.
-                        bool removes_source_object{};
-                        for (const auto &partition : owner.source->partitions)
-                        {
-                            for (std::size_t index{}; index < partition.objectCount(); ++index)
-                            {
-                                removes_source_object |= members.contains(partition.objectAt(index).id());
-                            }
-                        }
-                        if (removes_source_object)
-                        {
-                            for (const auto &schema : owner.source->world->data().schemas())
-                            {
-                                const auto found = std::ranges::find(owner.metadata->components().all(), schema.name,
-                                                                     [](const auto &value) -> const std::string &
-                                                                     { return value.id.name; });
-                                if (found == owner.metadata->components().all().end())
-                                {
-                                    return structureFailure(ESceneStructureError::MISSING_PROVIDER, schema.name);
-                                }
-                            }
-                        }
-                        // EditHistory validates the exact content StateId. Author writes are private to
-                        // this owner; replay therefore uses the retained capture. Wire-byte equality is not
-                        // value equality for unordered containers, and must not reject a valid replay.
-                        // Encoding with the projected identity index validates every known
-                        // Entity reference, including nested containers. Only one component's
-                        // temporary bytes are retained.
-                        for (const auto &[id, entity] : identities_.entries())
-                        {
-                            for (const auto &schema : owner.metadata->components().all())
-                            {
-                                if (schema.semantic_kind == ecs::EComponentSemanticKind::RUNTIME_DERIVED ||
-                                    !schema.operations.has(registry, entity))
-                                {
-                                    continue;
-                                }
-                                if (!schema.capture)
-                                {
-                                    return structureFailure(ESceneStructureError::MISSING_PROVIDER, schema.id.name);
-                                }
-                                auto value = schema.capture(registry, entity, schema.code_lifetime);
-                                if (!value)
-                                {
-                                    return structureFailure(ESceneStructureError::CODEC_FAILURE, schema.id.name);
-                                }
-                                auto original = value->encode(owner.identities, kHistoryLimits.max_staging_bytes);
-                                if (!original)
-                                {
-                                    return structureFailure(ESceneStructureError::CODEC_FAILURE, schema.id.name);
-                                }
-                                auto encoded = value->encode(identities_, kHistoryLimits.max_staging_bytes);
-                                if (!encoded)
-                                {
-                                    return structureFailure(ESceneStructureError::REFERENCE_IN_USE, schema.id.name);
-                                }
-                            }
-                        }
-                        std::erase_if(rows_, [&](const auto &row) { return members.contains(row.object); });
-                        std::erase_if(versions_, [&](const auto &value) { return members.contains(value.object); });
-                    }
-                    if (insert_)
-                    {
-                        selection_.object =
-                            edit_.creation_ ? edit_.objects_.front().row.object : edit_.selection_before_;
-                    }
-                    else if (edit_.creation_)
-                    {
-                        selection_.object = edit_.selection_before_;
-                    }
-                    else if (members.contains(selection_.object))
-                    {
-                        selection_.object = {};
-                    }
-                    if (selection_.object.valid() && identities_.entity(selection_.object) == ecs::NullEntity)
-                    {
-                        selection_.object = {};
-                    }
-                    if (selection_.revision == UINT64_MAX ||
-                        versions_.size() > UINT64_MAX - owner.next_component_change)
-                    {
-                        return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::ID_EXHAUSTED));
-                    }
-                    ++selection_.revision;
-                    return {};
-                }
-                editing::EEditEffect effect() const noexcept override
-                {
-                    return editing::EEditEffect::CHANGE;
-                }
-
-              private:
-                void apply() noexcept override
-                {
-                    auto &owner = edit_.owner_;
-                    auto &registry = owner.scene->registry();
-                    EditingGuard committing(owner.structural_commit);
-                    if (insert_)
-                    {
-                        for (const auto &object : edit_.objects_)
-                        {
-                            const auto entity = identities_.entity(object.row.object);
-                            if (registry.create(entity) != entity)
-                            {
-                                std::terminate(); // Owner exclusion preserves prepared, unused
-                                                  // EnTT identities.
-                            }
-                        }
-                        owner.identities = std::move(identities_);
-                        for (const auto &object : edit_.objects_)
-                        {
-                            for (const auto &component : object.components)
-                            {
-                                component.schema->operations.transfer(registry, prepared_,
-                                                                      owner.identities.entity(object.row.object));
-                            }
-                        }
-                    }
-                    else
-                    {
-                        for (auto object = edit_.objects_.rbegin(); object != edit_.objects_.rend(); ++object)
-                        {
-                            // on_destroy observes the old component and its old durable
-                            // identity.
-                            registry.destroy(owner.identities.entity(object->row.object));
-                        }
-                        owner.identities = std::move(identities_);
-                    }
-                    for (auto &version : versions_)
-                    {
-                        if (version.revision == revision_)
-                        {
-                            version.sequence = owner.next_component_change++;
-                        }
-                    }
-                    owner.rows.swap(rows_);
-                    owner.component_versions.swap(versions_);
-                    owner.selection = selection_;
-                    owner.structure_changed = true;
-                    owner.derive = owner.refresh_resources = true;
-                }
-                void publish(const editing::CommitInfo &info) noexcept override
-                {
-                    edit_.editor_.notify<SceneEditor::objectsChanged>(info.revision);
-                    edit_.editor_.notify<SceneEditor::selectionChanged>(edit_.owner_.selection);
-                }
-                const ObjectEdit &edit_;
-                bool insert_;
-                lux::simulation::ecs::Registry prepared_;
-                lux::simulation::ecs::WorldEntityMap identities_;
-                std::vector<SceneObjectRow> rows_;
-                std::vector<ComponentNotice> versions_;
-                SelectionNotice selection_;
-                editing::Revision revision_;
-            };
-
-          public:
-            ObjectEdit(SceneEditor &editor, Data &owner, editing::StateId base, std::vector<ObjectContent> objects,
-                       bool creation, std::string label)
-                : editor_(editor), owner_(owner), base_(base), objects_(std::move(objects)), creation_(creation),
-                  label_(std::move(label)), selection_before_(owner.selection.object)
-            {
-            }
-            editing::HistoryId historyId() const noexcept override
-            {
-                return base_.history;
-            }
-            editing::StateId baseState() const noexcept override
-            {
-                return base_;
-            }
-            std::string_view label() const noexcept override
-            {
-                return label_;
-            }
-            std::size_t retainedBytesUpperBound() const noexcept override
-            {
-                std::size_t bytes = sizeof(*this) + label_.capacity() + 1 + objects_.capacity() * sizeof(ObjectContent);
-                for (const auto &object : objects_)
-                {
-                    bytes += object.row.label.capacity() + 1 + object.components.capacity() * sizeof(ObjectComponent);
-                    for (const auto &component : object.components)
-                    {
-                        bytes += component.bytes.capacity();
-                    }
-                }
-                return bytes;
-            }
-            editing::EditResult<editing::PreparedEditPtr> prepare(
-                const editing::ApplyContext &context, editing::EditPreparationBudget &budget) const noexcept override
-            {
-                std::size_t labels{};
-                for (const auto &row : owner_.rows)
-                {
-                    labels += row.label.capacity() + 1;
-                }
-                auto charge =
-                    budget.reserve(sizeof(Plan) + labels + retainedBytesUpperBound() * 2 +
-                                   (owner_.rows.size() + objects_.size()) * (sizeof(SceneObjectRow) + 128) +
-                                   (owner_.component_versions.size() + objects_.size() * 3) * sizeof(ComponentNotice));
-                if (!charge)
-                {
-                    return lux::cxx::unexpected(charge.error());
-                }
-                auto result = std::make_unique<Plan>(*this, context);
-                auto ready = result->prepare();
-                if (!ready)
-                {
-                    return lux::cxx::unexpected(ready.error());
-                }
-                return editing::PreparedEditPtr(std::move(result));
-            }
-
-          private:
-            SceneEditor &editor_;
-            Data &owner_;
-            editing::StateId base_;
-            std::vector<ObjectContent> objects_;
-            bool creation_;
-            std::string label_;
-            Id selection_before_;
-        };
 
         class ParentEdit final : public editing::EditOperation
         {
@@ -596,29 +225,29 @@ namespace lux::editor::scene
                 {
                     namespace ecs = lux::simulation::ecs;
                     auto &owner = edit_.owner_;
-                    EditingGuard committing(owner.structural_commit);
+                    EditingGuard committing(owner.objects.structural_commit);
                     const auto parent = forward_ ? edit_.after_ : edit_.before_;
-                    const auto entity = owner.identities.entity(edit_.target_.object);
+                    const auto entity = owner.objects.identities.entity(edit_.target_.object);
                     if (forward_ || edit_.had_parent_)
                     {
-                        owner.scene->registry().emplace_or_replace<ecs::Parent>(entity,
-                                                                                owner.identities.entity(parent));
+                        owner.scene->registry().emplace_or_replace<ecs::Parent>(
+                            entity, owner.objects.identities.entity(parent));
                     }
                     else
                     {
                         owner.scene->registry().remove<ecs::Parent>(entity);
                     }
-                    const auto row = std::ranges::lower_bound(owner.rows, edit_.target_.object,
+                    const auto row = std::ranges::lower_bound(owner.objects.rows, edit_.target_.object,
                                                               lux::world::WorldObjectIdLess{}, &SceneObjectRow::object);
                     row->parent = parent;
                     const auto type = lux::cxx::typeToken<ecs::Parent>();
-                    std::erase_if(owner.component_versions, [&](const auto &value)
+                    std::erase_if(owner.objects.component_versions, [&](const auto &value)
                                   { return value.object == edit_.target_.object && value.component == type; });
                     if (forward_ || edit_.had_parent_)
                     {
-                        owner.component_versions.push_back(
-                            {edit_.target_.object, type, revision_, false, owner.next_component_change++});
-                        std::ranges::sort(owner.component_versions, Data::componentLess);
+                        owner.objects.component_versions.push_back(
+                            {edit_.target_.object, type, revision_, false, owner.objects.next_component_change++});
+                        std::ranges::sort(owner.objects.component_versions, detail::SceneObjects::componentLess);
                     }
                     owner.derive = true;
                 }
@@ -636,9 +265,9 @@ namespace lux::editor::scene
                 : editor_(editor), owner_(owner), target_(target), after_(parent)
             {
                 const auto *value = owner.scene->registry().try_get<lux::simulation::ecs::Parent>(
-                    owner.identities.entity(target.object));
+                    owner.objects.identities.entity(target.object));
                 had_parent_ = value != nullptr;
-                before_ = value ? owner.identities.object(value->entity) : lux::world::WorldObjectId{};
+                before_ = value ? owner.objects.identities.object(value->entity) : lux::world::WorldObjectId{};
             }
             editing::HistoryId historyId() const noexcept override
             {
@@ -668,15 +297,16 @@ namespace lux::editor::scene
                 const bool forward = context.direction == editing::EDirection::FORWARD;
                 const auto expected = forward ? before_ : after_;
                 auto parent = forward ? after_ : before_;
-                const auto entity = owner_.identities.entity(target_.object);
+                const auto entity = owner_.objects.identities.entity(target_.object);
                 if (entity == ecs::NullEntity ||
-                    (parent.valid() && owner_.identities.entity(parent) == ecs::NullEntity))
+                    (parent.valid() && owner_.objects.identities.entity(parent) == ecs::NullEntity))
                 {
                     return structureFailure(ESceneStructureError::INVALID_OBJECT,
                                             "The object or parent no longer exists");
                 }
                 const auto *value = owner_.scene->registry().try_get<ecs::Parent>(entity);
-                const auto actual = value ? owner_.identities.object(value->entity) : lux::world::WorldObjectId{};
+                const auto actual =
+                    value ? owner_.objects.identities.object(value->entity) : lux::world::WorldObjectId{};
                 if (actual != expected || (value != nullptr) != (forward ? had_parent_ : true))
                 {
                     return structureFailure(ESceneStructureError::INVALID_OBJECT, "The object's parent changed");
@@ -684,20 +314,21 @@ namespace lux::editor::scene
                 std::size_t visited{};
                 while (parent.valid())
                 {
-                    if (parent == target_.object || ++visited > owner_.rows.size())
+                    if (parent == target_.object || ++visited > owner_.objects.rows.size())
                     {
                         return structureFailure(ESceneStructureError::HIERARCHY_CYCLE,
                                                 "The proposed parent creates a cycle");
                     }
                     const auto *ancestor =
-                        owner_.scene->registry().try_get<ecs::Parent>(owner_.identities.entity(parent));
-                    parent = ancestor ? owner_.identities.object(ancestor->entity) : lux::world::WorldObjectId{};
+                        owner_.scene->registry().try_get<ecs::Parent>(owner_.objects.identities.entity(parent));
+                    parent =
+                        ancestor ? owner_.objects.identities.object(ancestor->entity) : lux::world::WorldObjectId{};
                 }
-                if (owner_.next_component_change == UINT64_MAX)
+                if (owner_.objects.next_component_change == UINT64_MAX)
                 {
                     return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::ID_EXHAUSTED));
                 }
-                owner_.component_versions.reserve(owner_.component_versions.size() + 1);
+                owner_.objects.component_versions.reserve(owner_.objects.component_versions.size() + 1);
                 return editing::PreparedEditPtr(new Plan(*this, forward, context.next_revision));
             }
 
@@ -709,57 +340,17 @@ namespace lux::editor::scene
             bool had_parent_;
         };
 
-        static bool componentLess(const ComponentNotice &first, const ComponentNotice &second) noexcept
-        {
-            if (first.object != second.object)
-            {
-                return lux::world::WorldObjectIdLess{}(first.object, second.object);
-            }
-            return first.component.hash() < second.component.hash();
-        }
-
         Data(Project &owner, process::ExecutionRuntime &process, NativeScene content,
              std::shared_ptr<const lux::scene::SceneMetaManager> meta, std::unique_ptr<lux::scene::Scene> value,
              lux::simulation::ecs::WorldEntityMap mapping, std::unique_ptr<editing::EditHistory> edits,
-             lux::task::TaskExecutor tasks, rendering::EditorRenderer &renderer)
+             lux::task::TaskExecutor tasks, rendering::EditorRenderer &renderer,
+             std::unique_ptr<lux::scene::SceneRenderBinding> binding, std::shared_ptr<detail::SceneRunSlot> run_slot)
             : project(owner), runtime(process), source(std::make_shared<const NativeScene>(std::move(content))),
-              metadata(std::move(meta)), scene(std::move(value)), identities(std::move(mapping)),
-              history(std::move(edits)), executor(std::move(tasks)),
-              resources(history->id(), owner.assetReads(), &renderer, 256)
+              metadata(std::move(meta)), render_binding(std::move(binding)), scene(std::move(value)),
+              objects(scene->registry(), *source, *metadata, std::move(mapping)), history(std::move(edits)),
+              executor(std::move(tasks)), resources(history->id(), owner.assetReads(), &renderer, 256),
+              run(process, renderer, metadata, std::move(run_slot))
         {
-            rows.reserve(identities.size());
-            for (const auto &[id, entity] : identities.entries())
-            {
-                SceneObjectRow row{id, {}, "Object " + std::to_string(rows.size() + 1)};
-                if (const auto *parent = scene->registry().try_get<lux::simulation::ecs::Parent>(entity))
-                {
-                    row.parent = identities.object(parent->entity);
-                }
-                rows.push_back(std::move(row));
-            }
-            std::ranges::sort(rows, lux::world::WorldObjectIdLess{}, &SceneObjectRow::object);
-            for (const auto &partition : source->partitions)
-            {
-                for (std::size_t index{}; index < partition.objectCount(); ++index)
-                {
-                    const auto object = partition.objectAt(index).id();
-                    auto row = std::ranges::lower_bound(rows, object, lux::world::WorldObjectIdLess{},
-                                                        &SceneObjectRow::object);
-                    row->partition = partition.partition();
-                }
-            }
-            for (const auto &row : rows)
-            {
-                const auto entity = identities.entity(row.object);
-                for (const auto &schema : metadata->components().all())
-                {
-                    if (schema.operations.has(scene->registry(), entity))
-                    {
-                        component_versions.push_back({row.object, schema.cpp_type, {}, false});
-                    }
-                }
-            }
-            std::ranges::sort(component_versions, componentLess);
             assets_connection = project.observeScoped<Project::assetContentChanged>(
                 [this](asset::AssetId id) noexcept
                 {
@@ -782,11 +373,16 @@ namespace lux::editor::scene
 
     EditorResult<std::unique_ptr<SceneEditor>> SceneEditor::open(
         NativeScene &source, Project &project, process::ExecutionRuntime &runtime, rendering::EditorRenderer &renderer,
-        std::shared_ptr<const lux::scene::SceneMetaManager> metadata)
+        std::shared_ptr<const lux::scene::SceneMetaManager> metadata, lux::scene::SceneRenderInput *input,
+        std::unique_ptr<lux::scene::SceneRenderBinding> &binding, std::shared_ptr<detail::SceneRunSlot> run_slot)
     {
         const auto world = std::shared_ptr<const lux::world::WorldDescription>(source.world, &source.world->data());
-        const std::array providers{lux::scene::makeSceneCapabilityProvider<lux::scene::RenderRuntime>(
-            "main-window", "lux.render.runtime", renderer)};
+        std::vector<lux::scene::SceneCapabilityProvider> providers;
+        if (input)
+        {
+            providers.push_back(lux::scene::makeSceneCapabilityProvider<lux::scene::SceneRenderInput>(
+                "main-window", "lux.render.input", *input));
+        }
         auto scene = lux::scene::Scene::create(
             {std::shared_ptr<const lux::scene::SceneDescription>(source.scene, &source.scene->data()), world,
              std::shared_ptr<const lux::simulation::SimulationDescription>(source.simulation,
@@ -853,7 +449,8 @@ namespace lux::editor::scene
                                                       executor.error()});
         }
         auto data = std::make_unique<Data>(project, runtime, std::move(source), std::move(metadata), std::move(*scene),
-                                           std::move(identities), std::move(*history), std::move(*executor), renderer);
+                                           std::move(identities), std::move(*history), std::move(*executor), renderer,
+                                           std::move(binding), std::move(run_slot));
         auto result = std::unique_ptr<SceneEditor>(new SceneEditor(project.dispatcherRef(), std::move(data)));
         // Resource activation is polled only after the complete document has been
         // adopted.
@@ -861,6 +458,62 @@ namespace lux::editor::scene
     }
 
     SceneEditor::~SceneEditor() = default;
+
+    EditorResult<RunId> SceneEditor::play(std::chrono::nanoseconds fixed_step)
+    {
+        if (data_->close_requested || data_->close != ECloseState::OPEN || data_->preview.index() != 0 ||
+            data_->editing_busy)
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "run.author"});
+        }
+        const auto admitted = data_->run.validateStart(fixed_step);
+        if (!admitted)
+        {
+            return lux::cxx::unexpected(admitted.error());
+        }
+        auto capture = captureSource();
+        if (!capture)
+        {
+            return lux::cxx::unexpected(capture.error());
+        }
+        auto pins = data_->resources.freeze(data_->scene->registry(), data_->objects.identities);
+        if (!pins)
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "run.resources", 0,
+                                                      "Wait for the current render resource set to become ready",
+                                                      pins.error()});
+        }
+        return data_->run.start(handle(), historyId(), data_->history->view()->snapshot.current, std::move(*capture),
+                                std::move(*pins), fixed_step);
+    }
+    EditorResult<void> SceneEditor::pauseRun(RunId id)
+    {
+        return data_->run.pause(id);
+    }
+    EditorResult<void> SceneEditor::resumeRun(RunId id)
+    {
+        return data_->run.resume(id);
+    }
+    EditorResult<void> SceneEditor::stepRun(RunId id)
+    {
+        return data_->run.step(id);
+    }
+    EditorResult<void> SceneEditor::stopRun(RunId id)
+    {
+        return data_->run.stop(id);
+    }
+    RunStatus SceneEditor::runStatus() const
+    {
+        return data_->run.status();
+    }
+    double SceneEditor::runCoordinatePageSize() const noexcept
+    {
+        return data_->run.coordinatePageSize();
+    }
+    EditorResult<RunViewLease> SceneEditor::openRunView(RunId id, rendering::ViewConfig config)
+    {
+        return data_->run.openView(id, config);
+    }
 
     EditorResult<editing::HistorySnapshot> SceneEditor::reviewClose() const
     {
@@ -920,14 +573,14 @@ namespace lux::editor::scene
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "scene.capture"});
         }
         SceneCapture capture{data_->source, {}, {}};
-        capture.structure_changed = data_->structure_changed;
-        capture.objects.reserve(data_->rows.size());
-        for (const auto &row : data_->rows)
+        capture.structure_changed = data_->objects.structure_changed;
+        capture.objects.reserve(data_->objects.rows.size());
+        for (const auto &row : data_->objects.rows)
         {
             capture.objects.push_back({row.object, row.partition});
         }
-        capture.identities.reserve(data_->identities.size());
-        for (const auto &[object, entity] : data_->identities.entries())
+        capture.identities.reserve(data_->objects.identities.size());
+        for (const auto &[object, entity] : data_->objects.identities.entries())
         {
             if (!data_->scene->registry().valid(entity) || !capture.identities.bind(object, entity))
             {
@@ -935,7 +588,7 @@ namespace lux::editor::scene
             }
         }
         const auto schemas = data_->source->world->data().schemas();
-        for (const auto &changed : data_->component_versions)
+        for (const auto &changed : data_->objects.component_versions)
         {
             if (!changed.revision.value)
             {
@@ -948,7 +601,7 @@ namespace lux::editor::scene
                 return lux::cxx::unexpected(EditorFailure{EEditorError::MISSING_PROVIDER, "scene.capture.codec",
                                                           schema->id.hash, schema->id.name});
             }
-            auto value = schema->capture(data_->scene->registry(), data_->identities.entity(changed.object),
+            auto value = schema->capture(data_->scene->registry(), data_->objects.identities.entity(changed.object),
                                          schema->code_lifetime);
             if (!value)
             {
@@ -1085,12 +738,12 @@ namespace lux::editor::scene
 
     std::span<const SceneObjectRow> SceneEditor::objects() const noexcept
     {
-        return data_->rows;
+        return data_->objects.rows;
     }
 
     SelectionNotice SceneEditor::selection() const noexcept
     {
-        return data_->selection;
+        return data_->objects.selection;
     }
 
     const Project &SceneEditor::project() const noexcept
@@ -1113,15 +766,15 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::CLOSING, "scene.selection"});
         }
-        if (id.valid() && data_->identities.entity(id) == lux::simulation::ecs::NullEntity)
+        if (id.valid() && data_->objects.identities.entity(id) == lux::simulation::ecs::NullEntity)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "scene.selection"});
         }
-        if (data_->selection.object != id)
+        if (data_->objects.selection.object != id)
         {
-            data_->selection.object = id;
-            ++data_->selection.revision;
-            notify<selectionChanged>(data_->selection);
+            data_->objects.selection.object = id;
+            ++data_->objects.selection.revision;
+            notify<selectionChanged>(data_->objects.selection);
         }
         return {};
     }
@@ -1129,11 +782,11 @@ namespace lux::editor::scene
     std::vector<SceneComponentInfo> SceneEditor::components(lux::world::WorldObjectId object) const
     {
         std::vector<SceneComponentInfo> result;
-        if (!data_->scene || data_->structural_commit)
+        if (!data_->scene || data_->objects.structural_commit)
         {
             return result;
         }
-        const auto entity = data_->identities.entity(object);
+        const auto entity = data_->objects.identities.entity(object);
         if (entity == lux::simulation::ecs::NullEntity)
         {
             return result;
@@ -1150,11 +803,11 @@ namespace lux::editor::scene
 
     const void *SceneEditor::component(lux::world::WorldObjectId object, lux::cxx::TypeToken type) const noexcept
     {
-        if (!data_->scene || data_->structural_commit)
+        if (!data_->scene || data_->objects.structural_commit)
         {
             return nullptr;
         }
-        const auto entity = data_->identities.entity(object);
+        const auto entity = data_->objects.identities.entity(object);
         const auto *schema = data_->metadata->getComponentMeta(type);
         if (!schema || entity == lux::simulation::ecs::NullEntity)
         {
@@ -1190,7 +843,7 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
         }
-        if (!object.valid() || data_->identities.entity(object) == lux::simulation::ecs::NullEntity)
+        if (!object.valid() || data_->objects.identities.entity(object) == lux::simulation::ecs::NullEntity)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::PRECONDITION_FAILED));
         }
@@ -1243,7 +896,7 @@ namespace lux::editor::scene
         const auto type = space == EObjectSpace::SPACE_2D ? lux::cxx::typeToken<lux::simulation::ecs::Transform2D>()
                                                           : lux::cxx::typeToken<lux::simulation::ecs::Transform3D>();
         const auto *schema = data_->metadata->getComponentMeta(type);
-        return schema && schema->capture && schema->decode_emplace && schema->operations.canTransfer() &&
+        return schema && schema->capture && schema->decode_value &&
                std::ranges::find(data_->source->world->data().schemas(), schema->id.name,
                                  &lux::world::WorldDataSchemaId::name) != data_->source->world->data().schemas().end();
     }
@@ -1251,7 +904,7 @@ namespace lux::editor::scene
     bool SceneEditor::supportsHierarchy() const noexcept
     {
         const auto *schema = data_->metadata->getComponentMeta(lux::cxx::typeToken<lux::simulation::ecs::Parent>());
-        return schema && schema->capture && schema->decode_emplace && schema->operations.canTransfer() &&
+        return schema && schema->capture && schema->decode_value &&
                std::ranges::find(data_->source->world->data().schemas(), schema->id.name,
                                  &lux::world::WorldDataSchemaId::name) != data_->source->world->data().schemas().end();
     }
@@ -1276,7 +929,7 @@ namespace lux::editor::scene
             return Data::structureFailure(ESceneStructureError::MISSING_PROVIDER,
                                           "This World does not declare the requested object space");
         }
-        if (data_->rows.size() >= 4096)
+        if (data_->objects.rows.size() >= 4096)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::STAGING_LIMIT));
         }
@@ -1287,36 +940,41 @@ namespace lux::editor::scene
         do
         {
             id = lux::world::WorldObjectId{generate()};
-        } while (!id.valid() || data_->identities.entity(id) != ecs::NullEntity);
+        } while (!id.valid() || data_->objects.identities.entity(id) != ecs::NullEntity);
 
-        ecs::Registry prepared;
+        detail::ObjectContent content{{id, {}, "Object", partition}, {}};
         ecs::WorldEntityMap identities;
-        const auto entity = prepared.create();
-        if (!identities.bind(id, entity))
+        const auto append = [&](const auto &value) -> editing::EditResult<void>
         {
-            std::terminate();
-        }
+            auto encoded = data_->objects.encodeComponent(value, identities);
+            if (!encoded)
+            {
+                return lux::cxx::unexpected(encoded.error());
+            }
+            content.components.push_back(std::move(*encoded));
+            return {};
+        };
+        editing::EditResult<void> encoded;
         if (space == EObjectSpace::SPACE_2D)
         {
-            prepared.emplace<ecs::Transform2D>(entity);
+            encoded = append(ecs::Transform2D{});
         }
         else if (space == EObjectSpace::SPACE_3D)
         {
-            prepared.emplace<ecs::Transform3D>(entity);
+            encoded = append(ecs::Transform3D{});
         }
-        if (supportsHierarchy())
+        if (encoded && supportsHierarchy())
         {
-            prepared.emplace<ecs::Parent>(entity, ecs::NullEntity);
+            encoded = append(ecs::Parent{ecs::NullEntity});
         }
-        auto content = data_->captureObject({id, {}, "Object", partition}, prepared, identities);
-        if (!content)
+        if (!encoded)
         {
-            return lux::cxx::unexpected(content.error());
+            return lux::cxx::unexpected(encoded.error());
         }
-        std::vector<Data::ObjectContent> objects;
-        objects.push_back(std::move(*content));
+        std::vector<detail::ObjectContent> objects;
+        objects.push_back(std::move(content));
         editing::EditOperationPtr operation =
-            std::make_unique<Data::ObjectEdit>(*this, *data_, base, std::move(objects), true, "Create object");
+            detail::makeSceneObjectEdit(*this, data_->objects, base, std::move(objects), true, "Create object");
         auto applied = executeField(operation);
         if (!applied)
         {
@@ -1333,21 +991,21 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(allowed.error());
         }
-        if (input.empty() || input.size() > data_->rows.size())
+        if (input.empty() || input.size() > data_->objects.rows.size())
         {
             return Data::structureFailure(ESceneStructureError::INVALID_OBJECT, "Choose existing objects to delete");
         }
-        std::vector<Data::ObjectContent> objects;
+        std::vector<detail::ObjectContent> objects;
         objects.reserve(input.size());
         for (const auto id : input)
         {
-            const auto row =
-                std::ranges::lower_bound(data_->rows, id, lux::world::WorldObjectIdLess{}, &SceneObjectRow::object);
-            if (row == data_->rows.end() || row->object != id)
+            const auto row = std::ranges::lower_bound(data_->objects.rows, id, lux::world::WorldObjectIdLess{},
+                                                      &SceneObjectRow::object);
+            if (row == data_->objects.rows.end() || row->object != id)
             {
                 return Data::structureFailure(ESceneStructureError::INVALID_OBJECT, "The object no longer exists");
             }
-            auto captured = data_->captureObject(*row, data_->scene->registry(), data_->identities);
+            auto captured = data_->objects.captureObject(*row, data_->scene->registry(), data_->objects.identities);
             if (!captured)
             {
                 return lux::cxx::unexpected(captured.error());
@@ -1355,7 +1013,7 @@ namespace lux::editor::scene
             objects.push_back(std::move(*captured));
         }
         editing::EditOperationPtr operation =
-            std::make_unique<Data::ObjectEdit>(*this, *data_, base, std::move(objects), false, "Delete objects");
+            detail::makeSceneObjectEdit(*this, data_->objects, base, std::move(objects), false, "Delete objects");
         return executeField(operation);
     }
 
@@ -1559,43 +1217,60 @@ namespace lux::editor::scene
         {
             result.push_back(object.object);
         }
-        ecs::Registry prepared;
+        auto planned = ecs::planEntityCreation(data_->scene->registry(), objects.size());
+        if (!planned)
+        {
+            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::ID_EXHAUSTED));
+        }
         ecs::WorldEntityMap identities;
         identities.reserve(objects.size());
-        for (const auto &object : objects)
+        for (std::size_t index{}; index < objects.size(); ++index)
         {
-            if (!identities.bind(object.object, prepared.create()))
+            if (!identities.bind(objects[index].object, planned->entities()[index]))
             {
-                std::terminate();
+                return rejected(EModelPlacementError::NON_TRS_TRANSFORM, "Duplicate model identity");
             }
         }
-        for (const auto &object : objects)
-        {
-            const auto entity = identities.entity(object.object);
-            prepared.emplace<ecs::Transform3D>(entity, object.value);
-            if (hierarchy)
-            {
-                prepared.emplace<ecs::Parent>(entity, identities.entity(object.parent));
-            }
-        }
+        std::unordered_map<lux::world::WorldObjectId, const Data::ModelMesh *, lux::world::WorldObjectIdHash>
+            mesh_by_object;
+        mesh_by_object.reserve(meshes.size());
         for (const auto &mesh : meshes)
         {
-            prepared.emplace<ecs::Mesh3D>(identities.entity(mesh.object), mesh.value);
+            mesh_by_object.emplace(mesh.object, &mesh);
         }
-        std::vector<Data::ObjectContent> content;
+        std::vector<detail::ObjectContent> content;
         content.reserve(objects.size());
         for (auto &object : objects)
         {
-            auto captured = data_->captureObject({object.object, object.parent, std::move(object.label), partition},
-                                                 prepared, identities);
-            if (!captured)
+            detail::ObjectContent captured{{object.object, object.parent, std::move(object.label), partition}, {}};
+            const auto append = [&](const auto &value) -> editing::EditResult<void>
             {
-                return lux::cxx::unexpected(captured.error());
+                auto encoded = data_->objects.encodeComponent(value, identities);
+                if (!encoded)
+                {
+                    return lux::cxx::unexpected(encoded.error());
+                }
+                captured.components.push_back(std::move(*encoded));
+                return {};
+            };
+            auto encoded = append(object.value);
+            if (encoded && hierarchy)
+            {
+                encoded = append(ecs::Parent{identities.entity(object.parent)});
             }
-            content.push_back(std::move(*captured));
+            const auto mesh = mesh_by_object.find(object.object);
+            if (encoded && mesh != mesh_by_object.end())
+            {
+                encoded = append(mesh->second->value);
+            }
+            if (!encoded)
+            {
+                return lux::cxx::unexpected(encoded.error());
+            }
+            content.push_back(std::move(captured));
         }
         editing::EditOperationPtr operation =
-            std::make_unique<Data::ObjectEdit>(*this, *data_, base, std::move(content), true, "Place model");
+            detail::makeSceneObjectEdit(*this, data_->objects, base, std::move(content), true, "Place model");
         auto applied = executeField(operation);
         if (!applied)
         {
@@ -1755,8 +1430,9 @@ namespace lux::editor::scene
                                                 lux::cxx::TypeToken type) const noexcept
     {
         const ComponentNotice key{object, type};
-        const auto entry = std::ranges::lower_bound(data_->component_versions, key, Data::componentLess);
-        return entry != data_->component_versions.end() && entry->object == object && entry->component == type
+        const auto entry =
+            std::ranges::lower_bound(data_->objects.component_versions, key, detail::SceneObjects::componentLess);
+        return entry != data_->objects.component_versions.end() && entry->object == object && entry->component == type
                    ? entry->sequence
                    : 0;
     }
@@ -1867,9 +1543,11 @@ namespace lux::editor::scene
     {
         const auto history = data_->history->view();
         ComponentNotice notice{target.object, type, history->snapshot.revision, preview};
-        notice.sequence = data_->next_component_change++;
-        auto entry = std::ranges::lower_bound(data_->component_versions, notice, Data::componentLess);
-        if (entry != data_->component_versions.end() && entry->object == target.object && entry->component == type)
+        notice.sequence = data_->objects.next_component_change++;
+        auto entry =
+            std::ranges::lower_bound(data_->objects.component_versions, notice, detail::SceneObjects::componentLess);
+        if (entry != data_->objects.component_versions.end() && entry->object == target.object &&
+            entry->component == type)
         {
             entry->sequence = notice.sequence;
             if (!preview)
@@ -1882,7 +1560,7 @@ namespace lux::editor::scene
         {
             data_->refresh_resources = true;
         }
-        const auto entity = data_->identities.entity(target.object);
+        const auto entity = data_->objects.identities.entity(target.object);
         data_->metadata->getComponentMeta(type)->operations.notifyUpdated(data_->scene->registry(), entity);
         notify<componentChanged>(notice);
     }
@@ -2332,6 +2010,11 @@ namespace lux::editor::scene
         {
             beginClose();
         }
+        if (data_->close_requested || data_->close == ECloseState::CLOSING)
+        {
+            static_cast<void>(data_->run.stop(data_->run.status().id));
+        }
+        data_->run.poll(4);
         for (const auto &view : data_->views)
         {
             view->poll(budget);
@@ -2343,7 +2026,7 @@ namespace lux::editor::scene
         }
         if (data_->close == ECloseState::CLOSING)
         {
-            if (!data_->views.empty())
+            if (!data_->views.empty() || !data_->run.settled())
             {
                 return;
             }
@@ -2357,6 +2040,15 @@ namespace lux::editor::scene
                 }
                 data_->scene->requestStop();
                 data_->scene.reset();
+            }
+            if (data_->render_binding)
+            {
+                data_->render_binding->requestClose();
+                data_->render_binding->poll(budget.render_replies);
+                if (data_->render_binding->state() != lux::scene::ESceneRenderBindingState::CLOSED)
+                {
+                    return;
+                }
             }
             const auto closed = data_->resources.advanceClose();
             if (closed && *closed)
@@ -2374,6 +2066,11 @@ namespace lux::editor::scene
             return;
         }
         --budget.document_steps;
+        if (std::exchange(data_->objects.invalidate_derived, false))
+        {
+            data_->derive = true;
+            data_->refresh_resources = true;
+        }
         if (data_->refresh_resources)
         {
             const auto activated = data_->resources.activate();
@@ -2429,12 +2126,28 @@ namespace lux::editor::scene
             }
             data_->derive = false;
         }
+        auto *render = data_->scene->findSceneSystem<lux::scene::RenderSystem>();
+        if (render && render->lastPublishResult() == lux::scene::ERenderPublishResult::BACKPRESSURED)
+        {
+            if (render->tryPublish() == lux::scene::ERenderPublishResult::FAILED)
+            {
+                data_->failure = lux::scene::SceneExecutionFailure{lux::scene::ESceneExecutionError::SYSTEM_FAILURE,
+                                                                   render->instanceId()};
+                return;
+            }
+        }
         const auto presented = data_->scene->executePresentation();
         if (!presented)
         {
             data_->failure = presented.error();
         }
-        const auto *render = data_->scene->findSceneSystem<lux::scene::RenderSystem>();
-        data_->resources.afterPresentation(render && render->hasPendingUpdate());
+        if (data_->render_binding)
+        {
+            data_->render_binding->poll(budget.render_replies);
+        }
+        const bool unpublished =
+            render && render->lastPublishResult() == lux::scene::ERenderPublishResult::BACKPRESSURED;
+        data_->resources.afterPresentation(unpublished ||
+                                           (data_->render_binding && data_->render_binding->hasPendingUpdate()));
     }
 } // namespace lux::editor::scene

@@ -1,7 +1,7 @@
 #pragma once
 
+#include <lux/engine/function/render/client/core/RenderSceneId.hpp>
 #include <lux/engine/object/LuxObject.hpp>
-#include <lux/engine/scene/RenderRuntime.hpp>
 #include <lux/engine/scene/RenderSyncPipeline.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/scene/render/visibility.h>
@@ -31,24 +31,26 @@ namespace lux::scene
         ~RenderSystem() noexcept override;
 
         [[nodiscard]] render::RenderSceneId renderSceneId() const noexcept;
+        [[nodiscard]] system::SystemInstanceId instanceId() const noexcept
+        {
+            return instance_;
+        }
         [[nodiscard]] double coordinatePageSize() const noexcept;
         [[nodiscard]] bool publishStablePoint() noexcept;
-        [[nodiscard]] bool presentationTick() noexcept;
-        [[nodiscard]] bool hasPendingUpdate() const noexcept;
+        [[nodiscard]] ERenderPublishResult tryPublish() noexcept;
+        [[nodiscard]] ERenderPublishResult lastPublishResult() const noexcept;
+        [[nodiscard]] bool waitForCapacity(std::stop_token stop) const noexcept;
 
-    private:
+      private:
         friend class SceneBuilder;
 
-        RenderSystem(
-            RenderRuntimeLease runtime,
-            render::RenderSceneLease scene,
-            std::unique_ptr<RenderSyncPipeline> sync,
-            double coordinate_page_size
-        ) noexcept;
+        RenderSystem(system::SystemInstanceId instance, render::RenderSceneId scene,
+                     std::unique_ptr<RenderSyncPipeline> sync, double coordinate_page_size) noexcept;
 
-        RenderRuntimeLease runtime_;
-        render::RenderSceneLease scene_;
+        system::SystemInstanceId instance_;
+        render::RenderSceneId scene_;
         std::unique_ptr<RenderSyncPipeline> sync_;
+        ERenderPublishResult last_publish_{ERenderPublishResult::NO_CHANGES};
         const double coordinate_page_size_;
     };
 

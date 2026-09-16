@@ -1,9 +1,12 @@
 #include <lux/engine/scene/RenderSyncPipeline.hpp>
+#include <lux/engine/scene/detail/RenderSyncStorage.hpp>
 
 #include <lux/engine/function/render/client/BoundedSpscFrameRing.hpp>
 #include <lux/engine/function/render/client/RenderProgram.hpp>
 
 #include <algorithm>
+#include <atomic>
+#include <cassert>
 #include <new>
 #include <utility>
 
@@ -11,54 +14,71 @@ namespace lux::scene
 {
     struct RenderSyncPipeline::Impl final
     {
-        explicit Impl(StageList value) : stages(std::move(value)), updates(1U)
+        explicit Impl(StageList value, std::shared_ptr<detail::RenderSyncStorage> channel,
+                      std::shared_ptr<const SceneMetaManager> owner)
+            : metadata(std::move(owner)), stages(std::move(value)), storage(std::move(channel))
         {
             for (auto& stage : stages)
             {
                 stage->requestFullSync();
             }
-            full_sync_requested = true;
         }
 
+        std::shared_ptr<const SceneMetaManager> metadata;
         StageList stages;
-        lux::cxx::BoundedSpscFrameRing<render::RenderProgram<>, 3> updates;
-        bool full_sync_requested{false};
-        bool forward_pending{false};
+        std::shared_ptr<detail::RenderSyncStorage> storage;
+        bool full_sync_requested{true};
     };
 
     RenderSyncPipeline::RenderSyncPipeline(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl))
     {
     }
 
-    RenderSyncPipeline::~RenderSyncPipeline() noexcept = default;
-
-    lux::cxx::expected<std::unique_ptr<RenderSyncPipeline>, RenderSyncPipelineFailure>
-    RenderSyncPipeline::create(StageList stages) noexcept
+    RenderSyncPipeline::~RenderSyncPipeline() noexcept
     {
-        const bool has_null_stage = std::ranges::any_of(stages, [](const auto& stage) { return stage == nullptr; });
-        if (has_null_stage)
+        impl_->stages.clear();
+        impl_->storage->producer_closed.store(true, std::memory_order_release);
+        impl_->storage->notify();
+    }
+
+    bool RenderSyncPipeline::waitForCapacity(std::stop_token stop) const noexcept
+    {
+        auto &storage = *impl_->storage;
+        std::stop_callback wake(stop, [&storage] { storage.notify(); });
+        for (;;)
         {
-            return lux::cxx::unexpected(
-                RenderSyncPipelineFailure{ERenderSyncPipelineError::INVALID_STAGE_LIST}
-            );
+            const auto observed = storage.progress.load(std::memory_order_acquire);
+            if (stop.stop_requested() || storage.consumer_closed.load(std::memory_order_acquire))
+            {
+                return false;
+            }
+            if (storage.updates.pendingFrames() < storage.updates.maxPendingFrames())
+            {
+                return true;
+            }
+            storage.progress.wait(observed, std::memory_order_acquire);
         }
-        try
+    }
+
+    lux::cxx::expected<std::unique_ptr<RenderSyncPipeline>, RenderSyncPipelineFailure> RenderSyncPipeline::create(
+        StageList stages, std::shared_ptr<detail::RenderSyncStorage> storage,
+        std::shared_ptr<const SceneMetaManager> metadata)
+    {
+        if (!storage || std::ranges::any_of(stages, [](const auto &stage) { return !stage; }))
         {
-            return std::unique_ptr<RenderSyncPipeline>{
-                new RenderSyncPipeline{std::make_unique<Impl>(std::move(stages))}
-            };
+            return lux::cxx::unexpected(RenderSyncPipelineFailure{ERenderSyncPipelineError::INVALID_STAGE_LIST});
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(
-                RenderSyncPipelineFailure{ERenderSyncPipelineError::ALLOCATION_FAILURE}
-            );
-        }
+        return std::unique_ptr<RenderSyncPipeline>(
+            new RenderSyncPipeline(std::make_unique<Impl>(std::move(stages), std::move(storage), std::move(metadata))));
     }
 
     ERenderPublishResult RenderSyncPipeline::tryPublish() noexcept
     {
         auto& state = *impl_;
+        if (state.storage->consumer_closed.load(std::memory_order_acquire))
+        {
+            return ERenderPublishResult::FAILED;
+        }
         const bool has_changes = state.full_sync_requested || std::ranges::any_of(
             state.stages,
             [](const auto& stage) { return stage->hasPendingChanges(); }
@@ -67,14 +87,16 @@ namespace lux::scene
         {
             return ERenderPublishResult::NO_CHANGES;
         }
-        if (state.updates.pendingFrames() >= state.updates.maxPendingFrames())
+        if (state.storage->updates.pendingFrames() >= state.storage->updates.maxPendingFrames())
         {
+            state.storage->backpressured.fetch_add(1, std::memory_order_relaxed);
             return ERenderPublishResult::BACKPRESSURED;
         }
 
-        auto* program = state.updates.tryBeginWrite();
+        auto *program = state.storage->updates.tryBeginWrite();
         if (program == nullptr)
         {
+            state.storage->backpressured.fetch_add(1, std::memory_order_relaxed);
             return ERenderPublishResult::BACKPRESSURED;
         }
         render::RenderProgramBuilder<> builder{*program};
@@ -113,18 +135,20 @@ namespace lux::scene
             state.full_sync_requested = false;
             return ERenderPublishResult::NO_CHANGES;
         }
-        if (!state.updates.publishWrite())
+        if (!state.storage->updates.publishWrite())
         {
             for (auto& stage : state.stages)
             {
                 stage->discardPrepared();
             }
+            state.storage->backpressured.fetch_add(1, std::memory_order_relaxed);
             return ERenderPublishResult::BACKPRESSURED;
         }
         for (auto& stage : state.stages)
         {
             stage->commitPrepared();
         }
+        state.storage->published.fetch_add(1, std::memory_order_relaxed);
         const bool was_full_sync = std::exchange(state.full_sync_requested, false);
         return was_full_sync ? ERenderPublishResult::FULL_SYNC_PUBLISHED : ERenderPublishResult::PUBLISHED;
     }
@@ -139,9 +163,41 @@ namespace lux::scene
         }
     }
 
-    ERenderForwardResult RenderSyncPipeline::tryForwardUpdate(render::RenderProgramSession& session) noexcept
+    RenderSyncConsumer::RenderSyncConsumer(std::shared_ptr<detail::RenderSyncStorage> storage) noexcept
+        : storage_(std::move(storage))
     {
-        auto& state = *impl_;
+    }
+
+    RenderSyncConsumer::~RenderSyncConsumer()
+    {
+        close();
+    }
+    RenderSyncConsumer::RenderSyncConsumer(RenderSyncConsumer &&other) noexcept
+        : storage_(std::move(other.storage_)), forward_pending_(std::exchange(other.forward_pending_, false))
+    {
+    }
+    RenderSyncConsumer &RenderSyncConsumer::operator=(RenderSyncConsumer &&other) noexcept
+    {
+        if (this != &other)
+        {
+            close();
+            storage_ = std::move(other.storage_);
+            forward_pending_ = std::exchange(other.forward_pending_, false);
+        }
+        return *this;
+    }
+    void RenderSyncConsumer::close() noexcept
+    {
+        if (storage_)
+        {
+            storage_->consumer_closed.store(true, std::memory_order_release);
+            storage_->notify();
+            storage_.reset();
+        }
+    }
+
+    ERenderForwardResult RenderSyncConsumer::tryForwardUpdate(render::RenderProgramSession &session) noexcept
+    {
         if (session.isStopping())
         {
             return ERenderForwardResult::STOPPING;
@@ -150,23 +206,31 @@ namespace lux::scene
         {
             return ERenderForwardResult::BACKPRESSURED;
         }
-        if (!state.forward_pending)
+        if (!forward_pending_)
         {
-            if (!state.updates.tryAcquireRead())
+            if (!storage_->updates.tryAcquireRead())
             {
                 return ERenderForwardResult::NO_UPDATE;
             }
-            state.forward_pending = true;
+            forward_pending_ = true;
+            storage_->notify();
         }
-        if (!session.trySubmitPrepared(state.updates.currentRead()))
+        if (!session.trySubmitPrepared(storage_->updates.currentRead()))
         {
             return ERenderForwardResult::BACKPRESSURED;
         }
-        state.forward_pending = false;
+        forward_pending_ = false;
+        storage_->forwarded.fetch_add(1, std::memory_order_relaxed);
         return ERenderForwardResult::FORWARDED;
     }
-    bool RenderSyncPipeline::hasPendingUpdate() const noexcept
+
+    bool RenderSyncConsumer::hasPendingUpdate() const noexcept
     {
-        return impl_->forward_pending || impl_->updates.pendingFrames() != 0;
+        return forward_pending_ || storage_->updates.pendingFrames() != 0;
+    }
+
+    bool RenderSyncConsumer::producerClosed() const noexcept
+    {
+        return storage_->producer_closed.load(std::memory_order_acquire);
     }
 } // namespace lux::scene

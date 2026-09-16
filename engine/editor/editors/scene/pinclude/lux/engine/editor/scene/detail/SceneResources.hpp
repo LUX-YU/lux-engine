@@ -1,15 +1,16 @@
 #pragma once
+#include <atomic>
+#include <lux/engine/editor/rendering/EditorRenderer.hpp>
 #include <lux/engine/editor/scene/SceneResources.hpp>
 #include <lux/engine/editor/scene/detail/SceneAssetTasks.hpp>
-#include <lux/engine/editor/rendering/EditorRenderer.hpp>
+#include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>
+#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/resource/asset/material/MaterialAssets.hpp>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
+#include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
-#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
-#include <lux/engine/resource/asset/material/MaterialAssets.hpp>
-#include <lux/engine/resource/asset/texture/TextureAsset.hpp>
-#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
-#include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>
-#include <atomic>
+#include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
 #include <unordered_map>
 
 namespace lux::editor::scene::detail
@@ -44,6 +45,7 @@ namespace lux::editor::scene::detail
         bool texture_reads_started{};
         std::uint64_t refresh_sequence{};
         bool adopted{};
+        std::size_t run_pins{};
         std::shared_ptr<std::atomic<bool>> retired_program_consumed;
         void start(ResourceTasks &, lux::process::asset_loading::AssetReadPort) noexcept;
         void acceptReplies() noexcept;
@@ -54,6 +56,35 @@ namespace lux::editor::scene::detail
         void releaseStep(rendering::EditorRenderer &, lux::scene::RenderRuntimeLease &);
     };
 
+    struct FrozenSceneResource final
+    {
+        lux::world::WorldObjectId object;
+        lux::scene::ResolvedMeshResources value;
+    };
+
+    // Main owns the pins; the worker only receives copies of values(). Resource
+    // retirement still obeys the existing packet/GPU lifetime after the last pin.
+    class SceneResourcePins final
+    {
+      public:
+        SceneResourcePins() = default;
+        ~SceneResourcePins();
+        SceneResourcePins(SceneResourcePins &&) noexcept;
+        SceneResourcePins &operator=(SceneResourcePins &&) noexcept;
+        SceneResourcePins(const SceneResourcePins &) = delete;
+        SceneResourcePins &operator=(const SceneResourcePins &) = delete;
+        [[nodiscard]] std::span<const FrozenSceneResource> values() const noexcept
+        {
+            return values_;
+        }
+
+      private:
+        friend class SceneResources;
+        void reset() noexcept;
+        std::vector<ResourceRequest *> requests_;
+        std::vector<FrozenSceneResource> values_;
+    };
+
     class SceneResources final
     {
       public:
@@ -62,6 +93,8 @@ namespace lux::editor::scene::detail
         ~SceneResources() noexcept;
         SceneResult<void> activate() noexcept;
         SceneResult<bool> prepareUpdate(lux::simulation::ecs::Registry &) noexcept;
+        [[nodiscard]] SceneResult<SceneResourcePins> freeze(const lux::simulation::ecs::Registry &,
+                                                            const lux::simulation::ecs::WorldEntityMap &);
         void acknowledgeSnapshot() noexcept;
 
         bool snapshotChanged() const noexcept

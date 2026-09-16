@@ -421,6 +421,11 @@ namespace lux::process
         return *this;
     }
 
+    std::size_t ExecutionRuntime::cpuConcurrency() const noexcept
+    {
+        return state_ ? state_->workers.size() : 0;
+    }
+
     CpuScheduler ExecutionRuntime::cpu() const noexcept
     {
         return CpuScheduler{state_};

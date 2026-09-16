@@ -14,6 +14,9 @@ template <class Codec> class SourceOpening final : public DocumentOpening
     using Source = typename Codec::Source;
     using ReadResult = EditorResult<lux::cxx::SharedBytes<>>;
     using Result = EditorResult<Source>;
+    static constexpr bool HasPreparation =
+        requires(Codec &codec, Source &source, Project &project, process::ExecutionRuntime &runtime,
+                 std::stop_token stop) { codec.prepare(source, project, runtime, stop); };
     struct Read final
     {
         std::filesystem::path path;
@@ -97,20 +100,67 @@ template <class Codec> class SourceOpening final : public DocumentOpening
     void cancel() noexcept override
     {
         stop_.request_stop();
+        if constexpr (HasPreparation)
+        {
+            if (!taken_)
+            {
+                preparation_done_ = false;
+            }
+        }
     }
-    void poll() override {}
+    void poll() override
+    {
+        if constexpr (HasPreparation)
+        {
+            if (preparation_done_ || (prepared_.index() == 0 && !task_.ready()))
+            {
+                return;
+            }
+            if (prepared_.index() == 0)
+            {
+                prepared_.template emplace<Result>(task_.take());
+            }
+            auto &source = std::get<Result>(prepared_);
+            if (!source)
+            {
+                preparation_done_ = true;
+                return;
+            }
+            auto ready = codec_.prepare(*source, project_, runtime_, stop_.get_token());
+            if (!ready)
+            {
+                source = lux::cxx::unexpected(std::move(ready.error()));
+                preparation_done_ = true;
+            }
+            else
+            {
+                preparation_done_ = *ready;
+            }
+        }
+    }
     bool settled() const noexcept override
     {
+        if constexpr (HasPreparation)
+        {
+            return preparation_done_;
+        }
         return task_.ready();
     }
     EditorResult<std::unique_ptr<DocumentEditor>> take() override
     {
-        if (!task_.ready() || taken_)
+        if (!settled() || taken_)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_STATE, "document.open.take"});
         }
         taken_ = true;
-        auto result = task_.take();
+        auto result = [&]() -> Result
+        {
+            if constexpr (HasPreparation)
+            {
+                return std::move(std::get<Result>(prepared_));
+            }
+            return task_.take();
+        }();
         if (!result)
         {
             return lux::cxx::unexpected(std::move(result.error()));
@@ -128,6 +178,8 @@ template <class Codec> class SourceOpening final : public DocumentOpening
     process::ExecutionRuntime &runtime_;
     std::stop_source stop_;
     bool taken_{};
+    bool preparation_done_{};
+    std::variant<std::monostate, Result> prepared_;
     DocumentTask<Result, Sender> task_;
 };
 } // namespace lux::editor::detail

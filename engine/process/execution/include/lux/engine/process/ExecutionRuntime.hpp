@@ -366,6 +366,8 @@ namespace lux::process
         ExecutionRuntime &operator=(const ExecutionRuntime &) = delete;
 
         [[nodiscard]] CpuScheduler cpu() const noexcept;
+        // Owner-thread admission fact, before shutdown/join mutates worker storage.
+        [[nodiscard]] std::size_t cpuConcurrency() const noexcept;
         [[nodiscard]] MainScheduler main() const noexcept;
         [[nodiscard]] TimerClient timer() const noexcept;
         [[nodiscard]] lux::cxx::expected<BlockingScheduler, EExecutionError> blocking() const noexcept;

@@ -173,20 +173,10 @@ namespace lux::simulation::ecs
         }
 
         template <class Component, std::uint32_t Version>
-        [[nodiscard]] lux::cxx::expected<void, ComponentDecodeFailure> decodeEmplaceComponent(
-            Registry& registry,
-            const WorldEntityMap& identities,
-            Entity entity,
-            std::uint32_t encoded_schema_version,
-            std::span<const std::byte> encoded_payload
-        ) noexcept
+        [[nodiscard]] lux::cxx::expected<Component, ComponentDecodeFailure> decodeComponent(
+            std::uint32_t encoded_schema_version, std::span<const std::byte> encoded_payload,
+            WorldComponentArchive<lux::serialization::BinaryReader> &reader)
         {
-            if (!registry.valid(entity))
-            {
-                return lux::cxx::unexpected(
-                    decodeFailure(EComponentDecodeError::INVALID_ENTITY)
-                );
-            }
             if (encoded_schema_version != Version)
             {
                 return lux::cxx::unexpected(
@@ -194,8 +184,6 @@ namespace lux::simulation::ecs
                 );
             }
 
-            lux::serialization::BinaryReader binary(encoded_payload);
-            WorldComponentArchive reader(binary, identities, registry);
             const lux::serialization::SerializationBudget budget{
                 encoded_payload.size(),
                 encoded_payload.size(),
@@ -219,8 +207,42 @@ namespace lux::simulation::ecs
                 );
             }
 
+            return std::move(*decoded);
+        }
+
+        template <class Component, std::uint32_t Version>
+        [[nodiscard]] lux::cxx::expected<void, ComponentDecodeFailure> decodeEmplaceComponent(
+            Registry &registry, const WorldEntityMap &identities, Entity entity, std::uint32_t encoded_schema_version,
+            std::span<const std::byte> encoded_payload) noexcept
+        {
+            if (!registry.valid(entity))
+            {
+                return lux::cxx::unexpected(decodeFailure(EComponentDecodeError::INVALID_ENTITY));
+            }
+            lux::serialization::BinaryReader binary(encoded_payload);
+            WorldComponentArchive reader(binary, identities, registry);
+            auto decoded = decodeComponent<Component, Version>(encoded_schema_version, encoded_payload, reader);
+            if (!decoded)
+            {
+                return lux::cxx::unexpected(decoded.error());
+            }
             registry.emplace_or_replace<Component>(entity, std::move(*decoded));
             return {};
+        }
+
+        template <class Component, std::uint32_t Version>
+        [[nodiscard]] lux::cxx::expected<DecodedComponent, ComponentDecodeFailure> decodeComponentValue(
+            std::uint32_t encoded_schema_version, std::span<const std::byte> encoded_payload,
+            ComponentEntityResolver resolver, std::shared_ptr<const void> code)
+        {
+            lux::serialization::BinaryReader binary(encoded_payload);
+            WorldComponentArchive reader(binary, resolver);
+            auto decoded = decodeComponent<Component, Version>(encoded_schema_version, encoded_payload, reader);
+            if (!decoded)
+            {
+                return lux::cxx::unexpected(decoded.error());
+            }
+            return DecodedComponent::own(std::move(*decoded), std::move(code));
         }
     } // namespace detail
 
@@ -233,25 +255,32 @@ namespace lux::simulation::ecs
             return nullptr;
     }
 
-    template <class Component>
-    [[nodiscard]] consteval CaptureComponentFn directComponentCapture() noexcept
+    template <class Component, std::uint32_t Version>
+    [[nodiscard]] consteval DecodeComponentValueFn directComponentDecodeValue() noexcept
+    {
+        if constexpr (detail::directMaterializableComponent<Component>() &&
+                      componentInstallHasNoBusinessFailure<Component>)
+        {
+            return &detail::decodeComponentValue<Component, Version>;
+        }
+        else
+        {
+            return nullptr;
+        }
+    }
+
+    template <class Component> [[nodiscard]] consteval CaptureComponentValueFn directComponentValueCapture() noexcept
     {
         if constexpr (detail::directMaterializableComponent<Component>() && std::is_copy_constructible_v<Component>)
         {
-            return +[](const Registry& registry, Entity entity, std::shared_ptr<const void> code)
-                -> lux::cxx::expected<ComponentCapture, ComponentDecodeFailure>
+            return +[](const void *value, std::shared_ptr<const void> code) -> ComponentCapture
             {
-                const auto* value = registry.try_get<Component>(entity);
-                if (!value)
-                {
-                    return lux::cxx::unexpected(ComponentDecodeFailure{EComponentDecodeError::INVALID_ENTITY});
-                }
                 struct Owned final
                 {
                     std::shared_ptr<const void> code;
                     Component value;
                 };
-                auto owned = std::make_shared<const Owned>(std::move(code), *value);
+                auto owned = std::make_shared<const Owned>(std::move(code), *static_cast<const Component *>(value));
                 auto captured = std::shared_ptr<const void>(owned, &owned->value);
                 return ComponentCapture{std::move(captured),
                     +[](const void* capture, const WorldEntityMap& identities, std::size_t limit) -> ComponentEncodeResult
@@ -267,6 +296,28 @@ namespace lux::simulation::ecs
                         }
                         return bytes;
                     }};
+            };
+        }
+        else
+        {
+            return nullptr;
+        }
+    }
+
+    template <class Component> [[nodiscard]] consteval CaptureComponentFn directComponentCapture() noexcept
+    {
+        if constexpr (detail::directMaterializableComponent<Component>() && std::is_copy_constructible_v<Component>)
+        {
+            return +[](const Registry &registry, Entity entity,
+                       std::shared_ptr<const void> code) -> lux::cxx::expected<ComponentCapture, ComponentDecodeFailure>
+            {
+                const auto *value = registry.try_get<Component>(entity);
+                if (!value)
+                {
+                    return lux::cxx::unexpected(ComponentDecodeFailure{EComponentDecodeError::INVALID_ENTITY});
+                }
+                constexpr auto capture = directComponentValueCapture<Component>();
+                return capture(value, std::move(code));
             };
         }
         else

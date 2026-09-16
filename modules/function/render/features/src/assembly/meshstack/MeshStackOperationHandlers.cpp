@@ -479,26 +479,8 @@ namespace lux::render
 
         RenderObjectHandle resolveMeshObject(RenderScene* scene, RenderEntityId entity) noexcept
         {
-            if (scene == nullptr || !scene->entities().valid(entity))
-            {
-                return {};
-            }
-            const auto* binding = scene->entities().try_get<MeshBinding>(entity);
-            return binding != nullptr ? binding->object : RenderObjectHandle{};
-        }
-
-        void eraseMeshBinding(RenderScene& scene, RenderEntityId entity) noexcept
-        {
-            auto& entities = scene.entities();
-            if (!entities.valid(entity))
-            {
-                return;
-            }
-            entities.remove<MeshBinding>(entity);
-            if (!entities.all_of<LightBinding>(entity))
-            {
-                entities.destroy(entity);
-            }
+            const auto *instances = scene ? scene->resources().find<InstanceResources>() : nullptr;
+            return instances ? instances->findSource(entity) : RenderObjectHandle{};
         }
 
     } // anonymous namespace (helpers)
@@ -855,31 +837,30 @@ namespace lux::render
         }
 
         EMeshInstanceCreateStatus status = EMeshInstanceCreateStatus::UNKNOWN;
-        auto& entities = scene->entities();
-        if (auto* binding = entities.valid(p.entity) ? entities.try_get<MeshBinding>(p.entity) : nullptr)
+        auto *instances = scene->resources().find<InstanceResources>();
+        if (!instances)
         {
-            const detail::MeshInstanceRevision revision{
-                binding->object,
-                p.mesh,
-                p.material,
-                p.transform,
-                p.flags & ~kInstanceInternalFlagClusterOwned,
-                p.geometry_kind,
-                p.pass_mask,
-                p.user_meta_index,
-                0xffffffffu
-            };
+            ctx.markDispatchError(renderError<err::resource::NotFound>());
+            return;
+        }
+        if (const auto existing = instances->findSource(p.entity))
+        {
+            const detail::MeshInstanceRevision revision{existing,
+                                                        p.mesh,
+                                                        p.material,
+                                                        p.transform,
+                                                        p.flags & ~kInstanceInternalFlagClusterOwned,
+                                                        p.geometry_kind,
+                                                        p.pass_mask,
+                                                        p.user_meta_index,
+                                                        0xffffffffu};
             if (!detail::reconfigureMeshInstances(ctx.user_state, p.scene_id, {&revision, 1U}, status))
             {
                 ctx.markDispatchError(renderError<err::resource::ModifyFailed>());
                 return;
             }
-            detail::setMeshInstanceVisibility(
-                ctx.user_state,
-                p.scene_id,
-                binding->object,
-                (p.flags & kInstanceFlagVisible) != 0U
-            );
+            detail::setMeshInstanceVisibility(ctx.user_state, p.scene_id, existing,
+                                              (p.flags & kInstanceFlagVisible) != 0U);
             return;
         }
 
@@ -903,11 +884,11 @@ namespace lux::render
             ctx.markDispatchError(renderError<err::resource::ModifyFailed>());
             return;
         }
-        if (!entities.valid(p.entity))
+        if (instances->bindSource(p.entity, object) != InstanceResources::ESourceBindResult::INSERTED)
         {
-            (void)entities.create(p.entity);
+            detail::destroyMeshInstance(ctx.user_state, p.scene_id, object);
+            ctx.markDispatchError(renderError<err::resource::ModifyFailed>());
         }
-        entities.emplace<MeshBinding>(p.entity, object);
     }
 
     void handleRemoveMeshInstance(GeneralRenderServer::Dispatcher::Ctx& ctx, const RemoveMeshInstancePayload& p)
@@ -919,7 +900,6 @@ namespace lux::render
             return;
         }
         detail::destroyMeshInstance(ctx.user_state, p.scene_id, object);
-        eraseMeshBinding(*scene, p.entity);
     }
 
     void handleRetireMeshInstance(GeneralRenderServer::Dispatcher::Ctx& ctx, const RetireMeshInstancePayload& p)
@@ -927,15 +907,15 @@ namespace lux::render
         auto* scene = lookupScene(ctx.user_state, p.scene_id);
         auto* instances = scene ? scene->resources().find<InstanceResources>() : nullptr;
         const auto object = resolveMeshObject(scene, p.entity);
+        if (instances && object)
+        {
+            (void)instances->unbindSource(p.entity, object);
+        }
         const float duration = static_cast<float>(p.transition_milliseconds) / 1000.0f;
         if (!scene || !instances ||
             !instances->beginFadeRetirement(object, scene->sceneTime(), duration, p.transition_seed))
         {
             detail::destroyMeshInstance(ctx.user_state, p.scene_id, object);
-        }
-        if (scene && object)
-        {
-            eraseMeshBinding(*scene, p.entity);
         }
     }
 

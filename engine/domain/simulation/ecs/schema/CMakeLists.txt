@@ -13,6 +13,7 @@ add_component(
     OUTPUT_NAME    lux_engine_simulation_ecs_schema
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ComponentSchemaSet.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/DecodedComponent.cpp
 )
 
 component_include_directories(

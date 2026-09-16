@@ -3,6 +3,7 @@
 #include <lux/engine/editor/gui/scene/InspectorPane.hpp>
 #include <lux/engine/editor/gui/scene/OutlinerPane.hpp>
 #include <lux/engine/editor/gui/scene/ResourcePane.hpp>
+#include <lux/engine/editor/gui/scene/RunPane.hpp>
 #include <lux/engine/editor/gui/scene/SceneDocumentProvider.hpp>
 #include <lux/engine/editor/gui/scene/ScenePane.hpp>
 #include <lux/engine/editor/ui/SceneLayout.hpp>
@@ -141,9 +142,7 @@ namespace lux::editor::gui
                     previous = binding.type.hash();
                 }
                 return editor.registerDocument(
-                    {std::string(scene::kSceneDocumentType), [&runtime, &renderer, metadata = std::move(*metadata)](
-                                                                 Project &project, const OpenDocumentRequest &request)
-                     { return scene::openSceneDocument(project, request, runtime, renderer, metadata); }});
+                    scene::sceneDocumentRegistration(runtime, renderer, std::move(*metadata)));
             },
             [shared_bindings](DocumentEditor &base, EditorWindow &window, rendering::EditorRenderer &renderer,
                               process::ExecutionRuntime &runtime) -> EditorResult<void>
@@ -155,7 +154,7 @@ namespace lux::editor::gui
                 }
                 const auto prefix = "scene-" + std::to_string(document->historyId().value);
                 PaneAttachment batch;
-                batch.views.reserve(4);
+                batch.views.reserve(5);
                 auto outliner =
                     attachPane<OutlinerPane>(batch, *document, window, prefix + "-outliner", prefix + "-outliner");
                 if (!outliner)
@@ -179,6 +178,11 @@ namespace lux::editor::gui
                 if (!scene)
                 {
                     return scene;
+                }
+                auto run = attachPane<RunPane>(batch, *document, window, prefix + "-run", prefix + "-run");
+                if (!run)
+                {
+                    return run;
                 }
                 if (batch.views.empty())
                 {

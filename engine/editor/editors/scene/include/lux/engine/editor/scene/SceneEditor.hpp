@@ -1,10 +1,11 @@
 #pragma once
 
 #include <lux/engine/editor/DocumentEditor.hpp>
-#include <lux/engine/editor/scene/visibility.h>
 #include <lux/engine/editor/project/Project.hpp>
 #include <lux/engine/editor/scene/SceneEdit.hpp>
 #include <lux/engine/editor/scene/SceneResources.hpp>
+#include <lux/engine/editor/scene/SceneRun.hpp>
+#include <lux/engine/editor/scene/visibility.h>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
 #include <lux/engine/object/Object.hpp>
 #include <lux/engine/object/ObjectAnnotations.hpp>
@@ -12,10 +13,21 @@
 #include <lux/engine/scene/SceneMetaManager.hpp>
 #include <lux/engine/world/WorldObjectId.hpp>
 
+namespace lux::editor
+{
+    struct DocumentRegistration;
+}
+
 namespace lux::editor::rendering
 {
     class EditorRenderer;
 }
+
+namespace lux::scene
+{
+    class SceneRenderBinding;
+    class SceneRenderInput;
+} // namespace lux::scene
 
 namespace lux::editor::scene
 {
@@ -77,8 +89,18 @@ namespace lux::editor::scene
 
         [[nodiscard]] static EditorResult<std::unique_ptr<SceneEditor>> open(
             NativeScene &, Project &, process::ExecutionRuntime &, rendering::EditorRenderer &,
-            std::shared_ptr<const lux::scene::SceneMetaManager>);
+            std::shared_ptr<const lux::scene::SceneMetaManager>, lux::scene::SceneRenderInput *,
+            std::unique_ptr<lux::scene::SceneRenderBinding> &, std::shared_ptr<detail::SceneRunSlot>);
         ~SceneEditor() override;
+
+        [[nodiscard]] EditorResult<RunId> play(std::chrono::nanoseconds fixed_step = std::chrono::milliseconds(16));
+        [[nodiscard]] EditorResult<void> pauseRun(RunId);
+        [[nodiscard]] EditorResult<void> resumeRun(RunId);
+        [[nodiscard]] EditorResult<void> stepRun(RunId);
+        [[nodiscard]] EditorResult<void> stopRun(RunId);
+        [[nodiscard]] RunStatus runStatus() const;
+        [[nodiscard]] double runCoordinatePageSize() const noexcept;
+        [[nodiscard]] EditorResult<RunViewLease> openRunView(RunId, rendering::ViewConfig);
 
         [[nodiscard]] DocumentSummary summary() const override;
         [[nodiscard]] std::string_view writeRestriction() const noexcept;
@@ -173,7 +195,6 @@ namespace lux::editor::scene
         std::unique_ptr<Data> data_;
     };
 
-    [[nodiscard]] LUX_EDITOR_SCENE_PUBLIC EditorResult<std::unique_ptr<DocumentOpening>> openSceneDocument(
-        Project &, const OpenDocumentRequest &, process::ExecutionRuntime &, rendering::EditorRenderer &,
-        std::shared_ptr<const lux::scene::SceneMetaManager>);
+    [[nodiscard]] LUX_EDITOR_SCENE_PUBLIC DocumentRegistration sceneDocumentRegistration(
+        process::ExecutionRuntime &, rendering::EditorRenderer &, std::shared_ptr<const lux::scene::SceneMetaManager>);
 } // namespace lux::editor::scene

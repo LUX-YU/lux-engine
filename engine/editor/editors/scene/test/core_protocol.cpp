@@ -1,6 +1,9 @@
 #include "TestExit.hpp"
 #include "flow_metadata.hpp"
 #include "model_placement_checks.hpp"
+#include "render_association_checks.hpp"
+#include "render_thread_checks.hpp"
+#include "run_checks.hpp"
 #include "scene_edit_checks.hpp"
 #include "scene_save_checks.hpp"
 #include <array>
@@ -411,6 +414,30 @@ class Probe final : public EditorFrontend
                 ++evidence_.checks;
                 std::puts("document/resources/GPU ready with unrelated Process task still active");
             }
+            if (evidence_.mode == "render-thread")
+            {
+                thread_checks_.begin(*evidence_.renderer);
+                stage_ = 94;
+                return;
+            }
+            if (evidence_.mode == "render-association")
+            {
+                association_checks_.begin(scene, *evidence_.renderer);
+                stage_ = 91;
+                return;
+            }
+            if (evidence_.mode == "fixed-run-failure")
+            {
+                run_failure_checks_.begin(scene);
+                stage_ = 96;
+                return;
+            }
+            if (evidence_.mode == "fixed-run")
+            {
+                run_checks_.begin(scene, *evidence_.renderer);
+                stage_ = 90;
+                return;
+            }
             if (evidence_.mode == "resize")
             {
                 auto opened =
@@ -458,6 +485,46 @@ class Probe final : public EditorFrontend
             checkSceneEditing(scene);
             before_revision_ = scene.historyView()->history.revision;
             stage_ = 5;
+            return;
+        }
+        if (stage_ == 96)
+        {
+            auto& scene = dynamic_cast<lux::editor::scene::SceneEditor&>(editor_->document(handle_)->get());
+            if (run_failure_checks_.poll(scene))
+            {
+                stage_ = 97;
+                exit_.request(*editor_);
+            }
+            return;
+        }
+        if (stage_ == 94)
+        {
+            if (thread_checks_.poll(*runtime_, *evidence_.renderer))
+            {
+                stage_ = 95;
+                exit_.request(*editor_);
+            }
+            return;
+        }
+        if (stage_ == 91)
+        {
+            auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
+            if (association_checks_.poll(scene))
+            {
+                exit_.request(*editor_);
+                stage_ = 92;
+            }
+            return;
+        }
+        if (stage_ == 90)
+        {
+            auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
+            if (run_checks_.poll(scene, *evidence_.renderer))
+            {
+                evidence_.checks += 12;
+                stage_ = 93;
+                exit_.request(*editor_);
+            }
             return;
         }
         if (stage_ == 44)
@@ -666,7 +733,7 @@ class Probe final : public EditorFrontend
             const auto inspector_id = "scene-" + std::to_string(scene.historyId().value) + "-inspector";
             if (stage_ == 3)
             {
-                assert(scene.views().size() == 4);
+                assert(scene.views().size() == 5);
                 const auto inspector =
                     std::ranges::find_if(scene.views(), [&](const auto &view) { return view->id() == inspector_id; });
                 assert(inspector != scene.views().end());
@@ -674,13 +741,13 @@ class Probe final : public EditorFrontend
                 const auto pending =
                     gui::sceneDocumentProvider().attach(scene, *evidence_.window, *evidence_.renderer, *runtime_);
                 assert(!pending && pending.error().code == EEditorError::BUSY);
-                assert(scene.views().size() == 4);
+                assert(scene.views().size() == 5);
                 before_revision_ = scene.historyView()->history.revision;
                 material_frame_ = evidence_.frames;
                 stage_ = 80;
                 return;
             }
-            if (stage_ == 80 && scene.views().size() == 3)
+            if (stage_ == 80 && scene.views().size() == 4)
             {
                 assert(scene.closeStatus().state == ECloseState::OPEN);
                 assert(scene.historyView()->history.revision == before_revision_);
@@ -694,11 +761,11 @@ class Probe final : public EditorFrontend
                                  rebuilt.error().domain.c_str(), rebuilt.error().reason, scene.views().size(),
                                  before.revision.value);
                 }
-                assert(rebuilt && scene.views().size() == 4);
+                assert(rebuilt && scene.views().size() == 5);
                 assert(scene.historyView()->history.current == before.current);
                 assert(scene.historyView()->history.revision == before.revision);
                 assert(gui::sceneDocumentProvider().attach(scene, *evidence_.window, *evidence_.renderer, *runtime_));
-                assert(scene.views().size() == 4);
+                assert(scene.views().size() == 5);
                 material_frame_ = evidence_.frames;
                 stage_ = 81;
                 return;
@@ -1068,6 +1135,10 @@ class Probe final : public EditorFrontend
     std::size_t material_frame_{};
     SceneSaveChecks save_checks_;
     ModelPlacementChecks placement_checks_;
+    SceneRunChecks run_checks_;
+    RunFailureChecks run_failure_checks_;
+    RenderAssociationChecks association_checks_;
+    RenderThreadChecks thread_checks_;
     lux::process::ExecutionRuntime *runtime_{};
     Evidence &evidence_;
     std::unique_ptr<EditorFrontend> inner_;

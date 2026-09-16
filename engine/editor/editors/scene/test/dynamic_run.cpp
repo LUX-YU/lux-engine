@@ -47,7 +47,7 @@ int main(int argc, char **argv)
     auto window = editor::gui::EditorWindow::create(messages.dispatcherRef(), spec);
     assert(window);
     editor::rendering::RendererConfig config;
-    config.validation = true;
+    config.validation = std::string_view(argv[2]) != "dynamic-cost";
     auto renderer =
         editor::rendering::EditorRenderer::create((*window)->nativeWindow(), (*window)->uiSession(), config);
     assert(renderer);
@@ -342,11 +342,13 @@ int main(int argc, char **argv)
     }
     std::printf("dynamic latency pause_stable_us=%lld step_completion_us=%lld "
                 "stop_producer_us=%lld stop_resources_us=%lld steps=%llu "
-                "published=%llu backpressure=%llu\n",
+                "published=%llu backpressure=%llu work_ns=%lld publication_wait_ns=%lld\n",
                 static_cast<long long>(pause_us), static_cast<long long>(step_us), static_cast<long long>(producer_us),
                 static_cast<long long>(close_us), static_cast<unsigned long long>(final.steps),
                 static_cast<unsigned long long>(final.published_updates),
-                static_cast<unsigned long long>(final.backpressure_count));
+                static_cast<unsigned long long>(final.backpressure_count),
+                static_cast<long long>(final.simulation_work.count()),
+                static_cast<long long>(final.publication_wait.count()));
     document.requestClose();
     while (document.closeStatus().state != editor::ECloseState::CLOSED)
     {

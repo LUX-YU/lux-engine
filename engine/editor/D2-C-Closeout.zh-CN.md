@@ -1,10 +1,41 @@
-# D2-C 续行记录（2026-09-15）
+# D2-C 续行记录（2026-09-16）
 
 状态：**D2_C_INCOMPLETE**，未授予 D3 准入。保留既有架构，不实现 Run。
 
 可取得的检查点：`239028042f1ad6399526feae3ba50342b7c718f2`。
-本次代码候选：`4a502f4678c21547bc41ab9e9cbb852e388a6b34`。
+本次代码候选：`88bbaab013d8a64058eee0497c01968211d864e6`。
 开发分支：`codex/editor-d2-c`。main 未修改。
+
+## 本轮相邻路径与退出来源
+
+生产修复为 `d71c2e97`，最终候选另补具体 Pane 组合测试；两者生产源码相同。
+
+- **整个 Inspector 未 draw**：正常 UISession 在布局压零／窗口折叠后撤销 Pane 焦点，
+  但 visible 仍为 true。Inspector 的正常 owner poll 现在依据 `!visible() || !focused()`
+  提交预览，关闭则仍取消。没有通知回调内的业务修改，也没有按“多久没 draw”猜测结束。
+  没有新 UI 帧时保留已有焦点事实，包括 Renderer 准备包等待接纳的情况。
+- **准确负例**：`undrawn-inspector-before-corrected.log` 中真实 Pane 得到
+  `visible=1 focused=0 draws=4 active=1 cursor=0`。修后 active=0、cursor=1。
+  折叠时的明确 PRECONDITION_FAILED 保留 token；解除条件后重试一次成功，恢复显示不重复提交，
+  Undo 恢复原值。连续8次 owner poll 而不绘制时保持预览；这属于无新UI帧控制验证，
+  没有声称注入了真实 GPU 背压。最初驱动在 UISession 的上下文作用域外调用 ImGui，
+  产生的 `undrawn-inspector-before.log`／`undrawn-driver-stack.log` 不算产品负例。
+- **具体 Pane 组合**：真实 Inspector 活动预览中关闭，由 SceneEditor owner 取消并销毁；
+  销毁期间取消／恢复选择，断开的记录订阅收到0次、保留订阅收到2次；重新装配后
+  新 Inspector 正确刷新一次，继续实际控件 IO 编辑并 Undo。直接订阅记录器不是第二个 Inspector；
+  QUEUED 接收者代次隔离仍由真实 Material 通知用例单独验证，未宣称两者是同一物理流程。
+- **取消接线**：实际 Inspector 的 Esc 分支经 UiKey／鼠标 IO 注入通过，原值恢复、历史版本不变，
+  继续保持鼠标按下并移动不重启旧预览。它仍不是物理输入验收。
+- **有限退出记录**：stderr 的 `[editor.exit]` 分别记录 native-close-flag、review-begin、
+  review-cancel、choice（save/discard/cancel）、review-commit、startup-cancel、failure 和 finished。
+  只在状态转换／实际选择时记录；关闭已提交后不再重复开启协商，避免 editor:0 刷屏。
+  记录不识别原生请求的发送进程，外部强制终止也不保证有最终记录。
+
+本轮桌面启动在任何 Computer Use 输入发出前即得到：
+`native-close-flag → review-begin → review-commit → finished code=0 failure=0 joined=1`。
+这证明本次执行了原生请求后的正常退出协议，不证明用户点击关闭；与用户提示的 GPU 实验
+可能关闭窗口一致，但不能据此识别发送方。原始记录为 `desktop-d71c2e9.*`。
+局部文本 Ctrl+Z 和物理拖动 Esc 尚未取得新结果，没有重复无效桌面调用。
 
 ## 本次实际修复
 
@@ -47,12 +78,12 @@
 
 | 工作流 | 本次结果 | 仍需完成 |
 |---|---|---|
-| Pane 生命周期 | 真实 Inspector 单独销毁／重建、关闭期间 BUSY、重复装配、其余 Pane 与文档历史保留通过；隐藏期间修改／恢复通过；真实 Material 的消费者断开与旧排队通知隔离新增通过 | 通知隔离与具体 Pane 重建的组合仍未完整覆盖 |
+| Pane 生命周期 | 原重建／BUSY覆盖保留；本轮增加活动预览关闭、销毁期间选择通知、恢复刷新及新手势Undo，实际Inspector通过；Material QUEUED代次隔离保留 | 双实际Pane消费者与排队通知的完整联合流程尚未验证 |
 | 裁剪／分页 | 64项分页、非随机容器定位、结构变化逆操作及 BUSY 手势保留证据保留；新增实际 ImGui IO 的控件离屏结束／重显／无变化／Undo 回归通过 | 持续手势中物理滚动／分页／折叠／过滤的完整用户流程未通过验收 |
 | 实际取消 | 物理退出取消、继续编辑、恢复打开接纳及显式保存关闭通过 | 鼠标保持按下时 Esc 取消未验证；Computer Use 的 drag 只能一次按下→拖动→释放 |
 | 跨文档撤销 | Scene、Material A、Material B 均有记录；真实 CommandRouter 的 A Undo／EMPTY 拒绝不改变 B、Scene 的版本和通知数；菜单捕获与注册失效拒绝通过。物理 Material 空历史 Ctrl+Z 不影响有历史 Scene | 文本框局部 Ctrl+Z 的完整物理组合尚缺；不能把三文档接口测试说成三文档物理测试 |
 
-本候选桌面续验：重新打开看到上次保存的 X=3；鼠标拖动提交到 X=4 后仍可打开
+4a502f46 历史桌面续验：重新打开看到上次保存的 X=3；鼠标拖动提交到 X=4 后仍可打开
 Material。准备输入名称时，End／x 按键序列之后出现非预期关闭协商，随后窗口消失。
 另一次运行在选择对象前后退出，日志为 editor:0。进程退出码虽为0，但没有对应的
 明确退出操作，均不记为正常关闭通过。工具还返回
@@ -80,12 +111,12 @@ Material。准备输入名称时，End／x 按键序列之后出现非预期关�
 
 | 条件 | 当前状态 |
 |---|---|
-| G1 源码内聚 | 保留原迁移；本次只改共同前端和具体 feature 的装配，未增加架构层 |
-| G2 定向正确性 | R01—R05 相关已执行回归保留，新增两项实际缺陷已修；C19 的组合证据仍待补 |
+| G1 源码内聚 | 保留原迁移；本次只改Inspector推进和现有退出路径记录，未增加架构层 |
+| G2 定向正确性 | 相邻未draw负例已修；业务拒绝保留与重试、具体Pane关闭重建通过；R01—R05相关回归保留。C19扩大到双实际Pane及排队联合流程仍为PARTIAL |
 | G3 真实 D2 闭环 | PARTIAL：退出取消、局部空历史验证有进展；上述持续手势、文本组合和完整画布流程仍缺 |
 | G4 异步与发布 | 正常 SDK 发布／恢复回归复用并重跑；专用诊断13个中断边界的旧有效原始记录保留，未重标成新诊断二进制 |
 | G5 工程资格 | 独立干净副本、RelWithDebInfo all、随后no-op、安装迁移、33个安装测试、9个独立消费者和1个画布测试分别记录；不把数量相加成逻辑验收数。同一工作消费者构建目录宏ON/OFF两次均重新生成schema/Inspector，恢复OFF后no-op及安装组件测试通过 |
-| G6 代表规模成本 | 复用原五组独立进程样本。没有重测本次 Pane 恢复和弹窗的耗时；没有声称新代码带来额外加速。全局分配次数与独立 ProjectReady 延迟仍未测 |
+| G6 代表规模成本 | 最终候选复用原有限成本脚本，补当前正常产物的五组配对Inspector/Outliner样本；其余业务/保存/resize原始有效成本保留原身份。未启动全面微优化，全局分配次数与独立ProjectReady延迟仍未测 |
 
 原成本：100次主动绘制的中位数，Outliner/桌面4096对象22.708→3.923ms，
 生成 Inspector 4096项181.281→8.897ms；256对象5.158→3.938ms，256项14.769→9.033ms。
@@ -93,16 +124,36 @@ Material。准备输入名称时，End／x 按键序列之后出现非预期关�
 普通 vector 元素手势100次更新保留一条历史、计费422字节；不是RSS或全局堆分配统计。
 保存／resize 样本没有显示加速，不从进程时间推导 FPS 或 p95。
 
+最终88bbaab0正常产物沿用相同输入和脚本，五组成功配对的100次主动绘制中位数如下。
+基线为原c7426de2；这些数据对比的是本轮累计优化，不表示未draw修复自身带来这些收益。
+
+| 工作／规模 | 原基线（ms） | 当前候选（ms） |
+|---|---:|---:|
+| Outliner／桌面256对象 | 5.705 | 4.239 |
+| Outliner／桌面4096对象 | 24.829 | 4.225 |
+| 生成Inspector256项 | 14.925 | 8.635 |
+| 生成Inspector4096项 | 186.778 | 8.496 |
+
+原始第五组在256对象关闭阶段触及驱动期限，随后资源排空且退出协议完成，但测试仍失败。
+保留 `cost-20260916-152222-5-after-objects-256.log`，没有将其计为成功或删除。
+只重跑完整第五组前后配对，未放宽超时；重跑通过。
+统计采用152222批次第1—4组和153838批次第5组，逐样本来源列于
+`cost-88bbaab-summary.json`。这是成功运行条件下的CPU成本，不是关闭尾延迟或可靠性通过证明。
+较早d71c2e97的084445完整五组及原2390280阶段数据保持各自来源。
+
 ## 交付身份与复验
 
 包内 `source/` 是候选的 Git archive；`reports/source-identities.json` 分别记录 Git blob OID、
 Git blob SHA256 与 Windows checkout SHA256。正常 SDK、诊断 SDK、桌面工作 SDK 及消费者
 二进制身份分别记录。`manifest.json` 覆盖包内实际文件。
 2390280 和 ab0e683 原包、原日志保留；`qualification-2390280/`、
-`qualification-aad58157/`、`qualification-ab0e683/` 保留此前资格记录。
-`q-final-*` 对应4a502f46；33个安装测试96.48秒，9个独立消费者0.25秒，画布1项通过。
+`qualification-aad58157/`、`qualification-ab0e683/`、`qualification-4a502f4/`、
+`qualification-d71c2e9/` 保留此前资格记录。
+`q-final-*` 对应88bbaab0；33个安装测试65.86秒，9个独立消费者0.35秒，画布1项通过。
 ab0e683 的显式保存退出证据保持原身份；4a502f46 的异常桌面结束不记为该证据的延续。
-`generation-macro-*` 是同候选工作消费者的独立生成检查，未覆盖或替换资格SDK。
+`generation-macro-*` 是4a502f46工作消费者的独立生成检查，未覆盖或替换资格SDK。
+生成器及相关输入本轮未修改，宏切换原证据属于4a502f46，不能改标为88bbaab0重新执行。
+最终干净构建实际编译消费者和生成输出；没有为无生成生产变化重复完整失效矩阵。
 
 固定候选人工复验：使用随包 `verify/run-qualified-editor.ps1 -Project <已有项目>`。
 1. 在 Inspector 拖动字段，保持鼠标按下，按 Esc，再释放。核对原值恢复、没有新增历史；下一次拖动能提交。

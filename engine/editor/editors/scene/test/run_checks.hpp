@@ -78,6 +78,7 @@ struct SceneRunChecks final
     lux::editor::scene::RunId first;
     lux::editor::editing::HistorySnapshot author;
     std::uint64_t paused_step{};
+    std::uint64_t first_frame{};
     std::size_t phase{}, frames{};
     std::size_t polls{};
     lux::editor::rendering::ViewImage held_image;
@@ -97,6 +98,7 @@ struct SceneRunChecks final
     void begin(lux::editor::scene::SceneEditor &scene, lux::editor::rendering::EditorRenderer &renderer)
     {
         author = scene.historyView()->history;
+        first_frame = renderer.statistics().frames;
         captured_state = author.current;
         auto acquired = renderer.acquire();
         assert(acquired);
@@ -284,15 +286,16 @@ struct SceneRunChecks final
         {
             assert(run.retained_resources == 0 && run.pending_updates == 0);
             assert(run.published_updates == run.forwarded_updates && run.update_high_water <= 1);
-            std::printf(
-                "Run transport: published=%llu forwarded=%llu high_water=%u work_us=%lld wait_us=%lld pins=%zu\n",
-                static_cast<unsigned long long>(run.published_updates),
-                static_cast<unsigned long long>(run.forwarded_updates), run.update_high_water,
-                static_cast<long long>(
-                    std::chrono::duration_cast<std::chrono::microseconds>(run.simulation_work).count()),
-                static_cast<long long>(
-                    std::chrono::duration_cast<std::chrono::microseconds>(run.publication_wait).count()),
-                run.retained_resources);
+            std::printf("Run transport: published=%llu forwarded=%llu high_water=%u work_us=%lld wait_us=%lld pins=%zu "
+                        "steps=%llu frames=%llu\n",
+                        static_cast<unsigned long long>(run.published_updates),
+                        static_cast<unsigned long long>(run.forwarded_updates), run.update_high_water,
+                        static_cast<long long>(
+                            std::chrono::duration_cast<std::chrono::microseconds>(run.simulation_work).count()),
+                        static_cast<long long>(
+                            std::chrono::duration_cast<std::chrono::microseconds>(run.publication_wait).count()),
+                        run.retained_resources, static_cast<unsigned long long>(run.steps),
+                        static_cast<unsigned long long>(renderer.statistics().frames - first_frame));
             const auto next = scene.play(std::chrono::milliseconds(10));
             assert(next && *next != first);
             const auto late = scene.stopRun(first);

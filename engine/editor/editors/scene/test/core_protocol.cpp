@@ -1108,6 +1108,15 @@ class Probe final : public EditorFrontend
         {
             const auto stats = evidence_.renderer->statistics();
             assert(stats.views == 0 && stats.runtime_leases == 0);
+            if (evidence_.mode == "fixed-run" || evidence_.mode == "fixed-run-failure" ||
+                evidence_.mode == "render-association" || evidence_.mode == "render-thread")
+            {
+                assert(stats.validation_errors == 0);
+                std::printf("D3 GPU facts: submitted_frames=%llu completed=%llu validation_errors=%llu\n",
+                            static_cast<unsigned long long>(stats.frames),
+                            static_cast<unsigned long long>(stats.gpu_completed),
+                            static_cast<unsigned long long>(stats.validation_errors));
+            }
             std::printf("scene owners drained: views=%zu leases=%zu\n", stats.views, stats.runtime_leases);
         }
         inner_->requestClose();

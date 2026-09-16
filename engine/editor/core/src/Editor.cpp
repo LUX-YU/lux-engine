@@ -251,6 +251,7 @@ namespace lux::editor
         {
             return failed(EEditorError::INVALID_STATE);
         }
+        std::fprintf(stderr, "[editor.exit] event=startup-cancel\n");
         exit_requested_ = true;
         return {};
     }
@@ -270,6 +271,8 @@ namespace lux::editor
             return failed(EEditorError::CAPACITY);
         }
         review_ = {identity_, next_review_++};
+        std::fprintf(stderr, "[editor.exit] event=review-begin review=%llu\n",
+                     static_cast<unsigned long long>(review_.serial));
         return review_;
     }
 
@@ -283,6 +286,8 @@ namespace lux::editor
         {
             return failed(EEditorError::CLOSING);
         }
+        std::fprintf(stderr, "[editor.exit] event=review-cancel review=%llu\n",
+                     static_cast<unsigned long long>(id.serial));
         review_ = {};
         return {};
     }
@@ -331,6 +336,8 @@ namespace lux::editor
             }
         }
 
+        std::fprintf(stderr, "[editor.exit] event=review-commit review=%llu documents=%zu\n",
+                     static_cast<unsigned long long>(id.serial), decisions.size());
         exit_requested_ = true;
         for (const auto &document : documents_.values())
         {
@@ -343,6 +350,8 @@ namespace lux::editor
     {
         if (outcome_)
         {
+            std::fprintf(stderr, "[editor.exit] event=failure domain=%s code=%u reason=%llu\n", failure.domain.c_str(),
+                         static_cast<unsigned>(failure.code), static_cast<unsigned long long>(failure.reason));
             report(failure);
             outcome_ = lux::cxx::unexpected(std::move(failure));
         }
@@ -643,6 +652,9 @@ namespace lux::editor
         }
         const auto joined = runtime->join();
         state_ = EState::FINISHED;
-        return joined ? (outcome_ ? exit_code : (exit_code ? exit_code : 5)) : 7;
+        const int result = joined ? (outcome_ ? exit_code : (exit_code ? exit_code : 5)) : 7;
+        std::fprintf(stderr, "[editor.exit] event=finished code=%d failure=%u joined=%u\n", result,
+                     static_cast<unsigned>(!outcome_), static_cast<unsigned>(joined.has_value()));
+        return result;
     }
 } // namespace lux::editor

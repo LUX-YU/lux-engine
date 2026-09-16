@@ -103,7 +103,7 @@ namespace lux::editor::gui
                     {
                         editor.fail(windowFailure(input.error()).error());
                     }
-                    if (window_->closeRequested())
+                    if (window_->closeRequested() && !editor.closing())
                     {
                         if (!project_)
                         {
@@ -685,6 +685,9 @@ namespace lux::editor::gui
                 {
                     if (ImGui::Button("Save changes"))
                     {
+                        std::fprintf(stderr, "[editor.exit] event=choice action=save scope=%s review=%llu\n",
+                                     exit_after_close_ ? "editor" : "document",
+                                     static_cast<unsigned long long>(exit_review_.serial));
                         refreshClosingDocuments();
                         if (!finishClosingInteractions())
                         {
@@ -707,6 +710,9 @@ namespace lux::editor::gui
                     ImGui::SameLine();
                     if (ImGui::Button("Discard changes"))
                     {
+                        std::fprintf(stderr, "[editor.exit] event=choice action=discard scope=%s review=%llu\n",
+                                     exit_after_close_ ? "editor" : "document",
+                                     static_cast<unsigned long long>(exit_review_.serial));
                         refreshClosingDocuments();
                         if (!finishClosingInteractions())
                         {
@@ -736,6 +742,9 @@ namespace lux::editor::gui
                 }
                 if (ImGui::Button("Cancel close"))
                 {
+                    std::fprintf(stderr, "[editor.exit] event=choice action=cancel scope=%s review=%llu\n",
+                                 exit_after_close_ ? "editor" : "document",
+                                 static_cast<unsigned long long>(exit_review_.serial));
                     if (exit_after_close_)
                     {
                         const auto cancelled = editor_->cancelExitReview(exit_review_);

@@ -413,6 +413,7 @@ namespace
                         return;
                     }
                 }
+                consumer::checkUndrawnInspector(document, *window_);
                 checkRotation<float>(document, object);
                 checkRotation<double>(document, object);
                 checkVectorElements(document, object);
@@ -500,14 +501,23 @@ namespace
         }
 
       private:
-        static gui::GuiConfig configuration()
+        gui::GuiConfig configuration()
         {
             gui::GuiConfig config;
             config.window.width = 1000;
             config.window.height = 700;
             config.window.title = "D2 installed generated component";
             const std::array bindings{consumer::binding()};
-            config.providers.push_back(gui::sceneDocumentProvider(consumer::schemas(), bindings));
+            auto provider = gui::sceneDocumentProvider(consumer::schemas(), bindings);
+            const auto attach = provider.attach;
+            provider.attach = [this, attach](DocumentEditor &document, gui::EditorWindow &window,
+                                             rendering::EditorRenderer &renderer,
+                                             lux::process::ExecutionRuntime &runtime)
+            {
+                window_ = &window;
+                return attach(document, window, renderer, runtime);
+            };
+            config.providers.push_back(std::move(provider));
             return config;
         }
 
@@ -515,6 +525,7 @@ namespace
         std::unique_ptr<EditorFrontend> frontend_;
         Editor *editor_{};
         Project *project_{};
+        gui::EditorWindow *window_{};
         SaveRequestId save_;
         OpenRequestId request_;
         std::uint32_t stage_{};

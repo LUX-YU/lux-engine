@@ -114,7 +114,9 @@ namespace lux::editor::gui
 
     void InspectorPane::poll(PollBudget &budget)
     {
-        if (!closing_ && !visible() && !interaction_.finish(document_, true))
+        // UISession revokes focus after an actual layout/collapse decision. No new
+        // UI frame (including Renderer backpressure) leaves that fact unchanged.
+        if (!closing_ && (!visible() || !focused()) && !interaction_.finish(document_, true))
         {
             return;
         }

@@ -4,6 +4,7 @@
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <fstream>
 #include <new>
@@ -475,7 +476,11 @@ namespace lux::editor::gui
                 },
                 event);
         }
-        impl_->close_requested |= impl_->window->shouldClose();
+        if (!impl_->close_requested && impl_->window->shouldClose())
+        {
+            std::fprintf(stderr, "[editor.exit] event=native-close-flag\n");
+            impl_->close_requested = true;
+        }
         const bool inactive = impl_->close_requested || !glfwGetWindowAttrib(impl_->window->handle(), GLFW_FOCUSED) ||
                               !glfwGetWindowAttrib(impl_->window->handle(), GLFW_VISIBLE);
         if (inactive)

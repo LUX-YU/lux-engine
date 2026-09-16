@@ -11,6 +11,8 @@
 namespace consumer
 {
     void checkClippedGesture(lux::editor::scene::SceneEditor &, lux::world::WorldObjectId, lux::ui::Frame &);
+    bool drawOmissionProbe(lux::editor::scene::SceneEditor &, lux::world::WorldObjectId, lux::ui::Frame &,
+                           lux::editor::gui::InspectorInteraction &);
 
     namespace
     {
@@ -149,6 +151,10 @@ namespace consumer
                   lux::editor::gui::InspectorInteraction &interaction)
         {
             ++draws;
+            if (drawOmissionProbe(document, object, frame, interaction))
+            {
+                return;
+            }
             if (draws == 1 && !document.summary().read_only)
             {
                 checkClippedGesture(document, object, frame);

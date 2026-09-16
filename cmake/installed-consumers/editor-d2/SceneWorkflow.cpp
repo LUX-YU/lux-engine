@@ -413,7 +413,14 @@ namespace
                         return;
                     }
                 }
-                consumer::checkUndrawnInspector(document, *window_);
+                consumer::checkUndrawnInspector(document, *window_,
+                                                [&]
+                                                {
+                                                    const std::array bindings{consumer::binding()};
+                                                    const auto provider =
+                                                        gui::sceneDocumentProvider(consumer::schemas(), bindings);
+                                                    assert(provider.attach(document, *window_, *renderer_, *runtime_));
+                                                });
                 checkRotation<float>(document, object);
                 checkRotation<double>(document, object);
                 checkVectorElements(document, object);
@@ -515,6 +522,8 @@ namespace
                                              lux::process::ExecutionRuntime &runtime)
             {
                 window_ = &window;
+                renderer_ = &renderer;
+                runtime_ = &runtime;
                 return attach(document, window, renderer, runtime);
             };
             config.providers.push_back(std::move(provider));
@@ -526,6 +535,8 @@ namespace
         Editor *editor_{};
         Project *project_{};
         gui::EditorWindow *window_{};
+        rendering::EditorRenderer *renderer_{};
+        lux::process::ExecutionRuntime *runtime_{};
         SaveRequestId save_;
         OpenRequestId request_;
         std::uint32_t stage_{};

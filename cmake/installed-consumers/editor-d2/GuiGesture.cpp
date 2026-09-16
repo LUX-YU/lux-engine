@@ -51,7 +51,8 @@ namespace consumer
         return true;
     }
 
-    void checkUndrawnInspector(lux::editor::scene::SceneEditor &document, lux::editor::gui::EditorWindow &window)
+    void checkUndrawnInspector(lux::editor::scene::SceneEditor &document, lux::editor::gui::EditorWindow &window,
+                               const std::function<void()> &restore)
     {
         using namespace lux::editor;
         auto &ui = window.uiSession();
@@ -172,13 +173,53 @@ namespace consumer
         draw(1000);
         assert(!probe.interaction->active() && read() == original);
         assert(document.historyView()->history.revision == cancelled.revision);
+        const auto pane_id = std::string(view.id());
+        const auto views = document.views().size();
+        begin();
+        view.requestClose();
+        PollBudget budget;
+        document.poll(budget);
+        assert(document.views().size() + 1 == views && read() == original);
+        assert(document.historyView()->history.current == before.current);
+        probe.interaction = nullptr;
+        ui.feedInput(lux::ui::UiPointerButton{lux::ui::EPointerButton::LEFT, false});
+
+        unsigned retired_notices{}, live_notices{};
+        auto retired = document.observeScoped<scene::SceneEditor::selectionChanged>(
+            [&](const scene::SelectionNotice &) noexcept { ++retired_notices; });
+        auto live = document.observeScoped<scene::SceneEditor::selectionChanged>(
+            [&](const scene::SelectionNotice &) noexcept { ++live_notices; });
+        retired.reset();
+        assert(document.select({}) && document.select(object));
+        assert(retired_notices == 0 && live_notices == 2);
+        restore();
+        assert(document.views().size() == views);
+        assert(ui.requestFocus(lux::ui::PaneIdView{pane_id}));
+        const auto before_rebuild_draw = probe.draws;
+        draw(1000);
+        assert(probe.interaction && !probe.interaction->active() && probe.draws == before_rebuild_draw + 1);
+        assert(document.historyView()->history.current == before.current);
+        ui.feedInput(lux::ui::UiPointerMove{{probe.center.x, probe.center.y}});
+        draw(1000);
+        ui.feedInput(lux::ui::UiPointerButton{lux::ui::EPointerButton::LEFT, true});
+        draw(1000);
+        ui.feedInput(lux::ui::UiPointerMove{{probe.center.x + 40, probe.center.y}});
+        draw(1000);
+        ui.feedInput(lux::ui::UiPointerButton{lux::ui::EPointerButton::LEFT, false});
+        draw(1000);
+        document.poll(budget);
+        assert(document.historyView()->history.cursor == before.cursor + 1);
+        assert(document.undo() && read() == original);
+        assert(retired_notices == 0 && live_notices == 2);
         // History owns the accessor's shared rejection flag after this probe ends.
         assert(document.historyView()->history.current == before.current);
         omission = nullptr;
-        std::puts("PASS real Inspector omission: layout zero/collapse retain visible; focus notifications do not edit; "
-                  "owner poll commits; rejected commit retries same token; no-draw turns retain active gesture; Undo "
-                  "restores; "
-                  "injected Esc restores without restarting while mouse remains held");
+        std::puts(
+            "PASS real Inspector omission: layout zero/collapse retain visible; focus notifications do not edit; "
+            "owner poll commits; rejected commit retries same token; no-draw turns retain active gesture; Undo "
+            "restores; "
+            "injected Esc restores without restarting while mouse remains held; close cancels preview; "
+            "selection while destroyed, rebuilt Inspector refresh and edit/Undo pass with isolated subscriptions");
     }
 
     void checkClippedGesture(lux::editor::scene::SceneEditor &document, lux::world::WorldObjectId object,

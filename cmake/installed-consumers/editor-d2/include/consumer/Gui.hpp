@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <lux/engine/editor/gui/scene/ComponentBinding.hpp>
 #include <lux/engine/editor/gui/shell/EditorWindow.hpp>
 
@@ -25,5 +26,6 @@ namespace consumer
     };
     CONSUMER_GUI_PUBLIC void beginDrawSample() noexcept;
     [[nodiscard]] CONSUMER_GUI_PUBLIC DrawSample drawSample() noexcept;
-    CONSUMER_GUI_PUBLIC void checkUndrawnInspector(lux::editor::scene::SceneEditor &, lux::editor::gui::EditorWindow &);
+    CONSUMER_GUI_PUBLIC void checkUndrawnInspector(lux::editor::scene::SceneEditor &, lux::editor::gui::EditorWindow &,
+                                                   const std::function<void()> &);
 } // namespace consumer

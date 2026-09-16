@@ -60,6 +60,7 @@ namespace lux::editor::rendering
         lux::render::RenderProgramSession &programs() noexcept override;
         lux::render::RenderUploadClient upload() noexcept override;
         const lux::render::FeatureCatalog &features() const noexcept override;
+        lux::scene::RenderRuntimeStatus runtimeStatus() const noexcept override;
         struct Impl;
         explicit EditorRenderer(std::unique_ptr<Impl>) noexcept;
         std::unique_ptr<Impl> impl_;

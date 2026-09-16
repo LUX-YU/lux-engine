@@ -827,6 +827,21 @@ namespace lux::render
             return staged_ready_ || pending_publish_;
         }
 
+        // Owner only, AFTER joining the backend and reclaiming every
+        // request-ring slot. This retires CPU staging; it must never be used
+        // for mere backpressure.
+        void retireAfterBackendStopped() noexcept
+        {
+            if (!sync_->isStopping())
+            {
+                renderFatal("RenderClient terminal retirement requires stopped admission");
+            }
+            staging_program_.clear_keep_capacity();
+            recording_ = false;
+            staged_ready_ = false;
+            pending_publish_ = false;
+        }
+
         using ProgramProgressToken = std::uint64_t;
 
         [[nodiscard]] ProgramProgressToken observeProgress() const noexcept

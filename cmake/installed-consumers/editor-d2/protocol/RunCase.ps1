@@ -45,6 +45,7 @@ if ($Case.EndsWith('_protocol') -or $Case -eq 'process_completion') {
 }
 
 $fixtureMode = if ($Case -in @('save-hierarchy', 'save-structure')) { 'gpu-hierarchy' }
+    elseif ($Case -in @('dynamic-run', 'simulation-failure', 'dynamic-terminal')) { 'gpu-dynamic' }
     elseif ($Case -eq 'save-preservation') { 'gpu-preservation' }
     elseif ($Case -eq 'cpu') { 'cpu' } else { 'gpu' }
 & $Fixture $caseRoot $fixtureMode

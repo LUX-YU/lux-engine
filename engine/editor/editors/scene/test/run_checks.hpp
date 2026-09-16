@@ -377,6 +377,15 @@ struct RunFailureChecks final
                 scene.component(object, cxx::typeToken<simulation::ecs::Transform3D>()));
             assert(value && value->translation.x() == 1.e100);
             assert(run.retained_resources == 0 && run.pending_updates == 0);
+            std::printf("JR02 stable failure final steps=%llu elapsed_ns=%lld "
+                        "work_ns=%lld\n",
+                        static_cast<unsigned long long>(run.steps), static_cast<long long>(run.elapsed.count()),
+                        static_cast<long long>(run.simulation_work.count()));
+            assert(run.steps == 1 && run.elapsed == std::chrono::milliseconds(10) &&
+                   "JR02 stable failure must retain the adopted Simulation clock");
+            assert(run.failed_phase == lux::editor::scene::ERunPhase::STABLE && run.completed.simulation == 1 &&
+                   run.completed.stable == 0 && run.completed.publication == 0 && run.completed.presentation == 0);
+            assert(run.simulation_work.count() > 0);
             std::printf("D04/D08 exact Run failure: domain=%s reason=%llu system=2 author preserved pins=0 pending=0\n",
                         run.result.error().domain.c_str(), static_cast<unsigned long long>(run.result.error().reason));
             assert(scene.undo());

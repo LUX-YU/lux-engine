@@ -500,6 +500,7 @@ namespace lux::editor::rendering
                 impl_->worker.join();
             if (!clearJoinedRing(impl_->thread.frames->requests))
                 return fail(ERendererError::CONTRACT_FAILURE);
+            impl_->programs->rawClient().retireAfterBackendStopped();
             impl_->terminal_frames_released = true;
         }
         if (!impl_->terminal_frames_released)
@@ -636,5 +637,14 @@ namespace lux::editor::rendering
     const lux::render::FeatureCatalog &EditorRenderer::features() const noexcept
     {
         return impl_->thread.catalog;
+    }
+
+    lux::scene::RenderRuntimeStatus EditorRenderer::runtimeStatus() const noexcept
+    {
+        using State = lux::scene::ERenderRuntimeState;
+        return {impl_->terminal_frames_released    ? State::RETIRED
+                : impl_->thread.sync->isStopping() ? State::STOPPING
+                                                   : State::ACTIVE,
+                impl_->thread.sync->terminalError()};
     }
 } // namespace lux::editor::rendering

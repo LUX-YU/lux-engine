@@ -462,12 +462,14 @@ namespace lux::render
 
     template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64> struct RenderProgramChannel
     {
+        static constexpr std::size_t request_slot_count = 4;
+
         explicit RenderProgramChannel(std::size_t max_pending_packets = 2) noexcept
             : requests(max_pending_packets), responses(max_pending_packets)
         {
         }
 
-        lux::cxx::BoundedSpscFrameRing<RenderProgram<RequestAlignment>, 4> requests;
+        lux::cxx::BoundedSpscFrameRing<RenderProgram<RequestAlignment>, request_slot_count> requests;
         lux::cxx::BoundedSpscFrameRing<ReplyPacket<ReplyAlignment>, 4> responses;
 
         [[nodiscard]] static std::shared_ptr<RenderProgramChannel> create(std::size_t max_pending_packets = 2)

@@ -14,6 +14,7 @@ namespace lux::scene::detail
         std::atomic_uint64_t published{};
         std::atomic_uint64_t forwarded{};
         std::atomic_uint64_t backpressured{};
+        std::uint64_t retired_unforwarded{}; // Main-only, after producer terminal.
         std::atomic_bool producer_closed{};
         std::atomic_bool consumer_closed{};
 

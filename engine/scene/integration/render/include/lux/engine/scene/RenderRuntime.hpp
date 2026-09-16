@@ -26,6 +26,19 @@ namespace lux::scene
 
     class RenderRuntime;
 
+    enum class ERenderRuntimeState : std::uint8_t
+    {
+        ACTIVE,
+        STOPPING,
+        RETIRED
+    };
+
+    struct RenderRuntimeStatus final
+    {
+        ERenderRuntimeState state{ERenderRuntimeState::ACTIVE};
+        render::RenderError error;
+    };
+
     class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderRuntimeLease final
     {
     public:
@@ -42,8 +55,9 @@ namespace lux::scene
         [[nodiscard]] render::RenderProgramSession& programs() noexcept;
         [[nodiscard]] render::RenderUploadClient upload() noexcept;
         [[nodiscard]] const render::FeatureCatalog& features() const noexcept;
+        [[nodiscard]] RenderRuntimeStatus status() const noexcept;
 
-    private:
+      private:
         friend class RenderRuntime;
         explicit RenderRuntimeLease(RenderRuntime& owner) noexcept;
         void reset() noexcept;
@@ -67,5 +81,9 @@ namespace lux::scene
         [[nodiscard]] virtual render::RenderProgramSession& programs() noexcept = 0;
         [[nodiscard]] virtual render::RenderUploadClient upload() noexcept = 0;
         [[nodiscard]] virtual const render::FeatureCatalog& features() const noexcept = 0;
+        // RETIRED requires backend/GPU destruction AND retirement of all
+        // accepted CPU programs, including the client's staging storage.
+        // STOPPING is not enough.
+        [[nodiscard]] virtual RenderRuntimeStatus runtimeStatus() const noexcept = 0;
     };
 } // namespace lux::scene

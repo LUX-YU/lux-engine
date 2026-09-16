@@ -190,9 +190,39 @@ namespace lux::scene
     {
         if (storage_)
         {
-            storage_->consumer_closed.store(true, std::memory_order_release);
-            storage_->notify();
+            stop();
             storage_.reset();
+        }
+    }
+
+    void RenderSyncConsumer::stop() noexcept
+    {
+        storage_->consumer_closed.store(true, std::memory_order_release);
+        storage_->notify();
+    }
+
+    void RenderSyncConsumer::retireAfterBackendStopped() noexcept
+    {
+        assert(producerClosed());
+        // Both ring roles are now exclusively Main-owned. Include read, queued,
+        // and unused write slots: a failed prepare can retain attachments too.
+        storage_->retired_unforwarded =
+            storage_->published.load(std::memory_order_relaxed) - storage_->forwarded.load(std::memory_order_relaxed);
+        forward_pending_ = false;
+        auto &ring = storage_->updates;
+        ring.currentRead().clear_keep_capacity();
+        while (ring.tryAcquireRead())
+        {
+            ring.currentRead().clear_keep_capacity();
+        }
+        for (unsigned i = 0; i < 3; ++i)
+        {
+            auto *slot = ring.tryBeginWrite();
+            assert(slot);
+            slot->clear_keep_capacity();
+            const bool published = ring.publishWrite();
+            const bool acquired = ring.tryAcquireRead();
+            assert(published && acquired);
         }
     }
 
@@ -200,6 +230,7 @@ namespace lux::scene
     {
         if (session.isStopping())
         {
+            stop();
             return ERenderForwardResult::STOPPING;
         }
         if (session.hasPendingSubmit() && !session.retryPendingSubmit())

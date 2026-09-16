@@ -55,6 +55,12 @@ namespace lux::render
         std::exchange(session_, nullptr)->deferDestroyScene(id);
     }
 
+    void RenderSceneLease::retireAfterBackendStopped() noexcept
+    {
+        id_ = {};
+        session_ = nullptr;
+    }
+
     RenderViewLease::~RenderViewLease() noexcept
     {
         deferOwnedRelease();

@@ -31,6 +31,22 @@ namespace lux::editor::scene
         FAILED
     };
 
+    enum class ERunPhase : std::uint8_t
+    {
+        NONE,
+        STARTUP,
+        SIMULATION,
+        RESOURCES,
+        STABLE,
+        PUBLICATION,
+        PRESENTATION
+    };
+
+    struct RunCompletedPhases final
+    {
+        std::uint64_t simulation{}, stable{}, publication{}, presentation{};
+    };
+
     struct RunStatus final
     {
         RunId id;
@@ -39,8 +55,15 @@ namespace lux::editor::scene
         editing::StateId captured_state;
         std::uint64_t steps{};
         std::chrono::nanoseconds elapsed{};
+        // steps/elapsed are the actual clock, including a step whose systems
+        // failed. These are the last independently successful phases, not an
+        // atomic frame.
+        RunCompletedPhases completed;
+        ERunPhase failed_phase{ERunPhase::NONE};
         lux::render::RenderSceneId render_scene;
         std::uint64_t published_updates{}, forwarded_updates{}, backpressure_count{};
+        std::uint64_t retired_updates{}; // Published but never forwarded,
+                                         // retired only after backend shutdown.
         std::uint32_t pending_updates{}, update_high_water{};
         std::size_t retained_resources{};
         std::chrono::nanoseconds simulation_work{}, publication_wait{};

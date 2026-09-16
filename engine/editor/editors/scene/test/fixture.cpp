@@ -1,3 +1,4 @@
+#include "run_system.hpp"
 #include "scene_source_checks.hpp"
 #include <algorithm>
 #include <cassert>
@@ -202,6 +203,13 @@ int main(int argc, char **argv)
     auto transform = simulation::makeTransformSystemConfiguration(1024, {2048, 1024 * 1024});
     assert(transform && simulation_builder.addSystem(system::SystemInstanceId{1}, "transform",
                                                      simulation::transformSystemDescription(), *transform));
+    if (std::string_view(argv[2]) == "gpu-dynamic")
+    {
+        assert(simulation_builder.addSystem(system::SystemInstanceId{3}, "motion", run_test::Motion::Description, {}));
+        assert(simulation_builder.addExecutionDependency(
+            simulation::SimulationExecutionPoint::task(system::SystemInstanceId{3}),
+            simulation::SimulationExecutionPoint::task(system::SystemInstanceId{1})));
+    }
     auto simulation_description = std::move(simulation_builder).build();
     assert(simulation_description);
     auto simulation_asset = simulation::SimulationAsset::create(

@@ -23,6 +23,7 @@ namespace lux::editor::gui
 
       private:
         void draw(lux::ui::Frame &, lux::ui::PaneDrawContext &) override;
+        void remember(std::string_view operation, const rendering::RendererFailure &);
         struct Idle final
         {
         };
@@ -38,5 +39,8 @@ namespace lux::editor::gui
         SceneCamera camera_;
         lux::ui::ViewportElement viewport_;
         std::string status_;
+        EditorResult<void> view_result_;
+        bool view_closing_{};
+        bool reopen_requested_{};
     };
 } // namespace lux::editor::gui

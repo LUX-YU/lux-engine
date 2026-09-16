@@ -61,8 +61,16 @@ namespace lux::editor::scene::detail
             std::uint64_t steps{};
             std::chrono::nanoseconds elapsed{};
             bool paused{};
+            RunCompletedPhases completed;
             std::chrono::nanoseconds work{}, waiting{};
         };
+        struct RunCompletion final
+        {
+            RunObservation observation;
+            ERunPhase failed_phase{ERunPhase::NONE};
+            EditorResult<void> result;
+        };
+
         struct RunControl final
         {
             std::mutex mutex;
@@ -117,12 +125,29 @@ namespace lux::editor::scene::detail
             std::shared_ptr<RunControl> control;
             std::chrono::nanoseconds delta;
 
-            EditorResult<RunObservation> operator()() noexcept
+            EditorResult<RunCompletion> operator()() noexcept
             {
+                RunObservation observed;
+                ERunPhase phase = ERunPhase::STARTUP;
+                auto working_at = std::chrono::steady_clock::now();
+                bool working = false;
+                const auto accumulate = [&]
+                {
+                    if (working)
+                    {
+                        observed.work += std::chrono::steady_clock::now() - working_at;
+                        working = false;
+                    }
+                };
+                const auto failed = [&](EditorFailure error) -> EditorResult<RunCompletion>
+                {
+                    accumulate();
+                    return RunCompletion{observed, phase, lux::cxx::unexpected(std::move(error))};
+                };
                 const auto stop = control->stop.get_token();
                 if (stop.stop_requested())
                 {
-                    return RunObservation{};
+                    return RunCompletion{};
                 }
                 const auto world =
                     std::shared_ptr<const lux::world::WorldDescription>(source.world, &source.world->data());
@@ -135,22 +160,23 @@ namespace lux::editor::scene::detail
                      *metadata, providers, lux::simulation::ESimulationMode::EVOLUTION});
                 if (!created)
                 {
-                    return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE,
-                                                              "run.scene.create",
-                                                              static_cast<std::uint64_t>(created.error().code),
-                                                              {},
-                                                              created.error()});
+                    return failed(EditorFailure{EEditorError::SOURCE_FAILURE,
+                                                "run.scene.create",
+                                                static_cast<std::uint64_t>(created.error().code),
+                                                {},
+                                                created.error()});
                 }
-                // Every exit below destroys the real Scene on this worker, including partial startup.
+                // Every exit below destroys the real Scene on this worker,
+                // including partial startup.
                 auto scene = std::move(*created);
                 auto materializer = lux::scene::WorldMaterializer::create(world, metadata->components());
                 if (!materializer)
                 {
-                    return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE,
-                                                              "run.schemas",
-                                                              static_cast<std::uint64_t>(materializer.error().code),
-                                                              {},
-                                                              materializer.error()});
+                    return failed(EditorFailure{EEditorError::SOURCE_FAILURE,
+                                                "run.schemas",
+                                                static_cast<std::uint64_t>(materializer.error().code),
+                                                {},
+                                                materializer.error()});
                 }
                 std::vector<lux::world::WorldPartitionObjectView> objects;
                 for (const auto &partition : source.partitions)
@@ -164,22 +190,23 @@ namespace lux::editor::scene::detail
                 auto materialized = materializer->objects(scene->registry(), identities, objects);
                 if (!materialized)
                 {
-                    return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE,
-                                                              "run.materialize",
-                                                              static_cast<std::uint64_t>(materialized.error().code),
-                                                              {},
-                                                              materialized.error()});
+                    return failed(EditorFailure{EEditorError::SOURCE_FAILURE,
+                                                "run.materialize",
+                                                static_cast<std::uint64_t>(materialized.error().code),
+                                                {},
+                                                materialized.error()});
                 }
                 for (const auto &resource : resources)
                 {
                     const auto entity = identities.entity(resource.object);
                     if (entity == lux::simulation::ecs::NullEntity)
                     {
-                        return invalid("run.resource.identity");
+                        return failed({EEditorError::INVALID_STATE, "run.resource.identity"});
                     }
                     scene->registry().emplace<lux::scene::ResolvedMeshResources>(entity, resource.value);
                 }
-                // Check only changed mesh references. The frozen resource set is not a streaming service.
+                // Check only changed mesh references. The frozen resource set is
+                // not a streaming service.
                 using MeshChanges = lux::simulation::ecs::ExtractionChangeSet<lux::simulation::ecs::Mesh3D,
                                                                               lux::simulation::ecs::ComponentList<>,
                                                                               lux::simulation::ecs::ComponentList<>>;
@@ -196,23 +223,22 @@ namespace lux::editor::scene::detail
                 auto sealed = scene->simulation().seal();
                 if (!sealed)
                 {
-                    return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE,
-                                                              "run.seal",
-                                                              static_cast<std::uint64_t>(sealed.error().code),
-                                                              {},
-                                                              sealed.error()});
+                    return failed(EditorFailure{EEditorError::SOURCE_FAILURE,
+                                                "run.seal",
+                                                static_cast<std::uint64_t>(sealed.error().code),
+                                                {},
+                                                sealed.error()});
                 }
                 auto executor = lux::task::TaskExecutor::create({0, 1024});
                 if (!executor)
                 {
-                    return lux::cxx::unexpected(EditorFailure{EEditorError::EXECUTION_FAILURE,
-                                                              "run.executor",
-                                                              static_cast<std::uint64_t>(executor.error().code),
-                                                              {},
-                                                              executor.error()});
+                    return failed(EditorFailure{EEditorError::EXECUTION_FAILURE,
+                                                "run.executor",
+                                                static_cast<std::uint64_t>(executor.error().code),
+                                                {},
+                                                executor.error()});
                 }
                 auto *render = scene->findSceneSystem<lux::scene::RenderSystem>();
-                RunObservation observed;
                 auto next = std::chrono::steady_clock::now();
                 while (!stop.stop_requested())
                 {
@@ -242,16 +268,24 @@ namespace lux::editor::scene::detail
                         control->step_inflight = control->step_requested;
                         control->step_requested = false;
                     }
-                    auto working_at = std::chrono::steady_clock::now();
+                    const auto step_started = std::chrono::steady_clock::now();
+                    working_at = step_started;
+                    working = true;
+                    phase = ERunPhase::SIMULATION;
                     auto evolved = scene->simulation().execute(*executor, delta);
+                    const auto clock = scene->simulation().clock().snapshot();
+                    observed.steps = clock.step_index;
+                    observed.elapsed = clock.elapsed;
                     if (!evolved)
                     {
-                        return lux::cxx::unexpected(EditorFailure{EEditorError::EXECUTION_FAILURE,
-                                                                  "run.simulation",
-                                                                  static_cast<std::uint64_t>(evolved.error().code),
-                                                                  {},
-                                                                  evolved.error()});
+                        return failed(EditorFailure{EEditorError::EXECUTION_FAILURE,
+                                                    "run.simulation",
+                                                    static_cast<std::uint64_t>(evolved.error().code),
+                                                    {},
+                                                    evolved.error()});
                     }
+                    observed.completed.simulation = observed.steps;
+                    phase = ERunPhase::RESOURCES;
                     for (const auto entity : resource_changes.view())
                     {
                         const auto &visual = scene->registry().get<lux::simulation::ecs::Mesh3D>(entity).value;
@@ -259,39 +293,44 @@ namespace lux::editor::scene::detail
                         if (!resolved || visual.mesh != resolved->mesh_source ||
                             visual.material != resolved->material_source)
                         {
-                            return lux::cxx::unexpected(
-                                EditorFailure{EEditorError::INVALID_STATE, "run.frozen-resources",
-                                              lux::simulation::ecs::entityBits(entity),
-                                              "Run requested a mesh or material outside its frozen resource binding"});
+                            return failed(EditorFailure{EEditorError::INVALID_STATE, "run.frozen-resources",
+                                                        lux::simulation::ecs::entityBits(entity),
+                                                        "Run requested a mesh or material outside its frozen "
+                                                        "resource binding"});
                         }
                     }
                     resource_changes.clear();
-                    const auto clock = scene->simulation().clock().snapshot();
-                    observed.steps = clock.step_index;
-                    observed.elapsed = clock.elapsed;
+                    phase = ERunPhase::STABLE;
                     auto stable = scene->executeStablePoint();
                     if (!stable)
                     {
-                        return lux::cxx::unexpected(EditorFailure{EEditorError::EXECUTION_FAILURE,
-                                                                  "run.stable",
-                                                                  static_cast<std::uint64_t>(stable.error().code),
-                                                                  {},
-                                                                  stable.error()});
+                        return failed(EditorFailure{EEditorError::EXECUTION_FAILURE,
+                                                    "run.stable",
+                                                    static_cast<std::uint64_t>(stable.error().code),
+                                                    {},
+                                                    stable.error()});
                     }
+                    observed.completed.stable = observed.steps;
+                    phase = ERunPhase::PUBLICATION;
                     while (render && render->lastPublishResult() == lux::scene::ERenderPublishResult::BACKPRESSURED)
                     {
                         const auto waiting_at = std::chrono::steady_clock::now();
-                        observed.work += waiting_at - working_at;
+                        accumulate();
                         const bool capacity = render->waitForCapacity(stop);
                         working_at = std::chrono::steady_clock::now();
+                        working = true;
                         observed.waiting += working_at - waiting_at;
                         if (!capacity)
                         {
+                            if (!stop.stop_requested())
+                            {
+                                return failed({EEditorError::EXECUTION_FAILURE, "run.publish.stopping"});
+                            }
                             break;
                         }
                         if (render->tryPublish() == lux::scene::ERenderPublishResult::FAILED)
                         {
-                            return lux::cxx::unexpected(EditorFailure{
+                            return failed(EditorFailure{
                                 EEditorError::EXECUTION_FAILURE,
                                 "run.publish",
                                 0,
@@ -304,28 +343,42 @@ namespace lux::editor::scene::detail
                     {
                         break;
                     }
+                    observed.completed.publication = observed.steps;
+                    phase = ERunPhase::PRESENTATION;
                     auto presentation = scene->executePresentation();
                     if (!presentation)
                     {
-                        return lux::cxx::unexpected(EditorFailure{EEditorError::EXECUTION_FAILURE,
-                                                                  "run.presentation",
-                                                                  static_cast<std::uint64_t>(presentation.error().code),
-                                                                  {},
-                                                                  presentation.error()});
+                        return failed(EditorFailure{EEditorError::EXECUTION_FAILURE,
+                                                    "run.presentation",
+                                                    static_cast<std::uint64_t>(presentation.error().code),
+                                                    {},
+                                                    presentation.error()});
                     }
-                    observed.work += std::chrono::steady_clock::now() - working_at;
-                    // Do not catch up by advancing extra unpresented simulation steps.
+                    observed.completed.presentation = observed.steps;
+                    accumulate();
+                    // Do not catch up by advancing extra unpresented simulation
+                    // steps.
                     {
                         std::lock_guard lock(control->mutex);
                         control->step_inflight = false;
                     }
-                    next = std::chrono::steady_clock::now() + delta;
+                    // Fixed simulation dt, paced by a wall-clock deadline. Work is
+                    // part of the period. If late, discard pacing debt and
+                    // re-anchor; never execute a burst of catch-up steps or change
+                    // simulation dt.
+                    next = step_started + delta;
+                    const auto completed_at = std::chrono::steady_clock::now();
+                    if (next < completed_at)
+                    {
+                        next = completed_at;
+                    }
                 }
+                accumulate();
                 scene->simulation().stop();
                 scene->requestStop();
                 resource_changes.detach();
                 scene.reset();
-                return observed;
+                return RunCompletion{observed, ERunPhase::NONE, {}};
             }
         };
         using ExecuteTask = lux::editor::detail::ScheduledDocumentTask<process::CpuScheduler, ExecuteRun>;
@@ -500,10 +553,24 @@ namespace lux::editor::scene::detail
         {
             return;
         }
-        const auto fail = [&](EditorFailure error)
+        const auto fail = [&](EditorFailure error, ERunPhase phase = ERunPhase::STARTUP)
         {
-            d.status.result = lux::cxx::unexpected(std::move(error));
+            if (d.status.result)
+            {
+                d.status.result = lux::cxx::unexpected(std::move(error));
+                d.status.failed_phase = phase;
+            }
             static_cast<void>(stop(d.status.id));
+        };
+        const auto observe_transport = [&]
+        {
+            const auto transport = d.binding->statistics();
+            d.status.published_updates = transport.published;
+            d.status.forwarded_updates = transport.forwarded;
+            d.status.retired_updates = transport.retired_unforwarded;
+            d.status.backpressure_count = transport.backpressured;
+            d.status.pending_updates = transport.pending;
+            d.status.update_high_water = transport.high_water;
         };
         if (d.decoding && d.decoding->ready())
         {
@@ -547,15 +614,11 @@ namespace lux::editor::scene::detail
         if (d.binding)
         {
             d.binding->poll(budget);
-            const auto transport = d.binding->statistics();
-            d.status.published_updates = transport.published;
-            d.status.forwarded_updates = transport.forwarded;
-            d.status.backpressure_count = transport.backpressured;
-            d.status.pending_updates = transport.pending;
-            d.status.update_high_water = transport.high_water;
+            observe_transport();
             if (d.binding->state() == lux::scene::ESceneRenderBindingState::FAILED)
             {
-                fail({EEditorError::SOURCE_FAILURE, "run.render", 0, {}, d.binding->failure()});
+                fail({EEditorError::SOURCE_FAILURE, "run.render", 0, {}, d.binding->failure()},
+                     d.executing ? ERunPhase::PUBLICATION : ERunPhase::STARTUP);
             }
             if (d.status.state == ERunState::PREPARING && !d.executing &&
                 d.binding->state() == lux::scene::ESceneRenderBindingState::READY)
@@ -583,6 +646,7 @@ namespace lux::editor::scene::detail
         if (d.executing && d.control->observation.acquireLatest())
         {
             const auto &observed = d.control->observation.read();
+            d.status.completed = observed.completed;
             d.status.steps = observed.steps;
             d.status.elapsed = observed.elapsed;
             d.status.simulation_work = observed.work;
@@ -607,11 +671,20 @@ namespace lux::editor::scene::detail
             }
             else
             {
-                d.status.steps = result->steps;
-                d.status.elapsed = result->elapsed;
-                d.status.simulation_work = result->work;
-                d.status.publication_wait = result->waiting;
-                static_cast<void>(stop(d.status.id));
+                const auto &observed = result->observation;
+                d.status.steps = observed.steps;
+                d.status.elapsed = observed.elapsed;
+                d.status.completed = observed.completed;
+                d.status.simulation_work = observed.work;
+                d.status.publication_wait = observed.waiting;
+                if (!result->result)
+                {
+                    fail(std::move(result->result.error()), result->failed_phase);
+                }
+                else
+                {
+                    static_cast<void>(stop(d.status.id));
+                }
             }
         }
         if (d.status.state != ERunState::STOPPING || d.decoding || d.executing || d.views->value != 0)
@@ -622,6 +695,7 @@ namespace lux::editor::scene::detail
         {
             d.binding->requestClose();
             d.binding->poll(budget);
+            observe_transport();
             if (d.binding->state() != lux::scene::ESceneRenderBindingState::CLOSED)
             {
                 return;

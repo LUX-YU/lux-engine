@@ -64,6 +64,8 @@ namespace lux::scene
         std::uint64_t backpressured{};
         std::uint32_t pending{};
         std::uint32_t high_water{};
+        std::uint64_t retired_unforwarded{}; // Terminal retirement; never
+                                             // counted as forwarded.
     };
 
     // Main owns this endpoint. It never accesses stages or a Scene Registry.
@@ -86,6 +88,8 @@ namespace lux::scene
         friend class SceneRenderBinding;
         explicit RenderSyncConsumer(std::shared_ptr<detail::RenderSyncStorage> storage) noexcept;
         void close() noexcept;
+        void stop() noexcept;
+        void retireAfterBackendStopped() noexcept;
         std::shared_ptr<detail::RenderSyncStorage> storage_;
         bool forward_pending_{};
     };

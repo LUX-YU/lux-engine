@@ -75,7 +75,12 @@ namespace lux::render
          */
         [[nodiscard]] ERenderLeaseCloseStatus close() noexcept;
 
-    private:
+        // The runtime owner must prove that the backend has destroyed its
+        // Scenes and all GPU/CPU program references. No new Control packet is
+        // published.
+        void retireAfterBackendStopped() noexcept;
+
+      private:
         friend class RenderControlSession;
 
         RenderSceneLease(RenderControlSession& session, RenderSceneId id) noexcept : session_(&session), id_(id)

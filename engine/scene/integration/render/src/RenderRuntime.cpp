@@ -62,6 +62,11 @@ namespace lux::scene
         }
     }
 
+    RenderRuntimeStatus RenderRuntimeLease::status() const noexcept
+    {
+        return owner_->runtimeStatus();
+    }
+
     RenderRuntimeLease RenderRuntime::makeLease() noexcept
     {
         return RenderRuntimeLease(*this);

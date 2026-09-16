@@ -4,6 +4,7 @@ find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render scene_rend
 find_package(lux-engine-function REQUIRED COMPONENTS script_native render_client_meta)
 find_package(lux-engine-simulation REQUIRED COMPONENTS transform_system)
 find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS visual transform)
+find_package(lux-engine-platform REQUIRED COMPONENTS window)
 find_program(D2_FLOW_LINKER NAMES lld-link REQUIRED)
 find_program(D2_POWERSHELL NAMES pwsh powershell REQUIRED)
 file(TO_CMAKE_PATH "${D2_FLOW_LINKER}" D2_FLOW_LINKER_PATH)
@@ -32,7 +33,7 @@ foreach(feature editors/material editors/flowforge editors/scene assets)
     endforeach()
 endforeach()
 
-set(protocols fixture core_protocol foundation_protocol process_completion publication_protocol publication_boundaries review_regressions
+set(protocols fixture core_protocol render_terminal dynamic_run foundation_protocol process_completion publication_protocol publication_boundaries review_regressions
     container_protocol material_protocol flow_object_protocol flow_protocol vfs_protocol model_protocol import_protocol)
 foreach(protocol IN LISTS protocols)
     if("${protocol}.cpp" IN_LIST collected_test_names)
@@ -54,6 +55,13 @@ foreach(protocol IN LISTS protocols)
     target_compile_options(d2_${protocol} PRIVATE /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr)
 endforeach()
 target_link_libraries(d2_fixture PRIVATE lux::engine::simulation::ecs::visual lux::engine::simulation::ecs::transform)
+target_link_libraries(d2_render_terminal PRIVATE lux::engine::platform::window)
+target_link_libraries(d2_dynamic_run PRIVATE lux::engine::platform::window)
+
+foreach(mode pending forwarded)
+    add_test(NAME editor.d3.terminal-${mode} COMMAND d2_render_terminal ${mode})
+    set_tests_properties(editor.d3.terminal-${mode} PROPERTIES RUN_SERIAL TRUE TIMEOUT 30)
+endforeach()
 
 add_test(NAME editor.d2c.publication-format COMMAND d2_publication_boundaries
     "${CMAKE_CURRENT_BINARY_DIR}/publication-format" ordinary)
@@ -104,4 +112,7 @@ foreach(mode save save-retry save-partial save-model save-hierarchy save-preserv
 endforeach()
 foreach(mode material-gui flow-gui material-publish close-signal cpu pane-lifecycle fixed-run fixed-run-failure render-association render-thread)
     d2_case(${mode} d2_core_protocol)
+endforeach()
+foreach(mode dynamic-run simulation-failure dynamic-terminal)
+    d2_case(${mode} d2_dynamic_run)
 endforeach()

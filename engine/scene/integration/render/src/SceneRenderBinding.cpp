@@ -130,15 +130,22 @@ namespace lux::scene
         std::size_t next{};
         ESceneRenderBindingState state{ESceneRenderBindingState::CREATING};
         SceneRenderBindingFailure failure{};
+        system::SystemInstanceId system{};
         bool input_taken{};
         bool closing{};
         render::RenderProgram<> drain_program;
         std::shared_ptr<std::atomic_bool> drain_retired;
         bool drain_submitted{};
+        std::size_t drain_recycles{};
+        bool terminal_observed{}, failure_recorded{};
 
         void fail(render::RenderError error, std::uint64_t subject = 0)
         {
-            failure = {{ESceneSystemBuildError::EXTERNAL_OPERATION_FAILURE, input->system, {}, subject}, error};
+            if (!failure_recorded)
+            {
+                failure = {{ESceneSystemBuildError::EXTERNAL_OPERATION_FAILURE, system, {}, subject}, error};
+                failure_recorded = true;
+            }
             state = ESceneRenderBindingState::FAILED;
         }
     };
@@ -193,6 +200,7 @@ namespace lux::scene
         data->input->configuration.assign(description.configurationPayload().begin(),
                                           description.configurationPayload().end());
         data->input->system = description.instanceId();
+        data->system = description.instanceId();
         data->input->page_size = config.coordinate_page_size;
         std::vector<std::string_view> roots;
         for (std::size_t i{}; i < config.features.size(); ++i)
@@ -246,6 +254,46 @@ namespace lux::scene
     {
         auto &d = *data_;
         std::size_t forwarded{};
+        if (d.state == ESceneRenderBindingState::CLOSED)
+        {
+            return 0;
+        }
+        const auto runtime = d.runtime.status();
+        if (runtime.state != ERenderRuntimeState::ACTIVE)
+        {
+            d.consumer.stop(); // Wake a blocked producer, even when packet_budget
+                               // is zero.
+            if (!d.terminal_observed)
+            {
+                d.fail(runtime.error.ok() ? render::renderError<render::err::comm::ChannelStopping>() : runtime.error);
+                d.terminal_observed = true;
+            }
+            if (!d.closing)
+            {
+                return 0;
+            }
+            d.state = ESceneRenderBindingState::CLOSING;
+            if (runtime.state != ERenderRuntimeState::RETIRED || (d.input_taken && !d.consumer.producerClosed()))
+            {
+                return 0;
+            }
+            // Backend destruction and Main CPU retirement are proven by the
+            // runtime. No further Program/Control packet can be accepted. Retire
+            // local packets separately; do not turn this into a fictitious
+            // forward/drain completion.
+            if (d.input_taken)
+            {
+                d.consumer.retireAfterBackendStopped();
+            }
+            d.drain_program.clear_keep_capacity();
+            d.create = {};
+            d.attach = {};
+            d.input.reset();
+            d.scene.retireAfterBackendStopped();
+            d.runtime = {};
+            d.state = ESceneRenderBindingState::CLOSED;
+            return 0;
+        }
         if (d.state == ESceneRenderBindingState::CREATING)
         {
             if (!d.create.isReady())
@@ -345,6 +393,16 @@ namespace lux::scene
                 }
                 if (!d.drain_retired->load(std::memory_order_acquire))
                 {
+                    // Persistent Program slots retire attachments when the Main
+                    // producer reuses them. Closing the last View must not depend
+                    // on another draw. At most one empty StateUpdate per poll,
+                    // bounded by one ring rotation; these contain no business
+                    // update and issue no GPU Frame submission.
+                    if (d.drain_recycles < render::RenderProgramChannel<>::request_slot_count &&
+                        d.runtime.programs().trySubmitPrepared(d.drain_program))
+                    {
+                        ++d.drain_recycles;
+                    }
                     return forwarded;
                 }
             }
@@ -353,6 +411,7 @@ namespace lux::scene
                 released == render::ERenderLeaseCloseStatus::AlreadyClosed)
             {
                 d.state = ESceneRenderBindingState::CLOSED;
+                d.runtime = {};
             }
         }
         return forwarded;
@@ -362,8 +421,12 @@ namespace lux::scene
     {
         const auto &s = *data_->storage;
         const auto published = s.published.load(std::memory_order_relaxed);
-        return {published, s.forwarded.load(std::memory_order_relaxed), s.backpressured.load(std::memory_order_relaxed),
-                static_cast<std::uint32_t>(s.updates.pendingFrames()), published ? 1U : 0U};
+        return {published,
+                s.forwarded.load(std::memory_order_relaxed),
+                s.backpressured.load(std::memory_order_relaxed),
+                static_cast<std::uint32_t>(s.updates.pendingFrames()),
+                published ? 1U : 0U,
+                s.retired_unforwarded};
     }
 
     ESceneRenderBindingState SceneRenderBinding::state() const noexcept

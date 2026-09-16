@@ -293,9 +293,18 @@ int main(int argc, char **argv)
     {
         pump(); // Stop must wake the worker WITHOUT resuming Binding consumption.
     }
-    const auto producer_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - stop_at).count();
-    std::printf("dynamic: producer ended at step=%llu\n",
+    const auto system_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - stop_at).count();
+    std::printf("dynamic: Simulation system destroyed at step=%llu\n",
                 static_cast<unsigned long long>(run_test::destroyed_at_step.load()));
+    // A system destructor is not the completion of the entire worker task.
+    // The blocked/failing step was never published through the live SPSC observation;
+    // Main can only see this clock after receiving the owning final RunCompletion.
+    while (document.runStatus().steps != run_test::destroyed_at_step.load())
+    {
+        tick();
+    }
+    const auto result_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - stop_at).count();
+    std::puts("dynamic: Main received the worker final result");
     assert(view->view().beginClose());
     packet = {};
     while (*view->view().advanceClose() != editor::rendering::ERenderClose::COMPLETE)
@@ -341,9 +350,10 @@ int main(int argc, char **argv)
         assert(value->translation == author[i].translation);
     }
     std::printf("dynamic latency pause_stable_us=%lld step_completion_us=%lld "
-                "stop_producer_us=%lld stop_resources_us=%lld steps=%llu "
+                "stop_system_us=%lld stop_result_us=%lld stop_resources_us=%lld steps=%llu "
                 "published=%llu backpressure=%llu work_ns=%lld publication_wait_ns=%lld\n",
-                static_cast<long long>(pause_us), static_cast<long long>(step_us), static_cast<long long>(producer_us),
+                static_cast<long long>(pause_us), static_cast<long long>(step_us), static_cast<long long>(system_us),
+                static_cast<long long>(result_us),
                 static_cast<long long>(close_us), static_cast<unsigned long long>(final.steps),
                 static_cast<unsigned long long>(final.published_updates),
                 static_cast<unsigned long long>(final.backpressure_count),

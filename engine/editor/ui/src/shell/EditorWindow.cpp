@@ -232,6 +232,7 @@ namespace lux::editor::gui
         std::optional<lux::ui::Frame> frame;
         lux::ui::Size frame_size;
         TextInputPlatformStatus text_input_status;
+        std::uint64_t captured_frames{};
         bool drawing{}, entering{}, close_requested{}, closed{};
 
         WindowResult<void> check() const noexcept
@@ -404,6 +405,11 @@ namespace lux::editor::gui
     ActiveEditHistory &EditorWindow::activeHistory() noexcept
     {
         return *impl_->histories;
+    }
+
+    std::uint64_t EditorWindow::capturedFrames() const noexcept
+    {
+        return impl_->captured_frames;
     }
 
     bool EditorWindow::frameOpen() const noexcept
@@ -584,6 +590,7 @@ namespace lux::editor::gui
         {
             return fail(EWindowError::UI_FAILURE);
         }
+        ++impl_->captured_frames;
         if (!impl_->close_requested)
         {
             impl_->text_input_status =

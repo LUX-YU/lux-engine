@@ -43,6 +43,8 @@ struct Evidence final
     std::size_t checks{}, frames{};
     std::size_t expected_objects{4}, cost_draws{};
     std::chrono::nanoseconds cost_draw_time{};
+    std::size_t cost_retries{};
+    std::chrono::nanoseconds cost_retry_time{};
     bool closed{}, rollback{};
     std::string mode{"basic"};
     std::atomic_bool failed{};
@@ -1154,15 +1156,28 @@ class Probe final : public EditorFrontend
     void draw(Editor &editor, PollBudget &budget) override
     {
         SampleTime sample{evidence_.callbacks};
+        const bool measure = evidence_.mode == "cost" && stage_ == 3 && evidence_.cost_draws < 120;
+        const auto captured_before = measure ? evidence_.window->capturedFrames() : 0;
         const auto begin = std::chrono::steady_clock::now();
         inner_->draw(editor, budget);
-        if (evidence_.mode == "cost" && stage_ == 3 && evidence_.cost_draws < 120)
+        if (measure)
         {
-            if (evidence_.cost_draws >= 20)
+            const auto elapsed = std::chrono::steady_clock::now() - begin;
+            const auto captures = evidence_.window->capturedFrames() - captured_before;
+            assert(captures <= 1);
+            if (captures == 1)
             {
-                evidence_.cost_draw_time += std::chrono::steady_clock::now() - begin;
+                if (evidence_.cost_draws >= 20)
+                {
+                    evidence_.cost_draw_time += elapsed;
+                }
+                ++evidence_.cost_draws;
             }
-            ++evidence_.cost_draws;
+            else if (evidence_.cost_draws >= 20)
+            {
+                ++evidence_.cost_retries;
+                evidence_.cost_retry_time += elapsed;
+            }
         }
         ++evidence_.frames;
     }
@@ -1362,8 +1377,9 @@ int main(int argc, char **argv)
     if (evidence.mode == "cost")
     {
         assert(evidence.cost_draws == 120);
-        std::printf("MEASURE desktop objects=%zu render_objects=4 warmup=20 draws=100 active_draw_ms=%.3f "
-                    "width=1600 height=900 scene_views=1\n",
-                    evidence.expected_objects, milliseconds(evidence.cost_draw_time));
+        std::printf("MEASURE desktop objects=%zu render_objects=4 warmup=20 captured_ui_frames=100 active_draw_ms=%.3f "
+                    "retry_calls=%zu active_retry_ms=%.3f width=1600 height=900 scene_views=1\n",
+                    evidence.expected_objects, milliseconds(evidence.cost_draw_time), evidence.cost_retries,
+                    milliseconds(evidence.cost_retry_time));
     }
 }

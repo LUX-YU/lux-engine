@@ -42,6 +42,8 @@ class LUX_EDITOR_UI_PUBLIC LUX_OBJECT() EditorWindow final : public lux::object:
     [[nodiscard]] WindowResult<void> requestClose() noexcept;
     [[nodiscard]] WindowResult<void> closeAfterRendererStopped() noexcept;
     [[nodiscard]] bool frameOpen() const noexcept;
+    // Successful CPU snapshot captures. Retries and GPU completion do not advance this count.
+    [[nodiscard]] std::uint64_t capturedFrames() const noexcept;
     [[nodiscard]] bool closeRequested() const noexcept;
     void cancelCloseRequest() noexcept;
     [[nodiscard]] WindowResult<TextInputPlatformStatus> textInputPlatformStatus() const noexcept;

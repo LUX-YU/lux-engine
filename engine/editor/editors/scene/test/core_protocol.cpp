@@ -241,6 +241,19 @@ class Probe final : public EditorFrontend
     {
         exit_.poll();
         SampleTime sample{evidence_.callbacks};
+        if (!closing_ && stage_ == 91 && evidence_.renderer &&
+            evidence_.renderer->state() == rendering::ERendererState::READY)
+        {
+            // Match the normal document-before-presentation owner order. A
+            // test packet offered only after GUI submission can indefinitely
+            // lose every available Program slot to the next UI frame.
+            auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
+            if (association_checks_.poll(scene))
+            {
+                exit_.request(*editor_);
+                stage_ = 92;
+            }
+        }
         inner_->poll(budget);
         if (extra_view_ && evidence_.failed)
         {
@@ -262,6 +275,16 @@ class Probe final : public EditorFrontend
             if (!evidence_.failed)
             {
                 std::fprintf(stderr, "FAIL deadline stage=%u\n", stage_);
+                if (evidence_.mode == "render-association")
+                {
+                    const auto stats = evidence_.renderer->statistics();
+                    std::fprintf(stderr, "association phase=%u pending=%u marker_retired=%u "
+                                         "renderer=%u frames=%llu gpu=%llu events=%llu validation=%llu\n",
+                                 association_checks_.phase, association_checks_.pending,
+                                 association_checks_.consumed && association_checks_.consumed->load(),
+                                 unsigned(evidence_.renderer->state()), stats.frames, stats.gpu_completed,
+                                 stats.render_events, stats.validation_errors);
+                }
             }
             evidence_.failed = true;
             exit_.request(*editor_);
@@ -508,12 +531,6 @@ class Probe final : public EditorFrontend
         }
         if (stage_ == 91)
         {
-            auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
-            if (association_checks_.poll(scene))
-            {
-                exit_.request(*editor_);
-                stage_ = 92;
-            }
             return;
         }
         if (stage_ == 90)

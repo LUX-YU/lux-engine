@@ -11,7 +11,13 @@ namespace lux::editor::gui
     OutlinerPane::OutlinerPane(scene::SceneEditor &document, std::string id)
         : DocumentPane(document, std::move(id), "Outliner"), selection_(document.selection()),
           selection_connection_(document.observeScoped<scene::SceneEditor::selectionChanged>(
-              [this](const scene::SelectionNotice &value) noexcept { selection_ = value; })),
+              [this](const scene::SelectionNotice &value) noexcept
+              {
+                  selection_ = value;
+                  LUX_UI_MEASURE(std::printf("D3_DIAGNOSTIC Outliner selection pane=%p revision=%llu\n",
+                                             static_cast<void *>(this),
+                                             static_cast<unsigned long long>(value.revision)));
+              })),
           objects_connection_(document.observeScoped<scene::SceneEditor::objectsChanged>(
               [this](editing::Revision) noexcept { rows_dirty_ = true; }))
     {

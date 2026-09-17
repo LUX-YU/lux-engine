@@ -1,6 +1,10 @@
 #include <lux/engine/editor/rendering/detail/ViewResources.hpp>
 #include <limits>
 #include <new>
+#if defined(LUX_EDITOR_UI_DIAGNOSTICS)
+#include <cstdio>
+#include <cstdlib>
+#endif
 
 namespace lux::editor::rendering::detail
 {
@@ -210,7 +214,22 @@ namespace lux::editor::rendering::detail
             }
             if (!view_requested)
             {
-                create_view = control.addView(scene, {desired.width, desired.height}, "Editor view");
+                auto requested_scene = scene;
+#if defined(LUX_EDITOR_UI_DIAGNOSTICS)
+                // One invalid-source request in a dedicated diagnostic process.
+                // The real server supplies the failure reply; no View state or
+                // retirement condition is fabricated by this stimulus.
+                static bool injected{};
+                const auto *slot = std::getenv("LUX_EDITOR_DIAGNOSTIC_FAIL_VIEW_SLOT");
+                if (!injected && slot && std::strtoul(slot, nullptr, 10) == status.view.slot)
+                {
+                    injected = true;
+                    requested_scene = {};
+                    std::printf("D3_DIAGNOSTIC invalid-source View=%u:%llu\n", status.view.slot,
+                                static_cast<unsigned long long>(status.view.generation));
+                }
+#endif
+                create_view = control.addView(requested_scene, {desired.width, desired.height}, "Editor view");
                 view_requested = true;
                 return {};
             }

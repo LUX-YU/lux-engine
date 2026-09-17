@@ -315,6 +315,8 @@ int main(int argc, char **argv)
         tick();
     }
     view.reset();
+    const auto view_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - stop_at).count();
+    std::int64_t drain_us{-1};
     std::puts("dynamic: View closed");
     drawing = false;
     if (closing_terminal)
@@ -327,6 +329,7 @@ int main(int argc, char **argv)
             assert(document.runStatus().state == editor::scene::ERunState::STOPPING);
         }
         const auto draining = document.runStatus();
+        drain_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - stop_at).count();
         assert(draining.pending_updates == 0 && draining.retained_resources != 0);
         assert(lease->status().state == scene::ERenderRuntimeState::ACTIVE);
         assert(bool(draining.result) == !failing);
@@ -343,6 +346,10 @@ int main(int argc, char **argv)
            document.runStatus().state != editor::scene::ERunState::FAILED)
     {
         tick();
+        if (drain_us < 0 && document.runStatus().render_drain_submitted)
+        {
+            drain_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - stop_at).count();
+        }
     }
     const auto final = document.runStatus();
     std::puts("dynamic: Run settled");
@@ -409,6 +416,10 @@ int main(int argc, char **argv)
                 static_cast<unsigned long long>(final.backpressure_count),
                 static_cast<long long>(final.simulation_work.count()),
                 static_cast<long long>(final.publication_wait.count()));
+    std::printf("dynamic retirement first_driver_observation_us: worker=%lld result=%lld view=%lld "
+                "drain_accepted=%lld resources=%lld; -1=not_observed; acceptance_is_not_GPU_completion\n",
+                static_cast<long long>(system_us), static_cast<long long>(result_us), static_cast<long long>(view_us),
+                static_cast<long long>(drain_us), static_cast<long long>(close_us));
     document.requestClose();
     while (document.closeStatus().state != editor::ECloseState::CLOSED)
     {

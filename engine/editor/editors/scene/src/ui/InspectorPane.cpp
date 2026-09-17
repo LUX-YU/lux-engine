@@ -15,6 +15,9 @@ namespace lux::editor::gui
               {
                   selection_ = value;
                   directory_dirty_ = true;
+                  LUX_UI_MEASURE(std::printf("D3_DIAGNOSTIC Inspector selection pane=%p revision=%llu\n",
+                                             static_cast<void *>(this),
+                                             static_cast<unsigned long long>(value.revision)));
               })),
           objects_connection_(document.observeScoped<scene::SceneEditor::objectsChanged>(
               [this](editing::Revision) noexcept { directory_dirty_ = true; }))

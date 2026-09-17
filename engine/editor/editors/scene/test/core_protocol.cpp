@@ -25,6 +25,7 @@
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/meta/Meta.hpp>
+#include <lux/engine/object/detail/MessageEnvelope.hpp>
 #include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/scene/Scene.hpp>
 #include <lux/engine/scene/WorldMaterializer.hpp>
@@ -646,6 +647,7 @@ class Probe final : public EditorFrontend
                 assert(submitted <= 3);
             }
             assert(submitted > 0);
+            packet_blocked_at_ = std::chrono::steady_clock::now();
             std::printf("backpressure: submitted=%zu retained_packet=1 old_image_lease=1\n", submitted);
             stage_ = 21;
             return;
@@ -659,6 +661,7 @@ class Probe final : public EditorFrontend
                 return;
             }
             assert(!pending_packet_.valid());
+            resize_requested_at_ = std::chrono::steady_clock::now();
             for (std::uint32_t index{}; index < 8; ++index)
             {
                 assert(extra_view_->requestExtent({256 + index * 16, 192}));
@@ -681,6 +684,7 @@ class Probe final : public EditorFrontend
             std::printf("resize held: old=256x128 requested=320x192 actual_frame=%llu GPU_COMPLETE state=RESIZING\n",
                         completed->frame_serial);
             held_image_ = {};
+            image_released_at_ = std::chrono::steady_clock::now();
             stage_ = 25;
             return;
         }
@@ -693,6 +697,7 @@ class Probe final : public EditorFrontend
             }
             auto next = extra_view_->acquireImage();
             assert(next);
+            resize_ready_at_ = std::chrono::steady_clock::now();
             held_image_ = std::move(*next);
             assert(extra_view_->beginClose());
             const auto close = extra_view_->advanceClose();
@@ -711,6 +716,15 @@ class Probe final : public EditorFrontend
                 return;
             }
             extra_view_.reset();
+            const auto closed_at = std::chrono::steady_clock::now();
+            const auto us = [](auto elapsed)
+            { return std::chrono::duration<double, std::micro>(elapsed).count(); };
+            std::printf("MEASURE resize packet_retry_us=%.3f held_old_us=%.3f release_to_ready_us=%.3f "
+                        "ready_to_closed_us=%.3f views=2 resize_requests=9 old=256x128 new=320x192 "
+                        "cpu_lease_and_GPU_COMPLETE_checked=1\n",
+                        us(resize_requested_at_ - packet_blocked_at_),
+                        us(image_released_at_ - resize_requested_at_), us(resize_ready_at_ - image_released_at_),
+                        us(closed_at - resize_ready_at_));
             evidence_.checks += 8;
             stage_ = 24;
             exit_.request(*editor_);
@@ -747,34 +761,59 @@ class Probe final : public EditorFrontend
         if (evidence_.mode == "pane-lifecycle" && (stage_ == 3 || stage_ >= 80))
         {
             auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
-            const auto inspector_id = "scene-" + std::to_string(scene.historyId().value) + "-inspector";
             if (stage_ == 3)
             {
                 assert(scene.views().size() == 5);
-                const auto inspector =
-                    std::ranges::find_if(scene.views(), [&](const auto &view) { return view->id() == inspector_id; });
-                assert(inspector != scene.views().end());
-                (*inspector)->requestClose();
+                const auto prefix = "scene-" + std::to_string(scene.historyId().value);
+                std::size_t index{};
+                for (const auto *suffix : {"-inspector", "-outliner"})
+                {
+                    const auto found = std::ranges::find_if(scene.views(), [&](const auto &view)
+                                                            { return view->id() == prefix + suffix; });
+                    assert(found != scene.views().end());
+                    const auto target = dynamic_cast<gui::GuiView &>(**found).pane().weakRef();
+                    retired_panes_[index++] = target;
+                    assert(lux::object::detail::post(scene.dispatcherRef(),
+                                                     lux::object::detail::makeMessage(
+                                                         [this, target]() noexcept
+                                                         {
+                                                             assert(target.expired() && !target.getOnCurrent());
+                                                             ++retired_messages_;
+                                                         })) == lux::object::detail::EPostStatus::POSTED);
+                    (*found)->requestClose();
+                }
                 const auto pending =
                     gui::sceneDocumentProvider().attach(scene, *evidence_.window, *evidence_.renderer, *runtime_);
                 assert(!pending && pending.error().code == EEditorError::BUSY);
                 assert(scene.views().size() == 5);
                 before_revision_ = scene.historyView()->history.revision;
-                material_frame_ = evidence_.frames;
+
+                // The frontend frame has finished. Advance the real document owner
+                // here, before the next dispatcher batch, never from a notification
+                // callback.
+                scene.poll(budget);
+                assert(scene.views().size() == 3 && retired_messages_ == 0);
+                assert(retired_panes_[0].expired() && retired_panes_[1].expired());
+                std::puts("C19 retired Inspector and Outliner with two queued "
+                          "weak-target messages");
                 stage_ = 80;
-                return;
             }
-            if (stage_ == 80 && scene.views().size() == 4)
+            if (stage_ == 80)
             {
                 assert(scene.closeStatus().state == ECloseState::OPEN);
                 assert(scene.historyView()->history.revision == before_revision_);
                 checkSceneEditing(scene);
+                std::puts("C19 absent selection begin");
+                assert(scene.select(scene.objects().front().object));
+                std::puts("C19 absent selection end");
                 const auto before = scene.historyView()->history;
                 const auto rebuilt =
                     gui::sceneDocumentProvider().attach(scene, *evidence_.window, *evidence_.renderer, *runtime_);
                 if (!rebuilt)
                 {
-                    std::fprintf(stderr, "Inspector rebuild rejected: domain=%s reason=%llu views=%zu revision=%llu\n",
+                    std::fprintf(stderr,
+                                 "Pane rebuild rejected: domain=%s reason=%llu views=%zu "
+                                 "revision=%llu\n",
                                  rebuilt.error().domain.c_str(), rebuilt.error().reason, scene.views().size(),
                                  before.revision.value);
                 }
@@ -783,17 +822,36 @@ class Probe final : public EditorFrontend
                 assert(scene.historyView()->history.revision == before.revision);
                 assert(gui::sceneDocumentProvider().attach(scene, *evidence_.window, *evidence_.renderer, *runtime_));
                 assert(scene.views().size() == 5);
+                const auto owner = scene.weakRef();
+                const auto selected = scene.objects().back().object;
+                assert(lux::object::detail::post(scene.dispatcherRef(),
+                                                 lux::object::detail::makeMessage(
+                                                     [this, owner, selected]() noexcept
+                                                     {
+                                                         auto *document = owner.getAsOnCurrent<scene::SceneEditor>();
+                                                         assert(document && retired_messages_ == 2);
+                                                         std::puts("C19 rebuilt selection begin");
+                                                         assert(document->select(selected));
+                                                         std::puts("C19 rebuilt selection end");
+                                                         ++rebuilt_messages_;
+                                                     })) == lux::object::detail::EPostStatus::POSTED);
                 material_frame_ = evidence_.frames;
                 stage_ = 81;
                 return;
             }
             if (stage_ == 81 && evidence_.frames >= material_frame_ + 10)
             {
+                assert(retired_messages_ == 2 && rebuilt_messages_ == 1);
+                assert(retired_panes_[0].expired() && retired_panes_[1].expired());
+                assert(scene.selection().object == scene.objects().back().object);
                 checkSceneEditing(scene);
-                std::puts(
-                    "PASS Pane lifecycle: Inspector alone destroyed and rebuilt; other three views retained; "
-                    "document and history survive; editing and Undo/Redo remain usable; repeat attach adds no views");
-                evidence_.checks += 8;
+                std::puts("PASS C19 owner/queue integration: actual Inspector and "
+                          "Outliner destroyed and rebuilt; "
+                          "two old weak targets expired before queued delivery; queued "
+                          "document selection reaches rebuilt "
+                          "Panes; document/history and other three views retained; "
+                          "edits/Undo/Redo work; attach is idempotent");
+                evidence_.checks += 14;
                 stage_ = 82;
                 exit_.request(*editor_);
             }
@@ -1181,6 +1239,9 @@ class Probe final : public EditorFrontend
     unsigned stage_{};
     std::uint64_t hidden_revision_{};
     editing::Revision before_revision_{};
+    std::array<lux::object::ObjectWeakRef, 2> retired_panes_;
+    unsigned retired_messages_{}, rebuilt_messages_{};
+    std::chrono::steady_clock::time_point packet_blocked_at_, resize_requested_at_, image_released_at_, resize_ready_at_;
     std::unique_ptr<rendering::RenderView> extra_view_;
     rendering::ViewImage held_image_;
     rendering::EditorFramePacket pending_packet_;

@@ -20,6 +20,12 @@ component_include_directories(editor_rendering
 )
 target_compile_definitions(editor_rendering PRIVATE LUX_EDITOR_RENDERING_LIBRARY
     LUX_EDITOR_PACKED_CONTENT=$<BOOL:${LUX_BUILD_PACKED_RENDER_CONTENT}>)
+if(LUX_EDITOR_UI_DIAGNOSTICS)
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        message(FATAL_ERROR "Editor UI diagnostics require RelWithDebInfo")
+    endif()
+    target_compile_definitions(editor_rendering PRIVATE LUX_EDITOR_UI_DIAGNOSTICS)
+endif()
 target_link_libraries(editor_rendering
     PUBLIC lux::engine::scene::scene_render lux::engine::function::ui
     PRIVATE lux::engine::function::render_vulkan lux::engine::function::render_features

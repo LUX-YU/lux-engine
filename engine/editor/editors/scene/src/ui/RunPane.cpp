@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <lux/engine/editor/gui/scene/RunPane.hpp>
+#include <lux/engine/editor/gui/scene/UiMeasurement.hpp>
 
 namespace lux::editor::gui
 {
@@ -23,6 +24,12 @@ namespace lux::editor::gui
                 std::to_string(failure.request) + ", backend " + std::to_string(failure.render_error.type.index) + ":" +
                 std::to_string(failure.render_error.type.gen),
             failure});
+        LUX_UI_MEASURE(std::printf("D3_DIAGNOSTIC RunView failure run=%llu view=%u:%llu request=%llu "
+                                   "backend=%u:%u\n",
+                                   static_cast<unsigned long long>(document_.runStatus().id.serial), failure.view.slot,
+                                   static_cast<unsigned long long>(failure.view.generation),
+                                   static_cast<unsigned long long>(failure.request), failure.render_error.type.index,
+                                   failure.render_error.type.gen));
     }
 
     RunPane::RunPane(scene::SceneEditor &document, std::string id) : DocumentPane(document, std::move(id), "Run")
@@ -67,6 +74,9 @@ namespace lux::editor::gui
                 }
                 if (*closed == rendering::ERenderClose::COMPLETE)
                 {
+                    LUX_UI_MEASURE(std::printf("D3_DIAGNOSTIC RunView closed run=%llu view=%u:%llu\n",
+                                               static_cast<unsigned long long>(preview->run.serial), view.id().slot,
+                                               static_cast<unsigned long long>(view.id().generation)));
                     preview_.emplace<Idle>();
                     view_closing_ = false;
                     if (std::exchange(reopen_requested_, false))
@@ -86,6 +96,11 @@ namespace lux::editor::gui
                 return;
             }
             preview_.emplace<Preview>(run.id, std::move(*opened), rendering::ViewImage{}, rendering::PixelExtent{});
+            LUX_UI_MEASURE(std::printf(
+                "D3_DIAGNOSTIC RunView opened run=%llu view=%u:%llu pins=%zu\n",
+                static_cast<unsigned long long>(run.id.serial), std::get<Preview>(preview_).lease.view().id().slot,
+                static_cast<unsigned long long>(std::get<Preview>(preview_).lease.view().id().generation),
+                run.retained_resources));
             status_.clear();
         }
     }

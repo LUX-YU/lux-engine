@@ -1277,7 +1277,7 @@ int main(int argc, char **argv)
     }
     if (argc == 4)
     {
-        assert(evidence.mode == "cost");
+        assert(evidence.mode == "cost" || evidence.mode == "save-structure");
         evidence.expected_objects = std::stoul(argv[3]);
     }
     gui::GuiConfig gui;

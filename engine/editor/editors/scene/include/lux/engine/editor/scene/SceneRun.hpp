@@ -65,6 +65,7 @@ namespace lux::editor::scene
         std::uint64_t retired_updates{}; // Published but never forwarded,
                                          // retired only after backend shutdown.
         std::uint32_t pending_updates{}, update_high_water{};
+        bool render_drain_submitted{}; // Normal-close marker accepted; not completion.
         std::size_t retained_resources{};
         std::chrono::nanoseconds simulation_work{}, publication_wait{};
         EditorResult<void> result;

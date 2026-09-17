@@ -571,6 +571,7 @@ namespace lux::editor::scene::detail
             d.status.backpressure_count = transport.backpressured;
             d.status.pending_updates = transport.pending;
             d.status.update_high_water = transport.high_water;
+            d.status.render_drain_submitted = d.binding->drainSubmitted();
         };
         if (d.decoding && d.decoding->ready())
         {

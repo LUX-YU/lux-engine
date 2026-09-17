@@ -18,8 +18,11 @@ int main(int argc, char **argv)
     using Clock = std::chrono::steady_clock;
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     assert(argc == 3);
-    const bool failing = std::string_view(argv[2]) == "simulation-failure";
+    const bool failing = std::string_view(argv[2]) == "simulation-failure" ||
+                         std::string_view(argv[2]) == "failure-closing-terminal";
     const bool terminating = std::string_view(argv[2]) == "dynamic-terminal";
+    const bool closing_terminal = std::string_view(argv[2]) == "closing-terminal" ||
+                                  std::string_view(argv[2]) == "failure-closing-terminal";
     meta::ReflectionRegistry::initRegistry();
     std::puts("dynamic: metadata registry initialized");
     // Load the real Scene UI provider DLL, including its generated configuration
@@ -314,6 +317,28 @@ int main(int argc, char **argv)
     view.reset();
     std::puts("dynamic: View closed");
     drawing = false;
+    if (closing_terminal)
+    {
+        // Observe actual Program acceptance of the normal drain marker. Merely
+        // observing Run STOPPING would not establish the JR-03 ordering.
+        while (!document.runStatus().render_drain_submitted)
+        {
+            tick();
+            assert(document.runStatus().state == editor::scene::ERunState::STOPPING);
+        }
+        const auto draining = document.runStatus();
+        assert(draining.pending_updates == 0 && draining.retained_resources != 0);
+        assert(lease->status().state == scene::ERenderRuntimeState::ACTIVE);
+        assert(bool(draining.result) == !failing);
+        std::printf("JR03 normal drain accepted: worker_result=received view=closed "
+                    "state=STOPPING result=%s published=%llu forwarded=%llu pins=%zu leases=%llu\n",
+                    draining.result ? "success" : "run.simulation",
+                    static_cast<unsigned long long>(draining.published_updates),
+                    static_cast<unsigned long long>(draining.forwarded_updates), draining.retained_resources,
+                    static_cast<unsigned long long>((*renderer)->statistics().runtime_leases));
+        lease->programs().progressDomain()->publishTerminalError(render::renderError<render::err::comm::ChannelStopping>());
+        lease->programs().requestStop();
+    }
     while (document.runStatus().state != editor::scene::ERunState::FINISHED &&
            document.runStatus().state != editor::scene::ERunState::FAILED)
     {
@@ -326,7 +351,31 @@ int main(int argc, char **argv)
     assert(final.retained_resources == 0 && final.pending_updates == 0);
     assert(final.published_updates > 1);
     assert(final.published_updates == final.forwarded_updates + final.retired_updates);
-    if (terminating)
+    bool result_accurate = true;
+    if (closing_terminal)
+    {
+        result_accurate = final.state == editor::scene::ERunState::FAILED && !final.result;
+        if (result_accurate && failing)
+        {
+            const auto *cause = std::any_cast<simulation::SimulationExecutionFailure>(&final.result.error().cause);
+            result_accurate = final.failed_phase == editor::scene::ERunPhase::SIMULATION &&
+                             final.result.error().domain == "run.simulation" && cause &&
+                             cause->code == simulation::ESimulationExecutionError::SYSTEM_TASK_FAILURE &&
+                             cause->system.value == 3;
+        }
+        else if (result_accurate)
+        {
+            const auto *cause = std::any_cast<scene::SceneRenderBindingFailure>(&final.result.error().cause);
+            const auto expected = render::renderError<render::err::comm::ChannelStopping>();
+            result_accurate = final.result.error().domain == "run.render" && cause &&
+                             cause->render.type == expected.type && cause->render.args == expected.args;
+        }
+        std::printf("JR03 after terminal: state=%u result=%s domain=%s pins=%zu pending=%u "
+                    "retired=%llu accurate=%u\n", unsigned(final.state), final.result ? "success" : "failure",
+                    final.result ? "none" : final.result.error().domain.c_str(), final.retained_resources,
+                    final.pending_updates, static_cast<unsigned long long>(final.retired_updates), result_accurate);
+    }
+    else if (terminating)
     {
         assert(!final.result && final.retired_updates == 1);
         const auto *cause = std::any_cast<scene::SceneRenderBindingFailure>(&final.result.error().cause);
@@ -387,6 +436,12 @@ int main(int argc, char **argv)
     project->reset();
     runtime->requestStop();
     assert(runtime->join());
+    if (!result_accurate)
+    {
+        std::puts("FAIL JR03: normal drain followed by backend failure reported success; "
+                  "worker/View/Binding/pins/leases still retired, owner cleanup completed");
+        return 2;
+    }
     std::printf("PASS case=%s actual Simulation/Run/transport/GPU and author "
                 "isolation, normal owner close\n",
                 argv[2]);

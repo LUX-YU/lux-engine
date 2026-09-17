@@ -60,6 +60,8 @@ namespace lux::scene
         std::size_t poll(std::size_t packet_budget);
         [[nodiscard]] RenderSyncStatistics statistics() const noexcept;
         [[nodiscard]] ESceneRenderBindingState state() const noexcept;
+        // Acceptance of the normal-close marker, not backend/GPU completion.
+        [[nodiscard]] bool drainSubmitted() const noexcept;
         [[nodiscard]] const SceneRenderBindingFailure &failure() const noexcept;
         [[nodiscard]] lux::cxx::expected<SceneRenderInput, SceneRenderBindingFailure> takeInput();
         [[nodiscard]] bool hasPendingUpdate() const noexcept;

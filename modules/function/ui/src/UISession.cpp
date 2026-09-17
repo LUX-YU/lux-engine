@@ -3,6 +3,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <cmath>
 #include <mutex>
@@ -292,6 +293,7 @@ namespace lux::ui
         UiTextInputAnchor backend_anchor, captured_anchor;
         std::uint64_t frame_sequence{};
         bool window_focused{true};
+        std::array<bool, 6> modifier_keys{};
         Theme theme;
         std::variant<lux::object::ObjectMessageQueue, lux::object::ObjectDispatcherRef> messages;
         CommandRouter command_router;
@@ -943,9 +945,29 @@ namespace lux::ui
                 }
                 else if constexpr (std::same_as<Value, UiKey>)
                 {
+                    constexpr std::array physical_modifiers{
+                        EKey::LEFT_CONTROL, EKey::RIGHT_CONTROL,
+                        EKey::LEFT_SHIFT, EKey::RIGHT_SHIFT,
+                        EKey::LEFT_ALT, EKey::RIGHT_ALT};
+                    constexpr std::array aggregate_modifiers{ImGuiMod_Ctrl, ImGuiMod_Shift, ImGuiMod_Alt};
+                    for (std::size_t index = 0; index < physical_modifiers.size(); ++index)
+                    {
+                        if (value.key == physical_modifiers[index])
+                        {
+                            // ImGui does not derive aggregate modifiers from
+                            // side-specific events. Preserve the other side.
+                            impl_->modifier_keys[index] = value.down;
+                            const auto pair = index / 2;
+                            io.AddKeyEvent(aggregate_modifiers[pair],
+                                           impl_->modifier_keys[pair * 2] || impl_->modifier_keys[pair * 2 + 1]);
+                            break;
+                        }
+                    }
                     const auto key = toImGuiKey(value.key);
                     if (key != ImGuiKey_None)
+                    {
                         io.AddKeyEvent(key, value.down);
+                    }
                 }
                 else if constexpr (std::same_as<Value, UiText>)
                 {
@@ -955,6 +977,10 @@ namespace lux::ui
                 {
                     impl_->window_focused = value.focused;
                     impl_->captured_anchor = {};
+                    if (!value.focused)
+                    {
+                        impl_->modifier_keys.fill(false);
+                    }
                     io.AddFocusEvent(value.focused);
                 }
             },

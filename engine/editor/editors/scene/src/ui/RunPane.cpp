@@ -197,20 +197,31 @@ namespace lux::editor::gui
         }
         auto &view = preview->lease.view();
         auto image = view.acquireImage();
+        bool waiting_for_image{};
         if (image)
         {
             preview->image = std::move(*image);
         }
         else if (image.error().code == rendering::ERendererError::NOT_READY)
         {
-            if (view_result_)
-            {
-                frame.textMuted("Run image not ready...");
-            }
+            waiting_for_image = true;
         }
         else
         {
             remember("run.view.acquireImage", image.error());
+        }
+        if (view_result_)
+        {
+            // Readiness must not change the viewport extent and trigger the
+            // next resize. Reserve the same row when the image is ready.
+            if (waiting_for_image)
+            {
+                frame.textMuted("Run image not ready...");
+            }
+            else
+            {
+                ImGui::Dummy({0, ImGui::GetTextLineHeight()});
+            }
         }
         if (view.status().state == rendering::EViewState::FAILED)
         {

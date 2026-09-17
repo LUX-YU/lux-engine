@@ -1,12 +1,108 @@
 #include <cassert>
 #include <cstdio>
+#include <imgui.h>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/object/detail/MessageEnvelope.hpp>
 #include <lux/engine/ui/UISession.hpp>
+#include <string>
+#include <utility>
 #include <vector>
+
+namespace
+{
+    class TextProbe final : public lux::ui::Pane
+    {
+    public:
+        explicit TextProbe(lux::ui::UISession &ui)
+            : Pane(ui.dispatcherRef(), lux::ui::PaneId{"text-probe"}, lux::ui::PaneTypeId{"text-probe"}, "Text")
+        {
+        }
+
+        std::string text;
+        bool focus{true}, ctrl{}, shift{}, alt{};
+
+    private:
+        void draw(lux::ui::Frame &frame, lux::ui::PaneDrawContext &) override
+        {
+            if (std::exchange(focus, false))
+            {
+                ImGui::SetKeyboardFocusHere();
+            }
+            static_cast<void>(frame.inputText("Value", text));
+            const auto &io = ImGui::GetIO();
+            ctrl = io.KeyCtrl;
+            shift = io.KeyShift;
+            alt = io.KeyAlt;
+        }
+    };
+
+    bool checkTextShortcuts()
+    {
+        using namespace lux::ui;
+        auto made = UISession::create();
+        assert(made);
+        auto &ui = **made;
+        TextProbe pane{ui};
+        auto registration = ui.registerPane(pane);
+        const auto draw = [&]()
+        {
+            auto frame = ui.beginFrame({{400, 300}, 1.0F / 60, {1, 1}});
+            frame.drawPanes();
+            frame.finish();
+        };
+        const auto key = [&](EKey code, bool down)
+        {
+            ui.feedInput(UiKey{code, down});
+            draw();
+        };
+        draw();
+        draw();
+        ui.feedInput(UiText{U'x'});
+        draw();
+        assert(pane.text == "x");
+        key(EKey::LEFT_CONTROL, true);
+        if (!pane.ctrl)
+        {
+            std::puts("FAIL UI shortcut: physical LeftCtrl is down but ImGui aggregate Ctrl is false; text=x");
+            return false;
+        }
+        key(EKey::RIGHT_CONTROL, true);
+        key(EKey::LEFT_CONTROL, false);
+        assert(pane.ctrl);
+        key(EKey::Z, true);
+        assert(pane.text.empty());
+        key(EKey::Z, false);
+        key(EKey::RIGHT_CONTROL, false);
+        assert(!pane.ctrl);
+        key(EKey::LEFT_SHIFT, true);
+        key(EKey::RIGHT_SHIFT, true);
+        key(EKey::LEFT_SHIFT, false);
+        assert(pane.shift);
+        key(EKey::RIGHT_SHIFT, false);
+        assert(!pane.shift);
+        key(EKey::LEFT_ALT, true);
+        key(EKey::RIGHT_ALT, true);
+        key(EKey::LEFT_ALT, false);
+        assert(pane.alt);
+        ui.feedInput(UiWindowFocus{false});
+        draw();
+        assert(!pane.ctrl && !pane.shift && !pane.alt);
+        ui.feedInput(UiWindowFocus{true});
+        draw();
+        key(EKey::LEFT_ALT, true);
+        key(EKey::LEFT_ALT, false);
+        assert(!pane.alt);
+        std::puts("PASS UI event-injection: InputText Ctrl+Z; paired Ctrl/Shift/Alt; focus loss clears modifiers");
+        return true;
+    }
+}
 
 int main()
 {
+    if (!checkTextShortcuts())
+    {
+        return 2;
+    }
     using namespace lux;
     object::ObjectMessageQueue queue;
     const auto dispatcher = queue.dispatcherRef();

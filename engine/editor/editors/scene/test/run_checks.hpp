@@ -49,7 +49,8 @@ class RunImageProbe final : public lux::object::Object<RunImageProbe, lux::ui::P
         }
         for (const auto &view : scene_.views())
         {
-            if (!view->id().ends_with("-run"))
+            const bool is_run = view->id().ends_with("-run");
+            if (!is_run && !view->id().ends_with("-view"))
             {
                 continue;
             }
@@ -59,7 +60,24 @@ class RunImageProbe final : public lux::object::Object<RunImageProbe, lux::ui::P
             gui->appendFrameImages(images);
             if (!images.empty())
             {
-                captured_ = images.front();
+                // Reproduce closing a Pane in the same frame as its image draw.
+                // This is an interface regression, not physical mouse evidence.
+                const bool visible = gui->pane().visible();
+                gui->pane().setVisible(false);
+                std::vector<lux::editor::rendering::ViewImage> hidden_images;
+                gui->appendFrameImages(hidden_images);
+                gui->pane().setVisible(visible);
+                assert(hidden_images.size() == images.size());
+                assert(hidden_images.front().texture == images.front().texture);
+                if (!is_run)
+                {
+                    scene_hidden_checked_ = true;
+                }
+                if (is_run && scene_hidden_checked_)
+                {
+                    captured_ = images.front();
+                    std::puts("PASS Run/Scene draw image references survive same-frame Pane hide");
+                }
             }
         }
     }
@@ -70,6 +88,7 @@ class RunImageProbe final : public lux::object::Object<RunImageProbe, lux::ui::P
     }
     lux::editor::scene::SceneEditor &scene_;
     lux::editor::rendering::ViewImage &captured_;
+    mutable bool scene_hidden_checked_{};
     bool closed_{};
 };
 

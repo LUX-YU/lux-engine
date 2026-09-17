@@ -137,10 +137,13 @@ namespace lux::editor::gui
             }
         }
         ImGui::SameLine();
+        ImGui::BeginDisabled(run.state == scene::ERunState::IDLE || run.state == scene::ERunState::FINISHED ||
+                             run.state == scene::ERunState::FAILED || run.state == scene::ERunState::STOPPING);
         if (ImGui::Button("Stop"))
         {
             action(document_.stopRun(run.id));
         }
+        ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::Text("Step %llu | %.3f s", static_cast<unsigned long long>(run.steps),
                     std::chrono::duration<double>(run.elapsed).count());
@@ -171,7 +174,24 @@ namespace lux::editor::gui
         {
             if (view_result_)
             {
-                frame.textMuted(run.state == scene::ERunState::STOPPING ? "Stopping Run..." : "Preparing Run view...");
+                switch (run.state)
+                {
+                case scene::ERunState::IDLE:
+                    frame.textMuted("No active Run. Use Play in the Scene pane.");
+                    break;
+                case scene::ERunState::FINISHED:
+                    frame.textMuted("Run finished.");
+                    break;
+                case scene::ERunState::FAILED:
+                    frame.textWrapped(run.result.error().domain + ": " + run.result.error().message);
+                    break;
+                case scene::ERunState::STOPPING:
+                    frame.textMuted("Stopping Run...");
+                    break;
+                default:
+                    frame.textMuted("Preparing Run view...");
+                    break;
+                }
             }
             return;
         }
@@ -236,7 +256,9 @@ namespace lux::editor::gui
     void RunPane::appendFrameImages(std::vector<rendering::ViewImage> &images) const
     {
         const auto *preview = std::get_if<Preview>(&preview_);
-        if (preview && visible() && preview->image.lease.valid())
+        // A close click may hide the Pane after its image was drawn this frame.
+        // Retain the draw's references until the frontend seals that snapshot.
+        if (preview && preview->image.lease.valid())
         {
             images.push_back(preview->image);
         }

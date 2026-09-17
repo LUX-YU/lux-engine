@@ -17,6 +17,8 @@ namespace lux::editor::gui
             return {};
         }
 
+        // References used by the current draw survive visibility changes until
+        // seal/releaseFrameImages; visibility is not a record of what was drawn.
         virtual void appendFrameImages(std::vector<rendering::ViewImage> &) const {}
 
         virtual void releaseFrameImages() noexcept {}

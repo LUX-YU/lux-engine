@@ -312,7 +312,9 @@ namespace lux::editor::gui
 
     void ScenePane::appendFrameImages(std::vector<rendering::ViewImage> &images) const
     {
-        if (visible() && image_.lease.valid())
+        // Visibility can change during draw; the already recorded image still
+        // belongs to this frame until seal/releaseFrameImages completes.
+        if (image_.lease.valid())
         {
             images.push_back(image_);
         }

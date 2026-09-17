@@ -437,6 +437,10 @@ namespace lux::scene
     {
         return data_->drain_submitted;
     }
+    bool SceneRenderBinding::hasFailure() const noexcept
+    {
+        return data_->failure_recorded;
+    }
     const SceneRenderBindingFailure &SceneRenderBinding::failure() const noexcept
     {
         return data_->failure;

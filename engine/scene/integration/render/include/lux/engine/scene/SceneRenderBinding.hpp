@@ -62,6 +62,8 @@ namespace lux::scene
         [[nodiscard]] ESceneRenderBindingState state() const noexcept;
         // Acceptance of the normal-close marker, not backend/GPU completion.
         [[nodiscard]] bool drainSubmitted() const noexcept;
+        // Failure survives CLOSING/CLOSED; state() describes lifecycle progress.
+        [[nodiscard]] bool hasFailure() const noexcept;
         [[nodiscard]] const SceneRenderBindingFailure &failure() const noexcept;
         [[nodiscard]] lux::cxx::expected<SceneRenderInput, SceneRenderBindingFailure> takeInput();
         [[nodiscard]] bool hasPendingUpdate() const noexcept;

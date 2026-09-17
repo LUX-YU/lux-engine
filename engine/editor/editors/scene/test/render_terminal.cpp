@@ -148,6 +148,7 @@ int main(int argc, char **argv)
                 (*renderer)->statistics().runtime_leases);
     assert(fixture.binding->state() == scene::ESceneRenderBindingState::CLOSED &&
            "JR01 backend retired but Binding cannot close");
+    assert(fixture.binding->hasFailure());
     assert(fixture.binding->failure().render.type == terminal.type);
     assert(fixture.binding->failure().render.args == terminal.args);
     assert(counts.forwarded == (pending ? 0U : 1U) && counts.pending == 0);

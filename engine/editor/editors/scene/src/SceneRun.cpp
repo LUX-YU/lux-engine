@@ -562,7 +562,7 @@ namespace lux::editor::scene::detail
             }
             static_cast<void>(stop(d.status.id));
         };
-        const auto observe_transport = [&]
+        const auto observe_binding = [&]
         {
             const auto transport = d.binding->statistics();
             d.status.published_updates = transport.published;
@@ -572,6 +572,13 @@ namespace lux::editor::scene::detail
             d.status.pending_updates = transport.pending;
             d.status.update_high_water = transport.high_water;
             d.status.render_drain_submitted = d.binding->drainSubmitted();
+            // Closing progress can pass through FAILED within one poll. Adopt
+            // the persistent fact before checking CLOSED or releasing the owner.
+            if (d.status.result && d.binding->hasFailure())
+            {
+                fail({EEditorError::SOURCE_FAILURE, "run.render", 0, {}, d.binding->failure()},
+                     d.status.render_scene.isValid() ? ERunPhase::PUBLICATION : ERunPhase::STARTUP);
+            }
         };
         if (d.decoding && d.decoding->ready())
         {
@@ -615,12 +622,7 @@ namespace lux::editor::scene::detail
         if (d.binding)
         {
             d.binding->poll(budget);
-            observe_transport();
-            if (d.binding->state() == lux::scene::ESceneRenderBindingState::FAILED)
-            {
-                fail({EEditorError::SOURCE_FAILURE, "run.render", 0, {}, d.binding->failure()},
-                     d.executing ? ERunPhase::PUBLICATION : ERunPhase::STARTUP);
-            }
+            observe_binding();
             if (d.status.state == ERunState::PREPARING && !d.executing &&
                 d.binding->state() == lux::scene::ESceneRenderBindingState::READY)
             {
@@ -696,7 +698,7 @@ namespace lux::editor::scene::detail
         {
             d.binding->requestClose();
             d.binding->poll(budget);
-            observe_transport();
+            observe_binding();
             if (d.binding->state() != lux::scene::ESceneRenderBindingState::CLOSED)
             {
                 return;

@@ -367,7 +367,8 @@ int main(int argc, char **argv)
         {
             const auto *cause = std::any_cast<scene::SceneRenderBindingFailure>(&final.result.error().cause);
             const auto expected = render::renderError<render::err::comm::ChannelStopping>();
-            result_accurate = final.result.error().domain == "run.render" && cause &&
+            result_accurate = final.result.error().domain == "run.render" &&
+                             final.failed_phase == editor::scene::ERunPhase::PUBLICATION && cause &&
                              cause->render.type == expected.type && cause->render.args == expected.args;
         }
         std::printf("JR03 after terminal: state=%u result=%s domain=%s pins=%zu pending=%u "

@@ -10,7 +10,7 @@
 
 namespace consumer
 {
-    void checkClippedGesture(lux::editor::scene::SceneEditor &, lux::world::WorldObjectId, lux::ui::Frame &);
+    void checkCompletedGesture(lux::editor::scene::SceneEditor &, lux::world::WorldObjectId, lux::ui::Frame &);
     bool drawOmissionProbe(lux::editor::scene::SceneEditor &, lux::world::WorldObjectId, lux::ui::Frame &,
                            lux::editor::gui::InspectorInteraction &);
 
@@ -157,7 +157,7 @@ namespace consumer
             }
             if (draws == 1 && !document.summary().read_only)
             {
-                checkClippedGesture(document, object, frame);
+                checkCompletedGesture(document, object, frame);
             }
 #if defined(CONSUMER_WIDGET_DIAGNOSTICS)
             if (draws == 1)

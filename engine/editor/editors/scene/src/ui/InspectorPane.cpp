@@ -35,11 +35,6 @@ namespace lux::editor::gui
         }
         frame.textMuted(history && history->history.clean ? "Scene editing" : "Scene editing | Unsaved changes");
         const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-        if (focused && ImGui::IsKeyPressed(ImGuiKey_Escape) && interaction_.active())
-        {
-            static_cast<void>(interaction_.finish(document_, false));
-            return;
-        }
         if (!focused && interaction_.active() && !interaction_.finish(document_, true))
         {
             frame.text(interaction_.error.data());

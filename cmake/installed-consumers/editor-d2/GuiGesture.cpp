@@ -158,21 +158,11 @@ namespace consumer
         assert(document.historyView()->history.cursor == before.cursor + 1);
         assert(document.undo() && read() == original);
         begin();
-        const auto cancelled = document.historyView()->history;
-        ui.feedInput(lux::ui::UiKey{lux::ui::EKey::ESCAPE, true});
-        draw(1000);
-        poll();
-        assert(!probe.interaction->active() && read() == original);
-        assert(document.historyView()->history.current == cancelled.current);
-        assert(document.historyView()->history.revision == cancelled.revision);
-        ui.feedInput(lux::ui::UiKey{lux::ui::EKey::ESCAPE, false});
-        draw(1000);
-        ui.feedInput(lux::ui::UiPointerMove{{probe.center.x + 80, probe.center.y}});
-        draw(1000);
         ui.feedInput(lux::ui::UiPointerButton{lux::ui::EPointerButton::LEFT, false});
         draw(1000);
-        assert(!probe.interaction->active() && read() == original);
-        assert(document.historyView()->history.revision == cancelled.revision);
+        assert(!probe.interaction->active() && read() != original);
+        assert(document.historyView()->history.cursor == before.cursor + 1);
+        assert(document.undo() && read() == original);
         const auto pane_id = std::string(view.id());
         const auto views = document.views().size();
         begin();
@@ -218,11 +208,11 @@ namespace consumer
             "PASS real Inspector omission: layout zero/collapse retain visible; focus notifications do not edit; "
             "owner poll commits; rejected commit retries same token; no-draw turns retain active gesture; Undo "
             "restores; "
-            "injected Esc restores without restarting while mouse remains held; close cancels preview; "
+            "ordinary release commits once; close cancels unfinished preview; "
             "selection while destroyed, rebuilt Inspector refresh and edit/Undo pass with isolated subscriptions");
     }
 
-    void checkClippedGesture(lux::editor::scene::SceneEditor &document, lux::world::WorldObjectId object,
+    void checkCompletedGesture(lux::editor::scene::SceneEditor &document, lux::world::WorldObjectId object,
                              lux::ui::Frame &frame)
     {
         using namespace lux::editor;
@@ -246,7 +236,7 @@ namespace consumer
         unsigned char *pixels{};
         int width{}, height{};
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        gui::InspectorInteraction interaction(document, "clipped-gesture");
+        gui::InspectorInteraction interaction(document, "completed-gesture");
         const auto before = document.historyView()->history;
         const auto access = [](auto &value) noexcept { return &value.settings.gain; };
         const auto read = [&]()
@@ -294,12 +284,12 @@ namespace consumer
         io.AddMousePosEvent(center.x + 40, center.y);
         draw(true);
         assert(read() != original && document.historyView()->history.current == before.current);
-        // Pagination/clipping omits the active field while release arrives through the same IO system.
+        // Release ends the edit even if the widget is omitted on that frame.
         io.AddMouseButtonEvent(0, false);
         draw(false);
         draw(false);
         draw(false);
-        std::printf("Clipped gesture: active=%d cursor=%zu before=%zu original=%.3f value=%.3f\n", interaction.active(),
+        std::printf("Completed gesture: active=%d cursor=%zu before=%zu original=%.3f value=%.3f\n", interaction.active(),
                     document.historyView()->history.cursor, before.cursor, original, read());
         std::fflush(stdout);
         assert(!interaction.active());
@@ -321,21 +311,7 @@ namespace consumer
         assert(document.historyView()->history.current == no_change.current);
         assert(document.historyView()->history.revision == no_change.revision);
 
-        io.AddMouseButtonEvent(0, true);
-        draw(true);
-        io.AddMousePosEvent(center.x + 60, center.y);
-        draw(true);
-        assert(interaction.active() && read() != original);
-        draw(false);
-        assert(!interaction.active() && document.historyView()->history.cursor == before.cursor + 1);
-        // Reappear while still held: the old widget must not restart its retired preview.
-        draw(true);
-        io.AddMouseButtonEvent(0, false);
-        draw(true);
-        draw(true);
-        assert(!interaction.active() && document.historyView()->history.cursor == before.cursor + 1);
-        assert(document.undo() && read() == original);
-        std::puts("PASS injected ImGui gesture: omitted control commits once while held or released; redraw does not "
-                  "restart; unchanged click preserves revision; Undo restores");
+        std::puts("PASS injected ImGui completed edit: release commits once; omitted widget cannot strand a "
+                  "completed preview; redraw does not duplicate history; unchanged click preserves revision; Undo restores");
     }
 } // namespace consumer

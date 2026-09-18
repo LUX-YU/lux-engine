@@ -46,6 +46,39 @@ int main(int argc, char **argv)
         SceneSourceChecks::verify(root);
         return 0;
     }
+    if (std::string_view(argv[2]) == "inspect-render")
+    {
+        auto source = SceneSourceChecks::read(root / "Main.luxscene");
+        auto bytes = std::make_shared<std::vector<std::byte>>(std::move(source.scene));
+        auto scene_asset = asset::TAssetSerDeser<scene::SceneAsset>::decode(
+            identity<asset::AssetId>(12), cxx::SharedBytes<>::fromOwner(bytes, *bytes),
+            {16 * 1024 * 1024, 16 * 1024 * 1024, 128});
+        assert(scene_asset);
+        const auto registration = scene::builtinRenderSystemRegistration();
+        const auto features = render::builtinRenderFeatureRegistrations();
+        const auto &description = (*scene_asset)->data();
+        for (std::size_t index{}; index < description.systemCount(); ++index)
+        {
+            const auto system = description.systemAt(index);
+            if (system.type() != registration.type)
+            {
+                continue;
+            }
+            scene::RenderSystemConfiguration config;
+            assert(registration.configuration.decode(system.configurationPayload(), &config));
+            std::printf("render feature count=%zu page=%.0f\n", config.features.size(), config.coordinate_page_size);
+            for (const auto &feature : config.features)
+            {
+                const auto found = std::ranges::find_if(features, [&](const auto &entry)
+                {
+                    return render::featureId(entry.stable_name) == feature.type;
+                });
+                assert(found != features.end());
+                std::printf("feature=%.*s\n", static_cast<int>(found->stable_name.size()), found->stable_name.data());
+            }
+        }
+        return 0;
+    }
     const bool preservation = std::string_view(argv[2]) == "gpu-preservation";
     std::filesystem::create_directories(root);
     const bool rendered = std::string_view(argv[2]).starts_with("gpu");
@@ -135,6 +168,7 @@ int main(int argc, char **argv)
             light.value.type = rdesc::ELightType::POINT;
             light.value.intensity = 3;
             light.value.range = 30;
+            light.value.cast_shadow = shadows;
             payloads[index][1] = encode(light);
         }
         const std::uint32_t transform_version = std::string_view(argv[2]) == "gpu-bad-version" ? 99 : 1;

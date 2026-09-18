@@ -433,6 +433,13 @@ class Probe final : public EditorFrontend
             assert(!scene.undo() && !scene.redo());
             assert(scene.historyView()->history.revision == before.history.revision);
             evidence_.checks += 9;
+            if (evidence_.mode == "transform-sync")
+            {
+                checkProgramAdmissionOrder();
+                checkGeneratedTransformDragging(scene);
+                stage_ = 98;
+                return;
+            }
             if (evidence_.mode == "background")
             {
                 assert(background_active_.load(std::memory_order_acquire));
@@ -511,6 +518,39 @@ class Probe final : public EditorFrontend
             checkSceneEditing(scene);
             before_revision_ = scene.historyView()->history.revision;
             stage_ = 5;
+            return;
+        }
+        if (stage_ == 98)
+        {
+            auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
+            using Transform = lux::simulation::ecs::Transform3D;
+            using World = lux::simulation::ecs::WorldTransform3D;
+            for (std::size_t index{}; index < 3; ++index)
+            {
+                const auto object = scene.objects()[index].object;
+                const auto *local =
+                    static_cast<const Transform *>(scene.component(object, lux::cxx::typeToken<Transform>()));
+                const auto *world = static_cast<const World *>(scene.component(object, lux::cxx::typeToken<World>()));
+                assert(local && world);
+                if (!world->value.translation().isApprox(local->translation, 1e-10))
+                {
+                    std::printf("FAIL transform step=%zu object=%zu local=(%g,%g,%g) world=(%g,%g,%g) diagnostic=%s\n",
+                                transform_step_, index, local->translation.x(), local->translation.y(),
+                                local->translation.z(), world->value.translation().x(), world->value.translation().y(),
+                                world->value.translation().z(), scene.diagnostic().c_str());
+                    evidence_.failed = true;
+                    stage_ = 99;
+                    exit_.request(*editor_);
+                    return;
+                }
+            }
+            if (transform_step_ == 120)
+            {
+                std::puts("PASS author -> WorldTransform across 120 actual owner polls");
+                stage_ = 99;
+                exit_.request(*editor_);
+                return;
+            }
             return;
         }
         if (stage_ == 96)
@@ -1160,6 +1200,20 @@ class Probe final : public EditorFrontend
         const auto captured_before = measure ? evidence_.window->capturedFrames() : 0;
         const auto begin = std::chrono::steady_clock::now();
         inner_->draw(editor, budget);
+        if (stage_ == 98)
+        {
+            // Edits arrive while drawing Inspector. At the next frontend poll,
+            // document derivation/publication must get its turn before queued
+            // UI frames can take the newly available Program slots.
+            auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
+            using Transform = lux::simulation::ecs::Transform3D;
+            const auto object = scene.objects()[transform_step_ % 3].object;
+            const auto field = [](auto &value) noexcept { return &value.translation; };
+            const Eigen::Vector3d value{double(transform_step_ + 1) * 0.05, 1, 0};
+            assert(scene.setField<Transform>(*scene.writeTarget(object), "Transform3D.translation", "Translation",
+                                             field, value));
+            ++transform_step_;
+        }
         if (measure)
         {
             const auto elapsed = std::chrono::steady_clock::now() - begin;
@@ -1252,6 +1306,7 @@ class Probe final : public EditorFrontend
     std::uint64_t material_resource_{}, material_watermark_{};
     std::string material_cooked_;
     unsigned stage_{};
+    std::size_t transform_step_{};
     std::uint64_t hidden_revision_{};
     editing::Revision before_revision_{};
     std::array<lux::object::ObjectWeakRef, 2> retired_panes_;

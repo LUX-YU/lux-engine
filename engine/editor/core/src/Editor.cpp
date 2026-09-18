@@ -570,8 +570,12 @@ namespace lux::editor
                     {
                         budget.main_completions -= *main;
                     }
-                    frontend->poll(budget);
+                    // Retry retained document updates before presentation can
+                    // refill the shared Program ring with another UI frame.
+                    // Under GPU backpressure, frame-first admission can keep
+                    // displaying new Inspector values against an old Scene.
                     pollDocuments(budget);
+                    frontend->poll(budget);
                     acceptOpenings();
                     collectClosed();
                     budget.object_messages -= messages_.dispatchPending(budget.object_messages);

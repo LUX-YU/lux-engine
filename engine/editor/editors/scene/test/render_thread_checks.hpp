@@ -20,6 +20,90 @@
 #include <lux/engine/simulation/ecs/VisualSchema.hpp>
 #include <thread>
 
+// Deterministic transport experiment, not a GPU timing result. The consumer
+// advances through StateUpdates up to one Frame per turn, as drainTick does.
+// Hold the ring full initially, then offer a retained update alongside the UI.
+inline void checkProgramAdmissionOrder()
+{
+    using namespace lux::render;
+    for (std::size_t capacity = 1; capacity <= 3; ++capacity)
+    {
+        for (const bool documents_first : {false, true})
+        {
+            auto channel = RenderProgramChannel<>::create(capacity);
+            auto sync = std::make_shared<RenderChannelSync>();
+            RenderProgramSession session(channel, sync);
+            RenderProgram<> frame;
+            RenderProgram<> update;
+            update.payload.push_back(std::byte{1});
+            std::size_t adopted_updates{}, adopted_frames{}, accepted_updates{};
+
+            const auto offer_frame = [&]
+            {
+                static_cast<void>(session.retryPendingSubmit());
+                frame.kind = ERenderProgramKind::Frame;
+                static_cast<void>(session.trySubmitPrepared(frame));
+            };
+            const auto offer_update = [&]
+            {
+                if (accepted_updates == 64)
+                {
+                    return;
+                }
+                if (session.hasPendingSubmit() && !session.retryPendingSubmit())
+                {
+                    return;
+                }
+                if (session.trySubmitPrepared(update))
+                {
+                    ++accepted_updates;
+                    update.payload.push_back(std::byte(accepted_updates + 1));
+                }
+                else
+                {
+                    assert(update.payload.size() == 1);
+                    assert(update.payload.front() == std::byte(accepted_updates + 1));
+                }
+            };
+            for (std::size_t i{}; i < RenderProgramChannel<>::request_slot_count; ++i)
+            {
+                offer_frame();
+            }
+            for (std::size_t turn{}; turn < 256; ++turn)
+            {
+                while (channel->requests.tryAcquireRead())
+                {
+                    const auto &program = channel->requests.currentRead();
+                    if (program.kind == ERenderProgramKind::Frame)
+                    {
+                        ++adopted_frames;
+                        break;
+                    }
+                    ++adopted_updates;
+                    assert(program.payload.size() == 1);
+                    assert(program.payload.front() == std::byte(adopted_updates));
+                }
+                if (documents_first)
+                {
+                    offer_update();
+                    offer_frame();
+                }
+                else
+                {
+                    offer_frame();
+                    offer_update();
+                }
+            }
+            std::printf("Program contention capacity=%zu documents_first=%u accepted_updates=%zu "
+                        "adopted_updates=%zu adopted_frames=%zu\n",
+                        capacity, documents_first, accepted_updates, adopted_updates, adopted_frames);
+            assert(adopted_frames > 0);
+            assert(adopted_updates == (documents_first ? 64 : 0));
+            assert(accepted_updates == adopted_updates);
+        }
+    }
+}
+
 struct RenderThreadChecks final
 {
     std::shared_ptr<const lux::scene::SceneMetaManager> metadata;

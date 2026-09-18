@@ -3,8 +3,120 @@
 #include <cstdio>
 #include <limits>
 #include <lux/engine/editor/gui/asset/AssetReference.hpp>
+#include <lux/engine/editor/gui/scene/ComponentBinding.hpp>
+#include <lux/engine/editor/gui/scene/InspectorInteraction.hpp>
 #include <lux/engine/editor/scene/FieldEdit.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
+#include <lux/engine/ui/UISession.hpp>
+
+inline void checkGeneratedTransformDragging(lux::editor::scene::SceneEditor &document)
+{
+    using namespace lux::editor;
+    using Transform = lux::simulation::ecs::Transform3D;
+    using World = lux::simulation::ecs::WorldTransform3D;
+    lux::ui::UISession ui;
+
+    struct ProbePane final : lux::object::Object<ProbePane, lux::ui::Pane>
+    {
+        scene::SceneEditor &document;
+        gui::InspectorInteraction interaction;
+        gui::ComponentBinding binding;
+        lux::world::WorldObjectId object;
+        std::array<ImVec2, 3> centers{};
+
+        ProbePane(lux::ui::UISession &ui, scene::SceneEditor &value)
+            : Object(ui.dispatcherRef(), lux::ui::PaneId{"transform-probe"}, lux::ui::PaneTypeId{"test"}, "Transform"),
+              document(value), interaction(value, "transform-probe")
+        {
+            for (auto &candidate : gui::firstPartyComponentBindings())
+            {
+                if (candidate.type == lux::cxx::typeToken<Transform>())
+                {
+                    binding = std::move(candidate);
+                }
+            }
+            assert(binding.draw);
+        }
+
+        void draw(lux::ui::Frame &frame, lux::ui::PaneDrawContext &) override
+        {
+            ImGui::GetIO().MouseDoubleClickTime = 0;
+            auto table = frame.table({lux::ui::WidgetIdView{"transform"}, 2, false, false, false, 110});
+            assert(table.visible());
+            binding.draw(document, object, frame, interaction);
+            // The generated three vector rows have identical geometry. The last
+            // item is the Scale group; derive Translation hit points from it.
+            const auto low = ImGui::GetItemRectMin();
+            const auto high = ImGui::GetItemRectMax();
+            const auto &style = ImGui::GetStyle();
+            const float label = ImGui::CalcTextSize("X").x;
+            const float width =
+                (high.x - low.x - 3 * (label + style.ItemInnerSpacing.x) - 2 * style.ItemSpacing.x) / 3;
+            const float y = (low.y + high.y) / 2 - 2 * (ImGui::GetFrameHeight() + 2 * style.CellPadding.y);
+            for (std::size_t axis{}; axis < centers.size(); ++axis)
+            {
+                centers[axis] =
+                    {low.x + width / 2 + axis * (width + label + style.ItemInnerSpacing.x + style.ItemSpacing.x), y};
+            }
+            assert(interaction.finishDraw());
+            assert(!interaction.error[0]);
+        }
+    } pane(ui, document);
+
+    auto registered = ui.registerPane(pane);
+    assert(registered);
+    const auto draw = [&]
+    {
+        auto frame = ui.beginFrame({{800, 600}, 1.0F / 60});
+        frame.drawPanes();
+        frame.finish();
+        PollBudget budget;
+        document.poll(budget);
+    };
+    for (std::size_t index{}; index < 3; ++index)
+    {
+        pane.object = document.objects()[index].object;
+        pane.interaction.reset();
+        assert(ui.requestFocus(pane.id().view()));
+        draw();
+        draw();
+        for (std::size_t axis{}; axis < 3; ++axis)
+        {
+            const auto before = document.historyView()->history;
+            const Eigen::Vector3d original =
+                static_cast<const Transform *>(document.component(pane.object, lux::cxx::typeToken<Transform>()))
+                    ->translation;
+            const auto center = pane.centers[axis];
+            ui.feedInput(lux::ui::UiPointerMove{{center.x, center.y}});
+            draw();
+            ui.feedInput(lux::ui::UiPointerButton{lux::ui::EPointerButton::LEFT, true});
+            draw();
+            assert(pane.interaction.active());
+            ui.feedInput(lux::ui::UiPointerMove{{center.x + 60, center.y}});
+            draw();
+            const Eigen::Vector3d live =
+                static_cast<const Transform *>(document.component(pane.object, lux::cxx::typeToken<Transform>()))
+                    ->translation;
+            const Eigen::Vector3d world =
+                static_cast<const World *>(document.component(pane.object, lux::cxx::typeToken<World>()))
+                    ->value.translation();
+            std::printf("generated-drag object=%zu axis=%zu before=%g live=%g world=%g\n", index, axis,
+                        original[axis], live[axis], world[axis]);
+            assert(live[axis] != original[axis] && world.isApprox(live, 1e-10));
+            ui.feedInput(lux::ui::UiPointerButton{lux::ui::EPointerButton::LEFT, false});
+            draw();
+            draw();
+            assert(!pane.interaction.active());
+            assert(document.historyView()->history.cursor == before.cursor + 1);
+            assert(document.undo());
+            draw();
+            const auto *restored =
+                static_cast<const World *>(document.component(pane.object, lux::cxx::typeToken<World>()));
+            assert(restored->value.translation().isApprox(original, 1e-10));
+        }
+    }
+    std::puts("PASS generated Transform UI: three objects, XYZ drags, live derivation, one history entry and Undo");
+}
 
 inline void checkSceneEditing(lux::editor::scene::SceneEditor &document)
 {

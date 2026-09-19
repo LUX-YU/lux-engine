@@ -672,7 +672,10 @@ class Probe final : public EditorFrontend
                 }
                 assert(submitted <= 3);
             }
-            assert(submitted > 0);
+            // Earlier frontend turns may already have filled the queue. Zero new
+            // admissions is valid; the retained packet must survive and be retried
+            // before requesting resize in stage 21.
+            assert(pending_packet_.valid() && held_image_.lease.valid());
             packet_blocked_at_ = std::chrono::steady_clock::now();
             std::printf("backpressure: submitted=%zu retained_packet=1 old_image_lease=1\n", submitted);
             stage_ = 21;

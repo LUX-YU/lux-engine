@@ -515,10 +515,18 @@ namespace lux::editor::scene
     }
     EditorResult<void> SceneEditor::pauseRun(RunId id)
     {
+        if (data_->editing_busy)
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "run.edit-notification"});
+        }
         return data_->run.pause(id);
     }
     EditorResult<void> SceneEditor::resumeRun(RunId id)
     {
+        if (data_->editing_busy)
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "run.edit-notification"});
+        }
         auto finished_edit = finishFieldEdits();
         if (!finished_edit)
         {
@@ -530,6 +538,10 @@ namespace lux::editor::scene
     }
     EditorResult<void> SceneEditor::stepRun(RunId id)
     {
+        if (data_->editing_busy)
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "run.edit-notification"});
+        }
         auto finished_edit = finishFieldEdits();
         if (!finished_edit)
         {
@@ -541,6 +553,10 @@ namespace lux::editor::scene
     }
     EditorResult<void> SceneEditor::stopRun(RunId id)
     {
+        if (data_->editing_busy)
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "run.edit-notification"});
+        }
         auto finished_edit = finishFieldEdits();
         if (!finished_edit)
         {

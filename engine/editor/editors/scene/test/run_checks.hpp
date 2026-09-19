@@ -206,6 +206,17 @@ struct SceneRunChecks final
         {
             pause_history = scene.historyId();
             assert(pause_history != author.current.history);
+            std::size_t notices{};
+            auto notification = scene.observeScoped<scene::SceneEditor::componentChanged>(
+                [&](const auto &) noexcept
+                {
+                    for (const auto &result : {scene.resumeRun(first), scene.stepRun(first), scene.stopRun(first)})
+                    {
+                        assert(!result && result.error().code == EEditorError::BUSY);
+                    }
+                    assert(scene.runStatus().state == scene::ERunState::PAUSED && scene.historyId() == pause_history);
+                    ++notices;
+                });
             const auto object = scene.objects().front().object;
             using Transform = lux::simulation::ecs::Transform3D;
             const auto field = [](auto &value) { return &value.translation; };
@@ -216,6 +227,8 @@ struct SceneRunChecks final
                                              Eigen::Vector3d{before.x() + 2, before.y(), before.z()}));
             assert(scene.undo() && value->translation == before);
             assert(scene.redo() && value->translation.x() == before.x() + 2);
+            assert(notices == 3);
+            notification.reset();
             paused_translation = value->translation;
             stale_pause_target = *scene.writeTarget(object);
             assert(scene.select(object));

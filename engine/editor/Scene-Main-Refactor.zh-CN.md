@@ -72,3 +72,95 @@ Registry 是交互期间当前值的唯一来源。普通数值不再经过持�
 - 暂停仅开放支持的字段；结构编辑与更换冻结 Mesh/Material 资源集不在本轮。
 - 窗口测试、IO 注入、Computer Use 分别记录，历史 IME 成绩不自动延伸到新候选。
 - 独立阴影 atlas 布局验证问题保留其原状态，本轮不会因普通 GPU 测试通过而宣布解决。
+
+## 固定候选与最终结果（2026-09-19）
+
+| 用途 | 身份 |
+| --- | --- |
+| Engine 生产实现 | `4355f7eae02e88e36e252208edf385f80d7ba6c1` |
+| 最终代码及测试候选 | `230395b7595f64f6336e1d55e05568603a3f08ff` |
+| lux-cxx 通用容器 | `aae62e2fc17ef78ae7be2559a6d58fa0f8297b05` |
+| Engine 开发分支 | `codex/scene-main-refactor` |
+| lux-cxx 开发分支 | `codex/concurrent-scene-refactor` |
+
+`230395b` 相对生产提交只改变 `run_checks.hpp` 的测试准备次序。Engine 生产目标在该提交上执行 `all -j 4 -- -k 0` 返回 `ninja: no work to do`。本报告的后续提交只记录结果，不改变上述生产身份。
+
+资格使用干净检出 `E:/lux-ed-d2/d3q/s`、既有增量构建树 `d3q/b`、本轮新建 SDK `mainq/sdk` 和迁移位置 `mainq/relocated`。lux-cxx 使用独立干净 clone `mainq/cxx-s` 和新 SDK。更换 cxx 前缀引发的 Engine 988 步编译已经完成；不将此描述为空构建目录的全新编译。最终消费者通过安装包配置，运行 PATH 排除工作 SDK、源码树和旧构建树。
+
+最终注册结果分别为：
+
+| 验证 | 实际结果 | 原始证据 |
+| --- | --- | --- |
+| Editor 安装测试 | 46/46；50.79 秒 | `complete-ctest.log`、`complete-LastTest.log` |
+| fixed-run 重复回归 | 三次独立进程均通过 | `complete-fixed-run-repeat.log` |
+| 独立 Editor 链接消费者 | 9/9 | `complete-closure-test.log` |
+| 独立通用 Scene 消费者 | 1/1 | `complete-scene-core-test.log` |
+| lux-cxx 并发容器测试 | 1/1，包含并发交接、最新值和可靠 FIFO 语义 | `q-cxx-test.log` |
+| 隔离的组件复制计数消费者 | 1/1 | `complete-copy-test.log`、`complete-copy-LastTest.log` |
+| 生成器负例 | 准确拒绝缺失的反射组件，全部既存输出字节不变 | `generation-negative.log`、`generation-preserved.json` |
+| 实际依赖与链接 | 通用 Scene 的 include/DLL 闭包无 Render、Editor、ImGui、GLFW；生成 Inspector 对象链接 editor_scene_ui | `scene-core-include-deps.txt`、`dll-closure.json`、`generated-link-inputs.txt` |
+| 二次构建 | Engine 和安装消费者均为 no-op | `complete-engine-noop.log`、`complete-consumer-noop.log` |
+
+上述单位不相加为“完整产品验收用例数”。46 项中保留了实际 Process、保存/重试、结构回放、Pane 退役、动态 Run、CPU Run、派生图、Transform 同步、真实 Render 终止和 JR 首错保护等相关路径。安装测试显式启用断言。复制计数只编入单独测试组件，正常 SDK 与成本消费者不携带这项计数或新增 OOM 注入。
+
+通用 Scene 与 Editor 的 Scene 业务包应区别：后者仍显式依赖 `editor_rendering`，所以本轮并未交付一个完全无图形依赖的 Editor 产品。RenderSystem 可选的业务运行和通用 Scene 的无渲染依赖已经分别验证。
+
+## 正式窗口结果
+
+使用 `mainq/relocated/bin/lux_editor.exe`、独立项目 `mainq/desktop-project-final`、系统字体显式冷配置。没有分发字体文件。输入来自 Computer Use 经 Windows 的鼠标/键盘路径，未以 Pane 方法注入冒充桌面操作。
+
+| 操作 | 最终候选实际观察 |
+| --- | --- |
+| 作者 Object 1 的 Translation X | 0 → 1.5，生成 Inspector 与场景位置同步变化 |
+| Play | 原 Scene 视口切换为运行世界，没有另建 RunPane；Outliner 显示 Run objects，结构编辑入口禁用 |
+| Pause | 停在 580 步；选择运行对象，X 从 1.5 → 3，画面更新，步号仍为 580 |
+| 暂停 Undo / Redo | X 恢复 1.5 / 3，画面对应变化，作者未保存状态保留 |
+| Step | 580 → 581，只推进一个固定步长 |
+| 新暂停区间 Undo | X 保持 3，没有回退到上一暂停区间或作者历史 |
+| Resume | 时钟继续；Inspector 只读，拖动字段未改变 X=3 |
+| Stop | 作者选择与 X=1.5 恢复；随后 Ctrl+Z 将作者 X 恢复为 0 |
+| 关闭 | 明确点击 native X；日志记录 native-close、review-begin、review-commit、finished；实际进程退出码 0 |
+
+`final-desktop-*.jpg`、`final-desktop-trace.json`、`desktop-final-process.json`、`desktop-final.stderr.log` 和 `desktop-final-exit-code.txt` 保存本次事实。前一轮桌面检查的截图与日志单独保留，不覆盖为最终候选结果。
+
+这条桌面路径不代表所有 DPI、IME、窗口组合和 FAILED View 的人工恢复都已验证。历史未知 native-close 来源没有被这次指定关闭解释。用户已取消的拖动 Escape 回滚需求不再作为待通过门槛。
+
+## 有限成本
+
+每种情形五个独立正常进程；完整样本在 `cost-summary.json` 和 `cost-1` 至 `cost-5` 原始日志。以下为最终候选五样本中位数，无旧候选等量对比，故不报告加速比例。
+
+| 情形 | 实际完成量 | 主动成本或阶段延迟中位数 |
+| --- | --- | --- |
+| UI，256 个作者对象 | 20 帧 warmup，100 个测量帧，4 个渲染对象，1600×900，同一可见范围 | 累计主动绘制 10.595 ms；主动 packet retry 0.045 ms |
+| UI，4096 个作者对象 | 同上，作者目录扩大 | 累计主动绘制 11.071 ms；主动 packet retry 0.046 ms |
+| 256 元素容器单元素编辑 | 连续 100 次更新，1 条历史，完成后结构恢复及回放 | 主动 24.2 μs；历史计费 422 字节 |
+| 4096 元素容器单元素编辑 | 同上 | 主动 22.2 μs；历史计费 422 字节 |
+| 动态 Run | 6 个模拟步、6 个发布包，主动停止消费制造背压 | 模拟主动累计 0.3427 ms，必要发布等待累计 17.4171 ms |
+| Run 控制 | 同一动态场景 | Pause 2.041 ms；Step 5.228 ms；Stop 至系统退出 1.299 ms，至 Main 最终结果 1.329 ms，至资源退出 89.808 ms |
+| Resize/retry | 2 个 View、9 次 resize 请求，旧 256×128，新 320×192 | packet 重试 1.9759 ms；旧 lease 保留阶段 31.6115 ms；释放至 READY 6.352 ms；READY 至关闭 11.1624 ms |
+
+控制和退休延迟包含驱动轮询与资源等待；发布等待包含人为停止消费，不能当作正常稳态卡顿。100 帧累计绘制不是完整帧率，历史计费不是进程内存或 GPU 内存总上界。对象规模样本保持渲染对象数固定，只检查目录规模成本。
+
+独立复制诊断在两种容器规模下均记录一次结束时的 after 捕获。保留的旧测试输出使用 `adopted preview copies` 字样，该计数实际覆盖当前完成字段记录的路径，并不表示仍存在通用 preview/Draft 数据副本。诊断耗时不混入上述正常成本。
+
+## 失败记录与修正边界
+
+原始失败没有删除或重标通过：
+
+1. 初次新 cxx SDK 配置漏开 reflection generator，配置失败后未运行旧 EXE；修正构建选项后重建。原记录在 `qualification-attempt-1`。
+2. Resize 成本第二次进程遇到队列已被前端填满，测试断言“本轮一定先新接纳至少一帧”不成立。改为核对实际保留包和旧图像 lease；下一阶段仍必须成功提交原包，并通过真实 GPU_COMPLETE 与关闭保护。生产协议未因此放宽。原记录在 `cost-attempt-1`。
+3. fixed-run 测试曾将“资产就绪”当作“作者 StateUpdate 已采用”。Run 会暂停作者派生，因此测试现在先查询并确认作者三个 Mesh 已采用，再 Play 检查作者/运行隔离。原 `release-ctest.log` 保留准确失败，之后三次定向及最终统一回归通过。
+4. 桌面暴露 Outliner 的运行标签和结构操作入口遗漏，已在 `4355f7e` 修正；实际写入口本来已经拒绝运行中的结构操作。
+
+## 交付位置与运行
+
+实际源码与原始证据归档：`E:/lux-ed-d2/deliveries/scene-main-refactor-230395b/source-and-reports.zip`。其中包含两个固定提交的 Git 源码 ZIP、实施报告、构建/测试/成本日志、桌面截图、manifest、源码与产物身份。Git blob SHA1 与 Windows checkout SHA256 分开记录，不能直接比较成“源码不一致”。
+
+可运行本轮独立项目：
+
+```powershell
+$env:PATH = 'E:/lux-ed-d2/mainq/relocated/bin;E:/lux-ed-d2/mainq/cxx-sdk/bin;E:/SyncForder/CodeRepos/install/o/v4/lua55/bin;E:/SyncForder/CodeRepos/install/RelWithDebInfo/bin;D:/Development/vcpkg/installed/x64-windows/bin;' + $env:PATH
+& 'E:/lux-ed-d2/mainq/relocated/bin/lux_editor.exe' --project 'E:/lux-ed-d2/mainq/desktop-project-final/Project.luxproject' --font 'C:/Windows/Fonts/msyh.ttc'
+```
+
+本轮结论为 Scene/Main/Inspector 重构候选完成并提交独立审阅；不声明整个 D3 产品、所有设备/输入组合、任意重负载帧率或独立阴影问题已经通过。按用户既定授权推送两个开发分支，不合并 main、不发布、不冻结。

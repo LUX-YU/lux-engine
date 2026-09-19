@@ -137,6 +137,11 @@ namespace lux::editor::gui
         LUX_UI_MEASURE(measurement.objects = document_.objects().size());
         LUX_UI_MEASURE(measurement.directory_rebuilds = rows_dirty_ ? 1 : 0);
         context.activateContext(lux::ui::UiContextIdView{id()});
+        const auto run_state = document_.runStatus().state;
+        const bool running = run_state == scene::ERunState::PREPARING || run_state == scene::ERunState::RUNNING ||
+                             run_state == scene::ERunState::PAUSED || run_state == scene::ERunState::STOPPING;
+        const bool structure_read_only = document_.summary().read_only || running;
+
         const auto record = [this](const auto &result)
         {
             error_.clear();
@@ -159,7 +164,7 @@ namespace lux::editor::gui
                                               space));
             }
         };
-        ImGui::BeginDisabled(document_.summary().read_only || document_.partitionCount() == 0);
+        ImGui::BeginDisabled(structure_read_only || document_.partitionCount() == 0);
         if (ImGui::SmallButton("Create"))
         {
             ImGui::OpenPopup("create-object");
@@ -201,7 +206,7 @@ namespace lux::editor::gui
             rebuildVisibleRows();
         }
         selection_ = document_.selection();
-        frame.textMuted("Author objects");
+        frame.textMuted(running ? "Run objects" : "Author objects");
         const auto objects = document_.objects();
         ImGuiListClipper clipper;
         clipper.Begin(static_cast<int>(visible_rows_.size()));
@@ -252,7 +257,7 @@ namespace lux::editor::gui
                 }
                 constexpr char object_payload[] = "lux.scene.object.v1";
                 static_assert(std::is_trivially_copyable_v<scene::SceneWriteTarget>);
-                if (document_.supportsHierarchy() && ImGui::BeginDragDropSource())
+                if (!structure_read_only && document_.supportsHierarchy() && ImGui::BeginDragDropSource())
                 {
                     const auto target = document_.writeTarget(object.object);
                     if (target)
@@ -262,7 +267,7 @@ namespace lux::editor::gui
                     }
                     ImGui::EndDragDropSource();
                 }
-                if (document_.supportsHierarchy() && ImGui::BeginDragDropTarget())
+                if (!structure_read_only && document_.supportsHierarchy() && ImGui::BeginDragDropTarget())
                 {
                     if (const auto *payload = ImGui::AcceptDragDropPayload(object_payload))
                     {
@@ -277,7 +282,7 @@ namespace lux::editor::gui
                 }
                 if (ImGui::BeginPopupContextItem("object-actions"))
                 {
-                    ImGui::BeginDisabled(document_.summary().read_only);
+                    ImGui::BeginDisabled(structure_read_only);
                     if (ImGui::MenuItem("Delete object"))
                     {
                         record(document_.eraseObjects(document_.historyView()->history.current,

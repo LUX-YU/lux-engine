@@ -132,18 +132,40 @@ struct SceneRunChecks final
         std::vector<std::unique_ptr<lux::editor::DocumentView>> observers;
         observers.push_back(std::make_unique<RunImageProbe>(scene, held_image));
         assert(scene.addViews(observers));
-        const auto invalid_delta = scene.play(std::chrono::nanoseconds(0));
-        assert(!invalid_delta && invalid_delta.error().code == lux::editor::EEditorError::INVALID_ARGUMENT);
-        auto started = scene.play(std::chrono::milliseconds(10));
-        assert(started);
-        first = *started;
-        const auto duplicate = scene.play();
-        assert(!duplicate && duplicate.error().code == lux::editor::EEditorError::BUSY);
+        lux::render::MeshStackControlClient client(runtime.control(), mesh_ops);
+        author_mesh = client.stats({*scene.renderScene()});
     }
 
     bool poll(lux::editor::scene::SceneEditor &scene, lux::editor::rendering::EditorRenderer &renderer)
     {
         using namespace lux::editor;
+        if (first.serial == 0)
+        {
+            // Run suspends author derivation. Establish the author GPU oracle
+            // before Play instead of assuming resource readiness means its
+            // StateUpdate has already been prepared and adopted.
+            if (!author_mesh.isReady())
+            {
+                return false;
+            }
+            assert(author_mesh.tryResult());
+            const auto count = author_mesh.tryResult()->get().alive_instances;
+            if (count != 3)
+            {
+                lux::render::MeshStackControlClient client(runtime.control(), mesh_ops);
+                author_mesh = client.stats({*scene.renderScene()});
+                return false;
+            }
+            std::puts("Run precondition: author backend adopted three mesh instances before Play");
+            const auto invalid_delta = scene.play(std::chrono::nanoseconds(0));
+            assert(!invalid_delta && invalid_delta.error().code == EEditorError::INVALID_ARGUMENT);
+            auto started = scene.play(std::chrono::milliseconds(10));
+            assert(started);
+            first = *started;
+            const auto duplicate = scene.play();
+            assert(!duplicate && duplicate.error().code == EEditorError::BUSY);
+            return false;
+        }
         const auto run = scene.runStatus();
         if (++polls % 120 == 0)
         {

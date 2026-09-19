@@ -1,6 +1,6 @@
 #pragma once
-#include <lux/engine/editor/rendering/RenderView.hpp>
 #include <lux/engine/editor/rendering/EditorFramePacket.hpp>
+#include <lux/engine/editor/rendering/RenderView.hpp>
 namespace lux::window
 {
     class LuxWindow;
@@ -14,7 +14,7 @@ namespace lux::editor::rendering
 {
     class LUX_EDITOR_RENDERING_PUBLIC EditorRenderer final : public lux::scene::RenderRuntime
     {
-    public:
+      public:
         [[nodiscard]] static RenderResult<std::unique_ptr<EditorRenderer>> create(lux::window::LuxWindow &,
                                                                                   lux::ui::UISession &,
                                                                                   const RendererConfig &) noexcept;
@@ -36,8 +36,12 @@ namespace lux::editor::rendering
         // Counts response-ring envelopes, including failures/unmatched packets. All three lanes share
         // the budget and rotate after each attempt. An envelope may contain multiple existing records.
         // Upload admission (at most reply_budget), one frame submission, each bounded View slot and one
-        // maintenance frame are separate work, excluded from the returned reply count. Zero does no work.
+        // maintenance frame are separate work, excluded from the returned reply count.
+        // Zero prevents reply consumption and Program submissions; lifecycle facts still advance.
         [[nodiscard]] RenderResult<std::size_t> poll(std::size_t reply_budget) noexcept;
+        // Editor turns share this remaining Program allowance with all Scene bindings.
+        // It counts actual accepted submissions, including maintenance and retries.
+        [[nodiscard]] RenderResult<std::size_t> poll(std::size_t reply_budget, std::size_t &program_budget) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<RenderView>> openView(lux::render::RenderSceneId,
                                                                          ViewConfig) noexcept;
         // Failure retains the snapshot. Success moves it into the returned packet.
@@ -49,11 +53,13 @@ namespace lux::editor::rendering
         [[nodiscard]] RenderResult<EFrameSubmit> trySubmitFrame(EditorFramePacket &) noexcept;
         [[nodiscard]] RenderResult<void> beginClose() noexcept;
         [[nodiscard]] RenderResult<ERenderClose> advanceClose() noexcept;
+        [[nodiscard]] RenderResult<ERenderClose> advanceClose(std::size_t &reply_budget,
+                                                              std::size_t &program_budget) noexcept;
         [[nodiscard]] RenderResult<void> joinStopped() noexcept;
         [[nodiscard]] lux::cxx::expected<lux::scene::RenderRuntimeLease, lux::scene::RenderRuntimeFailure>
         acquire() noexcept override;
 
-    private:
+      private:
         friend class RenderView;
         void release() noexcept override;
         lux::render::RenderControlSession &control() noexcept override;

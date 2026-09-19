@@ -4,12 +4,14 @@
 #include <lux/engine/simulation/SimulationBuilder.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
+#include <thread>
 
 namespace run_test
 {
     inline std::atomic_uint64_t steps{}, destroyed_at_step{};
     inline std::atomic_int64_t elapsed_ns{};
     inline std::atomic_bool fail_step{};
+    inline const auto main_thread = std::this_thread::get_id();
 
     // Actual Simulation task, omitted in DERIVATION mode. No Editor or Render
     // client is reachable here. Registry changes use its existing patch signals.
@@ -25,11 +27,13 @@ namespace run_test
         const lux::simulation::SimulationClock &clock;
         ~Motion() noexcept
         {
+            assert(std::this_thread::get_id() == main_thread);
             destroyed_at_step.store(clock.snapshot().step_index, std::memory_order_release);
         }
 
         bool advance() noexcept
         {
+            assert(std::this_thread::get_id() == main_thread);
             using namespace lux::simulation::ecs;
             const auto snapshot = clock.snapshot();
             const auto entity = registry.view<Transform3D, Mesh3D>().front();
@@ -63,6 +67,7 @@ namespace run_test
                               lux::simulation::SimulationSystemView description) noexcept
                     -> lux::cxx::expected<void, lux::simulation::SimulationSystemBuildFailure>
                 {
+                    assert(std::this_thread::get_id() == main_thread);
                     auto value =
                         builder.emplaceSystem<Motion>(description.instanceId(), builder.registry(), builder.clock());
                     if (!value)

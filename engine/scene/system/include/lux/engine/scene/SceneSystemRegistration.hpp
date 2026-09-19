@@ -87,7 +87,6 @@ namespace lux::scene
         CONNECTION_FAILURE,
         EXTERNAL_OPERATION_FAILURE,
         DUPLICATE_STABLE_POINT_TASK,
-        DUPLICATE_PRESENTATION_TASK,
     };
 
     struct SceneSystemBuildFailure final

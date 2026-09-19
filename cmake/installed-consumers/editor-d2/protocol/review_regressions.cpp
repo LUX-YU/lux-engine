@@ -340,9 +340,9 @@ namespace
                 released_ = true;
                 work_->cancel();
             }
-            void poll() override
+            void poll(lux::editor::PollBudget &budget) override
             {
-                work_->poll();
+                work_->poll(budget);
             }
             bool settled() const noexcept override
             {

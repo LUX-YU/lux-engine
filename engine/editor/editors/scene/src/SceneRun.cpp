@@ -1,16 +1,16 @@
 #include <cassert>
-#include <condition_variable>
-#include <limits>
 #include <lux/engine/editor/detail/DocumentTask.hpp>
+#include <lux/engine/editor/scene/SceneEditor.hpp>
+#include <lux/engine/editor/scene/detail/SceneObjects.hpp>
 #include <lux/engine/editor/scene/detail/SceneRun.hpp>
-#include <lux/engine/scene/LatestSpscExchange.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/Scene.hpp>
 #include <lux/engine/scene/SceneRenderBinding.hpp>
 #include <lux/engine/scene/WorldMaterializer.hpp>
 #include <lux/engine/simulation/ecs/ComponentChangeSet.hpp>
+#include <lux/engine/simulation/ecs/Parent.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
-#include <mutex>
+#include <random>
 
 namespace lux::editor::scene
 {
@@ -51,36 +51,12 @@ namespace lux::editor::scene::detail
 {
     namespace
     {
+        using Clock = std::chrono::steady_clock;
+
         auto invalid(std::string domain, EEditorError code = EEditorError::INVALID_STATE)
         {
             return lux::cxx::unexpected(EditorFailure{code, std::move(domain)});
         }
-
-        struct RunObservation final
-        {
-            std::uint64_t steps{};
-            std::chrono::nanoseconds elapsed{};
-            bool paused{};
-            RunCompletedPhases completed;
-            std::chrono::nanoseconds work{}, waiting{};
-        };
-        struct RunCompletion final
-        {
-            RunObservation observation;
-            ERunPhase failed_phase{ERunPhase::NONE};
-            EditorResult<void> result;
-        };
-
-        struct RunControl final
-        {
-            std::mutex mutex;
-            std::condition_variable_any changed;
-            std::stop_source stop;
-            bool paused{};
-            bool step_requested{};
-            bool step_inflight{};
-            lux::scene::LatestSpscExchange<RunObservation> observation;
-        };
 
         struct DecodeRun final
         {
@@ -116,101 +92,114 @@ namespace lux::editor::scene::detail
         };
         using DecodeTask = lux::editor::detail::ScheduledDocumentTask<process::CpuScheduler, DecodeRun>;
 
-        struct ExecuteRun final
+        // This object is constructed, advanced and destroyed exclusively by Main.
+        // TaskExecutor may parallelize a synchronous step; Process only decodes input.
+        struct ActiveRun final
         {
-            NativeScene source;
-            std::shared_ptr<const lux::scene::SceneMetaManager> metadata;
-            lux::scene::SceneRenderInput input;
-            std::vector<FrozenSceneResource> resources;
-            std::shared_ptr<RunControl> control;
-            std::chrono::nanoseconds delta;
+            std::unique_ptr<lux::scene::Scene> scene;
+            SceneObjects objects;
+            lux::task::TaskExecutor executor;
+            using MeshChanges = lux::simulation::ecs::ExtractionChangeSet<lux::simulation::ecs::Mesh3D,
+                                                                          lux::simulation::ecs::ComponentList<>,
+                                                                          lux::simulation::ecs::ComponentList<>>;
+            MeshChanges resource_changes;
+            std::unique_ptr<editing::EditHistory> pause_history;
+            bool derive{};
+            bool catalog_dirty{}, hierarchy_dirty{};
+            std::vector<lux::simulation::ecs::Entity> changed_entities;
+            std::vector<entt::scoped_connection> catalog_connections;
+            std::vector<bool> selected_components;
+            std::mt19937 identity_random{std::random_device{}()};
 
-            EditorResult<RunCompletion> operator()() noexcept
+            void entityChanged(lux::simulation::ecs::Registry &, lux::simulation::ecs::Entity entity)
             {
-                RunObservation observed;
-                ERunPhase phase = ERunPhase::STARTUP;
-                auto working_at = std::chrono::steady_clock::now();
-                bool working = false;
-                const auto accumulate = [&]
+                changed_entities.push_back(entity);
+            }
+
+            void hierarchyChanged(lux::simulation::ecs::Registry &, lux::simulation::ecs::Entity)
+            {
+                hierarchy_dirty = true;
+            }
+
+            void refreshObjects()
+            {
+                namespace ecs = lux::simulation::ecs;
+                auto &registry = scene->registry();
+                bool changed = !changed_entities.empty() || std::exchange(hierarchy_dirty, false);
+                for (const auto entity : changed_entities)
                 {
-                    if (working)
+                    const auto id = objects.identities.object(entity);
+                    if (!registry.valid(entity))
                     {
-                        observed.work += std::chrono::steady_clock::now() - working_at;
-                        working = false;
+                        if (id.valid())
+                        {
+                            objects.identities.unbind(entity);
+                            std::erase_if(objects.rows, [&](const auto &row) { return row.object == id; });
+                            std::erase_if(objects.component_versions,
+                                          [&](const auto &row) { return row.object == id; });
+                            if (objects.selection.object == id)
+                            {
+                                objects.selection.object = {};
+                            }
+                        }
                     }
-                };
-                const auto failed = [&](EditorFailure error) -> EditorResult<RunCompletion>
-                {
-                    accumulate();
-                    return RunCompletion{observed, phase, lux::cxx::unexpected(std::move(error))};
-                };
-                const auto stop = control->stop.get_token();
-                if (stop.stop_requested())
-                {
-                    return RunCompletion{};
-                }
-                const auto world =
-                    std::shared_ptr<const lux::world::WorldDescription>(source.world, &source.world->data());
-                const std::array providers{lux::scene::makeSceneCapabilityProvider<lux::scene::SceneRenderInput>(
-                    "main-window", "lux.render.input", input)};
-                auto created = lux::scene::Scene::create(
-                    {std::shared_ptr<const lux::scene::SceneDescription>(source.scene, &source.scene->data()), world,
-                     std::shared_ptr<const lux::simulation::SimulationDescription>(source.simulation,
-                                                                                   &source.simulation->data()),
-                     *metadata, providers, lux::simulation::ESimulationMode::EVOLUTION});
-                if (!created)
-                {
-                    return failed(EditorFailure{EEditorError::SOURCE_FAILURE,
-                                                "run.scene.create",
-                                                static_cast<std::uint64_t>(created.error().code),
-                                                {},
-                                                created.error()});
-                }
-                // Every exit below destroys the real Scene on this worker,
-                // including partial startup.
-                auto scene = std::move(*created);
-                auto materializer = lux::scene::WorldMaterializer::create(world, metadata->components());
-                if (!materializer)
-                {
-                    return failed(EditorFailure{EEditorError::SOURCE_FAILURE,
-                                                "run.schemas",
-                                                static_cast<std::uint64_t>(materializer.error().code),
-                                                {},
-                                                materializer.error()});
-                }
-                std::vector<lux::world::WorldPartitionObjectView> objects;
-                for (const auto &partition : source.partitions)
-                {
-                    for (std::size_t i{}; i < partition.objectCount(); ++i)
+                    else if (!id.valid())
                     {
-                        objects.push_back(partition.objectAt(i));
+                        uuids::uuid_random_generator generate(identity_random);
+                        lux::world::WorldObjectId created;
+                        do
+                        {
+                            created = {generate()};
+                        } while (!created.valid() || objects.identities.entity(created) != ecs::NullEntity);
+                        const bool bound = objects.identities.bind(created, entity);
+                        assert(bound);
+                        objects.rows.push_back({created, {}, "Runtime object"});
                     }
                 }
-                lux::simulation::ecs::WorldEntityMap identities;
-                auto materialized = materializer->objects(scene->registry(), identities, objects);
-                if (!materialized)
+                changed_entities.clear();
+                if (changed)
                 {
-                    return failed(EditorFailure{EEditorError::SOURCE_FAILURE,
-                                                "run.materialize",
-                                                static_cast<std::uint64_t>(materialized.error().code),
-                                                {},
-                                                materialized.error()});
-                }
-                for (const auto &resource : resources)
-                {
-                    const auto entity = identities.entity(resource.object);
-                    if (entity == lux::simulation::ecs::NullEntity)
+                    for (auto &row : objects.rows)
                     {
-                        return failed({EEditorError::INVALID_STATE, "run.resource.identity"});
+                        const auto entity = objects.identities.entity(row.object);
+                        const auto *parent = registry.try_get<ecs::Parent>(entity);
+                        row.parent = parent ? objects.identities.object(parent->entity) : lux::world::WorldObjectId{};
                     }
-                    scene->registry().emplace<lux::scene::ResolvedMeshResources>(entity, resource.value);
+                    std::ranges::sort(objects.rows, lux::world::WorldObjectIdLess{}, &SceneObjectRow::object);
                 }
-                // Check only changed mesh references. The frozen resource set is
-                // not a streaming service.
-                using MeshChanges = lux::simulation::ecs::ExtractionChangeSet<lux::simulation::ecs::Mesh3D,
-                                                                              lux::simulation::ecs::ComponentList<>,
-                                                                              lux::simulation::ecs::ComponentList<>>;
-                MeshChanges resource_changes;
+                // The Inspector needs only the selected entity's component directory.
+                // No per-step copy or scan of all component values is required.
+                const auto selected = objects.identities.entity(objects.selection.object);
+                std::size_t index{};
+                for (const auto &schema : objects.metadata.components().all())
+                {
+                    const bool present = selected != ecs::NullEntity && schema.operations.has(registry, selected);
+                    changed |= selected_components[index] != present;
+                    selected_components[index++] = present;
+                }
+                catalog_dirty |= changed;
+            }
+
+            ActiveRun(std::unique_ptr<lux::scene::Scene> value, const NativeScene &source,
+                      const lux::scene::SceneMetaManager &metadata, lux::simulation::ecs::WorldEntityMap identities,
+                      lux::task::TaskExecutor tasks)
+                : scene(std::move(value)), objects(scene->registry(), source, metadata, std::move(identities)),
+                  executor(std::move(tasks))
+            {
+                auto &registry = scene->registry();
+                using Entity = lux::simulation::ecs::Entity;
+                using Parent = lux::simulation::ecs::Parent;
+                catalog_connections.emplace_back(
+                    registry.on_construct<Entity>().connect<&ActiveRun::entityChanged>(*this));
+                catalog_connections.emplace_back(
+                    registry.on_destroy<Entity>().connect<&ActiveRun::entityChanged>(*this));
+                catalog_connections.emplace_back(
+                    registry.on_construct<Parent>().connect<&ActiveRun::hierarchyChanged>(*this));
+                catalog_connections.emplace_back(
+                    registry.on_update<Parent>().connect<&ActiveRun::hierarchyChanged>(*this));
+                catalog_connections.emplace_back(
+                    registry.on_destroy<Parent>().connect<&ActiveRun::hierarchyChanged>(*this));
+                selected_components.resize(metadata.components().all().size());
                 using namespace entt::literals;
                 resource_changes.attach(scene->registry(), "editor.run.frozen-mesh"_hs,
                                         [](auto &storage)
@@ -220,216 +209,176 @@ namespace lux::editor::scene::detail
                                                 .template on_destroy<lux::scene::ResolvedMeshResources>()
                                                 .template on_update<lux::scene::ResolvedMeshResources>();
                                         });
-                auto sealed = scene->simulation().seal();
-                if (!sealed)
-                {
-                    return failed(EditorFailure{EEditorError::SOURCE_FAILURE,
-                                                "run.seal",
-                                                static_cast<std::uint64_t>(sealed.error().code),
-                                                {},
-                                                sealed.error()});
-                }
-                auto executor = lux::task::TaskExecutor::create({0, 1024});
-                if (!executor)
-                {
-                    return failed(EditorFailure{EEditorError::EXECUTION_FAILURE,
-                                                "run.executor",
-                                                static_cast<std::uint64_t>(executor.error().code),
-                                                {},
-                                                executor.error()});
-                }
-                auto *render = scene->findSceneSystem<lux::scene::RenderSystem>();
-                auto next = std::chrono::steady_clock::now();
-                while (!stop.stop_requested())
-                {
-                    {
-                        std::unique_lock lock(control->mutex);
-                        observed.paused = control->paused;
-                        control->observation.write() = observed;
-                        control->observation.publish();
-                        if (control->paused)
-                        {
-                            control->changed.wait(lock, stop,
-                                                  [&] { return !control->paused || control->step_requested; });
-                            next = std::chrono::steady_clock::now();
-                        }
-                        else
-                        {
-                            control->changed.wait_until(lock, stop, next, [&] { return control->paused; });
-                        }
-                        if (stop.stop_requested())
-                        {
-                            break;
-                        }
-                        if (control->paused && !control->step_requested)
-                        {
-                            continue;
-                        }
-                        control->step_inflight = control->step_requested;
-                        control->step_requested = false;
-                    }
-                    const auto step_started = std::chrono::steady_clock::now();
-                    working_at = step_started;
-                    working = true;
-                    phase = ERunPhase::SIMULATION;
-                    auto evolved = scene->simulation().execute(*executor, delta);
-                    const auto clock = scene->simulation().clock().snapshot();
-                    observed.steps = clock.step_index;
-                    observed.elapsed = clock.elapsed;
-                    if (!evolved)
-                    {
-                        return failed(EditorFailure{EEditorError::EXECUTION_FAILURE,
-                                                    "run.simulation",
-                                                    static_cast<std::uint64_t>(evolved.error().code),
-                                                    {},
-                                                    evolved.error()});
-                    }
-                    observed.completed.simulation = observed.steps;
-                    phase = ERunPhase::RESOURCES;
-                    for (const auto entity : resource_changes.view())
-                    {
-                        const auto &visual = scene->registry().get<lux::simulation::ecs::Mesh3D>(entity).value;
-                        const auto *resolved = scene->registry().try_get<lux::scene::ResolvedMeshResources>(entity);
-                        if (!resolved || visual.mesh != resolved->mesh_source ||
-                            visual.material != resolved->material_source)
-                        {
-                            return failed(EditorFailure{EEditorError::INVALID_STATE, "run.frozen-resources",
-                                                        lux::simulation::ecs::entityBits(entity),
-                                                        "Run requested a mesh or material outside its frozen "
-                                                        "resource binding"});
-                        }
-                    }
-                    resource_changes.clear();
-                    phase = ERunPhase::STABLE;
-                    auto stable = scene->executeStablePoint();
-                    if (!stable)
-                    {
-                        return failed(EditorFailure{EEditorError::EXECUTION_FAILURE,
-                                                    "run.stable",
-                                                    static_cast<std::uint64_t>(stable.error().code),
-                                                    {},
-                                                    stable.error()});
-                    }
-                    observed.completed.stable = observed.steps;
-                    phase = ERunPhase::PUBLICATION;
-                    while (render && render->lastPublishResult() == lux::scene::ERenderPublishResult::BACKPRESSURED)
-                    {
-                        const auto waiting_at = std::chrono::steady_clock::now();
-                        accumulate();
-                        const bool capacity = render->waitForCapacity(stop);
-                        working_at = std::chrono::steady_clock::now();
-                        working = true;
-                        observed.waiting += working_at - waiting_at;
-                        if (!capacity)
-                        {
-                            if (!stop.stop_requested())
-                            {
-                                return failed({EEditorError::EXECUTION_FAILURE, "run.publish.stopping"});
-                            }
-                            break;
-                        }
-                        if (render->tryPublish() == lux::scene::ERenderPublishResult::FAILED)
-                        {
-                            return failed(EditorFailure{
-                                EEditorError::EXECUTION_FAILURE,
-                                "run.publish",
-                                0,
-                                {},
-                                lux::scene::SceneExecutionFailure{lux::scene::ESceneExecutionError::SYSTEM_FAILURE,
-                                                                  render->instanceId()}});
-                        }
-                    }
-                    if (stop.stop_requested())
-                    {
-                        break;
-                    }
-                    observed.completed.publication = observed.steps;
-                    phase = ERunPhase::PRESENTATION;
-                    auto presentation = scene->executePresentation();
-                    if (!presentation)
-                    {
-                        return failed(EditorFailure{EEditorError::EXECUTION_FAILURE,
-                                                    "run.presentation",
-                                                    static_cast<std::uint64_t>(presentation.error().code),
-                                                    {},
-                                                    presentation.error()});
-                    }
-                    observed.completed.presentation = observed.steps;
-                    accumulate();
-                    // Do not catch up by advancing extra unpresented simulation
-                    // steps.
-                    {
-                        std::lock_guard lock(control->mutex);
-                        control->step_inflight = false;
-                    }
-                    // Fixed simulation dt, paced by a wall-clock deadline. Work is
-                    // part of the period. If late, discard pacing debt and
-                    // re-anchor; never execute a burst of catch-up steps or change
-                    // simulation dt.
-                    next = step_started + delta;
-                    const auto completed_at = std::chrono::steady_clock::now();
-                    if (next < completed_at)
-                    {
-                        next = completed_at;
-                    }
-                }
-                accumulate();
+            }
+
+            ~ActiveRun()
+            {
+                endPause();
                 scene->simulation().stop();
                 scene->requestStop();
-                resource_changes.detach();
-                scene.reset();
-                return RunCompletion{observed, ERunPhase::NONE, {}};
+            }
+
+            void endPause()
+            {
+                if (pause_history)
+                {
+                    const auto closed = pause_history->close();
+                    assert(closed);
+                    pause_history.reset();
+                }
+            }
+
+            EditorResult<void> beginPause()
+            {
+                assert(!pause_history);
+                auto history = editing::EditHistory::create({kSceneHistoryLimits, {}, true});
+                if (!history)
+                {
+                    return lux::cxx::unexpected(
+                        EditorFailure{EEditorError::SOURCE_FAILURE, "run.pause.history", 0, {}, history.error()});
+                }
+                pause_history = std::move(*history);
+                return {};
             }
         };
-        using ExecuteTask = lux::editor::detail::ScheduledDocumentTask<process::CpuScheduler, ExecuteRun>;
     } // namespace
 
     struct SceneRun::Data final
     {
-        Data(process::ExecutionRuntime &runtime, rendering::EditorRenderer &renderer,
-             std::shared_ptr<const lux::scene::SceneMetaManager> metadata, std::shared_ptr<SceneRunSlot> slot)
-            : runtime(runtime), renderer(renderer), metadata(std::move(metadata)), slot(std::move(slot))
+        Data(process::ExecutionRuntime &process, rendering::EditorRenderer &render, SceneEditorMetadata meta,
+             std::shared_ptr<SceneRunSlot> run_slot)
+            : runtime(process), renderer(render), metadata(std::move(meta)), slot(std::move(run_slot))
         {
         }
+
         process::ExecutionRuntime &runtime;
         rendering::EditorRenderer &renderer;
-        std::shared_ptr<const lux::scene::SceneMetaManager> metadata;
+        SceneEditorMetadata metadata;
         std::shared_ptr<SceneRunSlot> slot;
         RunStatus status;
         std::uint64_t next_id{1};
         std::chrono::nanoseconds delta;
-        std::shared_ptr<RunControl> control;
+        std::stop_source stop;
         std::shared_ptr<RunViewCount> views = std::make_shared<RunViewCount>();
         SceneResourcePins pins;
         std::unique_ptr<DecodeTask> decoding;
         std::unique_ptr<NativeScene> source;
         std::unique_ptr<lux::scene::SceneRenderBinding> binding;
-        std::unique_ptr<ExecuteTask> executing;
-        lux::render::RenderSceneId scene;
+        std::unique_ptr<ActiveRun> active;
+        Clock::time_point next{}, waiting_at{};
+        bool publishing{}, step_requested{};
         double page_size{1024};
+
+        EditorResult<void> install(lux::scene::SceneRenderInput *input)
+        {
+            const auto world =
+                std::shared_ptr<const lux::world::WorldDescription>(source->world, &source->world->data());
+            std::vector<lux::scene::SceneCapabilityProvider> providers;
+            if (input)
+            {
+                providers.push_back(lux::scene::makeSceneCapabilityProvider<lux::scene::SceneRenderInput>(
+                    "main-window", "lux.render.input", *input));
+            }
+            auto created = lux::scene::Scene::create(
+                {std::shared_ptr<const lux::scene::SceneDescription>(source->scene, &source->scene->data()), world,
+                 std::shared_ptr<const lux::simulation::SimulationDescription>(source->simulation,
+                                                                               &source->simulation->data()),
+                 *metadata.scene, providers, lux::simulation::ESimulationMode::EVOLUTION});
+            if (!created)
+            {
+                return lux::cxx::unexpected(
+                    EditorFailure{EEditorError::SOURCE_FAILURE, "run.scene.create", 0, {}, created.error()});
+            }
+            auto materializer = lux::scene::WorldMaterializer::create(world, metadata.scene->components());
+            if (!materializer)
+            {
+                return lux::cxx::unexpected(
+                    EditorFailure{EEditorError::SOURCE_FAILURE, "run.schemas", 0, {}, materializer.error()});
+            }
+            std::vector<lux::world::WorldPartitionObjectView> objects;
+            for (const auto &partition : source->partitions)
+            {
+                for (std::size_t i{}; i < partition.objectCount(); ++i)
+                {
+                    objects.push_back(partition.objectAt(i));
+                }
+            }
+            lux::simulation::ecs::WorldEntityMap identities;
+            auto materialized = materializer->objects((*created)->registry(), identities, objects);
+            if (!materialized)
+            {
+                return lux::cxx::unexpected(
+                    EditorFailure{EEditorError::SOURCE_FAILURE, "run.materialize", 0, {}, materialized.error()});
+            }
+            for (const auto &resource : pins.values())
+            {
+                const auto entity = identities.entity(resource.object);
+                if (entity == lux::simulation::ecs::NullEntity)
+                {
+                    return invalid("run.resource.identity");
+                }
+                (*created)->registry().emplace<lux::scene::ResolvedMeshResources>(entity, resource.value);
+            }
+            auto sealed = (*created)->simulation().seal();
+            if (!sealed)
+            {
+                return lux::cxx::unexpected(
+                    EditorFailure{EEditorError::SOURCE_FAILURE, "run.seal", 0, {}, sealed.error()});
+            }
+            auto executor = lux::task::TaskExecutor::create({0, 1024});
+            if (!executor)
+            {
+                return lux::cxx::unexpected(
+                    EditorFailure{EEditorError::EXECUTION_FAILURE, "run.executor", 0, {}, executor.error()});
+            }
+            active = std::make_unique<ActiveRun>(std::move(*created), *source, *metadata.scene, std::move(identities),
+                                                 std::move(*executor));
+            status.state = ERunState::RUNNING;
+            next = Clock::now();
+            return {};
+        }
     };
 
     SceneRun::SceneRun(process::ExecutionRuntime &runtime, rendering::EditorRenderer &renderer,
-                       std::shared_ptr<const lux::scene::SceneMetaManager> metadata, std::shared_ptr<SceneRunSlot> slot)
+                       SceneEditorMetadata metadata, std::shared_ptr<SceneRunSlot> slot)
         : data_(std::make_unique<Data>(runtime, renderer, std::move(metadata), std::move(slot)))
     {
     }
+
     SceneRun::~SceneRun()
     {
         assert(settled());
     }
+
     const RunStatus &SceneRun::status() const noexcept
     {
         return data_->status;
+    }
+    double SceneRun::coordinatePageSize() const noexcept
+    {
+        return data_->page_size;
+    }
+    SceneObjects *SceneRun::objects() noexcept
+    {
+        return data_->active ? &data_->active->objects : nullptr;
+    }
+    bool SceneRun::takeCatalogChange() noexcept
+    {
+        return data_->active && std::exchange(data_->active->catalog_dirty, false);
+    }
+    editing::EditHistory *SceneRun::history() noexcept
+    {
+        return data_->active ? data_->active->pause_history.get() : nullptr;
+    }
+    void SceneRun::invalidateDerived() noexcept
+    {
+        assert(data_->active);
+        data_->active->derive = true;
     }
     bool SceneRun::settled() const noexcept
     {
         const auto state = data_->status.state;
         return state == ERunState::IDLE || state == ERunState::FINISHED || state == ERunState::FAILED;
-    }
-    double SceneRun::coordinatePageSize() const noexcept
-    {
-        return data_->page_size;
     }
 
     EditorResult<void> SceneRun::validateStart(std::chrono::nanoseconds delta) const
@@ -438,10 +387,6 @@ namespace lux::editor::scene::detail
         if (!settled() || d.slot->owner.value)
         {
             return invalid("run.active", EEditorError::BUSY);
-        }
-        if (d.runtime.cpuConcurrency() < 2)
-        {
-            return invalid("run.cpu-capacity", EEditorError::CAPACITY);
         }
         if (delta.count() <= 0 || delta > std::chrono::seconds(1) || d.next_id == UINT64_MAX)
         {
@@ -459,18 +404,17 @@ namespace lux::editor::scene::detail
         {
             return lux::cxx::unexpected(admitted.error());
         }
-        d.control = std::make_shared<RunControl>();
-        auto task = std::make_unique<DecodeTask>(
-            d.runtime, stdexec::then(stdexec::schedule(d.runtime.cpu()),
-                                     DecodeRun{std::move(capture), d.control->stop.get_token()}));
+        d.stop = {};
+        d.decoding =
+            std::make_unique<DecodeTask>(d.runtime, stdexec::then(stdexec::schedule(d.runtime.cpu()),
+                                                                  DecodeRun{std::move(capture), d.stop.get_token()}));
         d.pins = std::move(pins);
         d.delta = delta;
         d.status = {.id = {document, d.next_id++}, .state = ERunState::PREPARING, .captured_state = state};
         d.status.retained_resources = d.pins.values().size();
         d.slot->owner = history;
-
-        d.scene = {};
-        d.decoding = std::move(task);
+        d.publishing = false;
+        d.step_requested = false;
         d.decoding->start();
         return d.status.id;
     }
@@ -486,10 +430,7 @@ namespace lux::editor::scene::detail
         {
             return invalid("run.pause");
         }
-        std::lock_guard lock(d.control->mutex);
-        d.control->paused = true;
         d.status.pause_pending = true;
-        d.control->changed.notify_all();
         return {};
     }
     EditorResult<void> SceneRun::resume(RunId id)
@@ -499,14 +440,13 @@ namespace lux::editor::scene::detail
         {
             return invalid("run.identity", EEditorError::STALE_REQUEST);
         }
-        if (d.status.state != ERunState::PAUSED)
+        if (d.status.state != ERunState::PAUSED || d.step_requested)
         {
             return invalid("run.resume");
         }
-        std::lock_guard lock(d.control->mutex);
-        d.control->paused = false;
-        d.control->step_requested = false;
-        d.control->changed.notify_all();
+        d.active->endPause();
+        d.status.state = ERunState::RUNNING;
+        d.next = Clock::now();
         return {};
     }
     EditorResult<void> SceneRun::step(RunId id)
@@ -516,17 +456,18 @@ namespace lux::editor::scene::detail
         {
             return invalid("run.identity", EEditorError::STALE_REQUEST);
         }
-        if (d.status.state != ERunState::PAUSED)
-        {
-            return invalid("run.step");
-        }
-        std::lock_guard lock(d.control->mutex);
-        if (!d.control->paused || d.control->step_requested || d.control->step_inflight)
+        if (d.step_requested)
         {
             return invalid("run.step.pending", EEditorError::BUSY);
         }
-        d.control->step_requested = true;
-        d.control->changed.notify_all();
+        if (d.status.state != ERunState::PAUSED || d.step_requested)
+        {
+            return invalid("run.step");
+        }
+        d.active->endPause();
+        d.step_requested = true;
+        d.status.state = ERunState::RUNNING;
+        d.status.pause_pending = true;
         return {};
     }
     EditorResult<void> SceneRun::stop(RunId id)
@@ -536,19 +477,18 @@ namespace lux::editor::scene::detail
         {
             return invalid("run.identity", EEditorError::STALE_REQUEST);
         }
-        if (settled())
+        if (!settled())
         {
-            return {};
+            d.status.state = ERunState::STOPPING;
+            d.stop.request_stop();
         }
-        d.status.state = ERunState::STOPPING;
-        d.control->stop.request_stop();
-        d.control->changed.notify_all();
         return {};
     }
 
-    void SceneRun::poll(std::size_t budget)
+    void SceneRun::poll(PollBudget &turn, bool may_release_world)
     {
         auto &d = *data_;
+        auto &budget = turn.render_programs;
         if (settled())
         {
             return;
@@ -562,18 +502,23 @@ namespace lux::editor::scene::detail
             }
             static_cast<void>(stop(d.status.id));
         };
-        const auto observe_binding = [&]
+        const auto poll_binding = [&]
         {
-            const auto transport = d.binding->statistics();
-            d.status.published_updates = transport.published;
-            d.status.forwarded_updates = transport.forwarded;
-            d.status.retired_updates = transport.retired_unforwarded;
-            d.status.backpressure_count = transport.backpressured;
-            d.status.pending_updates = transport.pending;
-            d.status.update_high_water = transport.high_water;
+            if (!d.binding)
+            {
+                return;
+            }
+            const auto consumed = d.binding->poll(budget);
+            assert(consumed <= budget);
+            budget -= consumed;
+            const auto facts = d.binding->statistics();
+            d.status.published_updates = facts.published;
+            d.status.forwarded_updates = facts.forwarded;
+            d.status.retired_updates = facts.retired_unforwarded;
+            d.status.backpressure_count = facts.backpressured;
+            d.status.pending_updates = facts.pending;
+            d.status.update_high_water = facts.high_water;
             d.status.render_drain_submitted = d.binding->drainSubmitted();
-            // Closing progress can pass through FAILED within one poll. Adopt
-            // the persistent fact before checking CLOSED or releasing the owner.
             if (d.status.result && d.binding->hasFailure())
             {
                 fail({EEditorError::SOURCE_FAILURE, "run.render", 0, {}, d.binding->failure()},
@@ -594,37 +539,29 @@ namespace lux::editor::scene::detail
             else if (d.status.state != ERunState::STOPPING)
             {
                 d.source = std::make_unique<NativeScene>(std::move(*result));
-                const auto &description = d.source->scene->data();
-                for (std::size_t i{}; i < description.systemCount(); ++i)
+                auto bound = beginSceneRendering(d.renderer, *d.source, d.metadata);
+                if (!bound)
                 {
-                    const auto system = description.systemAt(i);
-                    if (system.type() != lux::scene::builtinRenderSystemRegistration().type)
-                    {
-                        continue;
-                    }
-                    auto bound = lux::scene::SceneRenderBinding::begin(d.renderer, system, d.metadata);
-                    if (!bound)
-                    {
-                        fail({EEditorError::SOURCE_FAILURE, "run.render.begin", 0, {}, bound.error()});
-                    }
-                    else
-                    {
-                        d.binding = std::move(*bound);
-                    }
-                    break;
+                    fail(std::move(bound.error()));
                 }
-                if (!d.binding && d.status.state != ERunState::STOPPING)
+                else
                 {
-                    fail({EEditorError::MISSING_PROVIDER, "run.render", 0, "The first Run requires a RenderSystem"});
+                    d.binding = std::move(*bound);
                 }
             }
         }
-        if (d.binding)
+        poll_binding();
+        if (d.status.state == ERunState::PREPARING && d.source && !d.active)
         {
-            d.binding->poll(budget);
-            observe_binding();
-            if (d.status.state == ERunState::PREPARING && !d.executing &&
-                d.binding->state() == lux::scene::ESceneRenderBindingState::READY)
+            if (!d.binding)
+            {
+                auto installed = d.install(nullptr);
+                if (!installed)
+                {
+                    fail(std::move(installed.error()));
+                }
+            }
+            else if (d.binding->state() == lux::scene::ESceneRenderBindingState::READY)
             {
                 auto input = d.binding->takeInput();
                 if (!input)
@@ -633,72 +570,134 @@ namespace lux::editor::scene::detail
                 }
                 else
                 {
-                    d.scene = input->sceneId();
-                    d.status.render_scene = d.scene;
+                    d.status.render_scene = input->sceneId();
                     d.page_size = input->coordinatePageSize();
-                    std::vector<FrozenSceneResource> resources(d.pins.values().begin(), d.pins.values().end());
-                    d.executing = std::make_unique<ExecuteTask>(
-                        d.runtime, stdexec::then(stdexec::schedule(d.runtime.cpu()),
-                                                 ExecuteRun{std::move(*d.source), d.metadata, std::move(*input),
-                                                            std::move(resources), d.control, d.delta}));
-                    d.source.reset();
-                    d.executing->start();
+                    auto installed = d.install(&*input);
+                    if (!installed)
+                    {
+                        fail(std::move(installed.error()));
+                    }
                 }
             }
         }
-        if (d.executing && d.control->observation.acquireLatest())
+        if (d.active && d.status.state != ERunState::STOPPING)
         {
-            const auto &observed = d.control->observation.read();
-            d.status.completed = observed.completed;
-            d.status.steps = observed.steps;
-            d.status.elapsed = observed.elapsed;
-            d.status.simulation_work = observed.work;
-            d.status.publication_wait = observed.waiting;
-            if (d.status.state != ERunState::STOPPING)
+            auto &run = *d.active;
+            auto *render = run.scene->findSceneSystem<lux::scene::RenderSystem>();
+            if (d.publishing)
             {
-                d.status.state = observed.paused ? ERunState::PAUSED : ERunState::RUNNING;
-                if (observed.paused)
+                if (render && render->lastPublishResult() == lux::scene::ERenderPublishResult::BACKPRESSURED)
                 {
-                    d.status.pause_pending = false;
+                    if (render->tryPublish() == lux::scene::ERenderPublishResult::FAILED)
+                    {
+                        fail({EEditorError::EXECUTION_FAILURE, "run.publish"}, ERunPhase::PUBLICATION);
+                    }
+                }
+                if ((!d.binding || !d.binding->hasPendingUpdate()) &&
+                    (!render || render->lastPublishResult() != lux::scene::ERenderPublishResult::BACKPRESSURED))
+                {
+                    d.publishing = false;
+                    d.status.publication_wait += Clock::now() - d.waiting_at;
+                    d.status.completed.publication = d.status.steps;
+                }
+            }
+            if (!d.publishing && d.status.state != ERunState::STOPPING)
+            {
+                if (d.status.pause_pending && !d.step_requested)
+                {
+                    auto paused = run.beginPause();
+                    if (!paused)
+                    {
+                        fail(std::move(paused.error()));
+                    }
+                    else
+                    {
+                        d.status.state = ERunState::PAUSED;
+                        d.status.pause_pending = false;
+                    }
+                }
+                const bool refresh = d.status.state == ERunState::PAUSED && run.derive;
+                const bool advance =
+                    d.status.state == ERunState::RUNNING && (d.step_requested || Clock::now() >= d.next);
+                if ((advance || refresh) && turn.document_steps)
+                {
+                    --turn.document_steps;
+                    const auto started = Clock::now();
+                    auto evolved = advance ? run.scene->simulation().execute(run.executor, d.delta)
+                                           : run.scene->simulation().refresh(run.executor);
+                    const auto clock = run.scene->simulation().clock().snapshot();
+                    run.refreshObjects();
+                    d.status.steps = clock.step_index;
+                    d.status.elapsed = clock.elapsed;
+                    d.step_requested = false;
+                    if (!evolved)
+                    {
+                        fail({EEditorError::EXECUTION_FAILURE, "run.simulation", 0, {}, evolved.error()},
+                             ERunPhase::SIMULATION);
+                    }
+                    else
+                    {
+                        if (advance)
+                        {
+                            d.status.completed.simulation = d.status.steps;
+                        }
+                        for (const auto entity : run.resource_changes.view())
+                        {
+                            const auto &visual = run.scene->registry().get<lux::simulation::ecs::Mesh3D>(entity).value;
+                            const auto *resolved =
+                                run.scene->registry().try_get<lux::scene::ResolvedMeshResources>(entity);
+                            if (!resolved || visual.mesh != resolved->mesh_source ||
+                                visual.material != resolved->material_source)
+                            {
+                                fail({EEditorError::INVALID_STATE, "run.frozen-resources",
+                                      lux::simulation::ecs::entityBits(entity),
+                                      "Run requested a mesh or material outside its frozen resource binding"},
+                                     ERunPhase::RESOURCES);
+                                break;
+                            }
+                        }
+                        run.resource_changes.clear();
+                        if (d.status.state != ERunState::STOPPING)
+                        {
+                            auto stable = run.scene->executeStablePoint();
+                            if (!stable)
+                            {
+                                fail({EEditorError::EXECUTION_FAILURE, "run.stable", 0, {}, stable.error()},
+                                     ERunPhase::STABLE);
+                            }
+                            else
+                            {
+                                run.derive = false;
+                                d.status.completed.stable = d.status.steps;
+                                d.publishing = true;
+                                d.waiting_at = Clock::now();
+                            }
+                        }
+                    }
+                    const auto finished = Clock::now();
+                    d.status.simulation_work += finished - started;
+                    d.next = std::max(started + d.delta, finished);
                 }
             }
         }
-        if (d.executing && d.executing->ready())
+        if (d.status.state != ERunState::STOPPING)
         {
-            auto result = d.executing->take();
-            d.executing.reset();
-
-            if (!result)
-            {
-                fail(std::move(result.error()));
-            }
-            else
-            {
-                const auto &observed = result->observation;
-                d.status.steps = observed.steps;
-                d.status.elapsed = observed.elapsed;
-                d.status.completed = observed.completed;
-                d.status.simulation_work = observed.work;
-                d.status.publication_wait = observed.waiting;
-                if (!result->result)
-                {
-                    fail(std::move(result->result.error()), result->failed_phase);
-                }
-                else
-                {
-                    static_cast<void>(stop(d.status.id));
-                }
-            }
+            return;
         }
-        if (d.status.state != ERunState::STOPPING || d.decoding || d.executing || d.views->value != 0)
+        if (!may_release_world)
+        {
+            return;
+        }
+        // No queued worker owns the World. All final clock/failure facts are already on Main.
+        d.active.reset();
+        if (d.decoding || d.views->value != 0)
         {
             return;
         }
         if (d.binding)
         {
             d.binding->requestClose();
-            d.binding->poll(budget);
-            observe_binding();
+            poll_binding();
             if (d.binding->state() != lux::scene::ESceneRenderBindingState::CLOSED)
             {
                 return;
@@ -720,12 +719,13 @@ namespace lux::editor::scene::detail
         {
             return invalid("run.identity", EEditorError::STALE_REQUEST);
         }
-        if (d.status.state != ERunState::RUNNING && d.status.state != ERunState::PAUSED)
+        if ((d.status.state != ERunState::RUNNING && d.status.state != ERunState::PAUSED) ||
+            !d.status.render_scene.isValid())
         {
             return invalid("run.view");
         }
         config.coordinate_page_size = d.page_size;
-        auto view = d.renderer.openView(d.scene, config);
+        auto view = d.renderer.openView(d.status.render_scene, config);
         if (!view)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::FRONTEND_FAILURE, "run.view", 0, {}, view.error()});

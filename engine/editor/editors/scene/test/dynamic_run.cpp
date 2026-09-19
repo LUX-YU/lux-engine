@@ -18,11 +18,11 @@ int main(int argc, char **argv)
     using Clock = std::chrono::steady_clock;
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     assert(argc == 3);
-    const bool failing = std::string_view(argv[2]) == "simulation-failure" ||
-                         std::string_view(argv[2]) == "failure-closing-terminal";
+    const bool failing =
+        std::string_view(argv[2]) == "simulation-failure" || std::string_view(argv[2]) == "failure-closing-terminal";
     const bool terminating = std::string_view(argv[2]) == "dynamic-terminal";
-    const bool closing_terminal = std::string_view(argv[2]) == "closing-terminal" ||
-                                  std::string_view(argv[2]) == "failure-closing-terminal";
+    const bool closing_terminal =
+        std::string_view(argv[2]) == "closing-terminal" || std::string_view(argv[2]) == "failure-closing-terminal";
     meta::ReflectionRegistry::initRegistry();
     std::puts("dynamic: metadata registry initialized");
     // Load the real Scene UI provider DLL, including its generated configuration
@@ -37,7 +37,7 @@ int main(int argc, char **argv)
     window::GlfwRuntime platform;
     assert(platform.valid());
     object::ObjectMessageQueue messages;
-    auto runtime = process::ExecutionRuntime::create({2, 64, 64, {64}, process::BlockingSchedulerConfig{2, 64}});
+    auto runtime = process::ExecutionRuntime::create({1, 64, 64, {64}, process::BlockingSchedulerConfig{2, 64}});
     assert(runtime);
     auto source = stdexec::sync_wait(stdexec::then(stdexec::schedule(*runtime->blocking()),
                                                    [&]() noexcept { return editor::readProjectSource(argv[1]); }));
@@ -70,11 +70,8 @@ int main(int argc, char **argv)
     const auto render_systems = scene::builtinRenderSystemRegistrations();
     const auto features = render::builtinRenderFeatureRegistrations();
     const auto bindings = scene::builtinRenderFeatureSceneBindings();
-    auto built = scene::SceneMetaManager::build({std::move(*components),
-                                                 std::move(systems),
-                                                 {render_systems.begin(), render_systems.end()},
-                                                 {features.begin(), features.end()},
-                                                 {bindings.begin(), bindings.end()}});
+    auto built = scene::SceneMetaManager::build(
+        {std::move(*components), std::move(systems), {render_systems.begin(), render_systems.end()}});
     if (!built)
     {
         std::printf("metadata failure=%u subject=%llu\n", unsigned(built.error().code),
@@ -82,7 +79,11 @@ int main(int argc, char **argv)
     }
     assert(built);
     std::puts("dynamic: metadata ready");
-    auto metadata = std::make_shared<const scene::SceneMetaManager>(std::move(*built));
+    auto render_meta = scene::RenderSystemMetadata::build(*built, {features.begin(), features.end()}, bindings);
+    assert(render_meta);
+    editor::scene::SceneEditorMetadata metadata{
+        std::make_shared<const scene::SceneMetaManager>(std::move(*built)),
+        std::make_shared<const scene::RenderSystemMetadata>(std::move(*render_meta))};
     auto registration = editor::scene::sceneDocumentRegistration(*runtime, **renderer, metadata);
     const auto &asset = (*project)->manifest().assets.front();
     auto opening = registration.open(
@@ -127,7 +128,8 @@ int main(int argc, char **argv)
     while (!(*opening)->settled())
     {
         pump();
-        (*opening)->poll();
+        editor::PollBudget budget;
+        (*opening)->poll(budget);
     }
     auto adopted = (*opening)->take();
     if (!adopted)
@@ -190,7 +192,7 @@ int main(int argc, char **argv)
     }
     const auto pause_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - pause_at).count();
     const auto paused = document.runStatus();
-    assert(paused.steps == run_test::steps && paused.completed.presentation == paused.steps);
+    assert(paused.steps == run_test::steps && paused.completed.publication == paused.steps);
     auto lease = (*renderer)->acquire();
     assert(lease);
     const auto light_ops = lease->features().ops<render::LightOperationIds>("Light");
@@ -231,7 +233,7 @@ int main(int argc, char **argv)
     const auto step_at = Clock::now();
     run_test::fail_step.store(failing);
     assert(document.stepRun(*run));
-    while (document.runStatus().completed.presentation == paused.steps && document.runStatus().result)
+    while (document.runStatus().completed.publication == paused.steps && document.runStatus().result)
     {
         tick();
     }
@@ -244,7 +246,7 @@ int main(int argc, char **argv)
         assert(failed.failed_phase == editor::scene::ERunPhase::SIMULATION);
         assert(failed.steps == paused.steps + 1 && failed.elapsed == 10ms * failed.steps);
         assert(failed.completed.simulation == paused.steps && failed.completed.stable == paused.steps &&
-               failed.completed.presentation == paused.steps);
+               failed.completed.publication == paused.steps);
         const auto *cause = std::any_cast<simulation::SimulationExecutionFailure>(&failed.result.error().cause);
         assert(cause && cause->code == simulation::ESimulationExecutionError::SYSTEM_TASK_FAILURE &&
                cause->system.value == 3);
@@ -258,22 +260,28 @@ int main(int argc, char **argv)
         assert(document.runStatus().steps == paused.steps + 1 && run_test::steps == paused.steps + 1);
         check_backend(paused.steps + 1);
         assert(document.resumeRun(*run));
-        // Stop Main's document/Binding consumption, while Main UI/GPU still
-        // advances.
+        // Continue Main simulation turns, but give this document zero Program
+        // submissions. It must hold one prepared update and return to the UI.
         const auto held_at = Clock::now();
-        while (Clock::now() - held_at < 60ms)
+        const auto held_tick = [&]
         {
             pump();
+            editor::PollBudget budget;
+            budget.render_programs = 0;
+            document.poll(budget);
+        };
+        while (!document.runStatus().pending_updates)
+        {
+            held_tick();
         }
         const auto blocked_step = run_test::steps.load();
         const auto gpu = (*renderer)->statistics().gpu_completed;
         while (Clock::now() - held_at < 140ms)
         {
-            pump();
+            held_tick();
         }
         assert(run_test::steps == blocked_step && (*renderer)->statistics().gpu_completed > gpu);
-        std::printf("dynamic stable backpressure step=%llu GPU_delta=%llu; no next "
-                    "Simulation step\n",
+        std::printf("dynamic retained update step=%llu GPU_delta=%llu Main returns without next step\n",
                     static_cast<unsigned long long>(blocked_step),
                     static_cast<unsigned long long>((*renderer)->statistics().gpu_completed - gpu));
         stop_at = Clock::now();
@@ -294,20 +302,21 @@ int main(int argc, char **argv)
     }
     while (run_test::destroyed_at_step.load(std::memory_order_acquire) == 0)
     {
-        pump(); // Stop must wake the worker WITHOUT resuming Binding consumption.
+        pump();
+        editor::PollBudget budget;
+        budget.render_programs = 0;
+        document.poll(budget); // Stop releases the Main-owned World even with no submit allowance.
     }
     const auto system_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - stop_at).count();
     std::printf("dynamic: Simulation system destroyed at step=%llu\n",
                 static_cast<unsigned long long>(run_test::destroyed_at_step.load()));
-    // A system destructor is not the completion of the entire worker task.
-    // The blocked/failing step was never published through the live SPSC observation;
-    // Main can only see this clock after receiving the owning final RunCompletion.
+    // Main already owns the final clock and result before it releases the World.
     while (document.runStatus().steps != run_test::destroyed_at_step.load())
     {
         tick();
     }
     const auto result_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - stop_at).count();
-    std::puts("dynamic: Main received the worker final result");
+    std::puts("dynamic: Main retained the final result before World release");
     assert(view->view().beginClose());
     packet = {};
     while (*view->view().advanceClose() != editor::rendering::ERenderClose::COMPLETE)
@@ -333,13 +342,14 @@ int main(int argc, char **argv)
         assert(draining.pending_updates == 0 && draining.retained_resources != 0);
         assert(lease->status().state == scene::ERenderRuntimeState::ACTIVE);
         assert(bool(draining.result) == !failing);
-        std::printf("JR03 normal drain accepted: worker_result=received view=closed "
+        std::printf("JR03 normal drain accepted: main_result=retained view=closed "
                     "state=STOPPING result=%s published=%llu forwarded=%llu pins=%zu leases=%llu\n",
                     draining.result ? "success" : "run.simulation",
                     static_cast<unsigned long long>(draining.published_updates),
                     static_cast<unsigned long long>(draining.forwarded_updates), draining.retained_resources,
                     static_cast<unsigned long long>((*renderer)->statistics().runtime_leases));
-        lease->programs().progressDomain()->publishTerminalError(render::renderError<render::err::comm::ChannelStopping>());
+        lease->programs().progressDomain()->publishTerminalError(
+            render::renderError<render::err::comm::ChannelStopping>());
         lease->programs().requestStop();
     }
     while (document.runStatus().state != editor::scene::ERunState::FINISHED &&
@@ -366,20 +376,21 @@ int main(int argc, char **argv)
         {
             const auto *cause = std::any_cast<simulation::SimulationExecutionFailure>(&final.result.error().cause);
             result_accurate = final.failed_phase == editor::scene::ERunPhase::SIMULATION &&
-                             final.result.error().domain == "run.simulation" && cause &&
-                             cause->code == simulation::ESimulationExecutionError::SYSTEM_TASK_FAILURE &&
-                             cause->system.value == 3;
+                              final.result.error().domain == "run.simulation" && cause &&
+                              cause->code == simulation::ESimulationExecutionError::SYSTEM_TASK_FAILURE &&
+                              cause->system.value == 3;
         }
         else if (result_accurate)
         {
             const auto *cause = std::any_cast<scene::SceneRenderBindingFailure>(&final.result.error().cause);
             const auto expected = render::renderError<render::err::comm::ChannelStopping>();
             result_accurate = final.result.error().domain == "run.render" &&
-                             final.failed_phase == editor::scene::ERunPhase::PUBLICATION && cause &&
-                             cause->render.type == expected.type && cause->render.args == expected.args;
+                              final.failed_phase == editor::scene::ERunPhase::PUBLICATION && cause &&
+                              cause->render.type == expected.type && cause->render.args == expected.args;
         }
         std::printf("JR03 after terminal: state=%u result=%s domain=%s pins=%zu pending=%u "
-                    "retired=%llu accurate=%u\n", unsigned(final.state), final.result ? "success" : "failure",
+                    "retired=%llu accurate=%u\n",
+                    unsigned(final.state), final.result ? "success" : "failure",
                     final.result ? "none" : final.result.error().domain.c_str(), final.retained_resources,
                     final.pending_updates, static_cast<unsigned long long>(final.retired_updates), result_accurate);
     }
@@ -396,7 +407,7 @@ int main(int argc, char **argv)
     }
     else if (!failing)
     {
-        assert(final.result && final.backpressure_count > 0 && final.publication_wait > 0ns);
+        assert(final.result && final.update_high_water == 1 && final.publication_wait > 0ns);
     }
     const auto after = document.historyView()->history;
     assert(after.current == history.current && after.revision == history.revision && after.cursor == history.cursor);
@@ -410,13 +421,12 @@ int main(int argc, char **argv)
                 "stop_system_us=%lld stop_result_us=%lld stop_resources_us=%lld steps=%llu "
                 "published=%llu backpressure=%llu work_ns=%lld publication_wait_ns=%lld\n",
                 static_cast<long long>(pause_us), static_cast<long long>(step_us), static_cast<long long>(system_us),
-                static_cast<long long>(result_us),
-                static_cast<long long>(close_us), static_cast<unsigned long long>(final.steps),
-                static_cast<unsigned long long>(final.published_updates),
+                static_cast<long long>(result_us), static_cast<long long>(close_us),
+                static_cast<unsigned long long>(final.steps), static_cast<unsigned long long>(final.published_updates),
                 static_cast<unsigned long long>(final.backpressure_count),
                 static_cast<long long>(final.simulation_work.count()),
                 static_cast<long long>(final.publication_wait.count()));
-    std::printf("dynamic retirement first_driver_observation_us: worker=%lld result=%lld view=%lld "
+    std::printf("dynamic retirement first_driver_observation_us: world=%lld result=%lld view=%lld "
                 "drain_accepted=%lld resources=%lld; -1=not_observed; acceptance_is_not_GPU_completion\n",
                 static_cast<long long>(system_us), static_cast<long long>(result_us), static_cast<long long>(view_us),
                 static_cast<long long>(drain_us), static_cast<long long>(close_us));
@@ -451,7 +461,7 @@ int main(int argc, char **argv)
     if (!result_accurate)
     {
         std::puts("FAIL JR03: normal drain followed by backend failure reported success; "
-                  "worker/View/Binding/pins/leases still retired, owner cleanup completed");
+                  "World/View/Binding/pins/leases still retired, owner cleanup completed");
         return 2;
     }
     std::printf("PASS case=%s actual Simulation/Run/transport/GPU and author "

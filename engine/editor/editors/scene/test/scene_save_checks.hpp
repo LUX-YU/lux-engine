@@ -18,7 +18,7 @@ struct SceneSaveChecks final
     using Transform = lux::simulation::ecs::Transform3D;
     using Value = decltype(Transform::translation);
     lux::editor::SaveRequestId request;
-    lux::editor::scene::PreviewToken retired_preview;
+    lux::editor::scene::FieldEditToken retired_preview;
     lux::editor::editing::StateId captured;
     lux::world::WorldObjectId object;
     HANDLE denied{INVALID_HANDLE_VALUE};
@@ -30,10 +30,7 @@ struct SceneSaveChecks final
 
     static auto access()
     {
-        return [](auto &component) noexcept
-        {
-            return &component.translation;
-        };
+        return [](auto &component) noexcept { return &component.translation; };
     }
     void begin(lux::editor::scene::SceneEditor &scene, std::string requested_mode,
                lux::world::WorldObjectId selected = {})
@@ -132,11 +129,8 @@ struct SceneSaveChecks final
             assert(scene.undo());
             assert(!scene.component(object, cxx::typeToken<simulation::ecs::Parent>()));
             assert(scene.redo());
-            const auto other = std::ranges::find_if(scene.objects(),
-                                                    [&](const auto &row)
-                                                    {
-                                                        return row.object != object && row.object != structure_parent;
-                                                    });
+            const auto other = std::ranges::find_if(scene.objects(), [&](const auto &row)
+                                                    { return row.object != object && row.object != structure_parent; });
             assert(other != scene.objects().end());
             structure_deleted = other->object;
             assert(scene.eraseObjects(scene.historyView()->history.current, std::span(&structure_deleted, 1)));
@@ -144,8 +138,8 @@ struct SceneSaveChecks final
         auto target = scene.writeTarget(object);
         assert(target);
         auto preview =
-            scene.beginPreview<Transform, Value>(*target, "retired-pane", "translation", "Translation", access());
-        assert(preview && scene.cancelPreview(*preview));
+            scene.beginFieldEdit<Transform, Value>(*target, "retired-pane", "translation", "Translation", access());
+        assert(preview && scene.finishFieldEdit(*preview));
         retired_preview = *preview;
         const Value first{4, 5, 6};
         assert(scene.setField<Transform>(*target, "Transform.translation", "Translation", access(), first));
@@ -219,7 +213,7 @@ struct SceneSaveChecks final
         assert(value && value->translation == Value(4, 5, 6));
         assert(scene.historyView()->history.clean);
         const auto before_late = scene.historyView()->history;
-        const auto late = scene.commitPreview(retired_preview);
+        const auto late = scene.finishFieldEdit(retired_preview);
         assert(!late && late.error().code == lux::editor::editing::EEditError::STALE_TARGET);
         assert(scene.historyView()->history.current == before_late.current &&
                scene.historyView()->history.revision == before_late.revision);

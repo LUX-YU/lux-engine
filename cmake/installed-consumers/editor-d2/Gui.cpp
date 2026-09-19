@@ -113,7 +113,7 @@ namespace consumer
                 [&](const scene::ComponentNotice &) noexcept
                 {
                     assert(interaction.active());
-                    assert(!interaction.finish(document, true));
+                    assert(!interaction.finish(document));
                     assert(interaction.failure().code == editing::EEditError::BUSY);
                     assert(interaction.active());
                     ++busy;
@@ -121,29 +121,32 @@ namespace consumer
             const auto access = [](auto &component) noexcept { return &component.settings.gain; };
             interaction.field<consumer::Component, double>(
                 document, object, frame, "settings.gain.diagnostic", "Diagnostic gain", access,
-                [](double &value, auto &)
+                [](double &value, auto &state)
                 {
+                    assert(state.beforeWrite());
                     value = 2.0;
                     return lux::ui::EditResult{true, true, false, false};
                 },
                 false);
             assert(busy == 1 && interaction.active());
             connection.reset();
-            assert(interaction.finish(document, true) && !interaction.active());
+            assert(interaction.finish(document) && !interaction.active());
             assert(document.historyView()->history.cursor == before.cursor + 1);
             assert(document.undo() && document.historyView()->history.current == before.current);
             interaction.field<consumer::Component, double>(
                 document, object, frame, "settings.gain.cancel", "Diagnostic cancel", access,
-                [](double &value, auto &)
+                [](double &value, auto &state)
                 {
+                    assert(state.beforeWrite());
                     value = 3.0;
                     return lux::ui::EditResult{true, true, false, false};
                 },
                 false);
-            assert(interaction.active() && interaction.finish(document, false));
+            assert(interaction.active() && interaction.finish(document));
+            assert(document.undo());
             assert(document.historyView()->history.current == before.current);
             std::puts("DIAGNOSTIC Inspector gesture: reentrant commit BUSY retains token; same gesture commits once; "
-                      "Undo restores StateId; explicit cancellation changes no history");
+                      "Undo restores StateId; completed edit remains undoable");
         }
 #endif
 

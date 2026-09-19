@@ -2,7 +2,6 @@
 
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
-#include <lux/engine/scene/RenderFeatureMeta.hpp>
 #include <lux/engine/scene/meta/visibility.h>
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
@@ -31,13 +30,6 @@ namespace lux::scene
         CONFIGURATION_DEFAULT_ENCODING_FAILURE,
         INVALID_REQUIREMENT,
         INVALID_CONNECTION,
-        INVALID_RENDER_FEATURE,
-        DUPLICATE_RENDER_FEATURE,
-        RENDER_FEATURE_TYPE_COLLISION,
-        INVALID_RENDER_FEATURE_BINDING,
-        DUPLICATE_RENDER_FEATURE_BINDING,
-        UNKNOWN_RENDER_FEATURE_BINDING,
-        UNKNOWN_SCENE_SYSTEM_BINDING,
         ALLOCATION_FAILURE,
     };
 
@@ -59,9 +51,9 @@ namespace lux::scene
         ESystemDomain domain{};
         system::SystemTypeId type;
         lux::cxx::TypeToken cpp_type;
-        const system::SystemTypeDescription* description{};
+        const system::SystemTypeDescription *description{};
         lux::serialization::PortableValueCodec configuration{};
-        const meta::RefClass* configuration_reflection{};
+        const meta::RefClass *configuration_reflection{};
         std::span<const std::byte> default_configuration{};
     };
 
@@ -71,56 +63,45 @@ namespace lux::scene
         ESystemDomain domain{};
         std::optional<simulation::ESystemAccessMode> simulation_access{};
         std::uint8_t scene_observations{};
-        render::FeatureTypeId via_render_feature{render::kInvalidFeatureTypeId};
     };
 
     class LUX_ENGINE_SCENE_META_PUBLIC SceneMetaManager final
     {
-    public:
+      public:
         struct BuildInfo final
         {
             simulation::ecs::ComponentSchemaSet components;
             simulation::SimulationSystemRegistry simulation_systems;
             std::vector<SceneSystemRegistration> scene_systems;
-            std::vector<render::RenderFeatureRegistration> render_features;
-            std::vector<RenderFeatureSceneBinding> render_scene_bindings;
         };
 
-        [[nodiscard]] static lux::cxx::expected<SceneMetaManager, SceneMetaFailure>
-        build(BuildInfo info) noexcept;
+        [[nodiscard]] static lux::cxx::expected<SceneMetaManager, SceneMetaFailure> build(BuildInfo info) noexcept;
 
-        SceneMetaManager(SceneMetaManager&&) noexcept;
-        SceneMetaManager& operator=(SceneMetaManager&&) noexcept;
+        SceneMetaManager(SceneMetaManager &&) noexcept;
+        SceneMetaManager &operator=(SceneMetaManager &&) noexcept;
         ~SceneMetaManager();
-        SceneMetaManager(const SceneMetaManager&) = delete;
-        SceneMetaManager& operator=(const SceneMetaManager&) = delete;
+        SceneMetaManager(const SceneMetaManager &) = delete;
+        SceneMetaManager &operator=(const SceneMetaManager &) = delete;
 
-        [[nodiscard]] const simulation::ecs::ComponentSchemaSet& components() const noexcept;
-        [[nodiscard]] const simulation::SimulationSystemRegistry& simulationSystems() const noexcept;
-        [[nodiscard]] const simulation::ecs::ComponentSchema* getComponentMeta(
-            const simulation::ecs::ComponentSchemaId& id
-        ) const noexcept;
-        [[nodiscard]] const simulation::ecs::ComponentSchema* getComponentMeta(lux::cxx::TypeToken type) const noexcept;
-        [[nodiscard]] std::optional<SystemMetaView> getSystemMeta(const system::SystemTypeId& type) const noexcept;
+        [[nodiscard]] const simulation::ecs::ComponentSchemaSet &components() const noexcept;
+        [[nodiscard]] const simulation::SimulationSystemRegistry &simulationSystems() const noexcept;
+        [[nodiscard]] const simulation::ecs::ComponentSchema *getComponentMeta(
+            const simulation::ecs::ComponentSchemaId &id) const noexcept;
+        [[nodiscard]] const simulation::ecs::ComponentSchema *getComponentMeta(lux::cxx::TypeToken type) const noexcept;
+        [[nodiscard]] std::optional<SystemMetaView> getSystemMeta(const system::SystemTypeId &type) const noexcept;
         [[nodiscard]] std::optional<SystemMetaView> getSystemMeta(std::string_view canonical_name) const noexcept;
-        [[nodiscard]] const simulation::SimulationSystemRegistration* getSimulationSystemMeta(
-            const system::SystemTypeId& type
-        ) const noexcept;
-        [[nodiscard]] const SceneSystemRegistration* getSceneSystemMeta(const system::SystemTypeId& type
-        ) const noexcept;
-        [[nodiscard]] const RenderFeatureMeta* getRenderFeatureMeta(render::FeatureTypeId type) const noexcept;
-        [[nodiscard]] const RenderFeatureMeta* getRenderFeatureMeta(std::string_view stable_name) const noexcept;
+        [[nodiscard]] const simulation::SimulationSystemRegistration *getSimulationSystemMeta(
+            const system::SystemTypeId &type) const noexcept;
+        [[nodiscard]] const SceneSystemRegistration *getSceneSystemMeta(
+            const system::SystemTypeId &type) const noexcept;
         [[nodiscard]] std::span<const ComponentSystemUsage> systemsUsingComponent(
-            const simulation::ecs::ComponentSchemaId& component
-        ) const noexcept;
+            const simulation::ecs::ComponentSchemaId &component) const noexcept;
         [[nodiscard]] std::span<const system::SystemTypeId> systemsProvidingCapability(
-            std::string_view capability
-        ) const noexcept;
+            std::string_view capability) const noexcept;
         [[nodiscard]] std::span<const SystemMetaView> allSystems() const noexcept;
         [[nodiscard]] std::span<const SceneSystemRegistration> sceneSystems() const noexcept;
-        [[nodiscard]] std::span<const RenderFeatureMeta> allRenderFeatures() const noexcept;
 
-    private:
+      private:
         struct Impl;
         explicit SceneMetaManager(std::unique_ptr<Impl> impl) noexcept;
         std::unique_ptr<Impl> impl_;

@@ -358,12 +358,12 @@ namespace lux::editor
         exit_requested_ = true;
     }
 
-    void Editor::acceptOpenings()
+    void Editor::acceptOpenings(PollBudget &budget)
     {
         for (std::size_t index{}; index < openings_.size();)
         {
             auto &opening = *openings_[index];
-            opening.work->poll();
+            opening.work->poll(budget);
             if (!opening.work->settled())
             {
                 ++index;
@@ -437,7 +437,7 @@ namespace lux::editor
         if (state_ != EState::COLD || !config_.frontend || config_.project_file.empty() || !config_.limits.documents ||
             !config_.limits.open_requests || !config_.limits.turn.document_steps ||
             !config_.limits.turn.main_completions || !config_.limits.turn.render_replies ||
-            !config_.limits.turn.object_messages)
+            !config_.limits.turn.object_messages || !config_.limits.turn.render_programs)
         {
             return 2;
         }
@@ -561,6 +561,7 @@ namespace lux::editor
                 }
 
                 bool frontend_closing{};
+                bool frame_first{};
                 while (!frontend_closing || frontend->closeStatus().state != ECloseState::CLOSED)
                 {
                     auto budget = config_.limits.turn;
@@ -570,13 +571,20 @@ namespace lux::editor
                     {
                         budget.main_completions -= *main;
                     }
-                    // Retry retained document updates before presentation can
-                    // refill the shared Program ring with another UI frame.
-                    // Under GPU backpressure, frame-first admission can keep
-                    // displaying new Inspector values against an old Scene.
+                    // Both producers use the same finite Program allowance.
+                    // Alternate first admission so neither frames nor retained
+                    // Scene updates can continually refill the ring first.
+                    if (frame_first)
+                    {
+                        frontend->poll(budget);
+                    }
                     pollDocuments(budget);
-                    frontend->poll(budget);
-                    acceptOpenings();
+                    if (!frame_first)
+                    {
+                        frontend->poll(budget);
+                    }
+                    frame_first = !frame_first;
+                    acceptOpenings(budget);
                     collectClosed();
                     budget.object_messages -= messages_.dispatchPending(budget.object_messages);
 

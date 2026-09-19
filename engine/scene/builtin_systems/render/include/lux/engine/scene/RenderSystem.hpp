@@ -39,7 +39,6 @@ namespace lux::scene
         [[nodiscard]] bool publishStablePoint() noexcept;
         [[nodiscard]] ERenderPublishResult tryPublish() noexcept;
         [[nodiscard]] ERenderPublishResult lastPublishResult() const noexcept;
-        [[nodiscard]] bool waitForCapacity(std::stop_token stop) const noexcept;
 
       private:
         friend class SceneBuilder;

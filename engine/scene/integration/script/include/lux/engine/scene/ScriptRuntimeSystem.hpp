@@ -1,14 +1,14 @@
 #pragma once
 
-#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
-#include <lux/engine/scene/SceneSystemRegistration.hpp>
-#include <lux/engine/scene/script_runtime/visibility.h>
+#include <lux/cxx/concurrent/LatestSpscExchange.hpp>
 #include <lux/engine/process/Timer.hpp>
-#include <lux/engine/simulation/ScriptSystem.hpp>
-#include <lux/engine/simulation/scripting/DeferredScriptHost.hpp>
-#include <lux/engine/simulation/Simulation.hpp>
+#include <lux/engine/scene/SceneSystemRegistration.hpp>
+#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 #include <lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp>
-#include <lux/engine/scene/LatestSpscExchange.hpp>
+#include <lux/engine/scene/script_runtime/visibility.h>
+#include <lux/engine/simulation/ScriptSystem.hpp>
+#include <lux/engine/simulation/Simulation.hpp>
+#include <lux/engine/simulation/scripting/DeferredScriptHost.hpp>
 
 #include <array>
 #include <cstddef>
@@ -30,33 +30,26 @@ namespace lux::scene
 
     class LUX_ENGINE_SCENE_SCRIPT_RUNTIME_PUBLIC ScriptRealDelayProvider final
     {
-    public:
-        using CreateResult = lux::cxx::expected<
-            std::unique_ptr<ScriptRealDelayProvider>,
-            EScriptRealDelayProviderError
-        >;
+      public:
+        using CreateResult =
+            lux::cxx::expected<std::unique_ptr<ScriptRealDelayProvider>, EScriptRealDelayProviderError>;
 
-        [[nodiscard]] static CreateResult create(
-            process::TimerClient timer,
-            std::size_t capacity
-        ) noexcept;
+        [[nodiscard]] static CreateResult create(process::TimerClient timer, std::size_t capacity) noexcept;
 
         ~ScriptRealDelayProvider() noexcept;
-        ScriptRealDelayProvider(const ScriptRealDelayProvider&) = delete;
-        ScriptRealDelayProvider& operator=(const ScriptRealDelayProvider&) = delete;
+        ScriptRealDelayProvider(const ScriptRealDelayProvider &) = delete;
+        ScriptRealDelayProvider &operator=(const ScriptRealDelayProvider &) = delete;
 
         [[nodiscard]] simulation::script::ScriptRealDelayEndpoint endpoint() noexcept;
         [[nodiscard]] bool drainCompletions() noexcept;
         void requestStop() noexcept;
         [[nodiscard]] lux::cxx::expected<void, EScriptRealDelayProviderError> join() noexcept;
 
-    private:
+      private:
         struct Impl;
         explicit ScriptRealDelayProvider(std::unique_ptr<Impl> impl) noexcept;
         [[nodiscard]] lux::script::ScriptAbilityStartResult start(
-            std::chrono::nanoseconds duration,
-            lux::script::ScriptAbilityCompletion<void> completion
-        ) noexcept;
+            std::chrono::nanoseconds duration, lux::script::ScriptAbilityCompletion<void> completion) noexcept;
         std::unique_ptr<Impl> impl_;
     };
 
@@ -83,39 +76,33 @@ namespace lux::scene
 
     class LUX_ENGINE_SCENE_SCRIPT_RUNTIME_PUBLIC ScriptRuntimeSystem final
     {
-    public:
-        inline static constexpr std::array<std::string_view, 1U> Capabilities{
-            "lux.script.runtime"
-        };
+      public:
+        inline static constexpr std::array<std::string_view, 1U> Capabilities{"lux.script.runtime"};
         inline static constexpr system::SystemTypeDescription Description{
             .canonical_name = "lux.scene.ScriptRuntimeSystem",
             .version = 1U,
             .capabilities = Capabilities,
-            .multiplicity = system::ESystemMultiplicity::SINGLE_PER_OWNER
-        };
+            .multiplicity = system::ESystemMultiplicity::SINGLE_PER_OWNER};
 
-        ScriptRuntimeSystem(
-            std::unique_ptr<ScriptRealDelayProvider> real_delay,
-            std::unique_ptr<scene::script::ScriptSystemDescription> description,
-            simulation::script::ScriptSystem system,
-            script::WorldObjectResolver world,
-            simulation::ecs::Registry& registry,
-            std::unique_ptr<simulation::ecs::EcsCommandBuffer> commands,
-            std::unique_ptr<simulation::script::DeferredScriptHost> host
-        ) noexcept;
+        ScriptRuntimeSystem(std::unique_ptr<ScriptRealDelayProvider> real_delay,
+                            std::unique_ptr<scene::script::ScriptSystemDescription> description,
+                            simulation::script::ScriptSystem system, script::WorldObjectResolver world,
+                            simulation::ecs::Registry &registry,
+                            std::unique_ptr<simulation::ecs::EcsCommandBuffer> commands,
+                            std::unique_ptr<simulation::script::DeferredScriptHost> host) noexcept;
         ~ScriptRuntimeSystem() noexcept;
 
-        ScriptRuntimeSystem(const ScriptRuntimeSystem&) = delete;
-        ScriptRuntimeSystem& operator=(const ScriptRuntimeSystem&) = delete;
+        ScriptRuntimeSystem(const ScriptRuntimeSystem &) = delete;
+        ScriptRuntimeSystem &operator=(const ScriptRuntimeSystem &) = delete;
 
-        [[nodiscard]] bool bindSimulation(simulation::Simulation& simulation) noexcept;
+        [[nodiscard]] bool bindSimulation(simulation::Simulation &simulation) noexcept;
         // Observation only, on the execution owner at a safe point. Gameplay pumping is graph-owned.
-        [[nodiscard]] const simulation::script::ScriptSystem& scriptSystem() const noexcept;
+        [[nodiscard]] const simulation::script::ScriptSystem &scriptSystem() const noexcept;
         [[nodiscard]] ScriptRuntimeCommandStats commandStats() const noexcept;
         // One observation consumer may call this on another thread; no live runtime storage is borrowed.
-        [[nodiscard]] bool acquireStats(simulation::script::ScriptRuntimeStats& output) noexcept;
+        [[nodiscard]] bool acquireStats(simulation::script::ScriptRuntimeStats &output) noexcept;
 
-    private:
+      private:
         struct Loader;
         [[nodiscard]] bool prepareLoader() noexcept;
         [[nodiscard]] bool submitResolved() noexcept;
@@ -124,7 +111,7 @@ namespace lux::scene
         [[nodiscard]] bool commitCommands() noexcept;
         std::unique_ptr<Loader> loader_;
         script::WorldObjectResolver world_;
-        simulation::ecs::Registry* registry_{};
+        simulation::ecs::Registry *registry_{};
         std::unique_ptr<ScriptRealDelayProvider> real_delay_;
         std::unique_ptr<scene::script::ScriptSystemDescription> description_;
         std::unique_ptr<simulation::ecs::EcsCommandBuffer> commands_;
@@ -134,12 +121,12 @@ namespace lux::scene
         std::optional<simulation::ecs::EcsCommandWriter> command_writer_;
         std::optional<simulation::script::DeferredScriptHost::Batch> command_batch_;
         simulation::SimulationHookConnection hook_connection_;
-        LatestSpscExchange<simulation::script::ScriptRuntimeStats> stats_exchange_;
+        lux::cxx::LatestSpscExchange<simulation::script::ScriptRuntimeStats> stats_exchange_;
     };
 
-    [[nodiscard]] LUX_ENGINE_SCENE_SCRIPT_RUNTIME_PUBLIC
-    SceneSystemRegistration builtinScriptRuntimeSystemRegistration() noexcept;
+    [[nodiscard]] LUX_ENGINE_SCENE_SCRIPT_RUNTIME_PUBLIC SceneSystemRegistration
+    builtinScriptRuntimeSystemRegistration() noexcept;
 
-    [[nodiscard]] LUX_ENGINE_SCENE_SCRIPT_RUNTIME_PUBLIC
-    std::span<const SceneSystemRegistration> builtinScriptRuntimeSystemRegistrations() noexcept;
+    [[nodiscard]] LUX_ENGINE_SCENE_SCRIPT_RUNTIME_PUBLIC std::span<const SceneSystemRegistration>
+    builtinScriptRuntimeSystemRegistrations() noexcept;
 } // namespace lux::scene

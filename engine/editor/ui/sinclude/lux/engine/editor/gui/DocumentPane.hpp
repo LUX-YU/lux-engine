@@ -17,7 +17,8 @@ namespace lux::editor::gui
         DocumentPane(Document &document, std::string name, std::string title)
             : object::Object<Derived, lux::ui::Pane>(document.dispatcherRef(), lux::ui::PaneId{std::move(name)},
                                                      lux::ui::PaneTypeId{"lux.editor.document-pane"}, std::move(title)),
-              document_(document), history_(document.dispatcherRef(), document)
+              document_(document), history_(std::make_unique<HistoryActions>(document.dispatcherRef(), document)),
+              history_identity_(document.historyId())
         {
         }
 
@@ -44,6 +45,13 @@ namespace lux::editor::gui
             {
                 return {};
             }
+            ui_ = &ui;
+            return bindHistory(ui);
+        }
+
+      private:
+        EditorResult<void> bindHistory(lux::ui::UISession &ui)
+        {
             auto &router = ui.commandRouter();
             const auto bind = [&](std::string_view name, auto action, auto enabled) -> EditorResult<void>
             {
@@ -53,7 +61,7 @@ namespace lux::editor::gui
                     return lux::cxx::unexpected(EditorFailure{EEditorError::FRONTEND_FAILURE, "ui.command"});
                 }
                 auto binding = router.template bind<decltype(action)::value, decltype(enabled)::value>(
-                    *command, lux::ui::UiContextId{id()}, *this, history_);
+                    *command, lux::ui::UiContextId{id()}, *this, *history_);
                 if (!binding)
                 {
                     return lux::cxx::unexpected(EditorFailure{EEditorError::FRONTEND_FAILURE, "ui.bind",
@@ -74,6 +82,7 @@ namespace lux::editor::gui
                         std::integral_constant<decltype(&HistoryActions::canRedo), &HistoryActions::canRedo>{});
         }
 
+      public:
         void requestClose() noexcept override
         {
             closing_ = true;
@@ -81,6 +90,22 @@ namespace lux::editor::gui
 
         void poll(PollBudget &) override
         {
+            if (!closing_ && ui_ && document_.historyId() != history_identity_)
+            {
+                commands_.clear();
+                history_ = std::make_unique<HistoryActions>(document_.dispatcherRef(), document_);
+                const auto bound = bindHistory(*ui_);
+                if (!bound)
+                {
+                    commands_.clear();
+                    binding_result_ = lux::cxx::unexpected(bound.error());
+                }
+                else
+                {
+                    history_identity_ = document_.historyId();
+                    binding_result_ = {};
+                }
+            }
             if (closing_)
             {
                 commands_.clear();
@@ -92,7 +117,8 @@ namespace lux::editor::gui
         {
             return {closing_ ? (!registration_ && commands_.empty() ? ECloseState::CLOSED : ECloseState::CLOSING)
                              : ECloseState::OPEN,
-                    {}};
+                    {},
+                    binding_result_};
         }
 
       protected:
@@ -100,7 +126,10 @@ namespace lux::editor::gui
         bool closing_{};
 
       private:
-        HistoryActions history_;
+        std::unique_ptr<HistoryActions> history_;
+        EditorResult<void> binding_result_;
+        editing::HistoryId history_identity_;
+        lux::ui::UISession *ui_{};
         lux::ui::PaneRegistration registration_;
         std::vector<lux::ui::CommandRegistration> commands_;
     };

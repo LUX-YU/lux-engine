@@ -23,7 +23,6 @@ target_link_libraries(
         lux::engine::scene::scene_system
         lux::engine::simulation::system
         lux::engine::simulation::ecs::schema
-        lux::engine::function::render_client
         lux::engine::core::meta
         lux::engine::core::serialization
 )
@@ -32,7 +31,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-scene-system REQUIRED COMPONENTS scene_system)"
     "find_package(lux-engine-simulation-system REQUIRED COMPONENTS system)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS schema)"
-    "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"
     "find_package(lux-engine-core REQUIRED COMPONENTS meta serialization)"
 )
 

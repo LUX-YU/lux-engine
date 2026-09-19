@@ -1,13 +1,13 @@
-#include <lux/engine/editor/rendering/detail/RendererThread.hpp>
-#include <lux/engine/editor/rendering/detail/ReplyPump.hpp>
-#include <lux/engine/editor/rendering/detail/RenderFrameQueue.hpp>
-#include <lux/engine/editor/rendering/detail/ViewImageLifetime.hpp>
-#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
-#include <lux/engine/window/LuxWindow.hpp>
-#include <lux/engine/ui/UISession.hpp>
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <lux/engine/editor/rendering/detail/RenderFrameQueue.hpp>
+#include <lux/engine/editor/rendering/detail/RendererThread.hpp>
+#include <lux/engine/editor/rendering/detail/ReplyPump.hpp>
+#include <lux/engine/editor/rendering/detail/ViewImageLifetime.hpp>
+#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
+#include <lux/engine/ui/UISession.hpp>
+#include <lux/engine/window/LuxWindow.hpp>
 #include <mutex>
 #include <new>
 
@@ -20,8 +20,12 @@ namespace lux::editor::rendering
         {
             auto value = sequence.load(std::memory_order_relaxed);
             while (value != (std::numeric_limits<std::uint64_t>::max)())
+            {
                 if (sequence.compare_exchange_weak(value, value + 1, std::memory_order_relaxed))
+                {
                     return value;
+                }
+            }
             return 0;
         }
         auto fail(ERendererError code) noexcept
@@ -35,38 +39,48 @@ namespace lux::editor::rendering
             // are only part of its storage: free historical slots also keep their last attachments.
             ring.currentRead().clear_keep_capacity();
             while (ring.tryAcquireRead())
+            {
                 ring.currentRead().clear_keep_capacity();
+            }
             for (std::size_t i = 0; i < Slots; ++i)
             {
                 auto *slot = ring.tryBeginWrite();
                 if (!slot)
+                {
                     return false;
+                }
                 slot->clear_keep_capacity();
                 // Advance empty storage locally. No server remains and no command is executed.
                 if (!ring.publishWrite() || !ring.tryAcquireRead())
+                {
                     return false;
+                }
             }
             return true;
         }
 
         class UploadQueue final
         {
-        public:
-            UploadQueue(std::size_t count, std::size_t bytes) : pending_(count), limit_(bytes)
-            {
-            }
+          public:
+            UploadQueue(std::size_t count, std::size_t bytes) : pending_(count), limit_(bytes) {}
             static lux::render::UploadSubmitNoReplyResult submit(
                 void *owner, std::shared_ptr<lux::render::detail::PreparedUpload> packet) noexcept
             {
                 auto &queue = *static_cast<UploadQueue *>(owner);
                 std::lock_guard lock{queue.mutex_};
                 if (!queue.accepting_)
+                {
                     return lux::cxx::unexpected(lux::render::ERenderUploadSubmitError::STOPPING);
+                }
                 if (queue.size_ == queue.pending_.size())
+                {
                     return lux::cxx::unexpected(lux::render::ERenderUploadSubmitError::QUEUE_FULL);
+                }
                 const auto bytes = packet->packet.accountedBytes();
                 if (bytes > queue.limit_ - queue.bytes_)
+                {
                     return lux::cxx::unexpected(lux::render::ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
+                }
                 queue.bytes_ += bytes;
                 queue.pending_[(queue.head_ + queue.size_++) % queue.pending_.size()] = std::move(packet);
                 return {};
@@ -90,13 +104,17 @@ namespace lux::editor::rendering
                     {
                         std::lock_guard lock{mutex_};
                         if (!size_)
+                        {
                             break;
+                        }
                         packet = pending_[head_];
                     }
                     const auto accounted_bytes = packet->packet.accountedBytes();
                     if (stopped)
+                    {
                         static_cast<void>(packet->callback.settleFailure(
                             lux::render::renderError<lux::render::err::comm::ChannelStopping>()));
+                    }
                     else
                     {
                         lux::render::ReplyDispatchCallback callback{
@@ -108,7 +126,9 @@ namespace lux::editor::rendering
                                 : uploads.trySubmitPrepared(packet->packet, packet->expected_reply_type,
                                                             std::move(callback));
                         if (!submitted)
+                        {
                             break;
+                        }
                     }
                     std::lock_guard lock{mutex_};
                     bytes_ -= accounted_bytes;
@@ -120,7 +140,7 @@ namespace lux::editor::rendering
                 return processed;
             }
 
-        private:
+          private:
             mutable std::mutex mutex_;
             std::vector<std::shared_ptr<lux::render::detail::PreparedUpload>> pending_;
             std::size_t limit_{}, head_{}, size_{}, bytes_{};
@@ -171,27 +191,33 @@ namespace lux::editor::rendering
         RenderResult<void> check() const noexcept
         {
             if (owner != std::this_thread::get_id())
+            {
                 return fail(ERendererError::WRONG_THREAD);
+            }
             if (busy)
+            {
                 return fail(ERendererError::BUSY);
+            }
             return {};
         }
     };
 
-    EditorRenderer::EditorRenderer(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl))
-    {
-    }
+    EditorRenderer::EditorRenderer(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
     EditorRenderer::~EditorRenderer() noexcept
     {
         if (!impl_->joined)
+        {
             std::terminate();
+        }
     }
     RenderResult<std::unique_ptr<EditorRenderer>> EditorRenderer::create(lux::window::LuxWindow &window,
                                                                          lux::ui::UISession &ui,
                                                                          const RendererConfig &config) noexcept
     {
         if (!ui.dispatcherRef().isCurrent())
+        {
             return fail(ERendererError::WRONG_THREAD);
+        }
         const bool valid_capacity =
             config.frame_capacity >= 2 && config.frame_capacity <= 1024 && config.control_capacity >= 2 &&
             config.control_capacity <= 65536 && config.upload_capacity >= 2 && config.upload_capacity <= 65536 &&
@@ -199,13 +225,17 @@ namespace lux::editor::rendering
             config.texture_capacity >= config.view_capacity * 2 && config.texture_capacity <= 48 &&
             config.diagnostic_capacity && config.diagnostic_capacity <= 65536;
         if (!valid_capacity || !window.isInitialized())
+        {
             return fail(ERendererError::INVALID_ARGUMENT);
+        }
         try
         {
             auto impl = std::make_unique<Impl>(config);
             impl->identity = issue(next_renderer);
             if (!impl->identity)
+            {
                 return fail(ERendererError::CAPACITY);
+            }
             auto &thread = impl->thread;
             thread.frames = lux::render::RenderProgramChannel<>::create(config.frame_capacity);
             thread.controls = lux::render::RenderControlChannel<>::create(config.control_capacity);
@@ -220,7 +250,8 @@ namespace lux::editor::rendering
             impl->upload_client = lux::render::RenderUploadClient::bind(impl->upload_queue, &UploadQueue::submit);
             impl->programs->setErrorEventHandler(
                 [stats = thread.statistics](const auto &batch) { stats->dropped += batch.dropped; },
-                [owner = impl.get()](const auto &event) {
+                [owner = impl.get()](const auto &event)
+                {
                     owner->thread.statistics->events += event.occurrences;
                     owner->recordDiagnostic({{ERendererError::DEVICE_FAILURE, event.error},
                                              event.scene_index,
@@ -232,10 +263,11 @@ namespace lux::editor::rendering
             auto font = lux::ui::detail::captureUiFontAtlas(ui);
             if (!font)
             {
-                const auto code = font.error() == lux::ui::EUiInitError::ALLOCATION_FAILURE
-                                      ? ERendererError::ALLOCATION_FAILURE
-                                      : (font.error() == lux::ui::EUiInitError::WRONG_THREAD
-                                             ? ERendererError::WRONG_THREAD : ERendererError::INVALID_ARGUMENT);
+                const auto code =
+                    font.error() == lux::ui::EUiInitError::ALLOCATION_FAILURE
+                        ? ERendererError::ALLOCATION_FAILURE
+                        : (font.error() == lux::ui::EUiInitError::WRONG_THREAD ? ERendererError::WRONG_THREAD
+                                                                               : ERendererError::INVALID_ARGUMENT);
                 return fail(code);
             }
             // Allocate the final owner before starting the worker. After startup, adopting the thread cannot fail.
@@ -243,10 +275,14 @@ namespace lux::editor::rendering
             result->impl_->joined = true;
             auto started = detail::startRendererThread(result->impl_->thread, window, std::move(*font), config);
             if (!started)
+            {
                 return lux::cxx::unexpected(started.error());
+            }
             result->impl_->worker = std::move(*started);
             while (thread.startup.load(std::memory_order_acquire) == 0)
+            {
                 thread.startup.wait(0, std::memory_order_acquire);
+            }
             if (thread.startup.load(std::memory_order_acquire) != 1)
             {
                 result->impl_->worker.join();
@@ -266,17 +302,23 @@ namespace lux::editor::rendering
     ERendererState EditorRenderer::state() const noexcept
     {
         if (impl_->thread.stopped.load(std::memory_order_acquire))
+        {
             return impl_->thread.sync->terminalError().ok() && impl_->thread.startup.load() == 1
                        ? ERendererState::STOPPED
                        : ERendererState::FAILED;
+        }
         return impl_->closing || impl_->thread.sync->isStopping() ? ERendererState::STOPPING : ERendererState::READY;
     }
     RenderResult<std::optional<RendererDiagnostic>> EditorRenderer::takeDiagnostic() noexcept
     {
         if (auto check = impl_->check(); !check)
+        {
             return lux::cxx::unexpected(check.error());
+        }
         if (!impl_->diagnostic_count)
+        {
             return std::exchange(impl_->pending_terminal_diagnostic, std::nullopt);
+        }
         auto result = impl_->diagnostics[impl_->diagnostic_head];
         impl_->diagnostic_head = (impl_->diagnostic_head + 1) % impl_->diagnostics.size();
         --impl_->diagnostic_count;
@@ -302,17 +344,23 @@ namespace lux::editor::rendering
     RenderResult<ImageContentStamp> EditorRenderer::imageEvidence(const ViewImage &image) const noexcept
     {
         if (auto checked = impl_->check(); !checked)
+        {
             return lux::cxx::unexpected(checked.error());
+        }
         const auto *record = detail::ViewImageAccess::record(image);
         if (!record || !record->version || image.view.renderer != impl_->identity)
+        {
             return fail(ERendererError::STALE_IMAGE);
+        }
         const auto &version = *record->version;
         const bool valid = image.view == version.id && image.extent == version.extent &&
                            image.texture == version.texture && image.content.source == record->content.source &&
                            image.content.frame_serial == record->content.frame_serial &&
                            image.content.evidence == record->content.evidence;
         if (!valid)
+        {
             return fail(ERendererError::STALE_IMAGE);
+        }
         auto result = record->content;
         const auto submitted = record->submitted.load(std::memory_order_acquire);
         if (submitted)
@@ -327,7 +375,9 @@ namespace lux::editor::rendering
     bool EditorRenderer::controlAvailable(std::size_t packets) const noexcept
     {
         if (impl_->owner != std::this_thread::get_id() || impl_->thread.sync->isStopping())
+        {
             return false;
+        }
         const auto &queue = impl_->thread.controls->requests;
         return packets <= queue.capacity() - queue.size();
     }
@@ -335,73 +385,111 @@ namespace lux::editor::rendering
                                                                        ViewConfig config) noexcept
     {
         if (auto check = impl_->check(); !check)
+        {
             return lux::cxx::unexpected(check.error());
+        }
         if (state() != ERendererState::READY)
+        {
             return fail(ERendererError::STOPPING);
+        }
         if (!scene.isValid() || !config.sampled || config.extent.width > 16384 || config.extent.height > 16384)
+        {
             return fail(ERendererError::INVALID_ARGUMENT);
+        }
         const bool invalid_page_size = !std::isfinite(config.coordinate_page_size) ||
                                        config.coordinate_page_size <= 0 ||
                                        config.coordinate_page_size > (std::numeric_limits<float>::max)() ||
                                        static_cast<float>(config.coordinate_page_size) <= 0;
         if (invalid_page_size)
+        {
             return fail(ERendererError::INVALID_ARGUMENT);
+        }
         const auto slot = std::find(impl_->views.begin(), impl_->views.end(), nullptr);
         if (slot == impl_->views.end())
+        {
             return fail(ERendererError::CAPACITY);
+        }
         const auto generation = issue(next_image);
         if (!generation)
+        {
             return fail(ERendererError::CAPACITY);
+        }
         const RenderViewId id{impl_->identity, static_cast<std::uint64_t>(slot - impl_->views.begin()), generation};
         auto view = RenderView::create(*this, *impl_->control, id, scene, config);
         if (view)
+        {
             *slot = view->get();
+        }
         return view;
     }
     RenderResult<EditorFramePacket> EditorRenderer::sealFrame(lux::ui::UiFrameSnapshot &snapshot,
                                                               std::span<const ViewImage> images) noexcept
     {
         if (auto check = impl_->check(); !check)
+        {
             return lux::cxx::unexpected(check.error());
+        }
         if (state() != ERendererState::READY)
+        {
             return fail(ERendererError::STOPPING);
+        }
         if (!snapshot.valid())
+        {
             return fail(ERendererError::INVALID_ARGUMENT);
+        }
         if (impl_->sequence == (std::numeric_limits<std::uint64_t>::max)())
+        {
             return fail(ERendererError::CAPACITY);
+        }
         if (images.size() > impl_->config.texture_capacity)
+        {
             return fail(ERendererError::CAPACITY);
+        }
         for (std::size_t index = 0; index < images.size(); ++index)
         {
             const auto &image = images[index];
             const auto *record = detail::ViewImageAccess::record(image);
             if (!record || !record->version || image.view.renderer != impl_->identity)
+            {
                 return fail(ERendererError::STALE_IMAGE);
+            }
             const auto &version = *record->version;
             const bool valid_reference =
                 image.view == version.id && image.texture == version.texture && image.extent == version.extent &&
                 image.content.source == record->content.source && image.content.evidence == record->content.evidence &&
                 image.content.frame_serial == record->content.frame_serial;
             if (!valid_reference)
+            {
                 return fail(ERendererError::STALE_IMAGE);
+            }
             if (image.view.slot >= impl_->views.size() || !impl_->views[image.view.slot] ||
                 impl_->views[image.view.slot]->id() != image.view)
+            {
                 return fail(ERendererError::STALE_VIEW);
+            }
             const auto view_state = impl_->views[image.view.slot]->status().state;
             if (view_state == EViewState::CLOSING || view_state == EViewState::CLOSED ||
                 view_state == EViewState::FAILED)
+            {
                 return fail(ERendererError::STALE_VIEW);
+            }
             for (std::size_t previous = 0; previous < index; ++previous)
+            {
                 if (images[previous].texture == image.texture &&
                     !detail::ViewImageAccess::sameRecord(images[previous], image))
+                {
                     return fail(ERendererError::STALE_IMAGE);
+                }
+            }
         }
         for (const auto token : snapshot.textures())
         {
             const bool missing =
                 std::none_of(images.begin(), images.end(), [&](const auto &image) { return image.texture == token; });
             if (missing)
+            {
                 return fail(ERendererError::INCOMPLETE_FRAME_REFERENCES);
+            }
         }
         try
         {
@@ -425,7 +513,9 @@ namespace lux::editor::rendering
             builder.push(lux::render::opcodes::CommandOp, impl_->thread.submit_operation,
                          detail::SubmitDrawPayload{attachment});
             if (!builder.valid())
+            {
                 return fail(ERendererError::CAPACITY);
+            }
             storage->sequence = ++impl_->sequence;
             data.packet_sequence = storage->sequence;
             data.snapshot = std::move(snapshot);
@@ -439,23 +529,37 @@ namespace lux::editor::rendering
     RenderResult<EFrameSubmit> EditorRenderer::trySubmitFrame(EditorFramePacket &packet) noexcept
     {
         if (auto check = impl_->check(); !check)
+        {
             return lux::cxx::unexpected(check.error());
+        }
         if (state() != ERendererState::READY)
+        {
             return fail(ERendererError::STOPPING);
+        }
         if (!packet.valid() || packet.storage_->renderer != impl_->identity)
+        {
             return fail(ERendererError::INVALID_ARGUMENT);
+        }
         if (impl_->frames.full())
+        {
             return EFrameSubmit::BACKPRESSURED;
+        }
         impl_->frames.accept(packet);
         return EFrameSubmit::SUBMITTED;
     }
 
     RenderResult<std::size_t> EditorRenderer::poll(std::size_t budget) noexcept
     {
+        std::size_t programs = budget;
+        return poll(budget, programs);
+    }
+
+    RenderResult<std::size_t> EditorRenderer::poll(std::size_t budget, std::size_t &program_budget) noexcept
+    {
         if (auto check = impl_->check(); !check)
+        {
             return lux::cxx::unexpected(check.error());
-        if (!budget)
-            return std::size_t{0};
+        }
         struct PollGate final
         {
             bool &busy;
@@ -497,26 +601,39 @@ namespace lux::editor::rendering
             // Keep the program endpoint alive until all Scene runtime leases have been returned.
             impl_->frames.cancel();
             if (impl_->worker.joinable())
+            {
                 impl_->worker.join();
+            }
             if (!clearJoinedRing(impl_->thread.frames->requests))
+            {
                 return fail(ERendererError::CONTRACT_FAILURE);
+            }
             impl_->programs->rawClient().retireAfterBackendStopped();
             impl_->terminal_frames_released = true;
         }
-        if (!impl_->terminal_frames_released)
-            static_cast<void>(impl_->programs->retryPendingSubmit());
-        if (!impl_->frames.empty() && impl_->programs->trySubmitPrepared(impl_->frames.front().storage_->program))
+        if (!impl_->terminal_frames_released && program_budget && impl_->programs->hasPendingSubmit() &&
+            impl_->programs->retryPendingSubmit())
+        {
+            --program_budget;
+        }
+        if (program_budget && !impl_->frames.empty() &&
+            impl_->programs->trySubmitPrepared(impl_->frames.front().storage_->program))
         {
             impl_->frames.pop();
+            --program_budget;
         }
         bool maintenance = impl_->closing;
         for (auto *&view : impl_->views)
         {
             if (!view)
+            {
                 continue;
+            }
             const auto result = view->pollResources();
             if (!result)
+            {
                 return lux::cxx::unexpected(result.error());
+            }
             if (auto failure = view->takeFailure())
             {
                 ++impl_->thread.statistics->events;
@@ -526,9 +643,11 @@ namespace lux::editor::rendering
             maintenance |=
                 state == EViewState::CLOSING || state == EViewState::RESIZING || state == EViewState::SUSPENDED;
             if (state == EViewState::CLOSED)
+            {
                 view = nullptr;
+            }
         }
-        if (maintenance && impl_->frames.empty() && !impl_->programs->hasPendingSubmit() &&
+        if (program_budget && maintenance && impl_->frames.empty() && !impl_->programs->hasPendingSubmit() &&
             !impl_->thread.sync->isStopping())
         {
             // A finite renderer-owned empty frame advances its own fences and retires old draw attachments.
@@ -542,7 +661,10 @@ namespace lux::editor::rendering
                 const auto attachment = builder.emplaceAttachment<detail::FrameDrawData>(detail::kUiDrawAttachment);
                 builder.push(lux::render::opcodes::CommandOp, impl_->thread.submit_operation,
                              detail::SubmitDrawPayload{attachment});
-                static_cast<void>(impl_->programs->trySubmitPrepared(program));
+                if (impl_->programs->trySubmitPrepared(program))
+                {
+                    --program_budget;
+                }
             }
             catch (const std::bad_alloc &)
             {
@@ -554,28 +676,52 @@ namespace lux::editor::rendering
     RenderResult<void> EditorRenderer::beginClose() noexcept
     {
         if (auto check = impl_->check(); !check)
+        {
             return check;
+        }
         impl_->closing = true;
         impl_->upload_queue->stop();
         return {};
     }
     RenderResult<ERenderClose> EditorRenderer::advanceClose() noexcept
     {
+        std::size_t replies = 64;
+        std::size_t programs = 64;
+        return advanceClose(replies, programs);
+    }
+
+    RenderResult<ERenderClose> EditorRenderer::advanceClose(std::size_t &reply_budget,
+                                                            std::size_t &program_budget) noexcept
+    {
         if (auto check = impl_->check(); !check)
+        {
             return lux::cxx::unexpected(check.error());
+        }
         if (!impl_->closing)
+        {
             return fail(ERendererError::BUSY);
-        if (auto result = poll(64); !result)
+        }
+        const auto result = poll(reply_budget, program_budget);
+        if (!result)
+        {
             return lux::cxx::unexpected(result.error());
+        }
+        reply_budget -= *result;
         const bool has_views = std::any_of(impl_->views.begin(), impl_->views.end(), [](auto *view) { return view; });
         if (impl_->leases || has_views)
+        {
             return ERenderClose::PENDING;
+        }
         // The stopped backend has already destroyed its GPU resources. Deferred release counters
         // and an unpublished endpoint flag cannot produce replies after that terminal fact.
         if (impl_->terminal_frames_released && impl_->upload_queue->empty())
+        {
             return ERenderClose::COMPLETE;
+        }
         if (!impl_->upload_queue->empty() || !impl_->frames.empty() || impl_->programs->hasPendingSubmit())
+        {
             return ERenderClose::PENDING;
+        }
         const auto released = impl_->control->flushDeferredReleases();
         if (!released)
         {
@@ -585,25 +731,37 @@ namespace lux::editor::rendering
         }
         if (!*released || impl_->control->pendingSceneReleases() || impl_->control->pendingViewReleases() ||
             impl_->control->pendingTargetReleases())
+        {
             return ERenderClose::PENDING;
+        }
         impl_->thread.sync->requestStop();
         return impl_->thread.stopped.load(std::memory_order_acquire) ? ERenderClose::COMPLETE : ERenderClose::PENDING;
     }
     RenderResult<void> EditorRenderer::joinStopped() noexcept
     {
         if (auto check = impl_->check(); !check)
+        {
             return check;
+        }
         if (impl_->joined)
+        {
             return {};
+        }
         if (!impl_->thread.stopped.load(std::memory_order_acquire) || impl_->leases ||
             std::any_of(impl_->views.begin(), impl_->views.end(), [](auto *view) { return view; }))
+        {
             return fail(ERendererError::BUSY);
+        }
         if (impl_->worker.joinable())
+        {
             impl_->worker.join();
+        }
         impl_->frames.cancel();
         impl_->programs.reset();
         if (!clearJoinedRing(impl_->thread.frames->requests))
+        {
             return fail(ERendererError::CONTRACT_FAILURE);
+        }
         impl_->joined = true;
         return {};
     }
@@ -611,10 +769,14 @@ namespace lux::editor::rendering
         acquire() noexcept
     {
         if (impl_->owner != std::this_thread::get_id() || impl_->leases == (std::numeric_limits<std::size_t>::max)())
+        {
             return lux::cxx::unexpected(
                 lux::scene::RenderRuntimeFailure{lux::scene::ERenderRuntimeError::ACTIVATION_FAILURE});
+        }
         if (state() != ERendererState::READY)
+        {
             return lux::cxx::unexpected(lux::scene::RenderRuntimeFailure{lux::scene::ERenderRuntimeError::STOPPING});
+        }
         ++impl_->leases;
         return makeLease();
     }

@@ -50,13 +50,12 @@ inline void checkGeneratedTransformDragging(lux::editor::scene::SceneEditor &doc
             const auto high = ImGui::GetItemRectMax();
             const auto &style = ImGui::GetStyle();
             const float label = ImGui::CalcTextSize("X").x;
-            const float width =
-                (high.x - low.x - 3 * (label + style.ItemInnerSpacing.x) - 2 * style.ItemSpacing.x) / 3;
+            const float width = (high.x - low.x - 3 * (label + style.ItemInnerSpacing.x) - 2 * style.ItemSpacing.x) / 3;
             const float y = (low.y + high.y) / 2 - 2 * (ImGui::GetFrameHeight() + 2 * style.CellPadding.y);
             for (std::size_t axis{}; axis < centers.size(); ++axis)
             {
-                centers[axis] =
-                    {low.x + width / 2 + axis * (width + label + style.ItemInnerSpacing.x + style.ItemSpacing.x), y};
+                centers[axis] = {
+                    low.x + width / 2 + axis * (width + label + style.ItemInnerSpacing.x + style.ItemSpacing.x), y};
             }
             assert(interaction.finishDraw());
             assert(!interaction.error[0]);
@@ -91,7 +90,7 @@ inline void checkGeneratedTransformDragging(lux::editor::scene::SceneEditor &doc
             draw();
             ui.feedInput(lux::ui::UiPointerButton{lux::ui::EPointerButton::LEFT, true});
             draw();
-            assert(pane.interaction.active());
+            assert(!pane.interaction.active());
             ui.feedInput(lux::ui::UiPointerMove{{center.x + 60, center.y}});
             draw();
             const Eigen::Vector3d live =
@@ -100,8 +99,8 @@ inline void checkGeneratedTransformDragging(lux::editor::scene::SceneEditor &doc
             const Eigen::Vector3d world =
                 static_cast<const World *>(document.component(pane.object, lux::cxx::typeToken<World>()))
                     ->value.translation();
-            std::printf("generated-drag object=%zu axis=%zu before=%g live=%g world=%g\n", index, axis,
-                        original[axis], live[axis], world[axis]);
+            std::printf("generated-drag object=%zu axis=%zu before=%g live=%g world=%g\n", index, axis, original[axis],
+                        live[axis], world[axis]);
             assert(live[axis] != original[axis] && world.isApprox(live, 1e-10));
             ui.feedInput(lux::ui::UiPointerButton{lux::ui::EPointerButton::LEFT, false});
             draw();
@@ -147,11 +146,8 @@ inline void checkSceneEditing(lux::editor::scene::SceneEditor &document)
         "asset-catalog: rows=%zu revision=%llu exact foreign/stale/type rejection; malformed payload retained\n",
         catalog.catalog().size(), static_cast<unsigned long long>(catalog.catalogRevision()));
     auto row =
-        std::ranges::find_if(document.objects(),
-                             [&](const auto &item)
-                             {
-                                 return document.component(item.object, lux::cxx::typeToken<Transform>()) != nullptr;
-                             });
+        std::ranges::find_if(document.objects(), [&](const auto &item)
+                             { return document.component(item.object, lux::cxx::typeToken<Transform>()) != nullptr; });
     assert(row != document.objects().end());
     const auto object = row->object;
     const auto read = [&]() -> Eigen::Vector3d
@@ -159,10 +155,7 @@ inline void checkSceneEditing(lux::editor::scene::SceneEditor &document)
         return static_cast<const Transform *>(document.component(object, lux::cxx::typeToken<Transform>()))
             ->translation;
     };
-    const auto field = [](auto &value) noexcept
-    {
-        return &value.translation;
-    };
+    const auto field = [](auto &value) noexcept { return &value.translation; };
     const auto original = read();
     const Eigen::Vector3d first = original + Eigen::Vector3d{1, 2, 3};
     const Eigen::Vector3d second = original + Eigen::Vector3d{4, 5, 6};
@@ -200,20 +193,32 @@ inline void checkSceneEditing(lux::editor::scene::SceneEditor &document)
     assert(document.redo() && read() == first);
     assert(document.undo() && read() == original);
 
+    const auto update = [&](const scene::FieldEditToken &token, const Eigen::Vector3d &next)
+    {
+        if (!document.fieldEditWritable(token))
+        {
+            return document.fieldEdited(token);
+        }
+        auto *live = const_cast<Transform *>(
+            static_cast<const Transform *>(document.component(object, lux::cxx::typeToken<Transform>())));
+        live->translation = next;
+        return document.fieldEdited(token);
+    };
     const auto before_preview = *document.historyView();
-    auto begun = document.beginPreview<Transform, Eigen::Vector3d>(*document.writeTarget(object), "inspector-A",
-                                                                   "Transform3D.translation", "Translation", field);
+    auto begun = document.beginFieldEdit<Transform, Eigen::Vector3d>(*document.writeTarget(object), "inspector-A",
+                                                                     "Transform3D.translation", "Translation", field);
     assert(begun);
-    assert(document.updatePreview(*begun, first) && read() == first);
-    assert(document.updatePreview(*begun, second) && read() == second);
+    assert(update(*begun, first) && read() == first);
+    assert(update(*begun, second) && read() == second);
     auto wrong = *begun;
     ++wrong.sequence;
-    auto stale_gesture = document.updatePreview(wrong, original);
+    auto stale_gesture = update(wrong, original);
     assert(!stale_gesture && stale_gesture.error().code == editing::EEditError::STALE_TARGET && read() == second);
-    auto bad_preview = document.updatePreview(*begun, invalid);
-    assert(!bad_preview && bad_preview.error().code == editing::EEditError::PRECONDITION_FAILED && read() == second);
+    auto bad_preview = update(*begun, invalid);
+    assert(!bad_preview && bad_preview.error().code == editing::EEditError::PRECONDITION_FAILED && read() == original);
     assert(document.historyView()->history.revision == before_preview.history.revision);
-    auto finished = document.commitPreview(*begun);
+    assert(update(*begun, second));
+    auto finished = document.finishFieldEdit(*begun);
     assert(finished && read() == second);
     assert(document.historyView()->history.entry_count == 1 && document.historyView()->history.cursor == 1);
     assert(document.undo() && read() == original);
@@ -224,13 +229,13 @@ inline void checkSceneEditing(lux::editor::scene::SceneEditor &document)
     assert(document.historyView()->history.revision == before_noop.history.revision);
     assert(document.historyView()->redo == editing::EHistoryActionAvailability::READY);
 
-    auto cancelled = document.beginPreview<Transform, Eigen::Vector3d>(*document.writeTarget(object), "inspector-B",
-                                                                       "Transform3D.translation", "Translation", field);
-    assert(cancelled && document.updatePreview(*cancelled, second));
+    auto cancelled = document.beginFieldEdit<Transform, Eigen::Vector3d>(
+        *document.writeTarget(object), "inspector-B", "Transform3D.translation", "Translation", field);
+    assert(cancelled && update(*cancelled, second));
     auto undo = document.undo();
-    assert(undo && undo->outcome == editing::EHistoryTargetOutcome::TRANSIENT_CANCELLED && read() == original);
-    assert(document.historyView()->history.revision == before_noop.history.revision);
-    auto late = document.commitPreview(*cancelled);
+    assert(undo && undo->outcome == editing::EHistoryTargetOutcome::CONTENT_APPLIED && read() == original);
+    assert(document.historyView()->history.revision.value == before_noop.history.revision.value + 2);
+    auto late = document.finishFieldEdit(*cancelled);
     assert(!late && late.error().code == editing::EEditError::STALE_TARGET);
     assert(document.redo() && read() == second);
     assert(document.undo() && read() == original);

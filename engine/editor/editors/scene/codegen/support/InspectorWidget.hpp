@@ -43,6 +43,28 @@ namespace lux::editor::gui
         {
             return {changed, changed, changed, false};
         }
+        inline lux::ui::EditResult editString(const char *label, std::string &value, InspectorInteraction &state)
+        {
+            struct Input final
+            {
+                std::string &value;
+                InspectorInteraction &state;
+            } input{value, state};
+            const auto callback = [](ImGuiInputTextCallbackData *data) -> int
+            {
+                auto &input = *static_cast<Input *>(data->UserData);
+                // CallbackEdit runs before imgui_stdlib copies the changed buffer
+                // into the actual string, so the document still contains before.
+                if (!input.state.beforeWrite())
+                {
+                    data->DeleteChars(0, data->BufTextLen);
+                    data->InsertChars(0, input.value.data(), input.value.data() + input.value.size());
+                }
+                return 0;
+            };
+            return edited(ImGui::InputText(label, &value, ImGuiInputTextFlags_CallbackEdit, callback, &input));
+        }
+
         struct FieldScope final
         {
             bool &read_only;
@@ -149,7 +171,7 @@ namespace lux::editor::gui
                 ImGui::BeginDisabled(selected == last);
                 const bool next = ImGui::SmallButton("Next page");
                 ImGui::EndDisabled();
-                if ((previous || next) && state.finish(state.document, true))
+                if ((previous || next) && state.finish(state.document))
                 {
                     selected = previous ? selected - 1 : selected + 1;
                 }
@@ -212,6 +234,10 @@ namespace lux::editor::gui
             if (!mutation(prepared))
             {
                 state.fail("The container change is invalid or duplicates an existing key.");
+                return false;
+            }
+            if (!state.beforeWrite())
+            {
                 return false;
             }
             static_assert(std::is_nothrow_swappable_v<Container>);

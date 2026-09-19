@@ -26,11 +26,8 @@ namespace lux::scene
                                        .expected_type = lux::cxx::typeToken<SceneRenderInput>(),
                                        .optional = false}};
 
-        [[nodiscard]] SceneSystemBuildFailure failure(
-            ESceneSystemBuildError code,
-            system::SystemInstanceId system,
-            std::uint64_t subject_hash = 0U
-        ) noexcept
+        [[nodiscard]] SceneSystemBuildFailure failure(ESceneSystemBuildError code, system::SystemInstanceId system,
+                                                      std::uint64_t subject_hash = 0U) noexcept
         {
             return SceneSystemBuildFailure{code, system, {}, subject_hash};
         }
@@ -91,24 +88,19 @@ namespace lux::scene
     {
         return last_publish_;
     }
-    bool RenderSystem::waitForCapacity(std::stop_token stop) const noexcept
-    {
-        return sync_->waitForCapacity(stop);
-    }
 
     SceneSystemRegistration builtinRenderSystemRegistration() noexcept
     {
-        return SceneSystemRegistration{
-            .type = system::systemTypeId(RenderSystem::Description.canonical_name),
-            .cpp_type = lux::cxx::typeToken<RenderSystem>(),
-            .description = &RenderSystem::Description,
-            .configuration = lux::serialization::makePortableValueCodec<RenderSystemConfiguration>(),
-            .observations = {},
-            .requirements = RenderRequirements,
-            .connections = {},
-            .project_object = sceneSystemObjectProjection<RenderSystem>(),
-            .install = &installBuiltinRenderSystem
-        };
+        return SceneSystemRegistration{.type = system::systemTypeId(RenderSystem::Description.canonical_name),
+                                       .cpp_type = lux::cxx::typeToken<RenderSystem>(),
+                                       .description = &RenderSystem::Description,
+                                       .configuration =
+                                           lux::serialization::makePortableValueCodec<RenderSystemConfiguration>(),
+                                       .observations = {},
+                                       .requirements = RenderRequirements,
+                                       .connections = {},
+                                       .project_object = sceneSystemObjectProjection<RenderSystem>(),
+                                       .install = &installBuiltinRenderSystem};
     }
 
     std::span<const SceneSystemRegistration> builtinRenderSystemRegistrations() noexcept

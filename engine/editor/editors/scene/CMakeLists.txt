@@ -20,7 +20,8 @@ target_link_libraries(editor_scene PUBLIC
     lux::engine::scene::scene_world_materialization lux::engine::process::world_loading
     lux::engine::scene::scene_asset lux::engine::world::world_asset lux::engine::simulation::simulation_asset
     lux::engine::simulation::ecs::hierarchy
-    PRIVATE lux::engine::scene::scene_presentation
+    PRIVATE lux::cxx::concurrent lux::engine::simulation::transform_system
+        lux::engine::scene::scene_render_meta lux::engine::function::render_client_meta
 )
 component_add_transitive_commands(editor_scene
     "find_package(lux-engine-editor-core REQUIRED COMPONENTS editor_core)"
@@ -48,7 +49,7 @@ generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_SCENE_UI_LIBRARY
     GENERATE_FILE_PATH lux/engine/editor/scene/ui/visibility.h)
 add_component(COMPONENT_NAME editor_scene_ui NAMESPACE lux::engine::editor OUTPUT_NAME lux_engine_editor_scene_ui
     SOURCE_FILES src/ui/SceneDocumentProvider.cpp
-        src/ui/SceneLayout.cpp src/ui/SceneCamera.cpp src/ui/ScenePane.cpp src/ui/RunPane.cpp
+        src/ui/SceneLayout.cpp src/ui/SceneCamera.cpp src/ui/ScenePane.cpp
         src/ui/OutlinerPane.cpp src/ui/InspectorPane.cpp src/ui/ResourcePane.cpp
         src/ui/FirstPartyComponentBindings.cpp src/ui/CodegenInput.cpp)
 set_property(TARGET editor_scene_ui PROPERTY LUX_ARCH_LAYER EDITOR)
@@ -76,10 +77,10 @@ if(WIN32)
     target_link_libraries(editor_scene_ui PRIVATE imm32 comdlg32)
 endif()
 include_component_cmake_scripts(meta)
-engine_add_type_runtime_info(NAME editor_gui_transform_meta
-    TARGET_FILES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/builtin/transform/include/lux/engine/simulation/TransformSystem.hpp
-    REGISTER_FUNC_NAME lux_editor_gui_transform)
-engine_target_add_type_runtime_info(TARGET editor_scene_ui METAS editor_gui_transform_meta
+engine_add_type_runtime_info(NAME editor_scene_transform_meta
+    TARGET_FILES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/builtin_systems/transform/include/lux/engine/simulation/TransformSystem.hpp
+    REGISTER_FUNC_NAME lux_editor_scene_transform)
+engine_target_add_type_runtime_info(TARGET editor_scene METAS editor_scene_transform_meta
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_editor_imgui_inspector_codegen.cmake)
 component_add_cmake_scripts(editor_scene_ui

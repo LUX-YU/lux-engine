@@ -64,7 +64,7 @@ namespace lux::editor
       public:
         virtual ~DocumentOpening();
         virtual void cancel() noexcept = 0;
-        virtual void poll() = 0;
+        virtual void poll(PollBudget &) = 0;
         [[nodiscard]] virtual bool settled() const noexcept = 0;
         [[nodiscard]] virtual EditorResult<std::unique_ptr<DocumentEditor>> take() = 0;
     };

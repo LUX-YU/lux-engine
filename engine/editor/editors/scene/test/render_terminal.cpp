@@ -62,37 +62,17 @@ int main(int argc, char **argv)
     assert(input);
     auto view = (*renderer)->openView(input->sceneId(), {{320, 240}, true, 2048});
     assert(view);
-    std::atomic_bool produced{}, ended{};
-    auto work = stdexec::then(stdexec::schedule(runtime->cpu()),
-                              [&, input = std::move(*input)]() mutable noexcept
-                              {
-                                  simulation::ecs::Registry registry;
-                                  auto pipeline = input.makePipeline(registry, fixture.description.systemAt(0));
-                                  assert(pipeline);
-                                  const auto entity = registry.create();
-                                  registry.emplace<simulation::ecs::WorldTransform3D>(entity);
-                                  registry.emplace<simulation::ecs::Light3D>(entity);
-                                  assert((*pipeline)->tryPublish() == scene::ERenderPublishResult::FULL_SYNC_PUBLISHED);
-                                  if (pending)
-                                  {
-                                      registry.patch<simulation::ecs::Light3D>(entity, [](auto &light)
-                                                                               { light.value.intensity = 2; });
-                                      assert((*pipeline)->tryPublish() == scene::ERenderPublishResult::BACKPRESSURED);
-                                  }
-                                  produced.store(true, std::memory_order_release);
-                                  if (pending)
-                                  {
-                                      assert(!(*pipeline)->waitForCapacity(fixture.stop.get_token()));
-                                  }
-                                  pipeline->reset();
-                                  ended.store(true, std::memory_order_release);
-                              });
-    assert(fixture.task.start(stdexec::upon_stopped(
-        stdexec::upon_error(std::move(work), [](process::EExecutionError) noexcept { assert(false); }),
-        []() noexcept { assert(false); })));
-    while (!produced.load(std::memory_order_acquire))
+    simulation::ecs::Registry registry;
+    auto pipeline = input->makePipeline(registry, fixture.description.systemAt(0));
+    assert(pipeline);
+    const auto entity = registry.create();
+    registry.emplace<simulation::ecs::WorldTransform3D>(entity);
+    registry.emplace<simulation::ecs::Light3D>(entity);
+    assert((*pipeline)->tryPublish() == scene::ERenderPublishResult::FULL_SYNC_PUBLISHED);
+    if (pending)
     {
-        poll();
+        registry.patch<simulation::ecs::Light3D>(entity, [](auto &light) { light.value.intensity = 2; });
+        assert((*pipeline)->tryPublish() == scene::ERenderPublishResult::BACKPRESSURED);
     }
     if (!pending)
     {
@@ -111,18 +91,8 @@ int main(int argc, char **argv)
     lease->programs().requestStop();
     fixture.binding->poll(0); // Lifecycle observation must also work with a zero packet budget.
     assert(staged_retired == 0 && (*renderer)->statistics().runtime_leases == 2);
-#ifdef D3_EXPECT_OLD_TERMINAL
-    // The old consumer does not wake its producer on STOPPING. End it explicitly
-    // so the following failure isolates Binding retirement after the backend
-    // ends.
-    fixture.stop.request_stop();
-#endif
-    while (!ended.load(std::memory_order_acquire))
-    {
-        poll();
-        fixture.binding->poll(0);
-    }
-    assert(stdexec::sync_wait(fixture.task.close()));
+    assert((*pipeline)->tryPublish() == scene::ERenderPublishResult::FAILED);
+    pipeline->reset();
     assert((*view)->beginClose());
     while (*(*view)->advanceClose() != editor::rendering::ERenderClose::COMPLETE)
     {

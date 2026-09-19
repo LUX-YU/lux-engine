@@ -17,6 +17,7 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderBinding.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderSchema.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSyncPipeline.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystemMetadata.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystem.cpp
 )
 engine_target_add_static_type_info(

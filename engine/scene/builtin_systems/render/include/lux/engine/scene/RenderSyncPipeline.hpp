@@ -9,7 +9,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <stop_token>
 #include <vector>
 
 namespace lux::scene
@@ -18,7 +17,7 @@ namespace lux::scene
     {
         struct RenderSyncStorage;
     }
-    class SceneMetaManager;
+    class RenderSystemMetadata;
     class SceneRenderInput;
     class SceneRenderBinding;
     class RenderSystem;
@@ -36,14 +35,6 @@ namespace lux::scene
         FAILED
     };
 
-    enum class ERenderForwardResult : std::uint8_t
-    {
-        NO_UPDATE,
-        FORWARDED,
-        BACKPRESSURED,
-        STOPPING
-    };
-
     enum class ERenderSyncPipelineError : std::uint8_t
     {
         INVALID_STAGE_LIST,
@@ -59,7 +50,7 @@ namespace lux::scene
 
     struct RenderSyncStatistics final
     {
-        std::uint64_t published{}; // Accepted into the Scene-to-Main ring.
+        std::uint64_t published{}; // Prepared and retained by the Main-owned Binding.
         std::uint64_t forwarded{}; // Accepted by Main's Program client; not GPU completion.
         std::uint64_t backpressured{};
         std::uint32_t pending{};
@@ -68,53 +59,24 @@ namespace lux::scene
                                              // counted as forwarded.
     };
 
-    // Main owns this endpoint. It never accesses stages or a Scene Registry.
-    // FORWARDED means Program client acceptance, not renderer adoption or GPU completion.
-    class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderSyncConsumer final
-    {
-      public:
-        ~RenderSyncConsumer();
-        RenderSyncConsumer(RenderSyncConsumer &&) noexcept;
-        RenderSyncConsumer &operator=(RenderSyncConsumer &&) noexcept;
-        RenderSyncConsumer(const RenderSyncConsumer &) = delete;
-        RenderSyncConsumer &operator=(const RenderSyncConsumer &) = delete;
-
-        [[nodiscard]] ERenderForwardResult tryForwardUpdate(render::RenderProgramSession &session) noexcept;
-        [[nodiscard]] bool hasPendingUpdate() const noexcept;
-        [[nodiscard]] bool producerClosed() const noexcept;
-
-      private:
-        friend class RenderSyncPipeline;
-        friend class SceneRenderBinding;
-        explicit RenderSyncConsumer(std::shared_ptr<detail::RenderSyncStorage> storage) noexcept;
-        void close() noexcept;
-        void stop() noexcept;
-        void retireAfterBackendStopped() noexcept;
-        std::shared_ptr<detail::RenderSyncStorage> storage_;
-        bool forward_pending_{};
-    };
-
     class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderSyncPipeline final
     {
-    public:
+      public:
         using StageList = std::vector<std::unique_ptr<RenderSyncStage>>;
 
         ~RenderSyncPipeline() noexcept;
-        RenderSyncPipeline(const RenderSyncPipeline&) = delete;
-        RenderSyncPipeline& operator=(const RenderSyncPipeline&) = delete;
-        RenderSyncPipeline(RenderSyncPipeline&&) = delete;
-        RenderSyncPipeline& operator=(RenderSyncPipeline&&) = delete;
+        RenderSyncPipeline(const RenderSyncPipeline &) = delete;
+        RenderSyncPipeline &operator=(const RenderSyncPipeline &) = delete;
+        RenderSyncPipeline(RenderSyncPipeline &&) = delete;
+        RenderSyncPipeline &operator=(RenderSyncPipeline &&) = delete;
 
         [[nodiscard]] ERenderPublishResult tryPublish() noexcept;
         void requestFullSync() noexcept;
-        // Scene owner only. Stop interrupts even when Main cannot consume.
-        [[nodiscard]] bool waitForCapacity(std::stop_token stop) const noexcept;
 
       private:
         friend class SceneRenderInput;
         [[nodiscard]] static lux::cxx::expected<std::unique_ptr<RenderSyncPipeline>, RenderSyncPipelineFailure> create(
-            StageList stages, std::shared_ptr<detail::RenderSyncStorage> storage,
-            std::shared_ptr<const SceneMetaManager> metadata);
+            StageList stages, detail::RenderSyncStorage &storage, std::shared_ptr<const RenderSystemMetadata> metadata);
         struct Impl;
         explicit RenderSyncPipeline(std::unique_ptr<Impl> impl) noexcept;
         std::unique_ptr<Impl> impl_;

@@ -9,29 +9,34 @@ namespace lux::simulation
     {
         struct SimulationCommandSlot final
         {
+            ecs::EcsCommandBuffer *commands{};
             std::size_t producer{};
             bool active{};
         };
-    }
+    } // namespace detail
 
     // Prepared authority borrowed by a System, active only in its declared task/Hook region.
     class SimulationCommandProducer final
     {
-    public:
+      public:
         SimulationCommandProducer() noexcept = default;
         [[nodiscard]] lux::cxx::expected<ecs::EcsCommandWriter, ecs::EcsCommandFailure> begin(
             ecs::EEcsCommandPolicy policy = ecs::EEcsCommandPolicy::ABORT_BATCH) const noexcept
         {
-            if (commands_ == nullptr || slot_ == nullptr || !slot_->active)
+            if (slot_ == nullptr || slot_->commands == nullptr || !slot_->active)
+            {
                 return lux::cxx::unexpected(ecs::EcsCommandFailure{ecs::EEcsCommandError::STALE_WRITER});
-            return commands_->begin(slot_->producer, policy);
+            }
+            return slot_->commands->begin(slot_->producer, policy);
         }
-    private:
-        SimulationCommandProducer(ecs::EcsCommandBuffer* commands, detail::SimulationCommandSlot* slot) noexcept
-            : commands_(commands), slot_(slot)
-        {}
-        ecs::EcsCommandBuffer* commands_{};
-        detail::SimulationCommandSlot* slot_{};
+
+      private:
+        SimulationCommandProducer(ecs::EcsCommandBuffer *commands, detail::SimulationCommandSlot *slot) noexcept
+            : slot_(slot)
+        {
+            slot_->commands = commands;
+        }
+        detail::SimulationCommandSlot *slot_{};
         friend class SimulationBuilder;
     };
-}
+} // namespace lux::simulation

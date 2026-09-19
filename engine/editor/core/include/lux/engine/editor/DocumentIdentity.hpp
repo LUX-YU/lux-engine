@@ -30,5 +30,6 @@ namespace lux::editor
         std::size_t object_messages{64};
         std::size_t render_replies{64};
         std::size_t document_steps{32};
+        std::size_t render_programs{64};
     };
 } // namespace lux::editor

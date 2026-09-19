@@ -38,13 +38,12 @@ namespace lux::editor::scene
         SIMULATION,
         RESOURCES,
         STABLE,
-        PUBLICATION,
-        PRESENTATION
+        PUBLICATION
     };
 
     struct RunCompletedPhases final
     {
-        std::uint64_t simulation{}, stable{}, publication{}, presentation{};
+        std::uint64_t simulation{}, stable{}, publication{};
     };
 
     struct RunStatus final

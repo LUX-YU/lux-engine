@@ -2,7 +2,7 @@
 
 #include <lux/engine/scene/RenderRuntime.hpp>
 #include <lux/engine/scene/RenderSyncPipeline.hpp>
-#include <lux/engine/scene/SceneMetaManager.hpp>
+#include <lux/engine/scene/RenderSystemMetadata.hpp>
 
 namespace lux::scene
 {
@@ -22,8 +22,7 @@ namespace lux::scene
         render::RenderError render;
     };
 
-    // Move to the actual Scene owner before installation. No Main client or lease
-    // is reachable through this object. Binding must outlive the Scene producer.
+    // Main-only installation input. Binding outlives the installed Scene system.
     class LUX_ENGINE_SCENE_RENDER_PUBLIC SceneRenderInput final
     {
       public:
@@ -45,18 +44,18 @@ namespace lux::scene
         std::unique_ptr<Data> data_;
     };
 
-    // Main-only owner of render scene creation, feature attachment and consumption.
+    // Main-only owner of render scene creation, feature attachment and retained updates.
     // The existing renderer reply pump advances requests; poll never blocks or drains it.
     class LUX_ENGINE_SCENE_RENDER_PUBLIC SceneRenderBinding final
     {
       public:
         [[nodiscard]] static lux::cxx::expected<std::unique_ptr<SceneRenderBinding>, SceneRenderBindingFailure> begin(
-            RenderRuntime &runtime, SceneSystemView description, std::shared_ptr<const SceneMetaManager> metadata);
+            RenderRuntime &runtime, SceneSystemView description, std::shared_ptr<const RenderSystemMetadata> metadata);
         ~SceneRenderBinding();
         SceneRenderBinding(const SceneRenderBinding &) = delete;
         SceneRenderBinding &operator=(const SceneRenderBinding &) = delete;
 
-        // Returns the number of StateUpdate packets accepted by Main's Program client.
+        // Returns accepted Program submissions, including finite close-drain submissions.
         std::size_t poll(std::size_t packet_budget);
         [[nodiscard]] RenderSyncStatistics statistics() const noexcept;
         [[nodiscard]] ESceneRenderBindingState state() const noexcept;
@@ -68,7 +67,7 @@ namespace lux::scene
         [[nodiscard]] lux::cxx::expected<SceneRenderInput, SceneRenderBindingFailure> takeInput();
         [[nodiscard]] bool hasPendingUpdate() const noexcept;
         // Caller first closes views (CPU references and GPU watermark), stops and
-        // joins the producer. CLOSED records release publication, not GPU completion.
+        // destroys the producer. CLOSED records release publication, not GPU completion.
         void requestClose() noexcept;
 
       private:

@@ -10,6 +10,7 @@
 #include <lux/engine/object/Object.hpp>
 #include <lux/engine/object/ObjectAnnotations.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
+#include <lux/engine/scene/RenderSystemMetadata.hpp>
 #include <lux/engine/scene/SceneMetaManager.hpp>
 #include <lux/engine/world/WorldObjectId.hpp>
 
@@ -32,6 +33,15 @@ namespace lux::scene
 namespace lux::editor::scene
 {
     inline constexpr std::string_view kSceneDocumentType = "lux.editor.scene.v1";
+
+    struct SceneEditorMetadata final
+    {
+        std::shared_ptr<const lux::scene::SceneMetaManager> scene;
+        std::shared_ptr<const lux::scene::RenderSystemMetadata> render;
+    };
+
+    [[nodiscard]] LUX_EDITOR_SCENE_PUBLIC EditorResult<SceneEditorMetadata> sceneMetadata(
+        std::span<const lux::simulation::ecs::ComponentSchema> additional = {});
 
     struct SceneObjectRow final
     {
@@ -78,7 +88,7 @@ namespace lux::editor::scene
         std::variant<ModelPlacementPending, ModelPlacementSucceeded, EditorFailure, ModelPlacementCancelled>;
 
     class LUX_EDITOR_SCENE_PUBLIC LUX_OBJECT() SceneEditor final : public lux::object::Object<SceneEditor>,
-                                                                       public DocumentEditor
+                                                                   public DocumentEditor
     {
       public:
         static const signal_type<SelectionNotice> selectionChanged;
@@ -88,9 +98,9 @@ namespace lux::editor::scene
         static const signal_type<ModelPlacementId> modelPlacementFinished;
 
         [[nodiscard]] static EditorResult<std::unique_ptr<SceneEditor>> open(
-            NativeScene &, Project &, process::ExecutionRuntime &, rendering::EditorRenderer &,
-            std::shared_ptr<const lux::scene::SceneMetaManager>, lux::scene::SceneRenderInput *,
-            std::unique_ptr<lux::scene::SceneRenderBinding> &, std::shared_ptr<detail::SceneRunSlot>);
+            NativeScene &, Project &, process::ExecutionRuntime &, rendering::EditorRenderer &, SceneEditorMetadata,
+            lux::scene::SceneRenderInput *, std::unique_ptr<lux::scene::SceneRenderBinding> &,
+            std::shared_ptr<detail::SceneRunSlot>);
         ~SceneEditor() override;
 
         [[nodiscard]] EditorResult<RunId> play(std::chrono::nanoseconds fixed_step = std::chrono::milliseconds(16));
@@ -144,18 +154,14 @@ namespace lux::editor::scene
                                                                          std::string_view label, Access, const Value &);
 
         template <class Component, class Value, class Access>
-        [[nodiscard]] editing::EditResult<PreviewToken> beginPreview(SceneWriteTarget, std::string origin,
-                                                                     std::string_view field, std::string_view label,
-                                                                     Access);
+        [[nodiscard]] editing::EditResult<FieldEditToken> beginFieldEdit(SceneWriteTarget, std::string origin,
+                                                                         std::string_view field, std::string_view label,
+                                                                         Access);
 
-        template <class Value>
-        [[nodiscard]] editing::EditResult<void> updatePreview(const PreviewToken &token, const Value &value)
-        {
-            return updatePreviewValue(token, lux::cxx::typeToken<Value>(), &value);
-        }
-
-        [[nodiscard]] editing::EditResult<editing::ApplyResult> commitPreview(const PreviewToken &);
-        [[nodiscard]] editing::EditResult<void> cancelPreview(const PreviewToken &);
+        [[nodiscard]] bool fieldEditWritable(const FieldEditToken &) const noexcept;
+        [[nodiscard]] editing::EditResult<void> fieldEdited(const FieldEditToken &);
+        [[nodiscard]] editing::EditResult<editing::ApplyResult> finishFieldEdit(const FieldEditToken &);
+        [[nodiscard]] editing::EditResult<void> finishFieldEdits();
         [[nodiscard]] std::shared_ptr<const SceneResourceSnapshot> resources() const noexcept;
         [[nodiscard]] SceneResult<void> retryResource(const ResourceRequestKey &);
         [[nodiscard]] const Project &project() const noexcept;
@@ -182,12 +188,10 @@ namespace lux::editor::scene
         [[nodiscard]] editing::EditResult<void> checkFieldSize(std::size_t) const noexcept;
         [[nodiscard]] editing::EditResult<void> validateFieldValue(lux::cxx::TypeToken, const void *,
                                                                    const void *) const;
-        void fieldChanged(const SceneWriteTarget &, lux::cxx::TypeToken, bool preview) noexcept;
+        void fieldChanged(const SceneWriteTarget &, lux::cxx::TypeToken, bool in_progress) noexcept;
         [[nodiscard]] editing::EditResult<editing::ApplyResult> executeField(editing::EditOperationPtr &);
-        [[nodiscard]] editing::EditResult<PreviewToken> adoptPreview(std::string origin,
-                                                                     std::unique_ptr<detail::SceneFieldEdit> &);
-        [[nodiscard]] editing::EditResult<void> updatePreviewValue(const PreviewToken &, lux::cxx::TypeToken,
-                                                                   const void *);
+        [[nodiscard]] editing::EditResult<FieldEditToken> adoptFieldEdit(std::string origin,
+                                                                         std::unique_ptr<detail::SceneFieldEdit> &);
         void beginClose() noexcept;
         [[nodiscard]] editing::EditResult<void> checkEditAdmission() const noexcept;
         struct Data;
@@ -195,6 +199,7 @@ namespace lux::editor::scene
         std::unique_ptr<Data> data_;
     };
 
-    [[nodiscard]] LUX_EDITOR_SCENE_PUBLIC DocumentRegistration sceneDocumentRegistration(
-        process::ExecutionRuntime &, rendering::EditorRenderer &, std::shared_ptr<const lux::scene::SceneMetaManager>);
+    [[nodiscard]] LUX_EDITOR_SCENE_PUBLIC DocumentRegistration sceneDocumentRegistration(process::ExecutionRuntime &,
+                                                                                         rendering::EditorRenderer &,
+                                                                                         SceneEditorMetadata);
 } // namespace lux::editor::scene

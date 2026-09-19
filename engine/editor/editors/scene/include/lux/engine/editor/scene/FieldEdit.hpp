@@ -312,10 +312,15 @@ namespace lux::editor::scene
         {
           public:
             FieldEdit(SceneEditor &owner, SceneWriteTarget target, std::string_view field, std::string_view label,
-                      Access access, const Value &before, const Value &after, bool preview)
+                      Access access, const Value &before, const Value &after, bool already_applied)
                 : owner_(owner), target_(target), field_(field), label_(label), access_(std::move(access)),
-                  before_(before), after_(after), preview_(preview)
+                  before_(before), already_applied_(already_applied)
             {
+                if (!already_applied_)
+                {
+                    after_ = after;
+                    captured_ = true;
+                }
             }
 
             editing::HistoryId historyId() const noexcept override
@@ -347,8 +352,8 @@ namespace lux::editor::scene
                     return lux::cxx::unexpected(live.error());
                 }
                 const bool backwards = context.direction == editing::EDirection::BACKWARD;
-                const bool preview_commit = preview_ && context.kind == editing::EApplyKind::EXECUTE;
-                const auto &expected = backwards || preview_commit ? after_ : before_;
+                const bool adopt_existing = already_applied_ && context.kind == editing::EApplyKind::EXECUTE;
+                const auto &expected = backwards || adopt_existing ? after_ : before_;
                 const auto &next = backwards ? before_ : after_;
                 if (!FieldValue<Value>::equal(**live, expected))
                 {
@@ -359,63 +364,76 @@ namespace lux::editor::scene
                     return lux::cxx::unexpected(valid.error());
                 }
                 const auto staging =
-                    preview_commit ? sizeof(Prepared) : sizeof(Prepared) + FieldValue<Value>::bytes(next);
+                    adopt_existing ? sizeof(Prepared) : sizeof(Prepared) + FieldValue<Value>::bytes(next);
                 if (auto reserved = budget.reserve(staging); !reserved)
                 {
                     return lux::cxx::unexpected(reserved.error());
                 }
-                if (preview_commit)
+                if (adopt_existing)
                 {
                     return editing::PreparedEditPtr{new Prepared(*this)};
                 }
                 return editing::PreparedEditPtr{new Prepared(*this, **live, next)};
             }
 
-            editing::EditResult<void> update(lux::cxx::TypeToken type, const void *value) override
+            bool writable() const noexcept override
             {
-                if (type != lux::cxx::typeToken<Value>())
+                return !captured_;
+            }
+
+            editing::EditResult<void> changed() noexcept override
+            {
+                if (captured_)
                 {
-                    return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::INVALID_ARGUMENT));
-                }
-                const auto &next = *static_cast<const Value *>(value);
-                if (auto valid = validate(next, true); !valid)
-                {
-                    return valid;
-                }
-                if (auto size = owner_.checkFieldSize(FieldValue<Value>::bytes(next)); !size)
-                {
-                    return size;
+                    return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
                 }
                 auto live = locate(false);
                 if (!live)
                 {
                     return lux::cxx::unexpected(live.error());
                 }
-                if (!FieldValue<Value>::equal(**live, after_))
+                auto valid = validate(**live, true);
+                if (valid)
                 {
-                    return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::PRECONDITION_FAILED));
+                    valid = owner_.checkFieldSize(FieldValue<Value>::bytes(**live));
                 }
-                Value prepared(next);
-                Value retained(next);
-                FieldValue<Value>::swap(**live, prepared);
-                FieldValue<Value>::swap(after_, retained);
+                if (!valid)
+                {
+                    // Invalid input is not published. Restore the gesture's
+                    // initial value on this failure path; normal updates copy
+                    // neither the field nor its before value.
+                    Value restored(before_);
+                    FieldValue<Value>::swap(**live, restored);
+                    owner_.fieldChanged(target_, lux::cxx::typeToken<Component>(), true);
+                    return valid;
+                }
                 owner_.fieldChanged(target_, lux::cxx::typeToken<Component>(), true);
                 return {};
             }
 
-            editing::EditResult<void> cancel() noexcept override
+            editing::EditResult<void> captureAfter() override
             {
+                if (captured_)
+                {
+                    return {};
+                }
                 auto live = locate(false);
                 if (!live)
                 {
                     return lux::cxx::unexpected(live.error());
                 }
-                if (!FieldValue<Value>::equal(**live, after_))
+                auto valid = validate(**live, true);
+                if (!valid)
                 {
-                    return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::PRECONDITION_FAILED));
+                    return valid;
                 }
-                FieldValue<Value>::swap(**live, before_);
-                owner_.fieldChanged(target_, lux::cxx::typeToken<Component>(), true);
+                auto size = owner_.checkFieldSize(FieldValue<Value>::bytes(**live));
+                if (!size)
+                {
+                    return size;
+                }
+                after_ = **live;
+                captured_ = true;
                 return {};
             }
 
@@ -459,7 +477,7 @@ namespace lux::editor::scene
             class Prepared final : public editing::PreparedEdit
             {
               public:
-                explicit Prepared(const FieldEdit &operation) : operation_(operation), commit_(AdoptPreview{}) {}
+                explicit Prepared(const FieldEdit &operation) : operation_(operation), commit_(AdoptExisting{}) {}
 
                 Prepared(const FieldEdit &operation, Value &live, const Value &next)
                     : operation_(operation), commit_(std::in_place_type<ReplaceValue>, live, next)
@@ -484,7 +502,7 @@ namespace lux::editor::scene
                     operation_.owner_.fieldChanged(operation_.target_, lux::cxx::typeToken<Component>(), false);
                 }
 
-                struct AdoptPreview final
+                struct AdoptExisting final
                 {
                     // The validated value is already in the document. Only history and notice remain.
                     void apply() noexcept {}
@@ -503,7 +521,7 @@ namespace lux::editor::scene
                 };
 
                 const FieldEdit &operation_;
-                std::variant<AdoptPreview, ReplaceValue> commit_;
+                std::variant<AdoptExisting, ReplaceValue> commit_;
             };
 
             SceneEditor &owner_;
@@ -512,8 +530,9 @@ namespace lux::editor::scene
             std::string label_;
             Access access_;
             Value before_;
-            Value after_;
-            bool preview_;
+            Value after_{};
+            bool already_applied_;
+            bool captured_{};
         };
     } // namespace detail
 
@@ -544,9 +563,9 @@ namespace lux::editor::scene
     }
 
     template <class Component, class Value, class Access>
-    editing::EditResult<PreviewToken> SceneEditor::beginPreview(SceneWriteTarget target, std::string origin,
-                                                                std::string_view field, std::string_view label,
-                                                                Access access)
+    editing::EditResult<FieldEditToken> SceneEditor::beginFieldEdit(SceneWriteTarget target, std::string origin,
+                                                                    std::string_view field, std::string_view label,
+                                                                    Access access)
     {
         auto component = fieldAccess(target, lux::cxx::typeToken<Component>(), true);
         if (!component)
@@ -565,6 +584,6 @@ namespace lux::editor::scene
         std::unique_ptr<detail::SceneFieldEdit> operation =
             std::make_unique<detail::FieldEdit<Component, Value, Access>>(*this, target, field, label,
                                                                           std::move(access), *before, *before, true);
-        return adoptPreview(std::move(origin), operation);
+        return adoptFieldEdit(std::move(origin), operation);
     }
 } // namespace lux::editor::scene

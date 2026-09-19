@@ -39,13 +39,14 @@ namespace consumer
                 using Pointer = decltype(&value.settings.gain);
                 return *reject ? Pointer{} : &value.settings.gain;
             },
-            [&probe](double &value, auto &)
+            [&probe](double &value, auto &state)
             {
+                const auto original = value;
                 const bool changed = ImGui::DragScalar("##value", ImGuiDataType_Double, &value, 0.1F);
                 const auto low = ImGui::GetItemRectMin();
                 const auto high = ImGui::GetItemRectMax();
                 probe.center = {(low.x + high.x) / 2, (low.y + high.y) / 2};
-                return lux::editor::gui::generated_support::edited(changed);
+                return lux::editor::gui::generated_support::edited(state.changed(value, original, changed));
             },
             false);
         return true;
@@ -169,7 +170,8 @@ namespace consumer
         view.requestClose();
         PollBudget budget;
         document.poll(budget);
-        assert(document.views().size() + 1 == views && read() == original);
+        assert(document.views().size() + 1 == views && read() != original);
+        assert(document.undo() && read() == original);
         assert(document.historyView()->history.current == before.current);
         probe.interaction = nullptr;
         ui.feedInput(lux::ui::UiPointerButton{lux::ui::EPointerButton::LEFT, false});
@@ -208,12 +210,12 @@ namespace consumer
             "PASS real Inspector omission: layout zero/collapse retain visible; focus notifications do not edit; "
             "owner poll commits; rejected commit retries same token; no-draw turns retain active gesture; Undo "
             "restores; "
-            "ordinary release commits once; close cancels unfinished preview; "
+            "ordinary release commits once; close finishes the edit and Undo restores it; "
             "selection while destroyed, rebuilt Inspector refresh and edit/Undo pass with isolated subscriptions");
     }
 
     void checkCompletedGesture(lux::editor::scene::SceneEditor &document, lux::world::WorldObjectId object,
-                             lux::ui::Frame &frame)
+                               lux::ui::Frame &frame)
     {
         using namespace lux::editor;
         // A separate ImGui context injects IO events; this is not physical desktop evidence.
@@ -259,13 +261,14 @@ namespace consumer
                 {
                     interaction.field<Component, double>(
                         document, object, frame, "settings.gain", "Gain", access,
-                        [&](double &value, auto &)
+                        [&](double &value, auto &state)
                         {
+                            const auto original = value;
                             const bool changed = ImGui::DragScalar("##value", ImGuiDataType_Double, &value, 0.1F);
                             const auto minimum = ImGui::GetItemRectMin();
                             const auto maximum = ImGui::GetItemRectMax();
                             center = {(minimum.x + maximum.x) / 2, (minimum.y + maximum.y) / 2};
-                            return gui::generated_support::edited(changed);
+                            return gui::generated_support::edited(state.changed(value, original, changed));
                         },
                         false);
                 }
@@ -280,7 +283,7 @@ namespace consumer
         draw(true);
         io.AddMouseButtonEvent(0, true);
         draw(true);
-        assert(interaction.active());
+        assert(!interaction.active());
         io.AddMousePosEvent(center.x + 40, center.y);
         draw(true);
         assert(read() != original && document.historyView()->history.current == before.current);
@@ -289,8 +292,8 @@ namespace consumer
         draw(false);
         draw(false);
         draw(false);
-        std::printf("Completed gesture: active=%d cursor=%zu before=%zu original=%.3f value=%.3f\n", interaction.active(),
-                    document.historyView()->history.cursor, before.cursor, original, read());
+        std::printf("Completed gesture: active=%d cursor=%zu before=%zu original=%.3f value=%.3f\n",
+                    interaction.active(), document.historyView()->history.cursor, before.cursor, original, read());
         std::fflush(stdout);
         assert(!interaction.active());
         assert(document.historyView()->history.cursor == before.cursor + 1);
@@ -304,7 +307,7 @@ namespace consumer
         draw(true);
         io.AddMouseButtonEvent(0, true);
         draw(true);
-        assert(interaction.active());
+        assert(!interaction.active());
         io.AddMouseButtonEvent(0, false);
         draw(true);
         assert(!interaction.active() && read() == original);
@@ -312,6 +315,7 @@ namespace consumer
         assert(document.historyView()->history.revision == no_change.revision);
 
         std::puts("PASS injected ImGui completed edit: release commits once; omitted widget cannot strand a "
-                  "completed preview; redraw does not duplicate history; unchanged click preserves revision; Undo restores");
+                  "completed field edit; redraw does not duplicate history; unchanged click preserves revision; Undo "
+                  "restores");
     }
 } // namespace consumer

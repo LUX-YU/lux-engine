@@ -21,14 +21,14 @@ target_link_libraries(
     scene_script_runtime
     PUBLIC
         lux::engine::scene::scene_composition
-        lux::engine::scene::scene_presentation
+        lux::cxx::concurrent
         lux::engine::scene::scene_script_description
         lux::engine::process::process_execution
 )
 component_add_transitive_commands(
     scene_script_runtime
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
-    "find_package(lux-engine-scene-presentation REQUIRED COMPONENTS scene_presentation)"
+    "find_package(lux-cxx REQUIRED COMPONENTS concurrent)"
     "find_package(lux-engine-scene-script-description REQUIRED COMPONENTS scene_script_description)"
     "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
 )

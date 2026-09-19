@@ -162,9 +162,14 @@ namespace
         {
             const auto before = document.historyView()->history;
             const auto target = *document.writeTarget(object);
-            const auto token = document.beginPreview<consumer::Component, Quaternion>(target, "generated-quaternion",
-                                                                                      "rotation", "Rotation", access);
+            const auto token = document.beginFieldEdit<consumer::Component, Quaternion>(target, "generated-quaternion",
+                                                                                        "rotation", "Rotation", access);
             assert(token);
+            const auto update = [&](const Quaternion &value)
+            {
+                *access(*const_cast<consumer::Component *>(component)) = value;
+                return document.fieldEdited(*token);
+            };
             // The same Eigen AngleAxis composition and normalization emitted by the generator.
             const Quaternion rotation =
                 Quaternion{Eigen::AngleAxis<Scalar>{Scalar(0.13 * index), Eigen::Matrix<Scalar, 3, 1>::UnitX()} *
@@ -172,25 +177,26 @@ namespace
                            Eigen::AngleAxis<Scalar>{Scalar(0.37 * index), Eigen::Matrix<Scalar, 3, 1>::UnitZ()}}
                     .normalized();
             assert(scene::FieldValue<Quaternion>::valid(rotation));
-            assert(document.updatePreview(*token, rotation));
+            assert(update(rotation));
             Quaternion invalid = rotation;
             invalid.coeffs() *= Scalar(1.01);
-            const auto rejected = document.updatePreview(*token, invalid);
+            const auto rejected = update(invalid);
             assert(!rejected && rejected.error().code == editing::EEditError::PRECONDITION_FAILED);
             assert(document.historyView()->history.current == before.current);
-            assert(scene::FieldValue<Quaternion>::equal(*access(*component), rotation));
+            assert(scene::FieldValue<Quaternion>::equal(*access(*component), original));
             invalid.coeffs().setZero();
-            assert(!document.updatePreview(*token, invalid));
+            assert(!update(invalid));
             invalid.w() = std::numeric_limits<Scalar>::quiet_NaN();
-            assert(!document.updatePreview(*token, invalid));
-            assert(document.commitPreview(*token));
+            assert(!update(invalid));
+            assert(update(rotation));
+            assert(document.finishFieldEdit(*token));
             assert(document.undo() && scene::FieldValue<Quaternion>::equal(*access(*component), original));
             assert(document.redo() && scene::FieldValue<Quaternion>::equal(*access(*component), rotation));
             assert(document.undo() && document.historyView()->history.current == before.current);
         }
-        std::printf(
-            "PASS typed generated Quaternion%s: twelve Eigen rotations, preview rejection retains value, Undo/Redo\n",
-            std::is_same_v<Scalar, float> ? "f" : "d");
+        std::printf("PASS typed generated Quaternion%s: twelve Eigen rotations, invalid direct input restores initial "
+                    "value, Undo/Redo\n",
+                    std::is_same_v<Scalar, float> ? "f" : "d");
     }
 
     void checkVectorElements(scene::SceneEditor &document, lux::world::WorldObjectId object)
@@ -214,7 +220,7 @@ namespace
                 return component.sequence.size() == count ? &component.sequence.front() : static_cast<Item *>(nullptr);
             };
             const auto before = document.historyView()->history;
-            auto preview = document.beginPreview<consumer::Component, consumer::Settings>(
+            auto preview = document.beginFieldEdit<consumer::Component, consumer::Settings>(
                 *document.writeTarget(object), "vector-element-test", "sequence[0]", "[0]", element);
             assert(preview);
             auto next = values.front();
@@ -222,12 +228,14 @@ namespace
             for (unsigned update = 1; update <= 100; ++update)
             {
                 next.gain = 0.01 * update;
-                assert(document.updatePreview(*preview, next));
+                auto &live = const_cast<consumer::Component &>(read()).sequence.front();
+                live.gain = next.gain;
+                assert(document.fieldEdited(*preview));
             }
 #if defined(CONSUMER_MEASURE_COPIES)
             const auto copies_before = consumer::settings_copies.load(std::memory_order_relaxed);
 #endif
-            assert(document.commitPreview(*preview));
+            assert(document.finishFieldEdit(*preview));
 #if defined(CONSUMER_MEASURE_COPIES)
             const auto copies = consumer::settings_copies.load(std::memory_order_relaxed) - copies_before;
             assert(copies == CONSUMER_EXPECT_ADOPT_COPIES);

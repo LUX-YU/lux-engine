@@ -33,9 +33,21 @@ namespace lux::editor::gui
         {
             frame.text(reason);
         }
-        frame.textMuted(history && history->history.clean ? "Scene editing" : "Scene editing | Unsaved changes");
+        const auto run = document_.runStatus();
+        if (run.state == scene::ERunState::PAUSED)
+        {
+            frame.textMuted("Paused runtime | Temporary Undo history");
+        }
+        else if (run.state == scene::ERunState::RUNNING)
+        {
+            frame.textMuted("Running Scene");
+        }
+        else
+        {
+            frame.textMuted(history && history->history.clean ? "Scene editing" : "Scene editing | Unsaved changes");
+        }
         const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-        if (!focused && interaction_.active() && !interaction_.finish(document_, true))
+        if (!focused && interaction_.active() && !interaction_.finish(document_))
         {
             frame.text(interaction_.error.data());
             return;
@@ -48,7 +60,7 @@ namespace lux::editor::gui
         }
         if (directory_dirty_)
         {
-            if (!interaction_.finish(document_, true))
+            if (!interaction_.finish(document_))
             {
                 frame.text(interaction_.error.data());
                 return;
@@ -81,7 +93,7 @@ namespace lux::editor::gui
             const auto title = binding ? binding->name.c_str() : component.name.c_str();
             ImGui::SetNextItemOpen(row.open, ImGuiCond_Always);
             const bool open = ImGui::CollapsingHeader(title);
-            if (open != row.open && interaction_.finish(document_, true))
+            if (open != row.open && interaction_.finish(document_))
             {
                 row.open = open;
             }
@@ -114,11 +126,11 @@ namespace lux::editor::gui
     {
         // UISession revokes focus after an actual layout/collapse decision. No new
         // UI frame (including Renderer backpressure) leaves that fact unchanged.
-        if (!closing_ && (!visible() || !focused()) && !interaction_.finish(document_, true))
+        if (!closing_ && (!visible() || !focused()) && !interaction_.finish(document_))
         {
             return;
         }
-        if (closing_ && !interaction_.finish(document_, false))
+        if (closing_ && !interaction_.finish(document_))
         {
             return;
         }
@@ -127,12 +139,12 @@ namespace lux::editor::gui
 
     EditorResult<void> InspectorPane::finishInteraction()
     {
-        if (!interaction_.finish(document_, true))
+        if (!interaction_.finish(document_))
         {
             const auto &failure = interaction_.failure();
             return lux::cxx::unexpected(EditorFailure{
                 failure.code == editing::EEditError::BUSY ? EEditorError::BUSY : EEditorError::INVALID_STATE,
-                "inspector.preview", static_cast<std::uint64_t>(failure.code), interaction_.error.data(), failure});
+                "inspector.field", static_cast<std::uint64_t>(failure.code), interaction_.error.data(), failure});
         }
         return {};
     }

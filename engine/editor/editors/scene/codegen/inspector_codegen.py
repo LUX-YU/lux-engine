@@ -125,7 +125,7 @@ class Generator:
             if tid == "bool":
                 if widget not in ("default", "input"):
                     raise ValueError(f"widget {widget} cannot edit bool")
-                return ['result = immediate(ImGui::Checkbox("##value", &value));']
+                return ['const auto original = value;', 'result = immediate(ImGui::Checkbox("##value", &value));', 'result.changed = state.changed(value, original, result.changed);']
             if widget in ("color", "asset", "enum"):
                 raise ValueError(f"widget {widget} cannot edit scalar {tid}")
             floating = tid in ("float", "double")
@@ -167,6 +167,7 @@ class Generator:
                 lines += ["if (result.changed && (" + " || ".join(invalid) + "))", "{",
                           '    value = original; state.fail("The value is outside the declared range.");',
                           "    result.changed = false;", "}"]
+            lines += ["result.changed = state.changed(value, original, result.changed);"]
             return lines
         if kind in ("EnumType", "ScopedEnumType"):
             if widget not in ("default", "enum", "input"):
@@ -182,7 +183,7 @@ class Generator:
             for item in decl["enumerators"]:
                 v = tid + "::" + item["name"]
                 lines += [f'    if (ImGui::Selectable({literal(item["name"])}, value == {v}))',
-                          f'    {{ value = {v}; result = immediate(true); }}']
+                          f'    {{ if (state.beforeWrite()) {{ value = {v}; result = immediate(true); }} }}']
             lines += ['    ImGui::EndCombo();', '}']
             return lines
         template = t.get("template_name", "")
@@ -192,7 +193,7 @@ class Generator:
                 raise ValueError(f"widget {widget} cannot edit string")
             if args and args[0].get("type_id") != "char":
                 raise ValueError(f"string {tid} requires an Editor specialization for UTF-8 conversion")
-            return ['result = edited(ImGui::InputText("##value", &value));']
+            return ['result = editString("##value", value, state);']
         if template == "Eigen::Matrix":
             scalar = args[0]["type_id"]
             rows, cols = args[1]["integral_value"], args[2]["integral_value"]
@@ -201,7 +202,7 @@ class Generator:
             if widget == "color":
                 if scalar != "float" or cols != 1 or rows not in (3, 4):
                     raise ValueError("color requires a fixed float3/float4 vector")
-                return [f'result = edited(ImGui::ColorEdit{rows}("##value", value.data()));']
+                return ['const auto original = value;', f'result = edited(ImGui::ColorEdit{rows}("##value", value.data()));', 'result.changed = state.changed(value, original, result.changed);']
             axes = str(attrs.get("axis_labels", "X|Y|Z|W")).split("|")
             lines = []
             vector = rows == 1 or cols == 1
@@ -345,7 +346,7 @@ class Generator:
                  '    IdScope key_scope{0};',
                  f'    auto& key_draft = state.input<KeyDraft<{key}>>(ImGui::GetID("key-draft"));',
                  '    if (!key_draft.active) { key_draft.original = original_key; key_draft.value = original_key; }',
-                 f'    const auto key_edit = {key_fn}(key_draft.value, state);',
+                 f'    const auto key_edit = [&] {{ InspectorInteraction::LocalInput local{{state}}; return {key_fn}(key_draft.value, state); }}();',
                  '    key_draft.active |= key_edit.began || key_edit.changed;',
                  '    if (key_edit.committed && key_draft.active)', '    {',
                  '        key_draft.active = false;',
@@ -369,7 +370,7 @@ class Generator:
                   '            next.erase(original_key); return true; }))); return result;', '    }', '}',
                   'IdScope new_key_scope{-1};',
                   f'auto& new_key = state.input<{key}>(ImGui::GetID("new-key"));',
-                  f'static_cast<void>({key_fn}(new_key, state));',
+                  f'{{ InspectorInteraction::LocalInput local{{state}}; static_cast<void>({key_fn}(new_key, state)); }}',
                   'const bool add = ImGui::SmallButton("Add");', 'if (add)', '{',
                   '    merge(result, immediate(prepareContainer(value, state, [&](auto& next) {']
         lines += ['        return next.try_emplace(new_key).second; })));' if mapping else

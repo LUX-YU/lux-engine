@@ -20,61 +20,120 @@ namespace lux::editor::gui
     {
     }
 
+    rendering::RenderView *ScenePane::view() noexcept
+    {
+        if (auto *author = std::get_if<std::unique_ptr<rendering::RenderView>>(&view_owner_))
+        {
+            return author->get();
+        }
+        if (auto *run = std::get_if<scene::RunViewLease>(&view_owner_))
+        {
+            return &run->view();
+        }
+        return nullptr;
+    }
+
+    void ScenePane::remember(std::string_view operation, const rendering::RendererFailure &failure)
+    {
+        view_result_ =
+            lux::cxx::unexpected(EditorFailure{EEditorError::FRONTEND_FAILURE, std::string(operation),
+                                               static_cast<std::uint64_t>(failure.code), describe(failure), failure});
+        status_ = view_result_.error().message;
+    }
+
     void ScenePane::poll(PollBudget &budget)
     {
         DocumentPane::poll(budget);
-        if (closing_)
+        const auto run = document_.runStatus();
+        const bool running = run.state == scene::ERunState::RUNNING || run.state == scene::ERunState::PAUSED;
+        const bool author = run.state == scene::ERunState::IDLE || run.state == scene::ERunState::FINISHED ||
+                            run.state == scene::ERunState::FAILED;
+        const auto wanted = running ? run.id : scene::RunId{};
+        const bool switching = displayed_run_ != wanted || (!running && !author);
+        if (!view() && (reopen_ || switching))
+        {
+            displayed_run_ = wanted;
+            view_result_ = {};
+            reopen_ = false;
+        }
+        if (auto *current = view(); current && (closing_ || switching || reopen_))
         {
             releaseFrameImages();
             rotating_ = panning_ = false;
-            if (!view_)
-            {
-                closed_ = true;
-                return;
-            }
-            const auto requested = view_->beginClose();
+            auto requested = current->beginClose();
             if (!requested)
             {
-                status_ = describe(requested.error());
+                remember("scene.view.beginClose", requested.error());
                 return;
             }
-            const auto closed = view_->advanceClose();
+            auto closed = current->advanceClose();
             if (!closed)
             {
-                status_ = describe(closed.error());
+                remember("scene.view.advanceClose", closed.error());
+                return;
             }
-            else if (*closed == rendering::ERenderClose::COMPLETE)
+            if (*closed != rendering::ERenderClose::COMPLETE)
             {
-                view_.reset();
-                closed_ = true;
+                return;
             }
+            view_owner_.emplace<std::monostate>();
+            displayed_run_ = {};
+            view_result_ = {};
+            status_.clear();
+            camera_extent_ = {};
+            applied_camera_revision_ = 0;
+            reopen_ = false;
+        }
+        if (closing_)
+        {
+            closed_ = !view();
             return;
         }
-
-        if (!view_ && renderer_.state() == rendering::ERendererState::READY)
+        if (!view() && visible() && (running || author) && renderer_.state() == rendering::ERendererState::READY &&
+            view_result_)
         {
-            const auto scene = document_.renderScene();
-            if (!scene)
+            if (running)
             {
-                status_ = scene.error().message;
-                return;
+                if (!run.render_scene.isValid())
+                {
+                    status_ = "This Scene runs without a RenderSystem";
+                    return;
+                }
+                auto opened = document_.openRunView(run.id, {{640, 480}, true, document_.runCoordinatePageSize()});
+                if (!opened)
+                {
+                    view_result_ = lux::cxx::unexpected(opened.error());
+                    status_ = opened.error().message;
+                    return;
+                }
+                view_owner_.emplace<scene::RunViewLease>(std::move(*opened));
+                displayed_run_ = run.id;
             }
-            auto opened = renderer_.openView(*scene, {{640, 480}, true, document_.coordinatePageSize()});
-            if (!opened)
+            else
             {
-                status_ = describe(opened.error());
-                return;
+                const auto scene = document_.renderScene();
+                if (!scene)
+                {
+                    status_ = scene.error().message;
+                    return;
+                }
+                auto opened = renderer_.openView(*scene, {{640, 480}, true, document_.coordinatePageSize()});
+                if (!opened)
+                {
+                    remember("scene.view.open", opened.error());
+                    return;
+                }
+                view_owner_.emplace<std::unique_ptr<rendering::RenderView>>(std::move(*opened));
             }
-            view_ = std::move(*opened);
             updateCamera({640, 480});
         }
-        if (view_ && !visible())
+        if (auto *current = view(); current && !visible())
         {
             rotating_ = panning_ = false;
-            const auto suspended = view_->requestExtent({});
+            const auto suspended = current->requestExtent({});
             if (!suspended)
             {
-                status_ = describe(suspended.error());
+                remember("scene.view.suspend", suspended.error());
             }
         }
     }
@@ -86,9 +145,9 @@ namespace lux::editor::gui
         {
             return;
         }
-        const double page = document_.coordinatePageSize();
+        const double page = displayed_run_.serial ? document_.runCoordinatePageSize() : document_.coordinatePageSize();
         const Eigen::Vector3d origin = (camera_.position() / page).array().floor().matrix() * page;
-        const auto view = camera_.view(origin);
+        const auto camera_view = camera_.view(origin);
         const auto projection = camera_.projection(double(extent.width) / extent.height);
         if (!projection)
         {
@@ -96,14 +155,14 @@ namespace lux::editor::gui
             return;
         }
         rendering::CameraFrame frame;
-        std::copy_n(view.data(), 16, frame.view.begin());
+        std::copy_n(camera_view.data(), 16, frame.view.begin());
         std::copy_n(projection->data(), 16, frame.projection.begin());
         std::copy_n(origin.data(), 3, frame.origin.begin());
         frame.desired = {document_.historyId().value, 0, camera_revision_, 1};
-        const auto camera = view_->setCamera(frame);
+        const auto camera = view()->setCamera(frame);
         if (!camera)
         {
-            status_ = describe(camera.error());
+            remember("scene.view.camera", camera.error());
         }
         else
         {
@@ -195,41 +254,90 @@ namespace lux::editor::gui
         }
         else
         {
-            if (ImGui::Button("Stop Run"))
+            const auto action = [&](EditorResult<void> result)
             {
-                static_cast<void>(document_.stopRun(run.id));
+                if (!result)
+                {
+                    status_ = result.error().domain + ": " + result.error().message;
+                }
+            };
+            if (run.state == scene::ERunState::RUNNING && !run.pause_pending && ImGui::Button("Pause"))
+            {
+                action(document_.pauseRun(run.id));
             }
+            if (run.state == scene::ERunState::PAUSED)
+            {
+                if (ImGui::Button("Resume"))
+                {
+                    action(document_.resumeRun(run.id));
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Step"))
+                {
+                    action(document_.stepRun(run.id));
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Stop"))
+            {
+                action(document_.stopRun(run.id));
+            }
+            ImGui::SameLine();
+            ImGui::Text("Step %llu | %.3f s", static_cast<unsigned long long>(run.steps),
+                        std::chrono::duration<double>(run.elapsed).count());
         }
         if (!run.result)
         {
             frame.textWrapped(run.result.error().domain + ": " + run.result.error().message);
         }
-        if (closing_ || !view_)
+        if (closing_ || !view())
         {
             frame.textWrapped(status_.empty() ? "Preparing scene view..." : status_);
+            if (!closing_ && !view_result_ && ImGui::SmallButton("Reopen view"))
+            {
+                reopen_ = true;
+            }
             return;
         }
-        const auto view_status = view_->status();
+        const auto view_status = view()->status();
         if (view_status.failure)
         {
-            status_ = describe(*view_status.failure);
+            remember("scene.view.status", *view_status.failure);
         }
-        auto next = view_->acquireImage();
+        auto next = view()->acquireImage();
         if (next)
         {
             image_ = std::move(*next);
         }
         else if (next.error().code != rendering::ERendererError::NOT_READY)
         {
-            status_ = describe(next.error());
+            remember("scene.view.image", next.error());
         }
-        if (!status_.empty())
+        // Keep readiness/error feedback on one fixed-height line so it cannot
+        // create a resize -> NOT_READY -> layout resize feedback loop.
+        if (!view_result_)
         {
-            frame.textWrapped(status_);
+            if (ImGui::SmallButton("Reopen view"))
+            {
+                reopen_ = true;
+            }
+            ImGui::SameLine();
+            ImGui::TextUnformatted(view_result_.error().message.c_str());
         }
-        drawPlacement(frame);
+        else if (!status_.empty())
+        {
+            ImGui::TextUnformatted(status_.c_str());
+        }
+        else
+        {
+            ImGui::Dummy({0, ImGui::GetFrameHeight()});
+        }
+        if (!displayed_run_.serial)
+        {
+            drawPlacement(frame);
+        }
         const auto interaction = viewport_.draw(frame, {image_.texture});
-        if (ImGui::BeginDragDropTarget())
+        if (!displayed_run_.serial && ImGui::BeginDragDropTarget())
         {
             if (const auto *payload = ImGui::AcceptDragDropPayload(kAssetReferencePayload))
             {
@@ -270,10 +378,13 @@ namespace lux::editor::gui
         { return static_cast<std::uint32_t>(std::clamp(std::round(logical * scale), 0.0F, 16384.0F)); };
         const rendering::PixelExtent extent{pixel(interaction.size.width, input.DisplayFramebufferScale.x),
                                             pixel(interaction.size.height, input.DisplayFramebufferScale.y)};
-        const auto resized = view_->requestExtent(extent);
-        if (!resized)
+        if (view_status.state != rendering::EViewState::FAILED)
         {
-            status_ = describe(resized.error());
+            const auto resized = view()->requestExtent(extent);
+            if (!resized)
+            {
+                remember("scene.view.resize", resized.error());
+            }
         }
         const bool blocked =
             input.WantTextInput || input.AppFocusLost || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);

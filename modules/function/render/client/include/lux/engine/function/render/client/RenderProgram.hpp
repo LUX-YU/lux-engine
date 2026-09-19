@@ -4,7 +4,7 @@
 #include <lux/cxx/concurrent/LockFreeQueue.hpp>
 #include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>
 #include <lux/engine/function/render/client/core/Errors.hpp>
-#include "BoundedSpscFrameRing.hpp"
+#include <lux/cxx/concurrent/BoundedSpscFrameRing.hpp>
 
 #include <concepts>
 #include <cstring>

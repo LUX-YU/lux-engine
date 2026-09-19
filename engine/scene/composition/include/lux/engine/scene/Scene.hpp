@@ -53,53 +53,50 @@ namespace lux::scene
         std::shared_ptr<const SceneDescription> scene;
         std::shared_ptr<const world::WorldDescription> world;
         std::shared_ptr<const simulation::SimulationDescription> simulation;
-        const SceneMetaManager& meta;
+        const SceneMetaManager &meta;
         std::span<const SceneCapabilityProvider> providers;
         simulation::ESimulationMode simulation_mode{simulation::ESimulationMode::EVOLUTION};
     };
 
     class LUX_ENGINE_SCENE_PUBLIC Scene final
     {
-    public:
-        Scene(const Scene&) = delete;
-        Scene& operator=(const Scene&) = delete;
-        Scene(Scene&&) = delete;
-        Scene& operator=(Scene&&) = delete;
+      public:
+        Scene(const Scene &) = delete;
+        Scene &operator=(const Scene &) = delete;
+        Scene(Scene &&) = delete;
+        Scene &operator=(Scene &&) = delete;
 
-        [[nodiscard]] static lux::cxx::expected<std::unique_ptr<Scene>, SceneBuildFailure>
-        create(SceneCreateInfo info) noexcept;
+        [[nodiscard]] static lux::cxx::expected<std::unique_ptr<Scene>, SceneBuildFailure> create(
+            SceneCreateInfo info) noexcept;
 
-        [[nodiscard]] const SceneDescription& description() const noexcept;
-        [[nodiscard]] const world::WorldDescription& world() const noexcept;
-        [[nodiscard]] simulation::ecs::Registry& registry() noexcept;
-        [[nodiscard]] const simulation::ecs::Registry& registry() const noexcept;
-        [[nodiscard]] simulation::Simulation& simulation() noexcept;
-        [[nodiscard]] const simulation::Simulation& simulation() const noexcept;
+        [[nodiscard]] const SceneDescription &description() const noexcept;
+        [[nodiscard]] const world::WorldDescription &worldDescription() const noexcept;
+        [[nodiscard]] simulation::ecs::Registry &registry() noexcept;
+        [[nodiscard]] const simulation::ecs::Registry &registry() const noexcept;
+        [[nodiscard]] simulation::Simulation &simulation() noexcept;
+        [[nodiscard]] const simulation::Simulation &simulation() const noexcept;
 
-        template <SceneSystem Type>
-        [[nodiscard]] Type* findSceneSystem() noexcept
+        template <SceneSystem Type> [[nodiscard]] Type *findSceneSystem() noexcept
         {
-            return static_cast<Type*>(findSceneSystemErased(lux::cxx::typeToken<Type>()));
+            return static_cast<Type *>(findSceneSystemErased(lux::cxx::typeToken<Type>()));
         }
 
-        template <SceneSystem Type>
-        [[nodiscard]] const Type* findSceneSystem() const noexcept
+        template <SceneSystem Type> [[nodiscard]] const Type *findSceneSystem() const noexcept
         {
-            return static_cast<const Type*>(findSceneSystemErased(lux::cxx::typeToken<Type>()));
+            return static_cast<const Type *>(findSceneSystemErased(lux::cxx::typeToken<Type>()));
         }
 
         [[nodiscard]] lux::cxx::expected<void, SceneExecutionFailure> executeStablePoint() noexcept;
-        [[nodiscard]] lux::cxx::expected<void, SceneExecutionFailure> executePresentation() noexcept;
         [[nodiscard]] bool hasCapability(std::string_view capability) const noexcept;
         [[nodiscard]] std::stop_token stopToken() const noexcept;
         void requestStop() noexcept;
         ~Scene() noexcept;
 
-    private:
+      private:
         struct Impl;
         explicit Scene(std::unique_ptr<Impl> impl) noexcept;
-        [[nodiscard]] void* findSceneSystemErased(lux::cxx::TypeToken type) noexcept;
-        [[nodiscard]] const void* findSceneSystemErased(lux::cxx::TypeToken type) const noexcept;
+        [[nodiscard]] void *findSceneSystemErased(lux::cxx::TypeToken type) noexcept;
+        [[nodiscard]] const void *findSceneSystemErased(lux::cxx::TypeToken type) const noexcept;
         std::unique_ptr<Impl> impl_;
     };
 } // namespace lux::scene

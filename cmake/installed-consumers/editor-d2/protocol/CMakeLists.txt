@@ -33,7 +33,7 @@ foreach(feature editors/material editors/flowforge editors/scene assets)
     endforeach()
 endforeach()
 
-set(protocols fixture core_protocol render_terminal dynamic_run foundation_protocol process_completion publication_protocol publication_boundaries review_regressions
+set(protocols fixture core_protocol render_terminal dynamic_run derivation_protocol foundation_protocol process_completion publication_protocol publication_boundaries review_regressions
     container_protocol material_protocol flow_object_protocol flow_protocol vfs_protocol model_protocol import_protocol)
 foreach(protocol IN LISTS protocols)
     if("${protocol}.cpp" IN_LIST collected_test_names)
@@ -98,7 +98,7 @@ function(d2_case name executable)
     set_tests_properties(editor.d2.${name} PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
 endfunction()
 
-foreach(protocol foundation_protocol process_completion container_protocol flow_object_protocol vfs_protocol)
+foreach(protocol derivation_protocol foundation_protocol process_completion container_protocol flow_object_protocol vfs_protocol)
     d2_case(${protocol} d2_${protocol})
 endforeach()
 foreach(protocol material_protocol flow_protocol model_protocol import_protocol)

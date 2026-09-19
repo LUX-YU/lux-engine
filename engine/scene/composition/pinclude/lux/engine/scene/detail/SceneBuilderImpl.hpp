@@ -43,7 +43,6 @@ struct lux::scene::SceneBuilder::Impl final
     const SceneMetaManager* meta{};
     std::vector<detail::SceneSystemObjectRecord>* systems{};
     std::vector<detail::SceneHookRecord>* stable_hooks{};
-    std::vector<detail::SceneHookRecord>* presentation_hooks{};
     const SceneDescription* description{};
     std::vector<std::vector<std::size_t>> predecessors;
     std::vector<detail::ResolvedSceneRequirement> requirements;

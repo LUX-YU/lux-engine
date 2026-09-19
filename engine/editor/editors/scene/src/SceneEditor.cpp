@@ -118,9 +118,9 @@ namespace lux::editor::scene
 
     struct SceneEditor::Data final
     {
-        struct Preview final
+        struct FieldGesture final
         {
-            PreviewToken token;
+            FieldEditToken token;
             editing::EditOperationPtr operation;
         };
 
@@ -143,8 +143,8 @@ namespace lux::editor::scene
         bool derive{true};
         bool refresh_resources{true};
         std::vector<std::unique_ptr<DocumentView>> views;
-        std::variant<std::monostate, Preview> preview;
-        std::uint64_t next_preview{1};
+        std::variant<std::monostate, FieldGesture> field_edit;
+        std::uint64_t next_field_edit{1};
         bool editing_busy{};
         bool close_requested{};
         std::variant<std::monostate, SceneSave> save;
@@ -340,16 +340,36 @@ namespace lux::editor::scene
             bool had_parent_;
         };
 
-        Data(Project &owner, process::ExecutionRuntime &process, NativeScene content,
-             std::shared_ptr<const lux::scene::SceneMetaManager> meta, std::unique_ptr<lux::scene::Scene> value,
-             lux::simulation::ecs::WorldEntityMap mapping, std::unique_ptr<editing::EditHistory> edits,
-             lux::task::TaskExecutor tasks, rendering::EditorRenderer &renderer,
-             std::unique_ptr<lux::scene::SceneRenderBinding> binding, std::shared_ptr<detail::SceneRunSlot> run_slot)
+        detail::SceneObjects &inspectedObjects() noexcept
+        {
+            if (auto *current = run.objects())
+            {
+                return *current;
+            }
+            return objects;
+        }
+        editing::EditHistory &inspectedHistory() noexcept
+        {
+            if (auto *current = run.history())
+            {
+                return *current;
+            }
+            return *history;
+        }
+        std::uint64_t selection_revision{};
+        editing::HistoryId observed_history;
+        bool observed_run{};
+
+        Data(Project &owner, process::ExecutionRuntime &process, NativeScene content, SceneEditorMetadata meta,
+             std::unique_ptr<lux::scene::Scene> value, lux::simulation::ecs::WorldEntityMap mapping,
+             std::unique_ptr<editing::EditHistory> edits, lux::task::TaskExecutor tasks,
+             rendering::EditorRenderer &renderer, std::unique_ptr<lux::scene::SceneRenderBinding> binding,
+             std::shared_ptr<detail::SceneRunSlot> run_slot)
             : project(owner), runtime(process), source(std::make_shared<const NativeScene>(std::move(content))),
-              metadata(std::move(meta)), render_binding(std::move(binding)), scene(std::move(value)),
+              metadata(meta.scene), render_binding(std::move(binding)), scene(std::move(value)),
               objects(scene->registry(), *source, *metadata, std::move(mapping)), history(std::move(edits)),
               executor(std::move(tasks)), resources(history->id(), owner.assetReads(), &renderer, 256),
-              run(process, renderer, metadata, std::move(run_slot))
+              run(process, renderer, std::move(meta), std::move(run_slot))
         {
             assets_connection = project.observeScoped<Project::assetContentChanged>(
                 [this](asset::AssetId id) noexcept
@@ -373,7 +393,7 @@ namespace lux::editor::scene
 
     EditorResult<std::unique_ptr<SceneEditor>> SceneEditor::open(
         NativeScene &source, Project &project, process::ExecutionRuntime &runtime, rendering::EditorRenderer &renderer,
-        std::shared_ptr<const lux::scene::SceneMetaManager> metadata, lux::scene::SceneRenderInput *input,
+        SceneEditorMetadata metadata, lux::scene::SceneRenderInput *input,
         std::unique_ptr<lux::scene::SceneRenderBinding> &binding, std::shared_ptr<detail::SceneRunSlot> run_slot)
     {
         const auto world = std::shared_ptr<const lux::world::WorldDescription>(source.world, &source.world->data());
@@ -387,14 +407,14 @@ namespace lux::editor::scene
             {std::shared_ptr<const lux::scene::SceneDescription>(source.scene, &source.scene->data()), world,
              std::shared_ptr<const lux::simulation::SimulationDescription>(source.simulation,
                                                                            &source.simulation->data()),
-             *metadata, providers, lux::simulation::ESimulationMode::DERIVATION});
+             *metadata.scene, providers, lux::simulation::ESimulationMode::DERIVATION});
         if (!scene)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "scene.create",
                                                       static_cast<std::uint64_t>(scene.error().code),
                                                       "Scene system/provider installation failed", scene.error()});
         }
-        auto materializer = lux::scene::WorldMaterializer::create(world, metadata->components());
+        auto materializer = lux::scene::WorldMaterializer::create(world, metadata.scene->components());
         if (!materializer)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE,
@@ -461,7 +481,14 @@ namespace lux::editor::scene
 
     EditorResult<RunId> SceneEditor::play(std::chrono::nanoseconds fixed_step)
     {
-        if (data_->close_requested || data_->close != ECloseState::OPEN || data_->preview.index() != 0 ||
+        auto finished_edit = finishFieldEdits();
+        if (!finished_edit)
+        {
+            return lux::cxx::unexpected(
+                EditorFailure{EEditorError::BUSY, "scene.field.finish", 0, {}, finished_edit.error()});
+        }
+
+        if (data_->close_requested || data_->close != ECloseState::OPEN || data_->field_edit.index() != 0 ||
             data_->editing_busy)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "run.author"});
@@ -492,14 +519,35 @@ namespace lux::editor::scene
     }
     EditorResult<void> SceneEditor::resumeRun(RunId id)
     {
+        auto finished_edit = finishFieldEdits();
+        if (!finished_edit)
+        {
+            return lux::cxx::unexpected(
+                EditorFailure{EEditorError::BUSY, "scene.field.finish", 0, {}, finished_edit.error()});
+        }
+
         return data_->run.resume(id);
     }
     EditorResult<void> SceneEditor::stepRun(RunId id)
     {
+        auto finished_edit = finishFieldEdits();
+        if (!finished_edit)
+        {
+            return lux::cxx::unexpected(
+                EditorFailure{EEditorError::BUSY, "scene.field.finish", 0, {}, finished_edit.error()});
+        }
+
         return data_->run.step(id);
     }
     EditorResult<void> SceneEditor::stopRun(RunId id)
     {
+        auto finished_edit = finishFieldEdits();
+        if (!finished_edit)
+        {
+            return lux::cxx::unexpected(
+                EditorFailure{EEditorError::BUSY, "scene.field.finish", 0, {}, finished_edit.error()});
+        }
+
         return data_->run.stop(id);
     }
     RunStatus SceneEditor::runStatus() const
@@ -517,11 +565,17 @@ namespace lux::editor::scene
 
     EditorResult<editing::HistorySnapshot> SceneEditor::reviewClose() const
     {
-        if (std::holds_alternative<Data::Preview>(data_->preview))
+        if (std::holds_alternative<Data::FieldGesture>(data_->field_edit))
         {
-            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "scene.close.preview"});
+            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "scene.close.field_edit"});
         }
-        return DocumentEditor::reviewClose();
+        auto view = data_->history->view();
+        if (!view)
+        {
+            return lux::cxx::unexpected(
+                EditorFailure{EEditorError::INVALID_STATE, "scene.history", 0, {}, view.error()});
+        }
+        return view->snapshot;
     }
 
     editing::EditResult<void> SceneEditor::checkEditAdmission() const noexcept
@@ -546,6 +600,10 @@ namespace lux::editor::scene
 
     std::string_view SceneEditor::writeRestriction() const noexcept
     {
+        if (!data_->run.settled() && data_->run.status().state != ERunState::PAUSED)
+        {
+            return "Running Scene is read-only; pause to edit supported fields";
+        }
         if (!data_->project.writable())
         {
             return "The project is open for reading";
@@ -559,16 +617,17 @@ namespace lux::editor::scene
 
     DocumentSummary SceneEditor::summary() const
     {
+        const bool read_only = !data_->project.writable() || !data_->source->world->data().partitionIndexes().empty();
         return {handle(),
                 {data_->project.manifest().id, data_->source->scene->id(), std::string(kSceneDocumentType)},
                 std::string(data_->project.assetName(data_->source->scene->id())),
-                !writeRestriction().empty(),
-                std::string(writeRestriction())};
+                read_only,
+                read_only ? std::string(writeRestriction()) : std::string{}};
     }
 
     EditorResult<SceneCapture> SceneEditor::captureSource() const
     {
-        if (data_->close != ECloseState::OPEN || data_->editing_busy || data_->preview.index() != 0)
+        if (data_->close != ECloseState::OPEN || data_->editing_busy || data_->field_edit.index() != 0)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "scene.capture"});
         }
@@ -626,18 +685,22 @@ namespace lux::editor::scene
 
     EditorResult<SaveRequestId> SceneEditor::requestSave(std::string origin)
     {
-        const auto admitted = checkEditAdmission();
-        if (!admitted)
+        auto finished_edit = finishFieldEdits();
+        if (!finished_edit)
         {
-            const auto code = admitted.error().code == editing::EEditError::CLOSED ? EEditorError::CLOSING
-                              : admitted.error().code == editing::EEditError::BUSY ? EEditorError::BUSY
-                                                                                   : EEditorError::READ_ONLY;
-            return lux::cxx::unexpected(EditorFailure{code, "scene.admission",
-                                                      static_cast<std::uint64_t>(admitted.error().code),
-                                                      admitted.error().message.data(), admitted.error()});
+            return lux::cxx::unexpected(
+                EditorFailure{EEditorError::BUSY, "scene.field.finish", 0, {}, finished_edit.error()});
         }
 
-        if (!data_->project.writable())
+        if (data_->close_requested || data_->close != ECloseState::OPEN)
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::CLOSING, "scene.save"});
+        }
+        if (data_->editing_busy)
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "scene.save"});
+        }
+        if (!data_->project.writable() || !data_->source->world->data().partitionIndexes().empty())
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::READ_ONLY, "scene.save"});
         }
@@ -738,12 +801,12 @@ namespace lux::editor::scene
 
     std::span<const SceneObjectRow> SceneEditor::objects() const noexcept
     {
-        return data_->objects.rows;
+        return data_->inspectedObjects().rows;
     }
 
     SelectionNotice SceneEditor::selection() const noexcept
     {
-        return data_->objects.selection;
+        return {data_->inspectedObjects().selection.object, data_->selection_revision};
     }
 
     const Project &SceneEditor::project() const noexcept
@@ -758,6 +821,13 @@ namespace lux::editor::scene
 
     EditorResult<void> SceneEditor::select(lux::world::WorldObjectId id)
     {
+        auto finished_edit = finishFieldEdits();
+        if (!finished_edit)
+        {
+            return lux::cxx::unexpected(
+                EditorFailure{EEditorError::BUSY, "scene.field.finish", 0, {}, finished_edit.error()});
+        }
+
         if (data_->editing_busy)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "scene.selection"});
@@ -766,15 +836,15 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::CLOSING, "scene.selection"});
         }
-        if (id.valid() && data_->objects.identities.entity(id) == lux::simulation::ecs::NullEntity)
+        if (id.valid() && data_->inspectedObjects().identities.entity(id) == lux::simulation::ecs::NullEntity)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "scene.selection"});
         }
-        if (data_->objects.selection.object != id)
+        if (data_->inspectedObjects().selection.object != id)
         {
-            data_->objects.selection.object = id;
-            ++data_->objects.selection.revision;
-            notify<selectionChanged>(data_->objects.selection);
+            data_->inspectedObjects().selection.object = id;
+            ++data_->selection_revision;
+            notify<selectionChanged>(selection());
         }
         return {};
     }
@@ -782,18 +852,18 @@ namespace lux::editor::scene
     std::vector<SceneComponentInfo> SceneEditor::components(lux::world::WorldObjectId object) const
     {
         std::vector<SceneComponentInfo> result;
-        if (!data_->scene || data_->objects.structural_commit)
+        if (!data_->scene || data_->inspectedObjects().structural_commit)
         {
             return result;
         }
-        const auto entity = data_->objects.identities.entity(object);
+        const auto entity = data_->inspectedObjects().identities.entity(object);
         if (entity == lux::simulation::ecs::NullEntity)
         {
             return result;
         }
         for (const auto &schema : data_->metadata->components().all())
         {
-            if (schema.editor_visible && schema.operations.has(data_->scene->registry(), entity))
+            if (schema.editor_visible && schema.operations.has(data_->inspectedObjects().registry, entity))
             {
                 result.push_back({schema.cpp_type, std::string(schema.id.name)});
             }
@@ -803,17 +873,17 @@ namespace lux::editor::scene
 
     const void *SceneEditor::component(lux::world::WorldObjectId object, lux::cxx::TypeToken type) const noexcept
     {
-        if (!data_->scene || data_->objects.structural_commit)
+        if (!data_->scene || data_->inspectedObjects().structural_commit)
         {
             return nullptr;
         }
-        const auto entity = data_->objects.identities.entity(object);
+        const auto entity = data_->inspectedObjects().identities.entity(object);
         const auto *schema = data_->metadata->getComponentMeta(type);
         if (!schema || entity == lux::simulation::ecs::NullEntity)
         {
             return nullptr;
         }
-        return schema->operations.get(data_->scene->registry(), entity);
+        return schema->operations.get(data_->inspectedObjects().registry, entity);
     }
 
     editing::EditResult<SceneWriteTarget> SceneEditor::writeTarget(lux::world::WorldObjectId object) const noexcept
@@ -830,7 +900,7 @@ namespace lux::editor::scene
                                                                  static_cast<std::uint64_t>(EEditorError::READ_ONLY),
                                                                  "The project is open for reading"));
         }
-        auto history = data_->history->view();
+        auto history = data_->inspectedHistory().view();
         if (!history)
         {
             return lux::cxx::unexpected(history.error());
@@ -839,11 +909,11 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::CLOSED));
         }
-        if (data_->editing_busy || data_->preview.index() != 0)
+        if (data_->editing_busy || data_->field_edit.index() != 0)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
         }
-        if (!object.valid() || data_->objects.identities.entity(object) == lux::simulation::ecs::NullEntity)
+        if (!object.valid() || data_->inspectedObjects().identities.entity(object) == lux::simulation::ecs::NullEntity)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::PRECONDITION_FAILED));
         }
@@ -852,6 +922,10 @@ namespace lux::editor::scene
 
     editing::EditResult<void> SceneEditor::checkStructure(editing::StateId state) const noexcept
     {
+        if (!data_->run.settled())
+        {
+            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BLOCKED_BY_HOST));
+        }
         const auto admitted = checkEditAdmission();
         if (!admitted)
         {
@@ -866,7 +940,7 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BLOCKED_BY_HOST));
         }
-        if (data_->editing_busy || data_->preview.index() != 0)
+        if (data_->editing_busy || data_->field_edit.index() != 0)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
         }
@@ -1066,7 +1140,7 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BLOCKED_BY_HOST));
         }
-        if (data_->editing_busy || data_->preview.index() != 0)
+        if (data_->editing_busy || data_->field_edit.index() != 0)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
         }
@@ -1298,7 +1372,7 @@ namespace lux::editor::scene
                                                       admitted.error().message.data(), admitted.error()});
         }
 
-        if (data_->editing_busy || data_->preview.index() != 0 || data_->placement.index() != 0)
+        if (data_->editing_busy || data_->field_edit.index() != 0 || data_->placement.index() != 0)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "model.place.request"});
         }
@@ -1361,7 +1435,7 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "model.place.retry"});
         }
-        if (data_->editing_busy || data_->preview.index() != 0 || request->pending() ||
+        if (data_->editing_busy || data_->field_edit.index() != 0 || request->pending() ||
             !std::holds_alternative<EditorFailure>(request->status))
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "model.place.retry"});
@@ -1430,9 +1504,10 @@ namespace lux::editor::scene
                                                 lux::cxx::TypeToken type) const noexcept
     {
         const ComponentNotice key{object, type};
-        const auto entry =
-            std::ranges::lower_bound(data_->objects.component_versions, key, detail::SceneObjects::componentLess);
-        return entry != data_->objects.component_versions.end() && entry->object == object && entry->component == type
+        const auto entry = std::ranges::lower_bound(data_->inspectedObjects().component_versions, key,
+                                                    detail::SceneObjects::componentLess);
+        return entry != data_->inspectedObjects().component_versions.end() && entry->object == object &&
+                       entry->component == type
                    ? entry->sequence
                    : 0;
     }
@@ -1472,6 +1547,16 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::PRECONDITION_FAILED));
         }
+        if (require_current)
+        {
+            auto &versions = data_->inspectedObjects().component_versions;
+            const ComponentNotice key{target.object, type};
+            auto entry = std::ranges::lower_bound(versions, key, detail::SceneObjects::componentLess);
+            if (entry == versions.end() || entry->object != target.object || entry->component != type)
+            {
+                versions.insert(entry, key);
+            }
+        }
         // The private write boundary is the only place that turns a schema's read
         // borrow into a prepared edit.
         return const_cast<void *>(value);
@@ -1497,6 +1582,10 @@ namespace lux::editor::scene
         {
             const auto &original = *static_cast<const lux::rdesc::MeshVisualDescription *>(before);
             const auto &value = *static_cast<const lux::rdesc::MeshVisualDescription *>(next);
+            if (data_->run.history() && (original.mesh != value.mesh || original.material != value.material))
+            {
+                return invalid("This Run retains a fixed mesh/material resource set");
+            }
             const auto valid = [&](asset::AssetId old, asset::AssetId id, std::uint32_t magic)
             {
                 if (id.isNull() || id == old)
@@ -1539,29 +1628,36 @@ namespace lux::editor::scene
         return {};
     }
 
-    void SceneEditor::fieldChanged(const SceneWriteTarget &target, lux::cxx::TypeToken type, bool preview) noexcept
+    void SceneEditor::fieldChanged(const SceneWriteTarget &target, lux::cxx::TypeToken type, bool field_edit) noexcept
     {
-        const auto history = data_->history->view();
-        ComponentNotice notice{target.object, type, history->snapshot.revision, preview};
-        notice.sequence = data_->objects.next_component_change++;
-        auto entry =
-            std::ranges::lower_bound(data_->objects.component_versions, notice, detail::SceneObjects::componentLess);
-        if (entry != data_->objects.component_versions.end() && entry->object == target.object &&
+        const auto history = data_->inspectedHistory().view();
+        ComponentNotice notice{target.object, type, history->snapshot.revision, field_edit};
+        notice.sequence = data_->inspectedObjects().next_component_change++;
+        auto entry = std::ranges::lower_bound(data_->inspectedObjects().component_versions, notice,
+                                              detail::SceneObjects::componentLess);
+        if (entry != data_->inspectedObjects().component_versions.end() && entry->object == target.object &&
             entry->component == type)
         {
             entry->sequence = notice.sequence;
-            if (!preview)
+            if (!field_edit)
             {
                 entry->revision = notice.revision;
             }
         }
-        data_->derive = true;
-        if (type == lux::cxx::typeToken<lux::simulation::ecs::Mesh3D>())
+        if (data_->run.history())
+        {
+            data_->run.invalidateDerived();
+        }
+        else
+        {
+            data_->derive = true;
+        }
+        if (!data_->run.history() && type == lux::cxx::typeToken<lux::simulation::ecs::Mesh3D>())
         {
             data_->refresh_resources = true;
         }
-        const auto entity = data_->objects.identities.entity(target.object);
-        data_->metadata->getComponentMeta(type)->operations.notifyUpdated(data_->scene->registry(), entity);
+        const auto entity = data_->inspectedObjects().identities.entity(target.object);
+        data_->metadata->getComponentMeta(type)->operations.notifyUpdated(data_->inspectedObjects().registry, entity);
         notify<componentChanged>(notice);
     }
 
@@ -1573,16 +1669,16 @@ namespace lux::editor::scene
             return lux::cxx::unexpected(admitted.error());
         }
 
-        if (data_->editing_busy || data_->preview.index() != 0)
+        if (data_->editing_busy || data_->field_edit.index() != 0)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
         }
         EditingGuard guard(data_->editing_busy);
-        return data_->history->execute(operation);
+        return data_->inspectedHistory().execute(operation);
     }
 
-    editing::EditResult<PreviewToken> SceneEditor::adoptPreview(std::string origin,
-                                                                std::unique_ptr<detail::SceneFieldEdit> &operation)
+    editing::EditResult<FieldEditToken> SceneEditor::adoptFieldEdit(std::string origin,
+                                                                    std::unique_ptr<detail::SceneFieldEdit> &operation)
     {
         const auto admitted = checkEditAdmission();
         if (!admitted)
@@ -1590,7 +1686,7 @@ namespace lux::editor::scene
             return lux::cxx::unexpected(admitted.error());
         }
 
-        if (data_->editing_busy || data_->preview.index() != 0)
+        if (data_->editing_busy || data_->field_edit.index() != 0)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
         }
@@ -1598,82 +1694,75 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::INVALID_ARGUMENT));
         }
-        if (data_->next_preview == (std::numeric_limits<std::uint64_t>::max)())
+        if (data_->next_field_edit == (std::numeric_limits<std::uint64_t>::max)())
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::ID_EXHAUSTED));
         }
-        PreviewToken token{handle(), data_->next_preview++, std::move(origin)};
-        data_->preview.emplace<Data::Preview>(token, std::move(operation));
+        FieldEditToken token{handle(), data_->next_field_edit++, std::move(origin)};
+        data_->field_edit.emplace<Data::FieldGesture>(token, std::move(operation));
         return token;
     }
 
-    editing::EditResult<void> SceneEditor::updatePreviewValue(const PreviewToken &token, lux::cxx::TypeToken type,
-                                                              const void *value)
+    bool SceneEditor::fieldEditWritable(const FieldEditToken &token) const noexcept
     {
-        const auto admitted = checkEditAdmission();
-        if (!admitted)
-        {
-            return lux::cxx::unexpected(admitted.error());
-        }
-
-        if (data_->editing_busy)
-        {
-            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
-        }
-        auto *preview = std::get_if<Data::Preview>(&data_->preview);
-        if (!preview || preview->token != token)
-        {
-            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::STALE_TARGET));
-        }
-        EditingGuard guard(data_->editing_busy);
-        return static_cast<detail::SceneFieldEdit &>(*preview->operation).update(type, value);
+        const auto *edit = std::get_if<Data::FieldGesture>(&data_->field_edit);
+        return edit && edit->token == token && !data_->editing_busy && !data_->close_requested &&
+               writeRestriction().empty() && static_cast<const detail::SceneFieldEdit &>(*edit->operation).writable();
     }
 
-    editing::EditResult<editing::ApplyResult> SceneEditor::commitPreview(const PreviewToken &token)
+    editing::EditResult<void> SceneEditor::fieldEdited(const FieldEditToken &token)
     {
-        const auto admitted = checkEditAdmission();
-        if (!admitted)
-        {
-            return lux::cxx::unexpected(admitted.error());
-        }
-
         if (data_->editing_busy)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
         }
-        auto *preview = std::get_if<Data::Preview>(&data_->preview);
-        if (!preview || preview->token != token)
+        auto *edit = std::get_if<Data::FieldGesture>(&data_->field_edit);
+        if (!edit || edit->token != token)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::STALE_TARGET));
         }
         EditingGuard guard(data_->editing_busy);
-        auto result = data_->history->execute(preview->operation);
+        return static_cast<detail::SceneFieldEdit &>(*edit->operation).changed();
+    }
+
+    editing::EditResult<void> SceneEditor::finishFieldEdits()
+    {
+        auto *edit = std::get_if<Data::FieldGesture>(&data_->field_edit);
+        if (!edit)
+        {
+            return {};
+        }
+        auto finished = finishFieldEdit(edit->token);
+        if (!finished)
+        {
+            return lux::cxx::unexpected(finished.error());
+        }
+        return {};
+    }
+
+    editing::EditResult<editing::ApplyResult> SceneEditor::finishFieldEdit(const FieldEditToken &token)
+    {
+        if (data_->editing_busy)
+        {
+            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
+        }
+        auto *field_edit = std::get_if<Data::FieldGesture>(&data_->field_edit);
+        if (!field_edit || field_edit->token != token)
+        {
+            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::STALE_TARGET));
+        }
+        EditingGuard guard(data_->editing_busy);
+        auto captured = static_cast<detail::SceneFieldEdit &>(*field_edit->operation).captureAfter();
+        if (!captured)
+        {
+            return lux::cxx::unexpected(captured.error());
+        }
+        auto result = data_->inspectedHistory().execute(field_edit->operation);
         if (result)
         {
-            data_->preview.emplace<std::monostate>();
+            data_->field_edit.emplace<std::monostate>();
         }
         return result;
-    }
-
-    editing::EditResult<void> SceneEditor::cancelPreview(const PreviewToken &token)
-    {
-        if (data_->editing_busy)
-        {
-            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
-        }
-        auto *preview = std::get_if<Data::Preview>(&data_->preview);
-        if (!preview || preview->token != token)
-        {
-            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::STALE_TARGET));
-        }
-        EditingGuard guard(data_->editing_busy);
-        const auto cancelled = static_cast<detail::SceneFieldEdit &>(*preview->operation).cancel();
-        if (!cancelled)
-        {
-            return cancelled;
-        }
-        data_->preview.emplace<std::monostate>();
-        return {};
     }
 
     std::shared_ptr<const SceneResourceSnapshot> SceneEditor::resources() const noexcept
@@ -1790,16 +1879,17 @@ namespace lux::editor::scene
 
     editing::HistoryId SceneEditor::historyId() const noexcept
     {
-        return data_->history->id();
+        return data_->inspectedHistory().id();
     }
 
     editing::EditResult<editing::HistoryTargetView> SceneEditor::historyView() const noexcept
     {
-        auto value = data_->history->view();
+        auto value = data_->inspectedHistory().view();
         if (!value)
         {
             return lux::cxx::unexpected(value.error());
         }
+        value->snapshot.clean = value->snapshot.clean && data_->field_edit.index() == 0;
         using Availability = editing::EHistoryActionAvailability;
         if (data_->close_requested || data_->close != ECloseState::OPEN)
         {
@@ -1809,13 +1899,18 @@ namespace lux::editor::scene
         {
             return editing::HistoryTargetView{value->snapshot, Availability::BUSY, Availability::BUSY, {}, {}};
         }
-        const bool preview = data_->preview.index() != 0;
+        if (!writeRestriction().empty())
+        {
+            return editing::HistoryTargetView{value->snapshot, Availability::BLOCKED, Availability::BLOCKED, {}, {}};
+        }
+        const bool field_edit = data_->field_edit.index() != 0;
+        value->snapshot.clean = value->snapshot.clean && !field_edit;
         return editing::HistoryTargetView{
-            value->snapshot, preview || value->can_undo ? Availability::READY : Availability::EMPTY,
-            preview           ? Availability::BLOCKED
+            value->snapshot, field_edit || value->can_undo ? Availability::READY : Availability::EMPTY,
+            field_edit        ? Availability::BLOCKED
             : value->can_redo ? Availability::READY
                               : Availability::EMPTY,
-            preview ? std::string_view{"Cancel preview"} : value->undo_label, value->redo_label};
+            field_edit ? std::string_view{"Undo field edit"} : value->undo_label, value->redo_label};
     }
 
     editing::EditResult<editing::HistoryTargetResult> SceneEditor::undo() noexcept
@@ -1834,17 +1929,13 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::CLOSED));
         }
-        if (const auto *preview = std::get_if<Data::Preview>(&data_->preview))
+        auto finished = finishFieldEdits();
+        if (!finished)
         {
-            auto cancelled = cancelPreview(preview->token);
-            if (!cancelled)
-            {
-                return lux::cxx::unexpected(cancelled.error());
-            }
-            return editing::HistoryTargetResult{editing::EHistoryTargetOutcome::TRANSIENT_CANCELLED, {}};
+            return lux::cxx::unexpected(finished.error());
         }
         EditingGuard guard(data_->editing_busy);
-        auto result = data_->history->undo();
+        auto result = data_->inspectedHistory().undo();
         if (!result)
         {
             return lux::cxx::unexpected(result.error());
@@ -1860,7 +1951,7 @@ namespace lux::editor::scene
             return lux::cxx::unexpected(admitted.error());
         }
 
-        if (data_->editing_busy || data_->preview.index() != 0)
+        if (data_->editing_busy || data_->field_edit.index() != 0)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
         }
@@ -1869,7 +1960,7 @@ namespace lux::editor::scene
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::CLOSED));
         }
         EditingGuard guard(data_->editing_busy);
-        auto result = data_->history->redo();
+        auto result = data_->inspectedHistory().redo();
         if (!result)
         {
             return lux::cxx::unexpected(result.error());
@@ -1903,9 +1994,9 @@ namespace lux::editor::scene
         }
         if (data_->close == ECloseState::OPEN)
         {
-            if (const auto *preview = std::get_if<Data::Preview>(&data_->preview))
+            if (const auto *field_edit = std::get_if<Data::FieldGesture>(&data_->field_edit))
             {
-                const auto cancelled = cancelPreview(preview->token);
+                const auto cancelled = finishFieldEdit(field_edit->token);
                 if (!cancelled)
                 {
                     data_->failure = cancelled.error();
@@ -2014,7 +2105,26 @@ namespace lux::editor::scene
         {
             static_cast<void>(data_->run.stop(data_->run.status().id));
         }
-        data_->run.poll(4);
+        if (data_->run.status().state == ERunState::STOPPING && data_->field_edit.index() != 0)
+        {
+            const auto finished = finishFieldEdits();
+            if (!finished)
+            {
+                data_->failure = finished.error();
+            }
+        }
+        data_->run.poll(budget, data_->field_edit.index() == 0);
+        const bool inspecting_run = data_->run.objects() != nullptr;
+        const auto inspected_history = historyId();
+        const bool catalog_changed = data_->run.takeCatalogChange();
+        if (data_->observed_run != inspecting_run || data_->observed_history != inspected_history || catalog_changed)
+        {
+            data_->observed_run = inspecting_run;
+            data_->observed_history = inspected_history;
+            ++data_->selection_revision;
+            notify<selectionChanged>(selection());
+            notify<objectsChanged>(data_->inspectedHistory().view()->snapshot.revision);
+        }
         for (const auto &view : data_->views)
         {
             view->poll(budget);
@@ -2044,7 +2154,7 @@ namespace lux::editor::scene
             if (data_->render_binding)
             {
                 data_->render_binding->requestClose();
-                data_->render_binding->poll(budget.render_replies);
+                budget.render_programs -= data_->render_binding->poll(budget.render_programs);
                 if (data_->render_binding->state() != lux::scene::ESceneRenderBindingState::CLOSED)
                 {
                     return;
@@ -2058,6 +2168,14 @@ namespace lux::editor::scene
             else if (!closed)
             {
                 data_->failure = closed.error();
+            }
+            return;
+        }
+        if (!data_->run.settled())
+        {
+            if (data_->render_binding)
+            {
+                budget.render_programs -= data_->render_binding->poll(budget.render_programs);
             }
             return;
         }
@@ -2136,14 +2254,9 @@ namespace lux::editor::scene
                 return;
             }
         }
-        const auto presented = data_->scene->executePresentation();
-        if (!presented)
-        {
-            data_->failure = presented.error();
-        }
         if (data_->render_binding)
         {
-            data_->render_binding->poll(budget.render_replies);
+            budget.render_programs -= data_->render_binding->poll(budget.render_programs);
         }
         const bool unpublished =
             render && render->lastPublishResult() == lux::scene::ERenderPublishResult::BACKPRESSURED;

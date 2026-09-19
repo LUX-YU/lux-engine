@@ -281,8 +281,9 @@ class Probe final : public EditorFrontend
                 if (evidence_.mode == "render-association")
                 {
                     const auto stats = evidence_.renderer->statistics();
-                    std::fprintf(stderr, "association phase=%u pending=%u marker_retired=%u "
-                                         "renderer=%u frames=%llu gpu=%llu events=%llu validation=%llu\n",
+                    std::fprintf(stderr,
+                                 "association phase=%u pending=%u marker_retired=%u "
+                                 "renderer=%u frames=%llu gpu=%llu events=%llu validation=%llu\n",
                                  association_checks_.phase, association_checks_.pending,
                                  association_checks_.consumed && association_checks_.consumed->load(),
                                  unsigned(evidence_.renderer->state()), stats.frames, stats.gpu_completed,
@@ -471,6 +472,12 @@ class Probe final : public EditorFrontend
                 stage_ = 90;
                 return;
             }
+            if (evidence_.mode == "cpu")
+            {
+                cpu_run_checks_.begin(scene);
+                stage_ = 92;
+                return;
+            }
             if (evidence_.mode == "resize")
             {
                 auto opened =
@@ -520,45 +527,22 @@ class Probe final : public EditorFrontend
             stage_ = 5;
             return;
         }
-        if (stage_ == 98)
-        {
-            auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
-            using Transform = lux::simulation::ecs::Transform3D;
-            using World = lux::simulation::ecs::WorldTransform3D;
-            for (std::size_t index{}; index < 3; ++index)
-            {
-                const auto object = scene.objects()[index].object;
-                const auto *local =
-                    static_cast<const Transform *>(scene.component(object, lux::cxx::typeToken<Transform>()));
-                const auto *world = static_cast<const World *>(scene.component(object, lux::cxx::typeToken<World>()));
-                assert(local && world);
-                if (!world->value.translation().isApprox(local->translation, 1e-10))
-                {
-                    std::printf("FAIL transform step=%zu object=%zu local=(%g,%g,%g) world=(%g,%g,%g) diagnostic=%s\n",
-                                transform_step_, index, local->translation.x(), local->translation.y(),
-                                local->translation.z(), world->value.translation().x(), world->value.translation().y(),
-                                world->value.translation().z(), scene.diagnostic().c_str());
-                    evidence_.failed = true;
-                    stage_ = 99;
-                    exit_.request(*editor_);
-                    return;
-                }
-            }
-            if (transform_step_ == 120)
-            {
-                std::puts("PASS author -> WorldTransform across 120 actual owner polls");
-                stage_ = 99;
-                exit_.request(*editor_);
-                return;
-            }
-            return;
-        }
         if (stage_ == 96)
         {
-            auto& scene = dynamic_cast<lux::editor::scene::SceneEditor&>(editor_->document(handle_)->get());
+            auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
             if (run_failure_checks_.poll(scene))
             {
                 stage_ = 97;
+                exit_.request(*editor_);
+            }
+            return;
+        }
+        if (stage_ == 92)
+        {
+            auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
+            if (cpu_run_checks_.poll(scene))
+            {
+                stage_ = 93;
                 exit_.request(*editor_);
             }
             return;
@@ -759,14 +743,12 @@ class Probe final : public EditorFrontend
             }
             extra_view_.reset();
             const auto closed_at = std::chrono::steady_clock::now();
-            const auto us = [](auto elapsed)
-            { return std::chrono::duration<double, std::micro>(elapsed).count(); };
+            const auto us = [](auto elapsed) { return std::chrono::duration<double, std::micro>(elapsed).count(); };
             std::printf("MEASURE resize packet_retry_us=%.3f held_old_us=%.3f release_to_ready_us=%.3f "
                         "ready_to_closed_us=%.3f views=2 resize_requests=9 old=256x128 new=320x192 "
                         "cpu_lease_and_GPU_COMPLETE_checked=1\n",
-                        us(resize_requested_at_ - packet_blocked_at_),
-                        us(image_released_at_ - resize_requested_at_), us(resize_ready_at_ - image_released_at_),
-                        us(closed_at - resize_ready_at_));
+                        us(resize_requested_at_ - packet_blocked_at_), us(image_released_at_ - resize_requested_at_),
+                        us(resize_ready_at_ - image_released_at_), us(closed_at - resize_ready_at_));
             evidence_.checks += 8;
             stage_ = 24;
             exit_.request(*editor_);
@@ -805,8 +787,8 @@ class Probe final : public EditorFrontend
             auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
             if (stage_ == 3)
             {
-                assert(scene.views().size() == 5);
-                const auto prefix = "scene-" + std::to_string(scene.historyId().value);
+                assert(scene.views().size() == 4);
+                const auto prefix = "scene-" + std::to_string(scene.handle().index) + "-" + std::to_string(scene.handle().gen);
                 std::size_t index{};
                 for (const auto *suffix : {"-inspector", "-outliner"})
                 {
@@ -827,14 +809,14 @@ class Probe final : public EditorFrontend
                 const auto pending =
                     gui::sceneDocumentProvider().attach(scene, *evidence_.window, *evidence_.renderer, *runtime_);
                 assert(!pending && pending.error().code == EEditorError::BUSY);
-                assert(scene.views().size() == 5);
+                assert(scene.views().size() == 4);
                 before_revision_ = scene.historyView()->history.revision;
 
                 // The frontend frame has finished. Advance the real document owner
                 // here, before the next dispatcher batch, never from a notification
                 // callback.
                 scene.poll(budget);
-                assert(scene.views().size() == 3 && retired_messages_ == 0);
+                assert(scene.views().size() == 2 && retired_messages_ == 0);
                 assert(retired_panes_[0].expired() && retired_panes_[1].expired());
                 std::puts("C19 retired Inspector and Outliner with two queued "
                           "weak-target messages");
@@ -859,11 +841,11 @@ class Probe final : public EditorFrontend
                                  rebuilt.error().domain.c_str(), rebuilt.error().reason, scene.views().size(),
                                  before.revision.value);
                 }
-                assert(rebuilt && scene.views().size() == 5);
+                assert(rebuilt && scene.views().size() == 4);
                 assert(scene.historyView()->history.current == before.current);
                 assert(scene.historyView()->history.revision == before.revision);
                 assert(gui::sceneDocumentProvider().attach(scene, *evidence_.window, *evidence_.renderer, *runtime_));
-                assert(scene.views().size() == 5);
+                assert(scene.views().size() == 4);
                 const auto owner = scene.weakRef();
                 const auto selected = scene.objects().back().object;
                 assert(lux::object::detail::post(scene.dispatcherRef(),
@@ -1202,9 +1184,40 @@ class Probe final : public EditorFrontend
         inner_->draw(editor, budget);
         if (stage_ == 98)
         {
-            // Edits arrive while drawing Inspector. At the next frontend poll,
-            // document derivation/publication must get its turn before queued
-            // UI frames can take the newly available Program slots.
+            auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
+            using Transform = lux::simulation::ecs::Transform3D;
+            using World = lux::simulation::ecs::WorldTransform3D;
+            for (std::size_t index{}; index < 3; ++index)
+            {
+                const auto object = scene.objects()[index].object;
+                const auto *local =
+                    static_cast<const Transform *>(scene.component(object, lux::cxx::typeToken<Transform>()));
+                const auto *world = static_cast<const World *>(scene.component(object, lux::cxx::typeToken<World>()));
+                assert(local && world);
+                if (!world->value.translation().isApprox(local->translation, 1e-10))
+                {
+                    std::printf("FAIL transform step=%zu object=%zu local=(%g,%g,%g) world=(%g,%g,%g) diagnostic=%s\n",
+                                transform_step_, index, local->translation.x(), local->translation.y(),
+                                local->translation.z(), world->value.translation().x(), world->value.translation().y(),
+                                world->value.translation().z(), scene.diagnostic().c_str());
+                    evidence_.failed = true;
+                    stage_ = 99;
+                    exit_.request(*editor_);
+                    return;
+                }
+            }
+            if (transform_step_ == 120)
+            {
+                std::puts("PASS author -> WorldTransform across 120 actual owner polls");
+                stage_ = 99;
+                exit_.request(*editor_);
+                return;
+            }
+        }
+        if (stage_ == 98)
+        {
+            // Check after the owner turn, before the next Inspector write.
+            // Frame/update admission alternates without changing this boundary.
             auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
             using Transform = lux::simulation::ecs::Transform3D;
             const auto object = scene.objects()[transform_step_ % 3].object;
@@ -1289,6 +1302,7 @@ class Probe final : public EditorFrontend
     SceneSaveChecks save_checks_;
     ModelPlacementChecks placement_checks_;
     SceneRunChecks run_checks_;
+    CpuRunChecks cpu_run_checks_;
     RunFailureChecks run_failure_checks_;
     RenderAssociationChecks association_checks_;
     RenderThreadChecks thread_checks_;
@@ -1311,7 +1325,8 @@ class Probe final : public EditorFrontend
     editing::Revision before_revision_{};
     std::array<lux::object::ObjectWeakRef, 2> retired_panes_;
     unsigned retired_messages_{}, rebuilt_messages_{};
-    std::chrono::steady_clock::time_point packet_blocked_at_, resize_requested_at_, image_released_at_, resize_ready_at_;
+    std::chrono::steady_clock::time_point packet_blocked_at_, resize_requested_at_, image_released_at_,
+        resize_ready_at_;
     std::unique_ptr<rendering::RenderView> extra_view_;
     rendering::ViewImage held_image_;
     rendering::EditorFramePacket pending_packet_;
@@ -1379,7 +1394,7 @@ int main(int argc, char **argv)
                 void draw(lux::ui::Frame &, lux::ui::PaneDrawContext &) override {}
             };
             CollisionPane collision(window.dispatcherRef(),
-                                    "scene-" + std::to_string(document.historyId().value) + "-inspector");
+                                    "scene-" + std::to_string(document.handle().index) + "-" + std::to_string(document.handle().gen) + "-inspector");
             auto registered = window.uiSession().registerPane(collision);
             assert(registered);
             auto result = attach(document, window, renderer, runtime);

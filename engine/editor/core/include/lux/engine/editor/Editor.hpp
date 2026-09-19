@@ -92,7 +92,7 @@ namespace lux::editor
         struct Opening;
         struct Request;
         void pollDocuments(PollBudget &);
-        void acceptOpenings();
+        void acceptOpenings(PollBudget &);
         void collectClosed();
 
         EditorConfig config_;

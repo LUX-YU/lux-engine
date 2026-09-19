@@ -14,9 +14,7 @@ namespace lux::scene
         struct ProgramDrain final
         {
             std::shared_ptr<std::atomic_bool> retired;
-            explicit ProgramDrain(std::shared_ptr<std::atomic_bool> value) : retired(std::move(value))
-            {
-            }
+            explicit ProgramDrain(std::shared_ptr<std::atomic_bool> value) : retired(std::move(value)) {}
             ~ProgramDrain()
             {
                 retired->store(true, std::memory_order_release);
@@ -37,28 +35,25 @@ namespace lux::scene
 
     struct SceneRenderInput::Data final
     {
-        std::shared_ptr<const SceneMetaManager> metadata;
+        std::shared_ptr<const RenderSystemMetadata> metadata;
         render::FeatureCatalog catalog;
         std::vector<BoundFeature> features;
         std::vector<std::byte> configuration;
         system::SystemInstanceId system{};
         render::RenderSceneId scene{};
         double page_size{};
-        std::shared_ptr<detail::RenderSyncStorage> storage;
+        detail::RenderSyncStorage *storage{};
 
         ~Data()
         {
             if (storage)
             {
-                storage->producer_closed.store(true, std::memory_order_release);
-                storage->notify();
+                storage->producer_closed = true;
             }
         }
     };
 
-    SceneRenderInput::SceneRenderInput(std::unique_ptr<Data> data) noexcept : data_(std::move(data))
-    {
-    }
+    SceneRenderInput::SceneRenderInput(std::unique_ptr<Data> data) noexcept : data_(std::move(data)) {}
     SceneRenderInput::~SceneRenderInput() = default;
     SceneRenderInput::SceneRenderInput(SceneRenderInput &&) noexcept = default;
     SceneRenderInput &SceneRenderInput::operator=(SceneRenderInput &&) noexcept = default;
@@ -96,15 +91,15 @@ namespace lux::scene
             }
             stages.push_back(std::move(*stage));
         }
-        auto result = RenderSyncPipeline::create(std::move(stages), data_->storage, data_->metadata);
+        auto result = RenderSyncPipeline::create(std::move(stages), *data_->storage, data_->metadata);
         if (!result)
         {
             return lux::cxx::unexpected(
                 SceneSystemBuildFailure{ESceneSystemBuildError::CONSTRUCTION_FAILURE, data_->system});
         }
-        // Input no longer owns the producer terminal signal. A failed preparation
+        // Input transfers the producer lifetime to the installed pipeline. Failed preparation
         // above retains that ownership and remains retryable with the same input.
-        data_->storage.reset();
+        data_->storage = nullptr;
         return std::move(*result);
     }
 
@@ -116,13 +111,10 @@ namespace lux::scene
             std::uint32_t type{};
             std::vector<std::byte> wire;
         };
-        explicit Data(RenderRuntimeLease lease) : runtime(std::move(lease)), consumer(storage)
-        {
-        }
+        explicit Data(RenderRuntimeLease lease) : runtime(std::move(lease)) {}
         RenderRuntimeLease runtime;
         render::RenderSceneLease scene;
-        std::shared_ptr<detail::RenderSyncStorage> storage = std::make_shared<detail::RenderSyncStorage>();
-        RenderSyncConsumer consumer;
+        detail::RenderSyncStorage storage;
         std::unique_ptr<SceneRenderInput::Data> input = std::make_unique<SceneRenderInput::Data>();
         std::vector<Attachment> attachments;
         render::RenderRequest<render::SceneCreatedReply> create;
@@ -150,9 +142,7 @@ namespace lux::scene
         }
     };
 
-    SceneRenderBinding::SceneRenderBinding(std::unique_ptr<Data> data) noexcept : data_(std::move(data))
-    {
-    }
+    SceneRenderBinding::SceneRenderBinding(std::unique_ptr<Data> data) noexcept : data_(std::move(data)) {}
     SceneRenderBinding::~SceneRenderBinding()
     {
         // Submitted creation/attachment must be observed before this owner dies.
@@ -160,7 +150,7 @@ namespace lux::scene
     }
 
     lux::cxx::expected<std::unique_ptr<SceneRenderBinding>, SceneRenderBindingFailure> SceneRenderBinding::begin(
-        RenderRuntime &runtime, SceneSystemView description, std::shared_ptr<const SceneMetaManager> metadata)
+        RenderRuntime &runtime, SceneSystemView description, std::shared_ptr<const RenderSystemMetadata> metadata)
     {
         const auto registration = builtinRenderSystemRegistration();
         if (!metadata || description.type() != registration.type ||
@@ -222,7 +212,7 @@ namespace lux::scene
         for (const auto name : order.order)
         {
             const auto *descriptor = data->input->catalog.descriptor(name);
-            const auto *meta = descriptor ? data->input->metadata->getRenderFeatureMeta(descriptor->type) : nullptr;
+            const auto *meta = descriptor ? data->input->metadata->feature(descriptor->type) : nullptr;
             if (!meta || !meta->scene_configurable || !meta->registration || !meta->registration->configuration.valid())
             {
                 return lux::cxx::unexpected(reject(description, descriptor ? descriptor->type : 0));
@@ -261,8 +251,7 @@ namespace lux::scene
         const auto runtime = d.runtime.status();
         if (runtime.state != ERenderRuntimeState::ACTIVE)
         {
-            d.consumer.stop(); // Wake a blocked producer, even when packet_budget
-                               // is zero.
+            d.storage.stopped = true;
             if (!d.terminal_observed)
             {
                 d.fail(runtime.error.ok() ? render::renderError<render::err::comm::ChannelStopping>() : runtime.error);
@@ -273,7 +262,7 @@ namespace lux::scene
                 return 0;
             }
             d.state = ESceneRenderBindingState::CLOSING;
-            if (runtime.state != ERenderRuntimeState::RETIRED || (d.input_taken && !d.consumer.producerClosed()))
+            if (runtime.state != ERenderRuntimeState::RETIRED || (d.input_taken && !d.storage.producer_closed))
             {
                 return 0;
             }
@@ -283,7 +272,10 @@ namespace lux::scene
             // forward/drain completion.
             if (d.input_taken)
             {
-                d.consumer.retireAfterBackendStopped();
+                d.storage.statistics.retired_unforwarded += d.storage.prepared ? 1 : 0;
+                d.storage.update.clear_keep_capacity();
+                d.storage.prepared = false;
+                d.storage.statistics.pending = 0;
             }
             d.drain_program.clear_keep_capacity();
             d.create = {};
@@ -353,26 +345,35 @@ namespace lux::scene
                 }
             }
         }
-        if (d.input_taken)
+        if (d.storage.prepared && packet_budget != 0)
         {
-            for (; forwarded < packet_budget; ++forwarded)
+            auto &programs = d.runtime.programs();
+            if (programs.hasPendingSubmit() && programs.retryPendingSubmit())
             {
-                if (d.consumer.tryForwardUpdate(d.runtime.programs()) != ERenderForwardResult::FORWARDED)
-                {
-                    break;
-                }
+                ++forwarded;
+            }
+            if (forwarded < packet_budget && programs.trySubmitPrepared(d.storage.update))
+            {
+                d.storage.prepared = false;
+                d.storage.statistics.pending = 0;
+                ++d.storage.statistics.forwarded;
+                ++forwarded;
+            }
+            else if (forwarded < packet_budget)
+            {
+                ++d.storage.statistics.backpressured;
             }
         }
         if (d.closing && d.state != ESceneRenderBindingState::CREATING &&
             d.state != ESceneRenderBindingState::ATTACHING && d.state != ESceneRenderBindingState::CLOSED)
         {
             d.state = ESceneRenderBindingState::CLOSING;
-            if (d.input_taken && (!d.consumer.producerClosed() || d.consumer.hasPendingUpdate() ||
-                                  d.runtime.programs().hasPendingSubmit()))
+            if (d.input_taken &&
+                (!d.storage.producer_closed || d.storage.prepared || d.runtime.programs().hasPendingSubmit()))
             {
                 return forwarded;
             }
-            if (d.input_taken && d.storage->published.load(std::memory_order_relaxed) != 0)
+            if (d.input_taken && d.storage.statistics.published != 0)
             {
                 // Client acceptance is not server adoption. The existing owned attachment
                 // retires after the ordered Program prefix, before Scene release or resource unpinning.
@@ -385,11 +386,12 @@ namespace lux::scene
                 }
                 if (!d.drain_submitted)
                 {
-                    if (!d.runtime.programs().trySubmitPrepared(d.drain_program))
+                    if (forwarded == packet_budget || !d.runtime.programs().trySubmitPrepared(d.drain_program))
                     {
                         return forwarded;
                     }
                     d.drain_submitted = true;
+                    ++forwarded;
                 }
                 if (!d.drain_retired->load(std::memory_order_acquire))
                 {
@@ -398,10 +400,12 @@ namespace lux::scene
                     // on another draw. At most one empty StateUpdate per poll,
                     // bounded by one ring rotation; these contain no business
                     // update and issue no GPU Frame submission.
-                    if (d.drain_recycles < render::RenderProgramChannel<>::request_slot_count &&
+                    if (forwarded < packet_budget &&
+                        d.drain_recycles < render::RenderProgramChannel<>::request_slot_count &&
                         d.runtime.programs().trySubmitPrepared(d.drain_program))
                     {
                         ++d.drain_recycles;
+                        ++forwarded;
                     }
                     return forwarded;
                 }
@@ -419,14 +423,7 @@ namespace lux::scene
 
     RenderSyncStatistics SceneRenderBinding::statistics() const noexcept
     {
-        const auto &s = *data_->storage;
-        const auto published = s.published.load(std::memory_order_relaxed);
-        return {published,
-                s.forwarded.load(std::memory_order_relaxed),
-                s.backpressured.load(std::memory_order_relaxed),
-                static_cast<std::uint32_t>(s.updates.pendingFrames()),
-                published ? 1U : 0U,
-                s.retired_unforwarded};
+        return data_->storage.statistics;
     }
 
     ESceneRenderBindingState SceneRenderBinding::state() const noexcept
@@ -447,7 +444,7 @@ namespace lux::scene
     }
     bool SceneRenderBinding::hasPendingUpdate() const noexcept
     {
-        return data_->consumer.hasPendingUpdate();
+        return data_->storage.prepared;
     }
     void SceneRenderBinding::requestClose() noexcept
     {
@@ -461,7 +458,7 @@ namespace lux::scene
         {
             return lux::cxx::unexpected(SceneRenderBindingFailure{{ESceneSystemBuildError::INVALID_DESCRIPTION}, {}});
         }
-        d.input->storage = d.storage;
+        d.input->storage = &d.storage;
         d.input_taken = true;
         return SceneRenderInput(std::move(d.input));
     }

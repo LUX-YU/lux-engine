@@ -133,7 +133,7 @@ namespace lux::editor::gui
             {
                 if (renderer_ && renderer_->state() != rendering::ERendererState::STOPPED)
                 {
-                    auto polled = renderer_->poll(budget.render_replies);
+                    auto polled = renderer_->poll(budget.render_replies, budget.render_programs);
                     if (!polled)
                     {
                         editor_->fail(renderFailure(polled.error()).error());
@@ -145,7 +145,7 @@ namespace lux::editor::gui
                 }
                 if (closing_)
                 {
-                    advanceClose();
+                    advanceClose(budget);
                     return;
                 }
                 if (!renderer_)
@@ -368,8 +368,8 @@ namespace lux::editor::gui
                         continue;
                     }
                     const auto summary = document->get().summary();
-                    const auto history = document->get().historyView();
-                    const auto key = std::to_string(document->get().historyId().value);
+                    const auto history = document->get().reviewClose();
+                    const auto key = std::to_string(handle.index) + "-" + std::to_string(handle.gen);
                     ImGui::PushID(key.c_str());
                     ImGui::TextUnformatted(summary.title.c_str());
                     ImGui::SameLine();
@@ -390,7 +390,7 @@ namespace lux::editor::gui
                         close_interactions_pending_ = true;
                     }
                     ImGui::EndDisabled();
-                    if (history && !history->history.clean)
+                    if (history && !history->clean)
                     {
                         ImGui::SameLine();
                         ImGui::TextDisabled("Unsaved changes");
@@ -699,8 +699,8 @@ namespace lux::editor::gui
                         {
                             if (auto document = editor_->document(handle))
                             {
-                                const auto history = document->get().historyView();
-                                if (history && !history->history.clean)
+                                const auto history = document->get().reviewClose();
+                                if (history && !history->clean)
                                 {
                                     beginSave(handle);
                                 }
@@ -723,12 +723,12 @@ namespace lux::editor::gui
                         {
                             if (auto document = editor_->document(handle))
                             {
-                                const auto history = document->get().historyView();
+                                const auto history = document->get().reviewClose();
                                 if (!history)
                                 {
                                     return;
                                 }
-                                close_decisions_.push_back({handle, history->history.current, history->history.revision,
+                                close_decisions_.push_back({handle, history->current, history->revision,
                                                             EDocumentCloseDecision::DISCARD_THIS_STATE});
                             }
                         }
@@ -855,11 +855,11 @@ namespace lux::editor::gui
                 }
             }
 
-            void advanceClose()
+            void advanceClose(PollBudget &budget)
             {
                 if (renderer_)
                 {
-                    const auto closed = renderer_->advanceClose();
+                    const auto closed = renderer_->advanceClose(budget.render_replies, budget.render_programs);
                     if (!closed)
                     {
                         fail(renderFailure(closed.error()).error());

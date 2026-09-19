@@ -10,7 +10,8 @@
 
 namespace lux::editor::gui
 {
-    // Pane-owned, versioned input drafts. Only SceneEditor can change author content or history.
+    // Pane-local widget state. Generated controls edit the active Registry directly;
+    // the document owns before/after history values.
     class InspectorInteraction final
     {
       public:
@@ -88,12 +89,12 @@ namespace lux::editor::gui
         {
             if (active() && !ImGui::IsAnyItemActive())
             {
-                return finish(document, true);
+                return finish(document);
             }
             return true;
         }
 
-        bool finish(scene::SceneEditor &document, bool commit)
+        bool finish(scene::SceneEditor &document)
         {
             auto *gesture = std::get_if<Gesture>(&gesture_);
             if (!gesture)
@@ -101,16 +102,7 @@ namespace lux::editor::gui
                 return true;
             }
             borrow_valid_ = false;
-            const auto finished = commit ? [&]() -> editing::EditResult<void>
-            {
-                auto result = document.commitPreview(gesture->token);
-                if (!result)
-                {
-                    return lux::cxx::unexpected(result.error());
-                }
-                return {};
-            }()
-                : document.cancelPreview(gesture->token);
+            const auto finished = document.finishFieldEdit(gesture->token);
             if (!finished && finished.error().code != editing::EEditError::STALE_TARGET)
             {
                 fail(finished.error());
@@ -147,7 +139,7 @@ namespace lux::editor::gui
             auto &expansion = input<Expansion>(ImGui::GetID(identity));
             ImGui::SetNextItemOpen(expansion.open, ImGuiCond_Always);
             const bool requested = ImGui::TreeNodeEx(identity, ImGuiTreeNodeFlags_NoTreePushOnOpen, "%s", label);
-            if (requested != expansion.open && finish(document, true))
+            if (requested != expansion.open && finish(document))
             {
                 expansion.open = requested;
             }
@@ -162,7 +154,7 @@ namespace lux::editor::gui
         bool mutateField(lux::world::WorldObjectId object, const char *identity, const char *label, Access access,
                          Mutation mutate)
         {
-            if (!finish(document, true))
+            if (!finish(document))
             {
                 return false;
             }
@@ -195,12 +187,67 @@ namespace lux::editor::gui
             return true;
         }
 
+        // Called before a widget applies a real change. The callback exists only
+        // during this draw and captures the root field once for the gesture.
+        class LocalInput final
+        {
+          public:
+            explicit LocalInput(InspectorInteraction &owner) : owner_(owner), previous_(owner.local_input_)
+            {
+                owner_.local_input_ = true;
+            }
+            ~LocalInput()
+            {
+                owner_.local_input_ = previous_;
+            }
+
+          private:
+            InspectorInteraction &owner_;
+            bool previous_;
+        };
+
+        bool beforeWrite()
+        {
+            if (read_only)
+            {
+                return false;
+            }
+            if (local_input_)
+            {
+                return true;
+            }
+            if (!capture_)
+            {
+                return false;
+            }
+            return capture_(capture_context_);
+        }
+
+        // ImGui scalar widgets write through the real field pointer. Their small
+        // pre-call value is also the undo value; capture it before publishing the
+        // mutation. No persistent widget draft or per-frame field copy is kept.
+        template <class Value> bool changed(Value &value, const Value &before, bool changed)
+        {
+            if (!changed)
+            {
+                return false;
+            }
+            Value next(value);
+            value = before;
+            if (!beforeWrite())
+            {
+                return false;
+            }
+            value = std::move(next);
+            return true;
+        }
+
         template <class Component, class Value, class Access, class Draw>
         void field(scene::SceneEditor &document, lux::world::WorldObjectId object, lux::ui::Frame &frame,
                    const char *identity, const char *label, Access access, Draw draw, bool immutable)
         {
             const auto snapshot = readComponent(object, lux::cxx::typeToken<Component>());
-            const auto *component = static_cast<const Component *>(snapshot.value);
+            auto *component = const_cast<Component *>(static_cast<const Component *>(snapshot.value));
             if (!component)
             {
                 return;
@@ -210,87 +257,59 @@ namespace lux::editor::gui
             {
                 return;
             }
-            auto &draft = input<Draft<Value>>(ImGui::GetID(identity));
-            const auto sequence = snapshot.sequence;
             const auto *gesture = std::get_if<Gesture>(&gesture_);
             const bool owns_gesture = gesture && gesture->field == identity;
-            if (!owns_gesture && (draft.sequence != sequence || draft.object != object || draft.reload))
-            {
-                draft.value = *live;
-                invalidateContainerIterators();
-                draft.object = object;
-                draft.sequence = sequence;
-                draft.reload = false;
-            }
-
-            frame.propertyRow(label);
-            ImGui::PushID(identity);
             const bool disabled = immutable || !document.writeRestriction().empty() || (gesture && !owns_gesture);
-            const auto previous_read_only = std::exchange(read_only, disabled);
-            const auto previous_error = error;
-            error[0] = '\0';
-            const auto change = draw(draft.value, *this);
-            read_only = previous_read_only;
-            ImGui::PopID();
-            if (error[0])
+            auto capture = [&]() -> bool
             {
-                draft.reload = true;
-                return;
-            }
-            error = previous_error;
-            if (disabled)
-            {
-                return;
-            }
-            if ((change.began || change.changed) && !active())
-            {
+                if (active())
+                {
+                    return document.fieldEditWritable(std::get<Gesture>(gesture_).token);
+                }
                 auto target = document.writeTarget(object);
                 if (!target)
                 {
                     fail(target.error());
-                    draft.reload = true;
-                    return;
+                    return false;
                 }
-                borrow_valid_ = false;
-                auto begun = document.beginPreview<Component, Value>(*target, origin_, identity, label, access);
+                auto begun = document.beginFieldEdit<Component, Value>(*target, origin_, identity, label, access);
                 if (!begun)
                 {
                     fail(begun.error());
-                    draft.reload = true;
-                    return;
+                    return false;
                 }
                 gesture_.emplace<Gesture>(std::move(*begun), identity);
+                return true;
+            };
+            capture_context_ = &capture;
+            capture_ = [](void *context) { return (*static_cast<decltype(capture) *>(context))(); };
+            frame.propertyRow(label);
+            ImGui::PushID(identity);
+            const auto previous_read_only = std::exchange(read_only, disabled);
+            const auto change = draw(*live, *this);
+            read_only = previous_read_only;
+            ImGui::PopID();
+            capture_ = nullptr;
+            capture_context_ = nullptr;
+            if (disabled)
+            {
+                return;
             }
             if (auto *current = std::get_if<Gesture>(&gesture_); current && current->field == identity)
             {
                 if (change.changed)
                 {
                     borrow_valid_ = false;
-                    const auto updated = document.updatePreview(current->token, draft.value);
+                    const auto updated = document.fieldEdited(current->token);
                     if (!updated)
                     {
                         fail(updated.error());
-                        // Notification callbacks end the earlier component borrow, even on failure.
-                        const auto restored = readComponent(object, lux::cxx::typeToken<Component>());
-                        if (restored.value)
-                        {
-                            if (const auto *value = access(*static_cast<const Component *>(restored.value)))
-                            {
-                                draft.value = *value;
-                                invalidateContainerIterators();
-                            }
-                        }
-                        draft.reload = true;
                         return;
                     }
-                    error[0] = '\0';
                 }
-                if (change.cancelled || change.committed)
+                if (change.committed || change.cancelled)
                 {
-                    if (finish(document, !change.cancelled))
-                    {
-                        draft.sequence = document.componentVersion(object, lux::cxx::typeToken<Component>());
-                    }
+                    static_cast<void>(finish(document));
                 }
             }
         }
@@ -344,26 +363,20 @@ namespace lux::editor::gui
             }
         };
 
-        template <class Value> struct Draft final
-        {
-            Value value{};
-            lux::world::WorldObjectId object;
-            std::uint64_t sequence{};
-            bool reload{true};
-        };
-
         struct Gesture final
         {
-            scene::PreviewToken token;
+            scene::FieldEditToken token;
             std::string field;
         };
 
+        void *capture_context_{};
+        bool (*capture_)(void *){};
         std::string origin_;
         std::unordered_map<ScratchKey, std::any, ScratchHash> scratch_;
         std::variant<std::monostate, Gesture> gesture_;
         editing::EditFailure failure_;
         ComponentRead borrow_;
-        bool draw_active_{}, borrow_valid_{};
+        bool draw_active_{}, borrow_valid_{}, local_input_{};
         std::uint64_t container_epoch_{1};
     };
 } // namespace lux::editor::gui

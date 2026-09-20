@@ -56,14 +56,27 @@ inline void checkSpatialEditing(lux::editor::scene::SceneEditor &editor)
     assert(a && b && a->direction.isApprox(b->direction) && !a->origin.isApprox(b->origin));
     assert(editor.historyView()->history.current == before.current);
 
+    const auto selection_before_create = editor.selection();
+    editor::scene::SelectionNotice selection_notice;
+    auto connection = editor.observeScoped<editor::scene::SceneEditor::selectionChanged>(
+        [&](const editor::scene::SelectionNotice &notice) noexcept { selection_notice = notice; });
     auto created = editor.createCameraFromView(*camera, before.current, partition::PartitionOrdinal{0});
     assert(created && editor.objects().size() == authors.size() + 1);
+    assert(editor.selection().revision > selection_before_create.revision);
+    assert(selection_notice.object == editor.selection().object &&
+           selection_notice.revision == editor.selection().revision);
+    const auto creation_selection_revision = editor.selection().revision;
     const auto *value = static_cast<const Camera *>(editor.component(*created, cxx::typeToken<Camera>()));
     assert(value && !value->view.isValid() && !value->primary);
     assert(std::holds_alternative<scene::OrthographicProjection>(value->projection));
     assert(editor.historyView()->history.cursor == before.cursor + 1);
     assert(editor.undo() && !editor.component(*created, cxx::typeToken<Camera>()));
+    assert(editor.selection().revision > creation_selection_revision);
+    const auto undo_selection_revision = editor.selection().revision;
     assert(editor.objects().size() == authors.size() && editor.redo());
+    assert(editor.selection().revision > undo_selection_revision);
+    assert(selection_notice.object == editor.selection().object &&
+           selection_notice.revision == editor.selection().revision);
     const auto restored = newEntities(editor, authors);
     assert(restored.size() == 1 && restored.front() != *created);
     assert(!editor.select(*created));

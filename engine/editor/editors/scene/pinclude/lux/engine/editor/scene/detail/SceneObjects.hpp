@@ -39,6 +39,7 @@ namespace lux::editor::scene::detail
         std::vector<SceneObjectRow> rows;
         std::vector<ComponentNotice> component_versions;
         SelectionNotice selection;
+        editing::Revision structure_revision{};
         std::uint64_t next_component_change{1};
         bool structural_commit{};
         bool structure_changed{};

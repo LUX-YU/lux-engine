@@ -26,6 +26,8 @@ SceneObjectRow、SelectionNotice、Inspector 与字段写入目标使用 `SceneE
 
 空白命中可以清除选择；失效、失败或目标已切换不能伪装成空白命中。选择不新增内容历史，也不使作者文件变脏。
 
+选择版本由当前 SceneObjects 的 SelectionNotice 唯一保存。显式选择与结构操作中的自动选择共用它，通知与查询返回同一个版本；创建、Undo／Redo 不得绕过版本推进。高亮还观察结构提交版本，以覆盖选择未变但后代归属变化的情况；普通字段变化不重建目标集合。
+
 ## 相机与空间视口
 
 `SpatialViewport` 是冷注册的开放接口；首个实现 `SpatialViewport3D` 支持透视和正交。ScenePane 不保存位置或投影副本。尚未提供二维实现，不兼容的 World 显示限制。

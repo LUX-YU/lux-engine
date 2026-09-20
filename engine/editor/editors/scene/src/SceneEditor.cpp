@@ -243,6 +243,7 @@ namespace lux::editor::scene
                         std::ranges::sort(owner.objects.component_versions, detail::SceneObjects::componentLess);
                     }
                     owner.derive = true;
+                    owner.objects.structure_revision = revision_;
                 }
                 void publish(const editing::CommitInfo &info) noexcept override
                 {
@@ -349,8 +350,8 @@ namespace lux::editor::scene
             }
             return *history;
         }
-        std::uint64_t selection_revision{};
         std::uint64_t highlighted_selection{UINT64_MAX};
+        editing::Revision highlighted_structure{};
         lux::render::FeatureHandle highlighted_feature{};
         SceneInstanceId highlighted_instance{};
         lux::render::RenderProgram<> highlight_program;
@@ -370,10 +371,12 @@ namespace lux::editor::scene
             {
                 return;
             }
-            if (catalog_changed || highlighted_selection != selection_revision ||
+            if (catalog_changed || highlighted_selection != current.selection.revision ||
+                highlighted_structure != current.structure_revision ||
                 highlighted_feature != feature || highlighted_instance != current.instance)
             {
-                highlighted_selection = selection_revision;
+                highlighted_selection = current.selection.revision;
+                highlighted_structure = current.structure_revision;
                 highlighted_feature = feature;
                 highlighted_instance = current.instance;
                 std::vector<lux::render::RenderEntityId> targets;
@@ -905,7 +908,7 @@ namespace lux::editor::scene
 
     SelectionNotice SceneEditor::selection() const noexcept
     {
-        return {data_->inspectedObjects().selection.object, data_->selection_revision};
+        return data_->inspectedObjects().selection;
     }
 
     const Project &SceneEditor::project() const noexcept
@@ -950,7 +953,7 @@ namespace lux::editor::scene
         if (data_->inspectedObjects().selection.object != id)
         {
             data_->inspectedObjects().selection.object = id;
-            ++data_->selection_revision;
+            ++data_->inspectedObjects().selection.revision;
             notify<selectionChanged>(selection());
         }
         return {};
@@ -2286,7 +2289,7 @@ namespace lux::editor::scene
         {
             data_->observed_run = inspecting_run;
             data_->observed_history = inspected_history;
-            ++data_->selection_revision;
+            ++data_->inspectedObjects().selection.revision;
             notify<selectionChanged>(selection());
             notify<objectsChanged>(data_->inspectedHistory().view()->snapshot.revision);
         }

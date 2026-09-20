@@ -299,6 +299,7 @@ namespace lux::editor::scene::detail
                     owner.rows.swap(rows_);
                     owner.component_versions.swap(versions_);
                     owner.selection = selection_;
+                    owner.structure_revision = revision_;
                     owner.structure_changed = true;
                     owner.invalidate_derived = true;
                 }

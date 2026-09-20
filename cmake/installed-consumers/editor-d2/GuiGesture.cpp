@@ -3,6 +3,7 @@
 #include <consumer/Component.hpp>
 #include <consumer/Gui.hpp>
 #include <cstdio>
+#include <imgui_internal.h>
 #include <lux/engine/editor/gui/GuiView.hpp>
 
 namespace consumer
@@ -86,6 +87,12 @@ namespace consumer
             {
                 auto *previous = ImGui::GetCurrentContext();
                 ImGui::SetCurrentContext(probe.context);
+                if (collapse)
+                {
+                    // A docked tab cannot collapse independently. Float this actual Pane
+                    // first, as a user can, then exercise its no-draw lifecycle.
+                    ImGui::DockBuilderDockWindow(label.c_str(), 0);
+                }
                 ImGui::SetWindowCollapsed(label.c_str(), collapse);
                 ImGui::SetCurrentContext(previous);
             }
@@ -128,8 +135,12 @@ namespace consumer
                     assert(document.historyView()->history.current == before.current);
                 }
             });
-        draw(800); // Split layout gives the right pane zero width without changing Pane.visible.
-        assert(pane.visible() && !pane.focused() && probe.draws == drawn && focus_notification);
+        draw(800); // Docking retains the pane instead of enforcing the former zero-width policy.
+        assert(pane.visible() && probe.draws > drawn && probe.interaction->active());
+        assert(document.historyView()->history.current == before.current);
+        const auto narrow_drawn = probe.draws;
+        draw(800, true);
+        assert(pane.visible() && !pane.focused() && probe.draws == narrow_drawn && focus_notification);
         connection.reset();
         poll();
         std::printf("Undrawn Inspector: visible=%d focused=%d draws=%zu active=%d cursor=%zu\n", pane.visible(),
@@ -207,7 +218,8 @@ namespace consumer
         assert(document.historyView()->history.current == before.current);
         omission = nullptr;
         std::puts(
-            "PASS real Inspector omission: layout zero/collapse retain visible; focus notifications do not edit; "
+            "PASS real Inspector omission: docking retains narrow panes; floating collapse retains visible; "
+            "focus notifications do not edit; "
             "owner poll commits; rejected commit retries same token; no-draw turns retain active gesture; Undo "
             "restores; "
             "ordinary release commits once; close finishes the edit and Undo restores it; "

@@ -15,9 +15,32 @@ namespace lux::editor::gui
         }
     } // namespace
 
-    ScenePane::ScenePane(scene::SceneEditor &document, rendering::EditorRenderer &renderer, std::string id)
+    ScenePane::ScenePane(scene::SceneEditor &document, rendering::EditorRenderer &renderer, std::string id,
+                         std::span<const SpatialViewportRegistration> registrations)
         : DocumentPane(document, std::move(id), "Scene"), renderer_(renderer)
     {
+        const std::array builtin{spatialViewport3D()};
+        if (registrations.empty())
+        {
+            registrations = builtin;
+        }
+        for (const auto &registration : registrations)
+        {
+            if (registration.supports && registration.create && registration.supports(document))
+            {
+                if (spatial_)
+                {
+                    spatial_.reset();
+                    status_ = "Multiple spatial viewport providers match this World";
+                    return;
+                }
+                spatial_ = registration.create();
+            }
+        }
+        if (!spatial_)
+        {
+            status_ = "No spatial viewport supports this World's declared space";
+        }
     }
 
     rendering::RenderView *ScenePane::view() noexcept
@@ -60,6 +83,10 @@ namespace lux::editor::gui
         {
             releaseFrameImages();
             rotating_ = panning_ = false;
+            document_.unbindCamera(camera_, current->handle());
+            camera_ = {};
+            navigation_pending_ = false;
+            action_.emplace<std::monostate>();
             auto requested = current->beginClose();
             if (!requested)
             {
@@ -81,7 +108,6 @@ namespace lux::editor::gui
             view_result_ = {};
             status_.clear();
             camera_extent_ = {};
-            applied_camera_revision_ = 0;
             reopen_ = false;
         }
         if (closing_)
@@ -89,8 +115,8 @@ namespace lux::editor::gui
             closed_ = !view();
             return;
         }
-        if (!view() && visible() && (running || author) && renderer_.state() == rendering::ERendererState::READY &&
-            view_result_)
+        if (spatial_ && !view() && visible() && (running || author) &&
+            renderer_.state() == rendering::ERendererState::READY && view_result_)
         {
             if (running)
             {
@@ -125,7 +151,96 @@ namespace lux::editor::gui
                 }
                 view_owner_.emplace<std::unique_ptr<rendering::RenderView>>(std::move(*opened));
             }
-            updateCamera({640, 480});
+        }
+        if (view() && !switching)
+        {
+            if (navigation_pending_ && spatial_ && camera_.valid())
+            {
+                const auto moved = spatial_->navigate(document_, camera_, pending_motion_);
+                navigation_pending_ = false;
+                pending_motion_ = {};
+                if (!moved)
+                {
+                    status_ = moved.error().message;
+                }
+            }
+            updateCamera(view()->status().ready_extent);
+            if (action_.index() != 0 && spatial_)
+            {
+                const Pick location =
+                    action_.index() == 1 ? std::get<Pick>(action_) : std::get<Create>(action_).location;
+                bool completed = true;
+                if (location.instance != document_.instance())
+                {
+                    status_ = "The action belongs to a previous Scene instance";
+                }
+                else if (!document_.component(location.camera, lux::cxx::typeToken<lux::scene::Camera>()))
+                {
+                    status_ = "The action's camera no longer exists";
+                }
+                else if (action_.index() == 1 && document_.selection().revision != location.selection_revision)
+                {
+                    status_ = "A newer selection superseded the pending pick";
+                }
+                else if (const auto *create = std::get_if<Create>(&action_))
+                {
+                    const auto history = document_.historyView();
+                    if (!history || history->history.current != create->base)
+                    {
+                        status_ = "Content changed after the model drop; repeat the operation";
+                        action_.emplace<std::monostate>();
+                        return;
+                    }
+                    const auto point =
+                        spatial_->creationPoint(document_, location.instance, location.ray, create->plane);
+                    if (!point)
+                    {
+                        status_ = point.error().message;
+                        const auto *query = std::any_cast<lux::scene::MeshQueryFailure>(&point.error().cause);
+                        completed = !query || query->code != lux::scene::EMeshQueryError::NOT_READY;
+                    }
+                    else
+                    {
+                        const auto accepted = document_.requestModelCreation(create->asset, *point, create->partition);
+                        if (accepted)
+                        {
+                            placement_ = *accepted;
+                            status_.clear();
+                        }
+                        else
+                        {
+                            status_ = accepted.error().domain + ": " + accepted.error().message;
+                        }
+                    }
+                }
+                else
+                {
+                    lux::scene::RayHit3D hit;
+                    const auto picked = document_.raycastNearest(location.instance, location.ray, 1.0e12, hit);
+                    if (!picked)
+                    {
+                        completed = picked.error().code != lux::scene::EMeshQueryError::NOT_READY;
+                        status_ = "Mesh query " + std::to_string(static_cast<unsigned>(picked.error().code));
+                    }
+                    else
+                    {
+                        const auto selected = document_.select(
+                            {location.instance, *picked ? hit.entity : lux::simulation::ecs::NullEntity});
+                        if (!selected)
+                        {
+                            status_ = selected.error().message;
+                        }
+                        else
+                        {
+                            status_.clear();
+                        }
+                    }
+                }
+                if (completed)
+                {
+                    action_.emplace<std::monostate>();
+                }
+            }
         }
         if (auto *current = view(); current && !visible())
         {
@@ -140,35 +255,45 @@ namespace lux::editor::gui
 
     void ScenePane::updateCamera(rendering::PixelExtent extent)
     {
-        if (!extent.width || !extent.height ||
-            (camera_extent_ == extent && applied_camera_revision_ == camera_revision_))
+        if (!view() || view()->handle().isNull() || !extent.width || !extent.height)
         {
             return;
         }
-        const double page = displayed_run_.serial ? document_.runCoordinatePageSize() : document_.coordinatePageSize();
-        const Eigen::Vector3d origin = (camera_.position() / page).array().floor().matrix() * page;
-        const auto camera_view = camera_.view(origin);
-        const auto projection = camera_.projection(double(extent.width) / extent.height);
-        if (!projection)
+        auto wanted = document_.viewportCamera();
+        if (!wanted || *wanted != camera_)
         {
-            status_ = "Invalid camera projection";
-            return;
+            document_.unbindCamera(camera_, view()->handle());
+            camera_ = {};
         }
-        rendering::CameraFrame frame;
-        std::copy_n(camera_view.data(), 16, frame.view.begin());
-        std::copy_n(projection->data(), 16, frame.projection.begin());
-        std::copy_n(origin.data(), 3, frame.origin.begin());
-        frame.desired = {document_.historyId().value, 0, camera_revision_, 1};
-        const auto camera = view()->setCamera(frame);
-        if (!camera)
+        bool enabled{};
+        if (wanted)
         {
-            remember("scene.view.camera", camera.error());
+            const auto bound = document_.bindCamera(*wanted, view()->handle(), double(extent.width) / extent.height);
+            if (bound)
+            {
+                camera_ = *wanted;
+                enabled = document_.component(camera_, lux::cxx::typeToken<lux::simulation::ecs::WorldTransform3D>()) !=
+                          nullptr;
+            }
+            else
+            {
+                status_ = bound.error().message;
+            }
         }
         else
         {
-            camera_extent_ = extent;
-            applied_camera_revision_ = camera_revision_;
+            status_ = wanted.error().message;
         }
+        const auto history = document_.historyView();
+        const auto output =
+            view()->setOutput({document_.instance().value, history ? history->history.revision.value : 0,
+                               document_.componentVersion(camera_, lux::cxx::typeToken<lux::scene::Camera>()), 0},
+                              enabled);
+        if (!output)
+        {
+            remember("scene.view.output", output.error());
+        }
+        camera_extent_ = extent;
     }
 
     void ScenePane::drawPlacement(lux::ui::Frame &frame)
@@ -188,24 +313,26 @@ namespace lux::editor::gui
                 ImGui::EndCombo();
             }
         }
+        ImGui::SetNextItemWidth(100.0F);
+        ImGui::DragScalar("Work plane Y", ImGuiDataType_Double, &work_plane_height_, 0.1F);
         if (!placement_.serial)
         {
             return;
         }
-        auto state = document_.modelPlacementStatus(placement_);
+        auto state = document_.modelCreationStatus(placement_);
         if (!state)
         {
             status_ = state.error().domain + ": " + state.error().message;
             placement_ = {};
             return;
         }
-        if (std::holds_alternative<scene::ModelPlacementPending>(*state))
+        if (std::holds_alternative<scene::ModelCreationPending>(*state))
         {
             frame.textMuted("Loading model...");
             ImGui::SameLine();
             if (ImGui::SmallButton("Cancel placement"))
             {
-                static_cast<void>(document_.cancelModelPlacement(placement_));
+                static_cast<void>(document_.cancelModelCreation(placement_));
             }
         }
         else if (const auto *failure = std::get_if<EditorFailure>(&*state))
@@ -216,7 +343,7 @@ namespace lux::editor::gui
                 const auto history = document_.historyView();
                 if (history)
                 {
-                    auto retried = document_.retryModelPlacement(placement_, history->history.current);
+                    auto retried = document_.retryModelCreation(placement_, history->history.current);
                     if (!retried)
                     {
                         status_ = retried.error().domain + ": " + retried.error().message;
@@ -224,13 +351,13 @@ namespace lux::editor::gui
                 }
             }
             ImGui::SameLine();
-            if (ImGui::SmallButton("Discard placement") && document_.cancelModelPlacement(placement_) &&
-                document_.acknowledgeModelPlacement(placement_))
+            if (ImGui::SmallButton("Discard placement") && document_.cancelModelCreation(placement_) &&
+                document_.acknowledgeModelCreation(placement_))
             {
                 placement_ = {};
             }
         }
-        else if (document_.acknowledgeModelPlacement(placement_))
+        else if (document_.acknowledgeModelCreation(placement_))
         {
             placement_ = {};
         }
@@ -286,6 +413,50 @@ namespace lux::editor::gui
             ImGui::Text("Step %llu | %.3f s", static_cast<unsigned long long>(run.steps),
                         std::chrono::duration<double>(run.elapsed).count());
         }
+        if (!displayed_run_.serial && camera_.valid())
+        {
+            const auto *camera = static_cast<const lux::scene::Camera *>(
+                document_.component(camera_, lux::cxx::typeToken<lux::scene::Camera>()));
+            const auto *pose = static_cast<const lux::simulation::ecs::Transform3D *>(
+                document_.component(camera_, lux::cxx::typeToken<lux::simulation::ecs::Transform3D>()));
+            if (camera && pose)
+            {
+                ImGui::SameLine();
+                int projection = static_cast<int>(camera->projection.index());
+                ImGui::SetNextItemWidth(140.0F);
+                if (ImGui::Combo("##projection", &projection, "Perspective\0Orthographic\0"))
+                {
+                    auto next = *camera;
+                    if (projection == 0)
+                    {
+                        next.projection = lux::scene::PerspectiveProjection{};
+                    }
+                    else
+                    {
+                        next.projection = lux::scene::OrthographicProjection{};
+                    }
+                    const auto changed = document_.navigateCamera(camera_, *pose, next);
+                    if (!changed)
+                    {
+                        status_ = changed.error().message;
+                    }
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Create game camera"))
+                {
+                    const auto history = document_.historyView();
+                    if (history)
+                    {
+                        const auto created =
+                            document_.createCameraFromView(camera_, history->history.current, {partition_});
+                        if (!created)
+                        {
+                            status_ = created.error().message.data();
+                        }
+                    }
+                }
+            }
+        }
         if (!run.result)
         {
             frame.textWrapped(run.result.error().domain + ": " + run.result.error().message);
@@ -337,37 +508,37 @@ namespace lux::editor::gui
             drawPlacement(frame);
         }
         const auto interaction = viewport_.draw(frame, {image_.texture});
+        if (spatial_ && !displayed_run_.serial && camera_.valid())
+        {
+            const auto origin = ImGui::GetItemRectMin();
+            spatial_->drawWorkPlane(document_, camera_, {origin.x, origin.y},
+                                    {interaction.size.width, interaction.size.height}, work_plane_height_);
+        }
         if (!displayed_run_.serial && ImGui::BeginDragDropTarget())
         {
             if (const auto *payload = ImGui::AcceptDragDropPayload(kAssetReferencePayload))
             {
                 const auto reference = decodeAssetReference(
                     {static_cast<const std::byte *>(payload->Data), static_cast<std::size_t>(payload->DataSize)});
-                const auto projection = camera_.projection(interaction.size.width / interaction.size.height);
                 if (!reference)
                 {
                     status_ = reference.error().domain + ": " + reference.error().message;
                 }
-                else if (projection)
+                else if (spatial_)
                 {
-                    const Eigen::Vector4d screen{2.0 * interaction.local_pointer.x / interaction.size.width - 1.0,
-                                                 2.0 * interaction.local_pointer.y / interaction.size.height - 1.0, 0.0,
-                                                 1.0};
-                    const Eigen::Vector4d ray = ((*projection) * camera_.view(camera_.position())).inverse() * screen;
-                    const Eigen::Vector3d direction = (ray.head<3>() / ray.w()).normalized();
-                    const auto distance =
-                        std::abs(direction.y()) > 1e-8 ? -camera_.position().y() / direction.y() : -1.0;
-                    const Eigen::Vector3d position = camera_.position() + direction * (distance > 0 ? distance : 5.0);
-                    auto accepted = document_.requestModelPlacement(*reference, position,
-                                                                    lux::partition::PartitionOrdinal{partition_});
-                    if (accepted)
+                    const auto ray =
+                        spatial_->ray(document_, camera_, {interaction.local_pointer.x, interaction.local_pointer.y},
+                                      {interaction.size.width, interaction.size.height});
+                    if (!ray)
                     {
-                        placement_ = *accepted;
-                        status_.clear();
+                        status_ = ray.error().message;
                     }
                     else
                     {
-                        status_ = accepted.error().domain + ": " + accepted.error().message;
+                        action_.emplace<Create>(
+                            Pick{document_.instance(), *ray, camera_, document_.selection().revision}, *reference,
+                            lux::partition::PartitionOrdinal{partition_}, work_plane_height_,
+                            document_.historyView()->history.current);
                     }
                 }
             }
@@ -410,15 +581,28 @@ namespace lux::editor::gui
         {
             motion.dolly = input.MouseWheel;
         }
-        if (motion.angular_delta.squaredNorm() || motion.pan_delta.squaredNorm() || motion.dolly)
+        if (!displayed_run_.serial &&
+            (motion.angular_delta.squaredNorm() || motion.pan_delta.squaredNorm() || motion.dolly))
         {
-            const auto moved = camera_.move(motion);
-            if (moved)
+            pending_motion_.angular_delta += motion.angular_delta;
+            pending_motion_.pan_delta += motion.pan_delta;
+            pending_motion_.dolly += motion.dolly;
+            navigation_pending_ = true;
+        }
+        if (spatial_ && interaction.left_clicked && !blocked && !rotating_ && !panning_ && !ImGui::GetDragDropPayload())
+        {
+            const auto ray =
+                spatial_->ray(document_, camera_, {interaction.local_pointer.x, interaction.local_pointer.y},
+                              {interaction.size.width, interaction.size.height});
+            if (ray)
             {
-                ++camera_revision_;
+                action_.emplace<Pick>(document_.instance(), *ray, camera_, document_.selection().revision);
+            }
+            else
+            {
+                status_ = ray.error().message;
             }
         }
-        updateCamera(extent);
     }
 
     void ScenePane::appendFrameImages(std::vector<rendering::ViewImage> &images) const

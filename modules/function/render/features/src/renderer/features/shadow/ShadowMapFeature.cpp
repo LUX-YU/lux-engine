@@ -13,7 +13,7 @@
 #include <lux/engine/render/resources/lighting/LightResources.hpp>
 #include <lux/engine/render/resources/lighting/ShadowResources.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp> // kShadowViewUploadPassName
+#include <lux/engine/function/render/features/shadow/ShadowMapOperation.hpp> // kShadowViewUploadPassName
 #include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp>           // domain-set dual-write target
 #include <lux/engine/render/scene/View.hpp>
 #include <lux/engine/render/renderer/features/view_camera/ViewCameraResource.hpp>

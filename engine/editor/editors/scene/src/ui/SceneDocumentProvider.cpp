@@ -55,12 +55,18 @@ namespace lux::editor::gui
     } // namespace
 
     GuiDocumentProvider sceneDocumentProvider(std::span<const lux::simulation::ecs::ComponentSchema> components,
-                                              std::span<const ComponentBinding> additional_bindings)
+                                              std::span<const ComponentBinding> additional_bindings,
+                                              std::span<const SpatialViewportRegistration> spatial_viewports)
     {
         auto bindings = firstPartyComponentBindings();
         bindings.insert(bindings.end(), additional_bindings.begin(), additional_bindings.end());
         std::ranges::sort(bindings, {}, [](const ComponentBinding &value) { return value.type.hash(); });
         auto shared_bindings = std::make_shared<const std::vector<ComponentBinding>>(std::move(bindings));
+        auto viewports = std::make_shared<std::vector<SpatialViewportRegistration>>(spatial_viewports.begin(), spatial_viewports.end());
+        if (viewports->empty())
+        {
+            viewports->push_back(spatialViewport3D());
+        }
 
         return {std::string(scene::kSceneDocumentType),
                 [](const ProjectAssetEntry &asset) { return asset.kind == EProjectAssetKind::SCENE; },
@@ -90,7 +96,7 @@ namespace lux::editor::gui
                     return editor.registerDocument(
                         scene::sceneDocumentRegistration(runtime, renderer, std::move(*metadata)));
                 },
-                [shared_bindings](DocumentEditor &base, EditorWindow &window, rendering::EditorRenderer &renderer,
+                [shared_bindings, viewports](DocumentEditor &base, EditorWindow &window, rendering::EditorRenderer &renderer,
                                   process::ExecutionRuntime &runtime) -> EditorResult<void>
                 {
                     auto *document = dynamic_cast<scene::SceneEditor *>(&base);
@@ -121,7 +127,7 @@ namespace lux::editor::gui
                         return resources;
                     }
                     auto scene =
-                        attachPane<ScenePane>(batch, *document, window, prefix + "-view", renderer, prefix + "-view");
+                        attachPane<ScenePane>(batch, *document, window, prefix + "-view", renderer, prefix + "-view", *viewports);
                     if (!scene)
                     {
                         return scene;

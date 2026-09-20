@@ -19,7 +19,7 @@
 #include <lux/engine/render/gpu/pipeline/VertexLayoutRegistry.hpp>   // vertex-layout SSOT
 #include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp>       // appendVertexLayoutSpecs
 #include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp> // kShadowViewUploadPassName
+#include <lux/engine/function/render/features/shadow/ShadowMapOperation.hpp> // kShadowViewUploadPassName
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/VulkanCheck.hpp>
 #include <lux/engine/render/resources/material/MaterialFamily.hpp>

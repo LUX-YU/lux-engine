@@ -141,7 +141,7 @@ namespace
         bool measure{};
     };
 
-    template <class Scalar> void checkRotation(scene::SceneEditor &document, lux::world::WorldObjectId object)
+    template <class Scalar> void checkRotation(scene::SceneEditor &document, lux::editor::scene::SceneEntityRef object)
     {
         using Quaternion = Eigen::Quaternion<Scalar>;
         const auto access = [](auto &component)
@@ -199,7 +199,7 @@ namespace
                     std::is_same_v<Scalar, float> ? "f" : "d");
     }
 
-    void checkVectorElements(scene::SceneEditor &document, lux::world::WorldObjectId object)
+    void checkVectorElements(scene::SceneEditor &document, lux::editor::scene::SceneEntityRef object)
     {
         const auto whole = [](auto &component) noexcept { return &component.sequence; };
         const auto read = [&]() -> const consumer::Component &
@@ -344,7 +344,7 @@ namespace
             auto borrowed = editor_->document(documents.front().handle);
             assert(borrowed);
             auto &document = dynamic_cast<scene::SceneEditor &>(borrowed->get());
-            const auto object = identity<lux::world::WorldObjectId>(1);
+            auto object = document.objects().front().object;
             const auto read = [&]() -> const consumer::Component &
             {
                 const auto *value = static_cast<const consumer::Component *>(
@@ -449,10 +449,14 @@ namespace
                 for (unsigned iteration{}; iteration < 8; ++iteration)
                 {
                     assert(document.undo());
+                    assert(!document.writeTarget(object));
+                    object = document.objects().front().object;
                     assert(scene::FieldValue<consumer::Component>::equal(read(), before));
                     assert(document.redo() && document.objects().empty());
                 }
                 assert(document.undo() && document.historyView()->history.current == initial);
+                assert(!document.writeTarget(object));
+                object = document.objects().front().object;
                 std::puts(
                     "PASS installed structural restore: generated nested component, eight delete/Undo/Redo cycles, "
                     "same authored value and identity");

@@ -2,7 +2,7 @@
 #include <lux/engine/description/ShaderInfo.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/render/resources/ShaderResources.hpp>
-#include <lux/engine/function/render/client/resources/EBuiltinShader.hpp>
+#include <lux/engine/function/render/features/resources/EBuiltinShader.hpp>
 // EBuiltinShader enum + LUX_BUILTIN_SHADER_LIST X-macro (public)
 #include <cstddef>
 #include <cstdint>

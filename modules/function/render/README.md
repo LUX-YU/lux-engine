@@ -6,9 +6,11 @@
 
 | 目录 | 职责 |
 | --- | --- |
-| `client` | 后端无关的请求协议、Feature 描述、生成代理及客户端生命周期 |
-| `features` | 具体渲染能力、shader、pass 和操作处理 |
+| `client` | 通用通信、Scene／View／Target、基础资源、Feature 注册／调用与客户端生命周期 |
+| `features` | 具体 Feature 协议、生成代理、元数据、客户端函数、shader、pass 和操作处理 |
 | `vulkan` | 当前 Vulkan 后端、执行、资源与 GPU 同步 |
+
+`render_client` 不链接 builtin Feature。`render_feature_client` 承载内置协议／代理，`render_feature_meta` 承载唯一元数据，`render_features` 承载后端。增加 Feature 不修改通用 Client 的生成清单。独立 Feature 可使用安装的通用代码生成脚本，并指定自己的导出宏。
 
 Render client 的公开协议可以供不直接链接 Vulkan 的生产端使用。Vulkan 类型和实现不应经由相机组件或通用 Scene 元信息泄漏到无渲染程序。
 
@@ -26,7 +28,7 @@ View 表达一次渲染视图及其目标、尺寸、代次和生命周期。相
 
 当前 `StandardViewCameraFeature` 拥有每 View 的相机状态；核心 View 不必硬编码三维相机矩阵。
 
-[`ViewCameraUpdatePayload`](client/include/lux/engine/function/render/client/features/view_camera/ViewCameraOperation.hpp) 已包含 RenderSceneId、完整 ViewHandle、矩阵和坐标原点。这里的 ViewHandle 是运行时句柄，不是可保存的相机身份。
+[`ViewCameraUpdatePayload`](features/include/lux/engine/function/render/features/view_camera/ViewCameraOperation.hpp) 已包含 RenderSceneId、完整 ViewHandle、矩阵和坐标原点。这里的 ViewHandle 是运行时句柄，不是可保存的相机身份。
 
 Scene 中应通过 Camera 组件及其提取阶段产生这些数据。Editor 的 CameraMan 与游戏用户 Camera 共用这条接线，差别在上层实体 owner 和输入来源。
 
@@ -47,7 +49,7 @@ Entity 接入时保留完整代次，并以所属 RenderScene 区分来源域。
 
 高亮是一种视觉效果。编辑器选择、游戏任务目标、交互提示等都可以驱动它，Feature 不应知道哪个对象是“编辑器当前选择”。
 
-目标设计是通过 Highlight Feature 自己的协议提供对象集合与样式，由该 Feature 拥有集合／遮罩和 GPU 使用寿命。
+HighlightReplaceTargets 操作替换完整 RenderEntityId 集合，空集合清除。Feature 拥有集合与遮罩，逐帧按 InstanceResources 的完整源键关联解析仍有效的实例，不使用 Mesh flags 表达选择。
 
 ```text
 任意调用方决定强调哪些对象
@@ -58,7 +60,7 @@ Entity 接入时保留完整代次，并以所属 RenderScene 区分来源域。
 
 不得让 Editor 与普通 Mesh 更新分别重写同一个完整 flags 字段，从而互相覆盖。效果状态的写入责任必须唯一。
 
-当前实现已有 HighlightFeature，并通过实例 flag 标记高亮；Feature 自有对象集合的协议尚待实现。迁移时需要处理现有消费者和 shader，不将目标协议冒充当前 API。
+资源迟到时保留源键；删除／代次复用后旧源键不能解析为新实例。目标遮罩是 RenderGraph 管理的瞬态 Storage Buffer，声明 Transfer 写入到 Compute 读取依赖，并沿实际帧与 GPU 水位退休。
 
 效果关闭或清空集合不修改作者 Mesh、Material，不生成内容 Undo。对象销毁或句柄代次变化后，旧集合不能高亮后来复用槽位的对象。
 

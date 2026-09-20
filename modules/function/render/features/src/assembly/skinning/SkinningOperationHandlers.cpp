@@ -6,11 +6,12 @@
 //  The core protocol no longer names skinning.
 // ============================================================================
 
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>                // Dispatcher, Ctx, lookupScene, resolveBlob
 #include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>          // FeatureOpRegistrar / ServerOp
 #include <lux/engine/function/render/client/FeatureOpSend.hpp>           // send / sendBlob
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp> // FeatureFactory / GenericOkReply
-#include <lux/engine/function/render/client/features/skinning/SkinningOperation.hpp>
+#include <lux/engine/function/render/features/skinning/SkinningOperation.hpp>
 #include <lux/engine/render/renderer/features/skinning/SkinningFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>                  // RenderContext::globalRegistry

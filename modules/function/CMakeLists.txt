@@ -26,6 +26,7 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     # enumeration.
     add_subdirectory(animation)
     add_subdirectory(render/client)
+    include(render/features/cmake/feature_client.cmake)
     add_subdirectory(render/standard_content)
     # Spatial3D EntityScene cooking emits the engine-owned LXNR payload through
     # navigation_detour3d's codec.  This lower-layer dependency is Recast-only
@@ -49,7 +50,8 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
         navigation
         navigation_detour3d
         render_client
-        render_client_meta
+        render_feature_client
+        render_feature_meta
         render_standard_content
         script_artifact
         script_core
@@ -60,7 +62,8 @@ else()
         flowforge
         graph
         render_client
-        render_client_meta
+        render_feature_client
+        render_feature_meta
         render_standard_content
         render_graph
         render_vulkan

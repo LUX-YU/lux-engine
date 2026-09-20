@@ -50,7 +50,8 @@ namespace lux::scene
     {
       public:
         [[nodiscard]] static lux::cxx::expected<std::unique_ptr<SceneRenderBinding>, SceneRenderBindingFailure> begin(
-            RenderRuntime &runtime, SceneSystemView description, std::shared_ptr<const RenderSystemMetadata> metadata);
+            RenderRuntime &runtime, SceneSystemView description, std::shared_ptr<const RenderSystemMetadata> metadata,
+            std::span<const render::FeatureTypeId> additional_features = {});
         ~SceneRenderBinding();
         SceneRenderBinding(const SceneRenderBinding &) = delete;
         SceneRenderBinding &operator=(const SceneRenderBinding &) = delete;
@@ -66,6 +67,12 @@ namespace lux::scene
         [[nodiscard]] const SceneRenderBindingFailure &failure() const noexcept;
         [[nodiscard]] lux::cxx::expected<SceneRenderInput, SceneRenderBindingFailure> takeInput();
         [[nodiscard]] bool hasPendingUpdate() const noexcept;
+        [[nodiscard]] render::FeatureHandle featureHandle(render::FeatureTypeId) const noexcept;
+        [[nodiscard]] const render::FeatureCatalog& featureCatalog() const noexcept;
+        // Main-only, READY only. False retains the complete program for retry.
+        // The caller charges a successful submission against the shared Program budget.
+        [[nodiscard]] bool trySubmit(render::RenderProgram<>& program);
+
         // Caller first closes views (CPU references and GPU watermark), stops and
         // destroys the producer. CLOSED records release publication, not GPU completion.
         void requestClose() noexcept;

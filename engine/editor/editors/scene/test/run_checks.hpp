@@ -5,7 +5,7 @@
 #include <lux/engine/editor/gui/GuiView.hpp>
 #include <lux/engine/editor/rendering/EditorRenderer.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
-#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
 #include <lux/engine/scene/Scene.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 
@@ -102,7 +102,7 @@ struct SceneRunChecks final
     lux::render::MeshStackOperationIds mesh_ops;
     lux::render::RenderRequest<lux::render::MeshStackStatsReply> run_mesh, author_mesh;
     bool initial_adopted{};
-    lux::world::WorldObjectId selected;
+    lux::editor::scene::SceneEntityRef selected;
     Eigen::Vector3d author_translation, paused_translation;
     lux::editor::scene::SceneWriteTarget stale_pause_target;
     lux::editor::editing::StateId captured_state;
@@ -267,7 +267,7 @@ struct SceneRunChecks final
                 return false;
             }
             const auto *derived = static_cast<const lux::simulation::ecs::WorldTransform3D *>(
-                scene.component(selected, lux::cxx::typeToken<lux::simulation::ecs::WorldTransform3D>()));
+                scene.component(stale_pause_target.object, lux::cxx::typeToken<lux::simulation::ecs::WorldTransform3D>()));
             assert(derived && derived->value.translation().isApprox(paused_translation, 1e-10));
             assert(scene.reviewClose()->revision == author.revision);
             assert(scene.stepRun(first));
@@ -446,7 +446,7 @@ struct RunFailureChecks final
 {
     lux::editor::scene::RunId failed_run;
     lux::editor::editing::HistorySnapshot author;
-    lux::world::WorldObjectId object;
+    lux::editor::scene::SceneEntityRef object;
     unsigned phase{};
 
     void begin(lux::editor::scene::SceneEditor &scene)

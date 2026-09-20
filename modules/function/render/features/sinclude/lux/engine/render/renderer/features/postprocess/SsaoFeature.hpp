@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 // ============================================================================
 //  SsaoFeature — 屏幕空间环境光遮蔽(着色输入槽的树内参考实现)
 //
@@ -21,7 +22,7 @@
 #include <lux/engine/function/render/client/core/PipelineHandle.hpp>
 #include <lux/engine/function/render/client/RenderTargetLayout.hpp> // TargetSlot
 #include <lux/engine/function/render/graph/RGForwardDecls.hpp>
-#include <lux/engine/function/render/client/genops/SsaoOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/SsaoOperation.ops.hpp>
 #include <lux/engine/function/visibility.h>
 
 #include <vulkan/vulkan.h>
@@ -31,7 +32,7 @@ namespace lux::render
 
     class LightResources;
 
-    class LUX_FUNCTION_PUBLIC SsaoFeature : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC SsaoFeature : public RenderFeature
     {
     public:
         /// 空 tag 生成约定:createFn 用 `SsaoFeature::Config{}` 构造特性,

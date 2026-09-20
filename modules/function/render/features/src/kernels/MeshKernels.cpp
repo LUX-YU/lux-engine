@@ -20,7 +20,7 @@
 #include <lux/engine/render/graph/RGRecorder.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
 #include <lux/engine/render/resources/mesh/MdcTable.hpp>
-#include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp> // EGeometryKind
+#include <lux/engine/function/render/features/resources/mesh/RenderObjectTypes.hpp> // EGeometryKind
 #include <lux/engine/render/resources/mesh/GpuDrivenMeshConsts.hpp>
 #include <lux/engine/render/resources/mesh/MeshInstanceExtData.hpp>
 
@@ -127,6 +127,7 @@ namespace lux::render::kernels
         // 领域知识回到领域自己手里,L2 的 opcode 也随之整条删除。
         // (阴影侧早已是这个形状:ShadowKernels 的 kCullPushConstants。)
         auto pc = makeViewCullPushConstants(cfg.pass_mask, cfg.geometry_mask, cfg.extension_flags);
+        pc.instance_filter_enabled = cfg.instance_filter ? 1u : 0u;
         e.emitKernelCommand(kid, kMeshCullPushConstants, &pc, static_cast<uint16_t>(sizeof(pc)));
 
         if (cfg.dispatch_indirect_rg)

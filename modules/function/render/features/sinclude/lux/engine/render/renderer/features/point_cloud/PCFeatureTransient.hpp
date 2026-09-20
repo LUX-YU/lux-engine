@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file PCFeatureTransient.hpp
  * @brief Point cloud render feature — Transient mode (current-frame-only).
@@ -72,7 +73,7 @@ namespace lux::render
     //  PCFeatureTransient
     // =========================================================================
 
-    class LUX_FUNCTION_PUBLIC PCFeatureTransient final : public IPointCloudFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC PCFeatureTransient final : public IPointCloudFeature
     {
     public:
         struct Config

@@ -52,10 +52,6 @@ layout(std430) readonly buffer VisibleInstanceBuf {
 // ========== SET 7: Bindless vertex pools ==========
 #include "vertex_pool.glsl"
 
-// Per-instance flag word forwarded to the fragment shader, which discards
-// non-highlighted fragments. flat = no interpolation (per-instance constant).
-layout(location = 0) flat out uint vFlags;
-
 void main()
 {
     uint visibleIndex = uint(gl_InstanceIndex);
@@ -72,7 +68,6 @@ void main()
     InstanceProperty prop = uProperties.properties[drawSlot];
     InstanceTransform transform = uTransforms.transforms[drawSlot];
 #endif
-    vFlags = prop.flags;
 
     // gl_VertexIndex == input_vertex_offset + local; subtract the bias so
     // vertex_base stays the honest output base (mirrors forward_mesh_vp.vert).

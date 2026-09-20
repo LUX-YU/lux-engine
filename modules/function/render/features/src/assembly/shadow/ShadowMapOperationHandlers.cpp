@@ -5,7 +5,7 @@
 //   handler 语义为零。)
 // ============================================================================
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp>
+#include <lux/engine/function/render/features/shadow/ShadowMapOperation.hpp>
 #include <lux/engine/render/renderer/features/shadow/ShadowMapFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 

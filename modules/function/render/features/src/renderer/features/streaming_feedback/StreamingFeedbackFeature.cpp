@@ -1,5 +1,5 @@
 #include <lux/engine/render/renderer/features/streaming_feedback/StreamingFeedbackFeature.hpp>
-#include <lux/engine/function/render/client/genops/StreamingFeedbackOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/StreamingFeedbackOperation.ops.hpp>
 
 #include <StreamingFeedbackPassParams.pass.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>

@@ -28,38 +28,33 @@ RenderSystem
 
 Scene 核心仍只提供通用稳定点；不能将效果逻辑搬回 `executePresentation()` 或同义入口。
 
-## 相机接线的目标（尚未完成）
+## Camera 组件与提取
 
-相机实体具有通用 Camera 参数和 Transform。运行时另附 CameraView，将该实体与 RenderSceneId／ViewHandle 关联。
+`Camera.hpp` 定义 PerspectiveProjection、OrthographicProjection 和 Camera。姿态唯一保存在 Transform3D／WorldTransform3D，投影参数使用固定 variant。`primary` 表示宿主选择默认游戏输出时的候选；零个和多个主相机由宿主准确处理，不按 Registry 遍历顺序选一个。
 
-CameraView：
+Camera 的 `view` 是渲染模块分配的完整 ViewHandle，`aspect_ratio` 来自实际输出尺寸。它们仅关联运行时输出，不拥有 View；codec 只编码 projection 和 primary，恢复后句柄为空、宽高比重新绑定。组件 schema 沿普通注册与保存流程工作，不给 WorldDescription 增加相机字段。
 
-- 使用渲染模块的完整代次句柄，不使用 Editor 专属 View 身份作为游戏组件。
-- 只在有效绑定期间存在，不写入作者文件、快照源或 Run 捕获。
-- 是关联，不是 GPU 资源 owner。
-- 相机或 View 退出时停止新的使用，仍由实际 lease owner 完成资源退休。
+私有 `CameraExtraction` 实现已有 RenderSyncStage，经 RenderFeatureSceneBinding 接到 ViewCamera Feature。它观察 Camera 与 WorldTransform3D 的脏事实，准备更新／解除关联，接纳后提交自身状态，失败保留脏状态。它不是另一个 SceneSystem；RenderSystem 没有相机专用方法。
 
-对应 CameraRenderStage 通过既有 `RenderFeatureSceneBinding` 注册，观察相机参数、派生 Transform、View 尺寸和绑定变化，生成 ViewCamera Feature 的数据。
-
-这样新增另一种相机时扩展其组件／Feature 接线，不修改 RenderSystem 的公开业务方法。
+矩阵为右手系、相机局部 -Z 向前、+Y 向上，Vulkan 深度 0..1、图像 Y 向下。先以 double 减去相机原点，再转换矩阵和分页原点供渲染使用。
 
 ## View 与相机的生命周期
 
 ```text
 宿主明确选择 Camera 与输出
   → 已有 View 创建和 owner 接纳
-  → 建立 CameraView 关联
+  → 写入 Camera.view 关联
   → Camera 提取进入 Program
   → 允许该 View 绘制场景
 ```
 
-退出时先封住新的相机／View 使用，再解除关联并推进原 owner 关闭。移除 CameraView 组件不等于 GPU 已经停止访问对应资源。
+退出时先封住新的相机／View 使用，再解除关联并推进原 owner 关闭。解除 Camera.view 关联不等于 GPU 已经停止访问对应资源。
 
 View 的尺寸变化是输出事实；它使相关投影数据失效，但不修改持久相机的 FOV 或位置。coordinate page size 必须来自实际 Scene 配置，不能使用另一处写死的常量。
 
 未指定有效 Camera 时不采用默认矩阵冒充用户相机。存在窗口输出时应清除旧场景画面；Editor 可以额外显示缺少相机的提示。
 
-当前还由 Editor 的私有 SceneCamera 通过 RenderView 提交矩阵。此路径需要迁移到组件提取，迁移完成前不能声称 CameraView 已经是 ECS 正式能力，也不能同时保留两个相机数据写入者。
+Editor 帧封包不再生产相机矩阵。相机更新和场景内容沿同一个 Program 顺序发布；实际提交与 GPU 完成仍由渲染生命周期证明。
 
 ## Mesh 与 Light
 

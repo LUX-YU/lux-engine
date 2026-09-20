@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file PCFeatureSimple.hpp
  * @brief Point cloud render feature — Simple mode (global SSBO, multi-draw).
@@ -29,7 +30,7 @@ namespace lux::render
 {
     class PointCloudGlobalBuffer;
 
-    class LUX_FUNCTION_PUBLIC PCFeatureSimple final : public IPointCloudFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC PCFeatureSimple final : public IPointCloudFeature
     {
     public:
         static constexpr phase_mask_t kExtractPhaseMask =

@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file LightFeature.hpp
  * @brief Scene-light data owner (LightResources storage + light CRUD ops).
@@ -26,7 +27,7 @@
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC LightFeature final : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC LightFeature final : public RenderFeature
     {
     public:
         struct Config

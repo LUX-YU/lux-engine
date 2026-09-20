@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file TrajectoryLineFeature.hpp
  * @brief Trajectory render feature — Line mode (LINE_STRIP_WITH_ADJACENCY / LINE_STRIP).
@@ -24,7 +25,7 @@ namespace lux::render
 
     class TrajectoryGlobalBuffer;
 
-    class LUX_FUNCTION_PUBLIC TrajectoryLineFeature final : public ITrajectoryFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC TrajectoryLineFeature final : public ITrajectoryFeature
     {
     public:
         static constexpr phase_mask_t kExtractPhaseMask =

@@ -6,7 +6,7 @@ generate_visibility_header(
 )
 add_component(COMPONENT_NAME editor_scene NAMESPACE lux::engine::editor
     OUTPUT_NAME lux_engine_editor_scene
-    SOURCE_FILES src/NativeScene.cpp src/SceneCapture.cpp src/SceneEditor.cpp src/SceneObjects.cpp src/SceneObjectEdits.cpp src/SceneOpening.cpp src/SceneResources.cpp src/SceneRun.cpp
+    SOURCE_FILES src/NativeScene.cpp src/SceneCapture.cpp src/SceneEditor.cpp src/SceneObjects.cpp src/SceneObjectEdits.cpp src/ModelCreation.cpp src/SceneOpening.cpp src/SceneResources.cpp src/SceneRun.cpp
 )
 component_include_directories(editor_scene
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
@@ -20,8 +20,9 @@ target_link_libraries(editor_scene PUBLIC
     lux::engine::scene::scene_world_materialization lux::engine::process::world_loading
     lux::engine::scene::scene_asset lux::engine::world::world_asset lux::engine::simulation::simulation_asset
     lux::engine::simulation::ecs::hierarchy
+    lux::engine::scene::scene_mesh_query
     PRIVATE lux::cxx::concurrent lux::engine::simulation::transform_system
-        lux::engine::scene::scene_render_meta lux::engine::function::render_client_meta
+        lux::engine::scene::scene_render_meta lux::engine::function::render_feature_meta
 )
 component_add_transitive_commands(editor_scene
     "find_package(lux-engine-editor-core REQUIRED COMPONENTS editor_core)"
@@ -34,6 +35,7 @@ component_add_transitive_commands(editor_scene
     "find_package(lux-engine-world-asset REQUIRED COMPONENTS world_asset)"
     "find_package(lux-engine-simulation-asset REQUIRED COMPONENTS simulation_asset)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS hierarchy)"
+    "find_package(lux-engine-scene-mesh-query REQUIRED COMPONENTS scene_mesh_query)"
 )
 include_component_cmake_scripts(meta)
 engine_add_type_runtime_info(NAME editor_scene_document_meta
@@ -49,7 +51,7 @@ generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_SCENE_UI_LIBRARY
     GENERATE_FILE_PATH lux/engine/editor/scene/ui/visibility.h)
 add_component(COMPONENT_NAME editor_scene_ui NAMESPACE lux::engine::editor OUTPUT_NAME lux_engine_editor_scene_ui
     SOURCE_FILES src/ui/SceneDocumentProvider.cpp
-        src/ui/SceneLayout.cpp src/ui/SceneCamera.cpp src/ui/ScenePane.cpp
+        src/ui/SceneLayout.cpp src/ui/SpatialViewport3D.cpp src/ui/ScenePane.cpp
         src/ui/OutlinerPane.cpp src/ui/InspectorPane.cpp src/ui/ResourcePane.cpp
         src/ui/FirstPartyComponentBindings.cpp src/ui/CodegenInput.cpp)
 set_property(TARGET editor_scene_ui PROPERTY LUX_ARCH_LAYER EDITOR)
@@ -66,7 +68,7 @@ if(LUX_EDITOR_UI_DIAGNOSTICS)
 endif()
 target_link_libraries(editor_scene_ui PUBLIC lux::engine::editor::editor_scene lux::engine::editor::editor_ui lux::engine::editor::editor_assets lux::engine::function::ui imgui::core
     PRIVATE lux::engine::editor::editor_ui lux::engine::platform::window lux::engine::simulation::transform_system
-    lux::engine::scene::scene_render_meta lux::engine::function::render_client_meta)
+    lux::engine::scene::scene_render_meta lux::engine::function::render_feature_meta)
 component_add_transitive_commands(editor_scene_ui
     "find_package(lux-engine-editor-ui REQUIRED COMPONENTS editor_ui)"
     "find_package(lux-engine-editor-assets REQUIRED COMPONENTS editor_assets)"
@@ -107,5 +109,10 @@ engine_target_add_imgui_inspector_codegen(NAME desktop_visual TARGET editor_scen
     COMPONENTS lux::simulation::ecs::Mesh3D lux::simulation::ecs::Light3D
     CUSTOM_TYPES lux::rdesc::MeshVisualDescription lux::rdesc::LightDescription
     CUSTOM_HEADERS FirstPartyInspectorWidgets.hpp)
+engine_target_add_imgui_inspector_codegen(NAME desktop_camera TARGET editor_scene_ui
+    SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/CodegenInput.cpp
+    HEADER ${PROJECT_SOURCE_DIR}/engine/scene/builtin_systems/render/include/lux/engine/scene/Camera.hpp
+    LOGICAL_PATH lux/engine/scene/Camera.hpp
+    COMPONENTS lux::scene::Camera)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-scene VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_scene editor_scene_ui)

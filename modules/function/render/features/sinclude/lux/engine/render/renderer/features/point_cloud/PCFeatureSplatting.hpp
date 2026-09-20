@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file PCFeatureSplatting.hpp
  * @brief Point cloud render feature — Gaussian soft-splat mode (Mode 4).
@@ -31,7 +32,7 @@ namespace lux::render
     /**
      * @brief Gaussian soft-splat point cloud feature (EPointCloudMode::SPLATTING, Mode 4).
      */
-    class LUX_FUNCTION_PUBLIC PCFeatureSplatting final : public PCFeatureIndirectBase
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC PCFeatureSplatting final : public PCFeatureIndirectBase
     {
     public:
         struct Config

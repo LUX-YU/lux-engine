@@ -44,29 +44,28 @@ namespace lux::editor::rendering
     {
         return impl_->resources->requestExtent(extent);
     }
-    RenderResult<void> RenderView::setCamera(const CameraFrame &camera) noexcept
+    lux::render::ViewHandle RenderView::handle() const noexcept
+    {
+        return impl_->resources->view;
+    }
+
+    RenderResult<void> RenderView::setOutput(ViewStamp desired, bool scene_enabled) noexcept
     {
         auto &state = *impl_->resources;
         if (auto checked = state.check(); !checked)
+        {
             return checked;
+        }
         if (state.close_requested)
+        {
             return lux::cxx::unexpected(RendererFailure{ERendererError::STOPPING, {}, id()});
+        }
         if (state.status.state == EViewState::FAILED && state.status.failure)
+        {
             return lux::cxx::unexpected(*state.status.failure);
-        const auto finite = [](double value) { return std::isfinite(value) && std::abs(value) <= FLT_MAX; };
-        const bool valid_values = std::all_of(camera.view.begin(), camera.view.end(), finite) &&
-                                  std::all_of(camera.projection.begin(), camera.projection.end(), finite) &&
-                                  std::all_of(camera.origin.begin(), camera.origin.end(),
-                                              [&state](double value)
-                                              {
-                                                  return std::isfinite(value) &&
-                                                         std::floor(value / state.coordinate_page_size) >= INT32_MIN &&
-                                                         std::floor(value / state.coordinate_page_size) <= INT32_MAX;
-                                              });
-        if (!valid_values || !camera.desired.session)
-            return lux::cxx::unexpected(RendererFailure{ERendererError::INVALID_ARGUMENT, {}, id()});
-        state.camera = camera;
-        state.camera_valid = true;
+        }
+        state.desired = desired;
+        state.scene_enabled = scene_enabled;
         return {};
     }
     RenderResult<ViewImage> RenderView::acquireImage() noexcept
@@ -76,30 +75,15 @@ namespace lux::editor::rendering
             return lux::cxx::unexpected(checked.error());
         if (state.status.state == EViewState::FAILED && state.status.failure)
             return lux::cxx::unexpected(*state.status.failure);
-        if (state.status.state != EViewState::READY || !state.camera_valid)
+        if (state.status.state != EViewState::READY)
             return lux::cxx::unexpected(RendererFailure{ERendererError::NOT_READY, {}, id()});
         try
         {
             auto record = std::make_shared<ViewImageLease::Record>();
             record->version = state.version;
-            record->camera = state.camera;
-            record->content = {state.camera.desired, 0, EImageEvidence::REQUESTED};
+            record->scene_enabled = state.scene_enabled;
+            record->content = {state.desired, 0, EImageEvidence::REQUESTED};
             record->content.source.surface_generation = state.version->generation;
-            record->wire_camera.scene_id = state.scene;
-            record->wire_camera.view = state.view;
-            record->wire_camera.coordinate_page_size = static_cast<float>(state.coordinate_page_size);
-            for (std::size_t index = 0; index < 16; ++index)
-            {
-                record->wire_camera.view_matrix[index] = static_cast<float>(state.camera.view[index]);
-                record->wire_camera.proj_matrix[index] = static_cast<float>(state.camera.projection[index]);
-            }
-            for (std::size_t index = 0; index < 3; ++index)
-            {
-                const auto page = std::floor(state.camera.origin[index] / state.coordinate_page_size);
-                record->wire_camera.render_origin.page_delta[index] = static_cast<std::int32_t>(page);
-                record->wire_camera.render_origin.local[index] =
-                    static_cast<float>(state.camera.origin[index] - page * state.coordinate_page_size);
-            }
             ViewImage image{state.version->texture, state.version->extent, id(), record->content, {}};
             image.lease.record_ = std::move(record);
             return image;

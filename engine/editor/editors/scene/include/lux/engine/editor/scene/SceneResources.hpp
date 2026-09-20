@@ -2,6 +2,7 @@
 
 #include <lux/engine/editor/DocumentRequests.hpp>
 #include <lux/engine/editor/editing/EditTypes.hpp>
+#include <lux/engine/editor/scene/SceneEdit.hpp>
 #include <lux/engine/function/render/client/core/RenderError.hpp>
 #include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/process/asset_loading/AssetLoadSender.hpp>
@@ -32,13 +33,6 @@ namespace lux::editor::scene
     };
 
     template <class T> using SceneResult = lux::cxx::expected<T, SceneFailure>;
-
-    struct SceneEntityRef final
-    {
-        editing::HistoryId history;
-        lux::simulation::ecs::Entity entity{lux::simulation::ecs::NullEntity};
-        friend bool operator==(SceneEntityRef, SceneEntityRef) = default;
-    };
 
     struct ResourceRequestKey final
     {

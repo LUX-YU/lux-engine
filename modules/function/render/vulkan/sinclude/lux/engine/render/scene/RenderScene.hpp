@@ -23,7 +23,7 @@
 #include <lux/engine/function/render/client/core/FrameStamp.hpp>
 #include <lux/engine/function/render/client/core/RenderEntityId.hpp>
 #include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
-#include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp>
+#include <lux/engine/function/render/features/resources/mesh/RenderObjectTypes.hpp>
 
 #include <iosfwd> // std::ostream (dumpCompiledGraph)
 #include <lux/engine/render/RenderFeature.hpp>

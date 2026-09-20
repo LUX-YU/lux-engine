@@ -17,12 +17,12 @@ namespace lux::editor::gui
         };
         void rebuildRows();
         void rebuildVisibleRows();
-        [[nodiscard]] EditorResult<void> select(lux::world::WorldObjectId);
+        [[nodiscard]] EditorResult<void> select(scene::SceneEntityRef);
         void draw(lux::ui::Frame &, lux::ui::PaneDrawContext &) override;
         scene::SelectionNotice selection_;
         std::vector<Row> rows_;
         std::vector<std::size_t> visible_rows_;
-        std::unordered_set<lux::world::WorldObjectId, lux::world::WorldObjectIdHash> collapsed_;
+        std::unordered_set<scene::SceneEntityRef, scene::SceneEntityRef::Hash> collapsed_;
         bool rows_dirty_{true};
         bool visible_dirty_{true};
         std::uint32_t partition_{};

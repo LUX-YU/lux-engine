@@ -50,7 +50,7 @@
 #include <vulkan/vulkan.h>
 
 #include <lux/engine/render/resources/vertex/IVertexSource.hpp>
-#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp>
+#include <lux/engine/function/render/features/core/VertexLayoutTypes.hpp>
 
 namespace lux::render
 {

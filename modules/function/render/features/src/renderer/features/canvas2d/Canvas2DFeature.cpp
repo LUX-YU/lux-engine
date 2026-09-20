@@ -16,7 +16,7 @@
 #include <lux/engine/function/render/graph/RGEnums.hpp>
 #include <lux/engine/function/render/client/core/Errors.hpp> // Expected / renderFailure
 #include <lux/cxx/core/Format.hpp>
-#include <lux/engine/function/render/client/resources/EBuiltinShader.hpp>
+#include <lux/engine/function/render/features/resources/EBuiltinShader.hpp>
 #include <lux/engine/render/resources/TextureResources.hpp> // bindless combined-sampler set (set 2)
 #include <lux/engine/render/gpu/descriptor/SceneDescriptorArena.hpp>
 #include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp>

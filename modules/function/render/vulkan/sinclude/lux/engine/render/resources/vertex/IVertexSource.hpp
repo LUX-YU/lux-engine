@@ -41,7 +41,7 @@
 
 #include <vulkan/vulkan.h>
 
-#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp>
+#include <lux/engine/function/render/features/core/VertexLayoutTypes.hpp>
 #include <lux/engine/function/visibility.h>
 
 namespace lux::render

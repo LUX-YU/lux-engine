@@ -90,5 +90,10 @@ option(
 option(LUX_BUILD_PACKED_RENDER_CONTENT "Compile and embed built-in render content" OFF)
 set(LUX_ASSET_PACKER_EXECUTABLE "" CACHE FILEPATH "Optional explicit host lux_asset_packer executable")
 
+option(BUILD_TESTING "Build and register component tests" OFF)
+if(BUILD_TESTING)
+    enable_testing()
+endif()
+
 add_subdirectory(modules)
 add_subdirectory(engine)

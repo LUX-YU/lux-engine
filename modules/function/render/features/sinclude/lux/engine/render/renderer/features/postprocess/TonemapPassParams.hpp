@@ -16,7 +16,7 @@
 // =============================================================================
 #include <lux/engine/meta/MetaAnnotations.hpp>
 #include <lux/engine/function/render/graph/RGForwardDecls.hpp>
-#include <lux/engine/function/render/client/features/postprocess/TonemapParams.hpp>
+#include <lux/engine/function/render/features/postprocess/TonemapParams.hpp>
 
 #include <vulkan/vulkan.h>
 

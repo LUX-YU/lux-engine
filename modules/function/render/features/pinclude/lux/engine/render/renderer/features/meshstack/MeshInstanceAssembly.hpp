@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
+#include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
 
 #include <cstdint>
 #include <span>

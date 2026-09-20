@@ -3,8 +3,9 @@
 //  (createFn/registrar/factory/Proxy 由 comm/genops/TrajectoryOperation.ops.cpp
 //   生成并 extern 引用本文件的 handleTrajectory* —— 少定义即链接错误。)
 // ============================================================================
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/function/render/client/genops/TrajectoryOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/TrajectoryOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/trajectory/TrajectoryLineFeature.hpp>
 #include <lux/engine/render/resources/TrajectoryGpuData.hpp>
 #include <lux/engine/render/resources/TrajectoryResources.hpp>

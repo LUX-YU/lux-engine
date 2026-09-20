@@ -1,5 +1,5 @@
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/function/render/client/genops/WaterOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/WaterOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/water/WaterFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 

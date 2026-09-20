@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <Eigen/Geometry>
 #include <array>
 #include <cstdint>
@@ -7,8 +8,8 @@
 #include <lux/engine/function/render/client/core/FrameStamp.hpp>
 #include <lux/engine/function/render/client/core/RenderEntityId.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>   // LightHandle
-#include <lux/engine/function/render/client/core/ShadingInputSlot.hpp> // EShadingInputSlot (Light b11)
-#include <lux/engine/function/render/client/resources/lighting/LightDescriptor.hpp>
+#include <lux/engine/function/render/features/core/ShadingInputSlot.hpp> // EShadingInputSlot (Light b11)
+#include <lux/engine/function/render/features/resources/lighting/LightDescriptor.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
 #include <lux/engine/render/core/FrameServices.hpp>

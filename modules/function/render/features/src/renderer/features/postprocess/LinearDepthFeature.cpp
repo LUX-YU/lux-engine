@@ -10,7 +10,7 @@
 #include <lux/engine/render/resources/BuiltinShaderRegistry.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
-#include <lux/engine/function/render/client/features/deferred/DeferredGBufferOperation.hpp>
+#include <lux/engine/function/render/features/deferred/DeferredGBufferOperation.hpp>
 
 #include <cassert>
 #include <vector>

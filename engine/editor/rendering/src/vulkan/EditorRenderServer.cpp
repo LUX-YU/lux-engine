@@ -7,13 +7,14 @@
 #include <lux/engine/ui/UISession.hpp>
 
 #include <lux/engine/function/render/client/RenderProgramSession.hpp>
-#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
-#include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>
-#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
-#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>
-#include <lux/engine/function/render/client/genops/ForwardMeshOperation.ops.hpp>
-#include <lux/engine/function/render/client/genops/ShadowMapOperation.ops.hpp>
-#include <lux/engine/function/render/client/genops/MeshShadowOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/ViewCameraOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MaterialOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/ForwardMeshOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/ShadowMapOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshShadowOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/renderer/FrameOrchestrator.hpp>
@@ -160,6 +161,8 @@ namespace lux::editor::rendering::detail
         using DispatchContext = Dispatcher::Ctx;
 
 
+        void recordEmptyView(void *, VkCommandBuffer, const render::RenderTargetBinding &, const render::LayerPhase &);
+
         void handleSubmitDrawData(DispatchContext &context, const SubmitDrawPayload &payload)
         {
             auto *state = static_cast<ServerState *>(render::serverExtensionOf(context.user_state));
@@ -171,6 +174,20 @@ namespace lux::editor::rendering::detail
                 return;
             }
             state->pending_snapshot = static_cast<FrameDrawData *>(attachment.object);
+            for (const auto &image : state->pending_snapshot->images)
+            {
+                const auto *record = ViewImageAccess::record(image);
+                auto *target = state->targets->tryGet(record->version->target);
+                if (!target)
+                {
+                    continue;
+                }
+                target->layers.clear();
+                using Layer = render::RenderTargetEntry::CompositeLayer;
+                target->layers.push_back(record->scene_enabled
+                    ? Layer::sceneView(record->version->scene, record->version->view)
+                    : Layer::customRecord(&recordEmptyView, state));
+            }
         }
 
         std::uint32_t registerUiOperations(void *dispatcher, render::TypeId *operations, std::uint32_t capacity)
@@ -198,7 +215,7 @@ namespace lux::editor::rendering::detail
         }
 
         void recordOverlay(VkCommandBuffer command, const render::RenderTargetBinding &binding,
-                           const render::LayerPhase &phase, ServerState &state)
+                           const render::LayerPhase &phase, ServerState &state, bool draw_ui = true)
         {
             const auto &slot = binding.slot(render::TargetSlot::SCENE_COLOR);
             if (command == VK_NULL_HANDLE || state.renderer == nullptr || slot.images.empty() || slot.views.empty())
@@ -257,22 +274,35 @@ namespace lux::editor::rendering::detail
             color.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             color.loadOp = phase.is_first ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
             color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-            color.clearValue.color = {{0.10F, 0.10F, 0.12F, 1.0F}};
+            color.clearValue.color = draw_ui ? VkClearColorValue{{0.10F, 0.10F, 0.12F, 1.0F}}
+                                            : VkClearColorValue{{0.0F, 0.0F, 0.0F, 1.0F}};
             VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO};
             rendering.renderArea = {{0, 0}, binding.extent};
             rendering.layerCount = 1U;
             rendering.colorAttachmentCount = 1U;
             rendering.pColorAttachments = &color;
             vkCmdBeginRendering(command, &rendering);
-            state.renderer->render(state.pending_snapshot ? &state.pending_snapshot->snapshot : nullptr, command);
+            if (draw_ui)
+            {
+                state.renderer->render(state.pending_snapshot ? &state.pending_snapshot->snapshot : nullptr, command);
+            }
             vkCmdEndRendering(command);
 
             if (phase.is_last && final_layout != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
             {
                 barrier(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, final_layout,
                         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-                        VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE);
+                        final_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ? VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT
+                                                                               : VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+                        final_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ? VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
+                                                                               : VK_ACCESS_2_NONE);
             }
+        }
+
+        void recordEmptyView(void *user, VkCommandBuffer command, const render::RenderTargetBinding &binding,
+                             const render::LayerPhase &phase)
+        {
+            recordOverlay(command, binding, phase, *static_cast<ServerState *>(user), false);
         }
 
         void recordOverlayLayer(void *user, VkCommandBuffer command, const render::RenderTargetBinding &binding,
@@ -341,7 +371,7 @@ namespace lux::editor::rendering::detail
                 const std::array factories{&render::kViewCameraFeatureFactory,  &render::kMaterialFeatureFactory,
                                            &render::kMeshStackFeatureFactory,   &render::kLightFeatureFactory,
                                            &render::kForwardMeshFeatureFactory, &render::kShadowMapFeatureFactory,
-                                           &render::kMeshShadowFeatureFactory};
+                                           &render::kMeshShadowFeatureFactory, &render::kHighlightFeatureFactory};
                 for (const auto *feature : factories)
                 {
                     auto installed = *feature;

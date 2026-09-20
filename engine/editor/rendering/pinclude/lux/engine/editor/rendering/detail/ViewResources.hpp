@@ -27,8 +27,9 @@ namespace lux::editor::rendering::detail
         std::optional<RendererFailure> pending_failure;
         lux::render::RenderSceneId scene;
         const double coordinate_page_size;
-        CameraFrame camera;
-        bool camera_valid{}, linked{}, view_requested{}, target_requested{}, close_requested{};
+        ViewStamp desired;
+        bool scene_enabled{};
+        bool linked{}, view_requested{}, target_requested{}, close_requested{};
         std::uint64_t in_flight_sequence{};
         PixelExtent in_flight_extent;
         std::shared_ptr<ImageVersion> version;

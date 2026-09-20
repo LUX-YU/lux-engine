@@ -16,7 +16,9 @@ namespace lux::editor::rendering
         [[nodiscard]] RenderViewId id() const noexcept;
         [[nodiscard]] ViewStatus status() const noexcept;
         [[nodiscard]] RenderResult<void> requestExtent(PixelExtent) noexcept;
-        [[nodiscard]] RenderResult<void> setCamera(const CameraFrame &) noexcept;
+        [[nodiscard]] lux::render::ViewHandle handle() const noexcept;
+        // Content intent only. Matrices are exclusively produced by the Scene camera extraction.
+        [[nodiscard]] RenderResult<void> setOutput(ViewStamp, bool scene_enabled) noexcept;
         [[nodiscard]] RenderResult<ViewImage> acquireImage() noexcept;
         [[nodiscard]] RenderResult<void> beginClose() noexcept;
         [[nodiscard]] RenderResult<ERenderClose> advanceClose() noexcept;

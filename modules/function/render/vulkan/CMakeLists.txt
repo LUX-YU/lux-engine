@@ -130,7 +130,7 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS core container concurrent memory)"
 )
 
-component_add_internal_dependencies(render_vulkan render_client render_graph)
+component_add_internal_dependencies(render_vulkan render_feature_client render_graph)
 
 target_link_libraries(
     render_vulkan

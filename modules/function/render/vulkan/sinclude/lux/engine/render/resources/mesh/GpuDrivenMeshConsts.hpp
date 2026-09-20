@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp>
+#include <lux/engine/function/render/features/resources/mesh/RenderObjectTypes.hpp>
 #include <lux/engine/render/resources/material/MaterialFamily.hpp>
 
 namespace lux::render
@@ -72,7 +72,7 @@ namespace lux::render
         uint32_t enabled_geometry_mask;
         uint32_t extension_flags;
         uint32_t reserved_input0_or_view_mdc_count; // SHADOW: view MDC count; VIEW: unused
-        uint32_t reserved_input1;
+        uint32_t instance_filter_enabled;
         // World-partition active-mask GPU address (buffer-device-address), 8-byte
         // aligned at offset 40. 0 = no mask bound (large-world disabled) → the shader
         // skips the dormant-cell early-out and treats every instance as active.

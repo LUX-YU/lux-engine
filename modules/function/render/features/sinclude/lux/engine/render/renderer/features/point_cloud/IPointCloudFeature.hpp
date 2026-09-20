@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file IPointCloudFeature.hpp
  * @brief Abstract interface for multi-mode point cloud render features.
@@ -49,7 +50,7 @@ namespace lux::render
      * Concrete implementations operate via the comm protocol.
      * GPU resources are fetched from GPUResourceRegistry during construction.
      */
-    class LUX_FUNCTION_PUBLIC IPointCloudFeature : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC IPointCloudFeature : public RenderFeature
     {
     public:
         using RenderFeature::RenderFeature; // forward config ctor

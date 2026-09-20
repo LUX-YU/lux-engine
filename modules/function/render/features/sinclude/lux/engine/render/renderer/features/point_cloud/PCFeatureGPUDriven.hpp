@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file PCFeatureGPUDriven.hpp (refactored)
  * @brief Point cloud render feature — GPU-Driven mode (compute culling + indirect draw).
@@ -25,7 +26,7 @@ namespace lux::render
      *
      * Fixed screen-space point size (push constant), single indirect draw call.
      */
-    class LUX_FUNCTION_PUBLIC PCFeatureGPUDriven final : public PCFeatureIndirectBase
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC PCFeatureGPUDriven final : public PCFeatureIndirectBase
     {
     public:
         struct Config

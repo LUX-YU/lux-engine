@@ -129,7 +129,7 @@ namespace lux::editor::gui
             return container_epoch_;
         }
 
-        template <class Component> const Component *read(lux::world::WorldObjectId object)
+        template <class Component> const Component *read(scene::SceneEntityRef object)
         {
             return static_cast<const Component *>(readComponent(object, lux::cxx::typeToken<Component>()).value);
         }
@@ -151,7 +151,7 @@ namespace lux::editor::gui
         }
 
         template <class Component, class Access, class Mutation>
-        bool mutateField(lux::world::WorldObjectId object, const char *identity, const char *label, Access access,
+        bool mutateField(scene::SceneEntityRef object, const char *identity, const char *label, Access access,
                          Mutation mutate)
         {
             if (!finish(document))
@@ -243,7 +243,7 @@ namespace lux::editor::gui
         }
 
         template <class Component, class Value, class Access, class Draw>
-        void field(scene::SceneEditor &document, lux::world::WorldObjectId object, lux::ui::Frame &frame,
+        void field(scene::SceneEditor &document, scene::SceneEntityRef object, lux::ui::Frame &frame,
                    const char *identity, const char *label, Access access, Draw draw, bool immutable)
         {
             const auto snapshot = readComponent(object, lux::cxx::typeToken<Component>());
@@ -326,13 +326,13 @@ namespace lux::editor::gui
 
         struct ComponentRead final
         {
-            lux::world::WorldObjectId object;
+            scene::SceneEntityRef object;
             lux::cxx::TypeToken type;
             const void *value{};
             std::uint64_t sequence{};
         };
 
-        ComponentRead readComponent(lux::world::WorldObjectId object, lux::cxx::TypeToken type)
+        ComponentRead readComponent(scene::SceneEntityRef object, lux::cxx::TypeToken type)
         {
             if (draw_active_ && borrow_valid_ && borrow_.object == object && borrow_.type == type)
             {

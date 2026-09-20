@@ -1,5 +1,5 @@
 #include <lux/engine/render/renderer/features/spatialcull/SpatialCullFeature.hpp>
-#include <lux/engine/function/render/client/genops/SpatialCullOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/SpatialCullOperation.ops.hpp>
 
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/render/scene/View.hpp>

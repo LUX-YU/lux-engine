@@ -5,6 +5,7 @@
 #include <lux/engine/math/Intersection.hpp>
 
 #include <Eigen/Core>
+#include <Eigen/LU>
 #include <vector>
 #include <algorithm>
 #include <optional>
@@ -17,12 +18,16 @@ namespace lux::math
     /**
      * @brief Result of a BVH ray-cast query.
      */
-    struct BVHHit
+    template <class Scalar> struct BasicBVHHit
     {
-        float t;                 ///< Distance along the ray
+        Scalar t;                ///< Distance along the ray
         float u, v;              ///< Barycentric coordinates on the triangle
         uint32_t triangle_index; ///< Index of the hit triangle (in the original index buffer)
+        Eigen::Matrix<Scalar, 3, 1> normal{};
     };
+
+    using BVHHit = BasicBVHHit<float>;
+    using BVHHit3d = BasicBVHHit<double>;
 
     /**
      * @brief Per-mesh Bounding Volume Hierarchy for precise ray-triangle picking.
@@ -60,11 +65,16 @@ namespace lux::math
             uint32_t max_leaf_tris = 4
         )
         {
-            (void)vertex_count;
+            nodes_.clear();
+            tris_.clear();
+            centroids_.clear();
+            orig_tri_idx_.clear();
             assert(index_count % 3 == 0);
             const uint32_t tri_count = index_count / 3;
             if (tri_count == 0)
+            {
                 return;
+            }
 
             max_leaf_tris_ = std::max(max_leaf_tris, 1u);
 
@@ -78,6 +88,7 @@ namespace lux::math
                 uint32_t i0 = indices[i * 3 + 0];
                 uint32_t i1 = indices[i * 3 + 1];
                 uint32_t i2 = indices[i * 3 + 2];
+                assert(i0 < vertex_count && i1 < vertex_count && i2 < vertex_count);
                 tris_[i] = {positions[i0], positions[i1], positions[i2]};
                 centroids_[i] = (positions[i0] + positions[i1] + positions[i2]) / 3.0f;
                 orig_tri_idx_[i] = i;
@@ -97,7 +108,9 @@ namespace lux::math
         [[nodiscard]] std::optional<BVHHit> intersectLocal(const Ray& local_ray) const
         {
             if (nodes_.empty())
+            {
                 return std::nullopt;
+            }
 
             BVHHit best{};
             best.t = std::numeric_limits<float>::max();
@@ -115,32 +128,49 @@ namespace lux::math
          * @param world      The entity's model-to-world matrix.
          * @return The closest BVHHit (t in world-space units), or nullopt.
          */
-        [[nodiscard]] std::optional<BVHHit> intersect(const Ray& world_ray, const Eigen::Matrix4f& world) const
+        template <class Scalar>
+        [[nodiscard]] std::optional<BasicBVHHit<Scalar>> intersect(
+            const BasicRay<Scalar>& world_ray, const Eigen::Matrix<Scalar, 4, 4>& world) const
         {
-            Eigen::Matrix4f inv = world.inverse();
-
-            // Transform ray into local space
-            Eigen::Vector4f o4 =
-                inv * Eigen::Vector4f(world_ray.origin.x(), world_ray.origin.y(), world_ray.origin.z(), 1.0f);
-            Eigen::Vector4f d4 =
-                inv * Eigen::Vector4f(world_ray.direction.x(), world_ray.direction.y(), world_ray.direction.z(), 0.0f);
-
-            Ray local_ray;
-            local_ray.origin = o4.head<3>();
-            Eigen::Vector3f ld = d4.head<3>();
-            float scale = ld.norm();
-            if (scale < 1e-12f)
-                return std::nullopt;
-            local_ray.direction = ld / scale;
-
-            auto hit = intersectLocal(local_ray);
-            if (hit)
+            if (!world.allFinite() || !world_ray.origin.allFinite() || !world_ray.direction.allFinite())
             {
-                // local_t * |local_dir_unnorm| = world distance
-                // (input world_ray.direction is unit-length)
-                hit->t *= scale;
+                return std::nullopt;
             }
-            return hit;
+
+            const Eigen::Matrix<Scalar, 3, 3> basis = world.template block<3, 3>(0, 0);
+            const Eigen::FullPivLU<Eigen::Matrix<Scalar, 3, 3>> decomposition{basis};
+            if (!decomposition.isInvertible())
+            {
+                return std::nullopt;
+            }
+            const Eigen::Matrix<Scalar, 3, 3> inverse = decomposition.inverse();
+            // Subtract in double precision before transforming/narrowing. An
+            // absolute float origin would lose small objects far from zero.
+            const Eigen::Matrix<Scalar, 3, 1> local_origin =
+                inverse * (world_ray.origin - world.template block<3, 1>(0, 3));
+            const Eigen::Matrix<Scalar, 3, 1> direction = inverse * world_ray.direction;
+            const Scalar scale = direction.norm();
+            if (!std::isfinite(scale) || scale <= Scalar(0))
+            {
+                return std::nullopt;
+            }
+
+            const Ray local_ray{local_origin.template cast<float>(),
+                                (direction / scale).template cast<float>()};
+            if (!local_ray.origin.allFinite() || !local_ray.direction.allFinite())
+            {
+                return std::nullopt;
+            }
+
+            const auto hit = intersectLocal(local_ray);
+            if (!hit)
+            {
+                return std::nullopt;
+            }
+
+            const Eigen::Matrix<Scalar, 3, 1> normal = inverse.transpose() * hit->normal.template cast<Scalar>();
+            return BasicBVHHit<Scalar>{Scalar(hit->t) / scale, hit->u, hit->v,
+                                       hit->triangle_index, normal.normalized()};
         }
 
         [[nodiscard]] uint32_t triangleCount() const
@@ -154,6 +184,14 @@ namespace lux::math
         [[nodiscard]] bool isBuilt() const
         {
             return !nodes_.empty();
+        }
+
+        // Vector capacities, including preparation scratch retained for rebuild.
+        // Allocator bookkeeping is not observable through the standard library.
+        [[nodiscard]] std::size_t retainedBytes() const noexcept
+        {
+            return sizeof(*this) + nodes_.capacity() * sizeof(Node) + tris_.capacity() * sizeof(Triangle) +
+                   centroids_.capacity() * sizeof(Eigen::Vector3f) + orig_tri_idx_.capacity() * sizeof(uint32_t);
         }
 
     private:
@@ -196,14 +234,20 @@ namespace lux::math
             Eigen::Vector3f ext = box.extents();
             int axis = 0;
             if (ext.y() > ext.x())
+            {
                 axis = 1;
+            }
             if (ext.z() > ext[axis])
+            {
                 axis = 2;
+            }
 
             // Centroid mean along axis
             float mid = 0.0f;
             for (uint32_t i = begin; i < end; ++i)
+            {
                 mid += centroids_[i][axis];
+            }
             mid /= static_cast<float>(n);
 
             // Partition parallel arrays (tris_, centroids_, orig_tri_idx_)
@@ -224,7 +268,9 @@ namespace lux::math
 
             // Degenerate: everything fell on one side -> split in half
             if (split == begin || split == end)
+            {
                 split = begin + n / 2;
+            }
 
             // Build children (nodes_ may reallocate, so use idx not reference)
             uint32_t left = buildRecursive(begin, split);
@@ -243,9 +289,13 @@ namespace lux::math
 
             float tMin, tMax;
             if (!rayIntersectsAABB(ray, nd.bounds, tMin, tMax))
+            {
                 return;
+            }
             if (tMin > best.t) // entire node is farther than current best
+            {
                 return;
+            }
 
             if (nd.count > 0)
             {
@@ -260,6 +310,7 @@ namespace lux::math
                         best.u = hit->u;
                         best.v = hit->v;
                         best.triangle_index = orig_tri_idx_[ti];
+                        best.normal = (tris_[ti].v1 - tris_[ti].v0).cross(tris_[ti].v2 - tris_[ti].v0).normalized();
                         found = true;
                     }
                 }

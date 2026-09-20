@@ -1,5 +1,5 @@
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/function/render/client/genops/TerrainOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/TerrainOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/terrain/TerrainResources.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 

@@ -117,6 +117,7 @@ namespace lux::scene
         detail::RenderSyncStorage storage;
         std::unique_ptr<SceneRenderInput::Data> input = std::make_unique<SceneRenderInput::Data>();
         std::vector<Attachment> attachments;
+        std::vector<BoundFeature> bound_features;
         render::RenderRequest<render::SceneCreatedReply> create;
         render::RenderRequest<render::FeatureAddedReply> attach;
         std::size_t next{};
@@ -150,7 +151,8 @@ namespace lux::scene
     }
 
     lux::cxx::expected<std::unique_ptr<SceneRenderBinding>, SceneRenderBindingFailure> SceneRenderBinding::begin(
-        RenderRuntime &runtime, SceneSystemView description, std::shared_ptr<const RenderSystemMetadata> metadata)
+        RenderRuntime &runtime, SceneSystemView description, std::shared_ptr<const RenderSystemMetadata> metadata,
+        std::span<const render::FeatureTypeId> additional_features)
     {
         const auto registration = builtinRenderSystemRegistration();
         if (!metadata || description.type() != registration.type ||
@@ -203,6 +205,18 @@ namespace lux::scene
                 return lux::cxx::unexpected(reject(description, type));
             }
             roots.push_back(name);
+        }
+        for (const auto type : additional_features)
+        {
+            const auto name = data->input->catalog.nameOfType(type);
+            if (name.empty())
+            {
+                return lux::cxx::unexpected(reject(description, type));
+            }
+            if (std::ranges::find(roots, name) == roots.end())
+            {
+                roots.push_back(name);
+            }
         }
         const auto order = data->input->catalog.resolveAttachOrder(roots);
         if (!order.unknown.empty() || !order.missing_deps.empty() || !order.cycle.empty())
@@ -327,7 +341,9 @@ namespace lux::scene
                 }
                 else
                 {
-                    d.input->features.push_back({d.attachments[d.next].meta, result->get().feature});
+                    const BoundFeature bound{d.attachments[d.next].meta, result->get().feature};
+                    d.input->features.push_back(bound);
+                    d.bound_features.push_back(bound);
                     ++d.next;
                 }
                 d.attach = {};
@@ -446,6 +462,29 @@ namespace lux::scene
     {
         return data_->storage.prepared;
     }
+    render::FeatureHandle SceneRenderBinding::featureHandle(render::FeatureTypeId type) const noexcept
+    {
+        if (data_->state != ESceneRenderBindingState::READY || data_->closing)
+        {
+            return {};
+        }
+        const auto found = std::ranges::find_if(data_->bound_features,
+            [type](const auto& value) { return value.meta->type == type; });
+        return found == data_->bound_features.end() ? render::FeatureHandle{} : found->handle;
+    }
+
+    const render::FeatureCatalog& SceneRenderBinding::featureCatalog() const noexcept
+    {
+        return data_->runtime.features();
+    }
+
+    bool SceneRenderBinding::trySubmit(render::RenderProgram<>& program)
+    {
+        auto& d = *data_;
+        return d.state == ESceneRenderBindingState::READY && !d.closing && !d.storage.prepared &&
+            !d.runtime.programs().hasPendingSubmit() && d.runtime.programs().trySubmitPrepared(program);
+    }
+
     void SceneRenderBinding::requestClose() noexcept
     {
         data_->closing = true;

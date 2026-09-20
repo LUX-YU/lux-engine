@@ -2,7 +2,7 @@
 #include <lux/engine/render/renderer/features/sky_box/SkyboxFeature.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/function/render/client/features/sky_box/SkyboxOperation.hpp> // kSkyboxPassName
+#include <lux/engine/function/render/features/sky_box/SkyboxOperation.hpp> // kSkyboxPassName
 #include <lux/engine/render/resources/mesh/InstanceResources.hpp>
 #include <lux/engine/render/resources/TextureResources.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>

@@ -7,6 +7,7 @@
  * Registered in the scene via resources().emplace<TrajectoryResources>().
  */
 
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
 #include <lux/engine/render/core/FrameServices.hpp>
 #include <lux/engine/render/resources/TrajectoryGlobalBuffer.hpp>

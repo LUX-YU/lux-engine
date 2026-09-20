@@ -21,7 +21,7 @@ inline void checkGeneratedTransformDragging(lux::editor::scene::SceneEditor &doc
         scene::SceneEditor &document;
         gui::InspectorInteraction interaction;
         gui::ComponentBinding binding;
-        lux::world::WorldObjectId object;
+        lux::editor::scene::SceneEntityRef object;
         std::array<ImVec2, 3> centers{};
 
         ProbePane(lux::ui::UISession &ui, scene::SceneEditor &value)

@@ -9,6 +9,7 @@
  * VertexSourceHandle.
  */
 
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/render/resources/mesh/MeshResources.hpp>
 #include <lux/engine/render/resources/vertex/StaticVertexSource.hpp>
 #include <lux/engine/render/resources/vertex/VertexPoolRegistry.hpp>

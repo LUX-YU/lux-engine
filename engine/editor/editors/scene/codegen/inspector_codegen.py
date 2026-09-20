@@ -472,7 +472,7 @@ namespace
 {{
 using namespace generated_support;
 {chr(10).join(self.functions)}
-void draw_{suffix}(scene::SceneEditor& document, lux::world::WorldObjectId target,
+void draw_{suffix}(scene::SceneEditor& document, scene::SceneEntityRef target,
                    lux::ui::Frame& frame, InspectorInteraction& state)
 {{
     auto component_draw = state.componentDraw();

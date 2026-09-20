@@ -12,7 +12,7 @@
 #include <lux/engine/render/graph/PassRecordContext.hpp>
 #include <lux/engine/render/graph/RGRecorder.hpp>
 #include <lux/engine/function/render/graph/RGEnums.hpp>
-#include <lux/engine/function/render/client/features/deferred/DeferredGBufferOperation.hpp>
+#include <lux/engine/function/render/features/deferred/DeferredGBufferOperation.hpp>
 #include <lux/engine/render/renderer/features/deferred/GBufferTypes.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/render/scene/View.hpp>

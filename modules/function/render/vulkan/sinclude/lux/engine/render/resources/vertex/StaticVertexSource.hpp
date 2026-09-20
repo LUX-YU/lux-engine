@@ -31,6 +31,7 @@
  *     R1.2 alone doesn't bind anything, so the bit isn't required yet.
  */
 
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <cstdint>
 
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>

@@ -1,11 +1,13 @@
+#include <lux/engine/function/render/features/BuiltinFeatures.hpp>
 #include "render_thread_checks.hpp"
 #include "run_system.hpp"
 #include <lux/engine/editor/Editor.hpp>
 #include <lux/engine/editor/gui/scene/SceneDocumentProvider.hpp>
 #include <lux/engine/editor/gui/shell/EditorWindow.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
-#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
 #include <lux/engine/meta/Meta.hpp>
+#include <lux/engine/scene/MeshQuerySystem.hpp>
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/TransformSystem.hpp>
 #include <lux/engine/simulation/ecs/HierarchySchema.hpp>
@@ -70,8 +72,10 @@ int main(int argc, char **argv)
     const auto render_systems = scene::builtinRenderSystemRegistrations();
     const auto features = render::builtinRenderFeatureRegistrations();
     const auto bindings = scene::builtinRenderFeatureSceneBindings();
+    std::vector<scene::SceneSystemRegistration> registrations{render_systems.begin(), render_systems.end()};
+    registrations.push_back(scene::builtinMeshQuerySystemRegistration());
     auto built = scene::SceneMetaManager::build(
-        {std::move(*components), std::move(systems), {render_systems.begin(), render_systems.end()}});
+        {std::move(*components), std::move(systems), std::move(registrations)});
     if (!built)
     {
         std::printf("metadata failure=%u subject=%llu\n", unsigned(built.error().code),
@@ -179,11 +183,14 @@ int main(int argc, char **argv)
     auto opened = document.openRunView(*run, {{320, 240}, true, 2048});
     assert(opened);
     view = std::make_unique<editor::scene::RunViewLease>(std::move(*opened));
-    editor::rendering::CameraFrame camera;
-    camera.view = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, -8, 1};
-    camera.projection = {0.8660254, 0, 0, 0, 0, -1.7320508, 0, 0, 0, 0, -1.0005, -1, 0, 0, -0.05, 0};
-    camera.desired = {run->serial, 0, 1, 1};
-    assert(view->view().setCamera(camera));
+    while (!view->view().handle().isValid())
+    {
+        tick();
+    }
+    const auto camera = document.viewportCamera();
+    assert(camera);
+    assert(document.bindCamera(*camera, view->view().handle(), 4.0 / 3.0));
+    assert(view->view().setOutput({run->serial, 0, 1, 1}, true));
     const auto pause_at = Clock::now();
     assert(document.pauseRun(*run));
     while (document.runStatus().state != editor::scene::ERunState::PAUSED)
@@ -317,6 +324,7 @@ int main(int argc, char **argv)
     }
     const auto result_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - stop_at).count();
     std::puts("dynamic: Main retained the final result before World release");
+    document.unbindCamera(*camera, view->view().handle());
     assert(view->view().beginClose());
     packet = {};
     while (*view->view().advanceClose() != editor::rendering::ERenderClose::COMPLETE)

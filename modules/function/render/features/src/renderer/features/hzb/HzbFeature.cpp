@@ -23,7 +23,7 @@
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/resources/ShaderResources.hpp>
 #include <lux/engine/render/resources/BuiltinShaderRegistry.hpp> // resolveShaderStage
-#include <lux/engine/function/render/client/features/deferred/DeferredGBufferOperation.hpp>
+#include <lux/engine/function/render/features/deferred/DeferredGBufferOperation.hpp>
 
 namespace lux::render
 {

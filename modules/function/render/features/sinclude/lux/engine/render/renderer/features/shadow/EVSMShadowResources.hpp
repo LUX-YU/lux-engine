@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file EVSMShadowResources.hpp
  * @brief RGBA16F atlas pair (moment + scratch + blurred) + sampler owned
@@ -37,7 +38,7 @@
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC EVSMShadowResources
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC EVSMShadowResources
     {
     public:
         struct InitInfo

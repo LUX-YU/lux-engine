@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 // ============================================================================
 //  Grid2DPassFeature — the 2D scene reference grid (XY content plane).
 //
@@ -34,7 +35,7 @@ namespace lux::render
         std::uint32_t onTop = 0;  ///< 1 = over the content, 0 = under it
     };
 
-    class LUX_FUNCTION_PUBLIC Grid2DPassFeature : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC Grid2DPassFeature : public RenderFeature
     {
     public:
         struct Config

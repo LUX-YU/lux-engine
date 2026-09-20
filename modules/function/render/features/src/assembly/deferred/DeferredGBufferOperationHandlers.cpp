@@ -1,6 +1,6 @@
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
-#include <lux/engine/function/render/client/features/deferred/DeferredGBufferOperation.hpp>
+#include <lux/engine/function/render/features/deferred/DeferredGBufferOperation.hpp>
 #include <lux/engine/render/renderer/features/deferred/DeferredGBufferFeature.hpp>
 #include <lux/engine/render/resources/ShaderResources.hpp>
 #include <lux/engine/render/resources/BuiltinShaderRegistry.hpp>

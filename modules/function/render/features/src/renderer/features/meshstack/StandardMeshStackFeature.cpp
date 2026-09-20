@@ -1,9 +1,9 @@
 #include <lux/engine/render/renderer/features/meshstack/StandardMeshStackFeature.hpp>
-#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
 
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
-#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp> // kDefaultVertexLayoutId
+#include <lux/engine/function/render/features/core/VertexLayoutTypes.hpp> // kDefaultVertexLayoutId
 #include <lux/engine/render/resources/mesh/InstanceResources.hpp>
 #include <lux/engine/render/resources/mesh/MeshResources.hpp>
 #include <lux/engine/render/resources/vertex/VertexPoolRegistry.hpp>

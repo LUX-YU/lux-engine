@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file StandardViewCameraFeature.hpp
  * @brief Owner of the per-scene 3D camera state (ViewCameraResource) + the
@@ -26,7 +27,7 @@
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC StandardViewCameraFeature final : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC StandardViewCameraFeature final : public RenderFeature
     {
     public:
         struct Config

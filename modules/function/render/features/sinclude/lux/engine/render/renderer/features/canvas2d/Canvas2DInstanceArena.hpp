@@ -33,7 +33,7 @@
 //  scene-registry ownership, render-thread only.
 // ============================================================================
 
-#include <lux/engine/function/render/client/features/canvas2d/Canvas2DOperation.hpp>
+#include <lux/engine/function/render/features/canvas2d/Canvas2DOperation.hpp>
 // Image2DInstanceData / Image2DHandle / quantizePriority / status
 #include <lux/engine/function/render/client/core/RenderSpatialTypes.hpp>
 #include <lux/engine/render/gpu/memory/PagedGpuStream.hpp>

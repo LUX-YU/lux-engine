@@ -1,5 +1,5 @@
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/function/render/client/genops/RenderClusterOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/RenderClusterOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/render_cluster/RenderClusterResources.hpp>
 #include <lux/engine/render/renderer/features/meshstack/MeshInstanceAssembly.hpp>
 #include <lux/engine/render/resources/mesh/InstanceResources.hpp>

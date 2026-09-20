@@ -47,7 +47,7 @@ layout(push_constant) uniform PC {
     uint enabled_geometry_mask;
     uint extension_flags;
     uint reserved_input0;
-    uint reserved_input1;
+    uint instance_filter_enabled;
     uint64_t active_mask_addr;   // BDA of the world-partition active mask; 0 = none
     uint64_t graph_material_addr;
     uint64_t wanted_mip_addr;
@@ -111,6 +111,10 @@ layout(set = 0, binding = 7, std430) readonly buffer MdcInfoBuf {
 layout(set = 0, binding = 8, std430) readonly buffer AliveSlotBuf {
     uint slots[];
 } uAliveSlots;
+
+layout(set = 0, binding = 9, std430) readonly buffer InstanceFilterBuf {
+    uint included[];
+} uInstanceFilter;
 
 bool frustumCull(uint slice_index, vec3 center, float radius)
 {
@@ -569,6 +573,10 @@ void main()
         // A coarse producer exposes a bounded candidate array. Unwritten
         // entries stay UINT_MAX, so dispatching its capacity is safe.
         valid = instance_slot != kEmptyAggregationKey;
+    }
+    if (valid && pc.instance_filter_enabled != 0u)
+    {
+        valid = uInstanceFilter.included[instance_slot] != 0u;
     }
     if (valid && pc.active_mask_addr != 0ul)
     {

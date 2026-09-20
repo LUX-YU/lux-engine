@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file SpatialCullFeature.hpp
  * @brief Spatial-cell-grid coarse-cull feature (owns the SpatialCullGrid).
@@ -26,7 +27,7 @@
  */
 
 #include <lux/engine/render/RenderFeature.hpp>
-#include <lux/engine/function/render/client/features/spatialcull/SpatialCullParams.hpp>
+#include <lux/engine/function/render/features/spatialcull/SpatialCullParams.hpp>
 #include <lux/engine/function/visibility.h>
 
 #include <array>
@@ -41,7 +42,7 @@ namespace lux::render
     class InstanceResources;
     class ViewCameraResource;
 
-    class LUX_FUNCTION_PUBLIC SpatialCullFeature final : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC SpatialCullFeature final : public RenderFeature
     {
     public:
         struct Config

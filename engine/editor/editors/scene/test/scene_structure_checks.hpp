@@ -1,4 +1,5 @@
 #pragma once
+#include "entity_checks.hpp"
 #include <array>
 #include <cassert>
 #include <cstdio>
@@ -16,12 +17,13 @@ inline void checkSceneStructure(lux::editor::scene::SceneEditor &scene, bool opa
     const auto measured_begin = std::chrono::steady_clock::now();
     const auto initial = scene.historyView()->history;
     const auto count = scene.objects().size();
-    const auto original = scene.objects().front().object;
+    auto original = scene.objects().front().object;
     const auto state = [&]
     {
         return scene.historyView()->history.current;
     };
-    const auto row = [&](world::WorldObjectId id) -> const SceneObjectRow &
+    const auto original_entities = entitySnapshot(scene);
+    const auto row = [&](SceneEntityRef id) -> const SceneObjectRow &
     {
         const auto found = std::ranges::find(scene.objects(), id, &SceneObjectRow::object);
         assert(found != scene.objects().end());
@@ -35,12 +37,30 @@ inline void checkSceneStructure(lux::editor::scene::SceneEditor &scene, bool opa
            unsupported.error().domain_code == static_cast<unsigned>(ESceneStructureError::MISSING_PROVIDER));
     assert(state() == initial.current && scene.objects().size() == count);
 
-    const auto first = scene.createObject(state(), partition::PartitionOrdinal{0}, EObjectSpace::SPACE_3D);
+    auto first = scene.createObject(state(), partition::PartitionOrdinal{0}, EObjectSpace::SPACE_3D);
     assert(first && scene.component(*first, cxx::typeToken<simulation::ecs::Transform3D>()));
     auto stale = scene.createObject(initial.current, partition::PartitionOrdinal{0}, EObjectSpace::NONE);
     assert(!stale && stale.error().code == editing::EEditError::STALE_BASE);
-    const auto second = scene.createObject(state(), partition::PartitionOrdinal{0}, EObjectSpace::NONE);
+    auto second = scene.createObject(state(), partition::PartitionOrdinal{0}, EObjectSpace::NONE);
     assert(second && !scene.component(*second, cxx::typeToken<simulation::ecs::Transform3D>()));
+    const auto restore = [&]
+    {
+        const auto old = *first;
+        const auto restored = newEntities(scene, original_entities);
+        assert(restored.size() == 2);
+        for (const auto entity : restored)
+        {
+            if (scene.component(entity, cxx::typeToken<simulation::ecs::Transform3D>()))
+            {
+                *first = entity;
+            }
+            else
+            {
+                *second = entity;
+            }
+        }
+        assert(*first != old && !scene.writeTarget(old));
+    };
     const auto target = scene.writeTarget(*second);
     assert(target);
     if (scene.supportsHierarchy())
@@ -60,14 +80,18 @@ inline void checkSceneStructure(lux::editor::scene::SceneEditor &scene, bool opa
         assert(scene.objects().size() == count);
         for (unsigned iteration{}; iteration < 32; ++iteration)
         {
-            assert(scene.undo() && row(*second).parent == *first);
+            assert(scene.undo());
+            restore();
+            assert(row(*second).parent == *first);
             const auto *child = static_cast<const simulation::ecs::Parent *>(
                 scene.component(*second, cxx::typeToken<simulation::ecs::Parent>()));
             assert(child && child->entity != simulation::ecs::NullEntity);
             assert(scene.component(*first, cxx::typeToken<simulation::ecs::Transform3D>()));
             assert(scene.redo() && scene.objects().size() == count);
         }
-        assert(scene.undo() && scene.undo() && !row(*second).parent.valid());
+        assert(scene.undo());
+        restore();
+        assert(scene.undo() && !row(*second).parent.valid());
         assert(scene.redo() && row(*second).parent == *first);
         assert(scene.undo() && !row(*second).parent.valid());
     }
@@ -94,6 +118,10 @@ inline void checkSceneStructure(lux::editor::scene::SceneEditor &scene, bool opa
     {
         assert(deletion && scene.objects().size() == count - 1);
         assert(scene.undo() && scene.objects().size() == count);
+        assert(!scene.component(original, cxx::typeToken<simulation::ecs::Transform3D>()));
+        const auto restored = newEntities(scene, original_entities);
+        assert(restored.size() == 1);
+        original = restored.front();
         assert(scene.component(original, cxx::typeToken<simulation::ecs::Transform3D>()));
         assert(state() == deletion_base.current);
     }

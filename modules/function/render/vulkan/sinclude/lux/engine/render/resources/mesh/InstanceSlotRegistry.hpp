@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp>
+#include <lux/engine/function/render/features/resources/mesh/RenderObjectTypes.hpp>
 #include <lux/engine/render/resources/mesh/InstanceSlot.hpp>
 #include <lux/engine/function/visibility.h>
 

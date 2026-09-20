@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp> // VertexLayoutId
+#include <lux/engine/function/render/features/core/VertexLayoutTypes.hpp> // VertexLayoutId
 #include <cstdint>
 #include <lux/engine/gapi/vk/vk.hpp>
 

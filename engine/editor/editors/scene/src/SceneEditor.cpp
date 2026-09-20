@@ -7,8 +7,10 @@
 #include <lux/engine/editor/scene/NativeScene.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
 #include <lux/engine/editor/scene/detail/SceneObjectEdits.hpp>
+#include <lux/engine/editor/scene/detail/ModelCreation.hpp>
 #include <lux/engine/editor/scene/detail/SceneResources.hpp>
 #include <lux/engine/editor/scene/detail/SceneRun.hpp>
+#include <lux/engine/editor/scene/detail/EditorEntity.hpp>
 #include <lux/engine/resource/asset/material/MaterialAssets.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
@@ -20,6 +22,7 @@
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
+#include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
 #include <random>
 #include <unordered_set>
 
@@ -131,6 +134,7 @@ namespace lux::editor::scene
         std::unique_ptr<lux::scene::SceneRenderBinding> render_binding;
         std::unique_ptr<lux::scene::Scene> scene;
         detail::SceneObjects objects;
+        lux::simulation::ecs::Entity editor_camera{lux::simulation::ecs::NullEntity};
         std::unique_ptr<editing::EditHistory> history;
         lux::task::TaskExecutor executor;
         detail::SceneResources resources;
@@ -158,16 +162,16 @@ namespace lux::editor::scene
                                                        std::declval<process::asset_loading::AssetReadPort>(),
                                                        asset::AssetId{}, std::stop_token{}));
             using Loading = lux::editor::detail::DocumentTask<ModelReadResult, Sender>;
-            ModelPlacementId id;
+            ModelCreationId id;
             AssetReference reference;
             Eigen::Vector3d position;
             lux::partition::PartitionOrdinal partition;
             editing::StateId base;
             std::stop_source stop;
-            ModelPlacementStatus status{ModelPlacementPending{}};
+            ModelCreationStatus status{ModelCreationPending{}};
             std::variant<std::monostate, Loading, std::shared_ptr<const asset::ModelAsset>> work;
 
-            Placement(ModelPlacementId request, AssetReference asset, const Eigen::Vector3d &at,
+            Placement(ModelCreationId request, AssetReference asset, const Eigen::Vector3d &at,
                       lux::partition::PartitionOrdinal location, editing::StateId state)
                 : id(request), reference(asset), position(at), partition(location), base(state)
             {
@@ -175,30 +179,19 @@ namespace lux::editor::scene
             void start(process::ExecutionRuntime &runtime, process::asset_loading::AssetReadPort port)
             {
                 stop = std::stop_source{};
-                status = ModelPlacementPending{};
+                status = ModelCreationPending{};
                 auto &task = work.emplace<Loading>(
                     runtime, readPlacementModel(runtime, std::move(port), reference.asset, stop.get_token()));
                 task.start();
             }
             bool pending() const noexcept
             {
-                return std::holds_alternative<ModelPlacementPending>(status);
+                return std::holds_alternative<ModelCreationPending>(status);
             }
         };
         std::variant<std::monostate, Placement> placement;
         std::uint64_t next_placement{1};
 
-        struct ModelTransform final
-        {
-            lux::world::WorldObjectId object, parent;
-            lux::simulation::ecs::Transform3D value;
-            std::string label;
-        };
-        struct ModelMesh final
-        {
-            lux::world::WorldObjectId object;
-            lux::simulation::ecs::Mesh3D value;
-        };
         static auto structureFailure(ESceneStructureError code, std::string_view message)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::PRECONDITION_FAILED,
@@ -227,7 +220,7 @@ namespace lux::editor::scene
                     auto &owner = edit_.owner_;
                     EditingGuard committing(owner.objects.structural_commit);
                     const auto parent = forward_ ? edit_.after_ : edit_.before_;
-                    const auto entity = owner.objects.identities.entity(edit_.target_.object);
+                    const auto entity = owner.objects.identities.entity(edit_.object_);
                     if (forward_ || edit_.had_parent_)
                     {
                         owner.scene->registry().emplace_or_replace<ecs::Parent>(
@@ -237,16 +230,16 @@ namespace lux::editor::scene
                     {
                         owner.scene->registry().remove<ecs::Parent>(entity);
                     }
-                    const auto row = std::ranges::lower_bound(owner.objects.rows, edit_.target_.object,
-                                                              lux::world::WorldObjectIdLess{}, &SceneObjectRow::object);
-                    row->parent = parent;
+                    const auto row = std::ranges::lower_bound(owner.objects.rows, owner.objects.authorReference(edit_.object_),
+                                                              std::less<SceneEntityRef>{}, &SceneObjectRow::object);
+                    row->parent = owner.objects.authorReference(parent);
                     const auto type = lux::cxx::typeToken<ecs::Parent>();
                     std::erase_if(owner.objects.component_versions, [&](const auto &value)
-                                  { return value.object == edit_.target_.object && value.component == type; });
+                                  { return value.object == owner.objects.authorReference(edit_.object_) && value.component == type; });
                     if (forward_ || edit_.had_parent_)
                     {
                         owner.objects.component_versions.push_back(
-                            {edit_.target_.object, type, revision_, false, owner.objects.next_component_change++});
+                            {owner.objects.authorReference(edit_.object_), type, revision_, false, owner.objects.next_component_change++});
                         std::ranges::sort(owner.objects.component_versions, detail::SceneObjects::componentLess);
                     }
                     owner.derive = true;
@@ -262,10 +255,10 @@ namespace lux::editor::scene
 
           public:
             ParentEdit(SceneEditor &editor, Data &owner, SceneWriteTarget target, lux::world::WorldObjectId parent)
-                : editor_(editor), owner_(owner), target_(target), after_(parent)
+                : editor_(editor), owner_(owner), target_(target), object_(owner.objects.persistent(target.object)), after_(parent)
             {
                 const auto *value = owner.scene->registry().try_get<lux::simulation::ecs::Parent>(
-                    owner.objects.identities.entity(target.object));
+                    owner.objects.resolve(target.object));
                 had_parent_ = value != nullptr;
                 before_ = value ? owner.objects.identities.object(value->entity) : lux::world::WorldObjectId{};
             }
@@ -297,7 +290,7 @@ namespace lux::editor::scene
                 const bool forward = context.direction == editing::EDirection::FORWARD;
                 const auto expected = forward ? before_ : after_;
                 auto parent = forward ? after_ : before_;
-                const auto entity = owner_.objects.identities.entity(target_.object);
+                const auto entity = owner_.objects.identities.entity(object_);
                 if (entity == ecs::NullEntity ||
                     (parent.valid() && owner_.objects.identities.entity(parent) == ecs::NullEntity))
                 {
@@ -314,7 +307,7 @@ namespace lux::editor::scene
                 std::size_t visited{};
                 while (parent.valid())
                 {
-                    if (parent == target_.object || ++visited > owner_.objects.rows.size())
+                    if (parent == object_ || ++visited > owner_.objects.rows.size())
                     {
                         return structureFailure(ESceneStructureError::HIERARCHY_CYCLE,
                                                 "The proposed parent creates a cycle");
@@ -336,7 +329,7 @@ namespace lux::editor::scene
             SceneEditor &editor_;
             Data &owner_;
             SceneWriteTarget target_;
-            lux::world::WorldObjectId before_, after_;
+            lux::world::WorldObjectId object_, before_, after_;
             bool had_parent_;
         };
 
@@ -357,6 +350,75 @@ namespace lux::editor::scene
             return *history;
         }
         std::uint64_t selection_revision{};
+        std::uint64_t highlighted_selection{UINT64_MAX};
+        lux::render::FeatureHandle highlighted_feature{};
+        SceneInstanceId highlighted_instance{};
+        lux::render::RenderProgram<> highlight_program;
+        bool highlight_pending{};
+
+        void updateHighlight(PollBudget& budget, bool catalog_changed)
+        {
+            auto& current = inspectedObjects();
+            auto* binding = run.objects() ? run.renderBinding() : render_binding.get();
+            if (!binding || binding->state() != lux::scene::ESceneRenderBindingState::READY)
+            {
+                return;
+            }
+            const auto type = lux::render::kHighlightRenderFeatureRegistration.descriptor->type;
+            const auto feature = binding->featureHandle(type);
+            if (!feature.isValid())
+            {
+                return;
+            }
+            if (catalog_changed || highlighted_selection != selection_revision ||
+                highlighted_feature != feature || highlighted_instance != current.instance)
+            {
+                highlighted_selection = selection_revision;
+                highlighted_feature = feature;
+                highlighted_instance = current.instance;
+                std::vector<lux::render::RenderEntityId> targets;
+                const auto selected = current.resolve(current.selection.object);
+                if (selected != lux::simulation::ecs::NullEntity)
+                {
+                    for (const auto& row : current.rows)
+                    {
+                        auto entity = current.resolve(row.object);
+                        const auto candidate = entity;
+                        for (std::size_t depth{}; entity != lux::simulation::ecs::NullEntity && depth <= current.rows.size(); ++depth)
+                        {
+                            if (entity == selected)
+                            {
+                                if (current.registry.all_of<lux::simulation::ecs::Mesh3D>(candidate))
+                                {
+                                    targets.push_back(static_cast<lux::render::RenderEntityId>(entt::to_integral(candidate)));
+                                }
+                                break;
+                            }
+                            const auto* parent = current.registry.try_get<lux::simulation::ecs::Parent>(entity);
+                            entity = parent ? parent->entity : lux::simulation::ecs::NullEntity;
+                            if (entity != lux::simulation::ecs::NullEntity && !current.registry.valid(entity))
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+                const auto* system = (run.objects() ? run.scene() : scene.get())->findSceneSystem<lux::scene::RenderSystem>();
+                const auto ids = binding->featureCatalog().ops<lux::render::HighlightOperationIds>(binding->featureCatalog().nameOfType(type));
+                highlight_program.clear_keep_capacity();
+                lux::render::RenderProgramSession::Builder builder(highlight_program);
+                lux::render::HighlightReplaceTargetsPayload payload{system->renderSceneId(), feature};
+                payload.targets = builder.pushBlob(std::as_bytes(std::span(targets)), alignof(lux::render::RenderEntityId));
+                builder.push(lux::render::opcode_of_v<lux::render::HighlightReplaceTargetsOp>, ids.id<lux::render::HighlightReplaceTargetsOp>(), payload);
+                highlight_pending = true;
+            }
+            if (highlight_pending && budget.render_programs != 0 && binding->trySubmit(highlight_program))
+            {
+                --budget.render_programs;
+                highlight_pending = false;
+            }
+        }
+
         editing::HistoryId observed_history;
         bool observed_run{};
 
@@ -368,7 +430,7 @@ namespace lux::editor::scene
             : project(owner), runtime(process), source(std::make_shared<const NativeScene>(std::move(content))),
               metadata(meta.scene), render_binding(std::move(binding)), scene(std::move(value)),
               objects(scene->registry(), *source, *metadata, std::move(mapping)), history(std::move(edits)),
-              executor(std::move(tasks)), resources(history->id(), owner.assetReads(), &renderer, 256),
+              executor(std::move(tasks)), resources(history->id(), objects.instance, owner.assetReads(), &renderer, 256),
               run(process, renderer, std::move(meta), std::move(run_slot))
         {
             assets_connection = project.observeScoped<Project::assetContentChanged>(
@@ -403,8 +465,13 @@ namespace lux::editor::scene
             providers.push_back(lux::scene::makeSceneCapabilityProvider<lux::scene::SceneRenderInput>(
                 "main-window", "lux.render.input", *input));
         }
+        auto description = detail::editorSceneDescription(source);
+        if (!description)
+        {
+            return lux::cxx::unexpected(description.error());
+        }
         auto scene = lux::scene::Scene::create(
-            {std::shared_ptr<const lux::scene::SceneDescription>(source.scene, &source.scene->data()), world,
+            {std::move(*description), world,
              std::shared_ptr<const lux::simulation::SimulationDescription>(source.simulation,
                                                                            &source.simulation->data()),
              *metadata.scene, providers, lux::simulation::ESimulationMode::DERIVATION});
@@ -652,7 +719,7 @@ namespace lux::editor::scene
         capture.objects.reserve(data_->objects.rows.size());
         for (const auto &row : data_->objects.rows)
         {
-            capture.objects.push_back({row.object, row.partition});
+            capture.objects.push_back({data_->objects.persistent(row.object), row.partition});
         }
         capture.identities.reserve(data_->objects.identities.size());
         for (const auto &[object, entity] : data_->objects.identities.entries())
@@ -662,7 +729,23 @@ namespace lux::editor::scene
                 return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_STATE, "scene.capture.identity"});
             }
         }
-        const auto schemas = data_->source->world->data().schemas();
+        const auto existing_schemas = data_->source->world->data().schemas();
+        capture.schemas.assign(existing_schemas.begin(), existing_schemas.end());
+        for (const auto &changed : data_->objects.component_versions)
+        {
+            if (!changed.revision.value)
+            {
+                continue;
+            }
+            const auto *schema = data_->metadata->getComponentMeta(changed.component);
+            if (schema && schema->capture &&
+                std::ranges::find(capture.schemas, schema->id.name, &lux::world::WorldDataSchemaId::name) == capture.schemas.end())
+            {
+                capture.schemas.push_back(lux::world::worldDataSchemaId(schema->id.name));
+            }
+        }
+        std::ranges::sort(capture.schemas, lux::world::WorldDataSchemaIdLess{});
+        const auto &schemas = capture.schemas;
         for (const auto &changed : data_->objects.component_versions)
         {
             if (!changed.revision.value)
@@ -676,7 +759,7 @@ namespace lux::editor::scene
                 return lux::cxx::unexpected(EditorFailure{EEditorError::MISSING_PROVIDER, "scene.capture.codec",
                                                           schema->id.hash, schema->id.name});
             }
-            auto value = schema->capture(data_->scene->registry(), data_->objects.identities.entity(changed.object),
+            auto value = schema->capture(data_->scene->registry(), data_->objects.resolve(changed.object),
                                          schema->code_lifetime);
             if (!value)
             {
@@ -684,7 +767,7 @@ namespace lux::editor::scene
                                                           static_cast<std::uint64_t>(value.error().code),
                                                           schema->id.name, value.error()});
             }
-            capture.components.push_back({changed.object, static_cast<std::uint32_t>(ordinal - schemas.begin()),
+            capture.components.push_back({data_->objects.persistent(changed.object), static_cast<std::uint32_t>(ordinal - schemas.begin()),
                                           schema->version, std::move(*value)});
         }
         std::ranges::sort(capture.components,
@@ -835,7 +918,7 @@ namespace lux::editor::scene
         return data_->project;
     }
 
-    EditorResult<void> SceneEditor::select(lux::world::WorldObjectId id)
+    EditorResult<void> SceneEditor::select(SceneEntityRef id)
     {
         auto finished_edit = finishFieldEdits();
         if (!finished_edit)
@@ -852,7 +935,15 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::CLOSING, "scene.selection"});
         }
-        if (id.valid() && data_->inspectedObjects().identities.entity(id) == lux::simulation::ecs::NullEntity)
+        if (id.instance.valid() && id.instance != data_->inspectedObjects().instance)
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "scene.selection.instance"});
+        }
+        if (!id.instance.valid())
+        {
+            id.instance = data_->inspectedObjects().instance;
+        }
+        if (id.valid() && data_->inspectedObjects().resolve(id) == lux::simulation::ecs::NullEntity)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "scene.selection"});
         }
@@ -865,14 +956,231 @@ namespace lux::editor::scene
         return {};
     }
 
-    std::vector<SceneComponentInfo> SceneEditor::components(lux::world::WorldObjectId object) const
+    SceneInstanceId SceneEditor::instance() const noexcept
+    {
+        return data_->inspectedObjects().instance;
+    }
+
+    lux::scene::QueryResult<bool> SceneEditor::raycastNearest(SceneInstanceId instance, const lux::math::Ray3d &ray,
+        double maximum_distance, lux::scene::RayHit3D &hit, lux::scene::MeshQueryWork *work) const
+    {
+        if (instance != data_->inspectedObjects().instance || data_->editing_busy)
+        {
+            return lux::cxx::unexpected(lux::scene::MeshQueryFailure{lux::scene::EMeshQueryError::INVALID_INPUT});
+        }
+        auto *current = data_->run.objects() ? data_->run.scene() : data_->scene.get();
+        const auto *query = current ? current->findSceneSystem<lux::scene::MeshQuerySystem>() : nullptr;
+        if (!query)
+        {
+            return lux::cxx::unexpected(lux::scene::MeshQueryFailure{lux::scene::EMeshQueryError::NOT_READY});
+        }
+        return query->raycastNearest(ray, maximum_distance, hit, work);
+    }
+
+    EditorResult<SceneEntityRef> SceneEditor::viewportCamera()
+    {
+        namespace ecs = lux::simulation::ecs;
+        auto &objects = data_->inspectedObjects();
+        auto &registry = objects.registry;
+        if (data_->run.objects())
+        {
+            auto selected = ecs::NullEntity;
+            for (const auto entity : registry.view<const lux::scene::Camera>())
+            {
+                if (!registry.get<lux::scene::Camera>(entity).primary)
+                {
+                    continue;
+                }
+                if (selected != ecs::NullEntity)
+                {
+                    return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_STATE, "camera.primary",
+                        static_cast<std::uint64_t>(lux::scene::ECameraError::MULTIPLE_PRIMARY_CAMERAS),
+                        "Multiple primary cameras; choose one output camera"});
+                }
+                selected = entity;
+            }
+            if (selected == ecs::NullEntity)
+            {
+                return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_STATE, "camera.primary",
+                    static_cast<std::uint64_t>(lux::scene::ECameraError::NO_PRIMARY_CAMERA), "No primary camera"});
+            }
+            return objects.reference(selected);
+        }
+        if (!supportsObjectSpace(EObjectSpace::SPACE_3D))
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::MISSING_PROVIDER, "viewport.space", 0,
+                                                     "This viewport requires a declared 3D space"});
+        }
+        if (!registry.valid(data_->editor_camera))
+        {
+            const auto entity = registry.create();
+            registry.emplace<detail::EditorEntity>(entity);
+            ecs::Transform3D pose;
+            pose.translation = {6, 4, 8};
+            const Eigen::Vector3d forward = (Eigen::Vector3d{0, 0.5, 0} - pose.translation).normalized();
+            const Eigen::Vector3d right = forward.cross(Eigen::Vector3d::UnitY()).normalized();
+            Eigen::Matrix3d basis;
+            basis.col(0) = right;
+            basis.col(1) = right.cross(forward);
+            basis.col(2) = -forward;
+            pose.rotation = Eigen::Quaterniond(basis);
+            registry.emplace<ecs::Transform3D>(entity, pose);
+            registry.emplace<lux::scene::Camera>(entity);
+            data_->editor_camera = entity;
+            data_->derive = true;
+        }
+        return objects.reference(data_->editor_camera);
+    }
+
+    EditorResult<void> SceneEditor::bindCamera(SceneEntityRef ref, lux::render::ViewHandle view, double aspect)
+    {
+        auto &objects = data_->inspectedObjects();
+        const auto entity = objects.resolve(ref);
+        auto *camera = entity == lux::simulation::ecs::NullEntity ? nullptr
+            : objects.registry.try_get<lux::scene::Camera>(entity);
+        if (!camera || view.isNull() || !std::isfinite(aspect) || aspect <= 0)
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "camera.bind"});
+        }
+        if (!camera->view.isNull() && camera->view != view)
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "camera.bind", 0,
+                                                     "The camera is already associated with another View"});
+        }
+        if (camera->view != view || camera->aspect_ratio != aspect)
+        {
+            objects.registry.patch<lux::scene::Camera>(entity, [&](auto &value)
+            {
+                value.view = view;
+                value.aspect_ratio = aspect;
+            });
+            if (data_->run.objects())
+            {
+                data_->run.invalidateDerived();
+            }
+            else
+            {
+                data_->derive = true;
+            }
+        }
+        return {};
+    }
+
+    void SceneEditor::unbindCamera(SceneEntityRef ref, lux::render::ViewHandle view) noexcept
+    {
+        auto *objects = ref.instance == data_->objects.instance ? &data_->objects : data_->run.objects();
+        if (!objects)
+        {
+            return;
+        }
+        const auto entity = objects->resolve(ref);
+        auto *camera = entity == lux::simulation::ecs::NullEntity ? nullptr
+            : objects->registry.try_get<lux::scene::Camera>(entity);
+        if (camera && camera->view == view && !view.isNull())
+        {
+            objects->registry.patch<lux::scene::Camera>(entity, [](auto &value) { value.view = {}; });
+            if (objects == &data_->objects)
+            {
+                data_->derive = true;
+            }
+            else
+            {
+                data_->run.invalidateDerived();
+            }
+        }
+    }
+
+    EditorResult<void> SceneEditor::navigateCamera(SceneEntityRef ref, const lux::simulation::ecs::Transform3D &pose,
+                                                  const lux::scene::Camera &projection)
+    {
+        auto &objects = data_->objects;
+        const auto entity = objects.resolve(ref);
+        if (entity != data_->editor_camera || data_->run.objects() ||
+            entity == lux::simulation::ecs::NullEntity || !pose.translation.allFinite() ||
+            !pose.rotation.coeffs().allFinite() || std::abs(pose.rotation.squaredNorm() - 1.0) > 1.0e-8 ||
+            !lux::scene::cameraProjection(projection))
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "camera.navigate"});
+        }
+        objects.registry.patch<lux::simulation::ecs::Transform3D>(entity, [&](auto &value) { value = pose; });
+        objects.registry.patch<lux::scene::Camera>(entity, [&](auto &value) { value.projection = projection.projection; });
+        data_->derive = true;
+        return {};
+    }
+
+    editing::EditResult<SceneEntityRef> SceneEditor::createCameraFromView(
+        SceneEntityRef source, editing::StateId base, lux::partition::PartitionOrdinal partition)
+    {
+        const auto allowed = checkStructure(base);
+        if (!allowed)
+        {
+            return lux::cxx::unexpected(allowed.error());
+        }
+        const auto entity = data_->objects.resolve(source);
+        if (entity == lux::simulation::ecs::NullEntity || partition.value >= partitionCount() ||
+            !data_->scene->registry().all_of<lux::scene::Camera, lux::simulation::ecs::Transform3D>(entity))
+        {
+            return Data::structureFailure(ESceneStructureError::INVALID_OBJECT, "Choose a current camera and partition");
+        }
+        auto camera = data_->scene->registry().get<lux::scene::Camera>(entity);
+        camera.view = {};
+        camera.aspect_ratio = 1.0;
+        camera.primary = true;
+        for (const auto other : data_->scene->registry().view<const lux::scene::Camera>())
+        {
+            if (data_->objects.identities.object(other).valid() &&
+                data_->scene->registry().get<lux::scene::Camera>(other).primary)
+            {
+                camera.primary = false;
+                break;
+            }
+        }
+        std::mt19937 random(std::random_device{}());
+        uuids::uuid_random_generator generate(random);
+        lux::world::WorldObjectId id;
+        do
+        {
+            id = {generate()};
+        } while (!id.valid() || data_->objects.identities.entity(id) != lux::simulation::ecs::NullEntity);
+        detail::ObjectContent content{{id, {}, "Camera", partition}, {}};
+        const auto append = [&](const auto &value) -> editing::EditResult<void>
+        {
+            auto encoded = data_->objects.encodeComponent(value, data_->objects.identities);
+            if (!encoded)
+            {
+                return lux::cxx::unexpected(encoded.error());
+            }
+            content.components.push_back(std::move(*encoded));
+            return {};
+        };
+        auto encoded = append(data_->scene->registry().get<lux::simulation::ecs::Transform3D>(entity));
+        if (encoded)
+        {
+            encoded = append(camera);
+        }
+        if (!encoded)
+        {
+            return lux::cxx::unexpected(encoded.error());
+        }
+        std::vector<detail::ObjectContent> objects;
+        objects.push_back(std::move(content));
+        auto operation = detail::makeSceneObjectEdit(*this, data_->objects, base, std::move(objects), true, "Create camera");
+        const auto applied = executeField(operation);
+        if (!applied)
+        {
+            return lux::cxx::unexpected(applied.error());
+        }
+        return data_->objects.authorReference(id);
+    }
+
+    std::vector<SceneComponentInfo> SceneEditor::components(SceneEntityRef object) const
     {
         std::vector<SceneComponentInfo> result;
         if (!data_->scene || data_->inspectedObjects().structural_commit)
         {
             return result;
         }
-        const auto entity = data_->inspectedObjects().identities.entity(object);
+        const auto entity = data_->inspectedObjects().resolve(object);
         if (entity == lux::simulation::ecs::NullEntity)
         {
             return result;
@@ -887,13 +1195,13 @@ namespace lux::editor::scene
         return result;
     }
 
-    const void *SceneEditor::component(lux::world::WorldObjectId object, lux::cxx::TypeToken type) const noexcept
+    const void *SceneEditor::component(SceneEntityRef object, lux::cxx::TypeToken type) const noexcept
     {
         if (!data_->scene || data_->inspectedObjects().structural_commit)
         {
             return nullptr;
         }
-        const auto entity = data_->inspectedObjects().identities.entity(object);
+        const auto entity = data_->inspectedObjects().resolve(object);
         const auto *schema = data_->metadata->getComponentMeta(type);
         if (!schema || entity == lux::simulation::ecs::NullEntity)
         {
@@ -902,7 +1210,7 @@ namespace lux::editor::scene
         return schema->operations.get(data_->inspectedObjects().registry, entity);
     }
 
-    editing::EditResult<SceneWriteTarget> SceneEditor::writeTarget(lux::world::WorldObjectId object) const noexcept
+    editing::EditResult<SceneWriteTarget> SceneEditor::writeTarget(SceneEntityRef object) const noexcept
     {
         const auto admitted = checkEditAdmission();
         if (!admitted)
@@ -929,9 +1237,13 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
         }
-        if (!object.valid() || data_->inspectedObjects().identities.entity(object) == lux::simulation::ecs::NullEntity)
+        if (!object.valid() || data_->inspectedObjects().resolve(object) == lux::simulation::ecs::NullEntity)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::PRECONDITION_FAILED));
+        }
+        if (data_->inspectedObjects().registry.all_of<detail::EditorEntity>(object.entity))
+        {
+            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BLOCKED_BY_HOST));
         }
         return SceneWriteTarget{handle(), object, history->snapshot.current, history->snapshot.revision};
     }
@@ -999,7 +1311,7 @@ namespace lux::editor::scene
                                  &lux::world::WorldDataSchemaId::name) != data_->source->world->data().schemas().end();
     }
 
-    editing::EditResult<lux::world::WorldObjectId> SceneEditor::createObject(editing::StateId base,
+    editing::EditResult<SceneEntityRef> SceneEditor::createObject(editing::StateId base,
                                                                              lux::partition::PartitionOrdinal partition,
                                                                              EObjectSpace space)
     {
@@ -1070,11 +1382,11 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(applied.error());
         }
-        return id;
+        return data_->objects.authorReference(id);
     }
 
     editing::EditResult<editing::ApplyResult> SceneEditor::eraseObjects(
-        editing::StateId base, std::span<const lux::world::WorldObjectId> input)
+        editing::StateId base, std::span<const SceneEntityRef> input)
     {
         auto allowed = checkStructure(base);
         if (!allowed)
@@ -1089,7 +1401,7 @@ namespace lux::editor::scene
         objects.reserve(input.size());
         for (const auto id : input)
         {
-            const auto row = std::ranges::lower_bound(data_->objects.rows, id, lux::world::WorldObjectIdLess{},
+            const auto row = std::ranges::lower_bound(data_->objects.rows, id, std::less<SceneEntityRef>{},
                                                       &SceneObjectRow::object);
             if (row == data_->objects.rows.end() || row->object != id)
             {
@@ -1108,7 +1420,7 @@ namespace lux::editor::scene
     }
 
     editing::EditResult<editing::ApplyResult> SceneEditor::reparent(SceneWriteTarget target,
-                                                                    lux::world::WorldObjectId parent)
+                                                                    SceneEntityRef parent)
     {
         auto allowed = checkStructure(target.state);
         if (!allowed)
@@ -1128,252 +1440,64 @@ namespace lux::editor::scene
             return Data::structureFailure(ESceneStructureError::HIERARCHY_UNSUPPORTED,
                                           "This World does not declare a Parent schema");
         }
-        editing::EditOperationPtr operation = std::make_unique<Data::ParentEdit>(*this, *data_, target, parent);
+        if (data_->objects.resolve(target.object) == lux::simulation::ecs::NullEntity ||
+            (parent.valid() && data_->objects.resolve(parent) == lux::simulation::ecs::NullEntity) ||
+            (parent.instance.valid() && parent.instance != data_->objects.instance))
+        {
+            return Data::structureFailure(ESceneStructureError::INVALID_OBJECT, "The object belongs to another Scene");
+        }
+        if (data_->objects.registry.all_of<detail::EditorEntity>(target.object.entity) ||
+            (parent.valid() && data_->objects.registry.all_of<detail::EditorEntity>(parent.entity)))
+        {
+            return Data::structureFailure(ESceneStructureError::INVALID_OBJECT,
+                                          "Editor-only entities cannot enter the author hierarchy");
+        }
+        editing::EditOperationPtr operation = std::make_unique<Data::ParentEdit>(*this, *data_, target, data_->objects.persistent(parent));
         return executeField(operation);
     }
 
-    editing::EditResult<std::vector<lux::world::WorldObjectId>> SceneEditor::placeModel(
+    editing::EditResult<std::vector<SceneEntityRef>> SceneEditor::createEntitiesFromModel(
         editing::StateId base, const lux::asset::ModelAsset &asset, const Eigen::Vector3d &position,
         lux::partition::PartitionOrdinal partition)
     {
-        const auto admitted = checkEditAdmission();
-        if (!admitted)
+        const auto allowed = checkStructure(base);
+        if (!allowed)
         {
-            return lux::cxx::unexpected(admitted.error());
+            return lux::cxx::unexpected(allowed.error());
         }
-
-        namespace ecs = lux::simulation::ecs;
-        const auto rejected = [](EModelPlacementError code, std::string_view message)
+        auto content = detail::prepareModelCreation(data_->objects, data_->project, asset, position, partition);
+        if (!content)
         {
-            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::PRECONDITION_FAILED,
-                                                                 static_cast<std::uint64_t>(code), message));
-        };
-        if (data_->close != ECloseState::OPEN || data_->close_requested)
-        {
-            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::CLOSED));
+            return lux::cxx::unexpected(content.error());
         }
-        if (!data_->project.writable())
+        std::vector<lux::world::WorldObjectId> ids;
+        ids.reserve(content->size());
+        for (const auto &object : *content)
         {
-            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BLOCKED_BY_HOST));
+            ids.push_back(object.row.object);
         }
-        if (data_->editing_busy || data_->field_edit.index() != 0)
-        {
-            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
-        }
-        auto history = data_->history->view();
-        if (!history)
-        {
-            return lux::cxx::unexpected(history.error());
-        }
-        if (base != history->snapshot.current)
-        {
-            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::STALE_BASE));
-        }
-        if (!position.allFinite())
-        {
-            return rejected(EModelPlacementError::INVALID_TRANSFORM, "The placement position must be finite");
-        }
-        const auto &world = data_->source->world->data();
-        const auto supports = [&]<class Component>()
-        {
-            const auto *schema = data_->metadata->getComponentMeta(lux::cxx::typeToken<Component>());
-            return schema && schema->capture &&
-                   std::ranges::find(world.schemas(), schema->id.name, &lux::world::WorldDataSchemaId::name) !=
-                       world.schemas().end();
-        };
-        if (!supports.template operator()<ecs::Transform3D>() || !supports.template operator()<ecs::Mesh3D>())
-        {
-            return rejected(EModelPlacementError::UNSUPPORTED_SCENE,
-                            "This Scene does not declare 3D transform and mesh author schemas");
-        }
-        if (partition.value >= data_->source->partitions.size())
-        {
-            return rejected(EModelPlacementError::INVALID_PARTITION, "Choose an existing World partition");
-        }
-        const auto &model = asset.data();
-        if (model.skeleton || !model.animations.empty())
-        {
-            return rejected(EModelPlacementError::UNSUPPORTED_DEFORMATION,
-                            "Skinned model placement requires a deformation author provider");
-        }
-        if (model.nodes.size() > 4096 || model.primitives.size() > 4096)
-        {
-            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::STAGING_LIMIT));
-        }
-        for (const auto &primitive : model.primitives)
-        {
-            const auto mesh = data_->project.resolveReference(data_->project.reference(primitive.mesh),
-                                                              lux::asset::MeshAsset::primary_magic);
-            const auto material = data_->project.resolveReference(data_->project.reference(primitive.material),
-                                                                  lux::asset::MaterialAsset::primary_magic);
-            if (!mesh || !material)
-            {
-                return rejected(EModelPlacementError::MISSING_DEPENDENCY,
-                                "The model references a mesh or material outside the "
-                                "project catalog");
-            }
-        }
-        const bool hierarchy = supports.template operator()<ecs::Parent>();
-        std::random_device entropy;
-        std::seed_seq seed{entropy(), entropy(), entropy(), entropy(), entropy(), entropy(), entropy(), entropy()};
-        std::mt19937 random(seed);
-        uuids::uuid_random_generator generate(random);
-        std::vector<Data::ModelTransform> objects;
-        std::vector<Data::ModelMesh> meshes;
-        std::vector<lux::world::WorldObjectId> groups(model.nodes.size());
-        std::vector<std::uint32_t> parents(model.nodes.size(), UINT32_MAX);
-        std::vector<Eigen::Affine3d> transforms(model.nodes.size(), Eigen::Affine3d::Identity());
-        const auto decompose = [](const Eigen::Affine3d &matrix, ecs::Transform3D &value)
-        {
-            value.translation = matrix.translation();
-            Eigen::Matrix3d rotation = matrix.linear();
-            for (int column = 0; column < 3; ++column)
-            {
-                value.scale[column] = rotation.col(column).norm();
-                if (value.scale[column] <= 1e-12)
-                {
-                    return false;
-                }
-                rotation.col(column) /= value.scale[column];
-            }
-            if (rotation.determinant() < 0)
-            {
-                rotation.col(0) *= -1;
-                value.scale[0] *= -1;
-            }
-            if (!(rotation.transpose() * rotation).isApprox(Eigen::Matrix3d::Identity(), 1e-5))
-            {
-                return false;
-            }
-            value.rotation = Eigen::Quaterniond(rotation).normalized();
-            return value.translation.allFinite() && value.scale.allFinite() && value.rotation.coeffs().allFinite();
-        };
-        objects.reserve(std::min<std::size_t>(4096, model.nodes.size() + model.primitives.size()));
-        meshes.reserve(model.primitives.size());
-        const auto append = [&](lux::world::WorldObjectId parent, const Eigen::Affine3d &matrix, std::string label)
-        {
-            Data::ModelTransform object{{generate()}, parent, {}, std::move(label)};
-            if (!decompose(matrix, object.value))
-            {
-                return false;
-            }
-            objects.push_back(std::move(object));
-            return true;
-        };
-        for (std::size_t index{}; index < model.nodes.size(); ++index)
-        {
-            const auto &node = model.nodes[index];
-            Eigen::Affine3d local = node.local_transform.cast<double>();
-            if (index == model.root_node)
-            {
-                local.translation() += position;
-            }
-            const auto parent_index = parents[index];
-            transforms[index] = parent_index == UINT32_MAX ? local : transforms[parent_index] * local;
-            for (const auto child : node.children)
-            {
-                parents[child] = static_cast<std::uint32_t>(index);
-            }
-            if (hierarchy)
-            {
-                const auto parent = parent_index == UINT32_MAX ? lux::world::WorldObjectId{} : groups[parent_index];
-                if (!append(parent, local, "Model node " + std::to_string(index + 1)))
-                {
-                    return rejected(EModelPlacementError::NON_TRS_TRANSFORM,
-                                    "A model node contains shear or a singular transform");
-                }
-                groups[index] = objects.back().object;
-            }
-            for (const auto primitive_index : node.primitives)
-            {
-                const auto &primitive = model.primitives[primitive_index];
-                if (!append(hierarchy ? groups[index] : lux::world::WorldObjectId{},
-                            hierarchy ? Eigen::Affine3d::Identity() : transforms[index],
-                            "Mesh " + std::to_string(primitive_index + 1)))
-                {
-                    return rejected(EModelPlacementError::NON_TRS_TRANSFORM,
-                                    "This flat Scene cannot represent the composed model transform");
-                }
-                meshes.push_back({objects.back().object, {{primitive.mesh, primitive.material}}});
-            }
-        }
-        if (objects.empty() || objects.size() > 4096)
-        {
-            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::STAGING_LIMIT));
-        }
-        std::vector<lux::world::WorldObjectId> result;
-        result.reserve(objects.size());
-        for (const auto &object : objects)
-        {
-            result.push_back(object.object);
-        }
-        auto planned = ecs::planEntityCreation(data_->scene->registry(), objects.size());
-        if (!planned)
-        {
-            return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::ID_EXHAUSTED));
-        }
-        ecs::WorldEntityMap identities;
-        identities.reserve(objects.size());
-        for (std::size_t index{}; index < objects.size(); ++index)
-        {
-            if (!identities.bind(objects[index].object, planned->entities()[index]))
-            {
-                return rejected(EModelPlacementError::NON_TRS_TRANSFORM, "Duplicate model identity");
-            }
-        }
-        std::unordered_map<lux::world::WorldObjectId, const Data::ModelMesh *, lux::world::WorldObjectIdHash>
-            mesh_by_object;
-        mesh_by_object.reserve(meshes.size());
-        for (const auto &mesh : meshes)
-        {
-            mesh_by_object.emplace(mesh.object, &mesh);
-        }
-        std::vector<detail::ObjectContent> content;
-        content.reserve(objects.size());
-        for (auto &object : objects)
-        {
-            detail::ObjectContent captured{{object.object, object.parent, std::move(object.label), partition}, {}};
-            const auto append = [&](const auto &value) -> editing::EditResult<void>
-            {
-                auto encoded = data_->objects.encodeComponent(value, identities);
-                if (!encoded)
-                {
-                    return lux::cxx::unexpected(encoded.error());
-                }
-                captured.components.push_back(std::move(*encoded));
-                return {};
-            };
-            auto encoded = append(object.value);
-            if (encoded && hierarchy)
-            {
-                encoded = append(ecs::Parent{identities.entity(object.parent)});
-            }
-            const auto mesh = mesh_by_object.find(object.object);
-            if (encoded && mesh != mesh_by_object.end())
-            {
-                encoded = append(mesh->second->value);
-            }
-            if (!encoded)
-            {
-                return lux::cxx::unexpected(encoded.error());
-            }
-            content.push_back(std::move(captured));
-        }
-        editing::EditOperationPtr operation =
-            detail::makeSceneObjectEdit(*this, data_->objects, base, std::move(content), true, "Place model");
+        auto operation = detail::makeSceneObjectEdit(*this, data_->objects, base, std::move(*content), true,
+                                                    "Create entities from model");
         auto applied = executeField(operation);
         if (!applied)
         {
             return lux::cxx::unexpected(applied.error());
         }
-        return result;
+        std::vector<SceneEntityRef> entities;
+        entities.reserve(ids.size());
+        for (const auto id : ids)
+        {
+            entities.push_back(data_->objects.authorReference(id));
+        }
+        return entities;
     }
 
     std::size_t SceneEditor::partitionCount() const noexcept
     {
         return data_->source->partitions.size();
     }
-    EditorResult<ModelPlacementId> SceneEditor::requestModelPlacement(AssetReference reference,
+
+    EditorResult<ModelCreationId> SceneEditor::requestModelCreation(AssetReference reference,
                                                                       const Eigen::Vector3d &position,
                                                                       lux::partition::PartitionOrdinal partition)
     {
@@ -1418,13 +1542,13 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "model.place.request"});
         }
-        const ModelPlacementId id{handle(), data_->next_placement++};
+        const ModelCreationId id{handle(), data_->next_placement++};
         auto &request =
             data_->placement.emplace<Data::Placement>(id, reference, position, partition, history->snapshot.current);
         request.start(data_->runtime, data_->project.assetReads());
         return id;
     }
-    EditorResult<ModelPlacementStatus> SceneEditor::modelPlacementStatus(ModelPlacementId id) const
+    EditorResult<ModelCreationStatus> SceneEditor::modelCreationStatus(ModelCreationId id) const
     {
         const auto *request = std::get_if<Data::Placement>(&data_->placement);
         if (!request || request->id != id)
@@ -1433,7 +1557,7 @@ namespace lux::editor::scene
         }
         return request->status;
     }
-    EditorResult<void> SceneEditor::retryModelPlacement(ModelPlacementId id, editing::StateId base)
+    EditorResult<void> SceneEditor::retryModelCreation(ModelCreationId id, editing::StateId base)
     {
         const auto admitted = checkEditAdmission();
         if (!admitted)
@@ -1475,21 +1599,21 @@ namespace lux::editor::scene
             return lux::cxx::unexpected(resolved.error());
         }
         request->base = base;
-        request->status = ModelPlacementPending{};
+        request->status = ModelCreationPending{};
         if (request->work.index() == 0)
         {
             request->start(data_->runtime, data_->project.assetReads());
         }
         return {};
     }
-    EditorResult<void> SceneEditor::cancelModelPlacement(ModelPlacementId id)
+    EditorResult<void> SceneEditor::cancelModelCreation(ModelCreationId id)
     {
         auto *request = std::get_if<Data::Placement>(&data_->placement);
         if (!request || request->id != id)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "model.place.cancel"});
         }
-        if (data_->editing_busy || std::holds_alternative<ModelPlacementSucceeded>(request->status))
+        if (data_->editing_busy || std::holds_alternative<ModelCreationSucceeded>(request->status))
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "model.place.cancel"});
         }
@@ -1497,11 +1621,11 @@ namespace lux::editor::scene
         if (!request->pending())
         {
             request->work.emplace<std::monostate>();
-            request->status = ModelPlacementCancelled{};
+            request->status = ModelCreationCancelled{};
         }
         return {};
     }
-    EditorResult<void> SceneEditor::acknowledgeModelPlacement(ModelPlacementId id)
+    EditorResult<void> SceneEditor::acknowledgeModelCreation(ModelCreationId id)
     {
         auto *request = std::get_if<Data::Placement>(&data_->placement);
         if (!request || request->id != id)
@@ -1516,7 +1640,7 @@ namespace lux::editor::scene
         return {};
     }
 
-    std::uint64_t SceneEditor::componentVersion(lux::world::WorldObjectId object,
+    std::uint64_t SceneEditor::componentVersion(SceneEntityRef object,
                                                 lux::cxx::TypeToken type) const noexcept
     {
         const ComponentNotice key{object, type};
@@ -1526,6 +1650,21 @@ namespace lux::editor::scene
                        entry->component == type
                    ? entry->sequence
                    : 0;
+    }
+
+    lux::world::WorldObjectId SceneEditor::fieldIdentity(const SceneWriteTarget &target) const noexcept
+    {
+        return target.object.instance == data_->objects.instance ? data_->objects.persistent(target.object)
+                                                                : lux::world::WorldObjectId{};
+    }
+
+    SceneWriteTarget SceneEditor::replayTarget(SceneWriteTarget target, lux::world::WorldObjectId identity) const noexcept
+    {
+        if (identity.valid() && target.document == handle() && target.object.instance == data_->objects.instance)
+        {
+            target.object = data_->objects.authorReference(identity);
+        }
+        return target;
     }
 
     editing::EditResult<void *> SceneEditor::fieldAccess(const SceneWriteTarget &target, lux::cxx::TypeToken type,
@@ -1594,6 +1733,16 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::PRECONDITION_FAILED, 0, message));
         };
+        using Projection = decltype(lux::scene::Camera::projection);
+        if (type == lux::cxx::typeToken<Projection>())
+        {
+            lux::scene::Camera camera;
+            camera.projection = *static_cast<const Projection*>(next);
+            if (!lux::scene::cameraProjection(camera))
+            {
+                return invalid("The camera projection requires a positive extent/FOV and 0 < near < far");
+            }
+        }
         if (type == lux::cxx::typeToken<lux::rdesc::MeshVisualDescription>())
         {
             const auto &original = *static_cast<const lux::rdesc::MeshVisualDescription *>(before);
@@ -1672,7 +1821,7 @@ namespace lux::editor::scene
         {
             data_->refresh_resources = true;
         }
-        const auto entity = data_->inspectedObjects().identities.entity(target.object);
+        const auto entity = data_->inspectedObjects().resolve(target.object);
         data_->metadata->getComponentMeta(type)->operations.notifyUpdated(data_->inspectedObjects().registry, entity);
         notify<componentChanged>(notice);
     }
@@ -2077,7 +2226,7 @@ namespace lux::editor::scene
                 if (placement->stop.stop_requested())
                 {
                     placement->work.emplace<std::monostate>();
-                    placement->status = ModelPlacementCancelled{};
+                    placement->status = ModelCreationCancelled{};
                 }
                 else if (const auto *model = std::get_if<std::shared_ptr<const asset::ModelAsset>>(&placement->work))
                 {
@@ -2089,7 +2238,7 @@ namespace lux::editor::scene
                     }
                     else
                     {
-                        auto placed = placeModel(placement->base, **model, placement->position, placement->partition);
+                        auto placed = createEntitiesFromModel(placement->base, **model, placement->position, placement->partition);
                         if (!placed)
                         {
                             placement->status = EditorFailure{EEditorError::INVALID_STATE, "model.place",
@@ -2098,7 +2247,7 @@ namespace lux::editor::scene
                         }
                         else
                         {
-                            placement->status = ModelPlacementSucceeded{placed->front(), placed->size(),
+                            placement->status = ModelCreationSucceeded{placed->front(), placed->size(),
                                                                         data_->history->view()->snapshot.revision};
                             placement->work.emplace<std::monostate>();
                         }
@@ -2106,7 +2255,7 @@ namespace lux::editor::scene
                 }
                 const auto completed_id = placement->id;
                 EditingGuard guard(data_->editing_busy);
-                notify<modelPlacementFinished>(completed_id);
+                notify<modelCreationFinished>(completed_id);
             }
         }
         if (auto *save = std::get_if<SceneSave>(&data_->save))
@@ -2189,6 +2338,7 @@ namespace lux::editor::scene
         }
         if (!data_->run.settled())
         {
+            data_->updateHighlight(budget, catalog_changed);
             if (data_->render_binding)
             {
                 budget.render_programs -= data_->render_binding->poll(budget.render_programs);
@@ -2226,6 +2376,11 @@ namespace lux::editor::scene
                 }
             }
             const auto updated = data_->resources.prepareUpdate(data_->scene->registry());
+            if (auto *query = data_->scene->findSceneSystem<lux::scene::MeshQuerySystem>())
+            {
+                data_->resources.synchronizeQuery(*query);
+                data_->derive |= query->hasPendingChanges();
+            }
             if (data_->resources.snapshotChanged())
             {
                 const auto next = data_->resource_snapshot ? data_->resource_snapshot->revision + 1 : 1;
@@ -2274,6 +2429,7 @@ namespace lux::editor::scene
         {
             budget.render_programs -= data_->render_binding->poll(budget.render_programs);
         }
+        data_->updateHighlight(budget, catalog_changed);
         const bool unpublished =
             render && render->lastPublishResult() == lux::scene::ERenderPublishResult::BACKPRESSURED;
         data_->resources.afterPresentation(unpublished ||

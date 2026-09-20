@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/function/render/client/resources/EBuiltinShader.hpp>
+#include <lux/engine/function/render/features/resources/EBuiltinShader.hpp>
 #include <lux/engine/function/render/features/visibility.h>
 
 #include <lux/cxx/compile_time/expected.hpp>

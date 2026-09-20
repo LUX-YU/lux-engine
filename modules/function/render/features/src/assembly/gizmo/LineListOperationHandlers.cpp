@@ -4,9 +4,9 @@
 //   生成并 extern 引用本函数。)
 // ============================================================================
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/function/render/client/genops/LineListOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/LineListOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/gizmo/LineListTransientFeature.hpp>
-#include <lux/engine/function/render/client/features/gizmo/GizmoVertex.hpp>
+#include <lux/engine/function/render/features/gizmo/GizmoVertex.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <cassert>
 

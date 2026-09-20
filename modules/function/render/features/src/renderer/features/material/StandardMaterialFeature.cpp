@@ -1,5 +1,5 @@
 #include <lux/engine/render/renderer/features/material/StandardMaterialFeature.hpp>
-#include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MaterialOperation.ops.hpp>
 
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>

@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <lux/engine/editor/scene/detail/SceneObjectEdits.hpp>
 #include <lux/engine/simulation/ecs/EntityCreationPlan.hpp>
+#include <lux/engine/simulation/ecs/Parent.hpp>
+#include <lux/engine/editor/scene/detail/EditorEntity.hpp>
 #include <unordered_set>
 
 namespace lux::editor::scene::detail
@@ -126,15 +128,39 @@ namespace lux::editor::scene::detail
                                     return charged;
                                 }
                                 values_.push_back({entity, std::move(*decoded)});
-                                versions_.push_back({object.row.object, schema.cpp_type, revision_});
+                                versions_.push_back({owner.reference(entity), schema.cpp_type, revision_});
                             }
-                            rows_.push_back(object.row);
+                            rows_.push_back({owner.reference(entity), owner.reference(identities_.entity(object.row.parent)),
+                                             object.row.label, object.row.partition});
                         }
-                        std::ranges::sort(rows_, lux::world::WorldObjectIdLess{}, &SceneObjectRow::object);
+                        std::ranges::sort(rows_, std::less<SceneEntityRef>{}, &SceneObjectRow::object);
                         std::ranges::sort(versions_, SceneObjects::componentLess);
                     }
                     else
                     {
+                        for (const auto protected_entity : registry.view<const EditorEntity>())
+                        {
+                            if (registry.get<EditorEntity>(protected_entity).deletable)
+                            {
+                                continue;
+                            }
+                            auto ancestor = protected_entity;
+                            std::size_t visited{};
+                            while (registry.valid(ancestor))
+                            {
+                                if (members.contains(owner.identities.object(ancestor)))
+                                {
+                                    return structureFailure(ESceneStructureError::INVALID_OBJECT,
+                                                            "The subtree contains a protected editor entity");
+                                }
+                                const auto *parent = registry.try_get<ecs::Parent>(ancestor);
+                                if (!parent || ++visited > owner.rows.size() + 1)
+                                {
+                                    break;
+                                }
+                                ancestor = parent->entity;
+                            }
+                        }
                         // Unknown payloads can contain references. Only a provider can
                         // establish their safety; silently deleting around them would corrupt
                         // the preserved author source.
@@ -195,26 +221,23 @@ namespace lux::editor::scene::detail
                                 }
                             }
                         }
-                        std::erase_if(rows_, [&](const auto &row) { return members.contains(row.object); });
-                        std::erase_if(versions_, [&](const auto &value) { return members.contains(value.object); });
+                        std::erase_if(rows_, [&](const auto &row) { return members.contains(owner.persistent(row.object)); });
+                        std::erase_if(versions_, [&](const auto &value) { return members.contains(owner.persistent(value.object)); });
                     }
+                    auto selected = owner.persistent(selection_.object);
                     if (insert_)
                     {
-                        selection_.object =
-                            edit_.creation_ ? edit_.objects_.front().row.object : edit_.selection_before_;
+                        selected = edit_.creation_ ? edit_.objects_.front().row.object : edit_.selection_before_;
                     }
                     else if (edit_.creation_)
                     {
-                        selection_.object = edit_.selection_before_;
+                        selected = edit_.selection_before_;
                     }
-                    else if (members.contains(selection_.object))
+                    else if (members.contains(selected))
                     {
-                        selection_.object = {};
+                        selected = {};
                     }
-                    if (selection_.object.valid() && identities_.entity(selection_.object) == ecs::NullEntity)
-                    {
-                        selection_.object = {};
-                    }
+                    selection_.object = owner.reference(identities_.entity(selected));
                     if (selection_.revision == UINT64_MAX ||
                         versions_.size() > UINT64_MAX - owner.next_component_change)
                     {
@@ -304,7 +327,7 @@ namespace lux::editor::scene::detail
             SceneObjectEdit(SceneEditor &editor, SceneObjects &owner, editing::StateId base,
                             std::vector<ObjectContent> objects, bool creation, std::string label)
                 : editor_(editor), owner_(owner), base_(base), objects_(std::move(objects)), creation_(creation),
-                  label_(std::move(label)), selection_before_(owner.selection.object)
+                  label_(std::move(label)), selection_before_(owner.persistent(owner.selection.object))
             {
             }
             editing::HistoryId historyId() const noexcept override

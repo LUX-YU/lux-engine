@@ -1,6 +1,7 @@
 #include <desktop_hierarchy.inspector.generated.hpp>
 #include <desktop_transform.inspector.generated.hpp>
 #include <desktop_visual.inspector.generated.hpp>
+#include <desktop_camera.inspector.generated.hpp>
 #include <lux/engine/editor/gui/scene/ComponentBinding.hpp>
 
 namespace lux::editor::gui
@@ -13,6 +14,7 @@ namespace lux::editor::gui
         append(generated::desktop_transformBindings());
         append(generated::desktop_hierarchyBindings());
         append(generated::desktop_visualBindings());
+        append(generated::desktop_cameraBindings());
         return result;
     }
 } // namespace lux::editor::gui

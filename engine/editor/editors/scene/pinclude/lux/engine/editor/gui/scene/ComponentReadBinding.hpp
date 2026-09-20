@@ -8,7 +8,7 @@ namespace lux::editor::gui
     {
         lux::cxx::TypeToken type;
         std::string name;
-        void (*draw)(scene::SceneEditor &, lux::world::WorldObjectId, lux::ui::Frame &);
+        void (*draw)(scene::SceneEditor &, scene::SceneEntityRef, lux::ui::Frame &);
     };
 
     [[nodiscard]] std::vector<ComponentReadBinding> firstPartySceneReaders();

@@ -10,8 +10,8 @@
 
 namespace consumer
 {
-    void checkCompletedGesture(lux::editor::scene::SceneEditor &, lux::world::WorldObjectId, lux::ui::Frame &);
-    bool drawOmissionProbe(lux::editor::scene::SceneEditor &, lux::world::WorldObjectId, lux::ui::Frame &,
+    void checkCompletedGesture(lux::editor::scene::SceneEditor &, lux::editor::scene::SceneEntityRef, lux::ui::Frame &);
+    bool drawOmissionProbe(lux::editor::scene::SceneEditor &, lux::editor::scene::SceneEntityRef, lux::ui::Frame &,
                            lux::editor::gui::InspectorInteraction &);
 
     namespace
@@ -102,7 +102,7 @@ namespace consumer
                       "idle_5_draws_steps=320 replacement_reseek=4032 readonly_navigation=1");
         }
 
-        void checkGestureRetention(lux::editor::scene::SceneEditor &document, lux::world::WorldObjectId object,
+        void checkGestureRetention(lux::editor::scene::SceneEditor &document, lux::editor::scene::SceneEntityRef object,
                                    lux::ui::Frame &frame)
         {
             using namespace lux::editor;
@@ -150,7 +150,7 @@ namespace consumer
         }
 #endif
 
-        void draw(lux::editor::scene::SceneEditor &document, lux::world::WorldObjectId object, lux::ui::Frame &frame,
+        void draw(lux::editor::scene::SceneEditor &document, lux::editor::scene::SceneEntityRef object, lux::ui::Frame &frame,
                   lux::editor::gui::InspectorInteraction &interaction)
         {
             ++draws;

@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file StandardMeshStackFeature.hpp
  * @brief Owner of the per-scene standard 3D mesh-stack resources.
@@ -29,7 +30,7 @@
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC StandardMeshStackFeature final : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC StandardMeshStackFeature final : public RenderFeature
     {
     public:
         struct Config

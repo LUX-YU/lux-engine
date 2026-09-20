@@ -5,8 +5,8 @@
 #include <cstdio>
 #include <lux/engine/editor/rendering/EditorRenderer.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
-#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>
-#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 

@@ -15,7 +15,8 @@
 {% if include_dir != "" %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
 #include <lux/engine/function/render/client/protocol/FeatureOps.hpp>
 #include <lux/engine/function/render/client/protocol/FeatureParamsOperation.hpp>
-#include <lux/engine/function/visibility.h>
+{% if client_visibility != "" %}#include <{{ client_visibility }}>{% endif %}
+{% if backend_visibility != "" %}#include <{{ backend_visibility }}>{% endif %}
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/function/render/client/RenderUploadClient.hpp>
 #include <lux/engine/function/render/client/core/RenderFeatureRegistration.hpp>
@@ -170,13 +171,13 @@ namespace lux::render
     };
 
 {%- if not annotation_has(cfg, "no_factory") %}
-    extern LUX_RENDER_FEATURE_METADATA_PUBLIC const FeatureDescriptor k{{ prefix }}Descriptor;
-    extern LUX_RENDER_FEATURE_METADATA_PUBLIC const RenderFeatureRegistration k{{ prefix }}RenderFeatureRegistration;
-    extern LUX_FUNCTION_PUBLIC const FeatureFactory k{{ prefix }}FeatureFactory;
+    extern {{ client_export }} const FeatureDescriptor k{{ prefix }}Descriptor;
+    extern {{ client_export }} const RenderFeatureRegistration k{{ prefix }}RenderFeatureRegistration;
+    extern {{ backend_export }} const FeatureFactory k{{ prefix }}FeatureFactory;
 {%- endif %}
 
     // ═════════ frame client — only lane=program operations ═════════
-    class LUX_FUNCTION_PUBLIC {{ prefix }}Proxy
+    class {{ client_export }} {{ prefix }}Proxy
     {
     public:
         {{ prefix }}Proxy(RenderProgramSession& session, {{ prefix }}OperationIds ops) noexcept
@@ -227,7 +228,7 @@ namespace lux::render
     };
 
     // ═════════ control client — lifetime/query operations, frame-independent ═════════
-    class LUX_FUNCTION_PUBLIC {{ prefix }}ControlClient
+    class {{ client_export }} {{ prefix }}ControlClient
     {
     public:
         {{ prefix }}ControlClient(RenderControlSession& session, {{ prefix }}OperationIds ops) noexcept
@@ -258,7 +259,7 @@ namespace lux::render
     };
 
     // ═════════ upload client — owning, bounded, non-blocking submissions ═════════
-    class LUX_FUNCTION_PUBLIC {{ prefix }}UploadClient
+    class {{ client_export }} {{ prefix }}UploadClient
     {
     public:
         {{ prefix }}UploadClient(RenderUploadClient session, {{ prefix }}OperationIds ops) noexcept

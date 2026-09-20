@@ -1,4 +1,7 @@
 #pragma once
+#include <lux/engine/scene/Camera.hpp>
+#include <lux/engine/scene/MeshQuerySystem.hpp>
+#include <lux/engine/simulation/ecs/Transform.hpp>
 
 #include <lux/engine/editor/DocumentEditor.hpp>
 #include <lux/engine/editor/project/Project.hpp>
@@ -40,20 +43,20 @@ namespace lux::editor::scene
         std::shared_ptr<const lux::scene::RenderSystemMetadata> render;
     };
 
-    [[nodiscard]] LUX_EDITOR_SCENE_PUBLIC EditorResult<SceneEditorMetadata> sceneMetadata(
-        std::span<const lux::simulation::ecs::ComponentSchema> additional = {});
+    [[nodiscard]] LUX_EDITOR_SCENE_PUBLIC EditorResult<SceneEditorMetadata>
+    sceneMetadata(std::span<const lux::simulation::ecs::ComponentSchema> additional = {});
 
     struct SceneObjectRow final
     {
-        lux::world::WorldObjectId object;
-        lux::world::WorldObjectId parent;
+        SceneEntityRef object;
+        SceneEntityRef parent;
         std::string label;
         lux::partition::PartitionOrdinal partition;
     };
 
     struct SelectionNotice final
     {
-        lux::world::WorldObjectId object;
+        SceneEntityRef object;
         std::uint64_t revision{};
     };
 
@@ -66,26 +69,26 @@ namespace lux::editor::scene
     struct NativeScene;
     struct SceneCapture;
 
-    struct ModelPlacementId final
+    struct ModelCreationId final
     {
         DocumentHandle document;
         std::uint64_t serial{};
-        friend bool operator==(ModelPlacementId, ModelPlacementId) = default;
+        friend bool operator==(ModelCreationId, ModelCreationId) = default;
     };
-    struct ModelPlacementPending final
+    struct ModelCreationPending final
     {
     };
-    struct ModelPlacementCancelled final
+    struct ModelCreationCancelled final
     {
     };
-    struct ModelPlacementSucceeded final
+    struct ModelCreationSucceeded final
     {
-        lux::world::WorldObjectId root;
+        SceneEntityRef root;
         std::size_t objects{};
         editing::Revision revision;
     };
-    using ModelPlacementStatus =
-        std::variant<ModelPlacementPending, ModelPlacementSucceeded, EditorFailure, ModelPlacementCancelled>;
+    using ModelCreationStatus =
+        std::variant<ModelCreationPending, ModelCreationSucceeded, EditorFailure, ModelCreationCancelled>;
 
     class LUX_EDITOR_SCENE_PUBLIC LUX_OBJECT() SceneEditor final : public lux::object::Object<SceneEditor>,
                                                                    public DocumentEditor
@@ -95,12 +98,12 @@ namespace lux::editor::scene
         static const signal_type<std::uint64_t> resourcesChanged;
         static const signal_type<ComponentNotice> componentChanged;
         static const signal_type<editing::Revision> objectsChanged;
-        static const signal_type<ModelPlacementId> modelPlacementFinished;
+        static const signal_type<ModelCreationId> modelCreationFinished;
 
-        [[nodiscard]] static EditorResult<std::unique_ptr<SceneEditor>> open(
-            NativeScene &, Project &, process::ExecutionRuntime &, rendering::EditorRenderer &, SceneEditorMetadata,
-            lux::scene::SceneRenderInput *, std::unique_ptr<lux::scene::SceneRenderBinding> &,
-            std::shared_ptr<detail::SceneRunSlot>);
+        [[nodiscard]] static EditorResult<std::unique_ptr<SceneEditor>>
+        open(NativeScene &, Project &, process::ExecutionRuntime &, rendering::EditorRenderer &, SceneEditorMetadata,
+             lux::scene::SceneRenderInput *, std::unique_ptr<lux::scene::SceneRenderBinding> &,
+             std::shared_ptr<detail::SceneRunSlot>);
         ~SceneEditor() override;
 
         [[nodiscard]] EditorResult<RunId> play(std::chrono::nanoseconds fixed_step = std::chrono::milliseconds(16));
@@ -123,40 +126,49 @@ namespace lux::editor::scene
         [[nodiscard]] EditorResult<void> acknowledgeSave(SaveRequestId) override;
         [[nodiscard]] std::span<const SceneObjectRow> objects() const noexcept;
         [[nodiscard]] SelectionNotice selection() const noexcept;
-        [[nodiscard]] EditorResult<void> select(lux::world::WorldObjectId);
-        [[nodiscard]] std::vector<SceneComponentInfo> components(lux::world::WorldObjectId) const;
-        [[nodiscard]] const void *component(lux::world::WorldObjectId, lux::cxx::TypeToken) const noexcept;
-        [[nodiscard]] std::uint64_t componentVersion(lux::world::WorldObjectId, lux::cxx::TypeToken) const noexcept;
-        [[nodiscard]] editing::EditResult<SceneWriteTarget> writeTarget(lux::world::WorldObjectId) const noexcept;
+        [[nodiscard]] EditorResult<void> select(SceneEntityRef);
+        [[nodiscard]] SceneInstanceId instance() const noexcept;
+        [[nodiscard]] lux::scene::QueryResult<bool> raycastNearest(SceneInstanceId, const lux::math::Ray3d &,
+                                                                   double maximum_distance, lux::scene::RayHit3D &,
+                                                                   lux::scene::MeshQueryWork * = nullptr) const;
+        [[nodiscard]] EditorResult<SceneEntityRef> viewportCamera();
+        [[nodiscard]] EditorResult<void> bindCamera(SceneEntityRef, lux::render::ViewHandle, double aspect);
+        void unbindCamera(SceneEntityRef, lux::render::ViewHandle) noexcept;
+        [[nodiscard]] EditorResult<void> navigateCamera(SceneEntityRef, const lux::simulation::ecs::Transform3D &,
+                                                        const lux::scene::Camera &);
+        [[nodiscard]] editing::EditResult<SceneEntityRef> createCameraFromView(SceneEntityRef, editing::StateId,
+                                                                               lux::partition::PartitionOrdinal);
+        [[nodiscard]] std::vector<SceneComponentInfo> components(SceneEntityRef) const;
+        [[nodiscard]] const void *component(SceneEntityRef, lux::cxx::TypeToken) const noexcept;
+        [[nodiscard]] std::uint64_t componentVersion(SceneEntityRef, lux::cxx::TypeToken) const noexcept;
+        [[nodiscard]] editing::EditResult<SceneWriteTarget> writeTarget(SceneEntityRef) const noexcept;
         [[nodiscard]] bool supportsObjectSpace(EObjectSpace) const noexcept;
         [[nodiscard]] bool supportsHierarchy() const noexcept;
-        [[nodiscard]] editing::EditResult<lux::world::WorldObjectId> createObject(editing::StateId,
-                                                                                  lux::partition::PartitionOrdinal,
-                                                                                  EObjectSpace);
-        [[nodiscard]] editing::EditResult<editing::ApplyResult> eraseObjects(
-            editing::StateId, std::span<const lux::world::WorldObjectId>);
+        [[nodiscard]] editing::EditResult<SceneEntityRef> createObject(editing::StateId,
+                                                                       lux::partition::PartitionOrdinal, EObjectSpace);
+        [[nodiscard]] editing::EditResult<editing::ApplyResult> eraseObjects(editing::StateId,
+                                                                             std::span<const SceneEntityRef>);
         // Reparenting preserves the authored local transform. A null parent detaches
         // to the World root.
-        [[nodiscard]] editing::EditResult<editing::ApplyResult> reparent(SceneWriteTarget, lux::world::WorldObjectId);
-        [[nodiscard]] editing::EditResult<std::vector<lux::world::WorldObjectId>> placeModel(
-            editing::StateId, const lux::asset::ModelAsset &, const Eigen::Vector3d &,
-            lux::partition::PartitionOrdinal);
+        [[nodiscard]] editing::EditResult<editing::ApplyResult> reparent(SceneWriteTarget, SceneEntityRef);
+        [[nodiscard]] editing::EditResult<std::vector<SceneEntityRef>>
+        createEntitiesFromModel(editing::StateId, const lux::asset::ModelAsset &, const Eigen::Vector3d &,
+                                lux::partition::PartitionOrdinal);
         [[nodiscard]] std::size_t partitionCount() const noexcept;
-        [[nodiscard]] EditorResult<ModelPlacementId> requestModelPlacement(AssetReference, const Eigen::Vector3d &,
-                                                                           lux::partition::PartitionOrdinal);
-        [[nodiscard]] EditorResult<ModelPlacementStatus> modelPlacementStatus(ModelPlacementId) const;
-        [[nodiscard]] EditorResult<void> retryModelPlacement(ModelPlacementId, editing::StateId);
-        [[nodiscard]] EditorResult<void> cancelModelPlacement(ModelPlacementId);
-        [[nodiscard]] EditorResult<void> acknowledgeModelPlacement(ModelPlacementId);
+        [[nodiscard]] EditorResult<ModelCreationId> requestModelCreation(AssetReference, const Eigen::Vector3d &,
+                                                                         lux::partition::PartitionOrdinal);
+        [[nodiscard]] EditorResult<ModelCreationStatus> modelCreationStatus(ModelCreationId) const;
+        [[nodiscard]] EditorResult<void> retryModelCreation(ModelCreationId, editing::StateId);
+        [[nodiscard]] EditorResult<void> cancelModelCreation(ModelCreationId);
+        [[nodiscard]] EditorResult<void> acknowledgeModelCreation(ModelCreationId);
 
         template <class Component, class Value, class Access>
         [[nodiscard]] editing::EditResult<editing::ApplyResult> setField(SceneWriteTarget, std::string_view field,
                                                                          std::string_view label, Access, const Value &);
 
         template <class Component, class Value, class Access>
-        [[nodiscard]] editing::EditResult<FieldEditToken> beginFieldEdit(SceneWriteTarget, std::string origin,
-                                                                         std::string_view field, std::string_view label,
-                                                                         Access);
+        [[nodiscard]] editing::EditResult<FieldEditToken>
+        beginFieldEdit(SceneWriteTarget, std::string origin, std::string_view field, std::string_view label, Access);
 
         [[nodiscard]] bool fieldEditWritable(const FieldEditToken &) const noexcept;
         [[nodiscard]] editing::EditResult<void> fieldEdited(const FieldEditToken &);
@@ -184,6 +196,8 @@ namespace lux::editor::scene
         [[nodiscard]] editing::EditResult<void> checkStructure(editing::StateId) const noexcept;
         [[nodiscard]] EditorResult<SceneCapture> captureSource() const;
         template <class Component, class Value, class Access> friend class detail::FieldEdit;
+        [[nodiscard]] lux::world::WorldObjectId fieldIdentity(const SceneWriteTarget &) const noexcept;
+        [[nodiscard]] SceneWriteTarget replayTarget(SceneWriteTarget, lux::world::WorldObjectId) const noexcept;
         [[nodiscard]] editing::EditResult<void *> fieldAccess(const SceneWriteTarget &, lux::cxx::TypeToken, bool);
         [[nodiscard]] editing::EditResult<void> checkFieldSize(std::size_t) const noexcept;
         [[nodiscard]] editing::EditResult<void> validateFieldValue(lux::cxx::TypeToken, const void *,

@@ -17,23 +17,15 @@
 
 View 保存输出尺寸、句柄代次、图像和资源状态。不要为了每种效果给 RenderView 增加一个业务方法，也不要把它作为通用 raycast 接口。
 
-渲染模块的 ViewHandle 与本模块的 RenderViewId 不同：前者是渲染协议身份，后者还标识编辑器 Renderer owner。通用 CameraView 组件使用渲染协议身份，不依赖 Editor 的类型。
+渲染模块的 ViewHandle 与本模块的 RenderViewId 不同：前者是渲染协议身份，后者还标识编辑器 Renderer owner。Camera 的 view 字段使用渲染协议身份，不依赖 Editor 的类型。
 
-## 相机来源的迁移意图
+## 唯一相机生产端
 
-当前 ScenePane 持有私有 SceneCamera，RenderView::setCamera 接收其矩阵，图像记录保存相机数据。这是已有实现，尚不满足相机实体的目标关系。
+Camera 组件和派生 Transform 经 Scene 渲染集成的提取阶段生产矩阵。RenderView 只暴露实际 ViewHandle、目标尺寸与输出意图，不保存位置／方向／投影。旧 setCamera、CameraFrame 和封包时重复发送矩阵的路径已经移除。
 
-目标是由 Camera 组件、派生 Transform 和对应 Feature 提取阶段生产相机数据。RenderView 只参与 View 绑定、尺寸和图像生命周期，不成为第二个相机状态 owner。
+ScenePane 在创建／resize 后建立 Camera.view 关联，关闭或切换目标时先解除关联，保留原 View owner 直到关闭完成。无有效用户相机时 setOutput 禁止场景层，后端用清屏 pass 清除旧内容；UI 层仍可显示。
 
-迁移需要同时处理：
-
-- Camera／View 的创建与失效关系。
-- 相机矩阵、图像版本和请求版本的一致性。
-- 原封包中相机更新的唯一生产者。
-- resize 对投影的失效，而非对作者 FOV 的修改。
-- 无相机时清除旧画面，不永久显示上一图像。
-
-不能只删除 setCamera 的调用而留下 camera_valid／图像版本仍依赖旧路径，也不能同时从 ECS 和 Pane 提交不同矩阵。
+ImageContentStamp 的 source 是请求者声明的来源，RECORDED／GPU_COMPLETE 表示对应帧的实际记录／完成，不等同于 CPU 当前世界已全部采用，也不证明物理屏幕显示。
 
 ## Feature 操作
 

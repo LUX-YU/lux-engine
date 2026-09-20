@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
 

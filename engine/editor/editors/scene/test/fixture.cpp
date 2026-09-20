@@ -5,12 +5,14 @@
 #include <cstdio>
 #include <fstream>
 #include <lux/engine/editor/project/ProjectManifest.hpp>
-#include <lux/engine/function/render/client/core/RenderFeatureMetaModule.hpp>
+#include <lux/engine/function/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/function/render/client/core/RenderFeatureRegistration.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/Camera.hpp>
+#include <lux/engine/scene/SceneRenderSchema.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/SceneAssetCodec.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
@@ -85,6 +87,10 @@ int main(int argc, char **argv)
     const bool shadows = std::string_view(argv[2]) == "gpu-shadow";
     std::vector<WorldDataSchemaId> schemas{worldDataSchemaId("lux.ecs.Transform3D"),
                                            worldDataSchemaId("lux.ecs.Mesh3D"), worldDataSchemaId("lux.ecs.Light3D")};
+    if (rendered)
+    {
+        schemas.push_back(worldDataSchemaId("lux.scene.Camera"));
+    }
     if (std::string_view(argv[2]) == "gpu-hierarchy")
     {
         schemas.push_back(worldDataSchemaId("lux.ecs.Parent"));
@@ -106,7 +112,8 @@ int main(int argc, char **argv)
         const auto entity = registry.create();
         registry.emplace<Component>(entity, component);
         for (const auto registered :
-             {simulation::ecs::transformComponentSchemas(), simulation::ecs::visualComponentSchemas()})
+             {simulation::ecs::transformComponentSchemas(), simulation::ecs::visualComponentSchemas(),
+              scene::sceneRenderComponentSchemas()})
         {
             const auto found =
                 std::ranges::find(registered, cxx::typeToken<Component>(), &simulation::ecs::ComponentSchema::cpp_type);
@@ -123,7 +130,7 @@ int main(int argc, char **argv)
         }
         std::abort();
     };
-    std::array<std::array<std::vector<std::byte>, 3>, 4> payloads;
+    std::array<std::array<std::vector<std::byte>, 4>, 4> payloads;
     std::array<std::vector<WorldEncodedDataRecord>, 4> data;
     const auto object_count = argc >= 4 ? std::stoul(argv[3]) : 4;
     assert(object_count >= 4 && object_count <= 4096);
@@ -149,6 +156,8 @@ int main(int argc, char **argv)
         if (index == 3)
         {
             transform.translation = {2, 5, 3};
+            transform.rotation = Eigen::Quaterniond::FromTwoVectors(-Eigen::Vector3d::UnitZ(),
+                                                                   -transform.translation.normalized());
         }
         payloads[index][0] = encode(transform);
         if (index < 3)
@@ -175,6 +184,13 @@ int main(int argc, char **argv)
         data[index] = {
             WorldEncodedDataRecord{ordinal("lux.ecs.Transform3D"), transform_version, payloads[index][0]},
             WorldEncodedDataRecord{ordinal(index < 3 ? "lux.ecs.Mesh3D" : "lux.ecs.Light3D"), 2, payloads[index][1]}};
+        if (rendered && index == 3)
+        {
+            scene::Camera camera;
+            camera.primary = true;
+            payloads[index][3] = encode(camera);
+            data[index].push_back({ordinal("lux.scene.Camera"), 1, payloads[index][3]});
+        }
         if (preservation)
         {
             payloads[index][2] = {std::byte{0}, std::byte{0xff}, static_cast<std::byte>(index), std::byte{0x41},

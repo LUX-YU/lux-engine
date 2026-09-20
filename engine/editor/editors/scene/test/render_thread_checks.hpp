@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <lux/engine/editor/rendering/EditorRenderer.hpp>
 #include <lux/engine/editor/rendering/RenderView.hpp>
-#include <lux/engine/function/render/client/core/RenderFeatureMetaModule.hpp>
+#include <lux/engine/function/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/scene/Builtin3DRenderIntegration.hpp>

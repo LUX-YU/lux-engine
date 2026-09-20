@@ -13,7 +13,7 @@
 #include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
 #include <lux/engine/render/gpu/VmaFwd.hpp>
 #include <lux/engine/render/core/FrameServices.hpp>
-#include <lux/engine/function/render/client/resources/lighting/ShadowMapTypes.hpp>
+#include <lux/engine/function/render/features/resources/lighting/ShadowMapTypes.hpp>
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
 #include <lux/engine/function/render/client/core/RenderTypes.hpp>
 #include <lux/engine/function/visibility.h>

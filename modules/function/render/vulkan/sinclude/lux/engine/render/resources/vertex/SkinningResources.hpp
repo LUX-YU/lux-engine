@@ -42,7 +42,7 @@
 #include <vulkan/vulkan.h>
 
 #include <lux/engine/render/resources/vertex/TransientVertexSource.hpp>
-#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp>
+#include <lux/engine/function/render/features/core/VertexLayoutTypes.hpp>
 #include <lux/engine/function/render/client/core/RenderTypes.hpp> // kMaxFramesInFlight
 #include <lux/engine/render/core/RenderErrorSink.hpp>
 #include <lux/engine/function/render/client/core/RenderErrorList.hpp>

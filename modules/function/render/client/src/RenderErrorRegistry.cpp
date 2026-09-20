@@ -2,7 +2,6 @@
 #include <lux/cxx/core/Format.hpp>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/function/render/client/core/EngineSetSlot.hpp>       // DescriptorSlot 实参槽
-#include <lux/engine/function/render/client/resources/EBuiltinShader.hpp> // BuiltinShader 实参槽
 #include <lux/engine/description/LayoutContract.hpp>                      // LogicalResource / BindFrequency 实参槽
 
 #include <string>
@@ -58,22 +57,6 @@ namespace lux::render
                 return "VK_ERROR_NATIVE_WINDOW_IN_USE_KHR";
             case -1000011001:
                 return "VK_ERROR_VALIDATION_FAILED_EXT";
-            default:
-                return nullptr;
-            }
-        }
-
-        /// 内置着色器枚举值 → 名字。与 EBuiltinShader 本身同源(同一张 X-macro 列表),
-        /// 所以两边不会分叉。
-        const char* builtinShaderName(std::uint32_t value) noexcept
-        {
-            switch (static_cast<EBuiltinShader>(value))
-            {
-#define LUX_BUILTIN_SHADER_NAME_CASE(enum_name, prefix)                                                                \
-    case EBuiltinShader::enum_name:                                                                                    \
-        return #enum_name;
-                LUX_BUILTIN_SHADER_LIST(LUX_BUILTIN_SHADER_NAME_CASE)
-#undef LUX_BUILTIN_SHADER_NAME_CASE
             default:
                 return nullptr;
             }
@@ -154,14 +137,9 @@ namespace lux::render
                 return;
 
             case EErrorArg::BuiltinShader:
-                if (const char* named = builtinShaderName(value))
-                    out += named;
-                else
-                {
-                    out += "EBuiltinShader(";
-                    out += std::to_string(value);
-                    out += ')';
-                }
+                out += "BuiltinShader(";
+                out += std::to_string(value);
+                out += ')';
                 return;
 
             case EErrorArg::LogicalResource:

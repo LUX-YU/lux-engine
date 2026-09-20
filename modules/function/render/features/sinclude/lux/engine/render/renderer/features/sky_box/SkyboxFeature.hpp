@@ -1,6 +1,7 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 #include <lux/engine/render/RenderFeature.hpp>
-#include <lux/engine/function/render/client/features/sky_box/SkyboxOperation.hpp>
+#include <lux/engine/function/render/features/sky_box/SkyboxOperation.hpp>
 #include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
 // RTextureHandle(此前由 SkyboxSyncCommands.hpp 间接带入)
 #include <cstdint>
@@ -16,7 +17,7 @@
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC SkyboxFeature : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC SkyboxFeature : public RenderFeature
     {
     public:
         struct Config

@@ -27,7 +27,7 @@ namespace lux::editor::gui
     {
         const auto objects = document_.objects();
         const auto none = objects.size();
-        std::unordered_map<lux::world::WorldObjectId, std::size_t, lux::world::WorldObjectIdHash> by_id;
+        std::unordered_map<scene::SceneEntityRef, std::size_t, scene::SceneEntityRef::Hash> by_id;
         by_id.reserve(objects.size());
         for (std::size_t index{}; index < objects.size(); ++index)
         {
@@ -114,7 +114,7 @@ namespace lux::editor::gui
         visible_dirty_ = false;
     }
 
-    EditorResult<void> OutlinerPane::select(lux::world::WorldObjectId object)
+    EditorResult<void> OutlinerPane::select(scene::SceneEntityRef object)
     {
         // Resolve an owned gesture before changing selection. Failure keeps its Pane
         // and draft intact, and leaves the selected object unchanged.
@@ -218,7 +218,9 @@ namespace lux::editor::gui
                 const auto row = rows_[index];
                 const auto object = objects[row.source];
                 LUX_UI_MEASURE(++measurement.rows);
-                const auto bytes = object.object.value.as_bytes();
+                const std::array<std::uint64_t, 2> identity{object.object.instance.value,
+                                                          lux::simulation::ecs::entityBits(object.object.entity)};
+                const auto bytes = std::as_bytes(std::span(identity));
                 const auto *id = reinterpret_cast<const char *>(bytes.data());
                 ImGui::PushID(id, id + bytes.size());
                 const float indent = ImGui::GetStyle().IndentSpacing * static_cast<float>(row.depth);
@@ -290,7 +292,7 @@ namespace lux::editor::gui
                     }
                     else if (row.end > index + 1 && ImGui::MenuItem("Delete subtree"))
                     {
-                        std::vector<lux::world::WorldObjectId> removed;
+                        std::vector<scene::SceneEntityRef> removed;
                         removed.reserve(row.end - index);
                         for (auto child = index; child < row.end; ++child)
                         {

@@ -1,5 +1,5 @@
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/function/render/client/features/postprocess/FogOperation.hpp>
+#include <lux/engine/function/render/features/postprocess/FogOperation.hpp>
 #include <lux/engine/render/renderer/features/postprocess/FogFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 

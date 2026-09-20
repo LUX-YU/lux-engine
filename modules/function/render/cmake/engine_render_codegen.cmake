@@ -109,7 +109,8 @@ endfunction()
 #     templates need a per-file `stem`).
 # =============================================================================
 function(engine_add_comm_ops)
-    set(one_value_args NAME CLIENT_TARGET IMPLEMENTATION_TARGET INCLUDE_PREFIX)
+    set(one_value_args NAME CLIENT_TARGET IMPLEMENTATION_TARGET INCLUDE_PREFIX
+        CLIENT_EXPORT_MACRO CLIENT_VISIBILITY_HEADER BACKEND_EXPORT_MACRO BACKEND_VISIBILITY_HEADER)
     set(multi_value_args TARGET_FILES EXTRA_COMPILE_OPTIONS)
     cmake_parse_arguments(ARGS "" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
@@ -148,6 +149,7 @@ function(engine_add_comm_ops)
     set(_client_cpp_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/template/comm_ops_client_cpp.template")
     set(_metadata_cpp_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/template/comm_ops_metadata_cpp.template")
     set(_cpp_template "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/template/comm_ops_cpp.template")
+    engine_type_static_info_template(_static_info_template)
     set(_root    "${CMAKE_CURRENT_BINARY_DIR}/comm_gen")
     set(_out_dir "${_root}/${ARGS_INCLUDE_PREFIX}")
     file(MAKE_DIRECTORY "${_out_dir}")
@@ -181,7 +183,7 @@ function(engine_add_comm_ops)
                 TEMPLATE ${_hpp_template}
                 OUTPUT_ROOT ${_job_root}
                 OUTPUT_SUFFIX .ops.hpp
-                JSON_FIELD "{\"stem\":\"${_stem}\"}"
+                JSON_FIELD "{\"stem\":\"${_stem}\",\"client_export\":\"${ARGS_CLIENT_EXPORT_MACRO}\",\"client_visibility\":\"${ARGS_CLIENT_VISIBILITY_HEADER}\",\"backend_export\":\"${ARGS_BACKEND_EXPORT_MACRO}\",\"backend_visibility\":\"${ARGS_BACKEND_VISIBILITY_HEADER}\"}"
             )
             lux_codegen_add_projection(
                 JOB ${_job}
@@ -194,7 +196,7 @@ function(engine_add_comm_ops)
             lux_codegen_add_projection(
                 JOB ${_job}
                 NAME type_static_info
-                TEMPLATE ${PROJECT_SOURCE_DIR}/modules/core/meta/template/type_static_info.template
+                TEMPLATE ${_static_info_template}
                 OUTPUT_ROOT ${_job_root}
                 OUTPUT_SUFFIX .type_static_info.hpp
             )

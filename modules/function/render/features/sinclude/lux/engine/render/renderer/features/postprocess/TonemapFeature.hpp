@@ -1,10 +1,11 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp>
 #include <lux/engine/render/gpu/lifecycle/FifOwned.hpp>
-#include <lux/engine/function/render/client/features/postprocess/TonemapOperation.hpp>
-#include <lux/engine/function/render/client/features/postprocess/TonemapParams.hpp>
+#include <lux/engine/function/render/features/postprocess/TonemapOperation.hpp>
+#include <lux/engine/function/render/features/postprocess/TonemapParams.hpp>
 #include <lux/engine/render/renderer/features/postprocess/TonemapPassParams.hpp> // PassParams 作者头
 #include <cstddef>
 #include <cstdint>
@@ -33,7 +34,7 @@ namespace lux::render
      * Push constants carry exposure, gamma and operator selection so
      * they can be changed at runtime without pipeline recreation.
      */
-    class LUX_FUNCTION_PUBLIC TonemapFeature : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC TonemapFeature : public RenderFeature
     {
     public:
         struct Config

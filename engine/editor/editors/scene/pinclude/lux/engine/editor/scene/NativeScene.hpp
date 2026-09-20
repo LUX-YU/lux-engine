@@ -76,6 +76,8 @@ namespace lux::editor::scene
         std::vector<CapturedComponent> components;
         std::vector<Object> objects;
         bool structure_changed{};
+        // Complete sorted schema directory for this capture; existing unknown schemas remain present.
+        std::vector<lux::world::WorldDataSchemaId> schemas;
     };
 
     // CPU-only preparation over a frozen author capture. The original package remains unchanged.

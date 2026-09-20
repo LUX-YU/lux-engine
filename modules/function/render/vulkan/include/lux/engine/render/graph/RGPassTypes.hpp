@@ -75,6 +75,7 @@ namespace lux::render
         uint32_t descriptor_layout_version{0}; ///< Cull descriptor/push-constant ABI version
         uint32_t extension_flags{0};           ///< Extension bits (e.g. HZB/bindless)
         uint32_t mdc_count{0};                 ///< MDC mode: number of unique draw commands
+        bool instance_filter{};
         uint32_t view_mdc_count{0};            ///< Shadow MDC: view MDC count per bias group
     };
 
@@ -117,6 +118,7 @@ namespace lux::render
         uint32_t index_buffer_count{0u};
         uint32_t geometry_mask{0};       ///< Supported geometry kind bitmask
         uint32_t atlas_resolution{4096}; ///< Shadow atlas page resolution
+        bool instance_filter{};
         uint32_t view_mdc_count{0};      ///< MDC count per bias group
         uint32_t bias_group_count{0};    ///< Active bias-group lanes; the draw
                                          ///< addresses count/indirect over

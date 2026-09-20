@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 // ============================================================================
 //  LinearDepthFeature — SceneDepth → 线性深度(LinearDepth 槽)的生产者
 //
@@ -11,7 +12,7 @@
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/function/render/client/core/PipelineHandle.hpp>
 #include <lux/engine/function/render/client/RenderTargetLayout.hpp> // TargetSlot
-#include <lux/engine/function/render/client/genops/LinearDepthOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/LinearDepthOperation.ops.hpp>
 #include <lux/engine/function/visibility.h>
 
 #include <vulkan/vulkan.h>
@@ -19,7 +20,7 @@
 namespace lux::render
 {
 
-    class LUX_FUNCTION_PUBLIC LinearDepthFeature : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC LinearDepthFeature : public RenderFeature
     {
     public:
         struct Config

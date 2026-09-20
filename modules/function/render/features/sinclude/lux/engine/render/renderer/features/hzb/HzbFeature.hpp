@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file HzbFeature.hpp
  * @brief RenderGraph COMPUTE feature that builds the Hi-Z (max-Z) occlusion
@@ -33,7 +34,7 @@ namespace lux::render
 {
     class ViewCameraResource;
 
-    class LUX_FUNCTION_PUBLIC HzbFeature : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC HzbFeature : public RenderFeature
     {
     public:
         struct Config

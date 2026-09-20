@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
 #include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
 #include <lux/engine/render/core/FrameServices.hpp>
@@ -7,7 +8,7 @@
 #include <lux/engine/render/gpu/pipeline/ShaderPermutation.hpp>
 #include <lux/engine/render/resources/material/MaterialGpuTypes.hpp>
 #include <lux/engine/render/resources/material/TextureSamplingRepresentationCatalog.hpp>
-#include <lux/engine/function/render/client/resources/material/GraphMaterialData.hpp>
+#include <lux/engine/function/render/features/resources/material/GraphMaterialData.hpp>
 #include <lux/engine/render/resources/material/VariantBucketManager.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp>

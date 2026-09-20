@@ -28,7 +28,7 @@
 // =============================================================================
 
 #include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
-#include <lux/engine/function/render/client/core/ShadingInputSlot.hpp> // kShadingInputSlotCount (Light b11)
+#include <lux/engine/function/render/features/core/ShadingInputSlot.hpp> // kShadingInputSlotCount (Light b11)
 #include <lux/engine/description/LayoutContract.hpp>                   // rdesc::EBindFrequency
 #include <lux/engine/description/ShaderInfo.hpp>                       // rdesc::ShaderInfo
 #include <lux/engine/render/gpu/pipeline/SpirvPatcher.hpp>             // SpirvRelocation

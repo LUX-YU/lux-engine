@@ -507,7 +507,7 @@ namespace lux::render
         // Bindings 0-7 are the common mesh inputs; binding 8 maps a dense
         // invocation index to the stable instance slot. World-partition state is
         // still carried independently through the push-constant BDA.
-        const std::array<VkDescriptorSetLayoutBinding, 9> bindings{{
+        const std::array<VkDescriptorSetLayoutBinding, 10> bindings{{
             {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
@@ -517,6 +517,7 @@ namespace lux::render
             {6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
             {8, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+            {9, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
         }};
 
         auto& ds = renderContext().descriptorService();
@@ -722,6 +723,7 @@ namespace lux::render
             {6, EDescriptorType::STORAGE_BUFFER, visible_instance_rg_},
             {7, EDescriptorType::STORAGE_BUFFER, mdc_info_rg},
             {8, EDescriptorType::STORAGE_BUFFER, alive_slots_rg},
+            {9, EDescriptorType::STORAGE_BUFFER, p.instance_filter ? p.instance_filter : alive_slots_rg},
         };
         auto cull_tds = builder.createTransientDS(prefix + "CullDS", cull_set_layout_, cull_bindings);
 
@@ -766,8 +768,13 @@ namespace lux::render
                     .descriptor_layout_version = p.descriptor_layout_version,
                     .extension_flags = p.extension_flags.bits(), // GPU push constant: raw word
                     .mdc_count = mdcCount(),
+                    .instance_filter = static_cast<bool>(p.instance_filter),
                 })
             );
+        if (p.instance_filter)
+        {
+            cull_pass.read(p.instance_filter, ERGBufferRole::STORAGE);
+        }
         if (candidate_dispatch_rg)
         {
             cull_pass.read(candidate_dispatch_rg, ERGBufferRole::INDIRECT);

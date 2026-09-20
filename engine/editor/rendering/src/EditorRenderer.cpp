@@ -5,7 +5,6 @@
 #include <lux/engine/editor/rendering/detail/RendererThread.hpp>
 #include <lux/engine/editor/rendering/detail/ReplyPump.hpp>
 #include <lux/engine/editor/rendering/detail/ViewImageLifetime.hpp>
-#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
 #include <lux/engine/ui/UISession.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
 #include <mutex>
@@ -502,14 +501,6 @@ namespace lux::editor::rendering
             const auto attachment = builder.emplaceAttachment<detail::FrameDrawData>(detail::kUiDrawAttachment);
             auto &data = *static_cast<detail::FrameDrawData *>(storage->program.attachments[attachment].object);
             data.images.assign(images.begin(), images.end());
-            const auto operation = impl_->thread.catalog.ops<lux::render::ViewCameraOperationIds>("StandardViewCamera")
-                                       .id<lux::render::ViewCameraUpdateOp>();
-            for (const auto &image : data.images)
-            {
-                const auto *record = detail::ViewImageAccess::record(image);
-                builder.pushBulk(operation,
-                                 std::span<const lux::render::ViewCameraUpdatePayload>{&record->wire_camera, 1});
-            }
             builder.push(lux::render::opcodes::CommandOp, impl_->thread.submit_operation,
                          detail::SubmitDrawPayload{attachment});
             if (!builder.valid())

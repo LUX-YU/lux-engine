@@ -1,6 +1,5 @@
 #pragma once
 #include <lux/engine/editor/rendering/ViewImage.hpp>
-#include <lux/engine/function/render/client/features/view_camera/ViewCameraOperation.hpp>
 #include <atomic>
 
 namespace lux::editor::rendering::detail
@@ -25,8 +24,7 @@ namespace lux::editor::rendering
     struct ViewImageLease::Record final
     {
         std::shared_ptr<detail::ImageVersion> version;
-        CameraFrame camera;
-        lux::render::ViewCameraUpdatePayload wire_camera;
+        bool scene_enabled{};
         ImageContentStamp content;
         mutable std::atomic<std::uint64_t> submitted{};
     };

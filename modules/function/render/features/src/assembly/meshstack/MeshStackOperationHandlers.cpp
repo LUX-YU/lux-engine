@@ -1,3 +1,4 @@
+#include <lux/engine/function/render/features/meshstack/MeshStackOperation.hpp>
 // ============================================================================
 //  MeshStackOperationHandlers.cpp — StandardMeshStackFeature factory + the
 //  feature-scoped mesh-instance commands. The add / remove / per-view
@@ -18,6 +19,7 @@
 //  (全局网格竞技场的构造器已下沉 L3,见 resources/mesh/MeshResources.cpp。)
 // ============================================================================
 
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp> // Dispatcher, Ctx, replyToCurrent, FeatureFactory
 #include <lux/engine/function/render/client/core/RenderResourceHandle.hpp> // handle_cast
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
@@ -25,7 +27,7 @@
 #include <lux/engine/render/resources/lifecycle/GpuTransferPipeline.hpp>
 #include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>          // typed-op register/unregister
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp> // FeatureFactory / GenericOkReply
-#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/meshstack/StandardMeshStackFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/render/resources/mesh/InstanceResources.hpp> // InstanceSlot, sections, cull meta, properties

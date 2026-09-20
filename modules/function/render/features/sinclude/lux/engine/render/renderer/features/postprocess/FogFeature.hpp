@@ -1,7 +1,8 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 
 #include <lux/engine/render/RenderFeature.hpp>
-#include <lux/engine/function/render/client/features/postprocess/FogOperation.hpp>
+#include <lux/engine/function/render/features/postprocess/FogOperation.hpp>
 #include <lux/engine/function/render/client/core/PipelineHandle.hpp>
 #include <lux/engine/function/render/client/RenderTargetLayout.hpp>
 #include <lux/engine/function/render/graph/RGForwardDecls.hpp>
@@ -11,7 +12,7 @@
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC FogFeature final : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC FogFeature final : public RenderFeature
     {
     public:
         struct RenderState final

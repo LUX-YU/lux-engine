@@ -1,9 +1,10 @@
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
 
-#include <lux/engine/function/render/client/features/light/LightOperation.hpp>
-#include <lux/engine/function/render/client/features/meshstack/MeshStackOperation.hpp>
-#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>
-#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/features/light/LightOperation.hpp>
+#include <lux/engine/function/render/features/meshstack/MeshStackOperation.hpp>
+#include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/scene/RenderSyncPipeline.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
@@ -24,6 +25,7 @@
 
 namespace lux::scene
 {
+    RenderFeatureSceneBinding cameraRenderFeatureBinding() noexcept;
     namespace
     {
         using simulation::ecs::ComponentList;
@@ -1067,6 +1069,7 @@ namespace lux::scene
         };
 
         const std::array Bindings{
+            cameraRenderFeatureBinding(),
             RenderFeatureSceneBinding{
                 system::systemTypeId(RenderSystem::Description.canonical_name),
                 render::featureId("lux.render.mesh_stack.v1"),

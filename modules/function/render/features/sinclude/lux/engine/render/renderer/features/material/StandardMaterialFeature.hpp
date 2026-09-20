@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file StandardMaterialFeature.hpp
  * @brief Owner of the global MaterialResources stack.
@@ -29,7 +30,7 @@
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC StandardMaterialFeature final : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC StandardMaterialFeature final : public RenderFeature
     {
     public:
         struct Config

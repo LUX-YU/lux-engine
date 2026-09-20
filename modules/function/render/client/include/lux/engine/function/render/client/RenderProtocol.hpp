@@ -9,10 +9,8 @@
 #include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
 #include <lux/engine/function/render/client/resources/ops/ResourceOperationCommon.hpp>
-// MeshUploadedReply / ReplyMeshUploaded
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 #include <lux/engine/function/render/client/core/FeatureDescriptor.hpp>
-#include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp>
 #include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
 #include <lux/engine/function/render/client/core/RenderErrorEvent.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
@@ -22,8 +20,8 @@
 // Resource operation payloads — needed for CommandTraits specializations below
 // Mesh data ops moved to a feature: comm/genops/MeshStackOperation.ops.hpp
 // (StandardMeshStack, dynamic ids via register_ops_fn). Core no longer names mesh data
-// ops; the upload REPLY (MeshUploadedReply, below) stays here — it is emitted by the
-// shared async-upload worker (mesh + texture), not a mesh op.
+// ops or replies. Mesh upload owns its reply protocol in the Feature package;
+// the shared upload worker dispatches it without a reverse Client dependency.
 #include <lux/engine/function/render/client/resources/ops/TextureResourceOperation.hpp>
 // Material ops moved to a feature: comm/genops/MaterialOperation.ops.hpp
 // (StandardMaterial, dynamic ids via register_ops_fn). Core no longer names material.
@@ -118,7 +116,7 @@ namespace lux::render
         inline constexpr TypeId ReplyGenericOk = 5;
         inline constexpr TypeId ReplyFeatureAdded = 6;
         inline constexpr TypeId ReplyFeatureTypeRegistered = 8;
-        // ReplyMeshUploaded(=10)已下沉到 resources/ops/ResourceOperationCommon.hpp
+        // ReplyMeshUploaded(=10) belongs to the MeshStack Feature protocol
         // 11 was ReplyMaterialUploaded — the upload reply is feature-scoped now
         // (MaterialOperation.hpp; reply_type_id derived from the Reply type).
         inline constexpr TypeId ReplyTexture2DCreated = 12;
@@ -578,14 +576,6 @@ namespace lux::render
 
     // ---- Per-resource-type replies ----
 
-    // MeshUploadedReply stays CORE: it is emitted by the SHARED async-upload worker
-    // (mesh + texture transfers — RenderServer drain), not the (now feature-scoped) mesh
-    // upload op. CommandTraits<UploadMeshPayload> moved to MeshStackOperation.hpp and
-    // reuses the ReplyMeshUploaded id below.
-    // MeshUploadedReply 已下沉到 resources/ops/ResourceOperationCommon.hpp
-    // (连同 type_ids::ReplyMeshUploaded)—— 它归共享上传基础设施所有,留在这里
-    // 会逼 MeshStackOperation.hpp 为一个常量包含整个线协议头。
-    static_assert(std::is_trivially_copyable_v<MeshUploadedReply>);
 
     // MaterialUploadedReply moved to a feature header:
     // comm/genops/MaterialOperation.ops.hpp (StandardMaterial).
@@ -815,7 +805,7 @@ namespace lux::render
     // ---- Resource CommandTraits ----
 
     // CommandTraits<UploadMeshPayload> moved to MeshStackOperation.hpp (the payload is a
-    // feature type now; it reuses the shared-infra reply_type_id ReplyMeshUploaded).
+    // feature type now; its upload reply is declared by that Feature).
 
     template <> struct CommandTraits<CreateTexture2DPayload>
     {

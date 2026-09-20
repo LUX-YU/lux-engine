@@ -11,9 +11,16 @@ namespace lux::editor::scene::detail
         std::vector<std::byte> bytes;
     };
 
+    struct AuthorObjectRow final
+    {
+        lux::world::WorldObjectId object, parent;
+        std::string label;
+        lux::partition::PartitionOrdinal partition;
+    };
+
     struct ObjectContent final
     {
-        SceneObjectRow row;
+        AuthorObjectRow row;
         std::vector<ObjectComponent> components;
     };
 
@@ -28,6 +35,7 @@ namespace lux::editor::scene::detail
         const NativeScene &source;
         const lux::scene::SceneMetaManager &metadata;
         lux::simulation::ecs::WorldEntityMap identities;
+        SceneInstanceId instance;
         std::vector<SceneObjectRow> rows;
         std::vector<ComponentNotice> component_versions;
         SelectionNotice selection;
@@ -35,6 +43,24 @@ namespace lux::editor::scene::detail
         bool structural_commit{};
         bool structure_changed{};
         bool invalidate_derived{};
+
+        [[nodiscard]] SceneEntityRef reference(lux::simulation::ecs::Entity entity) const noexcept
+        {
+            return {instance, entity};
+        }
+        [[nodiscard]] SceneEntityRef authorReference(lux::world::WorldObjectId id) const noexcept
+        {
+            return reference(identities.entity(id));
+        }
+        [[nodiscard]] lux::simulation::ecs::Entity resolve(SceneEntityRef value) const noexcept
+        {
+            return value.instance == instance && registry.valid(value.entity)
+                       ? value.entity : lux::simulation::ecs::NullEntity;
+        }
+        [[nodiscard]] lux::world::WorldObjectId persistent(SceneEntityRef value) const noexcept
+        {
+            return identities.object(resolve(value));
+        }
 
         static bool componentLess(const ComponentNotice &, const ComponentNotice &) noexcept;
         editing::EditResult<ObjectContent> captureObject(SceneObjectRow row,

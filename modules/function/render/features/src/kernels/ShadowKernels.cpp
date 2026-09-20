@@ -26,7 +26,7 @@
 #include <lux/engine/render/resources/mesh/MeshInstanceExtData.hpp>
 #include <lux/engine/render/resources/mesh/GpuDrivenMeshConsts.hpp>
 #include <lux/engine/render/resources/mesh/MdcTable.hpp>                          // MdcEntry variant select
-#include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp> // EGeometryKind
+#include <lux/engine/function/render/features/resources/mesh/RenderObjectTypes.hpp> // EGeometryKind
 
 #include <algorithm>
 #include <cstring>

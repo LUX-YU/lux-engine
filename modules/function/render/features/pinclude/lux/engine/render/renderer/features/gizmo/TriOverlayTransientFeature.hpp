@@ -8,7 +8,7 @@
  */
 
 #include <lux/engine/render/RenderFeature.hpp>
-#include <lux/engine/function/render/client/features/gizmo/GizmoVertex.hpp>
+#include <lux/engine/function/render/features/gizmo/GizmoVertex.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp>
 #include <lux/engine/function/visibility.h>

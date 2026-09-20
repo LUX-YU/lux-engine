@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file PCFeatureIndirectBase.hpp
  * @brief Shared GPU infrastructure for all compute-cull + indirect-draw point
@@ -65,7 +66,7 @@ namespace lux::render
      *   2. Create the graphics pipeline (draw_handle_) for their specific mode.
      *   3. Implement mode() / name() / priority() / addPasses().
      */
-    class LUX_FUNCTION_PUBLIC PCFeatureIndirectBase : public IPointCloudFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC PCFeatureIndirectBase : public IPointCloudFeature
     {
     public:
         static constexpr phase_mask_t kExtractPhaseMask =

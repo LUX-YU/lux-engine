@@ -1,5 +1,6 @@
 #pragma once
-#include <lux/engine/function/render/client/features/GpuDrivenMeshExtFlags.hpp>
+#include <lux/engine/function/render/features/visibility.h>
+#include <lux/engine/function/render/features/GpuDrivenMeshExtFlags.hpp>
 /**
  * @file MeshShadowFeature.hpp
  * @brief Standalone shadow-rendering feature for GPU-driven mesh geometry.
@@ -20,8 +21,8 @@
 #include <lux/engine/render/gpu/ShaderObject.hpp>
 #include <lux/engine/render/gpu/VmaFwd.hpp>
 #include <lux/engine/render/graph/RGPassTypes.hpp>
-#include <lux/engine/function/render/client/resources/lighting/ShadowMapTypes.hpp>
-#include <lux/engine/function/render/client/resources/lighting/EShadowTechnique.hpp> // kShadowTechniqueCount
+#include <lux/engine/function/render/features/resources/lighting/ShadowMapTypes.hpp>
+#include <lux/engine/function/render/features/resources/lighting/EShadowTechnique.hpp> // kShadowTechniqueCount
 #include <lux/engine/render/resources/lighting/ShadowFrameExtData.hpp>
 #include <lux/engine/render/resources/mesh/GpuDrivenMeshConsts.hpp> // kMaxShadowBiasGroups(唯一真相源)
 #include <lux/engine/function/visibility.h>
@@ -44,7 +45,7 @@ namespace lux::render
     class ShadowResources;
     class IShadowTechnique;
 
-    class LUX_FUNCTION_PUBLIC MeshShadowFeature : public GpuDrivenMeshFeatureBase
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC MeshShadowFeature : public GpuDrivenMeshFeatureBase
     {
     public:
         static constexpr phase_mask_t kExtractPhaseMask =

@@ -1,15 +1,47 @@
 #pragma once
 
+#include <compare>
+#include <functional>
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/editor/DocumentIdentity.hpp>
 #include <lux/engine/editor/editing/EditOperation.hpp>
 #include <lux/engine/editor/scene/visibility.h>
 #include <lux/engine/partition/PartitionOrdinal.hpp>
-#include <lux/engine/world/WorldObjectId.hpp>
+#include <lux/engine/simulation/ecs/Entity.hpp>
 #include <string>
 
 namespace lux::editor::scene
 {
+    struct SceneInstanceId final
+    {
+        std::uint64_t value{};
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return value != 0;
+        }
+        friend auto operator<=>(SceneInstanceId, SceneInstanceId) = default;
+    };
+
+    struct SceneEntityRef final
+    {
+        SceneInstanceId instance;
+        lux::simulation::ecs::Entity entity{lux::simulation::ecs::NullEntity};
+
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return instance.valid() && entity != lux::simulation::ecs::NullEntity;
+        }
+        friend auto operator<=>(SceneEntityRef, SceneEntityRef) = default;
+
+        struct Hash
+        {
+            std::size_t operator()(SceneEntityRef value) const noexcept
+            {
+                return std::hash<std::uint64_t>{}(value.instance.value) ^
+                       (std::hash<std::uint64_t>{}(lux::simulation::ecs::entityBits(value.entity)) << 1);
+            }
+        };
+    };
     enum class EObjectSpace : std::uint8_t
     {
         NONE,
@@ -28,7 +60,7 @@ namespace lux::editor::scene
         HIERARCHY_CYCLE
     };
 
-    enum class EModelPlacementError : std::uint8_t
+    enum class EModelCreationError : std::uint8_t
     {
         UNSUPPORTED_SCENE,
         INVALID_PARTITION,
@@ -42,7 +74,7 @@ namespace lux::editor::scene
     struct SceneWriteTarget final
     {
         DocumentHandle document;
-        lux::world::WorldObjectId object;
+        SceneEntityRef object;
         editing::StateId state;
         editing::Revision revision;
     };
@@ -58,7 +90,7 @@ namespace lux::editor::scene
 
     struct ComponentNotice final
     {
-        lux::world::WorldObjectId object;
+        SceneEntityRef object;
         lux::cxx::TypeToken component;
         editing::Revision revision;
         bool in_progress{};

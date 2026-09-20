@@ -1,5 +1,6 @@
 #pragma once
-#include <lux/engine/function/render/client/features/GpuDrivenMeshExtFlags.hpp>
+#include <lux/engine/function/render/features/visibility.h>
+#include <lux/engine/function/render/features/GpuDrivenMeshExtFlags.hpp>
 // =========================================================================
 //  HighlightFeature — object highlight (soft outer outline/halo).
 //
@@ -9,17 +10,17 @@
 //  skinned, LIVE pose via the bindless vertex pool at set 7); a separable-blur +
 //  composite pass reads the mask and draws the outer halo over SceneColor.
 //
-//  This is a MECHANISM feature: any client sets the per-instance highlight flag
-//  (kInstanceFlagHighlight) and picks the halo color via the comm config. The
-//  editor's "selection" is just one client; gameplay/hover/debug can use it too.
-//  Single-channel (one color per feature instance); multiple objects can be
-//  highlighted at once (all share the configured color).
+//  The feature owns a full source-identity target set. It resolves current instance
+//  generations at recording time; neither selection nor material flags are inputs.
 // =========================================================================
 #include <lux/engine/render/renderer/features/GpuDrivenMeshFeatureBase.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/render/gpu/lifecycle/FifOwned.hpp>
 #include <lux/engine/function/visibility.h>
 
+#include <lux/engine/function/render/client/core/RenderEntityId.hpp>
+#include <span>
+#include <vector>
 #include <cstdint>
 #include <string>
 
@@ -27,7 +28,7 @@
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC HighlightFeature : public GpuDrivenMeshFeatureBase
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC HighlightFeature : public GpuDrivenMeshFeatureBase
     {
     public:
         struct Config
@@ -59,6 +60,9 @@ namespace lux::render
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;
         void addPasses(RGBuilder& builder) override;
+        void replaceTargets(std::vector<RenderEntityId> targets);
+        [[nodiscard]] std::span<const RenderEntityId> targets() const noexcept { return targets_; }
+
 
     private:
         Expected<void> init();
@@ -66,6 +70,9 @@ namespace lux::render
         void releaseAll() noexcept;
 
         Config cfg_;
+        std::vector<RenderEntityId> targets_;
+        std::vector<std::uint32_t> target_mask_;
+
         VkDescriptorSetLayout visible_set_layout_{VK_NULL_HANDLE};     // set 5 (cull → draw)
         VkDescriptorSetLayout blur_ds_layout_{VK_NULL_HANDLE};         // blur set 1 (1 sampler: input)
         VkDescriptorSetLayout composite_ds_layout_{VK_NULL_HANDLE};    // composite set 1 (2 samplers: blurred + sharp)

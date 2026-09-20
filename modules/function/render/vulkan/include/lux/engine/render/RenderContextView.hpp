@@ -25,7 +25,7 @@
 #include <lux/engine/function/render/client/core/PipelineHandle.hpp>      // Graphics/ComputePipelineHandle
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>      // ShaderHandle
 #include <lux/engine/function/render/client/core/EngineSetSlot.hpp>       // EDescriptorSetSlot
-#include <lux/engine/function/render/client/resources/EBuiltinShader.hpp> // EBuiltinShader
+#include <lux/engine/function/render/features/resources/EBuiltinShader.hpp> // EBuiltinShader
 #include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>           // ResourceRegistry
 #include <lux/engine/render/core/FrameRetireScheduler.hpp>                // FrameRetireScheduler
 #include <lux/engine/render/core/PreparedPipelineStages.hpp>              // preparePipelineStages 的结果

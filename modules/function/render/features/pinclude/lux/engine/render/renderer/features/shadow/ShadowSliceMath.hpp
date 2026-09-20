@@ -21,7 +21,7 @@
  * ShadowMapFeature.cpp; only the packing and the placement order are here.
  */
 
-#include <lux/engine/function/render/client/resources/lighting/ShadowMapTypes.hpp> // ShadowSliceGPU (+ Eigen/Core)
+#include <lux/engine/function/render/features/resources/lighting/ShadowMapTypes.hpp> // ShadowSliceGPU (+ Eigen/Core)
 
 #include <Eigen/Geometry> // Eigen::Vector3f::cross
 

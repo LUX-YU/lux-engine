@@ -7,7 +7,7 @@
 //  「这个 op 对特性做什么」。
 // ============================================================================
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/function/render/client/features/grid/Grid3DOperation.hpp>
+#include <lux/engine/function/render/features/grid/Grid3DOperation.hpp>
 #include <lux/engine/render/renderer/features/grid/Grid3DPassFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 

@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp>
@@ -15,7 +16,7 @@ namespace lux::render
      * early Z buffer.  Uses the forward vertex shader + a depth-only
      * fragment shader.
      */
-    class LUX_FUNCTION_PUBLIC DepthPrepassFeature : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC DepthPrepassFeature : public RenderFeature
     {
     public:
         struct Config

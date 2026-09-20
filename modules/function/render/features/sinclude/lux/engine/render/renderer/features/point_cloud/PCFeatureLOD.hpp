@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file PCFeatureLOD.hpp
  * @brief Point cloud render feature — LOD mode (Mode 3).
@@ -30,7 +31,7 @@ namespace lux::render
      *
      * Push-constant controls the world-space point radius and clamping range.
      */
-    class LUX_FUNCTION_PUBLIC PCFeatureLOD final : public PCFeatureIndirectBase
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC PCFeatureLOD final : public PCFeatureIndirectBase
     {
     public:
         struct Config

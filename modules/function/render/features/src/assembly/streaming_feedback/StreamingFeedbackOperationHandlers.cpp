@@ -1,5 +1,5 @@
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
-#include <lux/engine/function/render/client/features/streaming_feedback/StreamingFeedbackOperation.hpp>
+#include <lux/engine/function/render/features/streaming_feedback/StreamingFeedbackOperation.hpp>
 #include <lux/engine/render/renderer/features/streaming_feedback/StreamingFeedbackFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 

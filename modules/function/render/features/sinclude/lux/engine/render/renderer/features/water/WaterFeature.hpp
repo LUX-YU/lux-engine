@@ -1,7 +1,8 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 
 #include <lux/engine/render/RenderFeature.hpp>
-#include <lux/engine/function/render/client/features/water/WaterOperation.hpp>
+#include <lux/engine/function/render/features/water/WaterOperation.hpp>
 #include <lux/engine/render/renderer/features/postprocess/FogFeature.hpp>
 #include <lux/engine/function/render/client/core/PipelineHandle.hpp>
 #include <lux/engine/function/render/client/RenderTargetLayout.hpp>
@@ -15,7 +16,7 @@
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC WaterFeature final : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC WaterFeature final : public RenderFeature
     {
     public:
         struct Config final

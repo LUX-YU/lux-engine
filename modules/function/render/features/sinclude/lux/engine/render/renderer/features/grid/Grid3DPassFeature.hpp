@@ -1,8 +1,9 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp>
-#include <lux/engine/function/render/client/features/grid/Grid3DPassTypes.hpp>
+#include <lux/engine/function/render/features/grid/Grid3DPassTypes.hpp>
 #include <cstdint>
 #include <lux/engine/function/visibility.h>
 
@@ -11,7 +12,7 @@
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC Grid3DPassFeature : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC Grid3DPassFeature : public RenderFeature
     {
     public:
         struct Config

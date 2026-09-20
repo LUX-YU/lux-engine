@@ -7,10 +7,11 @@
 //  no longer names light.
 // ============================================================================
 
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>       // Dispatcher, Ctx, replyToCurrent, FeatureFactory
 #include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp> // typed-op register/unregister
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp> // FeatureFactory / GenericOkReply
-#include <lux/engine/function/render/client/genops/LightOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/light/LightFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 

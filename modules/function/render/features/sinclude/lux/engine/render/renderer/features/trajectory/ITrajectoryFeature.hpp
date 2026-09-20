@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file ITrajectoryFeature.hpp
  * @brief Abstract interface for trajectory render features.
@@ -30,7 +31,7 @@ namespace lux::render
     /**
      * @brief Extended RenderFeature interface for trajectory rendering modes.
      */
-    class LUX_FUNCTION_PUBLIC ITrajectoryFeature : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC ITrajectoryFeature : public RenderFeature
     {
     public:
         using RenderFeature::RenderFeature;

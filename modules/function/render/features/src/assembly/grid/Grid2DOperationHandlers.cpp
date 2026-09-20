@@ -4,7 +4,7 @@
 //   生成并 extern 引用本函数 —— 少定义即链接错误。)
 // ============================================================================
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/function/render/client/features/grid/Grid2DOperation.hpp>
+#include <lux/engine/function/render/features/grid/Grid2DOperation.hpp>
 #include <lux/engine/render/renderer/features/grid/Grid2DPassFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 

@@ -17,7 +17,7 @@
 #include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>          // typed-op register/unregister
 #include <lux/engine/function/render/client/FeatureOpSend.hpp>           // sendBulk
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp> // FeatureFactory / GenericOkReply
-#include <lux/engine/function/render/client/genops/ViewCameraOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/ViewCameraOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/view_camera/StandardViewCameraFeature.hpp>
 #include <lux/engine/render/renderer/features/view_camera/ViewCameraResource.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>        // getView / resources
@@ -126,4 +126,28 @@ namespace lux::render
         }
     }
 
+    void handleViewCameraRemove(
+        GeneralRenderServer::Dispatcher::Ctx& ctx, std::span<const ViewCameraRemovePayload> removals)
+    {
+        for (const auto& removal : removals)
+        {
+            auto* scene = lookupScene(ctx.user_state, removal.scene_id);
+            if (!scene)
+            {
+                continue;
+            }
+            auto* view = scene->getView(removal.view);
+            if (!view)
+            {
+                continue;
+            }
+            if (auto* cameras = scene->resources().find<ViewCameraResource>())
+            {
+                cameras->removeView(removal.view.index);
+            }
+            view->has_view_data = false;
+            view->view_data_staging.fill(std::byte{});
+            view->frustum_staging.fill(std::byte{});
+        }
+    }
 } // namespace lux::render

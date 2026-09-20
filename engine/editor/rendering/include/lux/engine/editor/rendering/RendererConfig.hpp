@@ -118,13 +118,6 @@ namespace lux::editor::rendering
         bool sampled{true};
         double coordinate_page_size{1024.0}; // Immutable configuration of the associated RenderScene.
     };
-    struct CameraFrame final
-    {
-        std::array<double, 16> view{}, projection{};
-        std::array<double, 3> origin{};
-        ViewStamp desired; // A request, not an observed completed image.
-    };
-
     struct RendererStatistics final
     {
         std::uint64_t frames{}, slots{}, descriptors_created{}, descriptors_retired{}, texture_misses{};

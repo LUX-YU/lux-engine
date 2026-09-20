@@ -1,5 +1,6 @@
 #pragma once
-#include <lux/engine/function/render/client/features/GpuDrivenMeshExtFlags.hpp>
+#include <lux/engine/function/render/features/visibility.h>
+#include <lux/engine/function/render/features/GpuDrivenMeshExtFlags.hpp>
 #include <lux/engine/render/renderer/features/GpuDrivenMeshFeatureBase.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <cstdint>
@@ -23,7 +24,7 @@ namespace lux::render
      *   2. ForwardMeshForwardCompact (COMPUTE) — per-MDC compact indirect commands
      *   3. ForwardMeshForwardDraw  (GRAPHICS) — per-bucket vkCmdDrawIndexedIndirectCount
      */
-    class LUX_FUNCTION_PUBLIC ForwardMeshFeature : public GpuDrivenMeshFeatureBase
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC ForwardMeshFeature : public GpuDrivenMeshFeatureBase
     {
     public:
         static constexpr phase_mask_t kExtractPhaseMask =

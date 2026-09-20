@@ -16,7 +16,7 @@
 #include <lux/engine/function/render/client/core/FeatureDescriptor.hpp>  // FeatureDescriptor / featureId
 #include <lux/engine/render/scene/RenderScene.hpp>                       // resources().find
 
-#include <lux/engine/function/render/client/genops/Canvas2DOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/Canvas2DOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/canvas2d/Canvas2DFeature.hpp>
 #include <lux/engine/render/renderer/features/canvas2d/Canvas2DInstanceArena.hpp>
 

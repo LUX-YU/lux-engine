@@ -1,3 +1,4 @@
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/render/resources/mesh/MeshResources.hpp>
 #include <lux/engine/render/gpu/lifecycle/VRAMBudgetGuard.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>

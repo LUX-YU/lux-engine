@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/render/renderer/features/terrain/TerrainResources.hpp>
@@ -14,7 +15,7 @@ namespace lux::render
 {
     class ViewCameraResource;
 
-    class LUX_FUNCTION_PUBLIC TerrainFeature final : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC TerrainFeature final : public RenderFeature
     {
     public:
         struct Config final

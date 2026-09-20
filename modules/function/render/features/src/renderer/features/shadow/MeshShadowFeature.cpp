@@ -1,5 +1,5 @@
 #include <lux/engine/render/renderer/features/shadow/MeshShadowFeature.hpp>
-#include <lux/engine/function/render/client/resources/lighting/EShadowTechnique.hpp> // EShadowTechnique (technique id)
+#include <lux/engine/function/render/features/resources/lighting/EShadowTechnique.hpp> // EShadowTechnique (technique id)
 #include <lux/engine/render/renderer/features/shadow/IShadowTechnique.hpp>
 // IShadowTechnique + ShadowFrameContext — polymorphic caster/post dispatch
 #include <vk_mem_alloc.h>
@@ -25,14 +25,14 @@
 #include <lux/engine/render/gpu/pipeline/VertexLayoutRegistry.hpp>   // vertex-layout SSOT
 #include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp>       // appendVertexLayoutSpecs
 #include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/function/render/client/features/deferred/DeferredGBufferOperation.hpp>
+#include <lux/engine/function/render/features/deferred/DeferredGBufferOperation.hpp>
 // kDeferredGBufferDrawPassName
-#include <lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp>         // kShadowViewUploadPassName
-#include <lux/engine/function/render/client/features/shadow/MeshShadowOperation.hpp>        // kMeshShadowDrawPassName
+#include <lux/engine/function/render/features/shadow/ShadowMapOperation.hpp>         // kShadowViewUploadPassName
+#include <lux/engine/function/render/features/shadow/MeshShadowOperation.hpp>        // kMeshShadowDrawPassName
 #include <lux/engine/render/scene/View.hpp> // View::handle (canonical-view resolution)
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/VulkanCheck.hpp>
-#include <lux/engine/function/render/client/resources/lighting/ShadowMapTypes.hpp>
+#include <lux/engine/function/render/features/resources/lighting/ShadowMapTypes.hpp>
 #include <lux/engine/render/resources/mesh/GpuDrivenMeshConsts.hpp>
 
 #include <algorithm>
@@ -880,6 +880,7 @@ namespace lux::render
             {6, EDescriptorType::STORAGE_BUFFER, shadow_visible_rg_},
             {7, EDescriptorType::STORAGE_BUFFER, shadow_mdc_info_rg_},
             {8, EDescriptorType::STORAGE_BUFFER, alive_slots_rg},
+            {9, EDescriptorType::STORAGE_BUFFER, alive_slots_rg},
         };
         auto cull_tds = builder.createTransientDS("MeshShadowCullDS", cull_set_layout_, cull_bindings);
 

@@ -13,14 +13,14 @@
 #include <lux/engine/render/resources/material/MaterialResources.hpp>
 #include <lux/engine/render/resources/ShaderResources.hpp>
 #include <lux/engine/render/resources/BuiltinShaderRegistry.hpp>
-#include <lux/engine/function/render/client/genops/DeferredGBufferOperation.ops.hpp> // kDeferredGBufferKnownExtFlags
+#include <lux/engine/function/render/features/genops/DeferredGBufferOperation.ops.hpp> // kDeferredGBufferKnownExtFlags
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
 #include <lux/engine/render/resources/vertex/VertexPoolRegistry.hpp> // set-7 bind
 #include <lux/engine/render/gpu/pipeline/VertexLayoutRegistry.hpp>   // vertex-layout SSOT
 #include <lux/engine/render/gpu/pipeline/VertexLayoutSpec.hpp>       // appendVertexLayoutSpecs
 #include <lux/engine/render/resources/vertex/VertexProduction.hpp>   // producer registry
 #include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/function/render/client/features/deferred/DeferredGBufferOperation.hpp>
+#include <lux/engine/function/render/features/deferred/DeferredGBufferOperation.hpp>
 // kDeferredGBufferDrawPassName
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/VulkanCheck.hpp>

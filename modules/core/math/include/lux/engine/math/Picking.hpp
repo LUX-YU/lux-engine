@@ -21,14 +21,14 @@ namespace lux::math
      *
      * Assumes Vulkan-style NDC: x ∈ [-1,1], y ∈ [-1,1], z ∈ [0,1].
      */
-    template <typename Scalar = float>
+    template <typename Scalar = float, typename RayScalar = float>
     void screenToRay(
         Scalar screen_x,
         Scalar screen_y,
         Scalar viewport_width,
         Scalar viewport_height,
         const Eigen::Matrix<Scalar, 4, 4>& inv_view_proj,
-        Ray& out_ray
+        BasicRay<RayScalar>& out_ray
     )
     {
         const Scalar ndc_x = (Scalar(2) * screen_x / viewport_width) - Scalar(1);
@@ -40,13 +40,13 @@ namespace lux::math
         const Eigen::Matrix<Scalar, 4, 1> near_world = inv_view_proj * near_ndc;
         const Eigen::Matrix<Scalar, 4, 1> far_world = inv_view_proj * far_ndc;
 
-        out_ray.origin = (near_world.template head<3>() / near_world.w()).template cast<float>();
+        out_ray.origin = (near_world.template head<3>() / near_world.w()).template cast<RayScalar>();
 
         // Direction in homogeneous space avoids dividing by the near-zero
         // far_world.w that arises with large far/near ratios.
         const Eigen::Matrix<Scalar, 3, 1> dir =
             far_world.template head<3>() * near_world.w() - near_world.template head<3>() * far_world.w();
-        out_ray.direction = dir.normalized().template cast<float>();
+        out_ray.direction = dir.normalized().template cast<RayScalar>();
     }
 
 } // namespace lux::math

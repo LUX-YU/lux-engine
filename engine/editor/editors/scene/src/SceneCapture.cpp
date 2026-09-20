@@ -28,6 +28,20 @@ lux::cxx::expected<std::vector<std::byte>, NativeSceneFailure> encodeNativeScene
     namespace world = lux::world;
     const auto &source = *capture.source;
     const auto &before = source.world->data();
+    const std::span<const world::WorldDataSchemaId> schemas =
+        capture.schemas.empty() ? before.schemas() : std::span<const world::WorldDataSchemaId>(capture.schemas);
+    std::vector<std::uint32_t> remapped_schemas;
+    remapped_schemas.reserve(before.schemas().size());
+    for (const auto &schema : before.schemas())
+    {
+        const auto found = std::ranges::lower_bound(schemas, schema, world::WorldDataSchemaIdLess{});
+        if (found == schemas.end() || *found != schema)
+        {
+            return failed(ENativeSceneError::ENCODE, source.world->id(), 0,
+                          std::string("Capture cannot discard an existing schema"));
+        }
+        remapped_schemas.push_back(static_cast<std::uint32_t>(found - schemas.begin()));
+    }
     const auto rejected = [&](ENativeSceneError code, std::string message) {
         return failed(code, source.world->id(), 0, std::move(message));
     };
@@ -144,7 +158,7 @@ lux::cxx::expected<std::vector<std::byte>, NativeSceneFailure> encodeNativeScene
             const auto old_count = object ? object.dataCount() : 0;
             while (index < old_count || replacement != changed.end())
             {
-                const auto ordinal = index < old_count ? object.schemaOrdinalAt(index) : UINT32_MAX;
+                const auto ordinal = index < old_count ? remapped_schemas[object.schemaOrdinalAt(index)] : UINT32_MAX;
                 if (replacement != changed.end() && replacement->schema <= ordinal)
                 {
                     const auto offset = static_cast<std::size_t>(replacement - capture.components.begin());
@@ -223,7 +237,7 @@ lux::cxx::expected<std::vector<std::byte>, NativeSceneFailure> encodeNativeScene
     }
     world::WorldDescriptionBuilder builder;
     auto prepared = builder.setIdentity(before.bundleId(), generation, before.name());
-    for (const auto &schema : before.schemas())
+    for (const auto &schema : schemas)
     {
         if (prepared)
         {

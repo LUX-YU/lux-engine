@@ -1,5 +1,5 @@
 #include <lux/engine/render/renderer/features/highlight/HighlightFeature.hpp>
-#include <lux/engine/function/render/client/genops/HighlightOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
 
 // 生成物(构建树 pass_gen/,由 HighlightBlurPassParams.hpp /
 // HighlightCompositePassParams.hpp 的注解生成):PC 布局 + 图 I/O +
@@ -30,6 +30,8 @@
 #include <lux/engine/render/resources/material/MaterialFamily.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
 
+#include <lux/engine/render/resources/mesh/InstanceResources.hpp>
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cassert>
@@ -218,6 +220,13 @@ namespace lux::render
     // =========================================================================
     //  Render graph passes
     // =========================================================================
+    void HighlightFeature::replaceTargets(std::vector<RenderEntityId> targets)
+    {
+        std::ranges::sort(targets);
+        targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
+        targets_ = std::move(targets);
+    }
+
     void HighlightFeature::addPasses(RGBuilder& builder)
     {
         auto& ctx = renderContext();
@@ -229,22 +238,45 @@ namespace lux::render
                           static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::SAMPLED);
         auto mask_rg = builder.createTexture(cfg_.mask_target, mask_desc);
 
-        // ---- 整链跳过条件:无任何存活实例带 highlight 位(编辑器无选中是常态)时,
-        // cull/compact/mask/blur×2/composite 六个 pass 作为一条 condition chain
-        // 原子跳过,链内 transient 每帧 UNDEFINED 起手,布局链自洽
-        // (CONDITIONAL_CHAIN,classifyElectivePasses)。
-        //
-        // 作用域即链的边界:它存续期间 builder.addPass 出来的每个 pass 自动入链。
-        // 此前是六处各写一遍 .setCondition(cond, tag) —— 链的范围要数遍那六处调用
-        // 才知道,漏挂一个只会在编译期被兜底捕获。
-        auto chain = builder.conditionChain([this]() -> bool {
-            constexpr uint32_t bit = std::countr_zero(kInstanceFlagHighlight);
-            return instance_res_ != nullptr && instance_res_->flagBitCount(bit) > 0u;
-        }
-        );
+        // Feature-owned targets; conditional transient resources follow graph/FIF retirement.
+        auto chain = builder.conditionChain([this]() {
+            return instance_res_ != nullptr && !targets_.empty();
+        });
 
-        // ---- Own frustum cull + compact (same opaque set the gbuffer culls) ----
-        // 这两个 pass 由共享辅助函数建,同样经 builder.addPass 出来,因此自动入链。
+        const auto capacity = (std::max)(instance_res_->capacity(), 1u);
+        RGBufferDescription target_desc{};
+        target_desc.size = std::uint64_t(capacity) * sizeof(std::uint32_t);
+        target_desc.stride = sizeof(std::uint32_t);
+        target_desc.element_count = capacity;
+        target_desc.usage = ERGBufferUsageBits::STORAGE | ERGBufferUsageBits::TRANSFER_DST;
+        target_desc.memory_usage = ERGMemoryUsage::GPU_ONLY;
+        const auto target_rg = builder.createBuffer("HighlightTargets", target_desc);
+        builder.addPass("HighlightTargetsUpload", ERGPassType::TRANSFER)
+            .write(target_rg, ERGBufferRole::STORAGE)
+            .setKernelFn([this, target_rg, capacity](const PassRecordContext& rec) {
+                target_mask_.assign(capacity, 0u);
+                for (const auto source : targets_)
+                {
+                    const auto object = instance_res_->findSource(source);
+                    if (instance_res_->isAlive(object))
+                    {
+                        const auto slot = instance_res_->resolveSlot(object);
+                        if (slot.index < capacity)
+                        {
+                            target_mask_[slot.index] = 1u;
+                        }
+                    }
+                }
+                const auto buffer = rec.resolveBufferHandle(target_rg);
+                const auto bytes = std::as_bytes(std::span(target_mask_));
+                for (std::size_t offset{}; offset < bytes.size();)
+                {
+                    const auto count = (std::min)(std::size_t{65536}, bytes.size() - offset);
+                    vkCmdUpdateBuffer(rec.cmd, buffer, offset, count, bytes.data() + offset);
+                    offset += count;
+                }
+            });
+
         addCullAndCompactPasses(
             builder,
             CullCompactParams{
@@ -255,6 +287,7 @@ namespace lux::render
                 .compact_pass_name = "HighlightCompact",
                 .descriptor_layout_version = cfg_.descriptor_layout_version,
                 .extension_flags = cfg_.extension_flags,
+                .instance_filter = target_rg,
             }
         );
 

@@ -20,22 +20,27 @@ struct SceneSaveChecks final
     lux::editor::SaveRequestId request;
     lux::editor::scene::FieldEditToken retired_preview;
     lux::editor::editing::StateId captured;
-    lux::world::WorldObjectId object;
+    lux::editor::scene::SceneEntityRef object;
     HANDLE denied{INVALID_HANDLE_VALUE};
     std::string mode;
     bool retried{};
     std::size_t model_count{};
-    lux::world::WorldObjectId structure_parent, structure_deleted;
-    std::vector<lux::world::WorldObjectId> placed;
+    lux::editor::scene::SceneEntityRef structure_parent, structure_deleted;
+    std::vector<lux::editor::scene::SceneEntityRef> placed;
+    std::size_t saved_object_count{};
+    Value deleted_position{};
+    lux::asset::AssetId deleted_mesh;
 
     static auto access()
     {
         return [](auto &component) noexcept { return &component.translation; };
     }
     void begin(lux::editor::scene::SceneEditor &scene, std::string requested_mode,
-               lux::world::WorldObjectId selected = {})
+               lux::editor::scene::SceneEntityRef selected = {})
     {
         mode = std::move(requested_mode);
+        // Structural regression restores an entity with a new generation. The
+        // imported selection is not the fixture's first object erased there.
         checkSceneStructure(scene, mode == "save-preservation");
         object = selected.valid() ? selected : scene.objects().front().object;
         if (mode == "save-model" || mode == "save-hierarchy" || mode == "save-preservation")
@@ -57,11 +62,12 @@ struct SceneSaveChecks final
             model_count = scene.objects().size();
             const auto before = scene.historyView()->history;
             const auto old_selection = scene.selection().object;
+            const auto old_entities = entitySnapshot(scene);
             auto failed =
-                scene.placeModel(before.current, **source, {0, 0, 0},
+                scene.createEntitiesFromModel(before.current, **source, {0, 0, 0},
                                  partition::PartitionOrdinal{static_cast<std::uint32_t>(scene.partitionCount())});
             assert(!failed && failed.error().domain_code ==
-                                  static_cast<std::uint64_t>(editor::scene::EModelPlacementError::INVALID_PARTITION));
+                                  static_cast<std::uint64_t>(editor::scene::EModelCreationError::INVALID_PARTITION));
             assert(scene.objects().size() == model_count && scene.historyView()->history.current == before.current);
             std::size_t notices{};
             auto observer = scene.observeScoped<editor::scene::SceneEditor::objectsChanged>(
@@ -76,14 +82,14 @@ struct SceneSaveChecks final
                     auto reentrant = scene.select({});
                     assert(!reentrant && reentrant.error().code == editor::EEditorError::BUSY);
                 });
-            auto created = scene.placeModel(before.current, **source, {3, 0, 0},
+            auto created = scene.createEntitiesFromModel(before.current, **source, {3, 0, 0},
                                             partition::PartitionOrdinal{mode == "save-preservation" ? 1U : 0U});
             if (!created)
             {
                 std::printf("place failure=%u domain=%llu\n", unsigned(created.error().code),
                             created.error().domain_code);
             }
-            const std::size_t added = mode == "save-hierarchy" ? 3 : 1;
+            const std::size_t added = mode == "save-hierarchy" ? 2 : 1;
             assert(created && created->size() == added && scene.objects().size() == model_count + added &&
                    notices == 1);
             placed = *created;
@@ -91,13 +97,13 @@ struct SceneSaveChecks final
             const auto *value = static_cast<const Transform *>(scene.component(object, cxx::typeToken<Transform>()));
             if (mode == "save-hierarchy")
             {
-                assert(value && value->translation == Value::Zero());
+                assert(value && value->translation == Value(0, 2, 0));
                 for (std::size_t index{}; index < placed.size(); ++index)
                 {
                     const auto row =
                         std::ranges::find(scene.objects(), placed[index], &editor::scene::SceneObjectRow::object);
                     assert(row != scene.objects().end());
-                    assert(row->parent == (index ? placed[index - 1] : world::WorldObjectId{}));
+                    assert(index ? row->parent == placed[index - 1] : !row->parent.valid());
                     assert(scene.component(placed[index], cxx::typeToken<simulation::ecs::Parent>()));
                 }
             }
@@ -109,8 +115,22 @@ struct SceneSaveChecks final
             assert(scene.undo() && scene.objects().size() == model_count && notices == 2 &&
                    scene.selection().object == old_selection);
             assert(scene.redo() && scene.objects().size() == model_count + added && notices == 3);
+            assert(!scene.component(object, cxx::typeToken<Mesh>()));
+            placed = newEntities(scene, old_entities);
+            if (mode == "save-hierarchy")
+            {
+                std::ranges::sort(placed, [&](auto left, auto right)
+                {
+                    const auto has_mesh = [&](auto entity)
+                    {
+                        return scene.component(entity, cxx::typeToken<Mesh>()) != nullptr;
+                    };
+                    return has_mesh(left) < has_mesh(right);
+                });
+            }
+            object = placed.back();
             assert(scene.component(object, cxx::typeToken<Mesh>()));
-            auto stale = scene.placeModel(before.current, **source, {0, 0, 0}, partition::PartitionOrdinal{0});
+            auto stale = scene.createEntitiesFromModel(before.current, **source, {0, 0, 0}, partition::PartitionOrdinal{0});
             assert(!stale && stale.error().code == editor::editing::EEditError::STALE_BASE &&
                    scene.objects().size() == model_count + added);
             std::printf("model placement: hierarchy=%d added=%zu exact invalid-partition/stale failures, one history "
@@ -133,8 +153,15 @@ struct SceneSaveChecks final
                                                     { return row.object != object && row.object != structure_parent; });
             assert(other != scene.objects().end());
             structure_deleted = other->object;
+            deleted_position = static_cast<const Transform *>(scene.component(structure_deleted,
+                cxx::typeToken<Transform>()))->translation;
+            if (const auto *mesh = static_cast<const simulation::ecs::Mesh3D *>(scene.component(structure_deleted, cxx::typeToken<simulation::ecs::Mesh3D>())))
+            {
+                deleted_mesh = mesh->value.mesh;
+            }
             assert(scene.eraseObjects(scene.historyView()->history.current, std::span(&structure_deleted, 1)));
         }
+        saved_object_count = scene.objects().size();
         auto target = scene.writeTarget(object);
         assert(target);
         auto preview =
@@ -195,7 +222,7 @@ struct SceneSaveChecks final
             assert(success->captured == captured && success->cleanup);
             const auto state = scene.historyView()->history;
             assert(state.saved == captured && !state.clean && !state.save_pending);
-            assert(mode == "save" || mode == "save-structure" || mode == "save-preservation" ||
+            assert(mode == "save" || mode == "save-spatial" || mode == "save-structure" || mode == "save-preservation" ||
                    mode == "save-hierarchy" || mode == "save-model" || mode == "save-import-model" || retried);
             std::printf("save success: saved=%llu current=%llu dirty=%d same_capture=1\n", state.saved->serial,
                         state.current.serial, !state.clean);
@@ -209,6 +236,29 @@ struct SceneSaveChecks final
     }
     void reopened(lux::editor::scene::SceneEditor &scene)
     {
+        assert(!scene.component(object, lux::cxx::typeToken<Transform>()));
+        object = {};
+        for (const auto &row : scene.objects())
+        {
+            const auto *candidate = static_cast<const Transform *>(scene.component(row.object, lux::cxx::typeToken<Transform>()));
+            if (candidate && candidate->translation == Value(4, 5, 6))
+            {
+                assert(!object.valid());
+                object = row.object;
+            }
+        }
+        assert(object.valid() && scene.objects().size() == saved_object_count);
+        if (!placed.empty())
+        {
+            auto current = object;
+            for (std::size_t index = placed.size(); index > 0; --index)
+            {
+                placed[index - 1] = current;
+                const auto row = std::ranges::find(scene.objects(), current, &lux::editor::scene::SceneObjectRow::object);
+                assert(row != scene.objects().end());
+                current = row->parent;
+            }
+        }
         const auto *value = static_cast<const Transform *>(scene.component(object, lux::cxx::typeToken<Transform>()));
         assert(value && value->translation == Value(4, 5, 6));
         assert(scene.historyView()->history.clean);
@@ -229,7 +279,7 @@ struct SceneSaveChecks final
                     const auto row =
                         std::ranges::find(scene.objects(), placed[index], &lux::editor::scene::SceneObjectRow::object);
                     assert(row != scene.objects().end() && row->partition.value == 0);
-                    assert(row->parent == (index ? placed[index - 1] : lux::world::WorldObjectId{}));
+                    assert(index ? row->parent == placed[index - 1] : !row->parent.valid());
                 }
             }
             std::puts("model reopen: persistent object identity, author Parent links, Mesh3D and partition membership "
@@ -239,9 +289,17 @@ struct SceneSaveChecks final
         {
             using namespace lux;
             const auto row = std::ranges::find(scene.objects(), object, &editor::scene::SceneObjectRow::object);
-            assert(row != scene.objects().end() && row->parent == structure_parent);
+            assert(row != scene.objects().end() && row->parent.valid());
+            structure_parent = row->parent;
             assert(scene.component(structure_parent, cxx::typeToken<Transform>()));
             assert(!scene.component(structure_deleted, cxx::typeToken<Transform>()));
+            for (const auto &entry : scene.objects())
+            {
+                const auto *transform = static_cast<const Transform *>(scene.component(entry.object, cxx::typeToken<Transform>()));
+                const auto *mesh = static_cast<const simulation::ecs::Mesh3D *>(scene.component(entry.object, cxx::typeToken<simulation::ecs::Mesh3D>()));
+                assert(!transform || transform->translation != deleted_position ||
+                       (mesh ? mesh->value.mesh : asset::AssetId{}) != deleted_mesh);
+            }
             assert(scene.component(object, cxx::typeToken<simulation::ecs::Parent>()));
             std::puts("structure reopen: created identity and newly added Parent survived; deleted original object "
                       "remains absent");

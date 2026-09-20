@@ -1,5 +1,5 @@
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
-#include <lux/engine/function/render/client/features/deferred/DeferredLightingOperation.hpp>
+#include <lux/engine/function/render/features/deferred/DeferredLightingOperation.hpp>
 #include <lux/engine/render/renderer/features/deferred/DeferredLightingFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 

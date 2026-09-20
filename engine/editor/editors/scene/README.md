@@ -1,6 +1,6 @@
 # Scene Editor：空间交互、相机与内容历史
 
-SceneEditor 拥有场景编辑的业务内容、作者历史、运行上下文与已接纳请求；Pane 拥有局部交互。本文描述已明确的设计边界，并标记尚未接线的部分。
+SceneEditor 拥有场景编辑的业务内容、作者历史、运行上下文与已接纳请求；Pane 拥有局部交互。本文描述长期职责与当前支持范围。
 
 ## 当前归属
 
@@ -20,22 +20,22 @@ SceneEditor 拥有场景编辑的业务内容、作者历史、运行上下文�
 
 Registry 保存当前组件值，SceneEditor 的历史记录内容变化。运行时查询与选择面向所属 Registry 的完整 Entity；WorldObjectId 只在持久内容、保存恢复和需要的映射边界使用。
 
-当前 SceneObjects／SceneRun 的目录与选择仍使用 WorldObjectId，并为部分新运行实体安排 UUID。这是待迁移的现有耦合，不能把它固化为新拾取接口。
+SceneObjectRow、SelectionNotice、Inspector 与字段写入目标使用 `SceneEntityRef { SceneInstanceId, Entity }`。每次运行有新实例身份；删除并 Undo 恢复的 Entity 具有新代次，旧输入被拒绝。作者历史内部通过持久映射找到恢复后的 Entity；运行对象不补 UUID。
 
 选择从同步查询取得 Entity 后，应验证它仍属于原检查目标且代次有效。异步操作还要验证文档、作者／Run 目标代次和请求顺序。后来一次 Outliner 选择不能被迟到拾取覆盖。
 
 空白命中可以清除选择；失效、失败或目标已切换不能伪装成空白命中。选择不新增内容历史，也不使作者文件变脏。
 
-## 相机与空间视口（待接线）
+## 相机与空间视口
 
-当前 `SceneCamera` 保存私有三维透视参数，ScenePane 的导航和落点计算也是三维专用。支持 Transform2D schema 不等于视口已支持二维世界。
+`SpatialViewport` 是冷注册的开放接口；首个实现 `SpatialViewport3D` 支持透视和正交。ScenePane 不保存位置或投影副本。尚未提供二维实现，不兼容的 World 显示限制。
 
-目标关系如下：
+对象关系如下：
 
 ```text
 ScenePane：外观、输入归属、图像展示
   → 与 World 能力兼容的具体空间视口
-      → CameraMan 的通用 Camera／Transform 组件
+      → CameraMan Entity 的 Camera／Transform3D 组件
       → 对应运行时空间查询
 ```
 
@@ -53,7 +53,7 @@ CameraMan 是编辑器 owner 创建的真实 Entity，带通用 Transform 和 Ca
 2. 不进入保存、Run 捕获、游戏导出或内容 Undo。
 3. 用户的删除、子树删除和普通业务操作不能删除它。
 4. 若显示在 Outliner，归于编辑器对象区域并标识锁定。
-5. 视口位置等配置恢复自项目编辑器布局，不写入游戏场景源。
+5. 视角不写入游戏场景源；当前首次打开采用固定作者视角，不承诺跨进程保存导航位置。
 6. 关闭视口／文档时，实际 owner 在解除渲染借用后正常销毁实体。
 
 可以在实际作者 Registry 中建立该实体以复用派生和相机提取，但保存与 Run 捕获必须以正式作者集合为准，不能复制全部 Registry。
@@ -74,7 +74,7 @@ Stop：恢复作者世界、CameraMan 和编辑选择
 
 没有 RenderSystem 的场景仍可打开，编辑器 UI 不消失；ScenePane 说明没有场景渲染能力，不私自修改用户的 SceneDescription。
 
-当前作者与 Run 已隔离并由 Main 推进，但上述基于真实 Camera 的输出切换尚未接通。
+作者与 Run 隔离并由 Main 推进；Play 使用唯一 primary Camera，零个或多个均明确提示并清除输出。通过“Create game camera”把当前视角创建为普通作者实体，产生一条内容历史。
 
 ## 拾取链路
 
@@ -101,9 +101,9 @@ Stop：恢复作者世界、CameraMan 和编辑选择
 
 Feature 拥有效果状态，完整代次防止高亮复用后的对象。支持层级时可以解析选中节点的可渲染后代；非层级 World 不强行引入父子关系。集合在选择或结构变化时更新，不每帧重建全部目录。
 
-## 拖放放置
+## 从模型资产创建实体
 
-已有 ResourcePane 的 AssetReference 与 SceneEditor 的模型放置请求继续复用。
+ResourcePane 传递 AssetReference；SceneEditor 的 `requestModelCreation` 使用 Process 读取模型并转换成实体，模型不是 Scene 概念。
 
 ```text
 资产拖放 → 具体空间视口解释落点
@@ -113,11 +113,11 @@ Feature 拥有效果状态，完整代次防止高亮复用后的对象。支持
   → 一条历史
 ```
 
-落点可以由编辑器的工作平面或明确的表面查询规则确定。不得在无有效落点时静默放到相机前方任意距离。二维与其他空间由相应视口解释，不能都传入写死的 Y=0 规则。
+三维落点优先使用 Mesh 表面；真正未命中才与显示的工作平面相交，默认 Y=0，可调整。查询未就绪等待原请求，业务失败保留原因，不冒充空白。不得在无有效落点时静默放到相机前方任意距离。二维与其他空间由相应视口解释，不能都传入写死的 Y=0 规则。
 
 加载期间用户进入 Run，结果也不能被写入运行世界。原 Pane 销毁后，已接纳请求仍由文档 owner 推进。失败保留准确原因，重试使用明确目标与版本。
 
-一次模型放置作为一个内容操作，Ctrl+Z 撤销整次创建。层级能力存在时保留层级，不存在时按支持的转换处理或准确拒绝。
+整次创建是一条内容操作，Ctrl+Z 撤销全部实体。单 Mesh 直接挂在对应节点 Entity 的 Mesh3D 上，Mesh3D 已持有材质引用。支持 Parent 时保留模型层级；否则累积变换展开。剪切、奇异变换、未支持变形明确拒绝。Prefab／实体装配资产不属于当前实现。
 
 ## 字段编辑与历史
 

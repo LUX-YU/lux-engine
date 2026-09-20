@@ -1,4 +1,5 @@
 #pragma once
+#include "entity_checks.hpp"
 #include <cassert>
 #include <cstdio>
 #include <lux/engine/editor/asset/AssetImporter.hpp>
@@ -6,14 +7,14 @@
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
 
-struct ModelPlacementChecks final
+struct ModelCreationChecks final
 {
     using Scene = lux::editor::scene::SceneEditor;
     std::unique_ptr<lux::editor::assets::AssetImporter> importer;
     lux::editor::assets::AssetImportId import;
-    lux::editor::scene::ModelPlacementId request;
+    lux::editor::scene::ModelCreationId request;
     lux::asset::AssetId model;
-    lux::world::WorldObjectId object;
+    lux::editor::scene::SceneEntityRef object;
     lux::editor::editing::StateId before;
     std::size_t count{}, stage{}, notices{};
     lux::object::ScopedConnection completion;
@@ -27,12 +28,12 @@ struct ModelPlacementChecks final
         assert(accepted);
         import = *accepted;
         count = scene.objects().size();
-        completion = scene.observeScoped<Scene::modelPlacementFinished>(
+        completion = scene.observeScoped<Scene::modelCreationFinished>(
             [this, &scene](auto id) noexcept
             {
                 ++notices;
-                assert(scene.modelPlacementStatus(id));
-                auto reentrant = scene.acknowledgeModelPlacement(id);
+                assert(scene.modelCreationStatus(id));
+                auto reentrant = scene.acknowledgeModelCreation(id);
                 assert(!reentrant && reentrant.error().code == editor::EEditorError::BUSY);
             });
     }
@@ -71,13 +72,13 @@ struct ModelPlacementChecks final
             auto foreign = reference;
             ++foreign.project_instance;
             auto refused =
-                scene.requestModelPlacement(foreign, Eigen::Vector3d::Zero(), partition::PartitionOrdinal{0});
+                scene.requestModelCreation(foreign, Eigen::Vector3d::Zero(), partition::PartitionOrdinal{0});
             assert(!refused && refused.error().domain == "project.asset-reference");
             auto accepted =
-                scene.requestModelPlacement(reference, Eigen::Vector3d::Zero(), partition::PartitionOrdinal{0});
+                scene.requestModelCreation(reference, Eigen::Vector3d::Zero(), partition::PartitionOrdinal{0});
             assert(accepted);
             request = *accepted;
-            assert(!scene.requestModelPlacement(reference, Eigen::Vector3d::Zero(), partition::PartitionOrdinal{0}));
+            assert(!scene.requestModelCreation(reference, Eigen::Vector3d::Zero(), partition::PartitionOrdinal{0}));
             using Transform = simulation::ecs::Transform3D;
             auto target = scene.writeTarget(scene.objects().front().object);
             assert(target);
@@ -93,9 +94,9 @@ struct ModelPlacementChecks final
         }
         if (stage == 2)
         {
-            auto status = scene.modelPlacementStatus(request);
+            auto status = scene.modelCreationStatus(request);
             assert(status);
-            if (std::holds_alternative<editor::scene::ModelPlacementPending>(*status))
+            if (std::holds_alternative<editor::scene::ModelCreationPending>(*status))
             {
                 return false;
             }
@@ -104,14 +105,14 @@ struct ModelPlacementChecks final
             const auto *cause = std::any_cast<editing::EditFailure>(&failure->cause);
             assert(cause && cause->code == editing::EEditError::STALE_BASE);
             assert(scene.objects().size() == count && scene.historyView()->history.current == before && notices == 1);
-            assert(scene.retryModelPlacement(request, before));
+            assert(scene.retryModelCreation(request, before));
             stage = 3;
         }
         if (stage == 3)
         {
-            auto status = scene.modelPlacementStatus(request);
+            auto status = scene.modelCreationStatus(request);
             assert(status);
-            if (std::holds_alternative<editor::scene::ModelPlacementPending>(*status))
+            if (std::holds_alternative<editor::scene::ModelCreationPending>(*status))
             {
                 return false;
             }
@@ -120,35 +121,41 @@ struct ModelPlacementChecks final
                 std::printf("placement failure %s:%llu %s\n", failure->domain.c_str(), failure->reason,
                             failure->message.c_str());
             }
-            const auto *success = std::get_if<editor::scene::ModelPlacementSucceeded>(&*status);
+            const auto *success = std::get_if<editor::scene::ModelCreationSucceeded>(&*status);
             assert(success && success->objects == 1 && notices == 2);
             object = success->root;
             assert(scene.objects().size() == count + 1);
+            const auto previous = entitySnapshot(scene);
             const auto current = scene.historyView()->history.current;
             assert(scene.undo() && scene.objects().size() == count);
             assert(scene.redo() && scene.objects().size() == count + 1 &&
                    scene.historyView()->history.current == current);
-            assert(scene.acknowledgeModelPlacement(request));
-            assert(!scene.modelPlacementStatus(request));
-            auto accepted = scene.requestModelPlacement(scene.project().reference(model), Eigen::Vector3d::Zero(),
+            assert(!scene.writeTarget(object));
+            const auto restored = newEntities(scene, previous);
+            assert(restored.size() == 1);
+            object = restored.front();
+            assert(scene.writeTarget(object));
+            assert(scene.acknowledgeModelCreation(request));
+            assert(!scene.modelCreationStatus(request));
+            auto accepted = scene.requestModelCreation(scene.project().reference(model), Eigen::Vector3d::Zero(),
                                                         partition::PartitionOrdinal{0});
             assert(accepted);
             request = *accepted;
             before = scene.historyView()->history.current;
-            assert(scene.cancelModelPlacement(request));
+            assert(scene.cancelModelCreation(request));
             stage = 4;
         }
         if (stage == 4)
         {
-            auto status = scene.modelPlacementStatus(request);
+            auto status = scene.modelCreationStatus(request);
             assert(status);
-            if (std::holds_alternative<editor::scene::ModelPlacementPending>(*status))
+            if (std::holds_alternative<editor::scene::ModelCreationPending>(*status))
             {
                 return false;
             }
-            assert(std::holds_alternative<editor::scene::ModelPlacementCancelled>(*status) && notices == 3);
+            assert(std::holds_alternative<editor::scene::ModelCreationCancelled>(*status) && notices == 3);
             assert(scene.objects().size() == count + 1 && scene.historyView()->history.current == before);
-            assert(scene.acknowledgeModelPlacement(request));
+            assert(scene.acknowledgeModelCreation(request));
             stage = 5;
         }
         if (stage == 5)
@@ -177,16 +184,16 @@ struct ModelPlacementChecks final
     void closeWithPending(Scene &scene)
     {
         using namespace lux;
-        auto accepted = scene.requestModelPlacement(scene.project().reference(model), Eigen::Vector3d::Zero(),
+        auto accepted = scene.requestModelCreation(scene.project().reference(model), Eigen::Vector3d::Zero(),
                                                     partition::PartitionOrdinal{0});
         assert(accepted);
         request = *accepted;
         const auto count = scene.objects().size();
-        completion = scene.observeScoped<Scene::modelPlacementFinished>(
+        completion = scene.observeScoped<Scene::modelCreationFinished>(
             [count, &scene](auto id) noexcept
             {
-                auto status = scene.modelPlacementStatus(id);
-                assert(status && std::holds_alternative<editor::scene::ModelPlacementCancelled>(*status));
+                auto status = scene.modelCreationStatus(id);
+                assert(status && std::holds_alternative<editor::scene::ModelCreationCancelled>(*status));
                 assert(scene.objects().size() == count);
                 std::puts("pending placement close: retained sender delivered cancellation; no late model insertion");
             });

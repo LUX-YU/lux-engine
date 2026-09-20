@@ -22,10 +22,10 @@
 #include <lux/engine/function/render/graph/RGEnums.hpp>
 #include <lux/engine/render/graph/PassRecordContext.hpp>
 #include <lux/engine/render/resources/lighting/ShadowResources.hpp>
-#include <lux/engine/function/render/client/resources/lighting/ShadowMapTypes.hpp> // ShadowSliceGPU
+#include <lux/engine/function/render/features/resources/lighting/ShadowMapTypes.hpp> // ShadowSliceGPU
 #include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/function/render/client/features/shadow/MeshShadowOperation.hpp> // kMeshShadowDrawPassName
-#include <lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp>  // kEvsmBlurVPassName
+#include <lux/engine/function/render/features/shadow/MeshShadowOperation.hpp> // kMeshShadowDrawPassName
+#include <lux/engine/function/render/features/shadow/ShadowMapOperation.hpp>  // kEvsmBlurVPassName
 #include <lux/engine/render/scene/View.hpp>
 
 #include <array>

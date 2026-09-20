@@ -5,7 +5,7 @@
 
 #include <array>
 #include <lux/engine/render/renderer/features/gizmo/LineListTransientFeature.hpp>
-#include <lux/engine/function/render/client/features/gizmo/GizmoVertex.hpp>
+#include <lux/engine/function/render/features/gizmo/GizmoVertex.hpp>
 
 #include <lux/engine/render/graph/RGBuilder.hpp>
 #include <lux/engine/function/render/graph/RGEnums.hpp>

@@ -313,7 +313,7 @@ namespace lux::editor::scene
           public:
             FieldEdit(SceneEditor &owner, SceneWriteTarget target, std::string_view field, std::string_view label,
                       Access access, const Value &before, const Value &after, bool already_applied)
-                : owner_(owner), target_(target), field_(field), label_(label), access_(std::move(access)),
+                : owner_(owner), target_(target), identity_(owner.fieldIdentity(target)), field_(field), label_(label), access_(std::move(access)),
                   before_(before), already_applied_(already_applied)
             {
                 if (!already_applied_)
@@ -440,7 +440,7 @@ namespace lux::editor::scene
           private:
             editing::EditResult<Value *> locate(bool current) const
             {
-                auto component = owner_.fieldAccess(target_, lux::cxx::typeToken<Component>(), current);
+                auto component = owner_.fieldAccess(owner_.replayTarget(target_, identity_), lux::cxx::typeToken<Component>(), current);
                 if (!component)
                 {
                     return lux::cxx::unexpected(component.error());
@@ -499,7 +499,8 @@ namespace lux::editor::scene
 
                 void publish(const editing::CommitInfo &) noexcept override
                 {
-                    operation_.owner_.fieldChanged(operation_.target_, lux::cxx::typeToken<Component>(), false);
+                    operation_.owner_.fieldChanged(operation_.owner_.replayTarget(operation_.target_, operation_.identity_),
+                                                   lux::cxx::typeToken<Component>(), false);
                 }
 
                 struct AdoptExisting final
@@ -526,6 +527,7 @@ namespace lux::editor::scene
 
             SceneEditor &owner_;
             SceneWriteTarget target_;
+            lux::world::WorldObjectId identity_;
             std::string field_;
             std::string label_;
             Access access_;

@@ -13,12 +13,23 @@ add_component(
     OUTPUT_NAME    lux_engine_scene_render
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Builtin3DRenderStages.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Camera.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/CameraExtraction.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderRuntime.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderBinding.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderSchema.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSyncPipeline.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystemMetadata.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystem.cpp
+)
+include(${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/schema/cmake/engine_ecs_codegen.cmake)
+engine_target_add_ecs_component_codegen(
+    NAME scene_camera_component_codegen
+    TARGET scene_render
+    SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderSchema.cpp
+    HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/scene/Camera.hpp
+    LOGICAL_PATH lux/engine/scene/Camera.hpp
+    SYMBOL sceneCamera
 )
 engine_target_add_static_type_info(
     NAME scene_render_configuration_codegen
@@ -37,7 +48,7 @@ target_compile_definitions(scene_render PRIVATE LUX_ENGINE_SCENE_RENDER_LIBRARY)
 target_link_libraries(
     scene_render
     PUBLIC
-        lux::engine::function::render_client
+        lux::engine::function::render_feature_client
         lux::engine::scene::scene_composition
         lux::engine::scene::scene_meta
         lux::engine::simulation::ecs::core
@@ -49,7 +60,7 @@ target_link_libraries(
 component_add_transitive_commands(
     scene_render
     "find_package(EnTT CONFIG REQUIRED)"
-    "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS render_feature_client)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-engine-scene-meta REQUIRED COMPONENTS scene_meta)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core transform visual)"
@@ -93,3 +104,14 @@ lux_engine_install_components(
     NAMESPACE    lux::engine::scene
     COMPONENTS   scene_render scene_render_meta
 )
+
+if(BUILD_TESTING)
+    add_executable(scene_camera_test test/camera.cpp)
+    target_link_libraries(scene_camera_test PRIVATE scene_render lux::engine::core::math)
+    if(MSVC)
+        target_compile_options(scene_camera_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(scene_camera_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME scene.camera COMMAND scene_camera_test)
+endif()

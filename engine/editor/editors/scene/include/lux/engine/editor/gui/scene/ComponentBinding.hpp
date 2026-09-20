@@ -11,7 +11,7 @@ namespace lux::editor::gui
     {
         lux::cxx::TypeToken type;
         std::string name;
-        void (*draw)(scene::SceneEditor &, lux::world::WorldObjectId, lux::ui::Frame &, InspectorInteraction &);
+        void (*draw)(scene::SceneEditor &, scene::SceneEntityRef, lux::ui::Frame &, InspectorInteraction &);
         std::shared_ptr<const void> code_lifetime;
     };
 

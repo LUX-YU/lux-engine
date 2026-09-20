@@ -27,8 +27,8 @@
  * routed through this interface.
  */
 
-#include <lux/engine/function/render/client/resources/lighting/EShadowTechnique.hpp>
-#include <lux/engine/function/render/client/resources/EBuiltinShader.hpp>
+#include <lux/engine/function/render/features/resources/lighting/EShadowTechnique.hpp>
+#include <lux/engine/function/render/features/resources/EBuiltinShader.hpp>
 // EBuiltinShader enum only (avoids pulling embed byte arrays into shadow TUs)
 
 #include <cstdint>

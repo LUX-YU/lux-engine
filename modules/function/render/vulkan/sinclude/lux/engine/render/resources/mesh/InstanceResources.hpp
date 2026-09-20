@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
 #include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
 #include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
@@ -10,7 +11,7 @@
 #include <lux/engine/render/resources/mesh/MeshSectionTable.hpp>
 #include <lux/engine/render/gpu/memory/PagedGpuStream.hpp>
 #include <lux/engine/render/resources/mesh/SparseInstanceStream.hpp>
-#include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp>
+#include <lux/engine/function/render/features/resources/mesh/RenderObjectTypes.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/function/render/client/core/RenderSpatialTypes.hpp>
 #include <lux/engine/function/visibility.h>

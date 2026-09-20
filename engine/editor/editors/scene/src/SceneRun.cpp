@@ -4,13 +4,13 @@
 #include <lux/engine/editor/scene/detail/SceneObjects.hpp>
 #include <lux/engine/editor/scene/detail/SceneRun.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/MeshQuerySystem.hpp>
 #include <lux/engine/scene/Scene.hpp>
 #include <lux/engine/scene/SceneRenderBinding.hpp>
 #include <lux/engine/scene/WorldMaterializer.hpp>
 #include <lux/engine/simulation/ecs/ComponentChangeSet.hpp>
 #include <lux/engine/simulation/ecs/Parent.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
-#include <random>
 
 namespace lux::editor::scene
 {
@@ -109,7 +109,6 @@ namespace lux::editor::scene::detail
             std::vector<lux::simulation::ecs::Entity> changed_entities;
             std::vector<entt::scoped_connection> catalog_connections;
             std::vector<bool> selected_components;
-            std::mt19937 identity_random{std::random_device{}()};
 
             void entityChanged(lux::simulation::ecs::Registry &, lux::simulation::ecs::Entity entity)
             {
@@ -128,32 +127,20 @@ namespace lux::editor::scene::detail
                 bool changed = !changed_entities.empty() || std::exchange(hierarchy_dirty, false);
                 for (const auto entity : changed_entities)
                 {
-                    const auto id = objects.identities.object(entity);
+                    const auto ref = objects.reference(entity);
                     if (!registry.valid(entity))
                     {
-                        if (id.valid())
+                        objects.identities.unbind(entity);
+                        std::erase_if(objects.rows, [&](const auto &row) { return row.object == ref; });
+                        std::erase_if(objects.component_versions, [&](const auto &row) { return row.object == ref; });
+                        if (objects.selection.object == ref)
                         {
-                            objects.identities.unbind(entity);
-                            std::erase_if(objects.rows, [&](const auto &row) { return row.object == id; });
-                            std::erase_if(objects.component_versions,
-                                          [&](const auto &row) { return row.object == id; });
-                            if (objects.selection.object == id)
-                            {
-                                objects.selection.object = {};
-                            }
+                            objects.selection.object = objects.reference(ecs::NullEntity);
                         }
                     }
-                    else if (!id.valid())
+                    else if (std::ranges::find(objects.rows, ref, &SceneObjectRow::object) == objects.rows.end())
                     {
-                        uuids::uuid_random_generator generate(identity_random);
-                        lux::world::WorldObjectId created;
-                        do
-                        {
-                            created = {generate()};
-                        } while (!created.valid() || objects.identities.entity(created) != ecs::NullEntity);
-                        const bool bound = objects.identities.bind(created, entity);
-                        assert(bound);
-                        objects.rows.push_back({created, {}, "Runtime object"});
+                        objects.rows.push_back({ref, {}, "Runtime object"});
                     }
                 }
                 changed_entities.clear();
@@ -161,15 +148,15 @@ namespace lux::editor::scene::detail
                 {
                     for (auto &row : objects.rows)
                     {
-                        const auto entity = objects.identities.entity(row.object);
+                        const auto entity = objects.resolve(row.object);
                         const auto *parent = registry.try_get<ecs::Parent>(entity);
-                        row.parent = parent ? objects.identities.object(parent->entity) : lux::world::WorldObjectId{};
+                        row.parent = objects.reference(parent ? parent->entity : ecs::NullEntity);
                     }
-                    std::ranges::sort(objects.rows, lux::world::WorldObjectIdLess{}, &SceneObjectRow::object);
+                    std::ranges::sort(objects.rows, std::less<SceneEntityRef>{}, &SceneObjectRow::object);
                 }
                 // The Inspector needs only the selected entity's component directory.
                 // No per-step copy or scan of all component values is required.
-                const auto selected = objects.identities.entity(objects.selection.object);
+                const auto selected = objects.resolve(objects.selection.object);
                 std::size_t index{};
                 for (const auto &schema : objects.metadata.components().all())
                 {
@@ -279,8 +266,13 @@ namespace lux::editor::scene::detail
                 providers.push_back(lux::scene::makeSceneCapabilityProvider<lux::scene::SceneRenderInput>(
                     "main-window", "lux.render.input", *input));
             }
+            auto description = editorSceneDescription(*source);
+            if (!description)
+            {
+                return lux::cxx::unexpected(description.error());
+            }
             auto created = lux::scene::Scene::create(
-                {std::shared_ptr<const lux::scene::SceneDescription>(source->scene, &source->scene->data()), world,
+                {std::move(*description), world,
                  std::shared_ptr<const lux::simulation::SimulationDescription>(source->simulation,
                                                                                &source->simulation->data()),
                  *metadata.scene, providers, lux::simulation::ESimulationMode::EVOLUTION});
@@ -318,6 +310,17 @@ namespace lux::editor::scene::detail
                     return invalid("run.resource.identity");
                 }
                 (*created)->registry().emplace<lux::scene::ResolvedMeshResources>(entity, resource.value);
+                if (auto *query = (*created)->findSceneSystem<lux::scene::MeshQuerySystem>())
+                {
+                    if (resource.geometry)
+                    {
+                        query->setGeometry(resource.value.mesh_source, *resource.geometry);
+                    }
+                    else
+                    {
+                        query->setGeometryFailure(resource.value.mesh_source, resource.geometry.error());
+                    }
+                }
             }
             auto sealed = (*created)->simulation().seal();
             if (!sealed)
@@ -361,6 +364,15 @@ namespace lux::editor::scene::detail
     SceneObjects *SceneRun::objects() noexcept
     {
         return data_->active ? &data_->active->objects : nullptr;
+    }
+    lux::scene::SceneRenderBinding *SceneRun::renderBinding() noexcept
+    {
+        return data_->binding.get();
+    }
+
+    lux::scene::Scene *SceneRun::scene() noexcept
+    {
+        return data_->active ? data_->active->scene.get() : nullptr;
     }
     bool SceneRun::takeCatalogChange() noexcept
     {

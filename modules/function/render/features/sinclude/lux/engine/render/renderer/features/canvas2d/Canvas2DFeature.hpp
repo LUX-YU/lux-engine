@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file Canvas2DFeature.hpp
  * @brief The SinglePerScene GPU-driven 2D canvas (v2 — the implementation).
@@ -31,7 +32,7 @@ namespace lux::render
 {
     class Canvas2DInstanceArena; // scene-registry instance store (Canvas2DInstanceArena.hpp)
 
-    class LUX_FUNCTION_PUBLIC Canvas2DFeature final : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC Canvas2DFeature final : public RenderFeature
     {
     public:
         struct Config

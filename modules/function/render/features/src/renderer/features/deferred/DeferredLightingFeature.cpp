@@ -14,19 +14,19 @@
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
 #include <lux/engine/render/graph/RGRecorder.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/function/render/client/features/deferred/DeferredGBufferOperation.hpp>
+#include <lux/engine/function/render/features/deferred/DeferredGBufferOperation.hpp>
 // kDeferredGBufferDrawPassName
-#include <lux/engine/function/render/client/features/shadow/MeshShadowOperation.hpp>        // kMeshShadowDrawPassName
-#include <lux/engine/function/render/client/features/shadow/ShadowMapOperation.hpp>
+#include <lux/engine/function/render/features/shadow/MeshShadowOperation.hpp>        // kMeshShadowDrawPassName
+#include <lux/engine/function/render/features/shadow/ShadowMapOperation.hpp>
 // kShadowViewUploadPassName / kEvsmBlurVPassName
 #include <lux/engine/render/scene/View.hpp>
 #include <lux/engine/render/renderer/features/view_camera/ViewCameraResource.hpp>
 #include <lux/engine/render/renderer/features/shadow/ShadowMapFeature.hpp>         // attach 期 technique 交叉校验
 #include <lux/engine/render/renderer/features/deferred/DeferredGBufferFeature.hpp> // attach 期 local-read 交叉校验
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp> // FeatureFactory 完整定义(genops 头只前置声明)
-#include <lux/engine/function/render/client/genops/ShadowMapOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/ShadowMapOperation.ops.hpp>
 // kShadowMapFeatureFactory.descriptor.type
-#include <lux/engine/function/render/client/genops/DeferredGBufferOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/DeferredGBufferOperation.ops.hpp>
 // kDeferredGBufferFeatureFactory.descriptor.type
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/VulkanCheck.hpp>

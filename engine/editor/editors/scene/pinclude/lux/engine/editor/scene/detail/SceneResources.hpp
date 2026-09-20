@@ -1,10 +1,11 @@
 #pragma once
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <atomic>
 #include <lux/engine/editor/rendering/EditorRenderer.hpp>
 #include <lux/engine/editor/scene/SceneResources.hpp>
 #include <lux/engine/editor/scene/detail/SceneAssetTasks.hpp>
-#include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>
-#include <lux/engine/function/render/client/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MaterialOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
 #include <lux/engine/resource/asset/material/MaterialAssets.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
@@ -60,6 +61,7 @@ namespace lux::editor::scene::detail
     {
         lux::world::WorldObjectId object;
         lux::scene::ResolvedMeshResources value;
+        lux::scene::QueryResult<std::shared_ptr<const lux::scene::MeshQueryGeometry>> geometry;
     };
 
     // Main owns the pins; the worker only receives copies of values(). Resource
@@ -88,11 +90,12 @@ namespace lux::editor::scene::detail
     class SceneResources final
     {
       public:
-        SceneResources(editing::HistoryId, lux::process::asset_loading::AssetReadPort, rendering::EditorRenderer *,
+        SceneResources(editing::HistoryId, SceneInstanceId, lux::process::asset_loading::AssetReadPort, rendering::EditorRenderer *,
                        std::size_t);
         ~SceneResources() noexcept;
         SceneResult<void> activate() noexcept;
         SceneResult<bool> prepareUpdate(lux::simulation::ecs::Registry &) noexcept;
+        void synchronizeQuery(lux::scene::MeshQuerySystem &);
         [[nodiscard]] SceneResult<SceneResourcePins> freeze(const lux::simulation::ecs::Registry &,
                                                             const lux::simulation::ecs::WorldEntityMap &);
         void acknowledgeSnapshot() noexcept;
@@ -114,6 +117,7 @@ namespace lux::editor::scene::detail
 
       private:
         editing::HistoryId history_;
+        SceneInstanceId instance_;
         lux::process::asset_loading::AssetReadPort port_;
         rendering::EditorRenderer *renderer_{};
         lux::scene::RenderRuntimeLease runtime_;
@@ -121,6 +125,9 @@ namespace lux::editor::scene::detail
         // Non-owning current association. Full Entity includes its generation; the pointed-to key owns sources.
         // Superseded requests remain exclusively owned by requests_ until their real retirement completes.
         std::unordered_map<lux::simulation::ecs::Entity, ResourceRequest *> current_requests_;
+        std::unordered_map<lux::asset::AssetId, std::weak_ptr<AssetResult<lux::asset::MeshAsset>>> mesh_reads_;
+        std::vector<lux::asset::AssetId> query_sources_;
+        void shareMeshRead(ResourceRequest &);
         std::size_t capacity_{};
         std::size_t refresh_reservations_{};
         std::uint64_t sequence_{};

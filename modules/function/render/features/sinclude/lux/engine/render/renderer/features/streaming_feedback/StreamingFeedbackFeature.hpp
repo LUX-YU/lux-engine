@@ -1,7 +1,8 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 
 #include <lux/engine/render/renderer/features/GpuDrivenMeshFeatureBase.hpp>
-#include <lux/engine/function/render/client/features/streaming_feedback/StreamingFeedbackOperation.hpp>
+#include <lux/engine/function/render/features/streaming_feedback/StreamingFeedbackOperation.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/function/visibility.h>
 
@@ -15,7 +16,7 @@ namespace lux::render
 {
     /// Optional mesh-surface streaming overlay.  It owns an extra mask and
     /// fullscreen composite pass; standard material shaders stay branch-free.
-    class LUX_FUNCTION_PUBLIC StreamingFeedbackFeature final : public GpuDrivenMeshFeatureBase
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC StreamingFeedbackFeature final : public GpuDrivenMeshFeatureBase
     {
     public:
         struct Config final

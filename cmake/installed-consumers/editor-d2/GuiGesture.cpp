@@ -20,7 +20,7 @@ namespace consumer
         OmissionProbe *omission{};
     } // namespace
 
-    bool drawOmissionProbe(lux::editor::scene::SceneEditor &document, lux::world::WorldObjectId object,
+    bool drawOmissionProbe(lux::editor::scene::SceneEditor &document, lux::editor::scene::SceneEntityRef object,
                            lux::ui::Frame &frame, lux::editor::gui::InspectorInteraction &interaction)
     {
         if (!omission)
@@ -214,7 +214,7 @@ namespace consumer
             "selection while destroyed, rebuilt Inspector refresh and edit/Undo pass with isolated subscriptions");
     }
 
-    void checkCompletedGesture(lux::editor::scene::SceneEditor &document, lux::world::WorldObjectId object,
+    void checkCompletedGesture(lux::editor::scene::SceneEditor &document, lux::editor::scene::SceneEntityRef object,
                                lux::ui::Frame &frame)
     {
         using namespace lux::editor;

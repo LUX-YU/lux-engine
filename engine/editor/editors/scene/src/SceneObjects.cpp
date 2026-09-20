@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <atomic>
 #include <lux/engine/editor/scene/detail/SceneObjects.hpp>
 #include <lux/engine/simulation/ecs/Parent.hpp>
 
@@ -15,8 +16,9 @@ namespace lux::editor::scene::detail
         const lux::simulation::ecs::WorldEntityMap &mapping) const
     {
         namespace ecs = lux::simulation::ecs;
-        ObjectContent result{std::move(row), {}};
-        const auto entity = mapping.entity(result.row.object);
+        const auto entity = resolve(row.object);
+        ObjectContent result{{mapping.object(entity), mapping.object(row.parent.entity),
+                              std::move(row.label), row.partition}, {}};
         std::size_t retained{};
         for (const auto &schema : metadata.components().all())
         {
@@ -25,10 +27,7 @@ namespace lux::editor::scene::detail
             {
                 continue;
             }
-            const bool declared =
-                std::ranges::find(source.world->data().schemas(), schema.id.name,
-                                  &lux::world::WorldDataSchemaId::name) != source.world->data().schemas().end();
-            if (!declared || !schema.capture || !schema.decode_value)
+            if (!schema.capture || !schema.decode_value)
             {
                 return structureFailure(ESceneStructureError::MISSING_PROVIDER, schema.id.name);
             }
@@ -52,7 +51,7 @@ namespace lux::editor::scene::detail
     {
         if (first.object != second.object)
         {
-            return lux::world::WorldObjectIdLess{}(first.object, second.object);
+            return first.object < second.object;
         }
         return first.component.hash() < second.component.hash();
     }
@@ -61,30 +60,41 @@ namespace lux::editor::scene::detail
                                const lux::scene::SceneMetaManager &meta, lux::simulation::ecs::WorldEntityMap mapping)
         : registry(storage), source(content), metadata(meta), identities(std::move(mapping))
     {
+        static std::atomic<std::uint64_t> next_instance{1};
+        auto next = next_instance.load(std::memory_order_relaxed);
+        do
+        {
+            if (next == UINT64_MAX)
+            {
+                std::terminate();
+            }
+        } while (!next_instance.compare_exchange_weak(next, next + 1, std::memory_order_relaxed));
+        instance = {next};
+        selection.object = reference(lux::simulation::ecs::NullEntity);
         rows.reserve(identities.size());
         for (const auto &[id, entity] : identities.entries())
         {
-            SceneObjectRow row{id, {}, "Object " + std::to_string(rows.size() + 1)};
+            SceneObjectRow row{reference(entity), reference(lux::simulation::ecs::NullEntity), "Object " + std::to_string(rows.size() + 1)};
             if (const auto *parent = registry.try_get<lux::simulation::ecs::Parent>(entity))
             {
-                row.parent = identities.object(parent->entity);
+                row.parent = reference(parent->entity);
             }
             rows.push_back(std::move(row));
         }
-        std::ranges::sort(rows, lux::world::WorldObjectIdLess{}, &SceneObjectRow::object);
+        std::ranges::sort(rows, std::less<SceneEntityRef>{}, &SceneObjectRow::object);
         for (const auto &partition : source.partitions)
         {
             for (std::size_t index{}; index < partition.objectCount(); ++index)
             {
                 const auto object = partition.objectAt(index).id();
                 auto row =
-                    std::ranges::lower_bound(rows, object, lux::world::WorldObjectIdLess{}, &SceneObjectRow::object);
+                    std::ranges::lower_bound(rows, authorReference(object), std::less<SceneEntityRef>{}, &SceneObjectRow::object);
                 row->partition = partition.partition();
             }
         }
         for (const auto &row : rows)
         {
-            const auto entity = identities.entity(row.object);
+            const auto entity = row.object.entity;
             for (const auto &schema : metadata.components().all())
             {
                 if (schema.operations.has(registry, entity))

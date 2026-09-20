@@ -1,6 +1,6 @@
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
-#include <lux/engine/function/render/client/features/forward/ForwardMeshOperation.hpp>
+#include <lux/engine/function/render/features/forward/ForwardMeshOperation.hpp>
 #include <lux/engine/render/renderer/features/forward/ForwardMeshFeature.hpp>
 #include <lux/engine/render/resources/ShaderResources.hpp>
 #include <lux/engine/render/resources/BuiltinShaderRegistry.hpp>

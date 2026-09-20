@@ -1,6 +1,7 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 
-#include <lux/engine/function/render/client/features/render_cluster/RenderClusterOperation.hpp>
+#include <lux/engine/function/render/features/render_cluster/RenderClusterOperation.hpp>
 
 #include <cstddef>
 #include <functional>
@@ -17,7 +18,7 @@ namespace lux::render
     class DeviceContext;
     class DeferredDestroyQueue;
     class InstanceResources;
-    class LUX_FUNCTION_PUBLIC RenderClusterResources final
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC RenderClusterResources final
     {
     public:
         static constexpr std::uint32_t kPickTokenBits = 19u;

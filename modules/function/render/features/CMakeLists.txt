@@ -28,14 +28,14 @@ if(NOT LUX_BUILD_PACKED_RENDER_CONTENT)
     target_link_libraries(
         render_features
         PUBLIC
-            lux::engine::function::render_client
+            lux::engine::function::render_feature_client
             lux::cxx::compile_time
     )
-    component_add_internal_dependencies(render_features render_client)
+    component_add_internal_dependencies(render_features render_feature_client)
     component_add_transitive_commands(
         render_features
         "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
-        "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"
+        "find_package(lux-engine-function REQUIRED COMPONENTS render_feature_client)"
     )
 
     return()
@@ -177,6 +177,7 @@ target_compile_definitions(
     render_features
     PRIVATE
         LUX_FUNCTION_LIBRARY
+        LUX_ENGINE_FUNCTION_RENDER_FEATURES_LIBRARY
 )
 
 if(WIN32)
@@ -264,12 +265,12 @@ engine_add_pass_params(
 # 与 .client.ops.cpp；此处只生成需要 Vulkan 特性实现的服务端 .ops.cpp。
 # 手写残余=handle<Op> 语义；非同构 createFn 仍用 custom_create=true 逃生舱。
 # ---------------------------------------------------------------------------
-include(${CMAKE_CURRENT_SOURCE_DIR}/../client/cmake/render_comm_operations.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/render_comm_operations.cmake)
 
 engine_add_comm_ops(
     NAME                  render_comm_ops
     IMPLEMENTATION_TARGET render_features
-    INCLUDE_PREFIX        lux/engine/function/render/client/genops
+    INCLUDE_PREFIX        lux/engine/function/render/features/genops
     TARGET_FILES          ${LUX_RENDER_COMM_OPERATION_HEADERS}
 )
 
@@ -747,43 +748,3 @@ component_register_runtime_assets(
 )
 
 # ---------------------------------------------------------------------------
-# Reflection code generation — EDITOR-ONLY sidecar (mirrors gameplay_meta).
-#
-# Render features opt into the feature-driven quality/tier system by declaring
-# a runtime-reflectable parameter struct (e.g. TonemapParams). The editor
-# enumerates those structs via ReflectionRegistry::findClass to build a generic
-# settings panel. The generated .meta.cpp compile into a SEPARATE shared
-# library `render_meta` that ONLY the editor links, so shipped runtime render
-# components embed no reflection symbols / type-name strings / registrar statics.
-# Editor-only parameter reflection sidecar.
-# See the implementation.
-# ---------------------------------------------------------------------------
-if(LUX_PROFILE_HAS_EDITOR)
-    include_component_cmake_scripts(meta)
-
-    # Sidecar SHARED lib FIRST so engine_enable_module_meta can attach the
-    # generated sources. The anchor .cpp gives the generator a TU to derive
-    # include paths / flags from; every other .cpp it ships is generated.
-    add_library(render_meta SHARED
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/meta_sidecar_anchor.cpp)
-
-    set_target_properties(render_meta PROPERTIES
-        OUTPUT_NAME lux_engine_function_render_meta)
-    target_link_libraries(render_meta
-        PRIVATE
-            render_features              # registration funcs reference feature param types
-            lux::engine::core::meta      # ReflectionRegistry / MetaModuleRegistrar
-    )
-    # Match the runtime module's exported-symbol macro so generated functions
-    # are dllexport'ed from the sidecar.
-    target_compile_definitions(render_meta PRIVATE LUX_FUNCTION_LIBRARY)
-
-    engine_enable_module_meta(
-        TARGET         render_features
-        SIDECAR_TARGET render_meta
-        TARGET_FILES
-            ${CMAKE_CURRENT_SOURCE_DIR}/../client/include/lux/engine/function/render/client/features/postprocess/TonemapParams.hpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/../client/include/lux/engine/function/render/client/features/spatialcull/SpatialCullParams.hpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/../client/include/lux/engine/function/render/client/features/shadow/ShadowQualityParams.hpp
-    )
-endif()

@@ -1,5 +1,6 @@
 #pragma once
-#include <lux/engine/function/render/client/features/GpuDrivenMeshExtFlags.hpp>
+#include <lux/engine/function/render/features/visibility.h>
+#include <lux/engine/function/render/features/GpuDrivenMeshExtFlags.hpp>
 /**
  * @file GpuDrivenMeshFeatureBase.hpp
  * @brief Common base class for GPU-driven mesh render features.
@@ -20,12 +21,12 @@
 #include <lux/engine/render/gpu/pipeline/ShaderPermutation.hpp>
 #include <lux/engine/render/gpu/ShaderObject.hpp>
 #include <lux/engine/render/gpu/VmaFwd.hpp>
-#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp> // VertexLayoutId
+#include <lux/engine/function/render/features/core/VertexLayoutTypes.hpp> // VertexLayoutId
 #include <lux/engine/render/resources/material/MaterialFamily.hpp>      // EShadingModel
 #include <lux/engine/render/graph/RGPassTypes.hpp>
 #include <lux/engine/render/resources/mesh/MeshInstanceExtData.hpp>
 #include <lux/engine/function/render/graph/RGEnums.hpp>                           // phaseBit / ECoreRenderPhase
-#include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp> // EPassDomain / PassMask
+#include <lux/engine/function/render/features/resources/mesh/RenderObjectTypes.hpp> // EPassDomain / PassMask
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/gapi/vk/Pipeline.hpp>
 
@@ -51,7 +52,7 @@ namespace lux::render
     // =========================================================================
     //  GpuDrivenMeshFeatureBase
     // =========================================================================
-    class LUX_FUNCTION_PUBLIC GpuDrivenMeshFeatureBase : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC GpuDrivenMeshFeatureBase : public RenderFeature
     {
     public:
         /// Direct access to the three-stream instance storage.
@@ -107,6 +108,7 @@ namespace lux::render
             std::string_view compact_pass_name; ///< e.g. "ForwardMeshForwardCompact"
             uint32_t descriptor_layout_version{0};
             GpuDrivenMeshExtFlags extension_flags{};
+            RGResourceHandle instance_filter{}; // Optional per-slot inclusion mask.
             //(原有 condition / condition_tag 两个字段已删:整链跳过现在由调用方
             // 用 RGBuilder::conditionChain 开一个作用域,本函数建的 pass 经
             // builder.addPass 出来即自动入链,不必再逐个把条件传进来。)

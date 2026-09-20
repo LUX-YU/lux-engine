@@ -1,3 +1,4 @@
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/render/resources/lighting/LightResources.hpp>
 #include <vk_mem_alloc.h>
 #include <lux/engine/render/gpu/descriptor/SceneDescriptorArena.hpp>

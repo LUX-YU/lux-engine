@@ -1,6 +1,7 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 
-#include <lux/engine/function/render/client/features/terrain/TerrainOperation.hpp>
+#include <lux/engine/function/render/features/terrain/TerrainOperation.hpp>
 #include <lux/engine/render/core/FrameRetireScheduler.hpp>
 #include <lux/engine/function/visibility.h>
 
@@ -18,7 +19,7 @@ namespace lux::render
     class DeviceContext;
     class DeferredDestroyQueue;
 
-    class LUX_FUNCTION_PUBLIC TerrainResources final
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC TerrainResources final
     {
     public:
         struct alignas(16) GpuPageMeta final

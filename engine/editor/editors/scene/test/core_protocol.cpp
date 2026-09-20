@@ -6,6 +6,7 @@
 #include "run_checks.hpp"
 #include "scene_edit_checks.hpp"
 #include "scene_save_checks.hpp"
+#include "spatial_checks.hpp"
 #include <array>
 #include <atomic>
 #include <cassert>
@@ -434,6 +435,12 @@ class Probe final : public EditorFrontend
             assert(!scene.undo() && !scene.redo());
             assert(scene.historyView()->history.revision == before.history.revision);
             evidence_.checks += 9;
+            if (evidence_.mode == "save-spatial")
+            {
+                checkSpatialEditing(scene);
+                stage_ = 100;
+                return;
+            }
             if (evidence_.mode == "transform-sync")
             {
                 checkProgramAdmissionOrder();
@@ -484,11 +491,13 @@ class Probe final : public EditorFrontend
                     evidence_.renderer->openView(*scene.renderScene(), {{256, 128}, true, scene.coordinatePageSize()});
                 assert(opened);
                 extra_view_ = std::move(*opened);
-                rendering::CameraFrame frame;
-                frame.view = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, -8, 1};
-                frame.projection = {0.8660254, 0, 0, 0, 0, -1.7320508, 0, 0, 0, 0, -1.0005, -1, 0, 0, -0.05, 0};
-                frame.desired = {scene.historyId().value, 0, 1, 1};
-                assert(extra_view_->setCamera(frame));
+                const auto editor_camera = scene.viewportCamera();
+                assert(editor_camera);
+                const auto camera = scene.createCameraFromView(*editor_camera, scene.historyView()->history.current,
+                                                               lux::partition::PartitionOrdinal{0});
+                assert(camera);
+                extra_camera_ = *camera;
+                assert(extra_view_->setOutput({scene.historyId().value, 0, 1, 1}, true));
                 stage_ = 20;
                 return;
             }
@@ -525,6 +534,16 @@ class Probe final : public EditorFrontend
             checkSceneEditing(scene);
             before_revision_ = scene.historyView()->history.revision;
             stage_ = 5;
+            return;
+        }
+        if (stage_ == 100)
+        {
+            auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
+            if (spatial_run_.poll(scene))
+            {
+                save_checks_.begin(scene, evidence_.mode);
+                stage_ = 40;
+            }
             return;
         }
         if (stage_ == 96)
@@ -622,6 +641,10 @@ class Probe final : public EditorFrontend
             auto current = editor_->document(std::get<DocumentHandle>(*state));
             assert(current);
             save_checks_.reopened(dynamic_cast<lux::editor::scene::SceneEditor &>(current->get()));
+            if (evidence_.mode == "save-spatial")
+            {
+                checkReopenedCameras(dynamic_cast<lux::editor::scene::SceneEditor &>(current->get()));
+            }
             evidence_.checks += 6;
             if (evidence_.mode == "save-import-model")
             {
@@ -641,6 +664,12 @@ class Probe final : public EditorFrontend
         }
         if (stage_ == 20)
         {
+            auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
+            if (!extra_view_->handle().isValid())
+            {
+                return;
+            }
+            assert(scene.bindCamera(extra_camera_, extra_view_->handle(), 2.0));
             auto image = extra_view_->acquireImage();
             if (!image)
             {
@@ -728,6 +757,8 @@ class Probe final : public EditorFrontend
             assert(next);
             resize_ready_at_ = std::chrono::steady_clock::now();
             held_image_ = std::move(*next);
+            auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
+            scene.unbindCamera(extra_camera_, extra_view_->handle());
             assert(extra_view_->beginClose());
             const auto close = extra_view_->advanceClose();
             assert(close && *close == rendering::ERenderClose::PENDING);
@@ -1303,7 +1334,8 @@ class Probe final : public EditorFrontend
     DocumentHandle material_;
     std::size_t material_frame_{};
     SceneSaveChecks save_checks_;
-    ModelPlacementChecks placement_checks_;
+    SpatialRunChecks spatial_run_;
+    ModelCreationChecks placement_checks_;
     SceneRunChecks run_checks_;
     CpuRunChecks cpu_run_checks_;
     RunFailureChecks run_failure_checks_;
@@ -1331,6 +1363,7 @@ class Probe final : public EditorFrontend
     std::chrono::steady_clock::time_point packet_blocked_at_, resize_requested_at_, image_released_at_,
         resize_ready_at_;
     std::unique_ptr<rendering::RenderView> extra_view_;
+    lux::editor::scene::SceneEntityRef extra_camera_;
     rendering::ViewImage held_image_;
     rendering::EditorFramePacket pending_packet_;
     lux::process::TaskScope background_;

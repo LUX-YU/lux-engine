@@ -13,12 +13,13 @@
 //  RenderServer.cpp),不再 include 服务端的私有 Impl 头。
 // ============================================================================
 
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
 // Dispatcher, Ctx, replyToCurrent, FeatureFactory, resolveExternalData/resolveBlob
 #include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp> // typed-op register/unregister
-#include <lux/engine/function/render/client/genops/MaterialOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MaterialOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/material/StandardMaterialFeature.hpp>
-#include <lux/engine/function/render/client/resources/material/GraphMaterialData.hpp>
+#include <lux/engine/function/render/features/resources/material/GraphMaterialData.hpp>
 #include <lux/engine/render/resources/material/MaterialResources.hpp> // MaterialResources, MaterialHandle, submitGraph
 #include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp> // getMaterialSetLayout()
 #include <lux/engine/description/MaterialEnums.hpp>                      // rdesc::EAlphaMode

@@ -56,7 +56,8 @@ namespace lux::editor::scene::detail
             {
                 return lux::cxx::unexpected(SceneFailure{ESceneError::NOT_READY, history_});
             }
-            pins.values_.push_back({object, *resolved});
+            const auto &geometry = association->second->mesh_read->geometry;
+            pins.values_.push_back({object, *resolved, geometry});
         }
         // All rejection and vector preparation precedes pin acquisition.
         pins.requests_.reserve(pins.values_.size());
@@ -471,9 +472,9 @@ namespace lux::editor::scene::detail
         }
     }
 
-    SceneResources::SceneResources(editing::HistoryId id, lux::process::asset_loading::AssetReadPort port,
+    SceneResources::SceneResources(editing::HistoryId id, SceneInstanceId instance, lux::process::asset_loading::AssetReadPort port,
                                    rendering::EditorRenderer *renderer, std::size_t capacity)
-        : history_(id), port_(std::move(port)), renderer_(renderer), capacity_(capacity)
+        : history_(id), instance_(instance), port_(std::move(port)), renderer_(renderer), capacity_(capacity)
     {
         requests_.reserve(capacity);
         current_requests_.reserve(capacity);
@@ -583,6 +584,7 @@ namespace lux::editor::scene::detail
                         auto next = previous.row.key;
                         next.sequence = previous.refresh_sequence;
                         auto replacement = std::make_unique<ResourceRequest>(next);
+                        shareMeshRead(*replacement);
                         found->second = replacement.get();
                         requests_.push_back(std::move(replacement));
                         --refresh_reservations_;
@@ -619,7 +621,8 @@ namespace lux::editor::scene::detail
                     return fail(ESceneError::RESOURCE_FAILURE, history_);
                 }
                 auto request = std::make_unique<ResourceRequest>(
-                    ResourceRequestKey{{history_, entity}, visual.mesh, visual.material, sequence_ + 1});
+                    ResourceRequestKey{{instance_, entity}, visual.mesh, visual.material, sequence_ + 1});
+                shareMeshRead(*request);
                 // Finish all allocating preparation before admission/start. The entries vector was reserved
                 // at construction and remains below capacity; moving unique_ptr into it cannot fail.
                 current_requests_.emplace(entity, request.get());
@@ -676,6 +679,68 @@ namespace lux::editor::scene::detail
             }
             return changed;
         }
+    }
+
+    void SceneResources::shareMeshRead(ResourceRequest &request)
+    {
+        if (request.row.key.mesh.isNull() || request.row.key.material.isNull())
+        {
+            return;
+        }
+        auto &entry = mesh_reads_[request.row.key.mesh];
+        if (auto existing = entry.lock())
+        {
+            request.mesh_read = std::move(existing);
+        }
+        else
+        {
+            entry = request.mesh_read;
+        }
+    }
+
+    void SceneResources::synchronizeQuery(lux::scene::MeshQuerySystem &query)
+    {
+        std::erase_if(query_sources_, [&](auto source)
+        {
+            const bool used = std::ranges::any_of(current_requests_, [&](const auto &entry)
+            {
+                return entry.second->row.key.mesh == source;
+            });
+            if (!used)
+            {
+                query.removeGeometry(source);
+            }
+            return !used;
+        });
+        for (const auto &[entity, request] : current_requests_)
+        {
+            const auto &read = *request->mesh_read;
+            using State = AssetResult<lux::asset::MeshAsset>::EState;
+            const auto state = read.state.load(std::memory_order_acquire);
+            const auto source = request->row.key.mesh;
+            if (state == State::PENDING || source.isNull())
+            {
+                continue;
+            }
+            if (state == State::ERROR || state == State::CANCELLED)
+            {
+                query.setGeometryFailure(source, {state == State::ERROR
+                    ? lux::scene::EMeshQueryError::ASSET_FAILURE : lux::scene::EMeshQueryError::CANCELLED});
+            }
+            else if (read.geometry)
+            {
+                query.setGeometry(source, *read.geometry);
+            }
+            else
+            {
+                query.setGeometryFailure(source, read.geometry.error());
+            }
+            if (std::ranges::find(query_sources_, source) == query_sources_.end())
+            {
+                query_sources_.push_back(source);
+            }
+        }
+        std::erase_if(mesh_reads_, [](const auto &entry) { return entry.second.expired(); });
     }
 
     bool SceneResources::hasPendingWork() const noexcept
@@ -800,6 +865,10 @@ namespace lux::editor::scene::detail
             return fail(ESceneError::RESOURCE_FAILURE, history_);
         }
         refresh_reservations_ += additional;
+        for (const auto asset : assets)
+        {
+            mesh_reads_.erase(asset);
+        }
         for (const auto &[entity, request] : current_requests_)
         {
             if (!matches(*request))
@@ -819,7 +888,7 @@ namespace lux::editor::scene::detail
         {
             return fail(ESceneError::CLOSED, history_);
         }
-        if (key.target.history != history_)
+        if (key.target.instance != instance_)
         {
             return fail(ESceneError::STALE_DOCUMENT, history_);
         }
@@ -854,6 +923,8 @@ namespace lux::editor::scene::detail
             auto next = key;
             next.sequence = sequence_ + 1;
             auto replacement = std::make_unique<ResourceRequest>(next);
+            mesh_reads_.erase(next.mesh);
+            shareMeshRead(*replacement);
             *found = std::move(replacement);
             association->second = found->get();
             ++sequence_;

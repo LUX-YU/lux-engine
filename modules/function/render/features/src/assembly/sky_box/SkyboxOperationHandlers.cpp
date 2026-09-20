@@ -4,8 +4,8 @@
 //   extern 引用本文件的 handleSkyboxSet* 与 SkyboxCreateFn。)
 // ============================================================================
 #include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/function/render/client/features/sky_box/SkyboxOperation.hpp>
-#include <lux/engine/function/render/client/genops/SkyboxOperation.ops.hpp>
+#include <lux/engine/function/render/features/sky_box/SkyboxOperation.hpp>
+#include <lux/engine/function/render/features/genops/SkyboxOperation.ops.hpp>
 #include <lux/engine/render/renderer/features/sky_box/SkyboxFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 

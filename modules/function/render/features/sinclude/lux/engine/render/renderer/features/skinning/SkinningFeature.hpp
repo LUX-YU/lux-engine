@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file SkinningFeature.hpp
  * @brief Render-graph COMPUTE feature that pre-skins vertices.
@@ -41,7 +42,7 @@ namespace lux::render
 {
     class SkinningResources;
 
-    class LUX_FUNCTION_PUBLIC SkinningFeature : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC SkinningFeature : public RenderFeature
     {
     public:
         struct Config

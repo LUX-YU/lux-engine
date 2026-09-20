@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/cxx/concurrent/LockFreeQueue.hpp>
 #include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
 #include <lux/engine/render/core/FrameServices.hpp>
@@ -6,7 +7,7 @@
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
 #include <lux/engine/render/gpu/memory/ArenaAllocator.hpp>
 #include <lux/engine/render/gpu/memory/ChainedArenaAllocator.hpp>
-#include <lux/engine/function/render/client/core/VertexLayoutTypes.hpp> // A-5: lightweight leaf (no gapi/vk/vk.hpp)
+#include <lux/engine/function/render/features/core/VertexLayoutTypes.hpp> // A-5: lightweight leaf (no gapi/vk/vk.hpp)
 #include <lux/engine/render/gpu/memory/StagingBuffer.hpp>
 
 #include <lux/engine/function/render/client/core/Errors.hpp>

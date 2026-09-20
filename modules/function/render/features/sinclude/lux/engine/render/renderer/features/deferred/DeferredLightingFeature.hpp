@@ -1,10 +1,11 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp>
 #include <lux/engine/render/renderer/features/deferred/GBufferTypes.hpp>
-#include <lux/engine/function/render/client/genops/DeferredLightingOperation.ops.hpp>
-#include <lux/engine/function/render/client/resources/lighting/EShadowTechnique.hpp>
+#include <lux/engine/function/render/features/genops/DeferredLightingOperation.ops.hpp>
+#include <lux/engine/function/render/features/resources/lighting/EShadowTechnique.hpp>
 #include <lux/engine/render/gpu/lifecycle/FifOwned.hpp>
 #include <cstdint>
 #include <string>
@@ -58,7 +59,7 @@ namespace lux::render
     class LightResources;
     class ViewCameraResource;
 
-    class LUX_FUNCTION_PUBLIC DeferredLightingFeature : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC DeferredLightingFeature : public RenderFeature
     {
     public:
         /// 真身在 comm 层 DeferredLightingOperation.hpp(客户端用枚举名配置,

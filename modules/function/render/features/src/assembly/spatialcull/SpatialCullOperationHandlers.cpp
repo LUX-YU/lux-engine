@@ -7,7 +7,7 @@
 // ============================================================================
 
 #include <lux/engine/render/renderer/features/spatialcull/SpatialCullFeature.hpp>
-#include <lux/engine/function/render/client/features/spatialcull/SpatialCullOperation.hpp>
+#include <lux/engine/function/render/features/spatialcull/SpatialCullOperation.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 
 #include <lux/engine/render/comm/server/RenderServer.hpp>       // Dispatcher

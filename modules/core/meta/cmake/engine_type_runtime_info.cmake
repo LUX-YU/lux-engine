@@ -415,7 +415,7 @@ endfunction()
 
 function(engine_enable_module_meta)
     set(options)
-    set(one_value_args TARGET SIDECAR_TARGET)
+    set(one_value_args TARGET SIDECAR_TARGET REGISTER_FUNC_MACRO VISIBILITY_HEADER)
     set(multi_value_args TARGET_FILES)
     cmake_parse_arguments(ARGS "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
@@ -458,6 +458,12 @@ function(engine_enable_module_meta)
     string(TOUPPER "${_layer}" _UPPER_LAYER)
     set(_func_macro  "LUX_${_UPPER_LAYER}_PUBLIC")
     set(_vis_include "lux/engine/${_layer}/visibility.h")
+    if(ARGS_REGISTER_FUNC_MACRO)
+        set(_func_macro "${ARGS_REGISTER_FUNC_MACRO}")
+    endif()
+    if(ARGS_VISIBILITY_HEADER)
+        set(_vis_include "${ARGS_VISIBILITY_HEADER}")
+    endif()
 
     # --- derive output names from target slug --------------------------------
     set(_slug "${ARGS_TARGET}")

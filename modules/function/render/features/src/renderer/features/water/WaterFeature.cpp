@@ -1,6 +1,6 @@
 #include <lux/engine/render/renderer/features/water/WaterFeature.hpp>
 #include <lux/engine/render/renderer/features/BufferTransferSynchronization.hpp>
-#include <lux/engine/function/render/client/genops/FogOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/FogOperation.ops.hpp>
 
 #include <lux/engine/render/gpu/RenderContext.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>

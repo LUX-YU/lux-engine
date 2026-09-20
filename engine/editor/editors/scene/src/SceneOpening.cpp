@@ -4,12 +4,15 @@
 #include <lux/engine/editor/scene/NativeScene.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
 #include <lux/engine/editor/scene/detail/SceneRun.hpp>
-#include <lux/engine/function/render/client/core/RenderFeatureMetaModule.hpp>
+#include <lux/engine/function/render/features/BuiltinFeatures.hpp>
+#include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/SceneRenderBinding.hpp>
 #include <lux/engine/scene/SceneRenderSchema.hpp>
+#include <lux/engine/scene/MeshQuerySystem.hpp>
+#include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <lux/engine/simulation/TransformSystem.hpp>
 #include <lux/engine/simulation/ecs/HierarchySchema.hpp>
@@ -46,8 +49,9 @@ namespace lux::editor::scene
         const auto render = lux::scene::builtinRenderSystemRegistrations();
         const auto features = lux::render::builtinRenderFeatureRegistrations();
         const auto bindings = lux::scene::builtinRenderFeatureSceneBindings();
-        auto metadata =
-            lux::scene::SceneMetaManager::build({std::move(*set), std::move(systems), {render.begin(), render.end()}});
+        std::vector<lux::scene::SceneSystemRegistration> registrations(render.begin(), render.end());
+        registrations.push_back(lux::scene::builtinMeshQuerySystemRegistration());
+        auto metadata = lux::scene::SceneMetaManager::build({std::move(*set), std::move(systems), std::move(registrations)});
         if (!metadata)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "scene.metadata",
@@ -65,6 +69,65 @@ namespace lux::editor::scene
             std::make_shared<const lux::scene::RenderSystemMetadata>(std::move(*render_metadata))};
     }
 
+    EditorResult<std::shared_ptr<const lux::scene::SceneDescription>> detail::editorSceneDescription(const NativeScene &source)
+    {
+        const auto &description = source.scene->data();
+        const auto type = lux::scene::builtinMeshQuerySystemRegistration().type;
+        bool has_query{};
+        std::uint64_t next{1};
+        for (std::size_t index{}; index < description.systemCount(); ++index)
+        {
+            const auto system = description.systemAt(index);
+            has_query |= system.type() == type;
+            next = (std::max)(next, system.instanceId().value);
+        }
+        const auto schemas = source.world->data().schemas();
+        const bool spatial = std::ranges::find(schemas, "lux.ecs.Transform3D", &lux::world::WorldDataSchemaId::name) != schemas.end();
+        if (has_query || !spatial)
+        {
+            return std::shared_ptr<const lux::scene::SceneDescription>(source.scene, &description);
+        }
+        if (next == UINT64_MAX)
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "scene.query.install"});
+        }
+        // Editor-only capability composition. The immutable source description is preserved on save/export.
+        lux::scene::SceneDescriptionBuilder builder;
+        builder.setWorld(description.world());
+        builder.setSimulation(description.simulation());
+        lux::cxx::expected<void, lux::scene::SceneDescriptionFailure> result;
+        for (std::size_t index{}; result && index < description.systemCount(); ++index)
+        {
+            const auto system = description.systemAt(index);
+            result = builder.addSystem(system.instanceId(), system.instanceName(), system.type(), system.version(),
+                system.configurationSchemaName(), system.configurationSchemaVersion(), system.configurationPayload());
+            for (std::size_t binding{}; result && binding < system.requirementBindingCount(); ++binding)
+            {
+                const auto value = system.requirementBindingAt(binding);
+                result = builder.bindRequirement(system.instanceId(), value.requirement(), value.provider());
+            }
+        }
+        for (std::size_t index{}; result && index < description.dependencyCount(); ++index)
+        {
+            const auto dependency = description.dependencyAt(index);
+            result = builder.addDependency(dependency.before(), dependency.after());
+        }
+        if (result)
+        {
+            result = builder.addSystem({next + 1}, "editor.mesh-query", type, 1, {}, 0);
+        }
+        if (!result)
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "scene.query.install", 0, {}, result.error()});
+        }
+        auto built = std::move(builder).build();
+        if (!built)
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "scene.query.install", 0, {}, built.error()});
+        }
+        return std::make_shared<const lux::scene::SceneDescription>(std::move(*built));
+    }
+
     EditorResult<std::unique_ptr<lux::scene::SceneRenderBinding>> detail::beginSceneRendering(
         rendering::EditorRenderer &renderer, const NativeScene &source, const SceneEditorMetadata &metadata)
     {
@@ -76,7 +139,12 @@ namespace lux::editor::scene
             {
                 continue;
             }
-            auto started = lux::scene::SceneRenderBinding::begin(renderer, system, metadata.render);
+            // Visual editor contributions do not alter the persisted Scene description.
+            const std::array features{lux::render::kHighlightRenderFeatureRegistration.descriptor->type};
+            const auto schemas = source.world->data().schemas();
+            const bool meshes = std::ranges::find(schemas, "lux.ecs.Mesh3D", &lux::world::WorldDataSchemaId::name) != schemas.end();
+            auto started = lux::scene::SceneRenderBinding::begin(renderer, system, metadata.render,
+                meshes ? std::span<const lux::render::FeatureTypeId>{features} : std::span<const lux::render::FeatureTypeId>{});
             if (!started)
             {
                 return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE,

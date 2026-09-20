@@ -1,3 +1,4 @@
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <algorithm>
 #include <lux/engine/render/resources/material/MaterialResources.hpp>
 #include <lux/engine/render/resources/material/MaterialShaderKey.hpp>

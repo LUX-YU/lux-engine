@@ -7,7 +7,7 @@
  */
 #include <lux/engine/function/render/client/core/RenderTypes.hpp> // lux::math::Extent2u + kViewDataStrideBytes
 #include <lux/engine/render/core/FrustumCuller.hpp>               // exact-origin ViewCullData stride
-#include <lux/engine/function/render/client/resources/mesh/RenderObjectTypes.hpp>
+#include <lux/engine/function/render/features/resources/mesh/RenderObjectTypes.hpp>
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp> // ViewHandle (generational)
 #include <lux/engine/render/gpu/utils/Slot.hpp>                     // SlotHandle
 #include <lux/engine/function/visibility.h>

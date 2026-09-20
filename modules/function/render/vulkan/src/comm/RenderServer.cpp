@@ -1,3 +1,5 @@
+#include <lux/engine/function/render/features/meshstack/MeshStackOperation.hpp>
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/render/comm/server/RenderServerImpl.hpp>
 // (InitialViewCamera.hpp retired — initial camera is a StandardViewCamera op now.)
 #include <lux/engine/function/render/client/RenderProtocol.hpp>

@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/function/render/client/features/GpuDrivenMeshExtFlags.hpp>
+#include <lux/engine/function/render/features/GpuDrivenMeshExtFlags.hpp>
 // ============================================================================
 //  MeshCommConfigValidation.hpp — shared create-fn preamble for the GPU-driven
 //  mesh feature factories (DeferredGBuffer / ForwardMesh / MeshShadow).

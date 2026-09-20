@@ -2,11 +2,20 @@
 #include <lux/engine/editor/scene/SceneResources.hpp>
 #include <lux/engine/process/TaskScope.hpp>
 #include <atomic>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
+#include <lux/engine/scene/MeshQuerySystem.hpp>
 
 namespace lux::editor::scene::detail
 {
+    template <class T> struct PreparedAsset {};
+
+    template <> struct PreparedAsset<lux::asset::MeshAsset>
+    {
+        lux::scene::QueryResult<std::shared_ptr<const lux::scene::MeshQueryGeometry>> geometry;
+    };
+
     // A result has its own sender-held lifetime. Publishing ready is not permission to destroy the sender.
-    template <class T> struct AssetResult final
+    template <class T> struct AssetResult final : PreparedAsset<T>
     {
         enum class EState : std::uint8_t
         {
@@ -18,6 +27,7 @@ namespace lux::editor::scene::detail
         std::atomic<EState> state{EState::PENDING};
         std::shared_ptr<const T> value;
         lux::process::asset_loading::AssetLoadFailure failure;
+        bool started{}; // Main admission only; not read by the sender.
     };
 
     class ResourceTasks final
@@ -82,11 +92,26 @@ namespace lux::editor::scene::detail
             lux::process::asset_loading::AssetReadPort port, lux::asset::AssetId id,
             const std::shared_ptr<AssetResult<T>> &result) noexcept
         {
+            if (result->started)
+            {
+                return {};
+            }
             auto values = stdexec::then(
                 lux::process::asset_loading::loadAsset<T>(
                     std::move(port), id, lux::asset::AssetDecodeLimits{16 * 1024 * 1024, 32 * 1024 * 1024, 16}),
                 [result](std::shared_ptr<const T> value) noexcept
                 {
+                    if constexpr (std::same_as<T, lux::asset::MeshAsset>)
+                    {
+                        // Same Process completion as the decoded asset; never run from a ray query or draw.
+                        std::vector<Eigen::Vector3f> positions;
+                        positions.reserve(value->data().vertices.size());
+                        for (const auto &vertex : value->data().vertices)
+                        {
+                            positions.push_back(vertex.position);
+                        }
+                        result->geometry = lux::scene::MeshQueryGeometry::build(positions, value->data().indices);
+                    }
                     result->value = std::move(value);
                     result->state.store(AssetResult<T>::EState::VALUE, std::memory_order_release);
                 });
@@ -104,6 +129,7 @@ namespace lux::editor::scene::detail
             if (admitted)
             {
                 started_ = true;
+                result->started = true;
             }
             return admitted;
         }

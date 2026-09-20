@@ -1,6 +1,6 @@
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
-#include <lux/engine/function/render/client/features/shadow/MeshShadowOperation.hpp>
+#include <lux/engine/function/render/features/shadow/MeshShadowOperation.hpp>
 #include <lux/engine/render/renderer/features/shadow/MeshShadowFeature.hpp>
 #include <lux/engine/render/resources/ShaderResources.hpp>
 #include <lux/engine/render/resources/BuiltinShaderRegistry.hpp>

@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file ShadowMapFeature.hpp
  * @brief Independent shadow map rendering feature — runtime-switchable
@@ -17,10 +18,10 @@
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
-#include <lux/engine/function/render/client/resources/lighting/EShadowTechnique.hpp>
+#include <lux/engine/function/render/features/resources/lighting/EShadowTechnique.hpp>
 #include <lux/engine/render/renderer/features/shadow/IShadowTechnique.hpp>
-#include <lux/engine/function/render/client/resources/lighting/ShadowMapTypes.hpp>
-#include <lux/engine/function/render/client/features/shadow/ShadowQualityParams.hpp>
+#include <lux/engine/function/render/features/resources/lighting/ShadowMapTypes.hpp>
+#include <lux/engine/function/render/features/shadow/ShadowQualityParams.hpp>
 #include <lux/cxx/container/BasicSparseSet.hpp>
 #include <cstdint>
 #include <string>
@@ -40,7 +41,7 @@ namespace lux::render
     class ShadowResources;
     class EVSMShadowResources;
 
-    class LUX_FUNCTION_PUBLIC ShadowMapFeature : public RenderFeature
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC ShadowMapFeature : public RenderFeature
     {
     public:
         struct ShadowConfig

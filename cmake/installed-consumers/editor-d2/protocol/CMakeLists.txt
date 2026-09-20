@@ -1,7 +1,7 @@
 find_package(lux-engine-flowforge-compiler REQUIRED COMPONENTS flowforge_compiler)
 find_package(lux-engine-toolchain-material REQUIRED COMPONENTS toolchain_material_compiler)
 find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render scene_render_meta)
-find_package(lux-engine-function REQUIRED COMPONENTS script_native render_client_meta)
+find_package(lux-engine-function REQUIRED COMPONENTS script_native render_feature_meta)
 find_package(lux-engine-simulation REQUIRED COMPONENTS transform_system)
 find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS visual transform)
 find_package(lux-engine-platform REQUIRED COMPONENTS window)
@@ -49,7 +49,7 @@ foreach(protocol IN LISTS protocols)
         lux::engine::flowforge::flowforge_compiler
         lux::engine::toolchain::toolchain_material_compiler
         lux::engine::scene::scene_render lux::engine::scene::scene_render_meta
-        lux::engine::function::script_native lux::engine::function::render_client_meta
+        lux::engine::function::script_native lux::engine::function::render_feature_meta
         lux::engine::simulation::transform_system)
     target_compile_definitions(d2_${protocol} PRIVATE "D2_FLOW_LINKER=\"${D2_FLOW_LINKER_PATH}\"")
     target_compile_options(d2_${protocol} PRIVATE /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr)
@@ -107,7 +107,7 @@ endforeach()
 foreach(mode recovery cancel conflict crash)
     d2_case(publication-${mode} d2_publication_protocol)
 endforeach()
-foreach(mode save save-retry save-partial save-model save-hierarchy save-preservation save-structure save-import-model attach-rollback)
+foreach(mode save save-spatial save-retry save-partial save-model save-hierarchy save-preservation save-structure save-import-model attach-rollback)
     d2_case(${mode} d2_core_protocol)
 endforeach()
 foreach(mode material-gui flow-gui material-publish close-signal cpu pane-lifecycle fixed-run fixed-run-failure render-association render-thread transform-sync)

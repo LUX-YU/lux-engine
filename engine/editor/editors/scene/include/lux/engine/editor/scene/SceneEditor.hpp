@@ -134,6 +134,8 @@ namespace lux::editor::scene
         [[nodiscard]] EditorResult<SceneEntityRef> viewportCamera();
         [[nodiscard]] EditorResult<void> bindCamera(SceneEntityRef, lux::render::ViewHandle, double aspect);
         void unbindCamera(SceneEntityRef, lux::render::ViewHandle) noexcept;
+        // Editor-only grid parameters; never modify the persisted Scene or content history.
+        [[nodiscard]] EditorResult<void> setWorkPlaneHeight(double height);
         [[nodiscard]] EditorResult<void> navigateCamera(SceneEntityRef, const lux::simulation::ecs::Transform3D &,
                                                         const lux::scene::Camera &);
         [[nodiscard]] editing::EditResult<SceneEntityRef> createCameraFromView(SceneEntityRef, editing::StateId,

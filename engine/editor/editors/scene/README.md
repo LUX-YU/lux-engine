@@ -140,3 +140,9 @@ ResourcePane 传递 AssetReference；SceneEditor 的 `requestModelCreation` 使�
 文字输入、IME 和局部文本 Undo 遵守现有 UI 输入归属，不穿透到另一个文档历史。真实输入与接口注入的验证范围不能混用。
 
 相关说明：[Editor](../../README.md)、[ECS](../../../domain/simulation/ecs/README.md)、[空间查询](../../../domain/spatial/README.md)、[Editor Rendering](../../rendering/README.md)。
+
+## 工作平面显示
+
+编辑视口的工作平面由已有 Grid3D Render Feature 绘制，使用与场景几何相同的本帧 View 数据及深度目标。不得使用最新 CPU 相机在较旧的场景图像上叠画网格。网格间距锚定世界坐标，不按相机朝向重设格子大小。透视与正交视口都通过近、远两个反投影点建立网格射线。
+
+工作平面高度只更新 Feature 参数，不写作者内容或历史；该编辑器贡献不进入持久 Scene 描述，也不自动加入 Run。

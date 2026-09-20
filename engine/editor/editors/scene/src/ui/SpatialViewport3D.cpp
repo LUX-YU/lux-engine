@@ -4,7 +4,6 @@
 #include <Eigen/LU>
 #include <algorithm>
 #include <cmath>
-#include <imgui.h>
 #include <numbers>
 
 namespace lux::editor::gui
@@ -95,82 +94,6 @@ namespace lux::editor::gui
                     return invalid("The projection did not produce a finite ray");
                 }
                 return result;
-            }
-
-            void drawWorkPlane(const scene::SceneEditor &editor, scene::SceneEntityRef entity,
-                               Eigen::Vector2d image_origin, Eigen::Vector2d extent, double height) const override
-            {
-                using lux::simulation::ecs::WorldTransform3D;
-                const auto *pose = static_cast<const WorldTransform3D *>(
-                    editor.component(entity, lux::cxx::typeToken<WorldTransform3D>()));
-                const auto *camera = static_cast<const lux::scene::Camera *>(
-                    editor.component(entity, lux::cxx::typeToken<lux::scene::Camera>()));
-                if (!pose || !camera || !std::isfinite(height) || (extent.array() <= 0).any())
-                {
-                    return;
-                }
-                auto parameters = *camera;
-                parameters.aspect_ratio = extent.x() / extent.y();
-                const Eigen::Vector3d origin = pose->value.translation();
-                const auto view = lux::scene::cameraView(pose->value, origin);
-                const auto projection = lux::scene::cameraProjection(parameters);
-                if (!view || !projection)
-                {
-                    return;
-                }
-                const Eigen::Matrix4d matrix = *projection * *view;
-                Eigen::Vector3d center{origin.x(), height, origin.z()};
-                const Eigen::Vector3d forward = -pose->value.linear().col(2).normalized();
-                if (std::abs(forward.y()) > 1.0e-12)
-                {
-                    const double distance = (height - origin.y()) / forward.y();
-                    if (distance > 0 && std::isfinite(distance))
-                    {
-                        center = origin + forward * distance;
-                    }
-                }
-                const double distance = (std::max)((center - origin).norm(), 1.0);
-                const double cell = std::pow(10.0, std::floor(std::log10(distance)) - 1.0);
-                const double x = std::floor(center.x() / cell) * cell;
-                const double z = std::floor(center.z() / cell) * cell;
-                auto *draw = ImGui::GetWindowDrawList();
-                draw->PushClipRect({float(image_origin.x()), float(image_origin.y())},
-                                   {float(image_origin.x() + extent.x()), float(image_origin.y() + extent.y())}, true);
-                const auto line = [&](Eigen::Vector3d first, Eigen::Vector3d second)
-                {
-                    Eigen::Vector4d a = matrix * Eigen::Vector4d{first.x() - origin.x(), height - origin.y(),
-                                                                 first.z() - origin.z(), 1};
-                    Eigen::Vector4d b = matrix * Eigen::Vector4d{second.x() - origin.x(), height - origin.y(),
-                                                                 second.z() - origin.z(), 1};
-                    if (a.z() <= 0 && b.z() <= 0)
-                    {
-                        return;
-                    }
-                    if (a.z() <= 0)
-                    {
-                        a += (b - a) * ((1.0e-8 - a.z()) / (b.z() - a.z()));
-                    }
-                    else if (b.z() <= 0)
-                    {
-                        b += (a - b) * ((1.0e-8 - b.z()) / (a.z() - b.z()));
-                    }
-                    if (a.w() <= 0 || b.w() <= 0)
-                    {
-                        return;
-                    }
-                    const Eigen::Vector2d start =
-                        image_origin + (a.head<2>() / a.w() + Eigen::Vector2d::Ones()).cwiseProduct(extent) * 0.5;
-                    const Eigen::Vector2d end =
-                        image_origin + (b.head<2>() / b.w() + Eigen::Vector2d::Ones()).cwiseProduct(extent) * 0.5;
-                    draw->AddLine({float(start.x()), float(start.y())}, {float(end.x()), float(end.y())},
-                                  IM_COL32(150, 170, 185, 70));
-                };
-                for (int index = -20; index <= 20; ++index)
-                {
-                    line({x + index * cell, height, z - 20 * cell}, {x + index * cell, height, z + 20 * cell});
-                    line({x - 20 * cell, height, z + index * cell}, {x + 20 * cell, height, z + index * cell});
-                }
-                draw->PopClipRect();
             }
 
             EditorResult<Eigen::Vector3d> creationPoint(const scene::SceneEditor &editor,

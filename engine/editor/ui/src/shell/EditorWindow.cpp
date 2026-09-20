@@ -347,7 +347,7 @@ namespace lux::editor::gui
                     return fail(EWindowError::FONT_READ_FAILURE);
                 }
             }
-            auto ui = lux::ui::UISession::create({}, dispatcher, font ? &*font : nullptr);
+            auto ui = lux::ui::UISession::create({.docking = true}, dispatcher, font ? &*font : nullptr);
             if (!ui)
             {
                 const auto code = ui.error() == lux::ui::EUiInitError::ALLOCATION_FAILURE

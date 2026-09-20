@@ -154,6 +154,14 @@ namespace lux::editor::gui
         }
         if (view() && !switching)
         {
+            if (!displayed_run_.serial)
+            {
+                const auto plane = document_.setWorkPlaneHeight(work_plane_height_);
+                if (!plane)
+                {
+                    status_ = plane.error().message;
+                }
+            }
             if (navigation_pending_ && spatial_ && camera_.valid())
             {
                 const auto moved = spatial_->navigate(document_, camera_, pending_motion_);
@@ -508,12 +516,6 @@ namespace lux::editor::gui
             drawPlacement(frame);
         }
         const auto interaction = viewport_.draw(frame, {image_.texture});
-        if (spatial_ && !displayed_run_.serial && camera_.valid())
-        {
-            const auto origin = ImGui::GetItemRectMin();
-            spatial_->drawWorkPlane(document_, camera_, {origin.x, origin.y},
-                                    {interaction.size.width, interaction.size.height}, work_plane_height_);
-        }
         if (!displayed_run_.serial && ImGui::BeginDragDropTarget())
         {
             if (const auto *payload = ImGui::AcceptDragDropPayload(kAssetReferencePayload))

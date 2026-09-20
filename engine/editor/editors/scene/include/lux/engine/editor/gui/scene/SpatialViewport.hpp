@@ -23,9 +23,6 @@ namespace lux::editor::gui
         // Point and extent share image-local logical units; their ratio is DPI invariant.
         [[nodiscard]] virtual EditorResult<lux::math::Ray3d>
         ray(const scene::SceneEditor &, scene::SceneEntityRef, Eigen::Vector2d point, Eigen::Vector2d extent) const = 0;
-        // Editor work-plane overlay in the image's logical rectangle; no Scene content changes.
-        virtual void drawWorkPlane(const scene::SceneEditor &, scene::SceneEntityRef, Eigen::Vector2d image_origin,
-                                   Eigen::Vector2d extent, double height) const = 0;
         [[nodiscard]] virtual EditorResult<Eigen::Vector3d> creationPoint(const scene::SceneEditor &,
                                                                           scene::SceneInstanceId,
                                                                           const lux::math::Ray3d &,

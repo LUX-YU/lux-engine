@@ -10,6 +10,80 @@
 
 namespace
 {
+    class DockProbe final : public lux::ui::Pane
+    {
+      public:
+        DockProbe(lux::ui::UISession &ui, const char *id)
+            : Pane(ui.dispatcherRef(), lux::ui::PaneId{id}, lux::ui::PaneTypeId{"dock-probe"}, id)
+        {
+        }
+
+        ImGuiID dock{};
+        ImVec2 extent;
+
+      private:
+        void draw(lux::ui::Frame &, lux::ui::PaneDrawContext &) override
+        {
+            assert(ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DockingEnable);
+            assert(!(ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable));
+            assert(ImGui::IsWindowDocked());
+            dock = ImGui::GetWindowDockID();
+            extent = ImGui::GetWindowSize();
+            ImGui::TextUnformatted("Dockable content");
+        }
+    };
+
+    void checkDocking()
+    {
+        using namespace lux::ui;
+        UISession ui{{.docking = true}};
+        DockProbe left{ui, "left"}, center{ui, "center"};
+        auto left_registration = ui.registerPane(left);
+        auto center_registration = ui.registerPane(center);
+        ui.setSplitLayout({"left", "center"});
+        const auto draw = [](UISession &session)
+        {
+            auto frame = session.beginFrame({{1200, 800}, 1.0F / 60, {1, 1}});
+            frame.drawPanes();
+            frame.finish();
+        };
+        draw(ui);
+        draw(ui);
+        assert(left.dock != 0 && center.dock != 0 && left.dock != center.dock);
+        const auto left_extent = left.extent;
+        const auto left_node = left.dock;
+        const auto center_node = center.dock;
+        // The host may reapply its default, but must not overwrite live docking.
+        auto new_default = SplitLayout{"left", "center"};
+        new_default.left_width = 400;
+        ui.setSplitLayout(new_default);
+        draw(ui);
+        assert(left.extent.x == left_extent.x && left.dock == left_node && center.dock == center_node);
+        left.setVisible(false);
+        draw(ui);
+        left.setVisible(true);
+        draw(ui);
+        draw(ui);
+        assert(left.dock == left_node && center.dock == center_node);
+        const auto layout = ui.captureLayout();
+
+        UISession restored{{.docking = true}};
+        DockProbe restored_left{restored, "left"}, restored_center{restored, "center"};
+        auto a = restored.registerPane(restored_left);
+        auto b = restored.registerPane(restored_center);
+        assert(restored.restoreLayout(layout));
+        restored.setSplitLayout({"left", "center"});
+        assert(restored.requestFocus(PaneIdView{"left"}));
+        draw(restored);
+        draw(restored);
+        assert(restored.requestFocus(PaneIdView{"center"}));
+        draw(restored);
+        draw(restored);
+        assert(restored_left.dock == left_node && restored_center.dock == center_node);
+        std::puts("PASS UI docking: default splits, hide/restore, no per-frame reset, capture/restore; single native "
+                  "viewport");
+    }
+
     class TextProbe final : public lux::ui::Pane
     {
     public:
@@ -99,6 +173,7 @@ namespace
 
 int main()
 {
+    checkDocking();
     if (!checkTextShortcuts())
     {
         return 2;

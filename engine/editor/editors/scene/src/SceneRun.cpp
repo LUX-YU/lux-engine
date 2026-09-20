@@ -551,7 +551,7 @@ namespace lux::editor::scene::detail
             else if (d.status.state != ERunState::STOPPING)
             {
                 d.source = std::make_unique<NativeScene>(std::move(*result));
-                auto bound = beginSceneRendering(d.renderer, *d.source, d.metadata);
+                auto bound = beginSceneRendering(d.renderer, *d.source, d.metadata, false);
                 if (!bound)
                 {
                     fail(std::move(bound.error()));

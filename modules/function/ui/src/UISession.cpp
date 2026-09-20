@@ -1,6 +1,7 @@
 #include <lux/engine/ui/UISession.hpp>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <array>
@@ -313,6 +314,9 @@ namespace lux::ui
         std::size_t factory_call_depth{0};
         bool frame_open{false};
         std::optional<SplitLayout> split_layout;
+        bool docking{};
+        bool dock_layout_initialized{};
+        std::array<ImGuiID, 5> dock_regions{};
 
         [[nodiscard]] static PaneHandle handle(const PaneRecord &record)
         {
@@ -657,6 +661,7 @@ namespace lux::ui
     UISession::UISession(const UISessionCreateInfo &info, UninitializedTag)
         : impl_(std::make_unique<Impl>(this, info.theme)), control_(std::make_shared<detail::SessionControl>(this))
     {
+        impl_->docking = info.docking;
     }
 
     UISession::UISession(const UISessionCreateInfo& info, lux::object::ObjectDispatcherRef dispatcher,
@@ -664,6 +669,7 @@ namespace lux::ui
         : impl_(std::make_unique<Impl>(this, info.theme, std::move(dispatcher))),
           control_(std::make_shared<detail::SessionControl>(this))
     {
+        impl_->docking = info.docking;
     }
 
     lux::cxx::expected<std::unique_ptr<UISession>, EUiInitError>
@@ -720,6 +726,12 @@ namespace lux::ui
         impl_->context = ImGui::CreateContext();
         {
             ScopedImGuiContext context{impl_->context};
+            if (impl_->docking)
+            {
+                ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+                // Layout storage belongs to the host; sessions must not share imgui.ini.
+                ImGui::GetIO().IniFilename = nullptr;
+            }
             auto &platform = ImGui::GetPlatformIO();
             platform.Platform_ImeUserData = impl_.get();
             // Replace the default native callback; generic UI never invokes an OS IME API.
@@ -1032,7 +1044,51 @@ namespace lux::ui
             ImVec2 size;
         };
         std::array<Placement, 5> placements{};
-        if (impl_->split_layout)
+        if (impl_->docking)
+        {
+            const auto *viewport = ImGui::GetMainViewport();
+            const ImGuiID root = ImGui::GetID("lux.ui.dockspace");
+            if (impl_->split_layout && !impl_->dock_layout_initialized && viewport->WorkSize.x > 0 &&
+                viewport->WorkSize.y > 0)
+            {
+                impl_->dock_layout_initialized = true;
+                const auto &layout = *impl_->split_layout;
+                ImGui::DockBuilderRemoveNode(root);
+                ImGui::DockBuilderAddNode(root, ImGuiDockNodeFlags_DockSpace);
+                ImGui::DockBuilderSetNodeSize(root, viewport->WorkSize);
+                ImGuiID center = root;
+                auto &regions = impl_->dock_regions;
+                if (!layout.toolbar.empty())
+                {
+                    ImGui::DockBuilderSplitNode(center, ImGuiDir_Up, 0.12F, &regions[4], &center);
+                }
+                if (!layout.bottom.empty())
+                {
+                    ImGui::DockBuilderSplitNode(center, ImGuiDir_Down,
+                                                std::clamp(layout.bottom_height / viewport->WorkSize.y, 0.1F, 0.4F),
+                                                &regions[3], &center);
+                }
+                if (!layout.left.empty())
+                {
+                    ImGui::DockBuilderSplitNode(center, ImGuiDir_Left,
+                                                std::clamp(layout.left_width / viewport->WorkSize.x, 0.1F, 0.3F),
+                                                &regions[0], &center);
+                }
+                if (!layout.right.empty())
+                {
+                    ImGui::DockBuilderSplitNode(
+                        center, ImGuiDir_Right,
+                        std::clamp(layout.right_width / std::max(1.0F, viewport->WorkSize.x - layout.left_width), 0.1F,
+                                   0.4F),
+                        &regions[2], &center);
+                }
+                regions[1] = center;
+                ImGui::DockBuilderFinish(root);
+            }
+            // Submit even when panes are hidden: docking owns their persistent placement.
+            ImGui::DockSpaceOverViewport(root, viewport);
+        }
+        if (impl_->split_layout && !impl_->docking)
         {
             auto &layout = *impl_->split_layout;
             const auto size = ImGui::GetIO().DisplaySize;
@@ -1114,6 +1170,29 @@ namespace lux::ui
             }
             bool visible = true;
             ImGuiWindowFlags flags = 0;
+            if (impl_->docking && impl_->split_layout)
+            {
+                const auto &layout = *impl_->split_layout;
+                const std::array<std::string_view, 5> ids{layout.left, layout.center, layout.right, layout.bottom,
+                                                          layout.toolbar};
+                for (std::size_t index{}; index < ids.size(); ++index)
+                {
+                    if (ids[index] == pane->id().name())
+                    {
+                        auto *node = ImGui::DockBuilderGetNode(impl_->dock_regions[index]);
+                        if (!node || !node->IsLeafNode())
+                        {
+                            // User docking may have merged away a default region.
+                            node = ImGui::DockBuilderGetCentralNode(ImGui::GetID("lux.ui.dockspace"));
+                        }
+                        if (node)
+                        {
+                            ImGui::SetNextWindowDockID(node->ID, ImGuiCond_FirstUseEver);
+                        }
+                        break;
+                    }
+                }
+            }
             bool collapsed_by_layout = false;
             for (const auto &placement : placements)
             {
@@ -1135,7 +1214,8 @@ namespace lux::ui
                 ImGui::SetNextWindowFocus();
                 impl_->pending_focus.reset();
             }
-            const bool toolbar = impl_->split_layout && pane->id().name() == impl_->split_layout->toolbar;
+            const bool toolbar =
+                !impl_->docking && impl_->split_layout && pane->id().name() == impl_->split_layout->toolbar;
             if (toolbar)
                 flags |= ImGuiWindowFlags_NoDecoration;
             impl_->frame_context_scratch.clear();
@@ -1281,6 +1361,12 @@ namespace lux::ui
         }
         ScopedImGuiContext context{impl_->context};
         ImGui::LoadIniSettingsFromMemory(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+        if (impl_->docking &&
+            std::string_view(reinterpret_cast<const char *>(bytes.data()), bytes.size()).find("[Docking][Data]") !=
+                std::string_view::npos)
+        {
+            impl_->dock_layout_initialized = true;
+        }
         return {};
     }
 

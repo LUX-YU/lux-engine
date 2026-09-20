@@ -5,14 +5,15 @@
 #include <lux/engine/editor/scene/SceneEditor.hpp>
 #include <lux/engine/editor/scene/detail/SceneRun.hpp>
 #include <lux/engine/function/render/features/BuiltinFeatures.hpp>
+#include <lux/engine/function/render/features/genops/Grid3DOperation.ops.hpp>
 #include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
+#include <lux/engine/scene/MeshQuerySystem.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneRenderBinding.hpp>
 #include <lux/engine/scene/SceneRenderSchema.hpp>
-#include <lux/engine/scene/MeshQuerySystem.hpp>
-#include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <lux/engine/simulation/TransformSystem.hpp>
 #include <lux/engine/simulation/ecs/HierarchySchema.hpp>
@@ -129,7 +130,8 @@ namespace lux::editor::scene
     }
 
     EditorResult<std::unique_ptr<lux::scene::SceneRenderBinding>> detail::beginSceneRendering(
-        rendering::EditorRenderer &renderer, const NativeScene &source, const SceneEditorMetadata &metadata)
+        rendering::EditorRenderer &renderer, const NativeScene &source, const SceneEditorMetadata &metadata,
+        bool author_view)
     {
         const auto &description = source.scene->data();
         for (std::size_t index{}; index < description.systemCount(); ++index)
@@ -140,11 +142,21 @@ namespace lux::editor::scene
                 continue;
             }
             // Visual editor contributions do not alter the persisted Scene description.
-            const std::array features{lux::render::kHighlightRenderFeatureRegistration.descriptor->type};
+            std::array<lux::render::FeatureTypeId, 2> features{};
+            std::size_t feature_count{};
             const auto schemas = source.world->data().schemas();
-            const bool meshes = std::ranges::find(schemas, "lux.ecs.Mesh3D", &lux::world::WorldDataSchemaId::name) != schemas.end();
-            auto started = lux::scene::SceneRenderBinding::begin(renderer, system, metadata.render,
-                meshes ? std::span<const lux::render::FeatureTypeId>{features} : std::span<const lux::render::FeatureTypeId>{});
+            if (std::ranges::find(schemas, "lux.ecs.Mesh3D", &lux::world::WorldDataSchemaId::name) != schemas.end())
+            {
+                features[feature_count++] = lux::render::kHighlightRenderFeatureRegistration.descriptor->type;
+            }
+            if (author_view && std::ranges::find(schemas, "lux.ecs.Transform3D",
+                                                 &lux::world::WorldDataSchemaId::name) != schemas.end())
+            {
+                features[feature_count++] = lux::render::kGrid3DRenderFeatureRegistration.descriptor->type;
+            }
+            auto started = lux::scene::SceneRenderBinding::begin(
+                renderer, system, metadata.render,
+                std::span<const lux::render::FeatureTypeId>{features}.first(feature_count));
             if (!started)
             {
                 return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE,

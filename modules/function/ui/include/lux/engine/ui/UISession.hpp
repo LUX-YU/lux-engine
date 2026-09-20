@@ -36,6 +36,8 @@ namespace lux::ui
     struct UISessionCreateInfo final
     {
         Theme theme{Theme::luxDark()};
+        // Single native viewport; SplitLayout becomes an initial docking layout.
+        bool docking{false};
     };
 
     class UISession;

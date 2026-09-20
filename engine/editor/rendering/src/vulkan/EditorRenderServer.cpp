@@ -7,14 +7,15 @@
 #include <lux/engine/ui/UISession.hpp>
 
 #include <lux/engine/function/render/client/RenderProgramSession.hpp>
-#include <lux/engine/function/render/features/genops/ViewCameraOperation.ops.hpp>
-#include <lux/engine/function/render/features/genops/MaterialOperation.ops.hpp>
-#include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
-#include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
 #include <lux/engine/function/render/features/genops/ForwardMeshOperation.ops.hpp>
-#include <lux/engine/function/render/features/genops/ShadowMapOperation.ops.hpp>
-#include <lux/engine/function/render/features/genops/MeshShadowOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/Grid3DOperation.ops.hpp>
 #include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MaterialOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshShadowOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/ShadowMapOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/ViewCameraOperation.ops.hpp>
 #include <lux/engine/render/comm/server/RenderServer.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/renderer/FrameOrchestrator.hpp>
@@ -371,7 +372,8 @@ namespace lux::editor::rendering::detail
                 const std::array factories{&render::kViewCameraFeatureFactory,  &render::kMaterialFeatureFactory,
                                            &render::kMeshStackFeatureFactory,   &render::kLightFeatureFactory,
                                            &render::kForwardMeshFeatureFactory, &render::kShadowMapFeatureFactory,
-                                           &render::kMeshShadowFeatureFactory, &render::kHighlightFeatureFactory};
+                                           &render::kMeshShadowFeatureFactory,  &render::kHighlightFeatureFactory,
+                                           &render::kGrid3DFeatureFactory};
                 for (const auto *feature : factories)
                 {
                     auto installed = *feature;

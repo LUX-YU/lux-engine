@@ -23,7 +23,8 @@ namespace lux::editor::scene::detail
     // RenderSystem, not an incomplete Scene or a fallback renderer.
     EditorResult<std::unique_ptr<lux::scene::SceneRenderBinding>> beginSceneRendering(rendering::EditorRenderer &,
                                                                                       const NativeScene &,
-                                                                                      const SceneEditorMetadata &);
+                                                                                      const SceneEditorMetadata &,
+                                                                                      bool author_view = true);
 
     class SceneRun final
     {

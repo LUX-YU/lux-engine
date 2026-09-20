@@ -24,10 +24,15 @@ layout(location = 0) out vec4 outColor;
 
 // --- Create ray
 void makeRay(in vec2 ndc, out vec3 ro, out vec3 rd) {
-    vec4 v = uViews.views[uPC.view_index].inv_proj * vec4(ndc, 1.0, 1.0);
-    v /= v.w;
-    rd = normalize(mat3(uViews.views[uPC.view_index].inv_view) * v.xyz);
-    ro = uViews.views[uPC.view_index].cam_pos.xyz;
+    // Unproject two points, not a direction from the camera origin: the latter
+    // only works for perspective views. Both endpoints use this GPU frame's View.
+    ViewGpuData view_data = uViews.views[uPC.view_index];
+    mat4 inverse_vp = view_data.inv_view * view_data.inv_proj;
+    vec4 near_point = inverse_vp * vec4(ndc, 0.0, 1.0);
+    vec4 far_point = inverse_vp * vec4(ndc, 0.5, 1.0);
+    vec3 near_relative = near_point.xyz / near_point.w;
+    ro = near_relative + view_data.cam_pos.xyz;
+    rd = normalize(far_point.xyz / far_point.w - near_relative);
 }
 
 // --- Ray-plane intersection
@@ -55,7 +60,7 @@ float gridFactor(vec2 coord, vec2 derivative, float lineWidthPixels) {
     vec2 grid = abs(fract(coord - 0.5) - 0.5);
     // Convert line width from pixel units to current grid coordinate units
     // derivative is "grid coordinate change per pixel"
-    vec2 lineAA = derivative * lineWidthPixels; 
+    vec2 lineAA = max(derivative * lineWidthPixels, vec2(1e-6));
     
     // 1.0 - smoothstep(...) is the standard anti-aliased hard edge
     // But to handle far-away sub-pixel issues, we optimize as follows:
@@ -80,7 +85,7 @@ void main() {
     // Use fwidth for screen-space derivatives, key for anti-aliasing
     // To prevent flickering from overly large derivatives at extreme distances, a small clamp can be added
     vec2 uv = wp.xz;
-    vec2 derivative = fwidth(uv); 
+    vec2 derivative = max(fwidth(uv), vec2(1e-6));
     
     // 3. Calculate two grid levels (LOD)
     // Level 1: Base small grid (Base Grid)

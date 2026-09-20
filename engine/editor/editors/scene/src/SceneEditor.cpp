@@ -6,11 +6,13 @@
 #include <lux/engine/editor/rendering/EditorRenderer.hpp>
 #include <lux/engine/editor/scene/NativeScene.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
-#include <lux/engine/editor/scene/detail/SceneObjectEdits.hpp>
+#include <lux/engine/editor/scene/detail/EditorEntity.hpp>
 #include <lux/engine/editor/scene/detail/ModelCreation.hpp>
+#include <lux/engine/editor/scene/detail/SceneObjectEdits.hpp>
 #include <lux/engine/editor/scene/detail/SceneResources.hpp>
 #include <lux/engine/editor/scene/detail/SceneRun.hpp>
-#include <lux/engine/editor/scene/detail/EditorEntity.hpp>
+#include <lux/engine/function/render/features/genops/Grid3DOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
 #include <lux/engine/resource/asset/material/MaterialAssets.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
@@ -22,7 +24,6 @@
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
 #include <lux/engine/task/TaskExecutor.hpp>
-#include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
 #include <random>
 #include <unordered_set>
 
@@ -356,6 +357,41 @@ namespace lux::editor::scene
         SceneInstanceId highlighted_instance{};
         lux::render::RenderProgram<> highlight_program;
         bool highlight_pending{};
+
+        float work_plane_height{};
+        bool work_plane_pending{};
+        lux::render::RenderProgram<> work_plane_program;
+
+        void updateWorkPlane(PollBudget &budget)
+        {
+            if (!work_plane_pending || !render_binding || budget.render_programs == 0 ||
+                render_binding->state() != lux::scene::ESceneRenderBindingState::READY)
+            {
+                return;
+            }
+
+            const auto type = lux::render::kGrid3DRenderFeatureRegistration.descriptor->type;
+            const auto feature = render_binding->featureHandle(type);
+            if (!feature.isValid())
+            {
+                return;
+            }
+
+            const auto ids = render_binding->featureCatalog().ops<lux::render::Grid3DOperationIds>(
+                render_binding->featureCatalog().nameOfType(type));
+            work_plane_program.clear_keep_capacity();
+            lux::render::RenderProgramSession::Builder builder(work_plane_program);
+            lux::render::Grid3DSetParamsPayload payload{
+                scene->findSceneSystem<lux::scene::RenderSystem>()->renderSceneId(), feature};
+            payload.planeY = work_plane_height;
+            builder.push(lux::render::opcode_of_v<lux::render::Grid3DSetParamsOp>,
+                         ids.id<lux::render::Grid3DSetParamsOp>(), payload);
+            if (render_binding->trySubmit(work_plane_program))
+            {
+                --budget.render_programs;
+                work_plane_pending = false;
+            }
+        }
 
         void updateHighlight(PollBudget& budget, bool catalog_changed)
         {
@@ -1091,6 +1127,21 @@ namespace lux::editor::scene
                 data_->run.invalidateDerived();
             }
         }
+    }
+
+    EditorResult<void> SceneEditor::setWorkPlaneHeight(double height)
+    {
+        if (!std::isfinite(height) || std::abs(height) > std::numeric_limits<float>::max())
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "viewport.work-plane"});
+        }
+        const auto value = static_cast<float>(height);
+        if (value != data_->work_plane_height)
+        {
+            data_->work_plane_height = value;
+            data_->work_plane_pending = true;
+        }
+        return {};
     }
 
     EditorResult<void> SceneEditor::navigateCamera(SceneEntityRef ref, const lux::simulation::ecs::Transform3D &pose,
@@ -2433,6 +2484,7 @@ namespace lux::editor::scene
             budget.render_programs -= data_->render_binding->poll(budget.render_programs);
         }
         data_->updateHighlight(budget, catalog_changed);
+        data_->updateWorkPlane(budget);
         const bool unpublished =
             render && render->lastPublishResult() == lux::scene::ERenderPublishResult::BACKPRESSURED;
         data_->resources.afterPresentation(unpublished ||

@@ -700,25 +700,24 @@ namespace lux::editor::scene::detail
 
     void SceneResources::synchronizeQuery(lux::scene::MeshQuerySystem &query)
     {
-        std::erase_if(query_sources_, [&](auto source)
+        for (auto &[source, used] : query_sources_)
         {
-            const bool used = std::ranges::any_of(current_requests_, [&](const auto &entry)
-            {
-                return entry.second->row.key.mesh == source;
-            });
-            if (!used)
-            {
-                query.removeGeometry(source);
-            }
-            return !used;
-        });
+            used = false;
+        }
         for (const auto &[entity, request] : current_requests_)
         {
             const auto &read = *request->mesh_read;
             using State = AssetResult<lux::asset::MeshAsset>::EState;
             const auto state = read.state.load(std::memory_order_acquire);
             const auto source = request->row.key.mesh;
-            if (state == State::PENDING || source.isNull())
+            if (source.isNull())
+            {
+                continue;
+            }
+            // O(current requests + distinct sources), with no nested scan of
+            // all instances for each asset and no repeated adoption for aliases.
+            auto &used = query_sources_[source];
+            if (std::exchange(used, true) || state == State::PENDING)
             {
                 continue;
             }
@@ -735,11 +734,15 @@ namespace lux::editor::scene::detail
             {
                 query.setGeometryFailure(source, read.geometry.error());
             }
-            if (std::ranges::find(query_sources_, source) == query_sources_.end())
-            {
-                query_sources_.push_back(source);
-            }
         }
+        std::erase_if(query_sources_, [&](const auto &entry)
+        {
+            if (!entry.second)
+            {
+                query.removeGeometry(entry.first);
+            }
+            return !entry.second;
+        });
         std::erase_if(mesh_reads_, [](const auto &entry) { return entry.second.expired(); });
     }
 

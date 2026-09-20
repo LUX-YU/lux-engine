@@ -62,6 +62,8 @@ HighlightReplaceTargets 操作替换完整 RenderEntityId 集合，空集合清�
 
 资源迟到时保留源键；删除／代次复用后旧源键不能解析为新实例。目标遮罩是 RenderGraph 管理的瞬态 Storage Buffer，声明 Transfer 写入到 Compute 读取依赖，并沿实际帧与 GPU 水位退休。
 
+遮罩每槽占一位，按 InstanceResources 的配置容量上限建立，避免实例页增长但图未重编译时越界。每帧只解析当前目标集合；遮罩不会把未存在的来源键转换成有效实例。
+
 效果关闭或清空集合不修改作者 Mesh、Material，不生成内容 Undo。对象销毁或句柄代次变化后，旧集合不能高亮后来复用槽位的对象。
 
 ## GPU 拾取的适用范围

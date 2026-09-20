@@ -243,18 +243,21 @@ namespace lux::render
             return instance_res_ != nullptr && !targets_.empty();
         });
 
-        const auto capacity = (std::max)(instance_res_->capacity(), 1u);
+        // Page growth does not necessarily recompile the graph. A bounded bit
+        // mask covers the configured slot limit, including future resident pages.
+        const auto capacity = instance_res_->maximumCapacity();
+        const auto words = static_cast<std::uint32_t>((std::uint64_t(capacity) + 31u) / 32u);
         RGBufferDescription target_desc{};
-        target_desc.size = std::uint64_t(capacity) * sizeof(std::uint32_t);
+        target_desc.size = std::uint64_t((std::max)(words, 1u)) * sizeof(std::uint32_t);
         target_desc.stride = sizeof(std::uint32_t);
-        target_desc.element_count = capacity;
+        target_desc.element_count = (std::max)(words, 1u);
         target_desc.usage = ERGBufferUsageBits::STORAGE | ERGBufferUsageBits::TRANSFER_DST;
         target_desc.memory_usage = ERGMemoryUsage::GPU_ONLY;
         const auto target_rg = builder.createBuffer("HighlightTargets", target_desc);
         builder.addPass("HighlightTargetsUpload", ERGPassType::TRANSFER)
             .write(target_rg, ERGBufferRole::STORAGE)
-            .setKernelFn([this, target_rg, capacity](const PassRecordContext& rec) {
-                target_mask_.assign(capacity, 0u);
+            .setKernelFn([this, target_rg, capacity, words](const PassRecordContext& rec) {
+                target_mask_.assign((std::max)(words, 1u), 0u);
                 for (const auto source : targets_)
                 {
                     const auto object = instance_res_->findSource(source);
@@ -263,7 +266,7 @@ namespace lux::render
                         const auto slot = instance_res_->resolveSlot(object);
                         if (slot.index < capacity)
                         {
-                            target_mask_[slot.index] = 1u;
+                            target_mask_[slot.index / 32u] |= 1u << (slot.index % 32u);
                         }
                     }
                 }

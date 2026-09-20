@@ -332,6 +332,10 @@ namespace lux::render
         {
             return capacity_;
         }
+        [[nodiscard]] uint32_t maximumCapacity() const noexcept
+        {
+            return max_capacity_;
+        }
         [[nodiscard]] bool usesSparsePageTable() const noexcept
         {
             return sparse_bda_;

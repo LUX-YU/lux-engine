@@ -576,7 +576,7 @@ void main()
     }
     if (valid && pc.instance_filter_enabled != 0u)
     {
-        valid = uInstanceFilter.included[instance_slot] != 0u;
+        valid = (uInstanceFilter.included[instance_slot / 32u] & (1u << (instance_slot % 32u))) != 0u;
     }
     if (valid && pc.active_mask_addr != 0ul)
     {

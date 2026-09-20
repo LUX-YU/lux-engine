@@ -85,13 +85,14 @@ int main()
     assert((*stage)->prepare(builder) == scene::ERenderSyncPrepareResult::PREPARED_COMMANDS);
     (*stage)->commitPrepared();
     assert(!(*stage)->hasPendingChanges());
+    const auto retired_view = camera.view;
     registry.remove<scene::Camera>(entity);
     builder.begin();
     assert((*stage)->prepare(builder) == scene::ERenderSyncPrepareResult::PREPARED_COMMANDS);
     assert(packet.commands.size() == 1 && packet.commands.front().type_id == operations[1]);
     const auto *removed = reinterpret_cast<const render::ViewCameraRemovePayload *>(
         packet.payload.data() + packet.commands.front().payload_offset);
-    assert(removed->view == camera.view);
+    assert(removed->view == retired_view);
     (*stage)->commitPrepared();
     std::puts(
         "PASS camera: perspective/orthographic NDC, invalid projection, codec resets View, extraction retry/removal");

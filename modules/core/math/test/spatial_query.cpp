@@ -48,10 +48,22 @@ int main()
     assert(projected.origin.isApprox(Eigen::Vector3d{-0.5, 0.5, 0.0}));
     assert(projected.direction.isApprox(Eigen::Vector3d::UnitZ()));
 
+    const std::array slanted{
+        Eigen::Vector3f{-1, -1, 2}, Eigen::Vector3f{1, -1, 0}, Eigen::Vector3f{0, 1, 1}
+    };
+    mesh.build(slanted.data(), 3, indices.data(), 3);
+    const auto slanted_hit = mesh.intersect(ray, world);
+    assert(slanted_hit && std::abs(slanted_hit->t - 2.0F) < 1.0e-5F);
+    const Eigen::Vector3f normal = Eigen::Vector3f{1.0F / 3.0F, 0, 0.5F}.normalized();
+    assert(slanted_hit->normal.isApprox(normal));
+    world(0, 0) = -3.0F;
+    const auto reflected_hit = mesh.intersect(ray, world);
+    assert(reflected_hit && reflected_hit->normal.isApprox(Eigen::Vector3f{-normal.x(), 0, normal.z()}));
+
     mesh.build(nullptr, 0, nullptr, 0);
     assert(!mesh.isBuilt());
     assert(mesh.triangleCount() == 0);
     assert(!mesh.intersectLocal(ray));
-    std::puts("PASS spatial math: scaled distance, double origin, singular transform, unprojection, empty rebuild");
+    std::puts("PASS spatial math: scaled distance, inverse-transpose/reflected normal, double origin, singular transform, unprojection, empty rebuild");
     return 0;
 }

@@ -18,7 +18,7 @@ namespace lux::render
         {
             return;
         }
-        auto* feature = scene->getFeatureAs<HighlightFeature>(payload.feature);
+        auto* feature = dynamic_cast<HighlightFeature*>(scene->getFeature(payload.feature));
         const auto bytes = resolveBlob(ctx.program, payload.targets);
         if (!feature)
         {

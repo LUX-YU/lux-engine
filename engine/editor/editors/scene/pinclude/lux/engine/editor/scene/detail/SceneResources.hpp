@@ -126,7 +126,8 @@ namespace lux::editor::scene::detail
         // Superseded requests remain exclusively owned by requests_ until their real retirement completes.
         std::unordered_map<lux::simulation::ecs::Entity, ResourceRequest *> current_requests_;
         std::unordered_map<lux::asset::AssetId, std::weak_ptr<AssetResult<lux::asset::MeshAsset>>> mesh_reads_;
-        std::vector<lux::asset::AssetId> query_sources_;
+        // Retained query associations, marked once per current source during adoption.
+        std::unordered_map<lux::asset::AssetId, bool> query_sources_;
         void shareMeshRead(ResourceRequest &);
         std::size_t capacity_{};
         std::size_t refresh_reservations_{};

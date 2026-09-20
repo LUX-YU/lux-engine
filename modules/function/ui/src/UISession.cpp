@@ -1214,10 +1214,11 @@ namespace lux::ui
                 ImGui::SetNextWindowFocus();
                 impl_->pending_focus.reset();
             }
-            const bool toolbar =
-                !impl_->docking && impl_->split_layout && pane->id().name() == impl_->split_layout->toolbar;
-            if (toolbar)
+            const bool toolbar = impl_->split_layout && pane->id().name() == impl_->split_layout->toolbar;
+            if (toolbar && !impl_->docking)
+            {
                 flags |= ImGuiWindowFlags_NoDecoration;
+            }
             impl_->frame_context_scratch.clear();
             PaneDrawContext draw_context{impl_->frame_context_scratch};
             const bool shown = ImGui::Begin(pane->window_label_.c_str(), toolbar ? nullptr : &visible, flags);

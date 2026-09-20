@@ -5,7 +5,7 @@ C++20 engine libraries, offline asset tools, and a Vulkan editor.
 - `modules/`: reusable platform, core, resource, rendering, and scripting libraries.
 - `engine/domain/`: World data, Simulation, ECS, and built-in systems.
 - `engine/process/`: asynchronous execution and loading.
-- `engine/scene/`: World/Simulation composition and presentation.
+- `engine/scene/`: World/Simulation composition and optional scene systems.
 - `engine/toolchain/`: asset compilation, script generation, and packaging.
 - `engine/editor/`: editor application and UI.
 - `cmake/`: build, dependency, and installation support.
@@ -44,3 +44,25 @@ separately installed host tools, configured through `LUX_HOST_TOOLS_PREFIX`.
 Installed CMake packages export component targets under `lux::engine` namespaces,
 with public headers, required generated headers, libraries, and code-generation
 helpers. Private `pinclude/` and project-only `sinclude/` headers are not SDK APIs.
+
+## Module design
+
+Design notes live with the module that owns the responsibility. They distinguish
+current implementation from intended interfaces; they are not acceptance reports.
+Keep implementation journals, delivery reports, raw evidence, and build artifacts
+outside the product source tree. Historical reports remain available in Git history.
+
+| Module | Design notes |
+| --- | --- |
+| World | [持久身份、内容与加载边界](engine/domain/world/README.md) |
+| Spatial | [分区索引与运行时实体查询](engine/domain/spatial/README.md) |
+| Simulation | [世界演进、Main owner 与稳定点](engine/domain/simulation/README.md) |
+| ECS | [Entity、组件与相机数据](engine/domain/simulation/ecs/README.md) |
+| Math | [射线生成与几何相交](modules/core/math/README.md) |
+| Process | [有限异步工作与结果采用](engine/process/README.md) |
+| Scene | [World／Simulation 装配与可选能力](engine/scene/README.md) |
+| Scene Render | [通用推进与 Feature 提取](engine/scene/builtin_systems/render/README.md) |
+| Render | [Feature、View 与 GPU 资源](modules/function/render/README.md) |
+| Editor | [编辑器业务与模块边界](engine/editor/README.md) |
+| Scene Editor | [CameraMan、选择、放置与历史](engine/editor/editors/scene/README.md) |
+| Editor Rendering | [View、图像引用与相机接线](engine/editor/rendering/README.md) |

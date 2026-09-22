@@ -40,52 +40,53 @@ struct Probe final : Padding, Capability
 SceneSystemRegistration registration()
 {
     static constexpr std::array projections{sceneSystemCapabilityProjection<Probe, Capability>()};
-    return {
-        .type = system::systemTypeId(Probe::Description.canonical_name),
-        .cpp_type = cxx::typeToken<Probe>(),
-        .description = &Probe::Description,
-        .install = +[](SceneBuilder &builder,
-                       SceneSystemDescription input) noexcept -> cxx::expected<void, SceneSystemBuildFailure> {
-            auto system = builder.emplaceSystem<Probe>(input.instanceId(), builder.registry());
-            if (!system)
-            {
-                return cxx::unexpected(system.error());
-            }
-            if (Probe::reject_install)
-            {
-                return cxx::unexpected(
-                    SceneSystemBuildFailure{.code = ESceneSystemBuildError::EXTERNAL_OPERATION_FAILURE,
-                                            .system = input.instanceId(),
-                                            .cause = 719});
-            }
-            auto maintenance =
-                builder.addMaintenanceTask<Probe>(input.instanceId(), [](Probe &self) noexcept -> SceneStageResult {
-                    ++self.maintenance;
-                    return ESceneProgress::COMPLETE;
-                });
-            if (!maintenance)
-            {
-                return maintenance;
-            }
-            auto stable =
-                builder.addStablePointTask<Probe>(input.instanceId(), [](Probe &self) noexcept -> SceneStageResult {
-                    ++self.stable;
-                    if (self.failure)
-                    {
-                        return cxx::unexpected(SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, 713});
-                    }
-                    return ESceneProgress::COMPLETE;
-                });
-            if (!stable)
-            {
-                return stable;
-            }
-            return builder.addPublicationTask<Probe>(input.instanceId(), [](Probe &self) noexcept -> SceneStageResult {
-                ++self.publication;
-                return self.gate ? ESceneProgress::COMPLETE : ESceneProgress::PENDING;
-            });
-        },
-        .projections = projections};
+    return {.type = system::systemTypeId(Probe::Description.canonical_name),
+            .cpp_type = cxx::typeToken<Probe>(),
+            .description = &Probe::Description,
+            .install = +[](SceneBuilder &builder,
+                           SceneSystemDescription input) noexcept -> cxx::expected<void, SceneSystemBuildFailure> {
+                auto system = builder.emplaceSystem<Probe>(input.instanceId(), builder.registry());
+                if (!system)
+                {
+                    return cxx::unexpected(system.error());
+                }
+                if (Probe::reject_install)
+                {
+                    return cxx::unexpected(
+                        SceneSystemBuildFailure{.code = ESceneSystemBuildError::EXTERNAL_OPERATION_FAILURE,
+                                                .system = input.instanceId(),
+                                                .cause = 719});
+                }
+                auto maintenance =
+                    builder.addMaintenanceTask<Probe>(input.instanceId(), [](Probe &self) noexcept -> SceneStageResult {
+                        ++self.maintenance;
+                        return ESceneProgress::COMPLETE;
+                    });
+                if (!maintenance)
+                {
+                    return maintenance;
+                }
+                auto stable =
+                    builder.addStablePointTask<Probe>(input.instanceId(), [](Probe &self) noexcept -> SceneStageResult {
+                        ++self.stable;
+                        if (self.failure)
+                        {
+                            return cxx::unexpected(
+                                SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, 713});
+                        }
+                        return ESceneProgress::COMPLETE;
+                    });
+                if (!stable)
+                {
+                    return stable;
+                }
+                return builder.addPublicationTask<Probe>(
+                    input.instanceId(), [](Probe &self, SceneStageContext &context) noexcept -> SceneStageResult {
+                        ++self.publication;
+                        return self.gate && context.publications ? ESceneProgress::COMPLETE : ESceneProgress::PENDING;
+                    });
+            },
+            .projections = projections};
 }
 } // namespace
 
@@ -137,6 +138,14 @@ int main(int argc, char **argv)
         const bool reached_publication = instance.progress().clock.step_index == 1 && probe.stable == 1 &&
                                          probe.publication > 0 && instance.progress().publication_completed == 0;
         const auto maintenance_before = probe.maintenance;
+        const auto prepared_before = probe.publication;
+        for (unsigned turn{}; turn < 4; ++turn)
+        {
+            SceneAdvanceBudget limited{1, 1, 0};
+            static_cast<void>(driver.advance(instance, std::chrono::steady_clock::now(), limited));
+        }
+        // Preparing a necessary publication is allowed without admission.
+        assert(probe.publication > prepared_before && instance.progress().clock.step_index == 1);
         probe.gate = true;
         for (unsigned turn{}; turn < 16 && instance.progress().publication_completed == 0; ++turn)
         {

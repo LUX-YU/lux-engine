@@ -168,16 +168,21 @@ ESceneProgress SceneDriver::advance(SceneInstance &instance, Clock::time_point n
     const auto advance_hooks = [&](auto &hooks, ESceneDrivePhase phase) -> ESceneProgress {
         while (d.stage_cursor < hooks.size())
         {
-            if (!budget.system_calls || (phase == ESceneDrivePhase::PUBLICATION && !budget.publications))
+            if (!budget.system_calls)
             {
-                // No admission opportunity is different from backend backpressure.
-                // Preserve the completed maintenance round until publication can
-                // actually try; rotating owners must not reset it in lockstep.
                 return ESceneProgress::PENDING;
             }
             --budget.system_calls;
-            finish_maintenance();
+            const bool publication_opportunity = budget.publications != 0;
             auto result = hooks[d.stage_cursor].invoke(context);
+            // A publication hook may still prepare its owned input with zero
+            // admission budget. Keep maintenance complete until it gets an
+            // admission opportunity, instead of repeating both in lockstep.
+            if (phase != ESceneDrivePhase::PUBLICATION || publication_opportunity || !result ||
+                *result == ESceneProgress::COMPLETE)
+            {
+                finish_maintenance();
+            }
             if (!result)
             {
                 fail({phase, std::move(result.error())});

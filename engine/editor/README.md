@@ -87,7 +87,7 @@ Main 拥有 Scene 和编辑业务。Process 承担明确的有限 IO、解码和
 
 Editor 按“平台输入和完成采用 → 一次可接纳的 UI 构建 → 结束字段借用 → SceneDriver → RenderRuntime”推进。UI 背压保留同一帧，不重新调用 Pane；仍推进输入、回复和退出。作者与 Run 均使用 SceneInstance 内的一份推进记录。
 
-回复、Program、Control、资源请求检查和新模拟步各有独立预算，同类预算在文档间共享；文档轮转避免固定遍历顺序饿死后面的请求。资源请求预算计量一次待处理 Entity 的检查及其有界依赖集合，不代表一个 GPU 命令或一次磁盘读取。
+回复、Program、Control、资源请求检查和新模拟步各有独立预算，同类预算在所有 owner 间共享。文档、UI Scene 和 Runtime 共同轮转起点；一个持续有工作的文档不能耗尽 UI 的发布机会，UI 也不能耗尽资源退休机会。帧仍持有捕获时的准确图像版本，Program 使用既有 FIFO 和图像依赖，不用重复 UI 构建补偿推进顺序。资源请求预算计量一次待处理 Entity 的检查及其有界依赖集合，不代表一个 GPU 命令或一次磁盘读取。
 
 Scene 文档注册保存按 Project 实例／catalog revision 区分的弱资源来源记录。同版本文档和 Run 共用不可变读取、Mesh／Material／Texture 及查询几何；Run 保留启动来源，新的项目版本不覆盖它。Project 本身不依赖 Renderer。
 

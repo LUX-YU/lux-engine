@@ -496,13 +496,14 @@ int main(int argc, char **argv)
     }
     std::printf("dynamic latency pause_stable_us=%lld step_completion_us=%lld "
                 "stop_system_us=%lld stop_result_us=%lld stop_resources_us=%lld steps=%llu "
-                "published=%llu backpressure=%llu work_ns=%lld publication_wait_ns=%lld\n",
+                "published=%llu backpressure=%llu work_ns=%lld publication_wait_ns=%lld longest_advance_ns=%lld\n",
                 static_cast<long long>(pause_us), static_cast<long long>(step_us), static_cast<long long>(system_us),
                 static_cast<long long>(result_us), static_cast<long long>(close_us),
                 static_cast<unsigned long long>(final.steps), static_cast<unsigned long long>(final.published_updates),
                 static_cast<unsigned long long>(final.backpressure_count),
                 static_cast<long long>(final.simulation_work.count()),
-                static_cast<long long>(final.publication_wait.count()));
+                static_cast<long long>(final.publication_wait.count()),
+                static_cast<long long>(final.longest_advance.count()));
     std::printf("dynamic retirement observations_us: world=%lld result=%lld view=%lld resources=%lld\n",
                 static_cast<long long>(system_us), static_cast<long long>(result_us), static_cast<long long>(view_us),
                 static_cast<long long>(close_us));

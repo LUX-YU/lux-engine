@@ -262,6 +262,24 @@ class Probe final
             if (!evidence_.failed)
             {
                 std::fprintf(stderr, "FAIL deadline stage=%u\n", stage_);
+                if (evidence_.mode == "small-budget")
+                {
+                    const auto stats = evidence_.renderer->statistics();
+                    std::fprintf(stderr, "budget captured=%llu can_build=%u frames=%llu gpu=%llu leases=%zu\n",
+                                 evidence_.window->capturedFrames(), evidence_.window->canBuildFrame(), stats.frames,
+                                 stats.gpu_completed, stats.runtime_leases);
+                    auto &document = dynamic_cast<scene::SceneEditor &>(editor_->document(handle_)->get());
+                    const auto snapshot = document.resources();
+                    if (snapshot)
+                    {
+                        for (const auto &row : snapshot->rows)
+                        {
+                            std::fprintf(stderr, "budget resource=%llu state=%u\n", row.key.sequence,
+                                         unsigned(row.state));
+                        }
+                    }
+                    std::fprintf(stderr, "budget scene_failure=%s\n", document.diagnostic().c_str());
+                }
                 if (evidence_.mode == "render-association")
                 {
                     const auto stats = evidence_.renderer->statistics();
@@ -449,7 +467,7 @@ class Probe final
                 stage_ = 100;
                 return;
             }
-            if (evidence_.mode == "transform-sync")
+            if (evidence_.mode == "transform-sync" || evidence_.mode == "small-budget")
             {
                 checkProgramAdmissionOrder();
                 checkGeneratedTransformDragging(scene, *evidence_.renderer);
@@ -1298,6 +1316,12 @@ class Probe final
             }
             if (transform_step_ == 120)
             {
+                if (evidence_.mode == "small-budget")
+                {
+                    assert(evidence_.window->capturedFrames() > 1);
+                    std::printf("small-budget system_calls=1 programs=1 steps=1 UI_captures=%llu GPU_completed=%llu\n",
+                                evidence_.window->capturedFrames(), evidence_.renderer->statistics().gpu_completed);
+                }
                 std::printf("PASS author -> WorldTransform: 120 distinct edits adopted; pending owner turns=%zu\n",
                             transform_waits_);
                 stage_ = 99;
@@ -1429,6 +1453,12 @@ int main(int argc, char **argv)
     Probe probe(evidence);
     EditorConfig config;
     config.window.visible = false;
+    if (evidence.mode == "small-budget")
+    {
+        config.limits.turn.system_calls = 1;
+        config.limits.turn.document_steps = 1;
+        config.limits.turn.render_programs = 1;
+    }
     if (evidence.mode == "invalid-window")
     {
         config.window.width = 0;
@@ -1523,7 +1553,13 @@ int main(int argc, char **argv)
                           : evidence.mode == "missing-project"                                     ? 5
                                                                                                    : 0;
     evidence.closed = editor.documents().empty();
-    assert(result == expected && evidence.closed && !evidence.failed);
+    assert(result == expected && evidence.closed);
+    if (evidence.failed)
+    {
+        std::fprintf(stderr, "FAIL case=%s: check failed; owner exit=%d closed=%u\n", evidence.mode.c_str(), result,
+                     evidence.closed);
+        return 2;
+    }
     if (evidence.mode == "missing-project")
     {
         assert(!editor.outcome() && editor.outcome().error().domain == "project.read");

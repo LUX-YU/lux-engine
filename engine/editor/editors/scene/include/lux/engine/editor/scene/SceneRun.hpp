@@ -62,7 +62,7 @@ struct RunStatus final
     std::uint64_t retired_updates{};
     std::uint32_t pending_updates{}, update_high_water{};
     std::size_t retained_resources{};
-    std::chrono::nanoseconds simulation_work{}, publication_wait{};
+    std::chrono::nanoseconds simulation_work{}, publication_wait{}, longest_advance{};
     EditorResult<void> result;
 };
 

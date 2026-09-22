@@ -482,6 +482,7 @@ void SceneRun::poll(PollBudget &turn, bool may_release_world)
         d.status.completed = {progress.simulation_completed, progress.stable_completed, progress.publication_completed};
         d.status.pause_pending = progress.pause_pending;
         d.status.simulation_work = progress.active_work;
+        d.status.longest_advance = progress.longest_call;
         d.status.publication_wait = progress.publication_wait;
         if (!progress.result)
         {

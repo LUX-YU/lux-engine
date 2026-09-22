@@ -74,7 +74,7 @@ class LUX_EDITOR_APP_PUBLIC Editor final
     };
     struct Opening;
     struct Request;
-    void pollDocuments(PollBudget &);
+    void advanceOwners(PollBudget &);
     void acceptOpenings(PollBudget &);
     void collectClosed();
 

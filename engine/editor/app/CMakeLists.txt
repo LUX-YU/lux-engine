@@ -83,7 +83,7 @@ if(BUILD_TESTING)
     find_program(EDITOR_TEST_POWERSHELL NAMES pwsh powershell REQUIRED)
     foreach(mode pane-lifecycle save save-spatial save-model save-hierarchy save-preservation save-structure
                  save-import-model attach-rollback close-signal cpu render-association render-thread transform-sync
-                 material-gui flow-gui material-publish fixed-run fixed-run-failure resource-sharing)
+                 material-gui flow-gui material-publish fixed-run fixed-run-failure resource-sharing small-budget)
         add_test(NAME editor.unified_core_${mode}
             COMMAND "${EDITOR_TEST_POWERSHELL}" -NoProfile -File
                 "${PROJECT_SOURCE_DIR}/cmake/installed-consumers/editor-d2/protocol/RunCase.ps1"

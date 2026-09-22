@@ -370,9 +370,7 @@ int Editor::exec()
                 document->requestClose();
             }
         }
-        pollDocuments(budget);
-        advanceUi(budget);
-        pumpRender(budget);
+        advanceOwners(budget);
         collectClosed();
         wait();
     }

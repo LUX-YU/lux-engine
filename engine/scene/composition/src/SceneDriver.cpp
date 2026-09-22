@@ -142,31 +142,41 @@ ESceneProgress SceneDriver::advance(SceneInstance &instance, Clock::time_point n
     }
     const bool maintenance_complete = d.maintenance_visited == count;
     const bool maintenance_pending = d.maintenance_pending || !maintenance_complete;
-    if (maintenance_complete)
-    {
-        d.maintenance_visited = 0;
-        d.maintenance_pending = false;
-    }
+    // Keep a completed maintenance round across budget exhaustion. Otherwise
+    // a one-call turn repeats maintenance forever and never resumes its phase.
+    const auto finish_maintenance = [&] {
+        if (maintenance_complete)
+        {
+            d.maintenance_visited = 0;
+            d.maintenance_pending = false;
+        }
+    };
     d.invalidated |= context.invalidated;
     if (d.progress.state == ESceneDriveState::STOPPING)
     {
+        finish_maintenance();
         d.simulation->stop();
         d.progress.state = d.progress.result ? ESceneDriveState::STOPPED : ESceneDriveState::FAILED;
         return ESceneProgress::COMPLETE;
     }
     if (terminal(d.progress.state))
     {
+        finish_maintenance();
         return ESceneProgress::COMPLETE;
     }
 
     const auto advance_hooks = [&](auto &hooks, ESceneDrivePhase phase) -> ESceneProgress {
         while (d.stage_cursor < hooks.size())
         {
-            if (!budget.system_calls)
+            if (!budget.system_calls || (phase == ESceneDrivePhase::PUBLICATION && !budget.publications))
             {
+                // No admission opportunity is different from backend backpressure.
+                // Preserve the completed maintenance round until publication can
+                // actually try; rotating owners must not reset it in lockstep.
                 return ESceneProgress::PENDING;
             }
             --budget.system_calls;
+            finish_maintenance();
             auto result = hooks[d.stage_cursor].invoke(context);
             if (!result)
             {
@@ -186,6 +196,7 @@ ESceneProgress SceneDriver::advance(SceneInstance &instance, Clock::time_point n
     {
         if (maintenance_pending)
         {
+            finish_maintenance();
             return ESceneProgress::PENDING;
         }
         if (d.progress.pause_pending && !d.progress.step_pending)
@@ -196,6 +207,7 @@ ESceneProgress SceneDriver::advance(SceneInstance &instance, Clock::time_point n
         const bool evolve = d.progress.state == ESceneDriveState::RUNNING && (d.progress.step_pending || now >= d.next);
         if (!evolve && !d.invalidated)
         {
+            finish_maintenance();
             return ESceneProgress::COMPLETE;
         }
         if (!budget.new_steps)
@@ -256,6 +268,7 @@ ESceneProgress SceneDriver::advance(SceneInstance &instance, Clock::time_point n
         ++d.progress.refresh_completed;
     }
     d.progress.step_pending = false;
+    finish_maintenance();
     if (d.progress.pause_pending)
     {
         d.progress.state = ESceneDriveState::PAUSED;

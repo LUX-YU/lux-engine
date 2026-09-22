@@ -39,6 +39,8 @@ SceneSystemDescription 是 SceneDescription 中一条不可变系统记录的借
 
 SceneDriver 借用 TaskExecutor，无实例 map。play／pause／step／stop 记录控制意图；advance 先维护，再接续既有步骤，最后才接纳新步骤。时钟在 Simulation 执行后立即读取，成功阶段分别记录；必要发布等待不会重复执行相同 delta。暂停仍可维护和刷新作者变化，不执行零时间演化。
 
+维护轮次与阶段游标跨调用保留。若维护刚好耗尽本轮调用额度，下一次先接续尚未取得机会的阶段；发布额度为零时不重新开始已经完成的维护轮次。真正尝试发布后遇到后端背压，则继续正常维护和重试。这样即使每轮只有一次系统调用，维护与必要发布也都能取得机会，Stop 无需等待新预算。
+
 固定 dt 的目标时间为本步开始加 dt；落后时不积累无界追赶。Main 拥有实例写入与结果采用，TaskGraph 执行符合访问约束的系统任务，Process 负责异步读取和编译。Main 中不可分离的长计算仍会延迟 UI 帧生产，不能将独立 Render 线程描述为任意慢 Simulation 下保证恒定帧率。
 
 ## 可选 RenderSystem 与相机

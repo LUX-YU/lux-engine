@@ -372,19 +372,31 @@ void Editor::acceptOpenings(PollBudget &budget)
     }
 }
 
-void Editor::pollDocuments(PollBudget &budget)
+void Editor::advanceOwners(PollBudget &budget)
 {
     const auto &values = documents_.values();
-    if (values.empty())
+    // UI publication and runtime retirement share the same finite budget as
+    // documents. Rotate all owners, including an empty desktop, so none can
+    // permanently consume the last call or Program slot ahead of another.
+    const auto count = values.size() + 2;
+    poll_cursor_ %= count;
+    for (std::size_t index{}; index < count; ++index)
     {
-        return;
+        const auto owner = (poll_cursor_ + index) % count;
+        if (owner < values.size())
+        {
+            values[owner]->poll(budget);
+        }
+        else if (owner == values.size())
+        {
+            advanceUi(budget);
+        }
+        else
+        {
+            pumpRender(budget);
+        }
     }
-    poll_cursor_ %= values.size();
-    for (std::size_t index{}; index < values.size(); ++index)
-    {
-        values[(poll_cursor_ + index) % values.size()]->poll(budget);
-    }
-    poll_cursor_ = (poll_cursor_ + 1) % values.size();
+    poll_cursor_ = (poll_cursor_ + 1) % count;
 }
 
 void Editor::collectClosed()

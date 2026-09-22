@@ -44,8 +44,8 @@ SceneSystemRegistration registration()
         .type = system::systemTypeId(Probe::Description.canonical_name),
         .cpp_type = cxx::typeToken<Probe>(),
         .description = &Probe::Description,
-        .install =
-            +[](SceneBuilder &builder, SceneSystemDescription input) noexcept -> cxx::expected<void, SceneSystemBuildFailure> {
+        .install = +[](SceneBuilder &builder,
+                       SceneSystemDescription input) noexcept -> cxx::expected<void, SceneSystemBuildFailure> {
             auto system = builder.emplaceSystem<Probe>(input.instanceId(), builder.registry());
             if (!system)
             {
@@ -53,9 +53,10 @@ SceneSystemRegistration registration()
             }
             if (Probe::reject_install)
             {
-                return cxx::unexpected(SceneSystemBuildFailure{
-                    .code = ESceneSystemBuildError::EXTERNAL_OPERATION_FAILURE,
-                    .system = input.instanceId(), .cause = 719});
+                return cxx::unexpected(
+                    SceneSystemBuildFailure{.code = ESceneSystemBuildError::EXTERNAL_OPERATION_FAILURE,
+                                            .system = input.instanceId(),
+                                            .cause = 719});
             }
             auto maintenance =
                 builder.addMaintenanceTask<Probe>(input.instanceId(), [](Probe &self) noexcept -> SceneStageResult {
@@ -88,7 +89,7 @@ SceneSystemRegistration registration()
 }
 } // namespace
 
-int main()
+int main(int argc, char **argv)
 {
     using namespace lux;
     using namespace lux::scene;
@@ -125,6 +126,41 @@ int main()
     SceneDriver driver(*executor);
     auto &instance = **first;
     auto &probe = *instance.findSceneSystem<Probe>();
+    if (argc == 2 && std::string_view(argv[1]) == "--small-budget")
+    {
+        assert(driver.step(instance));
+        for (unsigned turn{}; turn < 16; ++turn)
+        {
+            SceneAdvanceBudget limited{1, 1, 1};
+            static_cast<void>(driver.advance(instance, std::chrono::steady_clock::now(), limited));
+        }
+        const bool reached_publication = instance.progress().clock.step_index == 1 && probe.stable == 1 &&
+                                         probe.publication > 0 && instance.progress().publication_completed == 0;
+        const auto maintenance_before = probe.maintenance;
+        probe.gate = true;
+        for (unsigned turn{}; turn < 16 && instance.progress().publication_completed == 0; ++turn)
+        {
+            SceneAdvanceBudget limited{1, 1, 1};
+            static_cast<void>(driver.advance(instance, std::chrono::steady_clock::now(), limited));
+        }
+        const bool completed = instance.progress().publication_completed == 1 &&
+                               instance.progress().clock.step_index == 1 && probe.stable == 1 &&
+                               probe.maintenance >= maintenance_before;
+        std::cout << "small-budget calls_per_turn=1 clock=" << instance.progress().clock.step_index
+                  << " stable=" << probe.stable << " publication_attempts=" << probe.publication
+                  << " publication_completed=" << instance.progress().publication_completed
+                  << " maintenance=" << probe.maintenance << '\n';
+        driver.stop(instance);
+        SceneAdvanceBudget stopped{0, 0, 0};
+        static_cast<void>(driver.advance(instance, std::chrono::steady_clock::now(), stopped));
+        assert(instance.progress().state == ESceneDriveState::STOPPED);
+        first->reset();
+        second->reset();
+        assert(Probe::destructions == 3);
+        std::cout << (reached_publication && completed ? "PASS" : "FAIL")
+                  << " maintenance/publication progress with one shared system call; no repeated Simulation step\n";
+        return reached_publication && completed ? 0 : 2;
+    }
     auto *capability = instance.findSceneSystem<Capability>();
     assert(capability == static_cast<Capability *>(&probe));
     assert(static_cast<void *>(capability) != static_cast<void *>(&probe));

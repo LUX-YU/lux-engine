@@ -15,6 +15,8 @@
 #include <lux/engine/flowforge/graph/ObjectNode.hpp>
 #include <lux/engine/function/script/native/NativeModule.hpp>
 #include <lux/engine/meta/Meta.hpp>
+#include <lux/engine/object/detail/MessageEnvelope.hpp>
+#include <lux/engine/process/TaskScope.hpp>
 #include <thread>
 using namespace lux::editor;
 namespace flow = lux::editor::flowforge;
@@ -64,13 +66,15 @@ void fixture(const std::filesystem::path &root)
 }
 struct Evidence final
 {
-    bool completed{}, closed{};
+    bool completed{};
     std::weak_ptr<const void> metadata;
 };
 class CompileReceiver final : public lux::object::Object<CompileReceiver>
 {
   public:
-    explicit CompileReceiver(lux::object::ObjectDispatcherRef dispatcher) : Object(dispatcher) {}
+    explicit CompileReceiver(lux::object::ObjectDispatcherRef dispatcher) : Object(dispatcher)
+    {
+    }
     void completed(const flow::FlowCompileId &id) noexcept
     {
         values.push_back(id);
@@ -78,46 +82,73 @@ class CompileReceiver final : public lux::object::Object<CompileReceiver>
     std::vector<flow::FlowCompileId> values;
 };
 
-class Probe final : public EditorFrontend
+class Probe final
 {
     TestExit exit_;
 
   public:
-    explicit Probe(Evidence &evidence) : evidence_(evidence) {}
-    EditorResult<void> beginStartup(Editor &editor, lux::process::ExecutionRuntime &runtime,
-                                    lux::object::ObjectDispatcherRef) override
+    explicit Probe(Evidence &evidence) : evidence_(evidence)
     {
+    }
+    ~Probe()
+    {
+        assert(stdexec::sync_wait(startup_.close()));
+    }
+
+    void bind(Editor &editor) noexcept
+    {
+        editor_ = &editor;
+    }
+
+    EditorResult<DocumentRegistration> registration(lux::process::ExecutionRuntime &runtime)
+    {
+        auto work = stdexec::then(stdexec::schedule(runtime.main()), [this]() noexcept {
+            auto requested = editor_->requestOpen(
+                {{identity(1), identity(2), std::string(flow::kFlowForgeDocumentType)}, "test-start"});
+            assert(requested);
+            initial_ = *requested;
+        });
+        auto errors = stdexec::upon_error(std::move(work), [](lux::process::EExecutionError) noexcept {
+            assert(false && "Initial test action was not admitted to Main");
+        });
+        assert(startup_.start(std::move(errors)));
         auto owner = std::make_shared<MetadataOwner>();
         evidence_.metadata = owner;
         auto environment = flowMetadata(owner);
         assert(source::validateFlowSourceEnvironment(environment));
-        return editor.registerDocument(
-            {std::string(flow::kFlowForgeDocumentType),
-             [&runtime, environment](Project &project, const OpenDocumentRequest &request)
-             { return flow::openFlowForgeDocument(project, request, runtime, environment); }});
+        return DocumentRegistration{
+            std::string(flow::kFlowForgeDocumentType),
+            [this, &runtime, environment](Project &project, const OpenDocumentRequest &request) {
+                if (!project_)
+                {
+                    project_ = &project;
+                    source::FlowSourceEnvironment invalid;
+                    const lux::meta::RefFunction *null_function = nullptr;
+                    invalid.functions = {&null_function, 1};
+                    auto refused = flow::openFlowForgeDocument(project, request, runtime, invalid);
+                    assert(!refused && refused.error().domain == "flowforge.metadata" &&
+                           refused.error().reason ==
+                               static_cast<std::uint64_t>(source::EFlowSourceError::UNKNOWN_REFLECTION_MEMBER));
+                    open();
+                    enqueue();
+                }
+                return flow::openFlowForgeDocument(project, request, runtime, environment);
+            }};
     }
-    EditorResult<void> enterProject(Editor &editor, Project &project, lux::process::ExecutionRuntime &runtime,
-                                    lux::object::ObjectDispatcherRef) override
-    {
-        editor_ = &editor;
-        project_ = &project;
-        source::FlowSourceEnvironment invalid;
-        const lux::meta::RefFunction *null_function = nullptr;
-        invalid.functions = {&null_function, 1};
-        auto refused = flow::openFlowForgeDocument(
-            project, {{project.manifest().id, identity(2), std::string(flow::kFlowForgeDocumentType)}, "invalid"},
-            runtime, invalid);
-        assert(!refused && refused.error().domain == "flowforge.metadata" &&
-               refused.error().reason ==
-                   static_cast<std::uint64_t>(source::EFlowSourceError::UNKNOWN_REFLECTION_MEMBER));
-        open();
-        return {};
-    }
-    void collectInput(Editor &) override {}
-    void draw(Editor &, PollBudget &) override {}
-    void poll(PollBudget &) override
+
+    void poll(PollBudget &)
     {
         exit_.poll();
+        if (initial_.value)
+        {
+            auto initial = editor_->openStatus(initial_);
+            assert(initial);
+            if (!std::holds_alternative<OpenPending>(*initial))
+            {
+                assert(editor_->acknowledgeOpen(initial_));
+                initial_ = {};
+            }
+        }
         assert(std::chrono::steady_clock::now() - began_ < std::chrono::seconds(60));
         if (!project_ || evidence_.completed)
         {
@@ -140,8 +171,7 @@ class Probe final : public EditorFrontend
             assert(editor_->acknowledgeOpen(open_));
             auto &doc = document();
             first_notice_ = doc.observeScoped<flow::FlowForgeEditor::compileFinished>(
-                [this, &doc](const flow::FlowCompileId &id) noexcept
-                {
+                [this, &doc](const flow::FlowCompileId &id) noexcept {
                     notified_ = id;
                     if (stage_ != 6)
                     {
@@ -157,8 +187,7 @@ class Probe final : public EditorFrontend
                     ++first_notices_;
                 });
             second_notice_ = doc.observeScoped<flow::FlowForgeEditor::compileFinished>(
-                [this, &doc](const flow::FlowCompileId &id) noexcept
-                {
+                [this, &doc](const flow::FlowCompileId &id) noexcept {
                     assert(id == notified_ && doc.compileStatus(id));
                     ++second_notices_;
                 });
@@ -173,14 +202,12 @@ class Probe final : public EditorFrontend
                 assert(editor_->acknowledgeOpen(*shared));
                 const auto original = doc.capture();
                 assert(original && doc.views().empty() && doc.historyView()->history.clean);
-                measureEdits("Flow.node-layout", doc,
-                             [&](unsigned index)
-                             {
-                                 const std::array moved{
-                                     lux::graph::GraphLayoutEntry{lux::graph::NodeId{original->nodes.front().id.value},
-                                                                  {static_cast<float>(index + 1), 32, true}}};
-                                 return doc.moveNodes(moved);
-                             });
+                measureEdits("Flow.node-layout", doc, [&](unsigned index) {
+                    const std::array moved{
+                        lux::graph::GraphLayoutEntry{lux::graph::NodeId{original->nodes.front().id.value},
+                                                     {static_cast<float>(index + 1), 32, true}}};
+                    return doc.moveNodes(moved);
+                });
                 assert(!evidence_.metadata.expired() && doc.metadata().classes.size() == 1);
                 {
                     auto foreign = std::make_shared<MetadataOwner>();
@@ -376,9 +403,8 @@ class Probe final : public EditorFrontend
                 assert(doc.setExports({{source::FlowForgeExportNodeId{1}, event, 0x2345}}));
                 assert(doc.undo() && *doc.capture() == *original);
                 bool entered{};
-                auto connection = doc.observeScoped<flow::FlowForgeEditor::contentChanged>(
-                    [&](editing::Revision revision) noexcept
-                    {
+                auto connection =
+                    doc.observeScoped<flow::FlowForgeEditor::contentChanged>([&](editing::Revision revision) noexcept {
                         assert(revision == doc.historyView()->history.revision);
                         const auto reentry = doc.rename("wrong");
                         assert(!reentry && reentry.error().code == editing::EEditError::BUSY);
@@ -548,21 +574,28 @@ class Probe final : public EditorFrontend
             }
         }
     }
-    void wait() override
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    void stopPresenting() noexcept override {}
-    void requestClose() noexcept override
-    {
-        evidence_.closed = true;
-    }
-    CloseStatus closeStatus() const override
-    {
-        return {evidence_.closed ? ECloseState::CLOSED : ECloseState::OPEN, {}};
-    }
 
   private:
+    // Test actions run at the real Main dispatcher boundary, never inside a
+    // widget draw or a replacement Editor loop. Reentrant posts run next turn.
+    void enqueue()
+    {
+        const auto posted =
+            lux::object::detail::post(project_->dispatcherRef(), lux::object::detail::makeMessage([this]() noexcept {
+                                          if (editor_->closing())
+                                          {
+                                              return;
+                                          }
+                                          PollBudget budget;
+                                          poll(budget);
+                                          if (!editor_->closing())
+                                          {
+                                              enqueue();
+                                          }
+                                      }));
+        assert(posted == lux::object::detail::EPostStatus::POSTED);
+    }
+
     void acknowledge(flow::FlowForgeEditor &doc)
     {
         assert(doc.acknowledgeCompile(compile_));
@@ -590,6 +623,8 @@ class Probe final : public EditorFrontend
     Evidence &evidence_;
     Editor *editor_{};
     Project *project_{};
+    lux::process::TaskScope startup_;
+    OpenRequestId initial_;
     OpenRequestId open_;
     DocumentHandle document_;
     SaveRequestId save_;
@@ -631,14 +666,21 @@ int main(int argc, char **argv)
     lux::meta::ReflectionRegistry::initRegistry();
     fixture(argv[1]);
     Evidence evidence;
+    Probe probe(evidence);
     EditorConfig config;
     config.project_file = std::filesystem::path(argv[1]) / "Project.luxproject";
     config.execution = {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}};
-    config.frontend = [&] { return std::make_unique<Probe>(evidence); };
+    config.window.visible = false;
+    config.providers.push_back(
+        {std::string(flow::kFlowForgeDocumentType),
+         [](const ProjectAssetEntry &entry) { return entry.kind == EProjectAssetKind::FLOW_GRAPH; },
+         [&probe](auto &runtime, auto &) { return probe.registration(runtime); },
+         [](auto &, auto &, auto &, auto &) -> EditorResult<void> { return {}; }});
     {
         Editor editor(std::move(config));
+        probe.bind(editor);
         const auto result = editor.exec();
-        assert(result == 0 && evidence.completed && evidence.closed);
+        assert(result == 0 && evidence.completed && editor.documents().empty());
     }
     assert(evidence.metadata.expired());
     auto reopened = readProjectSource(std::filesystem::path(argv[1]) / "Project.luxproject");

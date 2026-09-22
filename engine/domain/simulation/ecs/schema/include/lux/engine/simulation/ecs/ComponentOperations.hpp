@@ -20,7 +20,20 @@ struct ComponentOperationsAccess;
 class ComponentOperations final
 {
   public:
+    using MembershipChanges = std::remove_reference_t<decltype(std::declval<Registry &>().storage<entt::reactive>())>;
     ComponentOperations() noexcept = default;
+
+    [[nodiscard]] std::size_t valueBytes() const noexcept
+    {
+        return value_bytes_;
+    }
+
+    // Register the typed membership signals in an existing reactive storage.
+    // The storage owner disconnects before the schema's code lease is released.
+    void trackMembership(MembershipChanges &changes) const
+    {
+        track_membership_(changes);
+    }
 
     [[nodiscard]] bool valid() const noexcept
     {
@@ -92,12 +105,14 @@ class ComponentOperations final
     using NotifyUpdatedFn = void (*)(Registry &, Entity) noexcept;
 
     std::uint64_t storage_key_{};
+    std::size_t value_bytes_{};
     HasFn has_{};
     GetFn get_{};
     SizeFn size_{};
     EraseFn erase_{};
     ReserveFn reserve_{};
     NotifyUpdatedFn notify_updated_{};
+    void (*track_membership_)(MembershipChanges &){};
 
     friend struct detail::ComponentOperationsAccess;
 
@@ -108,29 +123,25 @@ template <class Component> [[nodiscard]] ComponentOperations componentOperations
 {
     ComponentOperations result;
     result.storage_key_ = entt::type_hash<Component>::value();
-    result.has_ = [](const Registry &registry, Entity entity) noexcept
-    {
+    result.value_bytes_ = sizeof(Component);
+    result.track_membership_ = [](ComponentOperations::MembershipChanges &changes) {
+        changes.template on_construct<Component>().template on_destroy<Component>();
+    };
+    result.has_ = [](const Registry &registry, Entity entity) noexcept {
         return registry.template all_of<Component>(entity);
     };
-    result.get_ = [](const Registry &registry, Entity entity) noexcept -> const void *
-    {
+    result.get_ = [](const Registry &registry, Entity entity) noexcept -> const void * {
         return registry.template try_get<Component>(entity);
     };
-    result.size_ = [](const Registry &registry) noexcept
-    {
+    result.size_ = [](const Registry &registry) noexcept {
         const auto *storage = registry.template storage<Component>();
         return storage == nullptr ? 0U : storage->size();
     };
-    result.erase_ = [](Registry &registry, Entity entity) noexcept
-    {
-        registry.template remove<Component>(entity);
-    };
-    result.reserve_ = [](Registry &registry, std::size_t count)
-    {
+    result.erase_ = [](Registry &registry, Entity entity) noexcept { registry.template remove<Component>(entity); };
+    result.reserve_ = [](Registry &registry, std::size_t count) {
         registry.template storage<Component>().reserve(count);
     };
-    result.notify_updated_ = [](Registry &registry, Entity entity) noexcept
-    {
+    result.notify_updated_ = [](Registry &registry, Entity entity) noexcept {
         registry.template patch<Component>(entity);
     };
     return result;

@@ -9,7 +9,7 @@ generate_visibility_header(
 )
 add_component(COMPONENT_NAME editor_core NAMESPACE lux::engine::editor
     OUTPUT_NAME lux_engine_editor_core
-    SOURCE_FILES src/Editor.cpp src/DocumentEditor.cpp src/Project.cpp src/ProjectManifest.cpp src/ProjectPublication.cpp
+    SOURCE_FILES src/DocumentEditor.cpp src/Project.cpp src/ProjectManifest.cpp src/ProjectPublication.cpp
 )
 component_include_directories(editor_core
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}

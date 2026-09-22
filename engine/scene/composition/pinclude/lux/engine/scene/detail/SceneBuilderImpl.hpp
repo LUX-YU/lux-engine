@@ -10,43 +10,63 @@
 
 namespace lux::scene::detail
 {
-    struct SceneSystemObjectRecord final
-    {
-        system::SystemInstanceId instance{};
-        lux::cxx::TypeToken type{};
-        const system::SystemTypeDescription* description{};
-        void* object{};
-        object::LuxObject* object_endpoint{};
-        void (*destroy)(void*) noexcept{};
-    };
+struct SceneSystemObjectRecord final
+{
+    system::SystemInstanceId instance{};
+    lux::cxx::TypeToken type{};
+    const system::SystemTypeDescription *description{};
+    void *object{};
+    object::LuxObject *object_endpoint{};
+    void (*destroy)(void *) noexcept {};
+    std::span<const SceneSystemCapabilityProjection> projections;
 
-    struct SceneHookRecord final
+    [[nodiscard]] void *project(lux::cxx::TypeToken requested) const noexcept
     {
-        system::SystemInstanceId system{};
-        lux::cxx::move_only_function<bool()> invoke;
-    };
+        if (requested == type)
+        {
+            return object;
+        }
+        for (const auto &projection : projections)
+        {
+            if (projection.type == requested)
+            {
+                return projection.project(object);
+            }
+        }
+        return nullptr;
+    }
+};
 
-    struct ResolvedSceneRequirement final
-    {
-        system::SystemInstanceId system{};
-        std::string_view name;
-        lux::cxx::TypeToken type{};
-        void* value{};
-        object::LuxObject* object{};
-    };
+struct SceneHookRecord final
+{
+    system::SystemInstanceId system{};
+    lux::cxx::move_only_function<SceneStageResult(SceneStageContext &)> invoke;
+};
+
+struct ResolvedSceneRequirement final
+{
+    system::SystemInstanceId system{};
+    std::string_view name;
+    lux::cxx::TypeToken type{};
+    void *value{};
+    object::LuxObject *object{};
+};
 } // namespace lux::scene::detail
 
 struct lux::scene::SceneBuilder::Impl final
 {
-    simulation::ecs::Registry* registry{};
-    simulation::Simulation* simulation{};
-    const SceneMetaManager* meta{};
-    std::vector<detail::SceneSystemObjectRecord>* systems{};
-    std::vector<detail::SceneHookRecord>* stable_hooks{};
-    const SceneDescription* description{};
+    SceneInstanceId instance;
+    simulation::ecs::Registry *registry{};
+    simulation::Simulation *simulation{};
+    const SceneMetaManager *meta{};
+    std::vector<detail::SceneSystemObjectRecord> *systems{};
+    std::vector<detail::SceneHookRecord> *stable_hooks{};
+    std::vector<detail::SceneHookRecord> *maintenance_hooks{};
+    std::vector<detail::SceneHookRecord> *publication_hooks{};
+    const SceneDescription *description{};
     std::vector<std::vector<std::size_t>> predecessors;
     std::vector<detail::ResolvedSceneRequirement> requirements;
-    const SceneSystemRegistration* current_registration{};
+    const SceneSystemRegistration *current_registration{};
     std::size_t current_ordinal{};
     std::optional<SceneSystemBuildFailure> pending_failure;
 };

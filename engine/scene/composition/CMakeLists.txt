@@ -10,8 +10,9 @@ add_component(
     NAMESPACE      lux::engine::scene
     OUTPUT_NAME    lux_engine_scene_composition
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/Scene.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneInstance.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneBuilder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneDriver.cpp
 )
 
 component_include_directories(
@@ -49,3 +50,14 @@ lux_engine_install_components(
     NAMESPACE    lux::engine::scene
     COMPONENTS   scene_composition
 )
+
+if(BUILD_TESTING)
+    add_executable(scene_driver_test test/driver.cpp)
+    target_link_libraries(scene_driver_test PRIVATE scene_composition)
+    if(MSVC)
+        target_compile_options(scene_driver_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(scene_driver_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME scene.driver COMMAND scene_driver_test)
+endif()

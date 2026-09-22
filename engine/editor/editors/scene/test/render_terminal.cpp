@@ -1,143 +1,124 @@
 #include "render_thread_checks.hpp"
-#include <lux/engine/editor/gui/shell/EditorWindow.hpp>
 #include <lux/engine/meta/Meta.hpp>
-#include <lux/engine/object/ObjectDispatcher.hpp>
-#include <lux/engine/window/GlfwRuntime.hpp>
 
 struct StagedOwner final
 {
     std::size_t *retired;
-    explicit StagedOwner(std::size_t *value) : retired(value) {}
+    explicit StagedOwner(std::size_t *value) : retired(value)
+    {
+    }
     ~StagedOwner()
     {
         ++*retired;
     }
 };
 
-// Real Render backend shutdown through its existing terminal channel, without
-// device-loss emulation. A stopping intent alone never proves resource
-// retirement.
+// Real channel shutdown, not physical device loss. The Scene/System is the
+// production owner and the result receipt survives its destruction.
 int main(int argc, char **argv)
 {
     using namespace lux;
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     assert(argc == 2);
     const bool pending = std::string_view(argv[1]) == "pending";
+    assert(pending || std::string_view(argv[1]) == "forwarded");
     meta::ReflectionRegistry::initRegistry();
-    window::GlfwRuntime platform;
-    assert(platform.valid());
-    object::ObjectMessageQueue queue;
-    editor::gui::WindowSpec spec;
-    spec.visible = false;
-    auto window = editor::gui::EditorWindow::create(queue.dispatcherRef(), spec);
-    if (!window)
-    {
-        std::printf("window create failed code=%u\n", unsigned(window.error().code));
-    }
-    assert(window);
-    editor::rendering::RendererConfig config;
+    scene::initializeBuiltinRenderSystemMeta();
+    render::initializeBuiltinRenderFeatureMeta();
+    render::RendererConfig config;
     config.validation = true;
-    auto renderer =
-        editor::rendering::EditorRenderer::create((*window)->nativeWindow(), (*window)->uiSession(), config);
-    assert(renderer);
-    auto runtime = process::ExecutionRuntime::create({2, 64, 64, {64}});
-    assert(runtime);
-    auto lease = (*renderer)->acquire();
-    assert(lease);
+    config.feature_factories = {render::kLightFeatureFactory};
+    auto made_runtime = render::RenderRuntime::create(std::move(config));
+    assert(made_runtime);
+    auto runtime = std::move(*made_runtime);
     RenderThreadChecks fixture;
-    fixture.begin(**renderer);
+    fixture.begin(*runtime);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
-    const auto poll = [&]
-    {
+    const auto poll = [&] {
         assert(std::chrono::steady_clock::now() < deadline);
-        assert((*renderer)->poll(64));
+        std::size_t controls = 8, programs = 2;
+        assert(runtime->poll(32, controls, programs));
         std::this_thread::yield();
     };
-    while (fixture.binding->state() != scene::ESceneRenderBindingState::READY)
+    while (fixture.receipt.status().state != render::ESceneResourceState::READY)
     {
         poll();
-        fixture.binding->poll(0);
     }
-    auto input = fixture.binding->takeInput();
-    assert(input);
-    auto view = (*renderer)->openView(input->sceneId(), {{320, 240}, true, 2048});
-    assert(view);
-    simulation::ecs::Registry registry;
-    auto pipeline = input->makePipeline(registry, fixture.description.systemAt(0));
-    assert(pipeline);
+    auto opened = fixture.system->openView({.extent = {320, 240}});
+    assert(opened);
+    auto view = std::move(*opened);
+    auto &registry = fixture.instance->registry();
     const auto entity = registry.create();
     registry.emplace<simulation::ecs::WorldTransform3D>(entity);
     registry.emplace<simulation::ecs::Light3D>(entity);
-    assert((*pipeline)->tryPublish() == scene::ERenderPublishResult::FULL_SYNC_PUBLISHED);
-    if (pending)
+    scene::SceneAdvanceBudget budget{32, 1, pending ? 0U : 1U};
+    static_cast<void>(fixture.driver.advance(*fixture.instance, std::chrono::steady_clock::now(), budget));
+    while (!pending && fixture.system->transportStatistics().forwarded == 0)
     {
-        registry.patch<simulation::ecs::Light3D>(entity, [](auto &light) { light.value.intensity = 2; });
-        assert((*pipeline)->tryPublish() == scene::ERenderPublishResult::BACKPRESSURED);
+        poll();
+        budget = {32, 1, 1};
+        static_cast<void>(fixture.driver.advance(*fixture.instance, std::chrono::steady_clock::now(), budget));
     }
-    if (!pending)
+    const auto before = fixture.system->transportStatistics();
+    assert(before.published == 1 && before.forwarded == (pending ? 0U : 1U));
+    assert(before.pending == (pending ? 1U : 0U));
+
+    // One independently admitted attachment proves CPU program ownership is
+    // preserved until Main observes backend retirement. No new UI frame is needed.
+    std::size_t retired{};
+    render::RenderProgram<> program;
+    render::RenderProgramSession::Builder builder(program);
+    builder.begin({});
+    program.kind = render::ERenderProgramKind::StateUpdate;
+    builder.emplaceAttachment<StagedOwner>(render::attachment_types::OwnedObject, &retired);
+    builder.emplaceAttachment<render::RenderSceneLease>(902, fixture.system->retainScene());
+    while (*runtime->submit(program) != render::EFrameSubmit::SUBMITTED)
     {
-        while (fixture.binding->statistics().forwarded == 0)
+        poll();
+    }
+    assert(retired == 0);
+    auto control = runtime->control();
+    assert(control);
+    control->get().requestStop();
+    assert(retired == 0); // Stop intent cannot destroy client-side ring storage.
+    budget = {32, 1, 0};
+    static_cast<void>(fixture.driver.advance(*fixture.instance, std::chrono::steady_clock::now(), budget));
+    const auto result = fixture.instance->progress().result;
+    assert(!result);
+    const auto &stage = std::get<scene::SceneExecutionFailure>(result.error().cause);
+    const auto terminal = std::any_cast<render::RenderError>(stage.cause);
+    const auto expected = render::renderError<render::err::comm::ChannelStopping>();
+    assert(terminal.type == expected.type && terminal.args == expected.args);
+    assert(fixture.system->transportStatistics().forwarded == before.forwarded);
+    fixture.instance.reset();
+    fixture.system = nullptr;
+    assert(view->beginClose());
+    while (*view->advanceClose() != render::ERenderClose::COMPLETE)
+    {
+        poll();
+    }
+    view.reset();
+    while (fixture.receipt.status().state != render::ESceneResourceState::RETIRED)
+    {
+        poll();
+    }
+    const auto final = fixture.receipt.status();
+    assert(final.failure.type == terminal.type && final.failure.args == terminal.args);
+    assert(retired == 1 && runtime->statistics().runtime_leases == 0 && runtime->statistics().views == 0);
+    assert(runtime->beginClose());
+    for (;;)
+    {
+        std::size_t replies = 32, controls = 8, programs = 2;
+        const auto close = runtime->advanceClose(replies, controls, programs);
+        assert(close);
+        if (*close == render::ERenderClose::COMPLETE)
         {
-            poll();
-            fixture.binding->poll(1);
+            break;
         }
-    }
-    std::size_t staged_retired{};
-    assert(lease->programs().beginFrame());
-    static_cast<void>(lease->programs().builder().emplaceAttachment<StagedOwner>(render::attachment_types::OwnedObject,
-                                                                                 &staged_retired));
-    const auto terminal = render::renderError<render::err::comm::ChannelStopping>();
-    lease->programs().progressDomain()->publishTerminalError(terminal);
-    lease->programs().requestStop();
-    fixture.binding->poll(0); // Lifecycle observation must also work with a zero packet budget.
-    assert(staged_retired == 0 && (*renderer)->statistics().runtime_leases == 2);
-    assert((*pipeline)->tryPublish() == scene::ERenderPublishResult::FAILED);
-    pipeline->reset();
-    assert((*view)->beginClose());
-    while (*(*view)->advanceClose() != editor::rendering::ERenderClose::COMPLETE)
-    {
         poll();
     }
-    view->reset();
-    while ((*renderer)->state() != editor::rendering::ERendererState::FAILED)
-    {
-        poll();
-    }
-    poll(); // Completes Main retirement after the backend's release/acquire
-            // terminal fact.
-    fixture.binding->requestClose();
-    for (unsigned i = 0; i < 8; ++i)
-    {
-        fixture.binding->poll(1);
-    }
-    const auto counts = fixture.binding->statistics();
-    std::printf("JR01 mode=%s backend=FAILED producer=ended view=closed binding=%u "
-                "published=%llu forwarded=%llu pending=%u leases=%zu\n",
-                argv[1], unsigned(fixture.binding->state()), static_cast<unsigned long long>(counts.published),
-                static_cast<unsigned long long>(counts.forwarded), counts.pending,
-                (*renderer)->statistics().runtime_leases);
-    assert(fixture.binding->state() == scene::ESceneRenderBindingState::CLOSED &&
-           "JR01 backend retired but Binding cannot close");
-    assert(fixture.binding->hasFailure());
-    assert(fixture.binding->failure().render.type == terminal.type);
-    assert(fixture.binding->failure().render.args == terminal.args);
-    assert(counts.forwarded == (pending ? 0U : 1U) && counts.pending == 0);
-    assert(counts.retired_unforwarded == (pending ? 1U : 0U) && staged_retired == 1);
-    fixture.binding.reset();
-    *lease = {};
-    assert((*renderer)->statistics().runtime_leases == 0);
-    assert((*renderer)->beginClose());
-    while (*(*renderer)->advanceClose() != editor::rendering::ERenderClose::COMPLETE)
-    {
-        poll();
-    }
-    assert((*renderer)->statistics().validation_errors == 0);
-    assert((*renderer)->joinStopped());
-    renderer->reset();
-    assert((*window)->closeAfterRendererStopped());
-    window->reset();
-    runtime->requestStop();
-    assert(runtime->join());
-    std::puts("PASS JR01 actual backend retired; original terminal error "
-              "retained; no new drain; all owners closed");
+    assert(runtime->statistics().validation_errors == 0 && runtime->joinStopped());
+    std::printf("PASS terminal mode=%s published=%llu forwarded=%llu pending_at_stop=%u "
+                "SceneInstance destroyed; View/Program/Scene retired; original error retained\n",
+                argv[1], before.published, before.forwarded, before.pending);
 }

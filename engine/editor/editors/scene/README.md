@@ -20,7 +20,7 @@ SceneEditor 拥有场景编辑的业务内容、作者历史、运行上下文�
 
 Registry 保存当前组件值，SceneEditor 的历史记录内容变化。运行时查询与选择面向所属 Registry 的完整 Entity；WorldObjectId 只在持久内容、保存恢复和需要的映射边界使用。
 
-SceneObjectRow、SelectionNotice、Inspector 与字段写入目标使用 `SceneEntityRef { SceneInstanceId, Entity }`。每次运行有新实例身份；删除并 Undo 恢复的 Entity 具有新代次，旧输入被拒绝。作者历史内部通过持久映射找到恢复后的 Entity；运行对象不补 UUID。
+SceneObjectRow、SelectionNotice、Inspector 与字段写入目标使用 `SceneEntityRef { lux::scene::SceneInstanceId, Entity }`。每次运行有新实例身份；删除并 Undo 恢复的 Entity 具有新代次，旧输入被拒绝。作者历史内部通过持久映射找到恢复后的 Entity；运行对象不补 UUID。
 
 选择从同步查询取得 Entity 后，应验证它仍属于原检查目标且代次有效。异步操作还要验证文档、作者／Run 目标代次和请求顺序。后来一次 Outliner 选择不能被迟到拾取覆盖。
 

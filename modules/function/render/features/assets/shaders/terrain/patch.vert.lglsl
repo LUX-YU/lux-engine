@@ -302,7 +302,7 @@ void main()
     vColor = color;
     float progress = page.transition.y > 0.0
         ? clamp(
-            (uSceneGlobals.scenes[pc.scene_index].time_sec -
+            (uSceneGlobals.scenes[pc.scene_index].maintenance_time -
                 page.transition.x) / page.transition.y,
             0.0,
             1.0)

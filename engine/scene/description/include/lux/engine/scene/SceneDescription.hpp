@@ -17,7 +17,7 @@ namespace lux::scene
 {
     class SceneDescription;
     class SceneDescriptionBuilder;
-    class SceneSystemView;
+    class SceneSystemDescription;
     class SceneRequirementBindingView;
     class SceneSystemDependencyView;
 
@@ -35,7 +35,7 @@ namespace lux::scene
         const SceneDescription* description_{};
         std::size_t binding_index_{};
         friend class SceneDescription;
-        friend class SceneSystemView;
+        friend class SceneSystemDescription;
     };
 
     class LUX_ENGINE_SCENE_DESCRIPTION_PUBLIC SceneSystemDependencyView final
@@ -53,10 +53,12 @@ namespace lux::scene
         friend class SceneDescription;
     };
 
-    class LUX_ENGINE_SCENE_DESCRIPTION_PUBLIC SceneSystemView final
+    // Borrowed immutable description of one declared system. SceneDescription
+    // owns the single record/payload directory; no mirrored configuration array.
+    class LUX_ENGINE_SCENE_DESCRIPTION_PUBLIC SceneSystemDescription final
     {
     public:
-        SceneSystemView() noexcept = default;
+        SceneSystemDescription() noexcept = default;
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] system::SystemInstanceId instanceId() const noexcept;
         [[nodiscard]] std::string_view instanceName() const noexcept;
@@ -71,7 +73,7 @@ namespace lux::scene
         [[nodiscard]] SceneRequirementBindingView findRequirementBinding(std::string_view requirement) const noexcept;
 
     private:
-        SceneSystemView(const SceneDescription& description, std::size_t system_index) noexcept;
+        SceneSystemDescription(const SceneDescription& description, std::size_t system_index) noexcept;
         const SceneDescription* description_{};
         std::size_t system_index_{};
         friend class SceneDescription;
@@ -89,9 +91,9 @@ namespace lux::scene
         [[nodiscard]] asset::AssetId world() const noexcept;
         [[nodiscard]] asset::AssetId simulation() const noexcept;
         [[nodiscard]] std::size_t systemCount() const noexcept;
-        [[nodiscard]] SceneSystemView systemAt(std::size_t index) const noexcept;
-        [[nodiscard]] SceneSystemView findSystem(system::SystemInstanceId id) const noexcept;
-        [[nodiscard]] SceneSystemView findSystem(std::string_view instance_name) const noexcept;
+        [[nodiscard]] SceneSystemDescription systemAt(std::size_t index) const noexcept;
+        [[nodiscard]] SceneSystemDescription findSystem(system::SystemInstanceId id) const noexcept;
+        [[nodiscard]] SceneSystemDescription findSystem(std::string_view instance_name) const noexcept;
         [[nodiscard]] std::size_t dependencyCount() const noexcept;
         [[nodiscard]] SceneSystemDependencyView dependencyAt(std::size_t index) const noexcept;
 
@@ -129,7 +131,7 @@ namespace lux::scene
         std::vector<DependencyRecord> dependencies_;
 
         friend class SceneDescriptionBuilder;
-        friend class SceneSystemView;
+        friend class SceneSystemDescription;
         friend class SceneRequirementBindingView;
         friend class SceneSystemDependencyView;
     };

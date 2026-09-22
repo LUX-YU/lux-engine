@@ -1,7 +1,8 @@
+find_package(lux-engine-editor-app REQUIRED COMPONENTS editor_app)
 find_package(lux-engine-flowforge-compiler REQUIRED COMPONENTS flowforge_compiler)
 find_package(lux-engine-toolchain-material REQUIRED COMPONENTS toolchain_material_compiler)
 find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render scene_render_meta)
-find_package(lux-engine-function REQUIRED COMPONENTS script_native render_feature_meta)
+find_package(lux-engine-function REQUIRED COMPONENTS script_native render_feature_meta render_features)
 find_package(lux-engine-simulation REQUIRED COMPONENTS transform_system)
 find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS visual transform)
 find_package(lux-engine-platform REQUIRED COMPONENTS window)
@@ -44,7 +45,7 @@ foreach(protocol IN LISTS protocols)
     add_executable(d2_${protocol} "${source}")
     target_include_directories(d2_${protocol} PRIVATE "${feature_test_sources}" "${CMAKE_CURRENT_SOURCE_DIR}/..")
     target_link_libraries(d2_${protocol} PRIVATE
-        lux::engine::editor::editor_scene_ui lux::engine::editor::editor_material_ui
+        lux::engine::editor::editor_app lux::engine::editor::editor_scene_ui lux::engine::editor::editor_material_ui
         lux::engine::editor::editor_flowforge_ui lux::engine::editor::editor_assets
         lux::engine::flowforge::flowforge_compiler
         lux::engine::toolchain::toolchain_material_compiler
@@ -57,6 +58,12 @@ endforeach()
 target_link_libraries(d2_fixture PRIVATE lux::engine::simulation::ecs::visual lux::engine::simulation::ecs::transform)
 target_link_libraries(d2_render_terminal PRIVATE lux::engine::platform::window)
 target_link_libraries(d2_dynamic_run PRIVATE lux::engine::platform::window)
+
+# These executable hosts explicitly register builtin backend factories.
+# The generic Editor/Scene packages intentionally do not export that dependency.
+foreach(protocol core_protocol render_terminal dynamic_run)
+    target_link_libraries(d2_${protocol} PRIVATE lux::engine::function::render_features)
+endforeach()
 
 foreach(mode pending forwarded)
     add_test(NAME editor.d3.terminal-${mode} COMMAND d2_render_terminal ${mode})

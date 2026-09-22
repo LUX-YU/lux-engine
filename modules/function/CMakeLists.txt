@@ -67,6 +67,7 @@ else()
         render_standard_content
         render_graph
         render_vulkan
+        render_runtime
         navigation
         navigation_detour3d
         input
@@ -82,6 +83,9 @@ else()
         list(APPEND LUX_FUNCTION_COMPONENTS render_features)
     endif()
     list(APPEND LUX_FUNCTION_COMPONENTS ui)
+    if(TARGET ui_rendering)
+        list(APPEND LUX_FUNCTION_COMPONENTS ui_rendering)
+    endif()
 endif()
 
 if(TARGET material_graph)

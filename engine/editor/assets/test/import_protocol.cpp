@@ -1,11 +1,11 @@
-#include "TestExit.hpp"
 #include <cassert>
 #include <cstdio>
 #include <fstream>
-#include <lux/engine/editor/Editor.hpp>
 #include <lux/engine/editor/asset/AssetImporter.hpp>
 #include <lux/engine/editor/project/Project.hpp>
 #include <lux/engine/meta/Meta.hpp>
+#include <lux/engine/process/ExecutionRuntime.hpp>
+#include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
 #include <thread>
@@ -26,25 +26,15 @@ struct Evidence
 {
     bool done{}, closed{};
 };
-class Probe final : public EditorFrontend
+class Probe final
 {
-    TestExit exit_;
 
   public:
-    Probe(std::filesystem::path source, Evidence &evidence) : source_(std::move(source)), evidence_(evidence) {}
-    EditorResult<void> beginStartup(Editor &editor, lux::process::ExecutionRuntime &,
-                                    lux::object::ObjectDispatcherRef) override
+    Probe(std::filesystem::path source, Evidence &evidence, Project &project, lux::process::ExecutionRuntime &runtime)
+        : source_(std::move(source)), evidence_(evidence), project_(&project), importer_(project, runtime)
     {
-        editor_ = &editor;
-        return {};
-    }
-    EditorResult<void> enterProject(Editor &, Project &project, lux::process::ExecutionRuntime &runtime,
-                                    lux::object::ObjectDispatcherRef) override
-    {
-        project_ = &project;
-        importer_.emplace<assets::AssetImporter>(project, runtime);
         assets::ModelImportRequest request{identity(2), source_, "Models/Triangle", {}};
-        auto &importer = std::get<assets::AssetImporter>(importer_);
+        auto &importer = importer_;
         auto accepted = importer.requestModel(request);
         assert(accepted);
         id_ = *accepted;
@@ -52,18 +42,10 @@ class Probe final : public EditorFrontend
         auto foreign = id_;
         ++foreign.owner;
         assert(!importer.status(foreign));
-        return {};
     }
-    void collectInput(Editor &) override {}
-    void draw(Editor &, PollBudget &) override {}
-    void poll(PollBudget &budget) override
+    void poll(PollBudget &budget)
     {
-        exit_.poll();
-        if (importer_.index() == 0)
-        {
-            return;
-        }
-        auto &importer = std::get<assets::AssetImporter>(importer_);
+        auto &importer = importer_;
         importer.poll(budget);
         if (closing_)
         {
@@ -128,7 +110,8 @@ class Probe final : public EditorFrontend
             assert(next);
             id_ = *next;
             evidence_.done = true;
-            exit_.request(*editor_);
+            closing_ = true;
+            importer.requestClose();
             return;
         }
         assert(done->asset == identity(2) && done->model && done->cleanup);
@@ -190,38 +173,12 @@ class Probe final : public EditorFrontend
             stage_ = 3;
         }
     }
-    void wait() override
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    void stopPresenting() noexcept override {}
-    void requestClose() noexcept override
-    {
-        closing_ = true;
-        if (auto *importer = std::get_if<assets::AssetImporter>(&importer_))
-        {
-            importer->requestClose();
-        }
-    }
-    CloseStatus closeStatus() const override
-    {
-        if (!closing_)
-        {
-            return {};
-        }
-        if (const auto *importer = std::get_if<assets::AssetImporter>(&importer_))
-        {
-            return importer->closeStatus();
-        }
-        return {ECloseState::CLOSED};
-    }
 
   private:
     std::filesystem::path source_;
     Evidence &evidence_;
-    Editor *editor_{};
     Project *project_{};
-    std::variant<std::monostate, assets::AssetImporter> importer_;
+    assets::AssetImporter importer_;
     assets::AssetImportId id_;
     std::string cooked_;
     std::filesystem::path copied_source_;
@@ -246,13 +203,46 @@ int main(int argc, char **argv)
     assert(manifest);
     write(root / "project/Project.luxproject", *manifest);
     Evidence evidence;
-    EditorConfig config;
-    config.project_file = root / "project/Project.luxproject";
-    config.execution = {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}};
-    config.frontend = [&] { return std::make_unique<Probe>(source, evidence); };
-    Editor editor(std::move(config));
-    const auto result = editor.exec();
-    assert(result == 0 && evidence.done && evidence.closed);
+    auto runtime =
+        lux::process::ExecutionRuntime::create({2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}});
+    assert(runtime && runtime->blocking());
+    lux::process::TaskScope tasks;
+    lux::object::ObjectMessageQueue messages;
+    auto prepared = readProjectSource(root / "project/Project.luxproject");
+    assert(prepared);
+    auto project = Project::open(*prepared, *runtime->blocking(), tasks, messages.dispatcherRef());
+    assert(project);
+    {
+        Probe probe(source, evidence, **project, *runtime);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(80);
+        while (!evidence.closed)
+        {
+            assert(std::chrono::steady_clock::now() < deadline);
+            PollBudget budget;
+            assert(runtime->drainMain(budget.main_completions));
+            static_cast<void>(messages.dispatchPending(budget.object_messages));
+            probe.poll(budget);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+    assert(evidence.done);
+    (*project)->requestClose();
+    while (true)
+    {
+        auto closed = (*project)->advanceClose();
+        assert(closed);
+        if (*closed)
+        {
+            break;
+        }
+        assert(runtime->drainMain(64));
+        std::this_thread::yield();
+    }
+    project->reset();
+    assert(stdexec::sync_wait(tasks.close()));
+    messages.close();
+    runtime->requestStop();
+    assert(runtime->join());
     auto reopened = readProjectSource(root / "project/Project.luxproject");
     assert(reopened && reopened->mounts.size() == 2);
     std::puts("PASS model import Process CPU/Blocking/Main, source closure, copied-source reimport, changed geometry "

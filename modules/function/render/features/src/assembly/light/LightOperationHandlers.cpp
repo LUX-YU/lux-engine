@@ -7,11 +7,11 @@
 //  no longer names light.
 // ============================================================================
 
-#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
-#include <lux/engine/render/comm/server/RenderServer.hpp>       // Dispatcher, Ctx, replyToCurrent, FeatureFactory
-#include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp> // typed-op register/unregister
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp> // FeatureFactory / GenericOkReply
 #include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
+#include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp> // typed-op register/unregister
+#include <lux/engine/render/comm/server/RenderServer.hpp>       // Dispatcher, Ctx, replyToCurrent, FeatureFactory
 #include <lux/engine/render/renderer/features/light/LightFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 
@@ -23,118 +23,108 @@
 
 namespace lux::render
 {
-    using Dispatcher = GeneralRenderServer::Dispatcher;
-    using Ctx = Dispatcher::Ctx;
+using Dispatcher = GeneralRenderServer::Dispatcher;
+using Ctx = Dispatcher::Ctx;
 
-    // Exported by the server for feature operation handlers (resolves a scene from
-    // the dispatcher user_state). Forward-declared — the grid-handler convention —
-    // to avoid pulling the heavy RenderServerImpl.hpp into a feature.
-    RenderScene* lookupScene(void* user_state, RenderSceneId scene_id);
+// Exported by the server for feature operation handlers (resolves a scene from
+// the dispatcher user_state). Forward-declared — the grid-handler convention —
+// to avoid pulling the heavy RenderServerImpl.hpp into a feature.
+RenderScene *lookupScene(void *user_state, RenderSceneId scene_id);
 
-    namespace
+namespace
+{
+//(本地那份 handle_cast 副本已删 —— 正版已归位到 L0 的
+// core/RenderResourceHandle.hpp。这是同一症状的第三例:skinning、light、
+// 以及 meshstack 各自"为了躲开服务端 Impl 头"复制了一份三行模板。
+// **同一段代码被抄三遍,说明它放错了地方,不说明抄得对。**)
+
+// Resolve a scene's LightResources via PUBLIC API only (lookupScene → scene
+// registry). Null when the scene has no LightFeature → caller no-ops.
+LightResources *resolveLights(Ctx &ctx, RenderSceneId scene_id)
+{
+    auto *sc = lookupScene(ctx.user_state, scene_id);
+    return sc ? sc->resources().find<LightResources>() : nullptr;
+}
+
+void applyLightUpsert(Ctx &ctx, const UpsertLightPayload &payload)
+{
+    auto *scene = lookupScene(ctx.user_state, payload.scene_id);
+    auto *lights = resolveLights(ctx, payload.scene_id);
+    if (scene == nullptr || lights == nullptr)
     {
-        //(本地那份 handle_cast 副本已删 —— 正版已归位到 L0 的
-        // core/RenderResourceHandle.hpp。这是同一症状的第三例:skinning、light、
-        // 以及 meshstack 各自"为了躲开服务端 Impl 头"复制了一份三行模板。
-        // **同一段代码被抄三遍,说明它放错了地方,不说明抄得对。**)
-
-        // Resolve a scene's LightResources via PUBLIC API only (lookupScene → scene
-        // registry). Null when the scene has no LightFeature → caller no-ops.
-        LightResources* resolveLights(Ctx& ctx, RenderSceneId scene_id)
-        {
-            auto* sc = lookupScene(ctx.user_state, scene_id);
-            return sc ? sc->resources().find<LightResources>() : nullptr;
-        }
-
-        void applyLightUpsert(Ctx& ctx, const UpsertLightPayload& payload)
-        {
-            auto* scene = lookupScene(ctx.user_state, payload.scene_id);
-            auto* lights = resolveLights(ctx, payload.scene_id);
-            if (scene == nullptr || lights == nullptr)
-            {
-                ctx.markDispatchError(renderError<err::resource::NotFound>());
-                return;
-            }
-
-            const auto existing = lights->findSource(payload.entity);
-            if (existing.isValid())
-            {
-                const auto result = lights->modify(existing, fromLightPayload(payload));
-                if (!result.ok())
-                {
-                    ctx.markDispatchError(result);
-                }
-                return;
-            }
-
-            auto created = lights->submit(fromLightPayload(payload));
-            if (!created)
-            {
-                ctx.markDispatchError(renderError<err::resource::ModifyFailed>());
-                return;
-            }
-            if (payload.transition_milliseconds > 0U)
-            {
-                (void)lights->beginFadeIn(
-                    *created,
-                    scene->sceneTime(),
-                    static_cast<float>(payload.transition_milliseconds) / 1000.0F
-                );
-            }
-            if (lights->bindSource(payload.entity, *created) != LightResources::ESourceBindResult::INSERTED)
-            {
-                lights->remove(*created);
-                ctx.markDispatchError(renderError<err::resource::ModifyFailed>());
-            }
-        }
-    } // anonymous namespace (helpers)
-
-    void handleUpsertLight(GeneralRenderServer::Dispatcher::Ctx& ctx, const UpsertLightPayload& payload)
-    {
-        applyLightUpsert(ctx, payload);
+        ctx.markDispatchError(renderError<err::resource::NotFound>());
+        return;
     }
 
-    void handleRemoveLight(GeneralRenderServer::Dispatcher::Ctx& ctx, const RemoveLightPayload& payload)
+    const auto existing = lights->findSource(payload.entity);
+    if (existing.isValid())
     {
-        auto* scene = lookupScene(ctx.user_state, payload.scene_id);
-        auto *lights = resolveLights(ctx, payload.scene_id);
-        const auto handle = lights ? lights->findSource(payload.entity) : LightHandle{};
-        if (!scene || !lights || !handle.isValid())
+        const auto result = lights->modify(existing, fromLightPayload(payload));
+        if (!result.ok())
         {
-            return;
+            ctx.markDispatchError(result);
         }
-        (void)lights->unbindSource(payload.entity, handle);
-        const float duration = static_cast<float>(payload.transition_milliseconds) / 1000.0F;
-        if (!lights->beginFadeOut(handle, scene->sceneTime(), duration))
-        {
-            lights->remove(handle);
-        }
+        return;
     }
 
-    void handleLightStats(GeneralRenderServer::Dispatcher::Ctx& ctx, const LightStatsPayload& payload)
+    auto created = lights->submit(fromLightPayload(payload));
+    if (!created)
     {
-        const auto* lights = resolveLights(ctx, payload.scene_id);
-        replyToCurrent<LightStatsPayload>(
-            ctx,
-            lights
-                ? LightStatsReply{
-                      lights->lightCount(
-                          ELightSetBindings::LIGHT_DIRECTIONAL
-                      ),
-                      lights->lightCount(ELightSetBindings::LIGHT_POINT),
-                      lights->lightCount(ELightSetBindings::LIGHT_SPOT),
-                      lights->lightCount(ELightSetBindings::LIGHT_AREA),
-                      lights->transitionCount()}
-                : LightStatsReply{}
-        );
+        ctx.markDispatchError(renderError<err::resource::ModifyFailed>());
+        return;
     }
+    if (payload.transition_milliseconds > 0U)
+    {
+        (void)lights->beginFadeIn(*created, scene->maintenanceTime(),
+                                  static_cast<float>(payload.transition_milliseconds) / 1000.0F);
+    }
+    if (lights->bindSource(payload.entity, *created) != LightResources::ESourceBindResult::INSERTED)
+    {
+        lights->remove(*created);
+        ctx.markDispatchError(renderError<err::resource::ModifyFailed>());
+    }
+}
+} // namespace
 
-    void handleLightBatch(GeneralRenderServer::Dispatcher::Ctx& ctx, std::span<const UpsertLightPayload> entries)
+void handleUpsertLight(GeneralRenderServer::Dispatcher::Ctx &ctx, const UpsertLightPayload &payload)
+{
+    applyLightUpsert(ctx, payload);
+}
+
+void handleRemoveLight(GeneralRenderServer::Dispatcher::Ctx &ctx, const RemoveLightPayload &payload)
+{
+    auto *scene = lookupScene(ctx.user_state, payload.scene_id);
+    auto *lights = resolveLights(ctx, payload.scene_id);
+    const auto handle = lights ? lights->findSource(payload.entity) : LightHandle{};
+    if (!scene || !lights || !handle.isValid())
     {
-        for (const auto& entry : entries)
-        {
-            applyLightUpsert(ctx, entry);
-        }
+        return;
     }
+    (void)lights->unbindSource(payload.entity, handle);
+    const float duration = static_cast<float>(payload.transition_milliseconds) / 1000.0F;
+    if (!lights->beginFadeOut(handle, scene->maintenanceTime(), duration))
+    {
+        lights->remove(handle);
+    }
+}
+
+void handleLightStats(GeneralRenderServer::Dispatcher::Ctx &ctx, const LightStatsPayload &payload)
+{
+    const auto *lights = resolveLights(ctx, payload.scene_id);
+    replyToCurrent<LightStatsPayload>(
+        ctx, lights ? LightStatsReply{lights->lightCount(ELightSetBindings::LIGHT_DIRECTIONAL),
+                                      lights->lightCount(ELightSetBindings::LIGHT_POINT),
+                                      lights->lightCount(ELightSetBindings::LIGHT_SPOT),
+                                      lights->lightCount(ELightSetBindings::LIGHT_AREA), lights->transitionCount()}
+                    : LightStatsReply{});
+}
+
+void handleLightBatch(GeneralRenderServer::Dispatcher::Ctx &ctx, std::span<const UpsertLightPayload> entries)
+{
+    for (const auto &entry : entries)
+    {
+        applyLightUpsert(ctx, entry);
+    }
+}
 
 } // namespace lux::render

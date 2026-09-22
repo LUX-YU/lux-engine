@@ -11,6 +11,8 @@
 #include <lux/engine/material/Compiler.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/meta/Meta.hpp>
+#include <lux/engine/object/detail/MessageEnvelope.hpp>
+#include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/resource/asset/material/MaterialAssets.hpp>
 #include <thread>
 using namespace lux::editor;
@@ -78,34 +80,64 @@ void fixture(const std::filesystem::path &root)
 
 struct Evidence final
 {
-    bool completed{}, closed{};
+    bool completed{};
 };
-class Probe final : public EditorFrontend
+class Probe final
 {
     TestExit exit_;
 
   public:
-    explicit Probe(Evidence &evidence) : evidence_(evidence) {}
-    EditorResult<void> beginStartup(Editor &editor, lux::process::ExecutionRuntime &runtime,
-                                    lux::object::ObjectDispatcherRef) override
+    explicit Probe(Evidence &evidence) : evidence_(evidence)
     {
-        runtime_ = &runtime;
-        return editor.registerDocument({std::string(mat::kMaterialDocumentType),
-                                        [&runtime](Project &project, const OpenDocumentRequest &request)
-                                        { return mat::openMaterialDocument(project, request, runtime); }});
     }
-    EditorResult<void> enterProject(Editor &editor, Project &project, lux::process::ExecutionRuntime &,
-                                    lux::object::ObjectDispatcherRef) override
+    ~Probe()
+    {
+        assert(stdexec::sync_wait(startup_.close()));
+    }
+
+    void bind(Editor &editor) noexcept
     {
         editor_ = &editor;
-        project_ = &project;
-        open(identity(2));
-        return {};
     }
-    void collectInput(Editor &) override {}
-    void poll(PollBudget &) override
+
+    EditorResult<DocumentRegistration> registration(lux::process::ExecutionRuntime &runtime)
+    {
+        auto work = stdexec::then(stdexec::schedule(runtime.main()), [this]() noexcept {
+            auto requested = editor_->requestOpen(
+                {{identity(1), identity(2), std::string(mat::kMaterialDocumentType)}, "test-start"});
+            assert(requested);
+            initial_ = *requested;
+        });
+        auto errors = stdexec::upon_error(std::move(work), [](lux::process::EExecutionError) noexcept {
+            assert(false && "Initial test action was not admitted to Main");
+        });
+        assert(startup_.start(std::move(errors)));
+        runtime_ = &runtime;
+        return DocumentRegistration{std::string(mat::kMaterialDocumentType),
+                                    [this, &runtime](Project &project, const OpenDocumentRequest &request) {
+                                        if (!project_)
+                                        {
+                                            project_ = &project;
+                                            open(identity(2));
+                                            enqueue();
+                                        }
+                                        return mat::openMaterialDocument(project, request, runtime);
+                                    }};
+    }
+
+    void poll(PollBudget &)
     {
         exit_.poll();
+        if (initial_.value)
+        {
+            auto initial = editor_->openStatus(initial_);
+            assert(initial);
+            if (!std::holds_alternative<OpenPending>(*initial))
+            {
+                assert(editor_->acknowledgeOpen(initial_));
+                initial_ = {};
+            }
+        }
         assert(std::chrono::steady_clock::now() - began_ < std::chrono::seconds(60));
         if (!project_ || evidence_.completed)
         {
@@ -141,8 +173,9 @@ class Probe final : public EditorFrontend
                 assert(doc.undo() && doc.source().graph.shading_model == initial_shading);
                 assert(!doc.setShadingModel(static_cast<lux::rdesc::ELightingTechnique>(255)));
                 const auto node = doc.source().graph.topology().nodes().front().id;
-                measureEdits("Material.constant", doc, [&](unsigned index)
-                             { return doc.setConstant(node, {0.01F * (index + 1), 0.25F, 0.125F, 0}); });
+                measureEdits("Material.constant", doc, [&](unsigned index) {
+                    return doc.setConstant(node, {0.01F * (index + 1), 0.25F, 0.125F, 0});
+                });
 
                 {
                     const auto output = doc.source().graph.topology().nodes().back().id;
@@ -260,9 +293,8 @@ class Probe final : public EditorFrontend
                               "asset retained, exact undo");
                 }
                 bool reentered = false;
-                auto observed = doc.observeScoped<mat::MaterialEditor::contentChanged>(
-                    [&](editing::Revision revision) noexcept
-                    {
+                auto observed =
+                    doc.observeScoped<mat::MaterialEditor::contentChanged>([&](editing::Revision revision) noexcept {
                         assert(revision == doc.historyView()->history.revision);
                         auto rejected = doc.rename("reentry");
                         assert(!rejected && rejected.error().code == editing::EEditError::BUSY);
@@ -411,22 +443,28 @@ class Probe final : public EditorFrontend
             exit_.request(*editor_);
         }
     }
-    void draw(Editor &, PollBudget &) override {}
-    void wait() override
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    void stopPresenting() noexcept override {}
-    void requestClose() noexcept override
-    {
-        evidence_.closed = true;
-    }
-    CloseStatus closeStatus() const override
-    {
-        return {evidence_.closed ? ECloseState::CLOSED : ECloseState::OPEN, {}};
-    }
 
   private:
+    // Test actions run at the real Main dispatcher boundary, never inside a
+    // widget draw or a replacement Editor loop. Reentrant posts run next turn.
+    void enqueue()
+    {
+        const auto posted =
+            lux::object::detail::post(project_->dispatcherRef(), lux::object::detail::makeMessage([this]() noexcept {
+                                          if (editor_->closing())
+                                          {
+                                              return;
+                                          }
+                                          PollBudget budget;
+                                          poll(budget);
+                                          if (!editor_->closing())
+                                          {
+                                              enqueue();
+                                          }
+                                      }));
+        assert(posted == lux::object::detail::EPostStatus::POSTED);
+    }
+
     mat::MaterialEditor &document()
     {
         auto document = editor_->document(document_);
@@ -446,6 +484,8 @@ class Probe final : public EditorFrontend
     Editor *editor_{};
     Project *project_{};
     lux::process::ExecutionRuntime *runtime_{};
+    lux::process::TaskScope startup_;
+    OpenRequestId initial_;
     OpenRequestId open_;
     DocumentHandle document_;
     SaveRequestId save_;
@@ -480,13 +520,21 @@ int main(int argc, char **argv)
     lux::meta::ReflectionRegistry::initRegistry();
     fixture(argv[1]);
     Evidence evidence;
+    Probe probe(evidence);
     EditorConfig config;
     config.project_file = std::filesystem::path(argv[1]) / "Project.luxproject";
     config.execution = {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}};
-    config.frontend = [&] { return std::make_unique<Probe>(evidence); };
+    config.window.visible = false;
+    config.providers.push_back(
+        {std::string(mat::kMaterialDocumentType),
+         [](const ProjectAssetEntry &entry) { return entry.kind == EProjectAssetKind::MATERIAL_GRAPH; },
+         [&probe](auto &runtime, auto &) { return probe.registration(runtime); },
+         [](auto &, auto &, auto &, auto &) -> EditorResult<void> { return {}; }});
     Editor editor(std::move(config));
+    probe.bind(editor);
     const auto result = editor.exec();
-    assert(result == 0 && evidence.completed && evidence.closed);
+    assert(result == 0 && evidence.completed && editor.documents().empty());
     std::puts("PASS Material actual codec/open/unique owner/edits/reentry/undo/redo/S1 save while S3 "
-              "dirty/reopen/stale compile/actual compiler/close with work; no Window or GPU owner created");
+              "dirty/reopen/stale compile/actual compiler/close with work; formal Editor loop with hidden native "
+              "window and UiRenderFeature; no material View");
 }

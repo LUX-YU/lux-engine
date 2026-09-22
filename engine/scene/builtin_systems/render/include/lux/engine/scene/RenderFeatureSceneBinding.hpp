@@ -2,6 +2,8 @@
 
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
+#include <lux/engine/render/RendererConfig.hpp>
+#include <lux/engine/scene/SceneInstanceId.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 
@@ -14,39 +16,55 @@
 
 namespace lux::scene
 {
-    class RenderSyncStage;
+class RenderSyncStage;
 
-    enum class ERenderSyncStageCreateError : std::uint8_t
-    {
-        INVALID_CONFIGURATION,
-        ALLOCATION_FAILURE,
-    };
+struct RenderViewAssociation final
+{
+    render::ViewHandle view;
+    simulation::ecs::Entity camera{simulation::ecs::NullEntity};
+    render::PixelExtent extent;
+    friend bool operator==(const RenderViewAssociation &, const RenderViewAssociation &) noexcept = default;
+};
 
-    struct RenderSyncStageCreateFailure final
-    {
-        ERenderSyncStageCreateError code{ERenderSyncStageCreateError::INVALID_CONFIGURATION};
-    };
+// Owned by RenderSystem; extraction borrows only until the system revokes its stages.
+struct RenderViewAssociations final
+{
+    SceneInstanceId instance;
+    std::vector<RenderViewAssociation> values;
+    std::uint64_t revision{};
+};
 
-    struct RenderSyncStageCreateInfo final
-    {
-        simulation::ecs::Registry& registry;
-        render::RenderSceneId scene;
-        const render::FeatureCatalog& catalog;
-        render::FeatureTypeId feature{};
-        render::FeatureHandle feature_handle{};
-        double coordinate_page_size{1024.0};
-        std::array<std::int64_t, 3> scene_origin_page{};
-    };
+enum class ERenderSyncStageCreateError : std::uint8_t
+{
+    INVALID_CONFIGURATION,
+    ALLOCATION_FAILURE,
+};
 
-    using CreateRenderSyncStageFn = lux::cxx::expected<
-        std::unique_ptr<RenderSyncStage>,
-        RenderSyncStageCreateFailure> (*)(const RenderSyncStageCreateInfo& info) noexcept;
+struct RenderSyncStageCreateFailure final
+{
+    ERenderSyncStageCreateError code{ERenderSyncStageCreateError::INVALID_CONFIGURATION};
+};
 
-    struct RenderFeatureSceneBinding final
-    {
-        system::SystemTypeId scene_system;
-        render::FeatureTypeId feature{};
-        std::span<const ComponentObservationSpec> observations{};
-        CreateRenderSyncStageFn create_sync_stage{};
-    };
+struct RenderSyncStageCreateInfo final
+{
+    simulation::ecs::Registry &registry;
+    render::RenderSceneId scene;
+    const render::FeatureCatalog &catalog;
+    render::FeatureTypeId feature{};
+    render::FeatureHandle feature_handle{};
+    double coordinate_page_size{1024.0};
+    std::array<std::int64_t, 3> scene_origin_page{};
+    const RenderViewAssociations *views{};
+};
+
+using CreateRenderSyncStageFn = lux::cxx::expected<std::unique_ptr<RenderSyncStage>, RenderSyncStageCreateFailure> (*)(
+    const RenderSyncStageCreateInfo &info) noexcept;
+
+struct RenderFeatureSceneBinding final
+{
+    system::SystemTypeId scene_system;
+    render::FeatureTypeId feature{};
+    std::span<const ComponentObservationSpec> observations{};
+    CreateRenderSyncStageFn create_sync_stage{};
+};
 } // namespace lux::scene

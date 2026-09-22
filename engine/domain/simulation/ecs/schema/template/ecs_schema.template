@@ -23,7 +23,8 @@ namespace lux::simulation::ecs::generated
                 {% if annotation_get(decl, "editor") == true %}true{% else %}false{% endif %},
                 {% if annotation_get(decl, "snapshot") == "REBUILD" %}nullptr{% else %}directComponentCapture<::{{ decl.fq_name }}>(){% endif %},
                 {% if annotation_get(decl, "snapshot") == "REBUILD" %}nullptr{% else %}directComponentDecodeValue<::{{ decl.fq_name }}, {{ annotation_get(decl, "version") }}u>(){% endif %},
-                {% if annotation_get(decl, "snapshot") == "REBUILD" %}nullptr{% else %}directComponentValueCapture<::{{ decl.fq_name }}>(){% endif %}
+                {% if annotation_get(decl, "snapshot") == "REBUILD" %}nullptr{% else %}directComponentValueCapture<::{{ decl.fq_name }}>(){% endif %},
+                {% if annotation_get(decl, "snapshot") == "REBUILD" %}nullptr{% else %}directComponentReferences<::{{ decl.fq_name }}>(){% endif %}
             ){% set emitted = true %}{% endif %}{% endfor %}
         };
         return schemas;

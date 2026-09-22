@@ -3,10 +3,10 @@
 #include <cassert>
 #include <cstdio>
 #include <lux/engine/editor/gui/GuiView.hpp>
-#include <lux/engine/editor/rendering/EditorRenderer.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
 #include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
-#include <lux/engine/scene/Scene.hpp>
+#include <lux/engine/render/RenderRuntime.hpp>
+#include <lux/engine/scene/SceneInstance.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 
 // Observe the frontend's real image collection, before seal releases Pane frame leases.
@@ -14,7 +14,7 @@
 class RunImageProbe final : public lux::object::Object<RunImageProbe, lux::ui::Pane>, public lux::editor::gui::GuiView
 {
   public:
-    RunImageProbe(lux::editor::scene::SceneEditor &scene, lux::editor::rendering::ViewImage &captured)
+    RunImageProbe(lux::editor::scene::SceneEditor &scene, lux::render::ViewImage &captured)
         : Object(scene.dispatcherRef(), lux::ui::PaneId{"test.run-image"}, lux::ui::PaneTypeId{"test.observer"},
                  "Run image observer"),
           scene_(scene), captured_(captured)
@@ -34,12 +34,14 @@ class RunImageProbe final : public lux::object::Object<RunImageProbe, lux::ui::P
         captured_ = {};
         closed_ = true;
     }
-    void poll(lux::editor::PollBudget &) override {}
+    void poll(lux::editor::PollBudget &) override
+    {
+    }
     lux::editor::CloseStatus closeStatus() const override
     {
         return {closed_ ? lux::editor::ECloseState::CLOSED : lux::editor::ECloseState::OPEN, {}};
     }
-    void appendFrameImages(std::vector<lux::editor::rendering::ViewImage> &) const override
+    void appendFrameImages(std::vector<lux::render::ViewImage> &) const override
     {
         if (closed_ || captured_.lease.valid())
         {
@@ -54,7 +56,7 @@ class RunImageProbe final : public lux::object::Object<RunImageProbe, lux::ui::P
             }
             auto *gui = dynamic_cast<lux::editor::gui::GuiView *>(view.get());
             assert(gui);
-            std::vector<lux::editor::rendering::ViewImage> images;
+            std::vector<lux::render::ViewImage> images;
             gui->appendFrameImages(images);
             if (!images.empty())
             {
@@ -62,7 +64,7 @@ class RunImageProbe final : public lux::object::Object<RunImageProbe, lux::ui::P
                 // This is an interface regression, not physical mouse evidence.
                 const bool visible = gui->pane().visible();
                 gui->pane().setVisible(false);
-                std::vector<lux::editor::rendering::ViewImage> hidden_images;
+                std::vector<lux::render::ViewImage> hidden_images;
                 gui->appendFrameImages(hidden_images);
                 gui->pane().setVisible(visible);
                 assert(hidden_images.size() == images.size());
@@ -81,9 +83,11 @@ class RunImageProbe final : public lux::object::Object<RunImageProbe, lux::ui::P
     }
 
   private:
-    void draw(lux::ui::Frame &, lux::ui::PaneDrawContext &) override {}
+    void draw(lux::ui::Frame &, lux::ui::PaneDrawContext &) override
+    {
+    }
     lux::editor::scene::SceneEditor &scene_;
-    lux::editor::rendering::ViewImage &captured_;
+    lux::render::ViewImage &captured_;
     mutable bool scene_hidden_checked_{};
     bool closed_{};
 };
@@ -97,9 +101,10 @@ struct SceneRunChecks final
     std::uint64_t first_frame{};
     std::size_t phase{}, frames{};
     std::size_t polls{};
-    lux::editor::rendering::ViewImage held_image;
-    lux::scene::RenderRuntimeLease runtime;
+    lux::render::ViewImage held_image;
+    lux::render::RenderRuntime *runtime{};
     lux::render::MeshStackOperationIds mesh_ops;
+    lux::render::RenderSceneId author_scene;
     lux::render::RenderRequest<lux::render::MeshStackStatsReply> run_mesh, author_mesh;
     bool initial_adopted{};
     lux::editor::scene::SceneEntityRef selected;
@@ -109,12 +114,12 @@ struct SceneRunChecks final
 
     void query(lux::editor::scene::SceneEditor &scene)
     {
-        lux::render::MeshStackControlClient client(runtime.control(), mesh_ops);
+        lux::render::MeshStackControlClient client(runtime->control()->get(), mesh_ops);
         run_mesh = client.stats({scene.runStatus().render_scene});
-        author_mesh = client.stats({*scene.renderScene()});
+        author_mesh = client.stats({author_scene});
     }
 
-    void begin(lux::editor::scene::SceneEditor &scene, lux::editor::rendering::EditorRenderer &renderer)
+    void begin(lux::editor::scene::SceneEditor &scene, lux::render::RenderRuntime &renderer)
     {
         selected = scene.objects().front().object;
         assert(scene.select(selected));
@@ -124,19 +129,18 @@ struct SceneRunChecks final
         author = scene.historyView()->history;
         first_frame = renderer.statistics().frames;
         captured_state = author.current;
-        auto acquired = renderer.acquire();
-        assert(acquired);
-        runtime = std::move(*acquired);
-        mesh_ops = runtime.features().ops<lux::render::MeshStackOperationIds>("StandardMeshStack");
+        runtime = &renderer;
+        author_scene = *scene.renderScene();
+        mesh_ops = runtime->features().ops<lux::render::MeshStackOperationIds>("StandardMeshStack");
         assert(mesh_ops.valid());
         std::vector<std::unique_ptr<lux::editor::DocumentView>> observers;
         observers.push_back(std::make_unique<RunImageProbe>(scene, held_image));
         assert(scene.addViews(observers));
-        lux::render::MeshStackControlClient client(runtime.control(), mesh_ops);
-        author_mesh = client.stats({*scene.renderScene()});
+        lux::render::MeshStackControlClient client(runtime->control()->get(), mesh_ops);
+        author_mesh = client.stats({author_scene});
     }
 
-    bool poll(lux::editor::scene::SceneEditor &scene, lux::editor::rendering::EditorRenderer &renderer)
+    bool poll(lux::editor::scene::SceneEditor &scene, lux::render::RenderRuntime &renderer)
     {
         using namespace lux::editor;
         if (first.serial == 0)
@@ -152,8 +156,8 @@ struct SceneRunChecks final
             const auto count = author_mesh.tryResult()->get().alive_instances;
             if (count != 3)
             {
-                lux::render::MeshStackControlClient client(runtime.control(), mesh_ops);
-                author_mesh = client.stats({*scene.renderScene()});
+                lux::render::MeshStackControlClient client(runtime->control()->get(), mesh_ops);
+                author_mesh = client.stats({author_scene});
                 return false;
             }
             std::puts("Run precondition: author backend adopted three mesh instances before Play");
@@ -206,7 +210,8 @@ struct SceneRunChecks final
                     return false;
                 }
                 assert(author_mesh.tryResult()->get().alive_instances == 3);
-                assert(run.render_scene != *scene.renderScene() && run.retained_resources == 3);
+                assert(run.render_scene != author_scene && run.render_scene == *scene.renderScene() &&
+                       run.retained_resources == 3);
                 initial_adopted = true;
                 held_image = {}; // Observe a frame after the Run's content was adopted.
                 return false;
@@ -215,7 +220,7 @@ struct SceneRunChecks final
             if (held_image.lease.valid())
             {
                 auto evidence = renderer.imageEvidence(held_image);
-                completed = evidence && evidence->evidence == rendering::EImageEvidence::GPU_COMPLETE;
+                completed = evidence && evidence->evidence == lux::render::EImageEvidence::GPU_COMPLETE;
             }
             if (!completed)
             {
@@ -229,16 +234,14 @@ struct SceneRunChecks final
             pause_history = scene.historyId();
             assert(pause_history != author.current.history);
             std::size_t notices{};
-            auto notification = scene.observeScoped<scene::SceneEditor::componentChanged>(
-                [&](const auto &) noexcept
+            auto notification = scene.observeScoped<scene::SceneEditor::componentChanged>([&](const auto &) noexcept {
+                for (const auto &result : {scene.resumeRun(first), scene.stepRun(first), scene.stopRun(first)})
                 {
-                    for (const auto &result : {scene.resumeRun(first), scene.stepRun(first), scene.stopRun(first)})
-                    {
-                        assert(!result && result.error().code == EEditorError::BUSY);
-                    }
-                    assert(scene.runStatus().state == scene::ERunState::PAUSED && scene.historyId() == pause_history);
-                    ++notices;
-                });
+                    assert(!result && result.error().code == EEditorError::BUSY);
+                }
+                assert(scene.runStatus().state == scene::ERunState::PAUSED && scene.historyId() == pause_history);
+                ++notices;
+            });
             const auto object = scene.objects().front().object;
             using Transform = lux::simulation::ecs::Transform3D;
             const auto field = [](auto &value) { return &value.translation; };
@@ -266,8 +269,8 @@ struct SceneRunChecks final
             {
                 return false;
             }
-            const auto *derived = static_cast<const lux::simulation::ecs::WorldTransform3D *>(
-                scene.component(stale_pause_target.object, lux::cxx::typeToken<lux::simulation::ecs::WorldTransform3D>()));
+            const auto *derived = static_cast<const lux::simulation::ecs::WorldTransform3D *>(scene.component(
+                stale_pause_target.object, lux::cxx::typeToken<lux::simulation::ecs::WorldTransform3D>()));
             assert(derived && derived->value.translation().isApprox(paused_translation, 1e-10));
             assert(scene.reviewClose()->revision == author.revision);
             assert(scene.stepRun(first));
@@ -321,7 +324,7 @@ struct SceneRunChecks final
             assert(run.state == scene::ERunState::RUNNING && run.retained_resources == 3);
             paused_step = run.steps;
             phase = 5;
-            std::puts("D06: ScenePane destroyed; independent Run remains active with its resource pins");
+            std::puts("D06: ScenePane destroyed; independent Run remains active with its resource uses");
         }
         else if (phase == 5 && run.steps >= paused_step + 4)
         {
@@ -342,17 +345,18 @@ struct SceneRunChecks final
             const auto *restored = static_cast<const lux::simulation::ecs::Transform3D *>(
                 scene.component(selected, lux::cxx::typeToken<lux::simulation::ecs::Transform3D>()));
             assert(restored && restored->translation == author_translation);
-            assert(run.published_updates == run.forwarded_updates && run.update_high_water <= 1);
-            std::printf("Run transport: published=%llu forwarded=%llu high_water=%u work_us=%lld wait_us=%lld pins=%zu "
-                        "steps=%llu frames=%llu\n",
-                        static_cast<unsigned long long>(run.published_updates),
-                        static_cast<unsigned long long>(run.forwarded_updates), run.update_high_water,
-                        static_cast<long long>(
-                            std::chrono::duration_cast<std::chrono::microseconds>(run.simulation_work).count()),
-                        static_cast<long long>(
-                            std::chrono::duration_cast<std::chrono::microseconds>(run.publication_wait).count()),
-                        run.retained_resources, static_cast<unsigned long long>(run.steps),
-                        static_cast<unsigned long long>(renderer.statistics().frames - first_frame));
+            assert(run.published_updates == run.forwarded_updates + run.retired_updates && run.update_high_water <= 1);
+            std::printf(
+                "Run transport: published=%llu forwarded=%llu high_water=%u work_us=%lld wait_us=%lld resources=%zu "
+                "steps=%llu frames=%llu\n",
+                static_cast<unsigned long long>(run.published_updates),
+                static_cast<unsigned long long>(run.forwarded_updates), run.update_high_water,
+                static_cast<long long>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(run.simulation_work).count()),
+                static_cast<long long>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(run.publication_wait).count()),
+                run.retained_resources, static_cast<unsigned long long>(run.steps),
+                static_cast<unsigned long long>(renderer.statistics().frames - first_frame));
             const auto next = scene.play(std::chrono::milliseconds(10));
             assert(next && *next != first);
             const auto late = scene.stopRun(first);
@@ -447,16 +451,16 @@ struct RunFailureChecks final
     lux::editor::scene::RunId failed_run;
     lux::editor::editing::HistorySnapshot author;
     lux::editor::scene::SceneEntityRef object;
-    unsigned phase{};
+    unsigned phase{10};
+    std::uint64_t before_failed_step{};
+    Eigen::Vector3d author_translation;
 
     void begin(lux::editor::scene::SceneEditor &scene)
     {
         using Transform = lux::simulation::ecs::Transform3D;
         object = scene.objects().front().object;
-        const auto field = [](auto &value) noexcept { return &value.translation; };
-        // Finite author data, but outside the Render protocol's page-delta range.
-        assert(scene.setField<Transform>(*scene.writeTarget(object), "Transform3D.translation", "Translation", field,
-                                         Eigen::Vector3d{1.e100, 1, 0}));
+        author_translation =
+            static_cast<const Transform *>(scene.component(object, lux::cxx::typeToken<Transform>()))->translation;
         author = scene.historyView()->history;
         auto started = scene.play(std::chrono::milliseconds(10));
         assert(started);
@@ -467,13 +471,33 @@ struct RunFailureChecks final
         using namespace lux;
         using namespace lux::editor;
         const auto run = scene.runStatus();
+        if (phase == 10 && run.state == lux::editor::scene::ERunState::RUNNING)
+        {
+            assert(scene.pauseRun(run.id));
+            phase = 11;
+            return false;
+        }
+        if (phase == 11 && run.state == lux::editor::scene::ERunState::PAUSED)
+        {
+            using Transform = simulation::ecs::Transform3D;
+            const auto runtime_object = scene.objects().front().object;
+            // The failure belongs to the independent runtime instance. Leave
+            // author data valid so its own resumed Driver has no separate fault.
+            assert(scene.setField<Transform>(
+                *scene.writeTarget(runtime_object), "Transform3D.translation", "Translation",
+                [](auto &value) { return &value.translation; }, Eigen::Vector3d{1.e100, 1, 0}));
+            before_failed_step = run.steps;
+            assert(scene.resumeRun(run.id));
+            phase = 0;
+            return false;
+        }
         if (phase == 0)
         {
             if (run.state != lux::editor::scene::ERunState::FAILED)
             {
                 return false;
             }
-            assert(!run.result && run.result.error().domain == "run.stable");
+            assert(!run.result && run.result.error().domain == "run.advance");
             const auto *cause = std::any_cast<lux::scene::SceneExecutionFailure>(&run.result.error().cause);
             assert(cause && cause->code == lux::scene::ESceneExecutionError::SYSTEM_FAILURE &&
                    cause->system == lux::system::SystemInstanceId{2});
@@ -482,21 +506,21 @@ struct RunFailureChecks final
                    current.revision == author.revision && current.cursor == author.cursor);
             const auto *value = static_cast<const simulation::ecs::Transform3D *>(
                 scene.component(object, cxx::typeToken<simulation::ecs::Transform3D>()));
-            assert(value && value->translation.x() == 1.e100);
+            assert(value && value->translation == author_translation);
             assert(run.retained_resources == 0 && run.pending_updates == 0);
-            std::printf("JR02 stable failure final steps=%llu elapsed_ns=%lld "
+            std::printf("JR02 render publication failure final steps=%llu elapsed_ns=%lld "
                         "work_ns=%lld\n",
                         static_cast<unsigned long long>(run.steps), static_cast<long long>(run.elapsed.count()),
                         static_cast<long long>(run.simulation_work.count()));
-            assert(run.steps == 1 && run.elapsed == std::chrono::milliseconds(10) &&
-                   "JR02 stable failure must retain the adopted Simulation clock");
-            assert(run.failed_phase == lux::editor::scene::ERunPhase::STABLE && run.completed.simulation == 1 &&
-                   run.completed.stable == 0 && run.completed.publication == 0);
+            assert(run.steps == before_failed_step + 1 && run.elapsed == std::chrono::milliseconds(10) * run.steps &&
+                   "JR02 publication failure must retain the adopted Simulation clock");
+            assert(run.failed_phase == lux::editor::scene::ERunPhase::PUBLICATION &&
+                   run.completed.simulation == run.steps && run.completed.stable == run.steps &&
+                   run.completed.publication == before_failed_step);
             assert(run.simulation_work.count() > 0);
             std::printf("D04/D08 exact Run failure: domain=%s reason=%llu system=2 author preserved pins=0 pending=0\n",
                         run.result.error().domain.c_str(), static_cast<unsigned long long>(run.result.error().reason));
-            assert(scene.undo());
-            author = scene.historyView()->history;
+            assert(scene.historyView()->history.current == author.current);
             auto restarted = scene.play(std::chrono::milliseconds(10));
             assert(restarted && *restarted != failed_run);
             phase = 1;
@@ -512,7 +536,7 @@ struct RunFailureChecks final
             assert(run.result && run.retained_resources == 0);
             const auto current = scene.historyView()->history;
             assert(current.current == author.current && current.revision == author.revision);
-            std::puts("PASS Run failure preserved author; corrected author launched a new independent Run and closed");
+            std::puts("PASS Run failure preserved author; unchanged author launched a new independent Run and closed");
             return true;
         }
         return false;

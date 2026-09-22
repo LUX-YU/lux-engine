@@ -14,7 +14,7 @@
 #include <cstdio>
 #include <lux/engine/editor/Editor.hpp>
 #include <lux/engine/editor/flowforge/FlowForgeEditor.hpp>
-#include <lux/engine/editor/gui/GuiFrontend.hpp>
+#include <lux/engine/editor/gui/GuiDocumentProvider.hpp>
 #include <lux/engine/editor/gui/GuiView.hpp>
 #include <lux/engine/editor/gui/actions/HistoryActions.hpp>
 #include <lux/engine/editor/gui/flowforge/FlowForgeDocumentProvider.hpp>
@@ -24,23 +24,33 @@
 #include <lux/engine/editor/project/Project.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
+#include <lux/engine/function/render/features/genops/ForwardMeshOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/Grid3DOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MaterialOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshShadowOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/ShadowMapOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/ViewCameraOperation.ops.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/object/detail/MessageEnvelope.hpp>
 #include <lux/engine/process/TaskScope.hpp>
-#include <lux/engine/scene/Scene.hpp>
+#include <lux/engine/scene/SceneInstance.hpp>
 #include <lux/engine/scene/WorldMaterializer.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
 #include <lux/engine/ui/CommandRouter.hpp>
 #include <lux/engine/ui/Pane.hpp>
+#include <lux/engine/ui/rendering/UiRenderFeature.hpp>
 
 using namespace lux::editor;
 
 struct Evidence final
 {
-    rendering::EditorRenderer *renderer{};
-    gui::EditorWindow *window{};
+    lux::render::RenderRuntime *renderer{};
+    ui::UIRenderSystem *window{};
     std::size_t checks{}, frames{};
     std::size_t expected_objects{4}, cost_draws{};
     std::chrono::nanoseconds cost_draw_time{};
@@ -71,9 +81,8 @@ void checkLocalHistory(lux::editor::scene::SceneEditor &scene, DocumentEditor &o
     gui::HistoryActions local(scene.dispatcherRef(), scene);
     gui::HistoryActions remote(scene.dispatcherRef(), other);
     std::size_t failures{};
-    auto connection = local.observeScoped<gui::HistoryActions::failed>(
-        [&](const gui::HistoryActionFailure &failure) noexcept
-        {
+    auto connection =
+        local.observeScoped<gui::HistoryActions::failed>([&](const gui::HistoryActionFailure &failure) noexcept {
             assert(failure.target == scene.historyId() && failure.failure.code == editing::EEditError::NO_UNDO);
             ++failures;
         });
@@ -117,9 +126,8 @@ void checkThreeHistories(lux::editor::scene::SceneEditor &scene, material::Mater
     auto b_connection =
         b.observeScoped<material::MaterialEditor::contentChanged>([&](const auto &) noexcept { ++b_notices; });
     gui::HistoryActions action(a.dispatcherRef(), a);
-    auto failure_connection = action.observeScoped<gui::HistoryActions::failed>(
-        [&](const gui::HistoryActionFailure &failure) noexcept
-        {
+    auto failure_connection =
+        action.observeScoped<gui::HistoryActions::failed>([&](const gui::HistoryActionFailure &failure) noexcept {
             assert(failure.target == a.historyId() && failure.failure.code == editing::EEditError::NO_UNDO);
             ++failures;
         });
@@ -151,9 +159,8 @@ void checkThreeHistories(lux::editor::scene::SceneEditor &scene, material::Mater
     assert(a.historyView()->undo == editing::EHistoryActionAvailability::EMPTY);
     assert(b_notices == 0 && scene_notices == 0);
     std::size_t stale{};
-    auto stale_connection = menu.observeScoped<gui::HistoryMenuActions::failed>(
-        [&](const gui::HistoryActionFailure &failure) noexcept
-        {
+    auto stale_connection =
+        menu.observeScoped<gui::HistoryMenuActions::failed>([&](const gui::HistoryActionFailure &failure) noexcept {
             assert(failure.target == a.historyId() && failure.failure.code == editing::EEditError::STALE_TARGET);
             ++stale;
         });
@@ -169,84 +176,60 @@ void checkThreeHistories(lux::editor::scene::SceneEditor &scene, material::Mater
               "after activation changes; retired registration rejected as STALE_TARGET after slot reuse");
 }
 
-class Probe final : public EditorFrontend
+class Probe final
 {
     TestExit exit_;
 
   public:
-    Probe(Evidence &evidence, gui::GuiConfig config)
-        : evidence_(evidence), inner_(gui::makeGuiFrontend(std::move(config)))
+    explicit Probe(Evidence &evidence) : evidence_(evidence)
     {
     }
-    EditorResult<void> beginStartup(Editor &editor, lux::process::ExecutionRuntime &runtime,
-                                    lux::object::ObjectDispatcherRef dispatcher) override
+    ~Probe()
+    {
+        assert(stdexec::sync_wait(background_.close()));
+    }
+    void bind(Editor &editor) noexcept
     {
         editor_ = &editor;
+    }
+    void start(lux::process::ExecutionRuntime &runtime)
+    {
         runtime_ = &runtime;
-        auto started = inner_->beginStartup(editor, runtime, dispatcher);
-        if (started && evidence_.mode == "background")
+        if (evidence_.mode == "background")
         {
-            auto task = stdexec::then(stdexec::schedule(runtime.cpu()),
-                                      [this]() noexcept
-                                      {
-                                          background_active_.store(true, std::memory_order_release);
-                                          background_stop_.wait(false, std::memory_order_acquire);
-                                          background_done_.store(true, std::memory_order_release);
-                                      });
-            auto errors = stdexec::upon_error(std::move(task),
-                                              [this](lux::process::EExecutionError) noexcept
-                                              {
-                                                  evidence_.failed = true;
-                                                  background_done_.store(true, std::memory_order_release);
-                                              });
-            auto stopped = stdexec::upon_stopped(std::move(errors),
-                                                 [this]() noexcept
-                                                 {
-                                                     evidence_.failed = true;
-                                                     background_done_.store(true, std::memory_order_release);
-                                                 });
+            auto task = stdexec::then(stdexec::schedule(runtime.cpu()), [this]() noexcept {
+                background_active_.store(true, std::memory_order_release);
+                background_stop_.wait(false, std::memory_order_acquire);
+                background_done_.store(true, std::memory_order_release);
+            });
+            auto errors = stdexec::upon_error(std::move(task), [this](lux::process::EExecutionError) noexcept {
+                evidence_.failed = true;
+                background_done_.store(true, std::memory_order_release);
+            });
+            auto stopped = stdexec::upon_stopped(std::move(errors), [this]() noexcept {
+                evidence_.failed = true;
+                background_done_.store(true, std::memory_order_release);
+            });
             const auto admitted = background_.start(std::move(stopped));
             assert(admitted);
         }
-        if (evidence_.mode == "cancel-startup")
-        {
-            exit_.request(editor);
-        }
-        if (evidence_.mode == "invalid-window")
-        {
-            assert(!started && started.error().domain == "editor.window");
-            assert(std::any_cast<gui::WindowFailure>(&started.error().cause)->code ==
-                   gui::EWindowError::INVALID_ARGUMENT);
-            ++evidence_.checks;
-        }
-        if (evidence_.mode == "invalid-renderer")
-        {
-            assert(!started && started.error().domain == "editor.renderer");
-            assert(std::any_cast<rendering::RendererFailure>(&started.error().cause)->code ==
-                   rendering::ERendererError::INVALID_ARGUMENT);
-            ++evidence_.checks;
-        }
-        return started;
     }
-    EditorResult<void> enterProject(Editor &editor, Project &project, lux::process::ExecutionRuntime &runtime,
-                                    lux::object::ObjectDispatcherRef dispatcher) override
+    void enter(Project &project)
     {
-        editor_ = &editor;
+        if (project_)
+        {
+            return;
+        }
         project_ = &project;
         started_ = std::chrono::steady_clock::now();
-        return inner_->enterProject(editor, project, runtime, dispatcher);
+        enqueue();
     }
-    void collectInput(Editor &editor) override
-    {
-        SampleTime sample{evidence_.callbacks};
-        inner_->collectInput(editor);
-    }
-    void poll(PollBudget &budget) override
+    void poll(PollBudget &budget)
     {
         exit_.poll();
         SampleTime sample{evidence_.callbacks};
         if (!closing_ && stage_ == 91 && evidence_.renderer &&
-            evidence_.renderer->state() == rendering::ERendererState::READY)
+            evidence_.renderer->status().state == lux::render::ERenderRuntimeState::ACTIVE)
         {
             // Match the normal document-before-presentation owner order. A
             // test packet offered only after GUI submission can indefinitely
@@ -258,14 +241,14 @@ class Probe final : public EditorFrontend
                 stage_ = 92;
             }
         }
-        inner_->poll(budget);
+
         if (extra_view_ && evidence_.failed)
         {
             held_image_ = {};
             pending_packet_ = {};
             static_cast<void>(extra_view_->beginClose());
             const auto closed = extra_view_->advanceClose();
-            if (closed && *closed == rendering::ERenderClose::COMPLETE)
+            if (closed && *closed == lux::render::ERenderClose::COMPLETE)
             {
                 extra_view_.reset();
             }
@@ -287,7 +270,7 @@ class Probe final : public EditorFrontend
                                  "renderer=%u frames=%llu gpu=%llu events=%llu validation=%llu\n",
                                  association_checks_.phase, association_checks_.pending,
                                  association_checks_.consumed && association_checks_.consumed->load(),
-                                 unsigned(evidence_.renderer->state()), stats.frames, stats.gpu_completed,
+                                 unsigned(evidence_.renderer->status().state), stats.frames, stats.gpu_completed,
                                  stats.render_events, stats.validation_errors);
                 }
             }
@@ -295,7 +278,7 @@ class Probe final : public EditorFrontend
             exit_.request(*editor_);
             return;
         }
-        if (evidence_.renderer->state() != rendering::ERendererState::READY)
+        if (evidence_.renderer->status().state != lux::render::ERenderRuntimeState::ACTIVE)
         {
             return;
         }
@@ -373,14 +356,16 @@ class Probe final : public EditorFrontend
             assert(scene.objects().size() == evidence_.expected_objects);
             assert(scene.coordinatePageSize() == (evidence_.mode == "cpu" ? 0 : 2048));
             const auto snapshot = scene.resources();
-            if (!snapshot || snapshot->rows.size() != 3)
+            if (evidence_.mode != "cpu" && (!snapshot || snapshot->rows.size() != 3))
             {
                 return;
             }
             std::size_t failures{}, ready{};
-            for (const auto &row : snapshot->rows)
+            const auto resource_rows =
+                snapshot ? std::span(snapshot->rows) : std::span<const lux::scene::RenderAssetStatus>{};
+            for (const auto &row : resource_rows)
             {
-                if (row.state == lux::editor::scene::ESceneResourceState::FAILED)
+                if (row.state == lux::scene::ERenderAssetState::FAILED)
                 {
                     if (evidence_.mode == "bad-material")
                     {
@@ -404,7 +389,7 @@ class Probe final : public EditorFrontend
                     exit_.request(*editor_);
                     return;
                 }
-                if (row.state != lux::editor::scene::ESceneResourceState::READY)
+                if (row.state != lux::scene::ERenderAssetState::READY)
                 {
                     return;
                 }
@@ -417,6 +402,29 @@ class Probe final : public EditorFrontend
             if (evidence_.renderer->statistics().gpu_completed < 5)
             {
                 return;
+            }
+            if (evidence_.mode == "resource-sharing")
+            {
+                auto other = request_;
+                other.key.source = project_->manifest().assets.back().id;
+                auto opened = editor_->requestOpen(other);
+                assert(opened);
+                second_ = *opened;
+                stage_ = 110;
+                return;
+            }
+            if (evidence_.mode == "save-spatial")
+            {
+                // Creating the temporary camera may invalidate spatial state.
+                // Only the normal Driver stable point may prepare that state.
+                assert(scene.viewportCamera());
+                lux::scene::RayHit3D hit;
+                const auto query = scene.raycastNearest(scene.instance(), {{0, 1, 20}, {0, 0, -1}}, 100, hit);
+                if (!query && query.error().code == lux::scene::EMeshQueryError::NOT_READY)
+                {
+                    return;
+                }
+                assert(query);
             }
             const auto selected = scene.objects().front().object;
             std::size_t notices{};
@@ -444,7 +452,7 @@ class Probe final : public EditorFrontend
             if (evidence_.mode == "transform-sync")
             {
                 checkProgramAdmissionOrder();
-                checkGeneratedTransformDragging(scene);
+                checkGeneratedTransformDragging(scene, *evidence_.renderer);
                 stage_ = 98;
                 return;
             }
@@ -487,8 +495,7 @@ class Probe final : public EditorFrontend
             }
             if (evidence_.mode == "resize")
             {
-                auto opened =
-                    evidence_.renderer->openView(*scene.renderScene(), {{256, 128}, true, scene.coordinatePageSize()});
+                auto opened = scene.openView({.extent = {256, 128}});
                 assert(opened);
                 extra_view_ = std::move(*opened);
                 const auto editor_camera = scene.viewportCamera();
@@ -669,34 +676,45 @@ class Probe final : public EditorFrontend
             {
                 return;
             }
-            assert(scene.bindCamera(extra_camera_, extra_view_->handle(), 2.0));
+            assert(scene.bindCamera(extra_camera_, extra_view_->id()));
             auto image = extra_view_->acquireImage();
             if (!image)
             {
-                assert(image.error().code == rendering::ERendererError::NOT_READY);
+                assert(image.error().code == lux::render::ERendererError::NOT_READY);
                 return;
             }
             held_image_ = std::move(*image);
             // Fill the owner's bounded queue without polling it. The server cannot drain this queue itself.
             std::size_t submitted{};
-            while (!pending_packet_.valid())
+            while (pending_packet_.payload.empty())
             {
-                assert(evidence_.window->beginFrame({{1600, 900}, 1.0F / 60.0F, {1, 1}}));
-                auto snapshot = evidence_.window->finishFrame();
-                assert(snapshot);
-                const std::array images{held_image_};
-                auto packet = evidence_.renderer->sealFrame(*snapshot, images);
-                assert(packet && !snapshot->valid());
-                const auto accepted = evidence_.renderer->trySubmitFrame(*packet);
+                auto cpu = lux::ui::Context::create({});
+                assert(cpu);
+                lux::ui::Theme theme;
+                lux::ui::Frame frame(*cpu, theme, {{1600, 900}, 1.F / 60});
+                frame.text("Retained frame");
+                frame.finish();
+                auto input = std::make_shared<lux::ui::UiRenderFrame>();
+                assert(cpu->capture(input->snapshot));
+                input->sequence = ++packet_sequence_;
+                input->images = {held_image_};
+                lux::render::RenderProgram<> packet;
+                lux::render::RenderProgramSession::Builder builder(packet);
+                builder.begin();
+                packet.kind = lux::render::ERenderProgramKind::Frame;
+                auto operations = evidence_.renderer->features().ops<lux::render::UiRenderOperationIds>("UiRender");
+                auto lease = evidence_.window->retainScene();
+                assert(lux::ui::appendUiFrame(builder, operations, lease,
+                                              evidence_.window->feature(lux::render::kUiRenderDescriptor.type), input));
+                const auto accepted = evidence_.renderer->submit(packet);
                 assert(accepted);
-                if (*accepted == rendering::EFrameSubmit::BACKPRESSURED)
+                if (*accepted == lux::render::EFrameSubmit::BACKPRESSURED)
                 {
-                    assert(packet->valid());
-                    pending_packet_ = std::move(*packet);
+                    assert(!packet.payload.empty());
+                    pending_packet_ = std::move(packet);
                 }
                 else
                 {
-                    assert(!packet->valid());
                     ++submitted;
                 }
                 assert(submitted <= 3);
@@ -704,7 +722,7 @@ class Probe final : public EditorFrontend
             // Earlier frontend turns may already have filled the queue. Zero new
             // admissions is valid; the retained packet must survive and be retried
             // before requesting resize in stage 21.
-            assert(pending_packet_.valid() && held_image_.lease.valid());
+            assert(!pending_packet_.payload.empty() && held_image_.lease.valid());
             packet_blocked_at_ = std::chrono::steady_clock::now();
             std::printf("backpressure: submitted=%zu retained_packet=1 old_image_lease=1\n", submitted);
             stage_ = 21;
@@ -712,13 +730,13 @@ class Probe final : public EditorFrontend
         }
         if (stage_ == 21)
         {
-            const auto submitted = evidence_.renderer->trySubmitFrame(pending_packet_);
+            const auto submitted = evidence_.renderer->submit(pending_packet_);
             assert(submitted);
-            if (*submitted == rendering::EFrameSubmit::BACKPRESSURED)
+            if (*submitted == lux::render::EFrameSubmit::BACKPRESSURED)
             {
                 return;
             }
-            assert(!pending_packet_.valid());
+            assert(pending_packet_.payload.empty());
             resize_requested_at_ = std::chrono::steady_clock::now();
             for (std::uint32_t index{}; index < 8; ++index)
             {
@@ -733,12 +751,12 @@ class Probe final : public EditorFrontend
             const auto state = extra_view_->status();
             const auto completed = evidence_.renderer->imageEvidence(held_image_);
             assert(completed);
-            if (completed->evidence != rendering::EImageEvidence::GPU_COMPLETE)
+            if (completed->evidence != lux::render::EImageEvidence::GPU_COMPLETE)
             {
                 return;
             }
-            assert(held_image_.extent == rendering::PixelExtent(256, 128) && held_image_.lease.valid());
-            assert(state.state == rendering::EViewState::RESIZING);
+            assert(held_image_.extent == lux::render::PixelExtent(256, 128) && held_image_.lease.valid());
+            assert(state.state == lux::render::EViewState::RESIZING);
             std::printf("resize held: old=256x128 requested=320x192 actual_frame=%llu GPU_COMPLETE state=RESIZING\n",
                         completed->frame_serial);
             held_image_ = {};
@@ -749,7 +767,8 @@ class Probe final : public EditorFrontend
         if (stage_ == 25)
         {
             const auto state = extra_view_->status();
-            if (state.state != rendering::EViewState::READY || state.ready_extent != rendering::PixelExtent{320, 192})
+            if (state.state != lux::render::EViewState::READY ||
+                state.ready_extent != lux::render::PixelExtent{320, 192})
             {
                 return;
             }
@@ -758,10 +777,10 @@ class Probe final : public EditorFrontend
             resize_ready_at_ = std::chrono::steady_clock::now();
             held_image_ = std::move(*next);
             auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
-            scene.unbindCamera(extra_camera_, extra_view_->handle());
+            scene.unbindCamera(extra_camera_, extra_view_->id());
             assert(extra_view_->beginClose());
             const auto close = extra_view_->advanceClose();
-            assert(close && *close == rendering::ERenderClose::PENDING);
+            assert(close && *close == lux::render::ERenderClose::PENDING);
             std::printf("resize complete: latest=320x192; close with new lease=PENDING\n");
             held_image_ = {};
             stage_ = 23;
@@ -771,7 +790,7 @@ class Probe final : public EditorFrontend
         {
             const auto close = extra_view_->advanceClose();
             assert(close);
-            if (*close != rendering::ERenderClose::COMPLETE)
+            if (*close != lux::render::ERenderClose::COMPLETE)
             {
                 return;
             }
@@ -786,6 +805,52 @@ class Probe final : public EditorFrontend
             evidence_.checks += 8;
             stage_ = 24;
             exit_.request(*editor_);
+        }
+        if (stage_ == 110)
+        {
+            const auto state = editor_->openStatus(second_);
+            assert(state && !std::holds_alternative<EditorFailure>(*state));
+            if (const auto *handle = std::get_if<DocumentHandle>(&*state))
+            {
+                shared_document_ = *handle;
+                assert(shared_document_ != handle_ && editor_->documents().size() == 2);
+                assert(editor_->acknowledgeOpen(second_));
+                stage_ = 111;
+            }
+            return;
+        }
+        if (stage_ == 111 || stage_ == 112)
+        {
+            using Resources = lux::scene::ResolvedMeshResources;
+            auto &second = dynamic_cast<scene::SceneEditor &>(editor_->document(shared_document_)->get());
+            const auto *resolved = static_cast<const Resources *>(
+                second.component(second.objects().front().object, lux::cxx::typeToken<Resources>()));
+            if (!resolved)
+            {
+                return;
+            }
+            if (stage_ == 111)
+            {
+                auto &first = dynamic_cast<scene::SceneEditor &>(editor_->document(handle_)->get());
+                const auto *original = static_cast<const Resources *>(
+                    first.component(first.objects().front().object, lux::cxx::typeToken<Resources>()));
+                assert(original && original->mesh == resolved->mesh && original->material == resolved->material);
+                shared_mesh_ = resolved->mesh;
+                shared_material_ = resolved->material;
+                first.requestClose();
+                stage_ = 112;
+            }
+            else if (!editor_->document(handle_))
+            {
+                assert(resolved->mesh == shared_mesh_ && resolved->material == shared_material_);
+                assert(second.closeStatus().state == ECloseState::OPEN);
+                assert(second.renderScene());
+                std::puts("PASS two real Scene documents share Mesh/Material handles; closing first preserves second");
+                evidence_.checks += 6;
+                stage_ = 113;
+                exit_.request(*editor_);
+            }
+            return;
         }
         if (stage_ == 11)
         {
@@ -822,22 +887,21 @@ class Probe final : public EditorFrontend
             if (stage_ == 3)
             {
                 assert(scene.views().size() == 4);
-                const auto prefix = "scene-" + std::to_string(scene.handle().index) + "-" + std::to_string(scene.handle().gen);
+                const auto prefix =
+                    "scene-" + std::to_string(scene.handle().index) + "-" + std::to_string(scene.handle().gen);
                 std::size_t index{};
                 for (const auto *suffix : {"-inspector", "-outliner"})
                 {
-                    const auto found = std::ranges::find_if(scene.views(), [&](const auto &view)
-                                                            { return view->id() == prefix + suffix; });
+                    const auto found = std::ranges::find_if(
+                        scene.views(), [&](const auto &view) { return view->id() == prefix + suffix; });
                     assert(found != scene.views().end());
                     const auto target = dynamic_cast<gui::GuiView &>(**found).pane().weakRef();
                     retired_panes_[index++] = target;
                     assert(lux::object::detail::post(scene.dispatcherRef(),
-                                                     lux::object::detail::makeMessage(
-                                                         [this, target]() noexcept
-                                                         {
-                                                             assert(target.expired() && !target.getOnCurrent());
-                                                             ++retired_messages_;
-                                                         })) == lux::object::detail::EPostStatus::POSTED);
+                                                     lux::object::detail::makeMessage([this, target]() noexcept {
+                                                         assert(target.expired() && !target.getOnCurrent());
+                                                         ++retired_messages_;
+                                                     })) == lux::object::detail::EPostStatus::POSTED);
                     (*found)->requestClose();
                 }
                 const auto pending =
@@ -883,16 +947,14 @@ class Probe final : public EditorFrontend
                 const auto owner = scene.weakRef();
                 const auto selected = scene.objects().back().object;
                 assert(lux::object::detail::post(scene.dispatcherRef(),
-                                                 lux::object::detail::makeMessage(
-                                                     [this, owner, selected]() noexcept
-                                                     {
-                                                         auto *document = owner.getAsOnCurrent<scene::SceneEditor>();
-                                                         assert(document && retired_messages_ == 2);
-                                                         std::puts("C19 rebuilt selection begin");
-                                                         assert(document->select(selected));
-                                                         std::puts("C19 rebuilt selection end");
-                                                         ++rebuilt_messages_;
-                                                     })) == lux::object::detail::EPostStatus::POSTED);
+                                                 lux::object::detail::makeMessage([this, owner, selected]() noexcept {
+                                                     auto *document = owner.getAsOnCurrent<scene::SceneEditor>();
+                                                     assert(document && retired_messages_ == 2);
+                                                     std::puts("C19 rebuilt selection begin");
+                                                     assert(document->select(selected));
+                                                     std::puts("C19 rebuilt selection end");
+                                                     ++rebuilt_messages_;
+                                                 })) == lux::object::detail::EPostStatus::POSTED);
                 material_frame_ = evidence_.frames;
                 stage_ = 81;
                 return;
@@ -964,7 +1026,7 @@ class Probe final : public EditorFrontend
                 auto &doc =
                     dynamic_cast<lux::editor::flowforge::FlowForgeEditor &>(editor_->document(material_)->get());
                 assert(doc.views().size() == 1 && doc.closeStatus().state == ECloseState::OPEN);
-                assert(evidence_.renderer->statistics().views == 0);
+                assert(evidence_.renderer->statistics().views == 1);
                 std::puts("FlowForge GUI: continued drawing after Scene closed; local FlowForge owner and history "
                           "remain usable");
                 assert(doc.rename("Still editable") && doc.undo());
@@ -1084,13 +1146,9 @@ class Probe final : public EditorFrontend
                     assert(std::holds_alternative<SaveSucceeded>(*status) && doc.acknowledgeSave(material_save_));
                     if (stage_ == 71)
                     {
-                        const auto row = std::ranges::find_if(
-                            scene.objects(),
-                            [&](const auto &object)
-                            {
-                                return scene.component(object.object,
-                                                       lux::cxx::typeToken<lux::simulation::ecs::Mesh3D>());
-                            });
+                        const auto row = std::ranges::find_if(scene.objects(), [&](const auto &object) {
+                            return scene.component(object.object, lux::cxx::typeToken<lux::simulation::ecs::Mesh3D>());
+                        });
                         assert(row != scene.objects().end());
                         using Mesh = lux::simulation::ecs::Mesh3D;
                         auto value =
@@ -1108,17 +1166,14 @@ class Probe final : public EditorFrontend
                     const auto resources = scene.resources();
                     assert(resources);
                     const auto material_id = doc.summary().key.source;
-                    const auto ready = std::ranges::find_if(resources->rows,
-                                                            [&](const auto &row)
-                                                            {
-                                                                return row.key.material == material_id &&
-                                                                       row.state == scene::ESceneResourceState::READY &&
-                                                                       !row.refresh_pending &&
-                                                                       row.key.sequence > material_resource_;
-                                                            });
+                    const auto ready = std::ranges::find_if(resources->rows, [&](const auto &row) {
+                        return row.key.material == material_id && row.state == lux::scene::ERenderAssetState::READY &&
+                               row.key.source_version == project_->catalogRevision() &&
+                               row.key.sequence > material_resource_;
+                    });
                     for (const auto &row : resources->rows)
                     {
-                        if (row.state == scene::ESceneResourceState::FAILED)
+                        if (row.state == lux::scene::ERenderAssetState::FAILED)
                         {
                             std::printf("MATERIAL GPU ERROR request=%llu cause=%zu backend=%u\n", row.key.sequence,
                                         row.failure.index(), row.backend_status);
@@ -1135,16 +1190,19 @@ class Probe final : public EditorFrontend
                         {
                             std::printf("  request=%llu match=%d state=%u refresh=%d render=%u backend=%u\n",
                                         row.key.sequence, row.key.material == material_id, unsigned(row.state),
-                                        row.refresh_pending, unsigned(!row.render_failure.ok()), row.backend_status);
+                                        row.key.source_version != project_->catalogRevision(),
+                                        unsigned(!row.render_failure.ok()), row.backend_status);
                         }
                     }
                     if (ready == resources->rows.end())
                     {
                         return;
                     }
-                    const bool retired =
-                        std::ranges::none_of(resources->rows, [](const auto &row)
-                                             { return row.state == scene::ESceneResourceState::SUPERSEDED; });
+                    // Active observations contain only current requests. Runtime retirement
+                    // is verified separately after all admitted references leave.
+                    const bool retired = std::ranges::all_of(resources->rows, [&](const auto &row) {
+                        return row.key.source_version == project_->catalogRevision();
+                    });
                     if (!retired || evidence_.renderer->statistics().gpu_completed < material_watermark_ + 5)
                     {
                         return;
@@ -1190,7 +1248,7 @@ class Probe final : public EditorFrontend
             {
                 auto &doc = dynamic_cast<lux::editor::material::MaterialEditor &>(editor_->document(material_)->get());
                 assert(doc.views().size() == 1 && doc.closeStatus().state == ECloseState::OPEN);
-                assert(evidence_.renderer->statistics().views == 0);
+                assert(evidence_.renderer->statistics().views == 1);
                 std::puts("Material GUI: continued drawing after Scene closed; local material owner and history remain "
                           "usable");
                 assert(doc.rename("Still editable") && doc.undo());
@@ -1204,18 +1262,19 @@ class Probe final : public EditorFrontend
             const auto stats = evidence_.renderer->statistics();
             std::printf("real scene: checks=%zu frames=%zu gpu_completed=%llu views=%zu leases=%zu\n", evidence_.checks,
                         evidence_.frames, stats.gpu_completed, stats.views, stats.runtime_leases);
-            assert(stats.views == (evidence_.mode == "cpu" ? 0 : 1) && stats.gpu_completed > 0);
+            assert(stats.views == (evidence_.mode == "cpu" ? 1 : 2) && stats.gpu_completed > 0);
             exit_.request(*editor_);
             ++stage_;
         }
     }
-    void draw(Editor &editor, PollBudget &budget) override
+    void afterDraw()
     {
         SampleTime sample{evidence_.callbacks};
         const bool measure = evidence_.mode == "cost" && stage_ == 3 && evidence_.cost_draws < 120;
-        const auto captured_before = measure ? evidence_.window->capturedFrames() : 0;
+        const auto captured_before = prior_captures_;
+        prior_captures_ = evidence_.window ? evidence_.window->capturedFrames() : 0;
         const auto begin = std::chrono::steady_clock::now();
-        inner_->draw(editor, budget);
+
         if (stage_ == 98)
         {
             auto &scene = dynamic_cast<lux::editor::scene::SceneEditor &>(editor_->document(handle_)->get());
@@ -1230,19 +1289,17 @@ class Probe final : public EditorFrontend
                 assert(local && world);
                 if (!world->value.translation().isApprox(local->translation, 1e-10))
                 {
-                    std::printf("FAIL transform step=%zu object=%zu local=(%g,%g,%g) world=(%g,%g,%g) diagnostic=%s\n",
-                                transform_step_, index, local->translation.x(), local->translation.y(),
-                                local->translation.z(), world->value.translation().x(), world->value.translation().y(),
-                                world->value.translation().z(), scene.diagnostic().c_str());
-                    evidence_.failed = true;
-                    stage_ = 99;
-                    exit_.request(*editor_);
+                    // A previous immutable publication may still be suspended.
+                    // Do not issue another edit until this exact value has reached
+                    // derivation; the outer deadline detects lost dirty work.
+                    ++transform_waits_;
                     return;
                 }
             }
             if (transform_step_ == 120)
             {
-                std::puts("PASS author -> WorldTransform across 120 actual owner polls");
+                std::printf("PASS author -> WorldTransform: 120 distinct edits adopted; pending owner turns=%zu\n",
+                            transform_waits_);
                 stage_ = 99;
                 exit_.request(*editor_);
                 return;
@@ -1261,6 +1318,8 @@ class Probe final : public EditorFrontend
                                              field, value));
             ++transform_step_;
         }
+        // This measures the observer callback, not UI construction or capture.
+        // Actual UI work is measured by editor_unified_ui_test --cost.
         if (measure)
         {
             const auto elapsed = std::chrono::steady_clock::now() - begin;
@@ -1282,55 +1341,32 @@ class Probe final : public EditorFrontend
         }
         ++evidence_.frames;
     }
-    void wait() override
-    {
-        SampleTime sample{evidence_.waits};
-        inner_->wait();
-    }
-    void stopPresenting() noexcept override
-    {
-        inner_->stopPresenting();
-    }
-    void requestClose() noexcept override
-    {
-        closing_ = true;
-        assert(editor_->documents().empty());
-        if (evidence_.renderer)
-        {
-            const auto stats = evidence_.renderer->statistics();
-            assert(stats.views == 0 && stats.runtime_leases == 0);
-            if (evidence_.mode == "fixed-run" || evidence_.mode == "fixed-run-failure" ||
-                evidence_.mode == "render-association" || evidence_.mode == "render-thread")
-            {
-                assert(stats.validation_errors == 0);
-                std::printf("D3 GPU facts: submitted_frames=%llu completed=%llu validation_errors=%llu\n",
-                            static_cast<unsigned long long>(stats.frames),
-                            static_cast<unsigned long long>(stats.gpu_completed),
-                            static_cast<unsigned long long>(stats.validation_errors));
-            }
-            std::printf("scene owners drained: views=%zu leases=%zu\n", stats.views, stats.runtime_leases);
-        }
-        inner_->requestClose();
-        if (evidence_.mode == "background")
-        {
-            background_stop_.store(true, std::memory_order_release);
-            background_stop_.notify_one();
-        }
-        const auto joined = stdexec::sync_wait(background_.close());
-        assert(joined);
-        assert(evidence_.mode != "background" || background_done_.load(std::memory_order_acquire));
-    }
-    CloseStatus closeStatus() const override
-    {
-        const auto status = inner_->closeStatus();
-        if (status.state == ECloseState::CLOSED)
-        {
-            evidence_.closed = true;
-        }
-        return status;
-    }
 
   private:
+    void enqueue()
+    {
+        const auto posted =
+            lux::object::detail::post(project_->dispatcherRef(), lux::object::detail::makeMessage([this]() noexcept {
+                                          if (!editor_->closing())
+                                          {
+                                              afterDraw();
+                                              PollBudget budget;
+                                              poll(budget);
+                                          }
+                                          if (editor_->closing())
+                                          {
+                                              closing_ = true;
+                                              background_stop_.store(true, std::memory_order_release);
+                                              background_stop_.notify_one();
+                                          }
+                                          else
+                                          {
+                                              enqueue();
+                                          }
+                                      }));
+        assert(posted == lux::object::detail::EPostStatus::POSTED);
+    }
+
     DocumentHandle material_;
     std::size_t material_frame_{};
     SceneSaveChecks save_checks_;
@@ -1343,12 +1379,14 @@ class Probe final : public EditorFrontend
     RenderThreadChecks thread_checks_;
     lux::process::ExecutionRuntime *runtime_{};
     Evidence &evidence_;
-    std::unique_ptr<EditorFrontend> inner_;
+    std::uint64_t prior_captures_{};
     Editor *editor_{};
     Project *project_{};
     OpenDocumentRequest request_;
     OpenRequestId first_, second_;
-    DocumentHandle handle_;
+    DocumentHandle handle_, shared_document_;
+    lux::render::RMeshHandle shared_mesh_;
+    lux::render::RMaterialHandle shared_material_;
     std::chrono::steady_clock::time_point started_;
     lux::editor::material::MaterialCompileId material_compile_;
     SaveRequestId material_save_;
@@ -1362,10 +1400,12 @@ class Probe final : public EditorFrontend
     unsigned retired_messages_{}, rebuilt_messages_{};
     std::chrono::steady_clock::time_point packet_blocked_at_, resize_requested_at_, image_released_at_,
         resize_ready_at_;
-    std::unique_ptr<rendering::RenderView> extra_view_;
+    std::unique_ptr<lux::render::RenderView> extra_view_;
     lux::editor::scene::SceneEntityRef extra_camera_;
-    rendering::ViewImage held_image_;
-    rendering::EditorFramePacket pending_packet_;
+    lux::render::ViewImage held_image_;
+    lux::render::RenderProgram<> pending_packet_;
+    std::uint64_t packet_sequence_{};
+    std::size_t transform_waits_{};
     lux::process::TaskScope background_;
     std::atomic_bool background_active_{}, background_stop_{}, background_done_{};
     bool closing_{};
@@ -1386,19 +1426,25 @@ int main(int argc, char **argv)
         assert(evidence.mode == "cost" || evidence.mode == "save-structure");
         evidence.expected_objects = std::stoul(argv[3]);
     }
-    gui::GuiConfig gui;
-    gui.window.visible = false;
+    Probe probe(evidence);
+    EditorConfig config;
+    config.window.visible = false;
     if (evidence.mode == "invalid-window")
     {
-        gui.window.width = 0;
+        config.window.width = 0;
     }
     if (evidence.mode == "invalid-renderer")
     {
-        gui.renderer.frame_capacity = 0;
+        config.renderer.frame_capacity = 0;
     }
-    gui.renderer.validation = evidence.mode != "cost";
-    gui.renderer.validation_message_sink = [&evidence](std::uint32_t severity, std::string_view message)
-    {
+    const std::array factories{lux::render::kViewCameraFeatureFactory,  lux::render::kMaterialFeatureFactory,
+                               lux::render::kMeshStackFeatureFactory,   lux::render::kLightFeatureFactory,
+                               lux::render::kForwardMeshFeatureFactory, lux::render::kShadowMapFeatureFactory,
+                               lux::render::kMeshShadowFeatureFactory,  lux::render::kHighlightFeatureFactory,
+                               lux::render::kGrid3DFeatureFactory};
+    config.renderer.feature_factories.assign(factories.begin(), factories.end());
+    config.renderer.validation = evidence.mode != "cost";
+    config.renderer.validation_message_sink = [&evidence](std::uint32_t severity, std::string_view message) {
         std::fprintf(stderr, "Vulkan %u: %.*s\n", severity, int(message.size()), message.data());
         if (severity == 2 || message.find("Validation Error") != std::string_view::npos)
         {
@@ -1406,18 +1452,27 @@ int main(int argc, char **argv)
         }
     };
     auto provider = gui::sceneDocumentProvider();
-    const auto registration = provider.register_type;
-    provider.register_type = [&evidence, registration](Editor &editor, lux::process::ExecutionRuntime &runtime,
-                                                       rendering::EditorRenderer &renderer)
-    {
+    const auto registration = provider.registration;
+    provider.registration = [&evidence, &probe, registration](lux::process::ExecutionRuntime &runtime,
+                                                              lux::render::RenderRuntime &renderer) {
         evidence.renderer = &renderer;
-        return registration(editor, runtime, renderer);
+        probe.start(runtime);
+        auto value = registration(runtime, renderer);
+        if (!value)
+        {
+            return value;
+        }
+        auto open = value->open;
+        value->open = [&probe, open](Project &project, const OpenDocumentRequest &request) {
+            probe.enter(project);
+            return open(project, request);
+        };
+        return value;
     };
     const auto attach = provider.attach;
-    provider.attach = [&evidence, attach](DocumentEditor &document, gui::EditorWindow &window,
-                                          rendering::EditorRenderer &renderer,
-                                          lux::process::ExecutionRuntime &runtime) -> EditorResult<void>
-    {
+    provider.attach = [&evidence, attach](DocumentEditor &document, ui::UIRenderSystem &window,
+                                          lux::render::RenderRuntime &renderer,
+                                          lux::process::ExecutionRuntime &runtime) -> EditorResult<void> {
         evidence.window = &window;
         if (evidence.mode == "attach-rollback" && !evidence.rollback)
         {
@@ -1427,17 +1482,19 @@ int main(int argc, char **argv)
                     : Object(dispatcher, lux::ui::PaneId{std::move(name)}, lux::ui::PaneTypeId{"probe"}, "collision")
                 {
                 }
-                void draw(lux::ui::Frame &, lux::ui::PaneDrawContext &) override {}
+                void draw(lux::ui::Frame &, lux::ui::PaneDrawContext &) override
+                {
+                }
             };
-            CollisionPane collision(window.dispatcherRef(),
-                                    "scene-" + std::to_string(document.handle().index) + "-" + std::to_string(document.handle().gen) + "-inspector");
-            auto registered = window.uiSession().registerPane(collision);
+            CollisionPane collision(window.dispatcherRef(), "scene-" + std::to_string(document.handle().index) + "-" +
+                                                                std::to_string(document.handle().gen) + "-inspector");
+            auto registered = window.registerPane(collision);
             assert(registered);
+            const auto original_views = renderer.statistics().views;
             auto result = attach(document, window, renderer, runtime);
             assert(!result && result.error().domain == "ui.register" &&
-                   result.error().reason ==
-                       static_cast<std::uint64_t>(lux::ui::EUiRegistrationError::DUPLICATE_PANE_ID));
-            assert(document.views().empty() && renderer.statistics().views == 0);
+                   result.error().reason == static_cast<std::uint64_t>(ui::EUiRegistrationError::DUPLICATE_PANE_ID));
+            assert(document.views().empty() && renderer.statistics().views == original_views);
             std::printf("expected attach rejection: %s:%llu adopted_views=0 GPU_views=0\n",
                         result.error().domain.c_str(), result.error().reason);
             registered->reset();
@@ -1446,25 +1503,26 @@ int main(int argc, char **argv)
         }
         return attach(document, window, renderer, runtime);
     };
-    gui.providers.push_back(std::move(provider));
+    config.providers.push_back(std::move(provider));
     if (evidence.mode == "material-gui" || evidence.mode == "material-publish")
     {
-        gui.providers.push_back(gui::materialDocumentProvider());
+        config.providers.push_back(gui::materialDocumentProvider());
     }
     if (evidence.mode == "flow-gui")
     {
-        gui.providers.push_back(gui::flowForgeDocumentProvider(flowMetadata(std::make_shared<MetadataOwner>())));
+        config.providers.push_back(gui::flowForgeDocumentProvider(flowMetadata(std::make_shared<MetadataOwner>())));
     }
-    EditorConfig config;
     config.project_file = argv[1];
     config.execution = {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}};
-    config.frontend = [&evidence, gui] { return std::make_unique<Probe>(evidence, gui); };
+
     Editor editor(std::move(config));
+    probe.bind(editor);
     const auto begin = std::chrono::steady_clock::now();
     const auto result = editor.exec();
     const auto expected = evidence.mode == "invalid-window" || evidence.mode == "invalid-renderer" ? 5
-                          : evidence.mode == "missing-project"                                     ? 4
+                          : evidence.mode == "missing-project"                                     ? 5
                                                                                                    : 0;
+    evidence.closed = editor.documents().empty();
     assert(result == expected && evidence.closed && !evidence.failed);
     if (evidence.mode == "missing-project")
     {
@@ -1483,9 +1541,10 @@ int main(int argc, char **argv)
     if (evidence.mode == "cost")
     {
         assert(evidence.cost_draws == 120);
-        std::printf("MEASURE desktop objects=%zu render_objects=4 warmup=20 captured_ui_frames=100 active_draw_ms=%.3f "
-                    "retry_calls=%zu active_retry_ms=%.3f width=1600 height=900 scene_views=1\n",
-                    evidence.expected_objects, milliseconds(evidence.cost_draw_time), evidence.cost_retries,
-                    milliseconds(evidence.cost_retry_time));
+        std::printf(
+            "MEASURE desktop objects=%zu render_objects=4 warmup=20 captured_ui_frames=100 owner_probe_cpu_ms=%.3f "
+            "retry_calls=%zu owner_probe_without_frame_cpu_ms=%.3f width=1600 height=900 scene_views=1\n",
+            evidence.expected_objects, milliseconds(evidence.cost_draw_time), evidence.cost_retries,
+            milliseconds(evidence.cost_retry_time));
     }
 }

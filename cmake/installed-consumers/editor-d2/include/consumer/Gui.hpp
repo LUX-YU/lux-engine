@@ -2,7 +2,8 @@
 
 #include <functional>
 #include <lux/engine/editor/gui/scene/ComponentBinding.hpp>
-#include <lux/engine/editor/gui/shell/EditorWindow.hpp>
+#include <lux/engine/process/ExecutionRuntime.hpp>
+#include <lux/engine/render/RenderRuntime.hpp>
 
 #if defined(_WIN32)
 #if defined(CONSUMER_GUI_LIBRARY)
@@ -16,16 +17,16 @@
 
 namespace consumer
 {
-    [[nodiscard]] CONSUMER_GUI_PUBLIC lux::editor::gui::ComponentBinding binding();
-    [[nodiscard]] CONSUMER_GUI_PUBLIC std::size_t drawCount() noexcept;
+[[nodiscard]] CONSUMER_GUI_PUBLIC lux::editor::gui::ComponentBinding binding();
+[[nodiscard]] CONSUMER_GUI_PUBLIC std::size_t drawCount() noexcept;
 
-    struct DrawSample final
-    {
-        std::size_t warmup{}, draws{};
-        double active_microseconds{};
-    };
-    CONSUMER_GUI_PUBLIC void beginDrawSample() noexcept;
-    [[nodiscard]] CONSUMER_GUI_PUBLIC DrawSample drawSample() noexcept;
-    CONSUMER_GUI_PUBLIC void checkUndrawnInspector(lux::editor::scene::SceneEditor &, lux::editor::gui::EditorWindow &,
-                                                   const std::function<void()> &);
+struct DrawSample final
+{
+    std::size_t warmup{}, draws{};
+    double active_microseconds{};
+};
+CONSUMER_GUI_PUBLIC void beginDrawSample() noexcept;
+[[nodiscard]] CONSUMER_GUI_PUBLIC DrawSample drawSample() noexcept;
+CONSUMER_GUI_PUBLIC void checkUndrawnInspector(lux::editor::scene::SceneEditor &, lux::render::RenderRuntime &,
+                                               lux::process::ExecutionRuntime &, const std::function<void()> &);
 } // namespace consumer

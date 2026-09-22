@@ -128,7 +128,7 @@ void main()
     vUV             = mv.uv;
     vMatIndex       = packMaterialIndex(prop);
     vTransitionCoverage = luxTransitionCoverage(
-        prop, uSceneGlobals.scenes[uPC.scene_index].time_sec);
+        prop, uSceneGlobals.scenes[uPC.scene_index].maintenance_time);
     vTransitionSeed = prop.transition_seed;
     vTransitionFadeOut =
         (prop.transition_flags & LUX_TRANSITION_FADE_OUT) != 0u ? 1u : 0u;

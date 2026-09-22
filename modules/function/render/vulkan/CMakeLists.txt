@@ -84,6 +84,7 @@ set(RENDER_VULKAN_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/targets/OffscreenImagePool.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/targets/PresentContext.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/targets/RenderTargetBinding.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/targets/ClearRenderTarget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/targets/SwapchainProvider.cpp
 )
 

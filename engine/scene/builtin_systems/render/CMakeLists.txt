@@ -15,11 +15,10 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Builtin3DRenderStages.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Camera.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CameraExtraction.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderRuntime.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderBinding.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderSchema.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSyncPipeline.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystemMetadata.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderAssets.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderAssetRequest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystem.cpp
 )
 include(${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/schema/cmake/engine_ecs_codegen.cmake)
@@ -49,22 +48,28 @@ target_link_libraries(
     scene_render
     PUBLIC
         lux::engine::function::render_feature_client
+        lux::engine::function::render_runtime
         lux::engine::scene::scene_composition
         lux::engine::scene::scene_meta
         lux::engine::simulation::ecs::core
         lux::engine::simulation::ecs::transform
         lux::engine::simulation::ecs::visual
         lux::engine::resource::identity
+        lux::engine::resource::asset
+        lux::engine::scene::scene_mesh_query
+        lux::engine::process::asset_loading
     PRIVATE EnTT::EnTT
 )
 component_add_transitive_commands(
     scene_render
     "find_package(EnTT CONFIG REQUIRED)"
-    "find_package(lux-engine-function REQUIRED COMPONENTS render_feature_client)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS render_feature_client render_runtime)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-engine-scene-meta REQUIRED COMPONENTS scene_meta)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core transform visual)"
-    "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS identity asset)"
+    "find_package(lux-engine-scene-mesh-query REQUIRED COMPONENTS scene_mesh_query)"
+    "find_package(lux-engine-process-asset-loading REQUIRED COMPONENTS process_asset_loading)"
 )
 
 add_component(
@@ -114,4 +119,29 @@ if(BUILD_TESTING)
         target_compile_options(scene_camera_test PRIVATE -UNDEBUG)
     endif()
     add_test(NAME scene.camera COMMAND scene_camera_test)
+    add_executable(scene_render_views_test test/system_views.cpp)
+    target_link_libraries(scene_render_views_test PRIVATE scene_render scene_render_meta
+        lux::engine::function::render_features lux::engine::function::render_feature_meta
+        lux::engine::function::render_vulkan)
+    if(MSVC)
+        target_compile_options(scene_render_views_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(scene_render_views_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME scene.render_views COMMAND scene_render_views_test)
+endif()
+
+if(BUILD_TESTING AND LUX_PROFILE_HAS_EDITOR)
+    add_executable(scene_render_assets_test test/assets.cpp)
+    target_link_libraries(scene_render_assets_test PRIVATE scene_render scene_render_meta
+        lux::engine::function::render_features lux::engine::function::render_feature_meta)
+    if(MSVC)
+        target_compile_options(scene_render_assets_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(scene_render_assets_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME scene.render_assets_seed COMMAND lux_scene_seed ${CMAKE_CURRENT_BINARY_DIR}/assets.luxpak)
+    set_tests_properties(scene.render_assets_seed PROPERTIES FIXTURES_SETUP scene_render_assets)
+    add_test(NAME scene.render_assets COMMAND scene_render_assets_test ${CMAKE_CURRENT_BINARY_DIR}/assets.luxpak)
+    set_tests_properties(scene.render_assets PROPERTIES FIXTURES_REQUIRED scene_render_assets)
 endif()

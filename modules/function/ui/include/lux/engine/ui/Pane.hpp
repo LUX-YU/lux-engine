@@ -12,106 +12,105 @@
 
 namespace lux::ui
 {
-    class Frame;
+class Frame;
 
-    namespace detail
+namespace detail
+{
+struct PaneStateAccess;
+}
+
+struct PaneFocusChanged final
+{
+    bool focused{false};
+};
+
+struct PaneVisibilityChanged final
+{
+    bool visible{false};
+};
+
+class LUX_FUNCTION_PUBLIC PaneDrawContext final
+{
+  public:
+    void activateContext(UiContextIdView context);
+
+  private:
+    friend struct detail::PaneStateAccess;
+
+    explicit PaneDrawContext(std::vector<UiContextIdView> &active) noexcept : active_(std::addressof(active))
     {
-        struct PaneStateAccess;
     }
 
-    struct PaneFocusChanged final
+    std::vector<UiContextIdView> *active_{nullptr};
+};
+
+class LUX_FUNCTION_PUBLIC LUX_OBJECT() Pane : public lux::object::Object<Pane>
+{
+  public:
+    /**
+     * Observers may update owner state, but must not synchronously destroy
+     * this Pane from either callback. Defer destruction until the current
+     * UI/Signal stack has returned to its owner-thread safe point.
+     */
+    static const signal_type<PaneFocusChanged> focusChanged;
+    static const signal_type<PaneVisibilityChanged> visibilityChanged;
+
+    Pane(lux::object::ObjectDispatcherRef dispatcher, PaneId id, PaneTypeId type, std::string title);
+
+    ~Pane() override;
+
+    [[nodiscard]] const PaneId &id() const noexcept
     {
-        bool focused{false};
-    };
-
-    struct PaneVisibilityChanged final
+        return id_;
+    }
+    [[nodiscard]] const PaneTypeId &type() const noexcept
     {
-        bool visible{false};
-    };
-
-    class LUX_FUNCTION_PUBLIC PaneDrawContext final
+        return type_;
+    }
+    [[nodiscard]] std::string_view title() const noexcept
     {
-    public:
-        void activateContext(UiContextIdView context);
-
-    private:
-        friend class UISession;
-
-        explicit PaneDrawContext(std::vector<UiContextIdView>& active) noexcept : active_(std::addressof(active))
-        {
-        }
-
-        std::vector<UiContextIdView>* active_{nullptr};
-    };
-
-    class LUX_FUNCTION_PUBLIC LUX_OBJECT() Pane : public lux::object::Object<Pane>
+        return title_;
+    }
+    [[nodiscard]] bool visible() const noexcept
     {
-    public:
-        /**
-         * Observers may update owner state, but must not synchronously destroy
-         * this Pane from either callback. Defer destruction until the current
-         * UI/Signal stack has returned to its owner-thread safe point.
-         */
-        static const signal_type<PaneFocusChanged> focusChanged;
-        static const signal_type<PaneVisibilityChanged> visibilityChanged;
+        return visible_;
+    }
+    [[nodiscard]] bool focused() const noexcept
+    {
+        return focused_;
+    }
+    [[nodiscard]] bool hovered() const noexcept
+    {
+        return hovered_;
+    }
 
-        Pane(lux::object::ObjectDispatcherRef dispatcher, PaneId id, PaneTypeId type, std::string title);
+    void setTitle(std::string title);
+    void setVisible(bool visible);
 
-        ~Pane() override;
+    /** Stable base contexts backed by this Pane for the Pane lifetime. */
+    [[nodiscard]] virtual std::span<const UiContextIdView> contexts() const noexcept
+    {
+        return {};
+    }
 
-        [[nodiscard]] const PaneId& id() const noexcept
-        {
-            return id_;
-        }
-        [[nodiscard]] const PaneTypeId& type() const noexcept
-        {
-            return type_;
-        }
-        [[nodiscard]] std::string_view title() const noexcept
-        {
-            return title_;
-        }
-        [[nodiscard]] bool visible() const noexcept
-        {
-            return visible_;
-        }
-        [[nodiscard]] bool focused() const noexcept
-        {
-            return focused_;
-        }
-        [[nodiscard]] bool hovered() const noexcept
-        {
-            return hovered_;
-        }
+  protected:
+    virtual void draw(Frame &frame, PaneDrawContext &context) = 0;
 
-        void setTitle(std::string title);
-        void setVisible(bool visible);
+  private:
+    friend struct detail::PaneStateAccess;
+    void setFocused(bool focused);
+    void setHovered(bool hovered) noexcept
+    {
+        hovered_ = hovered;
+    }
+    void rebuildWindowLabel();
 
-        /** Stable base contexts backed by this Pane for the Pane lifetime. */
-        [[nodiscard]] virtual std::span<const UiContextIdView> contexts() const noexcept
-        {
-            return {};
-        }
-
-    protected:
-        virtual void draw(Frame& frame, PaneDrawContext& context) = 0;
-
-    private:
-        friend class UISession;
-        friend struct detail::PaneStateAccess;
-        void setFocused(bool focused);
-        void setHovered(bool hovered) noexcept
-        {
-            hovered_ = hovered;
-        }
-        void rebuildWindowLabel();
-
-        PaneId id_;
-        PaneTypeId type_;
-        std::string title_;
-        std::string window_label_;
-        bool visible_{true};
-        bool focused_{false};
-        bool hovered_{false};
-    };
+    PaneId id_;
+    PaneTypeId type_;
+    std::string title_;
+    std::string window_label_;
+    bool visible_{true};
+    bool focused_{false};
+    bool hovered_{false};
+};
 } // namespace lux::ui

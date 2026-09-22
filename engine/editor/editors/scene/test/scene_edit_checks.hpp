@@ -6,15 +6,45 @@
 #include <lux/engine/editor/gui/scene/ComponentBinding.hpp>
 #include <lux/engine/editor/gui/scene/InspectorInteraction.hpp>
 #include <lux/engine/editor/scene/FieldEdit.hpp>
+#include <lux/engine/editor/ui/UIRenderSystem.hpp>
+#include <lux/engine/scene/SceneDescriptionBuilder.hpp>
+#include <lux/engine/scene/SceneInstance.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
-#include <lux/engine/ui/UISession.hpp>
+#include <thread>
 
-inline void checkGeneratedTransformDragging(lux::editor::scene::SceneEditor &document)
+inline void checkGeneratedTransformDragging(lux::editor::scene::SceneEditor &document,
+                                            lux::render::RenderRuntime &runtime)
 {
     using namespace lux::editor;
     using Transform = lux::simulation::ecs::Transform3D;
     using World = lux::simulation::ecs::WorldTransform3D;
-    lux::ui::UISession ui;
+
+    lux::editor::ui::UIRenderSystemConfig config;
+    const auto registration = lux::editor::ui::uiRenderSystemRegistration();
+    auto metadata = lux::scene::SceneMetaManager::build({.scene_systems = {registration}});
+    assert(metadata);
+    lux::scene::SceneDescriptionBuilder builder;
+    assert(builder.addSystem({1}, "ui", registration.type, 1, {}, 0));
+    auto description = std::move(builder).buildResolved();
+    assert(description);
+    auto dispatcher = document.dispatcherRef();
+    std::array providers{
+        lux::scene::makeSceneCapabilityProvider<lux::render::RenderRuntime>("runtime", "lux.render.runtime", runtime),
+        lux::scene::makeSceneCapabilityProvider<lux::object::ObjectDispatcherRef>("dispatcher", "lux.object.dispatcher",
+                                                                                  dispatcher),
+        lux::scene::makeSceneCapabilityProvider<lux::editor::ui::UIRenderSystemConfig>("config", "lux.editor.ui.config",
+                                                                                       config)};
+    auto created = lux::scene::SceneInstance::create(
+        {std::make_shared<const lux::scene::SceneDescription>(std::move(*description)),
+         std::make_shared<const lux::world::WorldDescription>(),
+         std::make_shared<const lux::simulation::SimulationDescription>(), *metadata, providers,
+         lux::simulation::ESimulationMode::DERIVATION});
+    assert(created && (*created)->simulation().seal());
+    auto instance = std::move(*created);
+    auto &ui = *instance->findSceneSystem<lux::editor::ui::UIRenderSystem>();
+    auto executor = lux::task::TaskExecutor::create({0, 1024});
+    assert(executor);
+    lux::scene::SceneDriver driver(*executor);
 
     struct ProbePane final : lux::object::Object<ProbePane, lux::ui::Pane>
     {
@@ -24,7 +54,7 @@ inline void checkGeneratedTransformDragging(lux::editor::scene::SceneEditor &doc
         lux::editor::scene::SceneEntityRef object;
         std::array<ImVec2, 3> centers{};
 
-        ProbePane(lux::ui::UISession &ui, scene::SceneEditor &value)
+        ProbePane(lux::editor::ui::UIRenderSystem &ui, scene::SceneEditor &value)
             : Object(ui.dispatcherRef(), lux::ui::PaneId{"transform-probe"}, lux::ui::PaneTypeId{"test"}, "Transform"),
               document(value), interaction(value, "transform-probe")
         {
@@ -64,13 +94,27 @@ inline void checkGeneratedTransformDragging(lux::editor::scene::SceneEditor &doc
 
     auto registered = ui.registerPane(pane);
     assert(registered);
-    const auto draw = [&]
-    {
+    const auto draw = [&] {
         auto frame = ui.beginFrame({{800, 600}, 1.0F / 60});
-        frame.drawPanes();
-        frame.finish();
-        PollBudget budget;
-        document.poll(budget);
+        ui.drawPanes(frame);
+        assert(ui.finishFrame(frame));
+        driver.invalidate(*instance);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+        do
+        {
+            assert(std::chrono::steady_clock::now() < deadline);
+            std::size_t controls = 8, programs = 4;
+            assert(runtime.poll(32, controls, programs));
+            lux::scene::SceneAdvanceBudget advance{32, 1, 1};
+            static_cast<void>(driver.advance(*instance, std::chrono::steady_clock::now(), advance));
+            assert(instance->progress().result);
+            PollBudget budget;
+            document.poll(budget);
+            if (!ui.canBuildFrame())
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        } while (!ui.canBuildFrame());
     };
     for (std::size_t index{}; index < 3; ++index)
     {
@@ -145,13 +189,12 @@ inline void checkSceneEditing(lux::editor::scene::SceneEditor &document)
     std::printf(
         "asset-catalog: rows=%zu revision=%llu exact foreign/stale/type rejection; malformed payload retained\n",
         catalog.catalog().size(), static_cast<unsigned long long>(catalog.catalogRevision()));
-    auto row =
-        std::ranges::find_if(document.objects(), [&](const auto &item)
-                             { return document.component(item.object, lux::cxx::typeToken<Transform>()) != nullptr; });
+    auto row = std::ranges::find_if(document.objects(), [&](const auto &item) {
+        return document.component(item.object, lux::cxx::typeToken<Transform>()) != nullptr;
+    });
     assert(row != document.objects().end());
     const auto object = row->object;
-    const auto read = [&]() -> Eigen::Vector3d
-    {
+    const auto read = [&]() -> Eigen::Vector3d {
         return static_cast<const Transform *>(document.component(object, lux::cxx::typeToken<Transform>()))
             ->translation;
     };
@@ -162,15 +205,13 @@ inline void checkSceneEditing(lux::editor::scene::SceneEditor &document)
     const auto initial = *document.historyView();
     const auto target = *document.writeTarget(object);
     std::size_t notices{};
-    auto connection = document.observeScoped<scene::SceneEditor::componentChanged>(
-        [&](const auto &notice) noexcept
-        {
-            assert(notice.object == object);
-            const auto blocked = document.writeTarget(object);
-            assert(!blocked && blocked.error().code == editing::EEditError::BUSY);
-            assert(document.historyView()->undo == editing::EHistoryActionAvailability::BUSY);
-            ++notices;
-        });
+    auto connection = document.observeScoped<scene::SceneEditor::componentChanged>([&](const auto &notice) noexcept {
+        assert(notice.object == object);
+        const auto blocked = document.writeTarget(object);
+        assert(!blocked && blocked.error().code == editing::EEditError::BUSY);
+        assert(document.historyView()->undo == editing::EHistoryActionAvailability::BUSY);
+        ++notices;
+    });
 
     auto applied = document.setField<Transform>(target, "Transform3D.translation", "Translation", field, first);
     assert(applied && applied->effect == editing::EEditEffect::CHANGE && read() == first);
@@ -193,8 +234,7 @@ inline void checkSceneEditing(lux::editor::scene::SceneEditor &document)
     assert(document.redo() && read() == first);
     assert(document.undo() && read() == original);
 
-    const auto update = [&](const scene::FieldEditToken &token, const Eigen::Vector3d &next)
-    {
+    const auto update = [&](const scene::FieldEditToken &token, const Eigen::Vector3d &next) {
         if (!document.fieldEditWritable(token))
         {
             return document.fieldEdited(token);

@@ -5,17 +5,18 @@
 #include <cstdio>
 #include <fstream>
 #include <lux/engine/editor/project/ProjectManifest.hpp>
-#include <lux/engine/function/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/function/render/client/core/RenderFeatureRegistration.hpp>
+#include <lux/engine/function/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
-#include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/Camera.hpp>
-#include <lux/engine/scene/SceneRenderSchema.hpp>
+#include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/SceneAssetCodec.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
+#include <lux/engine/scene/SceneRenderSchema.hpp>
+#include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <lux/engine/serialization/external_support/Eigen.hpp>
 #include <lux/engine/simulation/SimulationAssetCodec.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -71,10 +72,8 @@ int main(int argc, char **argv)
             std::printf("render feature count=%zu page=%.0f\n", config.features.size(), config.coordinate_page_size);
             for (const auto &feature : config.features)
             {
-                const auto found = std::ranges::find_if(features, [&](const auto &entry)
-                {
-                    return render::featureId(entry.stable_name) == feature.type;
-                });
+                const auto found = std::ranges::find_if(
+                    features, [&](const auto &entry) { return render::featureId(entry.stable_name) == feature.type; });
                 assert(found != features.end());
                 std::printf("feature=%.*s\n", static_cast<int>(found->stable_name.size()), found->stable_name.data());
             }
@@ -82,6 +81,7 @@ int main(int argc, char **argv)
         return 0;
     }
     const bool preservation = std::string_view(argv[2]) == "gpu-preservation";
+    const bool observer = std::string_view(argv[2]) == "gpu-observer";
     std::filesystem::create_directories(root);
     const bool rendered = std::string_view(argv[2]).starts_with("gpu");
     const bool shadows = std::string_view(argv[2]) == "gpu-shadow";
@@ -90,6 +90,10 @@ int main(int argc, char **argv)
     if (rendered)
     {
         schemas.push_back(worldDataSchemaId("lux.scene.Camera"));
+    }
+    if (observer)
+    {
+        schemas.push_back(worldDataSchemaId("lux.scene.Observer"));
     }
     if (std::string_view(argv[2]) == "gpu-hierarchy")
     {
@@ -100,20 +104,18 @@ int main(int argc, char **argv)
         schemas.push_back(worldDataSchemaId("test.UnknownAuthorPayload"));
     }
     std::ranges::sort(schemas, WorldDataSchemaIdLess{});
-    const auto ordinal = [&](std::string_view name)
-    {
+    const auto ordinal = [&](std::string_view name) {
         return static_cast<std::uint32_t>(std::ranges::find(schemas, name, &WorldDataSchemaId::name) - schemas.begin());
     };
     simulation::ecs::Registry registry;
     simulation::ecs::WorldEntityMap identities;
-    const auto encode = [&](const auto &component)
-    {
+    const auto encode = [&](const auto &component) {
         using Component = std::remove_cvref_t<decltype(component)>;
         const auto entity = registry.create();
         registry.emplace<Component>(entity, component);
         for (const auto registered :
              {simulation::ecs::transformComponentSchemas(), simulation::ecs::visualComponentSchemas(),
-              scene::sceneRenderComponentSchemas()})
+              scene::sceneRenderComponentSchemas(), scene::worldLoadingComponentSchemas()})
         {
             const auto found =
                 std::ranges::find(registered, cxx::typeToken<Component>(), &simulation::ecs::ComponentSchema::cpp_type);
@@ -135,8 +137,7 @@ int main(int argc, char **argv)
     const auto object_count = argc >= 4 ? std::stoul(argv[3]) : 4;
     assert(object_count >= 4 && object_count <= 4096);
     std::vector<WorldEncodedObjectRecord> objects(object_count);
-    const auto seed = [](std::uint8_t tail)
-    {
+    const auto seed = [](std::uint8_t tail) {
         std::array<std::uint8_t, 16> bytes{0x53, 0x56, 1};
         bytes.back() = tail;
         return asset::AssetId{bytes};
@@ -156,8 +157,8 @@ int main(int argc, char **argv)
         if (index == 3)
         {
             transform.translation = {2, 5, 3};
-            transform.rotation = Eigen::Quaterniond::FromTwoVectors(-Eigen::Vector3d::UnitZ(),
-                                                                   -transform.translation.normalized());
+            transform.rotation =
+                Eigen::Quaterniond::FromTwoVectors(-Eigen::Vector3d::UnitZ(), -transform.translation.normalized());
         }
         payloads[index][0] = encode(transform);
         if (index < 3)
@@ -197,6 +198,11 @@ int main(int argc, char **argv)
                                   std::byte{0}};
             data[index].push_back({ordinal("test.UnknownAuthorPayload"), 37, payloads[index][2]});
         }
+        if (observer && index == 0)
+        {
+            payloads[index][2] = encode(scene::Observer{});
+            data[index].push_back({ordinal("lux.scene.Observer"), 1, payloads[index][2]});
+        }
         std::ranges::sort(data[index], {}, &WorldEncodedDataRecord::schema_ordinal);
         objects[index] = {identity<WorldObjectId>(static_cast<std::uint8_t>(index + 1)), data[index]};
     }
@@ -210,13 +216,18 @@ int main(int argc, char **argv)
     std::vector<std::vector<std::byte>> partition_bytes;
     std::vector<WorldPartitionRecord> records;
     std::vector<WorldPartitionExtent> extents;
-    const std::uint32_t partition_count = preservation ? 2 : 1;
+    if (observer)
+    {
+        assert(objects.size() == 4);
+        std::swap(objects[1], objects[3]); // Bootstrap contains one Mesh and the game Camera/Light.
+    }
+    const std::uint32_t partition_count = preservation || observer ? 2 : 1;
     const std::uint32_t objects_per_partition = static_cast<std::uint32_t>(objects.size()) / partition_count;
     for (std::uint32_t index{}; index < partition_count; ++index)
     {
-        auto encoded =
-            encodeWorldPartitionData(partition::PartitionOrdinal{index},
-                                     std::span{objects}.subspan(index * objects_per_partition, objects_per_partition));
+        auto partition_objects = std::span{objects}.subspan(index * objects_per_partition, objects_per_partition);
+        std::ranges::sort(partition_objects, WorldObjectIdLess{}, &WorldEncodedObjectRecord::id);
+        auto encoded = encodeWorldPartitionData(partition::PartitionOrdinal{index}, partition_objects);
         assert(encoded);
         partition_bytes.push_back(std::move(*encoded));
         records.push_back({identity<WorldPartitionId>(static_cast<std::uint8_t>(5 + index)), index, 1});
@@ -253,7 +264,7 @@ int main(int argc, char **argv)
     auto transform = simulation::makeTransformSystemConfiguration(1024, {2048, 1024 * 1024});
     assert(transform && simulation_builder.addSystem(system::SystemInstanceId{1}, "transform",
                                                      simulation::transformSystemDescription(), *transform));
-    if (std::string_view(argv[2]) == "gpu-dynamic")
+    if (std::string_view(argv[2]) == "gpu-dynamic" || observer)
     {
         assert(simulation_builder.addSystem(system::SystemInstanceId{3}, "motion", run_test::Motion::Description, {}));
         assert(simulation_builder.addExecutionDependency(
@@ -269,6 +280,15 @@ int main(int argc, char **argv)
     scene::SceneDescriptionBuilder scene_builder;
     scene_builder.setWorld(identity<asset::AssetId>(10));
     scene_builder.setSimulation(identity<asset::AssetId>(11));
+    if (observer)
+    {
+        const auto registration = scene::worldLoadingSystemRegistration();
+        const scene::WorldLoadingConfiguration config{{{0}}};
+        std::vector<std::byte> bytes;
+        assert(registration.configuration.encode(&config, bytes));
+        assert(scene_builder.addSystem({4}, "loading", registration.type, 1,
+                                       registration.description->configuration_schema_name, 1, bytes));
+    }
     if (rendered)
     {
         scene::RenderSystemConfiguration config;
@@ -307,8 +327,7 @@ int main(int argc, char **argv)
                                   std::make_shared<const scene::SceneDescription>(std::move(*scene_description)));
     assert(scene_asset);
     std::vector<asset::PakWriteEntry> entries;
-    const auto append = [&]<class Asset>(const std::shared_ptr<Asset> &value, const char *path)
-    {
+    const auto append = [&]<class Asset>(const std::shared_ptr<Asset> &value, const char *path) {
         auto bytes = asset::TAssetSerDeser<std::remove_const_t<Asset>>::encode(
             *value, asset::AssetEncodeLimits{16 * 1024 * 1024});
         assert(bytes);
@@ -328,6 +347,26 @@ int main(int argc, char **argv)
         "Main.luxscene",
         {{identity<asset::AssetId>(12), editor::EProjectAssetKind::SCENE, "Main.luxscene", {}, {}, {}, "Scenes/Main"},
          {seed(10), editor::EProjectAssetKind::MODEL, "Cube.obj", "Seed.luxpak", {}, {}, "Seed"}}};
+    if (std::string_view(argv[2]) == "gpu-sharing")
+    {
+        auto second = scene::SceneAsset::create(
+            asset::AssetInfo{identity<asset::AssetId>(22)},
+            std::shared_ptr<const scene::SceneDescription>(*scene_asset, &(*scene_asset)->data()));
+        assert(second);
+        append(*second, "Scene");
+        append(*world_asset, "World");
+        append(*simulation_asset, "Simulation");
+        entries.push_back(
+            {identity<asset::AssetId>(13), 1, "Storage/0", {}, cxx::SharedBytes<>::fromOwner(bytes, *bytes)});
+        assert(asset::writePakFile(root / "Second.luxscene", std::move(entries), "/Scene", &failure));
+        project.assets.push_back({identity<asset::AssetId>(22),
+                                  editor::EProjectAssetKind::SCENE,
+                                  "Second.luxscene",
+                                  {},
+                                  {},
+                                  {},
+                                  "Scenes/Second"});
+    }
     const std::size_t unopened = argc == 5 ? std::stoul(argv[4]) : 0;
     std::size_t unopened_bytes{};
     for (std::size_t index{}; index < unopened; ++index)

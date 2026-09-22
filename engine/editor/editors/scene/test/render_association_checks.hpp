@@ -3,10 +3,10 @@
 #include <atomic>
 #include <cassert>
 #include <cstdio>
-#include <lux/engine/editor/rendering/EditorRenderer.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
 #include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
 #include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/render/RenderRuntime.hpp>
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 
@@ -23,7 +23,7 @@ struct RenderAssociationChecks final
             flag->store(true, std::memory_order_release);
         }
     };
-    lux::scene::RenderRuntimeLease runtime;
+    lux::render::RenderRuntime *runtime{};
     lux::render::LightOperationIds light;
     lux::render::MeshStackOperationIds mesh;
     lux::render::RenderSceneId scene_id;
@@ -36,14 +36,13 @@ struct RenderAssociationChecks final
     bool pending{}, correct{true};
     std::uint32_t initial_mesh{}, initial_light{};
 
-    void begin(lux::editor::scene::SceneEditor &scene, lux::editor::rendering::EditorRenderer &renderer)
+    void begin(lux::editor::scene::SceneEditor &scene, lux::render::RenderRuntime &renderer)
     {
-        auto acquired = renderer.acquire();
-        assert(acquired && scene.renderScene());
-        runtime = std::move(*acquired);
+        assert(scene.renderScene());
+        runtime = &renderer;
         scene_id = *scene.renderScene();
-        mesh = runtime.features().ops<lux::render::MeshStackOperationIds>("StandardMeshStack");
-        light = runtime.features().ops<lux::render::LightOperationIds>("Light");
+        mesh = runtime->features().ops<lux::render::MeshStackOperationIds>("StandardMeshStack");
+        light = runtime->features().ops<lux::render::LightOperationIds>("Light");
         assert(mesh.valid() && light.valid());
         const auto *resolved = static_cast<const lux::scene::ResolvedMeshResources *>(
             scene.component(scene.objects().front().object, lux::cxx::typeToken<lux::scene::ResolvedMeshResources>()));
@@ -62,8 +61,8 @@ struct RenderAssociationChecks final
     }
     void query()
     {
-        mesh_stats = lux::render::MeshStackControlClient(runtime.control(), mesh).stats({scene_id});
-        light_stats = lux::render::LightControlClient(runtime.control(), light).stats({scene_id});
+        mesh_stats = lux::render::MeshStackControlClient(runtime->control()->get(), mesh).stats({scene_id});
+        light_stats = lux::render::LightControlClient(runtime->control()->get(), light).stats({scene_id});
         assert(mesh_stats.valid() && light_stats.valid());
     }
     template <class F> void prepare(F fill)
@@ -93,14 +92,11 @@ struct RenderAssociationChecks final
     bool poll(lux::editor::scene::SceneEditor &scene)
     {
         using namespace lux::render;
-        auto &programs = runtime.programs();
-        if (programs.hasPendingSubmit() && !programs.retryPendingSubmit())
-        {
-            return false;
-        }
         if (pending)
         {
-            if (!programs.trySubmitPrepared(program))
+            auto submitted = runtime->submit(program);
+            assert(submitted);
+            if (*submitted == EFrameSubmit::BACKPRESSURED)
             {
                 return false;
             }
@@ -135,23 +131,18 @@ struct RenderAssociationChecks final
                 query();
                 return false;
             }
-            prepare(
-                [&](auto &builder)
-                {
-                    builder.push(opcodes::CommandOp, light.id<UpsertLightOp>(), upsert);
-                    builder.push(opcodes::CommandOp, light.id<RemoveLightOp>(),
-                                 RemoveLightPayload{scene_id, source, 0});
-                });
+            prepare([&](auto &builder) {
+                builder.push(opcodes::CommandOp, light.id<UpsertLightOp>(), upsert);
+                builder.push(opcodes::CommandOp, light.id<RemoveLightOp>(), RemoveLightPayload{scene_id, source, 0});
+            });
             phase = 1;
         }
         else if (phase == 1)
         {
-            prepare(
-                [&](auto &builder)
-                {
-                    builder.push(opcodes::CommandOp, mesh.id<UpsertMeshInstanceOp>(), mesh_upsert);
-                    builder.push(opcodes::CommandOp, mesh.id<UpsertMeshInstanceOp>(), mesh_upsert);
-                });
+            prepare([&](auto &builder) {
+                builder.push(opcodes::CommandOp, mesh.id<UpsertMeshInstanceOp>(), mesh_upsert);
+                builder.push(opcodes::CommandOp, mesh.id<UpsertMeshInstanceOp>(), mesh_upsert);
+            });
             phase = 3;
         }
         else if (phase == 2)
@@ -176,14 +167,12 @@ struct RenderAssociationChecks final
             std::printf("R01 remove Light then Mesh upsert: before=%u after=%u source=0 expected=%u\n", initial_mesh,
                         count, initial_mesh);
             correct = correct && count == initial_mesh;
-            prepare(
-                [&](auto &builder)
-                {
-                    builder.push(opcodes::CommandOp, light.id<UpsertLightOp>(), upsert);
-                    builder.push(opcodes::CommandOp, mesh.id<RemoveMeshInstanceOp>(),
-                                 RemoveMeshInstancePayload{scene_id, source});
-                    builder.push(opcodes::CommandOp, light.id<UpsertLightOp>(), upsert);
-                });
+            prepare([&](auto &builder) {
+                builder.push(opcodes::CommandOp, light.id<UpsertLightOp>(), upsert);
+                builder.push(opcodes::CommandOp, mesh.id<RemoveMeshInstanceOp>(),
+                             RemoveMeshInstancePayload{scene_id, source});
+                builder.push(opcodes::CommandOp, light.id<UpsertLightOp>(), upsert);
+            });
             phase = 5;
         }
         else if (phase == 5)
@@ -202,28 +191,22 @@ struct RenderAssociationChecks final
             std::printf("R02 remove Mesh then Light upsert: before=%u after=%u expected=%u\n", initial_light, count,
                         initial_light + 1);
             correct = correct && count == initial_light + 1;
-            prepare(
-                [&](auto &builder)
-                {
-                    builder.push(opcodes::CommandOp, light.id<RemoveLightOp>(),
-                                 RemoveLightPayload{scene_id, source, 0});
-                    builder.push(opcodes::CommandOp, light.id<RemoveLightOp>(),
-                                 RemoveLightPayload{scene_id, source, 0});
-                });
+            prepare([&](auto &builder) {
+                builder.push(opcodes::CommandOp, light.id<RemoveLightOp>(), RemoveLightPayload{scene_id, source, 0});
+                builder.push(opcodes::CommandOp, light.id<RemoveLightOp>(), RemoveLightPayload{scene_id, source, 0});
+            });
 
             phase = 7;
         }
         else if (phase == 7)
         {
-            prepare(
-                [&](auto &builder)
-                {
-                    builder.push(opcodes::CommandOp, mesh.id<UpsertMeshInstanceOp>(), mesh_upsert);
-                    builder.push(opcodes::CommandOp, mesh.id<RetireMeshInstanceOp>(),
-                                 RetireMeshInstancePayload{scene_id, source, 500, 1});
-                    builder.push(opcodes::CommandOp, mesh.id<UpsertMeshInstanceOp>(), mesh_upsert);
-                    builder.push(opcodes::CommandOp, mesh.id<UpsertMeshInstanceOp>(), mesh_upsert);
-                });
+            prepare([&](auto &builder) {
+                builder.push(opcodes::CommandOp, mesh.id<UpsertMeshInstanceOp>(), mesh_upsert);
+                builder.push(opcodes::CommandOp, mesh.id<RetireMeshInstanceOp>(),
+                             RetireMeshInstancePayload{scene_id, source, 500, 1});
+                builder.push(opcodes::CommandOp, mesh.id<UpsertMeshInstanceOp>(), mesh_upsert);
+                builder.push(opcodes::CommandOp, mesh.id<UpsertMeshInstanceOp>(), mesh_upsert);
+            });
             phase = 8;
         }
         else if (phase == 8)
@@ -259,8 +242,8 @@ struct RenderAssociationChecks final
                 return false;
             }
             correct = correct && counts.alive_instances == initial_mesh;
-            prepare([&](auto &builder)
-                    { builder.push(opcodes::CommandOp, mesh.id<UpsertMeshInstanceOp>(), mesh_upsert); });
+            prepare(
+                [&](auto &builder) { builder.push(opcodes::CommandOp, mesh.id<UpsertMeshInstanceOp>(), mesh_upsert); });
             phase = 11;
         }
         else if (phase == 11)
@@ -279,19 +262,15 @@ struct RenderAssociationChecks final
             std::printf("R03 old retirement leaves new association: instances=%u expected=%u\n", counts.alive_instances,
                         initial_mesh);
             correct = correct && counts.alive_instances == initial_mesh;
-            prepare(
-                [&](auto &builder)
-                {
-                    builder.push(opcodes::CommandOp, light.id<UpsertLightOp>(), upsert);
-                    auto next_generation = upsert;
-                    next_generation.entity = static_cast<RenderEntityId>(std::uint64_t{1} << 32);
-                    builder.push(opcodes::CommandOp, light.id<UpsertLightOp>(), next_generation);
-                    builder.push(opcodes::CommandOp, light.id<RemoveLightOp>(),
-                                 RemoveLightPayload{scene_id, source, 0});
-                    builder.push(opcodes::CommandOp, light.id<RemoveLightOp>(),
-                                 RemoveLightPayload{scene_id, source, 0});
-                    builder.push(opcodes::CommandOp, light.id<UpsertLightOp>(), next_generation);
-                });
+            prepare([&](auto &builder) {
+                builder.push(opcodes::CommandOp, light.id<UpsertLightOp>(), upsert);
+                auto next_generation = upsert;
+                next_generation.entity = static_cast<RenderEntityId>(std::uint64_t{1} << 32);
+                builder.push(opcodes::CommandOp, light.id<UpsertLightOp>(), next_generation);
+                builder.push(opcodes::CommandOp, light.id<RemoveLightOp>(), RemoveLightPayload{scene_id, source, 0});
+                builder.push(opcodes::CommandOp, light.id<RemoveLightOp>(), RemoveLightPayload{scene_id, source, 0});
+                builder.push(opcodes::CommandOp, light.id<UpsertLightOp>(), next_generation);
+            });
             phase = 13;
         }
         else if (phase == 13)
@@ -310,12 +289,10 @@ struct RenderAssociationChecks final
             std::printf("R05 complete generation key: late old removal leaves point_lights=%u expected=%u\n", count,
                         initial_light + 1);
             correct = correct && count == initial_light + 1;
-            prepare(
-                [&](auto &builder)
-                {
-                    builder.push(opcodes::CommandOp, light.id<RemoveLightOp>(),
-                                 RemoveLightPayload{scene_id, static_cast<RenderEntityId>(std::uint64_t{1} << 32), 0});
-                });
+            prepare([&](auto &builder) {
+                builder.push(opcodes::CommandOp, light.id<RemoveLightOp>(),
+                             RemoveLightPayload{scene_id, static_cast<RenderEntityId>(std::uint64_t{1} << 32), 0});
+            });
             phase = 15;
         }
         else if (phase == 15)

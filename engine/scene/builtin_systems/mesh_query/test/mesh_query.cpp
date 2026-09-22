@@ -1,4 +1,6 @@
 #include <lux/engine/scene/MeshQuerySystem.hpp>
+#include <lux/engine/scene/SceneDescriptionBuilder.hpp>
+#include <lux/engine/scene/SceneInstance.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/Visual.hpp>
 
@@ -72,6 +74,60 @@ static void measure(std::size_t count)
                 static_cast<unsigned long long>(after.leaf_updates));
 }
 
+static void checkDriverInvalidation()
+{
+    using namespace lux;
+    namespace ecs = simulation::ecs;
+    meta::ReflectionRegistry::initRegistry();
+    const auto registration = scene::builtinMeshQuerySystemRegistration();
+    auto metadata = scene::SceneMetaManager::build({.scene_systems = {registration}});
+    assert(metadata);
+    scene::SceneDescriptionBuilder builder;
+    assert(builder.addSystem({1}, "query", registration.type, 1, {}, 0));
+    auto description = std::move(builder).buildResolved();
+    assert(description);
+    auto made = scene::SceneInstance::create({std::make_shared<const scene::SceneDescription>(std::move(*description)),
+                                              std::make_shared<const world::WorldDescription>(),
+                                              std::make_shared<const simulation::SimulationDescription>(),
+                                              *metadata,
+                                              {},
+                                              simulation::ESimulationMode::DERIVATION});
+    assert(made && (*made)->simulation().seal());
+    auto instance = std::move(*made);
+    auto executor = task::TaskExecutor::create({0, 1024});
+    assert(executor);
+    scene::SceneDriver driver(*executor);
+    const auto advance = [&] {
+        scene::SceneAdvanceBudget budget;
+        assert(driver.advance(*instance, std::chrono::steady_clock::now(), budget) == scene::ESceneProgress::COMPLETE);
+        assert(instance->progress().result);
+    };
+    advance();
+    auto &query = *instance->findSceneSystem<scene::MeshQuerySystem>();
+    const std::array positions{Eigen::Vector3f{-1, -1, 0}, Eigen::Vector3f{1, -1, 0}, Eigen::Vector3f{0, 1, 0}};
+    const std::array<std::uint32_t, 3> indices{0, 1, 2};
+    auto geometry = scene::MeshQueryGeometry::build(positions, indices);
+    assert(geometry);
+    const asset::AssetId mesh{std::array<std::uint8_t, 16>{1}};
+    const auto entity = instance->registry().create();
+    instance->registry().emplace<ecs::Mesh3D>(entity).value.mesh = mesh;
+    instance->registry().emplace<ecs::WorldTransform3D>(entity).value.translation().z() = 5;
+    query.setGeometry(mesh, *geometry);
+    scene::RayHit3D hit;
+    const math::Ray3d ray{{0, 0, 0}, Eigen::Vector3d::UnitZ()};
+    assert(!query.raycastNearest(ray, 100, hit));
+    advance(); // No external invalidate(), Renderer, or direct stable-point call.
+    assert(query.raycastNearest(ray, 100, hit).value() && hit.entity == entity && hit.distance == 5);
+    instance->registry().patch<ecs::WorldTransform3D>(entity, [](auto &value) { value.value.translation().z() = 7; });
+    advance();
+    assert(query.raycastNearest(ray, 100, hit).value() && hit.distance == 7);
+    const auto refreshes = instance->progress().refresh_completed;
+    advance();
+    assert(instance->progress().refresh_completed == refreshes);
+    std::puts(
+        "PASS paused Driver: query component/geometry invalidation reaches stable point; idle turn does not rebuild");
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 2)
@@ -81,6 +137,7 @@ int main(int argc, char **argv)
         measure(count);
         return 0;
     }
+    checkDriverInvalidation();
     using namespace lux;
     using namespace simulation::ecs;
     const std::array positions{Eigen::Vector3f{-1, -1, 0}, Eigen::Vector3f{1, -1, 0}, Eigen::Vector3f{0, 1, 0}};
@@ -90,8 +147,7 @@ int main(int argc, char **argv)
     const asset::AssetId mesh{std::array<std::uint8_t, 16>{1}};
     Registry registry;
     scene::MeshQuerySystem query{registry};
-    const auto create = [&](double z)
-    {
+    const auto create = [&](double z) {
         const auto entity = registry.create();
         auto &visual = registry.emplace<Mesh3D>(entity);
         visual.value.mesh = mesh;

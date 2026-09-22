@@ -118,7 +118,7 @@ namespace lux::scene
 
         [[nodiscard]] lux::cxx::expected<void, SceneSystemBuildFailure> installScriptRuntimeSystem(
             SceneBuilder& builder,
-            SceneSystemView description
+            SceneSystemDescription description
         ) noexcept
         {
             auto* host = builder.require<ScriptRuntimeHost>(description.instanceId(), "script_runtime_host");

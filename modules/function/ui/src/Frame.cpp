@@ -1,5 +1,6 @@
 #include <lux/engine/ui/Frame.hpp>
 #include <lux/engine/ui/Theme.hpp>
+#include <lux/engine/ui/detail/ContextImpl.hpp>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -15,573 +16,698 @@
 
 namespace lux::ui
 {
-    namespace
+namespace
+{
+[[nodiscard]] ImVec4 toImGuiColor(Color value) noexcept
+{
+    return ImVec4{value.red, value.green, value.blue, value.alpha};
+}
+
+void applyTheme(const Theme &theme) noexcept
+{
+    auto &style = ImGui::GetStyle();
+    style.WindowPadding = {theme.spacing.panel_padding.x, theme.spacing.panel_padding.y};
+    style.FramePadding = {theme.spacing.item.x, theme.spacing.compact.y};
+    style.ItemSpacing = {theme.spacing.item.x, theme.spacing.item.y};
+    style.IndentSpacing = theme.metrics.tree_indent;
+    style.WindowRounding = theme.metrics.rounding;
+    style.ChildRounding = theme.metrics.rounding;
+    style.FrameRounding = theme.metrics.rounding;
+    style.PopupRounding = theme.metrics.rounding;
+    style.WindowBorderSize = theme.metrics.border_width;
+    style.ChildBorderSize = theme.metrics.border_width;
+    style.FrameBorderSize = 0.0F;
+    style.Colors[ImGuiCol_WindowBg] = toImGuiColor(theme.palette.window_background);
+    style.Colors[ImGuiCol_ChildBg] = toImGuiColor(theme.palette.panel_background);
+    style.Colors[ImGuiCol_FrameBg] = toImGuiColor(theme.palette.field_background);
+    style.Colors[ImGuiCol_Text] = toImGuiColor(theme.palette.text);
+    style.Colors[ImGuiCol_TextDisabled] = toImGuiColor(theme.palette.muted_text);
+    style.Colors[ImGuiCol_Border] = toImGuiColor(theme.palette.border);
+    style.Colors[ImGuiCol_CheckMark] = toImGuiColor(theme.palette.accent);
+    style.Colors[ImGuiCol_SliderGrab] = toImGuiColor(theme.palette.accent);
+    style.Colors[ImGuiCol_Header] = toImGuiColor(theme.palette.selection);
+    style.Colors[ImGuiCol_HeaderHovered] = toImGuiColor(theme.palette.accent);
+    style.Colors[ImGuiCol_HeaderActive] = toImGuiColor(theme.palette.selection);
+}
+
+template <class Type> [[nodiscard]] EditResult editResult(bool changed) noexcept
+{
+    static_cast<void>(sizeof(Type));
+    return EditResult{changed, ImGui::IsItemActivated(), ImGui::IsItemDeactivatedAfterEdit(), false};
+}
+
+template <class Type>
+[[nodiscard]] EditResult editScalarImpl(std::string_view label, Type &value, const ScalarEditSpec<Type> &spec,
+                                        ImGuiDataType data_type)
+{
+    const void *minimum = spec.minimum ? std::addressof(*spec.minimum) : nullptr;
+    const void *maximum = spec.maximum ? std::addressof(*spec.maximum) : nullptr;
+    const void *step = spec.step ? std::addressof(*spec.step) : nullptr;
+    const detail::NullTerminatedText label_text{label};
+    const detail::NullTerminatedText format_text{spec.format};
+    const char *format = spec.format.empty() ? nullptr : format_text.c_str();
+    bool changed{};
+    switch (spec.mode)
     {
-        template<class Type>
-        [[nodiscard]] EditResult editResult(bool changed) noexcept
+    case EScalarEditMode::INPUT:
+        changed = ImGui::InputScalar(label_text.c_str(), data_type, std::addressof(value), step, nullptr, format);
+        break;
+    case EScalarEditMode::DRAG:
+        changed = ImGui::DragScalar(label_text.c_str(), data_type, std::addressof(value), spec.speed, minimum, maximum,
+                                    format);
+        break;
+    case EScalarEditMode::SLIDER:
+        if (minimum != nullptr && maximum != nullptr)
         {
-            static_cast<void>(sizeof(Type));
-            return EditResult{
-                changed,
-                ImGui::IsItemActivated(),
-                ImGui::IsItemDeactivatedAfterEdit(),
-                false
-            };
+            changed =
+                ImGui::SliderScalar(label_text.c_str(), data_type, std::addressof(value), minimum, maximum, format);
         }
-
-        template<class Type>
-        [[nodiscard]] EditResult editScalarImpl(
-            std::string_view label,
-            Type& value,
-            const ScalarEditSpec<Type>& spec,
-            ImGuiDataType data_type
-        )
+        else
         {
-            const void* minimum = spec.minimum ? std::addressof(*spec.minimum) : nullptr;
-            const void* maximum = spec.maximum ? std::addressof(*spec.maximum) : nullptr;
-            const void* step = spec.step ? std::addressof(*spec.step) : nullptr;
-            const detail::NullTerminatedText label_text{label};
-            const detail::NullTerminatedText format_text{spec.format};
-            const char* format = spec.format.empty() ? nullptr : format_text.c_str();
-            bool changed{};
-            switch (spec.mode)
-            {
-            case EScalarEditMode::INPUT:
-                changed = ImGui::InputScalar(
-                    label_text.c_str(),
-                    data_type,
-                    std::addressof(value),
-                    step,
-                    nullptr,
-                    format
-                );
-                break;
-            case EScalarEditMode::DRAG:
-                changed = ImGui::DragScalar(
-                    label_text.c_str(),
-                    data_type,
-                    std::addressof(value),
-                    spec.speed,
-                    minimum,
-                    maximum,
-                    format
-                );
-                break;
-            case EScalarEditMode::SLIDER:
-                if (minimum != nullptr && maximum != nullptr)
-                {
-                    changed = ImGui::SliderScalar(
-                        label_text.c_str(),
-                        data_type,
-                        std::addressof(value),
-                        minimum,
-                        maximum,
-                        format
-                    );
-                }
-                else
-                {
-                    changed = ImGui::DragScalar(
-                        label_text.c_str(),
-                        data_type,
-                        std::addressof(value),
-                        spec.speed,
-                        minimum,
-                        maximum,
-                        format
-                    );
-                }
-                break;
-            }
-            return editResult<Type>(changed);
+            changed = ImGui::DragScalar(label_text.c_str(), data_type, std::addressof(value), spec.speed, minimum,
+                                        maximum, format);
         }
-
-        void requireActive(const Frame& frame)
-        {
-            if (frame.theme().metrics.row_height <= 0.0F)
-                detail::failUiContract();
-        }
-    } // namespace
-
-    DisabledScope::DisabledScope(DisabledScope&& other) noexcept : active_(std::exchange(other.active_, false)) {}
-
-    DisabledScope& DisabledScope::operator=(DisabledScope&& other) noexcept
-    {
-        if (this != std::addressof(other))
-        {
-            if (active_)
-                ImGui::EndDisabled();
-            active_ = std::exchange(other.active_, false);
-        }
-        return *this;
+        break;
     }
+    return editResult<Type>(changed);
+}
 
-    DisabledScope::~DisabledScope() noexcept
+void requireActive(const Frame &frame)
+{
+    if (frame.theme().metrics.row_height <= 0.0F)
+    {
+        detail::failUiContract();
+    }
+}
+} // namespace
+
+Frame::Frame(Context &context, const Theme &theme, FrameInfo info)
+    : context_(&context), theme_(&theme), previous_(ImGui::GetCurrentContext())
+{
+    if (context.impl_->frame_open)
+    {
+        detail::failUiContract();
+    }
+    ImGui::SetCurrentContext(context.impl_->native);
+    auto &io = ImGui::GetIO();
+    io.DisplaySize = {info.display_size.width, info.display_size.height};
+    io.DeltaTime = info.delta_seconds;
+    io.DisplayFramebufferScale = {info.framebuffer_scale.x, info.framebuffer_scale.y};
+    applyTheme(theme);
+    context.impl_->output_ready = false;
+    ImGui::NewFrame();
+    context.impl_->frame_open = true;
+}
+
+Frame::Frame(Frame &&other) noexcept
+    : context_(std::exchange(other.context_, nullptr)), theme_(other.theme_), previous_(other.previous_)
+{
+}
+
+Frame &Frame::operator=(Frame &&other) noexcept
+{
+    if (this != &other)
+    {
+        discard();
+        context_ = std::exchange(other.context_, nullptr);
+        theme_ = other.theme_;
+        previous_ = other.previous_;
+    }
+    return *this;
+}
+
+Frame::~Frame() noexcept
+{
+    discard();
+}
+
+void Frame::discard() noexcept
+{
+    if (context_)
+    {
+        ImGui::SetCurrentContext(context_->impl_->native);
+        ImGui::EndFrame();
+        context_->impl_->frame_open = false;
+        context_->impl_->output_ready = false;
+        context_ = nullptr;
+        ImGui::SetCurrentContext(static_cast<ImGuiContext *>(previous_));
+    }
+}
+
+void Frame::finish() noexcept
+{
+    if (context_)
+    {
+        ImGui::SetCurrentContext(context_->impl_->native);
+        ImGui::Render();
+        context_->impl_->frame_open = false;
+        context_->impl_->output_ready = true;
+        context_ = nullptr;
+        ImGui::SetCurrentContext(static_cast<ImGuiContext *>(previous_));
+    }
+}
+
+bool Frame::uses(const Context &context) const noexcept
+{
+    return context_ == &context;
+}
+
+const Theme &Frame::theme() const noexcept
+{
+    if (!context_)
+    {
+        detail::failUiContract();
+    }
+    return *theme_;
+}
+
+// namespace
+
+DisabledScope::DisabledScope(DisabledScope &&other) noexcept : active_(std::exchange(other.active_, false))
+{
+}
+
+DisabledScope &DisabledScope::operator=(DisabledScope &&other) noexcept
+{
+    if (this != std::addressof(other))
     {
         if (active_)
+        {
             ImGui::EndDisabled();
-    }
-
-    IdScope::IdScope(IdScope&& other) noexcept : active_(std::exchange(other.active_, false)) {}
-
-    IdScope& IdScope::operator=(IdScope&& other) noexcept
-    {
-        if (this != std::addressof(other))
-        {
-            if (active_)
-                ImGui::PopID();
-            active_ = std::exchange(other.active_, false);
         }
-        return *this;
+        active_ = std::exchange(other.active_, false);
     }
+    return *this;
+}
 
-    IdScope::~IdScope() noexcept
+DisabledScope::~DisabledScope() noexcept
+{
+    if (active_)
+    {
+        ImGui::EndDisabled();
+    }
+}
+
+IdScope::IdScope(IdScope &&other) noexcept : active_(std::exchange(other.active_, false))
+{
+}
+
+IdScope &IdScope::operator=(IdScope &&other) noexcept
+{
+    if (this != std::addressof(other))
     {
         if (active_)
+        {
             ImGui::PopID();
-    }
-
-    ChildScope::ChildScope(ChildScope&& other) noexcept
-        : active_(std::exchange(other.active_, false)), visible_(other.visible_)
-    {
-    }
-
-    ChildScope& ChildScope::operator=(ChildScope&& other) noexcept
-    {
-        if (this != std::addressof(other))
-        {
-            if (active_)
-                ImGui::EndChild();
-            active_ = std::exchange(other.active_, false);
-            visible_ = other.visible_;
         }
-        return *this;
+        active_ = std::exchange(other.active_, false);
     }
+    return *this;
+}
 
-    ChildScope::~ChildScope() noexcept
+IdScope::~IdScope() noexcept
+{
+    if (active_)
+    {
+        ImGui::PopID();
+    }
+}
+
+ChildScope::ChildScope(ChildScope &&other) noexcept
+    : active_(std::exchange(other.active_, false)), visible_(other.visible_)
+{
+}
+
+ChildScope &ChildScope::operator=(ChildScope &&other) noexcept
+{
+    if (this != std::addressof(other))
     {
         if (active_)
+        {
             ImGui::EndChild();
-    }
-
-    TableScope::TableScope(TableScope&& other) noexcept : active_(std::exchange(other.active_, false)) {}
-
-    TableScope& TableScope::operator=(TableScope&& other) noexcept
-    {
-        if (this != std::addressof(other))
-        {
-            if (active_)
-                ImGui::EndTable();
-            active_ = std::exchange(other.active_, false);
         }
-        return *this;
+        active_ = std::exchange(other.active_, false);
+        visible_ = other.visible_;
     }
+    return *this;
+}
 
-    TableScope::~TableScope() noexcept
+ChildScope::~ChildScope() noexcept
+{
+    if (active_)
+    {
+        ImGui::EndChild();
+    }
+}
+
+TableScope::TableScope(TableScope &&other) noexcept : active_(std::exchange(other.active_, false))
+{
+}
+
+TableScope &TableScope::operator=(TableScope &&other) noexcept
+{
+    if (this != std::addressof(other))
     {
         if (active_)
-            ImGui::EndTable();
-    }
-
-    void TableScope::nextRow()
-    {
-        if (!active_)
-            detail::failUiContract();
-        ImGui::TableNextRow();
-    }
-
-    void TableScope::nextColumn()
-    {
-        if (!active_)
-            detail::failUiContract();
-        ImGui::TableNextColumn();
-    }
-
-    void TableScope::headersRow()
-    {
-        if (!active_)
-            detail::failUiContract();
-        ImGui::TableHeadersRow();
-    }
-
-    TreeRowScope::TreeRowScope(TreeRowScope&& other) noexcept
-        : open_(other.open_), pushed_(std::exchange(other.pushed_, false)), activated_(other.activated_),
-          context_requested_(other.context_requested_)
-    {
-    }
-
-    TreeRowScope& TreeRowScope::operator=(TreeRowScope&& other) noexcept
-    {
-        if (this != std::addressof(other))
         {
-            if (pushed_)
-                ImGui::TreePop();
-            open_ = other.open_;
-            pushed_ = std::exchange(other.pushed_, false);
-            activated_ = other.activated_;
-            context_requested_ = other.context_requested_;
+            ImGui::EndTable();
         }
-        return *this;
+        active_ = std::exchange(other.active_, false);
     }
+    return *this;
+}
 
-    TreeRowScope::~TreeRowScope() noexcept
+TableScope::~TableScope() noexcept
+{
+    if (active_)
+    {
+        ImGui::EndTable();
+    }
+}
+
+void TableScope::nextRow()
+{
+    if (!active_)
+    {
+        detail::failUiContract();
+    }
+    ImGui::TableNextRow();
+}
+
+void TableScope::nextColumn()
+{
+    if (!active_)
+    {
+        detail::failUiContract();
+    }
+    ImGui::TableNextColumn();
+}
+
+void TableScope::headersRow()
+{
+    if (!active_)
+    {
+        detail::failUiContract();
+    }
+    ImGui::TableHeadersRow();
+}
+
+TreeRowScope::TreeRowScope(TreeRowScope &&other) noexcept
+    : open_(other.open_), pushed_(std::exchange(other.pushed_, false)), activated_(other.activated_),
+      context_requested_(other.context_requested_)
+{
+}
+
+TreeRowScope &TreeRowScope::operator=(TreeRowScope &&other) noexcept
+{
+    if (this != std::addressof(other))
     {
         if (pushed_)
+        {
             ImGui::TreePop();
-    }
-
-    PopupScope::PopupScope(PopupScope&& other) noexcept
-        : active_(std::exchange(other.active_, false)), modal_(other.modal_)
-    {
-    }
-
-    PopupScope& PopupScope::operator=(PopupScope&& other) noexcept
-    {
-        if (this != std::addressof(other))
-        {
-            if (active_)
-                ImGui::EndPopup();
-            active_ = std::exchange(other.active_, false);
-            modal_ = other.modal_;
         }
-        return *this;
+        open_ = other.open_;
+        pushed_ = std::exchange(other.pushed_, false);
+        activated_ = other.activated_;
+        context_requested_ = other.context_requested_;
     }
+    return *this;
+}
 
-    PopupScope::~PopupScope() noexcept
+TreeRowScope::~TreeRowScope() noexcept
+{
+    if (pushed_)
+    {
+        ImGui::TreePop();
+    }
+}
+
+PopupScope::PopupScope(PopupScope &&other) noexcept : active_(std::exchange(other.active_, false)), modal_(other.modal_)
+{
+}
+
+PopupScope &PopupScope::operator=(PopupScope &&other) noexcept
+{
+    if (this != std::addressof(other))
     {
         if (active_)
+        {
             ImGui::EndPopup();
-    }
-
-    void PopupScope::close() noexcept
-    {
-        if (active_)
-            ImGui::CloseCurrentPopup();
-    }
-
-    DragSourceScope::DragSourceScope(DragSourceScope&& other) noexcept
-        : active_(std::exchange(other.active_, false))
-    {
-    }
-
-    DragSourceScope& DragSourceScope::operator=(DragSourceScope&& other) noexcept
-    {
-        if (this != std::addressof(other))
-        {
-            if (active_)
-                ImGui::EndDragDropSource();
-            active_ = std::exchange(other.active_, false);
         }
-        return *this;
+        active_ = std::exchange(other.active_, false);
+        modal_ = other.modal_;
     }
+    return *this;
+}
 
-    DragSourceScope::~DragSourceScope() noexcept
+PopupScope::~PopupScope() noexcept
+{
+    if (active_)
+    {
+        ImGui::EndPopup();
+    }
+}
+
+void PopupScope::close() noexcept
+{
+    if (active_)
+    {
+        ImGui::CloseCurrentPopup();
+    }
+}
+
+DragSourceScope::DragSourceScope(DragSourceScope &&other) noexcept : active_(std::exchange(other.active_, false))
+{
+}
+
+DragSourceScope &DragSourceScope::operator=(DragSourceScope &&other) noexcept
+{
+    if (this != std::addressof(other))
     {
         if (active_)
+        {
             ImGui::EndDragDropSource();
-    }
-
-    void DragSourceScope::setPayload(PayloadTypeIdView type, std::span<const std::byte> bytes)
-    {
-        if (!active_)
-            detail::failUiContract();
-        setDragDropPayload(type, bytes);
-    }
-
-    DropTargetScope::DropTargetScope(DropTargetScope&& other) noexcept
-        : active_(std::exchange(other.active_, false))
-    {
-    }
-
-    DropTargetScope& DropTargetScope::operator=(DropTargetScope&& other) noexcept
-    {
-        if (this != std::addressof(other))
-        {
-            if (active_)
-                ImGui::EndDragDropTarget();
-            active_ = std::exchange(other.active_, false);
         }
-        return *this;
+        active_ = std::exchange(other.active_, false);
     }
+    return *this;
+}
 
-    DropTargetScope::~DropTargetScope() noexcept
+DragSourceScope::~DragSourceScope() noexcept
+{
+    if (active_)
+    {
+        ImGui::EndDragDropSource();
+    }
+}
+
+void DragSourceScope::setPayload(PayloadTypeIdView type, std::span<const std::byte> bytes)
+{
+    if (!active_)
+    {
+        detail::failUiContract();
+    }
+    setDragDropPayload(type, bytes);
+}
+
+DropTargetScope::DropTargetScope(DropTargetScope &&other) noexcept : active_(std::exchange(other.active_, false))
+{
+}
+
+DropTargetScope &DropTargetScope::operator=(DropTargetScope &&other) noexcept
+{
+    if (this != std::addressof(other))
     {
         if (active_)
+        {
             ImGui::EndDragDropTarget();
+        }
+        active_ = std::exchange(other.active_, false);
     }
+    return *this;
+}
 
-    std::optional<DragDropPayloadView> DropTargetScope::accept()
+DropTargetScope::~DropTargetScope() noexcept
+{
+    if (active_)
     {
-        return active_ ? detail::acceptDragDropPayloadInActiveTarget() : std::nullopt;
+        ImGui::EndDragDropTarget();
     }
+}
 
-    void Frame::text(std::string_view value)
-    {
-        requireActive(*this);
-        const char* begin = detail::dataOrEmpty(value);
-        ImGui::TextUnformatted(begin, begin + value.size());
-    }
+std::optional<DragDropPayloadView> DropTargetScope::accept()
+{
+    return active_ ? detail::acceptDragDropPayloadInActiveTarget() : std::nullopt;
+}
 
-    void Frame::textMuted(std::string_view value)
-    {
-        requireActive(*this);
-        ImGui::TextDisabled("%.*s", static_cast<int>(value.size()), detail::dataOrEmpty(value));
-    }
+void Frame::text(std::string_view value)
+{
+    requireActive(*this);
+    const char *begin = detail::dataOrEmpty(value);
+    ImGui::TextUnformatted(begin, begin + value.size());
+}
 
-    void Frame::textWrapped(std::string_view value)
-    {
-        requireActive(*this);
-        ImGui::TextWrapped("%.*s", static_cast<int>(value.size()), detail::dataOrEmpty(value));
-    }
+void Frame::textMuted(std::string_view value)
+{
+    requireActive(*this);
+    ImGui::TextDisabled("%.*s", static_cast<int>(value.size()), detail::dataOrEmpty(value));
+}
 
-    bool Frame::button(std::string_view label)
-    {
-        requireActive(*this);
-        const detail::NullTerminatedText text{label};
-        return ImGui::Button(text.c_str());
-    }
+void Frame::textWrapped(std::string_view value)
+{
+    requireActive(*this);
+    ImGui::TextWrapped("%.*s", static_cast<int>(value.size()), detail::dataOrEmpty(value));
+}
 
-    bool Frame::smallButton(std::string_view label)
-    {
-        requireActive(*this);
-        const detail::NullTerminatedText text{label};
-        return ImGui::SmallButton(text.c_str());
-    }
+bool Frame::button(std::string_view label)
+{
+    requireActive(*this);
+    const detail::NullTerminatedText text{label};
+    return ImGui::Button(text.c_str());
+}
 
-    EditResult Frame::checkbox(std::string_view label, bool& value)
-    {
-        requireActive(*this);
-        const detail::NullTerminatedText text{label};
-        return editResult<bool>(ImGui::Checkbox(text.c_str(), std::addressof(value)));
-    }
+bool Frame::smallButton(std::string_view label)
+{
+    requireActive(*this);
+    const detail::NullTerminatedText text{label};
+    return ImGui::SmallButton(text.c_str());
+}
 
-    EditResult Frame::inputText(std::string_view label, std::string& value, InputTextSpec spec)
-    {
-        requireActive(*this);
-        const auto flags = spec.read_only ? ImGuiInputTextFlags_ReadOnly : ImGuiInputTextFlags_None;
-        const detail::NullTerminatedText label_text{label};
-        const detail::NullTerminatedText hint_text{spec.hint};
-        const bool changed = spec.hint.empty() ? ImGui::InputText(label_text.c_str(), std::addressof(value), flags) :
-                                                 ImGui::InputTextWithHint(
-                                                     label_text.c_str(),
-                                                     hint_text.c_str(),
-                                                     std::addressof(value),
-                                                     flags
-                                                 );
-        return editResult<std::string>(changed);
-    }
+EditResult Frame::checkbox(std::string_view label, bool &value)
+{
+    requireActive(*this);
+    const detail::NullTerminatedText text{label};
+    return editResult<bool>(ImGui::Checkbox(text.c_str(), std::addressof(value)));
+}
 
-    EditResult Frame::editScalar(
-        std::string_view label,
-        std::int32_t& value,
-        const ScalarEditSpec<std::int32_t>& spec
-    )
-    {
-        requireActive(*this);
-        return editScalarImpl(label, value, spec, ImGuiDataType_S32);
-    }
+EditResult Frame::inputText(std::string_view label, std::string &value, InputTextSpec spec)
+{
+    requireActive(*this);
+    const auto flags = spec.read_only ? ImGuiInputTextFlags_ReadOnly : ImGuiInputTextFlags_None;
+    const detail::NullTerminatedText label_text{label};
+    const detail::NullTerminatedText hint_text{spec.hint};
+    const bool changed = spec.hint.empty() ? ImGui::InputText(label_text.c_str(), std::addressof(value), flags)
+                                           : ImGui::InputTextWithHint(label_text.c_str(), hint_text.c_str(),
+                                                                      std::addressof(value), flags);
+    return editResult<std::string>(changed);
+}
 
-    EditResult Frame::editScalar(
-        std::string_view label,
-        std::uint32_t& value,
-        const ScalarEditSpec<std::uint32_t>& spec
-    )
-    {
-        requireActive(*this);
-        return editScalarImpl(label, value, spec, ImGuiDataType_U32);
-    }
+EditResult Frame::editScalar(std::string_view label, std::int32_t &value, const ScalarEditSpec<std::int32_t> &spec)
+{
+    requireActive(*this);
+    return editScalarImpl(label, value, spec, ImGuiDataType_S32);
+}
 
-    EditResult Frame::editScalar(
-        std::string_view label,
-        std::int64_t& value,
-        const ScalarEditSpec<std::int64_t>& spec
-    )
-    {
-        requireActive(*this);
-        return editScalarImpl(label, value, spec, ImGuiDataType_S64);
-    }
+EditResult Frame::editScalar(std::string_view label, std::uint32_t &value, const ScalarEditSpec<std::uint32_t> &spec)
+{
+    requireActive(*this);
+    return editScalarImpl(label, value, spec, ImGuiDataType_U32);
+}
 
-    EditResult Frame::editScalar(
-        std::string_view label,
-        std::uint64_t& value,
-        const ScalarEditSpec<std::uint64_t>& spec
-    )
-    {
-        requireActive(*this);
-        return editScalarImpl(label, value, spec, ImGuiDataType_U64);
-    }
+EditResult Frame::editScalar(std::string_view label, std::int64_t &value, const ScalarEditSpec<std::int64_t> &spec)
+{
+    requireActive(*this);
+    return editScalarImpl(label, value, spec, ImGuiDataType_S64);
+}
 
-    EditResult Frame::editScalar(std::string_view label, float& value, const ScalarEditSpec<float>& spec)
-    {
-        requireActive(*this);
-        return editScalarImpl(label, value, spec, ImGuiDataType_Float);
-    }
+EditResult Frame::editScalar(std::string_view label, std::uint64_t &value, const ScalarEditSpec<std::uint64_t> &spec)
+{
+    requireActive(*this);
+    return editScalarImpl(label, value, spec, ImGuiDataType_U64);
+}
 
-    EditResult Frame::editScalar(std::string_view label, double& value, const ScalarEditSpec<double>& spec)
-    {
-        requireActive(*this);
-        return editScalarImpl(label, value, spec, ImGuiDataType_Double);
-    }
+EditResult Frame::editScalar(std::string_view label, float &value, const ScalarEditSpec<float> &spec)
+{
+    requireActive(*this);
+    return editScalarImpl(label, value, spec, ImGuiDataType_Float);
+}
 
-    EditResult Frame::editChoice(
-        std::string_view label,
-        std::int64_t& value,
-        std::span<const ComboOption> options
-    )
+EditResult Frame::editScalar(std::string_view label, double &value, const ScalarEditSpec<double> &spec)
+{
+    requireActive(*this);
+    return editScalarImpl(label, value, spec, ImGuiDataType_Double);
+}
+
+EditResult Frame::editChoice(std::string_view label, std::int64_t &value, std::span<const ComboOption> options)
+{
+    requireActive(*this);
+    const auto selected = std::ranges::find(options, value, &ComboOption::value);
+    const detail::NullTerminatedText label_text{label};
+    const detail::NullTerminatedText preview_text{selected == options.end() ? std::string_view{"<unknown>"}
+                                                                            : selected->label};
+    bool changed{};
+    if (ImGui::BeginCombo(label_text.c_str(), preview_text.c_str()))
     {
-        requireActive(*this);
-        const auto selected = std::ranges::find(options, value, &ComboOption::value);
-        const detail::NullTerminatedText label_text{label};
-        const detail::NullTerminatedText preview_text{
-            selected == options.end() ? std::string_view{"<unknown>"} : selected->label
-        };
-        bool changed{};
-        if (ImGui::BeginCombo(label_text.c_str(), preview_text.c_str()))
+        for (const auto &option : options)
         {
-            for (const auto& option : options)
+            const bool current = option.value == value;
+            const detail::NullTerminatedText option_text{option.label};
+            if (ImGui::Selectable(option_text.c_str(), current))
             {
-                const bool current = option.value == value;
-                const detail::NullTerminatedText option_text{option.label};
-                if (ImGui::Selectable(option_text.c_str(), current))
-                {
-                    value = option.value;
-                    changed = true;
-                }
-                if (current)
-                    ImGui::SetItemDefaultFocus();
+                value = option.value;
+                changed = true;
             }
-            ImGui::EndCombo();
+            if (current)
+            {
+                ImGui::SetItemDefaultFocus();
+            }
         }
-        return detail::atomicEditResult(changed);
+        ImGui::EndCombo();
     }
+    return detail::atomicEditResult(changed);
+}
 
-    bool Frame::lastItemHovered() const noexcept
+bool Frame::lastItemHovered() const noexcept
+{
+    return ImGui::IsItemHovered();
+}
+
+bool Frame::lastItemFocused() const noexcept
+{
+    return ImGui::IsItemFocused();
+}
+
+void Frame::tooltip(std::string_view value)
+{
+    requireActive(*this);
+    if (ImGui::IsItemHovered())
     {
-        return ImGui::IsItemHovered();
+        ImGui::SetTooltip("%.*s", static_cast<int>(value.size()), detail::dataOrEmpty(value));
     }
+}
 
-    bool Frame::lastItemFocused() const noexcept
+DisabledScope Frame::disabled(bool disabled)
+{
+    requireActive(*this);
+    if (disabled)
     {
-        return ImGui::IsItemFocused();
+        ImGui::BeginDisabled();
     }
+    return DisabledScope{disabled};
+}
 
-    void Frame::tooltip(std::string_view value)
+IdScope Frame::id(WidgetIdView id)
+{
+    requireActive(*this);
+    if (!id.isValid())
     {
-        requireActive(*this);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%.*s", static_cast<int>(value.size()), detail::dataOrEmpty(value));
+        detail::failUiContract();
     }
+    ImGui::PushID(id.name().data(), id.name().data() + id.name().size());
+    return IdScope{true};
+}
 
-    DisabledScope Frame::disabled(bool disabled)
+ChildScope Frame::child(const ChildSpec &spec)
+{
+    requireActive(*this);
+    if (!spec.id.isValid())
     {
-        requireActive(*this);
-        if (disabled)
-            ImGui::BeginDisabled();
-        return DisabledScope{disabled};
+        detail::failUiContract();
     }
+    const detail::NullTerminatedText id_text{spec.id.name()};
+    const bool visible = ImGui::BeginChild(id_text.c_str(), ImVec2{spec.size.width, spec.size.height}, spec.border);
+    return ChildScope{true, visible};
+}
 
-    IdScope Frame::id(WidgetIdView id)
+TableScope Frame::table(const TableSpec &spec)
+{
+    requireActive(*this);
+    if (!spec.id.isValid() || spec.columns == 0U)
     {
-        requireActive(*this);
-        if (!id.isValid())
-            detail::failUiContract();
-        ImGui::PushID(id.name().data(), id.name().data() + id.name().size());
-        return IdScope{true};
+        detail::failUiContract();
     }
-
-    ChildScope Frame::child(const ChildSpec& spec)
+    ImGuiTableFlags flags{};
+    if (spec.borders)
     {
-        requireActive(*this);
-        if (!spec.id.isValid())
-            detail::failUiContract();
-        const detail::NullTerminatedText id_text{spec.id.name()};
-        const bool visible = ImGui::BeginChild(
-            id_text.c_str(),
-            ImVec2{spec.size.width, spec.size.height},
-            spec.border
-        );
-        return ChildScope{true, visible};
+        flags |= ImGuiTableFlags_BordersInnerV;
     }
-
-    TableScope Frame::table(const TableSpec& spec)
+    if (spec.row_background)
     {
-        requireActive(*this);
-        if (!spec.id.isValid() || spec.columns == 0U)
-            detail::failUiContract();
-        ImGuiTableFlags flags{};
-        if (spec.borders)
-            flags |= ImGuiTableFlags_BordersInnerV;
-        if (spec.row_background)
-            flags |= ImGuiTableFlags_RowBg;
-        const detail::NullTerminatedText id_text{spec.id.name()};
-        const bool open = ImGui::BeginTable(id_text.c_str(), static_cast<int>(spec.columns), flags);
-        if (open && spec.first_column_width > 0.0F)
+        flags |= ImGuiTableFlags_RowBg;
+    }
+    const detail::NullTerminatedText id_text{spec.id.name()};
+    const bool open = ImGui::BeginTable(id_text.c_str(), static_cast<int>(spec.columns), flags);
+    if (open && spec.first_column_width > 0.0F)
+    {
+        ImGui::TableSetupColumn("Property", ImGuiTableColumnFlags_WidthFixed, spec.first_column_width);
+        for (std::uint32_t column = 1U; column < spec.columns; ++column)
         {
-            ImGui::TableSetupColumn("Property", ImGuiTableColumnFlags_WidthFixed, spec.first_column_width);
-            for (std::uint32_t column = 1U; column < spec.columns; ++column)
-                ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
         }
-        return TableScope{open};
     }
+    return TableScope{open};
+}
 
-    void Frame::propertyRow(std::string_view label)
-    {
-        requireActive(*this);
-        ImGui::TableNextRow(ImGuiTableRowFlags_None, theme().metrics.row_height);
-        ImGui::TableSetColumnIndex(0);
-        const char* begin = detail::dataOrEmpty(label);
-        ImGui::TextUnformatted(begin, begin + label.size());
-        ImGui::TableSetColumnIndex(1);
-    }
+void Frame::propertyRow(std::string_view label)
+{
+    requireActive(*this);
+    ImGui::TableNextRow(ImGuiTableRowFlags_None, theme().metrics.row_height);
+    ImGui::TableSetColumnIndex(0);
+    const char *begin = detail::dataOrEmpty(label);
+    ImGui::TextUnformatted(begin, begin + label.size());
+    ImGui::TableSetColumnIndex(1);
+}
 
-    TreeRowScope Frame::treeRow(const TreeRowSpec& spec)
+TreeRowScope Frame::treeRow(const TreeRowSpec &spec)
+{
+    requireActive(*this);
+    if (!spec.id.isValid())
     {
-        requireActive(*this);
-        if (!spec.id.isValid())
-            detail::failUiContract();
-        auto id_scope = id(spec.id);
-        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
-        if (spec.selected)
-            flags |= ImGuiTreeNodeFlags_Selected;
-        if (spec.leaf)
-            flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
-        if (spec.default_open)
-            flags |= ImGuiTreeNodeFlags_DefaultOpen;
-        const detail::NullTerminatedText label_text{spec.label};
-        const bool open = ImGui::TreeNodeEx(label_text.c_str(), flags);
-        const bool activated = ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen();
-        const bool context_requested = ImGui::IsItemClicked(ImGuiMouseButton_Right);
-        return TreeRowScope{open, open && !spec.leaf, activated, context_requested};
+        detail::failUiContract();
     }
+    auto id_scope = id(spec.id);
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+    if (spec.selected)
+    {
+        flags |= ImGuiTreeNodeFlags_Selected;
+    }
+    if (spec.leaf)
+    {
+        flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+    }
+    if (spec.default_open)
+    {
+        flags |= ImGuiTreeNodeFlags_DefaultOpen;
+    }
+    const detail::NullTerminatedText label_text{spec.label};
+    const bool open = ImGui::TreeNodeEx(label_text.c_str(), flags);
+    const bool activated = ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen();
+    const bool context_requested = ImGui::IsItemClicked(ImGuiMouseButton_Right);
+    return TreeRowScope{open, open && !spec.leaf, activated, context_requested};
+}
 
-    void Frame::openPopup(WidgetIdView id)
+void Frame::openPopup(WidgetIdView id)
+{
+    requireActive(*this);
+    if (!id.isValid())
     {
-        requireActive(*this);
-        if (!id.isValid())
-            detail::failUiContract();
-        const detail::NullTerminatedText id_text{id.name()};
-        ImGui::OpenPopup(id_text.c_str());
+        detail::failUiContract();
     }
+    const detail::NullTerminatedText id_text{id.name()};
+    ImGui::OpenPopup(id_text.c_str());
+}
 
-    PopupScope Frame::popup(const PopupSpec& spec)
+PopupScope Frame::popup(const PopupSpec &spec)
+{
+    requireActive(*this);
+    if (!spec.id.isValid())
     {
-        requireActive(*this);
-        if (!spec.id.isValid())
-            detail::failUiContract();
-        const detail::NullTerminatedText id_text{spec.id.name()};
-        const bool open = spec.modal ? ImGui::BeginPopupModal(id_text.c_str()) : ImGui::BeginPopup(id_text.c_str());
-        return PopupScope{open, spec.modal};
+        detail::failUiContract();
     }
+    const detail::NullTerminatedText id_text{spec.id.name()};
+    const bool open = spec.modal ? ImGui::BeginPopupModal(id_text.c_str()) : ImGui::BeginPopup(id_text.c_str());
+    return PopupScope{open, spec.modal};
+}
 
-    DragSourceScope Frame::dragSource()
-    {
-        requireActive(*this);
-        return DragSourceScope{ImGui::BeginDragDropSource()};
-    }
+DragSourceScope Frame::dragSource()
+{
+    requireActive(*this);
+    return DragSourceScope{ImGui::BeginDragDropSource()};
+}
 
-    DropTargetScope Frame::dropTarget()
-    {
-        requireActive(*this);
-        return DropTargetScope{ImGui::BeginDragDropTarget()};
-    }
+DropTargetScope Frame::dropTarget()
+{
+    requireActive(*this);
+    return DropTargetScope{ImGui::BeginDragDropTarget()};
+}
 } // namespace lux::ui

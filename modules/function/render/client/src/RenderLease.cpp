@@ -1,176 +1,258 @@
-#include <lux/engine/function/render/client/RenderLease.hpp>
-
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
+#include <lux/engine/function/render/client/RenderLease.hpp>
+#include <lux/engine/function/render/client/detail/RenderReleaseRecords.hpp>
 
 namespace lux::render
 {
-    RenderSceneLease::~RenderSceneLease() noexcept
+RenderResourceUse::RenderResourceUse(std::shared_ptr<detail::ResourceReleaseRecord> record) noexcept
+    : record_(std::move(record))
+{
+}
+
+RenderResourceUse::~RenderResourceUse() noexcept
+{
+    reset();
+}
+
+RenderResourceUse::RenderResourceUse(RenderResourceUse &&other) noexcept : record_(std::move(other.record_))
+{
+}
+
+RenderResourceUse &RenderResourceUse::operator=(RenderResourceUse &&other) noexcept
+{
+    if (this != &other)
     {
-        deferOwnedRelease();
+        reset();
+        record_ = std::move(other.record_);
     }
+    return *this;
+}
 
-    RenderSceneLease::RenderSceneLease(RenderSceneLease &&other) noexcept
-        : session_(std::exchange(other.session_, nullptr)), id_(std::exchange(other.id_, {}))
+void RenderResourceUse::reset() noexcept
+{
+    if (record_)
     {
+        record_->uses.fetch_sub(1, std::memory_order_release);
+        record_.reset();
     }
+}
 
-    RenderSceneLease &RenderSceneLease::operator=(RenderSceneLease &&other) noexcept
+RenderResourceUse RenderResourceUse::retain() const noexcept
+{
+    if (!record_)
     {
-        if (this == &other)
-            return *this;
+        return {};
+    }
+    record_->uses.fetch_add(1, std::memory_order_relaxed);
+    return RenderResourceUse(record_);
+}
 
-        // Move assignment is passive ownership replacement. Do not make its
-        // behaviour depend on whether a frame happens to be open at this line.
+RenderSceneLease::~RenderSceneLease() noexcept
+{
+    deferOwnedRelease();
+}
+
+RenderSceneLease::RenderSceneLease(RenderControlSession &session,
+                                   std::shared_ptr<detail::SceneReleaseRecord> record) noexcept
+    : session_(&session), record_(std::move(record))
+{
+}
+
+RenderSceneLease::RenderSceneLease(RenderSceneLease &&other) noexcept
+    : session_(std::exchange(other.session_, nullptr)), record_(std::move(other.record_))
+{
+}
+
+RenderSceneLease &RenderSceneLease::operator=(RenderSceneLease &&other) noexcept
+{
+    if (this != &other)
+    {
         deferOwnedRelease();
         session_ = std::exchange(other.session_, nullptr);
-        id_ = std::exchange(other.id_, {});
-        return *this;
+        record_ = std::move(other.record_);
     }
+    return *this;
+}
 
-    ERenderLeaseCloseStatus RenderSceneLease::close() noexcept
+RenderSceneId RenderSceneLease::id() const noexcept
+{
+    return record_ ? record_->scene : RenderSceneId{};
+}
+RenderSceneLease::operator bool() const noexcept
+{
+    return bool(record_);
+}
+SceneResourceStatus RenderSceneLease::status() const noexcept
+{
+    return record_ ? record_->status() : SceneResourceStatus{ESceneResourceState::RETIRED};
+}
+SceneResourceStatus RenderSceneReceipt::status() const noexcept
+{
+    return record_ ? record_->status() : SceneResourceStatus{ESceneResourceState::RETIRED};
+}
+RenderSceneReceipt RenderSceneLease::receipt() const noexcept
+{
+    RenderSceneReceipt result;
+    result.record_ = record_;
+    return result;
+}
+FeatureHandle RenderSceneLease::feature(FeatureTypeId type) const noexcept
+{
+    if (record_)
     {
-        if (!session_ || !id_.isValid())
-            return ERenderLeaseCloseStatus::AlreadyClosed;
-
-        try
+        for (const auto &item : record_->features)
         {
-            if (!session_->destroyScene(id_))
-                return ERenderLeaseCloseStatus::Stopping;
+            if (item.first == type)
+            {
+                return item.second;
+            }
         }
-        catch (const std::bad_alloc &)
-        {
-            return ERenderLeaseCloseStatus::ALLOCATION_FAILURE;
-        }
-        (void)std::exchange(id_, {});
-        (void)std::exchange(session_, nullptr);
-        return ERenderLeaseCloseStatus::Released;
     }
-
-    void RenderSceneLease::deferOwnedRelease() noexcept
+    return {};
+}
+RenderSceneLease RenderSceneLease::retain() const noexcept
+{
+    if (!record_ || record_->requested || record_->state == ESceneResourceState::RETIRED)
     {
-        if (!session_ || !id_.isValid())
-            return;
-
-        const auto id = std::exchange(id_, {});
-        std::exchange(session_, nullptr)->deferDestroyScene(id);
+        return {};
     }
+    record_->uses.fetch_add(1, std::memory_order_relaxed);
+    return RenderSceneLease(*session_, record_);
+}
 
-    void RenderSceneLease::retireAfterBackendStopped() noexcept
+ERenderLeaseCloseStatus RenderSceneLease::close() noexcept
+{
+    if (!record_)
     {
-        id_ = {};
-        session_ = nullptr;
+        return ERenderLeaseCloseStatus::AlreadyClosed;
     }
-
-    RenderViewLease::~RenderViewLease() noexcept
+    const auto result = session_->closeScene(*record_);
+    if (result == ERenderLeaseCloseStatus::Released)
     {
         deferOwnedRelease();
     }
+    return result;
+}
 
-    RenderViewLease::RenderViewLease(RenderViewLease &&other) noexcept
-        : session_(std::exchange(other.session_, nullptr)), scene_id_(std::exchange(other.scene_id_, {})),
-          view_(std::exchange(other.view_, {})), observer_(std::move(other.observer_))
+void RenderSceneLease::deferOwnedRelease() noexcept
+{
+    if (record_)
     {
+        // May be the last Program attachment on the render thread. Only
+        // the atomic use count changes; all request work stays on Main.
+        record_->uses.fetch_sub(1, std::memory_order_release);
+        record_.reset();
     }
+    session_ = nullptr;
+}
 
-    RenderViewLease &RenderViewLease::operator=(RenderViewLease &&other) noexcept
+void RenderSceneLease::retireAfterBackendStopped() noexcept
+{
+    if (record_)
     {
-        if (this == &other)
-            return *this;
+        record_->submitted = true;
+        record_->state = ESceneResourceState::RETIRED;
+    }
+    deferOwnedRelease();
+}
 
+RenderViewLease::~RenderViewLease() noexcept
+{
+    deferOwnedRelease();
+}
+
+RenderViewLease::RenderViewLease(RenderViewLease &&other) noexcept
+    : session_(std::exchange(other.session_, nullptr)), scene_id_(std::exchange(other.scene_id_, {})),
+      view_(std::exchange(other.view_, {})), record_(std::exchange(other.record_, nullptr))
+{
+}
+
+RenderViewLease &RenderViewLease::operator=(RenderViewLease &&other) noexcept
+{
+    if (this != &other)
+    {
         deferOwnedRelease();
         session_ = std::exchange(other.session_, nullptr);
         scene_id_ = std::exchange(other.scene_id_, {});
         view_ = std::exchange(other.view_, {});
-        observer_ = std::move(other.observer_);
-        return *this;
+        record_ = std::exchange(other.record_, nullptr);
     }
+    return *this;
+}
 
-    ERenderLeaseCloseStatus RenderViewLease::close() noexcept
+ERenderLeaseCloseStatus RenderViewLease::close() noexcept
+{
+    if (!record_)
     {
-        if (!session_ || !scene_id_.isValid() || !view_.isValid())
-            return ERenderLeaseCloseStatus::AlreadyClosed;
-
-        RenderRequest<GenericOkReply> request;
-        try
-        {
-            request = session_->removeView(scene_id_, view_);
-        }
-        catch (const std::bad_alloc &)
-        {
-            return ERenderLeaseCloseStatus::ALLOCATION_FAILURE;
-        }
-        if (request.isReady() && request.failed())
-            return ERenderLeaseCloseStatus::Stopping;
-        (void)std::exchange(scene_id_, {});
-        (void)std::exchange(view_, {});
-        (void)std::exchange(session_, nullptr);
-        if (observer_)
-            request.then(std::move(observer_));
-        return ERenderLeaseCloseStatus::Released;
+        return ERenderLeaseCloseStatus::AlreadyClosed;
     }
-
-    void RenderViewLease::deferOwnedRelease() noexcept
-    {
-        if (!session_ || !scene_id_.isValid() || !view_.isValid())
-            return;
-
-        const auto scene_id = std::exchange(scene_id_, {});
-        const auto view = std::exchange(view_, {});
-        std::exchange(session_, nullptr)->deferRemoveView(scene_id, view, std::move(observer_));
-    }
-
-    RenderTargetLease::~RenderTargetLease() noexcept
+    const auto result = session_->closeView(*record_);
+    if (result == ERenderLeaseCloseStatus::Released)
     {
         deferOwnedRelease();
     }
+    return result;
+}
 
-    RenderTargetLease::RenderTargetLease(RenderTargetLease &&other) noexcept
-        : session_(std::exchange(other.session_, nullptr)), target_(std::exchange(other.target_, {})),
-          observer_(std::move(other.observer_))
+void RenderViewLease::deferOwnedRelease() noexcept
+{
+    if (record_)
     {
+        record_->requested = true;
+        record_->owned = false;
+        record_ = nullptr;
     }
+    session_ = nullptr;
+    scene_id_ = {};
+    view_ = {};
+}
 
-    RenderTargetLease &RenderTargetLease::operator=(RenderTargetLease &&other) noexcept
+RenderTargetLease::~RenderTargetLease() noexcept
+{
+    deferOwnedRelease();
+}
+
+RenderTargetLease::RenderTargetLease(RenderTargetLease &&other) noexcept
+    : session_(std::exchange(other.session_, nullptr)), target_(std::exchange(other.target_, {})),
+      record_(std::exchange(other.record_, nullptr))
+{
+}
+
+RenderTargetLease &RenderTargetLease::operator=(RenderTargetLease &&other) noexcept
+{
+    if (this != &other)
     {
-        if (this == &other)
-            return *this;
-
         deferOwnedRelease();
         session_ = std::exchange(other.session_, nullptr);
         target_ = std::exchange(other.target_, {});
-        observer_ = std::move(other.observer_);
-        return *this;
+        record_ = std::exchange(other.record_, nullptr);
     }
+    return *this;
+}
 
-    RenderTargetCloseResult RenderTargetLease::close() noexcept
+RenderTargetCloseResult RenderTargetLease::close() noexcept
+{
+    if (!record_)
     {
-        if (!session_ || !target_.isValid())
-            return lux::cxx::unexpected(ERenderTargetCloseError::AlreadyClosed);
-        RenderRequest<TargetReleasedReply> request;
-        try
-        {
-            request = session_->destroyRenderTarget(target_);
-        }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(ERenderTargetCloseError::ALLOCATION_FAILURE);
-        }
-        if (request.isReady() && request.failed())
-            return lux::cxx::unexpected(ERenderTargetCloseError::Stopping);
-        (void)std::exchange(target_, {});
-        (void)std::exchange(session_, nullptr);
-        if (observer_)
-            request.then(std::move(observer_));
-        return request;
+        return lux::cxx::unexpected(ERenderTargetCloseError::AlreadyClosed);
     }
-
-    void RenderTargetLease::deferOwnedRelease() noexcept
+    auto result = session_->closeTarget(*record_);
+    if (result)
     {
-        if (!session_ || !target_.isValid())
-            return;
-
-        const auto target = std::exchange(target_, {});
-        std::exchange(session_, nullptr)->deferDestroyTarget(target, std::move(observer_));
+        deferOwnedRelease();
     }
+    return result;
+}
 
+void RenderTargetLease::deferOwnedRelease() noexcept
+{
+    if (record_)
+    {
+        record_->requested = true;
+        record_->owned = false;
+        record_ = nullptr;
+    }
+    session_ = nullptr;
+    target_ = {};
+}
 } // namespace lux::render

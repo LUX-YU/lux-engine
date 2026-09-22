@@ -6,7 +6,7 @@ generate_visibility_header(
 )
 add_component(COMPONENT_NAME editor_scene NAMESPACE lux::engine::editor
     OUTPUT_NAME lux_engine_editor_scene
-    SOURCE_FILES src/NativeScene.cpp src/SceneCapture.cpp src/SceneEditor.cpp src/SceneObjects.cpp src/SceneObjectEdits.cpp src/ModelCreation.cpp src/SceneOpening.cpp src/SceneResources.cpp src/SceneRun.cpp
+    SOURCE_FILES src/NativeScene.cpp src/SceneCapture.cpp src/SceneEditor.cpp src/SceneObjects.cpp src/SceneObjectEdits.cpp src/ModelCreation.cpp src/SceneOpening.cpp src/SceneRun.cpp
 )
 component_include_directories(editor_scene
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
@@ -15,9 +15,10 @@ component_include_directories(editor_scene
 )
 target_compile_definitions(editor_scene PRIVATE LUX_EDITOR_SCENE_LIBRARY)
 target_link_libraries(editor_scene PUBLIC
-    lux::engine::editor::editor_core lux::engine::editor::editor_rendering
+    lux::engine::editor::editor_core lux::engine::scene::scene_render lux::engine::function::render_runtime
     lux::engine::scene::scene_composition lux::engine::scene::scene_meta
     lux::engine::scene::scene_world_materialization lux::engine::process::world_loading
+    lux::engine::scene::scene_world_loading
     lux::engine::scene::scene_asset lux::engine::world::world_asset lux::engine::simulation::simulation_asset
     lux::engine::simulation::ecs::hierarchy
     lux::engine::scene::scene_mesh_query
@@ -26,10 +27,12 @@ target_link_libraries(editor_scene PUBLIC
 )
 component_add_transitive_commands(editor_scene
     "find_package(lux-engine-editor-core REQUIRED COMPONENTS editor_core)"
-    "find_package(lux-engine-editor-rendering REQUIRED COMPONENTS editor_rendering)"
+    "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS render_runtime)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-engine-scene-meta REQUIRED COMPONENTS scene_meta)"
     "find_package(lux-engine-scene-world-materialization REQUIRED COMPONENTS scene_world_materialization)"
+    "find_package(lux-engine-scene-world-loading REQUIRED COMPONENTS scene_world_loading)"
     "find_package(lux-engine-process-world-loading REQUIRED COMPONENTS process_world_loading)"
     "find_package(lux-engine-scene-asset REQUIRED COMPONENTS scene_asset)"
     "find_package(lux-engine-world-asset REQUIRED COMPONENTS world_asset)"
@@ -116,3 +119,53 @@ engine_target_add_imgui_inspector_codegen(NAME desktop_camera TARGET editor_scen
     COMPONENTS lux::scene::Camera)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-scene VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_scene editor_scene_ui)
+
+if(BUILD_TESTING)
+    add_executable(editor_scene_fixture test/fixture.cpp)
+    add_executable(editor_dynamic_run test/dynamic_run.cpp)
+    foreach(test_target editor_scene_fixture editor_dynamic_run)
+        target_link_libraries(${test_target} PRIVATE editor_scene_ui
+            lux::engine::function::render_features lux::engine::function::render_feature_meta
+            lux::engine::scene::scene_render_meta lux::engine::simulation::transform_system)
+        if(MSVC)
+            target_compile_options(${test_target} PRIVATE /UNDEBUG /utf-8)
+        else()
+            target_compile_options(${test_target} PRIVATE -UNDEBUG)
+        endif()
+    endforeach()
+    target_link_libraries(editor_dynamic_run PRIVATE lux::engine::platform::window)
+    set(run_fixture "${CMAKE_CURRENT_BINARY_DIR}/run-fixture")
+    file(MAKE_DIRECTORY "${run_fixture}")
+    configure_file("${PROJECT_SOURCE_DIR}/cmake/installed-consumers/editor-d2/protocol/Seed.luxpak"
+        "${run_fixture}/Seed.luxpak" COPYONLY)
+    add_test(NAME editor.driver_seed COMMAND editor_scene_fixture "${run_fixture}" gpu-dynamic)
+    set_tests_properties(editor.driver_seed PROPERTIES FIXTURES_SETUP editor_driver_project)
+    foreach(mode dynamic-run simulation-failure dynamic-terminal closing-terminal failure-closing-terminal)
+        add_test(NAME editor.driver_${mode} COMMAND editor_dynamic_run "${run_fixture}/Project.luxproject" ${mode})
+        set_tests_properties(editor.driver_${mode} PROPERTIES FIXTURES_REQUIRED editor_driver_project RUN_SERIAL TRUE TIMEOUT 40)
+    endforeach()
+    set(observer_fixture "${CMAKE_CURRENT_BINARY_DIR}/observer-fixture")
+    file(MAKE_DIRECTORY "${observer_fixture}")
+    configure_file("${PROJECT_SOURCE_DIR}/cmake/installed-consumers/editor-d2/protocol/Seed.luxpak"
+        "${observer_fixture}/Seed.luxpak" COPYONLY)
+    add_test(NAME editor.observer_seed COMMAND editor_scene_fixture "${observer_fixture}" gpu-observer)
+    set_tests_properties(editor.observer_seed PROPERTIES FIXTURES_SETUP editor_observer_project)
+    add_test(NAME editor.dynamic_observer COMMAND editor_dynamic_run "${observer_fixture}/Project.luxproject" dynamic-observer)
+    set_tests_properties(editor.dynamic_observer PROPERTIES FIXTURES_REQUIRED editor_observer_project RUN_SERIAL TRUE TIMEOUT 40)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(editor_render_terminal test/render_terminal.cpp)
+    target_link_libraries(editor_render_terminal PRIVATE editor_scene
+        lux::engine::function::render_features lux::engine::function::render_feature_meta
+        lux::engine::scene::scene_render_meta)
+    if(MSVC)
+        target_compile_options(editor_render_terminal PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(editor_render_terminal PRIVATE -UNDEBUG)
+    endif()
+    foreach(mode pending forwarded)
+        add_test(NAME editor.unified_terminal_${mode} COMMAND editor_render_terminal ${mode})
+        set_tests_properties(editor.unified_terminal_${mode} PROPERTIES RUN_SERIAL TRUE TIMEOUT 30)
+    endforeach()
+endif()

@@ -28,14 +28,12 @@ struct ModelCreationChecks final
         assert(accepted);
         import = *accepted;
         count = scene.objects().size();
-        completion = scene.observeScoped<Scene::modelCreationFinished>(
-            [this, &scene](auto id) noexcept
-            {
-                ++notices;
-                assert(scene.modelCreationStatus(id));
-                auto reentrant = scene.acknowledgeModelCreation(id);
-                assert(!reentrant && reentrant.error().code == editor::EEditorError::BUSY);
-            });
+        completion = scene.observeScoped<Scene::modelCreationFinished>([this, &scene](auto id) noexcept {
+            ++notices;
+            assert(scene.modelCreationStatus(id));
+            auto reentrant = scene.acknowledgeModelCreation(id);
+            assert(!reentrant && reentrant.error().code == editor::EEditorError::BUSY);
+        });
     }
     bool poll(Scene &scene, lux::editor::PollBudget &budget)
     {
@@ -71,8 +69,7 @@ struct ModelCreationChecks final
             auto reference = scene.project().reference(model);
             auto foreign = reference;
             ++foreign.project_instance;
-            auto refused =
-                scene.requestModelCreation(foreign, Eigen::Vector3d::Zero(), partition::PartitionOrdinal{0});
+            auto refused = scene.requestModelCreation(foreign, Eigen::Vector3d::Zero(), partition::PartitionOrdinal{0});
             assert(!refused && refused.error().domain == "project.asset-reference");
             auto accepted =
                 scene.requestModelCreation(reference, Eigen::Vector3d::Zero(), partition::PartitionOrdinal{0});
@@ -84,11 +81,7 @@ struct ModelCreationChecks final
             assert(target);
             assert(scene.setField<Transform>(
                 *target, "translation", "Move during model load",
-                [](auto &value) noexcept
-                {
-                    return &value.translation;
-                },
-                Eigen::Vector3d{1, 2, 3}));
+                [](auto &value) noexcept { return &value.translation; }, Eigen::Vector3d{1, 2, 3}));
             before = scene.historyView()->history.current;
             stage = 2;
         }
@@ -138,7 +131,7 @@ struct ModelCreationChecks final
             assert(scene.acknowledgeModelCreation(request));
             assert(!scene.modelCreationStatus(request));
             auto accepted = scene.requestModelCreation(scene.project().reference(model), Eigen::Vector3d::Zero(),
-                                                        partition::PartitionOrdinal{0});
+                                                       partition::PartitionOrdinal{0});
             assert(accepted);
             request = *accepted;
             before = scene.historyView()->history.current;
@@ -170,7 +163,7 @@ struct ModelCreationChecks final
             }
             for (const auto &row : resources->rows)
             {
-                if (row.key.mesh == mesh->value.mesh && row.state == editor::scene::ESceneResourceState::READY)
+                if (row.key.mesh == mesh->value.mesh && row.state == lux::scene::ERenderAssetState::READY)
                 {
                     std::puts("actual import -> Process read/CPU decode/Main placement: stale-base retained + retry, "
                               "unique request, Undo/Redo, cancellation and imported GPU resource READY");
@@ -185,18 +178,16 @@ struct ModelCreationChecks final
     {
         using namespace lux;
         auto accepted = scene.requestModelCreation(scene.project().reference(model), Eigen::Vector3d::Zero(),
-                                                    partition::PartitionOrdinal{0});
+                                                   partition::PartitionOrdinal{0});
         assert(accepted);
         request = *accepted;
         const auto count = scene.objects().size();
-        completion = scene.observeScoped<Scene::modelCreationFinished>(
-            [count, &scene](auto id) noexcept
-            {
-                auto status = scene.modelCreationStatus(id);
-                assert(status && std::holds_alternative<editor::scene::ModelCreationCancelled>(*status));
-                assert(scene.objects().size() == count);
-                std::puts("pending placement close: retained sender delivered cancellation; no late model insertion");
-            });
+        completion = scene.observeScoped<Scene::modelCreationFinished>([count, &scene](auto id) noexcept {
+            auto status = scene.modelCreationStatus(id);
+            assert(status && std::holds_alternative<editor::scene::ModelCreationCancelled>(*status));
+            assert(scene.objects().size() == count);
+            std::puts("pending placement close: retained sender delivered cancellation; no late model insertion");
+        });
         scene.requestClose();
         assert(scene.closeStatus().state == editor::ECloseState::CLOSING);
     }

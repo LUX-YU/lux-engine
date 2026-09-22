@@ -101,9 +101,9 @@ lux::cxx::expected<std::vector<std::byte>, NativeSceneFailure> encodeNativeScene
     std::unordered_map<world::WorldObjectId, world::WorldPartitionObjectView, world::WorldObjectIdHash> original;
     for (const auto &partition : source.partitions)
     {
-        for (std::size_t index{}; index < partition.objectCount(); ++index)
+        for (std::size_t index{}; index < partition->objectCount(); ++index)
         {
-            const auto object = partition.objectAt(index);
+            const auto object = partition->objectAt(index);
             original.emplace(object.id(), object);
         }
     }
@@ -125,7 +125,7 @@ lux::cxx::expected<std::vector<std::byte>, NativeSceneFailure> encodeNativeScene
     for (const auto &partition : source.partitions)
     {
         const auto first_object = next_object;
-        while (next_object != ordered.end() && (*next_object)->partition == partition.partition())
+        while (next_object != ordered.end() && (*next_object)->partition == partition->partition())
         {
             ++next_object;
         }
@@ -178,10 +178,10 @@ lux::cxx::expected<std::vector<std::byte>, NativeSceneFailure> encodeNativeScene
             }
             objects.push_back({id, std::span<const world::WorldEncodedDataRecord>(data).subspan(first)});
         }
-        auto encoded = world::encodeWorldPartitionData(partition.partition(), objects);
+        auto encoded = world::encodeWorldPartitionData(partition->partition(), objects);
         if (!encoded)
         {
-            return failed(ENativeSceneError::ENCODE, source.world->id(), partition.partition().value, encoded.error());
+            return failed(ENativeSceneError::ENCODE, source.world->id(), partition->partition().value, encoded.error());
         }
         if (encoded->size() > max_bytes - retained)
         {
@@ -190,8 +190,8 @@ lux::cxx::expected<std::vector<std::byte>, NativeSceneFailure> encodeNativeScene
         retained += encoded->size();
         digest.update(*encoded);
         partitions.push_back(std::move(*encoded));
-        records.push_back({partition.id(), partition.partition().value, 1});
-        extents.push_back({0, partition.partition().value + 1, 1});
+        records.push_back({partition->id(), partition->partition().value, 1});
+        extents.push_back({0, partition->partition().value + 1, 1});
     }
     if (records.empty())
     {

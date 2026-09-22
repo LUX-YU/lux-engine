@@ -47,6 +47,7 @@ if ($Case.EndsWith('_protocol') -or $Case -eq 'process_completion') {
 $fixtureMode = if ($Case -in @('save-hierarchy', 'save-structure', 'save-spatial')) { 'gpu-hierarchy' }
     elseif ($Case -in @('dynamic-run', 'simulation-failure', 'dynamic-terminal', 'dynamic-cost', 'closing-terminal', 'failure-closing-terminal')) { 'gpu-dynamic' }
     elseif ($Case -eq 'save-preservation') { 'gpu-preservation' }
+    elseif ($Case -eq 'resource-sharing') { 'gpu-sharing' }
     elseif ($Case -eq 'cpu') { 'cpu' } else { 'gpu' }
 & $Fixture $caseRoot $fixtureMode
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

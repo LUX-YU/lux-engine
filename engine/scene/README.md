@@ -1,15 +1,15 @@
 # Scene：World 与 Simulation 的装配边界
 
-Scene 是运行时组合对象。它根据正式描述装配 World 内容、Registry、Simulation 与可选 SceneSystem，不承担编辑器窗口或具体渲染效果的业务。
+SceneDescription 是静态资产描述；SceneInstance 是运行时组合对象。它根据正式描述装配 World 内容、Registry、Simulation 与可选 SceneSystem，不承担编辑器窗口或具体渲染效果的业务。
 
 ## 当前对象与接口
 
-[`Scene`](composition/include/lux/engine/scene/Scene.hpp) 提供：
+[`SceneInstance`](composition/include/lux/engine/scene/SceneInstance.hpp) 提供：
 
 - `worldDescription()`：持久世界描述。
 - `registry()`：实际活动 Entity 与组件。
 - `simulation()`：演化与派生执行。
-- SceneSystem 查找、能力查询、稳定点及停止协议。
+- SceneSystem 查找、能力查询、实例身份与唯一推进记录；阶段由 SceneDriver 调用。
 
 WorldDescription 不是 Registry。当前 API 不存在另一份拥有全部业务内容的 `World` 实例，文档不能把概念上的 World 与已实现类型混为一谈。
 
@@ -33,6 +33,14 @@ Simulation 结束或作者派生完成
 
 RenderSystem 可以在稳定点提取并发布数据。Renderer 负责采用、绘制与 GPU 资源退休。这不要求 Scene 核心认识相机投影、高亮、阴影或拾取算法。
 
+## 唯一驱动与描述
+
+SceneSystemDescription 是 SceneDescription 中一条不可变系统记录的借用视图；沿用原来的记录与 codec，不复制配置目录。磁盘输入验证真实资产引用，程序装配允许已经解析的合法空 World／Simulation，两者进入同一个 SceneInstance 创建算法。
+
+SceneDriver 借用 TaskExecutor，无实例 map。play／pause／step／stop 记录控制意图；advance 先维护，再接续既有步骤，最后才接纳新步骤。时钟在 Simulation 执行后立即读取，成功阶段分别记录；必要发布等待不会重复执行相同 delta。暂停仍可维护和刷新作者变化，不执行零时间演化。
+
+固定 dt 的目标时间为本步开始加 dt；落后时不积累无界追赶。Main 拥有实例写入与结果采用，TaskGraph 执行符合访问约束的系统任务，Process 负责异步读取和编译。Main 中不可分离的长计算仍会延迟 UI 帧生产，不能将独立 Render 线程描述为任意慢 Simulation 下保证恒定帧率。
+
 ## 可选 RenderSystem 与相机
 
 游戏场景的期望行为：
@@ -45,7 +53,7 @@ RenderSystem 可以在稳定点提取并发布数据。Renderer 负责采用、�
 
 无相机不能继续展示已销毁相机留下的旧图像，也不能暗中建立默认游戏相机。
 
-Camera 参数是普通实体组件，CameraView 是可选渲染集成的运行时关联。相机数据通过对应 Feature 的 ECS 提取阶段进入渲染器；不会给 Scene 核心或 RenderSystem 增加每种效果的专用方法。
+Camera 参数是普通实体组件，RenderSystem 中的 View 记录保存输出与 Camera Entity 的运行时关联。相机数据通过对应 Feature 的 ECS 提取阶段进入渲染器；不会给 Scene 核心或 RenderSystem 增加每种效果的专用方法。
 
 编辑器自身 UI 可以独立渲染。因此打开没有 RenderSystem 的文档时，Inspector、Outliner 和编辑器窗口仍可存在，场景区可以提示能力缺失。
 
@@ -57,17 +65,17 @@ Camera 参数是普通实体组件，CameraView 是可选渲染集成的运行�
 
 ## 作者实例与 Run 实例
 
-Editor 可以保留作者 Scene 并从捕获创建独立 Run，保护作者组件与历史。可共享的不可变资产和 GPU 资源按已有 lease／pins 保留，不因为有两份 Registry 就复制全部资源。
+Editor 可以保留作者 Scene 并从捕获创建独立 Run，保护作者组件与历史。可共享的不可变资产和 GPU 资源按已有资源使用权保留，不因为有两份 Registry 就复制全部资源。
 
 默认在同一视口切换作者与 Run。编辑时由编辑器 CameraMan 观察作者内容；Play 使用 Run 的用户 Camera；Stop 恢复编辑观察状态。CameraMan 不属于 Run 捕获和游戏导出。
 
-上述相机实体与自动切换协议是待接线设计，当前私有 SceneCamera 不等同于它们。
+UI 本身是独立 SceneInstance 中的 UIRenderSystem／UiRenderFeature，无须游戏 Camera。CameraMan、游戏 Camera 和 UI 输出三者不混用。
 
 ## 建立与销毁
 
 系统装配可能需要最终 Registry／Simulation 地址，并可能返回正常业务错误。保留真实 owner 和失败回收路径，不为了统一构造语法把这些失败藏起来。
 
-关闭遵守依赖逆序：先停止新工作，退出借用者与 View，再销毁系统和 Registry，最后释放仍被引用的运行资源。异步关闭未完成时保留 owner；`requestClose()` 或 `requestStop()` 不是已经销毁的证明。
+关闭遵守依赖逆序：停止新工作，撤销阶段与 ECS 观察，再销毁系统和 Registry。CPU 实例可以先于在途 View 和 GPU 退出；这些工作由共享 RenderRuntime 的已接纳资源记录继续完成。View 未完成关闭时保留其资源 owner，窗口保持到 surface 退休。`requestClose()` 或 `requestStop()` 不是完成证明。
 
 LuxObject 通知中可以请求逻辑关闭，物理删除发生在安全点，不能从回调中销毁仍在执行的方法所属对象。
 

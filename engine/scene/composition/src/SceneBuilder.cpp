@@ -7,147 +7,180 @@
 
 namespace lux::scene
 {
-    namespace
-    {
-        [[nodiscard]] SceneSystemBuildFailure failure(ESceneSystemBuildError code, system::SystemInstanceId system = {},
-                                                      system::SystemInstanceId related = {}) noexcept
-        {
-            return SceneSystemBuildFailure{code, system, related};
-        }
-    } // namespace
+namespace
+{
+[[nodiscard]] SceneSystemBuildFailure failure(ESceneSystemBuildError code, system::SystemInstanceId system = {},
+                                              system::SystemInstanceId related = {}) noexcept
+{
+    return SceneSystemBuildFailure{code, system, related};
+}
+} // namespace
 
-    simulation::ecs::Registry &SceneBuilder::registry() noexcept
+simulation::ecs::Registry &SceneBuilder::registry() noexcept
+{
+    return *impl_->registry;
+}
+
+SceneInstanceId SceneBuilder::sceneInstanceId() const noexcept
+{
+    return impl_->instance;
+}
+
+simulation::Simulation &SceneBuilder::simulation() noexcept
+{
+    return *impl_->simulation;
+}
+
+const SceneMetaManager &SceneBuilder::meta() const noexcept
+{
+    return *impl_->meta;
+}
+
+const SceneSystemRegistration *SceneBuilder::currentRegistration() const noexcept
+{
+    return impl_->current_registration;
+}
+
+lux::cxx::expected<void *, SceneSystemBuildFailure> SceneBuilder::appendSystem(
+    system::SystemInstanceId instance, lux::cxx::TypeToken type, const system::SystemTypeDescription *description,
+    void *object, object::LuxObject *endpoint, void (*destroy)(void *) noexcept) noexcept
+{
+    const auto current = impl_->description->systemAt(impl_->current_ordinal);
+    const bool invalid = !current || current.instanceId() != instance || impl_->current_registration == nullptr ||
+                         impl_->current_registration->cpp_type != type ||
+                         description != impl_->current_registration->description || object == nullptr ||
+                         destroy == nullptr;
+    if (invalid)
     {
-        return *impl_->registry;
+        return lux::cxx::unexpected(failure(ESceneSystemBuildError::INVALID_DESCRIPTION, instance));
     }
-
-    simulation::Simulation &SceneBuilder::simulation() noexcept
+    const bool duplicate = std::ranges::any_of(
+        *impl_->systems, [instance](const auto &record) noexcept { return record.instance == instance; });
+    if (duplicate)
     {
-        return *impl_->simulation;
+        return lux::cxx::unexpected(failure(ESceneSystemBuildError::DUPLICATE_SYSTEM, instance));
     }
-
-    const SceneMetaManager &SceneBuilder::meta() const noexcept
+    try
     {
-        return *impl_->meta;
+        impl_->systems->push_back(
+            {instance, type, description, object, endpoint, destroy, impl_->current_registration->projections});
+        return object;
     }
-
-    const SceneSystemRegistration *SceneBuilder::currentRegistration() const noexcept
+    catch (const std::bad_alloc &)
     {
-        return impl_->current_registration;
+        return lux::cxx::unexpected(failure(ESceneSystemBuildError::ALLOCATION_FAILURE, instance));
     }
+}
 
-    lux::cxx::expected<void *, SceneSystemBuildFailure> SceneBuilder::appendSystem(
-        system::SystemInstanceId instance, lux::cxx::TypeToken type, const system::SystemTypeDescription *description,
-        void *object, object::LuxObject *endpoint, void (*destroy)(void *) noexcept) noexcept
-    {
-        const auto current = impl_->description->systemAt(impl_->current_ordinal);
-        const bool invalid = !current || current.instanceId() != instance || impl_->current_registration == nullptr ||
-                             impl_->current_registration->cpp_type != type ||
-                             description != impl_->current_registration->description || object == nullptr ||
-                             destroy == nullptr;
-        if (invalid)
-        {
-            return lux::cxx::unexpected(failure(ESceneSystemBuildError::INVALID_DESCRIPTION, instance));
-        }
-        const bool duplicate = std::ranges::any_of(*impl_->systems, [instance](const auto &record) noexcept
-                                                   { return record.instance == instance; });
-        if (duplicate)
-        {
-            return lux::cxx::unexpected(failure(ESceneSystemBuildError::DUPLICATE_SYSTEM, instance));
-        }
-        try
-        {
-            impl_->systems->push_back({instance, type, description, object, endpoint, destroy});
-            return object;
-        }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(failure(ESceneSystemBuildError::ALLOCATION_FAILURE, instance));
-        }
-    }
+void *SceneBuilder::findInstalledErased(system::SystemInstanceId instance, lux::cxx::TypeToken type) noexcept
+{
+    const auto found = std::find_if(impl_->systems->begin(), impl_->systems->end(),
+                                    [instance](const auto &record) { return record.instance == instance; });
+    return found != impl_->systems->end() ? found->project(type) : nullptr;
+}
 
-    void *SceneBuilder::findInstalledErased(system::SystemInstanceId instance, lux::cxx::TypeToken type) noexcept
+void *SceneBuilder::findDependencyErased(lux::cxx::TypeToken type) noexcept
+{
+    void *selected{};
+    for (const auto ordinal : impl_->predecessors[impl_->current_ordinal])
     {
-        const auto found = std::find_if(impl_->systems->begin(), impl_->systems->end(),
-                                        [instance](const auto &record) { return record.instance == instance; });
-        return found != impl_->systems->end() && found->type == type ? found->object : nullptr;
-    }
-
-    void *SceneBuilder::findErased(system::SystemInstanceId instance, lux::cxx::TypeToken type) noexcept
-    {
-        const auto current = impl_->description->systemAt(impl_->current_ordinal);
-        const auto requested = impl_->description->findSystem(instance);
-        if (!current || !requested)
+        const auto instance = impl_->description->systemAt(ordinal).instanceId();
+        auto *candidate = findInstalledErased(instance, type);
+        if (!candidate)
         {
-            impl_->pending_failure = failure(ESceneSystemBuildError::INVALID_DESCRIPTION,
-                                             current ? current.instanceId() : system::SystemInstanceId{}, instance);
-            return nullptr;
+            continue;
         }
-        const bool is_self = current.instanceId() == instance;
-        const bool is_predecessor =
-            std::ranges::any_of(impl_->predecessors[impl_->current_ordinal], [&](std::size_t ordinal) noexcept
-                                { return impl_->description->systemAt(ordinal).instanceId() == instance; });
-        if (!is_self && !is_predecessor)
+        if (selected)
         {
             impl_->pending_failure =
-                failure(ESceneSystemBuildError::UNDECLARED_CONSTRUCTOR_DEPENDENCY, current.instanceId(), instance);
+                failure(ESceneSystemBuildError::AMBIGUOUS_REQUIREMENT,
+                        impl_->description->systemAt(impl_->current_ordinal).instanceId(), instance);
             return nullptr;
         }
-        return findInstalledErased(instance, type);
+        selected = candidate;
     }
+    return selected;
+}
 
-    void *SceneBuilder::requireErased(system::SystemInstanceId system, std::string_view requirement,
-                                      lux::cxx::TypeToken type) noexcept
+void *SceneBuilder::findErased(system::SystemInstanceId instance, lux::cxx::TypeToken type) noexcept
+{
+    const auto current = impl_->description->systemAt(impl_->current_ordinal);
+    const auto requested = impl_->description->findSystem(instance);
+    if (!current || !requested)
     {
-        const auto current = impl_->description->systemAt(impl_->current_ordinal);
-        if (!current || current.instanceId() != system || impl_->current_registration == nullptr)
-        {
-            impl_->pending_failure = failure(ESceneSystemBuildError::INVALID_DESCRIPTION, system);
-            return nullptr;
-        }
-        const auto declared = std::find_if(
-            impl_->current_registration->requirements.begin(), impl_->current_registration->requirements.end(),
-            [requirement](const auto &value) noexcept { return value.name == requirement; });
-        if (declared == impl_->current_registration->requirements.end() || declared->expected_type != type)
-        {
-            impl_->pending_failure = failure(ESceneSystemBuildError::REQUIREMENT_TYPE_MISMATCH, system);
-            return nullptr;
-        }
-        const auto resolved =
-            std::find_if(impl_->requirements.begin(), impl_->requirements.end(), [&](const auto &value) noexcept
-                         { return value.system == system && value.name == requirement; });
-        if (resolved == impl_->requirements.end())
-        {
-            if (!declared->optional)
-            {
-                impl_->pending_failure = failure(ESceneSystemBuildError::MISSING_REQUIREMENT, system);
-            }
-            return nullptr;
-        }
-        if (resolved->type != type)
-        {
-            impl_->pending_failure = failure(ESceneSystemBuildError::REQUIREMENT_TYPE_MISMATCH, system);
-            return nullptr;
-        }
-        return resolved->value;
+        impl_->pending_failure = failure(ESceneSystemBuildError::INVALID_DESCRIPTION,
+                                         current ? current.instanceId() : system::SystemInstanceId{}, instance);
+        return nullptr;
     }
+    const bool is_self = current.instanceId() == instance;
+    const bool is_predecessor =
+        std::ranges::any_of(impl_->predecessors[impl_->current_ordinal], [&](std::size_t ordinal) noexcept {
+            return impl_->description->systemAt(ordinal).instanceId() == instance;
+        });
+    if (!is_self && !is_predecessor)
+    {
+        impl_->pending_failure =
+            failure(ESceneSystemBuildError::UNDECLARED_CONSTRUCTOR_DEPENDENCY, current.instanceId(), instance);
+        return nullptr;
+    }
+    return findInstalledErased(instance, type);
+}
 
-    lux::cxx::expected<void, SceneSystemBuildFailure> SceneBuilder::addHookErased(
-        system::SystemInstanceId instance, lux::cxx::move_only_function<bool()> invoke) noexcept
+void *SceneBuilder::requireErased(system::SystemInstanceId system, std::string_view requirement,
+                                  lux::cxx::TypeToken type) noexcept
+{
+    const auto current = impl_->description->systemAt(impl_->current_ordinal);
+    if (!current || current.instanceId() != system || impl_->current_registration == nullptr)
     {
-        auto &hooks = *impl_->stable_hooks;
-        if (std::ranges::any_of(hooks, [instance](const auto &hook) noexcept { return hook.system == instance; }))
-        {
-            return lux::cxx::unexpected(failure(ESceneSystemBuildError::DUPLICATE_STABLE_POINT_TASK, instance));
-        }
-        try
-        {
-            hooks.push_back({instance, std::move(invoke)});
-            return {};
-        }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(failure(ESceneSystemBuildError::ALLOCATION_FAILURE, instance));
-        }
+        impl_->pending_failure = failure(ESceneSystemBuildError::INVALID_DESCRIPTION, system);
+        return nullptr;
     }
+    const auto declared =
+        std::find_if(impl_->current_registration->requirements.begin(), impl_->current_registration->requirements.end(),
+                     [requirement](const auto &value) noexcept { return value.name == requirement; });
+    if (declared == impl_->current_registration->requirements.end() || declared->expected_type != type)
+    {
+        impl_->pending_failure = failure(ESceneSystemBuildError::REQUIREMENT_TYPE_MISMATCH, system);
+        return nullptr;
+    }
+    const auto resolved =
+        std::find_if(impl_->requirements.begin(), impl_->requirements.end(),
+                     [&](const auto &value) noexcept { return value.system == system && value.name == requirement; });
+    if (resolved == impl_->requirements.end())
+    {
+        if (!declared->optional)
+        {
+            impl_->pending_failure = failure(ESceneSystemBuildError::MISSING_REQUIREMENT, system);
+        }
+        return nullptr;
+    }
+    if (resolved->type != type)
+    {
+        impl_->pending_failure = failure(ESceneSystemBuildError::REQUIREMENT_TYPE_MISMATCH, system);
+        return nullptr;
+    }
+    return resolved->value;
+}
+
+lux::cxx::expected<void, SceneSystemBuildFailure> SceneBuilder::addHookErased(
+    system::SystemInstanceId instance, ESceneSystemPhase phase,
+    lux::cxx::move_only_function<SceneStageResult(SceneStageContext &)> invoke) noexcept
+{
+    auto &hooks = phase == ESceneSystemPhase::MAINTENANCE   ? *impl_->maintenance_hooks
+                  : phase == ESceneSystemPhase::PUBLICATION ? *impl_->publication_hooks
+                                                            : *impl_->stable_hooks;
+    if (std::ranges::any_of(hooks, [instance](const auto &hook) noexcept { return hook.system == instance; }))
+    {
+        return lux::cxx::unexpected(failure(ESceneSystemBuildError::DUPLICATE_STABLE_POINT_TASK, instance));
+    }
+    try
+    {
+        hooks.push_back({instance, std::move(invoke)});
+        return {};
+    }
+    catch (const std::bad_alloc &)
+    {
+        return lux::cxx::unexpected(failure(ESceneSystemBuildError::ALLOCATION_FAILURE, instance));
+    }
+}
 } // namespace lux::scene

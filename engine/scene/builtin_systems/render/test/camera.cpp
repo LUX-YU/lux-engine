@@ -16,9 +16,8 @@ int main()
     using namespace lux;
     using namespace simulation::ecs;
     scene::Camera camera;
-    camera.aspect_ratio = 2.0;
     math::Ray3d ray;
-    auto projection = scene::cameraProjection(camera);
+    auto projection = scene::cameraProjection(camera, 2.0);
     assert(projection);
     math::screenToRay(100.0, 50.0, 200.0, 100.0, Eigen::Matrix4d(projection->inverse()), ray);
     assert(ray.direction.isApprox(-Eigen::Vector3d::UnitZ()) && std::abs(ray.origin.z() + 0.05) < 1e-10);
@@ -26,14 +25,13 @@ int main()
     assert(ray.direction.x() < 0 && ray.direction.y() > 0 && ray.direction.z() < 0);
 
     camera.projection = scene::OrthographicProjection{10, 0.1, 100};
-    projection = scene::cameraProjection(camera);
+    projection = scene::cameraProjection(camera, 2.0);
     math::screenToRay(0.0, 0.0, 200.0, 100.0, Eigen::Matrix4d(projection->inverse()), ray);
     assert(ray.direction.isApprox(-Eigen::Vector3d::UnitZ()));
     assert(ray.origin.isApprox(Eigen::Vector3d{-10, 5, -0.1}));
     std::get<scene::OrthographicProjection>(camera.projection).vertical_extent = 0;
-    assert(!scene::cameraProjection(camera));
+    assert(!scene::cameraProjection(camera, 2.0));
     camera.projection = scene::PerspectiveProjection{};
-    camera.view = {3, 7};
     camera.primary = true;
 
     Registry registry;
@@ -54,7 +52,7 @@ int main()
     const auto restored = registry.create();
     assert(schema->decode_emplace(registry, identities, restored, 1, *bytes));
     const auto &decoded = registry.get<scene::Camera>(restored);
-    assert(decoded.primary && decoded.view.isNull() && decoded.aspect_ratio == 1.0);
+    assert(decoded.primary);
 
     render::FeatureCatalog catalog;
     render::FeatureFactory factory;
@@ -66,7 +64,9 @@ int main()
     const auto binding =
         std::ranges::find(bindings, factory.descriptor.type, &scene::RenderFeatureSceneBinding::feature);
     assert(binding != bindings.end());
-    auto stage = binding->create_sync_stage({registry, {2, 1}, catalog, factory.descriptor.type, {1, 1}, 2048, {}});
+    scene::RenderViewAssociations views{{1}, {{{3, 7}, entity, {200, 100}}, {{4, 9}, entity, {100, 200}}}, 1};
+    auto stage =
+        binding->create_sync_stage({registry, {2, 1}, catalog, factory.descriptor.type, {1, 1}, 2048, {}, &views});
     assert(stage);
     render::RenderProgram<> packet;
     render::RenderProgramBuilder<> builder(packet);
@@ -76,7 +76,10 @@ int main()
     const auto &record = packet.commands.front();
     const auto *update =
         reinterpret_cast<const render::ViewCameraUpdatePayload *>(packet.payload.data() + record.payload_offset);
-    assert(update->view == camera.view && update->coordinate_page_size == 2048);
+    assert(update[0].view == views.values[0].view && update[0].coordinate_page_size == 2048);
+    assert(update[1].view == views.values[1].view);
+    assert(std::abs(update[1].proj_matrix[0] / update[0].proj_matrix[0] - 4.0f) < 1e-6f);
+    assert(update[0].proj_matrix[5] == update[1].proj_matrix[5]);
     const double recovered = double(update->render_origin.page_delta[0]) * 2048 + update->render_origin.local[0];
     assert(recovered == 1e12);
     (*stage)->discardPrepared();
@@ -85,15 +88,35 @@ int main()
     assert((*stage)->prepare(builder) == scene::ERenderSyncPrepareResult::PREPARED_COMMANDS);
     (*stage)->commitPrepared();
     assert(!(*stage)->hasPendingChanges());
-    const auto retired_view = camera.view;
+    // Resize changes only association data, not the component or the other View.
+    const auto first_projection = update[0].proj_matrix[0];
+    views.values[1].extent = {200, 100};
+    ++views.revision;
+    assert((*stage)->hasPendingChanges());
+    builder.begin();
+    assert((*stage)->prepare(builder) == scene::ERenderSyncPrepareResult::PREPARED_COMMANDS);
+    update = reinterpret_cast<const render::ViewCameraUpdatePayload *>(packet.payload.data() +
+                                                                       packet.commands.front().payload_offset);
+    assert(update[0].proj_matrix[0] == first_projection && update[1].proj_matrix[0] == first_projection);
+    (*stage)->commitPrepared();
+    const auto retired_view = views.values[0].view;
     registry.remove<scene::Camera>(entity);
     builder.begin();
     assert((*stage)->prepare(builder) == scene::ERenderSyncPrepareResult::PREPARED_COMMANDS);
     assert(packet.commands.size() == 1 && packet.commands.front().type_id == operations[1]);
     const auto *removed = reinterpret_cast<const render::ViewCameraRemovePayload *>(
         packet.payload.data() + packet.commands.front().payload_offset);
-    assert(removed->view == retired_view);
+    assert(removed[0].view == retired_view && removed[1].view == views.values[1].view);
+    // Full Entity generation matters when the slot is reused by a different Camera.
+    registry.destroy(entity);
+    const auto replacement = registry.create();
+    registry.emplace<scene::Camera>(replacement);
+    registry.emplace<WorldTransform3D>(replacement);
+    assert(replacement != entity);
     (*stage)->commitPrepared();
-    std::puts(
-        "PASS camera: perspective/orthographic NDC, invalid projection, codec resets View, extraction retry/removal");
+    builder.begin();
+    assert((*stage)->prepare(builder) == scene::ERenderSyncPrepareResult::PREPARED_NO_COMMANDS);
+    (*stage)->commitPrepared();
+    std::puts("PASS camera: perspective/orthographic NDC, invalid projection, codec, one camera/two independent "
+              "extents, extraction retry/removal/generation");
 }

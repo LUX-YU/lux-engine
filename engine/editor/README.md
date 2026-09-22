@@ -14,10 +14,11 @@ Editor
   │   ├── MaterialEditor
   │   ├── FlowForgeEditor
   │   └── 可扩展的其他编辑器
-  └── 前端与窗口
+  ├── Editor SceneInstance → UIRenderSystem → UiRenderFeature
+  └── 原生窗口、共享 RenderRuntime 与 Process
 ```
 
-Editor 是业务入口，不必 is-a Window。窗口与 UI 是前端，未来开放其他前端不要求把全部编辑能力绑定到原生窗口。
+Editor 是业务入口，不必 is-a Window。当前产品由 app 直接装配原生窗口和 UI Scene；具体业务与窗口依然分离，未提供无窗口 Editor 产品。
 
 具体业务由 XxxEditor 拥有：内容、历史、请求及生命周期。顶层 Editor 不写识别 Material／FlowForge 的业务分支，也不通过一个完整共享 Impl 间接访问所有业务。
 
@@ -27,12 +28,13 @@ Editor 是业务入口，不必 is-a Window。窗口与 UI 是前端，未来开
 
 | 目录 | 职责 |
 | --- | --- |
-| `core` | Editor、Project、通用文档及请求协调 |
+| `app` | Editor 产品入口、平台输入／IME、窗口、主循环与退出协调 |
+| `core` | Project、通用文档与请求协议 |
 | `editing` | 内容历史和通用 Undo／Redo 协议 |
 | `editors/scene` | SceneEditor 业务、对应 Pane、typed Inspector 生成链 |
 | `editors` 中其他具体包 | 各自业务与 UI 接线 |
-| `ui` | 通用前端、布局与窗口协作 |
-| `rendering` | EditorRenderer、RenderView、UI 帧和图像引用生命周期 |
+| `ui` | UIRenderSystem、Pane 登记、布局、焦点和命令路由 |
+| `modules/function/render/runtime` | 共享 RenderRuntime、View、图像引用与后端退休（位于 modules 层） |
 
 源码按 `include/pinclude/sinclude/src` 组织；业务细分放在这些目录内部的命名空间路径，不在子模块根散落另一套 project/run/asset 等平行结构。
 
@@ -81,10 +83,14 @@ Main 拥有 Scene 和编辑业务。Process 承担明确的有限 IO、解码和
 - 不因增加一个效果就给顶层 Editor／RenderSystem 增加专用功能。
 - 源码树保留模块文档、使用说明和测试；过程报告与产物不进入安装 SDK。
 
-## 当前与待接线能力
+## 唯一推进路径
 
-当前具有生成式 Inspector、Scene／Run 的 Main 推进及同视口切换。视口仍使用私有三维 SceneCamera，运行时目录仍存在静态身份耦合。
+Editor 按“平台输入和完成采用 → 一次可接纳的 UI 构建 → 结束字段借用 → SceneDriver → RenderRuntime”推进。UI 背压保留同一帧，不重新调用 Pane；仍推进输入、回复和退出。作者与 Run 均使用 SceneInstance 内的一份推进记录。
 
-通用相机组件、CameraMan、基于 Entity 的完整空间查询、视口空间扩展及 Feature 自有高亮集合属于已记录的设计意图，不能通过文档新增就登记为产品已实现。
+回复、Program、Control、资源请求检查和新模拟步各有独立预算，同类预算在文档间共享；文档轮转避免固定遍历顺序饿死后面的请求。资源请求预算计量一次待处理 Entity 的检查及其有界依赖集合，不代表一个 GPU 命令或一次磁盘读取。
 
-相关说明：[渲染前端](rendering/README.md)、[Scene](../scene/README.md)、[Process](../process/README.md)。
+Scene 文档注册保存按 Project 实例／catalog revision 区分的弱资源来源记录。同版本文档和 Run 共用不可变读取、Mesh／Material／Texture 及查询几何；Run 保留启动来源，新的项目版本不覆盖它。Project 本身不依赖 Renderer。
+
+当前实现包含 Camera 组件、Editor-only CameraMan Entity、Entity 空间查询、空间视口扩展及 Feature 自有高亮集合。平台／桌面组合的实际验收结果属于树外证据，不能由本设计说明推导。
+
+相关说明：[Scene](../scene/README.md)、[Process](../process/README.md)、[渲染运行入口](../../modules/function/render/runtime/README.md)。

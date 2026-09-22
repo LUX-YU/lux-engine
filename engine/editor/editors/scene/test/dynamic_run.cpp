@@ -1,13 +1,32 @@
-#include <lux/engine/function/render/features/BuiltinFeatures.hpp>
-#include "render_thread_checks.hpp"
 #include "run_system.hpp"
-#include <lux/engine/editor/Editor.hpp>
+#include "scene_structure_checks.hpp"
+#include <cassert>
+#include <cstdio>
 #include <lux/engine/editor/gui/scene/SceneDocumentProvider.hpp>
-#include <lux/engine/editor/gui/shell/EditorWindow.hpp>
+#include <lux/engine/editor/project/Project.hpp>
+#include <lux/engine/editor/scene/FieldEdit.hpp>
+#include <lux/engine/function/render/features/BuiltinFeatures.hpp>
+#include <lux/engine/function/render/features/genops/ForwardMeshOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/Grid3DOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MaterialOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshShadowOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/ShadowMapOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/ViewCameraOperation.ops.hpp>
+#include <lux/engine/render/RenderRuntime.hpp>
+#include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
+#include <lux/engine/scene/SceneRenderSchema.hpp>
+#include <lux/engine/simulation/ecs/TransformSchema.hpp>
+#include <lux/engine/simulation/ecs/VisualSchema.hpp>
+#include <thread>
+
 #include <lux/engine/editor/scene/SceneEditor.hpp>
 #include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/scene/MeshQuerySystem.hpp>
+#include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/TransformSystem.hpp>
 #include <lux/engine/simulation/ecs/HierarchySchema.hpp>
@@ -23,6 +42,7 @@ int main(int argc, char **argv)
     const bool failing =
         std::string_view(argv[2]) == "simulation-failure" || std::string_view(argv[2]) == "failure-closing-terminal";
     const bool terminating = std::string_view(argv[2]) == "dynamic-terminal";
+    const bool observing = std::string_view(argv[2]) == "dynamic-observer";
     const bool closing_terminal =
         std::string_view(argv[2]) == "closing-terminal" || std::string_view(argv[2]) == "failure-closing-terminal";
     meta::ReflectionRegistry::initRegistry();
@@ -44,17 +64,23 @@ int main(int argc, char **argv)
     auto source = stdexec::sync_wait(stdexec::then(stdexec::schedule(*runtime->blocking()),
                                                    [&]() noexcept { return editor::readProjectSource(argv[1]); }));
     assert(source && std::get<0>(*source));
-    auto project = editor::Project::open(*std::get<0>(*source), *runtime->blocking(), messages.dispatcherRef());
+    process::TaskScope tasks;
+    auto project = editor::Project::open(*std::get<0>(*source), *runtime->blocking(), tasks, messages.dispatcherRef());
     assert(project);
     std::puts("dynamic: project ready");
-    editor::gui::WindowSpec spec;
-    spec.visible = false;
-    auto window = editor::gui::EditorWindow::create(messages.dispatcherRef(), spec);
-    assert(window);
-    editor::rendering::RendererConfig config;
+    render::RendererConfig config;
     config.validation = std::string_view(argv[2]) != "dynamic-cost";
-    auto renderer =
-        editor::rendering::EditorRenderer::create((*window)->nativeWindow(), (*window)->uiSession(), config);
+    config.validation_message_sink = [](auto severity, auto message) {
+        if (severity == 2)
+        {
+            std::fprintf(stderr, "%.*s\n", int(message.size()), message.data());
+        }
+    };
+    config.feature_factories = {
+        render::kViewCameraFeatureFactory, render::kMaterialFeatureFactory,    render::kMeshStackFeatureFactory,
+        render::kLightFeatureFactory,      render::kForwardMeshFeatureFactory, render::kShadowMapFeatureFactory,
+        render::kMeshShadowFeatureFactory, render::kHighlightFeatureFactory,   render::kGrid3DFeatureFactory};
+    auto renderer = render::RenderRuntime::create(std::move(config));
     assert(renderer);
     std::puts("dynamic: renderer ready");
 
@@ -64,6 +90,7 @@ int main(int argc, char **argv)
     append(simulation::ecs::hierarchyComponentSchemas());
     append(simulation::ecs::visualComponentSchemas());
     append(scene::sceneRenderComponentSchemas());
+    append(scene::worldLoadingComponentSchemas());
     auto components = simulation::ecs::ComponentSchemaSet::build(std::move(schemas));
     assert(components);
     simulation::SimulationSystemRegistry systems;
@@ -74,8 +101,8 @@ int main(int argc, char **argv)
     const auto bindings = scene::builtinRenderFeatureSceneBindings();
     std::vector<scene::SceneSystemRegistration> registrations{render_systems.begin(), render_systems.end()};
     registrations.push_back(scene::builtinMeshQuerySystemRegistration());
-    auto built = scene::SceneMetaManager::build(
-        {std::move(*components), std::move(systems), std::move(registrations)});
+    registrations.push_back(scene::worldLoadingSystemRegistration());
+    auto built = scene::SceneMetaManager::build({std::move(*components), std::move(systems), std::move(registrations)});
     if (!built)
     {
         std::printf("metadata failure=%u subject=%llu\n", unsigned(built.error().code),
@@ -96,36 +123,28 @@ int main(int argc, char **argv)
     assert(opening);
     std::puts("dynamic: opening started");
     const auto deadline = Clock::now() + 30s;
-    editor::rendering::EditorFramePacket packet;
-    std::unique_ptr<editor::scene::RunViewLease> view;
+    render::RenderProgram<> packet;
+    bool frame_pending{};
+    std::unique_ptr<render::RenderView> view;
     bool drawing = true;
-    const auto pump = [&]
-    {
+    const auto pump = [&] {
         assert(Clock::now() < deadline);
         assert(runtime->drainMain(64));
         static_cast<void>(messages.dispatchPending(64));
-        assert((*renderer)->poll(64));
-        if (drawing && !packet.valid())
+        std::size_t controls = 64, programs = 8;
+        assert((*renderer)->poll(64, controls, programs));
+        if (drawing && (*renderer)->status().state == render::ERenderRuntimeState::ACTIVE)
         {
-            assert((*window)->beginFrame({{800, 600}, 0.01F, {1, 1}}));
-            auto snapshot = (*window)->finishFrame();
-            assert(snapshot);
-            std::vector<editor::rendering::ViewImage> images;
-            if (view)
+            if (!frame_pending)
             {
-                auto image = view->view().acquireImage();
-                if (image)
-                {
-                    images.push_back(std::move(*image));
-                }
+                render::RenderProgramBuilder<> builder(packet);
+                builder.begin();
+                packet.kind = render::ERenderProgramKind::Frame;
+                frame_pending = true;
             }
-            auto sealed = (*renderer)->sealFrame(*snapshot, images);
-            assert(sealed);
-            packet = std::move(*sealed);
-        }
-        if (packet.valid())
-        {
-            assert((*renderer)->trySubmitFrame(packet));
+            const auto submitted = (*renderer)->submit(packet);
+            assert(submitted);
+            frame_pending = *submitted == render::EFrameSubmit::BACKPRESSURED;
         }
         std::this_thread::sleep_for(1ms);
     };
@@ -145,26 +164,39 @@ int main(int argc, char **argv)
     std::puts("dynamic: document adopted");
     opening->reset();
     auto &document = dynamic_cast<editor::scene::SceneEditor &>(**adopted);
-    const auto tick = [&]
-    {
+    const auto tick = [&] {
         pump();
         editor::PollBudget budget;
         document.poll(budget);
     };
-    const auto ready_resources = [&]
-    {
+    const auto ready_resources = [&] {
         const auto snapshot = document.resources();
         if (!snapshot)
         {
             return false;
         }
         const auto &rows = snapshot->rows;
-        return !rows.empty() && std::ranges::all_of(rows, [](const auto &row)
-                                                    { return row.state == editor::scene::ESceneResourceState::READY; });
+        return !rows.empty() &&
+               std::ranges::all_of(rows, [](const auto &row) { return row.state == scene::ERenderAssetState::READY; });
     };
-    while (!ready_resources())
+    while (!observing && !ready_resources())
     {
         tick();
+    }
+    if (std::string_view(argv[2]) == "dynamic-run")
+    {
+        checkSceneStructure(document, false);
+        using Transform = simulation::ecs::Transform3D;
+        const auto object = document.objects().front().object;
+        const auto original =
+            static_cast<const Transform *>(document.component(object, cxx::typeToken<Transform>()))->translation;
+        const Eigen::Vector3d changed = original + Eigen::Vector3d{2, 0, 0};
+        assert(document.setField<Transform>(
+            *document.writeTarget(object), "Transform3D.translation", "Translation",
+            [](auto &value) { return &value.translation; }, changed));
+        assert(document.undo());
+        assert(document.redo());
+        assert(document.undo());
     }
     const auto history = document.historyView()->history;
     std::vector<simulation::ecs::Transform3D> author;
@@ -180,17 +212,16 @@ int main(int argc, char **argv)
         tick();
         assert(document.runStatus().result);
     }
-    auto opened = document.openRunView(*run, {{320, 240}, true, 2048});
+    auto opened = document.openRunView(*run, {{320, 240}, render::SampledOutput{}, 2048});
     assert(opened);
-    view = std::make_unique<editor::scene::RunViewLease>(std::move(*opened));
-    while (!view->view().handle().isValid())
+    view = std::move(*opened);
+    while (!view->handle().isValid())
     {
         tick();
     }
     const auto camera = document.viewportCamera();
     assert(camera);
-    assert(document.bindCamera(*camera, view->view().handle(), 4.0 / 3.0));
-    assert(view->view().setOutput({run->serial, 0, 1, 1}, true));
+    assert(document.bindCamera(*camera, view->id()));
     const auto pause_at = Clock::now();
     assert(document.pauseRun(*run));
     while (document.runStatus().state != editor::scene::ERunState::PAUSED)
@@ -198,15 +229,14 @@ int main(int argc, char **argv)
         tick();
     }
     const auto pause_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - pause_at).count();
-    const auto paused = document.runStatus();
+    auto paused = document.runStatus();
     assert(paused.steps == run_test::steps && paused.completed.publication == paused.steps);
-    auto lease = (*renderer)->acquire();
-    assert(lease);
-    const auto light_ops = lease->features().ops<render::LightOperationIds>("Light");
+    auto control = (*renderer)->control();
+    assert(control);
+    const auto light_ops = (*renderer)->features().ops<render::LightOperationIds>("Light");
     assert(light_ops.valid());
-    render::LightControlClient light(lease->control(), light_ops);
-    const auto check_backend = [&](std::uint64_t step)
-    {
+    render::LightControlClient light(control->get(), light_ops);
+    const auto check_backend = [&](std::uint64_t step) {
         // A Control reply can race Program adoption; query until it proves the
         // expected content while the producer is stably paused.
         for (;;)
@@ -237,6 +267,57 @@ int main(int argc, char **argv)
         tick();
         assert(run_test::steps == paused.steps);
     }
+    if (observing)
+    {
+        const auto mesh_ops = (*renderer)->features().ops<render::MeshStackOperationIds>("StandardMeshStack");
+        assert(mesh_ops.valid());
+        render::MeshStackControlClient meshes(control->get(), mesh_ops);
+        const auto check_meshes = [&](std::uint32_t expected) {
+            for (;;)
+            {
+                auto request = meshes.stats({document.runStatus().render_scene});
+                while (!request.isReady())
+                {
+                    tick();
+                }
+                auto result = request.tryResult();
+                assert(result);
+                if (result->get().alive_instances == expected)
+                {
+                    break;
+                }
+                tick();
+            }
+        };
+        while (!ready_resources())
+        {
+            tick();
+        }
+        assert(document.objects().size() == 2 && document.resources()->rows.size() == 1);
+        check_meshes(1);
+        const auto loaded_step = paused.steps + 1;
+        run_test::observer_partition = 1;
+        assert(document.stepRun(*run));
+        while (document.runStatus().completed.publication < loaded_step || document.objects().size() != 4 ||
+               !ready_resources() || document.resources()->rows.size() != 3)
+        {
+            tick();
+            assert(document.runStatus().result);
+        }
+        assert(document.resources()->rows.size() == 3);
+        check_meshes(3);
+        run_test::observer_partition = UINT32_MAX;
+        assert(document.stepRun(*run));
+        while (document.runStatus().completed.publication < loaded_step + 1 || document.objects().size() != 2)
+        {
+            tick();
+            assert(document.runStatus().result);
+        }
+        check_meshes(1);
+        paused = document.runStatus();
+        assert(paused.state == editor::scene::ERunState::PAUSED && paused.steps == loaded_step + 1);
+        std::puts("PASS WorldLoading -> real resource reads/uploads -> Mesh instances 1/3/1, author stayed intact");
+    }
     const auto step_at = Clock::now();
     run_test::fail_step.store(failing);
     assert(document.stepRun(*run));
@@ -249,7 +330,7 @@ int main(int argc, char **argv)
     if (failing)
     {
         const auto failed = document.runStatus();
-        assert(!failed.result && failed.result.error().domain == "run.simulation");
+        assert(!failed.result && failed.result.error().domain == "run.advance");
         assert(failed.failed_phase == editor::scene::ERunPhase::SIMULATION);
         assert(failed.steps == paused.steps + 1 && failed.elapsed == 10ms * failed.steps);
         assert(failed.completed.simulation == paused.steps && failed.completed.stable == paused.steps &&
@@ -270,8 +351,7 @@ int main(int argc, char **argv)
         // Continue Main simulation turns, but give this document zero Program
         // submissions. It must hold one prepared update and return to the UI.
         const auto held_at = Clock::now();
-        const auto held_tick = [&]
-        {
+        const auto held_tick = [&] {
             pump();
             editor::PollBudget budget;
             budget.render_programs = 0;
@@ -296,9 +376,7 @@ int main(int argc, char **argv)
         {
             drawing = false;
             packet = {};
-            lease->programs().progressDomain()->publishTerminalError(
-                render::renderError<render::err::comm::ChannelStopping>());
-            lease->programs().requestStop();
+            control->get().requestStop(); // Real shared channel termination, not physical device loss.
             editor::PollBudget budget;
             document.poll(budget); // Consumer stopping must wake the actual Run producer.
         }
@@ -324,50 +402,34 @@ int main(int argc, char **argv)
     }
     const auto result_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - stop_at).count();
     std::puts("dynamic: Main retained the final result before World release");
-    document.unbindCamera(*camera, view->view().handle());
-    assert(view->view().beginClose());
+    // CPU Scene has already exited. The View is an independent Runtime use.
+    assert(document.runStatus().state == editor::scene::ERunState::STOPPING);
+    document.unbindCamera(*camera, view->id());
+    assert(view->beginClose());
     packet = {};
-    while (*view->view().advanceClose() != editor::rendering::ERenderClose::COMPLETE)
+    frame_pending = false;
+    drawing = false;
+    if (closing_terminal)
+    {
+        // Release intent is established, no Main retirement has run yet. This
+        // replaces the removed Binding/drain observation with its actual owner.
+        assert(view->status().state == render::EViewState::CLOSING);
+        assert((*renderer)->status().state == render::ERenderRuntimeState::ACTIVE);
+        assert(document.runStatus().retained_resources != 0);
+        assert(bool(document.runStatus().result) == !failing);
+        control->get().requestStop();
+    }
+    while (*view->advanceClose() != render::ERenderClose::COMPLETE)
     {
         tick();
     }
     view.reset();
     const auto view_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - stop_at).count();
-    std::int64_t drain_us{-1};
-    std::puts("dynamic: View closed");
-    drawing = false;
-    if (closing_terminal)
-    {
-        // Observe actual Program acceptance of the normal drain marker. Merely
-        // observing Run STOPPING would not establish the JR-03 ordering.
-        while (!document.runStatus().render_drain_submitted)
-        {
-            tick();
-            assert(document.runStatus().state == editor::scene::ERunState::STOPPING);
-        }
-        const auto draining = document.runStatus();
-        drain_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - stop_at).count();
-        assert(draining.pending_updates == 0 && draining.retained_resources != 0);
-        assert(lease->status().state == scene::ERenderRuntimeState::ACTIVE);
-        assert(bool(draining.result) == !failing);
-        std::printf("JR03 normal drain accepted: main_result=retained view=closed "
-                    "state=STOPPING result=%s published=%llu forwarded=%llu pins=%zu leases=%llu\n",
-                    draining.result ? "success" : "run.simulation",
-                    static_cast<unsigned long long>(draining.published_updates),
-                    static_cast<unsigned long long>(draining.forwarded_updates), draining.retained_resources,
-                    static_cast<unsigned long long>((*renderer)->statistics().runtime_leases));
-        lease->programs().progressDomain()->publishTerminalError(
-            render::renderError<render::err::comm::ChannelStopping>());
-        lease->programs().requestStop();
-    }
+    std::puts("dynamic: View closed after CPU Scene destruction");
     while (document.runStatus().state != editor::scene::ERunState::FINISHED &&
            document.runStatus().state != editor::scene::ERunState::FAILED)
     {
         tick();
-        if (drain_us < 0 && document.runStatus().render_drain_submitted)
-        {
-            drain_us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - stop_at).count();
-        }
     }
     const auto final = document.runStatus();
     std::puts("dynamic: Run settled");
@@ -384,17 +446,17 @@ int main(int argc, char **argv)
         {
             const auto *cause = std::any_cast<simulation::SimulationExecutionFailure>(&final.result.error().cause);
             result_accurate = final.failed_phase == editor::scene::ERunPhase::SIMULATION &&
-                              final.result.error().domain == "run.simulation" && cause &&
+                              final.result.error().domain == "run.advance" && cause &&
                               cause->code == simulation::ESimulationExecutionError::SYSTEM_TASK_FAILURE &&
                               cause->system.value == 3;
         }
         else if (result_accurate)
         {
-            const auto *cause = std::any_cast<scene::SceneRenderBindingFailure>(&final.result.error().cause);
+            const auto *cause = std::any_cast<render::RenderError>(&final.result.error().cause);
             const auto expected = render::renderError<render::err::comm::ChannelStopping>();
             result_accurate = final.result.error().domain == "run.render" &&
                               final.failed_phase == editor::scene::ERunPhase::PUBLICATION && cause &&
-                              cause->render.type == expected.type && cause->render.args == expected.args;
+                              cause->type == expected.type && cause->args == expected.args;
         }
         std::printf("JR03 after terminal: state=%u result=%s domain=%s pins=%zu pending=%u "
                     "retired=%llu accurate=%u\n",
@@ -405,8 +467,15 @@ int main(int argc, char **argv)
     else if (terminating)
     {
         assert(!final.result && final.retired_updates == 1);
-        const auto *cause = std::any_cast<scene::SceneRenderBindingFailure>(&final.result.error().cause);
-        assert(cause && cause->render.type == render::renderError<render::err::comm::ChannelStopping>().type);
+        const auto *cause = std::any_cast<render::RenderError>(&final.result.error().cause);
+        if (!cause)
+        {
+            const auto *stage = std::any_cast<scene::SceneExecutionFailure>(&final.result.error().cause);
+            assert(stage && stage->system.value == 2 && stage->code == scene::ESceneExecutionError::SYSTEM_FAILURE);
+            cause = std::any_cast<render::RenderError>(&stage->cause);
+        }
+        const auto expected = render::renderError<render::err::comm::ChannelStopping>();
+        assert(cause && cause->type == expected.type && cause->args == expected.args);
         std::printf("JR01 full Run terminal steps=%llu forwarded=%llu retired=%llu "
                     "pins=0 original terminal preserved\n",
                     static_cast<unsigned long long>(final.steps),
@@ -434,10 +503,9 @@ int main(int argc, char **argv)
                 static_cast<unsigned long long>(final.backpressure_count),
                 static_cast<long long>(final.simulation_work.count()),
                 static_cast<long long>(final.publication_wait.count()));
-    std::printf("dynamic retirement first_driver_observation_us: world=%lld result=%lld view=%lld "
-                "drain_accepted=%lld resources=%lld; -1=not_observed; acceptance_is_not_GPU_completion\n",
+    std::printf("dynamic retirement observations_us: world=%lld result=%lld view=%lld resources=%lld\n",
                 static_cast<long long>(system_us), static_cast<long long>(result_us), static_cast<long long>(view_us),
-                static_cast<long long>(drain_us), static_cast<long long>(close_us));
+                static_cast<long long>(close_us));
     document.requestClose();
     while (document.closeStatus().state != editor::ECloseState::CLOSED)
     {
@@ -446,30 +514,41 @@ int main(int argc, char **argv)
     adopted->reset();
     packet = {};
     drawing = false;
-    *lease = {};
-    assert((*renderer)->statistics().runtime_leases == 0);
-    assert((*renderer)->beginClose());
-    while (*(*renderer)->advanceClose() != editor::rendering::ERenderClose::COMPLETE)
+    // Destructors record release intent. Runtime maintenance releases nested
+    // resource uses on subsequent bounded turns, including after backend exit.
+    while ((*renderer)->statistics().runtime_leases != 0)
     {
+        pump();
+    }
+    assert((*renderer)->statistics().views == 0);
+    assert((*renderer)->beginClose());
+    for (;;)
+    {
+        std::size_t replies = 64, controls = 64, programs = 8;
+        const auto closed = (*renderer)->advanceClose(replies, controls, programs);
+        assert(closed);
+        if (*closed == render::ERenderClose::COMPLETE)
+        {
+            break;
+        }
         pump();
     }
     assert((*renderer)->statistics().validation_errors == 0);
     assert((*renderer)->joinStopped());
     renderer->reset();
-    assert((*window)->closeAfterRendererStopped());
-    window->reset();
     (*project)->requestClose();
     while (!*(*project)->advanceClose())
     {
         assert(runtime->drainMain(64));
     }
     project->reset();
+    assert(stdexec::sync_wait(tasks.close()));
     runtime->requestStop();
     assert(runtime->join());
     if (!result_accurate)
     {
         std::puts("FAIL JR03: normal drain followed by backend failure reported success; "
-                  "World/View/Binding/pins/leases still retired, owner cleanup completed");
+                  "World/View/Scene resources still retired, owner cleanup completed");
         return 2;
     }
     std::printf("PASS case=%s actual Simulation/Run/transport/GPU and author "

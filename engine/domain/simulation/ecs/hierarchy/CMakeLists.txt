@@ -52,3 +52,15 @@ engine_target_add_ecs_component_codegen(
     LOGICAL_PATH lux/engine/simulation/ecs/Parent.hpp
     SYMBOL hierarchy
 )
+
+if(BUILD_TESTING)
+    add_executable(hierarchy_generation_test test/generation.cpp)
+    target_link_libraries(hierarchy_generation_test PRIVATE hierarchy)
+    target_include_directories(hierarchy_generation_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude)
+    if(MSVC)
+        target_compile_options(hierarchy_generation_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(hierarchy_generation_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME simulation.hierarchy_generation COMMAND hierarchy_generation_test)
+endif()

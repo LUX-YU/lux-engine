@@ -24,6 +24,8 @@ component_include_directories(
     BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
     INSTALL_TIME
         include
 )
@@ -61,3 +63,14 @@ component_add_cmake_scripts(render_client
     ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/engine_render_codegen.cmake)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/template/
     DESTINATION share/lux-engine-function/render_client/cmake_scripts/template)
+
+if(BUILD_TESTING)
+    add_executable(render_release_test test/release.cpp)
+    target_link_libraries(render_release_test PRIVATE render_client)
+    if(MSVC)
+        target_compile_options(render_release_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(render_release_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME render.release_records COMMAND render_release_test)
+endif()

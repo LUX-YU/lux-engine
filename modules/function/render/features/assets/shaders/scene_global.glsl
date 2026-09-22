@@ -6,7 +6,7 @@ struct SceneGlobalGpuData {
     float time_sec;
     float delta_time;
     uint frame_number;
-    float pad0;
+    float maintenance_time;
 };
 
 #endif

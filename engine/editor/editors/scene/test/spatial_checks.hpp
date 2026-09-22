@@ -36,6 +36,9 @@ inline void checkSpatialEditing(lux::editor::scene::SceneEditor &editor)
     scene::RayHit3D hit;
     const math::Ray3d surface{{0, 1, 20}, {0, 0, -1}};
     const auto found = editor.raycastNearest(editor.instance(), surface, 100, hit);
+    std::printf("spatial query: result=%d found=%d error=%u entity=%u expected=%u\n", bool(found),
+                found ? *found : false, found ? 0U : unsigned(found.error().code), unsigned(hit.entity),
+                unsigned(editor.objects().front().object.entity));
     assert(found && *found && hit.entity == editor.objects().front().object.entity);
     const auto landing = viewport->creationPoint(editor, editor.instance(), surface, 0);
     assert(landing && landing->isApprox(hit.position));
@@ -67,7 +70,7 @@ inline void checkSpatialEditing(lux::editor::scene::SceneEditor &editor)
            selection_notice.revision == editor.selection().revision);
     const auto creation_selection_revision = editor.selection().revision;
     const auto *value = static_cast<const Camera *>(editor.component(*created, cxx::typeToken<Camera>()));
-    assert(value && !value->view.isValid() && !value->primary);
+    assert(value && !value->primary);
     assert(std::holds_alternative<scene::OrthographicProjection>(value->projection));
     assert(editor.historyView()->history.cursor == before.cursor + 1);
     assert(editor.undo() && !editor.component(*created, cxx::typeToken<Camera>()));
@@ -95,7 +98,6 @@ inline void checkReopenedCameras(const lux::editor::scene::SceneEditor &editor)
         if (camera)
         {
             ++count;
-            assert(!camera->view.isValid());
             if (const auto *projection = std::get_if<lux::scene::OrthographicProjection>(&camera->projection))
             {
                 ++orthographic;

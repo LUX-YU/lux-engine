@@ -15,3 +15,13 @@ component_add_transitive_commands(editor_assets
     "find_package(lux-engine-toolchain-asset REQUIRED COMPONENTS toolchain_model_cooker)")
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-assets VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_assets)
+
+if(BUILD_TESTING)
+    add_executable(editor_import_protocol test/import_protocol.cpp)
+    target_link_libraries(editor_import_protocol PRIVATE editor_assets)
+    if(MSVC)
+        target_compile_options(editor_import_protocol PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(editor_import_protocol PRIVATE -UNDEBUG)
+    endif()
+endif()

@@ -3,16 +3,20 @@
 #include <atomic>
 #include <cassert>
 #include <cstdio>
-#include <lux/engine/editor/rendering/EditorRenderer.hpp>
-#include <lux/engine/editor/rendering/RenderView.hpp>
 #include <lux/engine/function/render/features/BuiltinFeatures.hpp>
+#include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/render/RenderRuntime.hpp>
+#include <lux/engine/render/RenderView.hpp>
 #include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
+#include <lux/engine/scene/RenderSystemMetadata.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
-#include <lux/engine/scene/SceneRenderBinding.hpp>
+#include <lux/engine/scene/SceneDriver.hpp>
+#include <lux/engine/scene/SceneInstance.hpp>
+
 #include <lux/engine/scene/SceneRenderSchema.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
@@ -39,8 +43,7 @@ inline void checkProgramAdmissionOrder()
             std::size_t adopted_updates{}, adopted_frames{}, accepted_updates{};
             std::size_t allowance = 64;
 
-            const auto offer_frame = [&]
-            {
+            const auto offer_frame = [&] {
                 if (allowance && session.hasPendingSubmit() && session.retryPendingSubmit())
                 {
                     --allowance;
@@ -51,8 +54,7 @@ inline void checkProgramAdmissionOrder()
                     --allowance;
                 }
             };
-            const auto offer_update = [&]
-            {
+            const auto offer_update = [&] {
                 if (!allowance || accepted_updates == 64)
                 {
                     return;
@@ -125,20 +127,22 @@ struct RenderThreadChecks final
 {
     std::shared_ptr<const lux::scene::RenderSystemMetadata> metadata;
     lux::scene::SceneDescription description;
-    std::unique_ptr<lux::scene::SceneRenderBinding> binding;
-    lux::simulation::ecs::Registry registry;
-    std::unique_ptr<lux::scene::RenderSyncPipeline> pipeline;
+    std::unique_ptr<lux::scene::SceneInstance> instance;
+    lux::scene::RenderSystem *system{};
+    lux::render::RenderSceneReceipt receipt;
+    lux::task::TaskExecutor executor{*lux::task::TaskExecutor::create({0, 1024})};
+    lux::scene::SceneDriver driver{executor};
     lux::simulation::ecs::Entity entity;
-    std::unique_ptr<lux::editor::rendering::RenderView> view;
+    std::unique_ptr<lux::render::RenderView> view;
     std::size_t phase{}, frames{};
     std::uint64_t completed_before{};
 
     ~RenderThreadChecks()
     {
-        assert(!binding);
+        assert(!instance);
     }
 
-    void begin(lux::editor::rendering::EditorRenderer &renderer)
+    void begin(lux::render::RenderRuntime &renderer)
     {
         using namespace lux;
         std::vector<simulation::ecs::ComponentSchema> schemas;
@@ -180,49 +184,59 @@ struct RenderThreadChecks final
         auto assembled = std::move(builder).build();
         assert(assembled);
         description = std::move(*assembled);
-        auto begun = scene::SceneRenderBinding::begin(renderer, description.systemAt(0), metadata);
-        assert(begun);
-        binding = std::move(*begun);
+        std::array providers{
+            scene::makeSceneCapabilityProvider<render::RenderRuntime>("runtime", "lux.render.runtime", renderer),
+            scene::makeSceneCapabilityProvider<std::shared_ptr<const scene::RenderSystemMetadata>>(
+                "metadata", "lux.render.metadata", metadata)};
+        auto made =
+            scene::SceneInstance::create({std::make_shared<const scene::SceneDescription>(std::move(description)),
+                                          std::make_shared<const world::WorldDescription>(),
+                                          std::make_shared<const simulation::SimulationDescription>(), *built,
+                                          providers, simulation::ESimulationMode::DERIVATION});
+        assert(made && (*made)->simulation().seal());
+        instance = std::move(*made);
+        system = instance->findSceneSystem<scene::RenderSystem>();
+        assert(system);
+        receipt = system->resourceReceipt();
     }
-    bool poll(lux::process::ExecutionRuntime &, lux::editor::rendering::EditorRenderer &renderer)
+
+    bool poll(lux::process::ExecutionRuntime &, lux::render::RenderRuntime &renderer)
     {
         using namespace lux;
         if (phase == 0)
         {
-            assert(binding->poll(0) == 0);
-            assert(!binding->hasFailure());
-            if (binding->state() != scene::ESceneRenderBindingState::READY)
+            const auto status = receipt.status();
+            assert(status.failure.ok());
+            if (status.state != render::ESceneResourceState::READY)
             {
                 return false;
             }
-            std::thread wrong_thread(
-                [&]
-                {
-                    const auto wrong = renderer.acquire();
-                    assert(!wrong && wrong.error().code == scene::ERenderRuntimeError::ACTIVATION_FAILURE);
-                });
+            std::thread wrong_thread([&] {
+                const auto wrong = renderer.control();
+                assert(!wrong && wrong.error().code == render::ERendererError::WRONG_THREAD);
+            });
             wrong_thread.join();
-            auto input = binding->takeInput();
-            assert(input);
-            auto opened = renderer.openView(input->sceneId(), {{320, 240}, true, 2048});
+            auto opened = system->openView({.extent = {320, 240}});
             assert(opened);
             view = std::move(*opened);
-            auto prepared = input->makePipeline(registry, description.systemAt(0));
-            assert(prepared);
-            pipeline = std::move(*prepared);
+            auto &registry = instance->registry();
             entity = registry.create();
             registry.emplace<simulation::ecs::WorldTransform3D>(entity);
             registry.emplace<simulation::ecs::Light3D>(entity);
-            assert(pipeline->tryPublish() == scene::ERenderPublishResult::FULL_SYNC_PUBLISHED);
+            scene::SceneAdvanceBudget budget{32, 1, 0};
+            assert(driver.advance(*instance, std::chrono::steady_clock::now(), budget) ==
+                   scene::ESceneProgress::PENDING);
+            assert(system->transportStatistics().published == 1 && system->transportStatistics().pending == 1);
             registry.patch<simulation::ecs::Light3D>(entity, [](auto &light) { light.value.intensity = 2; });
-            assert(pipeline->tryPublish() == scene::ERenderPublishResult::BACKPRESSURED);
             completed_before = renderer.statistics().gpu_completed;
             phase = 1;
         }
         else if (phase == 1)
         {
-            assert(binding->poll(0) == 0);
-            const auto counts = binding->statistics();
+            scene::SceneAdvanceBudget budget{32, 1, 0};
+            assert(driver.advance(*instance, std::chrono::steady_clock::now(), budget) ==
+                   scene::ESceneProgress::PENDING);
+            const auto counts = system->transportStatistics();
             assert(counts.published == 1 && counts.pending == 1 && counts.forwarded == 0);
             if (++frames < 12 || renderer.statistics().gpu_completed <= completed_before)
             {
@@ -232,49 +246,43 @@ struct RenderThreadChecks final
         }
         else if (phase == 2)
         {
-            const auto submitted = binding->poll(1);
-            assert(submitted <= 1);
-            if (!submitted)
+            const auto before = system->transportStatistics().forwarded;
+            scene::SceneAdvanceBudget budget{32, 1, 1};
+            static_cast<void>(driver.advance(*instance, std::chrono::steady_clock::now(), budget));
+            assert(instance->progress().result);
+            const auto counts = system->transportStatistics();
+            assert(counts.forwarded - before <= 1);
+            if (counts.forwarded != 2)
             {
                 return false;
             }
-            assert(pipeline->tryPublish() == scene::ERenderPublishResult::PUBLISHED);
-            assert(binding->statistics().published == 2 && binding->statistics().pending == 1);
-            pipeline.reset(); // Main ends its producer; retained packet remains owned by Binding.
-            assert(binding->statistics().pending == 1);
+            assert(counts.published == 2 && counts.pending == 0);
+            assert(view->beginClose());
             phase = 3;
         }
         else if (phase == 3)
         {
-            assert(binding->poll(1) <= 1);
-            if (binding->hasPendingUpdate())
-            {
-                return false;
-            }
-            assert(binding->statistics().forwarded == 2);
-            assert(view->beginClose());
             auto closed = view->advanceClose();
             assert(closed);
-            if (*closed != editor::rendering::ERenderClose::COMPLETE)
+            if (*closed != render::ERenderClose::COMPLETE)
             {
                 return false;
             }
             view.reset();
-            binding->requestClose();
+            instance.reset();
+            system = nullptr;
             phase = 4;
         }
         else if (phase == 4)
         {
-            assert(binding->poll(1) <= 1);
-            if (binding->state() != scene::ESceneRenderBindingState::CLOSED)
+            const auto status = receipt.status();
+            assert(status.failure.ok());
+            if (status.state != render::ESceneResourceState::RETIRED)
             {
                 return false;
             }
-            const auto counts = binding->statistics();
-            assert(counts.published == 2 && counts.forwarded == 2 && counts.pending == 0 && counts.high_water == 1);
-            binding.reset();
             std::puts(
-                "PASS Main producer: thread guard, prepared packet retention, budget 0/1, GPU progress, finite drain");
+                "PASS Main SceneDriver: thread guard, retained publication, budget 0/1, GPU progress, RAII retirement");
             return true;
         }
         return false;

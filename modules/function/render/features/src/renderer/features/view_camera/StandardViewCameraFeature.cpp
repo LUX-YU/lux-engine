@@ -7,56 +7,67 @@
 
 namespace lux::render
 {
-    StandardViewCameraFeature::StandardViewCameraFeature(Config cfg)
-        : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
+StandardViewCameraFeature::StandardViewCameraFeature(Config cfg)
+    : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
+{
+}
+
+lux::render::Expected<void> StandardViewCameraFeature::initAndAttachTo(RenderScene &sc)
+{
+    // Own the per-scene 3D camera store. ensure<T>: idempotent get-or-create
+    // (whoever attaches first builds it). No GPU state — it is a plain CPU
+    // mirror filled by the camera op handler each frame and read by the camera
+    // consumers (cull / shadow / hzb / deferred lighting).
+    sc.resources().ensure<ViewCameraResource>();
+    return {};
+}
+
+void StandardViewCameraFeature::onDetachFromScene(RenderScene &sc)
+{
+    // The resource container can outlive this capability. Reattaching it must
+    // not resurrect camera input from a previous Feature instance.
+    if (auto *cameras = sc.resources().find<ViewCameraResource>())
     {
+        cameras->clear();
     }
+}
 
-    lux::render::Expected<void> StandardViewCameraFeature::initAndAttachTo(RenderScene& sc)
+bool StandardViewCameraFeature::viewReady(ViewHandle view) const noexcept
+{
+    const auto *cameras = renderScene().resources().find<ViewCameraResource>();
+    return renderScene().getView(view) && cameras && cameras->find(view.index);
+}
+
+void StandardViewCameraFeature::deallocateViewState(uint32_t view)
+{
+    // A view was destroyed (RenderScene::removeView → deallocateViewState per
+    // feature). Evict its camera entry so a later REUSED view id can't inherit
+    // stale matrices / frustum — the camera used to die with View::cached_frame_data.
+    if (auto *cam = sceneView().resources().find<ViewCameraResource>())
     {
-        // Own the per-scene 3D camera store. ensure<T>: idempotent get-or-create
-        // (whoever attaches first builds it). No GPU state — it is a plain CPU
-        // mirror filled by the camera op handler each frame and read by the camera
-        // consumers (cull / shadow / hzb / deferred lighting).
-        sc.resources().ensure<ViewCameraResource>();
-        return {};
+        cam->removeView(view);
     }
+}
 
-    void StandardViewCameraFeature::onDetachFromScene(RenderScene& /*sc*/)
+bool StandardViewCameraFeature::canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept
+{
+    const auto *cameras = renderScene().resources().find<ViewCameraResource>();
+    return cameras == nullptr || cameras->canRebaseSceneOrigin(origin_delta);
+}
+
+void StandardViewCameraFeature::rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept
+{
+    if (auto *cameras = renderScene().resources().find<ViewCameraResource>())
     {
-        // Resource owned by the scene registry; torn down at scene teardown after
-        // the camera-consuming features that read it (this feature registers first
-        // → tears down last). Nothing to do here.
+        cameras->rebaseSceneOrigin(origin_delta);
     }
+}
 
-    void StandardViewCameraFeature::deallocateViewState(uint32_t view)
-    {
-        // A view was destroyed (RenderScene::removeView → deallocateViewState per
-        // feature). Evict its camera entry so a later REUSED view id can't inherit
-        // stale matrices / frustum — the camera used to die with View::cached_frame_data.
-        if (auto* cam = sceneView().resources().find<ViewCameraResource>())
-            cam->removeView(view);
-    }
+// (原先这里有一个空的 addPasses:本单元只拥有资源,不产 render-graph pass。
+//  现在它继承 RenderFeature,不再被迫实现 addPasses。)
 
-    bool StandardViewCameraFeature::canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept
-    {
-        const auto* cameras = renderScene().resources().find<ViewCameraResource>();
-        return cameras == nullptr || cameras->canRebaseSceneOrigin(origin_delta);
-    }
-
-    void StandardViewCameraFeature::rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept
-    {
-        if (auto* cameras = renderScene().resources().find<ViewCameraResource>())
-        {
-            cameras->rebaseSceneOrigin(origin_delta);
-        }
-    }
-
-    // (原先这里有一个空的 addPasses:本单元只拥有资源,不产 render-graph pass。
-    //  现在它继承 RenderFeature,不再被迫实现 addPasses。)
-
-    // The factory (kViewCameraFeatureFactory) + its createFn + the camera
-    // update op live in ViewCameraOperationHandlers.cpp, next to the handler their
-    // register_ops_fn binds (the grid / light layout).
+// The factory (kViewCameraFeatureFactory) + its createFn + the camera
+// update op live in ViewCameraOperationHandlers.cpp, next to the handler their
+// register_ops_fn binds (the grid / light layout).
 
 } // namespace lux::render

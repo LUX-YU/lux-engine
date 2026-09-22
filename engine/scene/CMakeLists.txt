@@ -6,5 +6,7 @@ add_subdirectory(asset)
 add_subdirectory(integration/world_materialization)
 add_subdirectory(integration/script_description)
 add_subdirectory(integration/script)
-add_subdirectory(builtin_systems/render)
 add_subdirectory(builtin_systems/mesh_query)
+add_subdirectory(builtin_systems/render)
+
+add_subdirectory(builtin_systems/world_loading)

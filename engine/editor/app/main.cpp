@@ -2,10 +2,18 @@
 #include <cstdio>
 #include <lux/cxx/arguments/Arguments.hpp>
 #include <lux/engine/editor/Editor.hpp>
-#include <lux/engine/editor/gui/GuiFrontend.hpp>
 #include <lux/engine/editor/gui/flowforge/FlowForgeDocumentProvider.hpp>
 #include <lux/engine/editor/gui/material/MaterialDocumentProvider.hpp>
 #include <lux/engine/editor/gui/scene/SceneDocumentProvider.hpp>
+#include <lux/engine/function/render/features/genops/ForwardMeshOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/Grid3DOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MaterialOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshShadowOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/ShadowMapOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/ViewCameraOperation.ops.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <span>
 #if defined(_WIN32)
@@ -16,69 +24,69 @@
 
 namespace
 {
-    // The registry owns generated metadata; the immutable selection owns its pointer arrays.
-    // Frontend, open requests, documents and worker captures share this lease until their last use.
-    struct ReflectedFlowMetadata final
-    {
-        std::vector<const lux::meta::RefClass *> classes;
-        std::vector<const lux::meta::RefFunction *> functions;
+// The registry owns generated metadata; the immutable selection owns its pointer arrays.
+// Frontend, open requests, documents and worker captures share this lease until their last use.
+struct ReflectedFlowMetadata final
+{
+    std::vector<const lux::meta::RefClass *> classes;
+    std::vector<const lux::meta::RefFunction *> functions;
 
-        ReflectedFlowMetadata()
+    ReflectedFlowMetadata()
+    {
+        lux::meta::ReflectionRegistry::initRegistry();
+        const auto &registry = lux::meta::ReflectionRegistry::instance();
+        for (const auto &type : registry.classes())
         {
-            lux::meta::ReflectionRegistry::initRegistry();
-            const auto &registry = lux::meta::ReflectionRegistry::instance();
-            for (const auto &type : registry.classes())
+            if (type && type->type.size != 0)
             {
-                if (type && type->type.size != 0)
-                {
-                    classes.push_back(type.get());
-                }
-            }
-            for (const auto &function : registry.functions())
-            {
-                if (function)
-                {
-                    functions.push_back(function.get());
-                }
+                classes.push_back(type.get());
             }
         }
-        ~ReflectedFlowMetadata()
+        for (const auto &function : registry.functions())
         {
-            lux::meta::ReflectionRegistry::destroyRegistry();
+            if (function)
+            {
+                functions.push_back(function.get());
+            }
         }
-        ReflectedFlowMetadata(const ReflectedFlowMetadata &) = delete;
-        ReflectedFlowMetadata &operator=(const ReflectedFlowMetadata &) = delete;
-    };
-
-    lux::editor::EditorResult<std::filesystem::path> chooseProject()
-    {
-#if defined(_WIN32)
-        std::wstring path(32768, L'\0');
-        OPENFILENAMEW dialog{};
-        dialog.lStructSize = sizeof(dialog);
-        dialog.lpstrFilter = L"Lux projects (*.luxproject)\0*.luxproject\0\0";
-        dialog.lpstrFile = path.data();
-        dialog.nMaxFile = static_cast<DWORD>(path.size());
-        dialog.lpstrTitle = L"Open existing Lux project";
-        dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-        if (GetOpenFileNameW(&dialog))
-        {
-            path.resize(std::wcslen(path.data()));
-            return std::filesystem::path{std::move(path)};
-        }
-        const auto error = CommDlgExtendedError();
-        if (error)
-        {
-            return lux::cxx::unexpected(
-                lux::editor::EditorFailure{lux::editor::EEditorError::FRONTEND_FAILURE, "project.dialog", error});
-        }
-        return std::filesystem::path{};
-#else
-        return lux::cxx::unexpected(
-            lux::editor::EditorFailure{lux::editor::EEditorError::FRONTEND_FAILURE, "project.dialog", 0,
-                                       "Use --project to select an existing project on this platform"});
-#endif
     }
+    ~ReflectedFlowMetadata()
+    {
+        lux::meta::ReflectionRegistry::destroyRegistry();
+    }
+    ReflectedFlowMetadata(const ReflectedFlowMetadata &) = delete;
+    ReflectedFlowMetadata &operator=(const ReflectedFlowMetadata &) = delete;
+};
+
+lux::editor::EditorResult<std::filesystem::path> chooseProject()
+{
+#if defined(_WIN32)
+    std::wstring path(32768, L'\0');
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.lpstrFilter = L"Lux projects (*.luxproject)\0*.luxproject\0\0";
+    dialog.lpstrFile = path.data();
+    dialog.nMaxFile = static_cast<DWORD>(path.size());
+    dialog.lpstrTitle = L"Open existing Lux project";
+    dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    if (GetOpenFileNameW(&dialog))
+    {
+        path.resize(std::wcslen(path.data()));
+        return std::filesystem::path{std::move(path)};
+    }
+    const auto error = CommDlgExtendedError();
+    if (error)
+    {
+        return lux::cxx::unexpected(
+            lux::editor::EditorFailure{lux::editor::EEditorError::FRONTEND_FAILURE, "project.dialog", error});
+    }
+    return std::filesystem::path{};
+#else
+    return lux::cxx::unexpected(
+        lux::editor::EditorFailure{lux::editor::EEditorError::FRONTEND_FAILURE, "project.dialog", 0,
+                                   "Use --project to select an existing project on this platform"});
+#endif
+}
 } // namespace
 
 int main(int argc, char **argv)
@@ -119,22 +127,26 @@ int main(int argc, char **argv)
         }
         config.project_file = std::move(*project);
     }
-    lux::editor::gui::GuiConfig gui;
     if (parsed->contains("font"))
     {
-        gui.window.font.emplace();
-        gui.window.font->file = std::filesystem::u8path(*parsed->get("font").as<std::string>());
+        config.window.font.emplace();
+        config.window.font->file = std::filesystem::u8path(*parsed->get("font").as<std::string>());
     }
     auto metadata = std::make_shared<ReflectedFlowMetadata>();
     lux::flowforge::FlowSourceEnvironment flow;
     flow.classes = metadata->classes;
     flow.functions = metadata->functions;
     flow.code_lifetime = metadata;
-    gui.providers.push_back(lux::editor::gui::sceneDocumentProvider());
-    gui.providers.push_back(lux::editor::gui::materialDocumentProvider());
-    gui.providers.push_back(lux::editor::gui::flowForgeDocumentProvider(std::move(flow)));
+    config.providers.push_back(lux::editor::gui::sceneDocumentProvider());
+    config.providers.push_back(lux::editor::gui::materialDocumentProvider());
+    config.providers.push_back(lux::editor::gui::flowForgeDocumentProvider(std::move(flow)));
     config.execution = {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}};
-    config.frontend = [gui = std::move(gui)] { return lux::editor::gui::makeGuiFrontend(gui); };
+    const std::array factories{lux::render::kViewCameraFeatureFactory,  lux::render::kMaterialFeatureFactory,
+                               lux::render::kMeshStackFeatureFactory,   lux::render::kLightFeatureFactory,
+                               lux::render::kForwardMeshFeatureFactory, lux::render::kShadowMapFeatureFactory,
+                               lux::render::kMeshShadowFeatureFactory,  lux::render::kHighlightFeatureFactory,
+                               lux::render::kGrid3DFeatureFactory};
+    config.renderer.feature_factories.assign(factories.begin(), factories.end());
     lux::editor::Editor editor(std::move(config));
     return editor.exec();
 }

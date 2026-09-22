@@ -1,4 +1,9 @@
 find_package(Vulkan REQUIRED)
+
+option(LUX_RENDER_LIFECYCLE_DIAGNOSTICS "Private lifecycle rejection stimulus; never enable in a normal SDK" OFF)
+if(LUX_RENDER_LIFECYCLE_DIAGNOSTICS AND (NOT BUILD_TESTING OR NOT CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo"))
+    message(FATAL_ERROR "Render lifecycle diagnostics require BUILD_TESTING and RelWithDebInfo")
+endif()
 find_package(lux-cxx REQUIRED COMPONENTS core container concurrent memory)
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 
@@ -93,6 +98,9 @@ add_component(
     NAMESPACE      lux::engine::function
     SOURCE_FILES   ${RENDER_VULKAN_SRCS}
 )
+if(LUX_RENDER_LIFECYCLE_DIAGNOSTICS)
+    target_compile_definitions(render_vulkan PRIVATE LUX_RENDER_LIFECYCLE_DIAGNOSTICS)
+endif()
 
 component_include_directories(
     render_vulkan

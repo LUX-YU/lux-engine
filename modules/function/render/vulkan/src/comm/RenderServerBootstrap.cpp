@@ -10,6 +10,10 @@
 #include <vk_mem_alloc.h>
 
 #include <mutex>
+#if defined(LUX_RENDER_LIFECYCLE_DIAGNOSTICS)
+#include <cstdio>
+#include <cstdlib>
+#endif
 
 // Vulkan infrastructure
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
@@ -1108,6 +1112,21 @@ void handleResizeTarget(Ctx &ctx, const ResizeTargetPayload &p)
     auto *t = im.targets_registry_.tryGet(p.target);
     TargetResizedReply reply{};
     reply.target = p.target;
+#if defined(LUX_RENDER_LIFECYCLE_DIAGNOSTICS)
+    // An explicitly selected request returns the existing resize-rejected status.
+    // Keep the old pool and all GPU uses intact; normal SDKs contain no stimulus.
+    static std::uint64_t request_ordinal{};
+    const auto ordinal = ++request_ordinal;
+    const auto *requested = std::getenv("LUX_RENDER_REJECT_RESIZE_REQUEST");
+    if (requested && std::strtoull(requested, nullptr, 10) == ordinal)
+    {
+        reply.status = 3;
+        std::fprintf(stderr, "[render.diagnostic] rejected_resize=%llu width=%u height=%u status=3\n",
+                     static_cast<unsigned long long>(ordinal), p.new_extent.width, p.new_extent.height);
+        replyToCurrent<ResizeTargetPayload>(ctx, reply);
+        return;
+    }
+#endif
     if (!t || !t->pool)
     {
         reply.status = 1;

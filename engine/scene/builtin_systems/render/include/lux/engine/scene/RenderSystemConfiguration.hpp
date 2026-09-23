@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <vector>
+#include <string>
 
 namespace lux::scene
 {
@@ -15,6 +16,8 @@ namespace lux::scene
 
         LUX_MEMBER(editor_widget = render_feature_config)
         std::vector<std::byte> configuration;
+        std::string configuration_schema;
+        std::uint32_t configuration_version{};
     };
 
     struct LUX_TYPE_INFO(both) RenderSystemConfiguration final

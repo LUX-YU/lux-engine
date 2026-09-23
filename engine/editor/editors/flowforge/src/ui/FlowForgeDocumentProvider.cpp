@@ -10,6 +10,7 @@
 #include <lux/engine/editor/gui/PublicationControls.hpp>
 #include <lux/engine/editor/gui/flowforge/FlowForgeDocumentProvider.hpp>
 #include <lux/engine/editor/project/Project.hpp>
+#include <lux/engine/editor/metadata/EditorReflection.hpp>
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
@@ -1089,11 +1090,30 @@ GuiDocumentProvider flowForgeDocumentProvider(lux::flowforge::FlowSourceEnvironm
     return {std::string(flowforge::kFlowForgeDocumentType),
             [](const ProjectAssetEntry &asset) { return asset.kind == EProjectAssetKind::FLOW_GRAPH; },
             [environment = std::move(environment)](process::ExecutionRuntime &runtime,
-                                                   lux::render::RenderRuntime &) -> EditorResult<DocumentRegistration> {
+                                                   lux::render::RenderRuntime &,
+                std::span<const std::shared_ptr<const PluginLibrary>>) -> EditorResult<DocumentRegistration> {
                 return DocumentRegistration{
                     std::string(flowforge::kFlowForgeDocumentType),
                     [&runtime, environment](Project &project, const OpenDocumentRequest &request) {
-                        return flowforge::openFlowForgeDocument(project, request, runtime, environment);
+                        if (environment.code_lifetime || !environment.classes.empty() || !environment.functions.empty())
+                            return flowforge::openFlowForgeDocument(project, request, runtime, environment);
+                        struct Selection final
+                        {
+                            std::shared_ptr<const void> code{acquireEditorReflection()};
+                            std::vector<const meta::RefClass *> classes;
+                            std::vector<const meta::RefFunction *> functions;
+                        };
+                        auto selected = std::make_shared<Selection>();
+                        const auto &registry = meta::ReflectionRegistry::instance();
+                        for (const auto &type : registry.classes())
+                            if (type && type->type.size) selected->classes.push_back(type.get());
+                        for (const auto &function : registry.functions())
+                            if (function) selected->functions.push_back(function.get());
+                        lux::flowforge::FlowSourceEnvironment input;
+                        input.classes = selected->classes;
+                        input.functions = selected->functions;
+                        input.code_lifetime = selected;
+                        return flowforge::openFlowForgeDocument(project, request, runtime, std::move(input));
                     }};
             },
             [](DocumentEditor &base, ui::UIRenderSystem &ui, lux::render::RenderRuntime &,

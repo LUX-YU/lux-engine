@@ -176,34 +176,50 @@ void GeneralRenderServer::flushPendingResourceReleases()
     impl_->pending_resource_releases_.clear();
 }
 
-FeatureTypeRegisteredReply GeneralRenderServer::addFeatureFactory(const FeatureFactory &factory)
+FeatureTypeRegisteredReply GeneralRenderServer::addFeatureFactory(
+    const FeatureFactory &factory, std::shared_ptr<const void> code_lifetime)
 {
     if (!impl_->renderer_)
-    {
         return FeatureTypeRegisteredReply{.error = renderError<err::device::VulkanObjectCreationFailed>()};
-    }
-
     auto &registry = impl_->renderer_->featureTypeRegistry();
     FeatureTypeRecord record{};
     record.factory = factory;
+    record.registration_leases.push_back(code_lifetime);
     auto result = registry.add(std::move(record));
-
-    FeatureTypeRegisteredReply reply{};
     if (!result)
-    {
-        reply.error = result.error();
-        return reply;
-    }
-
-    reply.feature_type_id = result->type_id;
-    reply.status = static_cast<std::uint32_t>(result->status);
+        return FeatureTypeRegisteredReply{.error = result.error()};
 
     auto &stored = registry.at(result->type_id);
     if (result->status == EFeatureTypeRegisterStatus::Registered && factory.register_ops_fn)
     {
-        stored.op_count = factory.register_ops_fn(&impl_->dispatcher, stored.ops, FeatureTypeRegistry::kMaxOps);
-        stored.op_count = std::min(stored.op_count, FeatureTypeRegistry::kMaxOps);
+        const auto registered = factory.register_ops_fn(&impl_->dispatcher, stored.ops, FeatureTypeRegistry::kMaxOps);
+        if (!registered || *registered != factory.operation_count)
+        {
+            // A failing registrar has already undone its own partial prefix.
+            if (registered && factory.unregister_ops_fn)
+                factory.unregister_ops_fn(&impl_->dispatcher, stored.ops, std::min(*registered, FeatureTypeRegistry::kMaxOps));
+            const auto error = registered ? renderError<err::feature::InvalidRegistration>() : registered.error();
+            registry.erase(result->type_id);
+            return FeatureTypeRegisteredReply{.error = error};
+        }
+        for (std::uint32_t index{}; index < *registered; ++index)
+        {
+            const bool invalid = stored.ops[index] == kInvalidTypeId;
+            const bool duplicate = std::find(stored.ops, stored.ops + index, stored.ops[index]) != stored.ops + index;
+            if (invalid || duplicate)
+            {
+                factory.unregister_ops_fn(&impl_->dispatcher, stored.ops, *registered);
+                registry.erase(result->type_id);
+                return FeatureTypeRegisteredReply{.error = renderError<err::feature::InvalidRegistration>()};
+            }
+        }
+        stored.op_count = *registered;
     }
+    if (code_lifetime && std::ranges::find(impl_->code_owners_, code_lifetime) == impl_->code_owners_.end())
+        impl_->code_owners_.push_back(std::move(code_lifetime));
+    FeatureTypeRegisteredReply reply{};
+    reply.feature_type_id = result->type_id;
+    reply.status = static_cast<std::uint32_t>(result->status);
     reply.op_count = stored.op_count;
     std::copy_n(stored.ops, stored.op_count, reply.ops);
     return reply;

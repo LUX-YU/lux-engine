@@ -21,8 +21,9 @@ inline void checkGeneratedTransformDragging(lux::editor::scene::SceneEditor &doc
 
     lux::editor::ui::UIRenderSystemConfig config;
     const auto registration = lux::editor::ui::uiRenderSystemRegistration();
-    auto metadata = lux::scene::SceneMetaManager::build({.scene_systems = {registration}});
-    assert(metadata);
+    const lux::simulation::ecs::ComponentSchemaSet task_components{};
+    const lux::simulation::SimulationSystemRegistry task_system_types;
+    const std::array task_scene_systems{registration};
     lux::scene::SceneDescriptionBuilder builder;
     assert(builder.addSystem({1}, "ui", registration.type, 1, {}, 0));
     auto description = std::move(builder).buildResolved();
@@ -37,7 +38,7 @@ inline void checkGeneratedTransformDragging(lux::editor::scene::SceneEditor &doc
     auto created = lux::scene::SceneInstance::create(
         {std::make_shared<const lux::scene::SceneDescription>(std::move(*description)),
          std::make_shared<const lux::world::WorldDescription>(),
-         std::make_shared<const lux::simulation::SimulationDescription>(), *metadata, providers,
+         std::make_shared<const lux::simulation::SimulationDescription>(), task_components, task_system_types, task_scene_systems, providers,
          lux::simulation::ESimulationMode::DERIVATION});
     assert(created && (*created)->simulation().seal());
     auto instance = std::move(*created);

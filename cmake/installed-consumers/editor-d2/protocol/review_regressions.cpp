@@ -505,7 +505,7 @@ int main(int argc, char **argv)
     config.providers.push_back(
         {std::string(material::kMaterialDocumentType),
          [](const ProjectAssetEntry &entry) { return entry.kind == EProjectAssetKind::MATERIAL_GRAPH; },
-         [&probe](auto &process, auto &) { return probe.registration(process); },
+         [&probe](auto &process, auto &, auto) { return probe.registration(process); },
          [](auto &, auto &, auto &, auto &) -> EditorResult<void> { return {}; }});
     Editor editor(std::move(config));
     probe.bind(editor);

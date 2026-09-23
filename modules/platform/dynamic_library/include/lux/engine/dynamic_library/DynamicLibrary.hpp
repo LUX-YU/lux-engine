@@ -12,8 +12,8 @@
  *  - **Linux**: `memfd_create(2)` + `dlopen("/proc/self/fd/N")`. Truly zero
  *    on-disk footprint. Falls back to `/dev/shm` on kernels < 3.17.
  *  - **Windows**: by default writes the image to a per-process scratch file
- *    in `%TEMP%/lux/<pid>/` opened with FILE_FLAG_DELETE_ON_CLOSE so the OS
- *    reaps it on process exit, then calls `LoadLibraryExW`. When compiled
+ *    in `%TEMP%/lux/<pid>/`, closes the writer, then calls `LoadLibraryExW`.
+ *    The file is removed after unloading the image. When compiled
  *    with `LUX_DYNAMIC_LIBRARY_USE_MEMORY_MODULE=ON`, falls back to the
  *    bundled MemoryModule loader for true zero-disk operation.
  *  - **macOS**: `mkstemp` + `dlopen` + `unlink` (dyld has no public from-memory API).
@@ -49,9 +49,9 @@ namespace lux::engine::platform
         DynamicLibrary& operator=(DynamicLibrary&& other) noexcept;
 
         /// Construct + load. Check is_loaded() afterwards.
-        explicit DynamicLibrary(const std::filesystem::path& path, LoadMode mode = LoadMode::Default);
+        explicit DynamicLibrary(const std::filesystem::path& path, ELoadMode mode = ELoadMode::DEFAULT);
 
-        bool load(const std::filesystem::path& path, LoadMode mode = LoadMode::Default);
+        bool load(const std::filesystem::path& path, ELoadMode mode = ELoadMode::DEFAULT);
 
         /**
          * @brief Load a shared library directly from an in-memory image.

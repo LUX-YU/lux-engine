@@ -11,15 +11,15 @@ engine_target_add_ecs_component_codegen(
     SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/Observer.cpp
     HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/scene/Observer.hpp
     LOGICAL_PATH lux/engine/scene/Observer.hpp SYMBOL sceneObserver)
+engine_target_add_static_type_info(
+    NAME world_loading_configuration_codegen TARGET scene_world_loading
+    SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldLoadingSystem.cpp
+    HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/scene/WorldLoadingConfiguration.hpp
+    LOGICAL_PATHS lux/engine/scene/WorldLoadingConfiguration.hpp)
 component_include_directories(scene_world_loading
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include)
 target_compile_definitions(scene_world_loading PRIVATE LUX_ENGINE_SCENE_WORLD_LOADING_LIBRARY)
-engine_add_type_runtime_info(NAME scene_world_loading_configuration_meta
-    TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/scene/WorldLoadingSystem.hpp
-    REGISTER_FUNC_NAME scene_world_loading_configuration)
-engine_target_add_type_runtime_info(TARGET scene_world_loading METAS scene_world_loading_configuration_meta
-    OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen)
 target_link_libraries(scene_world_loading PUBLIC
     lux::engine::scene::scene_world_materialization lux::engine::process::process_world_loading)
 component_add_transitive_commands(scene_world_loading

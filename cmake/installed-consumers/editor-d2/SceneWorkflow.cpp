@@ -1,3 +1,4 @@
+#include <lux/engine/meta/Meta.hpp>
 #include "TestExit.hpp"
 #include <cassert>
 #include <consumer/Domain.hpp>
@@ -13,6 +14,7 @@
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/scene/SceneAssetCodec.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
+#include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <lux/engine/simulation/SimulationAssetCodec.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
@@ -90,6 +92,13 @@ void createProject(const std::filesystem::path &root, bool indexed = false)
     scene::SceneDescriptionBuilder scene;
     scene.setWorld(identity<asset::AssetId>(10));
     scene.setSimulation(identity<asset::AssetId>(11));
+    const auto loading = scene::worldLoadingSystemRegistration();
+    scene::WorldLoadingConfiguration loading_configuration{{{0}}};
+    std::vector<std::byte> loading_payload;
+    assert(loading.configuration.encode(&loading_configuration, loading_payload));
+    assert(scene.addSystem({1}, "loading", loading.type, loading.description->version,
+        loading.description->configuration_schema_name, loading.description->configuration_schema_version,
+        loading_payload));
     auto scene_description = std::move(scene).build();
     assert(scene_description);
     auto scene_asset =
@@ -466,6 +475,8 @@ class Probe final
     EditorConfig configuration()
     {
         EditorConfig config;
+    config.plugin_root = LUX_TEST_PLUGIN_ROOT;
+    config.initial_plugins = {"lux.builtin.runtime"};
         config.window.visible = false;
         config.window.width = 1000;
         config.window.height = 700;
@@ -473,8 +484,8 @@ class Probe final
         const std::array bindings{consumer::binding()};
         auto provider = gui::sceneDocumentProvider(consumer::schemas(), bindings);
         const auto registration = provider.registration;
-        provider.registration = [this, registration](auto &runtime, auto &render) {
-            auto value = registration(runtime, render);
+        provider.registration = [this, registration](auto &runtime, auto &render, auto plugins) {
+            auto value = registration(runtime, render, plugins);
             if (!value)
             {
                 return value;

@@ -1452,6 +1452,8 @@ int main(int argc, char **argv)
     }
     Probe probe(evidence);
     EditorConfig config;
+    config.plugin_root = LUX_TEST_PLUGIN_ROOT;
+    config.initial_plugins = {"lux.builtin.runtime"};
     config.window.visible = false;
     if (evidence.mode == "small-budget")
     {
@@ -1467,14 +1469,8 @@ int main(int argc, char **argv)
     {
         config.renderer.frame_capacity = 0;
     }
-    const std::array factories{lux::render::kViewCameraFeatureFactory,  lux::render::kMaterialFeatureFactory,
-                               lux::render::kMeshStackFeatureFactory,   lux::render::kLightFeatureFactory,
-                               lux::render::kForwardMeshFeatureFactory, lux::render::kShadowMapFeatureFactory,
-                               lux::render::kMeshShadowFeatureFactory,  lux::render::kHighlightFeatureFactory,
-                               lux::render::kGrid3DFeatureFactory};
-    config.renderer.feature_factories.assign(factories.begin(), factories.end());
     config.renderer.validation = evidence.mode != "cost";
-    config.renderer.validation_message_sink = [&evidence](std::uint32_t severity, std::string_view message) {
+    auto diagnostics = [&evidence](std::uint32_t severity, std::string_view message) {
         std::fprintf(stderr, "Vulkan %u: %.*s\n", severity, int(message.size()), message.data());
         if (severity == 2 || message.find("Validation Error") != std::string_view::npos)
         {
@@ -1484,10 +1480,10 @@ int main(int argc, char **argv)
     auto provider = gui::sceneDocumentProvider();
     const auto registration = provider.registration;
     provider.registration = [&evidence, &probe, registration](lux::process::ExecutionRuntime &runtime,
-                                                              lux::render::RenderRuntime &renderer) {
+                                                              lux::render::RenderRuntime &renderer, auto plugins) {
+        if (!evidence.renderer) probe.start(runtime);
         evidence.renderer = &renderer;
-        probe.start(runtime);
-        auto value = registration(runtime, renderer);
+        auto value = registration(runtime, renderer, plugins);
         if (!value)
         {
             return value;
@@ -1545,7 +1541,7 @@ int main(int argc, char **argv)
     config.project_file = argv[1];
     config.execution = {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}};
 
-    Editor editor(std::move(config));
+    Editor editor(std::move(config), {}, std::move(diagnostics));
     probe.bind(editor);
     const auto begin = std::chrono::steady_clock::now();
     const auto result = editor.exec();

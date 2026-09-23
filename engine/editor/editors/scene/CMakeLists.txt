@@ -15,22 +15,22 @@ component_include_directories(editor_scene
 )
 target_compile_definitions(editor_scene PRIVATE LUX_EDITOR_SCENE_LIBRARY)
 target_link_libraries(editor_scene PUBLIC
-    lux::engine::editor::editor_core lux::engine::scene::scene_render lux::engine::function::render_runtime
-    lux::engine::scene::scene_composition lux::engine::scene::scene_meta
+    lux::engine::editor::editor_core lux::engine::editor::editor_metadata lux::engine::scene::scene_render lux::engine::function::render_runtime
+    lux::engine::scene::scene_composition
     lux::engine::scene::scene_world_materialization lux::engine::process::world_loading
     lux::engine::scene::scene_world_loading
     lux::engine::scene::scene_asset lux::engine::world::world_asset lux::engine::simulation::simulation_asset
     lux::engine::simulation::ecs::hierarchy
     lux::engine::scene::scene_mesh_query
     PRIVATE lux::cxx::concurrent lux::engine::simulation::transform_system
-        lux::engine::scene::scene_render_meta lux::engine::function::render_feature_meta
+          lux::engine::function::render_features
 )
 component_add_transitive_commands(editor_scene
     "find_package(lux-engine-editor-core REQUIRED COMPONENTS editor_core)"
+    "find_package(lux-engine-editor-metadata REQUIRED COMPONENTS editor_metadata)"
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_runtime)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
-    "find_package(lux-engine-scene-meta REQUIRED COMPONENTS scene_meta)"
     "find_package(lux-engine-scene-world-materialization REQUIRED COMPONENTS scene_world_materialization)"
     "find_package(lux-engine-scene-world-loading REQUIRED COMPONENTS scene_world_loading)"
     "find_package(lux-engine-process-world-loading REQUIRED COMPONENTS process_world_loading)"
@@ -71,7 +71,7 @@ if(LUX_EDITOR_UI_DIAGNOSTICS)
 endif()
 target_link_libraries(editor_scene_ui PUBLIC lux::engine::editor::editor_scene lux::engine::editor::editor_ui lux::engine::editor::editor_assets lux::engine::function::ui imgui::core
     PRIVATE lux::engine::editor::editor_ui lux::engine::platform::window lux::engine::simulation::transform_system
-    lux::engine::scene::scene_render_meta lux::engine::function::render_feature_meta)
+     )
 component_add_transitive_commands(editor_scene_ui
     "find_package(lux-engine-editor-ui REQUIRED COMPONENTS editor_ui)"
     "find_package(lux-engine-editor-assets REQUIRED COMPONENTS editor_assets)"
@@ -125,8 +125,8 @@ if(BUILD_TESTING)
     add_executable(editor_dynamic_run test/dynamic_run.cpp)
     foreach(test_target editor_scene_fixture editor_dynamic_run)
         target_link_libraries(${test_target} PRIVATE editor_scene_ui
-            lux::engine::function::render_features lux::engine::function::render_feature_meta
-            lux::engine::scene::scene_render_meta lux::engine::simulation::transform_system)
+            lux::engine::function::render_features
+             lux::engine::simulation::transform_system)
         if(MSVC)
             target_compile_options(${test_target} PRIVATE /UNDEBUG /utf-8)
         else()
@@ -157,8 +157,8 @@ endif()
 if(BUILD_TESTING)
     add_executable(editor_render_terminal test/render_terminal.cpp)
     target_link_libraries(editor_render_terminal PRIVATE editor_scene
-        lux::engine::function::render_features lux::engine::function::render_feature_meta
-        lux::engine::scene::scene_render_meta)
+        lux::engine::function::render_features
+        )
     if(MSVC)
         target_compile_options(editor_render_terminal PRIVATE /UNDEBUG /utf-8)
     else()

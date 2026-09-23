@@ -1,3 +1,4 @@
+#include "../../../../../cmake/installed-consumers/common/RenderRegistration.hpp"
 #include <lux/engine/function/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/function/render/features/genops/ViewCameraOperation.ops.hpp>
 #include <lux/engine/render/RenderFeature.hpp>
@@ -6,7 +7,7 @@
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
-#include <lux/engine/scene/RenderSystemMetadata.hpp>
+#include <lux/engine/scene/RenderFeatureSceneBinding.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneInstance.hpp>
 #include <lux/engine/scene/SceneRenderSchema.hpp>
@@ -66,9 +67,6 @@ int main()
     using namespace lux;
     using namespace std::chrono_literals;
     namespace ecs = simulation::ecs;
-    meta::ReflectionRegistry::initRegistry();
-    scene::initializeBuiltinRenderSystemMeta();
-    render::initializeBuiltinRenderFeatureMeta();
     std::vector<ecs::ComponentSchema> components;
     for (const auto schemas : {scene::sceneRenderComponentSchemas(), ecs::transformComponentSchemas()})
     {
@@ -76,41 +74,45 @@ int main()
     }
     auto schema = ecs::ComponentSchemaSet::build(std::move(components));
     assert(schema);
-    auto metadata = scene::SceneMetaManager::build(
-        {.components = *schema, .scene_systems = {scene::builtinRenderSystemRegistration()}});
-    assert(metadata);
+    const lux::simulation::ecs::ComponentSchemaSet task_components{*schema};
+    const lux::simulation::SimulationSystemRegistry task_system_types;
+    const std::array task_scene_systems{scene::builtinRenderSystemRegistration()};
     auto all_bindings = scene::builtinRenderFeatureSceneBindings();
     const auto binding =
         std::ranges::find(all_bindings, render::kViewCameraDescriptor.type, &scene::RenderFeatureSceneBinding::feature);
     assert(binding != all_bindings.end());
-    auto built_metadata = scene::RenderSystemMetadata::build(*metadata, {render::kViewCameraRenderFeatureRegistration},
-                                                             std::span(&*binding, 1));
-    assert(built_metadata);
-    auto render_metadata = std::make_shared<const scene::RenderSystemMetadata>(std::move(*built_metadata));
+    scene::RenderFeatureSceneBindings render_bindings(&*binding, 1);
     render::RendererConfig renderer;
     renderer.validation = true;
-    renderer.feature_factories = {render::kViewCameraFeatureFactory,
-                                  render::makeSimpleFactory(createProbe, "ClockProbe")};
+    std::vector<lux::render::RenderFeatureRegistration> initial_features = {render::kViewCameraRenderFeatureRegistration,
+                                  render::RenderFeatureRegistration{render::makeSimpleFactory(createProbe, "ClockProbe",
+                                      {.type = render::featureId("lux.test.clock_probe"), .name = "ClockProbe",
+                                       .canonical_name = "lux.test.clock_probe"}), {}, false}};
     auto made_runtime = render::RenderRuntime::create(std::move(renderer));
     assert(made_runtime);
+    registerRenderFeatures(**made_runtime, std::move(initial_features));
     auto runtime = std::move(*made_runtime);
     scene::RenderSystemConfiguration config;
-    config.features.push_back({render::kViewCameraDescriptor.type, {}});
+    const auto &feature = render::kViewCameraRenderFeatureRegistration;
+    std::vector<std::byte> defaults;
+    assert(feature.configuration.portable.encode_default(defaults));
+    config.features.push_back({feature.factory.descriptor.type, std::move(defaults),
+                               std::string(feature.configuration.schema), feature.configuration.schema_version});
     std::vector<std::byte> bytes;
     assert(scene::builtinRenderSystemRegistration().configuration.encode(&config, bytes));
     scene::SceneDescriptionBuilder builder;
     assert(builder.addSystem({1}, "render", scene::builtinRenderSystemRegistration().type, 1,
-                             scene::RenderSystem::Description.configuration_schema_name, 1, bytes));
+                             scene::RenderSystem::Description.configuration_schema_name, 2, bytes));
     auto built = std::move(builder).buildResolved();
     assert(built);
     std::array providers{
         scene::makeSceneCapabilityProvider<render::RenderRuntime>("runtime", "lux.render.runtime", *runtime),
-        scene::makeSceneCapabilityProvider<std::shared_ptr<const scene::RenderSystemMetadata>>(
-            "metadata", "lux.render.metadata", render_metadata)};
+        scene::makeSceneCapabilityProvider<scene::RenderFeatureSceneBindings>(
+            "bindings", "lux.render.scene_bindings", render_bindings)};
     scene::SceneCreateInfo create{std::make_shared<const scene::SceneDescription>(std::move(*built)),
                                   std::make_shared<const world::WorldDescription>(),
                                   std::make_shared<const simulation::SimulationDescription>(),
-                                  *metadata,
+                                  task_components, task_system_types, task_scene_systems,
                                   providers,
                                   simulation::ESimulationMode::EVOLUTION};
     auto made = scene::SceneInstance::create(create);

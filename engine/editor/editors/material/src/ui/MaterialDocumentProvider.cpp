@@ -812,7 +812,8 @@ GuiDocumentProvider materialDocumentProvider()
 {
     return {std::string(material::kMaterialDocumentType),
             [](const ProjectAssetEntry &asset) { return asset.kind == EProjectAssetKind::MATERIAL_GRAPH; },
-            [](process::ExecutionRuntime &runtime, lux::render::RenderRuntime &) -> EditorResult<DocumentRegistration> {
+            [](process::ExecutionRuntime &runtime, lux::render::RenderRuntime &,
+                std::span<const std::shared_ptr<const PluginLibrary>>) -> EditorResult<DocumentRegistration> {
                 return DocumentRegistration{std::string(material::kMaterialDocumentType),
                                             [&runtime](Project &project, const OpenDocumentRequest &request) {
                                                 return material::openMaterialDocument(project, request, runtime);

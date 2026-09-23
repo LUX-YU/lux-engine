@@ -2,6 +2,17 @@ function(engine_type_static_info_template out)
     set(${out} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../template/type_static_info.template" PARENT_SCOPE)
 endfunction()
 
+function(engine_add_value_metadata_projection)
+    cmake_parse_arguments(P "" "JOB;ROOT" "LOGICAL_PATHS" ${ARGN})
+    lux_codegen_add_projection(JOB "${P_JOB}" NAME value_metadata
+        TEMPLATE "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../template/value_metadata.template"
+        OUTPUT_ROOT "${P_ROOT}" OUTPUT_SUFFIX .value-metadata.json)
+    foreach(logical IN LISTS P_LOGICAL_PATHS)
+        string(REGEX REPLACE "\\.[^.]+$" ".value-metadata.json" output "${logical}")
+        set_property(GLOBAL APPEND PROPERTY LUX_VALUE_METADATA_FRAGMENTS "${P_ROOT}/${output}")
+    endforeach()
+endfunction()
+
 function(engine_target_add_static_type_info)
     set(one_value_args NAME TARGET OUT_DIR SOURCE_FILE)
     set(multi_value_args HEADERS LOGICAL_PATHS EXTRA_COMPILE_OPTIONS)
@@ -37,6 +48,8 @@ function(engine_target_add_static_type_info)
         OUTPUT_ROOT   "${ARGS_OUT_DIR}"
         OUTPUT_SUFFIX .type_static_info.hpp
     )
+    engine_add_value_metadata_projection(JOB "${ARGS_NAME}" ROOT "${ARGS_OUT_DIR}"
+        LOGICAL_PATHS ${ARGS_LOGICAL_PATHS})
     lux_target_add_codegen(
         TARGET "${ARGS_TARGET}"
         JOB    "${ARGS_NAME}"

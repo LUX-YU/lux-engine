@@ -31,7 +31,7 @@ target_link_libraries(
         lux::engine::simulation::composition
         lux::engine::scene::scene_description
         lux::engine::scene::scene_system
-        lux::engine::scene::scene_meta
+        lux::engine::simulation::ecs::schema
         lux::engine::resource::identity
 )
 component_add_transitive_commands(
@@ -40,7 +40,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-simulation-composition REQUIRED COMPONENTS simulation_composition)"
     "find_package(lux-engine-scene-description REQUIRED COMPONENTS scene_description)"
     "find_package(lux-engine-scene-system REQUIRED COMPONENTS scene_system)"
-    "find_package(lux-engine-scene-meta REQUIRED COMPONENTS scene_meta)"
+    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS schema)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
 )
 

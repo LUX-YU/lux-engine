@@ -1,3 +1,4 @@
+#include <string>
 /**
  * @file PCOperationHandlers.cpp
  * @brief FeatureFactory implementations for all 4 point cloud modes and
@@ -105,12 +106,23 @@ namespace lux::render
     // Typed-op: register/unregister generated from the op list. Shared by the 4
     // accumulating modes (Simple / GPUDriven / LOD / Splatting). The 5 handlers above are
     // the only hand-written pieces.
-    using PCOps = FeatureOpRegistrar<
-        ServerOp<PointCloudUploadOp, &handleUploadPointCloudChunk>,
-        ServerOp<PointCloudRemoveOp, &handleRemovePointCloudChunk>,
-        ServerOp<PointCloudClearAllOp, &handleClearAllPointCloud>,
-        ServerOp<PointCloudClearChunkOp, &handleClearPointCloudChunk>,
-        ServerOp<PointCloudSetPointSizeOp, &handleSetPointCloudPointSize>>;
+    template <class Op, const char *Mode> struct PointCloudModeOp : Op
+    {
+        inline static const std::string storage = std::string(Mode) + "." + Op::name;
+        inline static const char *name = storage.c_str();
+    };
+    inline constexpr char kSimpleMode[] = "PCSimple";
+    inline constexpr char kGPUDrivenMode[] = "PCGPUDriven";
+    inline constexpr char kLODMode[] = "PCLOD";
+    inline constexpr char kSplattingMode[] = "PCSplatting";
+    inline constexpr char kTransientMode[] = "PCTransient";
+
+    template <const char *Mode> using PCOps = FeatureOpRegistrar<
+        ServerOp<PointCloudModeOp<PointCloudUploadOp, Mode>, &handleUploadPointCloudChunk>,
+        ServerOp<PointCloudModeOp<PointCloudRemoveOp, Mode>, &handleRemovePointCloudChunk>,
+        ServerOp<PointCloudModeOp<PointCloudClearAllOp, Mode>, &handleClearAllPointCloud>,
+        ServerOp<PointCloudModeOp<PointCloudClearChunkOp, Mode>, &handleClearPointCloudChunk>,
+        ServerOp<PointCloudModeOp<PointCloudSetPointSizeOp, Mode>, &handleSetPointCloudPointSize>>;
 
     // =====================================================================
     //  PCFeatureSimple factory
@@ -136,11 +148,12 @@ namespace lux::render
 
     const FeatureFactory kPCFeatureSimpleFactory{
         &pcSimpleCreateFn,
-        &PCOps::registerAll,
-        &PCOps::unregisterAll,
+        &PCOps<kSimpleMode>::registerAll,
+        &PCOps<kSimpleMode>::unregisterAll,
         "PCSimple",
         -1,
         kPCSimpleDescriptor,
+        PCOps<kSimpleMode>::kOperationCount,
     };
 
     // =====================================================================
@@ -167,11 +180,12 @@ namespace lux::render
 
     const FeatureFactory kPCFeatureGPUDrivenFactory{
         &pcGPUDrivenCreateFn,
-        &PCOps::registerAll,
-        &PCOps::unregisterAll,
+        &PCOps<kGPUDrivenMode>::registerAll,
+        &PCOps<kGPUDrivenMode>::unregisterAll,
         "PCGPUDriven",
         -1,
         kPCGPUDrivenDescriptor,
+        PCOps<kGPUDrivenMode>::kOperationCount,
     };
 
     // =====================================================================
@@ -200,11 +214,12 @@ namespace lux::render
 
     const FeatureFactory kPCFeatureLODFactory{
         &pcLODCreateFn,
-        &PCOps::registerAll,
-        &PCOps::unregisterAll,
+        &PCOps<kLODMode>::registerAll,
+        &PCOps<kLODMode>::unregisterAll,
         "PCLOD",
         -1,
         kPCLODDescriptor,
+        PCOps<kLODMode>::kOperationCount,
     };
 
     // =====================================================================
@@ -233,11 +248,12 @@ namespace lux::render
 
     const FeatureFactory kPCFeatureSplattingFactory{
         &pcSplattingCreateFn,
-        &PCOps::registerAll,
-        &PCOps::unregisterAll,
+        &PCOps<kSplattingMode>::registerAll,
+        &PCOps<kSplattingMode>::unregisterAll,
         "PCSplatting",
         -1,
         kPCSplattingDescriptor,
+        PCOps<kSplattingMode>::kOperationCount,
     };
 
     // =====================================================================
@@ -273,11 +289,11 @@ namespace lux::render
     // uniformly rather than as placeholder slots (a stray remove/clear just gets a graceful
     // error reply instead of a hung request).
     using PCTransientOps = FeatureOpRegistrar<
-        ServerOp<PointCloudUploadOp, &handleReplaceTransientPoints>,
-        ServerOp<PointCloudRemoveOp, &handleRemovePointCloudChunk>,
-        ServerOp<PointCloudClearAllOp, &handleClearAllPointCloud>,
-        ServerOp<PointCloudClearChunkOp, &handleClearPointCloudChunk>,
-        ServerOp<PointCloudSetPointSizeOp, &handleSetPointCloudPointSize>>;
+        ServerOp<PointCloudModeOp<PointCloudUploadOp, kTransientMode>, &handleReplaceTransientPoints>,
+        ServerOp<PointCloudModeOp<PointCloudRemoveOp, kTransientMode>, &handleRemovePointCloudChunk>,
+        ServerOp<PointCloudModeOp<PointCloudClearAllOp, kTransientMode>, &handleClearAllPointCloud>,
+        ServerOp<PointCloudModeOp<PointCloudClearChunkOp, kTransientMode>, &handleClearPointCloudChunk>,
+        ServerOp<PointCloudModeOp<PointCloudSetPointSizeOp, kTransientMode>, &handleSetPointCloudPointSize>>;
 
     static Expected<FeatureHandle> pcTransientCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {
@@ -303,6 +319,7 @@ namespace lux::render
         "PCTransient",
         -1,
         kPCTransientDescriptor,
+        PCTransientOps::kOperationCount,
     };
 
 } // namespace lux::render

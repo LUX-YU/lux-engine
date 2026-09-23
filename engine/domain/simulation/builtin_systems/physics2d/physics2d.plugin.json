@@ -1,0 +1,23 @@
+{
+  "format": "lux.engine.plugin",
+  "version": 1,
+  "plugin": {
+    "id": "lux.builtin.physics2d",
+    "version": 1,
+    "source": "builtin",
+    "author": "Lux",
+    "description": "Box2D simulation and the PhysicsQuery2D ability.",
+    "runtime_library": {
+      "exports": [
+        "simulation",
+        "components"
+      ]
+    },
+    "dependencies": [
+      {
+        "plugin": "lux.builtin.runtime",
+        "version": 1
+      }
+    ]
+  }
+}

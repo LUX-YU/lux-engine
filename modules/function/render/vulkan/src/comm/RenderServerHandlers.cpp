@@ -51,15 +51,7 @@ namespace lux::render
         void handleRegisterFeatureType(Ctx& ctx, const RegisterFeatureTypePayload& p)
         {
             auto& im = impl(ctx);
-            auto& registry = im.renderer_->featureTypeRegistry();
-
-            // Register the TYPE first with NO ops — the registry dedups by factory identity
-            // (create_fn), so it does not need the op ids. Binding op handlers is deferred
-            // to the Registered branch only: an idempotent re-register must NOT call
-            // register_ops_fn again — each call allocates FRESH dispatcher slots, so doing
-            // it on a duplicate leaks slots + repoints name_index_ to an orphan (5-2).
-            FeatureTypeRecord rec{};
-            rec.factory = p.factory;
+            std::shared_ptr<const void> code_lifetime;
             if (p.module_lease_attachment != kInvalidTypeId)
             {
                 FeatureTypeRegisteredReply reply{};
@@ -83,38 +75,9 @@ namespace lux::render
                     replyToCurrent<RegisterFeatureTypePayload>(ctx, reply);
                     return;
                 }
-                rec.registration_leases.push_back(*static_cast<const std::shared_ptr<const void>*>(attachment.object));
+                code_lifetime = *static_cast<const std::shared_ptr<const void>*>(attachment.object);
             }
-            auto result = registry.add(std::move(rec));
-
-            FeatureTypeRegisteredReply reply{};
-            if (!result)
-            {
-                // 工厂没有 create_fn / 稳定类型 id 撞车 —— 具体是哪一条随回执过线。
-                // 只交回 feature_type_id = 0 的话,客户端会拿着它去 addFeature,
-                // 然后在离现场很远的地方失败。
-                reply.error = result.error();
-                replyToCurrent<RegisterFeatureTypePayload>(ctx, reply);
-                return;
-            }
-
-            reply.feature_type_id = result->type_id;
-            reply.status = static_cast<std::uint32_t>(result->status);
-
-            FeatureTypeRecord& stored = registry.at(result->type_id);
-            if (result->status == EFeatureTypeRegisterStatus::Registered && p.factory.register_ops_fn)
-            {
-                // Fresh type: bind its op handlers exactly ONCE, into the stored record.
-                stored.op_count = p.factory.register_ops_fn(&im.dispatcher, stored.ops, 16);
-                if (stored.op_count > FeatureTypeRegistry::kMaxOps)
-                    stored.op_count = FeatureTypeRegistry::kMaxOps;
-            }
-            // Both scopes report the type's already-bound ops. On AlreadyRegistered this is
-            // the FIRST registration's ops, so a re-registering caller gets VALID op ids
-            // (the old 0-path left op_count = 0 → all-invalid ids for the reusing scene).
-            reply.op_count = stored.op_count;
-            std::copy_n(stored.ops, stored.op_count, reply.ops);
-
+            const auto reply = im.server_->addFeatureFactory(p.factory, std::move(code_lifetime));
             replyToCurrent<RegisterFeatureTypePayload>(ctx, reply);
         }
 

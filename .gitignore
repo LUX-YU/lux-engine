@@ -6,6 +6,7 @@ CMakeSettings.json
 .vscode
 .idea
 .cache
+.clang-format
 imgui.ini
 __pycache__
 build
@@ -15,6 +16,7 @@ tools_temp
 out
 cmake-build-debug
 cmake-build-release
+
 
 # AI Agent
 .claude

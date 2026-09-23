@@ -1,3 +1,4 @@
+#include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
 #include <algorithm>
 #include <lux/engine/editor/scene/detail/SceneObjects.hpp>
 #include <lux/engine/simulation/ecs/Parent.hpp>
@@ -19,7 +20,7 @@ editing::EditResult<ObjectContent> SceneObjects::captureObject(
     ObjectContent result{
         {mapping.object(entity), mapping.object(row.parent.entity), std::move(row.label), row.partition}, {}};
     std::size_t retained{};
-    for (const auto &schema : metadata.components().all())
+    for (const auto &schema : metadata.all())
     {
         if (schema.semantic_kind == ecs::EComponentSemanticKind::RUNTIME_DERIVED ||
             !schema.operations.has(registry, entity))
@@ -59,7 +60,7 @@ std::vector<lux::scene::PartitionRetention> SceneObjects::retainTargets(lux::sim
                                                                         lux::cxx::TypeToken type) const
 {
     std::vector<lux::simulation::ecs::Entity> entities{entity};
-    const auto *schema = metadata.getComponentMeta(type);
+    const auto *schema = metadata.find(type);
     if (schema && schema->operations.has(registry, entity) && schema->visit_references)
     {
         static_cast<void>(schema->visit_references(
@@ -85,7 +86,7 @@ std::vector<lux::scene::PartitionRetention> SceneObjects::retainTargets(lux::sim
 }
 
 SceneObjects::SceneObjects(lux::scene::SceneInstance &scene, const NativeScene &content,
-                           const lux::scene::SceneMetaManager &meta)
+                           const lux::simulation::ecs::ComponentSchemaSet &meta)
     : registry(scene.registry()), source(content), metadata(meta),
       loading(*scene.findSceneSystem<lux::scene::WorldLoadingSystem>()), identities(loading.identities()),
       instance(scene.id())
@@ -119,7 +120,7 @@ SceneObjects::SceneObjects(lux::scene::SceneInstance &scene, const NativeScene &
     for (const auto &row : rows)
     {
         const auto entity = row.object.entity;
-        for (const auto &schema : metadata.components().all())
+        for (const auto &schema : metadata.all())
         {
             if (schema.operations.has(registry, entity))
             {

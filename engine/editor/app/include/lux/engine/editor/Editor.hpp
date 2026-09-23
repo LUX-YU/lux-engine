@@ -26,6 +26,8 @@ struct EditorLimits final
 struct EditorConfig final
 {
     std::filesystem::path project_file;
+    std::filesystem::path plugin_root;
+    std::vector<std::string> initial_plugins;
     process::ExecutionRuntimeConfig execution;
     EditorLimits limits;
     gui::WindowSpec window;
@@ -36,7 +38,8 @@ struct EditorConfig final
 class LUX_EDITOR_APP_PUBLIC Editor final
 {
   public:
-    explicit Editor(EditorConfig);
+    explicit Editor(EditorConfig, std::vector<render::RenderFeatureRegistration> initial_features = {},
+                    render::ValidationMessageSink diagnostics = {});
     ~Editor();
     Editor(const Editor &) = delete;
     Editor &operator=(const Editor &) = delete;
@@ -80,6 +83,11 @@ class LUX_EDITOR_APP_PUBLIC Editor final
 
     struct Impl;
     class ProjectPane;
+    class PluginPane;
+    EditorResult<void> readPluginDescription(std::filesystem::path, std::filesystem::path);
+    EditorResult<void> loadPlugin(std::string);
+    void cancelPluginLoad() noexcept;
+    void advancePlugins();
     EditorResult<void> startDesktop(process::ExecutionRuntime &, const lux::ui::UiFontSource *);
     void collectInput();
     void drawUi();
@@ -94,6 +102,8 @@ class LUX_EDITOR_APP_PUBLIC Editor final
     void positionTextInput(lux::ui::Size) noexcept;
     EditorResult<bool> selectExistingFile(std::filesystem::path &);
     EditorConfig config_;
+    std::vector<render::RenderFeatureRegistration> initial_features_;
+    render::ValidationMessageSink diagnostics_;
     std::unique_ptr<Impl> impl_;
     object::ObjectMessageQueue messages_;
     std::vector<DocumentRegistration> registrations_;

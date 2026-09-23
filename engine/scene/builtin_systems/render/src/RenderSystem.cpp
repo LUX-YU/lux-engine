@@ -2,7 +2,7 @@
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.type_static_info.hpp>
-#include <lux/engine/scene/RenderSystemMetadata.hpp>
+
 #include <lux/engine/scene/SceneBuilder.hpp>
 #include <lux/engine/scene/detail/RenderAssets.hpp>
 
@@ -13,15 +13,15 @@ namespace lux::scene
 {
 namespace
 {
-using Metadata = std::shared_ptr<const RenderSystemMetadata>;
+
 constexpr std::array RenderRequirements{
     SceneSystemRequirementSpec{.name = "render_runtime",
                                .capability = "lux.render.runtime",
                                .expected_type = lux::cxx::typeToken<render::RenderRuntime>(),
                                .optional = false},
-    SceneSystemRequirementSpec{.name = "render_metadata",
-                               .capability = "lux.render.metadata",
-                               .expected_type = lux::cxx::typeToken<Metadata>(),
+    SceneSystemRequirementSpec{.name = "render_bindings",
+                               .capability = "lux.render.scene_bindings",
+                               .expected_type = lux::cxx::typeToken<RenderFeatureSceneBindings>(),
                                .optional = false},
     SceneSystemRequirementSpec{.name = "render_assets",
                                .capability = "lux.render.assets",
@@ -39,8 +39,8 @@ lux::cxx::expected<void, SceneSystemBuildFailure> installBuiltinRenderSystem(Sce
                                                                              SceneSystemDescription description) noexcept
 {
     auto *runtime = builder.require<render::RenderRuntime>(description.instanceId(), "render_runtime");
-    auto *metadata = builder.require<Metadata>(description.instanceId(), "render_metadata");
-    if (!runtime || !metadata || !*metadata)
+    auto *bindings = builder.require<RenderFeatureSceneBindings>(description.instanceId(), "render_bindings");
+    if (!runtime || !bindings)
     {
         return lux::cxx::unexpected(failure(ESceneSystemBuildError::MISSING_REQUIREMENT, description.instanceId()));
     }
@@ -66,7 +66,7 @@ lux::cxx::expected<void, SceneSystemBuildFailure> installBuiltinRenderSystem(Sce
         roots.push_back(name);
     }
     const auto order = catalog.resolveAttachOrder(roots);
-    if (!order.unknown.empty() || !order.missing_deps.empty() || !order.cycle.empty())
+    if (!order.valid())
     {
         return lux::cxx::unexpected(failure(ESceneSystemBuildError::INVALID_DESCRIPTION, description.instanceId()));
     }
@@ -74,30 +74,26 @@ lux::cxx::expected<void, SceneSystemBuildFailure> installBuiltinRenderSystem(Sce
     std::vector<RenderSystem::Extraction> extractions;
     for (const auto name : order.order)
     {
-        const auto *descriptor = catalog.descriptor(name);
-        const auto *meta = descriptor ? (*metadata)->feature(descriptor->type) : nullptr;
-        if (!meta || !meta->scene_configurable || !meta->registration || !meta->registration->configuration.valid())
-        {
-            return lux::cxx::unexpected(failure(ESceneSystemBuildError::INVALID_DESCRIPTION, description.instanceId(),
-                                                descriptor ? descriptor->type : 0));
-        }
-        const auto selected = std::ranges::find(config->features, meta->type, &RenderFeatureInstanceDescription::type);
-        const std::span<const std::byte> portable = selected == config->features.end()
-                                                        ? meta->default_configuration
-                                                        : std::span<const std::byte>(selected->configuration);
-        render::SceneFeatureAttachment attachment{meta->type, catalog.typeId(name), {}, *metadata};
-        auto encoded = meta->registration->configuration.materialize_attach(portable, attachment.configuration);
-        if (!encoded || !attachment.registered_type ||
-            attachment.configuration.size() != meta->registration->configuration.attach_wire_size)
-        {
-            return lux::cxx::unexpected(
-                failure(ESceneSystemBuildError::INVALID_DESCRIPTION, description.instanceId(), meta->type));
-        }
+        const auto *entry = catalog.find(name);
+        const auto &registration = entry->registration;
+        const auto type = registration.factory.descriptor.type;
+        const auto &codec = registration.configuration;
+        if (!registration.scene_configurable || !codec.valid())
+            return lux::cxx::unexpected(failure(ESceneSystemBuildError::INVALID_DESCRIPTION, description.instanceId(), type));
+        const auto selected = std::ranges::find(config->features, type, &RenderFeatureInstanceDescription::type);
+        if (selected == config->features.end() || selected->configuration_schema != codec.schema ||
+            selected->configuration_version != codec.schema_version)
+            return lux::cxx::unexpected(failure(ESceneSystemBuildError::INVALID_DESCRIPTION, description.instanceId(), type));
+        render::SceneFeatureAttachment attachment{type, entry->feature_type_id, {}, registration.code_lifetime};
+        auto encoded = codec.materialize_attach(selected->configuration, attachment.configuration);
+        if (!encoded || attachment.configuration.size() != codec.attach_wire_size)
+            return lux::cxx::unexpected(failure(ESceneSystemBuildError::INVALID_DESCRIPTION, description.instanceId(), type));
         features.push_back(std::move(attachment));
-        if (meta->create_sync_stage)
-        {
-            extractions.push_back({meta->type, meta->create_sync_stage});
-        }
+        const auto binding = std::ranges::find_if(*bindings, [&](const auto &candidate) {
+            return candidate.feature == type && candidate.scene_system == description.type();
+        });
+        if (binding != bindings->end() && binding->create_sync_stage)
+            extractions.push_back({type, binding->create_sync_stage, binding->code_lifetime});
     }
     const std::string name(description.instanceName());
     render::RenderControlSession::CreateSceneConfig create{};

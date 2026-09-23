@@ -5,6 +5,7 @@
 #include <lux/engine/scene/SceneSystem.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/scene/WorldMaterializer.hpp>
+#include <lux/engine/scene/WorldLoadingConfiguration.hpp>
 #include <lux/engine/scene/world_loading/visibility.h>
 
 #include <memory>
@@ -12,14 +13,6 @@
 
 namespace lux::scene
 {
-struct LUX_TYPE_INFO(runtime) WorldLoadingConfiguration final
-{
-    std::vector<partition::PartitionOrdinal> LUX_MEMBER(display_name = BootstrapPartitions) bootstrap;
-};
-
-[[nodiscard]] LUX_ENGINE_SCENE_WORLD_LOADING_PUBLIC serialization::PortableValueCodec
-worldLoadingConfigurationCodec() noexcept;
-
 struct WorldLoadingLimits final
 {
     std::size_t in_flight{4};

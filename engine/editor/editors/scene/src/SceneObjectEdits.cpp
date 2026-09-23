@@ -203,9 +203,9 @@ class SceneObjectEdit final : public editing::EditOperation
                     for (const auto &schema : owner.source.world->data().schemas())
                     {
                         const auto found =
-                            std::ranges::find(owner.metadata.components().all(), schema.name,
+                            std::ranges::find(owner.metadata.all(), schema.name,
                                               [](const auto &value) -> const std::string & { return value.id.name; });
-                        if (found == owner.metadata.components().all().end())
+                        if (found == owner.metadata.all().end())
                         {
                             return structureFailure(ESceneStructureError::MISSING_PROVIDER, schema.name);
                         }
@@ -219,7 +219,7 @@ class SceneObjectEdit final : public editing::EditOperation
                 // temporary bytes are retained.
                 for (const auto &[id, entity] : identities_.entries())
                 {
-                    for (const auto &schema : owner.metadata.components().all())
+                    for (const auto &schema : owner.metadata.all())
                     {
                         if (schema.semantic_kind == ecs::EComponentSemanticKind::RUNTIME_DERIVED ||
                             !schema.operations.has(registry, entity))

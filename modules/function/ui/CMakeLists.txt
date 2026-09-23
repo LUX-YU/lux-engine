@@ -93,11 +93,7 @@ engine_add_type_runtime_info(
     TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ui/Pane.hpp
     REGISTER_FUNC_NAME lux_ui_pane
 )
-engine_target_add_type_runtime_info(
-    TARGET ui
-    METAS ui_pane_meta
-    OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/meta_gen
-)
+lux_target_add_codegen(TARGET ui JOB ui_pane_meta PROJECTIONS object_signals)
 
 if(BUILD_TESTING)
     add_executable(ui_context_test test/context.cpp)

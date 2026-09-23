@@ -17,12 +17,24 @@ struct RenderRuntimeStatus final
     RenderError error;
 };
 
+enum class EFeatureRegistrationState : std::uint8_t
+{
+    IDLE, REGISTERING, READY, ROLLING_BACK, COMMITTED, FAILED, CANCELLED
+};
+struct FeatureRegistrationStatus final
+{
+    EFeatureRegistrationState state{EFeatureRegistrationState::IDLE};
+    RenderError error;
+};
+
 // Main owns admission and results; the dedicated backend owns Vulkan.
 // Feature factories are cold inputs, not a built-in UI/Scene implementation.
+using ValidationMessageSink = std::function<void(std::uint32_t, std::string_view)>;
+
 class LUX_RENDER_RUNTIME_PUBLIC RenderRuntime final
 {
   public:
-    [[nodiscard]] static RenderResult<std::unique_ptr<RenderRuntime>> create(RendererConfig config);
+    [[nodiscard]] static RenderResult<std::unique_ptr<RenderRuntime>> create(RendererConfig config, ValidationMessageSink diagnostics = {});
     ~RenderRuntime();
     RenderRuntime(const RenderRuntime &) = delete;
     RenderRuntime &operator=(const RenderRuntime &) = delete;
@@ -36,6 +48,10 @@ class LUX_RENDER_RUNTIME_PUBLIC RenderRuntime final
     [[nodiscard]] RenderResult<std::reference_wrapper<RenderControlSession>> control() noexcept;
     [[nodiscard]] RenderResult<RenderUploadClient> upload() noexcept;
     [[nodiscard]] const FeatureCatalog &features() const noexcept;
+    [[nodiscard]] RenderResult<void> beginFeatureRegistration(std::vector<RenderFeatureRegistration>);
+    [[nodiscard]] FeatureRegistrationStatus featureRegistrationStatus() const noexcept;
+    [[nodiscard]] RenderResult<void> commitFeatureRegistration();
+    [[nodiscard]] RenderResult<void> cancelFeatureRegistration() noexcept;
     [[nodiscard]] RenderResult<EFrameSubmit> submit(RenderProgram<> &input) noexcept;
     [[nodiscard]] RenderResult<std::size_t> poll(std::size_t reply_budget, std::size_t &control_budget,
                                                  std::size_t &program_budget);

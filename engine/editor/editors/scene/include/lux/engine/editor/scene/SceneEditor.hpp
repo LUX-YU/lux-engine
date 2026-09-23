@@ -13,8 +13,9 @@
 #include <lux/engine/object/Object.hpp>
 #include <lux/engine/object/ObjectAnnotations.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
-#include <lux/engine/scene/RenderSystemMetadata.hpp>
-#include <lux/engine/scene/SceneMetaManager.hpp>
+#include <lux/engine/scene/RenderFeatureSceneBinding.hpp>
+#include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
+#include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <lux/engine/world/WorldObjectId.hpp>
 
@@ -23,18 +24,24 @@ namespace lux::editor
 struct DocumentRegistration;
 }
 
+namespace lux::editor { class PluginLibrary; }
+
 namespace lux::editor::scene
 {
 inline constexpr std::string_view kSceneDocumentType = "lux.editor.scene.v1";
 
 struct SceneEditorMetadata final
 {
-    std::shared_ptr<const lux::scene::SceneMetaManager> scene;
-    std::shared_ptr<const lux::scene::RenderSystemMetadata> render;
+    lux::simulation::ecs::ComponentSchemaSet components;
+    std::shared_ptr<const lux::simulation::SimulationSystemRegistry> simulation_systems;
+    std::vector<lux::scene::SceneSystemRegistration> scene_systems;
+    std::vector<lux::render::RenderFeatureRegistration> features;
+    std::vector<lux::scene::RenderFeatureSceneBinding> render_bindings;
 };
 
 [[nodiscard]] LUX_EDITOR_SCENE_PUBLIC EditorResult<SceneEditorMetadata> sceneMetadata(
-    std::span<const lux::simulation::ecs::ComponentSchema> additional = {});
+    std::span<const lux::simulation::ecs::ComponentSchema> additional = {},
+    std::span<const std::shared_ptr<const PluginLibrary>> plugins = {});
 
 struct SceneObjectRow final
 {

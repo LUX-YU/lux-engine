@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/object/LuxObject.hpp>
+#include <lux/engine/object/Object.hpp>
 #include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/serialization/PortableValueCodec.hpp>
 #include <lux/engine/system/SystemTypeDescription.hpp>
@@ -11,6 +11,7 @@
 #include <any>
 #include <concepts>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string_view>
 
@@ -56,15 +57,33 @@ struct SceneObjectEndpointRef final
 {
     ESceneConnectionOwner owner{ESceneConnectionOwner::SELF};
     std::string_view requirement;
-    std::string_view member;
 };
 
 struct SceneSystemConnectionSpec final
 {
     SceneObjectEndpointRef signal;
     SceneObjectEndpointRef method;
-    object::EDelivery delivery{object::EDelivery::AUTO};
+    lux::cxx::expected<object::Connection, object::EObserveError> (*connect)(
+        object::LuxObject &, object::LuxObject &) noexcept {};
 };
+
+template <auto &Signal, auto Method, object::EDelivery Delivery = object::EDelivery::AUTO>
+[[nodiscard]] SceneSystemConnectionSpec sceneSystemConnection(
+    SceneObjectEndpointRef signal = {}, SceneObjectEndpointRef method = {}) noexcept
+{
+    using Sender = typename std::remove_cvref_t<decltype(Signal)>::owner_type;
+    using Receiver = typename object::detail::MemberMethodTraits<decltype(Method)>::owner_type;
+    return {signal, method, +[](object::LuxObject &sender, object::LuxObject &receiver) noexcept
+        -> lux::cxx::expected<object::Connection, object::EObserveError> {
+        if (!sender.isObjectType(lux::cxx::typeToken<Sender>()) ||
+            !receiver.isObjectType(lux::cxx::typeToken<Receiver>()))
+        {
+            return lux::cxx::unexpected(object::EObserveError::TYPE_MISMATCH);
+        }
+        return static_cast<Sender &>(sender).template observe<Signal, Method, Delivery>(
+            static_cast<Receiver &>(receiver));
+    }};
+}
 
 enum class ESceneSystemBuildError : std::uint8_t
 {
@@ -138,5 +157,52 @@ struct SceneSystemRegistration final
     ProjectSceneSystemObjectFn project_object{};
     InstallSceneSystemFn install{};
     std::span<const SceneSystemCapabilityProjection> projections;
+    std::shared_ptr<const void> code_lifetime;
 };
+[[nodiscard]] inline bool validSceneSystemRegistration(const SceneSystemRegistration &registration) noexcept
+{
+    const bool invalid_identity = !registration.type.valid() || !registration.cpp_type.isValid() ||
+        !registration.description || !registration.install;
+    if (invalid_identity) return false;
+    const auto &description = *registration.description;
+    const bool invalid_description = !system::validSystemTypeDescription(description) ||
+        description.canonical_name != registration.type.name ||
+        system::systemTypeId(description.canonical_name) != registration.type;
+    const bool invalid_configuration = description.configuration_schema_name.empty() == registration.configuration.valid();
+    if (invalid_description || invalid_configuration) return false;
+    for (std::size_t i{}; i < registration.requirements.size(); ++i)
+    {
+        const auto &value = registration.requirements[i];
+        if (value.name.empty() || value.capability.empty() || !value.expected_type.isValid()) return false;
+        for (std::size_t previous{}; previous < i; ++previous)
+            if (registration.requirements[previous].name == value.name) return false;
+    }
+    for (const auto &connection : registration.connections)
+    {
+        if (!connection.connect) return false;
+        for (const auto &endpoint : {connection.signal, connection.method})
+        {
+            if (endpoint.owner == ESceneConnectionOwner::SELF)
+            {
+                if (!registration.project_object || !endpoint.requirement.empty()) return false;
+            }
+            else if (endpoint.owner == ESceneConnectionOwner::REQUIREMENT)
+            {
+                bool found{};
+                for (const auto &requirement : registration.requirements)
+                    found |= requirement.name == endpoint.requirement;
+                if (!found) return false;
+            }
+            else return false;
+        }
+    }
+    for (std::size_t i{}; i < registration.projections.size(); ++i)
+    {
+        const auto &value = registration.projections[i];
+        if (!value.type.isValid() || !value.project) return false;
+        for (std::size_t previous{}; previous < i; ++previous)
+            if (registration.projections[previous].type == value.type) return false;
+    }
+    return true;
+}
 } // namespace lux::scene

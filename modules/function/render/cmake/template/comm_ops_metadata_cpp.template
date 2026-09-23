@@ -25,12 +25,15 @@ namespace lux::render
 {%- if annotation_get_for_or(cfg, "luxop::config", "multiplicity", "") == "single" %}
         .multiplicity = FeatureMultiplicity::SinglePerScene,
 {%- endif %}
-    };
-    const RenderFeatureRegistration k{{ prefix }}RenderFeatureRegistration{
-        .stable_name = "{{ feature_id }}",
-        .descriptor = &k{{ prefix }}Descriptor,
-        .configuration = makeRenderFeatureConfigCodec<::{{ cfg.fq_name }}>(),
-        .scene_configurable = {% if annotation_get_for_or(cfg, "luxop::config", "scene_configurable", true) %}true{% else %}false{% endif %}
+        .canonical_name = "{{ feature_id }}",
     };
 {%- endif %}
+{% for rec_idx in marked_record_decls %}{% set r = decl_from_index(rec_idx) %}{% if annotation_has(r, "luxop::variant") %}
+{% set id = annotation_get_for_or(r, "luxop::variant", "id", "") %}{% set p = annotation_get_for_or(r, "luxop::variant", "prefix", "") %}
+    const FeatureDescriptor k{{ p }}Descriptor{
+        .type = featureId("{{ id }}"),
+        .name = "{{ annotation_get_for_or(r, "luxop::variant", "display", "") }}",
+        .canonical_name = "{{ id }}"
+    };
+{% endif %}{% endfor %}
 } // namespace lux::render

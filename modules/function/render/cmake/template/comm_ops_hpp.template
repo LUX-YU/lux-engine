@@ -172,7 +172,7 @@ namespace lux::render
 
 {%- if not annotation_has(cfg, "no_factory") %}
     extern {{ client_export }} const FeatureDescriptor k{{ prefix }}Descriptor;
-    extern {{ client_export }} const RenderFeatureRegistration k{{ prefix }}RenderFeatureRegistration;
+    extern {{ backend_export }} const RenderFeatureRegistration k{{ prefix }}RenderFeatureRegistration;
     extern {{ backend_export }} const FeatureFactory k{{ prefix }}FeatureFactory;
 {%- endif %}
 

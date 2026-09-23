@@ -106,6 +106,17 @@ namespace lux::meta
         meta_register_qual_type_index_fix(*g_reflection_registry, fix_list);
     }
 
+    ReflectionRegistrationDraft ReflectionRegistry::beginDraft()
+    {
+        if (!g_reflection_registry)
+        {
+            auto draft = std::unique_ptr<ReflectionRegistry>{new ReflectionRegistry()};
+            draft->failRegistration(EReflectionRegistrationError::REGISTRY_NOT_INITIALIZED);
+            return {nullptr, std::move(draft)};
+        }
+        return {g_reflection_registry, std::unique_ptr<ReflectionRegistry>{new ReflectionRegistry(*g_reflection_registry)}};
+    }
+
     ReflectionRegistrationDraft ReflectionRegistry::drainPendingDraft()
     {
         if (g_reflection_registry == nullptr)
@@ -336,7 +347,7 @@ namespace lux::meta
         return nullptr;
     }
 
-    bool ReflectionRegistry::publishDraft(ReflectionRegistry&& draft) noexcept
+    bool ReflectionRegistry::canPublish(const ReflectionRegistry& draft) const noexcept
     {
         const bool is_invalid_owner = draft.fallback_ != this || draft.registration_failure_;
         const bool is_invalid_class_index = class_pool_.next_id() != draft.class_index_base_;
@@ -362,13 +373,19 @@ namespace lux::meta
                 draft.invokable_index_base_ + local != invokable_registry_.size() + local)
                 return false;
 
+        return true;
+    }
+
+    bool ReflectionRegistry::publishDraft(ReflectionRegistry&& draft) noexcept
+    {
+        if (!canPublish(draft)) return false;
+        code_owners_.insert(code_owners_.end(), draft.code_owners_.begin(), draft.code_owners_.end());
         class_pool_.reserve(class_pool_.size() + draft.class_pool_.size());
         enum_pool_.reserve(enum_pool_.size() + draft.enum_pool_.size());
         func_pool_.reserve(func_pool_.size() + draft.func_pool_.size());
         class_map_.reserve(class_map_.size() + draft.class_map_.size());
         enum_map_.reserve(enum_map_.size() + draft.enum_map_.size());
         func_map_.reserve(func_map_.size() + draft.func_map_.size());
-        invokable_registry_.reserve(invokable_registry_.size() + draft.invokable_registry_.size());
         invokable_map_.reserve(invokable_map_.size() + draft.invokable_map_.size());
 
         const auto class_keys = draft.class_pool_.keys();
@@ -376,11 +393,11 @@ namespace lux::meta
         {
             std::unique_ptr<RefClass> value;
             if (!draft.class_pool_.extract(local, value) || !value)
-                return false;
+                std::terminate();
             const auto index = draft.class_index_base_ + local;
             const auto name = value->full_name;
             if (!class_pool_.try_emplace_at(index, std::move(value)))
-                return false;
+                std::terminate();
             class_map_.emplace(name, index);
         }
 
@@ -389,11 +406,11 @@ namespace lux::meta
         {
             std::unique_ptr<RefEnum> value;
             if (!draft.enum_pool_.extract(local, value) || !value)
-                return false;
+                std::terminate();
             const auto index = draft.enum_index_base_ + local;
             const auto name = value->full_name;
             if (!enum_pool_.try_emplace_at(index, std::move(value)))
-                return false;
+                std::terminate();
             enum_map_.emplace(name, index);
         }
 
@@ -405,7 +422,7 @@ namespace lux::meta
             std::unique_ptr<RefFunction> value;
             if (!draft.func_pool_.extract(local, value) || !value ||
                 !func_pool_.try_emplace_at(draft.function_index_base_ + local, std::move(value)))
-                return false;
+                std::terminate();
         }
 
         for (auto& value : draft.invokable_registry_)
@@ -435,6 +452,46 @@ namespace lux::meta
     {
         static const ReflectionRegistrationFailure invalid{EReflectionRegistrationError::REGISTRY_NOT_INITIALIZED};
         return draft_ && draft_->registration_failure_ ? *draft_->registration_failure_ : invalid;
+    }
+
+    lux::cxx::expected<void, ReflectionRegistrationFailure> ReflectionRegistrationDraft::append(
+        RegisterFn registration, std::shared_ptr<const void> code) noexcept
+    {
+        if (!*this) return lux::cxx::unexpected(error());
+        if (!registration)
+            return lux::cxx::unexpected(ReflectionRegistrationFailure{EReflectionRegistrationError::PUBLISH_INVARIANT_BROKEN});
+        draft_->code_owners_.push_back(std::move(code));
+        qual_type_index_fix_list fixes;
+        try
+        {
+            registration(*draft_, fixes);
+        }
+        catch (...)
+        {
+            draft_->failRegistration(EReflectionRegistrationError::FOREIGN_REGISTRATION_FAILURE, {});
+            return lux::cxx::unexpected(error());
+        }
+        for (auto& [name, type] : fixes)
+        {
+            const auto* found = draft_->findClass(name);
+            if (!type || !found)
+            {
+                draft_->failRegistration(type ? EReflectionRegistrationError::QUAL_TYPE_NOT_FOUND :
+                    EReflectionRegistrationError::INVALID_QUAL_TYPE_FIX, name);
+                continue;
+            }
+            type->ptr = found;
+        }
+        if (!*this) return lux::cxx::unexpected(error());
+        return {};
+    }
+
+    lux::cxx::expected<void, ReflectionRegistrationFailure> ReflectionRegistrationDraft::prepareCommit() const noexcept
+    {
+        if (!*this) return lux::cxx::unexpected(error());
+        if (!target_->canPublish(*draft_))
+            return lux::cxx::unexpected(ReflectionRegistrationFailure{EReflectionRegistrationError::PUBLISH_INVARIANT_BROKEN});
+        return {};
     }
 
     lux::cxx::expected<void, ReflectionRegistrationFailure> ReflectionRegistrationDraft::commit() noexcept

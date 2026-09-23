@@ -11,13 +11,13 @@ int main()
     using namespace std::chrono_literals;
     RendererConfig config;
     config.validation = true;
-    config.validation_message_sink = [](auto severity, auto message) {
+    auto diagnostics = [](auto severity, auto message) {
         if (severity == 2)
         {
             std::cerr << message << '\n';
         }
     };
-    auto created = RenderRuntime::create(std::move(config));
+    auto created = RenderRuntime::create(std::move(config), std::move(diagnostics));
     if (!created)
     {
         std::cerr << "Runtime startup failed: " << static_cast<unsigned>(created.error().code) << '\n';

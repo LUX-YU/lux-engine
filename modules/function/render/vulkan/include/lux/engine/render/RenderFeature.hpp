@@ -283,8 +283,8 @@ class LUX_FUNCTION_PUBLIC RenderFeature
     }
 
     /// Pointer to the LIVE param-struct instance (render-thread-owned storage
-    /// the feature reads each frame), or nullptr. The editor edits it in place
-    /// via the reflected field layout for hot preview.
+    /// the feature reads each frame), or nullptr. Only backend queries may read this pointer;
+    /// Main edits owned snapshots and submits parameter updates.
     [[nodiscard]] virtual void *paramData() noexcept
     {
         return nullptr;

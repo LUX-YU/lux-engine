@@ -42,7 +42,7 @@ namespace lux::editor::scene::detail
         const auto &world = owner.source.world->data();
         const auto supports = [&]<class Component>()
         {
-            const auto *schema = owner.metadata.getComponentMeta(lux::cxx::typeToken<Component>());
+            const auto *schema = owner.metadata.find(lux::cxx::typeToken<Component>());
             return schema && schema->capture &&
                    std::ranges::find(world.schemas(), schema->id.name, &lux::world::WorldDataSchemaId::name) !=
                        world.schemas().end();

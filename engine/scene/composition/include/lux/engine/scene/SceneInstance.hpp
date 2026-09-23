@@ -4,8 +4,9 @@
 #include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/scene/SceneDriver.hpp>
 #include <lux/engine/scene/SceneInstanceId.hpp>
-#include <lux/engine/scene/SceneMetaManager.hpp>
+#include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
 #include <lux/engine/scene/SceneSystem.hpp>
+#include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/scene/visibility.h>
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/world/WorldDescription.hpp>
@@ -46,7 +47,9 @@ struct SceneCreateInfo final
     std::shared_ptr<const SceneDescription> scene;
     std::shared_ptr<const world::WorldDescription> world;
     std::shared_ptr<const simulation::SimulationDescription> simulation;
-    const SceneMetaManager &meta;
+    const simulation::ecs::ComponentSchemaSet &components;
+    const simulation::SimulationSystemRegistry &simulation_systems;
+    std::span<const SceneSystemRegistration> scene_systems;
     std::span<const SceneCapabilityProvider> providers;
     simulation::ESimulationMode simulation_mode{simulation::ESimulationMode::EVOLUTION};
     simulation::SimulationDuration fixed_delta{std::chrono::milliseconds(16)};

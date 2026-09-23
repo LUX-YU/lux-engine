@@ -9,6 +9,8 @@ struct SceneInstance::Impl final
 {
     ~Impl() noexcept;
 
+    std::vector<std::shared_ptr<const void>> code_owners;
+    simulation::ecs::ComponentSchemaSet components;
     SceneInstanceId id;
     std::stop_source stop;
     std::shared_ptr<const SceneDescription> description;

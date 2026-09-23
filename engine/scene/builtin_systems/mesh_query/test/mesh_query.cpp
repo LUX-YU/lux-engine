@@ -78,10 +78,10 @@ static void checkDriverInvalidation()
 {
     using namespace lux;
     namespace ecs = simulation::ecs;
-    meta::ReflectionRegistry::initRegistry();
     const auto registration = scene::builtinMeshQuerySystemRegistration();
-    auto metadata = scene::SceneMetaManager::build({.scene_systems = {registration}});
-    assert(metadata);
+    const lux::simulation::ecs::ComponentSchemaSet task_components{};
+    const lux::simulation::SimulationSystemRegistry task_system_types;
+    const std::array task_scene_systems{registration};
     scene::SceneDescriptionBuilder builder;
     assert(builder.addSystem({1}, "query", registration.type, 1, {}, 0));
     auto description = std::move(builder).buildResolved();
@@ -89,7 +89,7 @@ static void checkDriverInvalidation()
     auto made = scene::SceneInstance::create({std::make_shared<const scene::SceneDescription>(std::move(*description)),
                                               std::make_shared<const world::WorldDescription>(),
                                               std::make_shared<const simulation::SimulationDescription>(),
-                                              *metadata,
+                                              task_components, task_system_types, task_scene_systems,
                                               {},
                                               simulation::ESimulationMode::DERIVATION});
     assert(made && (*made)->simulation().seal());

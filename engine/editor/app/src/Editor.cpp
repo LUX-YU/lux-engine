@@ -40,7 +40,10 @@ void report(const EditorFailure &error)
 
 } // namespace
 
-Editor::Editor(EditorConfig config) : config_(std::move(config)), identity_(issueEditorIdentity())
+Editor::Editor(EditorConfig config, std::vector<render::RenderFeatureRegistration> initial_features,
+               render::ValidationMessageSink diagnostics)
+    : config_(std::move(config)), initial_features_(std::move(initial_features)),
+      diagnostics_(std::move(diagnostics)), identity_(issueEditorIdentity())
 {
     requests_.reserve(config_.limits.open_requests);
     openings_.reserve(config_.limits.documents);

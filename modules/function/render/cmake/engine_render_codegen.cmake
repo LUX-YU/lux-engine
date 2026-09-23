@@ -208,6 +208,10 @@ function(engine_add_comm_ops)
                 OUTPUT_SUFFIX .metadata.cpp
                 JSON_FIELD "{\"stem\":\"${_stem}\",\"include_prefix\":\"${ARGS_INCLUDE_PREFIX}\"}"
             )
+            lux_codegen_add_projection(JOB ${_job} NAME plugin_description
+                TEMPLATE ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/template/comm_ops_plugin.template
+                OUTPUT_ROOT ${_job_root} OUTPUT_SUFFIX .plugin.json
+                JSON_FIELD "{\"stem\":\"${_stem}\",\"include_prefix\":\"${ARGS_INCLUDE_PREFIX}\"}")
             lux_codegen_add_projection(
                 JOB ${_job}
                 NAME ops_cpp
@@ -244,6 +248,8 @@ function(engine_add_comm_ops)
             )
         endif()
         if(ARGS_CLIENT_TARGET)
+            set_property(TARGET ${ARGS_CLIENT_TARGET} APPEND PROPERTY LUX_RENDER_PLUGIN_FRAGMENTS
+                "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.plugin.json")
             target_sources(
                 ${ARGS_CLIENT_TARGET}
                 PRIVATE

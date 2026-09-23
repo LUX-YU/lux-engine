@@ -5,13 +5,16 @@
 #include <lux/engine/editor/ui/UIRenderSystem.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
 
+namespace lux::editor { class PluginLibrary; }
+
 namespace lux::editor::gui
 {
 struct GuiDocumentProvider final
 {
     std::string type;
     std::function<bool(const ProjectAssetEntry &)> accepts;
-    std::function<EditorResult<DocumentRegistration>(process::ExecutionRuntime &, render::RenderRuntime &)>
+    std::function<EditorResult<DocumentRegistration>(process::ExecutionRuntime &, render::RenderRuntime &,
+        std::span<const std::shared_ptr<const PluginLibrary>>)>
         registration;
     // A value registration has no dependency on the product's Editor root.
     // Concrete documents own their panes; the UI system only borrows them.

@@ -21,6 +21,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(TargetPlatform)
 include(HostTools)
+include(TargetClassification)
 
 find_package(lux-cmake-toolset CONFIG REQUIRED)
 include(InstallComponents)
@@ -95,5 +96,9 @@ if(BUILD_TESTING)
     enable_testing()
 endif()
 
+include(LuxPlugins)
+
 add_subdirectory(modules)
 add_subdirectory(engine)
+
+lux_generate_capabilities()

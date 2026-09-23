@@ -1,3 +1,4 @@
+#include "../../../../../cmake/installed-consumers/common/RenderRegistration.hpp"
 #include "run_system.hpp"
 #include "scene_structure_checks.hpp"
 #include <cassert>
@@ -53,8 +54,6 @@ int main(int argc, char **argv)
     const auto gui_provider = editor::gui::sceneDocumentProvider();
     assert(gui_provider.type == editor::scene::kSceneDocumentType);
     std::puts("dynamic: provider loaded");
-    scene::initializeBuiltinRenderSystemMeta();
-    render::initializeBuiltinRenderFeatureMeta();
     meta::ReflectionRegistry::drainPending();
     window::GlfwRuntime platform;
     assert(platform.valid());
@@ -70,18 +69,19 @@ int main(int argc, char **argv)
     std::puts("dynamic: project ready");
     render::RendererConfig config;
     config.validation = std::string_view(argv[2]) != "dynamic-cost";
-    config.validation_message_sink = [](auto severity, auto message) {
+    auto diagnostics = [](auto severity, auto message) {
         if (severity == 2)
         {
             std::fprintf(stderr, "%.*s\n", int(message.size()), message.data());
         }
     };
-    config.feature_factories = {
-        render::kViewCameraFeatureFactory, render::kMaterialFeatureFactory,    render::kMeshStackFeatureFactory,
-        render::kLightFeatureFactory,      render::kForwardMeshFeatureFactory, render::kShadowMapFeatureFactory,
-        render::kMeshShadowFeatureFactory, render::kHighlightFeatureFactory,   render::kGrid3DFeatureFactory};
-    auto renderer = render::RenderRuntime::create(std::move(config));
+    std::vector<lux::render::RenderFeatureRegistration> initial_features = {
+        render::kViewCameraRenderFeatureRegistration, render::kMaterialRenderFeatureRegistration,    render::kMeshStackRenderFeatureRegistration,
+        render::kLightRenderFeatureRegistration,      render::kForwardMeshRenderFeatureRegistration, render::kShadowMapRenderFeatureRegistration,
+        render::kMeshShadowRenderFeatureRegistration, render::kHighlightRenderFeatureRegistration,   render::kGrid3DRenderFeatureRegistration};
+    auto renderer = render::RenderRuntime::create(std::move(config), std::move(diagnostics));
     assert(renderer);
+    registerRenderFeatures(**renderer, std::move(initial_features));
     std::puts("dynamic: renderer ready");
 
     std::vector<simulation::ecs::ComponentSchema> schemas;
@@ -102,19 +102,9 @@ int main(int argc, char **argv)
     std::vector<scene::SceneSystemRegistration> registrations{render_systems.begin(), render_systems.end()};
     registrations.push_back(scene::builtinMeshQuerySystemRegistration());
     registrations.push_back(scene::worldLoadingSystemRegistration());
-    auto built = scene::SceneMetaManager::build({std::move(*components), std::move(systems), std::move(registrations)});
-    if (!built)
-    {
-        std::printf("metadata failure=%u subject=%llu\n", unsigned(built.error().code),
-                    static_cast<unsigned long long>(built.error().subject_hash));
-    }
-    assert(built);
-    std::puts("dynamic: metadata ready");
-    auto render_meta = scene::RenderSystemMetadata::build(*built, {features.begin(), features.end()}, bindings);
-    assert(render_meta);
     editor::scene::SceneEditorMetadata metadata{
-        std::make_shared<const scene::SceneMetaManager>(std::move(*built)),
-        std::make_shared<const scene::RenderSystemMetadata>(std::move(*render_meta))};
+        std::move(*components), std::make_shared<const simulation::SimulationSystemRegistry>(std::move(systems)),
+        std::move(registrations), {features.begin(), features.end()}, {bindings.begin(), bindings.end()}};
     auto registration = editor::scene::sceneDocumentRegistration(*runtime, **renderer, metadata);
     const auto &asset = (*project)->manifest().assets.front();
     auto opening = registration.open(

@@ -3,9 +3,8 @@
  * @file FeatureTypeRegistry.hpp
  * @brief Renderer-owned registry of feature TYPES (factories + descriptors).
  *
- * Sunk down from the comm-layer server Impl so that dependency resolution
- * (auto-installing a feature's required dependencies) can map a stable
- * FeatureTypeId → its factory → create it, in the same layer that owns the scenes.
+ * Maps stable FeatureTypeId to its factory in the layer that owns the scenes.
+ * Dependencies must already be selected in the formal scene description.
  *
  * NOT to be confused with comm/client/FeatureCatalog.hpp — that is a CLIENT-side
  * name→{handle, ops} helper for the editor. This is the SERVER/renderer-side store
@@ -94,16 +93,25 @@ namespace lux::render
         ///   - FeatureTypeCollision — a DIFFERENT factory (create_fn) claims an already-
         ///                            registered stable type id (findByStableType / dependency
         ///                            resolution would be ambiguous).
-        /// op_count is CLAMPED to the ops[] capacity so a misbehaving register_ops_fn can't
-        /// drive an out-of-bounds copy downstream. A descriptor-LESS factory has no stable id,
+        /// Counts beyond ops[] capacity are rejected before registering any operation.
+        /// A descriptor-LESS factory has no stable id,
         /// so a re-registration still inserts a fresh record (bounded over-insert; the durable
         /// fix is to give those factories real stable descriptors).
         [[nodiscard]] Expected<FeatureTypeAddResult> add(FeatureTypeRecord record)
         {
             if (record.factory.create_fn == nullptr)
                 return renderFailure<err::feature::FactoryHasNoCreateFn>();
-            if (record.op_count > kMaxOps)
-                record.op_count = kMaxOps;
+            const auto& factory = record.factory;
+            const bool invalid_count = factory.operation_count > kMaxOps || record.op_count > kMaxOps;
+            if (invalid_count)
+                return renderFailure<err::feature::OperationLimitExceeded>(factory.operation_count, kMaxOps);
+            const bool invalid_functions = factory.operation_count != 0u &&
+                (factory.register_ops_fn == nullptr || factory.unregister_ops_fn == nullptr);
+            const bool invalid_parameter = factory.param_set_op_index < -1 ||
+                (factory.param_set_op_index >= 0 &&
+                 static_cast<std::uint32_t>(factory.param_set_op_index) >= factory.operation_count);
+            if (invalid_functions || invalid_parameter)
+                return renderFailure<err::feature::InvalidRegistration>();
 
             // Idempotent dedup is by STABLE TYPE (the descriptor's identity), which is what
             // uniquely names a feature type. create_fn is NOT a valid identity: distinct
@@ -118,7 +126,7 @@ namespace lux::render
                     // Same stable id: the SAME feature re-registered (idempotent) — UNLESS a
                     // DIFFERENT factory is claiming it (create_fn differs), a genuine collision
                     // that would make findByStableType / dependency resolution ambiguous.
-                    if (existing->factory.create_fn != record.factory.create_fn)
+                    if (!sameFactory(existing->factory, record.factory))
                         return renderFailure<err::feature::TypeIdCollision>(record.factory.descriptor.type);
                     // Shared ownership is COUNTED: release() destroys the record only when
                     // the last registrant lets go (see FeatureTypeRecord::registrations).
@@ -186,14 +194,14 @@ namespace lux::render
             if (!types_.contains(id))
                 return renderFailure<err::feature::TypeNotRegistered>(id);
             FeatureTypeRecord& rec = types_.at(id);
-            if (rec.active_instances != 0u)
-                return renderFailure<err::feature::FeatureTypeInUse>(id, rec.active_instances);
             if (rec.registrations > 1)
             {
                 --rec.registrations;
                 rec.registration_leases.pop_back();
                 return std::optional<FeatureTypeRecord>{};
             }
+            if (rec.active_instances != 0u)
+                return renderFailure<err::feature::FeatureTypeInUse>(id, rec.active_instances);
             FeatureTypeRecord removed = std::move(rec);
             types_.erase(id);
             return std::optional<FeatureTypeRecord>{std::move(removed)};
@@ -218,7 +226,7 @@ namespace lux::render
 
         /// Resolve a declared dependency: the registered type whose descriptor has
         /// this stable id, or nullptr if no such type is registered. The engine of
-        /// dependency auto-install (slice 3c). kInvalidFeatureTypeId never matches.
+        /// explicit dependency validation. kInvalidFeatureTypeId never matches.
         // Read-only: dependency resolution only needs the factory (create_fn /
         // descriptor). values() is a const dense view, so the result is const too.
         [[nodiscard]] const FeatureTypeRecord* findByStableType(FeatureTypeId type) const noexcept
@@ -261,6 +269,24 @@ namespace lux::render
         }
 
     private:
+        [[nodiscard]] static bool sameFactory(const FeatureFactory& a, const FeatureFactory& b) noexcept
+        {
+            const bool same_functions = a.create_fn == b.create_fn && a.register_ops_fn == b.register_ops_fn &&
+                a.unregister_ops_fn == b.unregister_ops_fn;
+            const bool same_operations = a.operation_count == b.operation_count &&
+                a.param_set_op_index == b.param_set_op_index;
+            const bool same_names = a.name != nullptr && b.name != nullptr && std::string_view(a.name) == b.name;
+            const auto& x = a.descriptor;
+            const auto& y = b.descriptor;
+            const bool same_descriptor = x.type == y.type && x.name == y.name && x.canonical_name == y.canonical_name && x.abi_version == y.abi_version &&
+                x.creates_view_state == y.creates_view_state && x.supports_runtime_disable == y.supports_runtime_disable &&
+                x.multiplicity == y.multiplicity && x.dependencies.data() == y.dependencies.data() &&
+                x.dependencies.size() == y.dependencies.size() && x.conflicts.data() == y.conflicts.data() &&
+                x.conflicts.size() == y.conflicts.size() && x.level_profiles.data() == y.level_profiles.data() &&
+                x.level_profiles.size() == y.level_profiles.size();
+            return same_functions && same_operations && same_names && same_descriptor;
+        }
+
         Storage types_;
     };
 

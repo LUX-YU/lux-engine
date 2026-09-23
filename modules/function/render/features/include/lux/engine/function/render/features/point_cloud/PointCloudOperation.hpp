@@ -15,6 +15,7 @@
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/function/render/client/core/RenderFeatureRegistration.hpp>
 #include <lux/engine/function/render/features/client_visibility.h>
+#include <lux/engine/function/render/features/visibility.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -43,7 +44,8 @@ namespace lux::render
     // =========================================================================
     //  Per-mode CommConfig structs (trivially copyable, transferred as attachments)
     // =========================================================================
-    struct LUX_TYPE_INFO(both) PCSimpleCommConfig
+    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(prefix = PCSimple, factory = kPCFeatureSimpleFactory, id = lux.render.point_cloud_simple.v1,
+        display = PCSimple, scene_configurable = false) PCSimpleCommConfig
     {
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
@@ -53,7 +55,8 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<PCSimpleCommConfig>);
 
-    struct LUX_TYPE_INFO(both) PCGPUDrivenCommConfig
+    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(prefix = PCGPUDriven, factory = kPCFeatureGPUDrivenFactory, id = lux.render.point_cloud_gpudriven.v1,
+        display = PCGPUDriven, scene_configurable = false) PCGPUDrivenCommConfig
     {
         ShaderHandle compute_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
@@ -63,7 +66,8 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<PCGPUDrivenCommConfig>);
 
-    struct LUX_TYPE_INFO(both) PCLODCommConfig
+    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(prefix = PCLOD, factory = kPCFeatureLODFactory, id = lux.render.point_cloud_lod.v1,
+        display = PCLOD, scene_configurable = false) PCLODCommConfig
     {
         ShaderHandle compute_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
@@ -75,7 +79,8 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<PCLODCommConfig>);
 
-    struct LUX_TYPE_INFO(both) PCSplattingCommConfig
+    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(prefix = PCSplatting, factory = kPCFeatureSplattingFactory, id = lux.render.point_cloud_splatting.v1,
+        display = PCSplatting, scene_configurable = false) PCSplattingCommConfig
     {
         ShaderHandle compute_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
@@ -87,7 +92,8 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<PCSplattingCommConfig>);
 
-    struct LUX_TYPE_INFO(both) PCTransientCommConfig
+    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(prefix = PCTransient, factory = kPCFeatureTransientFactory, id = lux.render.point_cloud_transient.v1,
+        display = PCTransient, scene_configurable = false) PCTransientCommConfig
     {
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
@@ -205,20 +211,20 @@ namespace lux::render
     // =========================================================================
     //  Per-mode FeatureFactory externs(no_factory:工厂留手写,extern 留此)
     // =========================================================================
-    extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const FeatureFactory kPCFeatureSimpleFactory;
-    extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const FeatureFactory kPCFeatureGPUDrivenFactory;
-    extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const FeatureFactory kPCFeatureLODFactory;
-    extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const FeatureFactory kPCFeatureSplattingFactory;
-    extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const FeatureFactory kPCFeatureTransientFactory;
+    extern LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC const FeatureFactory kPCFeatureSimpleFactory;
+    extern LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC const FeatureFactory kPCFeatureGPUDrivenFactory;
+    extern LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC const FeatureFactory kPCFeatureLODFactory;
+    extern LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC const FeatureFactory kPCFeatureSplattingFactory;
+    extern LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC const FeatureFactory kPCFeatureTransientFactory;
     extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const FeatureDescriptor kPCSimpleDescriptor;
     extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const FeatureDescriptor kPCGPUDrivenDescriptor;
     extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const FeatureDescriptor kPCLODDescriptor;
     extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const FeatureDescriptor kPCSplattingDescriptor;
     extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const FeatureDescriptor kPCTransientDescriptor;
-    extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const RenderFeatureRegistration kPCSimpleRegistration;
-    extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const RenderFeatureRegistration kPCGPUDrivenRegistration;
-    extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const RenderFeatureRegistration kPCLODRegistration;
-    extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const RenderFeatureRegistration kPCSplattingRegistration;
-    extern LUX_RENDER_FEATURE_CLIENT_PUBLIC const RenderFeatureRegistration kPCTransientRegistration;
+    extern LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC const RenderFeatureRegistration kPCSimpleRegistration;
+    extern LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC const RenderFeatureRegistration kPCGPUDrivenRegistration;
+    extern LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC const RenderFeatureRegistration kPCLODRegistration;
+    extern LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC const RenderFeatureRegistration kPCSplattingRegistration;
+    extern LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC const RenderFeatureRegistration kPCTransientRegistration;
 
 } // namespace lux::render

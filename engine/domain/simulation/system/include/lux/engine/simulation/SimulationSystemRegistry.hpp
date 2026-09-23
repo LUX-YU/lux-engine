@@ -66,6 +66,7 @@ namespace lux::simulation
         // must not evolve persistent content, advance private time, or publish execution hooks/events.
         // This capability belongs to the implementation, not to untrusted document configuration.
         bool supports_derivation{};
+        std::shared_ptr<const void> code_lifetime;
     };
 
     enum class ESimulationSystemRegistrationError : std::uint8_t

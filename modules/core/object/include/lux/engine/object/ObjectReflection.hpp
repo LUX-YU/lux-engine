@@ -8,6 +8,7 @@
 #include <lux/engine/object/Connection.hpp>
 #include <lux/engine/object/LuxObject.hpp>
 #include <lux/engine/object/Signal.hpp>
+#include <lux/engine/object/reflection_visibility.h>
 
 namespace lux::object::reflection
 {
@@ -33,16 +34,16 @@ namespace lux::object::reflection
 
     class SignalView;
 
-    [[nodiscard]] LUX_CORE_PUBLIC SignalView
+    [[nodiscard]] LUX_OBJECT_REFLECTION_PUBLIC SignalView
     findDeclaredSignal(const lux::meta::RefClass& object_class, std::string_view name) noexcept;
 
-    [[nodiscard]] LUX_CORE_PUBLIC SignalView findSignal(
+    [[nodiscard]] LUX_OBJECT_REFLECTION_PUBLIC SignalView findSignal(
         const lux::meta::ReflectionRegistry& registry,
         const lux::meta::RefClass& object_class,
         std::string_view name
     ) noexcept;
 
-    [[nodiscard]] LUX_CORE_PUBLIC lux::cxx::expected<Connection, EDynamicObserveError> observe(
+    [[nodiscard]] LUX_OBJECT_REFLECTION_PUBLIC lux::cxx::expected<Connection, EDynamicObserveError> observe(
         lux::object::LuxObject& sender,
         SignalView signal,
         lux::object::LuxObject& receiver,

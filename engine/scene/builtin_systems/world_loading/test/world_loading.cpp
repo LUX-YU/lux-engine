@@ -423,7 +423,6 @@ void measure(const scene::SceneCreateInfo &info, task::TaskExecutor &executor, c
 int main(int argc, char **argv)
 {
     assert(argc == 2 || (argc == 3 && std::string_view(argv[2]) == "--cost"));
-    meta::ReflectionRegistry::initRegistry();
     std::vector<ecs::ComponentSchema> values;
     for (const auto schemas :
          {ecs::transformComponentSchemas(), ecs::hierarchyComponentSchemas(), scene::worldLoadingComponentSchemas()})
@@ -450,8 +449,9 @@ int main(int argc, char **argv)
     auto executor = task::TaskExecutor::create({0, 1024});
     assert(executor);
     scene::SceneDriver driver(*executor);
-    auto metadata = scene::SceneMetaManager::build({*schemas, {}, {scene::worldLoadingSystemRegistration()}});
-    assert(metadata);
+    const lux::simulation::ecs::ComponentSchemaSet task_components{*schemas};
+    const lux::simulation::SimulationSystemRegistry task_system_types;
+    const std::array task_scene_systems{scene::worldLoadingSystemRegistration()};
     scene::SceneDescriptionBuilder builder;
     const auto registration = scene::worldLoadingSystemRegistration();
     std::vector<std::byte> configuration;
@@ -465,7 +465,7 @@ int main(int argc, char **argv)
     auto provider =
         scene::makeSceneCapabilityProvider<scene::WorldLoadingServices>("loading", "lux.world.loading", services);
     scene::SceneCreateInfo info{shared, valid.world, std::make_shared<const simulation::SimulationDescription>(),
-                                *metadata, std::span(&provider, 1)};
+                                task_components, task_system_types, task_scene_systems, std::span(&provider, 1)};
     if (argc == 3)
     {
         measure(info, *executor, *disk);

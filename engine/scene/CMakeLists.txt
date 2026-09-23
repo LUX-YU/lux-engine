@@ -1,6 +1,5 @@
 add_subdirectory(description)
 add_subdirectory(system)
-add_subdirectory(meta)
 add_subdirectory(composition)
 add_subdirectory(asset)
 add_subdirectory(integration/world_materialization)
@@ -10,3 +9,5 @@ add_subdirectory(builtin_systems/mesh_query)
 add_subdirectory(builtin_systems/render)
 
 add_subdirectory(builtin_systems/world_loading)
+
+add_subdirectory(plugins)

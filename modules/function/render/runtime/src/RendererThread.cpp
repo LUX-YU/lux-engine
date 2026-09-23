@@ -52,13 +52,13 @@ class RuntimeServer final : public GeneralRenderServer
 };
 } // namespace
 
-RenderResult<std::jthread> startRendererThread(RendererThread &state, const RendererConfig &config)
+RenderResult<std::jthread> startRendererThread(RendererThread &state, const RendererConfig &config, ValidationMessageSink diagnostics)
 {
-    // The captured cold inputs and their code leases survive server destruction.
+    // Device inputs and diagnostics survive server destruction.
     // No UI Context, Window or SceneInstance is borrowed by the backend.
     try
     {
-        return std::jthread([&state, config] {
+        return std::jthread([&state, config, diagnostics = std::move(diagnostics)] {
             {
                 RuntimeServer server(state);
                 ServerConfig server_config;
@@ -69,22 +69,8 @@ RenderResult<std::jthread> startRendererThread(RendererThread &state, const Rend
                 server_config.enable_validation = config.validation;
                 server_config.validation_error_counter = &state.statistics->validation_errors;
                 server_config.gpu_completed_serial = &state.statistics->completed;
-                server_config.validation_message_sink = config.validation_message_sink;
+                server_config.validation_message_sink = diagnostics;
                 auto initialized = server.init(std::move(server_config));
-                if (initialized)
-                {
-                    for (const auto &factory : config.feature_factories)
-                    {
-                        const auto registered = server.addFeatureFactory(factory);
-                        if (!registered.error.ok() || registered.feature_type_id == 0)
-                        {
-                            initialized = lux::cxx::unexpected(
-                                registered.error.ok() ? renderError<err::comm::RequestInvalid>() : registered.error);
-                            break;
-                        }
-                        state.catalog.add(factory, registered.feature_type_id, {registered.ops, registered.op_count});
-                    }
-                }
                 if (!initialized)
                 {
                     state.startup_error = initialized.error();

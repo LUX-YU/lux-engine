@@ -29,7 +29,7 @@ component_include_directories(editor_flowforge_ui
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${PROJECT_SOURCE_DIR}/engine/editor/ui/sinclude INSTALL_TIME include)
 target_compile_definitions(editor_flowforge_ui PRIVATE LUX_EDITOR_FLOWFORGE_UI_LIBRARY)
 target_link_libraries(editor_flowforge_ui PUBLIC lux::engine::editor::editor_flowforge lux::engine::editor::editor_ui
-    PRIVATE imgui::node_editor)
+    PRIVATE imgui::node_editor lux::engine::editor::editor_metadata)
 component_add_transitive_commands(editor_flowforge_ui
     "find_package(lux-engine-editor-flowforge REQUIRED COMPONENTS editor_flowforge)"
     "find_package(lux-engine-editor-ui REQUIRED COMPONENTS editor_ui)")

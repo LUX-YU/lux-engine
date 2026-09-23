@@ -5,6 +5,7 @@
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/scene/visibility.h>
 #include <lux/engine/simulation/Simulation.hpp>
+#include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
 
 #include <lux/cxx/core/move_only_function.hpp>
 
@@ -18,7 +19,6 @@
 namespace lux::scene
 {
 class SceneInstance;
-class SceneMetaManager;
 
 class LUX_ENGINE_SCENE_PUBLIC SceneBuilder final
 {
@@ -26,7 +26,7 @@ class LUX_ENGINE_SCENE_PUBLIC SceneBuilder final
     [[nodiscard]] simulation::ecs::Registry &registry() noexcept;
     [[nodiscard]] SceneInstanceId sceneInstanceId() const noexcept;
     [[nodiscard]] simulation::Simulation &simulation() noexcept;
-    [[nodiscard]] const SceneMetaManager &meta() const noexcept;
+    [[nodiscard]] const simulation::ecs::ComponentSchemaSet &components() const noexcept;
 
     template <class Configuration>
     [[nodiscard]] lux::cxx::expected<Configuration, SceneSystemBuildFailure> decodeConfiguration(

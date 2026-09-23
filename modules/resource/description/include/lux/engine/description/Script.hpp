@@ -32,10 +32,9 @@ namespace lux::rdesc
     };
 
     template <class Value>
-        requires lux::semantic::TypeDeclared<Value>
-    [[nodiscard]] inline ScriptValueType makeScriptValueType(
-        lux::semantic::EValuePass pass = lux::semantic::EValuePass::VALUE
-    )
+    requires lux::semantic::TypeDeclared<Value>
+    [[nodiscard]] inline ScriptValueType
+    makeScriptValueType(lux::semantic::EValuePass pass = lux::semantic::EValuePass::VALUE)
     {
         using Traits = lux::semantic::TypeTraits<std::remove_cv_t<Value>>;
         return {
@@ -44,19 +43,20 @@ namespace lux::rdesc
             pass,
             Traits::AbiKind,
             Traits::Size,
-            Traits::Alignment};
+            Traits::Alignment
+        };
     }
 
     struct ScriptFunction final
     {
         std::string name;
         lux::script::ScriptSymbolId symbol_id{
-            lux::script::InvalidScriptSymbolId};
+            lux::script::InvalidScriptSymbolId
+        };
         std::vector<ScriptValueType> args;
         std::vector<ScriptValueType> returns;
 
-        friend bool operator==(const ScriptFunction&, const ScriptFunction&)
-            noexcept = default;
+        friend bool operator==(const ScriptFunction&, const ScriptFunction&) noexcept = default;
     };
 
     struct ScriptDependency final
@@ -64,8 +64,7 @@ namespace lux::rdesc
         std::string kind;
         std::string id;
 
-        friend bool operator==(const ScriptDependency&, const ScriptDependency&)
-            noexcept = default;
+        friend bool operator==(const ScriptDependency&, const ScriptDependency&) noexcept = default;
     };
 
     struct ScriptApiRequirement final

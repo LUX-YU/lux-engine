@@ -7,7 +7,7 @@
 | 类型 | 职责 |
 | --- | --- |
 | `RenderSystem` | 场景渲染使用权、资源需求、View 关联、组件提取和必要发布 |
-| `RenderSystemMetadata` | Render Feature 的配置和 Scene 接线元信息 |
+| `RenderFeatureRegistration` | Render Feature 工厂、portable 配置 codec 和可选择性 |
 | `RenderFeatureSceneBinding` | 将 Feature 注册到对应组件观察与提取阶段 |
 | `RenderSyncStage` | Feature 的脏状态准备、提交和失败保留 |
 | `RenderAssetSource` | 同一资产来源与版本的共享读取、上传和不可变几何 |
@@ -84,6 +84,7 @@ RenderSystem 析构依次撤销阶段、断开观察、结束 Registry 借用并
 
 ## 可选依赖
 
-本模块依赖 Render client，通用 Scene composition 与 Scene meta 不反向依赖它。未选择渲染系统的游戏应能排除本模块和图形后端。
+本模块依赖 Render client 和共享 RenderRuntime，通用 Scene composition 不反向依赖它。
+工具元信息通过可选 Editor 插件登记，运行 Scene 不初始化反射目录。未选择渲染系统的游戏应能排除本模块和图形后端。
 
 相关说明：[Scene](../../README.md)、[Camera 与 ECS](../../../../domain/simulation/ecs/README.md)、[Render Feature](../../../../../modules/function/render/README.md)。

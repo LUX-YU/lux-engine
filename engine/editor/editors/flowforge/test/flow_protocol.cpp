@@ -674,7 +674,7 @@ int main(int argc, char **argv)
     config.providers.push_back(
         {std::string(flow::kFlowForgeDocumentType),
          [](const ProjectAssetEntry &entry) { return entry.kind == EProjectAssetKind::FLOW_GRAPH; },
-         [&probe](auto &runtime, auto &) { return probe.registration(runtime); },
+         [&probe](auto &runtime, auto &, auto) { return probe.registration(runtime); },
          [](auto &, auto &, auto &, auto &) -> EditorResult<void> { return {}; }});
     {
         Editor editor(std::move(config));

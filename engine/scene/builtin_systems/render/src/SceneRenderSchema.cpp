@@ -50,7 +50,7 @@ std::span<const simulation::ecs::ComponentSchema> sceneRenderComponentSchemas() 
     static const std::array schemas{
         makeComponentSchema<ResolvedMeshResources>(componentSchemaId("lux.scene.ResolvedMeshResources"), 1U,
                                                    EComponentSnapshotPolicy::REBUILD, {}, nullptr,
-                                                   EComponentSemanticKind::RUNTIME_DERIVED, false),
+                                                   EComponentSemanticKind::RUNTIME_DERIVED),
         generated::sceneCameraComponentSchemas().front()};
     return schemas;
 }

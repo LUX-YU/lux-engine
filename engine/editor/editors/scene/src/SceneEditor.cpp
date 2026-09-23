@@ -1,3 +1,4 @@
+#include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
 #include <algorithm>
 #include <array>
 #include <limits>
@@ -122,7 +123,7 @@ struct SceneEditor::Data final
     Project &project;
     process::ExecutionRuntime &runtime;
     std::shared_ptr<const NativeScene> source;
-    std::shared_ptr<const lux::scene::SceneMetaManager> metadata;
+    lux::simulation::ecs::ComponentSchemaSet metadata;
     lux::render::RenderRuntime &renderer;
     std::shared_ptr<detail::SceneAssetSources> asset_sources;
     std::shared_ptr<lux::scene::RenderAssetSource> asset_source;
@@ -410,7 +411,7 @@ struct SceneEditor::Data final
             return;
         }
 
-        const auto type = lux::render::kGrid3DRenderFeatureRegistration.descriptor->type;
+        const auto type = lux::render::kGrid3DDescriptor.type;
         const auto feature = system->feature(type);
         if (!feature.isValid())
         {
@@ -441,7 +442,7 @@ struct SceneEditor::Data final
         {
             return;
         }
-        const auto type = lux::render::kHighlightRenderFeatureRegistration.descriptor->type;
+        const auto type = lux::render::kHighlightDescriptor.type;
         const auto feature = system->feature(type);
         if (!feature.isValid())
         {
@@ -511,8 +512,8 @@ struct SceneEditor::Data final
          std::shared_ptr<detail::SceneAssetSources> sources, std::shared_ptr<lux::scene::RenderAssetSource> assets,
          std::shared_ptr<detail::SceneRunSlot> run_slot)
         : project(owner), runtime(process), source(std::make_shared<const NativeScene>(std::move(content))),
-          metadata(meta.scene), renderer(renderer), asset_sources(std::move(sources)), asset_source(std::move(assets)),
-          scene(std::move(value)), objects(*scene, *source, *metadata), history(std::move(edits)),
+          metadata(meta.components), renderer(renderer), asset_sources(std::move(sources)), asset_source(std::move(assets)),
+          scene(std::move(value)), objects(*scene, *source, metadata), history(std::move(edits)),
           executor(std::move(tasks)), driver(executor),
           run(process, owner.tasks(), renderer, std::move(meta), std::move(run_slot))
     {
@@ -773,7 +774,7 @@ EditorResult<SceneCapture> SceneEditor::captureSource() const
         {
             continue;
         }
-        const auto *schema = data_->metadata->getComponentMeta(changed.component);
+        const auto *schema = data_->metadata.find(changed.component);
         if (schema && schema->capture &&
             std::ranges::find(capture.schemas, schema->id.name, &lux::world::WorldDataSchemaId::name) ==
                 capture.schemas.end())
@@ -789,7 +790,7 @@ EditorResult<SceneCapture> SceneEditor::captureSource() const
         {
             continue;
         }
-        const auto *schema = data_->metadata->getComponentMeta(changed.component);
+        const auto *schema = data_->metadata.find(changed.component);
         const auto ordinal = std::ranges::find(schemas, schema->id.name, &lux::world::WorldDataSchemaId::name);
         if (!schema->capture || ordinal == schemas.end())
         {
@@ -1207,9 +1208,9 @@ std::vector<SceneComponentInfo> SceneEditor::components(SceneEntityRef object) c
     {
         return result;
     }
-    for (const auto &schema : data_->metadata->components().all())
+    for (const auto &schema : data_->metadata.all())
     {
-        if (schema.editor_visible && schema.operations.has(data_->inspectedObjects().registry, entity))
+        if (schema.semantic_kind != lux::simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED && schema.operations.has(data_->inspectedObjects().registry, entity))
         {
             result.push_back({schema.cpp_type, std::string(schema.id.name)});
         }
@@ -1224,7 +1225,7 @@ const void *SceneEditor::component(SceneEntityRef object, lux::cxx::TypeToken ty
         return nullptr;
     }
     const auto entity = data_->inspectedObjects().resolve(object);
-    const auto *schema = data_->metadata->getComponentMeta(type);
+    const auto *schema = data_->metadata.find(type);
     if (!schema || entity == lux::simulation::ecs::NullEntity)
     {
         return nullptr;
@@ -1319,7 +1320,7 @@ bool SceneEditor::supportsObjectSpace(EObjectSpace space) const noexcept
     }
     const auto type = space == EObjectSpace::SPACE_2D ? lux::cxx::typeToken<lux::simulation::ecs::Transform2D>()
                                                       : lux::cxx::typeToken<lux::simulation::ecs::Transform3D>();
-    const auto *schema = data_->metadata->getComponentMeta(type);
+    const auto *schema = data_->metadata.find(type);
     return schema && schema->capture && schema->decode_value &&
            std::ranges::find(data_->source->world->data().schemas(), schema->id.name,
                              &lux::world::WorldDataSchemaId::name) != data_->source->world->data().schemas().end();
@@ -1327,7 +1328,7 @@ bool SceneEditor::supportsObjectSpace(EObjectSpace space) const noexcept
 
 bool SceneEditor::supportsHierarchy() const noexcept
 {
-    const auto *schema = data_->metadata->getComponentMeta(lux::cxx::typeToken<lux::simulation::ecs::Parent>());
+    const auto *schema = data_->metadata.find(lux::cxx::typeToken<lux::simulation::ecs::Parent>());
     return schema && schema->capture && schema->decode_value &&
            std::ranges::find(data_->source->world->data().schemas(), schema->id.name,
                              &lux::world::WorldDataSchemaId::name) != data_->source->world->data().schemas().end();
@@ -1709,8 +1710,8 @@ editing::EditResult<void *> SceneEditor::fieldAccess(const SceneWriteTarget &tar
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::STALE_BASE));
         }
     }
-    const auto *schema = data_->metadata->getComponentMeta(type);
-    if (!schema || !schema->editor_visible ||
+    const auto *schema = data_->metadata.find(type);
+    if (!schema || schema->semantic_kind == lux::simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED ||
         schema->snapshot != lux::simulation::ecs::EComponentSnapshotPolicy::COPY ||
         type == lux::cxx::typeToken<lux::simulation::ecs::Parent>())
     {
@@ -1848,7 +1849,7 @@ void SceneEditor::fieldChanged(const SceneWriteTarget &target, lux::cxx::TypeTok
     {
         static_cast<void>(loading.setDirty(partition, true));
     }
-    data_->metadata->getComponentMeta(type)->operations.notifyUpdated(data_->inspectedObjects().registry, entity);
+    data_->metadata.find(type)->operations.notifyUpdated(data_->inspectedObjects().registry, entity);
     notify<componentChanged>(notice);
 }
 

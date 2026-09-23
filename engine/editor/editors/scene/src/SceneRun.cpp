@@ -1,3 +1,4 @@
+#include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
 #include <cassert>
 #include <lux/engine/editor/detail/DocumentTask.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
@@ -123,7 +124,7 @@ struct ActiveRun final
         // No per-step copy or scan of all component values is required.
         const auto selected = objects.resolve(objects.selection.object);
         std::size_t index{};
-        for (const auto &schema : objects.metadata.components().all())
+        for (const auto &schema : objects.metadata.all())
         {
             const bool present = selected != ecs::NullEntity && schema.operations.has(registry, selected);
             changed |= selected_components[index] != present;
@@ -133,7 +134,7 @@ struct ActiveRun final
     }
 
     ActiveRun(std::unique_ptr<lux::scene::SceneInstance> value, const NativeScene &source,
-              const lux::scene::SceneMetaManager &metadata, lux::task::TaskExecutor tasks)
+              const lux::simulation::ecs::ComponentSchemaSet &metadata, lux::task::TaskExecutor tasks)
         : scene(std::move(value)), objects(*scene, source, metadata), executor(std::move(tasks)), driver(executor)
     {
         auto &registry = scene->registry();
@@ -144,7 +145,7 @@ struct ActiveRun final
         catalog_connections.emplace_back(registry.on_construct<Parent>().connect<&ActiveRun::hierarchyChanged>(*this));
         catalog_connections.emplace_back(registry.on_update<Parent>().connect<&ActiveRun::hierarchyChanged>(*this));
         catalog_connections.emplace_back(registry.on_destroy<Parent>().connect<&ActiveRun::hierarchyChanged>(*this));
-        selected_components.resize(metadata.components().all().size());
+        selected_components.resize(metadata.all().size());
     }
 
     ~ActiveRun()
@@ -221,7 +222,7 @@ struct SceneRun::Data final
             return lux::cxx::unexpected(
                 EditorFailure{EEditorError::EXECUTION_FAILURE, "run.executor", 0, {}, executor.error()});
         }
-        active = std::make_unique<ActiveRun>(std::move(*created), *source, *metadata.scene, std::move(*executor));
+        active = std::make_unique<ActiveRun>(std::move(*created), *source, metadata.components, std::move(*executor));
         const auto played = active->driver.play(*active->scene);
         if (!played)
         {

@@ -175,6 +175,9 @@ class ValidationEventRing
 // ─────────────────────────────────────────────────────────────────────
 struct GeneralRenderServer::Impl
 {
+    // Code also backs deferred GPU/resource callbacks, beyond the factory registry.
+    std::vector<std::shared_ptr<const void>> code_owners_;
+
     // Back-pointer to the owning server — set in constructor.
     // Allows anonymous-namespace handlers to call server public methods.
     GeneralRenderServer *server_{nullptr};

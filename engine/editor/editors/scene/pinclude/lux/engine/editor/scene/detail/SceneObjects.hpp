@@ -2,7 +2,7 @@
 #include <lux/engine/editor/scene/NativeScene.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
 #include <lux/engine/scene/SceneInstance.hpp>
-#include <lux/engine/scene/SceneMetaManager.hpp>
+#include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
 
 namespace lux::editor::scene::detail
@@ -31,11 +31,11 @@ inline constexpr editing::HistoryLimits kSceneHistoryLimits{1024, 64U * 1024U * 
 struct SceneObjects final
 {
     SceneObjects(lux::scene::SceneInstance &scene, const NativeScene &source,
-                 const lux::scene::SceneMetaManager &metadata);
+                 const lux::simulation::ecs::ComponentSchemaSet &metadata);
 
     lux::simulation::ecs::Registry &registry;
     const NativeScene &source;
-    const lux::scene::SceneMetaManager &metadata;
+    const lux::simulation::ecs::ComponentSchemaSet &metadata;
     lux::scene::WorldLoadingSystem &loading;
     lux::simulation::ecs::WorldEntityMap &identities;
     lux::scene::SceneInstanceId instance;
@@ -76,7 +76,7 @@ struct SceneObjects final
     editing::EditResult<ObjectComponent> encodeComponent(const Component &value,
                                                          const lux::simulation::ecs::WorldEntityMap &mapping) const
     {
-        const auto *schema = metadata.getComponentMeta(lux::cxx::typeToken<Component>());
+        const auto *schema = metadata.find(lux::cxx::typeToken<Component>());
         if (!schema || !schema->decode_value || !schema->capture_value)
         {
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::UNSUPPORTED_OPERATION));

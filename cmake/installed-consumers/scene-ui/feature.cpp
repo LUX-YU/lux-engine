@@ -1,3 +1,4 @@
+#include "../common/RenderRegistration.hpp"
 #include <lux/engine/render/RenderRuntime.hpp>
 #include <lux/engine/ui/Frame.hpp>
 #include <lux/engine/ui/Theme.hpp>
@@ -29,9 +30,10 @@ int main()
     assert(ImGui::GetCurrentContext() == nullptr);
     render::RendererConfig config;
     config.validation = true;
-    config.feature_factories = {render::kUiRenderFeatureFactory};
+    std::vector<lux::render::RenderFeatureRegistration> initial_features = {render::kUiRenderRenderFeatureRegistration};
     auto made = render::RenderRuntime::create(std::move(config));
     assert(made);
+    registerRenderFeatures(**made, std::move(initial_features));
     auto runtime = std::move(*made);
     const auto until = [&](auto condition) {
         const auto deadline = std::chrono::steady_clock::now() + 15s;

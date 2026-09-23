@@ -1,6 +1,5 @@
 #include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
 #include <lux/engine/scene/SceneBuilder.hpp>
-#include <lux/engine/scene/SceneMetaManager.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
 
 #include <algorithm>
@@ -914,7 +913,7 @@ SceneSystemRegistration worldLoadingSystemRegistration() noexcept
                 configured.bootstrap.insert(configured.bootstrap.end(), configuration->bootstrap.begin(),
                                             configuration->bootstrap.end());
                 auto instance = builder.emplaceSystem<WorldLoadingSystem>(
-                    input.instanceId(), builder.registry(), builder.meta().components(), std::move(configured));
+                    input.instanceId(), builder.registry(), builder.components(), std::move(configured));
                 if (!instance)
                 {
                     return lux::cxx::unexpected(instance.error());

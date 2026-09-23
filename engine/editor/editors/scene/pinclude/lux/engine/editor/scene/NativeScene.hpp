@@ -72,8 +72,6 @@ class SceneAssetSources final
     std::vector<Record> records_;
 };
 
-[[nodiscard]] EditorResult<std::shared_ptr<const lux::scene::SceneDescription>> editorSceneDescription(
-    const NativeScene &, const SceneEditorMetadata &, bool author_view = true);
 [[nodiscard]] EditorResult<std::unique_ptr<lux::scene::SceneInstance>> instantiateNativeScene(
     const NativeScene &, const SceneEditorMetadata &, process::TaskScope &, lux::render::RenderRuntime &,
     std::shared_ptr<lux::scene::RenderAssetSource>, lux::simulation::ESimulationMode,

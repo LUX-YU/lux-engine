@@ -110,7 +110,6 @@ struct ComponentSchema final
     DecodeEmplaceComponentFn decode_emplace{};
     EComponentSnapshotPolicy snapshot{EComponentSnapshotPolicy::COPY};
     EComponentSemanticKind semantic_kind{EComponentSemanticKind::DOMAIN_CONTRACT};
-    bool editor_visible{true};
     std::shared_ptr<const void> code_lifetime;
     CaptureComponentFn capture{};
     DecodeComponentValueFn decode_value{};
@@ -122,7 +121,7 @@ template <class Component>
 [[nodiscard]] ComponentSchema makeComponentSchema(
     ComponentSchemaId id, std::uint32_t version, EComponentSnapshotPolicy snapshot,
     std::shared_ptr<const void> code_lifetime, DecodeEmplaceComponentFn decode_emplace,
-    EComponentSemanticKind semantic_kind, bool editor_visible, CaptureComponentFn capture = nullptr,
+    EComponentSemanticKind semantic_kind, CaptureComponentFn capture = nullptr,
     DecodeComponentValueFn decode_value = nullptr, CaptureComponentValueFn capture_value = nullptr,
     VisitComponentReferencesFn visit_references = nullptr)
 {
@@ -133,7 +132,6 @@ template <class Component>
                            decode_emplace,
                            snapshot,
                            semantic_kind,
-                           editor_visible,
                            std::move(code_lifetime),
                            capture,
                            decode_value,

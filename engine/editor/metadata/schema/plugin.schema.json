@@ -1,0 +1,721 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lux:engine:plugin:1",
+  "title": "LUX plugin descriptor fragment v1 \u2014 implementation design",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "lux.engine.plugin"
+    },
+    "version": {
+      "const": 1
+    },
+    "plugin": {
+      "$ref": "#/$defs/plugin"
+    },
+    "abilities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ability"
+      },
+      "minItems": 0
+    },
+    "implementations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/implementation"
+      },
+      "minItems": 0
+    },
+    "systems": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/system"
+      },
+      "minItems": 0
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/component"
+      },
+      "minItems": 0
+    },
+    "configurations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/configuration"
+      },
+      "minItems": 0
+    },
+    "render_features": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/feature"
+      },
+      "minItems": 0
+    },
+    "render_scene_bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/binding"
+      },
+      "minItems": 0
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "plugin",
+    "abilities",
+    "implementations",
+    "systems",
+    "components",
+    "configurations",
+    "render_features",
+    "render_scene_bindings"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "library": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?![A-Za-z]:)(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+        },
+        "interface_version": {
+          "const": 1
+        },
+        "sdk_abi": {
+          "type": "string",
+          "minLength": 1
+        },
+        "declaration_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "exports": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "simulation",
+              "scene",
+              "components",
+              "render",
+              "render_scene",
+              "editor"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "build_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "path",
+        "interface_version",
+        "sdk_abi",
+        "declaration_digest",
+        "exports",
+        "build_id"
+      ],
+      "additionalProperties": false
+    },
+    "field": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minimum": {
+          "type": "number"
+        },
+        "maximum": {
+          "type": "number"
+        },
+        "default_display": {}
+      },
+      "required": [
+        "id",
+        "type",
+        "display_name"
+      ],
+      "additionalProperties": false
+    },
+    "ability": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "display_name"
+      ],
+      "additionalProperties": false
+    },
+    "implementation": {
+      "type": "object",
+      "properties": {
+        "ability": {
+          "$ref": "#/$defs/identity"
+        },
+        "system": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        }
+      },
+      "required": [
+        "ability",
+        "system"
+      ],
+      "additionalProperties": false
+    },
+    "requirement": {
+      "type": "object",
+      "properties": {
+        "slot": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "ability": {
+          "$ref": "#/$defs/identity"
+        },
+        "optional": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "slot",
+        "ability"
+      ],
+      "additionalProperties": false
+    },
+    "component_access": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "mode": {
+          "enum": [
+            "read",
+            "write"
+          ]
+        }
+      },
+      "required": [
+        "component",
+        "mode"
+      ],
+      "additionalProperties": false
+    },
+    "external_access": {
+      "type": "object",
+      "properties": {
+        "resource": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "mode": {
+          "enum": [
+            "read",
+            "write"
+          ]
+        }
+      },
+      "required": [
+        "resource",
+        "mode"
+      ],
+      "additionalProperties": false
+    },
+    "access": {
+      "type": "object",
+      "properties": {
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/component_access"
+          },
+          "minItems": 0
+        },
+        "external": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external_access"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "components",
+        "external"
+      ],
+      "additionalProperties": false
+    },
+    "system": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "domain": {
+          "enum": [
+            "simulation",
+            "scene"
+          ]
+        },
+        "configuration": {
+          "$ref": "#/$defs/identity"
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/requirement"
+          },
+          "minItems": 0
+        },
+        "access": {
+          "$ref": "#/$defs/access"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "domain",
+        "requirements"
+      ],
+      "additionalProperties": false
+    },
+    "component": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storage": {
+          "enum": [
+            "authoring",
+            "runtime_derived"
+          ]
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/field"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "display_name",
+        "storage",
+        "fields"
+      ],
+      "additionalProperties": false
+    },
+    "configuration": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/field"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "display_name",
+        "fields"
+      ],
+      "additionalProperties": false
+    },
+    "feature_dependency": {
+      "type": "object",
+      "properties": {
+        "feature": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "optional": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "feature",
+        "version",
+        "optional"
+      ],
+      "additionalProperties": false
+    },
+    "feature": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "abi_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "configuration": {
+          "$ref": "#/$defs/identity"
+        },
+        "scene_configurable": {
+          "type": "boolean"
+        },
+        "operation_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/feature_dependency"
+          },
+          "minItems": 0
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+          },
+          "minItems": 0
+        },
+        "multiplicity": {
+          "enum": [
+            "single",
+            "multiple"
+          ]
+        },
+        "operation_layout": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "payload": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "stream",
+                  "bulk",
+                  "blob",
+                  "resource",
+                  "param"
+                ]
+              },
+              "lane": {
+                "enum": [
+                  "program",
+                  "control",
+                  "upload"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "payload",
+              "kind",
+              "lane"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "id",
+        "abi_version",
+        "display_name",
+        "scene_configurable",
+        "operation_count",
+        "dependencies",
+        "conflicts",
+        "multiplicity",
+        "operation_layout"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "scene_configurable": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "configuration"
+            ]
+          }
+        }
+      ]
+    },
+    "observation": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "construct",
+              "update",
+              "destroy"
+            ]
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "component",
+        "events"
+      ],
+      "additionalProperties": false
+    },
+    "binding": {
+      "type": "object",
+      "properties": {
+        "feature": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "scene_system": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "observations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/observation"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "feature",
+        "scene_system",
+        "observations"
+      ],
+      "additionalProperties": false
+    },
+    "dependency": {
+      "type": "object",
+      "properties": {
+        "plugin": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        }
+      },
+      "required": [
+        "plugin",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "plugin": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "source": {
+          "enum": [
+            "builtin",
+            "plugin"
+          ]
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "runtime_library": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/library"
+            },
+            {
+              "properties": {
+                "exports": {
+                  "items": {
+                    "enum": [
+                      "simulation",
+                      "scene",
+                      "components",
+                      "render",
+                      "render_scene"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "editor_library": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/library"
+            },
+            {
+              "properties": {
+                "exports": {
+                  "items": {
+                    "const": "editor"
+                  },
+                  "maxItems": 1
+                }
+              }
+            }
+          ]
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dependency"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "source",
+        "author",
+        "description",
+        "runtime_library",
+        "dependencies"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

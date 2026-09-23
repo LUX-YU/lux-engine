@@ -2,12 +2,12 @@ find_package(lux-cxx REQUIRED COMPONENTS arguments)
 generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_APP_LIBRARY PUBLIC_MACRO_NAME LUX_EDITOR_APP_PUBLIC
     DISABLE_DLL_MACRO_NAME LUX_EDITOR_APP_DLL_DISABLE GENERATE_FILE_PATH lux/engine/editor/app/visibility.h)
 add_component(COMPONENT_NAME editor_app NAMESPACE lux::engine::editor OUTPUT_NAME lux_engine_editor_app
-    SOURCE_FILES src/Editor.cpp src/EditorStartup.cpp src/EditorLoop.cpp src/EditorPlatform.cpp src/ProjectPane.cpp)
+    SOURCE_FILES src/Editor.cpp src/EditorStartup.cpp src/EditorLoop.cpp src/EditorPlatform.cpp src/ProjectPane.cpp src/EditorPlugins.cpp)
 component_include_directories(editor_app BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude INSTALL_TIME include)
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${PROJECT_SOURCE_DIR}/engine/editor/core/sinclude INSTALL_TIME include)
 target_compile_definitions(editor_app PRIVATE LUX_EDITOR_APP_LIBRARY)
 target_link_libraries(editor_app PUBLIC lux::engine::editor::editor_core lux::engine::editor::editor_ui
-    PRIVATE lux::engine::platform::window)
+    PRIVATE lux::engine::platform::window lux::engine::editor::editor_metadata)
 component_add_transitive_commands(editor_app
     "find_package(lux-engine-editor-core REQUIRED COMPONENTS editor_core)"
     "find_package(lux-engine-editor-ui REQUIRED COMPONENTS editor_ui)")
@@ -19,7 +19,7 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-app VERSION ${PROJE
 add_executable(lux_editor main.cpp)
 target_link_libraries(lux_editor PRIVATE lux::engine::editor::editor_app lux::engine::editor::editor_assets
     lux::engine::editor::editor_scene_ui lux::engine::editor::editor_material_ui
-    lux::engine::editor::editor_flowforge_ui lux::engine::function::render_features lux::cxx::arguments)
+    lux::engine::editor::editor_flowforge_ui lux::cxx::arguments)
 if(WIN32)
     target_link_libraries(lux_editor PRIVATE comdlg32)
 endif()
@@ -89,7 +89,7 @@ if(BUILD_TESTING)
                 "${PROJECT_SOURCE_DIR}/cmake/installed-consumers/editor-d2/protocol/RunCase.ps1"
                 -Case "${mode}" -Executable "$<TARGET_FILE:editor_core_protocol>"
                 -Fixture "$<TARGET_FILE:editor_scene_fixture>" -MaterialFixture "$<TARGET_FILE:editor_material_protocol>"
-                -FlowFixture "$<TARGET_FILE:editor_flow_protocol>" -Root "${CMAKE_CURRENT_BINARY_DIR}/core-runs"
+                -FlowFixture "$<TARGET_FILE:editor_flow_protocol>" -Root "${CMAKE_BINARY_DIR}/tests/core"
                 -Seed "${PROJECT_SOURCE_DIR}/cmake/installed-consumers/editor-d2/protocol/Seed.luxpak")
         set_tests_properties(editor.unified_core_${mode} PROPERTIES RUN_SERIAL TRUE TIMEOUT 100)
     endforeach()
@@ -99,4 +99,11 @@ if(BUILD_TESTING)
     # Use the exact installed component sources and generation rules during development.
     set(D2_CONSUMER_SOURCE_DIR "${PROJECT_SOURCE_DIR}/cmake/installed-consumers/editor-d2")
     include("${D2_CONSUMER_SOURCE_DIR}/Targets.cmake")
+endif()
+
+if(BUILD_TESTING)
+    foreach(target editor_core_protocol consumer_protocol)
+        target_compile_definitions(${target} PRIVATE "LUX_TEST_PLUGIN_ROOT=\"${CMAKE_BINARY_DIR}\"")
+        add_dependencies(${target} builtin_runtime_plugin lux_plugin_capabilities)
+    endforeach()
 endif()

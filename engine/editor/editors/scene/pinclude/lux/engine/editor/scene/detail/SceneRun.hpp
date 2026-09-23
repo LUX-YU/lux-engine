@@ -10,7 +10,7 @@ class SceneInstance;
 #include <lux/engine/editor/scene/SceneRun.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/scene/RenderAssets.hpp>
-#include <lux/engine/scene/SceneMetaManager.hpp>
+#include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
 #include <lux/engine/simulation/Simulation.hpp>
 
 namespace lux::editor::scene

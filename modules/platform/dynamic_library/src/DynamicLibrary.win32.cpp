@@ -45,10 +45,13 @@ namespace lux::engine::platform
             return msg;
         }
 
-        DWORD toWin32Flags(LoadMode mode)
+        DWORD toWin32Flags(ELoadMode mode)
         {
+            if (any(mode & ELoadMode::INSTALLED_PLUGIN))
+                return LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
+                    LOAD_LIBRARY_SEARCH_SYSTEM32;
             DWORD flags = 0;
-            if (any(mode & LoadMode::LoadWithAlteredSearchPath))
+            if (any(mode & ELoadMode::ALTERED_SEARCH_PATH))
                 flags |= LOAD_WITH_ALTERED_SEARCH_PATH;
             return flags;
         }
@@ -187,18 +190,25 @@ namespace lux::engine::platform
         return *this;
     }
 
-    DynamicLibrary::DynamicLibrary(const std::filesystem::path& path, LoadMode mode)
+    DynamicLibrary::DynamicLibrary(const std::filesystem::path& path, ELoadMode mode)
     {
         load(path, mode);
     }
 
-    bool DynamicLibrary::load(const std::filesystem::path& path, LoadMode mode)
+    bool DynamicLibrary::load(const std::filesystem::path& path, ELoadMode mode)
     {
         unload();
         last_error_.clear();
 
+        if (any(mode & ELoadMode::INSTALLED_PLUGIN) &&
+            (!path.is_absolute() || any(mode & (ELoadMode::ALTERED_SEARCH_PATH | ELoadMode::APPEND_DECORATIONS))))
+        {
+            last_error_ = "installed plugin requires an absolute, undecorated path and restricted search";
+            return false;
+        }
+
         std::filesystem::path effective = path;
-        if (any(mode & LoadMode::AppendDecorations) && !path.has_extension())
+        if (any(mode & ELoadMode::APPEND_DECORATIONS) && !path.has_extension())
             effective = decorate(path.string());
 
         handle_ = ::LoadLibraryExW(effective.wstring().c_str(), nullptr, toWin32Flags(mode));

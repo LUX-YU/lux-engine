@@ -213,8 +213,8 @@ int main(int argc, char **argv)
     const auto descriptors = consumer::schemas();
     assert(descriptors.size() == 2);
     const auto &schema = descriptors.front();
-    assert(schema.editor_visible && schema.decode_emplace && schema.capture);
-    assert(!descriptors.back().editor_visible && !descriptors.back().capture);
+    assert(schema.semantic_kind != lux::simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED && schema.decode_emplace && schema.capture);
+    assert(descriptors.back().semantic_kind == EComponentSemanticKind::RUNTIME_DERIVED && !descriptors.back().capture);
     decodedValues(schema);
     const auto binding = consumer::binding();
     assert(binding.type == schema.cpp_type && binding.draw);

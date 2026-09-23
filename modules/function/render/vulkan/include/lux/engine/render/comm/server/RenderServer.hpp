@@ -439,17 +439,16 @@ class FrameDispatcher
         }
         else
         {
+            if (dom.handlers.size() > std::numeric_limits<std::uint16_t>::max())
+                return kInvalidTypeId;
             idx = static_cast<std::uint16_t>(dom.handlers.size());
             dom.handlers.emplace_back();
             dom.generations.push_back(0);
         }
 
-        // Bump generation (skip 0 — reserved for static slots).
+        // Exhausted generations are retired by freeSlot; stale ids never become valid again.
         auto &gen = dom.generations[idx];
-        if (++gen == 0)
-        {
-            gen = 1;
-        }
+        ++gen;
 
         return makeTypeId(idx, gen);
     }
@@ -464,7 +463,8 @@ class FrameDispatcher
         }
         auto &dom = domains_[opcode];
         const auto idx = typeIdIndex(id);
-        if (idx >= dom.handlers.size() || dom.generations[idx] != typeIdGen(id))
+        if (idx >= dom.handlers.size() || dom.generations[idx] != typeIdGen(id) ||
+            typeIdGen(id) == 0 || dom.handlers[idx].fn == nullptr)
         {
             return;
         }
@@ -476,13 +476,16 @@ class FrameDispatcher
             }
         }
         dom.handlers[idx] = Entry{};
-        dom.free_list.push_back(idx);
+        if (dom.generations[idx] != std::numeric_limits<std::uint16_t>::max())
+            dom.free_list.push_back(idx);
     }
 
     /// Convenience: allocate a slot and immediately register a unary handler.
     template <FrameBlobPayload T, void (*Fn)(Ctx &, const T &)>
     [[nodiscard]] TypeId allocateAndRegisterUnary(OpCode opcode, const char *name = "")
     {
+        if (name != nullptr && name[0] != '\0' && name_index_.contains(name))
+            return kInvalidTypeId;
         const TypeId id = allocateSlot(opcode);
         if (id == kInvalidTypeId)
         {
@@ -509,6 +512,8 @@ class FrameDispatcher
     template <FrameBlobPayload T, void (*Fn)(Ctx &, std::span<const T>)>
     [[nodiscard]] TypeId allocateAndRegisterBulk(OpCode opcode, const char *name = "")
     {
+        if (name != nullptr && name[0] != '\0' && name_index_.contains(name))
+            return kInvalidTypeId;
         const TypeId id = allocateSlot(opcode);
         if (id == kInvalidTypeId)
         {
@@ -1150,7 +1155,7 @@ class LUX_FUNCTION_PUBLIC GeneralRenderServer : public RenderServer<>
 
     // ── Server-side direct initialization (same thread, before tick()) ──
     /// Register a FeatureFactory, returns full registration result including ops.
-    [[nodiscard]] FeatureTypeRegisteredReply addFeatureFactory(const FeatureFactory &factory);
+    [[nodiscard]] FeatureTypeRegisteredReply addFeatureFactory(const FeatureFactory &factory, std::shared_ptr<const void> code_lifetime = {});
 
     /// Batch register, returns corresponding registration results.
     [[nodiscard]] std::vector<FeatureTypeRegisteredReply> addFeatureFactories(

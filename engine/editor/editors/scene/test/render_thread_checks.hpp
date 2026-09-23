@@ -12,7 +12,7 @@
 #include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
-#include <lux/engine/scene/RenderSystemMetadata.hpp>
+#include <lux/engine/scene/RenderFeatureSceneBinding.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneDriver.hpp>
 #include <lux/engine/scene/SceneInstance.hpp>
@@ -125,7 +125,6 @@ inline void checkProgramAdmissionOrder()
 
 struct RenderThreadChecks final
 {
-    std::shared_ptr<const lux::scene::RenderSystemMetadata> metadata;
     lux::scene::SceneDescription description;
     std::unique_ptr<lux::scene::SceneInstance> instance;
     lux::scene::RenderSystem *system{};
@@ -154,20 +153,18 @@ struct RenderThreadChecks final
         assert(components);
         const auto systems = scene::builtinRenderSystemRegistrations();
         const auto features = render::builtinRenderFeatureRegistrations();
-        const auto bindings = scene::builtinRenderFeatureSceneBindings();
-        auto built = scene::SceneMetaManager::build({std::move(*components), {}, {systems.begin(), systems.end()}});
-        assert(built);
-        auto render_meta = scene::RenderSystemMetadata::build(*built, {features.begin(), features.end()}, bindings);
-        assert(render_meta);
-        metadata = std::make_shared<const scene::RenderSystemMetadata>(std::move(*render_meta));
-        const auto light = std::ranges::find(features, std::string_view("lux.render.light.v1"),
-                                             &render::RenderFeatureRegistration::stable_name);
+        scene::RenderFeatureSceneBindings bindings = scene::builtinRenderFeatureSceneBindings();
+        const lux::simulation::ecs::ComponentSchemaSet task_components{*components};
+    const lux::simulation::SimulationSystemRegistry task_system_types;
+    const std::vector<lux::scene::SceneSystemRegistration> task_scene_systems{systems.begin(), systems.end()};
+            const auto light = std::ranges::find(features, std::string_view("lux.render.light.v1"),
+                                             [](const auto &entry) { return entry.factory.descriptor.canonical_name; });
         assert(light != features.end());
         std::vector<std::byte> defaults;
         assert(light->configuration.portable.encode_default(defaults));
         scene::RenderSystemConfiguration config;
         config.coordinate_page_size = 2048;
-        config.features.push_back({light->descriptor->type, std::move(defaults)});
+        config.features.push_back({light->factory.descriptor.type, std::move(defaults), std::string(light->configuration.schema), light->configuration.schema_version});
         const auto registration = scene::builtinRenderSystemRegistration();
         std::vector<std::byte> encoded;
         assert(registration.configuration.encode(&config, encoded));
@@ -186,12 +183,12 @@ struct RenderThreadChecks final
         description = std::move(*assembled);
         std::array providers{
             scene::makeSceneCapabilityProvider<render::RenderRuntime>("runtime", "lux.render.runtime", renderer),
-            scene::makeSceneCapabilityProvider<std::shared_ptr<const scene::RenderSystemMetadata>>(
-                "metadata", "lux.render.metadata", metadata)};
+            scene::makeSceneCapabilityProvider<scene::RenderFeatureSceneBindings>(
+                "bindings", "lux.render.scene_bindings", bindings)};
         auto made =
             scene::SceneInstance::create({std::make_shared<const scene::SceneDescription>(std::move(description)),
                                           std::make_shared<const world::WorldDescription>(),
-                                          std::make_shared<const simulation::SimulationDescription>(), *built,
+                                          std::make_shared<const simulation::SimulationDescription>(), task_components, task_system_types, task_scene_systems,
                                           providers, simulation::ESimulationMode::DERIVATION});
         assert(made && (*made)->simulation().seal());
         instance = std::move(*made);

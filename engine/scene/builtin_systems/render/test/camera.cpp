@@ -59,7 +59,8 @@ int main()
     factory.name = "StandardViewCamera";
     factory.descriptor = render::kViewCameraDescriptor;
     const std::array<render::TypeId, 2> operations{101, 102};
-    catalog.add(factory, 1, operations);
+    factory.operation_count = static_cast<std::uint32_t>(operations.size());
+    assert(catalog.add(factory, 1, operations));
     const auto bindings = scene::builtinRenderFeatureSceneBindings();
     const auto binding =
         std::ranges::find(bindings, factory.descriptor.type, &scene::RenderFeatureSceneBinding::feature);

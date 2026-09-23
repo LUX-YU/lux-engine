@@ -1,3 +1,4 @@
+add_subdirectory(metadata)
 add_subdirectory(editing)
 add_subdirectory(core)
 add_subdirectory(ui)

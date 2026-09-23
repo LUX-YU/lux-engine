@@ -1,3 +1,4 @@
+#include "../../common/RenderRegistration.hpp"
 #include <cassert>
 #include <cstdio>
 #include <imgui.h>
@@ -22,8 +23,9 @@ std::unique_ptr<lux::scene::SceneInstance> createUi(lux::render::RenderRuntime &
     using namespace lux;
     editor::ui::UIRenderSystemConfig config;
     const auto registration = editor::ui::uiRenderSystemRegistration();
-    auto meta = scene::SceneMetaManager::build({.scene_systems = {registration}});
-    assert(meta);
+    const lux::simulation::ecs::ComponentSchemaSet task_components{};
+    const lux::simulation::SimulationSystemRegistry task_system_types;
+    const std::array task_scene_systems{registration};
     scene::SceneDescriptionBuilder builder;
     assert(builder.addSystem({1}, "ui", registration.type, 1, {}, 0));
     auto description = std::move(builder).buildResolved();
@@ -36,7 +38,7 @@ std::unique_ptr<lux::scene::SceneInstance> createUi(lux::render::RenderRuntime &
     auto created = scene::SceneInstance::create(
         {std::make_shared<const scene::SceneDescription>(std::move(*description)),
          std::make_shared<const world::WorldDescription>(), std::make_shared<const simulation::SimulationDescription>(),
-         *meta, providers, simulation::ESimulationMode::DERIVATION});
+         task_components, task_system_types, task_scene_systems, providers, simulation::ESimulationMode::DERIVATION});
     assert(created && (*created)->simulation().seal());
     return std::move(*created);
 }
@@ -223,12 +225,12 @@ bool checkTextShortcuts(lux::render::RenderRuntime &runtime, lux::object::Object
 int main()
 {
     using namespace lux;
-    meta::ReflectionRegistry::initRegistry();
     render::RendererConfig config;
     config.validation = true;
-    config.feature_factories = {render::kUiRenderFeatureFactory};
+    std::vector<lux::render::RenderFeatureRegistration> initial_features = {render::kUiRenderRenderFeatureRegistration};
     auto runtime = render::RenderRuntime::create(std::move(config));
     assert(runtime);
+    registerRenderFeatures(**runtime, std::move(initial_features));
     object::ObjectMessageQueue queue;
     const auto dispatcher = queue.dispatcherRef();
     auto executor = task::TaskExecutor::create({0, 1024});

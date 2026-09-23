@@ -716,6 +716,30 @@ struct ResourceInitFailed
     static constexpr ErrorArgs args{};
 };
 
+struct InvalidRegistration
+{
+    static constexpr const char *name = "feature.invalid_registration";
+    static constexpr const char *message = "invalid feature registration contract";
+    static constexpr ERecovery recovery = ERecovery::Bug;
+    static constexpr ErrorArgs args{};
+};
+
+struct OperationLimitExceeded
+{
+    static constexpr const char *name = "feature.operation_limit_exceeded";
+    static constexpr const char *message = "feature operation count {0} exceeds capacity {1}";
+    static constexpr ERecovery recovery = ERecovery::Bug;
+    static constexpr ErrorArgs args{EErrorArg::Uint, EErrorArg::Uint};
+};
+
+struct OperationRegistrationFailed
+{
+    static constexpr const char *name = "feature.operation_registration_failed";
+    static constexpr const char *message = "feature operation {0} could not be registered";
+    static constexpr ERecovery recovery = ERecovery::Bug;
+    static constexpr ErrorArgs args{EErrorArg::Uint};
+};
+
 struct FactoryHasNoCreateFn
 {
     static constexpr const char *name = "feature.factory_has_no_create_fn";
@@ -1371,6 +1395,9 @@ struct Unspecified
     X(::lux::render::err::graph::ResourceBindingConsumeMissing)                                                        \
     X(::lux::render::err::graph::SlotFormatUnmapped)                                                                   \
     X(::lux::render::err::feature::ResourceInitFailed)                                                                 \
+    X(::lux::render::err::feature::InvalidRegistration) \
+    X(::lux::render::err::feature::OperationLimitExceeded) \
+    X(::lux::render::err::feature::OperationRegistrationFailed) \
     X(::lux::render::err::feature::FactoryHasNoCreateFn)                                                               \
     X(::lux::render::err::feature::TypeIdCollision)                                                                    \
     X(::lux::render::err::feature::FeatureNameCollision)                                                               \

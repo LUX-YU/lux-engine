@@ -1,0 +1,27 @@
+// Generated Object signal layout; no ReflectionRegistry dependency.
+{% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
+{# Static Signal declarations are authored only by their C++ member name. The
+   generated sidecar owns the out-of-line symbol and assigns the build-local
+   prefix-layout index without any Object-specific parser knowledge. #}
+{% for record_idx in marked_record_decls -%}{%- set signal_record = decl_from_index(record_idx) -%}
+{%- for var_id in signal_record.static_var_decls -%}{%- set signal_var = decl_from_id(var_id) -%}
+{%- if type_is_specialization(signal_var.type_id, "lux::object::Signal") %}
+decltype({{ signal_var.fq_name }}) {{ signal_var.fq_name }}{
+    lux::object::detail::GeneratedSignalAccess::make<
+        decltype({{ signal_var.fq_name }})>(
+        {{ template_lineage_static_index(
+            signal_record.id,
+            signal_var.id,
+            "lux::object::Object",
+            1,
+            "lux::object::Signal"
+        ) }}u,
+        {{ template_lineage_static_count(
+            signal_record.id,
+            "lux::object::Object",
+            1,
+            "lux::object::Signal"
+        ) }}u
+    )
+};
+{%- endif -%}{%- endfor -%}{%- endfor %}

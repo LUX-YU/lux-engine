@@ -91,6 +91,8 @@ namespace lux::simulation
             }
         }
 
+        std::vector<std::shared_ptr<const void>> code_owners;
+
         // Systems borrow channel storage; channels are released after every System destructor has returned.
         ecs::Registry *registry{};
         std::vector<ChannelRecord> channels;
@@ -740,6 +742,7 @@ namespace lux::simulation
                     }
                 }
                 registrations[ordinal] = registration;
+                impl->code_owners.push_back(registration->code_lifetime);
             }
 
             SimulationBuilder builder(build);

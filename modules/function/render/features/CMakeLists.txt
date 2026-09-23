@@ -77,7 +77,6 @@ set(RENDER_FEATURE_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assembly/canvas2d/Canvas2DOperationHandlers.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assembly/deferred/DeferredGBufferOperationHandlers.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assembly/deferred/DeferredLightingOperationHandlers.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/assembly/FeatureParamsHandlers.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assembly/forward/ForwardMeshOperationHandlers.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assembly/gizmo/LineListOperationHandlers.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assembly/gizmo/TriOverlayOperationHandlers.cpp
@@ -748,3 +747,22 @@ component_register_runtime_assets(
 )
 
 # ---------------------------------------------------------------------------
+
+get_target_property(_render_fragments render_feature_client LUX_RENDER_PLUGIN_FRAGMENTS)
+set(_render_declaration "${CMAKE_CURRENT_BINARY_DIR}/plugin/render.declaration.json")
+set(_render_exports "${CMAKE_CURRENT_BINARY_DIR}/plugin/RenderPluginExports.cpp")
+add_custom_command(OUTPUT "${_render_declaration}" "${_render_exports}"
+    COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/cmake/render_plugin.py"
+        --records ${_render_fragments} --output "${_render_declaration}" --exports "${_render_exports}"
+    DEPENDS ${_render_fragments} "${PROJECT_SOURCE_DIR}/cmake/render_plugin.py"
+        "${PROJECT_SOURCE_DIR}/cmake/plugin_descriptor.py" VERBATIM)
+target_sources(render_features PRIVATE "${_render_exports}")
+file(GLOB_RECURSE _render_plugin_sources CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.lglsl")
+set(_render_editor_arguments)
+if(TARGET render_feature_meta)
+    set(_render_editor_arguments EDITOR_TARGET render_feature_meta)
+endif()
+lux_add_plugin_exports(TARGET render_features ${_render_editor_arguments} MODULE_ID lux.builtin.render
+    DESCRIPTION "${_render_declaration}" INPUTS ${_render_plugin_sources} "${_render_exports}")

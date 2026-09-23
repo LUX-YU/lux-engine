@@ -1,0 +1,53 @@
+[
+{% set emitted = false %}
+{% set op_count = 0 %}
+{% for rec_idx in marked_record_decls %}{% set op = decl_from_index(rec_idx) %}{% if annotation_has(op, "luxop::op") %}
+{% set op_count = op_count + 1 %}{% if annotation_get_for_or(op, "luxop::op", "bulk", "") != "" %}{% set op_count = op_count + 1 %}{% endif %}
+{% endif %}{% endfor %}
+{% for rec_idx in marked_record_decls %}{% set cfg = decl_from_index(rec_idx) %}
+{% if annotation_has(cfg, "luxop::variant") or (annotation_has(cfg, "luxop::config") and not annotation_has(cfg, "no_factory")) %}
+{% set marker = "luxop::config" %}{% set suffix = "RenderFeatureRegistration" %}
+{% if annotation_has(cfg, "luxop::variant") %}{% set marker = "luxop::variant" %}{% set suffix = "Registration" %}{% endif %}
+{% set id = annotation_get_for_or(cfg, marker, "id", "") %}{% set prefix = annotation_get_for_or(cfg, marker, "prefix", "") %}
+{% set count = op_count %}{% if annotation_get_for_or(cfg, marker, "param_op", "") != "" %}{% set count = count + 1 %}{% endif %}
+{% if emitted %},{% endif %}{% set emitted = true %}
+{
+  "header": "{{ include_prefix }}/{{ stem }}.ops.hpp",
+  "registration": "k{{ prefix }}{{ suffix }}",
+  "requires": "{{ cxx_str(annotation_get_for_or(cfg, marker, "requires", "")) }}",
+  "feature": {
+    "id": "{{ id }}", "abi_version": 1,
+    "display_name": "{{ cxx_str(annotation_get_for_or(cfg, marker, "display", "")) }}",
+    "scene_configurable": {% if annotation_get_for_or(cfg, marker, "scene_configurable", true) %}true{% else %}false{% endif %},
+    "configuration": {"id": "{{ id }}.configuration", "version": 1},
+    "operation_count": {{ count }},
+    "operation_layout": [
+{% set operation_emitted = false %}{% for idx in marked_record_decls %}{% set op = decl_from_index(idx) %}
+{% if annotation_has(op, "luxop::op") %}
+{% if operation_emitted %},{% endif %}{% set operation_emitted = true %}
+{"name": "{% if marker == "luxop::variant" %}{{ annotation_get_for_or(cfg, marker, "display", "") }}.{% endif %}{{ annotation_get_for_or(op, "luxop::op", "name", "") }}",
+ "payload": "{{ cxx_str(op.fq_name) }}", "kind": "{{ annotation_get_for_or(op, "luxop::op", "kind", "stream") }}",
+ "lane": "{{ annotation_get_for_or(op, "luxop::op", "lane", "program") }}"}
+{% if annotation_get_for_or(op, "luxop::op", "bulk", "") != "" %},
+{"name": "{{ annotation_get_for_or(op, "luxop::op", "bulk", "") }}", "payload": "{{ cxx_str(op.fq_name) }}", "kind": "bulk", "lane": "{{ annotation_get_for_or(op, "luxop::op", "lane", "program") }}"}
+{% endif %}{% endif %}{% endfor %}
+{% if annotation_get_for_or(cfg, marker, "param_op", "") != "" %}{% if operation_emitted %},{% endif %}
+{"name": "{{ annotation_get_for_or(cfg, marker, "param_op", "") }}", "payload": "lux::render::SetFeatureParamsPayload", "kind": "param", "lane": "program"}
+{% endif %}
+    ],
+    "multiplicity": "{% if annotation_get_for_or(cfg, marker, "multiplicity", "") == "single" %}single{% else %}multiple{% endif %}",
+    "dependencies": [], "conflicts": []
+  },
+  "configuration": {
+    "id": "{{ id }}.configuration", "version": 1, "display_name": "{{ prefix }} configuration",
+    "fields": [
+{% set field_emitted = false %}{% for field_id in cfg.field_decls %}{% set f = decl_from_id(field_id) %}
+{% if f.visibility == 1 and not annotation_get_for_or(f, "luxtype::member", "skip_static", false) %}
+{% if field_emitted %},{% endif %}{% set field_emitted = true %}
+      {"id": "{{ f.name }}", "type": "{{ cxx_str(f.type_id) }}", "display_name": "{{ f.name }}"}
+{% endif %}{% endfor %}
+    ]
+  }
+}
+{% endif %}{% endfor %}
+]

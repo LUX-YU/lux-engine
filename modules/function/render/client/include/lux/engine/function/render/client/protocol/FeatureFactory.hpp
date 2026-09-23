@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <type_traits>
 
 namespace lux::render
@@ -27,7 +28,7 @@ namespace lux::render
     /// 客户端。此前返回类型只有句柄,create_fn 内部拿到的每一个错误都无路可走,
     /// 只能就地打印然后交回一个无效句柄 —— 客户端只知道"装失败了",不知道为什么。
     using FeatureCreateFn = Expected<FeatureHandle> (*)(void* scene, const void* param, size_t param_size);
-    using FeatureRegisterOpsFn = uint32_t (*)(void* dispatcher, TypeId* out_ops, uint32_t max_ops);
+    using FeatureRegisterOpsFn = Expected<std::uint32_t> (*)(void* dispatcher, TypeId* out_ops, uint32_t max_ops);
     using FeatureUnregisterOpsFn = void (*)(void* dispatcher, const TypeId* ops, uint32_t op_count);
 
     struct FeatureFactory
@@ -51,6 +52,7 @@ namespace lux::render
         /// factories that don't declare one — RenderScene then treats the
         /// feature as today: caller-ordered, no dependency/conflict validation.
         FeatureDescriptor descriptor{};
+        std::uint32_t operation_count{};
     };
     static_assert(std::is_trivially_copyable_v<FeatureFactory>);
 
@@ -79,7 +81,9 @@ namespace lux::render
                 static_cast<std::uint32_t>(param_size)
             );
 
-        return *static_cast<const Config*>(param);
+        Config value{};
+        std::memcpy(&value, param, sizeof(Config));
+        return value;
     }
 
     inline FeatureFactory
@@ -87,7 +91,7 @@ namespace lux::render
     {
         return FeatureFactory{
             create_fn,
-            +[](void*, TypeId*, uint32_t) -> uint32_t { return 0u; },
+            +[](void*, TypeId*, uint32_t) -> Expected<std::uint32_t> { return 0u; },
             +[](void*, const TypeId*, uint32_t) {},
             name,
             -1,

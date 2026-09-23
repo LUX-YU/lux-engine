@@ -98,7 +98,7 @@ function(engine_add_type_runtime_info)
         TARGET_FILES
         EXTRA_COMPILE_OPTIONS
     )
-    set(optional_args ECHO ALWAYS_REGENERATE)
+    set(optional_args ECHO ALWAYS_REGENERATE EXPLICIT_REGISTRATION)
     cmake_parse_arguments(ARGS "${optional_args}" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
     if(NOT ARGS_NAME)
@@ -152,6 +152,12 @@ function(engine_add_type_runtime_info)
         set(_json_custom_include "{\"custom_include\":false}")
     endif()
 
+    if(ARGS_EXPLICIT_REGISTRATION)
+        set(_explicit_registration true)
+    else()
+        set(_explicit_registration false)
+    endif()
+
     set(_logical_paths "")
     foreach(_target_file IN LISTS ARGS_TARGET_FILES)
         get_filename_component(_logical "${_target_file}" NAME)
@@ -176,7 +182,22 @@ function(engine_add_type_runtime_info)
         JSON_FIELD    "{\"register_function_name\":\"${ARGS_REGISTER_FUNC_NAME}\"}"
                       "${_json_register_func_macro}"
                       "${_json_custom_include}"
+                      "{\"explicit_registration\":${_explicit_registration}}"
     )
+
+    set(_has_signals OFF)
+    foreach(_header IN LISTS ARGS_TARGET_FILES)
+        file(READ "${_header}" _content)
+        if(_content MATCHES "static[ \t\r\n]+const[ \t\r\n]+signal_type[ \t\r\n]*<")
+            set(_has_signals ON)
+        endif()
+    endforeach()
+    if(_has_signals)
+        lux_codegen_add_projection(JOB ${ARGS_NAME} NAME object_signals
+            TEMPLATE ${LUX_ENGINE_META_DIR}/template/object_signals.template
+            OUTPUT_ROOT ${CMAKE_CURRENT_BINARY_DIR}/meta_gen OUTPUT_SUFFIX .signals.cpp FLAT_OUTPUT)
+        set_property(TARGET ${ARGS_NAME} PROPERTY LUX_HAS_OBJECT_SIGNALS TRUE)
+    endif()
 
     set_target_properties(${ARGS_NAME} PROPERTIES
         REGISTER_FUNC_NAME      "${ARGS_REGISTER_FUNC_NAME}"
@@ -231,10 +252,15 @@ function(engine_target_add_type_runtime_info)
     endif()
 
     foreach(meta ${ARGS_METAS})
+        get_target_property(_has_signals ${meta} LUX_HAS_OBJECT_SIGNALS)
+        set(_projections type_runtime_info)
+        if(_has_signals)
+            list(APPEND _projections object_signals)
+        endif()
         lux_target_add_codegen(
             TARGET ${ARGS_TARGET}
             JOB ${meta}
-            PROJECTIONS type_runtime_info
+            PROJECTIONS ${_projections}
         )
     endforeach()
     list(JOIN ARGS_METAS ", " _meta_list_str)
@@ -414,7 +440,7 @@ function(_lux_meta_use_prebuilt)
 endfunction()
 
 function(engine_enable_module_meta)
-    set(options)
+    set(options EXPLICIT_REGISTRATION)
     set(one_value_args TARGET SIDECAR_TARGET REGISTER_FUNC_MACRO VISIBILITY_HEADER)
     set(multi_value_args TARGET_FILES)
     cmake_parse_arguments(ARGS "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
@@ -516,6 +542,11 @@ function(engine_enable_module_meta)
         return()
     endif()
 
+    set(_explicit_registration)
+    if(ARGS_EXPLICIT_REGISTRATION)
+        set(_explicit_registration EXPLICIT_REGISTRATION)
+    endif()
+
     # --- one runtime TypeInfo projection per header --------------------------
     set(_meta_targets "")
 
@@ -531,7 +562,7 @@ function(engine_enable_module_meta)
         set(_func_name "${_slug}_${_snake}")
 
         engine_add_type_runtime_info(
-            NAME                ${_meta_name}
+            NAME                ${_meta_name} ${_explicit_registration}
             REGISTER_FUNC_NAME  ${_func_name}
             REGISTER_FUNC_MACRO ${_func_macro}
             CUSTOM_INCLUDE      "${_vis_include}"

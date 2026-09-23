@@ -60,20 +60,38 @@ namespace lux::render
             }
         }();
 
-        static std::uint32_t registerAll(void* dispatcher, TypeId* out_ops, std::uint32_t /*max_ops*/)
+        static constexpr std::uint32_t kOperationCount = sizeof...(ServerOps);
+
+        static Expected<std::uint32_t> registerAll(void* dispatcher, TypeId* out_ops, std::uint32_t max_ops)
         {
+            if (kOperationCount > 16u || kOperationCount > max_ops)
+                return renderFailure<err::feature::OperationLimitExceeded>(kOperationCount, std::min(max_ops, 16u));
+            if (dispatcher == nullptr || (kOperationCount != 0u && out_ops == nullptr))
+                return renderFailure<err::feature::InvalidRegistration>();
             auto& d = *static_cast<Dispatcher*>(dispatcher);
-            std::uint32_t i = 0;
-            ((out_ops[i++] = registerOne<ServerOps>(d)), ...);
-            return sizeof...(ServerOps);
+            std::uint32_t count = 0;
+            const auto append = [&]<class Op>() {
+                const TypeId id = registerOne<Op>(d);
+                if (id == kInvalidTypeId)
+                    return false;
+                out_ops[count++] = id;
+                return true;
+            };
+            const bool complete = (append.template operator()<ServerOps>() && ...);
+            if (!complete)
+            {
+                unregisterAll(dispatcher, out_ops, count);
+                return renderFailure<err::feature::OperationRegistrationFailed>(count);
+            }
+            return count;
         }
 
         static void unregisterAll(void* dispatcher, const TypeId* ops, std::uint32_t op_count)
         {
             auto& d = *static_cast<Dispatcher*>(dispatcher);
             constexpr std::array<OpCode, sizeof...(ServerOps)> kOpcodes = {opcode_of_v<typename ServerOps::Desc>...};
-            for (std::uint32_t i = 0; i < op_count && i < kOpcodes.size(); ++i)
-                d.freeSlot(kOpcodes[i], ops[i]);
+            for (std::uint32_t i = std::min(op_count, kOperationCount); i != 0; --i)
+                d.freeSlot(kOpcodes[i - 1], ops[i - 1]);
         }
 
     private:

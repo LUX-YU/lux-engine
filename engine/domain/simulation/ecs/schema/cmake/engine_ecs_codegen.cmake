@@ -46,6 +46,8 @@ function(engine_target_add_ecs_component_codegen)
         OUTPUT_SUFFIX .ecs_snapshot.hpp
         JSON_FIELD "{\"projection_symbol\":\"${ARGS_SYMBOL}\"}"
     )
+    engine_add_value_metadata_projection(JOB "${ARGS_NAME}" ROOT "${LUX_GENERATE_HEADER_DIR}"
+        LOGICAL_PATHS "${ARGS_LOGICAL_PATH}")
     lux_target_add_codegen(
         TARGET ${ARGS_TARGET}
         JOB ${ARGS_NAME}

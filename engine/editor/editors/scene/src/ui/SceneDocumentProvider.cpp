@@ -73,8 +73,9 @@ GuiDocumentProvider sceneDocumentProvider(std::span<const lux::simulation::ecs::
         [](const ProjectAssetEntry &asset) { return asset.kind == EProjectAssetKind::SCENE; },
         [schemas = std::vector(components.begin(), components.end()),
          shared_bindings](process::ExecutionRuntime &runtime,
-                          lux::render::RenderRuntime &renderer) -> EditorResult<DocumentRegistration> {
-            auto metadata = scene::sceneMetadata(schemas);
+                          lux::render::RenderRuntime &renderer,
+                          std::span<const std::shared_ptr<const PluginLibrary>> plugins) -> EditorResult<DocumentRegistration> {
+            auto metadata = scene::sceneMetadata(schemas, plugins);
             if (!metadata)
             {
                 return lux::cxx::unexpected(metadata.error());
@@ -82,8 +83,8 @@ GuiDocumentProvider sceneDocumentProvider(std::span<const lux::simulation::ecs::
             std::uint64_t previous{};
             for (const auto &binding : *shared_bindings)
             {
-                const auto *schema = metadata->scene->getComponentMeta(binding.type);
-                const bool invalid = !schema || !schema->editor_visible || !binding.draw || binding.name.empty();
+                const auto *schema = metadata->components.find(binding.type);
+                const bool invalid = !schema || schema->semantic_kind == lux::simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED || !binding.draw || binding.name.empty();
                 if (invalid || previous == binding.type.hash())
                 {
                     return lux::cxx::unexpected(

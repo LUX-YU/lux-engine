@@ -27,6 +27,7 @@ lux_engine_install_components(
 					type_info
 					meta
 					object
+                    object_reflection
                     serialization
 					log
 					events

@@ -34,7 +34,8 @@ namespace lux::object
         SENDER_HAS_NO_DISPATCHER,
         RECEIVER_HAS_NO_DISPATCHER,
         DIRECT_CROSS_AFFINITY,
-        OBJECT_CLOSED
+        OBJECT_CLOSED,
+        TYPE_MISMATCH
     };
 
     namespace detail

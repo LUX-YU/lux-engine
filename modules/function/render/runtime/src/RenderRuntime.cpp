@@ -79,6 +79,97 @@ struct RenderRuntime::Impl final
     std::optional<RendererDiagnostic> terminal_diagnostic;
     bool terminal_reported{}, closing{}, retired{}, joined{true}, busy{};
 
+    struct FeatureBatch final
+    {
+        std::vector<RenderFeatureRegistration> candidates;
+        std::vector<FeatureTypeRegisteredReply> accepted;
+        RenderRequest<FeatureTypeRegisteredReply> registration;
+        RenderRequest<GenericOkReply> rollback;
+        FeatureRegistrationStatus status{EFeatureRegistrationState::REGISTERING, {}};
+        bool cancelled{};
+    };
+    std::optional<FeatureBatch> feature_batch;
+
+    [[nodiscard]] bool featureBatchPending() const noexcept
+    {
+        if (!feature_batch) return false;
+        const auto state = feature_batch->status.state;
+        return state == EFeatureRegistrationState::REGISTERING || state == EFeatureRegistrationState::READY ||
+            state == EFeatureRegistrationState::ROLLING_BACK;
+    }
+
+    void advanceFeatureRegistration(std::size_t &budget)
+    {
+        if (!featureBatchPending()) return;
+        auto &batch = *feature_batch;
+        if (retired)
+        {
+            const auto error = thread.sync->terminalError();
+            batch.status = {EFeatureRegistrationState::FAILED,
+                error.ok() ? renderError<err::feature::InvalidRegistration>() : error};
+            return;
+        }
+        if (batch.registration.valid())
+        {
+            if (!batch.registration.isReady()) return;
+            auto value = batch.registration.tryResult();
+            const auto error = value ? value->get().error : value.error();
+            if (!error.ok() || (value && value->get().feature_type_id == 0))
+            {
+                batch.status.error = error.ok() ? renderError<err::feature::InvalidRegistration>() : error;
+                batch.status.state = EFeatureRegistrationState::ROLLING_BACK;
+            }
+            else
+            {
+                batch.accepted.push_back(value->get());
+            }
+            batch.registration = {};
+        }
+        if (batch.status.state == EFeatureRegistrationState::ROLLING_BACK)
+        {
+            if (batch.rollback.valid())
+            {
+                if (!batch.rollback.isReady()) return;
+                auto value = batch.rollback.tryResult();
+                if (!value || value->get().code != 0 || !value->get().error.ok())
+                {
+                    const auto error = value ? value->get().error : value.error();
+                    batch.status.error = error.ok() ? renderError<err::feature::InvalidRegistration>() : error;
+                    // A rejected rollback is a backend contract failure; close must still
+                    // retire the server before any candidate code can be released.
+                    thread.sync->requestStop();
+                    return;
+                }
+                batch.accepted.pop_back();
+                batch.rollback = {};
+            }
+            if (batch.accepted.empty())
+            {
+                batch.status.state = batch.cancelled ? EFeatureRegistrationState::CANCELLED :
+                                                       EFeatureRegistrationState::FAILED;
+                return;
+            }
+            if (budget && control.canSubmit())
+            {
+                batch.rollback = control.unregisterFeatureType(batch.accepted.back().feature_type_id);
+                --budget;
+            }
+            return;
+        }
+        if (batch.status.state != EFeatureRegistrationState::REGISTERING) return;
+        if (batch.accepted.size() == batch.candidates.size())
+        {
+            batch.status.state = EFeatureRegistrationState::READY;
+            return;
+        }
+        if (budget && control.canSubmit())
+        {
+            const auto &candidate = batch.candidates[batch.accepted.size()];
+            batch.registration = control.registerFeatureType(candidate.factory, candidate.code_lifetime);
+            --budget;
+        }
+    }
+
     RenderResult<void> check() const noexcept
     {
         if (owner != std::this_thread::get_id())
@@ -123,7 +214,7 @@ RenderRuntime::~RenderRuntime()
     }
 }
 
-RenderResult<std::unique_ptr<RenderRuntime>> RenderRuntime::create(RendererConfig config)
+RenderResult<std::unique_ptr<RenderRuntime>> RenderRuntime::create(RendererConfig config, ValidationMessageSink diagnostics)
 {
     if (config.frame_capacity < 2 || config.frame_capacity > 3 || config.control_capacity < 2 ||
         config.control_capacity > 65536 || config.upload_capacity < 2 || config.upload_capacity > 65536 ||
@@ -149,7 +240,7 @@ RenderResult<std::unique_ptr<RenderRuntime>> RenderRuntime::create(RendererConfi
         });
     auto result = std::unique_ptr<RenderRuntime>(new RenderRuntime(std::move(impl)));
     auto &data = *result->impl_;
-    auto started = detail::startRendererThread(data.thread, data.config);
+    auto started = detail::startRendererThread(data.thread, data.config, std::move(diagnostics));
     if (!started)
     {
         return lux::cxx::unexpected(started.error());
@@ -372,6 +463,7 @@ RenderResult<std::size_t> RenderRuntime::poll(std::size_t replies, std::size_t &
         data.control.retireScenesAfterBackendStopped();
         data.retired = true;
     }
+    data.advanceFeatureRegistration(controls);
     // Upload forwarding consumes the explicit command-work allowance;
     // accepted uploads are never counted as consumed reply envelopes.
     controls -= data.upload_queue->poll(data.uploads, data.thread.sync->isStopping(), controls);
@@ -425,6 +517,71 @@ RenderResult<std::size_t> RenderRuntime::poll(std::size_t replies, std::size_t &
     return consumed;
 }
 
+RenderResult<void> RenderRuntime::beginFeatureRegistration(std::vector<RenderFeatureRegistration> candidates)
+{
+    if (auto checked = impl_->check(); !checked) return checked;
+    if (impl_->closing || impl_->thread.sync->isStopping()) return fail(ERendererError::STOPPING);
+    if (impl_->featureBatchPending()) return fail(ERendererError::BUSY);
+    std::vector<FeatureTypeId> identities;
+    std::vector<std::string_view> names;
+    for (const auto &candidate : candidates)
+    {
+        const auto &factory = candidate.factory;
+        const auto &descriptor = factory.descriptor;
+        const bool invalid_identity = !descriptor.valid() || descriptor.canonical_name.empty() ||
+            featureId(descriptor.canonical_name) != descriptor.type || !descriptor.abi_version;
+        const bool invalid_factory = !factory.create_fn || !factory.name || factory.name[0] == '\0' ||
+            factory.operation_count > 16 ||
+            (factory.operation_count && (!factory.register_ops_fn || !factory.unregister_ops_fn)) ||
+            (candidate.scene_configurable && !candidate.configuration.valid());
+        if (invalid_identity || invalid_factory) return fail(ERendererError::INVALID_ARGUMENT);
+        if (impl_->thread.catalog.find(descriptor.type) || impl_->thread.catalog.find(factory.name) ||
+            std::ranges::find(identities, descriptor.type) != identities.end() ||
+            std::ranges::find(names, factory.name) != names.end()) return fail(ERendererError::INVALID_ARGUMENT);
+        identities.push_back(descriptor.type);
+        names.push_back(factory.name);
+    }
+    impl_->feature_batch.emplace();
+    impl_->feature_batch->candidates = std::move(candidates);
+    impl_->feature_batch->accepted.reserve(impl_->feature_batch->candidates.size());
+    return {};
+}
+
+FeatureRegistrationStatus RenderRuntime::featureRegistrationStatus() const noexcept
+{
+    return impl_->feature_batch ? impl_->feature_batch->status : FeatureRegistrationStatus{};
+}
+
+RenderResult<void> RenderRuntime::commitFeatureRegistration()
+{
+    if (auto checked = impl_->check(); !checked) return checked;
+    if (!impl_->feature_batch || impl_->feature_batch->status.state != EFeatureRegistrationState::READY)
+        return fail(ERendererError::NOT_READY);
+    auto &batch = *impl_->feature_batch;
+    for (std::size_t index = 0; index < batch.candidates.size(); ++index)
+    {
+        const auto &reply = batch.accepted[index];
+        auto inserted = impl_->thread.catalog.add(batch.candidates[index], reply.feature_type_id,
+                                                  {reply.ops, reply.op_count});
+        // Main validated the complete input before registration; no other writer
+        // can publish between begin and commit. Allocation failure terminates.
+        if (!inserted) std::terminate();
+    }
+    batch.status.state = EFeatureRegistrationState::COMMITTED;
+    return {};
+}
+
+RenderResult<void> RenderRuntime::cancelFeatureRegistration() noexcept
+{
+    if (auto checked = impl_->check(); !checked) return checked;
+    if (impl_->featureBatchPending())
+    {
+        impl_->feature_batch->cancelled = true;
+        impl_->feature_batch->status.state = EFeatureRegistrationState::ROLLING_BACK;
+    }
+    return {};
+}
+
 RenderRuntimeStatus RenderRuntime::status() const noexcept
 {
     return {impl_->retired                     ? ERenderRuntimeState::RETIRED
@@ -469,6 +626,8 @@ RenderResult<void> RenderRuntime::beginClose() noexcept
     {
         return checked;
     }
+    auto cancelled = cancelFeatureRegistration();
+    if (!cancelled) return cancelled;
     impl_->closing = true;
     impl_->upload_queue->stop();
     return {};
@@ -487,7 +646,7 @@ RenderResult<ERenderClose> RenderRuntime::advanceClose(std::size_t &replies, std
         return lux::cxx::unexpected(adopted.error());
     }
     replies -= *adopted;
-    if (impl_->control.activeResourceUses() || impl_->control.pendingResourceReleases() ||
+    if (impl_->featureBatchPending() || impl_->control.activeResourceUses() || impl_->control.pendingResourceReleases() ||
         !impl_->upload_queue->empty())
     {
         return ERenderClose::PENDING;

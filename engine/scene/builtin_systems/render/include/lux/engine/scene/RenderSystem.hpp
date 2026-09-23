@@ -30,7 +30,7 @@ class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderSystem : public object::LuxObject
         .canonical_name = "lux.builtin.system.render",
         .version = 1U,
         .configuration_schema_name = "lux.render.system.Configuration",
-        .configuration_schema_version = 1U,
+        .configuration_schema_version = 2U,
         .capabilities = Capabilities,
         .multiplicity = system::ESystemMultiplicity::SINGLE_PER_OWNER};
 
@@ -70,6 +70,7 @@ class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderSystem : public object::LuxObject
     {
         render::FeatureTypeId feature{};
         CreateRenderSyncStageFn create{};
+        std::shared_ptr<const void> code_lifetime;
     };
 
     RenderSystem(system::SystemInstanceId, SceneInstanceId, render::RenderRuntime &, simulation::ecs::Registry &,
@@ -120,5 +121,4 @@ class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderSystem : public object::LuxObject
 [[nodiscard]] LUX_ENGINE_SCENE_RENDER_PUBLIC SceneSystemRegistration builtinRenderSystemRegistration() noexcept;
 [[nodiscard]] LUX_ENGINE_SCENE_RENDER_PUBLIC std::span<const SceneSystemRegistration>
 builtinRenderSystemRegistrations() noexcept;
-LUX_ENGINE_SCENE_RENDER_PUBLIC void initializeBuiltinRenderSystemMeta() noexcept;
 } // namespace lux::scene

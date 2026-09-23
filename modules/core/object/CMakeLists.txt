@@ -8,7 +8,6 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Connection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Object.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectDispatcher.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectReflection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectWeakRef.cpp
 )
 
@@ -35,7 +34,6 @@ endif()
 target_link_libraries(
     object
     PUBLIC
-        meta
         lux::cxx::core
         lux::cxx::compile_time
         lux::cxx::memory
@@ -44,5 +42,26 @@ target_link_libraries(
 component_add_transitive_commands(
     object
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time memory)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS meta)"
+)
+
+generate_visibility_header(
+    ENABLE_MACRO_NAME LUX_OBJECT_REFLECTION_LIBRARY
+    PUBLIC_MACRO_NAME LUX_OBJECT_REFLECTION_PUBLIC
+    GENERATE_FILE_PATH lux/engine/object/reflection_visibility.h
+)
+add_component(
+    COMPONENT_NAME object_reflection
+    NAMESPACE lux::engine::core
+    SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectReflection.cpp
+)
+component_include_directories(object_reflection
+    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
+    INSTALL_TIME include
+    PRIVATE pinclude
+)
+lux_classify_target(TARGET object_reflection LAYER MODULES PRODUCT SDK ROLE LIBRARY)
+target_compile_definitions(object_reflection PRIVATE LUX_OBJECT_REFLECTION_LIBRARY)
+target_link_libraries(object_reflection PUBLIC object meta)
+component_add_transitive_commands(object_reflection
+    "find_package(lux-engine-core REQUIRED COMPONENTS object meta)"
 )

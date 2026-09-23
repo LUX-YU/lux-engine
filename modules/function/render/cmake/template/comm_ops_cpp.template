@@ -9,6 +9,7 @@
 //  separately into .client.ops.cpp so render_client has no backend dependency.
 // -----------------------------------------------------------------------------
 #include <{{ include_prefix }}/{{ stem }}.ops.hpp>
+#include <{{ include_prefix }}/{{ stem }}.type_static_info.hpp>
 
 #include <lux/engine/render/comm/server/RenderServer.hpp>
 #include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>
@@ -99,7 +100,19 @@ namespace lux::render
         "{{ display }}",
         {{ prefix }}Ops::kParamSetOpIndex,
         k{{ prefix }}Descriptor,
+        {{ prefix }}Ops::kOperationCount,
+    };
+    const RenderFeatureRegistration k{{ prefix }}RenderFeatureRegistration{
+        .factory = k{{ prefix }}FeatureFactory,
+        .configuration = makeRenderFeatureConfigCodec<::{{ cfg.fq_name }}>("{{ feature_id }}.configuration"),
+        .scene_configurable = {% if annotation_get_for_or(cfg, "luxop::config", "scene_configurable", true) %}true{% else %}false{% endif %}
     };
 {%- endif %}
 
+{% for rec_idx in marked_record_decls %}{% set r = decl_from_index(rec_idx) %}{% if annotation_has(r, "luxop::variant") %}
+{% set id = annotation_get_for_or(r, "luxop::variant", "id", "") %}{% set p = annotation_get_for_or(r, "luxop::variant", "prefix", "") %}
+    const RenderFeatureRegistration k{{ p }}Registration{
+        {{ annotation_get_for_or(r, "luxop::variant", "factory", "") }},
+        makeRenderFeatureConfigCodec<::{{ r.fq_name }}>("{{ id }}.configuration"), false};
+{% endif %}{% endfor %}
 } // namespace lux::render

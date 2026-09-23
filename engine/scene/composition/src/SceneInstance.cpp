@@ -1,6 +1,5 @@
 #include <lux/engine/scene/SceneInstance.hpp>
 
-#include <lux/engine/object/ObjectReflection.hpp>
 #include <lux/engine/scene/SceneBuilder.hpp>
 #include <lux/engine/scene/detail/SceneInstanceImpl.hpp>
 #include <lux/engine/system/detail/SystemDependencyOrder.hpp>
@@ -100,12 +99,22 @@ lux::cxx::expected<std::unique_ptr<SceneInstance>, SceneBuildFailure> SceneInsta
     {
         return lux::cxx::unexpected(buildFailure(ESceneBuildError::INVALID_SIMULATION));
     }
+    for (std::size_t index{}; index < info.scene_systems.size(); ++index)
+    {
+        const auto &registration = info.scene_systems[index];
+        const bool invalid = !validSceneSystemRegistration(registration);
+        const bool duplicate = std::ranges::any_of(info.scene_systems.first(index), [&](const auto &previous) {
+            return previous.type.hash == registration.type.hash;
+        });
+        if (invalid || duplicate)
+            return lux::cxx::unexpected(systemFailure({ESceneSystemBuildError::INVALID_DESCRIPTION, {}, {}, registration.type.hash}));
+    }
     // Derivation can also refresh a paused evolution SceneInstance.
     {
         for (std::size_t index{}; index < info.simulation->systemCount(); ++index)
         {
             const auto system = info.simulation->systemAt(index);
-            const auto *registration = info.meta.simulationSystems().find(system.type());
+            const auto *registration = info.simulation_systems.find(system.type());
             // Unknown types retain Simulation::create's original error identity below.
             if (!registration || !registration->supports_derivation)
             {
@@ -117,7 +126,7 @@ lux::cxx::expected<std::unique_ptr<SceneInstance>, SceneBuildFailure> SceneInsta
                 {
                     continue;
                 }
-                const auto *schema = info.meta.components().find(access.type);
+                const auto *schema = info.components.find(access.type);
                 const bool derived =
                     schema && schema->semantic_kind == simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED;
                 if (!derived)
@@ -147,6 +156,7 @@ lux::cxx::expected<std::unique_ptr<SceneInstance>, SceneBuildFailure> SceneInsta
     try
     {
         auto impl = std::make_unique<Impl>();
+        impl->components = info.components;
         static std::atomic<std::uint64_t> next_instance{1};
         auto next = next_instance.load(std::memory_order_relaxed);
         do
@@ -165,7 +175,7 @@ lux::cxx::expected<std::unique_ptr<SceneInstance>, SceneBuildFailure> SceneInsta
         impl->description = std::move(info.scene);
         impl->world = std::move(info.world);
         auto simulation = simulation::Simulation::create(impl->registry, std::move(info.simulation),
-                                                         info.meta.simulationSystems(), info.simulation_mode);
+                                                         info.simulation_systems, info.simulation_mode);
         if (!simulation)
         {
             SceneBuildFailure result = buildFailure(ESceneBuildError::SIMULATION_BUILD_FAILURE);
@@ -181,7 +191,8 @@ lux::cxx::expected<std::unique_ptr<SceneInstance>, SceneBuildFailure> SceneInsta
         for (std::size_t ordinal{}; ordinal < count; ++ordinal)
         {
             const auto system = impl->description->systemAt(ordinal);
-            const auto *registration = info.meta.getSceneSystemMeta(system.type());
+            const auto found = std::ranges::find(info.scene_systems, system.type(), &SceneSystemRegistration::type);
+            const auto *registration = found == info.scene_systems.end() ? nullptr : std::addressof(*found);
             if (registration == nullptr)
             {
                 return lux::cxx::unexpected(
@@ -229,6 +240,7 @@ lux::cxx::expected<std::unique_ptr<SceneInstance>, SceneBuildFailure> SceneInsta
                 }
             }
             registrations[ordinal] = registration;
+            impl->code_owners.push_back(registration->code_lifetime);
             instances.push_back(system.instanceId());
         }
 
@@ -331,7 +343,7 @@ lux::cxx::expected<std::unique_ptr<SceneInstance>, SceneBuildFailure> SceneInsta
         build.instance = impl->id;
         build.registry = &impl->registry;
         build.simulation = std::addressof(*impl->simulation);
-        build.meta = &info.meta;
+        build.components = &impl->components;
         build.systems = &impl->systems;
         build.stable_hooks = &impl->stable_point_hooks;
         build.maintenance_hooks = &impl->maintenance_hooks;
@@ -368,42 +380,25 @@ lux::cxx::expected<std::unique_ptr<SceneInstance>, SceneBuildFailure> SceneInsta
             const auto *self = findSystemRecord(impl->systems, system.instanceId());
             for (const auto &connection : registration.connections)
             {
-                const auto endpoint = [&](const SceneObjectEndpointRef &reference)
-                    -> std::pair<object::LuxObject *, const meta::RefClass *> {
+                const auto endpoint = [&](const SceneObjectEndpointRef &reference) -> object::LuxObject * {
                     if (reference.owner == ESceneConnectionOwner::SELF)
                     {
-                        return {self->object_endpoint,
-                                meta::ReflectionRegistry::instance().findClass(self->type.name())};
+                        return self->object_endpoint;
                     }
                     const auto found = std::find_if(
                         build.requirements.begin(), build.requirements.end(), [&](const auto &value) noexcept {
                             return value.system == system.instanceId() && value.name == reference.requirement;
                         });
-                    if (found == build.requirements.end() || found->object == nullptr)
-                    {
-                        return {};
-                    }
-                    return {found->object,
-                            meta::ReflectionRegistry::instance().findClass(found->object->objectType().name())};
+                    return found == build.requirements.end() ? nullptr : found->object;
                 };
-                const auto [sender, sender_class] = endpoint(connection.signal);
-                const auto [receiver, receiver_class] = endpoint(connection.method);
-                if (sender == nullptr || receiver == nullptr || sender_class == nullptr || receiver_class == nullptr)
+                auto *sender = endpoint(connection.signal);
+                auto *receiver = endpoint(connection.method);
+                if (!sender || !receiver || !connection.connect)
                 {
                     return lux::cxx::unexpected(
                         systemFailure({ESceneSystemBuildError::CONNECTION_FAILURE, system.instanceId()}));
                 }
-                const auto signal = object::reflection::findSignal(meta::ReflectionRegistry::instance(), *sender_class,
-                                                                   connection.signal.member);
-                const auto method = std::find_if(
-                    receiver_class->methods.begin(), receiver_class->methods.end(),
-                    [&](const auto &value) noexcept { return value.invokable.name == connection.method.member; });
-                if (!signal || method == receiver_class->methods.end())
-                {
-                    return lux::cxx::unexpected(
-                        systemFailure({ESceneSystemBuildError::CONNECTION_FAILURE, system.instanceId()}));
-                }
-                auto observed = object::reflection::observe(*sender, signal, *receiver, *method, connection.delivery);
+                auto observed = connection.connect(*sender, *receiver);
                 if (!observed)
                 {
                     return lux::cxx::unexpected(

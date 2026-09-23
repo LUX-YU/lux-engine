@@ -1,3 +1,4 @@
+#include "../../../../cmake/installed-consumers/common/RenderRegistration.hpp"
 #include <imgui.h>
 #include <lux/engine/editor/ui/UIRenderSystem.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
@@ -59,7 +60,6 @@ int main(int argc, char **argv)
         assert(window->isInitialized());
         window->hide(true);
     }
-    meta::ReflectionRegistry::initRegistry();
     render::RendererConfig renderer;
     renderer.validation = !cost;
     if (surface)
@@ -69,22 +69,24 @@ int main(int argc, char **argv)
             renderer.instance_extensions.emplace_back(extension);
         }
     }
-    renderer.feature_factories = {render::kUiRenderFeatureFactory};
-    renderer.validation_message_sink = [](auto severity, auto message) {
+    std::vector<lux::render::RenderFeatureRegistration> initial_features = {render::kUiRenderRenderFeatureRegistration};
+    auto diagnostics = [](auto severity, auto message) {
         if (severity == 2)
         {
             std::cerr << message << '\n';
         }
     };
-    auto created = render::RenderRuntime::create(std::move(renderer));
+    auto created = render::RenderRuntime::create(std::move(renderer), std::move(diagnostics));
     assert(created);
+    registerRenderFeatures(**created, std::move(initial_features));
     auto runtime = std::move(*created);
     object::ObjectMessageQueue messages;
     auto dispatcher = messages.dispatcherRef();
     editor::ui::UIRenderSystemConfig config;
     const auto registration = editor::ui::uiRenderSystemRegistration();
-    auto metadata = scene::SceneMetaManager::build({.scene_systems = {registration}});
-    assert(metadata);
+    const lux::simulation::ecs::ComponentSchemaSet task_components{};
+    const lux::simulation::SimulationSystemRegistry task_system_types;
+    const std::array task_scene_systems{registration};
     scene::SceneDescriptionBuilder builder;
     assert(builder.addSystem({1}, "UI", registration.type, 1, {}, 0));
     auto description = std::move(builder).buildResolved();
@@ -98,7 +100,7 @@ int main(int argc, char **argv)
     scene::SceneCreateInfo input{shared,
                                  std::make_shared<const world::WorldDescription>(),
                                  std::make_shared<const simulation::SimulationDescription>(),
-                                 *metadata,
+                                 task_components, task_system_types, task_scene_systems,
                                  providers,
                                  simulation::ESimulationMode::DERIVATION};
     auto made = scene::SceneInstance::create(input);

@@ -107,12 +107,8 @@ struct RendererConfig final
     std::size_t scene_capacity{128};
     std::size_t diagnostic_capacity{64};
     lux::render::ProgramMemoryHints program_memory{32, 8192, 2, 8, 1024};
-    // Cold registration supplied by the product; Runtime knows no built-in Feature list.
-    std::vector<FeatureFactory> feature_factories;
-    std::vector<std::shared_ptr<const void>> feature_code;
     std::vector<std::string> instance_extensions;
     bool validation{};
-    std::function<void(std::uint32_t, std::string_view)> validation_message_sink;
 };
 struct SampledOutput final
 {

@@ -58,6 +58,7 @@ outside the product source tree. Historical reports remain available in Git hist
 | Spatial | [分区索引与运行时实体查询](engine/domain/spatial/README.md) |
 | Simulation | [世界演进、Main owner 与稳定点](engine/domain/simulation/README.md) |
 | ECS | [Entity、组件与相机数据](engine/domain/simulation/ecs/README.md) |
+| Plugins | [元信息目录、typed 导出与追加装配](engine/editor/metadata/README.md) |
 | Math | [射线生成与几何相交](modules/core/math/README.md) |
 | Process | [有限异步工作与结果采用](engine/process/README.md) |
 | Scene | [World／Simulation 装配与可选能力](engine/scene/README.md) |

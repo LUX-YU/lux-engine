@@ -56,7 +56,7 @@ namespace lux::physics2d
     class LUX_ENGINE_PHYSICS2D_SIMULATION_PUBLIC Physics2DSystem final
     {
     public:
-        inline static constexpr std::array Capabilities{std::string_view{"physics.2d"}};
+        inline static constexpr std::array Capabilities{std::string_view{"physics.2d"}, std::string_view{"lux.physics2d.query"}};
         inline static constexpr auto Access =
             lux::simulation::makeSystemAccessSpec<lux::simulation::ComponentRead<BoxCollider2D>,
                                                   lux::simulation::ComponentWrite<RigidBody2D>,

@@ -1,12 +1,12 @@
 #pragma once
 
-#include <lux/engine/function/render/client/core/FeatureDescriptor.hpp>
+#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/serialization/PortableValueCodec.hpp>
 
 #include <cstddef>
 #include <cstring>
-#include <new>
+#include <memory>
 #include <span>
 #include <type_traits>
 #include <vector>
@@ -20,23 +20,27 @@ namespace lux::render
 
     struct RenderFeatureConfigCodec final
     {
+        std::string_view schema;
+        std::uint32_t schema_version{1};
         lux::serialization::PortableValueCodec portable{};
         std::uint32_t attach_wire_size{};
         MaterializeRenderFeatureAttachFn materialize_attach{};
 
         [[nodiscard]] bool valid() const noexcept
         {
-            return portable.valid() && attach_wire_size != 0U && materialize_attach != nullptr;
+            return !schema.empty() && schema_version != 0 && portable.valid() && attach_wire_size != 0U && materialize_attach != nullptr;
         }
     };
 
     template <class CommConfig>
-    [[nodiscard]] RenderFeatureConfigCodec makeRenderFeatureConfigCodec() noexcept
+    [[nodiscard]] RenderFeatureConfigCodec makeRenderFeatureConfigCodec(std::string_view schema, std::uint32_t version = 1) noexcept
     {
         static_assert(std::is_nothrow_default_constructible_v<CommConfig>);
         static_assert(std::is_nothrow_destructible_v<CommConfig>);
         static_assert(std::is_trivially_copyable_v<CommConfig>);
         return RenderFeatureConfigCodec{
+            .schema = schema,
+            .schema_version = version,
             .portable = lux::serialization::makePortableValueCodec<CommConfig>(),
             .attach_wire_size = sizeof(CommConfig),
             .materialize_attach = +[](
@@ -44,51 +48,23 @@ namespace lux::render
                 std::vector<std::byte>& attach_wire
             ) noexcept -> lux::serialization::SerializationResult {
                 attach_wire.clear();
-                alignas(CommConfig) std::byte storage[sizeof(CommConfig)]{};
-                auto* value = std::construct_at(reinterpret_cast<CommConfig*>(storage));
-                auto decoded = lux::serialization::makePortableValueCodec<CommConfig>().decode(portable, value);
+                CommConfig value{};
+                auto decoded = lux::serialization::makePortableValueCodec<CommConfig>().decode(portable, &value);
                 if (!decoded)
-                {
-                    std::destroy_at(value);
                     return decoded;
-                }
-                try
-                {
-                    attach_wire.resize(sizeof(CommConfig));
-                    std::memcpy(attach_wire.data(), storage, sizeof(CommConfig));
-                    std::destroy_at(value);
-                    return {};
-                }
-                catch (const std::bad_alloc&)
-                {
-                    std::destroy_at(value);
-                    attach_wire.clear();
-                    return lux::cxx::unexpected<lux::serialization::SerializationFailure>(
-                        lux::serialization::SerializationFailure{
-                        lux::serialization::ESerializationError::ALLOCATION_FAILURE,
-                        0U
-                    });
-                }
-                catch (...)
-                {
-                    std::destroy_at(value);
-                    attach_wire.clear();
-                    return lux::cxx::unexpected<lux::serialization::SerializationFailure>(
-                        lux::serialization::SerializationFailure{
-                        lux::serialization::ESerializationError::INVALID_VALUE,
-                        0U
-                    });
-                }
+                attach_wire.resize(sizeof(CommConfig));
+                std::memcpy(attach_wire.data(), &value, sizeof(CommConfig));
+                return {};
             }
         };
     }
 
     struct RenderFeatureRegistration final
     {
-        std::string_view stable_name;
-        const FeatureDescriptor* descriptor{};
+        FeatureFactory factory{};
         RenderFeatureConfigCodec configuration{};
         bool scene_configurable{true};
+        std::shared_ptr<const void> code_lifetime;
     };
 
 } // namespace lux::render

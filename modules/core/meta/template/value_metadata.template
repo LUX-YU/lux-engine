@@ -1,0 +1,16 @@
+[
+{% set emitted = false %}{% for index in marked_record_decls %}{% set type = decl_from_index(index) %}
+{% if annotation_has(type, "type_info") or annotation_has(type, "component") %}
+{% if emitted %},{% endif %}{% set emitted = true %}
+{"cpp_type": "{{ cxx_str(type.fq_name) }}",
+ "schema": "{% if annotation_has(type, "component") %}{{ annotation_get(type, "schema") }}{% endif %}",
+ "fields": [
+{% set field_emitted = false %}{% for id in type.field_decls %}{% set f = decl_from_id(id) %}
+{% if f.visibility == 1 and not annotation_get_for_or(f, "luxtype::member", "skip_static", false) %}
+{% if field_emitted %},{% endif %}{% set field_emitted = true %}
+{"id": "{{ f.name }}", "type": "{{ cxx_str(f.type_id) }}", "display_name": "{{ f.name }}",
+ "read_only": {% if annotation_get_for_or(f, "luxtype::member", "readonly", false) %}true{% else %}false{% endif %}}
+{% endif %}{% endfor %}
+]}
+{% endif %}{% endfor %}
+]

@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <deque>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -442,7 +443,8 @@ namespace lux::meta
         DUPLICATE_INVOKABLE,
         QUAL_TYPE_NOT_FOUND,
         INVALID_QUAL_TYPE_FIX,
-        PUBLISH_INVARIANT_BROKEN
+        PUBLISH_INVARIANT_BROKEN,
+        FOREIGN_REGISTRATION_FAILURE
     };
 
     struct ReflectionRegistrationFailure final
@@ -484,6 +486,7 @@ namespace lux::meta
         /// live readers cannot see the overlay until the returned draft is
         /// committed. This is the dynamic-extension registration boundary.
         [[nodiscard]] static ReflectionRegistrationDraft drainPendingDraft();
+        [[nodiscard]] static ReflectionRegistrationDraft beginDraft();
 
         static void destroyRegistry();
         static ReflectionRegistry& instance() noexcept;
@@ -546,12 +549,14 @@ namespace lux::meta
             std::string_view name = {},
             std::string_view conflicting_name = {}
         );
+        [[nodiscard]] bool canPublish(const ReflectionRegistry& draft) const noexcept;
         [[nodiscard]] bool publishDraft(ReflectionRegistry&& draft) noexcept;
+        std::vector<std::shared_ptr<const void>> code_owners_;
         // pool storage
         MetaPool<RefClass> class_pool_;
         MetaPool<RefEnum> enum_pool_;
         MetaPool<RefFunction> func_pool_;
-        std::vector<RefInvokable> invokable_registry_; // Registry for all invokable entities
+        std::deque<RefInvokable> invokable_registry_; // Registry for all invokable entities
 
         // maps → pool indices
         using MetaMap = std::unordered_map<std::string_view, std::size_t>;
@@ -605,6 +610,11 @@ namespace lux::meta
 
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] const ReflectionRegistrationFailure& error() const noexcept;
+        [[nodiscard]] ReflectionRegistry* registry() noexcept { return draft_.get(); }
+        using RegisterFn = void (*)(ReflectionRegistry&, std::vector<std::pair<std::string_view, RefType*>>&);
+        [[nodiscard]] lux::cxx::expected<void, ReflectionRegistrationFailure> append(
+            RegisterFn registration, std::shared_ptr<const void> code) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, ReflectionRegistrationFailure> prepareCommit() const noexcept;
         [[nodiscard]] lux::cxx::expected<void, ReflectionRegistrationFailure> commit() noexcept;
 
     private:

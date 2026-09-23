@@ -66,5 +66,7 @@ struct RenderFeatureSceneBinding final
     render::FeatureTypeId feature{};
     std::span<const ComponentObservationSpec> observations{};
     CreateRenderSyncStageFn create_sync_stage{};
+    std::shared_ptr<const void> code_lifetime;
 };
+using RenderFeatureSceneBindings = std::span<const RenderFeatureSceneBinding>;
 } // namespace lux::scene

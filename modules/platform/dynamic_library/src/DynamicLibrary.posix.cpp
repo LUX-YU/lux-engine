@@ -25,14 +25,16 @@ namespace lux::engine::platform
 {
     namespace
     {
-        int dlopenFlags(LoadMode mode)
+        int dlopenFlags(ELoadMode mode)
         {
+            if (any(mode & ELoadMode::INSTALLED_PLUGIN))
+                return RTLD_NOW | RTLD_LOCAL;
             int flags = 0;
-            if (any(mode & LoadMode::RTLD_Lazy))
+            if (any(mode & ELoadMode::RTLD_LAZY))
                 flags |= RTLD_LAZY;
-            if (any(mode & LoadMode::RTLD_Now))
+            if (any(mode & ELoadMode::RTLD_NOW))
                 flags |= RTLD_NOW;
-            if (any(mode & LoadMode::RTLD_Global))
+            if (any(mode & ELoadMode::RTLD_GLOBAL))
                 flags |= RTLD_GLOBAL;
             if (flags == 0)
                 flags = RTLD_NOW | RTLD_LOCAL;
@@ -128,18 +130,18 @@ namespace lux::engine::platform
         return *this;
     }
 
-    DynamicLibrary::DynamicLibrary(const std::filesystem::path& path, LoadMode mode)
+    DynamicLibrary::DynamicLibrary(const std::filesystem::path& path, ELoadMode mode)
     {
         load(path, mode);
     }
 
-    bool DynamicLibrary::load(const std::filesystem::path& path, LoadMode mode)
+    bool DynamicLibrary::load(const std::filesystem::path& path, ELoadMode mode)
     {
         unload();
         last_error_.clear();
 
         std::filesystem::path effective = path;
-        if (any(mode & LoadMode::AppendDecorations) && !path.has_extension())
+        if (any(mode & ELoadMode::APPEND_DECORATIONS) && !path.has_extension())
             effective = decorate(path.string());
 
         handle_ = ::dlopen(effective.c_str(), dlopenFlags(mode));

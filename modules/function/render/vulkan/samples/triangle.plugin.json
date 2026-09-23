@@ -1,0 +1,126 @@
+{
+  "format": "lux.engine.plugin",
+  "version": 1,
+  "plugin": {
+    "id": "sample.render.triangle",
+    "version": 1,
+    "source": "plugin",
+    "author": "SDK example",
+    "description": "External GPU drawing with a typed ECS extraction stage.",
+    "runtime_library": {
+      "exports": [
+        "render",
+        "components",
+        "render_scene"
+      ]
+    },
+    "dependencies": [
+      {
+        "plugin": "lux.builtin.runtime",
+        "version": 1
+      }
+    ]
+  },
+  "abilities": [],
+  "implementations": [],
+  "systems": [],
+  "components": [
+    {
+      "id": "sample.Tint",
+      "version": 1,
+      "display_name": "Tint",
+      "storage": "authoring",
+      "fields": [
+        {
+          "id": "red",
+          "type": "float32",
+          "display_name": "red"
+        },
+        {
+          "id": "green",
+          "type": "float32",
+          "display_name": "green"
+        },
+        {
+          "id": "blue",
+          "type": "float32",
+          "display_name": "blue"
+        },
+        {
+          "id": "alpha",
+          "type": "float32",
+          "display_name": "alpha"
+        }
+      ]
+    }
+  ],
+  "configurations": [
+    {
+      "id": "sample.render.triangle.configuration",
+      "version": 1,
+      "display_name": "Triangle color",
+      "fields": [
+        {
+          "id": "red",
+          "type": "float32",
+          "display_name": "red"
+        },
+        {
+          "id": "green",
+          "type": "float32",
+          "display_name": "green"
+        },
+        {
+          "id": "blue",
+          "type": "float32",
+          "display_name": "blue"
+        },
+        {
+          "id": "alpha",
+          "type": "float32",
+          "display_name": "alpha"
+        }
+      ]
+    }
+  ],
+  "render_features": [
+    {
+      "id": "sample.render.triangle",
+      "abi_version": 1,
+      "display_name": "SampleExternal",
+      "scene_configurable": true,
+      "configuration": {
+        "id": "sample.render.triangle.configuration",
+        "version": 1
+      },
+      "operation_count": 1,
+      "multiplicity": "multiple",
+      "dependencies": [],
+      "conflicts": [],
+      "operation_layout": [
+        {
+          "name": "sample.render.triangle.color",
+          "payload": "lux::render::SetFeatureParamsPayload",
+          "kind": "param",
+          "lane": "program"
+        }
+      ]
+    }
+  ],
+  "render_scene_bindings": [
+    {
+      "feature": "sample.render.triangle",
+      "scene_system": "lux.builtin.system.render",
+      "observations": [
+        {
+          "component": "sample.Tint",
+          "events": [
+            "construct",
+            "update",
+            "destroy"
+          ]
+        }
+      ]
+    }
+  ]
+}

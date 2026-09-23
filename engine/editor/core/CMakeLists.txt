@@ -28,6 +28,7 @@ target_include_directories(editor_core PRIVATE $<TARGET_PROPERTY:tomlplusplus::t
 target_link_libraries(editor_core PUBLIC
     lux::engine::editor::editor_editing
     lux::engine::core::object
+    lux::engine::core::meta
     lux::engine::process::process_execution
     lux::engine::process::asset_loading
     lux::engine::resource::asset
@@ -35,7 +36,7 @@ target_link_libraries(editor_core PUBLIC
 )
 component_add_transitive_commands(editor_core
     "find_package(lux-engine-editor-editing REQUIRED COMPONENTS editor_editing)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS object)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS object meta)"
     "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
     "find_package(lux-engine-process-asset-loading REQUIRED COMPONENTS process_asset_loading)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"

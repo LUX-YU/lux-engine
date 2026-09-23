@@ -140,6 +140,9 @@
 ///                         id=/display=/feature= become optional.
 #define LUX_COMM_CONFIG(...) LUX_META(luxop::config, ##__VA_ARGS__)
 
+/// A separately constructible mode sharing the operation layout of its CommConfig tag.
+#define LUX_COMM_VARIANT(...) LUX_META(luxop::variant, ##__VA_ARGS__)
+
 /// Mark an op payload struct. Keys:
 ///   kind=stream|resource|bulk|blob|param   dispatch shape (EOpKind)
 ///   name=<DispatcherName>                  op name (server dispatcher key)

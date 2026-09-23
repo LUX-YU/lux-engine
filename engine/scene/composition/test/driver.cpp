@@ -95,9 +95,9 @@ int main(int argc, char **argv)
     using namespace lux;
     using namespace lux::scene;
     using namespace std::chrono_literals;
-    meta::ReflectionRegistry::initRegistry();
-    auto meta = SceneMetaManager::build({.scene_systems = {registration()}});
-    assert(meta);
+    const simulation::ecs::ComponentSchemaSet components;
+    const simulation::SimulationSystemRegistry systems;
+    const std::array registrations{registration()};
     SceneDescriptionBuilder builder;
     assert(builder.addSystem({1}, "probe", registration().type, 1, {}, 0));
     auto invalid_disk = std::move(builder).build();
@@ -108,7 +108,7 @@ int main(int argc, char **argv)
     SceneCreateInfo info{shared,
                          std::make_shared<const world::WorldDescription>(),
                          std::make_shared<const simulation::SimulationDescription>(),
-                         *meta,
+                         components, systems, registrations,
                          {}};
     auto first = SceneInstance::create(info);
     auto second = SceneInstance::create(info);

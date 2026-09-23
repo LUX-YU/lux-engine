@@ -1,3 +1,4 @@
+#include "../../../../../cmake/installed-consumers/common/RenderRegistration.hpp"
 #include <lux/engine/function/render/features/BuiltinFeatures.hpp>
 #include <lux/engine/function/render/features/genops/MaterialOperation.ops.hpp>
 #include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
@@ -6,7 +7,7 @@
 #include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
-#include <lux/engine/scene/RenderSystemMetadata.hpp>
+#include <lux/engine/scene/RenderFeatureSceneBinding.hpp>
 #include <lux/engine/scene/ResolvedMeshResources.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneInstance.hpp>
@@ -99,9 +100,6 @@ int main(int argc, char **argv)
     assert(endpoint);
     vfs.unmount(mount);
     assert(vfs.view().resolve("/Seed/Meshes/Cube").isNull()); // Captured source remains readable.
-    meta::ReflectionRegistry::initRegistry();
-    scene::initializeBuiltinRenderSystemMeta();
-    render::initializeBuiltinRenderFeatureMeta();
     std::vector<ecs::ComponentSchema> components;
     for (const auto schemas :
          {scene::sceneRenderComponentSchemas(), ecs::transformComponentSchemas(), ecs::visualComponentSchemas()})
@@ -110,9 +108,9 @@ int main(int argc, char **argv)
     }
     auto schemas = ecs::ComponentSchemaSet::build(std::move(components));
     assert(schemas);
-    auto metadata = scene::SceneMetaManager::build(
-        {.components = *schemas, .scene_systems = {scene::builtinRenderSystemRegistration()}});
-    assert(metadata);
+    const lux::simulation::ecs::ComponentSchemaSet task_components{*schemas};
+    const lux::simulation::SimulationSystemRegistry task_system_types;
+    const std::array task_scene_systems{scene::builtinRenderSystemRegistration()};
     std::vector<scene::RenderFeatureSceneBinding> bindings;
     for (const auto &binding : scene::builtinRenderFeatureSceneBindings())
     {
@@ -121,38 +119,42 @@ int main(int argc, char **argv)
             bindings.push_back(binding);
         }
     }
-    auto render_meta = scene::RenderSystemMetadata::build(
-        *metadata, {render::kMeshStackRenderFeatureRegistration, render::kMaterialRenderFeatureRegistration}, bindings);
-    assert(render_meta);
-    auto shared_meta = std::make_shared<const scene::RenderSystemMetadata>(std::move(*render_meta));
+    scene::RenderFeatureSceneBindings render_bindings = bindings;
     render::RendererConfig config;
     config.validation = true;
-    config.feature_factories = {render::kMeshStackFeatureFactory, render::kMaterialFeatureFactory};
+    std::vector<lux::render::RenderFeatureRegistration> initial_features = {render::kMeshStackRenderFeatureRegistration, render::kMaterialRenderFeatureRegistration};
     auto made_runtime = render::RenderRuntime::create(std::move(config));
     assert(made_runtime);
+    registerRenderFeatures(**made_runtime, std::move(initial_features));
     auto runtime = std::move(*made_runtime);
     auto reads = std::make_shared<HeldReads>((*endpoint)->port());
     auto assets =
         std::make_shared<scene::RenderAssetSource>(*runtime, tasks, process::asset_loading::AssetReadPort{reads}, 1);
     scene::RenderSystemConfiguration render_config;
-    render_config.features = {{render::kMeshStackDescriptor.type, {}}, {render::kMaterialDescriptor.type, {}}};
+    for (const auto &feature : {render::kMeshStackRenderFeatureRegistration, render::kMaterialRenderFeatureRegistration})
+    {
+        std::vector<std::byte> defaults;
+        assert(feature.configuration.portable.encode_default(defaults));
+        render_config.features.push_back({feature.factory.descriptor.type, std::move(defaults),
+            std::string(feature.configuration.schema), feature.configuration.schema_version});
+    }
     std::vector<std::byte> bytes;
     assert(scene::builtinRenderSystemRegistration().configuration.encode(&render_config, bytes));
     scene::SceneDescriptionBuilder description;
     assert(description.addSystem({1}, "render", scene::builtinRenderSystemRegistration().type, 1,
-                                 scene::RenderSystem::Description.configuration_schema_name, 1, bytes));
+                                 scene::RenderSystem::Description.configuration_schema_name, 2, bytes));
     auto resolved = std::move(description).buildResolved();
     assert(resolved);
     std::array providers{
         scene::makeSceneCapabilityProvider<render::RenderRuntime>("runtime", "lux.render.runtime", *runtime),
-        scene::makeSceneCapabilityProvider<std::shared_ptr<const scene::RenderSystemMetadata>>(
-            "metadata", "lux.render.metadata", shared_meta),
+        scene::makeSceneCapabilityProvider<scene::RenderFeatureSceneBindings>(
+            "bindings", "lux.render.scene_bindings", render_bindings),
         scene::makeSceneCapabilityProvider<std::shared_ptr<scene::RenderAssetSource>>("assets", "lux.render.assets",
                                                                                       assets)};
     scene::SceneCreateInfo create{std::make_shared<const scene::SceneDescription>(std::move(*resolved)),
                                   std::make_shared<const world::WorldDescription>(),
                                   std::make_shared<const simulation::SimulationDescription>(),
-                                  *metadata,
+                                  task_components, task_system_types, task_scene_systems,
                                   providers,
                                   simulation::ESimulationMode::DERIVATION};
     auto made_author = scene::SceneInstance::create(create), made_run = scene::SceneInstance::create(create);

@@ -528,7 +528,7 @@ int main(int argc, char **argv)
     config.providers.push_back(
         {std::string(mat::kMaterialDocumentType),
          [](const ProjectAssetEntry &entry) { return entry.kind == EProjectAssetKind::MATERIAL_GRAPH; },
-         [&probe](auto &runtime, auto &) { return probe.registration(runtime); },
+         [&probe](auto &runtime, auto &, auto) { return probe.registration(runtime); },
          [](auto &, auto &, auto &, auto &) -> EditorResult<void> { return {}; }});
     Editor editor(std::move(config));
     probe.bind(editor);

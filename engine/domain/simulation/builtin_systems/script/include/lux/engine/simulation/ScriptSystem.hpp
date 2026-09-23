@@ -244,7 +244,8 @@ namespace lux::simulation::script
             std::span<const ScriptHookEndpointDescriptor> hooks,
             std::span<const ScriptEventEndpointDescriptor> events,
             ScriptHostApi host = {},
-            ScriptRealDelayEndpoint real_delay = {}) noexcept;
+            ScriptRealDelayEndpoint real_delay = {}
+        ) noexcept;
 
         ScriptSystem(ScriptSystem &&) noexcept;
 

@@ -17,7 +17,8 @@ WorldDescription 不是 Registry。当前 API 不存在另一份拥有全部业�
 
 `composition/`、`description/`、`system/`、`meta/` 负责通用描述、依赖、provider 与生命周期。
 
-`builtin_systems/` 和 `integration/` 放置具体系统接线。Render Feature 元信息属于可选渲染集成，不重新塞回通用 `SceneMetaManager`。
+`builtin_systems/` 和 `integration/` 放置具体系统接线。Scene 直接消费运行注册，完整工具元信息位于 Editor；
+Render Feature 的运行配置与提取接线属于可选渲染集成。
 
 新增领域能力优先沿既有 SceneSystem 注册、窄 provider 和系统依赖接入。不要重新引入可以取得所有业务对象的万能 Context，也不为一个具体能力新建全局 Manager。
 

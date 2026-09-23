@@ -29,5 +29,5 @@ struct RendererThread final
     std::atomic<unsigned> startup{}, stopped{};
     lux::render::RenderError startup_error;
 };
-RenderResult<std::jthread> startRendererThread(RendererThread &, const RendererConfig &);
+RenderResult<std::jthread> startRendererThread(RendererThread &, const RendererConfig &, ValidationMessageSink);
 } // namespace lux::render::detail

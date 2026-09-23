@@ -58,7 +58,7 @@ struct lux::scene::SceneBuilder::Impl final
     SceneInstanceId instance;
     simulation::ecs::Registry *registry{};
     simulation::Simulation *simulation{};
-    const SceneMetaManager *meta{};
+    const simulation::ecs::ComponentSchemaSet *components{};
     std::vector<detail::SceneSystemObjectRecord> *systems{};
     std::vector<detail::SceneHookRecord> *stable_hooks{};
     std::vector<detail::SceneHookRecord> *maintenance_hooks{};

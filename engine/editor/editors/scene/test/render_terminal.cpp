@@ -1,3 +1,4 @@
+#include "../../../../../cmake/installed-consumers/common/RenderRegistration.hpp"
 #include "render_thread_checks.hpp"
 #include <lux/engine/meta/Meta.hpp>
 
@@ -23,13 +24,12 @@ int main(int argc, char **argv)
     const bool pending = std::string_view(argv[1]) == "pending";
     assert(pending || std::string_view(argv[1]) == "forwarded");
     meta::ReflectionRegistry::initRegistry();
-    scene::initializeBuiltinRenderSystemMeta();
-    render::initializeBuiltinRenderFeatureMeta();
     render::RendererConfig config;
     config.validation = true;
-    config.feature_factories = {render::kLightFeatureFactory};
+    std::vector<lux::render::RenderFeatureRegistration> initial_features = {render::kLightRenderFeatureRegistration};
     auto made_runtime = render::RenderRuntime::create(std::move(config));
     assert(made_runtime);
+    registerRenderFeatures(**made_runtime, std::move(initial_features));
     auto runtime = std::move(*made_runtime);
     RenderThreadChecks fixture;
     fixture.begin(*runtime);

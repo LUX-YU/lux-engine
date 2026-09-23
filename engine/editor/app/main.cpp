@@ -5,16 +5,6 @@
 #include <lux/engine/editor/gui/flowforge/FlowForgeDocumentProvider.hpp>
 #include <lux/engine/editor/gui/material/MaterialDocumentProvider.hpp>
 #include <lux/engine/editor/gui/scene/SceneDocumentProvider.hpp>
-#include <lux/engine/function/render/features/genops/ForwardMeshOperation.ops.hpp>
-#include <lux/engine/function/render/features/genops/Grid3DOperation.ops.hpp>
-#include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
-#include <lux/engine/function/render/features/genops/LightOperation.ops.hpp>
-#include <lux/engine/function/render/features/genops/MaterialOperation.ops.hpp>
-#include <lux/engine/function/render/features/genops/MeshShadowOperation.ops.hpp>
-#include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
-#include <lux/engine/function/render/features/genops/ShadowMapOperation.ops.hpp>
-#include <lux/engine/function/render/features/genops/ViewCameraOperation.ops.hpp>
-#include <lux/engine/meta/Meta.hpp>
 #include <span>
 #if defined(_WIN32)
 #define NOMINMAX
@@ -24,40 +14,6 @@
 
 namespace
 {
-// The registry owns generated metadata; the immutable selection owns its pointer arrays.
-// Frontend, open requests, documents and worker captures share this lease until their last use.
-struct ReflectedFlowMetadata final
-{
-    std::vector<const lux::meta::RefClass *> classes;
-    std::vector<const lux::meta::RefFunction *> functions;
-
-    ReflectedFlowMetadata()
-    {
-        lux::meta::ReflectionRegistry::initRegistry();
-        const auto &registry = lux::meta::ReflectionRegistry::instance();
-        for (const auto &type : registry.classes())
-        {
-            if (type && type->type.size != 0)
-            {
-                classes.push_back(type.get());
-            }
-        }
-        for (const auto &function : registry.functions())
-        {
-            if (function)
-            {
-                functions.push_back(function.get());
-            }
-        }
-    }
-    ~ReflectedFlowMetadata()
-    {
-        lux::meta::ReflectionRegistry::destroyRegistry();
-    }
-    ReflectedFlowMetadata(const ReflectedFlowMetadata &) = delete;
-    ReflectedFlowMetadata &operator=(const ReflectedFlowMetadata &) = delete;
-};
-
 lux::editor::EditorResult<std::filesystem::path> chooseProject()
 {
 #if defined(_WIN32)
@@ -132,21 +88,21 @@ int main(int argc, char **argv)
         config.window.font.emplace();
         config.window.font->file = std::filesystem::u8path(*parsed->get("font").as<std::string>());
     }
-    auto metadata = std::make_shared<ReflectedFlowMetadata>();
-    lux::flowforge::FlowSourceEnvironment flow;
-    flow.classes = metadata->classes;
-    flow.functions = metadata->functions;
-    flow.code_lifetime = metadata;
     config.providers.push_back(lux::editor::gui::sceneDocumentProvider());
     config.providers.push_back(lux::editor::gui::materialDocumentProvider());
-    config.providers.push_back(lux::editor::gui::flowForgeDocumentProvider(std::move(flow)));
+    config.providers.push_back(lux::editor::gui::flowForgeDocumentProvider());
     config.execution = {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}};
-    const std::array factories{lux::render::kViewCameraFeatureFactory,  lux::render::kMaterialFeatureFactory,
-                               lux::render::kMeshStackFeatureFactory,   lux::render::kLightFeatureFactory,
-                               lux::render::kForwardMeshFeatureFactory, lux::render::kShadowMapFeatureFactory,
-                               lux::render::kMeshShadowFeatureFactory,  lux::render::kHighlightFeatureFactory,
-                               lux::render::kGrid3DFeatureFactory};
-    config.renderer.feature_factories.assign(factories.begin(), factories.end());
+    // Installation paths are anchored to the executable, independent of the project and CWD.
+#if defined(_WIN32)
+    std::wstring executable(32768, L'\0');
+    const auto size = GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size()));
+    if (!size || size == executable.size()) return 2;
+    executable.resize(size);
+    config.plugin_root = std::filesystem::path(executable).parent_path().parent_path();
+#else
+    config.plugin_root = std::filesystem::canonical("/proc/self/exe").parent_path().parent_path();
+#endif
+    config.initial_plugins = {"lux.builtin.runtime"};
     lux::editor::Editor editor(std::move(config));
     return editor.exec();
 }

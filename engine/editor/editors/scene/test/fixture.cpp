@@ -17,6 +17,7 @@
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneRenderSchema.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
+#include <lux/engine/scene/MeshQuerySystem.hpp>
 #include <lux/engine/serialization/external_support/Eigen.hpp>
 #include <lux/engine/simulation/SimulationAssetCodec.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -73,9 +74,9 @@ int main(int argc, char **argv)
             for (const auto &feature : config.features)
             {
                 const auto found = std::ranges::find_if(
-                    features, [&](const auto &entry) { return render::featureId(entry.stable_name) == feature.type; });
+                    features, [&](const auto &entry) { return entry.factory.descriptor.type == feature.type; });
                 assert(found != features.end());
-                std::printf("feature=%.*s\n", static_cast<int>(found->stable_name.size()), found->stable_name.data());
+                std::printf("feature=%.*s\n", static_cast<int>(found->factory.descriptor.canonical_name.size()), found->factory.descriptor.canonical_name.data());
             }
         }
         return 0;
@@ -280,7 +281,6 @@ int main(int argc, char **argv)
     scene::SceneDescriptionBuilder scene_builder;
     scene_builder.setWorld(identity<asset::AssetId>(10));
     scene_builder.setSimulation(identity<asset::AssetId>(11));
-    if (observer)
     {
         const auto registration = scene::worldLoadingSystemRegistration();
         const scene::WorldLoadingConfiguration config{{{0}}};
@@ -291,12 +291,14 @@ int main(int argc, char **argv)
     }
     if (rendered)
     {
+        const auto query = scene::builtinMeshQuerySystemRegistration();
+        assert(scene_builder.addSystem({5}, "mesh-query", query.type, query.description->version, {}, 0));
         scene::RenderSystemConfiguration config;
         config.coordinate_page_size = 2048;
         const auto features = render::builtinRenderFeatureRegistrations();
         for (const auto name :
              {"lux.render.view_camera.v1", "lux.render.material.v1", "lux.render.mesh_stack.v1", "lux.render.light.v1",
-              "lux.render.forward_mesh.v1", "lux.render.shadow_map.v1", "lux.render.mesh_shadow.v1"})
+              "lux.render.forward_mesh.v1", "lux.render.shadow_map.v1", "lux.render.mesh_shadow.v1", "lux.render.highlight.v1", "lux.render.grid3d.v1"})
         {
             if (std::string_view{name} == "lux.render.mesh_shadow.v1" && !shadows)
             {
@@ -304,11 +306,11 @@ int main(int argc, char **argv)
             }
             const auto type = render::featureId(name);
             const auto found =
-                std::ranges::find(features, std::string_view{name}, &render::RenderFeatureRegistration::stable_name);
+                std::ranges::find(features, std::string_view{name}, [](const auto &entry) { return entry.factory.descriptor.canonical_name; });
             assert(found != features.end());
             std::vector<std::byte> defaults;
             assert(found->configuration.portable.encode_default(defaults));
-            config.features.push_back({type, std::move(defaults)});
+            config.features.push_back({type, std::move(defaults), std::string(found->configuration.schema), found->configuration.schema_version});
         }
         const auto registration = scene::builtinRenderSystemRegistration();
         std::vector<std::byte> bytes;
@@ -316,6 +318,7 @@ int main(int argc, char **argv)
         const auto &type = scene::RenderSystem::Description;
         assert(scene_builder.addSystem(system::SystemInstanceId{2}, "render", registration.type, type.version,
                                        type.configuration_schema_name, type.configuration_schema_version, bytes));
+        assert(scene_builder.addDependency({5}, {2}));
         assert(scene_builder.bindRequirement(system::SystemInstanceId{2}, "render_runtime",
                                              std::string_view(argv[2]) == "gpu-missing-provider" ? "unregistered"
                                                                                                  : "main-window"));

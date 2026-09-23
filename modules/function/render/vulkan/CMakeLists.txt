@@ -8,6 +8,7 @@ find_package(lux-cxx REQUIRED COMPONENTS core container concurrent memory)
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 
 set(RENDER_VULKAN_SRCS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/comm/FeatureParamsHandlers.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/comm/FeatureRegistration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/comm/RenderServer.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/src/comm/RenderServerBootstrap.cpp

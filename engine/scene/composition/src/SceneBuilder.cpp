@@ -31,9 +31,9 @@ simulation::Simulation &SceneBuilder::simulation() noexcept
     return *impl_->simulation;
 }
 
-const SceneMetaManager &SceneBuilder::meta() const noexcept
+const simulation::ecs::ComponentSchemaSet &SceneBuilder::components() const noexcept
 {
-    return *impl_->meta;
+    return *impl_->components;
 }
 
 const SceneSystemRegistration *SceneBuilder::currentRegistration() const noexcept

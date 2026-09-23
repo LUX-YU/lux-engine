@@ -51,7 +51,6 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
         navigation_detour3d
         render_client
         render_feature_client
-        render_feature_meta
         render_standard_content
         script_artifact
         script_core
@@ -63,7 +62,6 @@ else()
         graph
         render_client
         render_feature_client
-        render_feature_meta
         render_standard_content
         render_graph
         render_vulkan
@@ -90,6 +88,10 @@ endif()
 
 if(TARGET material_graph)
     list(APPEND LUX_FUNCTION_COMPONENTS material_graph)
+endif()
+
+if(TARGET render_feature_meta)
+    list(APPEND LUX_FUNCTION_COMPONENTS render_feature_meta)
 endif()
 
 if(LUX_FUNCTION_COMPONENTS)

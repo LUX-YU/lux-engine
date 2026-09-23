@@ -1,3 +1,4 @@
+#include "../../../../../cmake/installed-consumers/common/RenderRegistration.hpp"
 #include <lux/engine/function/render/features/genops/ViewCameraOperation.ops.hpp>
 #include <lux/engine/render/RenderRuntime.hpp>
 #include <lux/engine/render/detail/ViewImageLifetime.hpp>
@@ -35,19 +36,20 @@ int main(int argc, char **)
 
     render::RendererConfig config;
     config.validation = true;
-    config.feature_factories = {render::kUiRenderFeatureFactory};
+    std::vector<render::RenderFeatureRegistration> initial_features = {render::kUiRenderRenderFeatureRegistration};
     if (camera_gate)
     {
-        config.feature_factories.push_back(render::kViewCameraFeatureFactory);
+        initial_features.push_back(render::kViewCameraRenderFeatureRegistration);
     }
-    config.validation_message_sink = [](auto severity, auto message) {
+    auto diagnostics = [](auto severity, auto message) {
         if (severity == 2)
         {
             std::cerr << message << '\n';
         }
     };
-    auto created = render::RenderRuntime::create(std::move(config));
+    auto created = render::RenderRuntime::create(std::move(config), std::move(diagnostics));
     assert(created);
+    registerRenderFeatures(**created, std::move(initial_features));
     auto runtime = std::move(*created);
     const auto pump = [&] {
         std::size_t controls = 4, programs = 1;

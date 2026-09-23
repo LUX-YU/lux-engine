@@ -16,7 +16,6 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Camera.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CameraExtraction.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderSchema.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystemMetadata.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderAssets.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderAssetRequest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystem.cpp
@@ -50,7 +49,6 @@ target_link_libraries(
         lux::engine::function::render_feature_client
         lux::engine::function::render_runtime
         lux::engine::scene::scene_composition
-        lux::engine::scene::scene_meta
         lux::engine::simulation::ecs::core
         lux::engine::simulation::ecs::transform
         lux::engine::simulation::ecs::visual
@@ -65,13 +63,13 @@ component_add_transitive_commands(
     "find_package(EnTT CONFIG REQUIRED)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_feature_client render_runtime)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
-    "find_package(lux-engine-scene-meta REQUIRED COMPONENTS scene_meta)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core transform visual)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity asset)"
     "find_package(lux-engine-scene-mesh-query REQUIRED COMPONENTS scene_mesh_query)"
     "find_package(lux-engine-process-asset-loading REQUIRED COMPONENTS process_asset_loading)"
 )
 
+if(LUX_PROFILE_HAS_EDITOR)
 add_component(
     COMPONENT_NAME scene_render_meta
     NAMESPACE      lux::engine::scene
@@ -83,14 +81,15 @@ component_include_directories(
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
 )
+lux_classify_target(TARGET scene_render_meta LAYER EDITOR PRODUCT EDITOR ROLE PLUGIN)
 target_compile_definitions(scene_render_meta PRIVATE LUX_ENGINE_SCENE_RENDER_LIBRARY)
 target_link_libraries(
     scene_render_meta
-    PRIVATE scene_render lux::engine::core::meta
+    PRIVATE scene_render lux::engine::core::meta lux::engine::editor::editor_metadata
 )
 
 engine_add_type_runtime_info(
-    NAME scene_runtime_render_configuration_meta
+    NAME scene_runtime_render_configuration_meta EXPLICIT_REGISTRATION
     REGISTER_FUNC_NAME scene_runtime_render_configuration
     REGISTER_FUNC_MACRO LUX_ENGINE_SCENE_RENDER_PUBLIC
     CUSTOM_INCLUDE "lux/engine/scene/render/visibility.h"
@@ -103,11 +102,16 @@ engine_target_add_type_runtime_info(
     TOP_LEVEL_REGISTER_FUNC_PREFIX LuxRegisterSceneRuntimeRenderMetas
 )
 
+endif()
+set(_render_components scene_render)
+if(TARGET scene_render_meta)
+    list(APPEND _render_components scene_render_meta)
+endif()
 lux_engine_install_components(
     PROJECT_NAME lux-engine-scene-render
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::scene
-    COMPONENTS   scene_render scene_render_meta
+    COMPONENTS   ${_render_components}
 )
 
 if(BUILD_TESTING)
@@ -120,8 +124,8 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME scene.camera COMMAND scene_camera_test)
     add_executable(scene_render_views_test test/system_views.cpp)
-    target_link_libraries(scene_render_views_test PRIVATE scene_render scene_render_meta
-        lux::engine::function::render_features lux::engine::function::render_feature_meta
+    target_link_libraries(scene_render_views_test PRIVATE scene_render
+        lux::engine::function::render_features
         lux::engine::function::render_vulkan)
     if(MSVC)
         target_compile_options(scene_render_views_test PRIVATE /UNDEBUG)
@@ -133,8 +137,8 @@ endif()
 
 if(BUILD_TESTING AND LUX_PROFILE_HAS_EDITOR)
     add_executable(scene_render_assets_test test/assets.cpp)
-    target_link_libraries(scene_render_assets_test PRIVATE scene_render scene_render_meta
-        lux::engine::function::render_features lux::engine::function::render_feature_meta)
+    target_link_libraries(scene_render_assets_test PRIVATE scene_render
+        lux::engine::function::render_features)
     if(MSVC)
         target_compile_options(scene_render_assets_test PRIVATE /UNDEBUG)
     else()

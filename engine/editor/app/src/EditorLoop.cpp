@@ -42,6 +42,7 @@ void Editor::pumpRender(PollBudget &budget)
     {
         budget.render_replies -= *result;
     }
+    advancePlugins();
     const auto state = renderer.status();
     if (!state.error.ok())
     {
@@ -176,11 +177,17 @@ bool Editor::closeDesktop(PollBudget &budget)
         return true;
     }
     auto &d = *impl_;
+    cancelPluginLoad();
+    pumpRender(budget);
+    advancePlugins();
+    if (d.plugin_request) return false;
     if (!d.desktop_stopping)
     {
         stopDesktop();
         clearPlatformInput();
         d.asset_open.reset();
+        d.plugin_registration.reset();
+        d.plugin_pane.reset();
         d.project_registration.reset();
         d.project_pane.reset();
         d.output.reset();

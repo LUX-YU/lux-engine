@@ -94,7 +94,7 @@ namespace lux::render
         {
             requireOwnerThread();
             if (sync_->isStopping())
-                return lux::cxx::unexpected(ERenderUploadSubmitError::STOPPING);
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::STOPPING);
             const bool has_command = packet.has_command;
             const bool has_unassigned_request = has_command && packet.command.request_id == kInvalidRequestId;
             const bool has_expected_reply = expected_reply_type != kInvalidTypeId;
@@ -103,12 +103,12 @@ namespace lux::render
                 !has_reply_flag;
             if (is_invalid_packet)
             {
-                return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::PAYLOAD_INVALID);
             }
 
             const auto payload_bytes = packet.accountedBytes();
             if (!channel_->tryReserveBytes(payload_bytes))
-                return lux::cxx::unexpected(ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
 
             const auto request_id = callbacks_.registerCallback(std::move(callback), expected_reply_type);
             packet.command.request_id = request_id;
@@ -117,7 +117,7 @@ namespace lux::render
                 packet.command.request_id = kInvalidRequestId;
                 callbacks_.cancel(request_id);
                 channel_->releaseBytes(payload_bytes);
-                return lux::cxx::unexpected(
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(
                     sync_->isStopping() ? ERenderUploadSubmitError::STOPPING : ERenderUploadSubmitError::QUEUE_FULL
                 );
             }
@@ -131,20 +131,20 @@ namespace lux::render
         {
             requireOwnerThread();
             if (sync_->isStopping())
-                return lux::cxx::unexpected(ERenderUploadSubmitError::STOPPING);
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::STOPPING);
             if (!packet.has_command || packet.command.request_id != kInvalidRequestId ||
                 hasFlag(packet.command.flags, CmdFlags::ExpectsReply))
             {
-                return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::PAYLOAD_INVALID);
             }
 
             const auto payload_bytes = packet.accountedBytes();
             if (!channel_->tryReserveBytes(payload_bytes))
-                return lux::cxx::unexpected(ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
             if (channel_->requests.tryPush(std::move(packet)) != lux::cxx::EQueuePushResult::ACCEPTED)
             {
                 channel_->releaseBytes(payload_bytes);
-                return lux::cxx::unexpected(
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(
                     sync_->isStopping() ? ERenderUploadSubmitError::STOPPING : ERenderUploadSubmitError::QUEUE_FULL
                 );
             }
@@ -157,7 +157,7 @@ namespace lux::render
         {
             requireOwnerThread();
             if (sync_->isStopping())
-                return lux::cxx::unexpected(ERenderUploadSubmitError::STOPPING);
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::STOPPING);
 
             OperationPacket<> packet{};
 
@@ -170,25 +170,25 @@ namespace lux::render
             if (!builder.valid() || builder.commandCount() != 1u)
             {
                 callbacks_.cancel(request_id);
-                return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::PAYLOAD_INVALID);
             }
 
             if (!packet.sealAccounting())
             {
                 callbacks_.cancel(request_id);
-                return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::PAYLOAD_INVALID);
             }
             const auto payload_bytes = packet.accountedBytes();
             if (!channel_->tryReserveBytes(payload_bytes))
             {
                 callbacks_.cancel(request_id);
-                return lux::cxx::unexpected(ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
             }
             if (channel_->requests.tryPush(std::move(packet)) != lux::cxx::EQueuePushResult::ACCEPTED)
             {
                 callbacks_.cancel(request_id);
                 channel_->releaseBytes(payload_bytes);
-                return lux::cxx::unexpected(
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(
                     sync_->isStopping() ? ERenderUploadSubmitError::STOPPING : ERenderUploadSubmitError::QUEUE_FULL
                 );
             }
@@ -202,7 +202,7 @@ namespace lux::render
         {
             requireOwnerThread();
             if (sync_->isStopping())
-                return lux::cxx::unexpected(ERenderUploadSubmitError::STOPPING);
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::STOPPING);
 
             OperationPacket<> packet{};
 
@@ -211,18 +211,18 @@ namespace lux::render
             std::invoke(std::forward<Record>(record), builder);
             if (!builder.valid() || builder.commandCount() != 1u)
             {
-                return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::PAYLOAD_INVALID);
             }
 
             if (!packet.sealAccounting())
-                return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::PAYLOAD_INVALID);
             const auto payload_bytes = packet.accountedBytes();
             if (!channel_->tryReserveBytes(payload_bytes))
-                return lux::cxx::unexpected(ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::BYTE_BUDGET_EXHAUSTED);
             if (channel_->requests.tryPush(std::move(packet)) != lux::cxx::EQueuePushResult::ACCEPTED)
             {
                 channel_->releaseBytes(payload_bytes);
-                return lux::cxx::unexpected(
+                return lux::cxx::unexpected<ERenderUploadSubmitError>(
                     sync_->isStopping() ? ERenderUploadSubmitError::STOPPING : ERenderUploadSubmitError::QUEUE_FULL
                 );
             }

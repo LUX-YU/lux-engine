@@ -316,7 +316,8 @@ namespace lux::simulation::script::detail
                 ingress_.open(id, record.result_type);
             return &record;
         }
-        [[nodiscard]] lux::cxx::expected<ScriptAwaitableId, EScriptAwaitableCreateError> createAwaitableRecord(
+        [[nodiscard]] lux::cxx::expected<ScriptAwaitableId, EScriptAwaitableCreateError>
+        createAwaitableRecord(
             ScriptInstanceId instance, const std::optional<PreparedResumeType>& result_type) noexcept
         {
             auto* owner = findExecutionInstance(instance);

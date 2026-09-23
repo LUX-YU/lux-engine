@@ -41,6 +41,7 @@ namespace lux::render
         /// Optional dependency: if absent the dependent still installs (it adapts);
         /// a required (optional=false) dependency that cannot be resolved fails the install.
         bool optional{false};
+        std::uint32_t abi_version{1};
     };
 
     /// `LUX_COMM_CONFIG(requires=)` 的编译期解析产物。上限 4 条 —— 超限时
@@ -117,6 +118,8 @@ namespace lux::render
         /// the row matching the resolved EFeatureLevel — no row for that tier
         /// or unmet required_features → the install is rejected.
         std::span<const FeatureLevelProfile> level_profiles{};
+
+        std::string_view canonical_name;
 
         [[nodiscard]] constexpr bool valid() const noexcept
         {

@@ -17,30 +17,31 @@
 
 namespace lux::engine::platform
 {
-    enum class LoadMode : std::uint32_t
+    enum class ELoadMode : std::uint32_t
     {
-        Default = 0,
-        RTLD_Lazy = 1u << 0,
-        RTLD_Now = 1u << 1,
-        RTLD_Global = 1u << 2,
-        LoadWithAlteredSearchPath = 1u << 3,
-        AppendDecorations = 1u << 4,
+        DEFAULT = 0,
+        RTLD_LAZY = 1u << 0,
+        RTLD_NOW = 1u << 1,
+        RTLD_GLOBAL = 1u << 2,
+        ALTERED_SEARCH_PATH = 1u << 3,
+        APPEND_DECORATIONS = 1u << 4,
+        INSTALLED_PLUGIN = 1u << 5,
     };
 
-    constexpr LoadMode operator|(LoadMode a, LoadMode b) noexcept
+    constexpr ELoadMode operator|(ELoadMode a, ELoadMode b) noexcept
     {
-        using U = std::underlying_type_t<LoadMode>;
-        return static_cast<LoadMode>(static_cast<U>(a) | static_cast<U>(b));
+        using U = std::underlying_type_t<ELoadMode>;
+        return static_cast<ELoadMode>(static_cast<U>(a) | static_cast<U>(b));
     }
 
-    constexpr LoadMode operator&(LoadMode a, LoadMode b) noexcept
+    constexpr ELoadMode operator&(ELoadMode a, ELoadMode b) noexcept
     {
-        using U = std::underlying_type_t<LoadMode>;
-        return static_cast<LoadMode>(static_cast<U>(a) & static_cast<U>(b));
+        using U = std::underlying_type_t<ELoadMode>;
+        return static_cast<ELoadMode>(static_cast<U>(a) & static_cast<U>(b));
     }
 
-    constexpr bool any(LoadMode m) noexcept
+    constexpr bool any(ELoadMode m) noexcept
     {
-        return static_cast<std::underlying_type_t<LoadMode>>(m) != 0u;
+        return static_cast<std::underlying_type_t<ELoadMode>>(m) != 0u;
     }
 }

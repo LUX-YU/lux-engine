@@ -38,13 +38,10 @@ namespace lux::render
         /// 空 tag 生成约定:createFn 用 `SsaoFeature::Config{}` 构造特性,
         /// 无参数也要有这个名字(Hzb 同款)。
         struct Config
-        {
-        };
+        {};
 
         SsaoFeature() = default;
-        explicit SsaoFeature(Config)
-        {
-        }
+        explicit SsaoFeature(Config) {}
 
         std::string_view name() const override
         {
@@ -55,7 +52,7 @@ namespace lux::render
         /// SAMPLED 用途)。SceneDepth 不需要 —— 线性化已由生产者做完。
         uint32_t requiredTargetSlots() const override
         {
-            return 1u << static_cast<uint32_t>(TargetSlot::LINEAR_DEPTH);
+            return 1u << static_cast<uint32_t>(ETargetSlot::LINEAR_DEPTH);
         }
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;

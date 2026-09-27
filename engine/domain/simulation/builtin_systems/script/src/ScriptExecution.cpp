@@ -2,8 +2,12 @@
 
 namespace lux::simulation::script::detail
 {
-    void ScriptExecution::prepare(ScriptRuntimeLimits configured, std::size_t instance_capacity,
-        std::size_t method_capacity, ScriptExecutionFailureSink failures)
+    void ScriptExecution::prepare(
+        ScriptRuntimeLimits configured,
+        std::size_t instance_capacity,
+        std::size_t method_capacity,
+        ScriptExecutionFailureSink failures
+    )
     {
         limits_ = configured;
         failures_ = failures;

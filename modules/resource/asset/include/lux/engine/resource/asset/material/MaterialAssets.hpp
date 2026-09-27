@@ -23,8 +23,7 @@ namespace lux::asset
         inline static constexpr std::uint32_t primary_magic = 0x01309148U;
         inline static constexpr std::uint32_t legacy_type_tag = 9U;
 
-        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const MaterialAsset>, AssetDecodeFailure>
-        create(
+        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const MaterialAsset>, AssetDecodeFailure> create(
             AssetInfo info,
             std::shared_ptr<const lux::rdesc::MaterialDescription> data,
             std::vector<AssetAuxiliaryPayload> auxiliary = {}
@@ -46,10 +45,8 @@ namespace lux::asset
         inline static constexpr std::uint32_t primary_magic = 0x01309149U;
         inline static constexpr std::uint32_t legacy_type_tag = 10U;
 
-        [[nodiscard]] static lux::cxx::expected<
-            std::shared_ptr<const MaterialInstanceAsset>,
-            AssetDecodeFailure
-        > create(
+        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const MaterialInstanceAsset>, AssetDecodeFailure>
+        create(
             AssetInfo info,
             std::shared_ptr<const lux::rdesc::MaterialInstanceDescription> data,
             std::vector<AssetAuxiliaryPayload> auxiliary = {}
@@ -63,25 +60,28 @@ namespace lux::asset
         ) noexcept;
     };
 
-    template <>
-    struct LUX_ASSET_PUBLIC TAssetSerDeser<MaterialAsset> final
+    template <> struct LUX_ASSET_PUBLIC TAssetSerDeser<MaterialAsset> final
     {
-        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const MaterialAsset>, AssetDecodeFailure>
-        decode(AssetId requested, lux::cxx::SharedBytes<> image, const AssetDecodeLimits& limits) noexcept;
+        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const MaterialAsset>, AssetDecodeFailure> decode(
+            AssetId requested,
+            lux::cxx::SharedBytes<> image,
+            const AssetDecodeLimits& limits
+        ) noexcept;
 
-        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
-        encode(const MaterialAsset& asset, const AssetEncodeLimits& limits) noexcept;
+        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
+            const MaterialAsset& asset,
+            const AssetEncodeLimits& limits
+        ) noexcept;
     };
 
-    template <>
-    struct LUX_ASSET_PUBLIC TAssetSerDeser<MaterialInstanceAsset> final
+    template <> struct LUX_ASSET_PUBLIC TAssetSerDeser<MaterialInstanceAsset> final
     {
-        [[nodiscard]] static lux::cxx::expected<
-            std::shared_ptr<const MaterialInstanceAsset>,
-            AssetDecodeFailure
-        > decode(AssetId requested, lux::cxx::SharedBytes<> image, const AssetDecodeLimits& limits) noexcept;
+        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const MaterialInstanceAsset>, AssetDecodeFailure>
+        decode(AssetId requested, lux::cxx::SharedBytes<> image, const AssetDecodeLimits& limits) noexcept;
 
-        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
-        encode(const MaterialInstanceAsset& asset, const AssetEncodeLimits& limits) noexcept;
+        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
+            const MaterialInstanceAsset& asset,
+            const AssetEncodeLimits& limits
+        ) noexcept;
     };
 } // namespace lux::asset

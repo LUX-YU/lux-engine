@@ -37,15 +37,23 @@ namespace lux::render
         }
 
         /// Construct a complete vertex from position + color + intensity.
-        static constexpr GpuPointVertex
-        make(float px, float py, float pz, float r, float g, float b, float intensity = 1.0f) noexcept
+        static constexpr GpuPointVertex make(
+            float px,
+            float py,
+            float pz,
+            float r,
+            float g,
+            float b,
+            float intensity = 1.0f
+        ) noexcept
         {
             return {px, py, pz, pack(r, g, b, intensity)};
         }
     };
     static_assert(
         sizeof(GpuPointVertex) == 16,
-        "GpuPointVertex must be 16 bytes to match the pointcloud_simple / pointcloud_lod vert layout");
+        "GpuPointVertex must be 16 bytes to match the pointcloud_simple / pointcloud_lod vert layout"
+    );
 
     // =====================================================================
     // GPU Octree Node — 96 bytes, matches pointcloud_culling.comp

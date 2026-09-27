@@ -65,8 +65,8 @@ namespace lux::render
             const bool is_invalid_images = images.empty();
             const bool is_invalid_format = format == VK_FORMAT_UNDEFINED;
             const bool is_invalid_operations = ops.create == nullptr || ops.destroy == nullptr;
-            const bool is_invalid_configuration = is_invalid_device || is_invalid_images || is_invalid_format ||
-                is_invalid_operations;
+            const bool is_invalid_configuration =
+                is_invalid_device || is_invalid_images || is_invalid_format || is_invalid_operations;
             if (is_invalid_configuration)
             {
                 return renderFailure<err::device::SwapchainConfigurationInvalid>(stage);
@@ -94,8 +94,7 @@ namespace lux::render
                     return lux::cxx::unexpected<RenderError>(mapSwapchainBuildError({
                         gapi::vk::ESwapchainBuildStage::CREATE_IMAGE_VIEWS,
                         result,
-                    })
-                    );
+                    }));
                 }
                 if (view == VK_NULL_HANDLE)
                 {
@@ -107,8 +106,10 @@ namespace lux::render
             return candidate;
         }
 
-        Expected<SwapchainAcquireDisposition>
-        classifySwapchainAcquireResult(VkResult result, bool present_scaling) noexcept
+        Expected<SwapchainAcquireDisposition> classifySwapchainAcquireResult(
+            VkResult result,
+            bool present_scaling
+        ) noexcept
         {
             switch (result)
             {
@@ -136,8 +137,10 @@ namespace lux::render
             }
         }
 
-        Expected<SwapchainPresentDisposition>
-        classifySwapchainPresentResult(VkResult result, bool present_scaling) noexcept
+        Expected<SwapchainPresentDisposition> classifySwapchainPresentResult(
+            VkResult result,
+            bool present_scaling
+        ) noexcept
         {
             switch (result)
             {
@@ -397,7 +400,7 @@ namespace lux::render
             b.layout = nullptr;
             b.extent = extent_;
             b.is_presentable = true;
-            auto& sc = b.slot_images[static_cast<size_t>(TargetSlot::SCENE_COLOR)];
+            auto& sc = b.slot_images[static_cast<size_t>(ETargetSlot::SCENE_COLOR)];
             sc.images = {raw[image_index]};
             sc.views = {swapchain_image_views_[image_index]};
             return b;
@@ -409,7 +412,7 @@ namespace lux::render
             const auto neutral_format = tryMapVkFormat(format_);
             if (!neutral_format)
                 return l;
-            l.slots[static_cast<size_t>(TargetSlot::SCENE_COLOR)] = RenderTargetSlotDesc{
+            l.slots[static_cast<size_t>(ETargetSlot::SCENE_COLOR)] = RenderTargetSlotDesc{
                 .format = *neutral_format,
                 .usage = ERenderImageUsage::COLOR_ATTACHMENT,
                 .aspect = ERenderAspect::COLOR,
@@ -501,8 +504,11 @@ namespace lux::render
     // SwapchainProvider — forwarding to Impl
     // =============================================================================
 
-    Expected<SwapchainProvider>
-    SwapchainProvider::create(ResourceContext& res_ctx, RenderSurface& surface, const Config& config)
+    Expected<SwapchainProvider> SwapchainProvider::create(
+        ResourceContext& res_ctx,
+        RenderSurface& surface,
+        const Config& config
+    )
     {
         SwapchainProvider provider;
         provider.impl_ = std::make_unique<Impl>(res_ctx, config);

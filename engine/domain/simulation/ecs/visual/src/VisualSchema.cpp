@@ -8,7 +8,7 @@
 
 namespace lux::serialization
 {
-    template <> struct Serializer<lux::asset::AssetId>
+    template <> struct TSerializer<lux::asset::AssetId>
     {
         static constexpr EWireExtent wire_extent = EWireExtent::FIXED;
         static constexpr std::size_t fixed_wire_size = 16U;
@@ -35,7 +35,7 @@ namespace lux::serialization
         }
     };
 
-    template <> struct Serializer<lux::rdesc::MeshVisualDescription>
+    template <> struct TSerializer<lux::rdesc::MeshVisualDescription>
     {
         static constexpr EWireExtent wire_extent = EWireExtent::FIXED;
         static constexpr std::size_t fixed_wire_size = 35U;
@@ -61,18 +61,12 @@ namespace lux::serialization
             const SerializationContext& context
         ) noexcept
         {
-            auto fields = std::tie(
-                value.mesh,
-                value.material,
-                value.visible,
-                value.cast_shadow,
-                value.receive_shadow
-            );
+            auto fields = std::tie(value.mesh, value.material, value.visible, value.cast_shadow, value.receive_shadow);
             return lux::serialization::read(reader, fields, context);
         }
     };
 
-    template <> struct Serializer<lux::rdesc::LightDescription>
+    template <> struct TSerializer<lux::rdesc::LightDescription>
     {
         static constexpr EWireExtent wire_extent = EWireExtent::FIXED;
         static constexpr std::size_t fixed_wire_size = 98U;
@@ -141,11 +135,7 @@ namespace lux::serialization
                 value.cascade_count,
                 value.cascade_splits
             );
-            auto result = lux::serialization::read(
-                reader,
-                fields,
-                context
-            );
+            auto result = lux::serialization::read(reader, fields, context);
             const bool is_invalid_type = value.type > lux::rdesc::ELightType::AREA;
             const bool is_invalid_cascade_count = value.cascade_count > lux::rdesc::kLightCascadeSlots;
             if (result && (is_invalid_type || is_invalid_cascade_count))

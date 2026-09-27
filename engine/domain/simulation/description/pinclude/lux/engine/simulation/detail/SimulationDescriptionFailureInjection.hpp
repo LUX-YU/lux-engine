@@ -13,8 +13,9 @@ namespace lux::simulation::detail
         BUILD_SIZE_OVERFLOW,
     };
 
-    LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC void
-    failNextSimulationDescriptionOperationForTest(ESimulationDescriptionFailurePoint point) noexcept;
+    LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC void failNextSimulationDescriptionOperationForTest(
+        ESimulationDescriptionFailurePoint point
+    ) noexcept;
 
     [[nodiscard]] bool consumeSimulationDescriptionFailureForTest(ESimulationDescriptionFailurePoint point) noexcept;
 }

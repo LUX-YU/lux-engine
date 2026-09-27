@@ -22,7 +22,7 @@ namespace lux::render
         std::span<const std::byte> metadata;
     };
 
-    [[nodiscard]] LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC
-        lux::cxx::expected<BuiltinShaderContent, EBuiltinContentError>
+    [[nodiscard]] LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC lux::cxx::
+        expected<BuiltinShaderContent, EBuiltinContentError>
         builtinShaderContent(EBuiltinShader shader) noexcept;
 } // namespace lux::render

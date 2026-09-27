@@ -107,7 +107,7 @@ namespace lux::render
                 pb.type = b.type;
                 pb.stages = b.stages;
                 pb.binding_flags = b.binding_flags;
-                pb.count = (b.count_source == EBindingCountSource::Fixed) ? b.count : 0u;
+                pb.count = (b.count_source == EBindingCountSource::FIXED) ? b.count : 0u;
                 if (const char* n = canonicalName(canonical_set, b.binding))
                 {
                     pb.name = n;
@@ -185,15 +185,15 @@ namespace lux::render
         {
             switch (slot.source)
             {
-            case ESlotSource::EngineShared:
-            case ESlotSource::ReflectionHole:
+            case ESlotSource::ENGINE_SHARED:
+            case ESlotSource::REFLECTION_HOLE:
                 return slot.logical_set < kEngineSetShapes.size() ? kEngineSetShapes[slot.logical_set].frequency
                                                                   : rdesc::EBindFrequency::FEATURE;
-            case ESlotSource::FeatureExplicit:
+            case ESlotSource::FEATURE_EXPLICIT:
                 return rdesc::EBindFrequency::FEATURE;
-            case ESlotSource::PipelinePrivate:
+            case ESlotSource::PIPELINE_PRIVATE:
                 return rdesc::EBindFrequency::PASS_LOCAL;
-            case ESlotSource::DomainMerged:
+            case ESlotSource::DOMAIN_MERGED:
                 // logical_set IS the domain enum value (see the ESlotSource comment).
                 return slot.logical_set < 4u ? static_cast<rdesc::EBindFrequency>(slot.logical_set)
                                              : rdesc::EBindFrequency::FEATURE;
@@ -261,8 +261,10 @@ namespace lux::render
         }
     } // namespace
 
-    bool
-    RenderGraphCompiler::computeGraphDescriptorLayouts(RGCompiledGraph& compiled, PipelineManager& pipeline_manager)
+    bool RenderGraphCompiler::computeGraphDescriptorLayouts(
+        RGCompiledGraph& compiled,
+        PipelineManager& pipeline_manager
+    )
     {
         LayoutPlan plan{};
 
@@ -313,8 +315,7 @@ namespace lux::render
                 hit->stages |= src.stages;
                 hit->count = std::max(hit->count, src.count);
                 if (hit->type != src.type)
-                    plan.warnings.push_back(
-                        renderError<err::graph::SharedSetBindingTypeConflict>(dst.set, src.binding)
+                    plan.warnings.push_back(renderError<err::graph::SharedSetBindingTypeConflict>(dst.set, src.binding)
                     );
             }
         };
@@ -331,8 +332,8 @@ namespace lux::render
             {
                 switch (slot.source)
                 {
-                case ESlotSource::EngineShared:
-                case ESlotSource::ReflectionHole: {
+                case ESlotSource::ENGINE_SHARED:
+                case ESlotSource::REFLECTION_HOLE: {
                     // A domain-mode hole is a MEANINGLESS placeholder (logical is
                     // a sentinel value, see the hole comment in
                     // buildReflectedPipelineLayout) — it doesn't go into the Plan,
@@ -344,7 +345,7 @@ namespace lux::render
                     }
                     // Identity is the canonical number; the shape comes from the
                     // engine table, not from reflection (see the file header).
-                    PlannedSet& dst = findOrAdd(EPlannedSetKind::EngineShared, slot.logical_set, 0);
+                    PlannedSet& dst = findOrAdd(EPlannedSetKind::ENGINE_SHARED, slot.logical_set, 0);
                     if (dst.bindings.empty())
                     {
                         fillFromEngineShape(dst, slot.logical_set);
@@ -356,13 +357,16 @@ namespace lux::render
                     dst.layout = slot.layout;
                     break;
                 }
-                case ESlotSource::FeatureExplicit: {
+                case ESlotSource::FEATURE_EXPLICIT: {
                     // Identity is the layout handle: multiple pipelines that share
                     // the same feature set pass in the same handle, so they merge
                     // naturally on that basis; two different features that happen
                     // to both use set 3 will never be conflated.
-                    PlannedSet& dst =
-                        findOrAdd(EPlannedSetKind::FeatureExplicit, slot.slot, reinterpret_cast<uint64_t>(slot.layout));
+                    PlannedSet& dst = findOrAdd(
+                        EPlannedSetKind::FEATURE_EXPLICIT,
+                        slot.slot,
+                        reinterpret_cast<uint64_t>(slot.layout)
+                    );
                     dst.layout = slot.layout;
                     if (const auto* rs = findReflectedSet(*refl, slot.slot))
                     {
@@ -370,10 +374,10 @@ namespace lux::render
                     }
                     break;
                 }
-                case ESlotSource::PipelinePrivate: {
+                case ESlotSource::PIPELINE_PRIVATE: {
                     // Attributed to the specific pipeline — private sets with the
                     // same number are NEVER merged across pipelines.
-                    PlannedSet& dst = findOrAdd(EPlannedSetKind::PipelinePrivate, slot.slot, owner);
+                    PlannedSet& dst = findOrAdd(EPlannedSetKind::PIPELINE_PRIVATE, slot.slot, owner);
                     dst.layout = slot.layout;
                     if (const auto* rs = findReflectedSet(*refl, slot.slot))
                     {
@@ -381,7 +385,7 @@ namespace lux::render
                     }
                     break;
                 }
-                case ESlotSource::DomainMerged: {
+                case ESlotSource::DOMAIN_MERGED: {
                     // Merged domain slot: one slot houses multiple engine sets.
                     // Aggregate them INDIVIDUALLY, by member canonical, into their
                     // own EngineShared PlannedSet — the Plan operates at the
@@ -407,7 +411,7 @@ namespace lux::render
                         {
                             continue; // domain-mode registration already guarantees this can't happen; defensive only
                         }
-                        PlannedSet& dst = findOrAdd(EPlannedSetKind::EngineShared, e->canonical_set, 0);
+                        PlannedSet& dst = findOrAdd(EPlannedSetKind::ENGINE_SHARED, e->canonical_set, 0);
                         if (dst.bindings.empty())
                         {
                             fillFromEngineShape(dst, e->canonical_set);
@@ -471,8 +475,8 @@ namespace lux::render
                     plan.warnings.push_back(renderError<err::graph::VariantSetCountMismatch>(
                         pass_index,
                         static_cast<std::uint32_t>(base->slots.size()),
-                        static_cast<std::uint32_t>(var->slots.size()))
-                    );
+                        static_cast<std::uint32_t>(var->slots.size())
+                    ));
                 }
             }
         };
@@ -514,8 +518,7 @@ namespace lux::render
             applyContract(s);
             std::sort(s.bindings.begin(), s.bindings.end(), [](const PlannedBinding& a, const PlannedBinding& b) {
                 return a.binding < b.binding;
-            }
-            );
+            });
         }
         std::sort(plan.sets.begin(), plan.sets.end(), [](const PlannedSet& a, const PlannedSet& b) {
             if (a.kind != b.kind)
@@ -527,8 +530,7 @@ namespace lux::render
                 return a.set < b.set;
             }
             return a.owner_key < b.owner_key;
-        }
-        );
+        });
 
         // -- 3. Slot assignment -----------------------------------------------
         // Initial approach: identity (keep the current slot assignment), so the
@@ -555,7 +557,7 @@ namespace lux::render
             // just records the constant into the Plan for downstream readers.
             for (auto& s : plan.sets)
             {
-                if (s.kind != EPlannedSetKind::EngineShared || s.set >= kEngineSetShapes.size())
+                if (s.kind != EPlannedSetKind::ENGINE_SHARED || s.set >= kEngineSetShapes.size())
                 {
                     continue;
                 }
@@ -570,11 +572,11 @@ namespace lux::render
             // they already have an entire set to themselves.
             for (auto& s : plan.sets)
             {
-                if (s.kind == EPlannedSetKind::EngineShared)
+                if (s.kind == EPlannedSetKind::ENGINE_SHARED)
                 {
                     continue;
                 }
-                s.domain = (s.kind == EPlannedSetKind::FeatureExplicit) ? rdesc::EBindFrequency::FEATURE
+                s.domain = (s.kind == EPlannedSetKind::FEATURE_EXPLICIT) ? rdesc::EBindFrequency::FEATURE
                                                                         : rdesc::EBindFrequency::PASS_LOCAL;
                 s.domain_binding_offset = 0;
                 s.domain_binding_count = static_cast<uint32_t>(s.bindings.size());
@@ -587,14 +589,14 @@ namespace lux::render
             for (std::size_t i = 0; i < plan.sets.size(); ++i)
             {
                 const auto& a = plan.sets[i];
-                if (a.kind != EPlannedSetKind::EngineShared)
+                if (a.kind != EPlannedSetKind::ENGINE_SHARED)
                 {
                     continue;
                 }
                 for (std::size_t j = i + 1; j < plan.sets.size(); ++j)
                 {
                     const auto& b = plan.sets[j];
-                    if (b.kind != EPlannedSetKind::EngineShared || b.domain != a.domain)
+                    if (b.kind != EPlannedSetKind::ENGINE_SHARED || b.domain != a.domain)
                     {
                         continue;
                     }
@@ -604,8 +606,8 @@ namespace lux::render
                         plan.warnings.push_back(renderError<err::graph::DomainBindingRangeOverlap>(
                             a.set,
                             b.set,
-                            std::max(a.domain_binding_offset, b.domain_binding_offset))
-                        );
+                            std::max(a.domain_binding_offset, b.domain_binding_offset)
+                        ));
                 }
             }
         }
@@ -626,15 +628,15 @@ namespace lux::render
             const auto slotKindChar = [](ESlotSource s) -> char {
                 switch (s)
                 {
-                case ESlotSource::EngineShared:
+                case ESlotSource::ENGINE_SHARED:
                     return 'E';
-                case ESlotSource::FeatureExplicit:
+                case ESlotSource::FEATURE_EXPLICIT:
                     return 'X';
-                case ESlotSource::PipelinePrivate:
+                case ESlotSource::PIPELINE_PRIVATE:
                     return 'P';
-                case ESlotSource::ReflectionHole:
+                case ESlotSource::REFLECTION_HOLE:
                     return 'H';
-                case ESlotSource::DomainMerged:
+                case ESlotSource::DOMAIN_MERGED:
                     return 'D';
                 }
                 return '?';
@@ -656,8 +658,8 @@ namespace lux::render
                 // offending pipeline is named explicitly.
                 if (diag.merged && refl->slots.size() > 4)
                     plan.warnings.push_back(renderError<err::graph::MergedLayoutExceedsSetBudget>(
-                        static_cast<std::uint32_t>(refl->slots.size()))
-                    );
+                        static_cast<std::uint32_t>(refl->slots.size())
+                    ));
                 // Identity check: none of the engine resources in the reflection
                 // has a "merged position != current position" mismatch.
                 if (!diag.merged)
@@ -684,7 +686,7 @@ namespace lux::render
                     sd.slot = slot.slot;
                     sd.kind = slotKindChar(slot.source);
                     sd.logical = slot.logical_set;
-                    if (slot.source == ESlotSource::DomainMerged)
+                    if (slot.source == ESlotSource::DOMAIN_MERGED)
                         if (const auto* rs = findReflectedSet(*refl, slot.slot))
                             for (const auto& b : rs->bindings)
                                 if (const auto* e = engineOwnedResource(b.name))
@@ -778,8 +780,8 @@ namespace lux::render
             const PlannedSet* ps = nullptr;
             switch (slot.source)
             {
-            case ESlotSource::EngineShared:
-            case ESlotSource::ReflectionHole:
+            case ESlotSource::ENGINE_SHARED:
+            case ESlotSource::REFLECTION_HOLE:
                 // A domain-mode semantics-free placeholder hole isn't managed by
                 // the Plan; keep the layout from registration time — otherwise
                 // failing to find it would make the whole template give up on
@@ -788,15 +790,15 @@ namespace lux::render
                 {
                     return slot.layout;
                 }
-                ps = plan.find(slot.logical_set, EPlannedSetKind::EngineShared, 0);
+                ps = plan.find(slot.logical_set, EPlannedSetKind::ENGINE_SHARED, 0);
                 break;
-            case ESlotSource::FeatureExplicit:
-                ps = plan.find(slot.slot, EPlannedSetKind::FeatureExplicit, reinterpret_cast<uint64_t>(slot.layout));
+            case ESlotSource::FEATURE_EXPLICIT:
+                ps = plan.find(slot.slot, EPlannedSetKind::FEATURE_EXPLICIT, reinterpret_cast<uint64_t>(slot.layout));
                 break;
-            case ESlotSource::PipelinePrivate:
-                ps = plan.find(slot.slot, EPlannedSetKind::PipelinePrivate, owner);
+            case ESlotSource::PIPELINE_PRIVATE:
+                ps = plan.find(slot.slot, EPlannedSetKind::PIPELINE_PRIVATE, owner);
                 break;
-            case ESlotSource::DomainMerged:
+            case ESlotSource::DOMAIN_MERGED:
                 // The domain layout is an engine-level constant (expanded from
                 // the shape table); the Plan has no room to reassign it, so just
                 // reuse the domain layout fixed at registration time — it doesn't
@@ -845,7 +847,7 @@ namespace lux::render
                 // Expand a merged domain slot's members (matching the same
                 // synthesis rule used for resource_slot_map at registration time
                 // — otherwise the cross-check would always warn).
-                if (slot.source == ESlotSource::DomainMerged)
+                if (slot.source == ESlotSource::DOMAIN_MERGED)
                 {
                     const auto* rs = findReflectedSet(*refl, slot.slot);
                     if (!rs)
@@ -876,7 +878,7 @@ namespace lux::render
                     }
                     continue;
                 }
-                if (slot.source != ESlotSource::EngineShared && slot.source != ESlotSource::ReflectionHole)
+                if (slot.source != ESlotSource::ENGINE_SHARED && slot.source != ESlotSource::REFLECTION_HOLE)
                     continue;
                 if (slot.logical_set >= kDescriptorSetCount)
                 {
@@ -993,7 +995,7 @@ namespace lux::render
             for (const auto& slot : refl->slots)
             {
                 domain_used[static_cast<std::size_t>(slotFrequency(slot))] = true;
-                if (slot.source == ESlotSource::FeatureExplicit)
+                if (slot.source == ESlotSource::FEATURE_EXPLICIT)
                 {
                     bool seen = false;
                     for (auto l : explicit_sets)
@@ -1024,7 +1026,7 @@ namespace lux::render
             // check whether any engine set falls in the FEATURE domain.
             bool feature_domain_has_engine = false;
             for (const auto& slot : refl->slots)
-                if (slot.source != ESlotSource::FeatureExplicit &&
+                if (slot.source != ESlotSource::FEATURE_EXPLICIT &&
                     slotFrequency(slot) == rdesc::EBindFrequency::FEATURE)
                 {
                     feature_domain_has_engine = true;
@@ -1089,31 +1091,32 @@ namespace lux::render
                 slot_sets.clear();
                 switch (slot.source)
                 {
-                case ESlotSource::EngineShared:
-                case ESlotSource::ReflectionHole:
-                    if (const auto* ps = plan.find(slot.logical_set, EPlannedSetKind::EngineShared, 0))
+                case ESlotSource::ENGINE_SHARED:
+                case ESlotSource::REFLECTION_HOLE:
+                    if (const auto* ps = plan.find(slot.logical_set, EPlannedSetKind::ENGINE_SHARED, 0))
                     {
                         slot_sets.push_back(ps);
                     }
                     break;
-                case ESlotSource::FeatureExplicit:
+                case ESlotSource::FEATURE_EXPLICIT:
                     if (const auto* ps = plan.find(
                             slot.slot,
-                            EPlannedSetKind::FeatureExplicit,
-                            reinterpret_cast<uint64_t>(slot.layout)))
+                            EPlannedSetKind::FEATURE_EXPLICIT,
+                            reinterpret_cast<uint64_t>(slot.layout)
+                        ))
                         slot_sets.push_back(ps);
                     break;
-                case ESlotSource::PipelinePrivate:
-                    if (const auto* ps = plan.find(slot.slot, EPlannedSetKind::PipelinePrivate, owner))
+                case ESlotSource::PIPELINE_PRIVATE:
+                    if (const auto* ps = plan.find(slot.slot, EPlannedSetKind::PIPELINE_PRIVATE, owner))
                     {
                         slot_sets.push_back(ps);
                     }
                     break;
-                case ESlotSource::DomainMerged:
+                case ESlotSource::DOMAIN_MERGED:
                     if (const auto* rs = findReflectedSet(*refl, slot.slot))
                         for (const auto& b : rs->bindings)
                             if (const auto* e = engineOwnedResource(b.name))
-                                if (const auto* ps = plan.find(e->canonical_set, EPlannedSetKind::EngineShared, 0))
+                                if (const auto* ps = plan.find(e->canonical_set, EPlannedSetKind::ENGINE_SHARED, 0))
                                 {
                                     bool seen = false;
                                     for (const auto* p : slot_sets)
@@ -1199,7 +1202,7 @@ namespace lux::render
             checkStage("COMPUTE", c);
         };
 
-        // Index-based: EErrorArg::GraphPass carries a passes[] subscript, which is
+        // Index-based: EErrorArg::GRAPH_PASS carries a passes[] subscript, which is
         // how this error vocabulary names a pass (its name is user-authored and
         // doesn't fit a 32-bit arg slot — the client resolves it via
         // DumpRenderGraph). So the projection needs the index, not just the name.
@@ -1252,8 +1255,8 @@ namespace lux::render
         if (!plan.over_budget_strict.empty())
             plan.warnings.push_back(renderError<err::graph::ProjectedLayoutExceedsSetBudget>(
                 worst_strict_pass,
-                plan.max_sets_projected_strict)
-            );
+                plan.max_sets_projected_strict
+            ));
 
         // -- 6b. Post-merge per-stage usage -------------------------------------
         // Merging sets isn't free: once multiple sets in the same domain are
@@ -1273,12 +1276,11 @@ namespace lux::render
             // set; a private set already belongs to just one pipeline, so it
             // only ever has its own share, before or after merging.
             std::size_t domain;
-            if (s.kind == EPlannedSetKind::EngineShared)
+            if (s.kind == EPlannedSetKind::ENGINE_SHARED)
                 domain = static_cast<std::size_t>(
-                    s.set < kEngineSetShapes.size() ? kEngineSetShapes[s.set].frequency
-                                                    : rdesc::EBindFrequency::FEATURE
+                    s.set < kEngineSetShapes.size() ? kEngineSetShapes[s.set].frequency : rdesc::EBindFrequency::FEATURE
                 );
-            else if (s.kind == EPlannedSetKind::FeatureExplicit)
+            else if (s.kind == EPlannedSetKind::FEATURE_EXPLICIT)
             {
                 domain = static_cast<std::size_t>(rdesc::EBindFrequency::FEATURE);
             }
@@ -1318,13 +1320,13 @@ namespace lux::render
             for (const auto& slot : refl->slots)
             {
                 const auto d = static_cast<std::size_t>(slotFrequency(slot));
-                if (slot.source == ESlotSource::PipelinePrivate)
+                if (slot.source == ESlotSource::PIPELINE_PRIVATE)
                 {
                     // Private sets don't participate in merging; count only their
                     // own share — using the same bucketing rule as the other two
                     // tally sites (this one used to only accumulate the total,
                     // which skewed the per-type readings).
-                    const PlannedSet* ps = plan.find(slot.slot, EPlannedSetKind::PipelinePrivate, owner);
+                    const PlannedSet* ps = plan.find(slot.slot, EPlannedSetKind::PIPELINE_PRIVATE, owner);
                     if (!ps)
                     {
                         continue;

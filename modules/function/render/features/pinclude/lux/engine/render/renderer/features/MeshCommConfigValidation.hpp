@@ -39,11 +39,11 @@ namespace lux::render
     // ========================================================================
 
     /// 一个 CommConfig 着色器字段的回填/校验描述。
-    template <class Config> struct BuiltinShaderFill
+    template <class Config> struct TBuiltinShaderFill
     {
-        ShaderHandle Config::* field; ///< CommConfig 里的句柄成员
-        bool fill{true};              ///< false = 不回填(纯校验,如 Graph 族)
-        EBuiltinShader builtin{};     ///< 回填用的默认内置
+        ShaderHandle Config::*field; ///< CommConfig 里的句柄成员
+        bool fill{true};             ///< false = 不回填(纯校验,如 Graph 族)
+        EBuiltinShader builtin{};    ///< 回填用的默认内置
         /// Non-empty = conditional entry: pick builtin_alt when extension_flags
         /// contains these bits.
         GpuDrivenMeshExtFlags flag_mask{};
@@ -54,10 +54,13 @@ namespace lux::render
     /// 按表回填 + 校验。任一必填字段解析不出模块(或可选字段非空却解析不出)即报错,
     /// 实参带上是哪个内置着色器 —— 这是三个 mesh 族 handler 共用的唯一回填入口。
     template <class Config, std::size_t N>
-    [[nodiscard]] Expected<void>
-    fillAndValidateBuiltinShaders(ShaderResources& shaders, Config& cc, const BuiltinShaderFill<Config> (&table)[N])
+    [[nodiscard]] Expected<void> fillAndValidateBuiltinShaders(
+        ShaderResources& shaders,
+        Config& cc,
+        const TBuiltinShaderFill<Config> (&table)[N]
+    )
     {
-        for (const BuiltinShaderFill<Config>& entry : table)
+        for (const TBuiltinShaderFill<Config>& entry : table)
         {
             ShaderHandle& handle = cc.*(entry.field);
 
@@ -147,7 +150,7 @@ namespace lux::render
         const void* param,
         std::size_t param_size,
         const MeshCommConfigExpectation& expected,
-        const BuiltinShaderFill<Config> (&shader_fills)[N]
+        const TBuiltinShaderFill<Config> (&shader_fills)[N]
     )
     {
         Config cc{};

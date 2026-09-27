@@ -31,36 +31,36 @@ namespace lux::render
         BONE_WEIGHTS = 18 ///< per-vertex bone weights (skinning input)
     };
 
-    template <EVertexSemantic> struct vertex_layout_type;
-    template <> struct vertex_layout_type<EVertexSemantic::POSITION>
+    template <EVertexSemantic> struct TVertexLayoutType;
+    template <> struct TVertexLayoutType<EVertexSemantic::POSITION>
     {
         using type = float[3];
     };
-    template <> struct vertex_layout_type<EVertexSemantic::NORMAL>
+    template <> struct TVertexLayoutType<EVertexSemantic::NORMAL>
     {
         using type = float[3];
     };
-    template <> struct vertex_layout_type<EVertexSemantic::TANGENT>
+    template <> struct TVertexLayoutType<EVertexSemantic::TANGENT>
     {
         using type = float[3];
     };
-    template <> struct vertex_layout_type<EVertexSemantic::UV0>
+    template <> struct TVertexLayoutType<EVertexSemantic::UV0>
     {
         using type = float[2];
     };
-    template <> struct vertex_layout_type<EVertexSemantic::UV1>
+    template <> struct TVertexLayoutType<EVertexSemantic::UV1>
     {
         using type = float[2];
     };
-    template <> struct vertex_layout_type<EVertexSemantic::BITANGENT>
+    template <> struct TVertexLayoutType<EVertexSemantic::BITANGENT>
     {
         using type = float[3];
     };
-    template <> struct vertex_layout_type<EVertexSemantic::COLOR0>
+    template <> struct TVertexLayoutType<EVertexSemantic::COLOR0>
     {
         using type = float[4];
     };
-    template <> struct vertex_layout_type<EVertexSemantic::POINT_SIZE>
+    template <> struct TVertexLayoutType<EVertexSemantic::POINT_SIZE>
     {
         using type = float;
     };

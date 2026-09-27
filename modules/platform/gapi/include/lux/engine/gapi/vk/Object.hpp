@@ -34,8 +34,7 @@
 #include <cstdio>
 
 // A simple VkResult-to-string conversion; extend as needed
-static const char*
-vk_result_to_string(VkResult r)
+static const char* vk_result_to_string(VkResult r)
 {
     switch (r)
     {
@@ -100,8 +99,8 @@ vk_result_to_string(VkResult r)
                 (int)err,                                                                                              \
                 __FILE__,                                                                                              \
                 __LINE__,                                                                                              \
-                #func "(" #__VA_ARGS__ ")" \
-            ); \
+                #func "(" #__VA_ARGS__ ")"                                                                             \
+            );                                                                                                         \
             assert(false && "Vulkan call failed");                                                                     \
         }                                                                                                              \
     } while (0)

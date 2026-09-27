@@ -11,6 +11,7 @@ add_component(
     OUTPUT_NAME    lux_engine_process_asset_loading
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/VfsAssetReadEndpoint.cpp
+        src/AssetReadOverlay.cpp
 )
 add_library(lux::engine::process::asset_loading ALIAS process_asset_loading)
 component_include_directories(
@@ -42,3 +43,14 @@ lux_engine_install_components(
     NAMESPACE    lux::engine::process
     COMPONENTS   process_asset_loading
 )
+
+if(BUILD_TESTING)
+    add_executable(asset_read_overlay_test test/overlay.cpp)
+    target_link_libraries(asset_read_overlay_test PRIVATE process_asset_loading)
+    if(MSVC)
+        target_compile_options(asset_read_overlay_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(asset_read_overlay_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME process.asset_read_overlay COMMAND asset_read_overlay_test)
+endif()

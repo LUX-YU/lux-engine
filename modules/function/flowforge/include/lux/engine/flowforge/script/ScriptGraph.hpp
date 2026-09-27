@@ -33,6 +33,5 @@ namespace lux::flowforge
         bool operator==(const ExportMethodNode&) const = default;
     };
 
-    [[nodiscard]] LUX_ENGINE_FLOWFORGE_PUBLIC
-    bool validFlowForgeExports(const FlowGraph& graph) noexcept;
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_PUBLIC bool validFlowForgeExports(const FlowGraph& graph) noexcept;
 }

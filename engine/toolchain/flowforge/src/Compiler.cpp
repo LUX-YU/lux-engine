@@ -1,4 +1,5 @@
 #include <lux/engine/flowforge/Compiler.hpp>
+#include <exception>
 
 #include <lux/engine/flowforge/compiler/AOT.hpp>
 #include <lux/engine/flowforge/compiler/IR.hpp>
@@ -20,21 +21,18 @@
 
 namespace lux::flowforge
 {
-    FlowForgeResult<std::vector<lux::script::ScriptBindingHint>>
-    describeFlowForgeBindingHints(const FlowGraph& graph) noexcept
+    FlowForgeResult<std::vector<lux::script::ScriptBindingHint>> describeFlowForgeBindingHints(const FlowGraph& graph
+    ) noexcept
     {
         if (!validFlowForgeExports(graph))
             return lux::cxx::unexpected(FlowForgeFailure{EFlowForgeError::GRAPH_INVALID, "Invalid Script exports"});
-        try
+
         {
             std::vector<lux::script::ScriptBindingHint> result;
             for (const auto& exported : graph.exports())
-                for (const auto& target : exported.binding_hints) result.push_back({exported.symbol, target});
+                for (const auto& target : exported.binding_hints)
+                    result.push_back({exported.symbol, target});
             return result;
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(FlowForgeFailure{EFlowForgeError::ALLOCATION_FAILURE, "Binding hints"});
         }
     }
     namespace
@@ -44,10 +42,7 @@ namespace lux::flowforge
         public:
             TemporaryCompileDirectory() = default;
 
-            explicit TemporaryCompileDirectory(std::filesystem::path path) noexcept
-                : path_(std::move(path))
-            {
-            }
+            explicit TemporaryCompileDirectory(std::filesystem::path path) noexcept : path_(std::move(path)) {}
 
             ~TemporaryCompileDirectory()
             {
@@ -61,7 +56,8 @@ namespace lux::flowforge
             TemporaryCompileDirectory(const TemporaryCompileDirectory&) = delete;
             TemporaryCompileDirectory& operator=(const TemporaryCompileDirectory&) = delete;
             TemporaryCompileDirectory(TemporaryCompileDirectory&& other) noexcept
-                : path_(std::exchange(other.path_, {})) {}
+                : path_(std::exchange(other.path_, {}))
+            {}
             TemporaryCompileDirectory& operator=(TemporaryCompileDirectory&&) = delete;
 
             [[nodiscard]] const std::filesystem::path& path() const noexcept
@@ -105,7 +101,7 @@ namespace lux::flowforge
             }
             catch (const std::bad_alloc&)
             {
-                return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+                std::terminate();
             }
             catch (...)
             {
@@ -113,9 +109,7 @@ namespace lux::flowforge
             }
         }
 
-        [[nodiscard]] FlowForgeResult<std::vector<std::byte>> readModule(
-            const std::filesystem::path& path
-        ) noexcept
+        [[nodiscard]] FlowForgeResult<std::vector<std::byte>> readModule(const std::filesystem::path& path) noexcept
         {
             try
             {
@@ -149,7 +143,7 @@ namespace lux::flowforge
             }
             catch (const std::bad_alloc&)
             {
-                return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+                std::terminate();
             }
             catch (...)
             {
@@ -162,7 +156,7 @@ namespace lux::flowforge
             ScriptAbilityNodeCatalogView catalog
         ) noexcept
         {
-            try
+
             {
                 std::vector<lux::rdesc::ScriptApiRequirement> requirements;
                 for (const auto& storage : graph.nodes())
@@ -197,18 +191,17 @@ namespace lux::flowforge
                             }
                         }
                         return lux::cxx::unexpected(FlowForgeFailure{
-                            .code = contract_exists
-                                ? EFlowForgeError::UNKNOWN_SCRIPT_ABILITY_METHOD
-                                : EFlowForgeError::UNKNOWN_SCRIPT_ABILITY_CONTRACT,
+                            .code = contract_exists ? EFlowForgeError::UNKNOWN_SCRIPT_ABILITY_METHOD
+                                                    : EFlowForgeError::UNKNOWN_SCRIPT_ABILITY_CONTRACT,
                             .message = contract_exists
-                                ? "the Script Ability method is not present in the supplied catalog"
-                                : "the Script Ability contract is not present in the supplied catalog",
+                                           ? "the Script Ability method is not present in the supplied catalog"
+                                           : "the Script Ability contract is not present in the supplied catalog",
                             .node_id = node->id().value
                         });
                     }
                     const bool is_schema_mismatch = catalog_node->schema_version != node->expectedSchemaVersion() ||
-                        catalog_node->schema_hash != node->expectedSchemaHash() ||
-                        catalog_node->kind != node->methodKind();
+                                                    catalog_node->schema_hash != node->expectedSchemaHash() ||
+                                                    catalog_node->kind != node->methodKind();
                     if (is_schema_mismatch)
                     {
                         return lux::cxx::unexpected(FlowForgeFailure{
@@ -223,10 +216,9 @@ namespace lux::flowforge
                     });
                     if (!exists)
                     {
-                        requirements.push_back({
-                            lux::script::ScriptApiContractId{node->contract().name()},
-                            node->expectedSchemaHash()
-                        });
+                        requirements.push_back(
+                            {lux::script::ScriptApiContractId{node->contract().name()}, node->expectedSchemaHash()}
+                        );
                     }
                 }
                 std::ranges::sort(requirements, {}, [](const auto& requirement) {
@@ -234,19 +226,14 @@ namespace lux::flowforge
                 });
                 return requirements;
             }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
-            }
         }
 
-        [[nodiscard]] FlowForgeResult<std::vector<lux::script::ScriptEventSourceDescription>>
-        deriveEventRequirements(
+        [[nodiscard]] FlowForgeResult<std::vector<lux::script::ScriptEventSourceDescription>> deriveEventRequirements(
             const FlowGraph& graph,
             std::span<const lux::script::ScriptEventSourceDescription> sources
         ) noexcept
         {
-            try
+
             {
                 std::vector<lux::script::ScriptEventSourceDescription> requirements;
                 for (const auto& storage : graph.nodes())
@@ -265,7 +252,7 @@ namespace lux::flowforge
                     }
                     const auto found = std::ranges::find_if(sources, [&](const auto& candidate) noexcept {
                         return candidate.system_id == expected.system_id && candidate.event_id == expected.event_id &&
-                            candidate.route == expected.route;
+                               candidate.route == expected.route;
                     });
                     if (found == sources.end())
                     {
@@ -276,11 +263,11 @@ namespace lux::flowforge
                         });
                     }
                     const bool is_schema_mismatch = found->payload != expected.payload ||
-                        found->payload_schema_hash != expected.payload_schema_hash ||
-                        found->payload_schema_version != expected.payload_schema_version ||
-                        found->delivery_hook_id != expected.delivery_hook_id ||
-                        found->delivery_schema_hash != expected.delivery_schema_hash ||
-                        found->delivery_schema_version != expected.delivery_schema_version;
+                                                    found->payload_schema_hash != expected.payload_schema_hash ||
+                                                    found->payload_schema_version != expected.payload_schema_version ||
+                                                    found->delivery_hook_id != expected.delivery_hook_id ||
+                                                    found->delivery_schema_hash != expected.delivery_schema_hash ||
+                                                    found->delivery_schema_version != expected.delivery_schema_version;
                     if (is_schema_mismatch)
                     {
                         return lux::cxx::unexpected(FlowForgeFailure{
@@ -297,10 +284,6 @@ namespace lux::flowforge
                 }
                 std::ranges::sort(requirements, lux::script::ScriptEventSourceLess{});
                 return requirements;
-            }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
             }
         }
 
@@ -347,8 +330,7 @@ namespace lux::flowforge
                     continue;
                 for (std::size_t index{}; index < producer->results().size(); ++index)
                 {
-                    if (producer->results()[index].lifetime !=
-                        lux::script::EScriptAbilityValueLifetime::BORROWED_STEP)
+                    if (producer->results()[index].lifetime != lux::script::EScriptAbilityValueLifetime::BORROWED_STEP)
                     {
                         continue;
                     }
@@ -370,8 +352,8 @@ namespace lux::flowforge
 
             for (const auto& exported : graph.exports())
             {
-                const bool is_lifecycle = exported.symbol == options.lifecycle.begin_play ||
-                    exported.symbol == options.lifecycle.end_play;
+                const bool is_lifecycle =
+                    exported.symbol == options.lifecycle.begin_play || exported.symbol == options.lifecycle.end_play;
                 if (!is_lifecycle)
                     continue;
                 const auto* entry = graph.findNodeById(exported.entry_node_id);
@@ -398,8 +380,10 @@ namespace lux::flowforge
         }
     }
 
-    FlowForgeResult<FlowForgeObject> compileFlowForgeObject(const FlowGraph& graph,
-        const FlowForgeCompileOptions& options) noexcept
+    FlowForgeResult<FlowForgeObject> compileFlowForgeObject(
+        const FlowGraph& graph,
+        const FlowForgeCompileOptions& options
+    ) noexcept
     {
         if (options.module_name.empty())
         {
@@ -462,8 +446,10 @@ namespace lux::flowforge
         return FlowForgeObject{std::move(object->object), std::move(description)};
     }
 
-    FlowForgeResult<lux::script::ScriptArtifact> linkFlowForgeObject(const FlowForgeObject& object,
-        const std::filesystem::path& linker) noexcept
+    FlowForgeResult<lux::script::ScriptArtifact> linkFlowForgeObject(
+        const FlowForgeObject& object,
+        const std::filesystem::path& linker
+    ) noexcept
     {
         if (object.object.empty() || object.description.module_name.empty())
         {
@@ -490,15 +476,15 @@ namespace lux::flowforge
         auto artifact = lux::script::ScriptArtifact::create(object.description, std::move(*payload));
         if (!artifact)
         {
-            const auto code = artifact.error() == lux::script::EScriptArtifactError::ALLOCATION_FAILURE
-                ? EFlowForgeError::ALLOCATION_FAILURE : EFlowForgeError::INVALID_DESCRIPTION;
-            return lux::cxx::unexpected(FlowForgeFailure{.code = code});
+            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::INVALID_DESCRIPTION});
         }
         return std::move(*artifact);
     }
 
-    FlowForgeResult<lux::script::ScriptArtifact> compileFlowForgeScript(const FlowGraph& graph,
-        FlowForgeCompileOptions options) noexcept
+    FlowForgeResult<lux::script::ScriptArtifact> compileFlowForgeScript(
+        const FlowGraph& graph,
+        FlowForgeCompileOptions options
+    ) noexcept
     {
         auto object = compileFlowForgeObject(graph, options);
         if (!object)

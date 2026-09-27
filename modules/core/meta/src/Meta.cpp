@@ -1,5 +1,6 @@
 #include <lux/engine/meta/Meta.hpp>
-#include <cassert>
+#include <exception>
+#include <new>
 #include <cstdio>
 #include <utility>
 
@@ -114,7 +115,10 @@ namespace lux::meta
             draft->failRegistration(EReflectionRegistrationError::REGISTRY_NOT_INITIALIZED);
             return {nullptr, std::move(draft)};
         }
-        return {g_reflection_registry, std::unique_ptr<ReflectionRegistry>{new ReflectionRegistry(*g_reflection_registry)}};
+        return {
+            g_reflection_registry,
+            std::unique_ptr<ReflectionRegistry>{new ReflectionRegistry(*g_reflection_registry)}
+        };
     }
 
     ReflectionRegistrationDraft ReflectionRegistry::drainPendingDraft()
@@ -186,8 +190,7 @@ namespace lux::meta
         : fallback_(&fallback), class_index_base_(fallback.class_pool_.next_id()),
           enum_index_base_(fallback.enum_pool_.next_id()), function_index_base_(fallback.func_pool_.next_id()),
           invokable_index_base_(fallback.invokable_registry_.size())
-    {
-    }
+    {}
 
     void ReflectionRegistry::failRegistration(
         EReflectionRegistrationError error,
@@ -355,7 +358,7 @@ namespace lux::meta
         const bool is_invalid_function_index = func_pool_.next_id() != draft.function_index_base_;
         const bool is_invalid_invokable_index = invokable_registry_.size() != draft.invokable_index_base_;
         const bool is_invalid_draft = is_invalid_owner || is_invalid_class_index || is_invalid_enum_index ||
-            is_invalid_function_index || is_invalid_invokable_index;
+                                      is_invalid_function_index || is_invalid_invokable_index;
         if (is_invalid_draft)
             return false;
 
@@ -378,8 +381,14 @@ namespace lux::meta
 
     bool ReflectionRegistry::publishDraft(ReflectionRegistry&& draft) noexcept
     {
-        if (!canPublish(draft)) return false;
+        if (!canPublish(draft))
+            return false;
         code_owners_.insert(code_owners_.end(), draft.code_owners_.begin(), draft.code_owners_.end());
+        registration_functions_.insert(
+            registration_functions_.end(),
+            draft.registration_functions_.begin(),
+            draft.registration_functions_.end()
+        );
         class_pool_.reserve(class_pool_.size() + draft.class_pool_.size());
         enum_pool_.reserve(enum_pool_.size() + draft.enum_pool_.size());
         func_pool_.reserve(func_pool_.size() + draft.func_pool_.size());
@@ -440,8 +449,7 @@ namespace lux::meta
         std::unique_ptr<ReflectionRegistry> draft
     ) noexcept
         : target_(target), draft_(std::move(draft))
-    {
-    }
+    {}
 
     ReflectionRegistrationDraft::operator bool() const noexcept
     {
@@ -455,16 +463,26 @@ namespace lux::meta
     }
 
     lux::cxx::expected<void, ReflectionRegistrationFailure> ReflectionRegistrationDraft::append(
-        RegisterFn registration, std::shared_ptr<const void> code) noexcept
+        RegisterFn registration,
+        std::shared_ptr<const void> code
+    ) noexcept
     {
-        if (!*this) return lux::cxx::unexpected(error());
+        if (!*this)
+            return lux::cxx::unexpected(error());
         if (!registration)
-            return lux::cxx::unexpected(ReflectionRegistrationFailure{EReflectionRegistrationError::PUBLISH_INVARIANT_BROKEN});
-        draft_->code_owners_.push_back(std::move(code));
+            return lux::cxx::unexpected(
+                ReflectionRegistrationFailure{EReflectionRegistrationError::PUBLISH_INVARIANT_BROKEN}
+            );
         qual_type_index_fix_list fixes;
         try
         {
+            draft_->code_owners_.push_back(std::move(code));
             registration(*draft_, fixes);
+            draft_->registration_functions_.push_back(registration);
+        }
+        catch (const std::bad_alloc&)
+        {
+            std::terminate();
         }
         catch (...)
         {
@@ -476,21 +494,47 @@ namespace lux::meta
             const auto* found = draft_->findClass(name);
             if (!type || !found)
             {
-                draft_->failRegistration(type ? EReflectionRegistrationError::QUAL_TYPE_NOT_FOUND :
-                    EReflectionRegistrationError::INVALID_QUAL_TYPE_FIX, name);
+                draft_->failRegistration(
+                    type ? EReflectionRegistrationError::QUAL_TYPE_NOT_FOUND
+                         : EReflectionRegistrationError::INVALID_QUAL_TYPE_FIX,
+                    name
+                );
                 continue;
             }
             type->ptr = found;
         }
-        if (!*this) return lux::cxx::unexpected(error());
+        if (!*this)
+            return lux::cxx::unexpected(error());
         return {};
+    }
+
+    lux::cxx::expected<void, ReflectionRegistrationFailure> ReflectionRegistrationDraft::appendOnce(
+        RegisterFn registration,
+        std::shared_ptr<const void> code
+    ) noexcept
+    {
+        if (!*this)
+            return lux::cxx::unexpected(error());
+        const auto contains = [registration](const ReflectionRegistry& value) {
+            return std::find(
+                       value.registration_functions_.begin(),
+                       value.registration_functions_.end(),
+                       registration
+                   ) != value.registration_functions_.end();
+        };
+        if (contains(*target_) || contains(*draft_))
+            return {};
+        return append(registration, std::move(code));
     }
 
     lux::cxx::expected<void, ReflectionRegistrationFailure> ReflectionRegistrationDraft::prepareCommit() const noexcept
     {
-        if (!*this) return lux::cxx::unexpected(error());
+        if (!*this)
+            return lux::cxx::unexpected(error());
         if (!target_->canPublish(*draft_))
-            return lux::cxx::unexpected(ReflectionRegistrationFailure{EReflectionRegistrationError::PUBLISH_INVARIANT_BROKEN});
+            return lux::cxx::unexpected(
+                ReflectionRegistrationFailure{EReflectionRegistrationError::PUBLISH_INVARIANT_BROKEN}
+            );
         return {};
     }
 
@@ -514,8 +558,8 @@ namespace lux::meta
         for (auto& [name, type_ptr] : list)
         {
             auto ref_class = registry.findClass(name);
-            assert(ref_class && "[While fix index]:WTF? class meta infomation is nullptr?");
-            assert(type_ptr && "[While fix index]:WTF? type ptr infomation is nullptr?");
+            if (!ref_class || !type_ptr)
+                std::terminate();
             type_ptr->ptr = ref_class;
         }
     }

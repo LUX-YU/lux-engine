@@ -13,9 +13,7 @@
 namespace lux::render
 {
 
-    DepthPrepassFeature::DepthPrepassFeature(Config cfg) : cfg_(std::move(cfg))
-    {
-    }
+    DepthPrepassFeature::DepthPrepassFeature(Config cfg) : cfg_(std::move(cfg)) {}
 
     lux::render::Expected<void> DepthPrepassFeature::initAndAttachTo(RenderScene& /*scene*/)
     {
@@ -54,8 +52,8 @@ namespace lux::render
             .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
             .setPipeline(pipeline_handle_)
             .bindSceneDS()
-            .useEngineSet(EDescriptorSetSlot::Instance)
-            .setPhaseMask(1ULL << static_cast<uint8_t>(ECoreRenderPhase::ForwardOpaque))
+            .useEngineSet(EDescriptorSetSlot::INSTANCE)
+            .setPhaseMask(1ULL << static_cast<uint8_t>(ECoreRenderPhase::FORWARD_OPAQUE))
             .setKernel("DepthPrepass");
     }
 

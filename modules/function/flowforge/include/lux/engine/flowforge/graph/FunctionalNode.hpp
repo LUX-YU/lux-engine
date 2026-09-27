@@ -6,7 +6,7 @@ namespace lux::flowforge
     struct FuncArgInfo
     {
         const lux::meta::RefType* type;
-        std::string               name;
+        std::string name;
     };
 
     /**
@@ -17,23 +17,33 @@ namespace lux::flowforge
      *        that the function body wires from; the MLIR lowering maps them
      *        to the generated func.func's entry-block arguments.
      */
-	class FuncDefNode : public Node, public HasExecOutPin<FuncDefNode>
+    class FuncDefNode : public Node, public THasExecOutPin<FuncDefNode>
     {
     public:
-        FuncDefNode(uint64_t id, std::string_view name,
-                    std::vector<FuncArgInfo> args,
-                    std::vector<FuncArgInfo> rets = {});
-        FuncDefNode(std::string_view name,
-                    std::vector<FuncArgInfo> args,
-                    std::vector<FuncArgInfo> rets = {});
+        FuncDefNode(
+            uint64_t id,
+            std::string_view name,
+            std::vector<FuncArgInfo> args,
+            std::vector<FuncArgInfo> rets = {}
+        );
+        FuncDefNode(std::string_view name, std::vector<FuncArgInfo> args, std::vector<FuncArgInfo> rets = {});
 
-        const std::vector<FuncArgInfo>& argInfos() const { return args_; }
-        const std::vector<FuncArgInfo>& retInfos() const { return rets_; }
-        const std::vector<std::unique_ptr<DataOutPin>>& argPins() const { return arg_pins_; }
+        const std::vector<FuncArgInfo>& argInfos() const
+        {
+            return args_;
+        }
+        const std::vector<FuncArgInfo>& retInfos() const
+        {
+            return rets_;
+        }
+        const std::vector<std::unique_ptr<DataOutPin>>& argPins() const
+        {
+            return arg_pins_;
+        }
 
     private:
-        std::vector<FuncArgInfo>                 args_;
-        std::vector<FuncArgInfo>                 rets_;
+        std::vector<FuncArgInfo> args_;
+        std::vector<FuncArgInfo> rets_;
         std::vector<std::unique_ptr<DataOutPin>> arg_pins_;
     };
 
@@ -42,17 +52,23 @@ namespace lux::flowforge
      * @brief Return point of a graph function; its data-in pins mirror the
      *        owning FuncDefNode's declared return values.
      */
-    class FuncReturnNode : public Node, public HasExecInPin<FuncReturnNode>
+    class FuncReturnNode : public Node, public THasExecInPin<FuncReturnNode>
     {
     public:
         FuncReturnNode(uint64_t id, const FuncDefNode& def);
         explicit FuncReturnNode(const FuncDefNode& def);
 
-        const FuncDefNode* def() const { return def_; }
-        const std::vector<std::unique_ptr<DataInPin>>& retPins() const { return ret_pins_; }
+        const FuncDefNode* def() const
+        {
+            return def_;
+        }
+        const std::vector<std::unique_ptr<DataInPin>>& retPins() const
+        {
+            return ret_pins_;
+        }
 
     private:
-        const FuncDefNode*                      def_;
+        const FuncDefNode* def_;
         std::vector<std::unique_ptr<DataInPin>> ret_pins_;
     };
 
@@ -64,19 +80,23 @@ namespace lux::flowforge
      *        `lux_event_<sanitized name>`) that the engine invokes through
      *        FlowScriptInstance. Events have no return values.
      */
-    class OnEventNode : public Node, public HasExecOutPin<OnEventNode>
+    class OnEventNode : public Node, public THasExecOutPin<OnEventNode>
     {
     public:
-        OnEventNode(uint64_t id, std::string_view event_name,
-                    std::vector<FuncArgInfo> params = {});
-        explicit OnEventNode(std::string_view event_name,
-                             std::vector<FuncArgInfo> params = {});
+        OnEventNode(uint64_t id, std::string_view event_name, std::vector<FuncArgInfo> params = {});
+        explicit OnEventNode(std::string_view event_name, std::vector<FuncArgInfo> params = {});
 
-        const std::vector<FuncArgInfo>& paramInfos() const { return params_; }
-        const std::vector<std::unique_ptr<DataOutPin>>& paramPins() const { return param_pins_; }
+        const std::vector<FuncArgInfo>& paramInfos() const
+        {
+            return params_;
+        }
+        const std::vector<std::unique_ptr<DataOutPin>>& paramPins() const
+        {
+            return param_pins_;
+        }
 
     private:
-        std::vector<FuncArgInfo>                 params_;
+        std::vector<FuncArgInfo> params_;
         std::vector<std::unique_ptr<DataOutPin>> param_pins_;
     };
 
@@ -93,13 +113,22 @@ namespace lux::flowforge
         GraphFuncCallNode(uint64_t id, const FuncDefNode& callee);
         explicit GraphFuncCallNode(const FuncDefNode& callee);
 
-        const FuncDefNode* callee() const { return callee_; }
-        const std::vector<std::unique_ptr<DataInPin>>&  argPins() const { return arg_pins_; }
-        const std::vector<std::unique_ptr<DataOutPin>>& resultPins() const { return result_pins_; }
+        const FuncDefNode* callee() const
+        {
+            return callee_;
+        }
+        const std::vector<std::unique_ptr<DataInPin>>& argPins() const
+        {
+            return arg_pins_;
+        }
+        const std::vector<std::unique_ptr<DataOutPin>>& resultPins() const
+        {
+            return result_pins_;
+        }
 
     private:
-        const FuncDefNode*                       callee_;
-        std::vector<std::unique_ptr<DataInPin>>  arg_pins_;
+        const FuncDefNode* callee_;
+        std::vector<std::unique_ptr<DataInPin>> arg_pins_;
         std::vector<std::unique_ptr<DataOutPin>> result_pins_;
     };
 
@@ -211,10 +240,11 @@ namespace lux::flowforge
          */
         void rebuildPins(const lux::meta::RefType* self_type);
 
-        bool                                     is_method_;        ///< Indicates if this node calls a class method.
-        const lux::meta::RefInvokable*           invokable_info;    ///< Meta info for the function/method being called.
-        const lux::meta::RefType*                self_type_{ nullptr }; ///< Owning class type when is_method_ (drives the "Self" pin rebuild).
-        std::vector<std::unique_ptr<DataInPin>>  data_in_pins_;      ///< Parameter pins.
-        std::unique_ptr<DataOutPin>              result_;            ///< Return value pin (rebuilt on rebind/reconstruct).
+        bool is_method_;                               ///< Indicates if this node calls a class method.
+        const lux::meta::RefInvokable* invokable_info; ///< Meta info for the function/method being called.
+        const lux::meta::RefType* self_type_{nullptr
+        }; ///< Owning class type when is_method_ (drives the "Self" pin rebuild).
+        std::vector<std::unique_ptr<DataInPin>> data_in_pins_; ///< Parameter pins.
+        std::unique_ptr<DataOutPin> result_;                   ///< Return value pin (rebuilt on rebind/reconstruct).
     };
 }

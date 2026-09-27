@@ -34,8 +34,8 @@ namespace lux::script
             const bool is_missing_resolver = !is_missing_context && resolver->resolver == nullptr;
             const bool is_empty_resolver = !is_missing_resolver && !*resolver->resolver;
             const bool is_missing_name = name == nullptr;
-            const bool is_invalid_request = is_missing_context || is_missing_resolver || is_empty_resolver ||
-                is_missing_name;
+            const bool is_invalid_request =
+                is_missing_context || is_missing_resolver || is_empty_resolver || is_missing_name;
             if (is_invalid_request)
                 return nullptr;
             return (*resolver->resolver)(std::string_view{name});
@@ -49,16 +49,15 @@ namespace lux::script
             {
                 return lux::cxx::unexpected(scriptFailure(
                     EScriptError::INVALID_ENTRY_POINT,
-                    "native script does not export " LUX_SCRIPT_MODULE_ENTRY)
-                );
+                    "native script does not export " LUX_SCRIPT_MODULE_ENTRY
+                ));
             }
 
             const auto* descriptor = entry();
             if (!descriptor)
             {
-                return lux::cxx::unexpected(scriptFailure(
-                    EScriptError::INVALID_MODULE,
-                    "native script entry returned a null module descriptor")
+                return lux::cxx::unexpected(
+                    scriptFailure(EScriptError::INVALID_MODULE, "native script entry returned a null module descriptor")
                 );
             }
             if (descriptor->abi_version != LUX_SCRIPT_ABI_VERSION)
@@ -111,8 +110,8 @@ namespace lux::script
                 const bool is_empty_name = !is_missing_name && function.name[0] == '\0';
                 const bool is_invalid_symbol = function.symbol_id == InvalidScriptSymbolId;
                 const bool is_missing_invoke = function.invoke == nullptr && function.step == nullptr;
-                const bool is_invalid_function = is_missing_name || is_empty_name || is_invalid_symbol ||
-                    is_missing_invoke;
+                const bool is_invalid_function =
+                    is_missing_name || is_empty_name || is_invalid_symbol || is_missing_invoke;
                 if (is_invalid_function)
                 {
                     return lux::cxx::unexpected(
@@ -122,11 +121,12 @@ namespace lux::script
                 if (function.step != nullptr)
                 {
                     const auto& step = *function.step;
-                    const bool is_invalid_frame = step.frame_size == 0U || step.frame_align == 0U ||
+                    const bool is_invalid_frame =
+                        step.frame_size == 0U || step.frame_align == 0U ||
                         (step.frame_align & (step.frame_align - 1U)) != 0U || step.frame_layout_hash == 0U ||
                         step.initialization > LUX_SCRIPT_FRAME_INITIALIZED_BY_ENTRY || step.reserved != 0U;
-                    const bool is_missing_step_function = step.start == nullptr || step.resume == nullptr ||
-                        step.destroy == nullptr;
+                    const bool is_missing_step_function =
+                        step.start == nullptr || step.resume == nullptr || step.destroy == nullptr;
                     if (is_invalid_frame || is_missing_step_function)
                     {
                         return lux::cxx::unexpected(
@@ -141,21 +141,21 @@ namespace lux::script
                 {
                     return lux::cxx::unexpected(scriptFailure(
                         EScriptError::INVALID_MODULE,
-                        "native script function signature table is incomplete")
-                    );
+                        "native script function signature table is incomplete"
+                    ));
                 }
                 const auto valid_type = [](const lux_script_type_desc& type, bool is_return) noexcept {
                     const bool has_valid_name = type.name && type.name[0] != '\0';
                     const bool is_invalid_identity = !has_valid_name || type.type_id == InvalidScriptSymbolId ||
-                        type.type_id != lux::semantic::typeId(type.name);
-                    const bool is_invalid_layout = type.size == 0U || type.align == 0U ||
-                        (type.align & (type.align - 1U)) != 0U;
-                    const bool is_invalid_abi_kind = type.kind < LUX_SCRIPT_VK_BOOL ||
-                        type.kind > LUX_SCRIPT_VK_STRUCT_REF;
-                    const bool is_invalid_pass = type.pass > LUX_SCRIPT_PASS_CONST_REF ||
-                        (is_return && type.pass != LUX_SCRIPT_PASS_VALUE);
-                    const bool is_invalid_type = is_invalid_identity || is_invalid_layout ||
-                        is_invalid_abi_kind || is_invalid_pass;
+                                                     type.type_id != lux::semantic::typeId(type.name);
+                    const bool is_invalid_layout =
+                        type.size == 0U || type.align == 0U || (type.align & (type.align - 1U)) != 0U;
+                    const bool is_invalid_abi_kind =
+                        type.kind < LUX_SCRIPT_VK_BOOL || type.kind > LUX_SCRIPT_VK_STRUCT_REF;
+                    const bool is_invalid_pass =
+                        type.pass > LUX_SCRIPT_PASS_CONST_REF || (is_return && type.pass != LUX_SCRIPT_PASS_VALUE);
+                    const bool is_invalid_type =
+                        is_invalid_identity || is_invalid_layout || is_invalid_abi_kind || is_invalid_pass;
                     if (is_invalid_type)
                     {
                         return false;
@@ -163,12 +163,12 @@ namespace lux::script
                     if (const auto* builtin = lux::semantic::builtinLayout(type.type_id))
                     {
                         const bool is_invalid_builtin = builtin->canonical_name != type.name ||
-                            builtin->abi_kind != type.kind || builtin->size != type.size ||
-                            builtin->alignment != type.align;
+                                                        builtin->abi_kind != type.kind || builtin->size != type.size ||
+                                                        builtin->alignment != type.align;
                         return !is_invalid_builtin;
                     }
-                    const bool is_portable_custom_scalar = type.kind >= LUX_SCRIPT_VK_BOOL &&
-                        type.kind <= LUX_SCRIPT_VK_DOUBLE;
+                    const bool is_portable_custom_scalar =
+                        type.kind >= LUX_SCRIPT_VK_BOOL && type.kind <= LUX_SCRIPT_VK_DOUBLE;
                     return is_portable_custom_scalar || type.kind == LUX_SCRIPT_VK_STRUCT_REF;
                 };
                 for (std::uint32_t argument{}; argument < function.arg_count; ++argument)
@@ -210,16 +210,17 @@ namespace lux::script
             {
                 const auto& import = descriptor->ability_imports[index];
                 const bool is_invalid_identity = import.contract_name == nullptr || import.method_name == nullptr ||
-                    import.contract_name[0] == '\0' || import.method_name[0] == '\0' || import.contract_id == 0U ||
-                    import.method_id == 0U || import.contract_id != lux::semantic::typeId(import.contract_name) ||
-                    import.method_id != lux::semantic::typeId(import.method_name);
-                const bool is_invalid_schema = import.schema_hash == 0U || import.schema_version == 0U ||
-                    import.method_kind > 2U;
+                                                 import.contract_name[0] == '\0' || import.method_name[0] == '\0' ||
+                                                 import.contract_id == 0U || import.method_id == 0U ||
+                                                 import.contract_id != lux::semantic::typeId(import.contract_name) ||
+                                                 import.method_id != lux::semantic::typeId(import.method_name);
+                const bool is_invalid_schema =
+                    import.schema_hash == 0U || import.schema_version == 0U || import.method_kind > 2U;
                 const bool is_command_with_results =
                     import.method_kind == static_cast<std::uint8_t>(EScriptApiMethodKind::COMMAND) &&
                     import.result_count != 0U;
                 const bool is_missing_signature = (import.arg_count != 0U && import.args == nullptr) ||
-                    (import.result_count != 0U && import.results == nullptr);
+                                                  (import.result_count != 0U && import.results == nullptr);
                 if (is_invalid_identity || is_invalid_schema || is_command_with_results || is_missing_signature ||
                     !import_methods.insert(import.method_id).second)
                 {
@@ -229,11 +230,13 @@ namespace lux::script
                 }
                 const auto valid_import_type = [](const lux_script_type_desc& type) noexcept {
                     const bool is_invalid_identity = type.name == nullptr || type.name[0] == '\0' ||
-                        type.type_id == 0U || type.type_id != lux::semantic::typeId(type.name);
-                    const bool is_invalid_layout = type.size == 0U || type.align == 0U ||
-                        (type.align & (type.align - 1U)) != 0U;
+                                                     type.type_id == 0U ||
+                                                     type.type_id != lux::semantic::typeId(type.name);
+                    const bool is_invalid_layout =
+                        type.size == 0U || type.align == 0U || (type.align & (type.align - 1U)) != 0U;
                     const bool is_invalid_abi = type.kind < LUX_SCRIPT_VK_BOOL ||
-                        type.kind > LUX_SCRIPT_VK_STRUCT_REF || type.pass > LUX_SCRIPT_PASS_CONST_REF;
+                                                type.kind > LUX_SCRIPT_VK_STRUCT_REF ||
+                                                type.pass > LUX_SCRIPT_PASS_CONST_REF;
                     return !is_invalid_identity && !is_invalid_layout && !is_invalid_abi;
                 };
                 for (std::uint32_t argument{}; argument < import.arg_count; ++argument)
@@ -264,15 +267,16 @@ namespace lux::script
             {
                 const auto& import = descriptor->event_wait_imports[index];
                 const bool is_invalid_identity = import.system_id == 0U || import.event_id == 0U;
-                const bool is_invalid_schema = import.payload_schema_hash == 0U ||
-                    import.payload_schema_version == 0U;
+                const bool is_invalid_schema = import.payload_schema_hash == 0U || import.payload_schema_version == 0U;
                 const bool is_invalid_route = import.route > 1U;
                 const auto& payload = import.payload;
                 const bool is_invalid_payload_identity = payload.name == nullptr || payload.name[0] == '\0' ||
-                    payload.type_id == 0U || payload.type_id != lux::semantic::typeId(payload.name);
-                const bool is_invalid_payload_layout = payload.size == 0U || payload.align == 0U ||
-                    (payload.align & (payload.align - 1U)) != 0U || payload.pass != LUX_SCRIPT_PASS_VALUE ||
-                    payload.kind < LUX_SCRIPT_VK_BOOL || payload.kind > LUX_SCRIPT_VK_STRUCT_REF;
+                                                         payload.type_id == 0U ||
+                                                         payload.type_id != lux::semantic::typeId(payload.name);
+                const bool is_invalid_payload_layout =
+                    payload.size == 0U || payload.align == 0U || (payload.align & (payload.align - 1U)) != 0U ||
+                    payload.pass != LUX_SCRIPT_PASS_VALUE || payload.kind < LUX_SCRIPT_VK_BOOL ||
+                    payload.kind > LUX_SCRIPT_VK_STRUCT_REF;
                 bool is_duplicate{};
                 for (std::uint32_t previous{}; previous < index; ++previous)
                 {
@@ -292,9 +296,9 @@ namespace lux::script
                 }
                 if (const auto* builtin = lux::semantic::builtinLayout(payload.type_id))
                 {
-                    const bool is_invalid_builtin = builtin->canonical_name != payload.name ||
-                        builtin->abi_kind != payload.kind || builtin->size != payload.size ||
-                        builtin->alignment != payload.align;
+                    const bool is_invalid_builtin =
+                        builtin->canonical_name != payload.name || builtin->abi_kind != payload.kind ||
+                        builtin->size != payload.size || builtin->alignment != payload.align;
                     if (is_invalid_builtin)
                     {
                         return lux::cxx::unexpected(
@@ -320,9 +324,7 @@ namespace lux::script
         }
     }
 
-    NativeModule::NativeModule(std::unique_ptr<State> state) noexcept : state_(std::move(state))
-    {
-    }
+    NativeModule::NativeModule(std::unique_ptr<State> state) noexcept : state_(std::move(state)) {}
 
     NativeModule::NativeModule(NativeModule&&) noexcept = default;
     NativeModule& NativeModule::operator=(NativeModule&&) noexcept = default;
@@ -397,14 +399,17 @@ namespace lux::script
         {
             return lux::cxx::unexpected(scriptFailure(
                 EScriptError::IO_ERROR,
-                "cannot load native script '" + path.string() + "': " + library.last_error())
-            );
+                "cannot load native script '" + path.string() + "': " + library.last_error()
+            ));
         }
         return finalizeModule(std::move(library), std::move(resolver));
     }
 
-    ScriptResult<NativeModule>
-    loadNativeModule(std::span<const std::byte> image, std::string_view module_name, HostSymbolResolver resolver)
+    ScriptResult<NativeModule> loadNativeModule(
+        std::span<const std::byte> image,
+        std::string_view module_name,
+        HostSymbolResolver resolver
+    )
     {
         if (image.empty() || module_name.empty())
         {
@@ -418,8 +423,8 @@ namespace lux::script
         {
             return lux::cxx::unexpected(scriptFailure(
                 EScriptError::LOAD_FAILED,
-                "cannot load native script memory image '" + std::string(module_name) + "': " + library.last_error())
-            );
+                "cannot load native script memory image '" + std::string(module_name) + "': " + library.last_error()
+            ));
         }
         return finalizeModule(std::move(library), std::move(resolver));
     }

@@ -8,6 +8,8 @@ if(TARGET lux::engine::core::meta OR TARGET lux::engine::core::object_reflection
 endif()
 add_executable(object_core_consumer main.cpp)
 target_link_libraries(object_core_consumer PRIVATE lux::engine::core::object)
+enable_testing()
+add_test(NAME object.core_installed COMMAND object_core_consumer)
 if(MSVC)
     target_compile_options(object_core_consumer PRIVATE /UNDEBUG)
 else()

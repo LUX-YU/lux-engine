@@ -170,6 +170,7 @@ namespace lux::input
         int scancode{0};
         EInputState state{EInputState::UNKNOWN};
         EKeyModifier modifier{EKeyModifier::KEY_MOD_NONE};
+        std::uint64_t sequence{};
     };
 
     struct MouseButtonAction
@@ -177,12 +178,14 @@ namespace lux::input
         EMouseButton button{EMouseButton::UNKNOWN};
         EInputState state{EInputState::UNKNOWN};
         EKeyModifier modifiers{EKeyModifier::KEY_MOD_NONE};
+        std::uint64_t sequence{};
     };
 
     struct MouseScrollAction
     {
         double x{0.0};
         double y{0.0};
+        std::uint64_t sequence{};
     };
 
     struct KeyInput
@@ -209,8 +212,7 @@ namespace lux::input
     };
 
     struct TouchInput
-    {
-    };
+    {};
 
-    using PhysicalInput = std::variant<KeyInput, MouseButtonInput, MouseAxisInput, TouchInput>;
+    using VPhysicalInput = std::variant<KeyInput, MouseButtonInput, MouseAxisInput, TouchInput>;
 }

@@ -1,4 +1,5 @@
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/render/gpu/pipeline/ShaderPermutationCompiler.hpp>
 #include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineLayoutService.hpp>
@@ -8,7 +9,6 @@
 #include <lux/engine/description/ShaderInfo.hpp>
 #include <lux/engine/description/LayoutContract.hpp>
 
-#include <cassert>
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -143,9 +143,10 @@ namespace lux::render
                     if (rb)
                     {
                         rb->stages |= stage_flags;
-                        assert(
-                            rb->type == toVkDescriptorType(b.type) &&
-                            "mergeShaderInfos: same (set,binding) with different type across stages");
+                        if (rb->type != toVkDescriptorType(b.type))
+                        {
+                            renderFatal("mergeShaderInfos: same (set,binding) has different types across stages");
+                        }
                     }
                     else
                     {
@@ -195,8 +196,7 @@ namespace lux::render
 
     PipelineManager::PipelineManager(DeviceContext& device_ctx, bool use_dynamic_rendering)
         : device_ctx_(&device_ctx), use_dynamic_rendering_(use_dynamic_rendering)
-    {
-    }
+    {}
 
     PipelineManager::~PipelineManager()
     {
@@ -406,8 +406,10 @@ namespace lux::render
         return set < layouts.size() ? layouts[set] : VK_NULL_HANDLE;
     }
 
-    ResolvedPrivateSetLayout
-    PipelineManager::templatePrivateSetLayout(GraphicsPipelineHandle handle, uint32_t source_set) const noexcept
+    ResolvedPrivateSetLayout PipelineManager::templatePrivateSetLayout(
+        GraphicsPipelineHandle handle,
+        uint32_t source_set
+    ) const noexcept
     {
         ResolvedPrivateSetLayout result{source_set, source_set, VK_NULL_HANDLE};
         const auto* reflection = templateReflection(handle);
@@ -425,7 +427,7 @@ namespace lux::render
 
         for (const auto& slot : reflection->slots)
         {
-            if (slot.slot == result.runtime_slot && slot.source == ESlotSource::PipelinePrivate)
+            if (slot.slot == result.runtime_slot && slot.source == ESlotSource::PIPELINE_PRIVATE)
             {
                 result.layout = slot.layout;
                 break;
@@ -474,8 +476,7 @@ namespace lux::render
             .set_layouts = set_layouts,
             .push_constants = pc,
             .debug_name = pipeline_templates_[handle.index].debug_name,
-        }
-        );
+        });
         if (!layout)
             return lux::cxx::unexpected(layout.error());
 
@@ -565,7 +566,7 @@ namespace lux::render
             if (explicit_layout != VK_NULL_HANDLE)
             {
                 out_set_layouts.push_back(explicit_layout);
-                noteSlot(s, ESlotSource::FeatureExplicit, s, explicit_layout);
+                noteSlot(s, ESlotSource::FEATURE_EXPLICIT, s, explicit_layout);
                 continue;
             }
 
@@ -650,7 +651,7 @@ namespace lux::render
                     hole_layout = shared_layouts_->getLayout(std::min(canonical, kDescriptorSetCount - 1u));
                 }
                 out_set_layouts.push_back(hole_layout);
-                noteSlot(s, ESlotSource::ReflectionHole, canonical, hole_layout);
+                noteSlot(s, ESlotSource::REFLECTION_HOLE, canonical, hole_layout);
                 continue;
             }
 
@@ -733,7 +734,7 @@ namespace lux::render
                 if (dl == VK_NULL_HANDLE)
                     return renderFailure<err::pipeline::DomainLayoutNotInitialised>(static_cast<std::uint32_t>(domain));
                 out_set_layouts.push_back(dl);
-                noteSlot(s, ESlotSource::DomainMerged, static_cast<uint32_t>(domain), dl);
+                noteSlot(s, ESlotSource::DOMAIN_MERGED, static_cast<uint32_t>(domain), dl);
                 continue;
             }
 
@@ -834,7 +835,7 @@ namespace lux::render
             VkDescriptorSetLayout private_layout =
                 descriptor_service_->layout(descriptor_service_->registerLayout(desc));
             out_set_layouts.push_back(private_layout);
-            noteSlot(s, ESlotSource::PipelinePrivate, s, private_layout);
+            noteSlot(s, ESlotSource::PIPELINE_PRIVATE, s, private_layout);
         }
 
         std::vector<VkPushConstantRange> pc(
@@ -845,8 +846,7 @@ namespace lux::render
             .set_layouts = {out_set_layouts.data(), out_set_layouts.size()},
             .push_constants = pc,
             .debug_name = debug_name,
-        }
-        );
+        });
     }
 
     Expected<GraphicsPipelineHandle> PipelineManager::registerGraphicsTemplate(
@@ -928,7 +928,7 @@ namespace lux::render
                     // calls for Instance/Light/Material/... all resolve here,
                     // and the binding plan then collapses them into a single
                     // domain-set bind.
-                    if (slot.source == ESlotSource::DomainMerged)
+                    if (slot.source == ESlotSource::DOMAIN_MERGED)
                     {
                         const ReflectedSet* rs = nullptr;
                         for (const auto& cand : reflected.reflected_sets)
@@ -957,7 +957,7 @@ namespace lux::render
                         }
                         continue;
                     }
-                    if (slot.source != ESlotSource::EngineShared && slot.source != ESlotSource::ReflectionHole)
+                    if (slot.source != ESlotSource::ENGINE_SHARED && slot.source != ESlotSource::REFLECTION_HOLE)
                         continue;
                     if (slot.logical_set >= kDescriptorSetCount)
                         continue;
@@ -994,7 +994,10 @@ namespace lux::render
 
     const GraphicsPipelineTemplate& PipelineManager::getTemplate(GraphicsPipelineHandle handle) const
     {
-        assert(handle.index < pipeline_templates_.size());
+        if (handle.index >= pipeline_templates_.size())
+        {
+            renderFatal("PipelineManager::getTemplate received an invalid handle");
+        }
         return pipeline_templates_[handle.index];
     }
 
@@ -1035,7 +1038,10 @@ namespace lux::render
         ShaderFeatureMask features
     )
     {
-        assert(template_handle.index < pipeline_templates_.size());
+        if (template_handle.index >= pipeline_templates_.size())
+        {
+            renderFatal("PipelineManager::getOrCreatePipeline received an invalid template handle");
+        }
         const GraphicsPipelineTemplate& tmpl = pipeline_templates_[template_handle.index];
 
         auto& variant_masks = template_variant_masks_[template_handle.index];
@@ -1270,9 +1276,14 @@ namespace lux::render
         ShaderFeatureMask features
     )
     {
-        assert(tmpl.pipeline_layout != VK_NULL_HANDLE);
-        assert(tmpl.vertex_shader != VK_NULL_HANDLE);
-        assert(tmpl.fragment_shader != VK_NULL_HANDLE);
+        const bool is_missing_layout = tmpl.pipeline_layout == VK_NULL_HANDLE;
+        const bool is_missing_vertex_shader = tmpl.vertex_shader == VK_NULL_HANDLE;
+        const bool is_missing_fragment_shader = tmpl.fragment_shader == VK_NULL_HANDLE;
+        const bool is_invalid_template = is_missing_layout || is_missing_vertex_shader || is_missing_fragment_shader;
+        if (is_invalid_template)
+        {
+            renderFatal("PipelineManager::create_pipeline_internal received an incomplete template");
+        }
 
         // 1) Shader stages
         VkPipelineShaderStageCreateInfo vert_stage{};

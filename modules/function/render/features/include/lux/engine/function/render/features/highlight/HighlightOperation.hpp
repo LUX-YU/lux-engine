@@ -25,7 +25,8 @@ namespace lux::render
         id = lux.render.highlight.v1,
         display = Highlight,
         requires = lux.render.mesh_stack.v1,
-        custom_create = true) HighlightCommConfig
+        custom_create = true
+    ) HighlightCommConfig
     {
         ShaderHandle cull_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle compact_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
@@ -36,9 +37,9 @@ namespace lux::render
         uint32_t descriptor_layout_version{0};
         GpuDrivenMeshExtFlags extension_flags{};
         // Halo appearance
-        float LUX_NO_MEMBER() glow_color[3]{1.0f, 0.55f, 0.06f}; ///< UE-ish orange
-        float glow_intensity{3.0f};              ///< scales the halo alpha
-        float glow_radius{2.5f};                 ///< Gaussian per-tap step, in texels
+        float LUX_NO_MEMBER() glow_color[3] { 1.0f, 0.55f, 0.06f }; ///< UE-ish orange
+        float glow_intensity{3.0f};                                 ///< scales the halo alpha
+        float glow_radius{2.5f};                                    ///< Gaussian per-tap step, in texels
     };
     static_assert(std::is_trivially_copyable_v<HighlightCommConfig>);
 
@@ -48,7 +49,7 @@ namespace lux::render
     {
         RenderSceneId scene_id{};
         FeatureHandle feature{};
-        LUX_OP_BLOB() BlobRef targets{};
+        LUX_OP_BLOB() BlobRef targets {};
     };
     static_assert(std::is_trivially_copyable_v<HighlightReplaceTargetsPayload>);
 

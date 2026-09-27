@@ -246,8 +246,7 @@ namespace lux::render
         auto it =
             std::lower_bound(live_allocs_.begin(), live_allocs_.end(), offset, [](const LiveEntry& e, uint64_t off) {
                 return e.offset < off;
-            }
-            );
+            });
         if (it != live_allocs_.end() && it->offset == offset)
             return it->handle;
         return VK_NULL_HANDLE;

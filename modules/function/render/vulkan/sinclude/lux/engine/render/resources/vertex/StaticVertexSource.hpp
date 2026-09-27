@@ -61,7 +61,7 @@ namespace lux::render
 
         [[nodiscard]] EVertexSourceKind kind() const noexcept override
         {
-            return EVertexSourceKind::StaticPool;
+            return EVertexSourceKind::STATIC_POOL;
         }
 
         [[nodiscard]] VkBuffer buffer() const noexcept override;

@@ -62,8 +62,11 @@ namespace lux::render
                format == lux::rdesc::ETextureFormat::D32_SFLOAT_S8_UINT;
     }
 
-    inline VulkanResourceState
-    determineTextureState(const RGPassTextureRef& ref, const RGTextureDescription& desc, ERGPassType pass_type)
+    inline VulkanResourceState determineTextureState(
+        const RGPassTextureRef& ref,
+        const RGTextureDescription& desc,
+        ERGPassType pass_type
+    )
     {
         // Shader-stage for shader reads/writes depends on the pass type (see
         // shaderStageForPass): a COMPUTE pass that samples a texture must order

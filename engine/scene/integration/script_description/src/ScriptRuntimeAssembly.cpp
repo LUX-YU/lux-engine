@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <limits>
-#include <new>
 
 namespace lux::scene::script
 {
@@ -10,7 +9,6 @@ namespace lux::scene::script
     planScriptRuntimeCapacity(const ScriptSystemDescription& description) noexcept
     {
         using namespace simulation::script;
-        try
         {
             ScriptRuntimeCapacityPlan result;
             result.mount_capacity = description.mounts().size();
@@ -24,9 +22,11 @@ namespace lux::scene::script
                 result.binding_capacity += mount.bindings.size();
                 for (const auto& binding : mount.bindings)
                 {
-                    const auto found = std::find_if(result.endpoint_capacities.begin(),
+                    const auto found = std::find_if(
+                        result.endpoint_capacities.begin(),
                         result.endpoint_capacities.end(),
-                        [&](const auto& entry) noexcept { return entry.target == binding.target; });
+                        [&](const auto& entry) noexcept { return entry.target == binding.target; }
+                    );
                     if (found == result.endpoint_capacities.end())
                         result.endpoint_capacities.push_back({binding.target, 1U});
                     else
@@ -38,10 +38,6 @@ namespace lux::scene::script
             result.method_capacity = result.binding_capacity + 2U * result.mount_capacity;
             return result;
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
-        }
     }
 
     lux::cxx::expected<std::vector<simulation::script::ScriptRuntimeMount>, simulation::script::EScriptSystemError>
@@ -52,7 +48,6 @@ namespace lux::scene::script
     ) noexcept
     {
         using namespace simulation::script;
-        try
         {
             std::vector<ScriptRuntimeMount> result;
             result.reserve(description.mounts().size());
@@ -60,7 +55,7 @@ namespace lux::scene::script
             {
                 if (!mount.enabled)
                     continue;
-                ScriptInstanceScope scope{SimulationScriptScope{}};
+                VScriptInstanceScope scope{SimulationScriptScope{}};
                 if (const auto* object = std::get_if<EntityScriptMount>(&mount.scope))
                 {
                     simulation::ecs::Entity entity{simulation::ecs::NullEntity};
@@ -73,10 +68,6 @@ namespace lux::scene::script
                 result.push_back({mount.id, mount.asset, scope, mount.bindings, index});
             }
             return result;
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
         }
     }
 }

@@ -7,8 +7,7 @@ namespace lux::world
         std::size_t object_index
     ) noexcept
         : data_(&data), object_index_(object_index)
-    {
-    }
+    {}
 
     world::WorldObjectId WorldPartitionObjectView::id() const noexcept
     {
@@ -58,10 +57,7 @@ namespace lux::world
         if (index >= object.data_count)
             return {};
         const auto& record = data_->data_[object.first_data + index];
-        return std::span<const std::byte>(data_->payload_).subspan(
-            record.payload_offset,
-            record.payload_size
-        );
+        return std::span<const std::byte>(data_->payload_).subspan(record.payload_offset, record.payload_size);
     }
 
     WorldBundleId WorldPartitionData::bundle() const noexcept
@@ -92,7 +88,7 @@ namespace lux::world
     std::size_t WorldPartitionData::retainedBytes() const noexcept
     {
         return objects_.capacity() * sizeof(detail::WorldDecodedObjectRecord) +
-            data_.capacity() * sizeof(detail::WorldDecodedDataRecord) + payload_.capacity();
+               data_.capacity() * sizeof(detail::WorldDecodedDataRecord) + payload_.capacity();
     }
 
     WorldPartitionObjectView WorldPartitionData::objectAt(std::size_t index) const noexcept

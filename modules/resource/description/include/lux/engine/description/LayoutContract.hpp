@@ -455,8 +455,7 @@ namespace lux::rdesc
          static_cast<uint8_t>(EStageBits::FRAGMENT),
          static_cast<uint8_t>(EBindingFlags::UPDATE_AFTER_BIND),
          /*engine_set*/ true},
-    }
-    );
+    });
 
     [[nodiscard]] constexpr std::span<const LogicalResourceDesc> layoutContract() noexcept
     {

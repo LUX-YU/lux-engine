@@ -45,87 +45,77 @@ namespace lux::simulation
 
     struct SimulationDescriptionFailure final
     {
-        ESimulationDescriptionError code{
-            ESimulationDescriptionError::ALLOCATION_FAILURE};
+        ESimulationDescriptionError code{ESimulationDescriptionError::ALLOCATION_FAILURE};
         SimulationDataSchemaId schema;
         std::uint64_t subject_hash{};
     };
 
-    class LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC
-        SimulationDescriptionBuilder final
+    class LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC SimulationDescriptionBuilder final
     {
-      public:
+    public:
         SimulationDescriptionBuilder();
         ~SimulationDescriptionBuilder();
         SimulationDescriptionBuilder(SimulationDescriptionBuilder&&) noexcept;
-        SimulationDescriptionBuilder& operator=(
-            SimulationDescriptionBuilder&&
-        ) noexcept;
+        SimulationDescriptionBuilder& operator=(SimulationDescriptionBuilder&&) noexcept;
 
         SimulationDescriptionBuilder(const SimulationDescriptionBuilder&) = delete;
-        SimulationDescriptionBuilder& operator=(
-            const SimulationDescriptionBuilder&
-        ) = delete;
+        SimulationDescriptionBuilder& operator=(const SimulationDescriptionBuilder&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        addData(
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure> addData(
             SimulationDataSchemaId schema,
             std::uint32_t version,
             std::span<const std::byte> payload
         ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        setData(
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure> setData(
             SimulationDataSchemaId schema,
             std::uint32_t version,
             std::span<const std::byte> payload
         ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        eraseData(const SimulationDataSchemaId& schema) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure> eraseData(
+            const SimulationDataSchemaId& schema
+        ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        addSystem(
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure> addSystem(
             lux::system::SystemInstanceId instance_id,
             std::string_view instance_name,
             const SimulationSystemDescription& system,
             std::span<const std::byte> configuration = {}
         ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        eraseSystem(lux::system::SystemInstanceId instance_id) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure> eraseSystem(
+            lux::system::SystemInstanceId instance_id
+        ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        setSystemConfiguration(
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure> setSystemConfiguration(
             lux::system::SystemInstanceId instance_id,
             std::span<const std::byte> configuration
         ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        addConstructionDependency(
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure> addConstructionDependency(
             lux::system::SystemInstanceId before_system,
             lux::system::SystemInstanceId after_system
         ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        eraseConstructionDependency(
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure> eraseConstructionDependency(
             lux::system::SystemInstanceId before_system,
             lux::system::SystemInstanceId after_system
         ) noexcept;
 
         void clear() noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        addExecutionDependency(SimulationExecutionPoint before, SimulationExecutionPoint after) noexcept;
-        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure>
-        addChannelProducer(SimulationChannelProducer producer) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure> addExecutionDependency(
+            SimulationExecutionPoint before,
+            SimulationExecutionPoint after
+        ) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, SimulationDescriptionFailure> addChannelProducer(
+            SimulationChannelProducer producer
+        ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            SimulationDescription,
-            SimulationDescriptionFailure>
-        build() && noexcept;
+        [[nodiscard]] lux::cxx::expected<SimulationDescription, SimulationDescriptionFailure> build() && noexcept;
 
-      private:
+    private:
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

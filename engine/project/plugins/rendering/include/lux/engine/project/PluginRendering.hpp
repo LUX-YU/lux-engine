@@ -1,0 +1,19 @@
+#pragma once
+
+#include <lux/engine/project/PluginLibrary.hpp>
+#include <lux/engine/scene/RenderScenePluginExports.hpp>
+#include <lux/engine/function/render/client/RenderPluginExports.hpp>
+
+namespace lux::project
+{
+    struct PluginRenderRegistrations final
+    {
+        std::vector<render::RenderFeatureRegistration> features;
+        std::vector<lux::scene::RenderFeatureSceneBinding> bindings;
+    };
+    // Does not reopen the library; each returned registration retains the verified code owner.
+    [[nodiscard]] PluginResult<PluginRenderRegistrations> readPluginRendering(
+        const PluginLibrary&,
+        std::span<const std::shared_ptr<const PluginLibrary>> dependencies = {}
+    ) noexcept;
+}

@@ -313,13 +313,11 @@ namespace lux::render
                 // 在编译期按当时的 final_layout 烙定;final_layout 已退出编译
                 // 键,这里按当前录制 target 的槽位描述补丁(该图像上一次录制
                 // 结束时被转到的正是本 target 的 final_layout——稳态不变量)。
-                const bool has_final_state = src_is_final_state != nullptr &&
-                    i < src_is_final_state->size();
+                const bool has_final_state = src_is_final_state != nullptr && i < src_is_final_state->size();
                 const bool is_final_state = has_final_state && (*src_is_final_state)[i];
                 const bool has_target_layout = record_context.target_layout != nullptr;
                 const bool has_slot_resource_indices = record_context.slot_resource_idx != nullptr;
-                const bool should_patch_layout = is_final_state && has_target_layout &&
-                    has_slot_resource_indices;
+                const bool should_patch_layout = is_final_state && has_target_layout && has_slot_resource_indices;
                 if (should_patch_layout)
                 {
                     for (size_t si = 0; si < kTargetSlotCount; ++si)
@@ -328,7 +326,7 @@ namespace lux::render
                         {
                             continue;
                         }
-                        const auto s = static_cast<TargetSlot>(si);
+                        const auto s = static_cast<ETargetSlot>(si);
                         if (record_context.target_layout->hasSlot(s))
                         {
                             const auto final_state = record_context.target_layout->slot(s).final_state;
@@ -406,8 +404,10 @@ namespace lux::render
             const std::vector<uint32_t>* group_index_by_pass{nullptr};
         };
 
-        PreBarrierGroupSelection
-        selectPreBarrierGroups(const RGCompiledGraph& compiled_graph, const RGFrameContext& frame_ctx)
+        PreBarrierGroupSelection selectPreBarrierGroups(
+            const RGCompiledGraph& compiled_graph,
+            const RGFrameContext& frame_ctx
+        )
         {
             const bool need_cross_view_fixup =
                 frame_ctx.cross_view_index > 0 && !compiled_graph.imported_final_states.empty();
@@ -428,7 +428,7 @@ namespace lux::render
 
         // Patch + emit one pass's pre-pass barriers. Single source of truth for
         // the fast-path submit_barriers lambda AND the slow-path
-        // ECmd::PipelineBarrier replay (M17). pass_index selects the cross-view
+        // ECmd::PIPELINE_BARRIER replay (M17). pass_index selects the cross-view
         // barrier group. (Split acquire/release phases were removed — see
         // RenderGraphCompiler: NONE/NONE split halves never chained.)
         void emitPassBarriers(
@@ -474,8 +474,11 @@ namespace lux::render
             return slot < 32u && (bind_mask & (1u << slot)) != 0u;
         }
 
-        bool
-        timestampRangeValid(const RGRecordContext& context, const RGCompiledGraph& graph, uint32_t frame_index) noexcept
+        bool timestampRangeValid(
+            const RGRecordContext& context,
+            const RGCompiledGraph& graph,
+            uint32_t frame_index
+        ) noexcept
         {
             return context.timestamp_pool != VK_NULL_HANDLE && context.timestamp_pass_capacity > 0 &&
                    frame_index < context.timestamp_frame_ids.size() &&
@@ -570,8 +573,7 @@ namespace lux::render
                             source.sampler,
                             view,
                             convertImageLayout(source.image_layout),
-                        }
-                        );
+                        });
                         write.pImageInfo = &images.back();
                         break;
                     }
@@ -593,8 +595,7 @@ namespace lux::render
                             buffer,
                             0u,
                             VK_WHOLE_SIZE,
-                        }
-                        );
+                        });
                         write.pBufferInfo = &buffers.back();
                         break;
                     }
@@ -710,7 +711,8 @@ namespace lux::render
                         context_.logicalDevice(),
                         &query_info,
                         context_.instanceContext().allocator(),
-                        &record_context.timestamp_pool) == VK_SUCCESS)
+                        &record_context.timestamp_pool
+                    ) == VK_SUCCESS)
                 {
                     record_context.timestamp_pass_capacity = pass_count;
                     record_context.timestamp_period_nanoseconds =
@@ -754,7 +756,8 @@ namespace lux::render
                     device,
                     &sem_ci,
                     context_.instanceContext().allocator(),
-                    &record_context.timeline_semaphore) != VK_SUCCESS)
+                    &record_context.timeline_semaphore
+                ) != VK_SUCCESS)
                 return renderFailure<err::device::VulkanObjectCreationFailed>();
 
             // Async compute command pool + per-frame command buffers
@@ -768,7 +771,8 @@ namespace lux::render
                         device,
                         &pool_ci,
                         context_.instanceContext().allocator(),
-                        &record_context.compute_cmd_pool) != VK_SUCCESS)
+                        &record_context.compute_cmd_pool
+                    ) != VK_SUCCESS)
                     return renderFailure<err::device::VulkanObjectCreationFailed>();
 
                 record_context.compute_cmd_bufs.resize(frames_in_flight, VK_NULL_HANDLE);
@@ -794,7 +798,8 @@ namespace lux::render
                         device,
                         &pool_ci,
                         context_.instanceContext().allocator(),
-                        &record_context.transfer_cmd_pool) != VK_SUCCESS)
+                        &record_context.transfer_cmd_pool
+                    ) != VK_SUCCESS)
                     return renderFailure<err::device::VulkanObjectCreationFailed>();
 
                 record_context.transfer_cmd_bufs.resize(frames_in_flight, VK_NULL_HANDLE);
@@ -840,7 +845,8 @@ namespace lux::render
                     device,
                     &pool_ci,
                     context_.instanceContext().allocator(),
-                    &record_context.transient_ds_pool) != VK_SUCCESS)
+                    &record_context.transient_ds_pool
+                ) != VK_SUCCESS)
                 return renderFailure<err::device::VulkanObjectCreationFailed>();
 
             // Allocate sets and write descriptors
@@ -1138,8 +1144,10 @@ namespace lux::render
     // ================================
     // refreshDynamicImportedResources: pre-record dynamic handle refresh
     // ================================
-    void
-    RGVulkanRecorder::refreshDynamicImportedResources(RGResourceState& state, const RGCompiledGraph& compiled_graph)
+    void RGVulkanRecorder::refreshDynamicImportedResources(
+        RGResourceState& state,
+        const RGCompiledGraph& compiled_graph
+    )
     {
         // Refresh dynamic imported buffer handles so growth/reallocation in
         // upload phase is visible to the upcoming record() call.
@@ -1346,7 +1354,7 @@ namespace lux::render
 
             switch (entry.type)
             {
-            case ECmd::SetPassContext: {
+            case ECmd::SET_PASS_CONTEXT: {
                 if (replay_state.current_pass != UINT32_MAX)
                 {
                     writePassTimestamp(
@@ -1396,7 +1404,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::PipelineBarrier: {
+            case ECmd::PIPELINE_BARRIER: {
                 if (!replay_barriers)
                 {
                     break;
@@ -1425,7 +1433,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::BeginRendering: {
+            case ECmd::BEGIN_RENDERING: {
                 if (!replay_render_scope)
                 {
                     break;
@@ -1512,7 +1520,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::EndRendering: {
+            case ECmd::END_RENDERING: {
                 if (!replay_render_scope)
                 {
                     break;
@@ -1521,7 +1529,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::LocalReadBoundary: {
+            case ECmd::LOCAL_READ_BOUNDARY: {
                 // Line-B P2: sub-pass boundary inside a local-read merged scope.
                 // Sets this sub-pass's attachment-location / input-index remaps
                 // and (for sub-pass > 0) the by-region intra-scope barrier.
@@ -1546,7 +1554,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::BindPipeline: {
+            case ECmd::BIND_PIPELINE: {
                 struct
                 {
                     VkPipeline pipeline;
@@ -1568,7 +1576,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::BindDescriptorSets: {
+            case ECmd::BIND_DESCRIPTOR_SETS: {
                 struct
                 {
                     uint32_t slot;
@@ -1613,7 +1621,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::PushConstants: {
+            case ECmd::PUSH_CONSTANTS: {
                 uint32_t pass_index;
                 std::memcpy(&pass_index, data, sizeof(uint32_t));
                 const auto& cpass = compiled_graph.compiled_passes[pass_index];
@@ -1636,7 +1644,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::SetViewport: {
+            case ECmd::SET_VIEWPORT: {
                 uint32_t pass_index;
                 std::memcpy(&pass_index, data, sizeof(uint32_t));
                 const uint32_t gidx = compiled_graph.render_pass_layout.pass_to_group[pass_index];
@@ -1646,7 +1654,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::SetScissor: {
+            case ECmd::SET_SCISSOR: {
                 uint32_t pass_index;
                 std::memcpy(&pass_index, data, sizeof(uint32_t));
                 const uint32_t gidx = compiled_graph.render_pass_layout.pass_to_group[pass_index];
@@ -1656,7 +1664,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::Dispatch: {
+            case ECmd::DISPATCH: {
                 if (tryCallKernelFn())
                 {
                     break;
@@ -1673,7 +1681,7 @@ namespace lux::render
                     {
                         continue;
                     }
-                    if (patch.source == ExecutionProgram::DynamicPatch::ESource::KernelPatch)
+                    if (patch.source == ExecutionProgram::DynamicPatch::ESource::KERNEL_PATCH)
                     {
                         const KernelTypeId kid = static_cast<KernelTypeId>(patch.source_param >> 8);
                         const uint16_t sub_source = patch.source_param & 0xFF;
@@ -1692,7 +1700,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::DispatchIndirect: {
+            case ECmd::DISPATCH_INDIRECT: {
                 struct
                 {
                     uint32_t resource_idx;
@@ -1711,7 +1719,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::DrawDirect: {
+            case ECmd::DRAW_DIRECT: {
                 if (tryCallKernelFn())
                 {
                     break;
@@ -1729,7 +1737,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::DrawIndexedIndirectCount: {
+            case ECmd::DRAW_INDEXED_INDIRECT_COUNT: {
                 if (replay_state.skip_next_draw)
                 {
                     // Skip ALL draws of an inactive shadow bias-group lane, not
@@ -1779,7 +1787,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::FillBuffer: {
+            case ECmd::FILL_BUFFER: {
                 struct
                 {
                     uint32_t resource_idx;
@@ -1799,7 +1807,7 @@ namespace lux::render
                     vkCmdFillBuffer(cmd, buf, d.offset, d.size, d.fill_value);
 
                     // Coalesce transfer->compute synchronization for consecutive fills.
-                    const bool next_is_fill = (ci + 1u < end) && (program.commands[ci + 1u].type == ECmd::FillBuffer);
+                    const bool next_is_fill = (ci + 1u < end) && (program.commands[ci + 1u].type == ECmd::FILL_BUFFER);
                     if (!next_is_fill)
                     {
                         VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
@@ -1817,7 +1825,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::ClearCounters: {
+            case ECmd::CLEAR_COUNTERS: {
                 struct
                 {
                     uint32_t resource_indices[ClearCountersKernelConfig::kMaxBuffers];
@@ -1874,12 +1882,12 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::InvokeKernelFn: {
+            case ECmd::INVOKE_KERNEL_FN: {
                 tryCallKernelFn();
                 break;
             }
 
-            case ECmd::CopyBuffer: {
+            case ECmd::COPY_BUFFER: {
                 if (tryCallKernelFn())
                 {
                     break;
@@ -1887,7 +1895,7 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::KernelCommand: {
+            case ECmd::KERNEL_COMMAND: {
                 // Decode header: [KernelTypeId(1) | sub_cmd(1) | payload_size(2)]
                 if (entry.data_size < 4)
                 {
@@ -1914,7 +1922,8 @@ namespace lux::render
                         frame_ctx,
                         physical_resources,
                         replay_state.current_layout,
-                        replay_state.skip_next_draw};
+                        replay_state.skip_next_draw
+                    };
                     desc->replay(hdr.sub, payload, hdr.psize, kern_ctx);
                 }
                 break;

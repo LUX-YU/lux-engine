@@ -1,54 +1,67 @@
 #pragma once
 
-#include <cstddef>
-#include <span>
-#include <string>
-#include <utility>
+#include <lux/engine/ui/Element.hpp>
 #include <vector>
-
-#include <lux/cxx/compile_time/expected.hpp>
 
 namespace lux::ui
 {
-struct SplitLayout final
-{
-    std::string left, center, right, bottom;
-    float left_width{260.0F}, right_width{350.0F}, bottom_height{200.0F};
-    std::string toolbar;
-};
-enum class ELayoutError
-{
-    INVALID_DATA
-};
-
-class LayoutSnapshot final
-{
-  public:
-    LayoutSnapshot(const LayoutSnapshot &) = default;
-    LayoutSnapshot &operator=(const LayoutSnapshot &) = default;
-    LayoutSnapshot(LayoutSnapshot &&) noexcept = default;
-    LayoutSnapshot &operator=(LayoutSnapshot &&) noexcept = default;
-
-    [[nodiscard]] static lux::cxx::expected<LayoutSnapshot, ELayoutError> fromBytes(std::span<const std::byte> bytes)
+    enum class ELayoutType : std::uint8_t
     {
-        if (bytes.empty())
+        HORIZONTAL,
+        VERTICAL,
+        GRID,
+        FORM
+    };
+    enum class ELayoutStatus : std::uint8_t
+    {
+        VALID,
+        INCOMPLETE_FORM
+    };
+
+    class LUX_FUNCTION_PUBLIC Layout final : public Element
+    {
+    public:
+        Layout(Pane& parent, ElementId id, ELayoutType type = ELayoutType::VERTICAL);
+        Layout(Element& parent, ElementId id, ELayoutType type = ELayoutType::VERTICAL);
+        void setType(ELayoutType type) noexcept;
+        void setSpacing(Vec2 spacing) noexcept;
+        void setMargins(Insets margins) noexcept;
+        void setColumns(std::size_t columns) noexcept;
+        void setScrollable(bool horizontal, bool vertical) noexcept;
+        [[nodiscard]] ELayoutStatus status() const noexcept;
+
+    private:
+        struct Cell final
         {
-            return lux::cxx::unexpected<ELayoutError>(ELayoutError::INVALID_DATA);
-        }
-        return LayoutSnapshot{std::vector<std::byte>{bytes.begin(), bytes.end()}};
-    }
+            Element* element{};
+            SizeHint hint;
+            std::size_t column{}, row{};
+            float width{};
+        };
+        struct Track final
+        {
+            float minimum{}, preferred{}, maximum{}, weight{}, size{}, offset{};
+        };
+        [[nodiscard]] SizeHint sizeHintContent() noexcept override;
+        [[nodiscard]] SizeHint measureContent(float width) noexcept override;
+        void arrangeContent() noexcept override;
+        void draw() noexcept override;
+        void collect() noexcept;
+        void columns() noexcept;
+        void rows() noexcept;
+        void fit(std::vector<Track>& tracks, float available, float spacing, float origin) noexcept;
+        [[nodiscard]] SizeHint trackHint() const noexcept;
+        static float extent(const std::vector<Track>& tracks, float Track::*member, float spacing) noexcept;
+        void place() noexcept;
 
-    [[nodiscard]] std::span<const std::byte> bytes() const noexcept
-    {
-        return bytes_;
-    }
-
-  public:
-    // An owned snapshot can represent an empty layout before the first frame.
-    explicit LayoutSnapshot(std::vector<std::byte> bytes) noexcept : bytes_(std::move(bytes))
-    {
-    }
-
-    std::vector<std::byte> bytes_;
-};
-} // namespace lux::ui
+        ELayoutType type_;
+        Vec2 spacing_{6.F, 6.F};
+        Insets margins_{};
+        std::size_t column_count_{2};
+        bool horizontal_scroll_{}, vertical_scroll_{};
+        // Scratch is reused; identity and ownership remain in the Object child chain.
+        std::vector<Cell> cells_;
+        std::vector<Track> columns_, rows_;
+        std::vector<std::size_t> saturated_;
+    };
+}

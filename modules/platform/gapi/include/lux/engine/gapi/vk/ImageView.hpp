@@ -9,9 +9,7 @@ namespace lux::gapi::vk
     public:
         using Builder = ImageViewBuilder;
 
-        ImageView() : view(VK_NULL_HANDLE)
-        {
-        }
+        ImageView() : view(VK_NULL_HANDLE) {}
 
         ImageView(const VkImageViewCreateInfo& ci, VkDevice dev, VkAllocationCallbacks* allocator = nullptr)
         {
@@ -79,7 +77,8 @@ namespace lux::gapi::vk
                 VK_COMPONENT_SWIZZLE_IDENTITY,
                 VK_COMPONENT_SWIZZLE_IDENTITY,
                 VK_COMPONENT_SWIZZLE_IDENTITY,
-                VK_COMPONENT_SWIZZLE_IDENTITY};
+                VK_COMPONENT_SWIZZLE_IDENTITY
+            };
             create_info.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         }
 

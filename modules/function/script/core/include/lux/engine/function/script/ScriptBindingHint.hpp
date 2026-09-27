@@ -8,7 +8,11 @@
 namespace lux::script
 {
     // Source/import suggestions only. These are not runtime endpoint identities or binding authority.
-    enum class EScriptBindingHintKind : std::uint8_t { HOOK, EVENT };
+    enum class EScriptBindingHintKind : std::uint8_t
+    {
+        HOOK,
+        EVENT
+    };
 
     struct ScriptBindingHintTarget final
     {

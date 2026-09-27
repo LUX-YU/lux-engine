@@ -38,6 +38,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 
 namespace lux::render::gpulayout
 {
@@ -50,30 +51,30 @@ namespace lux::render::gpulayout
     /// wrong. No mirror struct uses one.
     enum class EGlsl : std::uint8_t
     {
-        Float,
-        Int,
-        Uint,
-        Vec2,
-        IVec2,
-        UVec2,
-        Vec3,
-        IVec3,
-        UVec3,
-        Vec4,
-        IVec4,
-        UVec4,
-        Mat4,
+        FLOAT,
+        INT,
+        UINT,
+        VEC2,
+        I_VEC2,
+        U_VEC2,
+        VEC3,
+        I_VEC3,
+        U_VEC3,
+        VEC4,
+        I_VEC4,
+        U_VEC4,
+        MAT4,
     };
 
     enum class EStd : std::uint8_t
     {
-        Std140,
-        Std430
+        STD140,
+        STD430
     };
 
     struct Field
     {
-        EGlsl type{EGlsl::Float};
+        EGlsl type{EGlsl::FLOAT};
         std::uint32_t count{1}; ///< array length; 1 = plain field
     };
 
@@ -81,13 +82,13 @@ namespace lux::render::gpulayout
     {
         switch (t)
         {
-        case EGlsl::Float:
-        case EGlsl::Int:
-        case EGlsl::Uint:
+        case EGlsl::FLOAT:
+        case EGlsl::INT:
+        case EGlsl::UINT:
             return 4;
-        case EGlsl::Vec2:
-        case EGlsl::IVec2:
-        case EGlsl::UVec2:
+        case EGlsl::VEC2:
+        case EGlsl::I_VEC2:
+        case EGlsl::U_VEC2:
             return 8;
         default:
             return 16;
@@ -98,23 +99,23 @@ namespace lux::render::gpulayout
     {
         switch (t)
         {
-        case EGlsl::Float:
-        case EGlsl::Int:
-        case EGlsl::Uint:
+        case EGlsl::FLOAT:
+        case EGlsl::INT:
+        case EGlsl::UINT:
             return 4;
-        case EGlsl::Vec2:
-        case EGlsl::IVec2:
-        case EGlsl::UVec2:
+        case EGlsl::VEC2:
+        case EGlsl::I_VEC2:
+        case EGlsl::U_VEC2:
             return 8;
-        case EGlsl::Vec3:
-        case EGlsl::IVec3:
-        case EGlsl::UVec3:
+        case EGlsl::VEC3:
+        case EGlsl::I_VEC3:
+        case EGlsl::U_VEC3:
             return 12;
-        case EGlsl::Vec4:
-        case EGlsl::IVec4:
-        case EGlsl::UVec4:
+        case EGlsl::VEC4:
+        case EGlsl::I_VEC4:
+        case EGlsl::U_VEC4:
             return 16;
-        case EGlsl::Mat4:
+        case EGlsl::MAT4:
             return 64;
         }
         return 0;
@@ -132,7 +133,7 @@ namespace lux::render::gpulayout
     {
         const std::uint32_t a = baseAlign(t);
         const std::uint32_t stride = roundUp(baseSize(t), a);
-        return s == EStd::Std140 ? roundUp(stride, 16u) : stride;
+        return s == EStd::STD140 ? roundUp(stride, 16u) : stride;
     }
 
     /// Offsets every field must sit at, derived from the field list alone.
@@ -145,7 +146,7 @@ namespace lux::render::gpulayout
         {
             const auto& f = fields[i];
             std::uint32_t align = baseAlign(f.type);
-            if (f.count > 1 && s == EStd::Std140)
+            if (f.count > 1 && s == EStd::STD140)
                 align = roundUp(align, 16u);
             cursor = roundUp(cursor, align);
             out[i] = cursor;
@@ -164,14 +165,14 @@ namespace lux::render::gpulayout
         {
             const auto& f = fields[i];
             std::uint32_t align = baseAlign(f.type);
-            if (f.count > 1 && s == EStd::Std140)
+            if (f.count > 1 && s == EStd::STD140)
                 align = roundUp(align, 16u);
             if (align > maxAlign)
                 maxAlign = align;
             cursor = roundUp(cursor, align);
             cursor += (f.count > 1) ? arrayStride(f.type, s) * f.count : baseSize(f.type);
         }
-        if (s == EStd::Std140)
+        if (s == EStd::STD140)
             maxAlign = roundUp(maxAlign, 16u);
         return roundUp(cursor, maxAlign);
     }
@@ -185,15 +186,15 @@ namespace lux::render::gpulayout
 //  (for arrays) the element count — then verify it against the C++ struct:
 //
 //      #define LUX_VIEW_GPU_FIELDS(X, PAD)  \
-//          X(Mat4,  view,        1)         \
-//          X(Vec3,  cam_pos,     1)         \
-//          PAD(Uint, cam_pos_w,  1)         \
-//          X(Float, splits,      8)
+//          X(MAT4,  view,        1)         \
+//          X(VEC3,  cam_pos,     1)         \
+//          PAD(UINT, cam_pos_w,  1)         \
+//          X(FLOAT, splits,      8)
 //
-//  PAD takes a name too — it has to be unique within the list (it becomes an
-//  enumerator), and naming the padding says what hole it fills.
+//  PAD takes a name too — it has to be unique within the list, and naming the
+//  padding says what hole it fills.
 //
-//      LUX_GPU_VERIFY(ViewGpuData, Std430, LUX_VIEW_GPU_FIELDS)
+//      LUX_GPU_VERIFY(ViewGpuData, STD430, LUX_VIEW_GPU_FIELDS)
 //
 //  The list describes the SHADER's block, field for field. `X` is a field that
 //  also exists as a C++ member (its offset gets asserted); `PAD` is one that
@@ -201,8 +202,8 @@ namespace lux::render::gpulayout
 //  16-byte member in C++, so the pad has no member to point at. Padding still
 //  has to appear in the list because it moves everything after it.
 //
-//  Field indices are derived by the compiler (the list is expanded once into an
-//  enum), so inserting a field in the middle needs no renumbering.
+//  Field indices are derived from the list of field names at compile time, so
+//  inserting a field in the middle needs no renumbering.
 //
 //  The emitted assertions are one per named field plus one for the total size.
 //  The per-field form is what makes a failure readable: it names the member that
@@ -214,18 +215,19 @@ namespace lux::render::gpulayout
 #define LUX_GPU_L_SPEC_PAD_(TYPE, NAME, COUNT)                                                                         \
     ::lux::render::gpulayout::Field{::lux::render::gpulayout::EGlsl::TYPE, COUNT},
 
-#define LUX_GPU_L_IDX_(TYPE, NAME, COUNT) idx_##NAME,
-#define LUX_GPU_L_IDX_PAD_(TYPE, NAME, COUNT) idx_##NAME,
+#define LUX_GPU_L_NAME_(TYPE, NAME, COUNT) std::string_view{#NAME},
+#define LUX_GPU_L_NAME_PAD_(TYPE, NAME, COUNT) std::string_view{#NAME},
 
 #define LUX_GPU_L_CHECK_(TYPE, NAME, COUNT)                                                                            \
     static_assert(                                                                                                     \
-        offsetof(LUX_GPU_L_STRUCT_, NAME) == want[idx_##NAME],                                                         \
+        offsetof(LUX_GPU_L_STRUCT_, NAME) == want[fieldIndex(#NAME)],                                                  \
         "GPU mirror layout: member '" #NAME "' (declared to the shader as " #TYPE                                      \
         ") sits at a different byte offset than the shader's copy of this struct "                                     \
         "puts it. Either the C++ field order or alignment changed, or " #TYPE                                          \
         " is the wrong GLSL type for it. NOTE: the reported LINE is the "                                              \
-        "LUX_GPU_VERIFY invocation — the member name in this message is what "                                         \
-        "identifies the field.");
+        "LUX_GPU_VERIFY invocation — the member name in this message is what "                                       \
+        "identifies the field."                                                                                        \
+    );
 #define LUX_GPU_L_CHECK_PAD_(TYPE, NAME, COUNT) /* shader-only padding: no C++ member to assert against */
 
 /// Verify that @p STRUCT is laid out as @p STD says a block with @p FIELDS is.
@@ -234,10 +236,16 @@ namespace lux::render::gpulayout
     namespace gpu_layout_check_##STRUCT                                                                                \
     {                                                                                                                  \
         using LUX_GPU_L_STRUCT_ = STRUCT;                                                                              \
-        enum : std::size_t                                                                                             \
+        inline constexpr auto field_names = std::array{FIELDS(LUX_GPU_L_NAME_, LUX_GPU_L_NAME_PAD_)};                 \
+        consteval std::size_t fieldIndex(std::string_view name)                                                        \
         {                                                                                                              \
-            FIELDS(LUX_GPU_L_IDX_, LUX_GPU_L_IDX_PAD_)                                                                 \
-        };                                                                                                             \
+            for (std::size_t index = 0; index < field_names.size(); ++index)                                          \
+            {                                                                                                          \
+                if (field_names[index] == name)                                                                        \
+                    return index;                                                                                      \
+            }                                                                                                          \
+            return field_names.size();                                                                                 \
+        }                                                                                                              \
         inline constexpr auto spec = std::array{FIELDS(LUX_GPU_L_SPEC_, LUX_GPU_L_SPEC_PAD_)};                         \
         inline constexpr auto want = ::lux::render::gpulayout::offsets(spec, ::lux::render::gpulayout::EStd::STD);     \
         FIELDS(LUX_GPU_L_CHECK_, LUX_GPU_L_CHECK_PAD_)                                                                 \
@@ -245,7 +253,8 @@ namespace lux::render::gpulayout
             sizeof(STRUCT) == ::lux::render::gpulayout::sizeOf(spec, ::lux::render::gpulayout::EStd::STD),             \
             "GPU mirror layout: the C++ struct's total size differs from what the "                                    \
             "shader's block occupies. A truncated or extra field is the usual "                                        \
-            "cause — note that a truncation smaller than the struct alignment can "                                    \
+            "cause — note that a truncation smaller than the struct alignment can "                                  \
             "still produce a matching ARRAY STRIDE, which is how such a copy "                                         \
-            "survives unnoticed until one more field is added.");                                                      \
+            "survives unnoticed until one more field is added."                                                        \
+        );                                                                                                             \
     }

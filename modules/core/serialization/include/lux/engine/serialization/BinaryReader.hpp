@@ -12,9 +12,7 @@ namespace lux::serialization
     class BinaryReader final
     {
     public:
-        explicit BinaryReader(std::span<const std::byte> source) noexcept : source_(source)
-        {
-        }
+        explicit BinaryReader(std::span<const std::byte> source) noexcept : source_(source) {}
 
         [[nodiscard]] std::size_t offset() const noexcept
         {

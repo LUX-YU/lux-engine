@@ -27,29 +27,27 @@
 
 namespace lux::render
 {
-class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC StandardViewCameraFeature final : public RenderFeature
-{
-  public:
-    struct Config
+    class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC StandardViewCameraFeature final : public RenderFeature
     {
-        std::string name{"StandardViewCamera"};
+    public:
+        struct Config
+        {
+            std::string name{"StandardViewCamera"};
+        };
+
+        StandardViewCameraFeature();
+        explicit StandardViewCameraFeature(Config cfg);
+
+        lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
+        [[nodiscard]] bool viewReady(ViewHandle) const noexcept override;
+        void onDetachFromScene(RenderScene& scene) override;
+        void deallocateViewState(uint32_t view) override; ///< evict the destroyed view's camera entry
+        [[nodiscard]] bool canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept override;
+        void rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept override;
     };
 
-    StandardViewCameraFeature();
-    explicit StandardViewCameraFeature(Config cfg);
-
-    lux::render::Expected<void> initAndAttachTo(RenderScene &scene) override;
-    [[nodiscard]] bool viewReady(ViewHandle) const noexcept override;
-    void onDetachFromScene(RenderScene &scene) override;
-    void deallocateViewState(uint32_t view) override; ///< evict the destroyed view's camera entry
-    [[nodiscard]] bool canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept override;
-    void rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept override;
-};
-
-// No-arg ctor defined out-of-class so Config{} is evaluated where the class is
-// complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
-inline StandardViewCameraFeature::StandardViewCameraFeature() : StandardViewCameraFeature(Config{})
-{
-}
+    // No-arg ctor defined out-of-class so Config{} is evaluated where the class is
+    // complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
+    inline StandardViewCameraFeature::StandardViewCameraFeature() : StandardViewCameraFeature(Config{}) {}
 
 } // namespace lux::render

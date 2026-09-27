@@ -1,6 +1,7 @@
 # Headers only: LuxWindow::createVulkanSurface needs the Vulkan types; the
 # entry point itself lives in the window backend (GLFW loads Vulkan dynamically).
 find_package(Vulkan  REQUIRED)
+find_package(lux-cxx REQUIRED COMPONENTS compile_time)
 
 # Backend source selection — same pattern as dynamic_library (win32/posix):
 # one public header set (LuxWindow.hpp / WindowEvents.hpp / ...), one backend
@@ -19,9 +20,11 @@ if(ANDROID)
     )
 else()
     find_package(glfw3 REQUIRED)
+    find_package(nfd CONFIG REQUIRED)
     set(WINDOW_SRCS
         src/LuxWindow.glfw.cpp
         src/GlfwRuntime.cpp
+        src/FileDialog.cpp
     )
 endif()
 
@@ -49,7 +52,7 @@ add_component(
 
 component_include_directories(
     window
-    BUILD_TIME_EXPORT  
+    BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME
@@ -70,20 +73,24 @@ target_link_libraries(
     Vulkan::Headers
 )
 
-# PUBLIC: interactive tests/tools still call GLFW directly (glfwGetKey etc.).
+# GLFW is private; backend tests declare their own dependency.
 if(NOT ANDROID)
-    target_link_libraries(window PUBLIC glfw)
+    target_link_libraries(window PRIVATE glfw)
+    target_link_libraries(window PRIVATE nfd::nfd)
 endif()
 
 component_add_transitive_commands(
     window
     "if(NOT ANDROID)"
     "    find_package(glfw3 REQUIRED)"
+    "    find_package(nfd CONFIG REQUIRED)"
     "endif()"
     "find_package(Vulkan REQUIRED)"
+    "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
 
 if(WIN32)
+    target_link_libraries(window PRIVATE comctl32)
     target_compile_definitions(
         window
         PUBLIC
@@ -91,3 +98,6 @@ if(WIN32)
         __TRAY_ENABLED__
     )
 endif()
+
+
+target_link_libraries(window PUBLIC lux::cxx::compile_time)

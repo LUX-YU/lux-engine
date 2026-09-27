@@ -11,13 +11,14 @@ int main()
     FeatureFactory registration;
     registration.name = "ExternalProbe";
     registration.descriptor = kExternalProbeDescriptor;
+    registration.operation_count = ExternalProbeOperationIds::kCount;
     const std::array<TypeId, 1> dynamic_ids{701};
-    catalog.add(registration, 31, dynamic_ids);
+    assert(catalog.add(registration, 31, dynamic_ids));
     const auto ops = catalog.ops<ExternalProbeOperationIds>("ExternalProbe");
     assert(ops.valid() && catalog.typeId("ExternalProbe") == 31);
     assert(catalog.nameOfType(featureId("test.external.probe.v1")) == "ExternalProbe");
 
-    auto channel = RenderProgramChannel<>::create(2);
+    auto channel = TRenderProgramChannel<>::create(2);
     auto sync = std::make_shared<RenderChannelSync>();
     RenderProgramSession session(channel, sync);
     assert(session.beginFrame());

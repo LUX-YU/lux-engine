@@ -41,8 +41,7 @@ namespace lux::render
 
     TriOverlayTransientFeature::TriOverlayTransientFeature(Config cfg)
         : RenderFeature(RenderFeature::Config{.name = "TriOverlayTransient"}), cfg_(std::move(cfg))
-    {
-    }
+    {}
 
     TriOverlayTransientFeature::~TriOverlayTransientFeature()
     {
@@ -64,7 +63,8 @@ namespace lux::render
         // 用 uViews)的管线必须带域合并标记,否则注册被拒。
         const std::array stage_requests{
             RenderContextView::PipelineStageDesc{EBuiltinShader::TRI_OVERLAY_VERT, cfg_.vertex_shader},
-            RenderContextView::PipelineStageDesc{EBuiltinShader::TRI_OVERLAY_FRAG, cfg_.fragment_shader}};
+            RenderContextView::PipelineStageDesc{EBuiltinShader::TRI_OVERLAY_FRAG, cfg_.fragment_shader}
+        };
 
         auto stages = cv.preparePipelineStages(stage_requests);
         if (!stages)
@@ -109,7 +109,7 @@ namespace lux::render
         const uint32_t count = static_cast<uint32_t>(std::min<size_t>(data.size(), cfg_.max_vertices));
 
         auto& slot = slots_[active_slot_];
-        assert(slot.mapped && "FrameSlot buffer was not created");
+        assert(slot.mapped && "EFrameSlot buffer was not created");
 
         std::memcpy(slot.mapped, data.data(), count * sizeof(GizmoVertex));
         vmaFlushAllocation(allocator_, slot.alloc, 0, count * sizeof(GizmoVertex));
@@ -127,7 +127,7 @@ namespace lux::render
             .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
             .setPipeline(pipeline_handle_)
             .bindSceneDS()
-            .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::Gizmo)))
+            .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::GIZMO)))
             .setKernelFn([this](const PassRecordContext& ctx) {
                 if (draw_count_ == 0)
                     return;
@@ -139,10 +139,9 @@ namespace lux::render
                 VkDeviceSize zero_offset = 0;
                 vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &slot.buffer, &zero_offset);
                 vkCmdDraw(ctx.cmd, draw_count_, 1, 0, 0);
-            }
-            )
+            })
             .setKernel("TriOverlayTransientDraw")
-            .stage(ERenderStage::Overlay); // overlay — composited on top of the post-processed
+            .stage(ERenderStage::OVERLAY_STAGE); // overlay — composited on top of the post-processed
                                            // (tonemapped) image, like the grid/line gizmos
     }
 

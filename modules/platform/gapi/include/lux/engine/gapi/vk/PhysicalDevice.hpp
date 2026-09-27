@@ -57,8 +57,7 @@ namespace lux::gapi::vk
                 return lux::cxx::unexpected(SwapchainBuildError{
                     stage,
                     std::nullopt,
-                }
-                );
+                });
             }
 
             // WSI lists may change between the count and value calls. Retry a
@@ -74,8 +73,7 @@ namespace lux::gapi::vk
                     return lux::cxx::unexpected(SwapchainBuildError{
                         stage,
                         count_result,
-                    }
-                    );
+                    });
                 }
 
                 const std::uint32_t capacity = count;
@@ -94,8 +92,7 @@ namespace lux::gapi::vk
                         return lux::cxx::unexpected(SwapchainBuildError{
                             stage,
                             std::nullopt,
-                        }
-                        );
+                        });
                     }
                     values.resize(count);
                     return values;
@@ -105,16 +102,14 @@ namespace lux::gapi::vk
                     return lux::cxx::unexpected(SwapchainBuildError{
                         stage,
                         values_result,
-                    }
-                    );
+                    });
                 }
             }
 
             return lux::cxx::unexpected(SwapchainBuildError{
                 stage,
                 VK_INCOMPLETE,
-            }
-            );
+            });
         }
 
         [[nodiscard]] inline SurfaceCapabilitiesResult querySurfaceCapabilities(
@@ -128,8 +123,7 @@ namespace lux::gapi::vk
                 return lux::cxx::unexpected(SwapchainBuildError{
                     ESwapchainBuildStage::SURFACE_CAPABILITIES,
                     std::nullopt,
-                }
-                );
+                });
             }
 
             VkSurfaceCapabilitiesKHR capabilities{};
@@ -139,8 +133,7 @@ namespace lux::gapi::vk
                 return lux::cxx::unexpected(SwapchainBuildError{
                     ESwapchainBuildStage::SURFACE_CAPABILITIES,
                     result,
-                }
-                );
+                });
             }
             return capabilities;
         }
@@ -205,9 +198,7 @@ namespace lux::gapi::vk
         friend class Instance;
 
     public:
-        PhysicalDevice() : _physical_device(VK_NULL_HANDLE)
-        {
-        }
+        PhysicalDevice() : _physical_device(VK_NULL_HANDLE) {}
 
         /*
          * Find the queue family index that supports the requested queue flags
@@ -283,8 +274,10 @@ namespace lux::gapi::vk
             return EDeviceType::OTHER;
         }
 
-        [[nodiscard]] SurfaceCapabilitiesResult
-        surfaceCapabilities(VkSurfaceKHR surface, SurfaceQueryOps ops = SurfaceQueryOps::defaults()) const noexcept
+        [[nodiscard]] SurfaceCapabilitiesResult surfaceCapabilities(
+            VkSurfaceKHR surface,
+            SurfaceQueryOps ops = SurfaceQueryOps::defaults()
+        ) const noexcept
         {
             return detail::querySurfaceCapabilities(_physical_device, surface, ops);
         }
@@ -296,20 +289,24 @@ namespace lux::gapi::vk
             return supported == VK_TRUE;
         }
 
-        [[nodiscard]] SurfaceFormatsResult
-        supportedSurfaceFormats(VkSurfaceKHR surface, SurfaceQueryOps ops = SurfaceQueryOps::defaults()) const noexcept
+        [[nodiscard]] SurfaceFormatsResult supportedSurfaceFormats(
+            VkSurfaceKHR surface,
+            SurfaceQueryOps ops = SurfaceQueryOps::defaults()
+        ) const noexcept
         {
             return detail::querySurfaceFormats(_physical_device, surface, ops);
         }
 
-        [[nodiscard]] SurfacePresentModesResult
-        supportedPresentModes(VkSurfaceKHR surface, SurfaceQueryOps ops = SurfaceQueryOps::defaults()) const noexcept
+        [[nodiscard]] SurfacePresentModesResult supportedPresentModes(
+            VkSurfaceKHR surface,
+            SurfaceQueryOps ops = SurfaceQueryOps::defaults()
+        ) const noexcept
         {
             return detail::querySurfacePresentModes(_physical_device, surface, ops);
         }
 
-        VkPresentModeKHR
-        selectPresentMode(VkSurfaceKHR surface, const std::vector<VkPresentModeKHR>& modes, bool vsync) const
+        VkPresentModeKHR selectPresentMode(VkSurfaceKHR surface, const std::vector<VkPresentModeKHR>& modes, bool vsync)
+            const
         {
             if (!vsync)
             {
@@ -339,7 +336,8 @@ namespace lux::gapi::vk
                 VK_FORMAT_B8G8R8A8_UNORM,
                 VK_FORMAT_R8G8B8A8_UNORM,
                 VK_FORMAT_B8G8R8_UNORM,
-                VK_FORMAT_R8G8B8_UNORM};
+                VK_FORMAT_R8G8B8_UNORM
+            };
 
             if (formats.size() == 1 && formats[0].format == VK_FORMAT_UNDEFINED)
             {
@@ -360,8 +358,10 @@ namespace lux::gapi::vk
             return formats[0];
         }
 
-        [[nodiscard]] SwapChainSupportResult
-        swapChainSupport(VkSurfaceKHR surface, SurfaceQueryOps ops = SurfaceQueryOps::defaults()) const noexcept
+        [[nodiscard]] SwapChainSupportResult swapChainSupport(
+            VkSurfaceKHR surface,
+            SurfaceQueryOps ops = SurfaceQueryOps::defaults()
+        ) const noexcept
         {
             return detail::querySwapChainSupport(_physical_device, surface, ops);
         }
@@ -460,7 +460,8 @@ namespace lux::gapi::vk
         VkPhysicalDevice _physical_device{VK_NULL_HANDLE};
         VkPhysicalDeviceProperties2 _properties{};
         VkPhysicalDeviceDescriptorIndexingProperties _descriptor_index_properties{
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES};
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES
+        };
         VkPhysicalDeviceFeatures2 _features{};
         VkPhysicalDeviceMemoryProperties2 _memory_properties{};
         std::vector<VkQueueFamilyProperties2> _queue_family_properties{};

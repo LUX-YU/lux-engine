@@ -49,7 +49,8 @@ namespace lux::render
         alloc.pSetLayouts = &layout;
 
         VkDescriptorSetVariableDescriptorCountAllocateInfo var_info{
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO};
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO
+        };
         if (variable_count > 0)
         {
             var_info.descriptorSetCount = 1;
@@ -83,8 +84,7 @@ namespace lux::render
         // A brand-new pool still cannot satisfy ONE allocation → the per-pool
         // template is too small for this layout. Fail loudly (no infinite grow).
         renderFatal("SceneDescriptorArena::allocate: a fresh pool cannot hold a single set "
-                    "(PoolSizeTemplate too small for the requested layout)"
-        );
+                    "(PoolSizeTemplate too small for the requested layout)");
     }
 
     std::size_t SceneDescriptorArena::beginGeneration() noexcept

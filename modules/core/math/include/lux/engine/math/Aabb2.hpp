@@ -21,9 +21,7 @@ namespace lux::math
         // ----- Constructors -----
 
         Aabb2() = default;
-        Aabb2(const Eigen::Vector2f& mn, const Eigen::Vector2f& mx) : min(mn), max(mx)
-        {
-        }
+        Aabb2(const Eigen::Vector2f& mn, const Eigen::Vector2f& mx) : min(mn), max(mx) {}
 
         /// Build from a centre + half-extents (the collider-authoring form).
         [[nodiscard]] static Aabb2 fromCenterHalf(const Eigen::Vector2f& c, const Eigen::Vector2f& half)

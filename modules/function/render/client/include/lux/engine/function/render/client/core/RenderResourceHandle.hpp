@@ -4,6 +4,7 @@
 #include <lux/cxx/container/SlotMap.hpp>
 
 #include <functional>
+#include <type_traits>
 
 namespace lux::render
 {
@@ -11,8 +12,7 @@ namespace lux::render
     //  Type tags — empty structs used solely to distinguish handle types.
     // =========================================================================
     struct TextureTag
-    {
-    };
+    {};
 
     // =========================================================================
     //  RenderResourceHandle<Tag> — alias to lux::cxx::SlotKey<Tag>
@@ -28,14 +28,11 @@ namespace lux::render
     // =========================================================================
     //  跨线句柄 ↔ 内部句柄 的转换
     // =========================================================================
-    /// R*Handle(跨线协议面)与 *Handle(引擎内部)是两套 tag 不同、布局相同的
-    /// 句柄。它们**都是 L0 类型**,所以这个转换器也属于 L0。
-    ///
-    /// 它此前住在 L5 的**私有** RenderServerImpl.hpp 里 —— 于是每个只想转个
-    /// 句柄的装配 TU 都得 include 整个服务端 Impl 头,把 Impl 的每个字段一并
-    /// 拉进自己的可见范围。一个三行的类型工具不该有这种影响半径。
+    /// Only resources with identical remote/local slot identity may use this conversion.
+    /// Textures have a separate typed identity table and must be resolved by TextureResources.
     template <typename To, typename From> constexpr To handle_cast(From h) noexcept
     {
+        static_assert(!std::is_same_v<To, RTextureHandle> && !std::is_same_v<From, RTextureHandle>);
         return To{h.index, h.gen};
     }
 

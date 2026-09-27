@@ -11,7 +11,7 @@
 namespace lux::render
 {
 
-    template <typename T> class PagedGpuStream
+    template <typename T> class TPagedGpuStream
     {
     public:
         static constexpr uint32_t kUploadPageSize = 512u;
@@ -112,8 +112,11 @@ namespace lux::render
             clearDirtyState();
         }
 
-        [[nodiscard]] VkDeviceSize
-        collectUploadChunks(uint32_t count, bool full_upload, std::vector<UploadChunk>& chunks)
+        [[nodiscard]] VkDeviceSize collectUploadChunks(
+            uint32_t count,
+            bool full_upload,
+            std::vector<UploadChunk>& chunks
+        )
         {
             const auto* cpu_bytes = reinterpret_cast<const uint8_t*>(cpu_data_.data());
             const VkDeviceSize element_stride = static_cast<VkDeviceSize>(sizeof(T));
@@ -131,8 +134,7 @@ namespace lux::render
                     .src = cpu_bytes,
                     .dst_offset = 0u,
                     .size = byte_count,
-                }
-                );
+                });
                 return byte_count;
             }
 
@@ -176,8 +178,7 @@ namespace lux::render
                     .src = cpu_bytes + byte_offset,
                     .dst_offset = static_cast<VkDeviceSize>(byte_offset),
                     .size = bytes,
-                }
-                );
+                });
                 total_bytes += bytes;
             }
 
@@ -229,7 +230,7 @@ namespace lux::render
         };
 
         std::vector<T> cpu_data_;
-        GpuBuffer<T, EGpuBufferType::GPU_ONLY, false> gpu_buf_;
+        TGpuBuffer<T, EGpuBufferType::GPU_ONLY, false> gpu_buf_;
         std::vector<uint32_t> dirty_pages_;
         std::vector<uint8_t> page_flags_;
         std::vector<Run> runs_scratch_; ///< per-call reused; see Run above

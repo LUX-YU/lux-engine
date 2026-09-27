@@ -1,23 +1,26 @@
 #include <cassert>
+#include <lux/engine/scene/SceneRuntime.hpp>
+#include <lux/engine/scene/SceneDescriptionBuilder.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <consumer/Domain.hpp>
 #include <consumer/Gui.hpp>
 #include <cstdio>
 #include <fstream>
-#include <lux/engine/editor/scene/FieldEdit.hpp>
+#include <lux/engine/editor/editing/scene/FieldEdit.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/simulation/ecs/ComponentDecode.hpp>
 #include <lux/engine/simulation/ecs/EntityCreationPlan.hpp>
 #include <lux/engine/simulation/ecs/Parent.hpp>
 #include <lux/engine/process/TaskScope.hpp>
 
-void decodedValues(const lux::simulation::ecs::ComponentSchema &schema)
+void decodedValues(const lux::simulation::ecs::ComponentSchema& schema)
 {
     using namespace lux::simulation::ecs;
     assert(schema.decode_value);
     Registry registry;
     const auto existing = registry.create();
     WorldEntityMap identities;
-    const auto id = [](const char *text) { return lux::world::WorldObjectId{*uuids::uuid::from_string(text)}; };
+    const auto id = [](const char* text) { return lux::world::WorldObjectId{*uuids::uuid::from_string(text)}; };
     const auto a = id("80000000-0000-0000-0000-000000000001");
     const auto b = id("80000000-0000-0000-0000-000000000002");
     const auto c = id("80000000-0000-0000-0000-000000000003");
@@ -27,26 +30,27 @@ void decodedValues(const lux::simulation::ecs::ComponentSchema &schema)
     assert(identities.bind(a, plan->entities()[0]) && identities.bind(b, plan->entities()[1]));
     const ComponentEntityResolver resolver{
         &identities,
-        [](const void *state,
-           lux::world::WorldObjectId identity) noexcept -> lux::cxx::expected<Entity, ComponentDecodeFailure>
-        {
-            const auto entity = static_cast<const WorldEntityMap *>(state)->entity(identity);
+        [](const void* state,
+           lux::world::WorldObjectId identity) noexcept -> lux::cxx::expected<Entity, ComponentDecodeFailure> {
+            const auto entity = static_cast<const WorldEntityMap*>(state)->entity(identity);
             if (identity.valid() && entity == NullEntity)
             {
                 return lux::cxx::unexpected(
-                    ComponentDecodeFailure{EComponentDecodeError::UNRESOLVED_REFERENCE, 0, identity});
+                    ComponentDecodeFailure{EComponentDecodeError::UNRESOLVED_REFERENCE, 0, identity}
+                );
             }
             return entity;
-        }};
+        }
+    };
     const auto parent = directComponentDecodeValue<Parent, 1>();
     assert(parent);
-    const auto encode = [&](Entity entity)
-    {
+    const auto encode = [&](Entity entity) {
         std::vector<std::byte> bytes;
         lux::serialization::BinaryWriter binary(bytes);
-        WorldComponentArchive writer(binary, identities);
+        TWorldComponentArchive writer(binary, identities);
         assert(
-            lux::serialization::write(writer, Parent{entity}, lux::serialization::SerializationBudget{1024, 1024, 64}));
+            lux::serialization::write(writer, Parent{entity}, lux::serialization::SerializationBudget{1024, 1024, 64})
+        );
         return bytes;
     };
     const auto before = std::as_const(registry).storage<Entity>()->free_list();
@@ -76,26 +80,32 @@ void decodedValues(const lux::simulation::ecs::ComponentSchema &schema)
     const NestedReferences references{{Parent{plan->entities()[1]}, Parent{existing}}, {Parent{NullEntity}}};
     std::vector<std::byte> nested_bytes;
     lux::serialization::BinaryWriter nested_binary(nested_bytes);
-    WorldComponentArchive nested_writer(nested_binary, identities);
-    assert(
-        lux::serialization::write(nested_writer, references, lux::serialization::SerializationBudget{4096, 4096, 64}));
+    TWorldComponentArchive nested_writer(nested_binary, identities);
+    assert(lux::serialization::write(nested_writer, references, lux::serialization::SerializationBudget{4096, 4096, 64})
+    );
     const auto nested_decode = directComponentDecodeValue<NestedReferences, 1>();
     assert(nested_decode);
     auto nested = nested_decode(1, nested_bytes, resolver, {});
     assert(nested);
     std::move(*nested).installInto(registry, existing);
-    const auto &restored_references = registry.get<NestedReferences>(existing);
+    const auto& restored_references = registry.get<NestedReferences>(existing);
     assert(restored_references[0][0].entity == plan->entities()[1]);
     assert(restored_references[0][1].entity == existing && restored_references[1][0].entity == NullEntity);
     identities.unbind(plan->entities()[1]);
     auto unresolved_nested = nested_decode(1, nested_bytes, resolver, {});
-    assert(!unresolved_nested && unresolved_nested.error().code == EComponentDecodeError::UNRESOLVED_REFERENCE &&
-           unresolved_nested.error().reference == b);
-    std::printf("C05 nested references: existing/null/planned resolved; rejected identity retained at offset=%zu\n",
-                unresolved_nested.error().offset);
+    assert(
+        !unresolved_nested && unresolved_nested.error().code == EComponentDecodeError::UNRESOLVED_REFERENCE &&
+        unresolved_nested.error().reference == b
+    );
+    std::printf(
+        "C05 nested references: existing/null/planned resolved; rejected identity retained at offset=%zu\n",
+        unresolved_nested.error().offset
+    );
     auto unresolved = parent(1, a_bytes, resolver, {});
-    assert(!unresolved && unresolved.error().code == EComponentDecodeError::UNRESOLVED_REFERENCE &&
-           unresolved.error().reference == b && unresolved.error().offset == 0);
+    assert(
+        !unresolved && unresolved.error().code == EComponentDecodeError::UNRESOLVED_REFERENCE &&
+        unresolved.error().reference == b && unresolved.error().offset == 0
+    );
     const auto old = plan->entities()[0];
     registry.destroy(old);
     auto reused = planEntityCreation(registry, 1);
@@ -118,13 +128,9 @@ void decodedValues(const lux::simulation::ecs::ComponentSchema &schema)
     int destroyed{}, code_released{};
     struct Temporary final
     {
-        int *destroyed;
-        explicit Temporary(int &count) : destroyed(&count)
-        {
-        }
-        Temporary(Temporary &&other) noexcept : destroyed(std::exchange(other.destroyed, nullptr))
-        {
-        }
+        int* destroyed;
+        explicit Temporary(int& count) : destroyed(&count) {}
+        Temporary(Temporary&& other) noexcept : destroyed(std::exchange(other.destroyed, nullptr)) {}
         ~Temporary()
         {
             if (destroyed)
@@ -134,13 +140,11 @@ void decodedValues(const lux::simulation::ecs::ComponentSchema &schema)
         }
     };
     {
-        auto lease = std::shared_ptr<const void>(new int(1),
-                                                 [&](const void *value)
-                                                 {
-                                                     assert(destroyed == 1);
-                                                     ++code_released;
-                                                     delete static_cast<const int *>(value);
-                                                 });
+        auto lease = std::shared_ptr<const void>(new int(1), [&](const void* value) {
+            assert(destroyed == 1);
+            ++code_released;
+            delete static_cast<const int*>(value);
+        });
         std::vector<DecodedComponent> abandoned;
         abandoned.push_back(DecodedComponent::own(Temporary(destroyed), std::move(lease)));
         assert(destroyed == 0 && code_released == 0);
@@ -149,21 +153,26 @@ void decodedValues(const lux::simulation::ecs::ComponentSchema &schema)
     }
     {
         int destroyed{}, code_released{};
-        std::shared_ptr<const void> lease(new int(0), [&](const void *value)
-        {
+        std::shared_ptr<const void> lease(new int(0), [&](const void* value) {
             assert(destroyed == 1);
             ++code_released;
-            delete static_cast<const int *>(value);
+            delete static_cast<const int*>(value);
         });
         std::vector<DecodedComponent> values;
         values.push_back(DecodedComponent::own(Temporary(destroyed), std::move(lease)));
-        lux::process::TaskScope task;
-        auto work = stdexec::then(stdexec::just_stopped(), [owned = std::move(values)]() noexcept
-        {
+        auto execution = lux::process::ExecutionRuntime::create({1, 8, 8, {8}});
+        assert(execution);
+        lux::process::TaskScope task{*execution};
+        auto work = stdexec::then(stdexec::just_stopped(), [owned = std::move(values)]() noexcept {
             assert(false); // A stopped preparation must never enter installation.
         });
-        assert(task.start(stdexec::upon_stopped(std::move(work), []() noexcept {})));
-        assert(stdexec::sync_wait(task.close()));
+        assert(task.submit(
+            {"Stopped preparation", "test"},
+            [sender = std::move(work)](lux::process::TaskReporter) mutable noexcept {
+                return stdexec::upon_stopped(std::move(sender), []() noexcept {});
+            }
+        ));
+        assert(task.join());
         assert(destroyed == 1 && code_released == 1);
     }
     std::puts("C07 discarded and stopped TaskScope preparation: one destructor, then one provider-code lease release");
@@ -172,9 +181,9 @@ void decodedValues(const lux::simulation::ecs::ComponentSchema &schema)
               "and code lease");
 }
 
-int sceneWorkflow(const std::filesystem::path &, bool);
+int sceneWorkflow(const std::filesystem::path&, bool);
 
-void pakRoundTrip(const std::filesystem::path &root)
+void pakRoundTrip(const std::filesystem::path& root)
 {
     using namespace lux::asset;
     std::filesystem::create_directories(root);
@@ -184,9 +193,11 @@ void pakRoundTrip(const std::filesystem::path &root)
     const auto third = id("10000000-0000-0000-0000-000000000003");
     auto bytes = std::make_shared<const std::string>("payload");
     const auto owned = lux::cxx::SharedBytes<>::fromOwner(bytes, std::as_bytes(std::span(*bytes)));
-    std::vector<PakWriteEntry> entries{{first, 17, "Shared/Path", {}, owned},
-                                       {second, 17, "Shared/Path", {}, {}, true},
-                                       {third, 17, {}, {}, {}, true}};
+    std::vector<PakWriteEntry> entries{
+        {first, 17, "Shared/Path", {}, owned},
+        {second, 17, "Shared/Path", {}, {}, true},
+        {third, 17, {}, {}, {}, true}
+    };
     std::string error;
     const auto path = root / "tombstones.luxpak";
     assert(writePakFile(path, entries, "/Game", &error));
@@ -207,17 +218,58 @@ void pakRoundTrip(const std::filesystem::path &root)
     std::puts("PASS installed Pak: file tombstones, shared/empty virtual paths, exact payload rejection");
 }
 
-int main(int argc, char **argv)
+void sharedInspector()
+{
+    using namespace lux;
+    auto schemas = simulation::ecs::ComponentSchemaSet::build(consumer::schemas(), {});
+    assert(schemas);
+    simulation::SimulationSystemRegistry systems;
+    auto description = scene::SceneDescriptionBuilder{}.buildResolved();
+    assert(description);
+    auto execution = process::ExecutionRuntime::create({1, 32, 32, {16}});
+    assert(execution);
+    auto runtime = scene::SceneRuntime::create(*execution, {0, 1024});
+    assert(runtime);
+    auto instance = (*runtime)
+                        ->builder()
+                        .setDescription(std::make_shared<const scene::SceneDescription>(std::move(*description)))
+                        .setWorld(std::make_shared<const world::WorldDescription>())
+                        .setSimulation(std::make_shared<const simulation::SimulationDescription>())
+                        .setRegistrations(*schemas, systems, {})
+                        .build();
+    assert(instance && (*runtime)->invalid(*instance));
+    auto& registry = (*runtime)->getSceneRegistry(*instance)->get();
+    const auto entity = registry.create();
+    registry.emplace<consumer::Component>(entity);
+    assert((*runtime)->tick());
+    auto history = editor::editing::EditHistory::create({{128, 16777216, 16777216, 256}, {}, true});
+    assert(history);
+    editor::scene::SceneEditing editing(**runtime, *instance, *schemas, **history);
+    auto queue = object::ObjectMessageQueue::create(64);
+    assert(queue);
+    auto root = ui::Root::create(queue->dispatcherRef());
+    assert(root);
+    consumer::checkCompletedGesture(editing, **history, entity);
+    consumer::checkUndrawnInspector(**root, editing, **history, entity, [] {});
+    assert((*history)->close());
+    editing.close();
+    std::puts("PASS installed shared Inspector: no concrete editor, renderer or world loader");
+}
+
+int main(int argc, char** argv)
 {
     using namespace lux::simulation::ecs;
     const auto descriptors = consumer::schemas();
     assert(descriptors.size() == 2);
-    const auto &schema = descriptors.front();
-    assert(schema.semantic_kind != lux::simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED && schema.decode_emplace && schema.capture);
+    const auto& schema = descriptors.front();
+    assert(
+        schema.semantic_kind != lux::simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED &&
+        schema.decode_emplace && schema.capture
+    );
     assert(descriptors.back().semantic_kind == EComponentSemanticKind::RUNTIME_DERIVED && !descriptors.back().capture);
     decodedValues(schema);
     const auto binding = consumer::binding();
-    assert(binding.type == schema.cpp_type && binding.draw);
+    assert(binding.type == schema.cpp_type && binding.create);
 
     Registry registry;
     const auto entity = registry.create();
@@ -231,12 +283,12 @@ int main(int argc, char **argv)
     const auto restored = registry.create();
     auto decoded = schema.decode_emplace(registry, identities, restored, 1, *encoded);
     assert(decoded);
-    const auto &value = registry.get<consumer::Component>(restored);
+    const auto& value = registry.get<consumer::Component>(restored);
     assert(value.sequence.front().name == "Unicode 中文");
     assert(value.flags.size() == 2 && value.flags[0] && !value.flags[1]);
     assert(value.map.at("key").size() == 2 && value.lookup.at(3) == "value");
-    assert(lux::editor::scene::FieldValue<consumer::Component>::valid(value));
-    assert(lux::editor::scene::FieldValue<consumer::Component>::equal(value, consumer::Component{}));
+    assert(lux::editor::scene::TFieldValue<consumer::Component>::valid(value));
+    assert(lux::editor::scene::TFieldValue<consumer::Component>::equal(value, consumer::Component{}));
 
     std::puts("PASS installed component: separate domain/GUI DLLs, typed generated binding, nested codec and immutable "
               "capture");
@@ -244,5 +296,10 @@ int main(int argc, char **argv)
     const auto run = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     const auto root = std::filesystem::u8path(argv[1]) / run;
     pakRoundTrip(root / "pak");
+    sharedInspector();
+#if defined(LUX_TOOL_INTERNAL_TESTS)
     return sceneWorkflow(root / "scene", argc == 3);
+#else
+    return 0;
+#endif
 }

@@ -30,8 +30,7 @@ namespace lux::render
 
     PipelineLayoutService::PipelineLayoutService(VkDevice device, uint32_t max_bound_descriptor_sets)
         : device_(device), max_bound_descriptor_sets_(max_bound_descriptor_sets)
-    {
-    }
+    {}
 
     PipelineLayoutService::~PipelineLayoutService()
     {

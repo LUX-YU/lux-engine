@@ -13,6 +13,7 @@ add_component(
     OUTPUT_NAME    lux_engine_simulation_ecs_transform
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/TransformSchema.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/TransformEvaluation.cpp
 )
 
 component_include_directories(
@@ -33,15 +34,16 @@ target_link_libraries(
         lux::engine::simulation::ecs::core
         lux::engine::simulation::ecs::schema
         lux::engine::simulation::ecs::snapshot
+        lux::engine::simulation::ecs::hierarchy
         lux::engine::core::math
         lux::engine::core::serialization
 )
-component_add_internal_dependencies(transform core schema snapshot)
+component_add_internal_dependencies(transform core schema snapshot hierarchy)
 component_add_transitive_commands(
     transform
     "find_package(Eigen3 CONFIG REQUIRED)"
     "find_package(lux-engine-core REQUIRED COMPONENTS math serialization)"
-    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core schema snapshot)"
+    "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core schema snapshot hierarchy)"
 )
 
 include_component_cmake_scripts(meta)

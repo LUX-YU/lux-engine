@@ -14,7 +14,7 @@
 #include <lux/engine/function/render/features/skinning/SkinningOperation.hpp>
 #include <lux/engine/render/renderer/features/skinning/SkinningFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/render/gpu/RenderContext.hpp>                  // RenderContext::globalRegistry
+#include <lux/engine/render/gpu/RenderContext.hpp>                    // RenderContext::globalRegistry
 #include <lux/engine/function/render/client/RenderProgramSession.hpp> // SkinningProxy::builder()
 
 #include <lux/engine/render/resources/vertex/SkinningResources.hpp> // SkinningResources, BoneMatrixGpu
@@ -141,8 +141,8 @@ namespace lux::render
         const bool is_missing_instances = d.inst == nullptr;
         const bool is_missing_meshes = d.mesh_res == nullptr;
         const bool is_uninitialized_skin = !is_missing_skin && !d.skin->initialized();
-        const bool is_invalid_dependencies = is_missing_skin || is_missing_instances || is_missing_meshes ||
-            is_uninitialized_skin;
+        const bool is_invalid_dependencies =
+            is_missing_skin || is_missing_instances || is_missing_meshes || is_uninitialized_skin;
         if (is_invalid_dependencies)
             return;
         d.skin->beginFrameIfNew(d.sc->frameSerial());
@@ -160,8 +160,8 @@ namespace lux::render
         const bool is_missing_instances = d.inst == nullptr;
         const bool is_missing_meshes = d.mesh_res == nullptr;
         const bool is_uninitialized_skin = !is_missing_skin && !d.skin->initialized();
-        const bool is_invalid_dependencies = is_missing_skin || is_missing_instances || is_missing_meshes ||
-            is_uninitialized_skin;
+        const bool is_invalid_dependencies =
+            is_missing_skin || is_missing_instances || is_missing_meshes || is_uninitialized_skin;
         if (is_invalid_dependencies)
             return;
         d.skin->beginFrameIfNew(d.sc->frameSerial());

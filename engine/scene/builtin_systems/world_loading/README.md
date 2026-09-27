@@ -1,6 +1,6 @@
 # 显式分区世界加载
 
-`WorldLoadingSystem` 是可选 SceneSystem。它把当前 WorldDescription 中的分区内容物化为运行时 Entity，不依赖 Camera、RenderSystem 或 Editor。实例的 Registry、Simulation 和系统仍由 SceneInstance 拥有，加载维护由 SceneDriver 调用。
+`WorldLoadingSystem` 是可选 SceneSystem。它把当前 WorldDescription 中的分区内容物化为运行时 Entity，不依赖 Camera、RenderSystem 或 Editor。SceneRuntime 内部实例拥有 Registry、Simulation 和系统，加载维护由其 SceneDriver 调用。尚未迁移的 Editor 宿主暂沿用原实例入口。
 
 ## 需求与身份
 
@@ -18,6 +18,20 @@
 
 采用只发生在 Driver 允许结构变化的稳定边界。一个已开始的步骤等待发布时，加载器可以接收异步完成，但不改变该步骤正在借用的 Registry。必要集合尚未完整时阻止接纳下一步；维护返回主循环，不在 Main 阻塞等待 IO。
 
+## 数据与加载策略的边界
+
+`WorldResidency` 在同一模块中，由 Registry context 拥有唯一的身份映射、分区来源、成员、脏状态和保护记录。
+`WorldLoadingSystem` 只维护需求、IO、观察连接和采用/卸载安排；业务读取 Registry 中的 WorldResidency，不借用加载系统。
+分区方案筛选及读取依旧属于加载策略。WorldResidency 不自行决定需要哪个分区，不读取文件，也不依赖 Editor。
+
+`WorldLoadingServices.initial_partitions` 可提供固定的已解码内容；安装阶段一次采用，成功后实例才 seal/公开。
+普通异步读取与构造期采用复用 WorldMaterializer。未知 payload 保留在原分区源中。
+
+结构编辑先 `prepareCreate`/`prepareErase`，再 `PreparedChange::commit`。准备失败或放弃不改变 Registry；
+准备和提交之间由调用方持续保持结构独占，不能跨维护、异步等待、分区卸载或 owner 析构保存此对象。
+提交不会返回可恢复业务失败；OOM 按工程约定终止。身份、实体、成员和脏状态统一提交，不开放可写身份表。
+删除原始对象时，未知引用保持保守拒绝；新建对象撤销仍可执行。已知引用同时检查临时与持久对象。
+
 ## 驻留和卸载
 
 卸载要求需求、脏内容、外部保护和活动跨分区引用全部解除。`PartitionRetention` 表达真实使用权，可以由编辑历史条目持有；Editing 本身不依赖世界加载模块。未知 payload 或无法遍历的组件引用采用保守保留，并返回保留理由。
@@ -28,6 +42,6 @@
 
 宿主提供寿命覆盖系统的根 TaskScope。系统析构断开组件观察并请求取消；operation state 独立保留源、输入与完成值，不捕获系统或 Registry。晚到结果释放自己的内容，根 TaskScope 由宿主最终关闭。内置代码所在模块必须覆盖最后一个 operation 的完成与析构。
 
-限制分别覆盖在途数、每轮启动量、读取额度、暂存、驻留分区、实体和组件计费。状态提供需求、读取、采用、拒绝、卸载与保留理由。组件计费是 inline 值大小，不包含 provider 容器的所有深层分配；读取暂存计费也不能当作解压过程的总峰值内存证明。
+限制分别覆盖在途数、读取字节、暂存、驻留分区、实体和组件计费（无每轮次数额度）。加载器统计 IO；WorldResidency 统计驻留内容并提供保留理由。组件计费是 inline 值大小，不包含 provider 容器的所有深层分配；读取暂存计费也不能当作解压过程的总峰值内存证明。
 
 本模块目前提供显式集合策略，不解释空间范围、LOD、相机跟随或运行热替换政策。

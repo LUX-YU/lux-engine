@@ -93,7 +93,7 @@ static void reflect_func_{{ fn.hash }}(lux::meta::ReflectionRegistry& registry, 
     static constexpr auto is_reflected_value =
         lux::meta::is_reflected_value_v<
             lux::meta::remove_one_modifier_t<ret_type>>;
-    static_assert(static_cast<lux::meta::EBaseType>(ret_qt.base) != lux::meta::EBaseType::Unknown, "Unsupported return type in {{ fn.spelling }}");
+    static_assert(static_cast<lux::meta::EBaseType>(ret_qt.base) != lux::meta::EBaseType::UNKNOWN, "Unsupported return type in {{ fn.spelling }}");
 
     inv.return_type = lux::meta::ref_type_of_v<ret_type>;
 
@@ -116,7 +116,7 @@ static void reflect_func_{{ fn.hash }}(lux::meta::ReflectionRegistry& registry, 
         static constexpr auto is_reflected_value =
             lux::meta::is_reflected_value_v<
                 lux::meta::remove_one_modifier_t<param_type_{{ loop.index }}>>;
-        static_assert(static_cast<lux::meta::EBaseType>(qt.base) != lux::meta::EBaseType::Unknown, "Unsupported param type in {{ fn.spelling }}");
+        static_assert(static_cast<lux::meta::EBaseType>(qt.base) != lux::meta::EBaseType::UNKNOWN, "Unsupported param type in {{ fn.spelling }}");
         rp.type = lux::meta::ref_type_of_v<{{pty.id}}>;
         rp.value_type_name = lux::cxx::type_name<
             lux::meta::remove_one_modifier_t<{{ pty.id }}>>();
@@ -239,22 +239,6 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
         {%- endif -%}
     {%- endfor %}
     
-    {# Object lineage can cross module/DLL generation units. Other reflected
-       records keep the established marked-record membership rule. #}
-    {%- set reflected_is_object = annotation_has(rec, "object") -%}
-    {%- if reflected_is_object -%}
-        {%- set object_lineage = template_lineage_record_hashes(
-            rec.id,
-            "lux::object::Object",
-            1
-        ) -%}
-        {%- for parent in object_lineage -%}
-            {%- set parent_rec = decl_from_id(parent.id) -%}
-            {%- if annotation_has(parent_rec, "object") %}
-        cls.parent_chain.push_back({{ parent.hash }}ull);
-            {%- endif -%}
-        {%- endfor -%}
-    {%- else -%}
         {%- for parent_idx in marked_record_decls -%}
             {%- set parent_rec = decl_from_index(parent_idx) -%}
             {%- if parent_rec.id != rec.id %}
@@ -264,7 +248,7 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
         cls.parent_chain.push_back({{ parent_rec.hash }}ull);
             {%- endif -%}
         {%- endfor -%}
-    {%- endif %}
+
 
     /* The fix list stores RefType addresses until every class in the module
        has been registered.  Reserve before taking any field address so later
@@ -276,17 +260,15 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
 
     /* fields --------------------------------------------------------------- */
     {% for field_id in rec.field_decls -%}{%- set field = decl_from_id(field_id) -%}
-    {%- set is_object = annotation_has(rec, "object") -%}
-    {%- set is_reflected_field = annotation_has(field, "luxref::property::member") -%}
     {%- set skip_field = annotation_has(field, "luxref::property::skip") -%}
     {%- set skip_runtime = annotation_get_for_or(field, "luxtype::member", "skip_runtime", false) -%}
-    {%- if field.visibility == 1 and not skip_field and not skip_runtime and (not is_object or is_reflected_field) %}
+    {%- if field.visibility == 1 and not skip_field and not skip_runtime %}
     {
         cls.fields.push_back({});
         lux::meta::RefField& f = cls.fields.back();
         f.name        = "{{ field.name }}";
         f.owner_class = &cls;
-        f.visibility  = lux::meta::EVisibility::Public;
+        f.visibility  = lux::meta::EVisibility::PUBLIC;
         /* offsetof, not the parse-time bit offset ({{ field.offset }} bits on the
            generating host). libclang computes offsets against the HOST ABI, so a
            baked literal is only correct where it was generated — cross-compiling
@@ -305,7 +287,7 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
         static constexpr auto is_reflected_value =
             lux::meta::is_reflected_value_v<
                 lux::meta::remove_one_modifier_t<field_type_{{ loop.index }}>>;
-        static_assert(static_cast<lux::meta::EBaseType>(qt.base) != lux::meta::EBaseType::Unknown, "Unsupported field type {{ field.name }}");
+        static_assert(static_cast<lux::meta::EBaseType>(qt.base) != lux::meta::EBaseType::UNKNOWN, "Unsupported field type {{ field.name }}");
 
         f.type = lux::meta::ref_type_of_v<{{ field.type_id }}>;
         if constexpr(is_reflected_record || is_reflected_value){
@@ -319,23 +301,14 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
 
     /* static data members -------------------------------------------------- */
     {% for var_id in rec.static_var_decls -%}{%- set var = decl_from_id(var_id) -%}
-    {%- set is_object = annotation_has(rec, "object") -%}
-    {%- set is_signal = type_is_specialization(var.type_id, "lux::object::Signal") -%}
-    {%- set is_reflected_var = annotation_has(var, "luxref::property::member") -%}
     {%- set skip_var = annotation_has(var, "luxref::property::skip") -%}
-    {%- if is_signal and not is_object %}
-    static_assert(
-        !std::is_same_v<decltype({{ var.fq_name }}), decltype({{ var.fq_name }})>,
-        "lux::object::Signal static members require LUX_OBJECT()"
-    );
-    {%- endif %}
-    {%- if var.visibility == 1 and not skip_var and (not is_object or is_signal or is_reflected_var) %}
+    {%- if var.visibility == 1 and not skip_var %}
     {
         cls.static_fields.push_back({});
         lux::meta::RefStaticField& f = cls.static_fields.back();
         f.name        = "{{ var.name }}";
         f.owner_class = &cls;
-        f.visibility  = lux::meta::EVisibility::Public;
+        f.visibility  = lux::meta::EVisibility::PUBLIC;
         using field_type_{{ loop.index }} = decltype({{ var.fq_name }});
         f.type        = lux::meta::ref_type_of_v<field_type_{{ loop.index }}>;
         {%- set static_template_primary = type_template_name(var.type_id) -%}
@@ -345,28 +318,21 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
         f.address     = std::addressof({{ var.fq_name }});
         f.is_const    = std::is_const_v<field_type_{{ loop.index }}>;
         f.is_volatile = std::is_volatile_v<field_type_{{ loop.index }}>;
-        {%- if is_signal %}
-        { static constexpr char kStaticAnnot_{{ rec.hash }}_{{ var.name }}[] = "luxref::property::member,signal=true"; f.annotation_str = kStaticAnnot_{{ rec.hash }}_{{ var.name }}; }
-        {%- else %}{% for attr in var.attributes %}{% if annotation_has(attr, "luxref::property::member") %}
+{% for attr in var.attributes %}{% if annotation_has(attr, "luxref::property::member") %}
         { static constexpr char kStaticAnnot_{{ rec.hash }}_{{ var.name }}[] = R"__LUX_ANNOT({{ attr }})__LUX_ANNOT"; f.annotation_str = kStaticAnnot_{{ rec.hash }}_{{ var.name }}; }{% endif %}{% endfor %}
-        {%- endif %}
-        {%- if is_signal %}
-        static_assert(std::is_standard_layout_v<field_type_{{ loop.index }}>,
-            "Reflected signal descriptors must remain standard-layout");
-        {%- endif %}
+
     }
     {%- endif %}{%- endfor %}
 
     /* methods -------------------------------------------------------------- */
     {% for method_id in rec.method_decls -%}{%- set method_index = loop.index -%}{%- set method = decl_from_id(method_id) -%}
-    {%- set is_object = annotation_has(rec, "object") -%}
     {%- set is_reflected_method = annotation_has(method, "luxref::property::method") -%}
     {%- if method.visibility == 1 and is_reflected_method %}
     {
         cls.methods.push_back({});
         lux::meta::RefMethod& m = cls.methods.back();
         m.owner_class   = &cls;
-        m.visibility    = lux::meta::EVisibility::Public;
+        m.visibility    = lux::meta::EVisibility::PUBLIC;
         m.is_static     = {{ method.is_static }};
         m.is_virtual    = {{ method.is_virtual }};
         m.is_const      = {{ method.is_const }};
@@ -397,7 +363,7 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
         static constexpr auto is_reflected_value =
             lux::meta::is_reflected_value_v<
                 lux::meta::remove_one_modifier_t<ret_type>>;
-        static_assert(static_cast<lux::meta::EBaseType>(qt_ret.base) != lux::meta::EBaseType::Unknown, "Unsupported return type for {{ method.spelling }}");
+        static_assert(static_cast<lux::meta::EBaseType>(qt_ret.base) != lux::meta::EBaseType::UNKNOWN, "Unsupported return type for {{ method.spelling }}");
 
         inv.return_type = lux::meta::ref_type_of_v<ret_type>;
         if constexpr(is_reflected_record || is_reflected_value){
@@ -417,7 +383,7 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
             static constexpr auto is_reflected_value =
                 lux::meta::is_reflected_value_v<
                     lux::meta::remove_one_modifier_t<param_type_{{ loop.index }}>>;
-            static_assert(static_cast<lux::meta::EBaseType>(qt.base) != lux::meta::EBaseType::Unknown, "Unsupported param type for {{ method.spelling }}");
+            static_assert(static_cast<lux::meta::EBaseType>(qt.base) != lux::meta::EBaseType::UNKNOWN, "Unsupported param type for {{ method.spelling }}");
 
             rp.type = lux::meta::ref_type_of_v<{{ p_type.id }}>;
             rp.value_type_name = lux::cxx::type_name<

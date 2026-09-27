@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <exception>
 #include <atomic>
 #include <queue>
 #include <memory>
@@ -47,9 +48,7 @@ namespace lux::flowforge
     {
     public:
         BuilderContext(mlir::MLIRContext* context)
-            : ctx(context),
-              builder(context),
-              loc(builder.getUnknownLoc()),
+            : ctx(context), builder(context), loc(builder.getUnknownLoc()),
               module_id(next_module_id_.fetch_add(1, std::memory_order_relaxed))
         {
             module = builder.create<mlir::ModuleOp>(loc);
@@ -134,8 +133,7 @@ namespace lux::flowforge
         auto lux_ff_result = (expression);                                                                             \
         if (!lux_ff_result)                                                                                            \
             return lux::cxx::unexpected(std::move(lux_ff_result.error()));                                             \
-    }                                                                                                                  \
-    while (false)
+    } while (false)
 
     // Format a unique LLVM global symbol name for this BuilderContext.
     //   _lf_<module_id>_<kind>_<a>[_<b>]   (all hex)
@@ -158,10 +156,10 @@ namespace lux::flowforge
         using lux::meta::ETypeQual;
         switch (static_cast<ETypeQual>(rt.qtype.qual))
         {
-        case ETypeQual::Ptr:
-        case ETypeQual::PtrToConst:
-        case ETypeQual::ConstPtr:
-        case ETypeQual::ConstPtrToConst:
+        case ETypeQual::PTR:
+        case ETypeQual::PTR_TO_CONST:
+        case ETypeQual::CONST_PTR:
+        case ETypeQual::CONST_PTR_TO_CONST:
             return true;
         default:
             return false;
@@ -185,27 +183,27 @@ namespace lux::flowforge
         }
         switch (static_cast<EBaseType>(rt.qtype.base))
         {
-        case EBaseType::Bool:
+        case EBaseType::BOOL:
             return b.getI1Type();
-        case EBaseType::Int8:
-        case EBaseType::Uint8:
+        case EBaseType::INT8:
+        case EBaseType::UINT8:
             return b.getI8Type();
-        case EBaseType::Int16:
-        case EBaseType::Uint16:
+        case EBaseType::INT16:
+        case EBaseType::UINT16:
             return b.getIntegerType(16);
-        case EBaseType::Int32:
-        case EBaseType::Uint32:
+        case EBaseType::INT32:
+        case EBaseType::UINT32:
             return b.getI32Type();
-        case EBaseType::Int64:
-        case EBaseType::Uint64:
+        case EBaseType::INT64:
+        case EBaseType::UINT64:
             return b.getI64Type();
-        case EBaseType::Float:
+        case EBaseType::FLOAT:
             return b.getF32Type();
-        case EBaseType::Double:
+        case EBaseType::DOUBLE:
             return b.getF64Type();
-        case EBaseType::Void:
-        case EBaseType::Record:
-        case EBaseType::Unknown:
+        case EBaseType::VOID:
+        case EBaseType::RECORD:
+        case EBaseType::UNKNOWN:
         default:
             return mlir::LLVM::LLVMPointerType::get(bc.ctx);
         }
@@ -216,10 +214,10 @@ namespace lux::flowforge
         using lux::meta::EBaseType;
         switch (static_cast<EBaseType>(rt.qtype.base))
         {
-        case EBaseType::Uint8:
-        case EBaseType::Uint16:
-        case EBaseType::Uint32:
-        case EBaseType::Uint64:
+        case EBaseType::UINT8:
+        case EBaseType::UINT16:
+        case EBaseType::UINT32:
+        case EBaseType::UINT64:
             return true;
         default:
             return false;
@@ -230,7 +228,7 @@ namespace lux::flowforge
     {
         using lux::meta::EBaseType;
         auto base = static_cast<EBaseType>(rt.qtype.base);
-        return base == EBaseType::Float || base == EBaseType::Double;
+        return base == EBaseType::FLOAT || base == EBaseType::DOUBLE;
     }
 
     //==============================================================================
@@ -268,8 +266,7 @@ namespace lux::flowforge
             struct PureScope
             {
                 ValueMaps& vm;
-                explicit PureScope(ValueMaps& v)
-                    : vm(v)
+                explicit PureScope(ValueMaps& v) : vm(v)
                 {
                     vm.pure_scopes.emplace_back();
                 }
@@ -451,9 +448,7 @@ namespace lux::flowforge
     // ----------------------------------------------------------------------------
     // ctor — nothing to wire up; control-op dispatch happens inside lowerChain.
     // ----------------------------------------------------------------------------
-    MLIRBuilderImpl::MLIRBuilderImpl(mlir::MLIRContext* context)
-        : context_(context)
-    {}
+    MLIRBuilderImpl::MLIRBuilderImpl(mlir::MLIRContext* context) : context_(context) {}
 
     // =============================================================================
     // Public API
@@ -512,12 +507,9 @@ namespace lux::flowforge
             else if (n->operation() == ENodeOperation::SCRIPT_EVENT_WAIT)
             {
                 const auto& event = static_cast<const ScriptEventAwaitNode&>(*n).source();
-                event_wait_keys.push_back({
-                    event.system_id,
-                    event.event_id,
-                    static_cast<std::uint8_t>(event.route),
-                    n->id().value
-                });
+                event_wait_keys.push_back(
+                    {event.system_id, event.event_id, static_cast<std::uint8_t>(event.route), n->id().value}
+                );
             }
             switch (n->operation())
             {
@@ -1455,24 +1447,20 @@ namespace lux::flowforge
         bool is_seq
     )
     {
-        using buffer_type = typename TypeSizeMap<Bits>::type;
+        using buffer_type = typename TTypeSizeMap<Bits>::type;
         auto& builder = bc.builder;
 
         if (is_seq)
         {
-            return TypeSizeMap<Bits>::getIndex(builder, obj);
+            return TTypeSizeMap<Bits>::getIndex(builder, obj);
         }
 
-        auto llvm_type = TypeSizeMap<Bits>::getLLVMType(builder);
-        auto attr = TypeSizeMap<Bits>::getAttr(builder, obj);
+        auto llvm_type = TTypeSizeMap<Bits>::getLLVMType(builder);
+        auto attr = TTypeSizeMap<Bits>::getAttr(builder, obj);
         return builder.create<mlir::LLVM::ConstantOp>(bc.loc, llvm_type, attr);
     }
 
-    mlir::Value MLIRBuilderImpl::globalStringConstantAssign(
-        BuilderContext& bc,
-        const char* str_data,
-        size_t str_size
-    )
+    mlir::Value MLIRBuilderImpl::globalStringConstantAssign(BuilderContext& bc, const char* str_data, size_t str_size)
     {
         llvm::StringRef bytes(str_data, str_size);
         auto it = bc.string_globals.find(bytes);
@@ -1527,29 +1515,29 @@ namespace lux::flowforge
 
         switch (static_cast<EBaseType>(rt.qtype.base))
         {
-        case EBaseType::Bool: {
+        case EBaseType::BOOL: {
             const bool* p = static_cast<const bool*>(obj.data());
             return b.create<mlir::arith::ConstantOp>(loc, b.getI1Type(), b.getBoolAttr(*p));
         }
-        case EBaseType::Float: {
+        case EBaseType::FLOAT: {
             const float* p = static_cast<const float*>(obj.data());
             return b.create<mlir::arith::ConstantOp>(loc, b.getF32Type(), b.getF32FloatAttr(*p));
         }
-        case EBaseType::Double: {
+        case EBaseType::DOUBLE: {
             const double* p = static_cast<const double*>(obj.data());
             return b.create<mlir::arith::ConstantOp>(loc, b.getF64Type(), b.getF64FloatAttr(*p));
         }
-        case EBaseType::Int8:
-        case EBaseType::Uint8:
+        case EBaseType::INT8:
+        case EBaseType::UINT8:
             return globalConstantAssign<8>(bc, obj, as_index);
-        case EBaseType::Int16:
-        case EBaseType::Uint16:
+        case EBaseType::INT16:
+        case EBaseType::UINT16:
             return globalConstantAssign<16>(bc, obj, as_index);
-        case EBaseType::Int32:
-        case EBaseType::Uint32:
+        case EBaseType::INT32:
+        case EBaseType::UINT32:
             return globalConstantAssign<32>(bc, obj, as_index);
-        case EBaseType::Int64:
-        case EBaseType::Uint64:
+        case EBaseType::INT64:
+        case EBaseType::UINT64:
             return globalConstantAssign<64>(bc, obj, as_index);
         default:
             LUX_FF_FAIL(bc, "not a scalar base type");
@@ -1593,17 +1581,17 @@ namespace lux::flowforge
         using lux::meta::EBaseType;
         switch (static_cast<EBaseType>(rt.qtype.base))
         {
-        case EBaseType::Bool:
-        case EBaseType::Float:
-        case EBaseType::Double:
-        case EBaseType::Int8:
-        case EBaseType::Uint8:
-        case EBaseType::Int16:
-        case EBaseType::Uint16:
-        case EBaseType::Int32:
-        case EBaseType::Uint32:
-        case EBaseType::Int64:
-        case EBaseType::Uint64:
+        case EBaseType::BOOL:
+        case EBaseType::FLOAT:
+        case EBaseType::DOUBLE:
+        case EBaseType::INT8:
+        case EBaseType::UINT8:
+        case EBaseType::INT16:
+        case EBaseType::UINT16:
+        case EBaseType::INT32:
+        case EBaseType::UINT32:
+        case EBaseType::INT64:
+        case EBaseType::UINT64:
             return buildScalarConstantValue(bc, rt, obj, is_seq);
         default:
             break; // Record / Unknown — aggregate path below
@@ -1807,16 +1795,16 @@ namespace lux::flowforge
                 // i1 (bool) always zero-extends — sign-extending `true`
                 // would produce -1.
                 return (dst_unsigned || src_int.getWidth() == 1)
-                    ? b.create<mlir::arith::ExtUIOp>(bc.loc, dst, v).getResult()
-                    : b.create<mlir::arith::ExtSIOp>(bc.loc, dst, v).getResult();
+                           ? b.create<mlir::arith::ExtUIOp>(bc.loc, dst, v).getResult()
+                           : b.create<mlir::arith::ExtSIOp>(bc.loc, dst, v).getResult();
             }
             return b.create<mlir::arith::TruncIOp>(bc.loc, dst, v).getResult();
         }
         if (src_int && dst_flt)
         {
             return dst_unsigned // dst is float; use the source-ish signedness we have
-                ? b.create<mlir::arith::UIToFPOp>(bc.loc, dst, v).getResult()
-                : b.create<mlir::arith::SIToFPOp>(bc.loc, dst, v).getResult();
+                       ? b.create<mlir::arith::UIToFPOp>(bc.loc, dst, v).getResult()
+                       : b.create<mlir::arith::SIToFPOp>(bc.loc, dst, v).getResult();
         }
         if (src_flt && dst_flt)
         {
@@ -2172,9 +2160,10 @@ namespace lux::flowforge
             result_types.push_back(refTypeToMLIR(bc, *type));
         }
 
-        const auto name = call.methodKind() == lux::script::EScriptApiMethodKind::ASYNC_OPERATION
-            ? "lux_ff_ability_async_" + std::to_string(ordinal->second) + "_node_" + std::to_string(call.id().value)
-            : "lux_ff_ability_sync_" + std::to_string(ordinal->second);
+        const auto name =
+            call.methodKind() == lux::script::EScriptApiMethodKind::ASYNC_OPERATION
+                ? "lux_ff_ability_async_" + std::to_string(ordinal->second) + "_node_" + std::to_string(call.id().value)
+                : "lux_ff_ability_sync_" + std::to_string(ordinal->second);
         const auto function_type = bc.builder.getFunctionType(argument_types, result_types);
         const auto function = getOrDeclareExternFunc(bc, name, function_type);
         auto invoked = bc.builder.create<mlir::func::CallOp>(bc.loc, function, operands);
@@ -2212,8 +2201,8 @@ namespace lux::flowforge
                 .pin_id = wait.payloadPin().id().value
             });
         }
-        const auto name = "lux_ff_event_wait_" + std::to_string(ordinal->second) + "_node_" +
-            std::to_string(wait.id().value);
+        const auto name =
+            "lux_ff_event_wait_" + std::to_string(ordinal->second) + "_node_" + std::to_string(wait.id().value);
         const auto function_type = bc.builder.getFunctionType({}, {result_type});
         const auto function = getOrDeclareExternFunc(bc, name, function_type);
         auto invoked = bc.builder.create<mlir::func::CallOp>(bc.loc, function, mlir::ValueRange{});
@@ -2236,7 +2225,7 @@ namespace lux::flowforge
         auto ptr_ty = mlir::LLVM::LLVMPointerType::get(bc.ctx);
 
         const bool returns_void =
-            static_cast<lux::meta::EBaseType>(info.return_type.qtype.base) == lux::meta::EBaseType::Void &&
+            static_cast<lux::meta::EBaseType>(info.return_type.qtype.base) == lux::meta::EBaseType::VOID &&
             !isPointerQual(info.return_type);
 
         // Collect + coerce operands from data input pins (shared by both
@@ -2377,7 +2366,7 @@ namespace lux::flowforge
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+            std::terminate();
         }
         catch (...)
         {
@@ -2385,9 +2374,7 @@ namespace lux::flowforge
         }
     }
 
-    MLIRBuilder::MLIRBuilder(std::unique_ptr<MLIRBuilderImpl> impl) noexcept
-        : impl_(std::move(impl))
-    {}
+    MLIRBuilder::MLIRBuilder(std::unique_ptr<MLIRBuilderImpl> impl) noexcept : impl_(std::move(impl)) {}
 
     MLIRBuilder::~MLIRBuilder() = default;
     MLIRBuilder::MLIRBuilder(MLIRBuilder&&) noexcept = default;
@@ -2400,7 +2387,7 @@ namespace lux::flowforge
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+            std::terminate();
         }
         catch (...)
         {

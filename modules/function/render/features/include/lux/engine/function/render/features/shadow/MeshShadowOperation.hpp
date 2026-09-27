@@ -40,7 +40,8 @@ namespace lux::render
         id = lux.render.mesh_shadow.v1,
         display = MeshShadow,
         requires = "lux.render.mesh_stack.v1,lux.render.shadow_map.v1",
-        custom_create = true) MeshShadowCommConfig
+        custom_create = true
+    ) MeshShadowCommConfig
     {
         ShaderHandle shadow_cull_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle shadow_compact_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};

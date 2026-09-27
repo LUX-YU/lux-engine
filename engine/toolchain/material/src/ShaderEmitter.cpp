@@ -128,10 +128,7 @@ namespace lux::shadergen::glsl
             // map guarantees declared_in iterates in ascending location order.
             std::map<int, std::pair<std::string, std::string>> declared_in;
 
-            Emitter(const ShaderIR& ir_, std::string* e_)
-                : ir(ir_),
-                  error(e_)
-            {}
+            Emitter(const ShaderIR& ir_, std::string* e_) : ir(ir_), error(e_) {}
 
             bool fail(std::string m)
             {
@@ -341,7 +338,7 @@ namespace lux::shadergen::glsl
                         // re-decode here or a DecodeNormal->TbnTransform chain double-decodes.
                         rhs = "normalize(mat3(normalize(vWorldTangent), normalize(vWorldBitangent), "
                               "normalize(vWorldNormal)) * " +
-                            operand(v, 0) + ")";
+                              operand(v, 0) + ")";
                         break;
                     }
                     case EOp::RAW_EXPR:
@@ -390,9 +387,9 @@ namespace lux::shadergen::glsl
             return lux::cxx::unexpected(std::string("shadergen: Shadow/VisBuffer passes not supported yet"));
 
         const bool gbuffer = p.pass == EMaterialPass::GBUFFER;
-        const bool unlit = p.shading_model == rdesc::ELightingTechnique::Unlit;
+        const bool unlit = p.shading_model == rdesc::ELightingTechnique::UNLIT;
         const bool forward_lit = !gbuffer && !unlit;
-        const bool forward_toon = forward_lit && p.shading_model == rdesc::ELightingTechnique::Stylized;
+        const bool forward_toon = forward_lit && p.shading_model == rdesc::ELightingTechnique::STYLIZED;
 
         bool tex_mode = false, param_mode = false;
         for (const auto& v : ir.values)
@@ -432,7 +429,7 @@ namespace lux::shadergen::glsl
             em.declared_in[9] = {"flat uint", "vTransitionFadeOut"};
         }
         const char* gbuffer_sm_id =
-            p.shading_model == rdesc::ELightingTechnique::Stylized ? "LUX_SM_TOON" : "LUX_SM_PBR";
+            p.shading_model == rdesc::ELightingTechnique::STYLIZED ? "LUX_SM_TOON" : "LUX_SM_PBR";
 
         std::ostringstream out;
         out << "#version 450\n";
@@ -506,9 +503,9 @@ namespace lux::shadergen::glsl
                "        vTransitionCoverage, vTransitionSeed, vTransitionFadeOut != 0u);\n";
         out << em.body.str();
 
-        if (p.alpha_mode == rdesc::EAlphaMode::Mask)
+        if (p.alpha_mode == rdesc::EAlphaMode::MASK)
             out << "    if (" << em.attr("opacity") << " < " << fmtF(p.alpha_cutoff) << ") discard;\n";
-        else if (p.alpha_mode == rdesc::EAlphaMode::Blend)
+        else if (p.alpha_mode == rdesc::EAlphaMode::BLEND)
             // The deferred renderer has no transparent pass yet, so a Blend material
             // would otherwise write a SOLID opaque block. Fall back to an alpha-test
             // CUTOUT (hard edges, but the silhouette is correct + visible) so blended

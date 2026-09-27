@@ -10,7 +10,7 @@
 
 namespace lux::simulation::ecs::detail
 {
-    template <class Iterator> class StorageEntityIterator final
+    template <class Iterator> class TStorageEntityIterator final
     {
     public:
         using iterator_category = std::input_iterator_tag;
@@ -19,18 +19,16 @@ namespace lux::simulation::ecs::detail
         using pointer = void;
         using reference = Entity;
 
-        StorageEntityIterator() = default;
+        TStorageEntityIterator() = default;
 
-        explicit StorageEntityIterator(Iterator iterator) : iterator_(std::move(iterator))
-        {
-        }
+        explicit TStorageEntityIterator(Iterator iterator) : iterator_(std::move(iterator)) {}
 
         [[nodiscard]] Entity operator*() const noexcept
         {
             return std::get<0>(*iterator_);
         }
 
-        StorageEntityIterator& operator++() noexcept
+        TStorageEntityIterator& operator++() noexcept
         {
             ++iterator_;
             return *this;
@@ -41,7 +39,7 @@ namespace lux::simulation::ecs::detail
             ++*this;
         }
 
-        [[nodiscard]] bool operator==(const StorageEntityIterator& other) const noexcept
+        [[nodiscard]] bool operator==(const TStorageEntityIterator& other) const noexcept
         {
             return iterator_ == other.iterator_;
         }

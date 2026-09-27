@@ -260,8 +260,7 @@ namespace lux::render
         {
             std::sort(entries.begin(), entries.end(), [&](const ResourcePassEntry& a, const ResourcePassEntry& b) {
                 return pass_to_order_pos[a.pass_idx] < pass_to_order_pos[b.pass_idx];
-            }
-            );
+            });
         }
 
         // 1b) Build WAW/RAW edges using the pre-built resource→pass index

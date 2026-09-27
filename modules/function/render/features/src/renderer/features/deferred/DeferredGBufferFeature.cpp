@@ -1,4 +1,5 @@
 #include <lux/engine/render/renderer/features/deferred/DeferredGBufferFeature.hpp>
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
 #include <lux/engine/render/graph/RGBuilder.hpp>
 #include <lux/engine/render/graph/RGCompiledGraph.hpp>
@@ -28,7 +29,6 @@
 #include <lux/engine/description/ShaderInfo.hpp>
 
 #include <array>
-#include <cassert>
 
 namespace lux::render
 {
@@ -37,9 +37,7 @@ namespace lux::render
     //  Construction / destruction
     // =========================================================================
 
-    DeferredGBufferFeature::DeferredGBufferFeature(Config cfg) : cfg_(std::move(cfg))
-    {
-    }
+    DeferredGBufferFeature::DeferredGBufferFeature(Config cfg) : cfg_(std::move(cfg)) {}
 
     DeferredGBufferFeature::~DeferredGBufferFeature()
     {
@@ -83,7 +81,8 @@ namespace lux::render
                 ShaderStageSlot{EBuiltinShader::GBUFFER_VERT, &cfg_.gbuffer_vertex_shader},
                 ShaderStageSlot{EBuiltinShader::GBUFFER_UNLIT_FRAG, &cfg_.gbuffer_unlit_fragment_shader},
                 ShaderStageSlot{EBuiltinShader::GBUFFER_PBR_FRAG, &cfg_.gbuffer_pbr_fragment_shader},
-                ShaderStageSlot{EBuiltinShader::GBUFFER_STYLIZED_FRAG, &cfg_.gbuffer_stylized_fragment_shader}};
+                ShaderStageSlot{EBuiltinShader::GBUFFER_STYLIZED_FRAG, &cfg_.gbuffer_stylized_fragment_shader}
+            };
             if (auto filled = resolveShaderStages(shaders, backfill); !filled)
                 return filled;
         }
@@ -97,16 +96,16 @@ namespace lux::render
 
         auto& ctx = renderContext();
         auto& shaders = ctx.globalRegistry().must<ShaderResources>();
-        assert(shaders.get(cfg_.gbuffer_vertex_shader) && "DeferredGBufferFeature: gbuffer_vertex_shader is invalid");
-        assert(
-            shaders.get(cfg_.gbuffer_unlit_fragment_shader) &&
-            "DeferredGBufferFeature: gbuffer_unlit_fragment_shader index is invalid");
-        assert(
-            shaders.get(cfg_.gbuffer_pbr_fragment_shader) &&
-            "DeferredGBufferFeature: gbuffer_pbr_fragment_shader index is invalid");
-        assert(
-            shaders.get(cfg_.gbuffer_stylized_fragment_shader) &&
-            "DeferredGBufferFeature: gbuffer_stylized_fragment_shader index is invalid");
+        const bool is_missing_vertex_shader = shaders.get(cfg_.gbuffer_vertex_shader) == nullptr;
+        const bool is_missing_unlit_shader = shaders.get(cfg_.gbuffer_unlit_fragment_shader) == nullptr;
+        const bool is_missing_pbr_shader = shaders.get(cfg_.gbuffer_pbr_fragment_shader) == nullptr;
+        const bool is_missing_stylized_shader = shaders.get(cfg_.gbuffer_stylized_fragment_shader) == nullptr;
+        const bool is_missing_shader = is_missing_vertex_shader || is_missing_unlit_shader || is_missing_pbr_shader ||
+            is_missing_stylized_shader;
+        if (is_missing_shader)
+        {
+            renderFatal("DeferredGBufferFeature: a required shader handle is invalid");
+        }
         // Graph family frag is OPTIONAL (no builtin). null handle => Graph family
         // gets no pipeline (registerFamilyPipelines skips it).
 
@@ -149,7 +148,7 @@ namespace lux::render
             // the LocalReadBoundary command-buffer state.
             // 旗标是客户端的选择,这里只检查它可不可行 —— 与 DeferredLightingFeature 的
             // INPUT_ATTACHMENT 检查同一条判据(两者必须落在同一个 caps 位上)。
-            local_read_scope_ = cfg_.extension_flags.containsAll(EGpuDrivenMeshExt::LocalReadScope);
+            local_read_scope_ = cfg_.extension_flags.containsAll(EGpuDrivenMeshExt::LOCAL_READ_SCOPE);
             if (local_read_scope_)
             {
                 if (!ctx.deviceContext().caps().dynamic_rendering_local_read)
@@ -183,7 +182,8 @@ namespace lux::render
                     cfg_.gbuffer_vertex_shader,
                     vlr,
                     vp_read_layout,
-                    resolveFragmentShader);
+                    resolveFragmentShader
+                );
                 !family)
                 return family;
         }
@@ -238,8 +238,8 @@ namespace lux::render
             builder,
             CullCompactParams{
                 .prefix = "DeferredGBuf",
-                .phase = ECoreRenderPhase::GBuffer,
-                .domain = EPassDomain::GBuffer,
+                .phase = ECoreRenderPhase::G_BUFFER,
+                .domain = EPassDomain::G_BUFFER,
                 .cull_pass_name = "DeferredGBufferCull",
                 .compact_pass_name = "DeferredGBufferCompact",
                 .descriptor_layout_version = cfg_.descriptor_layout_version,
@@ -274,10 +274,10 @@ namespace lux::render
                 .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                 .setPipeline(bucket_pipelines_.pick(0u, variant_buckets[0]))
                 .bindSceneDS()
-                .useEngineSet(EDescriptorSetSlot::Instance)
-                .bindImmutableDS(EDescriptorSetSlot::Texture, ctx.globalRegistry().descriptorSetOf<TextureResources>())
+                .useEngineSet(EDescriptorSetSlot::INSTANCE)
+                .bindImmutableDS(EDescriptorSetSlot::TEXTURE, ctx.globalRegistry().descriptorSetOf<TextureResources>())
                 .useEngineSet(
-                    EDescriptorSetSlot::Material,
+                    EDescriptorSetSlot::MATERIAL,
                     builder.trackExternalBuffer("ext.MaterialResources"),
                     ERGResourceType::BUFFER
                 )
@@ -297,7 +297,7 @@ namespace lux::render
 
         // Bind the bindless vertex pool at set 7 (shared 8-set layout).
         if (vpr && vpr->isInitialized())
-            draw_pass.useEngineSet(EDescriptorSetSlot::VertexPool);
+            draw_pass.useEngineSet(EDescriptorSetSlot::VERTEX_POOL);
 
         // Order the GBuffer draw after every compute-vertex producer (skinning,
         // future morph/cloth) so the graph inserts the compute→vertex barrier.

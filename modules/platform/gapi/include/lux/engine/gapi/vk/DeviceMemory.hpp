@@ -8,9 +8,7 @@ namespace lux::gapi::vk
     class DeviceMemory
     {
     public:
-        DeviceMemory() : memory_(VK_NULL_HANDLE)
-        {
-        }
+        DeviceMemory() : memory_(VK_NULL_HANDLE) {}
 
         DeviceMemory(VkDevice dev, const VkMemoryAllocateInfo& ai, VkAllocationCallbacks* allocator = nullptr)
         {

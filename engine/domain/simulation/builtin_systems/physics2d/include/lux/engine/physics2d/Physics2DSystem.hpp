@@ -4,7 +4,7 @@
 #include <lux/engine/physics2d/Physics2DComponents.hpp>
 #include <lux/engine/physics2d/abilities/PhysicsQuery2D.hpp>
 #include <lux/engine/physics2d/visibility.h>
-#include <lux/engine/simulation/SimulationClock.hpp>
+#include <lux/engine/simulation/SimulationTime.hpp>
 #include <lux/engine/simulation/SimulationSystemDescription.hpp>
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <lux/engine/simulation/SystemAccessSpec.hpp>
@@ -56,21 +56,30 @@ namespace lux::physics2d
     class LUX_ENGINE_PHYSICS2D_SIMULATION_PUBLIC Physics2DSystem final
     {
     public:
-        inline static constexpr std::array Capabilities{std::string_view{"physics.2d"}, std::string_view{"lux.physics2d.query"}};
-        inline static constexpr auto Access =
-            lux::simulation::makeSystemAccessSpec<lux::simulation::ComponentRead<BoxCollider2D>,
-                                                  lux::simulation::ComponentWrite<RigidBody2D>,
-                                                  lux::simulation::ComponentWrite<lux::simulation::ecs::Transform2D>>();
+        inline static constexpr std::array Capabilities{
+            std::string_view{"physics.2d"},
+            std::string_view{"lux.physics2d.query"}
+        };
+        inline static constexpr auto Access = lux::simulation::makeSystemAccessSpec<
+            lux::simulation::TComponentRead<BoxCollider2D>,
+            lux::simulation::TComponentWrite<RigidBody2D>,
+            lux::simulation::TComponentWrite<lux::simulation::ecs::Transform2D>>();
+        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
         inline static constexpr lux::simulation::SimulationSystemDescription Description{
-            .type = {.canonical_name = "lux.physics2d.System",
-                     .version = 1U,
-                     .configuration_schema_name = "lux.physics2d.Configuration",
-                     .configuration_schema_version = 1U,
-                     .capabilities = Capabilities}};
+            .type =
+                {.canonical_name = "lux.physics2d.System",
+                 .version = 1U,
+                 .configuration_schema_name = "lux.physics2d.Configuration",
+                 .configuration_schema_version = 1U,
+                 .capabilities = Capabilities,
+                 .supported_world_types = SupportedWorldTypes}
+        };
 
-        Physics2DSystem(lux::simulation::ecs::Registry& registry,
-                        const lux::simulation::SimulationClock& clock,
-                        Physics2DSystemConfiguration configuration);
+        Physics2DSystem(
+            lux::simulation::ecs::Registry& registry,
+            const lux::simulation::SimulationTime& time,
+            Physics2DSystemConfiguration configuration
+        );
         ~Physics2DSystem() noexcept;
 
         Physics2DSystem(const Physics2DSystem&) = delete;
@@ -79,10 +88,12 @@ namespace lux::physics2d
         [[nodiscard]] lux::cxx::expected<void, EPhysics2DSystemError> prepare() noexcept;
         [[nodiscard]] bool update() noexcept;
 
-        [[nodiscard]] bool overlapsBox(double center_x,
-                                       double center_y,
-                                       double half_width,
-                                       double half_height) noexcept;
+        [[nodiscard]] bool overlapsBox(
+            double center_x,
+            double center_y,
+            double half_width,
+            double half_height
+        ) noexcept;
 
         [[nodiscard]] Physics2DRuntimeStats stats() const noexcept;
 
@@ -97,7 +108,7 @@ namespace lux::physics2d
     [[nodiscard]] LUX_ENGINE_PHYSICS2D_SIMULATION_PUBLIC std::span<const lux::simulation::SimulationSystemRegistration>
     physics2DSystemRegistrations() noexcept;
 
-    [[nodiscard]] LUX_ENGINE_PHYSICS2D_SIMULATION_PUBLIC lux::cxx::expected<std::vector<std::byte>,
-                                                                            EPhysics2DSystemError>
-    makePhysics2DSystemConfiguration(const Physics2DSystemConfiguration& configuration) noexcept;
+    [[nodiscard]] LUX_ENGINE_PHYSICS2D_SIMULATION_PUBLIC lux::cxx::
+        expected<std::vector<std::byte>, EPhysics2DSystemError>
+        makePhysics2DSystemConfiguration(const Physics2DSystemConfiguration& configuration) noexcept;
 }

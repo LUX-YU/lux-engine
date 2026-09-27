@@ -7,9 +7,7 @@
 
 namespace lux::render
 {
-    Grid2DPassFeature::Grid2DPassFeature(Config cfg) : cfg_(std::move(cfg))
-    {
-    }
+    Grid2DPassFeature::Grid2DPassFeature(Config cfg) : cfg_(std::move(cfg)) {}
 
     lux::render::Expected<void> Grid2DPassFeature::initAndAttachTo(RenderScene& /*scene*/)
     {
@@ -19,7 +17,8 @@ namespace lux::render
         //(grid2d.frag 用它)必须带域合并标记,否则注册被拒。
         const std::array stage_requests{
             RenderContextView::PipelineStageDesc{EBuiltinShader::GRID_VERT, cfg_.vertex_shader},
-            RenderContextView::PipelineStageDesc{EBuiltinShader::GRID2D_FRAG, cfg_.fragment_shader}};
+            RenderContextView::PipelineStageDesc{EBuiltinShader::GRID2D_FRAG, cfg_.fragment_shader}
+        };
 
         auto stages = cv.preparePipelineStages(stage_requests);
         if (!stages)
@@ -62,7 +61,7 @@ namespace lux::render
             .bindSceneDS()
             .setKernelFn(record(false))
             .setKernel("Grid2DUnderDraw")
-            .stage(ERenderStage::Transparent);
+            .stage(ERenderStage::TRANSPARENT_STAGE);
 
         // Over: Overlay — the plan registers Grid2D AFTER Canvas2D, so the
         // write-after-write tie-break orders this pass after the content.
@@ -72,7 +71,7 @@ namespace lux::render
             .bindSceneDS()
             .setKernelFn(record(true))
             .setKernel("Grid2DOverDraw")
-            .stage(ERenderStage::Overlay);
+            .stage(ERenderStage::OVERLAY_STAGE);
     }
 
     void Grid2DPassFeature::onFrameBegin(const FeatureFrameContext& /*ctx*/)

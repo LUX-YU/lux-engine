@@ -31,8 +31,7 @@ namespace lux::serialization
             std::uint32_t nesting
         ) noexcept
             : max_string_bytes(string_bytes), max_container_elements(container_elements), max_nesting(nesting)
-        {
-        }
+        {}
 
         std::size_t max_string_bytes;
         std::size_t max_container_elements;

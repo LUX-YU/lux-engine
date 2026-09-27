@@ -15,7 +15,8 @@ namespace lux::render
         prefix = SpatialCull,
         id = lux.render.spatial_cull.v1,
         display = SpatialCull,
-        custom_create = true) SpatialCullCommConfig
+        custom_create = true
+    ) SpatialCullCommConfig
     {
         float cell_size{128.0f};     ///< Cell edge length (world units).
         float cull_distance{512.0f}; ///< Cull distance — a cell farther than this from the camera goes to sleep.

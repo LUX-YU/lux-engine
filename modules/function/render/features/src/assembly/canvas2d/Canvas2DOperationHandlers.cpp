@@ -52,7 +52,7 @@ namespace lux::render
         if (auto* arena = resolveArena(ctx, p.scene))
             r.status = arena->add(p.data, p.priority, p.visible != 0, r.handle, p.group);
         else
-            r.status = ECanvas2DCreateStatus::InvalidConfiguration;
+            r.status = ECanvas2DCreateStatus::INVALID_CONFIGURATION;
         replyToCurrent<AddImage2DPayload>(ctx, r);
     }
 
@@ -73,7 +73,7 @@ namespace lux::render
     void handleUpdateImage2DVisual(Ctx& ctx, const UpdateImage2DVisualPayload& p)
     {
         if (auto* arena = resolveArena(ctx, p.scene))
-            arena->writeVisual(p.handle, p.uv, p.tint, p.texture_bindless);
+            arena->writeVisual(p.handle, p.uv, p.tint, p.texture);
     }
 
     void handleUpdateImage2DKey(Ctx& ctx, const UpdateImage2DKeyPayload& p)
@@ -95,7 +95,7 @@ namespace lux::render
         if (auto* arena = resolveArena(ctx, p.scene))
             r.status = arena->addField(p.data, p.priority, p.visible != 0, r.handle);
         else
-            r.status = ECanvas2DCreateStatus::InvalidConfiguration;
+            r.status = ECanvas2DCreateStatus::INVALID_CONFIGURATION;
         replyToCurrent<AddPixelField2DPayload>(ctx, r);
     }
 
@@ -125,7 +125,7 @@ namespace lux::render
         if (auto* arena = resolveArena(ctx, p.scene))
             r.status = arena->addTile(p.data, p.priority, p.visible != 0, r.handle);
         else
-            r.status = ECanvas2DCreateStatus::InvalidConfiguration;
+            r.status = ECanvas2DCreateStatus::INVALID_CONFIGURATION;
         replyToCurrent<AddTile2DPayload>(ctx, r);
     }
 

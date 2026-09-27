@@ -15,8 +15,11 @@ namespace lux::render
             shutdown();
     }
 
-    bool
-    VertexPoolRegistry::init(DeviceContext& device_ctx, DescriptorService& descriptor_svc, SceneDescriptorArena& arena)
+    bool VertexPoolRegistry::init(
+        DeviceContext& device_ctx,
+        DescriptorService& descriptor_svc,
+        SceneDescriptorArena& arena
+    )
     {
         if (initialized_)
             return true;
@@ -175,8 +178,10 @@ namespace lux::render
         }
     }
 
-    Expected<void>
-    VertexPoolRegistry::setDomainWriteTarget(std::span<const VkDescriptorSet> sets, uint32_t binding_offset)
+    Expected<void> VertexPoolRegistry::setDomainWriteTarget(
+        std::span<const VkDescriptorSet> sets,
+        uint32_t binding_offset
+    )
     {
         if (auto accepted = domain_.set(sets, binding_offset); !accepted)
             return accepted;

@@ -27,11 +27,13 @@ namespace lux::render
         id = lux.render.linear_depth.v1,
         display = LinearDepth,
         feature = LinearDepthFeature,
-        feature_header = lux / engine / render / renderer / features / postprocess /
-                         LinearDepthFeature.hpp) LinearDepthCommConfig
+        feature_header = lux / engine / render / renderer / features / postprocess / LinearDepthFeature.hpp
+    ) LinearDepthCommConfig
     {
-        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};   ///< 空 = 内置全屏三角(TONEMAP_VERT)
-        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){}; ///< 空 = 内置 LINEAR_DEPTH_FRAG
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true)
+            LUX_NO_MEMBER(){}; ///< 空 = 内置全屏三角(TONEMAP_VERT)
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true)
+            LUX_NO_MEMBER(){}; ///< 空 = 内置 LINEAR_DEPTH_FRAG
     };
     static_assert(std::is_trivially_copyable_v<LinearDepthCommConfig>);
 

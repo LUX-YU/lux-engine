@@ -26,6 +26,15 @@ namespace lux::object
             MessageEnvelope(const MessageEnvelope&) = delete;
             MessageEnvelope& operator=(const MessageEnvelope&) = delete;
 
+            [[nodiscard]] explicit operator bool() const noexcept
+            {
+                return ops_ != nullptr;
+            }
+            [[nodiscard]] bool isInline() const noexcept
+            {
+                return inline_;
+            }
+
         private:
             template <class Callable> friend MessageEnvelope makeMessage(Callable&& callable);
             friend class ::lux::object::ObjectMessageQueue;
@@ -42,16 +51,7 @@ namespace lux::object
             template <class Callable, bool Inline> [[nodiscard]] static const Ops& ops() noexcept
             {
                 static const Ops value{
-                    [](void* storage) noexcept {
-                        try
-                        {
-                            (*static_cast<Callable*>(storage))();
-                        }
-                        catch (...)
-                        {
-                            std::terminate();
-                        }
-                    },
+                    [](void* storage) noexcept { (*static_cast<Callable*>(storage))(); },
                     [](void* storage) noexcept {
                         if constexpr (Inline)
                             std::destroy_at(static_cast<Callable*>(storage));
@@ -67,7 +67,8 @@ namespace lux::object
                             );
                             std::destroy_at(static_cast<Callable*>(source));
                         }
-                    }};
+                    }
+                };
                 return value;
             }
 
@@ -102,7 +103,7 @@ namespace lux::object
 
         template <class Callable> MessageEnvelope makeMessage(Callable&& callable)
         {
-            static_assert(std::is_invocable_v<std::remove_reference_t<Callable>&>);
+            static_assert(std::is_nothrow_invocable_v<std::remove_reference_t<Callable>&>);
             return MessageEnvelope{std::forward<Callable>(callable)};
         }
     } // namespace detail

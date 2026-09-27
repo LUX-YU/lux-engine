@@ -15,9 +15,8 @@
 namespace lux::render
 {
     struct GraphicsPipelineTag
-    {
-    };
-    using GraphicsPipelineHandle = TypedHandle<GraphicsPipelineTag>;
+    {};
+    using GraphicsPipelineHandle = TTypedHandle<GraphicsPipelineTag>;
 
     /// @brief Sentinel value indicating no valid pipeline handle.
     inline constexpr GraphicsPipelineHandle kInvalidPipelineHandle{};

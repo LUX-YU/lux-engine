@@ -16,10 +16,10 @@ namespace lux::render
     /// extension is expressed by render effects and geometry representations,
     /// not by mutating a second material registry.
     inline constexpr std::array kBuiltinShadingModels{
-        BuiltinShadingModel{EShadingModel::UNLIT, ELightingTechnique::Unlit},
-        BuiltinShadingModel{EShadingModel::LEGACY_LIT_BASE, ELightingTechnique::LegacyLit},
-        BuiltinShadingModel{EShadingModel::PbrMetallicRoughness, ELightingTechnique::PbrMetallicRoughness},
-        BuiltinShadingModel{EShadingModel::STYLIZED, ELightingTechnique::Stylized},
-        BuiltinShadingModel{EShadingModel::GRAPH, ELightingTechnique::Graph},
+        BuiltinShadingModel{EShadingModel::UNLIT, ELightingTechnique::UNLIT},
+        BuiltinShadingModel{EShadingModel::LEGACY_LIT_BASE, ELightingTechnique::LEGACY_LIT},
+        BuiltinShadingModel{EShadingModel::PBR_METALLIC_ROUGHNESS, ELightingTechnique::PBR_METALLIC_ROUGHNESS},
+        BuiltinShadingModel{EShadingModel::STYLIZED, ELightingTechnique::STYLIZED},
+        BuiltinShadingModel{EShadingModel::GRAPH, ELightingTechnique::GRAPH},
     };
 } // namespace lux::render

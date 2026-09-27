@@ -30,7 +30,7 @@
 // =============================================================================
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/description/ShaderInfo.hpp>   // rdesc::EShaderType
+#include <lux/engine/description/ShaderInfo.hpp> // rdesc::EShaderType
 
 #include <cstdint>
 #include <string>
@@ -50,7 +50,7 @@ namespace lux::shadergen::lglsl
     struct ShaderMeta
     {
         rdesc::EShaderType stage{rdesc::EShaderType::UNDEFINED};
-        std::string        entry{"main"};
+        std::string entry{"main"};
         std::vector<ShaderVariantDesc> variants;
     };
 
@@ -59,14 +59,14 @@ namespace lux::shadergen::lglsl
     struct InjectedBinding
     {
         std::string name;
-        uint32_t    set{0};
-        uint32_t    binding{0};
+        uint32_t set{0};
+        uint32_t binding{0};
     };
 
     struct EmitOutput
     {
-        std::string glsl;   ///< the complete GLSL with canonical layout already injected (can be fed directly to glslc)
-        ShaderMeta  meta;
+        std::string glsl; ///< the complete GLSL with canonical layout already injected (can be fed directly to glslc)
+        ShaderMeta meta;
         std::vector<InjectedBinding> injected;
     };
 
@@ -76,15 +76,17 @@ namespace lux::shadergen::lglsl
     /// stage, the stage belongs to the shader that includes it).
     enum class EEmitMode : uint8_t
     {
-        Shader,
-        Header,
+        SHADER,
+        HEADER,
     };
 
     /// .lglsl/.lglslh source text -> canonical GLSL. Error messages are
     /// prefixed with "line N: "; an unrecognized declaration shape or an
     /// unregistered resource name both fail; the pragma requirements depend
     /// on mode (see above).
-    lux::cxx::expected<EmitOutput, std::string>
-    emitCanonicalGlsl(std::string_view source, EEmitMode mode = EEmitMode::Shader);
+    lux::cxx::expected<EmitOutput, std::string> emitCanonicalGlsl(
+        std::string_view source,
+        EEmitMode mode = EEmitMode::SHADER
+    );
 
 } // namespace lux::shadergen::lglsl

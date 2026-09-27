@@ -31,8 +31,7 @@ namespace lux::material
         std::uint32_t pin_index{invalid_pin};
     };
 
-    [[nodiscard]] LUX_ENGINE_MATERIAL_COMPILER_PUBLIC lux::cxx::expected<
-        lux::rdesc::MaterialDescription,
-        MaterialCompileFailure
-    > compileMaterial(const MaterialGraph& graph) noexcept;
+    [[nodiscard]] LUX_ENGINE_MATERIAL_COMPILER_PUBLIC lux::cxx::
+        expected<lux::rdesc::MaterialDescription, MaterialCompileFailure>
+        compileMaterial(const MaterialGraph& graph) noexcept;
 } // namespace lux::material

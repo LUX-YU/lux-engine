@@ -5,6 +5,7 @@
 #pragma once
 
 #include "Meta.hpp"
+#include <exception>
 
 #include <lux/cxx/compile_time/expected.hpp>
 
@@ -21,7 +22,6 @@ namespace lux::meta
     {
         INVALID_TYPE,
         CONSTRUCTION_UNAVAILABLE,
-        ALLOCATION_FAILURE,
         CONSTRUCTION_FAILURE,
     };
 
@@ -33,8 +33,7 @@ namespace lux::meta
         static constexpr std::size_t SBO_SIZE = 16; // ≤ 16 B
         static constexpr std::size_t SBO_ALIGN = alignof(std::max_align_t);
 
-        union alignas(SBO_ALIGN) Storage
-        {
+        union alignas(SBO_ALIGN) Storage {
             void* heap;
             std::byte sbo[SBO_SIZE];
         };
@@ -78,8 +77,7 @@ namespace lux::meta
         /* ------------------------------------------------------------------ */
         /* 3. Reflected type: constructed from a RefClass                     */
         /* ------------------------------------------------------------------ */
-        [[nodiscard]] static lux::cxx::expected<RuntimeObject, ERuntimeObjectError>
-        create(const RefClass* cls) noexcept
+        [[nodiscard]] static lux::cxx::expected<RuntimeObject, ERuntimeObjectError> create(const RefClass* cls) noexcept
         {
             if (cls == nullptr || !validHeapType(cls->type))
                 return lux::cxx::unexpected<ERuntimeObjectError>(ERuntimeObjectError::INVALID_TYPE);
@@ -88,11 +86,13 @@ namespace lux::meta
 
             RuntimeObject result;
             void* storage = allocate(cls->type);
-            if (storage == nullptr)
-                return lux::cxx::unexpected<ERuntimeObjectError>(ERuntimeObjectError::ALLOCATION_FAILURE);
             try
             {
                 cls->construct(storage);
+            }
+            catch (const std::bad_alloc&)
+            {
+                std::terminate();
             }
             catch (...)
             {
@@ -105,22 +105,18 @@ namespace lux::meta
         }
 
         // special support for std::string
-        [[nodiscard]] static lux::cxx::expected<RuntimeObject, ERuntimeObjectError>
-        create(std::string value) noexcept
+        [[nodiscard]] static lux::cxx::expected<RuntimeObject, ERuntimeObjectError> create(std::string value) noexcept
         {
             static auto* string_class_meta = ReflectionRegistry::instance().findClass("std::string");
-            const bool is_invalid_metadata = string_class_meta == nullptr ||
-                !validHeapType(string_class_meta->type);
-            const bool is_layout_mismatch = !is_invalid_metadata &&
-                (string_class_meta->type.size != sizeof(std::string) ||
-                 string_class_meta->type.alignment != alignof(std::string));
+            const bool is_invalid_metadata = string_class_meta == nullptr || !validHeapType(string_class_meta->type);
+            const bool is_layout_mismatch =
+                !is_invalid_metadata && (string_class_meta->type.size != sizeof(std::string) ||
+                                         string_class_meta->type.alignment != alignof(std::string));
             if (is_invalid_metadata || is_layout_mismatch)
                 return lux::cxx::unexpected<ERuntimeObjectError>(ERuntimeObjectError::INVALID_TYPE);
 
             RuntimeObject result;
             void* storage = allocate(string_class_meta->type);
-            if (storage == nullptr)
-                return lux::cxx::unexpected<ERuntimeObjectError>(ERuntimeObjectError::ALLOCATION_FAILURE);
             new (storage) std::string(std::move(value));
             result.setTagged(&string_class_meta->type, true);
             result.storage_.heap = storage;
@@ -133,9 +129,9 @@ namespace lux::meta
             static_assert(sizeof(std::string_view) <= SBO_SIZE, "std::string_view size exceeds SBO_SIZE");
             static auto* string_class_meta = ReflectionRegistry::instance().findClass("std::string_view");
             const bool is_invalid_metadata = string_class_meta == nullptr;
-            const bool is_layout_mismatch = !is_invalid_metadata &&
-                (string_class_meta->type.size != sizeof(std::string_view) ||
-                 string_class_meta->type.alignment != alignof(std::string_view));
+            const bool is_layout_mismatch =
+                !is_invalid_metadata && (string_class_meta->type.size != sizeof(std::string_view) ||
+                                         string_class_meta->type.alignment != alignof(std::string_view));
             if (is_invalid_metadata || is_layout_mismatch)
                 return;
             setTagged(&string_class_meta->type, false);
@@ -166,8 +162,7 @@ namespace lux::meta
         static RuntimeObject defaultOf(const RefType* type) noexcept
         {
             RuntimeObject obj;
-            if (!type || type->size == 0 || !validAlignment(type->alignment) ||
-                !type->traits.is_trivially_copyable)
+            if (!type || type->size == 0 || !validAlignment(type->alignment) || !type->traits.is_trivially_copyable)
                 return obj;
 
             if (fitsSbo(*type))
@@ -178,8 +173,6 @@ namespace lux::meta
             else
             {
                 void* p = allocate(*type);
-                if (p == nullptr)
-                    return obj;
                 std::memset(p, 0, type->size);
                 obj.setTagged(type, true);
                 obj.storage_.heap = p;
@@ -280,12 +273,8 @@ namespace lux::meta
         [[nodiscard]] static void* allocate(const RefType& type) noexcept
         {
             if (!validHeapType(type))
-                return nullptr;
-            return ::operator new(
-                type.size,
-                std::align_val_t{allocationAlignment(type)},
-                std::nothrow
-            );
+                std::terminate();
+            return ::operator new(type.size, std::align_val_t{allocationAlignment(type)});
         }
 
         static void deallocate(void* storage, const RefType& type) noexcept
@@ -361,6 +350,10 @@ namespace lux::meta
                     {
                         cls->copy(dst.storage_.heap, storage_.heap);
                     }
+                    catch (const std::bad_alloc&)
+                    {
+                        std::terminate();
+                    }
                     catch (...)
                     {
                         return false;
@@ -379,8 +372,6 @@ namespace lux::meta
             if (heap)
             {
                 tmp.storage_.heap = allocate(*type_ptr);
-                if (!tmp.storage_.heap)
-                    return false;
                 if (type_ptr->traits.is_trivially_copyable)
                 {
                     std::memcpy(tmp.storage_.heap, storage_.heap, type_ptr->size);
@@ -397,6 +388,10 @@ namespace lux::meta
                     try
                     {
                         cls->copy_construct(tmp.storage_.heap, storage_.heap);
+                    }
+                    catch (const std::bad_alloc&)
+                    {
+                        std::terminate();
                     }
                     catch (...)
                     {

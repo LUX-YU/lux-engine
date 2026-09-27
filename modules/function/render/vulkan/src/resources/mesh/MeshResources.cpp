@@ -18,17 +18,18 @@ namespace lux::render
         std::uint64_t effective,
         std::uint64_t bytes,
         std::uint64_t available_bytes,
-        lux::render::CapacityPlanReason reason
+        lux::render::ECapacityPlanReason reason
     ) noexcept
     {
         last_capacity_shortfall_ = lux::render::CapacityShortfall{
             lux::render::CapacityDomainId{domain.name()},
-            lux::render::CapacityPlanError::BUDGET_LIMIT,
+            lux::render::ECapacityPlanError::BUDGET_LIMIT,
             reason,
             requested,
             effective,
             bytes,
-            available_bytes};
+            available_bytes
+        };
     }
 
     bool MeshResources::init(const InitInfo& ci)
@@ -224,28 +225,28 @@ namespace lux::render
                 mesh_max_count_,
                 record_bytes,
                 0u,
-                lux::render::CapacityPlanReason::BUDGET_REJECT
+                lux::render::ECapacityPlanReason::BUDGET_REJECT
             );
             return renderFailure<err::memory::OutOfMemory>();
         }
 
         // 1) Infer index_type
         EIndexType it = ci.index_type;
-        if (it == EIndexType::None)
+        if (it == EIndexType::NONE)
         {
             if (!ci.index_buffer.empty())
             {
                 const auto bytes = ci.index_buffer.size_bytes();
                 if (bytes % 4 == 0)
-                    it = EIndexType::UInt32;
+                    it = EIndexType::UINT32;
                 else if (bytes % 2 == 0)
-                    it = EIndexType::UInt16;
+                    it = EIndexType::UINT16;
                 else
                     return renderFailure<err::internal::InvalidArgument>();
             }
             else
             {
-                it = EIndexType::UInt32;
+                it = EIndexType::UINT32;
             }
         }
 
@@ -271,7 +272,7 @@ namespace lux::render
                 geometry_capacity_bytes_,
                 growth_bytes,
                 geometry_capacity_bytes_ > committed_geometry ? geometry_capacity_bytes_ - committed_geometry : 0u,
-                lux::render::CapacityPlanReason::BUDGET_REJECT
+                lux::render::ECapacityPlanReason::BUDGET_REJECT
             );
             return renderFailure<err::memory::OutOfMemory>();
         }
@@ -287,7 +288,7 @@ namespace lux::render
                     geometry_capacity_bytes_,
                     growth_bytes,
                     snapshot.total_budget > snapshot.total_usage ? snapshot.total_budget - snapshot.total_usage : 0u,
-                    lux::render::CapacityPlanReason::BUDGET_REJECT
+                    lux::render::ECapacityPlanReason::BUDGET_REJECT
                 );
                 return renderFailure<err::memory::OutOfMemory>();
             }
@@ -312,7 +313,7 @@ namespace lux::render
             return lux::cxx::unexpected(irExp.error());
         }
 
-        const uint32_t index_size = (it == EIndexType::UInt16 ? 2u : 4u);
+        const uint32_t index_size = (it == EIndexType::UINT16 ? 2u : 4u);
 
         // 3) Build CPU and GPU records
         MeshCpuRecord cpu{};
@@ -367,7 +368,7 @@ namespace lux::render
                 mesh_max_count_ > cpu_records_.size()
                     ? (mesh_max_count_ - cpu_records_.size()) * sizeof(MeshInfoGpu) * segments_ssbo_.slices()
                     : 0u,
-                lux::render::CapacityPlanReason::BUDGET_REJECT
+                lux::render::ECapacityPlanReason::BUDGET_REJECT
             );
             return renderFailure<err::memory::OutOfMemory>();
         }
@@ -494,8 +495,11 @@ namespace lux::render
     }
 
     // DESIGN-04: Free-list based sub-allocation (replaces bump cursor)
-    Expected<MeshResources::SegmentedRange>
-    MeshResources::suballoc(ChainedArenaAllocator& arena, std::span<const std::byte> data, uint64_t alignment)
+    Expected<MeshResources::SegmentedRange> MeshResources::suballoc(
+        ChainedArenaAllocator& arena,
+        std::span<const std::byte> data,
+        uint64_t alignment
+    )
     {
         if (data.empty())
             return SegmentedRange{};
@@ -517,7 +521,7 @@ namespace lux::render
                     geometry_capacity_bytes_,
                     grow_bytes,
                     geometry_capacity_bytes_ > committed_geometry ? geometry_capacity_bytes_ - committed_geometry : 0u,
-                    lux::render::CapacityPlanReason::BUDGET_REJECT
+                    lux::render::ECapacityPlanReason::BUDGET_REJECT
                 );
                 return renderFailure<err::memory::OutOfMemory>();
             }
@@ -532,7 +536,7 @@ namespace lux::render
                     geometry_capacity_bytes_,
                     grow_bytes,
                     snapshot.total_budget > snapshot.total_usage ? snapshot.total_budget - snapshot.total_usage : 0u,
-                    lux::render::CapacityPlanReason::BUDGET_REJECT
+                    lux::render::ECapacityPlanReason::BUDGET_REJECT
                 );
                 return renderFailure<err::memory::OutOfMemory>();
             }
@@ -550,7 +554,7 @@ namespace lux::render
                     geometry_capacity_bytes_,
                     grow_bytes,
                     snapshot.total_budget > snapshot.total_usage ? snapshot.total_budget - snapshot.total_usage : 0u,
-                    lux::render::CapacityPlanReason::BUDGET_REJECT
+                    lux::render::ECapacityPlanReason::BUDGET_REJECT
                 );
                 return renderFailure<err::memory::OutOfMemory>();
             }
@@ -562,8 +566,12 @@ namespace lux::render
         return SegmentedRange{BufferRange{alloc.offset, alloc.size}, alloc.segment_index, alloc.handle};
     }
 
-    bool
-    MeshResources::createArena(VkDeviceSize bytes, VkBufferUsageFlags usage, VkBuffer& out, VmaAllocation& out_alloc)
+    bool MeshResources::createArena(
+        VkDeviceSize bytes,
+        VkBufferUsageFlags usage,
+        VkBuffer& out,
+        VmaAllocation& out_alloc
+    )
     {
         auto vma = device_ctx_->vmaAllocator();
 
@@ -572,7 +580,8 @@ namespace lux::render
         bi.usage = usage;
         const std::array queue_families{
             device_ctx_->graphicsQueueFamilyIndex(),
-            device_ctx_->transferQueueFamilyIndex()};
+            device_ctx_->transferQueueFamilyIndex()
+        };
         if (queue_families[0] != queue_families[1])
         {
             // Mesh arenas are append-heavy, long-lived buffers consumed by the
@@ -766,9 +775,8 @@ namespace lux::render
                     .dst = c.vbo_dst,
                     .dst_offset = c.vbo_dst_offset,
                     .size = c.vbo_size,
-                    .domain = EBufferDomain::VertexInput,
-                }
-                );
+                    .domain = EBufferDomain::VERTEX_INPUT,
+                });
             }
             if (c.ibo_size > 0)
             {
@@ -778,9 +786,8 @@ namespace lux::render
                     .dst = c.ibo_dst,
                     .dst_offset = c.ibo_dst_offset,
                     .size = c.ibo_size,
-                    .domain = EBufferDomain::VertexInput,
-                }
-                );
+                    .domain = EBufferDomain::VERTEX_INPUT,
+                });
             }
             markReady(c.mesh_index);
         }
@@ -790,15 +797,14 @@ namespace lux::render
         for (auto& b : pending_acquire_barriers_)
         {
             scheduler.submitQFOTAcquire({
-                .kind = QFOTAcquireRequest::Kind::Buffer,
+                .kind = QFOTAcquireRequest::EKind::BUFFER,
                 .buffer = b.buffer,
                 .buf_offset = b.offset,
                 .buf_size = b.size,
                 .src_family = b.srcQueueFamilyIndex,
                 .dst_family = b.dstQueueFamilyIndex,
-                .domain = EBufferDomain::VertexInput,
-            }
-            );
+                .domain = EBufferDomain::VERTEX_INPUT,
+            });
         }
         pending_acquire_barriers_.clear();
     }
@@ -849,7 +855,7 @@ namespace lux::render
         // 成功**之后**:失败即不发布意味着失败对象随即销毁,而注册表没有
         // removeBeginFrameHook —— 早登记的钩子捕获的裸指针会成为每帧一次的
         // use-after-free。
-        greg.addBeginFrameHook(EUploadPhase::Upload, [mr](const FrameStamp& s) { mr->onFrameBeginMaintenance(s); });
+        greg.addBeginFrameHook(EUploadPhase::UPLOAD, [mr](const FrameStamp& s) { mr->onFrameBeginMaintenance(s); });
         ctx.globalTransferScheduler().contributors().add(makeTransferContributor(mr, /*priority=*/0));
         mr->setDeferredQueue(&ctx.deferredDestroyQueue());
         return {};

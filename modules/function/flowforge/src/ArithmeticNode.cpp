@@ -11,8 +11,7 @@ namespace lux::flowforge
 
         // Comparisons and logical ops always produce bool; everything else
         // produces the operand type.
-        const lux::meta::RefType* resultTypeFor(ENodeOperation op,
-                                                const lux::meta::RefType* operand_type)
+        const lux::meta::RefType* resultTypeFor(ENodeOperation op, const lux::meta::RefType* operand_type)
         {
             switch (op)
             {
@@ -38,33 +37,45 @@ namespace lux::flowforge
         lux::meta::RuntimeObject makeZeroConstant(const lux::meta::RefType* type)
         {
             using lux::meta::EBaseType;
-            if (!type) return {};
+            if (!type)
+                return {};
             switch (static_cast<EBaseType>(type->qtype.base))
             {
-            case EBaseType::Bool:   return lux::meta::RuntimeObject(bool{false});
-            case EBaseType::Int8:   return lux::meta::RuntimeObject(int8_t{0});
-            case EBaseType::Uint8:  return lux::meta::RuntimeObject(uint8_t{0});
-            case EBaseType::Int16:  return lux::meta::RuntimeObject(int16_t{0});
-            case EBaseType::Uint16: return lux::meta::RuntimeObject(uint16_t{0});
-            case EBaseType::Int32:  return lux::meta::RuntimeObject(int32_t{0});
-            case EBaseType::Uint32: return lux::meta::RuntimeObject(uint32_t{0});
-            case EBaseType::Int64:  return lux::meta::RuntimeObject(int64_t{0});
-            case EBaseType::Uint64: return lux::meta::RuntimeObject(uint64_t{0});
-            case EBaseType::Float:  return lux::meta::RuntimeObject(float{0.0f});
-            case EBaseType::Double: return lux::meta::RuntimeObject(double{0.0});
-            default:                return {};
+            case EBaseType::BOOL:
+                return lux::meta::RuntimeObject(bool{false});
+            case EBaseType::INT8:
+                return lux::meta::RuntimeObject(int8_t{0});
+            case EBaseType::UINT8:
+                return lux::meta::RuntimeObject(uint8_t{0});
+            case EBaseType::INT16:
+                return lux::meta::RuntimeObject(int16_t{0});
+            case EBaseType::UINT16:
+                return lux::meta::RuntimeObject(uint16_t{0});
+            case EBaseType::INT32:
+                return lux::meta::RuntimeObject(int32_t{0});
+            case EBaseType::UINT32:
+                return lux::meta::RuntimeObject(uint32_t{0});
+            case EBaseType::INT64:
+                return lux::meta::RuntimeObject(int64_t{0});
+            case EBaseType::UINT64:
+                return lux::meta::RuntimeObject(uint64_t{0});
+            case EBaseType::FLOAT:
+                return lux::meta::RuntimeObject(float{0.0f});
+            case EBaseType::DOUBLE:
+                return lux::meta::RuntimeObject(double{0.0});
+            default:
+                return {};
             }
         }
     } // namespace
 
     // ====================== BinaryOpNode ======================
     BinaryOpNode::BinaryOpNode(ENodeOperation op, const lux::meta::RefType* operand_type)
-        : BinaryOpNode(reinterpret_cast<uintptr_t>(this), op, operand_type) {}
+        : BinaryOpNode(reinterpret_cast<uintptr_t>(this), op, operand_type)
+    {}
 
     BinaryOpNode::BinaryOpNode(uint64_t id, ENodeOperation op, const lux::meta::RefType* operand_type)
-        : Node(id, op),
-          operand_type_(operand_type),
-          lhs_(this, DataPinInfo{"A", operand_type}, /*allow_default=*/true),
+        : Node(id, op), operand_type_(operand_type), lhs_(this, DataPinInfo{"A", operand_type}, /*allow_default=*/true),
           rhs_(this, DataPinInfo{"B", operand_type}, /*allow_default=*/true),
           result_(this, DataPinInfo{"Result", resultTypeFor(op, operand_type)})
     {
@@ -78,11 +89,11 @@ namespace lux::flowforge
 
     // ====================== UnaryOpNode ======================
     UnaryOpNode::UnaryOpNode(ENodeOperation op, const lux::meta::RefType* operand_type)
-        : UnaryOpNode(reinterpret_cast<uintptr_t>(this), op, operand_type) {}
+        : UnaryOpNode(reinterpret_cast<uintptr_t>(this), op, operand_type)
+    {}
 
     UnaryOpNode::UnaryOpNode(uint64_t id, ENodeOperation op, const lux::meta::RefType* operand_type)
-        : Node(id, op),
-          operand_type_(operand_type),
+        : Node(id, op), operand_type_(operand_type),
           operand_(this, DataPinInfo{"A", operand_type}, /*allow_default=*/true),
           result_(this, DataPinInfo{"Result", resultTypeFor(op, operand_type)})
     {

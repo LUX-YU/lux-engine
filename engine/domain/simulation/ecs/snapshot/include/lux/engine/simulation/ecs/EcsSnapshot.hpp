@@ -22,8 +22,10 @@ namespace lux::simulation::ecs
         EcsSnapshot& operator=(EcsSnapshot&&) noexcept;
         ~EcsSnapshot() noexcept;
 
-        [[nodiscard]] static lux::cxx::expected<EcsSnapshot, SnapshotError>
-        capture(const Registry& registry, const ComponentSnapshotSet& components) noexcept;
+        [[nodiscard]] static lux::cxx::expected<EcsSnapshot, SnapshotError> capture(
+            const Registry& registry,
+            const ComponentSnapshotSet& components
+        ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<std::unique_ptr<Registry>, SnapshotError> instantiate() const noexcept;
 

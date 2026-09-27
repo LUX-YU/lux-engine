@@ -11,7 +11,6 @@ add_subdirectory(composition)
 add_subdirectory(ecs/hierarchy)
 add_subdirectory(ecs/transform)
 add_subdirectory(ecs/visual)
-add_subdirectory(builtin_systems/transform)
 if(LUX_BUILD_PHYSICS2D)
     add_subdirectory(builtin_systems/physics2d)
 endif()
@@ -22,7 +21,6 @@ set(LUX_SIMULATION_COMPONENTS
     simulation_script
     simulation_scripting_core
     simulation_script_cpp_static
-    transform_system
 )
 if(TARGET simulation_script_native)
     list(APPEND

@@ -9,53 +9,65 @@
 
 namespace lux::simulation::script::detail
 {
-    template<class Signature>
-    struct ScriptSyncStepCall;
+    template <class Signature> struct TScriptSyncStepCall;
 
     template <class T> [[nodiscard]] consteval ScriptSyncStepType syncStepType() noexcept
     {
         using Value = std::remove_cvref_t<T>;
-        using Traits = lux::semantic::TypeTraits<Value>;
+        using Traits = lux::semantic::TTypeTraits<Value>;
         static_assert(lux::semantic::TypeDeclared<Value>);
         static_assert(Traits::Size == sizeof(Value) && Traits::Alignment == alignof(Value));
-        return {{lux::semantic::typeId(Traits::CanonicalName), Traits::CanonicalName, Traits::AbiKind, Traits::Size,
-                 Traits::Alignment},
-                std::is_reference_v<T> ? lux::semantic::EValuePass::CONST_REF : lux::semantic::EValuePass::VALUE};
+        return {
+            {lux::semantic::typeId(Traits::CanonicalName),
+             Traits::CanonicalName,
+             Traits::AbiKind,
+             Traits::Size,
+             Traits::Alignment},
+            std::is_reference_v<T> ? lux::semantic::EValuePass::CONST_REF : lux::semantic::EValuePass::VALUE
+        };
     }
 
-    template<class R, class... Args>
-    struct ScriptSyncStepCall<R(Args...)>
+    template <class R, class... Args> struct TScriptSyncStepCall<R(Args...)>
     {
         using Result = lux::cxx::expected<R, ScriptSyncStepError>;
         static_assert(sizeof...(Args) <= 64U);
-        static_assert(((!std::is_pointer_v<std::remove_cvref_t<Args>> &&
-            !std::is_volatile_v<std::remove_reference_t<Args>> &&
-            (!std::is_reference_v<Args> || (std::is_lvalue_reference_v<Args> &&
-                std::is_const_v<std::remove_reference_t<Args>>))) && ...));
+        static_assert(
+            ((!std::is_pointer_v<std::remove_cvref_t<Args>> && !std::is_volatile_v<std::remove_reference_t<Args>> &&
+              (!std::is_reference_v<Args> ||
+               (std::is_lvalue_reference_v<Args> && std::is_const_v<std::remove_reference_t<Args>>))) &&
+             ...)
+        );
         inline static constexpr std::array<ScriptSyncStepType, sizeof...(Args)> Arguments{syncStepType<Args>()...};
-        inline static constexpr auto Results = []() consteval
-        {
+        inline static constexpr auto Results = []() consteval {
             if constexpr (std::is_void_v<R>)
                 return std::array<ScriptSyncStepType, 0>{};
             else
             {
                 static_assert(!std::is_reference_v<R> && std::is_trivially_copyable_v<R>);
-                constexpr auto kind = lux::semantic::TypeTraits<R>::AbiKind;
-                static_assert(kind == LUX_SCRIPT_VK_BOOL || kind == LUX_SCRIPT_VK_INT32 ||
-                    kind == LUX_SCRIPT_VK_UINT32 || kind == LUX_SCRIPT_VK_FLOAT || kind == LUX_SCRIPT_VK_DOUBLE,
-                    "Synchronous script steps currently return scalar or void only");
+                constexpr auto kind = lux::semantic::TTypeTraits<R>::AbiKind;
+                static_assert(
+                    kind == LUX_SCRIPT_VK_BOOL || kind == LUX_SCRIPT_VK_INT32 || kind == LUX_SCRIPT_VK_UINT32 ||
+                        kind == LUX_SCRIPT_VK_FLOAT || kind == LUX_SCRIPT_VK_DOUBLE,
+                    "Synchronous script steps currently return scalar or void only"
+                );
                 return std::array{syncStepType<R>()};
             }
         }();
         inline static constexpr ScriptSyncStepShape Shape{Arguments, Results};
 
         template <class Context>
-        [[nodiscard]] static Result invoke(Context& context, std::uint32_t ordinal,
-                                           const std::remove_cvref_t<Args>&... values) noexcept
+        [[nodiscard]] static Result invoke(
+            Context& context,
+            std::uint32_t ordinal,
+            const std::remove_cvref_t<Args>&... values
+        ) noexcept
         {
-            return apply([&](const void* const* arguments, void* result) noexcept {
-                return context.invokeSyncStep(ordinal, Shape, arguments, result);
-            }, values...);
+            return apply(
+                [&](const void* const* arguments, void* result) noexcept {
+                    return context.invokeSyncStep(ordinal, Shape, arguments, result);
+                },
+                values...
+            );
         }
 
         template <class Call>
@@ -70,7 +82,8 @@ namespace lux::simulation::script::detail
             {
                 R value;
                 const auto invoked = call(arguments.data(), &value);
-                if (!invoked) return lux::cxx::unexpected<ScriptSyncStepError>(invoked.error());
+                if (!invoked)
+                    return lux::cxx::unexpected<ScriptSyncStepError>(invoked.error());
                 return value;
             }
         }
@@ -90,6 +103,6 @@ namespace lux::simulation::script
 {
     template <class Signature> [[nodiscard]] consteval const ScriptSyncStepShape* scriptSyncStepShape() noexcept
     {
-        return &detail::ScriptSyncStepCall<Signature>::Shape;
+        return &detail::TScriptSyncStepCall<Signature>::Shape;
     }
 } // namespace lux::simulation::script

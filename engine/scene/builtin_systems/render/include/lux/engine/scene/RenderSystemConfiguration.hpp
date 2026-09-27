@@ -2,6 +2,8 @@
 
 #include <lux/engine/function/render/client/core/FeatureTypeId.hpp>
 #include <lux/engine/meta/MetaAnnotations.hpp>
+#include <lux/engine/scene/render/visibility.h>
+#include <lux/engine/serialization/PortableValueCodec.hpp>
 
 #include <cstddef>
 #include <vector>
@@ -9,6 +11,9 @@
 
 namespace lux::scene
 {
+    [[nodiscard]] LUX_ENGINE_SCENE_RENDER_PUBLIC serialization::PortableValueCodec
+    renderSystemConfigurationCodec() noexcept;
+
     struct LUX_TYPE_INFO(both) RenderFeatureInstanceDescription final
     {
         LUX_MEMBER(readonly = true)

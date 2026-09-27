@@ -5,7 +5,7 @@
 //
 //  The feature's whole client-facing comm surface, derived from the annotated
 //  author header: op descriptors ({Payload, lane, kind, name[, opcode][, blob_field]}),
-//  CommandTraits specialisations (reply= key), FeatureOpIds, and the
+//  TCommandTraits specialisations (reply= key), TFeatureOpIds, and the
 //  payload-taking Proxy. Transport routing lives BELOW the proxy
 //  (FeatureOpSend.hpp picks push/pushResource/pushBulk/pushBlob from the
 //  descriptor); proxy methods are named one-line verbs, generated in .ops.cpp.
@@ -31,7 +31,7 @@ namespace lux::render
     class RenderProgramSession;
     class RenderControlSession;
     enum class ERenderUploadSubmitError : std::uint8_t;
-    template <typename T> class RenderRequest;
+    template <typename T> class TRenderRequest;
 
 {#- ── locate the config record (feature identity) ── -#}
 {%- set cfg_found = false -%}{%- set cfg_index = 0 -%}
@@ -47,6 +47,9 @@ namespace lux::render
 #error "LUX_COMM_CONFIG needs prefix=<Ident>"
 {%- endif %}
 
+{% if annotation_get_for_or(cfg, "luxop::config", "custom_codec", false) %}
+    [[nodiscard]] {{ client_export }} RenderFeatureConfigCodec {{ prefix }}ConfigurationCodec() noexcept;
+{% endif %}
     // ═════════ op descriptors ({{ prefix }}) — declaration order = wire order ═════════
 {% for rec_idx in marked_record_decls %}{%- set op = decl_from_index(rec_idx) -%}{%- if annotation_has(op, "luxop::op") -%}
 {%- set kind = annotation_get_for_or(op, "luxop::op", "kind", "") -%}
@@ -65,7 +68,7 @@ namespace lux::render
 {% endif -%}
 {%- if reply != "" %}
     template <>
-    struct CommandTraits<::{{ op.fq_name }}>
+    struct TCommandTraits<::{{ op.fq_name }}>
     {
         using Reply = ::lux::render::{{ reply }};
         static constexpr bool has_reply = true;
@@ -82,24 +85,24 @@ namespace lux::render
     {
         using Payload = ::{{ op.fq_name }};
 {%- if lane == "program" %}
-        static constexpr EOperationLane lane = EOperationLane::Program;
+        static constexpr EOperationLane lane = EOperationLane::PROGRAM;
 {%- else if lane == "control" %}
-        static constexpr EOperationLane lane = EOperationLane::Control;
+        static constexpr EOperationLane lane = EOperationLane::CONTROL;
 {%- else if lane == "upload" %}
-        static constexpr EOperationLane lane = EOperationLane::Upload;
+        static constexpr EOperationLane lane = EOperationLane::UPLOAD;
 {%- else %}
 #error "LUX_OP on {{ op.name }}: lane must be program|control|upload"
 {%- endif %}
 {%- if kind == "stream" %}
-        static constexpr EOpKind kind = EOpKind::Stream;
+        static constexpr EOpKind kind = EOpKind::STREAM;
 {%- else if kind == "resource" %}
-        static constexpr EOpKind kind = EOpKind::Resource;
+        static constexpr EOpKind kind = EOpKind::RESOURCE;
 {%- else if kind == "bulk" %}
-        static constexpr EOpKind kind = EOpKind::Bulk;
+        static constexpr EOpKind kind = EOpKind::BULK;
 {%- else if kind == "blob" %}
-        static constexpr EOpKind kind = EOpKind::Blob;
+        static constexpr EOpKind kind = EOpKind::BLOB;
 {%- else if kind == "param" %}
-        static constexpr EOpKind kind = EOpKind::Param;
+        static constexpr EOpKind kind = EOpKind::PARAM;
 {%- else %}
 #error "LUX_OP on {{ op.name }}: kind must be stream|resource|bulk|blob|param"
 {%- endif %}
@@ -126,8 +129,8 @@ namespace lux::render
     struct {{ bulk_alias }}Op
     {
         using Payload = ::{{ op.fq_name }};
-        static constexpr EOperationLane lane = EOperationLane::{% if lane == "program" %}Program{% else if lane == "control" %}Control{% else %}Upload{% endif %};
-        static constexpr EOpKind kind = EOpKind::Bulk;
+        static constexpr EOperationLane lane = EOperationLane::{% if lane == "program" %}PROGRAM{% else if lane == "control" %}CONTROL{% else %}UPLOAD{% endif %};
+        static constexpr EOpKind kind = EOpKind::BULK;
         static constexpr const char* name = "{{ bulk_alias }}";
     };
 {%- endif %}
@@ -138,14 +141,14 @@ namespace lux::render
 {%- if param_lane == "" %}
 #error "LUX_COMM_CONFIG with param_op needs param_lane=program|control"
 {%- endif %}
-    /// 通用反射 setParams(EOpKind::Param):载荷是共享的
+    /// 通用反射 setParams(EOpKind::PARAM):载荷是共享的
     /// SetFeatureParamsPayload,经共享 FeatureParamsProxy 推送 —— 无专属
     /// proxy 方法;registrar 由位置自动导出 param_set_op_index。
     struct {{ param_op }}Op
     {
         using Payload = SetFeatureParamsPayload;
-        static constexpr EOperationLane lane = EOperationLane::{% if param_lane == "control" %}Control{% else %}Program{% endif %};
-        static constexpr EOpKind kind = EOpKind::Param;
+        static constexpr EOperationLane lane = EOperationLane::{% if param_lane == "control" %}CONTROL{% else %}PROGRAM{% endif %};
+        static constexpr EOpKind kind = EOpKind::PARAM;
         static constexpr const char* name = "{{ param_op }}";
     };
 {% endif %}
@@ -153,12 +156,12 @@ namespace lux::render
     // A real (forward-declarable) struct rather than a `using` alias so
     // render-light headers can hold it by value behind a forward declaration.
     struct {{ prefix }}OperationIds
-        : FeatureOpIds<
+        : TFeatureOpIds<
 {%- set first = true -%}
 {%- for rec_idx in marked_record_decls -%}{%- set op = decl_from_index(rec_idx) -%}{%- if annotation_has(op, "luxop::op") -%}{%- if not first %}, {% endif -%}{{ annotation_get_for_or(op, "luxop::op", "name", "") }}Op{%- set first = false -%}{%- set b = annotation_get_for_or(op, "luxop::op", "bulk", "") -%}{%- if b != "" %}, {{ b }}Op{%- endif -%}{%- endif -%}{%- endfor -%}
 {%- if param_op != "" -%}{%- if not first %}, {% endif -%}{{ param_op }}Op{%- endif -%}>
     {
-        using Ids = FeatureOpIds<
+        using Ids = TFeatureOpIds<
 {%- set first2 = true -%}
 {%- for rec_idx in marked_record_decls -%}{%- set op = decl_from_index(rec_idx) -%}{%- if annotation_has(op, "luxop::op") -%}{%- if not first2 %}, {% endif -%}{{ annotation_get_for_or(op, "luxop::op", "name", "") }}Op{%- set first2 = false -%}{%- set b2 = annotation_get_for_or(op, "luxop::op", "bulk", "") -%}{%- if b2 != "" %}, {{ b2 }}Op{%- endif -%}{%- endif -%}{%- endfor -%}
 {%- if param_op != "" -%}{%- if not first2 %}, {% endif -%}{{ param_op }}Op{%- endif -%}>;
@@ -202,7 +205,7 @@ namespace lux::render
 {%- if kind == "bulk" %}
         void {{ method }}(std::span<const ::{{ op.fq_name }}> items);
 {%- else if kind == "blob" %}
-        {% if reply != "" %}[[nodiscard]] RenderRequest<::lux::render::{{ reply }}> {% else %}void {% endif %}{{ method }}(
+        {% if reply != "" %}[[nodiscard]] TRenderRequest<::lux::render::{{ reply }}> {% else %}void {% endif %}{{ method }}(
             ::{{ op.fq_name }} payload,
             std::span<const std::byte> blob_bytes, std::size_t align);
 {%- else if kind == "stream" and nblobs == 1 %}
@@ -211,7 +214,7 @@ namespace lux::render
         void {{ method }}(::{{ op.fq_name }} payload{% for fid in op.field_decls %}{% set f = decl_from_id(fid) %}{% if annotation_has(f, "luxop::blob_field") %},
             std::span<const std::byte> {{ f.name }}_bytes, std::size_t {{ f.name }}_align{% endif %}{% endfor %});
 {%- else if reply != "" %}
-        [[nodiscard]] RenderRequest<::lux::render::{{ reply }}> {{ method }}(const ::{{ op.fq_name }}& payload);
+        [[nodiscard]] TRenderRequest<::lux::render::{{ reply }}> {{ method }}(const ::{{ op.fq_name }}& payload);
 {%- else %}
         void {{ method }}(const ::{{ op.fq_name }}& payload);
 {%- endif %}
@@ -246,7 +249,7 @@ namespace lux::render
 {%- if kind == "blob" or kind == "bulk" %}
 #error "control op {{ op.name }} must use a POD unary payload"
 {%- else if reply != "" %}
-        [[nodiscard]] RenderRequest<::lux::render::{{ reply }}> {{ method }}(const ::{{ op.fq_name }}& payload);
+        [[nodiscard]] TRenderRequest<::lux::render::{{ reply }}> {{ method }}(const ::{{ op.fq_name }}& payload);
 {%- else %}
         void {{ method }}(const ::{{ op.fq_name }}& payload);
 {%- endif %}
@@ -279,7 +282,7 @@ namespace lux::render
 #error "upload op {{ op.name }} must be an owning unary/blob packet"
 {%- else if kind == "blob" %}
         [[nodiscard]] lux::cxx::expected<
-            {% if reply != "" %}RenderRequest<::lux::render::{{ reply }}>{% else %}void{% endif %},
+            {% if reply != "" %}TRenderRequest<::lux::render::{{ reply }}>{% else %}void{% endif %},
             ERenderUploadSubmitError> {{ method }}(
                 ::{{ op.fq_name }} payload,
                 std::span<const std::byte> blob_bytes,
@@ -287,7 +290,7 @@ namespace lux::render
             );
 {%- else %}
         [[nodiscard]] lux::cxx::expected<
-            {% if reply != "" %}RenderRequest<::lux::render::{{ reply }}>{% else %}void{% endif %},
+            {% if reply != "" %}TRenderRequest<::lux::render::{{ reply }}>{% else %}void{% endif %},
             ERenderUploadSubmitError> {{ method }}(
                 const ::{{ op.fq_name }}& payload
             );

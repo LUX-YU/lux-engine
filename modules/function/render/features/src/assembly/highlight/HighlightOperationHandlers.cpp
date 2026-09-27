@@ -10,8 +10,10 @@ namespace lux::render
 {
     RenderScene* lookupScene(void* user_state, RenderSceneId scene_id);
 
-    void handleHighlightReplaceTargets(GeneralRenderServer::Dispatcher::Ctx& ctx,
-                                       const HighlightReplaceTargetsPayload& payload)
+    void handleHighlightReplaceTargets(
+        GeneralRenderServer::Dispatcher::Ctx& ctx,
+        const HighlightReplaceTargetsPayload& payload
+    )
     {
         auto* scene = lookupScene(ctx.user_state, payload.scene_id);
         if (!scene)
@@ -24,14 +26,17 @@ namespace lux::render
         {
             return;
         }
-        if (bytes.size() != payload.targets.size || bytes.size() % sizeof(RenderEntityId) != 0)
+        if (bytes.size() != payload.targets.size || bytes.size() % sizeof(ERenderEntityId) != 0)
         {
-            scene->renderContext().reportError(renderError<err::comm::BulkPayloadNotMultiple>(
-                sizeof(RenderEntityId), bytes.size()), payload.scene_id.index, scene->frameSerial());
+            scene->renderContext().reportError(
+                renderError<err::comm::BulkPayloadNotMultiple>(sizeof(ERenderEntityId), bytes.size()),
+                payload.scene_id.index,
+                scene->frameSerial()
+            );
             return;
         }
         // memcpy accepts the transport blob's alignment; no borrowed pointer survives.
-        std::vector<RenderEntityId> targets(bytes.size() / sizeof(RenderEntityId));
+        std::vector<ERenderEntityId> targets(bytes.size() / sizeof(ERenderEntityId));
         if (!bytes.empty())
         {
             std::memcpy(targets.data(), bytes.data(), bytes.size());

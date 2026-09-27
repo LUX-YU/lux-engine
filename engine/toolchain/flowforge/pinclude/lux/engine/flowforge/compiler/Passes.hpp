@@ -21,7 +21,11 @@
 #include <vector>
 #include "IR.hpp"
 
-namespace mlir { class Pass; class ModuleOp; }
+namespace mlir
+{
+    class Pass;
+    class ModuleOp;
+}
 
 namespace lux::flowforge
 {
@@ -74,8 +78,8 @@ namespace lux::flowforge
     /// must stay valid for the duration of the call.
     struct JitNativeSymbol
     {
-        const char* name    = nullptr;
-        void*       address = nullptr;
+        const char* name = nullptr;
+        void* address = nullptr;
     };
 
     // Symbol-binding flavor of runMainJIT: registers the given host functions
@@ -83,8 +87,5 @@ namespace lux::flowforge
     // NATIVE_FUNC_CALL nodes resolve their extern declarations at JIT time
     // (the engine does NOT search the host process's exports on Windows).
     // This is the editor run-button path.
-    [[nodiscard]] FlowForgeResult<int> runMainJIT(
-        IR& ir,
-        const std::vector<JitNativeSymbol>& native_symbols
-    ) noexcept;
+    [[nodiscard]] FlowForgeResult<int> runMainJIT(IR& ir, const std::vector<JitNativeSymbol>& native_symbols) noexcept;
 }

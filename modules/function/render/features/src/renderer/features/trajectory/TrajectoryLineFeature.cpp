@@ -30,7 +30,8 @@ namespace lux::render
                     1,
                     0,
                     VK_FORMAT_R32_UINT,
-                    offsetof(GpuTrajectoryVertex, packed_color)},
+                    offsetof(GpuTrajectoryVertex, packed_color)
+                },
                 VkVertexInputAttributeDescription{2, 0, VK_FORMAT_R32_SFLOAT, offsetof(GpuTrajectoryVertex, time)},
                 VkVertexInputAttributeDescription{3, 0, VK_FORMAT_R32_SFLOAT, offsetof(GpuTrajectoryVertex, width)},
             };
@@ -47,8 +48,7 @@ namespace lux::render
 
     TrajectoryLineFeature::TrajectoryLineFeature(Config cfg)
         : ITrajectoryFeature(RenderFeature::Config{.name = "TrajectoryLine"}), cfg_(std::move(cfg))
-    {
-    }
+    {}
 
     lux::render::Expected<void> TrajectoryLineFeature::initAndAttachTo(RenderScene& /*scene*/)
     {
@@ -59,7 +59,8 @@ namespace lux::render
         // 用 uViews)的管线必须带域合并标记,否则注册被拒。
         const std::array stage_requests{
             RenderContextView::PipelineStageDesc{EBuiltinShader::TRAJECTORY_LINE_VERT, cfg_.vertex_shader},
-            RenderContextView::PipelineStageDesc{EBuiltinShader::TRAJECTORY_LINE_FRAG, cfg_.fragment_shader}};
+            RenderContextView::PipelineStageDesc{EBuiltinShader::TRAJECTORY_LINE_FRAG, cfg_.fragment_shader}
+        };
 
         auto stages = cv.preparePipelineStages(stage_requests);
         if (!stages)
@@ -110,7 +111,7 @@ namespace lux::render
             .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
             .setPipeline(pipeline_handle_)
             .bindSceneDS()
-            .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::ForwardTrans)))
+            .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::FORWARD_TRANS)))
             .setKernelFn([this](const PassRecordContext& ctx) {
                 if (!global_buf_ || global_buf_->buffer() == VK_NULL_HANDLE)
                     return;
@@ -122,15 +123,13 @@ namespace lux::render
                 VkDeviceSize zero_offset = 0;
                 vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &vbuf, &zero_offset);
 
-                global_buf_->forEachTrajectory(
-                    [&](uint32_t /*trajectory_id*/, const TrajectoryGlobalBuffer::Slot& slot) {
-                        if (slot.count == 0)
-                            return;
-                        vkCmdDraw(ctx.cmd, slot.count, 1, slot.first, 0);
-                    }
-                );
-            }
-            )
+                global_buf_->forEachTrajectory([&](uint32_t /*trajectory_id*/,
+                                                   const TrajectoryGlobalBuffer::Slot& slot) {
+                    if (slot.count == 0)
+                        return;
+                    vkCmdDraw(ctx.cmd, slot.count, 1, slot.first, 0);
+                });
+            })
             .setKernel("TrajectoryDraw");
     }
 

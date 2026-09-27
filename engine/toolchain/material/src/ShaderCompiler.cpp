@@ -30,17 +30,19 @@ namespace lux::shadergen::glsl
         [[nodiscard]] bool validIncludeName(std::string_view name) noexcept
         {
             return !name.empty() && name.front() != '/' && name.front() != '\\' &&
-                name.find(':') == std::string_view::npos && name.find("..") == std::string_view::npos &&
-                name.find('\\') == std::string_view::npos;
+                   name.find(':') == std::string_view::npos && name.find("..") == std::string_view::npos &&
+                   name.find('\\') == std::string_view::npos;
         }
 
         class MemoryIncluder final : public shaderc::CompileOptions::IncluderInterface
         {
         public:
-            shaderc_include_result* GetInclude(const char*          requested,
-                                               shaderc_include_type /*type*/,
-                                               const char*          /*requesting*/,
-                                               size_t               /*depth*/) override
+            shaderc_include_result* GetInclude(
+                const char* requested,
+                shaderc_include_type /*type*/,
+                const char* /*requesting*/,
+                size_t /*depth*/
+            ) override
             {
                 auto* data = new Payload{};
                 const std::string_view requested_name = requested != nullptr ? requested : "";
@@ -49,18 +51,14 @@ namespace lux::shadergen::glsl
                     const auto resource = std::find_if(
                         resources::kMaterialShaderIncludes.begin(),
                         resources::kMaterialShaderIncludes.end(),
-                        [requested_name](const resources::EmbeddedShaderInclude& candidate)
-                        {
+                        [requested_name](const resources::EmbeddedShaderInclude& candidate) {
                             return candidate.name == requested_name;
                         }
                     );
                     if (resource != resources::kMaterialShaderIncludes.end())
                     {
                         data->name = resource->name;
-                        data->content.assign(
-                            reinterpret_cast<const char*>(resource->data),
-                            resource->size
-                        );
+                        data->content.assign(reinterpret_cast<const char*>(resource->data), resource->size);
                         return make(data);
                     }
                 }
@@ -77,31 +75,33 @@ namespace lux::shadergen::glsl
             }
 
         private:
-            struct Payload { std::string name; std::string content; };
+            struct Payload
+            {
+                std::string name;
+                std::string content;
+            };
 
             static shaderc_include_result* make(Payload* p)
             {
                 auto* r = new shaderc_include_result{};
-                r->source_name        = p->name.c_str();
+                r->source_name = p->name.c_str();
                 r->source_name_length = p->name.size();
-                r->content            = p->content.c_str();
-                r->content_length     = p->content.size();
-                r->user_data          = p;
+                r->content = p->content.c_str();
+                r->content_length = p->content.size();
+                r->user_data = p;
                 return r;
             }
-
         };
     } // namespace
 
-    lux::cxx::expected<CompiledShader, std::string>
-    compileToSpirv(const ShaderIR& ir, const EmitParams& params)
+    lux::cxx::expected<CompiledShader, std::string> compileToSpirv(const ShaderIR& ir, const EmitParams& params)
     {
         auto source_exp = emitGlsl(ir, params);
         if (!source_exp)
             return lux::cxx::unexpected(std::move(source_exp.error()));
         const std::string& source = *source_exp;
 
-        shaderc::Compiler       compiler;
+        shaderc::Compiler compiler;
         shaderc::CompileOptions options;
         options.SetSourceLanguage(shaderc_source_language_glsl);
         options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_2);
@@ -113,8 +113,8 @@ namespace lux::shadergen::glsl
 
         if (result.GetCompilationStatus() != shaderc_compilation_status_success)
             return lux::cxx::unexpected(
-                "shadergen: shaderc failed: " + result.GetErrorMessage() +
-                "\n--- generated GLSL ---\n" + source);
+                "shadergen: shaderc failed: " + result.GetErrorMessage() + "\n--- generated GLSL ---\n" + source
+            );
 
         CompiledShader out;
         out.spirv.assign(result.cbegin(), result.cend());
@@ -132,10 +132,8 @@ namespace lux::shadergen::glsl
         // referenced sets are missing from the layout ("uses set #N but not
         // bound"), which addMergedLayoutVariant's completeness check already
         // catches. The sole source of reflection is the Toolchain adapter.
-        if (!lux::toolchain::reflectSpirv(
-                out.spirv.data(), out.spirv.size() * sizeof(uint32_t), out.info))
-            return lux::cxx::unexpected(std::string(
-                "shadergen: SPIR-V reflection failed"));
+        if (!lux::toolchain::reflectSpirv(out.spirv.data(), out.spirv.size() * sizeof(uint32_t), out.info))
+            return lux::cxx::unexpected(std::string("shadergen: SPIR-V reflection failed"));
         return out;
     }
 

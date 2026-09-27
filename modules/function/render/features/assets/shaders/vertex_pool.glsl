@@ -33,7 +33,7 @@
 #extension GL_EXT_nonuniform_qualifier : require
 
 // The bindless vertex-pool array lives at descriptor set 7 for graphics mesh
-// shaders (the EDescriptorSetSlot::VertexPool contract). The skinning compute
+// shaders (the EDescriptorSetSlot::VERTEX_POOL contract). The skinning compute
 // kernel binds the SAME descriptor set at a different index (its pipeline
 // layout has no set 7), so it #defines LUX_VERTEX_POOL_SET before including.
 #ifndef LUX_VERTEX_POOL_SET

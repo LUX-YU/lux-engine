@@ -10,9 +10,7 @@ namespace lux::gapi::vk
     public:
         using Builder = PipelineLayoutBuilder;
 
-        PipelineLayout() : layout(VK_NULL_HANDLE)
-        {
-        }
+        PipelineLayout() : layout(VK_NULL_HANDLE) {}
 
         PipelineLayout(
             VkDevice device,
@@ -139,9 +137,7 @@ namespace lux::gapi::vk
     class Pipeline
     {
     public:
-        Pipeline() : pipeline(VK_NULL_HANDLE)
-        {
-        }
+        Pipeline() : pipeline(VK_NULL_HANDLE) {}
 
         Pipeline(VkDevice device, const VkGraphicsPipelineCreateInfo& info, VkAllocationCallbacks* allocator = nullptr)
         {
@@ -309,8 +305,9 @@ namespace lux::gapi::vk
             return *this;
         }
 
-        GraphicsPipelineBuilder&
-        setInputAssemblyState(const VkPipelineInputAssemblyStateCreateInfo& input_assembly_state)
+        GraphicsPipelineBuilder& setInputAssemblyState(
+            const VkPipelineInputAssemblyStateCreateInfo& input_assembly_state
+        )
         {
             info.pInputAssemblyState = &input_assembly_state;
             return *this;
@@ -328,8 +325,8 @@ namespace lux::gapi::vk
             return *this;
         }
 
-        GraphicsPipelineBuilder&
-        setRasterizationState(const VkPipelineRasterizationStateCreateInfo& rasterization_state)
+        GraphicsPipelineBuilder& setRasterizationState(const VkPipelineRasterizationStateCreateInfo& rasterization_state
+        )
         {
             info.pRasterizationState = &rasterization_state;
             return *this;

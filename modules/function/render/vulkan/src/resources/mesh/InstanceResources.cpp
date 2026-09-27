@@ -1,4 +1,5 @@
 #include <lux/engine/render/resources/mesh/InstanceResources.hpp>
+#include <lux/engine/render/renderer/FrameContext.hpp>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/render/gpu/descriptor/SceneDescriptorArena.hpp>
 #include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
@@ -17,13 +18,14 @@
 
 namespace lux::render
 {
-    RenderObjectHandle InstanceResources::findSource(RenderEntityId source) const noexcept
+    RenderObjectHandle InstanceResources::findSource(ERenderEntityId source) const noexcept
     {
         const auto found = source_objects_.find(source);
         return found == source_objects_.end() ? RenderObjectHandle{} : found->second;
     }
 
-    InstanceResources::ESourceBindResult InstanceResources::bindSource(RenderEntityId source, RenderObjectHandle object)
+    InstanceResources::ESourceBindResult
+    InstanceResources::bindSource(ERenderEntityId source, RenderObjectHandle object)
     {
         if (!isAlive(object))
         {
@@ -44,7 +46,7 @@ namespace lux::render
         return ESourceBindResult::INSERTED;
     }
 
-    bool InstanceResources::unbindSource(RenderEntityId source, RenderObjectHandle expected) noexcept
+    bool InstanceResources::unbindSource(ERenderEntityId source, RenderObjectHandle expected) noexcept
     {
         const auto found = source_objects_.find(source);
         if (found == source_objects_.end() || found->second != expected)
@@ -100,7 +102,8 @@ namespace lux::render
                                    .previous_transform = prev_transform_stream_.pageAddress(0u),
                                    .property = property_stream_.pageAddress(0u),
                                    .cull_meta = cull_meta_stream_.pageAddress(0u),
-                               }))
+                               }
+                           ))
         {
             shutdown();
             return;
@@ -137,7 +140,8 @@ namespace lux::render
 
             std::array<VkDescriptorBindingFlags, 2> bind_flags{
                 VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
-                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT};
+                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
+            };
 
             ds_layout_id_ = descriptor_svc_->registerLayout(
                 {.bindings = bindings,
@@ -314,7 +318,7 @@ namespace lux::render
         prop.object_id = kInvalidObjectId;
         prop.flags = 0u;
         prop.pass_and_geometry =
-            static_cast<uint32_t>(kPassMaskOpaqueDefault) | (static_cast<uint32_t>(EGeometryKind::StaticMesh) << 16u);
+            static_cast<uint32_t>(kPassMaskOpaqueDefault) | (static_cast<uint32_t>(EGeometryKind::STATIC_MESH) << 16u);
         local_bsphere_.at(slot.index) = {0.f, 0.f, 0.f, 0.f};
         addDynamicSlot(slot.index);
 
@@ -424,7 +428,7 @@ namespace lux::render
         prop.transform_index = slot.index;
         prop.flags = 0u;
         prop.pass_and_geometry =
-            static_cast<uint32_t>(kPassMaskOpaqueDefault) | (static_cast<uint32_t>(EGeometryKind::StaticMesh) << 16u);
+            static_cast<uint32_t>(kPassMaskOpaqueDefault) | (static_cast<uint32_t>(EGeometryKind::STATIC_MESH) << 16u);
         local_bsphere_.at(slot.index) = {0.f, 0.f, 0.f, 0.f};
         addDynamicSlot(slot.index);
 
@@ -449,6 +453,19 @@ namespace lux::render
         }
     }
 
+    void InstanceResources::setSubmission(RenderObjectHandle object, RenderSubmissionState state) noexcept
+    {
+        const auto found = resource_bindings_.find(objectKey(object));
+        if (found != resource_bindings_.end())
+            found->second.submission = std::move(state);
+    }
+
+    void InstanceResources::retainSubmissions(const FrameRuntime& frame) const noexcept
+    {
+        for (const auto& [_, binding] : resource_bindings_)
+            frame.retainSubmission(binding.submission);
+    }
+
     bool InstanceResources::bindResources(RenderObjectHandle object, ResourceBinding binding)
     {
         if (!isAlive(object) || !binding.mesh.isValid() || !binding.material.isValid())
@@ -458,8 +475,10 @@ namespace lux::render
         return resource_bindings_.emplace(objectKey(object), binding).second;
     }
 
-    std::optional<InstanceResources::ResourceBinding>
-    InstanceResources::replaceResources(RenderObjectHandle object, ResourceBinding binding) noexcept
+    std::optional<InstanceResources::ResourceBinding> InstanceResources::replaceResources(
+        RenderObjectHandle object,
+        ResourceBinding binding
+    ) noexcept
     {
         if (!isAlive(object) || !binding.mesh.isValid() || !binding.material.isValid())
         {
@@ -473,8 +492,8 @@ namespace lux::render
         return previous;
     }
 
-    std::optional<InstanceResources::ResourceBinding>
-    InstanceResources::resourceBinding(RenderObjectHandle object) const noexcept
+    std::optional<InstanceResources::ResourceBinding> InstanceResources::resourceBinding(RenderObjectHandle object
+    ) const noexcept
     {
         if (!isAlive(object))
             return std::nullopt;
@@ -482,8 +501,8 @@ namespace lux::render
         return found == resource_bindings_.end() ? std::nullopt : std::optional<ResourceBinding>{found->second};
     }
 
-    std::optional<InstanceResources::ResourceBinding>
-    InstanceResources::takeResources(RenderObjectHandle object) noexcept
+    std::optional<InstanceResources::ResourceBinding> InstanceResources::takeResources(RenderObjectHandle object
+    ) noexcept
     {
         const auto found = resource_bindings_.find(objectKey(object));
         if (found == resource_bindings_.end())
@@ -515,8 +534,8 @@ namespace lux::render
     {
         const auto slot = resolveSlot(object);
         const bool is_invalid_slot = !isAlive(slot);
-        const bool is_invalid_time = !std::isfinite(scene_time) || !std::isfinite(duration_seconds) ||
-            duration_seconds <= 0.0f;
+        const bool is_invalid_time =
+            !std::isfinite(scene_time) || !std::isfinite(duration_seconds) || duration_seconds <= 0.0f;
         const bool is_invalid_transition = transition_seed == 0u;
         const bool is_invalid_request = is_invalid_slot || is_invalid_time || is_invalid_transition;
         if (is_invalid_request)
@@ -525,7 +544,7 @@ namespace lux::render
         }
         auto& property = propertyAt(slot);
         const auto pass_mask = static_cast<PassMask>(property.pass_and_geometry & 0xffffu);
-        if (hasPass(pass_mask, eTransparent))
+        if (hasPass(pass_mask, EPassBit::PASS_TRANSPARENT))
         {
             ++transparent_hard_cut_count_;
             return false;
@@ -570,8 +589,7 @@ namespace lux::render
     {
         std::erase_if(fade_retirements_, [object](const FadeRetirement& retirement) {
             return retirement.object == object;
-        }
-        );
+        });
     }
 
     bool InstanceResources::isAlive(RenderObjectHandle handle) const noexcept
@@ -652,7 +670,8 @@ namespace lux::render
                         .previous_transform = prev_transform_stream_.pageAddress(page_index),
                         .property = property_stream_.pageAddress(page_index),
                         .cull_meta = cull_meta_stream_.pageAddress(page_index),
-                    }))
+                    }
+                ))
             {
                 transform_stream_.rollbackPages(old_page_count);
                 prev_transform_stream_.rollbackPages(old_page_count);
@@ -713,7 +732,8 @@ namespace lux::render
         const double local[3]{
             static_cast<double>(M[0] * cx + M[4] * cy + M[8] * cz + M[3]),
             static_cast<double>(M[1] * cx + M[5] * cy + M[9] * cz + M[7]),
-            static_cast<double>(M[2] * cx + M[6] * cy + M[10] * cz + M[11])};
+            static_cast<double>(M[2] * cx + M[6] * cy + M[10] * cz + M[11])
+        };
 
         // Conservative radius: scale by max column norm of upper-left 3x3.
         // Use squared norms + single sqrtf on the max to avoid 3 sqrt calls.
@@ -1063,8 +1083,7 @@ namespace lux::render
                             .dst_offset = chunk.destination_offset,
                             .size = chunk.size,
                             .domain = domain,
-                        }
-                        );
+                        });
                         staging_offset += chunk.size;
                     }
                 };
@@ -1081,18 +1100,17 @@ namespace lux::render
                             .dst_offset = chunk.dst_offset,
                             .size = chunk.size,
                             .domain = domain,
-                        }
-                        );
+                        });
                         staging_offset += chunk.size;
                     }
                 };
 
-                emitPagedStreamCopies(xform_chunks_, EBufferDomain::Storage_VS);
-                emitPagedStreamCopies(prev_xform_chunks_, EBufferDomain::Storage_VS);
-                emitPagedStreamCopies(prop_chunks_, EBufferDomain::Storage_All);
-                emitPagedStreamCopies(cull_chunks_, EBufferDomain::Storage_CS);
-                emitFlatStreamCopies(alive_slot_stream_.buffer(), alive_slot_chunks_, EBufferDomain::Storage_CS);
-                emitFlatStreamCopies(dynamic_slot_stream_.buffer(), dynamic_slot_chunks_, EBufferDomain::Storage_CS);
+                emitPagedStreamCopies(xform_chunks_, EBufferDomain::STORAGE_VS);
+                emitPagedStreamCopies(prev_xform_chunks_, EBufferDomain::STORAGE_VS);
+                emitPagedStreamCopies(prop_chunks_, EBufferDomain::STORAGE_ALL);
+                emitPagedStreamCopies(cull_chunks_, EBufferDomain::STORAGE_CS);
+                emitFlatStreamCopies(alive_slot_stream_.buffer(), alive_slot_chunks_, EBufferDomain::STORAGE_CS);
+                emitFlatStreamCopies(dynamic_slot_stream_.buffer(), dynamic_slot_chunks_, EBufferDomain::STORAGE_CS);
                 instance_uploaded = true;
             }
         }
@@ -1192,8 +1210,10 @@ namespace lux::render
         }
     }
 
-    Expected<void>
-    InstanceResources::setDomainWriteTarget(std::span<const VkDescriptorSet> sets, uint32_t binding_offset)
+    Expected<void> InstanceResources::setDomainWriteTarget(
+        std::span<const VkDescriptorSet> sets,
+        uint32_t binding_offset
+    )
     {
         if (auto accepted = domain_.set(sets, binding_offset); !accepted)
             return accepted;

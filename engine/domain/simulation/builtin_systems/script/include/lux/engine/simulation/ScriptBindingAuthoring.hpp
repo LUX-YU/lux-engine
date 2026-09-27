@@ -18,7 +18,7 @@ namespace lux::simulation::script
     };
     struct ScriptBindingCandidate final
     {
-        lux::simulation::script::ScriptBindingTarget target;
+        lux::simulation::script::VScriptBindingTarget target;
         EScriptBindingCompatibility compatibility{};
         lux::script::ScriptSymbolId symbol{};
     };
@@ -33,20 +33,31 @@ namespace lux::simulation::script
     };
     using ScriptBindingCandidates =
         lux::cxx::expected<std::vector<ScriptBindingCandidate>, EScriptBindingAuthoringError>;
-    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptBindingCandidates
-    listScriptBindingCandidates(const lux::script::ScriptArtifact& artifact, lux::script::ScriptSymbolId symbol,
-                                const lux::simulation::SimulationDescription& simulation, bool entity_scope) noexcept;
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptBindingCandidates listScriptBindingCandidates(
+        const lux::script::ScriptArtifact& artifact,
+        lux::script::ScriptSymbolId symbol,
+        const lux::simulation::SimulationDescription& simulation,
+        bool entity_scope
+    ) noexcept;
 
     // Explicit selection wins. Suggestions are authoring inputs only, never runtime auto-binding policy.
-    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC lux::cxx::expected<
-        lux::simulation::script::ScriptBindingDescription, EScriptBindingAuthoringError>
-    selectScriptBinding(lux::script::ScriptSymbolId symbol, std::span<const ScriptBindingCandidate> candidates,
-                        const lux::simulation::script::ScriptBindingTarget* explicit_target,
-                        std::span<const lux::simulation::script::ScriptBindingTarget> suggestions) noexcept;
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC lux::cxx::
+        expected<lux::simulation::script::ScriptBindingDescription, EScriptBindingAuthoringError>
+        selectScriptBinding(
+            lux::script::ScriptSymbolId symbol,
+            std::span<const ScriptBindingCandidate> candidates,
+            const lux::simulation::script::VScriptBindingTarget* explicit_target,
+            std::span<const lux::simulation::script::VScriptBindingTarget> suggestions
+        ) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC lux::cxx::expected<
-        ScriptBindingDescription, EScriptBindingAuthoringError>
-    selectScriptBindingFromHints(const lux::script::ScriptArtifact& artifact, lux::script::ScriptSymbolId symbol,
-        const SimulationDescription& simulation, bool entity_scope, const ScriptBindingTarget* explicit_target,
-        std::span<const lux::script::ScriptBindingHint> hints) noexcept;
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC lux::cxx::
+        expected<ScriptBindingDescription, EScriptBindingAuthoringError>
+        selectScriptBindingFromHints(
+            const lux::script::ScriptArtifact& artifact,
+            lux::script::ScriptSymbolId symbol,
+            const SimulationDescription& simulation,
+            bool entity_scope,
+            const VScriptBindingTarget* explicit_target,
+            std::span<const lux::script::ScriptBindingHint> hints
+        ) noexcept;
 } // namespace lux::simulation::script

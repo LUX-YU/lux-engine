@@ -24,12 +24,12 @@ namespace lux::render
     // =========================================================================
     // ViewState — per-view lifecycle state
     // =========================================================================
-    enum class ViewState : uint8_t
+    enum class ERenderViewState : uint8_t
     {
-        Created,    ///< Resources allocated, not yet rendered
-        Active,     ///< Actively rendering each frame
-        Paused,     ///< Resources allocated, skipping frames
-        Destroying, ///< Pending resource release (deferred by frames-in-flight)
+        CREATED,    ///< Resources allocated, not yet rendered
+        ACTIVE,     ///< Actively rendering each frame
+        PAUSED,     ///< Resources allocated, skipping frames
+        DESTROYING, ///< Pending resource release (deferred by frames-in-flight)
     };
 
     // =========================================================================
@@ -43,7 +43,7 @@ namespace lux::render
 
         // ── Identity ────────────────────────────────────────────────────
         ViewHandle handle{}; ///< generational; .index keys per-view tables
-        ViewState state{ViewState::Created};
+        ERenderViewState state{ERenderViewState::CREATED};
         std::string debug_name;
 
         // ── Extent ──────────────────────────────────────────────────────

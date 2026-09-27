@@ -10,17 +10,17 @@ namespace lux::script::lua
 {
 {% for rec_index in marked_record_decls %}{% set rec = decl_from_index(rec_index) %}{% set receiver = annotation_get_for_or(rec, "luxability::contract", "receiver", "none") %}{% if receiver == "none" %}{% set ability_methods = rec.static_method_decls %}{% else %}{% set ability_methods = rec.method_decls %}{% endif %}
     template <>
-    struct ScriptAbilityLuaTraits<::{{ rec.fq_name }}> final
+    struct TScriptAbilityLuaTraits<::{{ rec.fq_name }}> final
     {
-        using AbilityTraits = ScriptAbilityTraits<::{{ rec.fq_name }}>;
-        using Policy = typename ScriptAbilityLuaPolicy<::{{ rec.fq_name }}>::Type;
+        using AbilityTraits = TScriptAbilityTraits<::{{ rec.fq_name }}>;
+        using Policy = typename TScriptAbilityLuaPolicy<::{{ rec.fq_name }}>::Type;
 {% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}
-        using Values_{{ method.spelling }} = LuaAbilityValueSignature<Policy, {{ method.result_type_id }}{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }}{% endfor %}>;
+        using Values_{{ method.spelling }} = TLuaAbilityValueSignature<Policy, {{ method.result_type_id }}{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }}{% endfor %}>;
         [[nodiscard]] static LuxLuaBoundaryOutcome {{ method.spelling }}(lua_State* state) noexcept
         {
 {% if kind == "async_operation" %}            return lux::simulation::script::detail::startLuaValueAbility<Policy, {{ method.result_type_id }}{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }}{% endfor %}>(
                 state,
-                [](lux::simulation::script::detail::LuaPreparedAbilityAccess access{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }} {{ param.name }}{% endfor %}, ScriptAbilityCompletion<{{ method.result_type_id }}> completion) noexcept
+                [](lux::simulation::script::detail::LuaPreparedAbilityAccess access{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}{% set type = type_from_id(param.type_id) %}, {{ type.id }} {{ param.name }}{% endfor %}, TScriptAbilityCompletion<{{ method.result_type_id }}> completion) noexcept
                 {
                     const auto& dispatch = *static_cast<const AbilityTraits::Dispatch*>(access.dispatch);
                     return dispatch.{{ method.spelling }}(access.context{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %}, std::move(completion));

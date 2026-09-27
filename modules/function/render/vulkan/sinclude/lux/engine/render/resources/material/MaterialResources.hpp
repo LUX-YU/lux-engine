@@ -28,14 +28,15 @@
 
 namespace lux::render
 {
+    class TextureResources;
     class LUX_FUNCTION_PUBLIC MaterialResources final
-        : public GPUResourceBase<MaterialResources, EGPUResourceType::Material>
+        : public TGPUResourceBase<MaterialResources, EGPUResourceType::MATERIAL>
     {
     public:
         /// Internal record: maps handle → family/shading-model for dispatch.
         struct SlotRecord
         {
-            ELightingTechnique family{ELightingTechnique::Unlit};
+            ELightingTechnique family{ELightingTechnique::UNLIT};
             EShadingModel shading_model{EShadingModel::INVALID};
             SlotHandle local_slot{};
             ShaderFeatureMask feature_mask{0};
@@ -57,6 +58,7 @@ namespace lux::render
             VkDescriptorPool descriptor_pool; // Descriptor pool
             VkDescriptorSetLayout set_layout; // Descriptor set layout
             const TextureSamplingRepresentationCatalog* texture_sampling_catalog{};
+            const TextureResources* textures{};
         };
 
         MaterialResources();
@@ -84,14 +86,14 @@ namespace lux::render
 
         /// Create a node-graph material instance (the Graph family). Packs the
         /// generic param/texture blob into the graph SSBO; returns a handle whose
-        /// SlotRecord routes to the Graph family (ELightingTechnique::Graph) so
+        /// SlotRecord routes to the Graph family (ELightingTechnique::GRAPH) so
         /// the instance draws with the graph-override fragment pipeline.
         Expected<MaterialHandle> submitGraph(
             const GraphMaterialData& data,
             ShaderHandle gbuffer_shader = {},
             ShaderHandle forward_shader = {},
             uint64_t shader_key = 0,
-            lux::rdesc::EAlphaMode alpha_mode = lux::rdesc::EAlphaMode::Opaque,
+            lux::rdesc::EAlphaMode alpha_mode = lux::rdesc::EAlphaMode::OPAQUE_SURFACE,
             bool double_sided = false
         );
 
@@ -222,7 +224,7 @@ namespace lux::render
         [[nodiscard]] MaterialHandle allocateGlobalHandle();
         void releaseGlobalHandle(MaterialHandle h) noexcept;
         void removeNow(MaterialHandle slot);
-        void packGraphGpu(const GraphMaterialData& data, GraphFamilyGPU& gpu) const;
+        [[nodiscard]] bool packGraphGpu(const GraphMaterialData& data, GraphFamilyGPU& gpu) const;
 
         // Write SSBO descriptors for all 3 families to a specific per-frame set
         void writeDescriptorsOnSet(uint32_t set_index) const;
@@ -234,8 +236,11 @@ namespace lux::render
         /// global, while the domain set is per-scene, so targets accumulate
         /// as a set keyed by scene. Re-registering the same owner overwrites
         /// its old entry (this is the path taken on scene rebuild).
-        [[nodiscard]] Expected<void>
-        addDomainWriteTarget(const void* owner, std::span<const VkDescriptorSet> sets, uint32_t binding_offset);
+        [[nodiscard]] Expected<void> addDomainWriteTarget(
+            const void* owner,
+            std::span<const VkDescriptorSet> sets,
+            uint32_t binding_offset
+        );
 
         /// Removes a scene's target. **Must be called before the scene is
         /// destroyed** — otherwise subsequent writes land in a set that was
@@ -284,13 +289,14 @@ namespace lux::render
         VariantBucketManager bucket_mgr_;
 
         /// External material handle -> payload record (family/model/local slot).
-        SlotMetaVector<SlotRecord, MaterialHandle> slot_records_;
+        TSlotMetaVector<SlotRecord, MaterialHandle> slot_records_;
         std::vector<uint32_t> handle_generations_;
         std::vector<uint8_t> handle_alive_;
         std::vector<uint32_t> free_handle_indices_;
         std::vector<uint32_t> instance_refcounts_;
         std::vector<uint8_t> destroy_requested_;
         std::uint32_t texture_representation_index_{0u};
+        const class TextureResources* textures_{};
     };
 
     class RenderContext;

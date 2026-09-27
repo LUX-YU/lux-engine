@@ -34,7 +34,7 @@ namespace lux::render
         const VkResult _vk_r = (x);                                                                                    \
         if (_vk_r != VK_SUCCESS)                                                                                       \
             return ::lux::render::renderFailure<::lux::render::err::device::VulkanCallFailed>(                         \
-                ::lux::render::encodeVkResult(_vk_r) \
-            ); \
+                ::lux::render::encodeVkResult(_vk_r)                                                                   \
+            );                                                                                                         \
     } while (0)
 #endif

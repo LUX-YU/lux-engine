@@ -10,9 +10,7 @@ namespace lux::gapi::vk
     public:
         using Builder = FrameBufferBuilder;
 
-        FrameBuffer() : frame_buffer(VK_NULL_HANDLE)
-        {
-        }
+        FrameBuffer() : frame_buffer(VK_NULL_HANDLE) {}
 
         FrameBuffer(VkDevice device, const VkFramebufferCreateInfo& info, VkAllocationCallbacks* allocator = nullptr)
         {

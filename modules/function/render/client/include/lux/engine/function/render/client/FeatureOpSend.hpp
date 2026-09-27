@@ -28,9 +28,13 @@ namespace lux::render
     /// contract as sendWithReply / sendBulk, so an absent feature degrades to
     /// nothing rather than dispatching an unknown TypeId.
     template <class Op, FeatureOpDesc... Ops>
-    inline void send(RenderProgramSession& session, const FeatureOpIds<Ops...>& ids, const typename Op::Payload& payload)
+    inline void send(
+        RenderProgramSession& session,
+        const TFeatureOpIds<Ops...>& ids,
+        const typename Op::Payload& payload
+    )
     {
-        static_assert(Op::lane == EOperationLane::Program);
+        static_assert(Op::lane == EOperationLane::PROGRAM);
         const TypeId id = ids.template id<Op>();
         if (id != kInvalidTypeId)
             session.builder().push(opcode_of_v<Op>, id, payload);
@@ -40,17 +44,20 @@ namespace lux::render
     /// RenderRequest<Reply>. A missing operation settles immediately as a
     /// structured dispatch failure; an unresolved request is never returned.
     template <class Op, FeatureOpDesc... Ops>
-    [[nodiscard]] inline auto
-    sendWithReply(RenderProgramSession& session, const FeatureOpIds<Ops...>& ids, const typename Op::Payload& payload)
+    [[nodiscard]] inline auto sendWithReply(
+        RenderProgramSession& session,
+        const TFeatureOpIds<Ops...>& ids,
+        const typename Op::Payload& payload
+    )
     {
-        static_assert(Op::lane == EOperationLane::Program);
-        using Reply = typename CommandTraits<typename Op::Payload>::Reply;
+        static_assert(Op::lane == EOperationLane::PROGRAM);
+        using Reply = typename TCommandTraits<typename Op::Payload>::Reply;
         const TypeId id = ids.template id<Op>();
         if (id == kInvalidTypeId)
-            return RenderRequestFactory<Reply>::makeImmediateFailure(
+            return TRenderRequestFactory<Reply>::makeImmediateFailure(
                 renderError<err::comm::FeatureOperationUnavailable>()
             );
-        auto [req, cb] = RenderRequestFactory<Reply>::make();
+        auto [req, cb] = TRenderRequestFactory<Reply>::make();
         if constexpr (opcode_of_v<Op> == opcodes::ResourceOp)
             session.builder().pushResource(id, payload, std::move(cb));
         else
@@ -60,10 +67,13 @@ namespace lux::render
 
     /// Bulk op: N payloads in one command. No-op when empty or unregistered.
     template <class Op, FeatureOpDesc... Ops>
-    inline void
-    sendBulk(RenderProgramSession& session, const FeatureOpIds<Ops...>& ids, std::span<const typename Op::Payload> items)
+    inline void sendBulk(
+        RenderProgramSession& session,
+        const TFeatureOpIds<Ops...>& ids,
+        std::span<const typename Op::Payload> items
+    )
     {
-        static_assert(Op::lane == EOperationLane::Program);
+        static_assert(Op::lane == EOperationLane::PROGRAM);
         const TypeId id = ids.template id<Op>();
         if (id != kInvalidTypeId && !items.empty())
             session.builder().pushBulk(id, items);
@@ -76,66 +86,75 @@ namespace lux::render
     template <class Op, FeatureOpDesc... Ops>
     auto sendBlob(
         RenderProgramSession& session,
-        const FeatureOpIds<Ops...>& ids,
+        const TFeatureOpIds<Ops...>& ids,
         typename Op::Payload payload,
         std::span<const std::byte> blob_bytes,
         std::size_t align
     )
     {
-        static_assert(Op::lane == EOperationLane::Program);
+        static_assert(Op::lane == EOperationLane::PROGRAM);
         payload.*(Op::blob_field) = session.builder().pushBlob(blob_bytes, align);
-        if constexpr (CommandTraits<typename Op::Payload>::has_reply)
+        if constexpr (TCommandTraits<typename Op::Payload>::has_reply)
             return sendWithReply<Op>(session, ids, payload);
         else
             send<Op>(session, ids, payload);
     }
 
     template <class Op, FeatureOpDesc... Ops>
-    inline void
-    send(RenderControlSession& session, const FeatureOpIds<Ops...>& ids, const typename Op::Payload& payload)
+    inline void send(
+        RenderControlSession& session,
+        const TFeatureOpIds<Ops...>& ids,
+        const typename Op::Payload& payload
+    )
     {
-        static_assert(Op::lane == EOperationLane::Control);
+        static_assert(Op::lane == EOperationLane::CONTROL);
         const TypeId id = ids.template id<Op>();
         if (id != kInvalidTypeId)
             session.send(opcode_of_v<Op>, id, payload);
     }
 
     template <class Op, FeatureOpDesc... Ops>
-    [[nodiscard]] inline auto
-    sendWithReply(RenderControlSession& session, const FeatureOpIds<Ops...>& ids, const typename Op::Payload& payload)
+    [[nodiscard]] inline auto sendWithReply(
+        RenderControlSession& session,
+        const TFeatureOpIds<Ops...>& ids,
+        const typename Op::Payload& payload
+    )
     {
-        static_assert(Op::lane == EOperationLane::Control);
-        using Reply = typename CommandTraits<typename Op::Payload>::Reply;
+        static_assert(Op::lane == EOperationLane::CONTROL);
+        using Reply = typename TCommandTraits<typename Op::Payload>::Reply;
         const TypeId id = ids.template id<Op>();
         if (id == kInvalidTypeId)
-            return RenderRequestFactory<Reply>::makeImmediateFailure(
+            return TRenderRequestFactory<Reply>::makeImmediateFailure(
                 renderError<err::comm::FeatureOperationUnavailable>()
             );
         return session.template request<Reply>(opcode_of_v<Op>, id, payload);
     }
 
     template <class Op, FeatureOpDesc... Ops>
-    [[nodiscard]] inline UploadSubmitNoReplyResult
-    send(const RenderUploadClient& session, const FeatureOpIds<Ops...>& ids, const typename Op::Payload& payload)
+    [[nodiscard]] inline UploadSubmitNoReplyResult send(
+        const RenderUploadClient& session,
+        const TFeatureOpIds<Ops...>& ids,
+        const typename Op::Payload& payload
+    )
     {
-        static_assert(Op::lane == EOperationLane::Upload);
+        static_assert(Op::lane == EOperationLane::UPLOAD);
         const TypeId id = ids.template id<Op>();
         if (id == kInvalidTypeId)
             return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
-        return session.trySubmitNoReply(
-            [&](RenderUploadClient::Builder& builder) { builder.push(opcode_of_v<Op>, id, payload); }
-        );
+        return session.trySubmitNoReply([&](RenderUploadClient::Builder& builder) {
+            builder.push(opcode_of_v<Op>, id, payload);
+        });
     }
 
     template <class Op, FeatureOpDesc... Ops>
     [[nodiscard]] inline auto sendWithReply(
         const RenderUploadClient& session,
-        const FeatureOpIds<Ops...>& ids,
+        const TFeatureOpIds<Ops...>& ids,
         const typename Op::Payload& payload
     )
     {
-        static_assert(Op::lane == EOperationLane::Upload);
-        using Reply = typename CommandTraits<typename Op::Payload>::Reply;
+        static_assert(Op::lane == EOperationLane::UPLOAD);
+        using Reply = typename TCommandTraits<typename Op::Payload>::Reply;
         const TypeId id = ids.template id<Op>();
         if (id == kInvalidTypeId)
             return UploadSubmitResult<Reply>{lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID)};
@@ -144,24 +163,23 @@ namespace lux::render
                 builder.pushPreparedResource(id, payload);
             else
                 static_assert(opcode_of_v<Op> == opcodes::ResourceOp, "prepared uploads currently require ResourceOp");
-        }
-        );
+        });
     }
 
     template <class Op, FeatureOpDesc... Ops>
     [[nodiscard]] inline auto sendBlob(
         const RenderUploadClient& session,
-        const FeatureOpIds<Ops...>& ids,
+        const TFeatureOpIds<Ops...>& ids,
         typename Op::Payload payload,
         std::span<const std::byte> blob_bytes,
         std::size_t align
     )
     {
-        static_assert(Op::lane == EOperationLane::Upload);
+        static_assert(Op::lane == EOperationLane::UPLOAD);
         const TypeId id = ids.template id<Op>();
-        if constexpr (CommandTraits<typename Op::Payload>::has_reply)
+        if constexpr (TCommandTraits<typename Op::Payload>::has_reply)
         {
-            using Reply = typename CommandTraits<typename Op::Payload>::Reply;
+            using Reply = typename TCommandTraits<typename Op::Payload>::Reply;
             if (id == kInvalidTypeId)
                 return UploadSubmitResult<Reply>{lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID)};
             return session.template trySubmit<Reply>([&](RenderUploadClient::Builder& builder) {
@@ -171,9 +189,9 @@ namespace lux::render
                 else
                     static_assert(
                         opcode_of_v<Op> == opcodes::ResourceOp,
-                        "prepared uploads currently require ResourceOp");
-            }
-            );
+                        "prepared uploads currently require ResourceOp"
+                    );
+            });
         }
         else
         {
@@ -182,8 +200,7 @@ namespace lux::render
             return session.trySubmitNoReply([&](RenderUploadClient::Builder& builder) {
                 payload.*(Op::blob_field) = builder.pushBlob(blob_bytes, align);
                 builder.push(opcode_of_v<Op>, id, payload);
-            }
-            );
+            });
         }
     }
 

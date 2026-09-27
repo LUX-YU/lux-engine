@@ -10,10 +10,10 @@ namespace lux::render
 
     enum class EUploadPhase : uint8_t
     {
-        PreUpload = 0,
-        Upload = 1,
-        PostUpload = 2,
-        Count
+        PRE_UPLOAD = 0,
+        UPLOAD = 1,
+        POST_UPLOAD = 2,
+        COUNT
     };
 
     // 这里曾有一个 IFrameService 虚接口(更早还是 IGlobal…/IScene… 两个逐字相同的

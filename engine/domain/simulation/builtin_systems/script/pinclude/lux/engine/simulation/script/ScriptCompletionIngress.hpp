@@ -16,7 +16,8 @@ namespace lux::simulation::script::detail
                 ScriptAwaitableId awaitable,
                 EScriptAwaitableState state,
                 ScriptOwnedResumeValue value,
-                ScriptStepError error) noexcept
+                ScriptStepError error
+            ) noexcept
             {
                 ExternalCompletionRecord record{instance, awaitable, state, error};
                 if (value.bytes.size() > record.bytes.size())
@@ -37,29 +38,20 @@ namespace lux::simulation::script::detail
                 ScriptAwaitableId awaitable,
                 EScriptAwaitableState state,
                 ScriptOwnedResumeValue value,
-                ScriptStepError error) noexcept
+                ScriptStepError error
+            ) noexcept
             {
-                return static_cast<Transport*>(context)->complete(instance,
-                                                                         awaitable,
-                                                                         state,
-                                                                         std::move(value),
-                                                                         error);
+                return static_cast<Transport*>(context)->complete(instance, awaitable, state, std::move(value), error);
             }
 
             [[nodiscard]] static ScriptInstanceId unpackInstance(std::uint64_t value) noexcept
             {
-                return {
-                    static_cast<std::uint32_t>(value >> 32U),
-                    static_cast<std::uint32_t>(value)
-                };
+                return {static_cast<std::uint32_t>(value >> 32U), static_cast<std::uint32_t>(value)};
             }
 
             [[nodiscard]] static ScriptAwaitableId unpackAwaitable(std::uint64_t value) noexcept
             {
-                return {
-                    static_cast<std::uint32_t>(value >> 32U),
-                    static_cast<std::uint32_t>(value)
-                };
+                return {static_cast<std::uint32_t>(value >> 32U), static_cast<std::uint32_t>(value)};
             }
 
             [[nodiscard]] static lux::script::EScriptAbilityCompletionError abilityError(
@@ -90,22 +82,14 @@ namespace lux::simulation::script::detail
                 std::uint32_t size
             ) noexcept
             {
-                ExternalCompletionRecord record{
-                    instance,
-                    awaitable,
-                    EScriptAwaitableState::READY,
-                    {},
-                    type,
-                    size
-                };
+                ExternalCompletionRecord record{instance, awaitable, EScriptAwaitableState::READY, {}, type, size};
                 if (size > record.bytes.size() || (size != 0U && data == nullptr))
                     return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::INVALID_VALUE);
                 if (size != 0U)
                     std::memcpy(record.bytes.data(), data, size);
                 const auto completed = completions.push(record);
-                return completed
-                    ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
-                    : lux::cxx::unexpected(abilityError(completed.error()));
+                return completed ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
+                                 : lux::cxx::unexpected(abilityError(completed.error()));
             }
 
             [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>
@@ -118,17 +102,11 @@ namespace lux::simulation::script::detail
                 std::uint32_t size
             ) noexcept
             {
-                return static_cast<Transport*>(context)->completeAbility(
-                    unpackInstance(instance),
-                    unpackAwaitable(awaitable),
-                    type,
-                    data,
-                    size
-                );
+                return static_cast<Transport*>(context)
+                    ->completeAbility(unpackInstance(instance), unpackAwaitable(awaitable), type, data, size);
             }
 
-            [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>
-            failAbilityErased(
+            [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> failAbilityErased(
                 void* context,
                 std::uint64_t instance,
                 std::uint64_t awaitable,
@@ -142,9 +120,8 @@ namespace lux::simulation::script::detail
                     {},
                     {error.status}
                 );
-                return completed
-                    ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
-                    : lux::cxx::unexpected(abilityError(completed.error()));
+                return completed ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
+                                 : lux::cxx::unexpected(abilityError(completed.error()));
             }
 
             [[nodiscard]] static bool activeAbilityErased(
@@ -153,10 +130,7 @@ namespace lux::simulation::script::detail
                 std::uint64_t awaitable
             ) noexcept
             {
-                return static_cast<Transport*>(context)->active(
-                    unpackInstance(instance),
-                    unpackAwaitable(awaitable)
-                );
+                return static_cast<Transport*>(context)->active(unpackInstance(instance), unpackAwaitable(awaitable));
             }
 
             [[nodiscard]] bool active(ScriptInstanceId instance, ScriptAwaitableId awaitable) noexcept
@@ -183,18 +157,41 @@ namespace lux::simulation::script::detail
         {
             transport_->completions.open(id, type);
         }
-        void close(ScriptAwaitableId id) noexcept { transport_->completions.close(id); }
-        void stop() noexcept { transport_->completions.stop(); }
+        void close(ScriptAwaitableId id) noexcept
+        {
+            transport_->completions.close(id);
+        }
+        void stop() noexcept
+        {
+            transport_->completions.stop();
+        }
 
-        [[nodiscard]] ScriptAwaitableRegistration registration(ScriptInstanceId instance, ScriptAwaitableId id,
-            void* owner, ScriptAwaitableCompletion::AbilitySuccessFn success,
-            ScriptAwaitableCompletion::AbilityFailureFn fail) noexcept
+        [[nodiscard]] ScriptAwaitableRegistration registration(
+            ScriptInstanceId instance,
+            ScriptAwaitableId id,
+            void* owner,
+            ScriptAwaitableCompletion::AbilitySuccessFn success,
+            ScriptAwaitableCompletion::AbilityFailureFn fail
+        ) noexcept
         {
             ++capability_constructions_;
-            return {id, ScriptAwaitableCompletion{std::static_pointer_cast<void>(transport_), transport_.get(),
-                &Transport::completeErased, &Transport::activeErased, instance, id,
-                &Transport::completeAbilityErased, &Transport::failAbilityErased, &Transport::activeAbilityErased,
-                owner, success, fail}};
+            return {
+                id,
+                ScriptAwaitableCompletion{
+                    std::static_pointer_cast<void>(transport_),
+                    transport_.get(),
+                    &Transport::completeErased,
+                    &Transport::activeErased,
+                    instance,
+                    id,
+                    &Transport::completeAbilityErased,
+                    &Transport::failAbilityErased,
+                    &Transport::activeAbilityErased,
+                    owner,
+                    success,
+                    fail
+                }
+            };
         }
 
         void capture() noexcept
@@ -229,7 +226,10 @@ namespace lux::simulation::script::detail
             if (transport_->completions.dequeue_position >= frontier_)
                 pending_in_window_ = false;
         }
-        [[nodiscard]] bool hasPendingInWindow() const noexcept { return pending_in_window_; }
+        [[nodiscard]] bool hasPendingInWindow() const noexcept
+        {
+            return pending_in_window_;
+        }
 
         [[nodiscard]] static ScriptInstanceId unpackInstance(std::uint64_t value) noexcept
         {
@@ -240,7 +240,8 @@ namespace lux::simulation::script::detail
             return Transport::unpackAwaitable(value);
         }
         [[nodiscard]] static lux::script::EScriptAbilityCompletionError abilityError(
-            EScriptAwaitableCompletionError error) noexcept
+            EScriptAwaitableCompletionError error
+        ) noexcept
         {
             return Transport::abilityError(error);
         }

@@ -10,45 +10,47 @@ namespace lux::render
     /// no graphics-queue acquire/mip/copy submit is required.
     enum class EUploadLifecycleState : std::uint8_t
     {
-        Accepted,
-        ValidatedAndReserved,
-        TransferQueued,
-        RecordedOrTransferComplete,
-        GraphicsFinalizeSubmitted,
-        Ready,
-        Failed,
+        ACCEPTED,
+        VALIDATED_AND_RESERVED,
+        TRANSFER_QUEUED,
+        RECORDED_OR_TRANSFER_COMPLETE,
+        GRAPHICS_FINALIZE_SUBMITTED,
+        READY,
+        FAILED,
     };
 
     [[nodiscard]] constexpr bool isUploadLifecycleTerminal(EUploadLifecycleState state) noexcept
     {
-        return state == EUploadLifecycleState::Ready || state == EUploadLifecycleState::Failed;
+        return state == EUploadLifecycleState::READY || state == EUploadLifecycleState::FAILED;
     }
 
     /// Legal edges of the render-owner state machine. Failure is terminal
     /// from every live state; success is legal only after the low-level copy
     /// has completed, optionally followed by graphics-queue finalization.
-    [[nodiscard]] constexpr bool
-    isValidUploadLifecycleTransition(EUploadLifecycleState from, EUploadLifecycleState to) noexcept
+    [[nodiscard]] constexpr bool isValidUploadLifecycleTransition(
+        EUploadLifecycleState from,
+        EUploadLifecycleState to
+    ) noexcept
     {
         if (isUploadLifecycleTerminal(from))
             return false;
-        if (to == EUploadLifecycleState::Failed)
+        if (to == EUploadLifecycleState::FAILED)
             return true;
 
         switch (from)
         {
-        case EUploadLifecycleState::Accepted:
-            return to == EUploadLifecycleState::ValidatedAndReserved;
-        case EUploadLifecycleState::ValidatedAndReserved:
-            return to == EUploadLifecycleState::TransferQueued;
-        case EUploadLifecycleState::TransferQueued:
-            return to == EUploadLifecycleState::RecordedOrTransferComplete;
-        case EUploadLifecycleState::RecordedOrTransferComplete:
-            return to == EUploadLifecycleState::GraphicsFinalizeSubmitted || to == EUploadLifecycleState::Ready;
-        case EUploadLifecycleState::GraphicsFinalizeSubmitted:
-            return to == EUploadLifecycleState::Ready;
-        case EUploadLifecycleState::Ready:
-        case EUploadLifecycleState::Failed:
+        case EUploadLifecycleState::ACCEPTED:
+            return to == EUploadLifecycleState::VALIDATED_AND_RESERVED;
+        case EUploadLifecycleState::VALIDATED_AND_RESERVED:
+            return to == EUploadLifecycleState::TRANSFER_QUEUED;
+        case EUploadLifecycleState::TRANSFER_QUEUED:
+            return to == EUploadLifecycleState::RECORDED_OR_TRANSFER_COMPLETE;
+        case EUploadLifecycleState::RECORDED_OR_TRANSFER_COMPLETE:
+            return to == EUploadLifecycleState::GRAPHICS_FINALIZE_SUBMITTED || to == EUploadLifecycleState::READY;
+        case EUploadLifecycleState::GRAPHICS_FINALIZE_SUBMITTED:
+            return to == EUploadLifecycleState::READY;
+        case EUploadLifecycleState::READY:
+        case EUploadLifecycleState::FAILED:
             return false;
         }
         return false;

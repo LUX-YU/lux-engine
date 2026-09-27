@@ -16,25 +16,23 @@ namespace lux::render
      * Two handles with different Tag types are distinct types and cannot
      * be implicitly converted or compared.
      */
-    template <typename Tag> struct TypedHandle
+    template <typename Tag> struct TTypedHandle
     {
         uint32_t index{std::numeric_limits<uint32_t>::max()};
 
-        constexpr TypedHandle() noexcept = default;
-        constexpr explicit TypedHandle(uint32_t idx) noexcept : index(idx)
-        {
-        }
+        constexpr TTypedHandle() noexcept = default;
+        constexpr explicit TTypedHandle(uint32_t idx) noexcept : index(idx) {}
 
         [[nodiscard]] constexpr bool valid() const noexcept
         {
             return index != std::numeric_limits<uint32_t>::max();
         }
 
-        constexpr auto operator<=>(const TypedHandle&) const noexcept = default;
+        constexpr auto operator<=>(const TTypedHandle&) const noexcept = default;
 
         struct Hash
         {
-            std::size_t operator()(TypedHandle h) const noexcept
+            std::size_t operator()(TTypedHandle h) const noexcept
             {
                 return std::hash<uint32_t>{}(h.index);
             }
@@ -46,8 +44,10 @@ namespace lux::render
      */
     template <typename Tag> using TypedSlotHandle = lux::cxx::SlotKey<Tag>;
 
-    struct TextureHandleTag {};
-    struct ShaderHandleTag {};
+    struct TextureHandleTag
+    {};
+    struct ShaderHandleTag
+    {};
 
     using TextureHandle = lux::cxx::SlotKey<TextureHandleTag>;
     using ShaderHandle = lux::cxx::SlotKey<ShaderHandleTag>;

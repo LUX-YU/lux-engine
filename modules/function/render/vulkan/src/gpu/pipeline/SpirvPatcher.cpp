@@ -33,8 +33,10 @@ namespace lux::render
         };
     } // namespace
 
-    SpirvPatchResult
-    patchSpirvDescriptorPositions(std::span<uint32_t> words, std::span<const SpirvRelocation> relocations) noexcept
+    SpirvPatchResult patchSpirvDescriptorPositions(
+        std::span<uint32_t> words,
+        std::span<const SpirvRelocation> relocations
+    ) noexcept
     {
         SpirvPatchResult r{};
 
@@ -123,8 +125,7 @@ namespace lux::render
 
             const auto it = std::find_if(relocations.begin(), relocations.end(), [&pos](const SpirvRelocation& reloc) {
                 return reloc.from_set == pos.set && reloc.from_binding == pos.binding;
-            }
-            );
+            });
             if (it == relocations.end())
                 continue;
 

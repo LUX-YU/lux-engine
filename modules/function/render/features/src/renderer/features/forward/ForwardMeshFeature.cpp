@@ -1,4 +1,5 @@
 #include <lux/engine/render/renderer/features/forward/ForwardMeshFeature.hpp>
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
 #include <lux/engine/render/graph/RGBuilder.hpp>
 #include <lux/engine/render/graph/RGCompiledGraph.hpp>
@@ -26,7 +27,6 @@
 #include <lux/engine/description/ShaderInfo.hpp>
 
 #include <array>
-#include <cassert>
 
 namespace lux::render
 {
@@ -35,9 +35,7 @@ namespace lux::render
     //  Construction / destruction
     // =========================================================================
 
-    ForwardMeshFeature::ForwardMeshFeature(Config cfg) : cfg_(std::move(cfg))
-    {
-    }
+    ForwardMeshFeature::ForwardMeshFeature(Config cfg) : cfg_(std::move(cfg)) {}
 
     ForwardMeshFeature::~ForwardMeshFeature()
     {
@@ -74,12 +72,21 @@ namespace lux::render
         // 权威表悄悄分叉的**第二真相源**,而分叉后果正是那张表的注释警告的
         // "着色器与管线布局必须成对"。
         //
-        // 改为断言:进来时必须已解析。真漏了就当场暴露,而不是拿一份可能过时的
+        // 进来时必须已解析。真漏了就当场暴露,而不是拿一份可能过时的
         // 默认值兜住。
-        assert(
-            cfg_.forward_cull_shader.isValid() && cfg_.forward_compact_shader.isValid() &&
-            cfg_.forward_vert_shader.isValid() && cfg_.unlit_fragment.isValid() && cfg_.pbr_fragment.isValid() &&
-            cfg_.stylized_fragment.isValid() && "ForwardMeshFeature: 着色器句柄应由 handler 侧的回填表解析完毕");
+        const bool has_invalid_cull_shader = !cfg_.forward_cull_shader.isValid();
+        const bool has_invalid_compact_shader = !cfg_.forward_compact_shader.isValid();
+        const bool has_invalid_vertex_shader = !cfg_.forward_vert_shader.isValid();
+        const bool has_invalid_unlit_shader = !cfg_.unlit_fragment.isValid();
+        const bool has_invalid_pbr_shader = !cfg_.pbr_fragment.isValid();
+        const bool has_invalid_stylized_shader = !cfg_.stylized_fragment.isValid();
+        const bool has_unresolved_shader = has_invalid_cull_shader || has_invalid_compact_shader ||
+            has_invalid_vertex_shader || has_invalid_unlit_shader || has_invalid_pbr_shader ||
+            has_invalid_stylized_shader;
+        if (has_unresolved_shader)
+        {
+            renderFatal("ForwardMeshFeature: shader handles must be resolved by the handler");
+        }
 
         // ---- Common infrastructure (instance storage, buffers, cull) ----
         // On a hard prerequisite failure (missing InstanceResources / cull shader —
@@ -90,10 +97,16 @@ namespace lux::render
 
         auto& ctx = renderContext();
         auto& shaders = ctx.globalRegistry().must<ShaderResources>();
-        assert(shaders.get(cfg_.forward_vert_shader) && "ForwardMeshFeature: forward_vert_shader is invalid");
-        assert(shaders.get(cfg_.unlit_fragment) && "ForwardMeshFeature: unlit_fragment shader index is invalid");
-        assert(shaders.get(cfg_.pbr_fragment) && "ForwardMeshFeature: pbr_fragment shader index is invalid");
-        assert(shaders.get(cfg_.stylized_fragment) && "ForwardMeshFeature: stylized_fragment shader index is invalid");
+        const bool is_missing_vertex_shader = shaders.get(cfg_.forward_vert_shader) == nullptr;
+        const bool is_missing_unlit_shader = shaders.get(cfg_.unlit_fragment) == nullptr;
+        const bool is_missing_pbr_shader = shaders.get(cfg_.pbr_fragment) == nullptr;
+        const bool is_missing_stylized_shader = shaders.get(cfg_.stylized_fragment) == nullptr;
+        const bool is_missing_shader = is_missing_vertex_shader || is_missing_unlit_shader || is_missing_pbr_shader ||
+            is_missing_stylized_shader;
+        if (is_missing_shader)
+        {
+            renderFatal("ForwardMeshFeature: a required shader handle is invalid");
+        }
         // Graph family frag is OPTIONAL (no builtin). null handle => Graph family
         // gets no forward pipeline (registerFamilyPipelines skips it).
 
@@ -184,8 +197,8 @@ namespace lux::render
             builder,
             CullCompactParams{
                 .prefix = "Fwd",
-                .phase = ECoreRenderPhase::ForwardOpaque,
-                .domain = EPassDomain::ForwardOpaque,
+                .phase = ECoreRenderPhase::FORWARD_OPAQUE,
+                .domain = EPassDomain::FORWARD_OPAQUE,
                 .cull_pass_name = "ForwardMeshForwardCull",
                 .compact_pass_name = "ForwardMeshForwardCompact",
                 .descriptor_layout_version = cfg_.descriptor_layout_version,
@@ -218,15 +231,15 @@ namespace lux::render
                 .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                 .setPipeline(bucket_pipelines_.pick(0u, variant_buckets[0]))
                 .bindSceneDS()
-                .useEngineSet(EDescriptorSetSlot::Instance)
-                .bindImmutableDS(EDescriptorSetSlot::Texture, ctx.globalRegistry().descriptorSetOf<TextureResources>())
+                .useEngineSet(EDescriptorSetSlot::INSTANCE)
+                .bindImmutableDS(EDescriptorSetSlot::TEXTURE, ctx.globalRegistry().descriptorSetOf<TextureResources>())
                 .useEngineSet(
-                    EDescriptorSetSlot::Light,
+                    EDescriptorSetSlot::LIGHT,
                     builder.trackExternalBuffer("ext.LightResources"),
                     ERGResourceType::BUFFER
                 )
                 .useEngineSet(
-                    EDescriptorSetSlot::Material,
+                    EDescriptorSetSlot::MATERIAL,
                     builder.trackExternalBuffer("ext.MaterialResources"),
                     ERGResourceType::BUFFER
                 )
@@ -253,7 +266,7 @@ namespace lux::render
 
         // Bind the bindless vertex pool at set 7 (shared 8-set layout).
         if (vpr && vpr->isInitialized())
-            draw_pass.useEngineSet(EDescriptorSetSlot::VertexPool);
+            draw_pass.useEngineSet(EDescriptorSetSlot::VERTEX_POOL);
 
         // Declare a read on every published compute-vertex producer's output
         // (skinning today; morph/cloth later) so the graph orders

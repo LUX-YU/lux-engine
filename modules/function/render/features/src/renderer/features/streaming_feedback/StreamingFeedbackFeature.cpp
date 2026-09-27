@@ -27,9 +27,7 @@
 
 namespace lux::render
 {
-    StreamingFeedbackFeature::StreamingFeedbackFeature(Config config) : config_(std::move(config))
-    {
-    }
+    StreamingFeedbackFeature::StreamingFeedbackFeature(Config config) : config_(std::move(config)) {}
 
     StreamingFeedbackFeature::~StreamingFeedbackFeature()
     {
@@ -63,7 +61,8 @@ namespace lux::render
             ShaderStageSlot{EBuiltinShader::MDC_COMPACT_COMP, &config_.compact_shader},
             ShaderStageSlot{EBuiltinShader::HIGHLIGHT_MASK_VERT, &config_.mask_vert},
             ShaderStageSlot{EBuiltinShader::STREAMING_FEEDBACK_MASK_FRAG, &config_.mask_frag},
-            ShaderStageSlot{EBuiltinShader::STREAMING_FEEDBACK_COMPOSITE_FRAG, &config_.composite_frag}};
+            ShaderStageSlot{EBuiltinShader::STREAMING_FEEDBACK_COMPOSITE_FRAG, &config_.composite_frag}
+        };
         if (auto filled = resolveShaderStages(shaders, backfill); !filled)
             return filled;
 
@@ -103,7 +102,8 @@ namespace lux::render
         {
             const std::array requests{
                 PipelineStageRequest{EBuiltinShader::TONEMAP_VERT, {}},
-                PipelineStageRequest{EBuiltinShader::STREAMING_FEEDBACK_COMPOSITE_FRAG, config_.composite_frag}};
+                PipelineStageRequest{EBuiltinShader::STREAMING_FEEDBACK_COMPOSITE_FRAG, config_.composite_frag}
+            };
             auto stages = preparePipelineStages(shaders, requests);
             if (!stages)
                 return lux::cxx::unexpected(stages.error());
@@ -146,19 +146,19 @@ namespace lux::render
         auto chain = builder.conditionChain([this]() noexcept {
             constexpr std::uint32_t bit = std::countr_zero(kInstanceFlagStreamingFeedback);
             return instance_res_ != nullptr && instance_res_->flagBitCount(bit) != 0u;
-        }
-        );
+        });
 
         addCullAndCompactPasses(
             builder,
             CullCompactParams{
                 .prefix = "Sf",
-                .phase = ECoreRenderPhase::GBuffer,
-                .domain = EPassDomain::GBuffer,
+                .phase = ECoreRenderPhase::G_BUFFER,
+                .domain = EPassDomain::G_BUFFER,
                 .cull_pass_name = "StreamingFeedbackCull",
                 .compact_pass_name = "StreamingFeedbackCompact",
                 .descriptor_layout_version = config_.descriptor_layout_version,
-                .extension_flags = config_.extension_flags}
+                .extension_flags = config_.extension_flags
+            }
         );
 
         auto visible = builder.createTransientDS(
@@ -175,19 +175,19 @@ namespace lux::render
                         .write(mask, lux::render::ETextureRole::COLOR_ATTACHMENT)
                         .setPipeline(bucket_pipelines_.pick(0u, buckets[0]))
                         .bindSceneDS()
-                        .useEngineSet(EDescriptorSetSlot::Instance)
+                        .useEngineSet(EDescriptorSetSlot::INSTANCE)
                         .bindTransientDS(5, visible)
                         .read(draw_indirect_rg_, ERGBufferRole::INDIRECT)
                         .read(draw_count_rg_, ERGBufferRole::INDIRECT)
                         .read(visible_instance_rg_, ERGBufferRole::STORAGE)
                         .after("StreamingFeedbackCompact")
-                        .stage(ERenderStage::Overlay);
+                        .stage(ERenderStage::OVERLAY_STAGE);
 
         const auto bucket_count = static_cast<std::uint32_t>(buckets.size());
         for (std::uint32_t bucket = 1; bucket < bucket_count; ++bucket)
             draw.addPipeline(bucket_pipelines_.pick(bucket, buckets[bucket]));
         if (vertex_pools != nullptr && vertex_pools->isInitialized())
-            draw.useEngineSet(EDescriptorSetSlot::VertexPool);
+            draw.useEngineSet(EDescriptorSetSlot::VERTEX_POOL);
         if (auto* producers = renderScene().resources().find<VertexProductionRegistry>())
         {
             for (const auto& producer : producers->producers())
@@ -211,22 +211,24 @@ namespace lux::render
                 .geometry_mask = supportedGeometryMask(),
                 .mdc_count = mdcCount(),
                 .mdc_entries = instance_res_->mdcTable().entries().data(),
-                .family_count = 0u})
+                .family_count = 0u
+            })
         );
 
         const StreamingFeedbackPassParams params{
             .mask = mask,
             .mask_sampler = mask_sampler_,
             .color_out = builder.referenceTexture(config_.color_target),
-            .scalars = {
-                .color_r = config_.color[0],
-                .color_g = config_.color[1],
-                .color_b = config_.color[2],
-                .intensity = config_.intensity,
-                .tile_size = config_.tile_size,
-                .speed = config_.speed,
-                .time_seconds = 0.0f,
-                .pattern = static_cast<float>(config_.pattern)}};
+            .scalars =
+                {.color_r = config_.color[0],
+                 .color_g = config_.color[1],
+                 .color_b = config_.color[2],
+                 .intensity = config_.intensity,
+                 .tile_size = config_.tile_size,
+                 .speed = config_.speed,
+                 .time_seconds = 0.0f,
+                 .pattern = static_cast<float>(config_.pattern)}
+        };
         auto descriptors = pass_gen::createTransientDS(builder, composite_set_layout_, params);
         auto composite = builder.addPass("StreamingFeedbackComposite", ERGPassType::GRAPHICS);
         pass_gen::declareGraphIO(composite, params);
@@ -238,10 +240,9 @@ namespace lux::render
                     std::chrono::duration<float>(std::chrono::steady_clock::now() - start_time_).count();
                 pass_gen::pushScalars(record, scalars);
                 vkCmdDraw(record.cmd, 3, 1, 0, 0);
-            }
-            )
+            })
             .setKernel("FullscreenQuad")
             .after("StreamingFeedbackMaskDraw")
-            .stage(ERenderStage::Overlay);
+            .stage(ERenderStage::OVERLAY_STAGE);
     }
 }

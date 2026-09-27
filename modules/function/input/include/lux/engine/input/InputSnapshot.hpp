@@ -15,6 +15,7 @@ namespace lux::input
     struct CharInput
     {
         std::uint32_t codepoint{0};
+        std::uint64_t sequence{};
     };
 
     enum class ETouchPhase : std::uint8_t
@@ -44,7 +45,38 @@ namespace lux::input
         float y{0.0f};
     };
 
-    using InputEvent = std::variant<KeyAction, MouseButtonAction, MouseScrollAction, TouchAction>;
+    struct CursorAction final
+    {
+        double x{}, y{};
+        std::uint64_t sequence{};
+    };
+    struct FocusAction final
+    {
+        bool focused{};
+        std::uint64_t sequence{};
+    };
+    enum class ECompositionStage : std::uint8_t
+    {
+        STARTED,
+        UPDATED,
+        COMMITTED,
+        CANCELLED
+    };
+    struct CompositionAction final
+    {
+        ECompositionStage stage;
+        std::uint64_t sequence{};
+    };
+
+    using VInputEvent = std::variant<
+        KeyAction,
+        MouseButtonAction,
+        MouseScrollAction,
+        TouchAction,
+        CharInput,
+        CursorAction,
+        FocusAction,
+        CompositionAction>;
 
     struct InputSnapshot
     {
@@ -74,8 +106,7 @@ namespace lux::input
         std::uint32_t framebuffer_width{0};
         std::uint32_t framebuffer_height{0};
 
-        std::vector<InputEvent> events;
-        std::vector<CharInput> text_events;
+        std::vector<VInputEvent> events;
 
         bool keyboard_captured_by_ui{false};
         bool mouse_captured_by_ui{false};

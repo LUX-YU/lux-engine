@@ -8,8 +8,8 @@
 
 namespace lux::simulation::ecs
 {
-    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC std::span<const ComponentSchema>
-    hierarchyComponentSchemas();
+    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC std::span<const ComponentSchema> hierarchyComponentSchemas(
+    );
 
     [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC ComponentSnapshotContribution
     hierarchyComponentSnapshotContribution() noexcept;

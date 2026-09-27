@@ -33,8 +33,10 @@ namespace lux::asset
         mutable std::unordered_map<std::uint64_t, CachedPage> page_cache;
         mutable PakProviderStats stats;
 
-        [[nodiscard]] lux::cxx::expected<detail::PakPage, std::string>
-        loadPage(std::uint64_t offset, const lux::cxx::algorithm::Sha256Digest& expected) const
+        [[nodiscard]] lux::cxx::expected<detail::PakPage, std::string> loadPage(
+            std::uint64_t offset,
+            const lux::cxx::algorithm::Sha256Digest& expected
+        ) const
         {
             {
                 std::lock_guard lock(cache_mutex);
@@ -85,8 +87,8 @@ namespace lux::asset
             return loaded;
         }
 
-        [[nodiscard]] lux::cxx::expected<std::optional<detail::PakEntry>, std::string>
-        findEntry(const AssetId& id) const
+        [[nodiscard]] lux::cxx::expected<std::optional<detail::PakEntry>, std::string> findEntry(const AssetId& id
+        ) const
         {
             auto offset = header.entry_root_offset;
             auto digest = header.entry_root_digest;
@@ -112,8 +114,7 @@ namespace lux::asset
                     const auto found =
                         std::lower_bound(rows.begin(), rows.end(), id, [](const auto& row, const auto& key) {
                             return row.id < key;
-                        }
-                        );
+                        });
                     if (found == rows.end() || found->id != id)
                         return std::optional<detail::PakEntry>{};
                     return std::optional<detail::PakEntry>{*found};
@@ -132,8 +133,7 @@ namespace lux::asset
                 const auto child =
                     std::lower_bound(children.begin(), children.end(), id, [](const auto& row, const auto& key) {
                         return row.maximum_key < key;
-                    }
-                    );
+                    });
                 if (child == children.end())
                     return std::optional<detail::PakEntry>{};
                 offset = child->offset;
@@ -168,8 +168,7 @@ namespace lux::asset
                     const auto found =
                         std::lower_bound(rows.begin(), rows.end(), path, [](const auto& row, const auto& key) {
                             return row.vpath < key;
-                        }
-                        );
+                        });
                     if (found == rows.end() || found->vpath != path)
                         return std::optional<AssetId>{};
                     return std::optional<AssetId>{found->id};
@@ -188,8 +187,7 @@ namespace lux::asset
                 const auto child =
                     std::lower_bound(children.begin(), children.end(), path, [](const auto& row, const auto& key) {
                         return row.maximum_key < key;
-                    }
-                    );
+                    });
                 if (child == children.end())
                     return std::optional<AssetId>{};
                 offset = child->offset;
@@ -199,14 +197,13 @@ namespace lux::asset
         }
     };
 
-    PakAssetProvider::PakAssetProvider() : d_(std::make_unique<Data>())
-    {
-    }
+    PakAssetProvider::PakAssetProvider() : d_(std::make_unique<Data>()) {}
 
     PakAssetProvider::~PakAssetProvider() = default;
 
-    lux::cxx::expected<std::shared_ptr<PakAssetProvider>, std::string>
-    PakAssetProvider::loadFromFile(const std::filesystem::path& pak_path)
+    lux::cxx::expected<std::shared_ptr<PakAssetProvider>, std::string> PakAssetProvider::loadFromFile(
+        const std::filesystem::path& pak_path
+    )
     {
         std::error_code ec;
         const auto file_size = std::filesystem::file_size(pak_path, ec);
@@ -296,7 +293,7 @@ namespace lux::asset
             return lux::cxx::unexpected(EAssetStorageError::UNSUPPORTED);
         const bool is_invalid_size = entry.size == 0u || entry.size > std::numeric_limits<std::size_t>::max();
         const bool is_invalid_offset = entry.offset < 256u || entry.offset > d_->header.payload_end ||
-            entry.size > d_->header.payload_end - entry.offset;
+                                       entry.size > d_->header.payload_end - entry.offset;
         const bool is_invalid_entry = is_invalid_size || is_invalid_offset;
         if (is_invalid_entry)
         {
@@ -313,7 +310,8 @@ namespace lux::asset
             return lux::cxx::unexpected(EAssetStorageError::IO_FAILURE);
         }
         if (lux::cxx::algorithm::Sha256::hash(
-                std::span<const std::byte>{bytes.get(), static_cast<std::size_t>(entry.size)}) != entry.content_digest)
+                std::span<const std::byte>{bytes.get(), static_cast<std::size_t>(entry.size)}
+            ) != entry.content_digest)
         {
             return lux::cxx::unexpected(EAssetStorageError::CORRUPT_IMAGE);
         }

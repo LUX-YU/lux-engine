@@ -14,8 +14,7 @@ namespace lux::render
         buckets_.push_back(VariantBucketDesc{
             .family = family,
             .feature_mask = feature_mask,
-        }
-        );
+        });
         graph_refcount_.push_back(0u); // keep parallel; family variants aren't refcounted
         lookup_.emplace(key, bucket);
         return bucket;
@@ -56,7 +55,7 @@ namespace lux::render
         // enforces no PSO-count policy. Buckets are refcounted and recycled via
         // release() on material destroy.
         const VariantBucketDesc desc{
-            .family = ELightingTechnique::Graph,
+            .family = ELightingTechnique::GRAPH,
             // DOUBLE_SIDED here drives BucketPipelinePool::pick()'s cull-tier
             // selection (it reads feature_mask); set in lock-step with
             // graph_double_sided from the same param so the PSO is registered under
@@ -134,8 +133,7 @@ namespace lux::render
             buckets_.push_back(VariantBucketDesc{
                 .family = family,
                 .feature_mask = 0u,
-            }
-            );
+            });
             graph_refcount_.push_back(0u); // family bootstrap buckets are pinned
             lookup_.emplace(makeKey(family, 0u), family_index);
         }

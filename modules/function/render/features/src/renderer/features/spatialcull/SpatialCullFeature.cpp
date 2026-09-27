@@ -16,8 +16,7 @@ namespace lux::render
 {
     SpatialCullFeature::SpatialCullFeature(Config cfg)
         : RenderFeature(RenderFeature::Config{std::move(cfg.name)}), params_{cfg.cell_size, cfg.cull_distance}
-    {
-    }
+    {}
 
     lux::render::Expected<void> SpatialCullFeature::initAndAttachTo(RenderScene& sc)
     {
@@ -86,8 +85,7 @@ namespace lux::render
                 return;
             const auto& p = cam_fd->camera_transform.position;
             camera_scratch_.push_back({p.x(), p.y(), p.z()});
-        }
-        );
+        });
 
         // Classify cells + upload the per-slot mask for THIS frame, then publish its
         // GPU address into the scene's domain-neutral primitive. The mesh cull reads

@@ -28,13 +28,13 @@ namespace lux::window
         std::string title;
     };
 
-    enum class Mode
+    enum class EWindowMode
     {
-        Headless,
-        Fullscreen,
-        FullscreenBorderless,
-        FullscreenStretch,
-        Default
+        HEADLESS,
+        FULLSCREEN,
+        FULLSCREEN_BORDERLESS,
+        FULLSCREEN_STRETCH,
+        DEFAULT
     };
 
     enum class EWindowInitError : std::uint8_t
@@ -90,6 +90,13 @@ namespace lux::window
 
         bool shouldClose();
 
+        [[nodiscard]] bool focused() const noexcept;
+        [[nodiscard]] bool visible() const noexcept;
+        [[nodiscard]] bool minimized() const noexcept;
+
+        // Platform-adapter borrow; valid only during this window's lifetime.
+        [[nodiscard]] void* nativeHandle() const noexcept;
+
         void hideCursor(bool);
 
         bool setRawMouseMotion(bool enable);
@@ -98,9 +105,9 @@ namespace lux::window
 
         void setCursorPos(double x, double y);
 
-        /// Transfer the backend-native events recorded since the previous
-        /// drain. Must be called on the Window owner thread.
-        [[nodiscard]] std::vector<WindowInputEvent> drainInputEvents();
+        /// Borrow the ordered native input batch until the next drain. Further
+        /// callbacks append to a different buffer. Window owner thread only.
+        [[nodiscard]] std::span<const VWindowInputEvent> drainInputEvents();
 
         int exec();
 
@@ -128,8 +135,11 @@ namespace lux::window
 
         /// Create a Vulkan surface for this window using the active window
         /// backend. Writes VK_NULL_HANDLE and returns false on failure.
-        [[nodiscard]] bool
-        createVulkanSurface(VkInstance instance, const VkAllocationCallbacks* allocator, VkSurfaceKHR* out_surface);
+        [[nodiscard]] bool createVulkanSurface(
+            VkInstance instance,
+            const VkAllocationCallbacks* allocator,
+            VkSurfaceKHR* out_surface
+        );
 
         /// Vulkan instance extensions the window backend needs for surface
         /// creation (e.g. VK_KHR_surface + the platform surface extension).
@@ -154,6 +164,9 @@ namespace lux::window
         static void pollEvents();
 
         static void waitEvents();
+        static void waitEvents(double timeout_seconds);
+        // Thread-safe wake of the native event wait. The platform runtime must remain alive.
+        static void wakeEvents() noexcept;
 
         static double timeAfterFirstInitialization();
 
@@ -198,6 +211,7 @@ namespace lux::window
         virtual void newFrame();
 
     private:
+        void recordInput(VWindowInputEvent);
         void subscribeKeyEvent();
 
         void subscribeCursorPositionCallback();
@@ -225,6 +239,9 @@ namespace lux::window
         EWindowInitError init_error_{EWindowInitError::NONE};
         EExitBehavior _exit_behavior{EExitBehavior::EXIT};
 
-        std::vector<WindowInputEvent> pending_input_events_;
+        std::uint64_t input_sequence_{};
+        bool composing_{};
+        std::vector<VWindowInputEvent> pending_input_events_;
+        std::vector<VWindowInputEvent> drained_input_events_;
     };
 } // namespace lux-engine::platform

@@ -45,7 +45,7 @@ struct LegacyLitMaterialGPU {
     TextureRefGPU tex[6];
 };
 
-// PBR family (EShadingModel::PbrMetallicRoughness = 200)
+// PBR family (EShadingModel::PBR_METALLIC_ROUGHNESS = 200)
 struct PbrMaterialGPU {
     uint  shading_model_id;
     uint  feature_mask;

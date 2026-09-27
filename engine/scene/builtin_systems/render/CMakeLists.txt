@@ -17,7 +17,12 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CameraExtraction.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderSchema.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderAssets.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderAssetRequest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderResources.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderResourceAssets.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderResourceScenes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderResourceViews.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystemConfiguration.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderViewRequests.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystem.cpp
 )
 include(${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/schema/cmake/engine_ecs_codegen.cmake)
@@ -69,83 +74,24 @@ component_add_transitive_commands(
     "find_package(lux-engine-process-asset-loading REQUIRED COMPONENTS process_asset_loading)"
 )
 
-if(LUX_PROFILE_HAS_EDITOR)
-add_component(
-    COMPONENT_NAME scene_render_meta
-    NAMESPACE      lux::engine::scene
-    OUTPUT_NAME    lux_engine_scene_render_meta
-    SOURCE_FILES   ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystemMetaModule.cpp
-)
-component_include_directories(
-    scene_render_meta
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
-    INSTALL_TIME include
-)
-lux_classify_target(TARGET scene_render_meta LAYER EDITOR PRODUCT EDITOR ROLE PLUGIN)
-target_compile_definitions(scene_render_meta PRIVATE LUX_ENGINE_SCENE_RENDER_LIBRARY)
-target_link_libraries(
-    scene_render_meta
-    PRIVATE scene_render lux::engine::core::meta lux::engine::editor::editor_metadata
-)
-
-engine_add_type_runtime_info(
-    NAME scene_runtime_render_configuration_meta EXPLICIT_REGISTRATION
-    REGISTER_FUNC_NAME scene_runtime_render_configuration
-    REGISTER_FUNC_MACRO LUX_ENGINE_SCENE_RENDER_PUBLIC
-    CUSTOM_INCLUDE "lux/engine/scene/render/visibility.h"
-    TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/scene/RenderSystemConfiguration.hpp
-)
-engine_target_add_type_runtime_info(
-    TARGET scene_render_meta
-    METAS scene_runtime_render_configuration_meta
-    OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/include
-    TOP_LEVEL_REGISTER_FUNC_PREFIX LuxRegisterSceneRuntimeRenderMetas
-)
-
-endif()
-set(_render_components scene_render)
-if(TARGET scene_render_meta)
-    list(APPEND _render_components scene_render_meta)
-endif()
 lux_engine_install_components(
     PROJECT_NAME lux-engine-scene-render
     VERSION      ${PROJECT_VERSION}
     NAMESPACE    lux::engine::scene
-    COMPONENTS   ${_render_components}
+    COMPONENTS   scene_render
 )
 
 if(BUILD_TESTING)
-    add_executable(scene_camera_test test/camera.cpp)
-    target_link_libraries(scene_camera_test PRIVATE scene_render lux::engine::core::math)
-    if(MSVC)
-        target_compile_options(scene_camera_test PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(scene_camera_test PRIVATE -UNDEBUG)
-    endif()
-    add_test(NAME scene.camera COMMAND scene_camera_test)
-    add_executable(scene_render_views_test test/system_views.cpp)
-    target_link_libraries(scene_render_views_test PRIVATE scene_render
-        lux::engine::function::render_features
-        lux::engine::function::render_vulkan)
-    if(MSVC)
-        target_compile_options(scene_render_views_test PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(scene_render_views_test PRIVATE -UNDEBUG)
-    endif()
-    add_test(NAME scene.render_views COMMAND scene_render_views_test)
-endif()
+    add_executable(scene_render_resources_test test/resources.cpp test/runtime.cpp)
+    target_link_libraries(scene_render_resources_test PRIVATE scene_render lux::engine::function::render_features
+        lux::engine::engine_context_render lux::engine::function::ui_rendering)
+    target_include_directories(scene_render_resources_test PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/type_info)
 
-if(BUILD_TESTING AND LUX_PROFILE_HAS_EDITOR)
-    add_executable(scene_render_assets_test test/assets.cpp)
-    target_link_libraries(scene_render_assets_test PRIVATE scene_render
-        lux::engine::function::render_features)
     if(MSVC)
-        target_compile_options(scene_render_assets_test PRIVATE /UNDEBUG)
+        target_compile_options(scene_render_resources_test PRIVATE /UNDEBUG /utf-8)
     else()
-        target_compile_options(scene_render_assets_test PRIVATE -UNDEBUG)
+        target_compile_options(scene_render_resources_test PRIVATE -UNDEBUG)
     endif()
-    add_test(NAME scene.render_assets_seed COMMAND lux_scene_seed ${CMAKE_CURRENT_BINARY_DIR}/assets.luxpak)
-    set_tests_properties(scene.render_assets_seed PROPERTIES FIXTURES_SETUP scene_render_assets)
-    add_test(NAME scene.render_assets COMMAND scene_render_assets_test ${CMAKE_CURRENT_BINARY_DIR}/assets.luxpak)
-    set_tests_properties(scene.render_assets PROPERTIES FIXTURES_REQUIRED scene_render_assets)
+    add_test(NAME scene.render_resources COMMAND scene_render_resources_test )
+    set_tests_properties(scene.render_resources PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
 endif()

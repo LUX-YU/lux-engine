@@ -25,35 +25,42 @@ namespace lux::render
         // Column-major indexing: element (row, col) = m[col*4 + row]
         auto e = [&](int row, int col) -> float { return m[col * 4 + row]; };
 
+        const auto left = static_cast<std::size_t>(Frustum::ESide::PLANE_LEFT);
+        const auto right = static_cast<std::size_t>(Frustum::ESide::PLANE_RIGHT);
+        const auto bottom = static_cast<std::size_t>(Frustum::ESide::PLANE_BOTTOM);
+        const auto top = static_cast<std::size_t>(Frustum::ESide::PLANE_TOP);
+        const auto near = static_cast<std::size_t>(Frustum::ESide::PLANE_NEAR);
+        const auto far = static_cast<std::size_t>(Frustum::ESide::PLANE_FAR);
+
         // Left
-        out.planes[Frustum::Left].normal = {e(3, 0) + e(0, 0), e(3, 1) + e(0, 1), e(3, 2) + e(0, 2)};
-        out.planes[Frustum::Left].d = e(3, 3) + e(0, 3);
-        normalisePlane(out.planes[Frustum::Left]);
+        out.planes[left].normal = {e(3, 0) + e(0, 0), e(3, 1) + e(0, 1), e(3, 2) + e(0, 2)};
+        out.planes[left].d = e(3, 3) + e(0, 3);
+        normalisePlane(out.planes[left]);
 
         // Right
-        out.planes[Frustum::Right].normal = {e(3, 0) - e(0, 0), e(3, 1) - e(0, 1), e(3, 2) - e(0, 2)};
-        out.planes[Frustum::Right].d = e(3, 3) - e(0, 3);
-        normalisePlane(out.planes[Frustum::Right]);
+        out.planes[right].normal = {e(3, 0) - e(0, 0), e(3, 1) - e(0, 1), e(3, 2) - e(0, 2)};
+        out.planes[right].d = e(3, 3) - e(0, 3);
+        normalisePlane(out.planes[right]);
 
         // Bottom
-        out.planes[Frustum::Bottom].normal = {e(3, 0) + e(1, 0), e(3, 1) + e(1, 1), e(3, 2) + e(1, 2)};
-        out.planes[Frustum::Bottom].d = e(3, 3) + e(1, 3);
-        normalisePlane(out.planes[Frustum::Bottom]);
+        out.planes[bottom].normal = {e(3, 0) + e(1, 0), e(3, 1) + e(1, 1), e(3, 2) + e(1, 2)};
+        out.planes[bottom].d = e(3, 3) + e(1, 3);
+        normalisePlane(out.planes[bottom]);
 
         // Top
-        out.planes[Frustum::Top].normal = {e(3, 0) - e(1, 0), e(3, 1) - e(1, 1), e(3, 2) - e(1, 2)};
-        out.planes[Frustum::Top].d = e(3, 3) - e(1, 3);
-        normalisePlane(out.planes[Frustum::Top]);
+        out.planes[top].normal = {e(3, 0) - e(1, 0), e(3, 1) - e(1, 1), e(3, 2) - e(1, 2)};
+        out.planes[top].d = e(3, 3) - e(1, 3);
+        normalisePlane(out.planes[top]);
 
         // Near (Vulkan ZO depth range [0, 1]): clip_z >= 0  -> row2 * world >= 0
-        out.planes[Frustum::Near].normal = {e(2, 0), e(2, 1), e(2, 2)};
-        out.planes[Frustum::Near].d = e(2, 3);
-        normalisePlane(out.planes[Frustum::Near]);
+        out.planes[near].normal = {e(2, 0), e(2, 1), e(2, 2)};
+        out.planes[near].d = e(2, 3);
+        normalisePlane(out.planes[near]);
 
         // Far
-        out.planes[Frustum::Far].normal = {e(3, 0) - e(2, 0), e(3, 1) - e(2, 1), e(3, 2) - e(2, 2)};
-        out.planes[Frustum::Far].d = e(3, 3) - e(2, 3);
-        normalisePlane(out.planes[Frustum::Far]);
+        out.planes[far].normal = {e(3, 0) - e(2, 0), e(3, 1) - e(2, 1), e(3, 2) - e(2, 2)};
+        out.planes[far].d = e(3, 3) - e(2, 3);
+        normalisePlane(out.planes[far]);
     }
 
     // ─── Frustum static factory ─────────────────────────────────────────────

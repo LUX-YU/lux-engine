@@ -3,7 +3,7 @@
 #include "PhysicsQuery2D.ability.generated.hpp"
 #include <lux/engine/physics2d/Box2DWorld.hpp>
 #include <lux/engine/physics2d/Physics2DSystem.type_static_info.hpp>
-#include <lux/engine/simulation/SimulationBuilder.hpp>
+#include <lux/engine/simulation/SimulationSystemInstaller.hpp>
 #include <lux/engine/serialization/PortableValueCodec.hpp>
 
 #include <entt/container/dense_map.hpp>
@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <new>
 #include <optional>
 
 namespace lux::physics2d
@@ -45,20 +44,24 @@ namespace lux::physics2d
         }
 
         [[nodiscard]] lux::cxx::expected<void, lux::simulation::SimulationSystemBuildFailure> installPhysics2DSystem(
-            lux::simulation::SimulationBuilder& builder,
-            lux::simulation::SimulationSystemView description) noexcept
+            lux::simulation::SimulationSystemInstaller& builder,
+            lux::simulation::SimulationSystemView description
+        ) noexcept
         {
             auto configuration = builder.decodeConfiguration<Physics2DSystemConfiguration>(description);
             if (!configuration || !validConfiguration(*configuration))
             {
                 return lux::cxx::unexpected(lux::simulation::SimulationSystemBuildFailure{
                     lux::simulation::ESimulationSystemBuildError::CONFIGURATION_DECODE_FAILURE,
-                    description.instanceId()});
+                    description.instanceId()
+                });
             }
-            auto system = builder.emplaceSystem<Physics2DSystem>(description.instanceId(),
-                                                                 builder.registry(),
-                                                                 builder.clock(),
-                                                                 *configuration);
+            auto system = builder.emplaceSystem<Physics2DSystem>(
+                description.instanceId(),
+                builder.registry(),
+                builder.time(),
+                *configuration
+            );
             if (!system)
                 return lux::cxx::unexpected(system.error());
             const auto prepared = (*system)->prepare();
@@ -68,22 +71,26 @@ namespace lux::physics2d
                                        ? lux::simulation::ESimulationSystemBuildError::ALLOCATION_FAILURE
                                        : lux::simulation::ESimulationSystemBuildError::CONSTRUCTION_FAILURE;
                 return lux::cxx::unexpected(
-                    lux::simulation::SimulationSystemBuildFailure{error, description.instanceId()});
+                    lux::simulation::SimulationSystemBuildFailure{error, description.instanceId()}
+                );
             }
             const auto task =
-                builder.addSystemTask<Physics2DSystem>(description.instanceId(),
-                                                       [](Physics2DSystem& value) noexcept { return value.update(); });
+                builder.addSystemTask<Physics2DSystem>(description.instanceId(), [](Physics2DSystem& value) noexcept {
+                    return value.update();
+                });
             if (!task)
                 return lux::cxx::unexpected(task.error());
-            return builder.publishScriptAbility(description.instanceId(),
-                                                lux::script::bindScriptAbility<PhysicsQuery2D>(**system));
+            return builder.publishScriptAbility(
+                description.instanceId(),
+                lux::script::bindScriptAbility<PhysicsQuery2D>(**system)
+            );
         }
     }
 
     struct Physics2DSystem::Impl final
     {
         lux::simulation::ecs::Registry* registry{};
-        const lux::simulation::SimulationClock* clock{};
+        const lux::simulation::SimulationTime* time{};
         Physics2DSystemConfiguration configuration;
         detail::Box2DWorld world;
         entt::dense_map<lux::simulation::ecs::Entity, BodyRecord> bodies;
@@ -93,10 +100,12 @@ namespace lux::physics2d
         std::uint64_t overlap_queries{};
         bool prepared{};
 
-        Impl(lux::simulation::ecs::Registry& source_registry,
-             const lux::simulation::SimulationClock& source_clock,
-             Physics2DSystemConfiguration source_configuration)
-            : registry(std::addressof(source_registry)), clock(std::addressof(source_clock)),
+        Impl(
+            lux::simulation::ecs::Registry& source_registry,
+            const lux::simulation::SimulationTime& source_time,
+            Physics2DSystemConfiguration source_configuration
+        )
+            : registry(std::addressof(source_registry)), time(std::addressof(source_time)),
               configuration(source_configuration), world(source_configuration.gravity_x, source_configuration.gravity_y)
         {}
 
@@ -162,10 +171,12 @@ namespace lux::physics2d
                         success = false;
                         return;
                     }
-                    const auto body = world.createBox(*relative_center,
-                                                      static_cast<float>(transform.rotation),
-                                                      half.cast<float>(),
-                                                      dynamic);
+                    const auto body = world.createBox(
+                        *relative_center,
+                        static_cast<float>(transform.rotation),
+                        half.cast<float>(),
+                        dynamic
+                    );
                     if (!body)
                     {
                         success = false;
@@ -209,12 +220,13 @@ namespace lux::physics2d
 
         [[nodiscard]] bool advance() noexcept
         {
-            const auto snapshot = clock->snapshot();
+            const auto snapshot = (*time);
             if (snapshot.delta.count() < 0)
                 return false;
             const auto fixed = lux::simulation::SimulationDuration{configuration.fixed_step_nanoseconds};
             const auto maximum = lux::simulation::SimulationDuration{
-                configuration.fixed_step_nanoseconds * static_cast<std::int64_t>(configuration.max_substeps)};
+                configuration.fixed_step_nanoseconds * static_cast<std::int64_t>(configuration.max_substeps)
+            };
             accumulator = snapshot.delta >= maximum - accumulator ? maximum : accumulator + snapshot.delta;
             const auto seconds = std::chrono::duration<float>(fixed).count();
             std::uint32_t steps{};
@@ -246,10 +258,12 @@ namespace lux::physics2d
         }
     };
 
-    Physics2DSystem::Physics2DSystem(lux::simulation::ecs::Registry& registry,
-                                     const lux::simulation::SimulationClock& clock,
-                                     Physics2DSystemConfiguration configuration)
-        : impl_(std::make_unique<Impl>(registry, clock, configuration))
+    Physics2DSystem::Physics2DSystem(
+        lux::simulation::ecs::Registry& registry,
+        const lux::simulation::SimulationTime& time,
+        Physics2DSystemConfiguration configuration
+    )
+        : impl_(std::make_unique<Impl>(registry, time, configuration))
     {}
 
     Physics2DSystem::~Physics2DSystem() noexcept = default;
@@ -258,17 +272,12 @@ namespace lux::physics2d
     {
         if (!impl_ || !validConfiguration(impl_->configuration))
             return lux::cxx::unexpected(EPhysics2DSystemError::INVALID_CONFIGURATION);
-        try
         {
             impl_->bodies.reserve(static_cast<std::size_t>(impl_->configuration.body_capacity));
             if (!impl_->world.prepare(static_cast<std::size_t>(impl_->configuration.body_capacity)))
                 return lux::cxx::unexpected(EPhysics2DSystemError::ALLOCATION_FAILURE);
             impl_->prepared = true;
             return {};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(EPhysics2DSystemError::ALLOCATION_FAILURE);
         }
     }
 
@@ -316,25 +325,29 @@ namespace lux::physics2d
             .description = &Physics2DSystem::Description,
             .access = Physics2DSystem::Access.spec(),
             .configuration = lux::serialization::makePortableValueCodec<Physics2DSystemConfiguration>(),
-            .install = &installPhysics2DSystem}};
+            .install = &installPhysics2DSystem
+        }};
         return registrations;
     }
 
     lux::cxx::expected<std::vector<std::byte>, EPhysics2DSystemError> makePhysics2DSystemConfiguration(
-        const Physics2DSystemConfiguration& configuration) noexcept
+        const Physics2DSystemConfiguration& configuration
+    ) noexcept
     {
         if (!validConfiguration(configuration))
             return lux::cxx::unexpected(EPhysics2DSystemError::INVALID_CONFIGURATION);
         std::vector<std::byte> result;
         const auto encoded = lux::serialization::makePortableValueCodec<Physics2DSystemConfiguration>().encode(
             std::addressof(configuration),
-            result);
+            result
+        );
         if (!encoded)
         {
-            return lux::cxx::unexpected(encoded.error().code ==
-                                                lux::serialization::ESerializationError::ALLOCATION_FAILURE
-                                            ? EPhysics2DSystemError::ALLOCATION_FAILURE
-                                            : EPhysics2DSystemError::INVALID_CONFIGURATION);
+            return lux::cxx::unexpected(
+                encoded.error().code == lux::serialization::ESerializationError::ALLOCATION_FAILURE
+                    ? EPhysics2DSystemError::ALLOCATION_FAILURE
+                    : EPhysics2DSystemError::INVALID_CONFIGURATION
+            );
         }
         return result;
     }

@@ -41,8 +41,8 @@ namespace lux::render
         id = lux.render.trajectory_line.v1,
         display = TrajectoryLine,
         feature = TrajectoryLineFeature,
-        feature_header = lux / engine / render / renderer / features / trajectory /
-                         TrajectoryLineFeature.hpp) TrajectoryLineCommConfig
+        feature_header = lux / engine / render / renderer / features / trajectory / TrajectoryLineFeature.hpp
+    ) TrajectoryLineCommConfig
     {
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
@@ -71,7 +71,8 @@ namespace lux::render
         name = TrajectoryCreate,
         method = newTrajectory,
         reply = TrajectoryCreatedReply,
-        opcode = resource) CreateTrajectoryPayload
+        opcode = resource
+    ) CreateTrajectoryPayload
     {
         RenderSceneId scene_id{};
         uint32_t point_count{0}; ///< 必须等于 blob 字节数 / sizeof(TrajectoryPoint)
@@ -86,7 +87,8 @@ namespace lux::render
         name = TrajectoryAppend,
         method = appendPoints,
         reply = GenericOkReply,
-        opcode = resource) AppendTrajectoryPointsPayload
+        opcode = resource
+    ) AppendTrajectoryPointsPayload
     {
         RenderSceneId scene_id{};
         TrajectoryHandle trajectory{};
@@ -102,7 +104,8 @@ namespace lux::render
         name = TrajectoryClear,
         method = clear,
         reply = GenericOkReply,
-        opcode = command) ClearTrajectoryPayload
+        opcode = command
+    ) ClearTrajectoryPayload
     {
         RenderSceneId scene_id{};
         TrajectoryHandle trajectory{};
@@ -116,7 +119,8 @@ namespace lux::render
         name = TrajectoryRemove,
         method = remove,
         reply = GenericOkReply,
-        opcode = command) RemoveTrajectoryPayload
+        opcode = command
+    ) RemoveTrajectoryPayload
     {
         RenderSceneId scene_id{};
         TrajectoryHandle trajectory{};
@@ -130,7 +134,8 @@ namespace lux::render
         name = TrajectoryReplace,
         method = replacePoints,
         reply = GenericOkReply,
-        opcode = resource) ReplaceTrajectoryPointsPayload
+        opcode = resource
+    ) ReplaceTrajectoryPointsPayload
     {
         RenderSceneId scene_id{};
         TrajectoryHandle trajectory{};
@@ -150,8 +155,17 @@ namespace lux::render
         float time;
         float width;
 
-        static TrajectoryPoint
-        make(float px, float py, float pz, float r, float g, float b, float a, float t, float w) noexcept
+        static TrajectoryPoint make(
+            float px,
+            float py,
+            float pz,
+            float r,
+            float g,
+            float b,
+            float a,
+            float t,
+            float w
+        ) noexcept
         {
             auto to_u8 = [](float v) -> uint32_t {
                 return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f);

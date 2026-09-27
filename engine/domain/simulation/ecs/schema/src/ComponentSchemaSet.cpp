@@ -12,8 +12,8 @@ namespace lux::simulation::ecs
 
     namespace
     {
-        [[nodiscard]] lux::cxx::expected<void, SchemaFailure>
-        validate(std::span<const ComponentSchema> schemas) noexcept
+        [[nodiscard]] lux::cxx::expected<void, SchemaFailure> validate(std::span<const ComponentSchema> schemas
+        ) noexcept
         {
             for (std::size_t index{}; index < schemas.size(); ++index)
             {
@@ -27,11 +27,18 @@ namespace lux::simulation::ecs
                         SchemaFailure{ESchemaError::INVALID_CPP_TYPE, schema.id, schema.cpp_type}
                     );
                 if (schema.version == 0)
-                    return lux::cxx::unexpected(
-                        SchemaFailure{ESchemaError::INVALID_VERSION, schema.id, schema.cpp_type}
+                    return lux::cxx::unexpected(SchemaFailure{ESchemaError::INVALID_VERSION, schema.id, schema.cpp_type}
                     );
 
                 const ComponentOperations& operations = schema.operations;
+                const bool invalid_creation =
+                    schema.create && (schema.snapshot != EComponentSnapshotPolicy::COPY ||
+                                      schema.semantic_kind == EComponentSemanticKind::RUNTIME_DERIVED ||
+                                      !schema.capture || !schema.decode_value);
+                if (invalid_creation)
+                    return lux::cxx::unexpected(
+                        SchemaFailure{ESchemaError::INVALID_CREATION, schema.id, schema.cpp_type}
+                    );
                 if (!operations.valid())
                 {
                     return lux::cxx::unexpected(
@@ -60,12 +67,10 @@ namespace lux::simulation::ecs
         }
     } // namespace
 
-    ComponentSchemaSet::ComponentSchemaSet(std::shared_ptr<const Impl> impl) noexcept : impl_(std::move(impl))
-    {
-    }
+    ComponentSchemaSet::ComponentSchemaSet(std::shared_ptr<const Impl> impl) noexcept : impl_(std::move(impl)) {}
 
-    lux::cxx::expected<ComponentSchemaSet, SchemaFailure>
-    ComponentSchemaSet::build(std::vector<ComponentSchema> schemas) noexcept
+    lux::cxx::expected<ComponentSchemaSet, SchemaFailure> ComponentSchemaSet::build(std::vector<ComponentSchema> schemas
+    ) noexcept
     {
         if (auto result = validate(schemas); !result)
             return lux::cxx::unexpected(result.error());
@@ -109,8 +114,9 @@ namespace lux::simulation::ecs
         }
     }
 
-    lux::cxx::expected<ComponentSchemaSet, SchemaFailure>
-    ComponentSchemaSet::extended(std::span<const ComponentSchema> schemas) const noexcept
+    lux::cxx::expected<ComponentSchemaSet, SchemaFailure> ComponentSchemaSet::extended(
+        std::span<const ComponentSchema> schemas
+    ) const noexcept
     {
         try
         {
@@ -168,8 +174,7 @@ namespace lux::simulation::ecs
         const auto iterator =
             std::find_if(impl_->schemas.begin(), impl_->schemas.end(), [type](const ComponentSchema& schema) {
                 return schema.cpp_type.hash() == type.hash() && schema.cpp_type.name() == type.name();
-            }
-            );
+            });
         return iterator == impl_->schemas.end() ? nullptr : &*iterator;
     }
 

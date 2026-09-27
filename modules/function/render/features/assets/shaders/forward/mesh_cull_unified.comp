@@ -174,7 +174,7 @@ vec3 shadowRelativeCullCenter(
 const float kLodCoverage[3] = float[3](0.10, 0.035, 0.012);
 
 // Pick a discrete LOD for the bounding sphere from its on-screen coverage. View-
-// space depth ≈ signed distance to the near plane (Frustum::Near index 4; its
+// space depth ≈ signed distance to the near plane (Frustum::ESide::PLANE_NEAR index 4; its
 // inward normal points down the view direction), so radius/depth is the angular
 // radius — resolution-independent and monotonic with camera distance.
 uint pickLod(vec3 center, float radius, uint lod_count)

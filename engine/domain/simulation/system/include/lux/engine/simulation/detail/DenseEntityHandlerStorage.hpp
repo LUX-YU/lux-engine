@@ -8,15 +8,13 @@
 
 #include <cstddef>
 #include <memory>
-#include <new>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 namespace lux::simulation::detail
 {
-    template <class Handler>
-    class DenseEntityHandlerStorage final
+    template <class Handler> class TDenseEntityHandlerStorage final
     {
         static_assert(std::is_nothrow_move_constructible_v<Handler>);
         static_assert(std::is_nothrow_move_assignable_v<Handler>);
@@ -47,37 +45,25 @@ namespace lux::simulation::detail
     public:
         [[nodiscard]] EEndpointMutationError prepare(std::size_t handler_capacity) noexcept
         {
-            try
-            {
-                registrations_.clear();
-                registrations_.reserve(handler_capacity);
-                target_index_.clear();
-                target_index_.reserve(handler_capacity);
-                target_buckets_.clear();
-                target_buckets_.reserve(handler_capacity);
-                all_bucket_.handlers.clear();
-                handler_capacity_ = handler_capacity;
-                registration_lookups_ = 0U;
-                return EEndpointMutationError::NONE;
-            }
-            catch (const std::bad_alloc&)
-            {
-                return EEndpointMutationError::ALLOCATION_FAILURE;
-            }
+            registrations_.clear();
+            registrations_.reserve(handler_capacity);
+            target_index_.clear();
+            target_index_.reserve(handler_capacity);
+            target_buckets_.clear();
+            target_buckets_.reserve(handler_capacity);
+            all_bucket_.handlers.clear();
+            handler_capacity_ = handler_capacity;
+            registration_lookups_ = 0U;
+            return EEndpointMutationError::NONE;
         }
 
-        [[nodiscard]] EndpointConnectResult connect(
-            ecs::Entity target,
-            Handler handler,
-            bool connect_all
-        ) noexcept
+        [[nodiscard]] EndpointConnectResult connect(ecs::Entity target, Handler handler, bool connect_all) noexcept
         {
             if (registrations_.size() >= handler_capacity_)
             {
                 return {{}, EEndpointMutationError::CAPACITY_EXCEEDED};
             }
 
-            bool inserted_target{};
             TargetBucket* bucket = std::addressof(all_bucket_);
             if (!connect_all)
             {
@@ -87,56 +73,16 @@ namespace lux::simulation::detail
                 }
                 if (!target_index_.contains(target))
                 {
-                    try
-                    {
-                        target_index_.push(target);
-                    }
-                    catch (const std::bad_alloc&)
-                    {
-                        return {{}, EEndpointMutationError::ALLOCATION_FAILURE};
-                    }
-                    try
-                    {
-                        target_buckets_.push_back({});
-                        inserted_target = true;
-                    }
-                    catch (const std::bad_alloc&)
-                    {
-                        target_index_.erase(target);
-                        return {{}, EEndpointMutationError::ALLOCATION_FAILURE};
-                    }
+                    target_index_.push(target);
+                    target_buckets_.push_back({});
                 }
                 bucket = std::addressof(targetBucket(target));
             }
 
-            const auto inserted = registrations_.tryEmplace(Registration{
-                target,
-                bucket->handlers.size(),
-                connect_all
-            });
-            if (!inserted)
-            {
-                if (inserted_target)
-                {
-                    eraseTarget(target);
-                }
-                return {{}, EEndpointMutationError::ALLOCATION_FAILURE};
-            }
+            const auto inserted = registrations_.emplace(Registration{target, bucket->handlers.size(), connect_all});
+            const auto token = toToken(inserted);
+            bucket->handlers.push_back(DenseHandler{token, std::move(handler)});
 
-            const auto token = toToken(*inserted);
-            try
-            {
-                bucket->handlers.push_back(DenseHandler{token, std::move(handler)});
-            }
-            catch (const std::bad_alloc&)
-            {
-                registrations_.erase(*inserted);
-                if (inserted_target)
-                {
-                    eraseTarget(target);
-                }
-                return {{}, EEndpointMutationError::ALLOCATION_FAILURE};
-            }
             return {token, EEndpointMutationError::NONE};
         }
 
@@ -172,8 +118,7 @@ namespace lux::simulation::detail
             return EEndpointMutationError::NONE;
         }
 
-        template <class Invoke>
-        void forEachAll(Invoke&& invoke) noexcept
+        template <class Invoke> void forEachAll(Invoke&& invoke) noexcept
         {
             for (auto& handler : all_bucket_.handlers)
             {
@@ -181,8 +126,7 @@ namespace lux::simulation::detail
             }
         }
 
-        template <class Invoke>
-        void forEachTarget(ecs::Entity target, Invoke&& invoke) noexcept
+        template <class Invoke> void forEachTarget(ecs::Entity target, Invoke&& invoke) noexcept
         {
             if (!target_index_.contains(target))
             {

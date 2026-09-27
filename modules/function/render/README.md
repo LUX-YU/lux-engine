@@ -96,4 +96,4 @@ GPU 拾取可以用于明确要求匹配渲染像素的功能，但不是通用 
 - Shader、资源描述和协议代码生成留在对应 Render target。
 - 生成的 ImGui、CameraMan、选择和拖放代码不进入渲染后端或游戏公共依赖。
 
-相关说明：[Scene RenderSystem](../../../engine/scene/builtin_systems/render/README.md)、[Editor Rendering](../../../engine/editor/rendering/README.md)、[空间查询](../../../engine/domain/spatial/README.md)。
+相关说明：[Scene RenderSystem](../../../engine/scene/builtin_systems/render/README.md)、[Editor Rendering](../../../editor/rendering/README.md)、[空间查询](../../../engine/domain/spatial/README.md)。

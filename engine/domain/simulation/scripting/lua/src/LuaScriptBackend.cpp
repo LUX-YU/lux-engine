@@ -17,7 +17,6 @@
 #include <cstring>
 #include <limits>
 #include <memory>
-#include <new>
 #include <optional>
 #include <unordered_map>
 #include <utility>
@@ -27,7 +26,8 @@ namespace lux::simulation::script
 {
     lux::cxx::expected<LuaPreparedEntryRequirements, ELuaScriptBindingBackendError> describeLuaPreparedRequirements(
         const lux::rdesc::Script& description,
-        std::span<const lux::script::lua::ScriptAbilityLuaContribution> contributions) noexcept
+        std::span<const lux::script::lua::ScriptAbilityLuaContribution> contributions
+    ) noexcept
     {
         LuaPreparedEntryRequirements result{0U, description.event_requirements.size()};
         for (const auto& requirement : description.api_requirements)
@@ -37,13 +37,14 @@ namespace lux::simulation::script
             {
                 const auto* candidate = contribution.description;
                 if (candidate == nullptr || candidate->id.name() != requirement.contract.name() ||
-                    candidate->id.hash() != requirement.contract.hash()) continue;
+                    candidate->id.hash() != requirement.contract.hash())
+                    continue;
                 if (selected != nullptr || candidate->schema_hash != requirement.expected_schema_hash)
                     return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_SCRIPT_REQUIREMENT);
                 selected = candidate;
             }
-            if (selected == nullptr || selected->methods.size() >
-                (std::numeric_limits<std::size_t>::max)() - result.ability_methods)
+            if (selected == nullptr ||
+                selected->methods.size() > (std::numeric_limits<std::size_t>::max)() - result.ability_methods)
                 return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_SCRIPT_REQUIREMENT);
             result.ability_methods += selected->methods.size();
         }
@@ -91,7 +92,8 @@ namespace lux::simulation::script
             if (!lua_checkstack(thread, static_cast<int>(request->plain_count) + 2))
                 return luaL_error(state, "Lua invocation stack allocation failed");
             lua_rawgeti(thread, LUA_REGISTRYINDEX, request->function_ref);
-            if (request->self_ref != LUA_NOREF) lua_rawgeti(thread, LUA_REGISTRYINDEX, request->self_ref);
+            if (request->self_ref != LUA_NOREF)
+                lua_rawgeti(thread, LUA_REGISTRYINDEX, request->self_ref);
             for (std::uint32_t index{}; index < request->plain_count; ++index)
             {
                 if (!pushArgument(thread, request->arguments[index], nullptr))
@@ -105,7 +107,8 @@ namespace lux::simulation::script
 
         [[nodiscard]] int createThreadProtected(ThreadCreateRequest& request) noexcept
         {
-            if (!lua_checkstack(main_thread, 2)) return LUA_ERRMEM;
+            if (!lua_checkstack(main_thread, 2))
+                return LUA_ERRMEM;
             const auto base = lua_gettop(main_thread);
             lua_pushcfunction(main_thread, &createThread);
             lua_pushlightuserdata(main_thread, &request);
@@ -181,7 +184,7 @@ namespace lux::simulation::script
                 [[nodiscard]] std::size_t operator()(const PrototypeKey& key) const noexcept
                 {
                     return std::hash<lux::asset::AssetId>{}(key.asset) ^
-                        lux::script::ScriptArtifactContentId::Hash{}(key.content);
+                           lux::script::ScriptArtifactContentId::Hash{}(key.content);
                 }
             };
         };
@@ -251,11 +254,11 @@ namespace lux::simulation::script
             ScriptEventAdmissionHandle admission;
         };
 
-        template <class Value>
-        class PreparedBlockStorage final
+        template <class Value> class TPreparedBlockStorage final
         {
             static_assert(std::is_nothrow_default_constructible_v<Value>);
             static_assert(std::is_nothrow_destructible_v<Value>);
+
         public:
             struct Stats final
             {
@@ -266,8 +269,12 @@ namespace lux::simulation::script
                 std::uint64_t release_steps{};
             };
 
-            PreparedBlockStorage(std::size_t capacity, std::span<const LuaPreparedBlockClass> classes,
-                std::size_t byte_budget) : capacity_(capacity)
+            TPreparedBlockStorage(
+                std::size_t capacity,
+                std::span<const LuaPreparedBlockClass> classes,
+                std::size_t byte_budget
+            )
+                : capacity_(capacity)
             {
                 if (capacity == 0U)
                     return;
@@ -282,8 +289,9 @@ namespace lux::simulation::script
                 std::size_t blocks{};
                 for (const auto& item : classes)
                 {
-                    const bool is_invalid_class = item.entries == 0U || item.blocks == 0U ||
-                        item.entries > capacity - entries || item.blocks > (capacity - entries) / item.entries ||
+                    const bool is_invalid_class =
+                        item.entries == 0U || item.blocks == 0U || item.entries > capacity - entries ||
+                        item.blocks > (capacity - entries) / item.entries ||
                         item.entries > (std::numeric_limits<std::size_t>::max)() / sizeof(Value);
                     if (is_invalid_class)
                     {
@@ -308,14 +316,16 @@ namespace lux::simulation::script
 
             [[nodiscard]] detail::BoundedClassStorage::ClassHandle select(std::size_t count) noexcept
             {
-                const bool is_valid_count = count <= capacity_ &&
-                    count <= (std::numeric_limits<std::size_t>::max)() / sizeof(Value);
-                return is_valid_count ? storage_.select(count * sizeof(Value), alignof(Value)) :
-                    detail::BoundedClassStorage::ClassHandle{};
+                const bool is_valid_count =
+                    count <= capacity_ && count <= (std::numeric_limits<std::size_t>::max)() / sizeof(Value);
+                return is_valid_count ? storage_.select(count * sizeof(Value), alignof(Value))
+                                      : detail::BoundedClassStorage::ClassHandle{};
             }
 
-            [[nodiscard]] PreparedSpan allocate(detail::BoundedClassStorage::ClassHandle layout,
-                std::size_t count) noexcept
+            [[nodiscard]] PreparedSpan allocate(
+                detail::BoundedClassStorage::ClassHandle layout,
+                std::size_t count
+            ) noexcept
             {
                 if (count == 0U)
                     return {{}, 0U};
@@ -348,20 +358,28 @@ namespace lux::simulation::script
 
             [[nodiscard]] Value* at(const PreparedSpan& span, std::size_t local_slot) noexcept
             {
-                return span.valid() && local_slot < span.count ?
-                    static_cast<Value*>(span.block.data) + local_slot : nullptr;
+                return span.valid() && local_slot < span.count ? static_cast<Value*>(span.block.data) + local_slot
+                                                               : nullptr;
             }
             [[nodiscard]] const Value* at(const PreparedSpan& span, std::size_t local_slot) const noexcept
             {
-                return const_cast<PreparedBlockStorage*>(this)->at(span, local_slot);
+                return const_cast<TPreparedBlockStorage*>(this)->at(span, local_slot);
             }
             [[nodiscard]] Stats stats() const noexcept
             {
                 const auto stats = storage_.stats();
-                return {active_, high_water_, stats.arena_bytes + stats.metadata_bytes,
-                    stats.acquire_steps, stats.release_steps};
+                return {
+                    active_,
+                    high_water_,
+                    stats.arena_bytes + stats.metadata_bytes,
+                    stats.acquire_steps,
+                    stats.release_steps
+                };
             }
-            [[nodiscard]] bool valid() const noexcept { return valid_; }
+            [[nodiscard]] bool valid() const noexcept
+            {
+                return valid_;
+            }
 
         private:
             detail::BoundedClassStorage storage_;
@@ -397,18 +415,14 @@ namespace lux::simulation::script
         class ExecutionScope final
         {
         public:
-            ExecutionScope(Impl& owner, ExecutionFrame frame) noexcept
-                : owner_(std::addressof(owner)), frame_(frame)
+            ExecutionScope(Impl& owner, ExecutionFrame frame) noexcept : owner_(std::addressof(owner)), frame_(frame)
             {
                 if (owner.execution_depth >= owner.execution_depth_capacity)
                     return;
                 frame_.previous = owner.active_execution;
                 owner.active_execution = std::addressof(frame_);
                 ++owner.execution_depth;
-                owner.execution_depth_high_water = (std::max)(
-                    owner.execution_depth_high_water,
-                    owner.execution_depth
-                );
+                owner.execution_depth_high_water = (std::max)(owner.execution_depth_high_water, owner.execution_depth);
                 active_ = true;
             }
 
@@ -434,74 +448,68 @@ namespace lux::simulation::script
             bool active_{};
         };
 
-        Impl(
-            LuaScriptBackendConfig config
-        )
+        Impl(LuaScriptBackendConfig config)
             : engine([&config] {
-                auto vm = config.vm;
-                vm.track_allocations |= config.track_vm_allocations;
-                return vm;
+                  auto vm = config.vm;
+                  vm.track_allocations |= config.track_vm_allocations;
+                  return vm;
               }()),
-              main_thread(engine.state()),
-              instance_capacity(config.instance_capacity),
+              main_thread(engine.state()), instance_capacity(config.instance_capacity),
               prepared_call_capacity(config.prepared_call_capacity),
               continuation_capacity(config.continuation_capacity),
-              execution_depth_capacity(config.execution_depth_capacity),
-              prepared_abilities(config.prepared_ability_capacity, config.prepared_ability_blocks,
-                  config.prepared_ability_storage_bytes),
-              prepared_events(config.prepared_event_capacity, config.prepared_event_blocks,
-                  config.prepared_event_storage_bytes)
+              execution_depth_capacity(config.execution_depth_capacity), prepared_abilities(
+                                                                             config.prepared_ability_capacity,
+                                                                             config.prepared_ability_blocks,
+                                                                             config.prepared_ability_storage_bytes
+                                                                         ),
+              prepared_events(
+                  config.prepared_event_capacity,
+                  config.prepared_event_blocks,
+                  config.prepared_event_storage_bytes
+              )
         {
             if (!prepared_abilities.valid() || !prepared_events.valid())
                 return;
-            if (!lux::script::lua::detail::configureLuaVm(
-                    main_thread,
-                    runtime_info
-                ))
+            if (!lux::script::lua::detail::configureLuaVm(main_thread, runtime_info))
             {
                 return;
             }
-            if (!lux::script::lua::detail::LuaValueAccess::initialize(main_thread)) return;
+            if (!lux::script::lua::detail::LuaValueAccess::initialize(main_thread))
+                return;
             for (const auto& value : config.values)
-                if (value.prepare != nullptr && !value.prepare(main_thread)) return;
+                if (value.prepare != nullptr && !value.prepare(main_thread))
+                    return;
             for (const auto& ability : config.abilities)
                 for (const auto& method : ability.methods)
                 {
                     for (const auto& value : method.parameters)
-                        if (value.prepare != nullptr && !value.prepare(main_thread)) return;
+                        if (value.prepare != nullptr && !value.prepare(main_thread))
+                            return;
                     for (const auto& value : method.results)
-                        if (value.prepare != nullptr && !value.prepare(main_thread)) return;
+                        if (value.prepare != nullptr && !value.prepare(main_thread))
+                            return;
                 }
             prototypes.reserve(config.instance_capacity);
             latest_prototypes.reserve(config.instance_capacity);
-            components.assign(
-                config.components.begin(),
-                config.components.end()
-            );
+            components.assign(config.components.begin(), config.components.end());
             component_index.reserve(components.size());
             for (std::size_t index{}; index < components.size(); ++index)
                 component_index.emplace(components[index].name, index);
-            value_operations.assign(
-                config.values.begin(),
-                config.values.end()
-            );
+            value_operations.assign(config.values.begin(), config.values.end());
             value_operation_index.reserve(value_operations.size());
             for (std::size_t index{}; index < value_operations.size(); ++index)
             {
-                value_operation_index.emplace(
-                    value_operations[index].semantic_type,
-                    index
-                );
+                value_operation_index.emplace(value_operations[index].semantic_type, index);
             }
             for (const auto& contribution : config.abilities)
             {
                 for (std::size_t index{}; index < contribution.description->methods.size(); ++index)
                 {
-                    ability_methods.push_back({
-                        contribution.description,
-                        std::addressof(contribution.description->methods[index]),
-                        contribution.methods[index].entry
-                    });
+                    ability_methods.push_back(
+                        {contribution.description,
+                         std::addressof(contribution.description->methods[index]),
+                         contribution.methods[index].entry}
+                    );
                 }
             }
             event_sources.assign(config.events.begin(), config.events.end());
@@ -525,7 +533,8 @@ namespace lux::simulation::script
             free_continuations.reserve(continuation_capacity);
             for (std::size_t index = continuation_capacity; index > 0U; --index)
                 free_continuations.push_back(index - 1U);
-            if (!lua_checkstack(main_thread, 3)) return;
+            if (!lua_checkstack(main_thread, 3))
+                return;
             lua_pushcfunction(main_thread, &Impl::createRoots);
             lua_pushlightuserdata(main_thread, this);
             if (lua_pcall(main_thread, 1, 0, 0) != LUA_OK)
@@ -564,20 +573,24 @@ namespace lux::simulation::script
 
         ~Impl()
         {
-            if (!main_thread) return;
+            if (!main_thread)
+                return;
             // The root table owns all remaining VM references and is released once.
-            if (thread_roots_ref != LUA_NOREF) luaL_unref(main_thread, LUA_REGISTRYINDEX, thread_roots_ref);
+            if (thread_roots_ref != LUA_NOREF)
+                luaL_unref(main_thread, LUA_REGISTRYINDEX, thread_roots_ref);
             for (const auto& [asset, prototype] : prototypes)
             {
                 static_cast<void>(asset);
-                if (prototype.table_ref != LUA_NOREF) luaL_unref(main_thread, LUA_REGISTRYINDEX, prototype.table_ref);
+                if (prototype.table_ref != LUA_NOREF)
+                    luaL_unref(main_thread, LUA_REGISTRYINDEX, prototype.table_ref);
                 if (prototype.environment_ref != LUA_NOREF)
                     luaL_unref(main_thread, LUA_REGISTRYINDEX, prototype.environment_ref);
             }
             for (const auto& function : function_bindings)
                 if (function.function_ref != LUA_NOREF)
                     luaL_unref(main_thread, LUA_REGISTRYINDEX, function.function_ref);
-            if (traceback_ref != LUA_NOREF) luaL_unref(main_thread, LUA_REGISTRYINDEX, traceback_ref);
+            if (traceback_ref != LUA_NOREF)
+                luaL_unref(main_thread, LUA_REGISTRYINDEX, traceback_ref);
         }
 
         [[nodiscard]] static bool identifier(std::string_view value) noexcept
@@ -585,12 +598,10 @@ namespace lux::simulation::script
             if (value.empty())
                 return false;
             const auto alpha = [](char character) noexcept {
-                return (character >= 'a' && character <= 'z') ||
-                    (character >= 'A' && character <= 'Z') || character == '_';
+                return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+                       character == '_';
             };
-            const auto digit = [](char character) noexcept {
-                return character >= '0' && character <= '9';
-            };
+            const auto digit = [](char character) noexcept { return character >= '0' && character <= '9'; };
             if (!alpha(value.front()))
                 return false;
             const bool valid_characters = std::all_of(value.begin() + 1, value.end(), [&](char character) noexcept {
@@ -599,13 +610,13 @@ namespace lux::simulation::script
             if (!valid_characters)
                 return false;
             constexpr std::array keywords{
-                std::string_view{"and"}, std::string_view{"break"}, std::string_view{"do"},
-                std::string_view{"else"}, std::string_view{"elseif"}, std::string_view{"end"},
-                std::string_view{"false"}, std::string_view{"for"}, std::string_view{"function"},
-                std::string_view{"goto"}, std::string_view{"if"}, std::string_view{"in"},
-                std::string_view{"local"}, std::string_view{"nil"}, std::string_view{"not"},
-                std::string_view{"or"}, std::string_view{"repeat"}, std::string_view{"return"},
-                std::string_view{"then"}, std::string_view{"true"}, std::string_view{"until"},
+                std::string_view{"and"},   std::string_view{"break"},  std::string_view{"do"},
+                std::string_view{"else"},  std::string_view{"elseif"}, std::string_view{"end"},
+                std::string_view{"false"}, std::string_view{"for"},    std::string_view{"function"},
+                std::string_view{"goto"},  std::string_view{"if"},     std::string_view{"in"},
+                std::string_view{"local"}, std::string_view{"nil"},    std::string_view{"not"},
+                std::string_view{"or"},    std::string_view{"repeat"}, std::string_view{"return"},
+                std::string_view{"then"},  std::string_view{"true"},   std::string_view{"until"},
                 std::string_view{"while"}
             };
             return std::find(keywords.begin(), keywords.end(), value) == keywords.end();
@@ -614,10 +625,10 @@ namespace lux::simulation::script
         // Only C++ allocation here. The subsequent protected Lua render reads this
         // frozen layout.
         [[nodiscard]] bool prepareArtifactLayout(
-            Prototype& prototype, const lux::script::ScriptArtifact& artifact
+            Prototype& prototype,
+            const lux::script::ScriptArtifact& artifact
         ) noexcept
         {
-            try
             {
                 for (const auto& requirement : artifact.description().api_requirements)
                 {
@@ -627,10 +638,12 @@ namespace lux::simulation::script
                         const auto* ability = ability_methods[ordinal].ability;
                         if (ability->id.hash() == requirement.contract.hash() &&
                             ability->id.name() == requirement.contract.name() &&
-                            ability->schema_hash == requirement.expected_schema_hash) break;
+                            ability->schema_hash == requirement.expected_schema_hash)
+                            break;
                         ++ordinal;
                     }
-                    if (ordinal == ability_methods.size()) return false;
+                    if (ordinal == ability_methods.size())
+                        return false;
                     const auto* ability = ability_methods[ordinal].ability;
                     while (ordinal < ability_methods.size() && ability_methods[ordinal].ability == ability)
                         prototype.ability_ordinals.push_back(static_cast<std::uint32_t>(ordinal++));
@@ -638,16 +651,13 @@ namespace lux::simulation::script
                 for (const auto& requirement : artifact.description().event_requirements)
                 {
                     const auto found = std::ranges::find(event_sources, requirement);
-                    if (found == event_sources.end()) return false;
+                    if (found == event_sources.end())
+                        return false;
                     prototype.event_ordinals.push_back(static_cast<std::uint32_t>(found - event_sources.begin()));
                 }
                 prototype.ability_class = prepared_abilities.select(prototype.ability_ordinals.size());
                 prototype.event_class = prepared_events.select(prototype.event_ordinals.size());
                 return true;
-            }
-            catch (const std::bad_alloc&)
-            {
-                return false;
             }
         }
 
@@ -662,7 +672,8 @@ namespace lux::simulation::script
                 while (local_slot < prototype.ability_ordinals.size())
                 {
                     const auto& entry = ability_methods[prototype.ability_ordinals[local_slot]];
-                    if (entry.ability != ability) break;
+                    if (entry.ability != ability)
+                        break;
                     lua_pushlstring(main_thread, entry.method->name.data(), entry.method->name.size());
                     lua_pushlightuserdata(main_thread, this);
                     lua_pushinteger(main_thread, static_cast<lua_Integer>(local_slot));
@@ -693,12 +704,14 @@ namespace lux::simulation::script
             int lux_index
         ) noexcept
         {
-            if (artifact.description().event_requirements.empty()) return;
+            if (artifact.description().event_requirements.empty())
+                return;
             std::size_t groups{};
             std::string_view previous;
             for (const auto& source : artifact.description().event_requirements)
             {
-                if (source.system_name == previous) continue;
+                if (source.system_name == previous)
+                    continue;
                 ++groups;
                 previous = source.system_name;
             }
@@ -741,10 +754,7 @@ namespace lux::simulation::script
             lua_setfield(main_thread, lux_index, "Event");
         }
 
-        void pushArtifactEnvironment(
-            Prototype& prototype,
-            const lux::script::ScriptArtifact& artifact
-        ) noexcept
+        void pushArtifactEnvironment(Prototype& prototype, const lux::script::ScriptArtifact& artifact) noexcept
         {
             lua_createtable(main_thread, 0, 1);
             const auto environment_index = lua_gettop(main_thread);
@@ -775,7 +785,8 @@ namespace lux::simulation::script
         // No owning C++ objects may be constructed in callbacks passed here.
         [[nodiscard]] int runCold(lua_CFunction entry, void* request) noexcept
         {
-            if (!lua_checkstack(main_thread, 3)) return LUA_ERRMEM;
+            if (!lua_checkstack(main_thread, 3))
+                return LUA_ERRMEM;
             const auto base = lua_gettop(main_thread);
             lua_pushcfunction(main_thread, entry);
             lua_pushlightuserdata(main_thread, request);
@@ -800,17 +811,24 @@ namespace lux::simulation::script
             const auto& artifact = *request.artifact;
             request.owner->pushArtifactEnvironment(prototype, artifact);
             const auto environment_index = lua_gettop(vm);
-            if (luaL_loadbufferx(vm, reinterpret_cast<const char*>(artifact.payload().data()),
-                    artifact.payload().size(), artifact.description().module_name.c_str(), "t") != LUA_OK)
+            if (luaL_loadbufferx(
+                    vm,
+                    reinterpret_cast<const char*>(artifact.payload().data()),
+                    artifact.payload().size(),
+                    artifact.description().module_name.c_str(),
+                    "t"
+                ) != LUA_OK)
                 return lua_error(vm);
-            if (!lux::script::lua::detail::setLuaChunkEnvironment(vm, -1, environment_index)) return 0;
+            if (!lux::script::lua::detail::setLuaChunkEnvironment(vm, -1, environment_index))
+                return 0;
             lua_call(vm, 0, 1);
             if (!lua_istable(vm, -1))
             {
                 lua_pop(vm, 1);
                 lua_getfield(vm, environment_index, request.body->entry.c_str());
             }
-            if (!lua_istable(vm, -1)) return 0;
+            if (!lua_istable(vm, -1))
+                return 0;
             prototype.table_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
             lua_pushvalue(vm, environment_index);
             prototype.environment_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
@@ -820,14 +838,16 @@ namespace lux::simulation::script
 
         void releasePrototype(const Prototype& prototype) noexcept
         {
-            if (prototype.table_ref != LUA_NOREF) luaL_unref(main_thread, LUA_REGISTRYINDEX, prototype.table_ref);
+            if (prototype.table_ref != LUA_NOREF)
+                luaL_unref(main_thread, LUA_REGISTRYINDEX, prototype.table_ref);
             if (prototype.environment_ref != LUA_NOREF)
                 luaL_unref(main_thread, LUA_REGISTRYINDEX, prototype.environment_ref);
         }
 
         void collectPrototype(Prototype& prototype) noexcept
         {
-            if (!prototype.superseded || prototype.instance_refs != 0U) return;
+            if (!prototype.superseded || prototype.instance_refs != 0U)
+                return;
             for (const auto index : prototype.function_slots)
             {
                 auto& binding = function_bindings[index];
@@ -841,7 +861,8 @@ namespace lux::simulation::script
         }
 
         [[nodiscard]] Prototype* prototypeFor(
-            const ScriptInstanceCreateContext& context, const lux::script::ScriptArtifact& artifact
+            const ScriptInstanceCreateContext& context,
+            const lux::script::ScriptArtifact& artifact
         ) noexcept
         {
             const auto content = artifact.contentIdentity();
@@ -849,10 +870,13 @@ namespace lux::simulation::script
             // domain.
             const PrototypeKey key{context.asset, content};
             const auto found = prototypes.find(key);
-            if (found != prototypes.end()) return std::addressof(found->second);
-            if (content.isNull() || artifact.payload().empty()) return nullptr;
+            if (found != prototypes.end())
+                return std::addressof(found->second);
+            if (content.isNull() || artifact.payload().empty())
+                return nullptr;
             const auto* body = std::get_if<lux::rdesc::LuaSourceScript>(std::addressof(artifact.description().body));
-            if (!body) return nullptr;
+            if (!body)
+                return nullptr;
             auto latest = latest_prototypes.find(context.asset);
             Prototype* evicted{};
             if (latest == latest_prototypes.end() && latest_prototypes.size() >= instance_capacity)
@@ -865,27 +889,24 @@ namespace lux::simulation::script
                         evicted = cached;
                         break;
                     }
-                if (evicted == nullptr) return nullptr;
+                if (evicted == nullptr)
+                    return nullptr;
             }
             Prototype prototype;
             prototype.content = content;
             prototype.asset = context.asset;
-            try
             {
                 prototype.function_slots.reserve(artifact.description().exports.size());
             }
-            catch (const std::bad_alloc&)
-            {
+
+            if (!prepareArtifactLayout(prototype, artifact))
                 return nullptr;
-            }
-            if (!prepareArtifactLayout(prototype, artifact)) return nullptr;
             PrototypeRequest request{this, &prototype, &artifact, body};
             if (runCold(&loadPrototype, &request) != LUA_OK || !request.complete)
             {
                 releasePrototype(prototype);
                 return nullptr;
             }
-            try
             {
                 const auto inserted = prototypes.emplace(key, std::move(prototype));
                 if (inserted.second)
@@ -893,7 +914,6 @@ namespace lux::simulation::script
                     auto* current = std::addressof(inserted.first->second);
                     if (latest == latest_prototypes.end())
                     {
-                        try
                         {
                             latest_prototypes.emplace(context.asset, current);
                             if (evicted != nullptr)
@@ -902,12 +922,6 @@ namespace lux::simulation::script
                                 evicted->superseded = true;
                                 collectPrototype(*evicted);
                             }
-                        }
-                        catch (const std::bad_alloc&)
-                        {
-                            releasePrototype(*current);
-                            prototypes.erase(inserted.first);
-                            return nullptr;
                         }
                     }
                     else
@@ -920,16 +934,12 @@ namespace lux::simulation::script
                     return current;
                 }
             }
-            catch (const std::bad_alloc&)
-            {
-            }
+
             releasePrototype(prototype);
             return nullptr;
         }
 
-        [[nodiscard]] bool supportedType(
-            const lux::rdesc::ScriptValueType& type
-        ) const noexcept
+        [[nodiscard]] bool supportedType(const lux::rdesc::ScriptValueType& type) const noexcept
         {
             if (!lux::rdesc::detail::validScriptValueType(type))
                 return false;
@@ -950,9 +960,7 @@ namespace lux::simulation::script
             }
         }
 
-        [[nodiscard]] static bool supportedType(
-            const lux::script::ScriptAbilityValueDescription& type
-        ) noexcept
+        [[nodiscard]] static bool supportedType(const lux::script::ScriptAbilityValueDescription& type) noexcept
         {
             switch (type.abi_kind)
             {
@@ -979,7 +987,9 @@ namespace lux::simulation::script
             if (instance.prototype == nullptr)
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
             auto span = prepared_abilities.allocate(
-                instance.prototype->ability_class, instance.prototype->ability_ordinals.size());
+                instance.prototype->ability_class,
+                instance.prototype->ability_ordinals.size()
+            );
             if (!span.valid())
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
             instance.prepared_abilities = span;
@@ -992,13 +1002,10 @@ namespace lux::simulation::script
                     return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                 }
                 const auto& projected = ability_methods[ordinal];
-                const auto capability = std::ranges::find_if(
-                    context.capabilities,
-                    [&](const auto& candidate) noexcept {
-                        return candidate.contract.hash() == projected.ability->id.hash() &&
-                            candidate.contract.name() == projected.ability->id.name();
-                    }
-                );
+                const auto capability = std::ranges::find_if(context.capabilities, [&](const auto& candidate) noexcept {
+                    return candidate.contract.hash() == projected.ability->id.hash() &&
+                           candidate.contract.name() == projected.ability->id.name();
+                });
                 if (capability == context.capabilities.end() ||
                     capability->schema_version != projected.ability->schema_version ||
                     capability->schema_hash != projected.ability->schema_hash)
@@ -1006,13 +1013,10 @@ namespace lux::simulation::script
                     prepared_abilities.release(instance.prepared_abilities);
                     return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                 }
-                const auto method = std::ranges::find_if(
-                    capability->methods,
-                    [&](const auto& candidate) noexcept {
-                        return candidate.method.hash() == projected.method->id.hash() &&
-                            candidate.method.name() == projected.method->id.name();
-                    }
-                );
+                const auto method = std::ranges::find_if(capability->methods, [&](const auto& candidate) noexcept {
+                    return candidate.method.hash() == projected.method->id.hash() &&
+                           candidate.method.name() == projected.method->id.name();
+                });
                 if (method == capability->methods.end() || !scriptAbilityMethodMatches(*projected.method, *method))
                 {
                     prepared_abilities.release(instance.prepared_abilities);
@@ -1063,7 +1067,8 @@ namespace lux::simulation::script
                 }
                 *prepared_events.at(instance.prepared_events, local_slot) = {
                     eventOperation(event_sources[ordinal].payload.type_id),
-                    std::addressof(event_sources[ordinal]), resolved->admission
+                    std::addressof(event_sources[ordinal]),
+                    resolved->admission
                 };
             }
             return EScriptBackendResult::SUCCESS;
@@ -1075,8 +1080,7 @@ namespace lux::simulation::script
             return found == value_operation_index.end() ? nullptr : &value_operations[found->second];
         }
 
-        [[nodiscard]] const lux::script::lua::LuaValueOperation* recordOperation(
-            const lux::rdesc::ScriptValueType& type
+        [[nodiscard]] const lux::script::lua::LuaValueOperation* recordOperation(const lux::rdesc::ScriptValueType& type
         ) const noexcept
         {
             if (type.pass != lux::semantic::EValuePass::CONST_REF)
@@ -1085,49 +1089,31 @@ namespace lux::simulation::script
             if (found == value_operation_index.end())
                 return nullptr;
             const auto& marshaller = value_operations[found->second];
-            return marshaller.canonical_name == type.canonical_name
-                ? std::addressof(marshaller)
-                : nullptr;
+            return marshaller.canonical_name == type.canonical_name ? std::addressof(marshaller) : nullptr;
         }
 
-        [[nodiscard]] const LuaComponentBinding* component(
-            std::string_view name
-        ) const noexcept
+        [[nodiscard]] const LuaComponentBinding* component(std::string_view name) const noexcept
         {
             const auto found = component_index.find(name);
-            return found == component_index.end()
-                ? nullptr
-                : std::addressof(components[found->second]);
+            return found == component_index.end() ? nullptr : std::addressof(components[found->second]);
         }
 
         [[nodiscard]] static HostHandle* hostHandle(lua_State* state) noexcept
         {
-            return static_cast<HostHandle*>(lua_touserdata(
-                state,
-                lua_upvalueindex(1)
-            ));
+            return static_cast<HostHandle*>(lua_touserdata(state, lua_upvalueindex(1)));
         }
 
         static int hasComponent(lua_State* state) noexcept
         {
             auto* handle = hostHandle(state);
             const char* name = lua_tostring(state, 2);
-            const auto* binding = handle && handle->alive && handle->owner &&
-                name
-                ? handle->owner->component(name)
-                : nullptr;
-            lua_pushboolean(
-                state,
-                binding && handle->host &&
-                    handle->host->read(binding->component_type));
+            const auto* binding =
+                handle && handle->alive && handle->owner && name ? handle->owner->component(name) : nullptr;
+            lua_pushboolean(state, binding && handle->host && handle->host->read(binding->component_type));
             return 1;
         }
 
-        static bool pushComponentValue(
-            lua_State* state,
-            std::uint8_t kind,
-            const void* value
-        ) noexcept
+        static bool pushComponentValue(lua_State* state, std::uint8_t kind, const void* value) noexcept
         {
             if (!value)
                 return false;
@@ -1157,24 +1143,16 @@ namespace lux::simulation::script
         {
             auto* handle = hostHandle(state);
             const char* name = lua_tostring(state, 2);
-            const auto* binding = handle && handle->alive && handle->owner &&
-                name
-                ? handle->owner->component(name)
-                : nullptr;
-            const auto* value = binding && handle->host
-                ? handle->host->read(binding->component_type)
-                : nullptr;
+            const auto* binding =
+                handle && handle->alive && handle->owner && name ? handle->owner->component(name) : nullptr;
+            const auto* value = binding && handle->host ? handle->host->read(binding->component_type) : nullptr;
             if (!binding || !pushComponentValue(state, binding->abi_kind, value))
                 lua_pushnil(state);
             return 1;
         }
 
         template <class Type>
-        [[nodiscard]] static bool readStrictNumber(
-            lua_State* state,
-            int index,
-            Type& result
-        ) noexcept
+        [[nodiscard]] static bool readStrictNumber(lua_State* state, int index, Type& result) noexcept
         {
             if (lua_type(state, index) != LUA_TNUMBER)
                 return false;
@@ -1186,10 +1164,8 @@ namespace lux::simulation::script
         {
             auto* handle = hostHandle(state);
             const char* name = lua_tostring(state, 2);
-            const auto* binding = handle && handle->alive && handle->owner &&
-                name
-                ? handle->owner->component(name)
-                : nullptr;
+            const auto* binding =
+                handle && handle->alive && handle->owner && name ? handle->owner->component(name) : nullptr;
             if (!binding || !handle->host)
             {
                 lua_pushboolean(state, false);
@@ -1202,52 +1178,33 @@ namespace lux::simulation::script
             case LUX_SCRIPT_VK_BOOL:
                 if (lua_type(state, 3) == LUA_TBOOLEAN)
                 {
-                    *reinterpret_cast<bool*>(storage) =
-                        lua_toboolean(state, 3) != 0;
+                    *reinterpret_cast<bool*>(storage) = lua_toboolean(state, 3) != 0;
                     valid = true;
                 }
                 break;
             case LUX_SCRIPT_VK_INT32:
-                valid = readStrictNumber(
-                    state,
-                    3,
-                    *reinterpret_cast<std::int32_t*>(storage));
+                valid = readStrictNumber(state, 3, *reinterpret_cast<std::int32_t*>(storage));
                 break;
             case LUX_SCRIPT_VK_UINT32:
-                valid = readStrictNumber(
-                    state,
-                    3,
-                    *reinterpret_cast<std::uint32_t*>(storage));
+                valid = readStrictNumber(state, 3, *reinterpret_cast<std::uint32_t*>(storage));
                 break;
             case LUX_SCRIPT_VK_FLOAT:
-                valid = readStrictNumber(
-                    state,
-                    3,
-                    *reinterpret_cast<float*>(storage));
+                valid = readStrictNumber(state, 3, *reinterpret_cast<float*>(storage));
                 break;
             case LUX_SCRIPT_VK_DOUBLE:
-                valid = readStrictNumber(
-                    state,
-                    3,
-                    *reinterpret_cast<double*>(storage));
+                valid = readStrictNumber(state, 3, *reinterpret_cast<double*>(storage));
                 break;
             default:
                 break;
             }
-            lua_pushboolean(
-                state,
-                valid && handle->host->patch(
-                    binding->component_type,
-                    storage
-                ));
+            lua_pushboolean(state, valid && handle->host->patch(binding->component_type, storage));
             return 1;
         }
 
         static int destroySelf(lua_State* state) noexcept
         {
             auto* handle = hostHandle(state);
-            const bool valid = handle && handle->alive && handle->host &&
-                handle->host->captureInvocation().valid();
+            const bool valid = handle && handle->alive && handle->host && handle->host->captureInvocation().valid();
             lua_pushboolean(state, valid && handle->host->command(EScriptHostCommand::DESTROY_ENTITY));
             return 1;
         }
@@ -1270,12 +1227,8 @@ namespace lux::simulation::script
             lua_pop(vm, 1);
             if (instance->entity_scope)
             {
-                auto* handle = static_cast<HostHandle*>(
-                    lua_newuserdata(vm, sizeof(HostHandle)));
-                *handle = HostHandle{
-                    instance->owner,
-                    instance->behavior,
-                    true};
+                auto* handle = static_cast<HostHandle*>(lua_newuserdata(vm, sizeof(HostHandle)));
+                *handle = HostHandle{instance->owner, instance->behavior, true};
                 instance->host_handle = handle;
                 const auto handle_index = lua_gettop(vm);
                 lua_pushvalue(vm, handle_index);
@@ -1309,7 +1262,8 @@ namespace lux::simulation::script
             auto& request = *static_cast<FunctionRequest*>(lua_touserdata(vm, 1));
             lua_rawgeti(vm, LUA_REGISTRYINDEX, request.table_ref);
             lua_getfield(vm, -1, request.name);
-            if (lua_isfunction(vm, -1)) request.function_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
+            if (lua_isfunction(vm, -1))
+                request.function_ref = luaL_ref(vm, LUA_REGISTRYINDEX);
             return 0;
         }
 
@@ -1323,26 +1277,19 @@ namespace lux::simulation::script
             auto& self = *static_cast<Impl*>(opaque);
             if (self.free_instances.empty())
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
-            const auto* body = std::get_if<lux::rdesc::LuaSourceScript>(
-                std::addressof(artifact.description().body)
-            );
+            const auto* body = std::get_if<lux::rdesc::LuaSourceScript>(std::addressof(artifact.description().body));
             if (body == nullptr)
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
             for (const auto& binding : self.components)
             {
                 ScriptHostComponentContract contract;
-                if (!context.behavior || !context.behavior->componentContract(
-                        binding.component_type,
-                        contract) ||
+                if (!context.behavior || !context.behavior->componentContract(binding.component_type, contract) ||
                     contract.component_type != binding.component_type ||
                     contract.semantic_type != binding.semantic_type ||
-                    contract.canonical_name != binding.canonical_name ||
-                    contract.abi_kind != binding.abi_kind ||
-                    contract.size != binding.size ||
-                    contract.alignment != binding.alignment)
+                    contract.canonical_name != binding.canonical_name || contract.abi_kind != binding.abi_kind ||
+                    contract.size != binding.size || contract.alignment != binding.alignment)
                 {
-                    return EScriptBackendResult::
-                        HOST_COMPONENT_CONTRACT_MISMATCH;
+                    return EScriptBackendResult::HOST_COMPONENT_CONTRACT_MISMATCH;
                 }
             }
             const auto prototype = self.prototypeFor(context, artifact);
@@ -1352,7 +1299,8 @@ namespace lux::simulation::script
             const auto instance_slot = self.free_instances.back();
             auto* instance = std::addressof(self.instances[instance_slot]);
             *instance = Instance{
-                context.behavior, std::addressof(self),
+                context.behavior,
+                std::addressof(self),
                 context.asset,
                 LUA_NOREF,
                 std::holds_alternative<EntityScriptScope>(context.scope),
@@ -1427,7 +1375,6 @@ namespace lux::simulation::script
                 if (self.free_function_bindings.empty())
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
                 std::vector<const lux::script::lua::LuaValueOperation*> argument_operations;
-                try
                 {
                     argument_operations.reserve(function.args.size());
                     for (const auto& argument : function.args)
@@ -1439,29 +1386,23 @@ namespace lux::simulation::script
                     }
                     for (const auto& return_type : function.returns)
                     {
-                        const bool unsupported_return = !self.supportedType(return_type) ||
-                            return_type.pass != lux::semantic::EValuePass::VALUE;
+                        const bool unsupported_return =
+                            !self.supportedType(return_type) || return_type.pass != lux::semantic::EValuePass::VALUE;
                         if (unsupported_return)
                             return EScriptBackendResult::UNSUPPORTED_MARSHAL_TYPE;
                     }
-                }
-                catch (const std::bad_alloc&)
-                {
-                    return EScriptBackendResult::ALLOCATION_FAILURE;
                 }
 
                 FunctionRequest request{instance->prototype->table_ref, function.name.c_str()};
                 const auto status = self.runCold(&rootFunction, &request);
                 if (status != LUA_OK || request.function_ref == LUA_NOREF)
-                    return status == LUA_ERRMEM ? EScriptBackendResult::ALLOCATION_FAILURE :
-                        EScriptBackendResult::CONSTRUCTION_FAILURE;
+                    return status == LUA_ERRMEM ? EScriptBackendResult::ALLOCATION_FAILURE
+                                                : EScriptBackendResult::CONSTRUCTION_FAILURE;
                 const auto function_ref = request.function_ref;
-                try
                 {
                     LuaFunctionBinding binding{function, function_ref, std::move(argument_operations)};
                     const auto binding_index = self.free_function_bindings.back();
                     instance->prototype->function_slots.push_back(binding_index);
-                    try
                     {
                         if (!self.function_index.emplace(key, binding_index).second)
                         {
@@ -1470,21 +1411,11 @@ namespace lux::simulation::script
                             return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                         }
                     }
-                    catch (const std::bad_alloc&)
-                    {
-                        instance->prototype->function_slots.pop_back();
-                        luaL_unref(self.main_thread, LUA_REGISTRYINDEX, function_ref);
-                        return EScriptBackendResult::ALLOCATION_FAILURE;
-                    }
+
                     static_assert(std::is_nothrow_move_assignable_v<LuaFunctionBinding>);
                     self.function_bindings[binding_index] = std::move(binding);
                     self.free_function_bindings.pop_back();
                     function_binding = std::addressof(self.function_bindings[binding_index]);
-                }
-                catch (const std::bad_alloc&)
-                {
-                    luaL_unref(self.main_thread, LUA_REGISTRYINDEX, function_ref);
-                    return EScriptBackendResult::ALLOCATION_FAILURE;
                 }
             }
 
@@ -1508,15 +1439,18 @@ namespace lux::simulation::script
                 return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
             }
             const bool protected_arguments = stack_values + 8U > LUA_MINSTACK ||
-                std::any_of(function_binding->argument_operations.begin(), function_binding->argument_operations.end(),
-                    [](const auto* operation) noexcept { return operation != nullptr; });
+                                             std::any_of(
+                                                 function_binding->argument_operations.begin(),
+                                                 function_binding->argument_operations.end(),
+                                                 [](const auto* operation) noexcept { return operation != nullptr; }
+                                             );
             result = {
                 std::addressof(call),
                 lux::script::BoundScriptCall{
-                    protected_arguments ? &invokeConvertedSync : &invokePreparedSync, std::addressof(call)},
-                resumable
-                    ? BoundScriptStepCall{std::addressof(call), &invokePreparedStep}
-                    : BoundScriptStepCall{}
+                    protected_arguments ? &invokeConvertedSync : &invokePreparedSync,
+                    std::addressof(call)
+                },
+                resumable ? BoundScriptStepCall{std::addressof(call), &invokePreparedStep} : BoundScriptStepCall{}
             };
             return EScriptBackendResult::SUCCESS;
         }
@@ -1531,18 +1465,11 @@ namespace lux::simulation::script
                 return false;
             if (record)
             {
-                const auto address = reinterpret_cast<std::uintptr_t>(
-                    value.data
-                );
-                const bool valid_layout = value.kind ==
-                        LUX_SCRIPT_VK_STRUCT_REF &&
-                    value.type_id == record->semantic_type &&
-                    value.size == record->size &&
-                    address % record->alignment == 0U;
-                return valid_layout && record->push && record->push(
-                    state,
-                    value.data
-                );
+                const auto address = reinterpret_cast<std::uintptr_t>(value.data);
+                const bool valid_layout = value.kind == LUX_SCRIPT_VK_STRUCT_REF &&
+                                          value.type_id == record->semantic_type && value.size == record->size &&
+                                          address % record->alignment == 0U;
+                return valid_layout && record->push && record->push(state, value.data);
             }
             switch (value.kind)
             {
@@ -1550,14 +1477,10 @@ namespace lux::simulation::script
                 lua_pushboolean(state, *static_cast<const bool*>(value.data));
                 return true;
             case LUX_SCRIPT_VK_INT32:
-                lua_pushnumber(
-                    state,
-                    static_cast<lua_Number>(*static_cast<const std::int32_t*>(value.data)));
+                lua_pushnumber(state, static_cast<lua_Number>(*static_cast<const std::int32_t*>(value.data)));
                 return true;
             case LUX_SCRIPT_VK_UINT32:
-                lua_pushnumber(
-                    state,
-                    static_cast<lua_Number>(*static_cast<const std::uint32_t*>(value.data)));
+                lua_pushnumber(state, static_cast<lua_Number>(*static_cast<const std::uint32_t*>(value.data)));
                 return true;
             case LUX_SCRIPT_VK_FLOAT:
                 lua_pushnumber(state, *static_cast<const float*>(value.data));
@@ -1570,11 +1493,7 @@ namespace lux::simulation::script
             }
         }
 
-        template <class Type>
-        static bool writeNumber(
-            lux_script_value_slot& slot,
-            Type value
-        ) noexcept
+        template <class Type> static bool writeNumber(lux_script_value_slot& slot, Type value) noexcept
         {
             if (!slot.data || slot.size < sizeof(Type))
                 return false;
@@ -1582,43 +1501,29 @@ namespace lux::simulation::script
             return true;
         }
 
-        static bool readReturn(
-            lua_State* state,
-            int index,
-            lux_script_value_slot& slot
-        ) noexcept
+        static bool readReturn(lua_State* state, int index, lux_script_value_slot& slot) noexcept
         {
             switch (slot.kind)
             {
             case LUX_SCRIPT_VK_BOOL:
                 if (lua_type(state, index) != LUA_TBOOLEAN)
                     return false;
-                return writeNumber<bool>(
-                    slot,
-                    lua_toboolean(state, index) != 0);
-            case LUX_SCRIPT_VK_INT32:
-            {
+                return writeNumber<bool>(slot, lua_toboolean(state, index) != 0);
+            case LUX_SCRIPT_VK_INT32: {
                 std::int32_t value{};
-                return readStrictNumber(state, index, value) &&
-                    writeNumber(slot, value);
+                return readStrictNumber(state, index, value) && writeNumber(slot, value);
             }
-            case LUX_SCRIPT_VK_UINT32:
-            {
+            case LUX_SCRIPT_VK_UINT32: {
                 std::uint32_t value{};
-                return readStrictNumber(state, index, value) &&
-                    writeNumber(slot, value);
+                return readStrictNumber(state, index, value) && writeNumber(slot, value);
             }
-            case LUX_SCRIPT_VK_FLOAT:
-            {
+            case LUX_SCRIPT_VK_FLOAT: {
                 float value{};
-                return readStrictNumber(state, index, value) &&
-                    writeNumber(slot, value);
+                return readStrictNumber(state, index, value) && writeNumber(slot, value);
             }
-            case LUX_SCRIPT_VK_DOUBLE:
-            {
+            case LUX_SCRIPT_VK_DOUBLE: {
                 double value{};
-                return readStrictNumber(state, index, value) &&
-                    writeNumber(slot, value);
+                return readStrictNumber(state, index, value) && writeNumber(slot, value);
             }
             default:
                 return false;
@@ -1661,10 +1566,7 @@ namespace lux::simulation::script
             const auto waiting = step.event_waits.wait(source);
             if (!waiting)
             {
-                return {
-                    {},
-                    kEventWaitFailure - static_cast<std::int32_t>(waiting.error())
-                };
+                return {{}, kEventWaitFailure - static_cast<std::int32_t>(waiting.error())};
             }
             return {*waiting, 0};
         }
@@ -1679,8 +1581,8 @@ namespace lux::simulation::script
             auto* execution = self->active_execution;
             const auto ordinal = static_cast<std::size_t>(raw_ordinal);
             const bool is_invalid_context = execution == nullptr || execution->thread != state ||
-                execution->instance == nullptr ||
-                execution->continuation == nullptr || execution->step == nullptr || lua_gettop(state) != 0;
+                                            execution->instance == nullptr || execution->continuation == nullptr ||
+                                            execution->step == nullptr || lua_gettop(state) != 0;
             if (is_invalid_context)
             {
                 return abilityFailure(
@@ -1690,13 +1592,17 @@ namespace lux::simulation::script
                     "Script Event wait requires a coroutine-capable export"
                 );
             }
-            const bool is_foreign_layout = execution->instance->owner != self ||
-                execution->instance->prototype == nullptr ||
+            const bool is_foreign_layout =
+                execution->instance->owner != self || execution->instance->prototype == nullptr ||
                 lua_touserdata(state, lua_upvalueindex(3)) != execution->instance->prototype->layout_token;
             if (is_foreign_layout)
             {
-                return abilityFailure(state, execution->continuation, kInvalidCall,
-                    "Script Event closure belongs to a different prepared layout");
+                return abilityFailure(
+                    state,
+                    execution->continuation,
+                    kInvalidCall,
+                    "Script Event closure belongs to a different prepared layout"
+                );
             }
             auto* prepared = self->prepared_events.at(execution->instance->prepared_events, ordinal);
             if (prepared == nullptr || prepared->source == nullptr)
@@ -1746,22 +1652,24 @@ namespace lux::simulation::script
                 return 0;
             lua_rawgeti(vm, LUA_REGISTRYINDEX, request.function.function_ref);
             const bool entity_scope = request.instance.entity_scope;
-            if (entity_scope) lua_rawgeti(vm, LUA_REGISTRYINDEX, request.instance.table_ref);
+            if (entity_scope)
+                lua_rawgeti(vm, LUA_REGISTRYINDEX, request.instance.table_ref);
             for (std::uint32_t i{}; i < frame.arg_count; ++i)
             {
-                const auto* operation = i < request.function.argument_operations.size()
-                    ? request.function.argument_operations[i] : nullptr;
+                const auto* operation =
+                    i < request.function.argument_operations.size() ? request.function.argument_operations[i] : nullptr;
                 if (!pushArgument(vm, frame.args[i], operation))
                 {
                     request.status = kMarshalFailure;
                     return 0;
                 }
             }
-            const bool same_binding = request.call.active && request.instance.active &&
-                request.call.instance == &request.instance && request.call.function == &request.function &&
-                request.instance.behavior == request.behavior &&
+            const bool same_binding =
+                request.call.active && request.instance.active && request.call.instance == &request.instance &&
+                request.call.function == &request.function && request.instance.behavior == request.behavior &&
                 (request.behavior != nullptr && request.behavior->hasInvocationAuthority()) == request.bound_authority;
-            if (!same_binding || (request.bound_authority && !request.qualification.valid())) return 0;
+            if (!same_binding || (request.bound_authority && !request.qualification.valid()))
+                return 0;
             lua_call(vm, static_cast<int>(frame.arg_count) + entity_scope, static_cast<int>(frame.return_count));
             for (std::uint32_t i{}; i < frame.return_count; ++i)
             {
@@ -1779,22 +1687,27 @@ namespace lux::simulation::script
 
         static int invokeConvertedSync(void* opaque, lux_script_call_frame* frame) noexcept
         {
-            if (!opaque || !frame) return kInvalidCall;
+            if (!opaque || !frame)
+                return kInvalidCall;
             auto& call = *static_cast<PreparedCall*>(opaque);
             const bool invalid_call = !call.active || !call.instance || !call.function;
-            if (invalid_call) return kInvalidCall;
+            if (invalid_call)
+                return kInvalidCall;
             auto& self = *call.instance->owner;
             const auto* behavior = call.instance->behavior;
             const bool bound_authority = behavior != nullptr && behavior->hasInvocationAuthority();
             const auto qualification = bound_authority ? behavior->captureInvocation() : ScriptInvocationValidity{};
-            if (bound_authority && !qualification.valid()) return kInvalidCall;
+            if (bound_authority && !qualification.valid())
+                return kInvalidCall;
             ExecutionScope execution{self, {self.main_thread, call.instance, nullptr, nullptr, nullptr}};
-            if (!execution) return kExecutionDepthCapacity;
+            if (!execution)
+                return kExecutionDepthCapacity;
             auto* vm = self.main_thread;
-            if (!lua_checkstack(vm, 3)) return kLuaFailure;
+            if (!lua_checkstack(vm, 3))
+                return kLuaFailure;
             const auto base = lua_gettop(vm);
-            ConvertedSyncRequest request{call, *call.instance, *call.function, *frame, behavior,
-                qualification, bound_authority};
+            ConvertedSyncRequest
+                request{call, *call.instance, *call.function, *frame, behavior, qualification, bound_authority};
             lua_pushcfunction(vm, &traceback);
             lua_pushcfunction(vm, &executeConvertedSync);
             lua_pushlightuserdata(vm, &request);
@@ -1817,17 +1730,14 @@ namespace lux::simulation::script
             std::uint32_t argument_count{};
             if (call.instance->entity_scope)
             {
-                lua_rawgeti(
-                    self.main_thread,
-                    LUA_REGISTRYINDEX,
-                    call.instance->table_ref);
+                lua_rawgeti(self.main_thread, LUA_REGISTRYINDEX, call.instance->table_ref);
                 ++argument_count;
             }
             for (std::uint32_t index{}; index < frame->arg_count; ++index)
             {
                 const auto* record = index < call.function->argument_operations.size()
-                    ? call.function->argument_operations[index]
-                    : nullptr;
+                                         ? call.function->argument_operations[index]
+                                         : nullptr;
                 if (!pushArgument(self.main_thread, frame->args[index], record))
                 {
                     lua_settop(self.main_thread, error_index - 1);
@@ -1835,10 +1745,7 @@ namespace lux::simulation::script
                 }
                 ++argument_count;
             }
-            ExecutionScope execution{
-                self,
-                {self.main_thread, call.instance, nullptr, nullptr, nullptr}
-            };
+            ExecutionScope execution{self, {self.main_thread, call.instance, nullptr, nullptr, nullptr}};
             if (!execution)
             {
                 lua_settop(self.main_thread, error_index - 1);
@@ -1848,19 +1755,16 @@ namespace lux::simulation::script
                     self.main_thread,
                     static_cast<int>(argument_count),
                     static_cast<int>(frame->return_count),
-                    error_index) != LUA_OK)
+                    error_index
+                ) != LUA_OK)
             {
                 lua_settop(self.main_thread, error_index - 1);
                 return kLuaFailure;
             }
             for (std::uint32_t index{}; index < frame->return_count; ++index)
             {
-                const auto stack_index =
-                    error_index + 1 + static_cast<int>(index);
-                if (!readReturn(
-                        self.main_thread,
-                        stack_index,
-                        frame->returns[index]))
+                const auto stack_index = error_index + 1 + static_cast<int>(index);
+                if (!readReturn(self.main_thread, stack_index, frame->returns[index]))
                 {
                     lua_settop(self.main_thread, error_index - 1);
                     return -5;
@@ -1880,14 +1784,19 @@ namespace lux::simulation::script
             return true;
         }
 
-        static bool pushSyncRecord(lua_State* vm, const void* data,
-                                   const lux::script::lua::LuaValueOperation* operation) noexcept
+        static bool pushSyncRecord(
+            lua_State* vm,
+            const void* data,
+            const lux::script::lua::LuaValueOperation* operation
+        ) noexcept
         {
             return operation->push(vm, data);
         }
 
-        static SyncArgument syncArgument(const lux::rdesc::ScriptValueType& type,
-                                         const lux::script::lua::LuaValueOperation* operation) noexcept
+        static SyncArgument syncArgument(
+            const lux::rdesc::ScriptValueType& type,
+            const lux::script::lua::LuaValueOperation* operation
+        ) noexcept
         {
             if (operation)
                 return {&pushSyncRecord, operation};
@@ -2019,8 +1928,12 @@ namespace lux::simulation::script
 
         template <bool EntityScope, bool HasResult, bool ScalarArguments, class Scalar = void>
 
-        static int invokeSyncStep(void* opaque, const void* const* arguments, void* output,
-                                  const ScriptInvocationValidity& qualification) noexcept
+        static int invokeSyncStep(
+            void* opaque,
+            const void* const* arguments,
+            void* output,
+            const ScriptInvocationValidity& qualification
+        ) noexcept
         {
             // The typed bridge already checked the publication, shape and original
             // authority.
@@ -2028,12 +1941,16 @@ namespace lux::simulation::script
             auto& self = *call.instance->owner;
             auto* vm = self.main_thread;
             ExecutionScope execution{self, {vm, call.instance, nullptr, nullptr, nullptr}};
-            if (!execution) return kExecutionDepthCapacity;
+            if (!execution)
+                return kExecutionDepthCapacity;
             const auto& operations = call.function->sync_arguments;
             const auto argument_count = [&]() {
-                if constexpr (std::is_same_v<Scalar, std::nullptr_t>) return std::size_t{};
-                else if constexpr (!std::is_void_v<Scalar>) return std::size_t{1U};
-                else return operations.size();
+                if constexpr (std::is_same_v<Scalar, std::nullptr_t>)
+                    return std::size_t{};
+                else if constexpr (!std::is_void_v<Scalar>)
+                    return std::size_t{1U};
+                else
+                    return operations.size();
             }();
             constexpr auto protected_slots = ScalarArguments ? 3U + EntityScope : 3U;
             const auto stack_slots = ScalarArguments ? argument_count + protected_slots : protected_slots;
@@ -2049,8 +1966,11 @@ namespace lux::simulation::script
                 lua_rawgeti(vm, LUA_REGISTRYINDEX, call.function->function_ref);
                 if constexpr (EntityScope)
                     lua_rawgeti(vm, LUA_REGISTRYINDEX, call.instance->table_ref);
-                if constexpr (std::is_same_v<Scalar, std::nullptr_t>) {}
-                else if constexpr (!std::is_void_v<Scalar>) pushSyncScalar<Scalar>(vm, arguments[0], nullptr);
+                if constexpr (std::is_same_v<Scalar, std::nullptr_t>)
+                {
+                }
+                else if constexpr (!std::is_void_v<Scalar>)
+                    pushSyncScalar<Scalar>(vm, arguments[0], nullptr);
                 else
                     for (std::size_t i{}; i < argument_count; ++i)
                         operations[i].push(vm, arguments[i], nullptr);
@@ -2104,7 +2024,8 @@ namespace lux::simulation::script
                 bool committed{};
                 ~Reservation()
                 {
-                    if (committed) return;
+                    if (committed)
+                        return;
                     --instance.active_continuations;
                     owner.free_continuations.push_back(slot);
                 }
@@ -2120,13 +2041,18 @@ namespace lux::simulation::script
             const bool missing_root = request.thread == nullptr || !request.rooted;
             if (status != LUA_OK || missing_root || !request.arguments_valid)
             {
-                if (request.rooted) clearThreadRoot(slot);
-                return lux::cxx::unexpected(!request.arguments_valid ? kMarshalFailure :
-                    status == LUA_ERRMEM ? kLuaAllocationFailure : kLuaFailure);
+                if (request.rooted)
+                    clearThreadRoot(slot);
+                return lux::cxx::unexpected(
+                    !request.arguments_valid ? kMarshalFailure
+                    : status == LUA_ERRMEM   ? kLuaAllocationFailure
+                                             : kLuaFailure
+                );
             }
             auto& continuation = continuations[slot];
             const auto generation = continuation.generation + 1U;
-            if (generation == 0U) std::terminate();
+            if (generation == 0U)
+                std::terminate();
             continuation = {
                 this,
                 std::addressof(instance),
@@ -2150,9 +2076,7 @@ namespace lux::simulation::script
                 return;
             auto* owner = continuation.owner;
             ++owner->vm_coroutine_releases;
-            const auto slot = static_cast<std::size_t>(
-                std::addressof(continuation) - owner->continuations.data()
-            );
+            const auto slot = static_cast<std::size_t>(std::addressof(continuation) - owner->continuations.data());
             if (continuation.thread != nullptr)
                 lua_settop(continuation.thread, 0);
             owner->clearThreadRoot(slot);
@@ -2196,24 +2120,19 @@ namespace lux::simulation::script
                 }
                 const auto& expected = prepared->source->payload;
                 const auto& actual = packet.value->type;
-                const bool is_mismatch = actual.type_id != expected.type_id ||
-                    actual.abi_kind != expected.abi_kind || actual.size != expected.size ||
-                    actual.alignment != expected.alignment ||
-                    packet.value->bytes.size() != expected.size;
+                const bool is_mismatch = actual.type_id != expected.type_id || actual.abi_kind != expected.abi_kind ||
+                                         actual.size != expected.size || actual.alignment != expected.alignment ||
+                                         packet.value->bytes.size() != expected.size;
                 if (is_mismatch)
                     return false;
                 if (expected.abi_kind == LUX_SCRIPT_VK_STRUCT_REF)
                 {
                     const bool pushed = prepared->operation &&
-                        prepared->operation->push(continuation.thread, packet.value->bytes.data());
+                                        prepared->operation->push(continuation.thread, packet.value->bytes.data());
                     if (!pushed)
                         return false;
                 }
-                else if (!pushComponentValue(
-                             continuation.thread,
-                             expected.abi_kind,
-                             packet.value->bytes.data()
-                         ))
+                else if (!pushComponentValue(continuation.thread, expected.abi_kind, packet.value->bytes.data()))
                 {
                     return false;
                 }
@@ -2231,8 +2150,8 @@ namespace lux::simulation::script
             const auto& method = *prepared->semantic;
             if (method.results.empty())
             {
-                const bool has_value = packet.value != nullptr &&
-                    (packet.value->type.valid() || !packet.value->bytes.empty());
+                const bool has_value =
+                    packet.value != nullptr && (packet.value->type.valid() || !packet.value->bytes.empty());
                 return !has_value;
             }
             if (method.results.size() != 1U || packet.value == nullptr || !packet.value->type.valid() ||
@@ -2242,9 +2161,8 @@ namespace lux::simulation::script
             }
             const auto& expected = method.results.front();
             const auto& actual = packet.value->type;
-            const bool is_mismatch = actual.type_id != expected.type_id ||
-                actual.abi_kind != expected.abi_kind || actual.size != expected.size ||
-                actual.alignment != expected.alignment;
+            const bool is_mismatch = actual.type_id != expected.type_id || actual.abi_kind != expected.abi_kind ||
+                                     actual.size != expected.size || actual.alignment != expected.alignment;
             if (is_mismatch || !pushAbilityResult(continuation.thread, expected, packet.value->bytes.data()))
                 return false;
             argument_count = 1;
@@ -2261,18 +2179,14 @@ namespace lux::simulation::script
             {
                 if (continuation.waiting_on.valid() && resume.result_count == 0)
                     return ScriptStepResult::suspended(continuation.waiting_on);
-                const auto failure = continuation.failure_status != 0
-                    ? continuation.failure_status
-                    : kInvalidCall;
+                const auto failure = continuation.failure_status != 0 ? continuation.failure_status : kInvalidCall;
                 if (release_terminal)
                     destroyLuaContinuation(continuation);
                 return ScriptStepResult::failed(failure);
             }
             if (resume.status != LUA_OK)
             {
-                const auto failure = continuation.failure_status != 0
-                    ? continuation.failure_status
-                    : kLuaFailure;
+                const auto failure = continuation.failure_status != 0 ? continuation.failure_status : kLuaFailure;
                 if (release_terminal)
                     destroyLuaContinuation(continuation);
                 return ScriptStepResult::failed(failure);
@@ -2307,15 +2221,15 @@ namespace lux::simulation::script
             if (packet.state != EScriptAwaitableState::READY)
             {
                 return ScriptStepResult::failed(
-                    packet.state == EScriptAwaitableState::FAILED && packet.error.valid()
-                        ? packet.error.status
-                        : kInvalidResume
+                    packet.state == EScriptAwaitableState::FAILED && packet.error.valid() ? packet.error.status
+                                                                                          : kInvalidResume
                 );
             }
             const auto* behavior = continuation.instance->behavior;
             const bool bound_authority = behavior != nullptr && behavior->hasInvocationAuthority();
             const auto qualification = bound_authority ? behavior->captureInvocation() : ScriptInvocationValidity{};
-            if (bound_authority && !qualification.valid()) return ScriptStepResult::failed(kInvalidCall);
+            if (bound_authority && !qualification.valid())
+                return ScriptStepResult::failed(kInvalidCall);
             const auto* original_instance = continuation.instance;
             const auto* original_call = continuation.call;
             auto* original_thread = continuation.thread;
@@ -2329,11 +2243,12 @@ namespace lux::simulation::script
                 return ScriptStepResult::failed(kInvalidResume);
             }
             const bool same_execution = continuation.active && continuation.instance == original_instance &&
-                continuation.call == original_call && continuation.thread == original_thread &&
-                continuation.waiting_on == original_wait && continuation.generation == original_generation;
+                                        continuation.call == original_call && continuation.thread == original_thread &&
+                                        continuation.waiting_on == original_wait &&
+                                        continuation.generation == original_generation;
             const bool same_binding = same_execution && original_instance->active &&
-                original_instance->behavior == behavior &&
-                (behavior != nullptr && behavior->hasInvocationAuthority()) == bound_authority;
+                                      original_instance->behavior == behavior &&
+                                      (behavior != nullptr && behavior->hasInvocationAuthority()) == bound_authority;
             if (!same_binding || (bound_authority && !qualification.valid()))
             {
                 lua_settop(original_thread, base);
@@ -2344,24 +2259,18 @@ namespace lux::simulation::script
             continuation.failure_status = 0;
             ExecutionScope execution{
                 *continuation.owner,
-                {
-                    continuation.thread,
-                    continuation.instance,
-                    std::addressof(continuation),
-                    std::addressof(context),
-                    nullptr
-                }
+                {continuation.thread,
+                 continuation.instance,
+                 std::addressof(continuation),
+                 std::addressof(context),
+                 nullptr}
             };
             if (!execution)
             {
                 return ScriptStepResult::failed(kExecutionDepthCapacity);
             }
             ++continuation.owner->vm_coroutine_resumes;
-            const auto resume = lux::script::lua::detail::resumeLuaVm(
-                continuation.thread,
-                nullptr,
-                argument_count
-            );
+            const auto resume = lux::script::lua::detail::resumeLuaVm(continuation.thread, nullptr, argument_count);
             return finishLuaStep(continuation, resume, false);
         }
 
@@ -2379,21 +2288,23 @@ namespace lux::simulation::script
             const auto* behavior = call.instance->behavior;
             const bool bound_authority = behavior != nullptr && behavior->hasInvocationAuthority();
             const auto qualification = bound_authority ? behavior->captureInvocation() : ScriptInvocationValidity{};
-            if (bound_authority && !qualification.valid()) return ScriptStepResult::failed(kInvalidCall);
+            if (bound_authority && !qualification.valid())
+                return ScriptStepResult::failed(kInvalidCall);
             std::uint32_t plain_count{};
-            while (plain_count < frame.arg_count &&
-                (plain_count >= call.function->argument_operations.size() ||
-                    call.function->argument_operations[plain_count] == nullptr)) ++plain_count;
+            while (plain_count < frame.arg_count && (plain_count >= call.function->argument_operations.size() ||
+                                                     call.function->argument_operations[plain_count] == nullptr))
+                ++plain_count;
             const auto acquired = self.acquireContinuation(*call.instance, call, frame, plain_count);
-            if (!acquired) return ScriptStepResult::failed(acquired.error());
+            if (!acquired)
+                return ScriptStepResult::failed(acquired.error());
             auto* continuation = *acquired;
 
             std::uint32_t argument_count = plain_count + (call.instance->entity_scope ? 1U : 0U);
             for (std::uint32_t index = plain_count; index < frame.arg_count; ++index)
             {
                 const auto* record = index < call.function->argument_operations.size()
-                    ? call.function->argument_operations[index]
-                    : nullptr;
+                                         ? call.function->argument_operations[index]
+                                         : nullptr;
                 if (!pushArgument(continuation->thread, frame.args[index], record))
                 {
                     destroyLuaContinuation(*continuation);
@@ -2405,9 +2316,9 @@ namespace lux::simulation::script
             // revoked invocation is never standalone; retain the original lifetime
             // category and epoch.
             const bool same_binding = call.instance->behavior == behavior &&
-                (behavior != nullptr && behavior->hasInvocationAuthority()) == bound_authority;
-            const bool still_qualified = same_binding && call.instance->active &&
-                (!bound_authority || qualification.valid());
+                                      (behavior != nullptr && behavior->hasInvocationAuthority()) == bound_authority;
+            const bool still_qualified =
+                same_binding && call.instance->active && (!bound_authority || qualification.valid());
             if (!still_qualified)
             {
                 destroyLuaContinuation(*continuation);
@@ -2422,11 +2333,8 @@ namespace lux::simulation::script
                 destroyLuaContinuation(*continuation);
                 return ScriptStepResult::failed(kExecutionDepthCapacity);
             }
-            const auto resume = lux::script::lua::detail::resumeLuaVm(
-                continuation->thread,
-                nullptr,
-                static_cast<int>(argument_count)
-            );
+            const auto resume =
+                lux::script::lua::detail::resumeLuaVm(continuation->thread, nullptr, static_cast<int>(argument_count));
             const auto step_result = finishLuaStep(*continuation, resume, true);
             if (step_result.state == EScriptStepState::SUSPENDED && step_result.valid())
             {
@@ -2435,11 +2343,7 @@ namespace lux::simulation::script
             return step_result;
         }
 
-        static void releaseMethod(
-            void* opaque,
-            ScriptBackendInstance,
-            ScriptBackendPreparedMethod method
-        ) noexcept
+        static void releaseMethod(void* opaque, ScriptBackendInstance, ScriptBackendPreparedMethod method) noexcept
         {
             auto& self = *static_cast<Impl*>(opaque);
             auto* call = static_cast<PreparedCall*>(method.token);
@@ -2452,10 +2356,7 @@ namespace lux::simulation::script
             self.free_prepared_calls.push_back(call_slot);
         }
 
-        static void destroyInstance(
-            void* opaque,
-            ScriptBackendInstance instance_value
-        ) noexcept
+        static void destroyInstance(void* opaque, ScriptBackendInstance instance_value) noexcept
         {
             auto& self = *static_cast<Impl*>(opaque);
             auto* instance = static_cast<Instance*>(instance_value.value);
@@ -2472,9 +2373,7 @@ namespace lux::simulation::script
             }
             if (instance->table_ref != LUA_NOREF)
                 luaL_unref(self.main_thread, LUA_REGISTRYINDEX, instance->table_ref);
-            const auto instance_slot = static_cast<std::size_t>(
-                instance - self.instances.data()
-            );
+            const auto instance_slot = static_cast<std::size_t>(instance - self.instances.data());
             self.prepared_abilities.release(instance->prepared_abilities);
             self.prepared_events.release(instance->prepared_events);
             auto* prototype = instance->prototype;
@@ -2505,8 +2404,7 @@ namespace lux::simulation::script
         std::vector<LuaComponentBinding> components;
         std::unordered_map<std::string_view, std::size_t> component_index;
         std::vector<lux::script::lua::LuaValueOperation> value_operations;
-        std::unordered_map<std::uint64_t, std::size_t>
-            value_operation_index;
+        std::unordered_map<std::uint64_t, std::size_t> value_operation_index;
         std::vector<Instance> instances;
         std::vector<std::size_t> free_instances;
         std::vector<LuaFunctionBinding> function_bindings;
@@ -2515,9 +2413,9 @@ namespace lux::simulation::script
         std::vector<PreparedCall> prepared_calls;
         std::vector<std::size_t> free_prepared_calls;
         std::vector<AbilityMethod> ability_methods;
-        PreparedBlockStorage<PreparedAbility> prepared_abilities;
+        TPreparedBlockStorage<PreparedAbility> prepared_abilities;
         std::vector<lux::script::ScriptEventSourceDescription> event_sources;
-        PreparedBlockStorage<PreparedEventSource> prepared_events;
+        TPreparedBlockStorage<PreparedEventSource> prepared_events;
         std::vector<LuaContinuation> continuations;
         std::vector<std::size_t> free_continuations;
         ExecutionFrame* active_execution{};
@@ -2528,10 +2426,7 @@ namespace lux::simulation::script
         std::size_t vm_coroutine_releases{};
     };
 
-    bool detail::LuaAbilityProjectionAccess::current(
-        lua_State* state,
-        LuaPreparedAbilityAccess& result
-    ) noexcept
+    bool detail::LuaAbilityProjectionAccess::current(lua_State* state, LuaPreparedAbilityAccess& result) noexcept
     {
         auto* owner = static_cast<LuaScriptBackend::Impl*>(lua_touserdata(state, lua_upvalueindex(1)));
         const auto raw_slot = lua_tointeger(state, lua_upvalueindex(2));
@@ -2542,14 +2437,12 @@ namespace lux::simulation::script
         }
         const auto* instance = owner->active_execution->instance;
         const bool is_foreign_layout = instance->owner != owner || instance->prototype == nullptr ||
-            lua_touserdata(state, lua_upvalueindex(3)) != instance->prototype->layout_token;
+                                       lua_touserdata(state, lua_upvalueindex(3)) != instance->prototype->layout_token;
         if (is_foreign_layout)
             return false;
         const auto local_slot = static_cast<std::size_t>(raw_slot);
-        auto* prepared = owner->prepared_abilities.at(
-            owner->active_execution->instance->prepared_abilities,
-            local_slot
-        );
+        auto* prepared =
+            owner->prepared_abilities.at(owner->active_execution->instance->prepared_abilities, local_slot);
         if (prepared == nullptr || prepared->context == nullptr || prepared->dispatch == nullptr)
             return false;
         result.context = prepared->context;
@@ -2564,14 +2457,17 @@ namespace lux::simulation::script
         if (result.has_core_authority)
         {
             result.validity = result.behavior->captureInvocation();
-            if (!result.validity.valid()) return false;
+            if (!result.validity.valid())
+                return false;
         }
-        else result.validity = {};
+        else
+            result.validity = {};
         return true;
     }
 
     bool detail::LuaAbilityProjectionAccess::revalidate(
-        lua_State* state, const LuaPreparedAbilityAccess& original
+        lua_State* state,
+        const LuaPreparedAbilityAccess& original
     ) noexcept
     {
         auto* owner = static_cast<LuaScriptBackend::Impl*>(lua_touserdata(state, lua_upvalueindex(1)));
@@ -2582,16 +2478,15 @@ namespace lux::simulation::script
             return false;
         const auto* instance = frame->instance;
         const bool same_projection = lua_tointeger(state, lua_upvalueindex(2)) == original.local_slot &&
-            instance->prototype != nullptr &&
-            lua_touserdata(state, lua_upvalueindex(3)) == instance->prototype->layout_token;
+                                     instance->prototype != nullptr &&
+                                     lua_touserdata(state, lua_upvalueindex(3)) == instance->prototype->layout_token;
         if (!same_projection || instance->behavior != original.behavior)
             return false;
         // The still-active execution frame pins its immutable prepared layout and
         // provider association. Reuse the ORIGINAL authority capture, including
         // lifecycle privilege and retirement epoch.
         const bool has_authority = original.behavior && original.behavior->hasInvocationAuthority();
-        return has_authority == original.has_core_authority &&
-            (!has_authority || original.validity.valid());
+        return has_authority == original.has_core_authority && (!has_authority || original.validity.valid());
     }
 
     LuxLuaBoundaryOutcome detail::LuaAbilityProjectionAccess::fail(
@@ -2601,9 +2496,8 @@ namespace lux::simulation::script
     ) noexcept
     {
         auto* owner = static_cast<LuaScriptBackend::Impl*>(lua_touserdata(state, lua_upvalueindex(1)));
-        auto* continuation = owner != nullptr && owner->active_execution != nullptr
-            ? owner->active_execution->continuation
-            : nullptr;
+        auto* continuation =
+            owner != nullptr && owner->active_execution != nullptr ? owner->active_execution->continuation : nullptr;
         return LuaScriptBackend::Impl::abilityFailure(state, continuation, status, message);
     }
 
@@ -2648,7 +2542,8 @@ namespace lux::simulation::script
 
     bool detail::LuaAbilityProjectionAccess::number(lua_State* state, int index, double& value) noexcept
     {
-        if (lua_type(state, index) != LUA_TNUMBER) return false;
+        if (lua_type(state, index) != LUA_TNUMBER)
+            return false;
         value = lua_tonumber(state, index);
         return true;
     }
@@ -2678,14 +2573,12 @@ namespace lux::simulation::script
         lua_pushnumber(state, value);
     }
 
-    lux::cxx::expected<
-        LuaScriptBackend,
-        ELuaScriptBindingBackendError> LuaScriptBackend::create(
-            LuaScriptBackendConfig config
-        ) noexcept
+    lux::cxx::expected<LuaScriptBackend, ELuaScriptBindingBackendError> LuaScriptBackend::create(
+        LuaScriptBackendConfig config
+    ) noexcept
     {
-        const bool has_invalid_capacity = config.instance_capacity == 0U ||
-            config.prepared_call_capacity == 0U ||
+        const bool has_invalid_capacity =
+            config.instance_capacity == 0U || config.prepared_call_capacity == 0U ||
             config.execution_depth_capacity == 0U || config.ability_catalog_method_capacity == 0U ||
             config.event_catalog_capacity == 0U ||
             config.ability_catalog_method_capacity > static_cast<std::size_t>((std::numeric_limits<int>::max)()) - 2U ||
@@ -2695,64 +2588,42 @@ namespace lux::simulation::script
         for (std::size_t index{}; index < config.components.size(); ++index)
         {
             const auto& component = config.components[index];
-            const auto* layout = lux::semantic::builtinLayout(
-                component.semantic_type);
-            const bool supported_kind = component.abi_kind ==
-                    LUX_SCRIPT_VK_BOOL ||
-                component.abi_kind == LUX_SCRIPT_VK_INT32 ||
-                component.abi_kind == LUX_SCRIPT_VK_UINT32 ||
-                component.abi_kind == LUX_SCRIPT_VK_FLOAT ||
+            const auto* layout = lux::semantic::builtinLayout(component.semantic_type);
+            const bool supported_kind =
+                component.abi_kind == LUX_SCRIPT_VK_BOOL || component.abi_kind == LUX_SCRIPT_VK_INT32 ||
+                component.abi_kind == LUX_SCRIPT_VK_UINT32 || component.abi_kind == LUX_SCRIPT_VK_FLOAT ||
                 component.abi_kind == LUX_SCRIPT_VK_DOUBLE;
-            if (component.name.empty() || component.component_type == 0U ||
-                component.canonical_name.empty() ||
-                component.semantic_type !=
-                    lux::semantic::typeId(
-                        component.canonical_name) ||
-                !layout ||
-                layout->canonical_name != component.canonical_name ||
-                layout->abi_kind != component.abi_kind ||
-                layout->size != component.size ||
-                layout->alignment != component.alignment ||
-                !supported_kind)
+            if (component.name.empty() || component.component_type == 0U || component.canonical_name.empty() ||
+                component.semantic_type != lux::semantic::typeId(component.canonical_name) || !layout ||
+                layout->canonical_name != component.canonical_name || layout->abi_kind != component.abi_kind ||
+                layout->size != component.size || layout->alignment != component.alignment || !supported_kind)
             {
-                return lux::cxx::unexpected(
-                    ELuaScriptBindingBackendError::
-                        INVALID_COMPONENT_CONTRACT);
+                return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_COMPONENT_CONTRACT);
             }
             for (std::size_t previous{}; previous < index; ++previous)
             {
                 if (config.components[previous].name == component.name)
                 {
-                    return lux::cxx::unexpected(
-                        ELuaScriptBindingBackendError::
-                            DUPLICATE_COMPONENT_NAME);
+                    return lux::cxx::unexpected(ELuaScriptBindingBackendError::DUPLICATE_COMPONENT_NAME);
                 }
-                if (config.components[previous].component_type ==
-                    component.component_type)
+                if (config.components[previous].component_type == component.component_type)
                 {
-                    return lux::cxx::unexpected(
-                        ELuaScriptBindingBackendError::
-                            INVALID_COMPONENT_CONTRACT);
+                    return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_COMPONENT_CONTRACT);
                 }
             }
         }
         for (std::size_t index{}; index < config.values.size(); ++index)
         {
             const auto& marshaller = config.values[index];
-            const bool power_of_two_alignment = marshaller.alignment != 0U &&
-                (marshaller.alignment & (marshaller.alignment - 1U)) == 0U;
-            const bool valid_identity = marshaller.semantic_type != 0U &&
-                !marshaller.canonical_name.empty() &&
-                marshaller.semantic_type == lux::semantic::typeId(
-                    marshaller.canonical_name
-                );
-            if (!valid_identity || marshaller.size == 0U ||
-                !power_of_two_alignment || !marshaller.push || !marshaller.writable ||
-                marshaller.frame_bytes > 65536 || marshaller.representation == 0 || marshaller.policy == 0)
+            const bool power_of_two_alignment =
+                marshaller.alignment != 0U && (marshaller.alignment & (marshaller.alignment - 1U)) == 0U;
+            const bool valid_identity = marshaller.semantic_type != 0U && !marshaller.canonical_name.empty() &&
+                                        marshaller.semantic_type == lux::semantic::typeId(marshaller.canonical_name);
+            if (!valid_identity || marshaller.size == 0U || !power_of_two_alignment || !marshaller.push ||
+                !marshaller.writable || marshaller.frame_bytes > 65536 || marshaller.representation == 0 ||
+                marshaller.policy == 0)
             {
-                return lux::cxx::unexpected(
-                    ELuaScriptBindingBackendError::INVALID_VALUE_OPERATION
-                );
+                return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_VALUE_OPERATION);
             }
             for (std::size_t previous{}; previous < index; ++previous)
             {
@@ -2760,33 +2631,39 @@ namespace lux::simulation::script
                 if (candidate.semantic_type == marshaller.semantic_type ||
                     candidate.canonical_name == marshaller.canonical_name)
                 {
-                    return lux::cxx::unexpected(
-                        ELuaScriptBindingBackendError::
-                            DUPLICATE_VALUE_OPERATION
-                    );
+                    return lux::cxx::unexpected(ELuaScriptBindingBackendError::DUPLICATE_VALUE_OPERATION);
                 }
             }
         }
         const auto consistent = [](const auto& left, const auto& right) noexcept {
-            if (left.policy != right.policy) return false;
-            if (left.semantic_type != right.semantic_type) return true;
+            if (left.policy != right.policy)
+                return false;
+            if (left.semantic_type != right.semantic_type)
+                return true;
             return left.canonical_name == right.canonical_name && left.size == right.size &&
-                left.alignment == right.alignment && left.representation == right.representation &&
-                left.readable == right.readable && left.writable == right.writable;
+                   left.alignment == right.alignment && left.representation == right.representation &&
+                   left.readable == right.readable && left.writable == right.writable;
         };
         const auto each_operation = [&](auto&& visit) noexcept {
-            for (const auto& value : config.values) if (!visit(value)) return false;
+            for (const auto& value : config.values)
+                if (!visit(value))
+                    return false;
             for (const auto& ability : config.abilities)
                 for (const auto& method : ability.methods)
                 {
-                    for (const auto& value : method.parameters) if (!visit(value)) return false;
-                    for (const auto& value : method.results) if (!visit(value)) return false;
+                    for (const auto& value : method.parameters)
+                        if (!visit(value))
+                            return false;
+                    for (const auto& value : method.results)
+                        if (!visit(value))
+                            return false;
                 }
             return true;
         };
         if (!each_operation([&](const auto& left) noexcept {
-            return each_operation([&](const auto& right) noexcept { return consistent(left, right); });
-        })) return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_VALUE_OPERATION);
+                return each_operation([&](const auto& right) noexcept { return consistent(left, right); });
+            }))
+            return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_VALUE_OPERATION);
         if (config.continuation_capacity > static_cast<std::size_t>((std::numeric_limits<int>::max)()))
             return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
         std::size_t ability_method_count{};
@@ -2824,7 +2701,7 @@ namespace lux::simulation::script
                         return lux::cxx::unexpected(ELuaScriptBindingBackendError::DUPLICATE_ABILITY_METHOD);
                 }
                 const bool wrong_signature = projection.parameters.size() != method.parameters.size() ||
-                    projection.results.size() != method.results.size();
+                                             projection.results.size() != method.results.size();
                 if (wrong_signature)
                     return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
                 std::size_t frame_bytes = sizeof(std::optional<lux::script::lua::LuaValueFailure>);
@@ -2833,10 +2710,11 @@ namespace lux::simulation::script
                     const auto& value = method.parameters[i].value;
                     const auto& operation = projection.parameters[i];
                     const bool mismatch = !operation.readable || operation.semantic_type != value.type_id ||
-                        operation.canonical_name != value.canonical_name || operation.size != value.size ||
-                        operation.alignment != value.alignment || operation.frame_bytes > 65536 - frame_bytes;
+                                          operation.canonical_name != value.canonical_name ||
+                                          operation.size != value.size || operation.alignment != value.alignment ||
+                                          operation.frame_bytes > 65536 - frame_bytes;
                     const bool invalid_async = method.kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION &&
-                        (!Impl::supportedType(value) || !operation.native_scalar);
+                                               (!Impl::supportedType(value) || !operation.native_scalar);
                     if (mismatch || invalid_async)
                         return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
                     frame_bytes += operation.frame_bytes;
@@ -2849,12 +2727,13 @@ namespace lux::simulation::script
                     const auto& value = method.results[i];
                     const auto& operation = projection.results[i];
                     const bool mismatch = !operation.writable || operation.semantic_type != value.type_id ||
-                        operation.canonical_name != value.canonical_name || operation.size != value.size ||
-                        operation.alignment != value.alignment || operation.frame_bytes > 65536 - frame_bytes;
+                                          operation.canonical_name != value.canonical_name ||
+                                          operation.size != value.size || operation.alignment != value.alignment ||
+                                          operation.frame_bytes > 65536 - frame_bytes;
                     const bool invalid_async = method.kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION &&
-                        (!Impl::supportedType(value) || !operation.native_scalar ||
-                            value.pass != lux::semantic::EValuePass::VALUE ||
-                         value.lifetime != lux::script::EScriptAbilityValueLifetime::AWAITABLE);
+                                               (!Impl::supportedType(value) || !operation.native_scalar ||
+                                                value.pass != lux::semantic::EValuePass::VALUE ||
+                                                value.lifetime != lux::script::EScriptAbilityValueLifetime::AWAITABLE);
                     if (mismatch || invalid_async)
                         return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
                     frame_bytes += operation.frame_bytes;
@@ -2863,8 +2742,8 @@ namespace lux::simulation::script
                     frame_bytes += 2 * operation.alignment; // Conservative inter-slot and final tuple padding.
                 }
             }
-            const bool has_method_count_overflow = ability_method_count >
-                std::numeric_limits<std::size_t>::max() - contribution.description->methods.size();
+            const bool has_method_count_overflow = ability_method_count > std::numeric_limits<std::size_t>::max() -
+                                                                              contribution.description->methods.size();
             if (has_method_count_overflow)
                 return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
             ability_method_count += contribution.description->methods.size();
@@ -2883,19 +2762,20 @@ namespace lux::simulation::script
                     return source.payload.size == sizeof(bool) && source.payload.alignment == alignof(bool);
                 case LUX_SCRIPT_VK_INT32:
                     return source.payload.size == sizeof(std::int32_t) &&
-                        source.payload.alignment == alignof(std::int32_t);
+                           source.payload.alignment == alignof(std::int32_t);
                 case LUX_SCRIPT_VK_UINT32:
                     return source.payload.size == sizeof(std::uint32_t) &&
-                        source.payload.alignment == alignof(std::uint32_t);
+                           source.payload.alignment == alignof(std::uint32_t);
                 case LUX_SCRIPT_VK_FLOAT:
                     return source.payload.size == sizeof(float) && source.payload.alignment == alignof(float);
                 case LUX_SCRIPT_VK_DOUBLE:
                     return source.payload.size == sizeof(double) && source.payload.alignment == alignof(double);
-                default: return false;
+                default:
+                    return false;
                 }
             }();
-            const bool is_invalid_source = !source.valid() || !Impl::identifier(source.system_name) ||
-                !Impl::identifier(source.event_name) ||
+            const bool is_invalid_source =
+                !source.valid() || !Impl::identifier(source.system_name) || !Impl::identifier(source.event_name) ||
                 source.payload.type_id != lux::semantic::typeId(source.payload.canonical_name) ||
                 (source.payload.abi_kind != LUX_SCRIPT_VK_STRUCT_REF && !is_supported_scalar);
             if (is_invalid_source)
@@ -2903,8 +2783,8 @@ namespace lux::simulation::script
             if (source.payload.abi_kind == LUX_SCRIPT_VK_STRUCT_REF &&
                 std::ranges::none_of(config.values, [&](const auto& marshaller) noexcept {
                     return marshaller.semantic_type == source.payload.type_id &&
-                        marshaller.canonical_name == source.payload.canonical_name &&
-                        marshaller.size == source.payload.size && marshaller.alignment == source.payload.alignment;
+                           marshaller.canonical_name == source.payload.canonical_name &&
+                           marshaller.size == source.payload.size && marshaller.alignment == source.payload.alignment;
                 }))
             {
                 return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_EVENT_PAYLOAD);
@@ -2919,40 +2799,23 @@ namespace lux::simulation::script
                 }
             }
         }
-        try
         {
             auto state = std::make_unique<Impl>(config);
             if (!state->prepared_abilities.valid() || !state->prepared_events.valid())
                 return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
             if (!state->vm_configured)
             {
-                return lux::cxx::unexpected(
-                    ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE
-                );
+                return lux::cxx::unexpected(ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE);
             }
             return LuaScriptBackend{std::move(state)};
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(
-                ELuaScriptBindingBackendError::ALLOCATION_FAILURE);
-        }
     }
 
-    LuaScriptBackend::LuaScriptBackend(
-        std::unique_ptr<Impl> state
-    ) noexcept
-        : state_(std::move(state))
-    {
-    }
+    LuaScriptBackend::LuaScriptBackend(std::unique_ptr<Impl> state) noexcept : state_(std::move(state)) {}
 
     LuaScriptBackend::~LuaScriptBackend() = default;
-    LuaScriptBackend::LuaScriptBackend(
-        LuaScriptBackend&&
-    ) noexcept = default;
-    LuaScriptBackend& LuaScriptBackend::operator=(
-        LuaScriptBackend&&
-    ) noexcept = default;
+    LuaScriptBackend::LuaScriptBackend(LuaScriptBackend&&) noexcept = default;
+    LuaScriptBackend& LuaScriptBackend::operator=(LuaScriptBackend&&) noexcept = default;
 
     LuaScriptBackend::operator bool() const noexcept
     {
@@ -2986,15 +2849,20 @@ namespace lux::simulation::script
             abilities.acquire_steps + events.acquire_steps,
             abilities.release_steps + events.release_steps,
             state_->prototypes.size(),
-            Impl::leaf_yield_available, collected, fast, fallback
+            Impl::leaf_yield_available,
+            collected,
+            fast,
+            fallback
         };
     }
 
-    EScriptBackendResult LuaScriptBackend::prepareSyncStep(ScriptBackendInstance instance,
-                                                           const lux::rdesc::ScriptFunction& function,
-                                                           const ScriptSyncStepShape& shape,
-                                                           ScriptBackendPreparedMethod& method,
-                                                           PreparedScriptSyncStep& result) noexcept
+    EScriptBackendResult LuaScriptBackend::prepareSyncStep(
+        ScriptBackendInstance instance,
+        const lux::rdesc::ScriptFunction& function,
+        const ScriptSyncStepShape& shape,
+        ScriptBackendPreparedMethod& method,
+        PreparedScriptSyncStep& result
+    ) noexcept
     {
         const bool invalid_shape = function.args.size() > 64U || function.returns.size() > 1U ||
                                    !detail::syncStepShapeMatches(shape, function);
@@ -3002,44 +2870,49 @@ namespace lux::simulation::script
             return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
         ScriptBackendPreparedMethod prepared;
         const auto status = Impl::prepareMethod(state_.get(), instance, function, prepared);
-        if (status != EScriptBackendResult::SUCCESS) return status;
+        if (status != EScriptBackendResult::SUCCESS)
+            return status;
         if (prepared.resumable)
         {
             Impl::releaseMethod(state_.get(), instance, prepared);
             return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
         }
         const auto& call = *static_cast<Impl::PreparedCall*>(prepared.token);
-        try
         {
             Impl::prepareSyncOperations(*const_cast<Impl::LuaFunctionBinding*>(call.function));
         }
-        catch (const std::bad_alloc&)
-        {
-            Impl::releaseMethod(state_.get(), instance, prepared);
-            return EScriptBackendResult::ALLOCATION_FAILURE;
-        }
+
         decltype(PreparedScriptSyncStep::invoke) invoke{};
-        const auto select = [&]<bool EntityScope, bool HasResult>()
-        {
+        const auto select = [&]<bool EntityScope, bool HasResult>() {
             invoke = call.function->scalar_sync ? &Impl::invokeSyncStep<EntityScope, HasResult, true>
                                                 : &Impl::invokeSyncStep<EntityScope, HasResult, false>;
             // The common zero/one scalar shapes need neither an argument loop nor a per-value indirect push.
             // Custom operations always retain the protected converter path, including enum custom representations.
-            if (!call.function->scalar_sync) return;
+            if (!call.function->scalar_sync)
+                return;
             if (function.args.empty())
                 invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, std::nullptr_t>;
             else if (function.args.size() == 1U)
             {
                 switch (function.args[0].abi_kind)
                 {
-                case LUX_SCRIPT_VK_BOOL: invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, bool>; break;
+                case LUX_SCRIPT_VK_BOOL:
+                    invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, bool>;
+                    break;
                 case LUX_SCRIPT_VK_INT32:
-                    invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, std::int32_t>; break;
+                    invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, std::int32_t>;
+                    break;
                 case LUX_SCRIPT_VK_UINT32:
-                    invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, std::uint32_t>; break;
-                case LUX_SCRIPT_VK_FLOAT: invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, float>; break;
-                case LUX_SCRIPT_VK_DOUBLE: invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, double>; break;
-                default: break;
+                    invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, std::uint32_t>;
+                    break;
+                case LUX_SCRIPT_VK_FLOAT:
+                    invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, float>;
+                    break;
+                case LUX_SCRIPT_VK_DOUBLE:
+                    invoke = &Impl::invokeSyncStep<EntityScope, HasResult, true, double>;
+                    break;
+                default:
+                    break;
                 }
             }
         };
@@ -3065,12 +2938,13 @@ namespace lux::simulation::script
     ScriptBackendDescriptor LuaScriptBackend::descriptor() noexcept
     {
         return ScriptBackendDescriptor{
-            lux::rdesc::Script::Kind::LUA_SOURCE,
+            lux::rdesc::Script::EKind::LUA_SOURCE,
             state_.get(),
             &Impl::createInstance,
             &Impl::prepareMethod,
             &Impl::releaseMethod,
-            &Impl::destroyInstance};
+            &Impl::destroyInstance
+        };
     }
 
 } // namespace lux::simulation::script

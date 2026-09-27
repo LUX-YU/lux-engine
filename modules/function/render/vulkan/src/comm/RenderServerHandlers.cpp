@@ -385,9 +385,9 @@ namespace lux::render
             {
                 // 把内部错误映射回线协议的 ERegionUploadStatus。
                 const auto st =
-                    isError<err::asset::UnsupportedFormat>(r.error())    ? ERegionUploadStatus::UnsupportedFormat
-                    : isError<err::memory::CapacityExhausted>(r.error()) ? ERegionUploadStatus::CapacityExhausted
-                                                                         : ERegionUploadStatus::InvalidDesc;
+                    isError<err::asset::UnsupportedFormat>(r.error())    ? ERegionUploadStatus::UNSUPPORTED_FORMAT
+                    : isError<err::memory::CapacityExhausted>(r.error()) ? ERegionUploadStatus::CAPACITY_EXHAUSTED
+                                                                         : ERegionUploadStatus::INVALID_DESC;
                 replyToCurrent<CreatePersistentTexture2DPayload>(
                     ctx,
                     Texture2DCreatedReply{RTextureHandle{}, static_cast<uint32_t>(st)}
@@ -396,7 +396,7 @@ namespace lux::render
             }
             replyToCurrent<CreatePersistentTexture2DPayload>(
                 ctx,
-                Texture2DCreatedReply{RTextureHandle{r->index, r->gen}, 0u}
+                Texture2DCreatedReply{tex_res.publishTexture(*r), 0u}
             );
         }
 
@@ -416,17 +416,18 @@ namespace lux::render
             const std::size_t decl = static_cast<std::size_t>(p.region_count) * sizeof(TextureRegionDesc);
             if (p.region_count == 0 || region_bytes.size() < decl)
             {
-                reply(ERegionUploadStatus::NoRegions);
+                reply(ERegionUploadStatus::NO_REGIONS);
                 return;
             }
 
             // Authoritative validation + queuing live in TextureResources (the SAME
             // shared U2-00 validator the client pre-flights with).
             const auto st = tex_res.updateTextureRegions(
-                TextureHandle{p.handle.index, p.handle.gen},
+                tex_res.resolveTexture(p.handle),
                 std::span<const TextureRegionDesc>{
                     reinterpret_cast<const TextureRegionDesc*>(region_bytes.data()),
-                    p.region_count},
+                    p.region_count
+                },
                 std::span<const std::byte>{pixel_bytes.data(), pixel_bytes.size()}
             );
             reply(st);
@@ -566,14 +567,15 @@ namespace lux::render
                 }
             }
 
-            const TextureHandle handle = handle_cast<TextureHandle>(p.handle);
+            const TextureHandle handle = tex_res.resolveTexture(p.handle);
             if (!tex_res.beginMipReplacement(
                     handle,
                     p.format,
                     p.base_mip,
                     plan.mips[0].width,
                     plan.mips[0].height,
-                    physical_mip_count))
+                    physical_mip_count
+                ))
             {
                 fail();
                 return;
@@ -688,7 +690,7 @@ namespace lux::render
                 mips[i].height = p.mips[i].height;
             }
 
-            const TextureHandle h = handle_cast<TextureHandle>(p.handle);
+            const TextureHandle h = tex_res.resolveTexture(p.handle);
             const bool ok = tex_res.bindlessSet2D().updateTextureMips(
                 SlotHandle{h.index, h.gen},
                 std::span<const BindlessCombinedSet::TextureUpdateMip>(mips.data(), mip_count),
@@ -711,7 +713,7 @@ namespace lux::render
                 faces[i].bytes = face_pixels.size();
             }
 
-            const TextureHandle h = handle_cast<TextureHandle>(p.handle);
+            const TextureHandle h = tex_res.resolveTexture(p.handle, true);
             const bool ok = tex_res.bindlessSetCube().updateCubeFaces(SlotHandle{h.index, h.gen}, faces);
 
             replyToCurrent<UpdateCubeTexturePayload>(ctx, GenericOkReply{ok ? 0u : 1u});
@@ -727,7 +729,7 @@ namespace lux::render
             // through to the cube set and remove a live cube of the same key, and
             // a cube handle routed here (e.g. {0,1}) would hit the 2D fallback
             // white texture. Cube textures use DestroyCubeTexture.
-            const TextureHandle h = handle_cast<TextureHandle>(p.handle);
+            const TextureHandle h = tex_res.resolveTexture(p.handle);
             tex_res.remove(h);
         }
 
@@ -736,7 +738,7 @@ namespace lux::render
             auto& im = impl(ctx);
             auto& tex_res = im.render_ctx_->globalRegistry().must<TextureResources>();
 
-            const TextureHandle h = handle_cast<TextureHandle>(p.handle);
+            const TextureHandle h = tex_res.resolveTexture(p.handle, true);
             tex_res.removeCube(h);
         }
 

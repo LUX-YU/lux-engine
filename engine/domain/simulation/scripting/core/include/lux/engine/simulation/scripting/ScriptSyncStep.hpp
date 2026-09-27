@@ -25,15 +25,16 @@ namespace lux::simulation::script
 
     namespace detail
     {
-        [[nodiscard]] inline bool syncStepShapeMatches(const ScriptSyncStepShape& shape,
-                                                       const lux::rdesc::ScriptFunction& function) noexcept
+        [[nodiscard]] inline bool syncStepShapeMatches(
+            const ScriptSyncStepShape& shape,
+            const lux::rdesc::ScriptFunction& function
+        ) noexcept
         {
             const bool invalid_count =
                 shape.arguments.size() != function.args.size() || shape.results.size() != function.returns.size();
             if (invalid_count)
                 return false;
-            const auto matches = [](const ScriptSyncStepType& type, const lux::rdesc::ScriptValueType& actual)
-            {
+            const auto matches = [](const ScriptSyncStepType& type, const lux::rdesc::ScriptValueType& actual) {
                 return type.layout.type_id == actual.type_id && type.layout.canonical_name == actual.canonical_name &&
                        type.layout.abi_kind == actual.abi_kind && type.layout.size == actual.size &&
                        type.layout.alignment == actual.alignment && type.pass == actual.pass;
@@ -81,13 +82,26 @@ namespace lux::simulation::script
     struct ScriptSyncStepSetView final
     {
         ScriptSyncStepSetView() noexcept = default;
-        ScriptSyncStepSetView(ScriptInstanceId identity, std::uint64_t epoch, ScriptBehavior* host,
-            std::span<const PreparedScriptSyncStep> entries, const void* context,
-            bool (*check)(const void*, ScriptInstanceId, std::uint64_t) noexcept) noexcept
-            : instance(identity), publication(epoch), behavior(host), steps(entries), owner(context), current(check) {}
+        ScriptSyncStepSetView(
+            ScriptInstanceId identity,
+            std::uint64_t epoch,
+            ScriptBehavior* host,
+            std::span<const PreparedScriptSyncStep> entries,
+            const void* context,
+            bool (*check)(const void*, ScriptInstanceId, std::uint64_t) noexcept
+        ) noexcept
+            : instance(identity), publication(epoch), behavior(host), steps(entries), owner(context), current(check)
+        {}
         ScriptSyncStepSetView(const ScriptSyncStepSetView& other) noexcept
-            : ScriptSyncStepSetView(other.instance, other.publication, other.behavior, other.steps,
-                other.owner, other.current) {}
+            : ScriptSyncStepSetView(
+                  other.instance,
+                  other.publication,
+                  other.behavior,
+                  other.steps,
+                  other.owner,
+                  other.current
+              )
+        {}
         ScriptSyncStepSetView& operator=(const ScriptSyncStepSetView& other) noexcept
         {
             if (this != &other)
@@ -102,13 +116,17 @@ namespace lux::simulation::script
             }
             return *this;
         }
-        [[nodiscard]] bool hasInstanceLifetime() const noexcept { return instance_owned_; }
+        [[nodiscard]] bool hasInstanceLifetime() const noexcept
+        {
+            return instance_owned_;
+        }
         ScriptInstanceId instance;
         std::uint64_t publication{};
         ScriptBehavior* behavior{};
         std::span<const PreparedScriptSyncStep> steps;
         const void* owner{};
-        bool (*current)(const void*, ScriptInstanceId, std::uint64_t) noexcept{};
+        bool (*current)(const void*, ScriptInstanceId, std::uint64_t) noexcept {};
+
     private:
         // Only the engine's owning composition may establish this lifetime. A
         // copied/public producer view is checked, even when copied from this view.

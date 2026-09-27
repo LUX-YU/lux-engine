@@ -70,7 +70,8 @@ namespace lux::render
             ProgramEmitter& emitter,
             uint32_t pass_index,
             const RGCompiledPass& cpass,
-            const RGCompiledGraph& compiled);
+            const RGCompiledGraph& compiled
+        );
 
         /// Contribute mesh draw lanes to the MeshBucketLayoutPlan.
         /// Called once per compiled pass instance when building the lane list.
@@ -79,7 +80,8 @@ namespace lux::render
             uint32_t pass_index,
             const RGCompiledPass& cpass,
             MeshBucketLayoutPlan& plan,
-            PipelineManager& pipeline_manager);
+            PipelineManager& pipeline_manager
+        );
 
         /// Contribute to the per-view arena size estimates.
         /// Called once per *graph description* pass (not compiled pass) to
@@ -94,7 +96,7 @@ namespace lux::render
         using ReplayFn = void (*)(uint32_t sub_cmd, const void* data, uint16_t data_size, KernelReplayContext& ctx);
 
         /// Resolve a kernel-specific DynamicPatch source to a uint32_t value.
-        /// Called during command replay for patches with ESource::KernelPatch.
+        /// Called during command replay for patches with ESource::KERNEL_PATCH.
         /// @param source_param  Kernel-defined sub-source ID (low 8 bits of DynamicPatch::source_param)
         /// @param frame_ctx     Current frame context (provides ext_data for feature access)
         using PatchFn = uint32_t (*)(uint16_t source_param, const RGFrameContext& frame_ctx);

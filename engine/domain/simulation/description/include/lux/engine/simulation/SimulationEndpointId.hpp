@@ -4,8 +4,7 @@
 
 namespace lux::simulation
 {
-    template <class Tag>
-    struct StableEndpointId final
+    template <class Tag> struct TStableEndpointId final
     {
         std::uint64_t value{};
 
@@ -14,20 +13,14 @@ namespace lux::simulation
             return value != 0U;
         }
 
-        friend constexpr bool operator==(
-            StableEndpointId,
-            StableEndpointId
-        ) noexcept = default;
+        friend constexpr bool operator==(TStableEndpointId, TStableEndpointId) noexcept = default;
 
-        friend constexpr auto operator<=> (
-            StableEndpointId,
-            StableEndpointId
-        ) noexcept = default;
+        friend constexpr auto operator<=>(TStableEndpointId, TStableEndpointId) noexcept = default;
     };
 
     struct HookPointIdTag;
     struct EventPointIdTag;
 
-    using HookPointId = StableEndpointId<HookPointIdTag>;
-    using EventPointId = StableEndpointId<EventPointIdTag>;
+    using HookPointId = TStableEndpointId<HookPointIdTag>;
+    using EventPointId = TStableEndpointId<EventPointIdTag>;
 }

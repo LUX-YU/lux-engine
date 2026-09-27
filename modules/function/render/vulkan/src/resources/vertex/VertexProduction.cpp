@@ -16,11 +16,11 @@ namespace lux::render
         // skinning producer/consumer used before this refactor, so the RG name
         // is unchanged across the migration — only the way it's referenced
         // (typed enum vs raw string) changes.
-        case EVertexProductKind::Skinning:
+        case EVertexProductKind::SKINNING:
             return "SkinnedVertexPool";
-        case EVertexProductKind::Morph:
+        case EVertexProductKind::MORPH:
             return "MorphVertexPool";
-        case EVertexProductKind::Cloth:
+        case EVertexProductKind::CLOTH:
             return "ClothVertexPool";
         }
         return "UnknownVertexPool";

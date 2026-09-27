@@ -14,7 +14,10 @@ namespace lux::simulation
     struct SimulationTaskId final
     {
         std::uint64_t value{};
-        [[nodiscard]] constexpr bool valid() const noexcept { return value != 0U; }
+        [[nodiscard]] constexpr bool valid() const noexcept
+        {
+            return value != 0U;
+        }
         friend constexpr auto operator<=>(SimulationTaskId, SimulationTaskId) noexcept = default;
     };
 
@@ -56,7 +59,8 @@ namespace lux::simulation
         }
 
         [[nodiscard]] static constexpr SimulationExecutionPoint hook(
-            lux::system::SystemInstanceId system, HookPointId id
+            lux::system::SystemInstanceId system,
+            HookPointId id
         ) noexcept
         {
             return {system, id.value, ESimulationExecutionPoint::HOOK};
@@ -74,9 +78,8 @@ namespace lux::simulation
     {
         SimulationExecutionPoint before;
         SimulationExecutionPoint after;
-        friend constexpr bool operator==(
-            SimulationExecutionDependency, SimulationExecutionDependency
-        ) noexcept = default;
+        friend constexpr bool operator==(SimulationExecutionDependency, SimulationExecutionDependency) noexcept =
+            default;
     };
 
     struct SimulationChannelProducer final

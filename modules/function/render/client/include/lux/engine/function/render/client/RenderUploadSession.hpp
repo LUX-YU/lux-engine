@@ -34,7 +34,7 @@ namespace lux::render
 
     template <class T> using UploadSubmitExp = lux::cxx::expected<T, ERenderUploadSubmitError>;
 
-    template <class Reply> using UploadSubmitResult = UploadSubmitExp<RenderRequest<Reply>>;
+    template <class Reply> using UploadSubmitResult = UploadSubmitExp<TRenderRequest<Reply>>;
 
     using UploadSubmitNoReplyResult = UploadSubmitExp<void>;
 
@@ -53,11 +53,11 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC RenderUploadSession final
     {
     public:
-        using CallbackStore = ResponseCallbackStore<>;
+        using CallbackStore = TResponseCallbackStore<>;
         using Builder = SingleOperationBuilder<>;
 
         explicit RenderUploadSession(
-            std::shared_ptr<RenderUploadChannel<>> channel,
+            std::shared_ptr<TRenderUploadChannel<>> channel,
             std::shared_ptr<RenderChannelSync> sync
         );
 
@@ -89,8 +89,11 @@ namespace lux::render
         /// callback slot and RequestId are deliberately allocated here, on the
         /// same thread that pumps replies.  On backpressure the packet remains
         /// intact and may be retried later.
-        [[nodiscard]] UploadSubmitNoReplyResult
-        trySubmitPrepared(OperationPacket<>& packet, TypeId expected_reply_type, ReplyDispatchCallback callback)
+        [[nodiscard]] UploadSubmitNoReplyResult trySubmitPrepared(
+            TOperationPacket<>& packet,
+            TypeId expected_reply_type,
+            ReplyDispatchCallback callback
+        )
         {
             requireOwnerThread();
             if (sync_->isStopping())
@@ -98,9 +101,9 @@ namespace lux::render
             const bool has_command = packet.has_command;
             const bool has_unassigned_request = has_command && packet.command.request_id == kInvalidRequestId;
             const bool has_expected_reply = expected_reply_type != kInvalidTypeId;
-            const bool has_reply_flag = has_command && hasFlag(packet.command.flags, CmdFlags::ExpectsReply);
-            const bool is_invalid_packet = !has_command || !has_unassigned_request || !has_expected_reply ||
-                !has_reply_flag;
+            const bool has_reply_flag = has_command && hasFlag(packet.command.flags, ECmdFlags::EXPECTS_REPLY);
+            const bool is_invalid_packet =
+                !has_command || !has_unassigned_request || !has_expected_reply || !has_reply_flag;
             if (is_invalid_packet)
             {
                 return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::PAYLOAD_INVALID);
@@ -127,13 +130,13 @@ namespace lux::render
             return {};
         }
 
-        [[nodiscard]] UploadSubmitNoReplyResult trySubmitPreparedNoReply(OperationPacket<>& packet)
+        [[nodiscard]] UploadSubmitNoReplyResult trySubmitPreparedNoReply(TOperationPacket<>& packet)
         {
             requireOwnerThread();
             if (sync_->isStopping())
                 return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::STOPPING);
             if (!packet.has_command || packet.command.request_id != kInvalidRequestId ||
-                hasFlag(packet.command.flags, CmdFlags::ExpectsReply))
+                hasFlag(packet.command.flags, ECmdFlags::EXPECTS_REPLY))
             {
                 return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::PAYLOAD_INVALID);
             }
@@ -159,11 +162,11 @@ namespace lux::render
             if (sync_->isStopping())
                 return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::STOPPING);
 
-            OperationPacket<> packet{};
+            TOperationPacket<> packet{};
 
             Builder builder(packet, callbacks_);
             builder.begin();
-            auto [request, callback] = RenderRequestFactory<Reply>::make();
+            auto [request, callback] = TRenderRequestFactory<Reply>::make();
             std::invoke(std::forward<Record>(record), builder, std::move(callback));
 
             const auto request_id = packet.requestId();
@@ -204,7 +207,7 @@ namespace lux::render
             if (sync_->isStopping())
                 return lux::cxx::unexpected<ERenderUploadSubmitError>(ERenderUploadSubmitError::STOPPING);
 
-            OperationPacket<> packet{};
+            TOperationPacket<> packet{};
 
             Builder builder(packet, callbacks_);
             builder.begin();
@@ -282,11 +285,13 @@ namespace lux::render
             EPixelFormat format = EPixelFormat::RGBA8_SRGB
         );
 
-        [[nodiscard]] UploadSubmitResult<Texture2DCreatedReply>
-        tryCreatePersistentTexture2D(const PersistentTexture2DDesc& desc);
+        [[nodiscard]] UploadSubmitResult<Texture2DCreatedReply> tryCreatePersistentTexture2D(
+            const PersistentTexture2DDesc& desc
+        );
 
-        [[nodiscard]] UploadSubmitResult<TextureRegionsAppliedReply>
-        tryUpdateTextureRegions(OwnedTextureUploadBatch batch);
+        [[nodiscard]] UploadSubmitResult<TextureRegionsAppliedReply> tryUpdateTextureRegions(
+            OwnedTextureUploadBatch batch
+        );
 
         [[nodiscard]] std::size_t payloadBytesInFlight() const noexcept
         {
@@ -302,7 +307,7 @@ namespace lux::render
         [[nodiscard]] static std::uint64_t currentThreadToken() noexcept;
         void requireOwnerThread() noexcept;
 
-        std::shared_ptr<RenderUploadChannel<>> channel_;
+        std::shared_ptr<TRenderUploadChannel<>> channel_;
         std::shared_ptr<RenderChannelSync> sync_;
         CallbackStore callbacks_{ERequestLane::UPLOAD};
         std::atomic<bool> coordinator_owned_{false};

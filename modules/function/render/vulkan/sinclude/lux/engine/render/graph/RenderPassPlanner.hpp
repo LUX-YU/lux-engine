@@ -117,7 +117,10 @@ namespace lux::render
         ///        Never pass the array capacity as if it were a device limit:
         ///        Vulkan only guarantees 4 and a wider group fails at
         ///        vkCmdBeginRendering.
-        static RGRenderPassLayoutInfo
-        plan(const RGGraphDescription& graph, const RGDependencyInfo& deps, uint32_t max_color_attachments = 0);
+        static RGRenderPassLayoutInfo plan(
+            const RGGraphDescription& graph,
+            const RGDependencyInfo& deps,
+            uint32_t max_color_attachments = 0
+        );
     };
 } // namespace lux::render

@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <optional>
 #include <cstdint>
-#include <cassert>
+#include <exception>
 #include <limits>
 
 namespace lux::math
@@ -18,7 +18,7 @@ namespace lux::math
     /**
      * @brief Result of a BVH ray-cast query.
      */
-    template <class Scalar> struct BasicBVHHit
+    template <class Scalar> struct TBasicBVHHit
     {
         Scalar t;                ///< Distance along the ray
         float u, v;              ///< Barycentric coordinates on the triangle
@@ -26,8 +26,8 @@ namespace lux::math
         Eigen::Matrix<Scalar, 3, 1> normal{};
     };
 
-    using BVHHit = BasicBVHHit<float>;
-    using BVHHit3d = BasicBVHHit<double>;
+    using BVHHit = TBasicBVHHit<float>;
+    using BVHHit3d = TBasicBVHHit<double>;
 
     /**
      * @brief Per-mesh Bounding Volume Hierarchy for precise ray-triangle picking.
@@ -69,7 +69,13 @@ namespace lux::math
             tris_.clear();
             centroids_.clear();
             orig_tri_idx_.clear();
-            assert(index_count % 3 == 0);
+            const bool is_invalid_index_count = index_count % 3 != 0;
+            const bool has_missing_data = index_count != 0 && (positions == nullptr || indices == nullptr);
+            const bool is_invalid_input = is_invalid_index_count || has_missing_data;
+            if (is_invalid_input)
+            {
+                std::terminate();
+            }
             const uint32_t tri_count = index_count / 3;
             if (tri_count == 0)
             {
@@ -88,7 +94,15 @@ namespace lux::math
                 uint32_t i0 = indices[i * 3 + 0];
                 uint32_t i1 = indices[i * 3 + 1];
                 uint32_t i2 = indices[i * 3 + 2];
-                assert(i0 < vertex_count && i1 < vertex_count && i2 < vertex_count);
+                const bool is_invalid_first_vertex = i0 >= vertex_count;
+                const bool is_invalid_second_vertex = i1 >= vertex_count;
+                const bool is_invalid_third_vertex = i2 >= vertex_count;
+                const bool has_invalid_vertex =
+                    is_invalid_first_vertex || is_invalid_second_vertex || is_invalid_third_vertex;
+                if (has_invalid_vertex)
+                {
+                    std::terminate();
+                }
                 tris_[i] = {positions[i0], positions[i1], positions[i2]};
                 centroids_[i] = (positions[i0] + positions[i1] + positions[i2]) / 3.0f;
                 orig_tri_idx_[i] = i;
@@ -129,8 +143,10 @@ namespace lux::math
          * @return The closest BVHHit (t in world-space units), or nullopt.
          */
         template <class Scalar>
-        [[nodiscard]] std::optional<BasicBVHHit<Scalar>> intersect(
-            const BasicRay<Scalar>& world_ray, const Eigen::Matrix<Scalar, 4, 4>& world) const
+        [[nodiscard]] std::optional<TBasicBVHHit<Scalar>> intersect(
+            const TBasicRay<Scalar>& world_ray,
+            const Eigen::Matrix<Scalar, 4, 4>& world
+        ) const
         {
             if (!world.allFinite() || !world_ray.origin.allFinite() || !world_ray.direction.allFinite())
             {
@@ -155,8 +171,7 @@ namespace lux::math
                 return std::nullopt;
             }
 
-            const Ray local_ray{local_origin.template cast<float>(),
-                                (direction / scale).template cast<float>()};
+            const Ray local_ray{local_origin.template cast<float>(), (direction / scale).template cast<float>()};
             if (!local_ray.origin.allFinite() || !local_ray.direction.allFinite())
             {
                 return std::nullopt;
@@ -169,8 +184,13 @@ namespace lux::math
             }
 
             const Eigen::Matrix<Scalar, 3, 1> normal = inverse.transpose() * hit->normal.template cast<Scalar>();
-            return BasicBVHHit<Scalar>{Scalar(hit->t) / scale, hit->u, hit->v,
-                                       hit->triangle_index, normal.normalized()};
+            return TBasicBVHHit<Scalar>{
+                Scalar(hit->t) / scale,
+                hit->u,
+                hit->v,
+                hit->triangle_index,
+                normal.normalized()
+            };
         }
 
         [[nodiscard]] uint32_t triangleCount() const

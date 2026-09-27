@@ -10,9 +10,7 @@
 
 namespace lux::render
 {
-    SceneViewSet::SceneViewSet(ResourceRegistry& registry) noexcept : registry_(registry)
-    {
-    }
+    SceneViewSet::SceneViewSet(ResourceRegistry& registry) noexcept : registry_(registry) {}
 
     SceneViewSet::~SceneViewSet()
     {
@@ -55,7 +53,7 @@ namespace lux::render
             if (!view_ptr)
                 continue;
             all_dense_.push_back(view_ptr.get());
-            if (view_ptr->state == ViewState::Active)
+            if (view_ptr->state == ERenderViewState::ACTIVE)
                 active_dense_.push_back(view_ptr.get());
         }
         cache_dirty_ = false;
@@ -122,7 +120,7 @@ namespace lux::render
         ViewHandle handle = views_.insert(std::move(view));
         auto* new_view = views_.at(handle).get();
         new_view->handle = handle;
-        new_view->state = ViewState::Active;
+        new_view->state = ERenderViewState::ACTIVE;
 
         initViewUBO(*new_view);
         markCacheDirty();
@@ -136,7 +134,7 @@ namespace lux::render
         // 已在销毁中的视图会在槽表里逗留到 GC 释放它(fif 帧后)。这个窗口内的重复
         // removeView 必须被挡掉,否则会重复释放特性状态、重复通知注册表、并再入队
         // 一条记录 —— 第二条会在 GC 时把同一句柄处理两遍。(5-4)
-        return views_.at(handle)->state != ViewState::Destroying;
+        return views_.at(handle)->state != ERenderViewState::DESTROYING;
     }
 
     void SceneViewSet::markDestroying(ViewHandle handle)
@@ -144,7 +142,7 @@ namespace lux::render
         if (!views_.contains(handle))
             return;
         auto& view = *views_.at(handle);
-        view.state = ViewState::Destroying;
+        view.state = ERenderViewState::DESTROYING;
         markCacheDirty();
         // 不在此释放 GPU 槽:其它 frames-in-flight 槽位的在飞命令可能仍引用它。
         pending_destroys_.push_back({handle, 0});

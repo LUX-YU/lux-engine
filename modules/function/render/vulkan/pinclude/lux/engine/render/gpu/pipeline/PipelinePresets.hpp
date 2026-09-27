@@ -55,7 +55,8 @@ namespace lux::render
                 4,
                 0,
                 VK_FORMAT_R32G32B32_SFLOAT,
-                offsetof(lux::rdesc::Vertex, bitangent)},
+                offsetof(lux::rdesc::Vertex, bitangent)
+            },
         };
     }
 
@@ -281,8 +282,11 @@ namespace lux::render
      * PC 范围为何权威声明而非交给反射:全屏 VS 没有 PC 块,纯反射会把 VERTEX
      * stage 从范围里丢掉(两处调用点原注释一致记载的坑)。
      */
-    inline GraphicsPipelineTemplate
-    makeFullscreenTemplate(const char* debug_name, uint32_t push_constant_size, bool alpha_blend = false)
+    inline GraphicsPipelineTemplate makeFullscreenTemplate(
+        const char* debug_name,
+        uint32_t push_constant_size,
+        bool alpha_blend = false
+    )
     {
         GraphicsPipelineTemplate tmpl{};
         tmpl.geometry_type = EGeometryType::MESH;
@@ -308,7 +312,7 @@ namespace lux::render
         {
             tmpl.blend_enable = VK_FALSE;
         }
-        tmpl.resource_slot_map.push_back({EDescriptorSetSlot::Scene, 0});
+        tmpl.resource_slot_map.push_back({EDescriptorSetSlot::SCENE, 0});
         tmpl.push_constant_ranges.push_back(
             {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, push_constant_size}
         );

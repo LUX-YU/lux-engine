@@ -42,9 +42,7 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC FeatureParamsProxy
     {
     public:
-        explicit FeatureParamsProxy(RenderProgramSession& session) noexcept : session_(&session)
-        {
-        }
+        explicit FeatureParamsProxy(RenderProgramSession& session) noexcept : session_(&session) {}
 
         /// @p op = the feature's setParams op-id (FeatureCatalog::paramSetOp(name)).
         /// No-op if @p op is invalid (feature exposes no editable params).

@@ -24,8 +24,5 @@ namespace lux::asset::detail
     };
 
     [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
-    encodeCookedAssetImage(
-        const CookedAssetWriteRequest& request,
-        const AssetEncodeLimits& limits
-    ) noexcept;
+    encodeCookedAssetImage(const CookedAssetWriteRequest& request, const AssetEncodeLimits& limits) noexcept;
 } // namespace lux::asset::detail

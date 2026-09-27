@@ -54,7 +54,8 @@ namespace lux::navigation::detour3d
             const lux::math::Position3d& start_position,
             const lux::math::Position3d& destination_position,
             const NavigationPathRequest& request,
-            float maximum_relative_extent) noexcept
+            float maximum_relative_extent
+        ) noexcept
         {
             NavigationPathResult result;
             if (!detail::sameAgent(region.agent, request.agent))
@@ -79,7 +80,8 @@ namespace lux::navigation::detour3d
             const float extents[3]{
                 request.nearest_horizontal_extent,
                 request.nearest_vertical_extent,
-                request.nearest_horizontal_extent};
+                request.nearest_horizontal_extent
+            };
             dtPolyRef start_reference = 0u;
             dtPolyRef destination_reference = 0u;
             float nearest_start[3]{};
@@ -87,17 +89,15 @@ namespace lux::navigation::detour3d
             const bool has_nearest_start = !dtStatusFailed(
                 region.query->findNearestPoly(start->data(), extents, &filter, &start_reference, nearest_start)
             );
-            const bool has_nearest_destination = has_nearest_start && !dtStatusFailed(
-                region.query->findNearestPoly(
-                    destination->data(),
-                    extents,
-                    &filter,
-                    &destination_reference,
-                    nearest_destination
-                )
-            );
-            const bool has_valid_references = has_nearest_destination &&
-                start_reference != 0u && destination_reference != 0u;
+            const bool has_nearest_destination = has_nearest_start && !dtStatusFailed(region.query->findNearestPoly(
+                                                                          destination->data(),
+                                                                          extents,
+                                                                          &filter,
+                                                                          &destination_reference,
+                                                                          nearest_destination
+                                                                      ));
+            const bool has_valid_references =
+                has_nearest_destination && start_reference != 0u && destination_reference != 0u;
             if (!has_valid_references)
             {
                 result.failure = ENavigationPathFailure::LOCATION_NOT_FOUND;
@@ -115,7 +115,8 @@ namespace lux::navigation::detour3d
                 &filter,
                 route.data(),
                 &route_count,
-                static_cast<int>(route.size()));
+                static_cast<int>(route.size())
+            );
             if (dtStatusFailed(route_status) || route_count <= 0)
             {
                 result.failure = ENavigationPathFailure::BACKEND_FAILURE;
@@ -134,7 +135,8 @@ namespace lux::navigation::detour3d
                 nullptr,
                 nullptr,
                 &point_count,
-                static_cast<int>(request.maximum_path_points));
+                static_cast<int>(request.maximum_path_points)
+            );
             if (dtStatusFailed(straight_status) || point_count <= 0)
             {
                 result.failure = ENavigationPathFailure::BACKEND_FAILURE;
@@ -147,7 +149,8 @@ namespace lux::navigation::detour3d
                 result.points.push_back(
                     {region.origin.x + point_values[index * 3],
                      region.origin.y + point_values[index * 3 + 1],
-                     region.origin.z + point_values[index * 3 + 2]});
+                     region.origin.z + point_values[index * 3 + 2]}
+                );
             }
             const bool partial = dtStatusDetail(route_status, DT_PARTIAL_RESULT) ||
                                  route[static_cast<std::size_t>(route_count - 1)] != destination_reference;
@@ -193,7 +196,8 @@ namespace lux::navigation::detour3d
             NavigationRegionId start,
             NavigationRegionId destination,
             const std::vector<NavigationPortal>& portals,
-            const RegionMap* required_active) noexcept
+            const RegionMap* required_active
+        ) noexcept
         {
             std::unordered_map<NavigationRegionId, PortalPredecessor, detail::RegionIdHash> predecessors;
             std::deque<NavigationRegionId> frontier;
@@ -247,7 +251,8 @@ namespace lux::navigation::detour3d
         void appendPoints(
             NavigationPathResult& destination,
             std::vector<lux::math::Position3d>&& source,
-            std::uint32_t maximum_points) noexcept
+            std::uint32_t maximum_points
+        ) noexcept
         {
             for (auto& point : source)
             {
@@ -264,8 +269,9 @@ namespace lux::navigation::detour3d
             }
         }
 
-        [[nodiscard]] lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure>
-        retireOne(RegionData& data) noexcept
+        [[nodiscard]] lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure> retireOne(
+            RegionData& data
+        ) noexcept
         {
             if (data.retirement_cursor >= data.layers.size())
                 return NavigationRegion3DStepResult{true, 0u, 0u};
@@ -284,7 +290,8 @@ namespace lux::navigation::detour3d
                 {
                     return lux::cxx::unexpected(detail::fail(
                         ENavigationRegion3DError::BUILD_FAILED,
-                        "navigation backend rejected one layer retirement"));
+                        "navigation backend rejected one layer retirement"
+                    ));
                 }
                 layer.reference = 0u;
             }
@@ -316,8 +323,7 @@ namespace lux::navigation::detour3d
     PreparedNavigationRegion3D& PreparedNavigationRegion3D::operator=(PreparedNavigationRegion3D&&) noexcept = default;
 
     PreparedNavigationRegion3D::PreparedNavigationRegion3D(std::shared_ptr<Data> data) noexcept : data_(std::move(data))
-    {
-    }
+    {}
 
     bool PreparedNavigationRegion3D::valid() const noexcept
     {
@@ -345,13 +351,14 @@ namespace lux::navigation::detour3d
         return data_ ? static_cast<std::uint32_t>(data_->layers.size()) : 0u;
     }
 
-    lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure>
-    PreparedNavigationRegion3D::advanceRetirementOne() noexcept
+    lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure> PreparedNavigationRegion3D::
+        advanceRetirementOne() noexcept
     {
         if (!data_)
         {
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::INVALID_REQUEST, "navigation prepared retirement has no owner"));
+                fail(ENavigationRegion3DError::INVALID_REQUEST, "navigation prepared retirement has no owner")
+            );
         }
         if (data_->resident_bytes == 0u)
             return NavigationRegion3DStepResult{true, 0u, 0u};
@@ -359,8 +366,7 @@ namespace lux::navigation::detour3d
     }
 
     Navigation3DBackend::Navigation3DBackend(std::shared_ptr<Control> control) noexcept : control_(std::move(control))
-    {
-    }
+    {}
 
     Navigation3DBackend::~Navigation3DBackend() noexcept
     {
@@ -382,38 +388,42 @@ namespace lux::navigation::detour3d
         control_->alive = false;
     }
 
-    lux::cxx::expected<std::shared_ptr<Navigation3DBackend>, NavigationRegion3DFailure>
-    Navigation3DBackend::create(Navigation3DBackendConfig config) noexcept
+    lux::cxx::expected<std::shared_ptr<Navigation3DBackend>, NavigationRegion3DFailure> Navigation3DBackend::create(
+        Navigation3DBackendConfig config
+    ) noexcept
     {
         if (config.maximum_resident_regions == 0u || !finitePositive(config.maximum_relative_extent))
         {
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::INVALID_REQUEST, "navigation backend configuration is invalid"));
+                fail(ENavigationRegion3DError::INVALID_REQUEST, "navigation backend configuration is invalid")
+            );
         }
         return std::shared_ptr<Navigation3DBackend>{new Navigation3DBackend{std::make_shared<Control>(config)}};
     }
 
-    lux::cxx::expected<std::unique_ptr<NavigationRegion3DLease>, NavigationRegion3DFailure>
-    Navigation3DBackend::adoptPrepared(PreparedNavigationRegion3D&& prepared) noexcept
+    lux::cxx::expected<std::unique_ptr<NavigationRegion3DLease>, NavigationRegion3DFailure> Navigation3DBackend::
+        adoptPrepared(PreparedNavigationRegion3D&& prepared) noexcept
     {
         if (!control_ || !prepared.valid() || !control_->isOwner())
         {
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::INVALID_REQUEST, "prepared navigation region cannot be adopted here"));
+                fail(ENavigationRegion3DError::INVALID_REQUEST, "prepared navigation region cannot be adopted here")
+            );
         }
         std::unique_lock lock{control_->mutex};
         const auto region = prepared.data_->region;
         const auto count = control_->staged.size() + control_->active.size() + control_->retiring.size();
         if (!control_->alive)
         {
-            return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::STALE_GENERATION, "navigation backend is closed"));
+            return lux::cxx::unexpected(fail(ENavigationRegion3DError::STALE_GENERATION, "navigation backend is closed")
+            );
         }
         if (control_->staged.contains(region) || control_->active.contains(region) ||
             control_->retiring.contains(region))
         {
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::REGION_CONFLICT, "navigation region is already resident"));
+                fail(ENavigationRegion3DError::REGION_CONFLICT, "navigation region is already resident")
+            );
         }
         const auto compatibleWith = [&prepared](const RegionMap& regions) {
             for (const auto& [_, resident] : regions)
@@ -430,9 +440,8 @@ namespace lux::navigation::detour3d
                     }
                     const auto duplicate = std::ranges::find_if(
                         resident->portals,
-                        [&incoming](const NavigationPortal& candidate) noexcept {
-                            return candidate.id == incoming.id;
-                        });
+                        [&incoming](const NavigationPortal& candidate) noexcept { return candidate.id == incoming.id; }
+                    );
                     if (duplicate != resident->portals.end() && !samePortal(*duplicate, incoming))
                     {
                         return false;
@@ -455,19 +464,22 @@ namespace lux::navigation::detour3d
             return lux::cxx::unexpected(fail(
                 ENavigationRegion3DError::INVALID_CONTENT,
                 "navigation portal has a conflicting contract or "
-                "agent constraint"));
+                "agent constraint"
+            ));
         }
         if (count >= control_->config.maximum_resident_regions)
         {
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::CAPACITY_EXHAUSTED, "navigation region capacity is exhausted"));
+                fail(ENavigationRegion3DError::CAPACITY_EXHAUSTED, "navigation region capacity is exhausted")
+            );
         }
         auto data = std::move(prepared.data_);
         const auto inserted = control_->staged.emplace(region, data);
         if (!inserted.second)
         {
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::REGION_CONFLICT, "navigation region became resident during adoption"));
+                fail(ENavigationRegion3DError::REGION_CONFLICT, "navigation region became resident during adoption")
+            );
         }
         control_->owned_bytes += data->resident_bytes;
         return std::unique_ptr<NavigationRegion3DLease>{new NavigationRegion3DLease{control_, std::move(data)}};
@@ -604,7 +616,8 @@ namespace lux::navigation::detour3d
                 request.start,
                 request.destination,
                 request,
-                control_->config.maximum_relative_extent);
+                control_->config.maximum_relative_extent
+            );
             result.generation = generation;
             return result;
         }
@@ -621,7 +634,8 @@ namespace lux::navigation::detour3d
                 std::ranges::sort(result.missing_regions);
                 result.missing_regions.erase(
                     std::unique(result.missing_regions.begin(), result.missing_regions.end()),
-                    result.missing_regions.end());
+                    result.missing_regions.end()
+                );
                 if (!result.missing_regions.empty())
                 {
                     result.status = ENavigationPathStatus::PENDING;
@@ -648,7 +662,8 @@ namespace lux::navigation::detour3d
                 position,
                 traversal.from_position,
                 request,
-                control_->config.maximum_relative_extent);
+                control_->config.maximum_relative_extent
+            );
             appendPoints(result, std::move(segment.points), request.maximum_path_points);
             if (segment.status == ENavigationPathStatus::FAILED)
             {
@@ -673,7 +688,8 @@ namespace lux::navigation::detour3d
             position,
             request.destination,
             request,
-            control_->config.maximum_relative_extent);
+            control_->config.maximum_relative_extent
+        );
         appendPoints(result, std::move(final_segment.points), request.maximum_path_points);
         if (final_segment.status == ENavigationPathStatus::FAILED)
         {
@@ -681,8 +697,8 @@ namespace lux::navigation::detour3d
             result.failure = final_segment.failure;
             result.detail = std::move(final_segment.detail);
         }
-        else if (
-            final_segment.status == ENavigationPathStatus::PARTIAL || result.status == ENavigationPathStatus::PARTIAL)
+        else if (final_segment.status == ENavigationPathStatus::PARTIAL ||
+                 result.status == ENavigationPathStatus::PARTIAL)
         {
             result.status = ENavigationPathStatus::PARTIAL;
             result.failure = ENavigationPathFailure::NONE;
@@ -712,14 +728,15 @@ namespace lux::navigation::detour3d
         return result;
     }
 
-    lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure>
-    Navigation3DBackend::advanceRetirementOne() noexcept
+    lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure> Navigation3DBackend::
+        advanceRetirementOne() noexcept
     {
         if (!control_ || !control_->isOwner())
         {
             return lux::cxx::unexpected(fail(
                 ENavigationRegion3DError::INVALID_REQUEST,
-                "navigation retirement requires the backend owner thread"));
+                "navigation retirement requires the backend owner thread"
+            ));
         }
         std::unique_lock lock{control_->mutex};
         if (control_->retiring.empty())
@@ -731,10 +748,9 @@ namespace lux::navigation::detour3d
             if (candidate->first < lowest->first)
                 lowest = candidate;
             const bool has_retirement_boundary = control_->retirement_after.has_value();
-            const bool is_after_boundary = has_retirement_boundary &&
-                candidate->first > *control_->retirement_after;
-            const bool is_earlier_candidate = selected == control_->retiring.end() ||
-                candidate->first < selected->first;
+            const bool is_after_boundary = has_retirement_boundary && candidate->first > *control_->retirement_after;
+            const bool is_earlier_candidate =
+                selected == control_->retiring.end() || candidate->first < selected->first;
             const bool should_select = is_after_boundary && is_earlier_candidate;
             if (should_select)
             {
@@ -760,10 +776,10 @@ namespace lux::navigation::detour3d
 
     NavigationRegion3DLease::NavigationRegion3DLease(
         std::weak_ptr<Navigation3DBackend::Control> control,
-        std::shared_ptr<PreparedNavigationRegion3D::Data> data) noexcept
+        std::shared_ptr<PreparedNavigationRegion3D::Data> data
+    ) noexcept
         : control_(std::move(control)), data_(std::move(data))
-    {
-    }
+    {}
 
     NavigationRegion3DLease::~NavigationRegion3DLease() noexcept
     {
@@ -793,8 +809,8 @@ namespace lux::navigation::detour3d
         return data_ ? state_ : ENavigationRegion3DLeaseState::RETIRED;
     }
 
-    lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure>
-    NavigationRegion3DLease::advancePreparationOne() noexcept
+    lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure> NavigationRegion3DLease::
+        advancePreparationOne() noexcept
     {
         const auto control = control_.lock();
         const bool is_missing_control = control == nullptr;
@@ -806,14 +822,16 @@ namespace lux::navigation::detour3d
         {
             return lux::cxx::unexpected(fail(
                 ENavigationRegion3DError::INVALID_REQUEST,
-                "navigation region cannot advance preparation in this state"));
+                "navigation region cannot advance preparation in this state"
+            ));
         }
         std::unique_lock lock{control->mutex};
         const auto found = control->staged.find(data_->region);
         if (!control->alive || found == control->staged.end() || found->second != data_)
         {
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::STALE_GENERATION, "navigation region preparation is stale"));
+                fail(ENavigationRegion3DError::STALE_GENERATION, "navigation region preparation is stale")
+            );
         }
         if (data_->staging_cursor >= data_->layers.size())
         {
@@ -830,7 +848,8 @@ namespace lux::navigation::detour3d
             if (dtStatusDetail(status, DT_OUT_OF_MEMORY))
                 std::abort();
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::BUILD_FAILED, "navigation backend rejected one prepared layer"));
+                fail(ENavigationRegion3DError::BUILD_FAILED, "navigation backend rejected one prepared layer")
+            );
         }
         layer.data.release();
         layer.reference = reference;
@@ -848,14 +867,16 @@ namespace lux::navigation::detour3d
         if (is_missing_state)
         {
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::INVALID_REQUEST, "navigation region cannot be published in this state"));
+                fail(ENavigationRegion3DError::INVALID_REQUEST, "navigation region cannot be published in this state")
+            );
         }
         const bool is_invalid_owner = !control->isOwner();
         const bool is_invalid_state = state_ != ENavigationRegion3DLeaseState::READY;
         if (is_invalid_owner || is_invalid_state)
         {
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::INVALID_REQUEST, "navigation region cannot be published in this state"));
+                fail(ENavigationRegion3DError::INVALID_REQUEST, "navigation region cannot be published in this state")
+            );
         }
         std::unique_lock lock{control->mutex};
         const auto found = control->staged.find(data_->region);
@@ -866,7 +887,8 @@ namespace lux::navigation::detour3d
         if (is_stale_publication)
         {
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::STALE_GENERATION, "navigation region publication is stale"));
+                fail(ENavigationRegion3DError::STALE_GENERATION, "navigation region publication is stale")
+            );
         }
         const auto inserted = control->active.emplace(data_->region, data_);
         if (!inserted.second)
@@ -874,7 +896,8 @@ namespace lux::navigation::detour3d
             return lux::cxx::unexpected(fail(
                 ENavigationRegion3DError::REGION_CONFLICT,
                 "navigation region publication conflicts with active "
-                "content"));
+                "content"
+            ));
         }
         control->staged.erase(found);
         ++control->generation;
@@ -887,7 +910,8 @@ namespace lux::navigation::detour3d
         if (state_ != ENavigationRegion3DLeaseState::ACTIVE)
         {
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::INVALID_REQUEST, "navigation region cannot be hidden in this state"));
+                fail(ENavigationRegion3DError::INVALID_REQUEST, "navigation region cannot be hidden in this state")
+            );
         }
         return beginRetirement();
     }
@@ -903,7 +927,8 @@ namespace lux::navigation::detour3d
         {
             return lux::cxx::unexpected(fail(
                 ENavigationRegion3DError::INVALID_REQUEST,
-                "navigation retirement requires the backend owner thread"));
+                "navigation retirement requires the backend owner thread"
+            ));
         }
         std::unique_lock lock{control->mutex};
         auto& source = state_ == ENavigationRegion3DLeaseState::ACTIVE ? control->active : control->staged;
@@ -911,7 +936,8 @@ namespace lux::navigation::detour3d
         if (!control->alive || found == source.end() || found->second != data_)
         {
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::STALE_GENERATION, "navigation region retirement is stale"));
+                fail(ENavigationRegion3DError::STALE_GENERATION, "navigation region retirement is stale")
+            );
         }
         const auto inserted = control->retiring.emplace(data_->region, data_);
         if (!inserted.second)
@@ -919,7 +945,8 @@ namespace lux::navigation::detour3d
             return lux::cxx::unexpected(fail(
                 ENavigationRegion3DError::REGION_CONFLICT,
                 "navigation region retirement conflicts with pending "
-                "content"));
+                "content"
+            ));
         }
         const bool was_active = state_ == ENavigationRegion3DLeaseState::ACTIVE;
         source.erase(found);
@@ -929,8 +956,8 @@ namespace lux::navigation::detour3d
         return {};
     }
 
-    lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure>
-    NavigationRegion3DLease::advanceRetirementOne() noexcept
+    lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure> NavigationRegion3DLease::
+        advanceRetirementOne() noexcept
     {
         if (!data_ || state_ == ENavigationRegion3DLeaseState::RETIRED)
             return NavigationRegion3DStepResult{true, 0u, 0u};
@@ -938,7 +965,8 @@ namespace lux::navigation::detour3d
         {
             return lux::cxx::unexpected(fail(
                 ENavigationRegion3DError::INVALID_REQUEST,
-                "navigation region must begin retirement before advancing"));
+                "navigation region must begin retirement before advancing"
+            ));
         }
         const auto control = control_.lock();
         if (!control)
@@ -951,14 +979,16 @@ namespace lux::navigation::detour3d
         {
             return lux::cxx::unexpected(fail(
                 ENavigationRegion3DError::INVALID_REQUEST,
-                "navigation retirement requires the backend owner thread"));
+                "navigation retirement requires the backend owner thread"
+            ));
         }
         std::unique_lock lock{control->mutex};
         const auto found = control->retiring.find(data_->region);
         if (!control->alive || found == control->retiring.end() || found->second != data_)
         {
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::STALE_GENERATION, "navigation ownership ledger is inconsistent"));
+                fail(ENavigationRegion3DError::STALE_GENERATION, "navigation ownership ledger is inconsistent")
+            );
         }
         auto step = retireOne(*data_);
         if (!step)

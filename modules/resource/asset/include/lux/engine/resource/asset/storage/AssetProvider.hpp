@@ -29,8 +29,10 @@ namespace lux::asset
     {
         lux::cxx::SharedBytes<> bytes;
 
-        [[nodiscard]] static AssetBlob
-        fromSharedArray(std::shared_ptr<const std::byte[]> owner, std::size_t size) noexcept
+        [[nodiscard]] static AssetBlob fromSharedArray(
+            std::shared_ptr<const std::byte[]> owner,
+            std::size_t size
+        ) noexcept
         {
             if (!owner || size == 0u)
                 return {};

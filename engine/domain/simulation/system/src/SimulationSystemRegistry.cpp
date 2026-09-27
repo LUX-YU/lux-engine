@@ -1,7 +1,6 @@
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 
 #include <algorithm>
-#include <new>
 #include <utility>
 #include <vector>
 
@@ -35,8 +34,8 @@ namespace lux::simulation
         {
             for (const auto& component : access.components)
             {
-                const bool invalid_mode = component.mode != ESystemAccessMode::READ &&
-                    component.mode != ESystemAccessMode::WRITE;
+                const bool invalid_mode =
+                    component.mode != ESystemAccessMode::READ && component.mode != ESystemAccessMode::WRITE;
                 if (!component.type.isValid() || component.storage == 0U || invalid_mode)
                 {
                     return false;
@@ -44,8 +43,8 @@ namespace lux::simulation
             }
             for (const auto& external : access.external)
             {
-                const bool invalid_mode = external.mode != ESystemAccessMode::READ &&
-                    external.mode != ESystemAccessMode::WRITE;
+                const bool invalid_mode =
+                    external.mode != ESystemAccessMode::READ && external.mode != ESystemAccessMode::WRITE;
                 if (!external.type.isValid() || invalid_mode)
                 {
                     return false;
@@ -63,9 +62,6 @@ namespace lux::simulation
                 return false;
             }
             const auto canonical_name = registration.description->type.canonical_name;
-            const bool has_execution_endpoints = !registration.description->hooks.empty() ||
-                !registration.description->events.empty();
-            if (registration.supports_derivation && has_execution_endpoints) return false;
             if (registration.type.name != canonical_name ||
                 registration.type.hash != lux::cxx::Fnv1a64::hash(canonical_name))
             {
@@ -76,37 +72,33 @@ namespace lux::simulation
         }
     } // namespace
 
-    SimulationSystemRegistry::SimulationSystemRegistry() : impl_(std::make_unique<Impl>())
-    {
-    }
+    SimulationSystemRegistry::SimulationSystemRegistry() : impl_(std::make_unique<Impl>()) {}
 
     SimulationSystemRegistry::~SimulationSystemRegistry() = default;
     SimulationSystemRegistry::SimulationSystemRegistry(SimulationSystemRegistry&&) noexcept = default;
     SimulationSystemRegistry& SimulationSystemRegistry::operator=(SimulationSystemRegistry&&) noexcept = default;
 
-    lux::cxx::expected<void, SimulationSystemRegistrationFailure>
-    SimulationSystemRegistry::add(SimulationSystemRegistration registration) noexcept
+    lux::cxx::expected<void, SimulationSystemRegistrationFailure> SimulationSystemRegistry::add(
+        SimulationSystemRegistration registration
+    ) noexcept
     {
         return add(std::span<const SimulationSystemRegistration>(&registration, 1U));
     }
 
-    lux::cxx::expected<void, SimulationSystemRegistrationFailure>
-    SimulationSystemRegistry::add(std::span<const SimulationSystemRegistration> registrations) noexcept
+    lux::cxx::expected<void, SimulationSystemRegistrationFailure> SimulationSystemRegistry::add(
+        std::span<const SimulationSystemRegistration> registrations
+    ) noexcept
     {
         for (const auto& registration : registrations)
         {
             if (!validRegistration(registration))
             {
                 return lux::cxx::unexpected(
-                    registrationFailure(
-                        ESimulationSystemRegistrationError::INVALID_REGISTRATION,
-                        registration.type
-                    )
+                    registrationFailure(ESimulationSystemRegistrationError::INVALID_REGISTRATION, registration.type)
                 );
             }
         }
 
-        try
         {
             std::vector<SimulationSystemRegistration> combined = impl_->registrations;
             combined.insert(combined.end(), registrations.begin(), registrations.end());
@@ -115,7 +107,9 @@ namespace lux::simulation
             {
                 const auto& previous = combined[index - 1U];
                 const auto& current = combined[index];
-                if (previous.type.hash == current.type.hash && previous.type.name != current.type.name)
+                const bool has_type_hash_collision =
+                    previous.type.hash == current.type.hash && previous.type.name != current.type.name;
+                if (has_type_hash_collision)
                 {
                     return lux::cxx::unexpected(
                         registrationFailure(ESimulationSystemRegistrationError::TYPE_COLLISION, current.type)
@@ -131,12 +125,6 @@ namespace lux::simulation
 
             impl_->registrations = std::move(combined);
             return {};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(
-                registrationFailure(ESimulationSystemRegistrationError::ALLOCATION_FAILURE)
-            );
         }
     }
 
@@ -156,8 +144,8 @@ namespace lux::simulation
 
     std::span<const SimulationSystemRegistration> SimulationSystemRegistry::all() const noexcept
     {
-        return impl_ ? std::span<const SimulationSystemRegistration>(impl_->registrations) :
-                       std::span<const SimulationSystemRegistration>{};
+        return impl_ ? std::span<const SimulationSystemRegistration>(impl_->registrations)
+                     : std::span<const SimulationSystemRegistration>{};
     }
 
     std::size_t SimulationSystemRegistry::size() const noexcept

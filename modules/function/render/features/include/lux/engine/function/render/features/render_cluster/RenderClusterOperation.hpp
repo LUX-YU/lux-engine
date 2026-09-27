@@ -59,7 +59,8 @@ namespace lux::render
         name = RenderClusterUpload,
         method = upload,
         reply = RenderClusterUploadedReply,
-        opcode = resource) UploadRenderClusterPayload final
+        opcode = resource
+    ) UploadRenderClusterPayload final
     {
         RenderSceneId scene_id{};
         RenderClusterWireId id;
@@ -96,7 +97,8 @@ namespace lux::render
         name = RenderClusterRemove,
         method = remove,
         reply = RenderClusterRemovedReply,
-        opcode = command) RemoveRenderClusterPayload final
+        opcode = command
+    ) RemoveRenderClusterPayload final
     {
         RenderSceneId scene_id{};
         RenderClusterWireId id;
@@ -145,7 +147,8 @@ namespace lux::render
         name = RenderClusterStats,
         method = stats,
         reply = RenderClusterStatsReply,
-        opcode = command) QueryRenderClusterStatsPayload final
+        opcode = command
+    ) QueryRenderClusterStatsPayload final
     {
         RenderSceneId scene_id{};
     };
@@ -194,7 +197,8 @@ namespace lux::render
         name = RenderClusterPickResult,
         method = pickResult,
         reply = RenderClusterPickReply,
-        opcode = command) QueryRenderClusterPickPayload final
+        opcode = command
+    ) QueryRenderClusterPickPayload final
     {
         RenderSceneId scene_id{};
         std::uint64_t request_generation{0u};
@@ -208,8 +212,8 @@ namespace lux::render
         requires = lux.render.mesh_stack.v1,
         feature = RenderClusterFeature,
         feature_header = lux / engine / render / renderer / features / render_cluster / RenderClusterFeature.hpp,
-        multiplicity = single) RenderClusterCommTag
-    {
-    };
+        multiplicity = single
+    ) RenderClusterCommTag
+    {};
     static_assert(std::is_trivially_copyable_v<RenderClusterCommTag>);
 } // namespace lux::render

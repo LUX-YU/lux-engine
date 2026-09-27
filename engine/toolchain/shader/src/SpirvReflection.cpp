@@ -12,24 +12,24 @@ namespace lux::toolchain
     using namespace lux::rdesc;
     namespace sc = SPIRV_CROSS_NAMESPACE;
     // Helper: map to the vertex base type
-    static VertexScalarBase toVertexBase(const sc::SPIRType& t)
+    static EVertexScalarBase toVertexBase(const sc::SPIRType& t)
     {
         using BT = sc::SPIRType::BaseType;
         switch (t.basetype)
         {
         case BT::Boolean:
-            return VertexScalarBase::Bool;
+            return EVertexScalarBase::BOOL;
         case BT::Int:
-            return VertexScalarBase::Int;
+            return EVertexScalarBase::INT;
         case BT::UInt:
-            return VertexScalarBase::UInt;
+            return EVertexScalarBase::UINT;
         case BT::Half:
         case BT::Float:
-            return VertexScalarBase::Float;
+            return EVertexScalarBase::FLOAT;
         case BT::Double:
-            return VertexScalarBase::Double;
+            return EVertexScalarBase::DOUBLE;
         default:
-            return VertexScalarBase::Unknown;
+            return EVertexScalarBase::UNKNOWN;
         }
     }
     static uint32_t calcArraySize(const sc::Compiler& comp, const sc::SPIRType& t)
@@ -279,11 +279,11 @@ namespace lux::toolchain
             switch (t.basetype)
             {
             case BT::Boolean:
-                dv.kind = SpecDefaultValue::Kind::Bool;
+                dv.kind = SpecDefaultValue::EKind::BOOL;
                 dv.v.b8 = (c.scalar_u64() != 0) ? 1 : 0;
                 break;
             case BT::Int:
-                dv.kind = SpecDefaultValue::Kind::Int;
+                dv.kind = SpecDefaultValue::EKind::INT;
                 if (t.width == 64)
                     dv.v.i64 = c.scalar_i64();
                 else if (t.width == 16)
@@ -294,7 +294,7 @@ namespace lux::toolchain
                     dv.v.i64 = c.scalar_i32();
                 break;
             case BT::UInt:
-                dv.kind = SpecDefaultValue::Kind::UInt;
+                dv.kind = SpecDefaultValue::EKind::UINT;
                 if (t.width == 64)
                     dv.v.u64 = c.scalar_u64();
                 else if (t.width == 16)
@@ -305,19 +305,19 @@ namespace lux::toolchain
                     dv.v.u64 = static_cast<uint32_t>(c.scalar());
                 break;
             case BT::Half:
-                dv.kind = SpecDefaultValue::Kind::Float;
+                dv.kind = SpecDefaultValue::EKind::FLOAT;
                 dv.v.f64 = static_cast<double>(c.scalar_f16());
                 break;
             case BT::Float:
-                dv.kind = SpecDefaultValue::Kind::Float;
+                dv.kind = SpecDefaultValue::EKind::FLOAT;
                 dv.v.f64 = static_cast<double>(c.scalar_f32());
                 break;
             case BT::Double:
-                dv.kind = SpecDefaultValue::Kind::Double;
+                dv.kind = SpecDefaultValue::EKind::DOUBLE;
                 dv.v.f64 = c.scalar_f64();
                 break;
             default:
-                dv.kind = SpecDefaultValue::Kind::Unknown;
+                dv.kind = SpecDefaultValue::EKind::UNKNOWN;
                 dv.v.u64 = 0;
                 break;
             }

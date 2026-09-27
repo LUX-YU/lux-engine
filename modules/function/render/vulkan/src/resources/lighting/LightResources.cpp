@@ -10,13 +10,13 @@
 
 namespace lux::render
 {
-    LightHandle LightResources::findSource(RenderEntityId source) const noexcept
+    LightHandle LightResources::findSource(ERenderEntityId source) const noexcept
     {
         const auto found = source_lights_.find(source);
         return found == source_lights_.end() ? LightHandle{} : found->second;
     }
 
-    LightResources::ESourceBindResult LightResources::bindSource(RenderEntityId source, LightHandle light)
+    LightResources::ESourceBindResult LightResources::bindSource(ERenderEntityId source, LightHandle light)
     {
         if (binding_map_.find(light) == nullptr)
         {
@@ -37,7 +37,7 @@ namespace lux::render
         return ESourceBindResult::INSERTED;
     }
 
-    bool LightResources::unbindSource(RenderEntityId source, LightHandle expected) noexcept
+    bool LightResources::unbindSource(ERenderEntityId source, LightHandle expected) noexcept
     {
         const auto found = source_lights_.find(source);
         if (found == source_lights_.end() || found->second != expected)
@@ -166,8 +166,7 @@ namespace lux::render
     {
         std::erase_if(intensity_transitions_, [handle](const IntensityTransition& transition) {
             return transition.handle == handle;
-        }
-        );
+        });
     }
 
     bool LightResources::beginFadeIn(LightHandle handle, float scene_time, float duration_seconds)
@@ -175,10 +174,10 @@ namespace lux::render
         const auto* record = binding_map_.find(handle);
         if (!record)
             return false;
-        const bool is_invalid_binding = record->binding != ELightSetBindings::LIGHT_POINT &&
-            record->binding != ELightSetBindings::LIGHT_SPOT;
-        const bool is_invalid_time = !std::isfinite(scene_time) || !std::isfinite(duration_seconds) ||
-            duration_seconds <= 0.0f;
+        const bool is_invalid_binding =
+            record->binding != ELightSetBindings::LIGHT_POINT && record->binding != ELightSetBindings::LIGHT_SPOT;
+        const bool is_invalid_time =
+            !std::isfinite(scene_time) || !std::isfinite(duration_seconds) || duration_seconds <= 0.0f;
         const bool is_invalid_request = is_invalid_binding || is_invalid_time;
         if (is_invalid_request)
         {
@@ -190,8 +189,7 @@ namespace lux::render
         cancelIntensityTransition(handle);
         if (!setIntensity(handle, 0.0f))
             return false;
-        intensity_transitions_.push_back(
-            IntensityTransition{handle, 0.0f, *target, scene_time, duration_seconds, false}
+        intensity_transitions_.push_back(IntensityTransition{handle, 0.0f, *target, scene_time, duration_seconds, false}
         );
         return true;
     }
@@ -201,10 +199,10 @@ namespace lux::render
         const auto* record = binding_map_.find(handle);
         if (!record)
             return false;
-        const bool is_invalid_binding = record->binding != ELightSetBindings::LIGHT_POINT &&
-            record->binding != ELightSetBindings::LIGHT_SPOT;
-        const bool is_invalid_time = !std::isfinite(scene_time) || !std::isfinite(duration_seconds) ||
-            duration_seconds <= 0.0f;
+        const bool is_invalid_binding =
+            record->binding != ELightSetBindings::LIGHT_POINT && record->binding != ELightSetBindings::LIGHT_SPOT;
+        const bool is_invalid_time =
+            !std::isfinite(scene_time) || !std::isfinite(duration_seconds) || duration_seconds <= 0.0f;
         const bool is_invalid_request = is_invalid_binding || is_invalid_time;
         if (is_invalid_request)
         {
@@ -214,8 +212,7 @@ namespace lux::render
         if (!current)
             return false;
         cancelIntensityTransition(handle);
-        intensity_transitions_.push_back(
-            IntensityTransition{handle, *current, 0.0f, scene_time, duration_seconds, true}
+        intensity_transitions_.push_back(IntensityTransition{handle, *current, 0.0f, scene_time, duration_seconds, true}
         );
         return true;
     }
@@ -515,12 +512,12 @@ namespace lux::render
         default_input_cleared_ = true;
     }
 
-    Expected<LightHandle> LightResources::submit(const LightDescriptor& desc)
+    Expected<LightHandle> LightResources::submit(const VLightDescriptor& desc)
     {
         return submitDescriptor(desc);
     }
 
-    Expected<LightHandle> LightResources::submitDescriptor(const LightDescriptor& desc)
+    Expected<LightHandle> LightResources::submitDescriptor(const VLightDescriptor& desc)
     {
         ds_revision_.bump();
 
@@ -690,7 +687,7 @@ namespace lux::render
         releaseGlobalHandle(handle);
     }
 
-    RenderError LightResources::modify(LightHandle handle, const LightDescriptor& desc)
+    RenderError LightResources::modify(LightHandle handle, const VLightDescriptor& desc)
     {
         auto* rec = binding_map_.find(handle);
         if (!rec)

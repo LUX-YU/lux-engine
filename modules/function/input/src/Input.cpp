@@ -6,9 +6,7 @@
 
 namespace lux::input
 {
-    Input::Input() : state_{std::make_unique<detail::InputState>()}
-    {
-    }
+    Input::Input() : state_{std::make_unique<detail::InputState>()} {}
 
     Input::~Input() = default;
 

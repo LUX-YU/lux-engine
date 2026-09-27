@@ -7,7 +7,6 @@ set(RENDER_CLIENT_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderErrorRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderFatal.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderProgramSession.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderLease.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderTypes.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderUploadClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderUploadSession.cpp
@@ -62,14 +61,3 @@ component_add_cmake_scripts(render_client
     ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/engine_render_codegen.cmake)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/template/
     DESTINATION share/lux-engine-function/render_client/cmake_scripts/template)
-
-if(BUILD_TESTING)
-    add_executable(render_release_test test/release.cpp)
-    target_link_libraries(render_release_test PRIVATE render_client)
-    if(MSVC)
-        target_compile_options(render_release_test PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(render_release_test PRIVATE -UNDEBUG)
-    endif()
-    add_test(NAME render.release_records COMMAND render_release_test)
-endif()

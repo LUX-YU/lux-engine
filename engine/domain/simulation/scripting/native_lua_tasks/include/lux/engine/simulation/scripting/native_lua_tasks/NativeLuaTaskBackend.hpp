@@ -68,6 +68,7 @@ namespace lux::simulation::script
         NativeLuaTaskBackend& operator=(const NativeLuaTaskBackend&) = delete;
         [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
         [[nodiscard]] NativeLuaTaskBackendStats stats() const noexcept;
+
     private:
         struct Impl;
         explicit NativeLuaTaskBackend(std::unique_ptr<Impl> impl) noexcept;

@@ -34,9 +34,7 @@ namespace lux::render
         std::uint64_t active_chain_tag{0};
     };
 
-    RGBuilder::RGBuilder() : impl_(std::make_unique<Impl>())
-    {
-    }
+    RGBuilder::RGBuilder() : impl_(std::make_unique<Impl>()) {}
     RGBuilder::~RGBuilder() = default;
     RGBuilder::RGBuilder(RGBuilder&&) noexcept = default;
     RGBuilder& RGBuilder::operator=(RGBuilder&&) noexcept = default;
@@ -113,8 +111,11 @@ namespace lux::render
         return RGResourceHandle{index};
     }
 
-    RGRingResourceHandle
-    RGBuilder::createPingPong(std::string_view name, const RGTextureDescription& desc, uint32_t ring_size)
+    RGRingResourceHandle RGBuilder::createPingPong(
+        std::string_view name,
+        const RGTextureDescription& desc,
+        uint32_t ring_size
+    )
     {
         if (ring_size < 2u)
             ring_size = 2u;
@@ -154,8 +155,11 @@ namespace lux::render
         return RGRingResourceHandle{RGResourceHandle{cur_idx}, RGResourceHandle{prev_idx}};
     }
 
-    RGRingResourceHandle
-    RGBuilder::createPingPongBuffer(std::string_view name, const RGBufferDescription& desc, uint32_t ring_size)
+    RGRingResourceHandle RGBuilder::createPingPongBuffer(
+        std::string_view name,
+        const RGBufferDescription& desc,
+        uint32_t ring_size
+    )
     {
         if (ring_size < 2u)
             ring_size = 2u;
@@ -257,7 +261,7 @@ namespace lux::render
     }
 
     RGResourceHandle RGBuilder::importSlottedTexture(
-        TargetSlot slot,
+        ETargetSlot slot,
         std::string_view name,
         const RGTextureDescription& desc,
         RGImportedResourceInfo import_info
@@ -707,7 +711,7 @@ namespace lux::render
     {
         PassDSBinding b;
         b.slot = slot;
-        b.source = EDSBindingSource::Immutable;
+        b.source = EDSBindingSource::IMMUTABLE;
         b.mode = EDSBindMode::IMMUTABLE;
         b.immutable_set = ds;
         pass().ds_bindings.push_back(b);
@@ -718,7 +722,7 @@ namespace lux::render
     {
         PassDSBinding b;
         b.slot = slot;
-        b.source = EDSBindingSource::Scene;
+        b.source = EDSBindingSource::SCENE;
         b.mode = EDSBindMode::VERSIONED;
         pass().ds_bindings.push_back(b);
         return *this;
@@ -744,7 +748,7 @@ namespace lux::render
     {
         PassDSBinding b;
         b.slot = slot;
-        b.source = EDSBindingSource::Transient;
+        b.source = EDSBindingSource::TRANSIENT;
         b.mode = EDSBindMode::VERSIONED;
         b.transient_ds_index = handle.index;
         pass().ds_bindings.push_back(b);
@@ -763,7 +767,7 @@ namespace lux::render
     {
         PassDSBinding b;
         b.slot = slot;
-        b.source = EDSBindingSource::Resource;
+        b.source = EDSBindingSource::RESOURCE;
         b.mode = mode;
         b.provider.resource = resource;
         b.provider.resolver = resolver;
@@ -789,7 +793,7 @@ namespace lux::render
         PassDSBinding b;
         b.slot = static_cast<uint32_t>(logical);
         b.logical = logical;
-        b.source = EDSBindingSource::Immutable;
+        b.source = EDSBindingSource::IMMUTABLE;
         b.mode = EDSBindMode::IMMUTABLE;
         b.immutable_set = ds;
         pass().ds_bindings.push_back(b);
@@ -801,7 +805,7 @@ namespace lux::render
         PassDSBinding b;
         b.slot = static_cast<uint32_t>(logical);
         b.logical = logical;
-        b.source = EDSBindingSource::Scene;
+        b.source = EDSBindingSource::SCENE;
         b.mode = EDSBindMode::VERSIONED;
         pass().ds_bindings.push_back(b);
         return *this;
@@ -817,7 +821,7 @@ namespace lux::render
         PassDSBinding b;
         b.slot = static_cast<uint32_t>(logical);
         b.logical = logical;
-        b.source = EDSBindingSource::EngineDomain;
+        b.source = EDSBindingSource::ENGINE_DOMAIN;
         // 域槽一律强制重绑(见 computeDescriptorBindingPlan 里那段 dedup 事故
         // 说明),PER_FIF 是与之匹配的模式。
         b.mode = EDSBindMode::PER_FIF;

@@ -30,9 +30,9 @@ namespace lux::render::kernels
     // =========================================================================
 
     /// MdcCompact 的 kernel 局部子命令 id。
-    enum MdcCompactSubCmd : uint8_t
+    enum class EMdcCompactSubCmd : uint8_t
     {
-        kMdcCompactPushConstants = 0,
+        PUSH_CONSTANTS = 0,
     };
 
     static void emitMdcCompactKernel(
@@ -69,21 +69,30 @@ namespace lux::render::kernels
         {
             uint32_t mdc_count;
         } pc{cfg.mdc_count};
-        e.emitKernelCommand(kid, kMdcCompactPushConstants, &pc, static_cast<uint16_t>(sizeof(pc)));
+        e.emitKernelCommand(
+            kid,
+            static_cast<uint8_t>(EMdcCompactSubCmd::PUSH_CONSTANTS),
+            &pc,
+            static_cast<uint16_t>(sizeof(pc))
+        );
 
         struct
         {
             uint32_t x, y, z;
         } dispatch{(cfg.mdc_count + kCullDispatchWorkgroupSize - 1) / kCullDispatchWorkgroupSize, 1, 1};
-        e.emit(ExecutionProgram::Command::EType::Dispatch, &dispatch, static_cast<uint16_t>(sizeof(dispatch)));
+        e.emit(ExecutionProgram::Command::EType::DISPATCH, &dispatch, static_cast<uint16_t>(sizeof(dispatch)));
     }
 
     /// 录制期回放本 kernel 的子命令。按 mdc_compact.comp 的实际 PC 块(4 字节)
     /// 推送,不再被当成 48 字节的网格剔除 PC。
-    static void
-    replayMdcCompactCommand(uint32_t sub_cmd, const void* data, uint16_t data_size, KernelReplayContext& ctx)
+    static void replayMdcCompactCommand(
+        uint32_t sub_cmd,
+        const void* data,
+        uint16_t data_size,
+        KernelReplayContext& ctx
+    )
     {
-        if (sub_cmd != kMdcCompactPushConstants)
+        if (sub_cmd != static_cast<uint8_t>(EMdcCompactSubCmd::PUSH_CONSTANTS))
             return;
 
         struct
@@ -149,7 +158,7 @@ namespace lux::render::kernels
         if (clear.buffer_count > 0 && max_elements > 0)
         {
             clear.dispatch_x = (max_elements + kCullDispatchWorkgroupSize - 1) / kCullDispatchWorkgroupSize;
-            e.emit(ExecutionProgram::Command::EType::ClearCounters, &clear, static_cast<uint16_t>(sizeof(clear)));
+            e.emit(ExecutionProgram::Command::EType::CLEAR_COUNTERS, &clear, static_cast<uint16_t>(sizeof(clear)));
         }
     }
 
@@ -169,7 +178,7 @@ namespace lux::render::kernels
         {
             uint32_t vtx_count, inst_count, first_vtx, first_inst;
         } draw{3, 1, 0, 0};
-        e.emit(ExecutionProgram::Command::EType::DrawDirect, &draw, static_cast<uint16_t>(sizeof(draw)));
+        e.emit(ExecutionProgram::Command::EType::DRAW_DIRECT, &draw, static_cast<uint16_t>(sizeof(draw)));
     }
 
 } // namespace lux::render::kernels

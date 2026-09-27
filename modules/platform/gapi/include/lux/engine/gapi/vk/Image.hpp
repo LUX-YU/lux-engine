@@ -11,13 +11,9 @@ namespace lux::gapi::vk
     public:
         using Builder = ImageBuilder;
 
-        Image() : image(VK_NULL_HANDLE)
-        {
-        }
+        Image() : image(VK_NULL_HANDLE) {}
 
-        Image(VkImage image) : image(image)
-        {
-        }
+        Image(VkImage image) : image(image) {}
 
         Image(VkDevice dev, const VkImageCreateInfo& ci, VkAllocationCallbacks* allocator = nullptr)
         {

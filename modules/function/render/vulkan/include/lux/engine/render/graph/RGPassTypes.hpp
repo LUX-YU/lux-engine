@@ -76,7 +76,7 @@ namespace lux::render
         uint32_t extension_flags{0};           ///< Extension bits (e.g. HZB/bindless)
         uint32_t mdc_count{0};                 ///< MDC mode: number of unique draw commands
         bool instance_filter{};
-        uint32_t view_mdc_count{0};            ///< Shadow MDC: view MDC count per bias group
+        uint32_t view_mdc_count{0}; ///< Shadow MDC: view MDC count per bias group
     };
 
     struct MdcEntry; // Forward declaration (defined in MdcTable.hpp)
@@ -119,11 +119,11 @@ namespace lux::render
         uint32_t geometry_mask{0};       ///< Supported geometry kind bitmask
         uint32_t atlas_resolution{4096}; ///< Shadow atlas page resolution
         bool instance_filter{};
-        uint32_t view_mdc_count{0};      ///< MDC count per bias group
-        uint32_t bias_group_count{0};    ///< Active bias-group lanes; the draw
-                                         ///< addresses count/indirect over
-                                         ///< [0, bias_group_count*view_mdc_count).
-                                         ///< Must match the buffer sizing.
+        uint32_t view_mdc_count{0};   ///< MDC count per bias group
+        uint32_t bias_group_count{0}; ///< Active bias-group lanes; the draw
+                                      ///< addresses count/indirect over
+                                      ///< [0, bias_group_count*view_mdc_count).
+                                      ///< Must match the buffer sizing.
         // Skinned-shadow variant select: pipeline_variants[0] is the static
         // depth pipeline; [family_count] is the skinned (_vp) variant. The kernel
         // picks per view-MDC by geometry kind. 0 = no skinned variant (legacy).
@@ -202,16 +202,16 @@ namespace lux::render
 
     enum class EDSBindingSource : uint8_t
     {
-        Immutable,
-        Scene,
-        Transient,
-        Resource,
+        IMMUTABLE,
+        SCENE,
+        TRANSIENT,
+        RESOURCE,
         /// 引擎集(FEATURE/GLOBAL 域):**只声明用哪个集,不带任何句柄**。
         /// 实例在 record 期由框架从场景的域集解析 —— 调用方既不知道也不需要
         /// 知道它住在哪个 slot、由哪个资源对象持有。
         /// BINDLESS 域不走这条:那个域的"实例"就是全局纹理表本身,句柄是真实
         /// 需要的输入,继续用 Immutable。
-        EngineDomain,
+        ENGINE_DOMAIN,
     };
 
     struct DescriptorProvider
@@ -260,7 +260,7 @@ namespace lux::render
         /// Unset = the old-style raw slot number (still fine for private/transient
         /// sets, since those already belong to their own pipeline).
         std::optional<EDescriptorSetSlot> logical{};
-        EDSBindingSource source{EDSBindingSource::Immutable};
+        EDSBindingSource source{EDSBindingSource::IMMUTABLE};
         EDSBindMode mode{EDSBindMode::IMMUTABLE};
         VkDescriptorSet immutable_set{VK_NULL_HANDLE};
         DescriptorProvider provider{};
@@ -326,7 +326,7 @@ namespace lux::render
         /// rendering scope — line-B design doc). Unknown names are ignored,
         /// same as after_passes.
         lux::cxx::SmallVector<std::string, 4> before_passes;
-        ERenderStage stage{ERenderStage::Default}; ///< Painter-order tie-break for write-after-write between
+        ERenderStage stage{ERenderStage::DEFAULT_STAGE}; ///< Painter-order tie-break for write-after-write between
                                                    ///< data-independent passes (see ERenderStage). Default = Opaque ⇒
                                                    ///< unannotated passes keep declaration-order tie-break.
 

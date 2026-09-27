@@ -7,10 +7,11 @@
  * array offset.  Grows automatically when new handles are inserted.
  * No hashing overhead — just a plain vector<T> + generation validation.
  */
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
+
 #include <vector>
 #include <cstdint>
 #include <optional>
-#include <cassert>
 
 namespace lux::render
 {
@@ -18,10 +19,10 @@ namespace lux::render
      * @tparam Meta    Payload type (must be default-constructible).
      * @tparam Handle  SlotKey-like handle type (needs .index, .gen, .isValid()).
      */
-    template <typename Meta, typename Handle> class SlotMetaVector
+    template <typename Meta, typename Handle> class TSlotMetaVector
     {
     public:
-        SlotMetaVector() = default;
+        TSlotMetaVector() = default;
 
         /// Store metadata for a handle. Grows the internal vectors if needed.
         void insert(Handle h, const Meta& value)
@@ -70,13 +71,15 @@ namespace lux::render
         /// Direct mutable reference (UB if !contains(h) — use after contains() check).
         [[nodiscard]] Meta& operator[](Handle h)
         {
-            assert(contains(h));
+            if (!contains(h))
+                renderFatal("TSlotMetaVector: handle has no live metadata");
             return data_[h.index];
         }
 
         [[nodiscard]] const Meta& operator[](Handle h) const
         {
-            assert(contains(h));
+            if (!contains(h))
+                renderFatal("TSlotMetaVector: handle has no live metadata");
             return data_[h.index];
         }
 

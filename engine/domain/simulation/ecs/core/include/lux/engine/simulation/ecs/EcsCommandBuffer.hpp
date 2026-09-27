@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
-#include <new>
 #include <optional>
 #include <span>
 #include <tuple>
@@ -80,7 +79,10 @@ namespace lux::simulation::ecs
         [[nodiscard]] explicit operator bool() const noexcept;
         // Owner-only preflight. Failure does not poison commands that were already accepted.
         [[nodiscard]] bool canRecord(std::size_t bytes = 0U, std::size_t alignment = 1U) const noexcept;
-        [[nodiscard]] EEcsCommandPolicy policy() const noexcept { return policy_; }
+        [[nodiscard]] EEcsCommandPolicy policy() const noexcept
+        {
+            return policy_;
+        }
         [[nodiscard]] DeferredEntity create() noexcept;
         void destroy(Entity entity) noexcept;
 
@@ -99,8 +101,7 @@ namespace lux::simulation::ecs
         {
             return recordRemove(entity, [](Registry& registry, Entity target) {
                 registry.template remove<Component>(target);
-            }
-            );
+            });
         }
 
         // Own the replacement value until the existing command barrier. Reads in this region see the old value.
@@ -110,7 +111,8 @@ namespace lux::simulation::ecs
             static_assert(std::is_nothrow_move_assignable_v<Component>);
             static_assert(std::is_nothrow_destructible_v<Component>);
             const RawCommandVTable table{
-                sizeof(Component), alignof(Component),
+                sizeof(Component),
+                alignof(Component),
                 [](void* target, void* source) noexcept {
                     std::construct_at(static_cast<Component*>(target), std::move(*static_cast<Component*>(source)));
                 },
@@ -133,20 +135,27 @@ namespace lux::simulation::ecs
             void (*move_construct)(void*, void*);
             void (*apply)(void*, Registry&, Entity);
             void (*destroy)(void*) noexcept;
-            bool (*applicable)(const Registry&, Entity) noexcept{};
+            bool (*applicable)(const Registry&, Entity) noexcept {};
             EEcsCommandError inapplicable_error{EEcsCommandError::MISSING_COMPONENT};
         };
 
-        EcsCommandWriter(EcsCommandBuffer& owner, std::uint32_t producer, std::uint32_t generation,
-            EEcsCommandPolicy policy) noexcept;
+        EcsCommandWriter(
+            EcsCommandBuffer& owner,
+            std::uint32_t producer,
+            std::uint32_t generation,
+            EEcsCommandPolicy policy
+        ) noexcept;
 
         template <class Component, class... Args>
-        [[nodiscard]] bool
-        emplaceImpl(Entity entity, DeferredEntity deferred, bool uses_deferred, Args&&... args) noexcept
+        [[nodiscard]] bool emplaceImpl(
+            Entity entity,
+            DeferredEntity deferred,
+            bool uses_deferred,
+            Args&&... args
+        ) noexcept
         {
             using Payload = std::tuple<std::decay_t<Args>...>;
             static_assert(std::is_nothrow_destructible_v<Payload>);
-            try
             {
                 Payload payload(std::forward<Args>(args)...);
                 const RawCommandVTable table{
@@ -169,16 +178,6 @@ namespace lux::simulation::ecs
                     EEcsCommandError::EXISTING_COMPONENT
                 };
                 return recordPayload(entity, deferred, uses_deferred, table, std::addressof(payload));
-            }
-            catch (const std::bad_alloc&)
-            {
-                fail(EEcsCommandError::ALLOCATION_FAILURE);
-                return false;
-            }
-            catch (...)
-            {
-                fail(EEcsCommandError::COMPONENT_CONSTRUCTION_FAILURE);
-                return false;
             }
         }
 
@@ -211,11 +210,14 @@ namespace lux::simulation::ecs
         EcsCommandBuffer(const EcsCommandBuffer&) = delete;
         EcsCommandBuffer& operator=(const EcsCommandBuffer&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<void, EcsCommandFailure>
-        prepare(std::span<const EcsCommandProducerCapacity> capacities) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EcsCommandFailure> prepare(
+            std::span<const EcsCommandProducerCapacity> capacities
+        ) noexcept;
         void reset() noexcept;
-        [[nodiscard]] lux::cxx::expected<EcsCommandWriter, EcsCommandFailure> begin(std::size_t producer,
-            EEcsCommandPolicy policy = EEcsCommandPolicy::ABORT_BATCH) noexcept;
+        [[nodiscard]] lux::cxx::expected<EcsCommandWriter, EcsCommandFailure> begin(
+            std::size_t producer,
+            EEcsCommandPolicy policy = EEcsCommandPolicy::ABORT_BATCH
+        ) noexcept;
         [[nodiscard]] std::optional<Entity> resolve(DeferredEntity entity) const noexcept;
         [[nodiscard]] bool failed() const noexcept;
         [[nodiscard]] std::optional<EcsCommandFailure> producerFailure(std::size_t producer) const noexcept;
@@ -249,14 +251,20 @@ namespace lux::simulation::ecs
         void fail(std::uint32_t producer, std::uint32_t generation, EEcsCommandError error) noexcept;
         void end(std::uint32_t producer, std::uint32_t generation) noexcept;
         [[nodiscard]] bool writerValid(std::uint32_t producer, std::uint32_t generation) const noexcept;
-        [[nodiscard]] bool canRecord(std::uint32_t producer, std::uint32_t generation,
-            std::size_t bytes, std::size_t alignment) const noexcept;
+        [[nodiscard]] bool canRecord(
+            std::uint32_t producer,
+            std::uint32_t generation,
+            std::size_t bytes,
+            std::size_t alignment
+        ) const noexcept;
 
         friend class EcsCommandWriter;
         friend LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC lux::cxx::expected<void, EcsCommandFailure>
         applyEcsCommands(Registry&, EcsCommandBuffer&) noexcept;
     };
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC lux::cxx::expected<void, EcsCommandFailure>
-    applyEcsCommands(Registry& registry, EcsCommandBuffer& commands) noexcept;
+    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_CORE_PUBLIC lux::cxx::expected<void, EcsCommandFailure> applyEcsCommands(
+        Registry& registry,
+        EcsCommandBuffer& commands
+    ) noexcept;
 }

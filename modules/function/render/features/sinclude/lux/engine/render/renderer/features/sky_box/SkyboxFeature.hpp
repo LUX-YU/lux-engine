@@ -43,7 +43,7 @@ namespace lux::render
 
         bool isLoaded() const noexcept
         {
-            return active_mode_ != ActiveMode::NONE;
+            return active_mode_ != EActiveMode::NONE;
         }
 
     private:
@@ -85,13 +85,13 @@ namespace lux::render
         // ------------------------------------------------------------------
         // Which variant is active?
         // ------------------------------------------------------------------
-        enum class ActiveMode
+        enum class EActiveMode
         {
             NONE,
             EQUIRECT,
             CUBEMAP
         };
-        ActiveMode active_mode_{ActiveMode::NONE};
+        EActiveMode active_mode_{EActiveMode::NONE};
         std::uint32_t pass_visits_{0u};
         std::uint32_t draws_{0u};
         std::uint32_t inactive_pass_visits_{0u};

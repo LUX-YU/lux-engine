@@ -9,53 +9,45 @@
 
 namespace lux::simulation::ecs
 {
-    template <class... Components> struct ComponentList final
-    {
-    };
+    template <class... Components> struct TComponentList final
+    {};
 
     template <class Component, class... Required, class... Excluded>
-    [[nodiscard]] auto componentView(
-        Registry& registry,
-        ComponentList<Required...>,
-        ComponentList<Excluded...>
-    )
+    [[nodiscard]] auto componentView(Registry& registry, TComponentList<Required...>, TComponentList<Excluded...>)
     {
         return registry.template view<Component, Required...>(entt::exclude<Excluded...>);
     }
 
-    template <class Component, class Required, class Excluded> class ExtractionChangeSet;
+    template <class Component, class Required, class Excluded> class TExtractionChangeSet;
 
     template <class Component, class... Required, class... Excluded>
-    class ExtractionChangeSet<Component, ComponentList<Required...>, ComponentList<Excluded...>> final
+    class TExtractionChangeSet<Component, TComponentList<Required...>, TComponentList<Excluded...>> final
     {
-        using Storage = std::remove_reference_t<
-            decltype(std::declval<Registry&>().template storage<entt::reactive>(entt::id_type{}))>;
+        using Storage =
+            std::remove_reference_t<decltype(std::declval<Registry&>().template storage<entt::reactive>(entt::id_type{})
+            )>;
 
     public:
-        ExtractionChangeSet() = default;
-        ~ExtractionChangeSet()
+        TExtractionChangeSet() = default;
+        ~TExtractionChangeSet()
         {
             detach();
         }
 
-        ExtractionChangeSet(const ExtractionChangeSet&) = delete;
-        ExtractionChangeSet& operator=(const ExtractionChangeSet&) = delete;
-        ExtractionChangeSet(ExtractionChangeSet&&) = delete;
-        ExtractionChangeSet& operator=(ExtractionChangeSet&&) = delete;
+        TExtractionChangeSet(const TExtractionChangeSet&) = delete;
+        TExtractionChangeSet& operator=(const TExtractionChangeSet&) = delete;
+        TExtractionChangeSet(TExtractionChangeSet&&) = delete;
+        TExtractionChangeSet& operator=(TExtractionChangeSet&&) = delete;
 
-        template <class Declare>
-        void attach(Registry& registry, entt::id_type id, Declare&& declare)
+        template <class Declare> void attach(Registry& registry, entt::id_type id, Declare&& declare)
         {
             detach();
             registry_ = &registry;
             storage_ = &registry.template storage<entt::reactive>(id);
             std::forward<Declare>(declare)(*storage_);
 
-            componentView<Component>(
-                registry,
-                ComponentList<Required...>{},
-                ComponentList<Excluded...>{}
-            ).each([this](Entity entity, auto&&...) { storage_->emplace(entity); });
+            componentView<Component>(registry, TComponentList<Required...>{}, TComponentList<Excluded...>{})
+                .each([this](Entity entity, auto&&...) { storage_->emplace(entity); });
         }
 
         void detach() noexcept
@@ -106,11 +98,8 @@ namespace lux::simulation::ecs
             {
                 return;
             }
-            componentView<Component>(
-                *registry_,
-                ComponentList<Required...>{},
-                ComponentList<Excluded...>{}
-            ).each([this](Entity entity, auto&&...) { storage_->emplace(entity); });
+            componentView<Component>(*registry_, TComponentList<Required...>{}, TComponentList<Excluded...>{})
+                .each([this](Entity entity, auto&&...) { storage_->emplace(entity); });
         }
 
     private:
@@ -118,24 +107,24 @@ namespace lux::simulation::ecs
         Storage* storage_{};
     };
 
-    template <class Component, class Required, class Excluded> class ComponentSetLeaveObserver;
+    template <class Component, class Required, class Excluded> class TComponentSetLeaveObserver;
 
     template <class Component, class... Required, class... Excluded>
-    class ComponentSetLeaveObserver<Component, ComponentList<Required...>, ComponentList<Excluded...>> final
+    class TComponentSetLeaveObserver<Component, TComponentList<Required...>, TComponentList<Excluded...>> final
     {
     public:
         using Callback = void (*)(void*, Entity) noexcept;
 
-        ComponentSetLeaveObserver() = default;
-        ~ComponentSetLeaveObserver()
+        TComponentSetLeaveObserver() = default;
+        ~TComponentSetLeaveObserver()
         {
             detach();
         }
 
-        ComponentSetLeaveObserver(const ComponentSetLeaveObserver&) = delete;
-        ComponentSetLeaveObserver& operator=(const ComponentSetLeaveObserver&) = delete;
-        ComponentSetLeaveObserver(ComponentSetLeaveObserver&&) = delete;
-        ComponentSetLeaveObserver& operator=(ComponentSetLeaveObserver&&) = delete;
+        TComponentSetLeaveObserver(const TComponentSetLeaveObserver&) = delete;
+        TComponentSetLeaveObserver& operator=(const TComponentSetLeaveObserver&) = delete;
+        TComponentSetLeaveObserver(TComponentSetLeaveObserver&&) = delete;
+        TComponentSetLeaveObserver& operator=(TComponentSetLeaveObserver&&) = delete;
 
         void attach(Registry& registry, void* user, Callback callback) noexcept
         {
@@ -144,9 +133,10 @@ namespace lux::simulation::ecs
             user_ = user;
             callback_ = callback;
 
-            registry.template on_destroy<Component>().template connect<&ComponentSetLeaveObserver::onLeft>(*this);
-            (registry.template on_destroy<Required>().template connect<&ComponentSetLeaveObserver::onLeft>(*this), ...);
-            (registry.template on_construct<Excluded>().template connect<&ComponentSetLeaveObserver::onLeft>(*this),
+            registry.template on_destroy<Component>().template connect<&TComponentSetLeaveObserver::onLeft>(*this);
+            (registry.template on_destroy<Required>().template connect<&TComponentSetLeaveObserver::onLeft>(*this),
+             ...);
+            (registry.template on_construct<Excluded>().template connect<&TComponentSetLeaveObserver::onLeft>(*this),
              ...);
         }
 
@@ -156,10 +146,10 @@ namespace lux::simulation::ecs
             {
                 return;
             }
-            registry_->template on_destroy<Component>().template disconnect<&ComponentSetLeaveObserver::onLeft>(*this);
-            (registry_->template on_destroy<Required>().template disconnect<&ComponentSetLeaveObserver::onLeft>(*this),
+            registry_->template on_destroy<Component>().template disconnect<&TComponentSetLeaveObserver::onLeft>(*this);
+            (registry_->template on_destroy<Required>().template disconnect<&TComponentSetLeaveObserver::onLeft>(*this),
              ...);
-            (registry_->template on_construct<Excluded>().template disconnect<&ComponentSetLeaveObserver::onLeft>(*this
+            (registry_->template on_construct<Excluded>().template disconnect<&TComponentSetLeaveObserver::onLeft>(*this
              ),
              ...);
             registry_ = nullptr;

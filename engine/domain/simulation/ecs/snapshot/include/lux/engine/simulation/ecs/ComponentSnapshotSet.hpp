@@ -22,8 +22,10 @@ namespace lux::simulation::ecs
     public:
         ComponentSnapshotSet() noexcept = default;
 
-        [[nodiscard]] static lux::cxx::expected<ComponentSnapshotSet, SnapshotError>
-        build(const ComponentSchemaSet& schemas, std::span<const ComponentSnapshotContribution> contributions) noexcept;
+        [[nodiscard]] static lux::cxx::expected<ComponentSnapshotSet, SnapshotError> build(
+            const ComponentSchemaSet& schemas,
+            std::span<const ComponentSnapshotContribution> contributions
+        ) noexcept;
 
         [[nodiscard]] std::span<const ComponentSnapshotBinding> all() const noexcept;
 

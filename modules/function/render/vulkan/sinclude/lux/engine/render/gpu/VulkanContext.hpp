@@ -359,7 +359,7 @@ namespace lux::render
         // Resolved session tier — min(achievable-from-caps, caller preference).
         // Defaults to Desktop so pre-existing paths that never call
         // resolveFeatureLevel keep today's behaviour.
-        EFeatureLevel feature_level_{EFeatureLevel::Desktop};
+        EFeatureLevel feature_level_{EFeatureLevel::LEVEL_DESKTOP};
     };
 
     // ---------------------------------------------------------------------------

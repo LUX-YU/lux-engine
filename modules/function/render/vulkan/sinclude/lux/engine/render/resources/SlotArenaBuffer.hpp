@@ -50,7 +50,7 @@
 namespace lux::render
 {
     /// @tparam ElemT 槽位里的元素类型(顶点 / 点),只用于 sizeof 与 span 类型。
-    template <typename ElemT> class SlotArenaBuffer
+    template <typename ElemT> class TSlotArenaBuffer
     {
     public:
         /// 一个槽位在竞技场里的位置。字段用中性名:两个领域曾各自叫
@@ -65,16 +65,16 @@ namespace lux::render
         /// "无此 id" / "分配失败" 的哨兵。
         static constexpr uint32_t kInvalidId = ~uint32_t{0};
 
-        SlotArenaBuffer() = default;
-        ~SlotArenaBuffer()
+        TSlotArenaBuffer() = default;
+        ~TSlotArenaBuffer()
         {
             shutdown();
         }
 
-        SlotArenaBuffer(const SlotArenaBuffer&) = delete;
-        SlotArenaBuffer& operator=(const SlotArenaBuffer&) = delete;
-        SlotArenaBuffer(SlotArenaBuffer&&) = delete;
-        SlotArenaBuffer& operator=(SlotArenaBuffer&&) = delete;
+        TSlotArenaBuffer(const TSlotArenaBuffer&) = delete;
+        TSlotArenaBuffer& operator=(const TSlotArenaBuffer&) = delete;
+        TSlotArenaBuffer(TSlotArenaBuffer&&) = delete;
+        TSlotArenaBuffer& operator=(TSlotArenaBuffer&&) = delete;
 
         // ── 生命周期 ────────────────────────────────────────────────────
 
@@ -272,10 +272,9 @@ namespace lux::render
                 .dst = buffer_,
                 .dst_offset = byte_offset,
                 .size = byte_size,
-                .domain = EBufferDomain::VertexInput_CS,
+                .domain = EBufferDomain::VERTEX_INPUT_CS,
                 .priority = 0,
-            }
-            );
+            });
 
             slot.count = count;
             return true;
@@ -320,8 +319,7 @@ namespace lux::render
             auto pos =
                 std::lower_bound(free_list_.begin(), free_list_.end(), first, [](const FreeRegion& r, uint32_t v) {
                     return r.first < v;
-                }
-                );
+                });
             auto it = free_list_.insert(pos, {first, capacity});
 
             auto next = std::next(it);
@@ -346,8 +344,7 @@ namespace lux::render
         {
             retire_scheduler_->defer(deferred_queue_->currentSerial(), retire_owner_token_, [this, first, capacity] {
                 returnToFreeList(first, capacity);
-            }
-            );
+            });
         }
 
         /// 先试 freelist;不够就整缓冲扩容再试一次。
@@ -389,7 +386,8 @@ namespace lux::render
                     kU32Max,
                     std::max<uint64_t>(
                         static_cast<uint64_t>(max_elements_) * 2ull,
-                        static_cast<uint64_t>(max_elements_) + min_required)
+                        static_cast<uint64_t>(max_elements_) + min_required
+                    )
                 );
 
             if (new_capacity > kU32Max)
@@ -408,10 +406,9 @@ namespace lux::render
                 .dst = new_buffer,
                 .dst_offset = 0,
                 .size = elemBytes(max_elements_),
-                .domain = EBufferDomain::TransferDst,
+                .domain = EBufferDomain::TRANSFER_DST,
                 .priority = -1,
-            }
-            );
+            });
 
             deferred_queue_->retireBuffer(buffer_, allocation_);
 

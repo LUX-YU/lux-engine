@@ -40,18 +40,18 @@ namespace lux::flowforge
 
     struct AotArtifact
     {
-        std::vector<std::byte>    object;      ///< native object (COFF) bytes
-        std::string               module_name;
-        std::vector<std::string>  imports;     ///< host symbols bind_host resolves
+        std::vector<std::byte> object; ///< native object (COFF) bytes
+        std::string module_name;
+        std::vector<std::string> imports; ///< host symbols bind_host resolves
         std::vector<lux::rdesc::ScriptFunction> exports;
 
         // Instance-state recipe (mirrors the JIT path's StateLayout): the
         // host allocates state_size bytes per instance, copies the defaults
         // in, and passes the base pointer through native-instance context.
-        uint64_t                  state_size = 0;
-        uint64_t                  state_hash = 0;
-        uint32_t                  state_align = 1;
-        std::vector<std::byte>    state_defaults;
+        uint64_t state_size = 0;
+        uint64_t state_hash = 0;
+        uint32_t state_align = 1;
+        std::vector<std::byte> state_defaults;
     };
 
     /// Graph -> FlowForge MLIR -> LLVM -> native object.

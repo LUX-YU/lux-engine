@@ -86,16 +86,16 @@ namespace lux::render
         }
 
     private:
-        enum class PendingType : uint8_t
+        enum class EPendingType : uint8_t
         {
-            Buffer,
-            RawBuffer,
-            DescriptorSet,
-            Image,
-            ImageView,
-            Sampler,
-            DeviceMemory,
-            Semaphore
+            BUFFER,
+            RAW_BUFFER,
+            DESCRIPTOR_SET,
+            IMAGE,
+            IMAGE_VIEW,
+            SAMPLER,
+            DEVICE_MEMORY,
+            SEMAPHORE
         };
 
         struct BufferPayload
@@ -141,8 +141,7 @@ namespace lux::render
             VkSemaphore semaphore;
         };
 
-        union Payload
-        {
+        union Payload {
             BufferPayload buffer;
             RawBufferPayload raw_buffer;
             DescSetPayload desc_set;
@@ -156,7 +155,7 @@ namespace lux::render
         struct PendingDestroy
         {
             uint64_t retire_serial;
-            PendingType type;
+            EPendingType type;
             Payload payload;
             bool active{false};
         };

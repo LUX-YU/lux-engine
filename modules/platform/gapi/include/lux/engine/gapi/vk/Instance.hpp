@@ -14,9 +14,7 @@ namespace lux::gapi::vk
     class DebugReport
     {
     public:
-        DebugReport() : debug_report(VK_NULL_HANDLE)
-        {
-        }
+        DebugReport() : debug_report(VK_NULL_HANDLE) {}
 
         // VK_EXT_debug_report is an EXTENSION, so its entry points can legally be
         // absent — vkGetInstanceProcAddr then returns null and calling it is a
@@ -113,10 +111,8 @@ namespace lux::gapi::vk
         {
             if (debug_report)
             {
-                auto vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(
-                    instance,
-                    "vkDestroyDebugReportCallbackEXT"
-                );
+                auto vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT
+                )vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
                 // Symmetric null guard: a non-null handle implies create
                 // succeeded, so destroy should exist — but "should" is exactly
                 // what the create path also assumed.
@@ -154,9 +150,7 @@ namespace lux::gapi::vk
     public:
         using Builder = InstanceBuilder;
 
-        Instance() : instance(VK_NULL_HANDLE)
-        {
-        }
+        Instance() : instance(VK_NULL_HANDLE) {}
 
         Instance(const VkInstanceCreateInfo& ci, VkAllocationCallbacks* allocator = nullptr)
         {

@@ -5,7 +5,7 @@
 #include <lux/engine/render/graph/ProgramEmitter.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
 #include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
-#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>             // domain slot resolution (kEngineSetShapes)
+#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp> // domain slot resolution (kEngineSetShapes)
 #include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp>
 // domain set instance (record-time collapsed binding)
 #include <lux/engine/render/graph/RGBarrierUtils.hpp>
@@ -65,13 +65,12 @@ namespace lux::render
                 // RECORDER_FALLBACK 意味着 recordPassContent 对它 no-op——
                 // 声明了绘制意图却永远不执行。选中高亮曾因此整链静默失效
                 // (condition 降级执行模式的历史行为),响亮报出来。
-                const bool is_recorder_fallback =
-                    cpass.execution_mode == EPassExecutionMode::RECORDER_FALLBACK;
+                const bool is_recorder_fallback = cpass.execution_mode == EPassExecutionMode::RECORDER_FALLBACK;
                 const bool has_kernel = cpass.pass != nullptr && cpass.pass->hasKernel();
                 const bool is_missing_recorder = has_kernel && !cpass.pass->recorder;
                 const bool is_missing_kernel = has_kernel && !cpass.pass->kernel_fn;
-                const bool is_missing_kernel_emitter = is_recorder_fallback && has_kernel &&
-                    is_missing_recorder && is_missing_kernel;
+                const bool is_missing_kernel_emitter =
+                    is_recorder_fallback && has_kernel && is_missing_recorder && is_missing_kernel;
                 if (is_missing_kernel_emitter)
                 {
                     compiled.diagnostics.push_back(renderError<err::graph::KernelEmitterMissing>(pass_index));
@@ -228,8 +227,8 @@ namespace lux::render
                     // 创建者主权:承诺了仅附件用途,越界需求丢弃 + 记一条诊断。
                     compiled.diagnostics.push_back(renderError<err::graph::TransientUsageViolation>(
                         static_cast<std::uint32_t>(i),
-                        static_cast<std::uint32_t>(add & ~kAttachmentOnly))
-                    );
+                        static_cast<std::uint32_t>(add & ~kAttachmentOnly)
+                    ));
                     add &= kAttachmentOnly;
                     if (add == ERGTextureUsageFlags{0})
                         continue;
@@ -239,8 +238,8 @@ namespace lux::render
                 // 消费角色。它开火 = 抓到一处此前的欠声明,值得看一眼。
                 compiled.diagnostics.push_back(renderError<err::graph::UsageUnderdeclared>(
                     static_cast<std::uint32_t>(i),
-                    static_cast<std::uint32_t>(add))
-                );
+                    static_cast<std::uint32_t>(add)
+                ));
                 tex->usage |= add;
             }
         }
@@ -422,13 +421,13 @@ namespace lux::render
                 .textures = std::span<const RGPassTextureRef>{pass.textures.data(), pass.textures.size()},
                 .buffers = std::span<const RGPassBufferRef>{pass.buffers.data(), pass.buffers.size()},
                 .after_passes = std::span<const std::string>{pass.after_passes.data(), pass.after_passes.size()},
-                .before_passes = std::span<const std::string>{pass.before_passes.data(), pass.before_passes.size()}}
-            );
+                .before_passes = std::span<const std::string>{pass.before_passes.data(), pass.before_passes.size()}
+            });
         }
         compiled.dependency_info = DependencyAnalyzer::analyze(RGLogicalGraphView{
             .resource_count = static_cast<std::uint32_t>(compiled.original_graph.resources.size()),
-            .passes = logical_passes}
-        );
+            .passes = logical_passes
+        });
         if (compiled.dependency_info.has_cycle)
         {
             compiled.compile_error = renderError<err::graph::DependencyCycle>();
@@ -483,7 +482,7 @@ namespace lux::render
                 // a REQUIRED reference left unresolved is a hard error (fail fast),
                 // not a silent degrade to a null view / downstream VUID. Optional keeps
                 // the prune behaviour (consumer degrades).
-                if (res.reference_mode == ERGReference::Required)
+                if (res.reference_mode == ERGReference::REFERENCE_REQUIRED)
                 {
                     compiled.compile_error =
                         renderError<err::graph::ReferencedResourceHasNoProducer>(static_cast<std::uint32_t>(i));
@@ -635,12 +634,9 @@ namespace lux::render
 
             const auto& group = layout.groups[group_index];
 
-            auto pipeline = pipeline_manager.getOrCreatePipeline(
-                pipeline_template,
-                group.key,
-                subpass_index,
-                variantFeatureMask(0u)
-            );
+            auto pipeline =
+                pipeline_manager
+                    .getOrCreatePipeline(pipeline_template, group.key, subpass_index, variantFeatureMask(0u));
 
             cpass.render.pipeline = pipeline;
             cpass.render.subpass = subpass_index;
@@ -670,12 +666,9 @@ namespace lux::render
             uint32_t variant_index = 1u;
             for (auto extra_handle : pass_desc.additional_pipelines)
             {
-                auto extra_pipeline = pipeline_manager.getOrCreatePipeline(
-                    extra_handle,
-                    group.key,
-                    subpass_index,
-                    variantFeatureMask(variant_index)
-                );
+                auto extra_pipeline =
+                    pipeline_manager
+                        .getOrCreatePipeline(extra_handle, group.key, subpass_index, variantFeatureMask(variant_index));
                 const auto& extra_tmpl = pipeline_manager.getTemplate(extra_handle);
                 push_variant(extra_handle, extra_pipeline, extra_tmpl.pipeline_layout);
 
@@ -916,7 +909,7 @@ namespace lux::render
         {
             for (const auto& bind : pass.ds_bindings)
             {
-                if (bind.source != EDSBindingSource::Resource)
+                if (bind.source != EDSBindingSource::RESOURCE)
                 {
                     continue;
                 }
@@ -990,7 +983,7 @@ namespace lux::render
         {
             for (const auto& bind : graph.passes[pi].ds_bindings)
             {
-                if (bind.source == EDSBindingSource::Transient && bind.transient_ds_index < tds_count &&
+                if (bind.source == EDSBindingSource::TRANSIENT && bind.transient_ds_index < tds_count &&
                     tds_to_pass[bind.transient_ds_index] == kNoPass)
                     tds_to_pass[bind.transient_ds_index] = pi;
             }
@@ -1056,8 +1049,8 @@ namespace lux::render
                     compiled.diagnostics.push_back(renderError<err::graph::TransientDescriptorLayoutMismatch>(
                         ri,
                         static_cast<std::uint32_t>(w.descriptor_type),
-                        static_cast<std::uint32_t>(w.image_layout))
-                    );
+                        static_cast<std::uint32_t>(w.image_layout)
+                    ));
             }
         }
     }
@@ -1083,7 +1076,7 @@ namespace lux::render
 
             for (const auto& bind : pass.ds_bindings)
             {
-                if (bind.source != EDSBindingSource::Resource)
+                if (bind.source != EDSBindingSource::RESOURCE)
                 {
                     continue;
                 }
@@ -1259,8 +1252,7 @@ namespace lux::render
         for (auto& group : compiled.render_pass_layout.groups)
             std::erase_if(group.passes, [&](const RGPassInRenderPass& p) {
                 return p.pass_index < pass_count && starved[p.pass_index];
-            }
-            );
+            });
     }
 
     // 3.1) Dead Pass Elimination (A-02)

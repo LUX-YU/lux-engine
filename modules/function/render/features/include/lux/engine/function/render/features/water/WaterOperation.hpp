@@ -14,8 +14,7 @@
 namespace lux::render
 {
     struct WaterSurfaceTag
-    {
-    };
+    {};
     using RWaterSurfaceHandle = RenderResourceHandle<WaterSurfaceTag>;
 
     struct WaterSurfaceDesc final
@@ -47,7 +46,8 @@ namespace lux::render
         kind = resource,
         name = WaterSurfaceCreate,
         method = createSurface,
-        reply = WaterSurfaceCreatedReply) WaterSurfaceCreatePayload final
+        reply = WaterSurfaceCreatedReply
+    ) WaterSurfaceCreatePayload final
     {
         RenderSceneId scene_id{};
         WaterSurfaceDesc surface{};
@@ -61,7 +61,8 @@ namespace lux::render
         method = updateSurface,
         opcode = resource,
         bulk = WaterSurfaceBatch,
-        bulk_method = updateSurfaces) WaterSurfaceUpdatePayload final
+        bulk_method = updateSurfaces
+    ) WaterSurfaceUpdatePayload final
     {
         RenderSceneId scene_id{};
         RWaterSurfaceHandle handle{};
@@ -94,7 +95,8 @@ namespace lux::render
         name = WaterStats,
         method = stats,
         reply = WaterStatsReply,
-        opcode = command) WaterStatsPayload final
+        opcode = command
+    ) WaterStatsPayload final
     {
         RenderSceneId scene_id{};
     };
@@ -107,7 +109,8 @@ namespace lux::render
         requires = "lux.render.fog.v1?,lux.render.linear_depth.v1,lux.render.view_camera.v1",
         feature = WaterFeature,
         feature_header = lux / engine / render / renderer / features / water / WaterFeature.hpp,
-        multiplicity = single) WaterCommConfig final
+        multiplicity = single
+    ) WaterCommConfig final
     {
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};

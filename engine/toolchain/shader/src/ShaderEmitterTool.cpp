@@ -32,17 +32,20 @@ namespace
     {
         switch (stage)
         {
-        case lux::rdesc::EShaderType::VERTEX:   return "vertex";
-        case lux::rdesc::EShaderType::FRAGMENT: return "fragment";
-        case lux::rdesc::EShaderType::COMPUTE:  return "compute";
-        default:                                return "undefined";
+        case lux::rdesc::EShaderType::VERTEX:
+            return "vertex";
+        case lux::rdesc::EShaderType::FRAGMENT:
+            return "fragment";
+        case lux::rdesc::EShaderType::COMPUTE:
+            return "compute";
+        default:
+            return "undefined";
         }
     }
 
     int usage()
     {
-        std::fprintf(stderr,
-            "usage: lux_shader_emitter --in <file.lglsl> [--out <file>] [--print-meta] [--header]\n");
+        std::fprintf(stderr, "usage: lux_shader_emitter --in <file.lglsl> [--out <file>] [--print-meta] [--header]\n");
         return 2;
     }
 } // namespace
@@ -52,16 +55,21 @@ int main(int argc, char** argv)
     std::string in_path;
     std::string out_path;
     bool print_meta = false;
-    auto mode = lux::shadergen::lglsl::EEmitMode::Shader;
+    auto mode = lux::shadergen::lglsl::EEmitMode::SHADER;
 
     for (int i = 1; i < argc; ++i)
     {
         const std::string_view arg = argv[i];
-        if (arg == "--in" && i + 1 < argc)        in_path = argv[++i];
-        else if (arg == "--out" && i + 1 < argc)  out_path = argv[++i];
-        else if (arg == "--print-meta")           print_meta = true;
-        else if (arg == "--header")               mode = lux::shadergen::lglsl::EEmitMode::Header;
-        else                                      return usage();
+        if (arg == "--in" && i + 1 < argc)
+            in_path = argv[++i];
+        else if (arg == "--out" && i + 1 < argc)
+            out_path = argv[++i];
+        else if (arg == "--print-meta")
+            print_meta = true;
+        else if (arg == "--header")
+            mode = lux::shadergen::lglsl::EEmitMode::HEADER;
+        else
+            return usage();
     }
     if (in_path.empty())
         return usage();

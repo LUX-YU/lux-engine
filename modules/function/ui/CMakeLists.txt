@@ -4,12 +4,13 @@ find_package(lux-cxx REQUIRED COMPONENTS core compile_time)
 add_library(
     ui_imgui_backend
     OBJECT
-    src/Context.cpp
     src/DragDrop.cpp
-    src/DrawDataSnapshot.cpp
-    src/Frame.cpp
-    src/MenuToolbar.cpp
-    src/ViewportElement.cpp
+    src/DrawData.cpp
+    src/Table.cpp
+    src/Root.cpp
+    src/Layout.cpp
+    src/Controls.cpp
+    src/ImageElement.cpp
 )
 target_include_directories(
     ui_imgui_backend
@@ -28,14 +29,16 @@ target_link_libraries(
         lux::cxx::core
         lux::cxx::compile_time
         lux::engine::core::object
+        render_client
+        lux::engine::platform::window
 )
 
 add_component(
     COMPONENT_NAME ui
     NAMESPACE lux::engine::function
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/CommandRouter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Pane.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Element.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Theme.cpp
 )
 
@@ -44,20 +47,12 @@ component_include_directories(
     BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
     INSTALL_TIME include
     PRIVATE pinclude
 )
 
 target_compile_definitions(ui PRIVATE LUX_FUNCTION_LIBRARY)
-
-option(
-    LUX_UI_CONTRACT_CHECKS
-    "Enable UI owner-thread contract checks outside Debug builds"
-    OFF
-)
-if(LUX_UI_CONTRACT_CHECKS)
-    target_compile_definitions(ui PRIVATE LUX_UI_CONTRACT_CHECKS=1)
-endif()
 
 target_link_libraries(
     ui
@@ -66,6 +61,7 @@ target_link_libraries(
         lux::cxx::core
         lux::cxx::compile_time
         lux::engine::core::object
+        render_client
 )
 
 add_custom_command(
@@ -79,6 +75,7 @@ component_add_transitive_commands(
     ui
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
     "find_package(lux-engine-core REQUIRED COMPONENTS object)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"
 )
 
 if(TARGET render_vulkan)
@@ -87,49 +84,15 @@ if(TARGET render_vulkan)
     add_subdirectory(rendering)
 endif()
 
-include_component_cmake_scripts(meta)
-engine_add_type_runtime_info(
-    NAME ui_pane_meta
-    TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ui/Pane.hpp
-    REGISTER_FUNC_NAME lux_ui_pane
-)
-lux_target_add_codegen(TARGET ui JOB ui_pane_meta PROJECTIONS object_signals)
-
 if(BUILD_TESTING)
-    add_executable(ui_context_test test/context.cpp)
-    target_link_libraries(ui_context_test PRIVATE ui imgui::core)
-    if(MSVC)
-        target_compile_options(ui_context_test PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(ui_context_test PRIVATE -UNDEBUG)
-    endif()
-    add_test(NAME ui.context COMMAND ui_context_test)
+    add_executable(ui_root_test test/root.cpp)
+    target_link_libraries(ui_root_test PRIVATE ui imgui::core)
 
-    add_executable(ui_snapshot_test test/snapshot.cpp src/DrawDataSnapshot.cpp)
-    target_include_directories(ui_snapshot_test PRIVATE include pinclude ${LUX_GENERATE_HEADER_DIR})
-    target_compile_definitions(ui_snapshot_test PRIVATE LUX_FUNCTION_LIBRARY)
-    target_link_libraries(ui_snapshot_test PRIVATE imgui::core)
     if(MSVC)
-        target_compile_options(ui_snapshot_test PRIVATE /UNDEBUG)
+        target_compile_options(ui_root_test PRIVATE /UNDEBUG /utf-8)
     else()
-        target_compile_options(ui_snapshot_test PRIVATE -UNDEBUG)
+        target_compile_options(ui_root_test PRIVATE -UNDEBUG)
     endif()
-    add_custom_command(TARGET ui_snapshot_test POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:imgui::core> $<TARGET_FILE_DIR:ui_snapshot_test>)
-    add_test(NAME ui.snapshot_storage COMMAND ui_snapshot_test)
-endif()
-
-if(BUILD_TESTING AND TARGET imgui::vulkan)
-    add_executable(ui_context_gpu_test test/context_free_vulkan.cpp src/DrawDataSnapshot.cpp)
-    target_include_directories(ui_context_gpu_test PRIVATE include pinclude ${LUX_GENERATE_HEADER_DIR})
-    target_compile_definitions(ui_context_gpu_test PRIVATE LUX_FUNCTION_LIBRARY)
-    target_link_libraries(ui_context_gpu_test PRIVATE imgui::core imgui::vulkan Vulkan::Vulkan)
-    if(MSVC)
-        target_compile_options(ui_context_gpu_test PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(ui_context_gpu_test PRIVATE -UNDEBUG)
-    endif()
-    add_custom_command(TARGET ui_context_gpu_test POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:imgui::vulkan> $<TARGET_FILE_DIR:ui_context_gpu_test>)
-    add_test(NAME ui.context_free_gpu COMMAND ui_context_gpu_test)
+    add_test(NAME ui.root COMMAND ui_root_test )
+    set_tests_properties(ui.root PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
 endif()

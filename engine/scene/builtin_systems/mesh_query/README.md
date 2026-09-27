@@ -1,19 +1,20 @@
 # Active Mesh queries
 
-`MeshQuerySystem` is an optional Scene system. It queries loaded ECS entities and
+`MeshQuerySystem` is an optional Scene system. It maintains a Registry-owned `MeshQuery` that queries loaded entities and
 their current derived transforms. It has no Renderer, camera, Editor selection,
 model import, partition traversal or implicit IO dependency.
 
 ## Ownership and progression
 
-The Scene owner installs the system against its Registry. Asset loading prepares
+The Scene owner installs the system against its Registry. The system owns only observation/update wiring;
+`MeshQuery` owns geometry, the object index, failures and counters. Consumers do not retain the system. Asset loading prepares
 immutable local `MeshQueryGeometry` values on Process; the owner adopts a complete
-asset version with `setGeometry`. Instances and separate author/Run Scenes may
+asset version with `registry.ctx().get<MeshQuery>().setGeometry`. Instances and separate author/Run Scenes may
 share the same geometry. Asset replacement removes the old association; outstanding
 shared owners determine when the old geometry is destroyed.
 
 `Mesh3D` and `WorldTransform3D` changes invalidate the object index. At the normal
-stable point, after transform derivation, structural changes rebuild the flat AABB
+stable point, after Scene Transform synchronization, structural changes rebuild the flat AABB
 tree; transform changes refit only affected leaves and their ancestors. A query
 never advances the Scene, loads assets or builds geometry. A dirty or incomplete
 index returns `NOT_READY`, rather than reporting an inaccurate miss.

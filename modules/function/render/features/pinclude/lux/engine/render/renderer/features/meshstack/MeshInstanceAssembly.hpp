@@ -29,7 +29,7 @@ namespace lux::render::detail
         RMaterialHandle material{};
         RenderSpatialTransform3D transform{};
         std::uint32_t flags{0u};
-        EGeometryKind geometry_kind{EGeometryKind::StaticMesh};
+        EGeometryKind geometry_kind{EGeometryKind::STATIC_MESH};
         PassMask pass_mask{kPassMaskOpaqueDefault};
         std::uint32_t user_meta_index{0u};
         std::uint32_t rgba8{0xffffffffu};

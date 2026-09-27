@@ -9,9 +9,7 @@ namespace lux::gapi::vk
     public:
         using Builder = CommandPoolBuilder;
 
-        CommandPool() : command_pool(VK_NULL_HANDLE)
-        {
-        }
+        CommandPool() : command_pool(VK_NULL_HANDLE) {}
 
         CommandPool(VkDevice device, const VkCommandPoolCreateInfo& info, VkAllocationCallbacks* allocator = nullptr)
         {
@@ -31,7 +29,8 @@ namespace lux::gapi::vk
                 .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
                 .pNext = nullptr,
                 .flags = 0,
-                .queueFamilyIndex = queue_family_index};
+                .queueFamilyIndex = queue_family_index
+            };
 
             VK_FUNC_INVOKE(
                 vkCreateCommandPool,

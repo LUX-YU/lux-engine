@@ -73,15 +73,15 @@ namespace lux::material
 
     static_assert(std::size(kMaterialInputs) == static_cast<std::size_t>(EMaterialInput::COUNT));
 
-    [[nodiscard]] inline constexpr const MaterialAttributeDesc*
-    materialAttributeDescription(EMaterialAttribute attribute) noexcept
+    [[nodiscard]] inline constexpr const MaterialAttributeDesc* materialAttributeDescription(
+        EMaterialAttribute attribute
+    ) noexcept
     {
         const auto index = static_cast<std::size_t>(attribute);
         return index < std::size(kMaterialAttributes) ? &kMaterialAttributes[index] : nullptr;
     }
 
-    [[nodiscard]] inline constexpr const MaterialInputDesc*
-    materialInputDescription(EMaterialInput input) noexcept
+    [[nodiscard]] inline constexpr const MaterialInputDesc* materialInputDescription(EMaterialInput input) noexcept
     {
         const auto index = static_cast<std::size_t>(input);
         return index < std::size(kMaterialInputs) ? &kMaterialInputs[index] : nullptr;

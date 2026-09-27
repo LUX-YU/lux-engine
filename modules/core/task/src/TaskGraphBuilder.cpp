@@ -37,14 +37,11 @@ namespace lux::task
         return TaskBuildId{value};
     }
 
-    TaskGraphBuilder::TaskGraphBuilder() : id_(acquireBuildId())
-    {
-    }
+    TaskGraphBuilder::TaskGraphBuilder() : id_(acquireBuildId()) {}
 
     TaskGraphBuilder::TaskGraphBuilder(TaskGraphBuilder&& other) noexcept
         : id_(std::exchange(other.id_, {})), tasks_(std::move(other.tasks_))
-    {
-    }
+    {}
 
     TaskGraphBuilder& TaskGraphBuilder::operator=(TaskGraphBuilder&& other) noexcept
     {
@@ -77,10 +74,8 @@ namespace lux::task
             const auto current = pending.resources[index];
             if (current.key.domain == 0U)
             {
-                return lux::cxx::unexpected(TaskGraphFailure{
-                    .code = ETaskGraphError::INVALID_RESOURCE,
-                    .task = result,
-                    .resource = current.key}
+                return lux::cxx::unexpected(
+                    TaskGraphFailure{.code = ETaskGraphError::INVALID_RESOURCE, .task = result, .resource = current.key}
                 );
             }
             for (std::size_t previous{}; previous < index; ++previous)
@@ -90,8 +85,8 @@ namespace lux::task
                     return lux::cxx::unexpected(TaskGraphFailure{
                         .code = ETaskGraphError::DUPLICATE_RESOURCE,
                         .task = result,
-                        .resource = current.key}
-                    );
+                        .resource = current.key
+                    });
                 }
             }
         }
@@ -110,8 +105,8 @@ namespace lux::task
                 return lux::cxx::unexpected(TaskGraphFailure{
                     .code = ETaskGraphError::DEPENDENCY_MUST_PRECEDE_TASK,
                     .task = result,
-                    .related = dependency}
-                );
+                    .related = dependency
+                });
             }
             for (std::size_t previous{}; previous < index; ++previous)
             {
@@ -120,20 +115,15 @@ namespace lux::task
                     return lux::cxx::unexpected(TaskGraphFailure{
                         .code = ETaskGraphError::DUPLICATE_DEPENDENCY,
                         .task = result,
-                        .related = dependency}
-                    );
+                        .related = dependency
+                    });
                 }
             }
         }
 
-        try
         {
             tasks_.push_back(std::move(pending));
             return result;
-        }
-        catch (...)
-        {
-            return lux::cxx::unexpected(TaskGraphFailure{.code = ETaskGraphError::ALLOCATION_FAILURE, .task = result});
         }
     }
 
@@ -144,7 +134,6 @@ namespace lux::task
             return lux::cxx::unexpected(TaskGraphFailure{.code = ETaskGraphError::INVALID_BUILDER});
         }
 
-        try
         {
             const std::size_t count = tasks_.size();
             std::vector<Edge> edges;
@@ -228,8 +217,8 @@ namespace lux::task
 
                 graph.tasks_.push_back(TaskGraph::TaskRecord{
                     .callable = std::move(tasks_[task].callable),
-                    .affinity = tasks_[task].affinity}
-                );
+                    .affinity = tasks_[task].affinity
+                });
             }
 
             // Pin by ownership identity, not raw pointer value.
@@ -253,10 +242,6 @@ namespace lux::task
             id_ = {};
             tasks_.clear();
             return graph;
-        }
-        catch (...)
-        {
-            return lux::cxx::unexpected(TaskGraphFailure{.code = ETaskGraphError::ALLOCATION_FAILURE});
         }
     }
 }

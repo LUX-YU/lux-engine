@@ -32,9 +32,9 @@ namespace lux::material
     /// A scalar/vector parameter declared by the graph (-> material SSBO set 4).
     struct ParamSlotDecl
     {
-        std::string   name;
-        EValueType type    = EValueType::FLOAT;
-        float         dflt[4] = { 0, 0, 0, 0 };
+        std::string name;
+        EValueType type = EValueType::FLOAT;
+        float dflt[4] = {0, 0, 0, 0};
         friend bool operator==(const ParamSlotDecl&, const ParamSlotDecl&) = default;
     };
 
@@ -45,9 +45,9 @@ namespace lux::material
     /// the bucket key).
     struct RenderState
     {
-        lux::rdesc::EAlphaMode alpha_mode = lux::rdesc::EAlphaMode::Opaque;
-        float      alpha_cutoff = 0.5f;
-        bool       double_sided = false;
+        lux::rdesc::EAlphaMode alpha_mode = lux::rdesc::EAlphaMode::OPAQUE_SURFACE;
+        float alpha_cutoff = 0.5f;
+        bool double_sided = false;
     };
 
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialGraph
@@ -66,18 +66,18 @@ namespace lux::material
         /// working copy from the graph an asset owns.
         [[nodiscard]] MaterialGraph clone() const;
 
-        NodeId     addNode(std::unique_ptr<Node> node);
-        Node*       node(NodeId id) noexcept;
+        NodeId addNode(std::unique_ptr<Node> node) noexcept;
+        Node* node(NodeId id) noexcept;
         const Node* node(NodeId id) const noexcept;
-        void        removeNode(NodeId id);
+        void removeNode(NodeId id);
 
-        /// Inserts a node with a specific id (GraphKit's undo relies on stable ids:
+        /// Inserts a node with a specific id (History replay relies on stable ids:
         /// restoring a deleted node must reuse its original id, since both
         /// connections and recorded undo actions reference nodes by id). Returns
         /// Invalid NodeId if the id is already taken, invalid, or node is null;
         /// next_id_ is bumped to the high-water mark so later addNode calls never
         /// collide with it.
-        NodeId addNodeWithId(NodeId id, std::unique_ptr<Node> node);
+        NodeId addNodeWithId(NodeId id, std::unique_ptr<Node> node) noexcept;
 
         /// Removes a node without destroying it and without touching other nodes'
         /// input connections (the editor disconnects the recorded links one by one
@@ -92,24 +92,35 @@ namespace lux::material
         [[nodiscard]] PinLink source(NodeId dst, uint32_t dst_pin) const noexcept;
         [[nodiscard]] PinLink source(PinId input) const noexcept;
 
-        [[nodiscard]] lux::graph::GraphTopology& topology() noexcept { return topology_; }
-        [[nodiscard]] const lux::graph::GraphTopology& topology() const noexcept { return topology_; }
-        [[nodiscard]] lux::graph::GraphLayout& layout() noexcept { return layout_; }
-        [[nodiscard]] const lux::graph::GraphLayout& layout() const noexcept { return layout_; }
+        [[nodiscard]] lux::graph::GraphTopology& topology() noexcept
+        {
+            return topology_;
+        }
+        [[nodiscard]] const lux::graph::GraphTopology& topology() const noexcept
+        {
+            return topology_;
+        }
+        [[nodiscard]] lux::graph::GraphLayout& layout() noexcept
+        {
+            return layout_;
+        }
+        [[nodiscard]] const lux::graph::GraphLayout& layout() const noexcept
+        {
+            return layout_;
+        }
 
         // A const graph lends const nodes. const unique_ptr alone would still expose mutable pointees.
         [[nodiscard]] auto nodes() const noexcept
         {
-            return std::views::transform(nodes_, [](const auto& entry)
-            {
+            return std::views::transform(nodes_, [](const auto& entry) {
                 return std::pair<NodeId, const Node*>{entry.first, entry.second.get()};
             });
         }
 
-        lux::rdesc::ELightingTechnique shading_model = lux::rdesc::ELightingTechnique::PbrMetallicRoughness;
+        lux::rdesc::ELightingTechnique shading_model = lux::rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS;
         std::vector<TextureSlotDecl> texture_slots;
-        std::vector<ParamSlotDecl>   param_slots;
-        RenderState                  render_state;
+        std::vector<ParamSlotDecl> param_slots;
+        RenderState render_state;
 
     private:
         friend class MaterialGraphEdit;
@@ -134,21 +145,24 @@ namespace lux::material
 
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialGraphEdit final
     {
-      public:
-        [[nodiscard]] static lux::cxx::expected<MaterialGraphEdit, lux::graph::GraphTopologyFailure> prepare(
-            MaterialGraph&, const MaterialGraphChange&);
+    public:
+        [[nodiscard]] static lux::cxx::expected<MaterialGraphEdit, lux::graph::GraphTopologyFailure>
+        prepare(MaterialGraph&, const MaterialGraphChange&);
         ~MaterialGraphEdit();
         MaterialGraphEdit(MaterialGraphEdit&&) noexcept;
         MaterialGraphEdit(const MaterialGraphEdit&) = delete;
         MaterialGraphEdit& operator=(const MaterialGraphEdit&) = delete;
 
         [[nodiscard]] std::span<const Node* const> insertedNodes() const noexcept;
-        [[nodiscard]] lux::cxx::expected<void, lux::graph::GraphTopologyFailure> place(NodeId, lux::graph::GraphNodeLayout);
+        [[nodiscard]] lux::cxx::expected<void, lux::graph::GraphTopologyFailure> place(
+            NodeId,
+            lux::graph::GraphNodeLayout
+        );
         // Source must remain exclusively borrowed from prepare until this single commit.
         // Reserved node handles and vector swaps allocate nothing and invoke no observers.
         void commit() noexcept;
 
-      private:
+    private:
         using NodeStorage = std::unordered_map<NodeId, std::unique_ptr<Node>>;
         explicit MaterialGraphEdit(MaterialGraph&);
         MaterialGraph* target_;

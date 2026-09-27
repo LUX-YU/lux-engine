@@ -10,11 +10,11 @@ namespace lux::script::native
 {
 {% for rec_index in marked_record_decls %}{% set rec = decl_from_index(rec_index) %}{% set receiver = annotation_get_for_or(rec, "luxability::contract", "receiver", "none") %}{% if receiver == "none" %}{% set ability_methods = rec.static_method_decls %}{% else %}{% set ability_methods = rec.method_decls %}{% endif %}
     template <>
-    struct ScriptAbilityNativeTraits<::{{ rec.fq_name }}> final
+    struct TScriptAbilityNativeTraits<::{{ rec.fq_name }}> final
     {
-        using AbilityTraits = ScriptAbilityTraits<::{{ rec.fq_name }}>;
+        using AbilityTraits = TScriptAbilityTraits<::{{ rec.fq_name }}>;
         template <class Provider>
-        struct Entries final
+        struct TEntries final
         {
 {% for method_id in ability_methods %}{% set method = decl_from_id(method_id) %}{% if annotation_has(method, "luxability::method") %}{% set kind = annotation_get_for_or(method, "luxability::method", "kind", "query") %}
 {% if kind == "async_operation" %}        [[nodiscard]] static int {{ method.spelling }}(
@@ -37,7 +37,7 @@ namespace lux::script::native
                 invocation,
                 waiting_on,
                 [provider, &dispatch{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %}](
-                    ScriptAbilityCompletion<{{ method.result_type_id }}> completion
+                    TScriptAbilityCompletion<{{ method.result_type_id }}> completion
                 ) noexcept
                 {
                     return dispatch.{{ method.spelling }}(provider{% for param_id in method.params %}{% set param = decl_from_id(param_id) %}, {{ param.name }}{% endfor %}, std::move(completion));
@@ -70,6 +70,6 @@ namespace lux::script::native
             }{% set emitted = true %}{% endif %}{% endfor %}
         };
         };
-        inline static const auto& Methods = Entries<void>::Methods;
+        inline static const auto& Methods = TEntries<void>::Methods;
     };
 {% endfor %}} // namespace lux::script::native

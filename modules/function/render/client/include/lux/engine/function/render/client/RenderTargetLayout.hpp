@@ -11,7 +11,7 @@
 
 namespace lux::render
 {
-    enum class TargetSlot : std::uint8_t
+    enum class ETargetSlot : std::uint8_t
     {
         SCENE_COLOR = 0,
         SCENE_DEPTH,
@@ -24,29 +24,29 @@ namespace lux::render
         COUNT
     };
 
-    inline constexpr std::size_t kTargetSlotCount = static_cast<std::size_t>(TargetSlot::COUNT);
+    inline constexpr std::size_t kTargetSlotCount = static_cast<std::size_t>(ETargetSlot::COUNT);
 
-    [[nodiscard]] inline const char* targetSlotName(TargetSlot slot) noexcept
+    [[nodiscard]] inline const char* targetSlotName(ETargetSlot slot) noexcept
     {
         switch (slot)
         {
-        case TargetSlot::SCENE_COLOR:
+        case ETargetSlot::SCENE_COLOR:
             return "SceneColor";
-        case TargetSlot::SCENE_DEPTH:
+        case ETargetSlot::SCENE_DEPTH:
             return "SceneDepth";
-        case TargetSlot::RESOLVE_COLOR:
+        case ETargetSlot::RESOLVE_COLOR:
             return "ResolveColor";
-        case TargetSlot::NORMAL:
+        case ETargetSlot::NORMAL:
             return "SceneNormal";
-        case TargetSlot::INSTANCE_ID:
+        case ETargetSlot::INSTANCE_ID:
             return "InstanceId";
-        case TargetSlot::LINEAR_DEPTH:
+        case ETargetSlot::LINEAR_DEPTH:
             return "LinearDepth";
-        case TargetSlot::SEMANTIC_CLASS:
+        case ETargetSlot::SEMANTIC_CLASS:
             return "SemanticClass";
-        case TargetSlot::MOTION_VECTOR:
+        case ETargetSlot::MOTION_VECTOR:
             return "MotionVector";
-        case TargetSlot::COUNT:
+        case ETargetSlot::COUNT:
             break;
         }
         return "UnknownOutput";
@@ -116,12 +116,12 @@ namespace lux::render
     {
         std::array<std::optional<RenderTargetSlotDesc>, kTargetSlotCount> slots{};
 
-        [[nodiscard]] bool hasSlot(TargetSlot slot) const noexcept
+        [[nodiscard]] bool hasSlot(ETargetSlot slot) const noexcept
         {
             return slots[static_cast<std::size_t>(slot)].has_value();
         }
 
-        [[nodiscard]] const RenderTargetSlotDesc& slot(TargetSlot slot) const noexcept
+        [[nodiscard]] const RenderTargetSlotDesc& slot(ETargetSlot slot) const noexcept
         {
             if (!hasSlot(slot))
                 renderFatal("RenderTargetLayout::slot requires a populated slot");
@@ -145,8 +145,8 @@ namespace lux::render
             const bool is_invalid_aspect = lhs_slot->aspect != rhs_slot->aspect;
             const bool is_invalid_state = lhs_slot->initial_state != rhs_slot->initial_state;
             const bool is_invalid_preservation = lhs_slot->preserve_content != rhs_slot->preserve_content;
-            const bool is_mismatch = is_invalid_format || is_invalid_aspect || is_invalid_state ||
-                is_invalid_preservation;
+            const bool is_mismatch =
+                is_invalid_format || is_invalid_aspect || is_invalid_state || is_invalid_preservation;
             if (is_mismatch)
             {
                 return false;
@@ -155,7 +155,7 @@ namespace lux::render
         return true;
     }
 
-    [[nodiscard]] inline RenderTargetSlotDesc defaultTargetSlotDesc(TargetSlot slot) noexcept
+    [[nodiscard]] inline RenderTargetSlotDesc defaultTargetSlotDesc(ETargetSlot slot) noexcept
     {
         RenderTargetSlotDesc desc{};
         desc.usage = ERenderImageUsage::COLOR_ATTACHMENT | ERenderImageUsage::SAMPLED;
@@ -163,19 +163,19 @@ namespace lux::render
         desc.final_state = ERenderResourceState::SHADER_READ;
         switch (slot)
         {
-        case TargetSlot::LINEAR_DEPTH:
+        case ETargetSlot::LINEAR_DEPTH:
             desc.format = lux::rdesc::ETextureFormat::R32_SFLOAT;
             break;
-        case TargetSlot::NORMAL:
+        case ETargetSlot::NORMAL:
             desc.format = lux::rdesc::ETextureFormat::RGBA16_SFLOAT;
             break;
-        case TargetSlot::MOTION_VECTOR:
+        case ETargetSlot::MOTION_VECTOR:
             desc.format = lux::rdesc::ETextureFormat::RG16_SFLOAT;
             break;
-        case TargetSlot::INSTANCE_ID:
+        case ETargetSlot::INSTANCE_ID:
             desc.format = lux::rdesc::ETextureFormat::R32_UINT;
             break;
-        case TargetSlot::SEMANTIC_CLASS:
+        case ETargetSlot::SEMANTIC_CLASS:
             desc.format = lux::rdesc::ETextureFormat::R16_UINT;
             break;
         default:
@@ -189,7 +189,7 @@ namespace lux::render
         std::uint32_t mask = 0;
         for (std::size_t index = 0; index < kTargetSlotCount; ++index)
         {
-            if (layout.hasSlot(static_cast<TargetSlot>(index)))
+            if (layout.hasSlot(static_cast<ETargetSlot>(index)))
                 mask |= 1u << index;
         }
         return mask;

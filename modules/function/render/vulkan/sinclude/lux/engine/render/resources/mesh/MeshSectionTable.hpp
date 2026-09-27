@@ -104,14 +104,17 @@ namespace lux::render
             }
         };
 
-        [[nodiscard]] static SectionKey
-        makeSectionKey(const MeshSectionRecord& section, uint16_t ibo_segment, VkIndexType index_type) noexcept;
+        [[nodiscard]] static SectionKey makeSectionKey(
+            const MeshSectionRecord& section,
+            uint16_t ibo_segment,
+            VkIndexType index_type
+        ) noexcept;
 
-        PagedGpuStream<MeshSectionRecord> stream_;
+        TPagedGpuStream<MeshSectionRecord> stream_;
         // Upload-chunk scratch reused across ticks (cleared at submitTransfers
         // entry; collectUploadChunks only appends). Single set is correct —
         // produced + consumed synchronously within one render-thread tick. (P-5)
-        std::vector<PagedGpuStream<MeshSectionRecord>::UploadChunk> chunks_;
+        std::vector<TPagedGpuStream<MeshSectionRecord>::UploadChunk> chunks_;
         std::vector<uint8_t> alive_;
         /// 每条 section 的 ibo_segment,与 alive_/ref_counts_ 同下标。GPU 记录里放不下
         /// (MeshSectionRecord 定长 16 字节),但 unregisterSection 要靠它重建去重键。

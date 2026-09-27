@@ -30,16 +30,11 @@ namespace lux::material
         std::optional<MaterialCompileFailure> compile_failure;
     };
 
-    [[nodiscard]] LUX_ENGINE_MATERIAL_COOKER_PUBLIC lux::cxx::expected<
-        std::shared_ptr<const lux::asset::MaterialAsset>,
-        MaterialCookFailure
-    > cookMaterial(lux::asset::AssetInfo info, const MaterialGraph& graph) noexcept;
+    [[nodiscard]] LUX_ENGINE_MATERIAL_COOKER_PUBLIC lux::cxx::
+        expected<std::shared_ptr<const lux::asset::MaterialAsset>, MaterialCookFailure>
+        cookMaterial(lux::asset::AssetInfo info, const MaterialGraph& graph) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_MATERIAL_COOKER_PUBLIC lux::cxx::expected<
-        std::shared_ptr<const lux::asset::MaterialAsset>,
-        MaterialCookFailure
-    > cookImportedMaterial(
-        lux::asset::AssetInfo info,
-        const ImportedMaterialDescription& imported
-    ) noexcept;
+    [[nodiscard]] LUX_ENGINE_MATERIAL_COOKER_PUBLIC lux::cxx::
+        expected<std::shared_ptr<const lux::asset::MaterialAsset>, MaterialCookFailure>
+        cookImportedMaterial(lux::asset::AssetInfo info, const ImportedMaterialDescription& imported) noexcept;
 } // namespace lux::material

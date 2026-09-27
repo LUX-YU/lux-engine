@@ -117,9 +117,7 @@ namespace lux::render
         class ExportableBufferCandidate final
         {
         public:
-            explicit ExportableBufferCandidate(VkDevice device) noexcept : device_(device)
-            {
-            }
+            explicit ExportableBufferCandidate(VkDevice device) noexcept : device_(device) {}
 
             ~ExportableBufferCandidate() noexcept
             {
@@ -160,14 +158,17 @@ namespace lux::render
 #endif
         }
 
-        [[nodiscard]] VkResult
-        exportMemoryHandle(VkDevice device, VkDeviceMemory memory, lux::gapi::vk::ExternalHandle& out_handle) noexcept
+        [[nodiscard]] VkResult exportMemoryHandle(
+            VkDevice device,
+            VkDeviceMemory memory,
+            lux::gapi::vk::ExternalHandle& out_handle
+        ) noexcept
         {
             out_handle = lux::gapi::vk::kInvalidExternalHandle;
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
-            auto fn = reinterpret_cast<PFN_vkGetMemoryWin32HandleKHR>(
-                vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandleKHR")
-            );
+            auto fn =
+                reinterpret_cast<PFN_vkGetMemoryWin32HandleKHR>(vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandleKHR")
+                );
             if (fn == nullptr)
                 return VK_ERROR_EXTENSION_NOT_PRESENT;
 

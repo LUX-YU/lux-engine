@@ -1,7 +1,0 @@
-add_subdirectory(metadata)
-add_subdirectory(editing)
-add_subdirectory(core)
-add_subdirectory(ui)
-add_subdirectory(assets)
-add_subdirectory(editors)
-add_subdirectory(app)

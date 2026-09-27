@@ -18,8 +18,10 @@ int main()
     DeferredDestroyQueue retire;
     retire.init(device.vmaAllocator(), device.logicalDevice());
     VkDescriptorPool pool{};
-    const VkDescriptorPoolSize pool_sizes[]{{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4},
-                                            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kShadingInputSlotCount}};
+    const VkDescriptorPoolSize pool_sizes[]{
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kShadingInputSlotCount}
+    };
     VkDescriptorPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     pool_info.maxSets = 1;
     pool_info.poolSizeCount = 2;
@@ -36,14 +38,15 @@ int main()
             assert(resources.isInitialized());
             const auto anonymous = resources.allocateObject();
             assert(anonymous && resources.isAlive(anonymous));
-            assert(!resources.findSource(RenderEntityId{}));
+            assert(!resources.findSource(ERenderEntityId{}));
             resources.freeObject(anonymous);
             assert(!resources.isAlive(anonymous) && resources.aliveCount() == 0);
 
             std::vector<RenderObjectHandle> handles;
             handles.reserve(count);
-            const auto source = [sparse](std::size_t i)
-            { return static_cast<RenderEntityId>(sparse ? (1ULL << 50) + i * 1048576ULL : i); };
+            const auto source = [sparse](std::size_t i) {
+                return static_cast<ERenderEntityId>(sparse ? (1ULL << 50) + i * 1048576ULL : i);
+            };
             const auto begin = Clock::now();
             for (std::size_t i = 0; i < count; ++i)
             {
@@ -85,10 +88,15 @@ int main()
             std::printf(
                 "owner count=%zu sparse=%d lookups=%zu checksum=%llu create_us=%.3f lookup_us=%.3f retire_us=%.3f "
                 "logical_index_payload=%zu anonymous=1 final_alive=0 pending_gpu_frees=0 submissions=0\n",
-                count, sparse, count * 100, static_cast<unsigned long long>(checksum),
+                count,
+                sparse,
+                count * 100,
+                static_cast<unsigned long long>(checksum),
                 std::chrono::duration<double, std::micro>(created - begin).count(),
                 std::chrono::duration<double, std::micro>(looked_up - created).count(),
-                std::chrono::duration<double, std::micro>(retired - looked_up).count(), count * 32);
+                std::chrono::duration<double, std::micro>(retired - looked_up).count(),
+                count * 32
+            );
         }
     }
     {
@@ -97,29 +105,31 @@ int main()
         {
             bindings[i] = {i, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
         }
-        bindings[4] = {static_cast<std::uint32_t>(ELightSetBindings::SHADING_INPUTS),
-                       VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kShadingInputSlotCount, VK_SHADER_STAGE_FRAGMENT_BIT,
-                       nullptr};
+        bindings[4] = {
+            static_cast<std::uint32_t>(ELightSetBindings::SHADING_INPUTS),
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            kShadingInputSlotCount,
+            VK_SHADER_STAGE_FRAGMENT_BIT,
+            nullptr
+        };
         const auto layout = descriptors.registerLayout({.bindings = bindings, .debug_name = "owner light check"});
         const auto set = descriptors.allocate(layout);
         assert(set);
         LightResources lights;
-        assert(lights.init({{&device, &retire, 16, 1},
-                            device.logicalDevice(),
-                            device.vmaAllocator(),
-                            &descriptors,
-                            std::span(&set, 1)}));
+        assert(lights.init(
+            {{&device, &retire, 16, 1}, device.logicalDevice(), device.vmaAllocator(), &descriptors, std::span(&set, 1)}
+        ));
         const auto anonymous = lights.submit(PointLightDesc{});
-        assert(anonymous && lights.findSource(RenderEntityId{}).isNull());
+        assert(anonymous && lights.findSource(ERenderEntityId{}).isNull());
         lights.remove(*anonymous);
         assert(lights.lightCount(ELightSetBindings::LIGHT_POINT) == 0);
         const auto next = lights.submit(PointLightDesc{});
         assert(next && *next != *anonymous);
-        assert(lights.bindSource(RenderEntityId{}, *next) == LightResources::ESourceBindResult::INSERTED);
+        assert(lights.bindSource(ERenderEntityId{}, *next) == LightResources::ESourceBindResult::INSERTED);
         lights.remove(*anonymous);
-        assert(lights.findSource(RenderEntityId{}) == *next && lights.lightCount(ELightSetBindings::LIGHT_POINT) == 1);
+        assert(lights.findSource(ERenderEntityId{}) == *next && lights.lightCount(ELightSetBindings::LIGHT_POINT) == 1);
         lights.shutdown();
-        assert(lights.findSource(RenderEntityId{}).isNull() && lights.lightCount(ELightSetBindings::LIGHT_POINT) == 0);
+        assert(lights.findSource(ERenderEntityId{}).isNull() && lights.lightCount(ELightSetBindings::LIGHT_POINT) == 0);
     }
     retire.collect(0);
     assert(retire.pendingCount() == 0);

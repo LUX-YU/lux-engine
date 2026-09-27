@@ -17,8 +17,7 @@ namespace lux::render
 
     StandardMaterialFeature::StandardMaterialFeature(Config cfg)
         : RenderFeature(RenderFeature::Config{std::move(cfg.name)})
-    {
-    }
+    {}
 
     lux::render::Expected<void> StandardMaterialFeature::initAndAttachTo(RenderScene& sc)
     {
@@ -36,7 +35,7 @@ namespace lux::render
         const auto accepted = materials.addDomainWriteTarget(
             &sc,
             sc.domainDescriptorSets()->setsFor(rdesc::EBindFrequency::FEATURE),
-            engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::Material))
+            engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::MATERIAL))
         );
         if (!accepted)
             renderFatal("StandardMaterialFeature: material domain target is empty");

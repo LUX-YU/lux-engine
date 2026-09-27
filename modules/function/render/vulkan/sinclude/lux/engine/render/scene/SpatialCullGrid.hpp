@@ -201,9 +201,9 @@ namespace lux::render
         {
             std::size_t operator()(const CellKey& k) const noexcept
             {
-                return std::hash<std::uint64_t>{}(
-                    (static_cast<std::uint64_t>(static_cast<std::uint32_t>(k.x)) << 32) |
-                    static_cast<std::uint32_t>(k.y));
+                return std::hash<std::uint64_t>{
+                }((static_cast<std::uint64_t>(static_cast<std::uint32_t>(k.x)) << 32) | static_cast<std::uint32_t>(k.y)
+                );
             }
         };
 

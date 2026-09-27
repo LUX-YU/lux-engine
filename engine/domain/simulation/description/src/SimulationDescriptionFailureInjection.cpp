@@ -30,7 +30,8 @@ namespace lux::simulation::detail
                     pending,
                     pending & ~bit,
                     std::memory_order_acq_rel,
-                    std::memory_order_acquire))
+                    std::memory_order_acquire
+                ))
             {
                 return true;
             }

@@ -64,7 +64,6 @@ namespace lux::scene
                     reader.offset()
                 });
             }
-            try
             {
                 std::string value(*size, '\0');
                 auto read = reader.readBytes(std::as_writable_bytes(std::span(value)));
@@ -74,13 +73,6 @@ namespace lux::scene
                 }
                 charged += *size;
                 return value;
-            }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(lux::serialization::SerializationFailure{
-                    lux::serialization::ESerializationError::ALLOCATION_FAILURE,
-                    reader.offset()
-                });
             }
         }
 
@@ -124,35 +116,48 @@ namespace lux::scene
             {
                 return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
             }
-            try
             {
                 std::vector<std::byte> bytes;
                 bytes.reserve(kHeaderSize);
                 lux::serialization::BinaryWriter writer(bytes);
                 auto result = writer.writeUnsigned(SceneAssetPrimaryMagic);
-                if (result) result = writer.writeUnsigned(kVersion);
-                if (result) result = writer.writeBytes(scene.world().bytes());
-                if (result) result = writer.writeBytes(scene.simulation().bytes());
-                if (result) result = writer.writeUnsigned(static_cast<std::uint32_t>(scene.systemCount()));
-                if (result) result = writer.writeUnsigned(static_cast<std::uint32_t>(binding_count));
-                if (result) result = writer.writeUnsigned(static_cast<std::uint32_t>(scene.dependencyCount()));
-                if (result) result = writer.writeUnsigned(std::uint32_t{});
+                if (result)
+                    result = writer.writeUnsigned(kVersion);
+                if (result)
+                    result = writer.writeBytes(scene.world().bytes());
+                if (result)
+                    result = writer.writeBytes(scene.simulation().bytes());
+                if (result)
+                    result = writer.writeUnsigned(static_cast<std::uint32_t>(scene.systemCount()));
+                if (result)
+                    result = writer.writeUnsigned(static_cast<std::uint32_t>(binding_count));
+                if (result)
+                    result = writer.writeUnsigned(static_cast<std::uint32_t>(scene.dependencyCount()));
+                if (result)
+                    result = writer.writeUnsigned(std::uint32_t{});
 
                 for (std::size_t index{}; result && index < scene.systemCount(); ++index)
                 {
                     const auto system = scene.systemAt(index);
                     result = writer.writeUnsigned(system.instanceId().value);
-                    if (result) result = writeString(writer, system.instanceName());
-                    if (result) result = writer.writeUnsigned(system.type().hash);
-                    if (result) result = writeString(writer, system.type().name);
-                    if (result) result = writer.writeUnsigned(system.version());
-                    if (result) result = writeString(writer, system.configurationSchemaName());
-                    if (result) result = writer.writeUnsigned(system.configurationSchemaHash());
-                    if (result) result = writer.writeUnsigned(system.configurationSchemaVersion());
-                    if (result) result = writer.writeUnsigned(
-                        static_cast<std::uint64_t>(system.configurationPayload().size())
-                    );
-                    if (result) result = writer.writeBytes(system.configurationPayload());
+                    if (result)
+                        result = writeString(writer, system.instanceName());
+                    if (result)
+                        result = writer.writeUnsigned(system.type().hash);
+                    if (result)
+                        result = writeString(writer, system.type().name);
+                    if (result)
+                        result = writer.writeUnsigned(system.version());
+                    if (result)
+                        result = writeString(writer, system.configurationSchemaName());
+                    if (result)
+                        result = writer.writeUnsigned(system.configurationSchemaHash());
+                    if (result)
+                        result = writer.writeUnsigned(system.configurationSchemaVersion());
+                    if (result)
+                        result = writer.writeUnsigned(static_cast<std::uint64_t>(system.configurationPayload().size()));
+                    if (result)
+                        result = writer.writeBytes(system.configurationPayload());
                 }
                 for (std::size_t system_ordinal{}; result && system_ordinal < scene.systemCount(); ++system_ordinal)
                 {
@@ -161,8 +166,10 @@ namespace lux::scene
                     {
                         const auto value = system.requirementBindingAt(binding);
                         result = writer.writeUnsigned(static_cast<std::uint32_t>(system_ordinal));
-                        if (result) result = writeString(writer, value.requirement());
-                        if (result) result = writeString(writer, value.provider());
+                        if (result)
+                            result = writeString(writer, value.requirement());
+                        if (result)
+                            result = writeString(writer, value.provider());
                     }
                 }
                 for (std::size_t index{}; result && index < scene.dependencyCount(); ++index)
@@ -172,21 +179,20 @@ namespace lux::scene
                     for (std::size_t system_index{}; system_index < scene.systemCount(); ++system_index)
                     {
                         const auto candidate = scene.systemAt(system_index).instanceId();
-                        if (candidate == dependency.before()) before_index = static_cast<std::uint32_t>(system_index);
-                        if (candidate == dependency.after()) after_index = static_cast<std::uint32_t>(system_index);
+                        if (candidate == dependency.before())
+                            before_index = static_cast<std::uint32_t>(system_index);
+                        if (candidate == dependency.after())
+                            after_index = static_cast<std::uint32_t>(system_index);
                     }
                     result = writer.writeUnsigned(before_index);
-                    if (result) result = writer.writeUnsigned(after_index);
+                    if (result)
+                        result = writer.writeUnsigned(after_index);
                 }
                 if (!result || bytes.size() > max_encoded_bytes)
                 {
                     return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                 }
                 return bytes;
-            }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(lux::asset::EAssetCodecError::OUT_OF_MEMORY);
             }
         }
 
@@ -201,7 +207,6 @@ namespace lux::scene
             {
                 return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
             }
-            try
             {
                 lux::serialization::BinaryReader reader(input);
                 auto magic = reader.readUnsigned<std::uint32_t>();
@@ -215,8 +220,8 @@ namespace lux::scene
                 auto dependency_count = reader.readUnsigned<std::uint32_t>();
                 auto reserved = reader.readUnsigned<std::uint32_t>();
                 const bool invalid_header = !magic || !version || !world_read || !simulation_read || !system_count ||
-                    !binding_count || !dependency_count || !reserved || *magic != SceneAssetPrimaryMagic ||
-                    *version != kVersion || *reserved != 0U;
+                                            !binding_count || !dependency_count || !reserved ||
+                                            *magic != SceneAssetPrimaryMagic || *version != kVersion || *reserved != 0U;
                 if (invalid_header)
                 {
                     return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
@@ -254,9 +259,10 @@ namespace lux::scene
                         return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                     }
                     const system::SystemTypeId type{*type_hash, *type_name};
-                    const bool invalid_schema = schema_name->empty()
-                        ? (*schema_hash != 0U || *schema_version != 0U || *config_size != 0U)
-                        : (*schema_hash != lux::cxx::Fnv1a64::hash(*schema_name) || *schema_version == 0U);
+                    const bool invalid_schema =
+                        schema_name->empty()
+                            ? (*schema_hash != 0U || *schema_version != 0U || *config_size != 0U)
+                            : (*schema_hash != lux::cxx::Fnv1a64::hash(*schema_name) || *schema_version == 0U);
                     if (!system::SystemInstanceId{*id}.valid() || instance_name->empty() || !type.valid() ||
                         *system_version == 0U || invalid_schema)
                     {
@@ -277,7 +283,8 @@ namespace lux::scene
                             *system_version,
                             *schema_name,
                             *schema_version,
-                            config))
+                            config
+                        ))
                     {
                         return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                     }
@@ -315,10 +322,6 @@ namespace lux::scene
                 }
                 return std::make_shared<SceneDescription>(std::move(*built));
             }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(lux::asset::EAssetCodecError::OUT_OF_MEMORY);
-            }
         }
     } // namespace detail
 
@@ -328,8 +331,7 @@ namespace lux::scene
         std::vector<lux::asset::AssetAuxiliaryPayload> auxiliary
     ) noexcept
         : TAsset(std::move(info), std::move(data), std::move(auxiliary))
-    {
-    }
+    {}
 
     lux::cxx::expected<std::shared_ptr<const SceneAsset>, lux::asset::AssetDecodeFailure> SceneAsset::create(
         lux::asset::AssetInfo info,
@@ -340,13 +342,11 @@ namespace lux::scene
         const bool invalid = !data || data->world().isNull() || data->simulation().isNull();
         if (info.id.isNull() || invalid)
         {
-            return lux::cxx::unexpected(lux::asset::AssetDecodeFailure{
-                lux::asset::EAssetDecodeError::INVALID_PAYLOAD,
-                0U
-            });
+            return lux::cxx::unexpected(
+                lux::asset::AssetDecodeFailure{lux::asset::EAssetDecodeError::INVALID_PAYLOAD, 0U}
+            );
         }
         info.type = asset_type;
-        try
         {
             std::sort(auxiliary.begin(), auxiliary.end(), [](const auto& left, const auto& right) noexcept {
                 return left.tag < right.tag;
@@ -357,56 +357,42 @@ namespace lux::scene
                 const bool duplicate = index != 0U && auxiliary[index - 1U].tag == auxiliary[index].tag;
                 if (invalid_payload || duplicate)
                 {
-                    return lux::cxx::unexpected(lux::asset::AssetDecodeFailure{
-                        lux::asset::EAssetDecodeError::INVALID_PAYLOAD,
-                        index
-                    });
+                    return lux::cxx::unexpected(
+                        lux::asset::AssetDecodeFailure{lux::asset::EAssetDecodeError::INVALID_PAYLOAD, index}
+                    );
                 }
             }
             return std::shared_ptr<const SceneAsset>(
                 new SceneAsset(std::move(info), std::move(data), std::move(auxiliary))
             );
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(lux::asset::AssetDecodeFailure{
-                lux::asset::EAssetDecodeError::ALLOCATION_FAILURE,
-                0U
-            });
-        }
     }
 } // namespace lux::scene
 
 namespace lux::asset
 {
-    lux::cxx::expected<std::shared_ptr<const lux::scene::SceneAsset>, AssetDecodeFailure>
-    TAssetSerDeser<lux::scene::SceneAsset>::decode(
-        AssetId requested,
-        lux::cxx::SharedBytes<> cooked_image,
-        const AssetDecodeLimits& limits
-    ) noexcept
+    lux::cxx::expected<std::shared_ptr<const lux::scene::SceneAsset>, AssetDecodeFailure> TAssetSerDeser<
+        lux::scene::SceneAsset>::
+        decode(AssetId requested, lux::cxx::SharedBytes<> cooked_image, const AssetDecodeLimits& limits) noexcept
     {
         auto image = inspectCookedAssetImage(requested, std::move(cooked_image), limits);
-        if (!image) return lux::cxx::unexpected(image.error());
+        if (!image)
+            return lux::cxx::unexpected(image.error());
         if (image->magic() != lux::scene::SceneAsset::primary_magic)
             return lux::cxx::unexpected(AssetDecodeFailure{EAssetDecodeError::INVALID_MAGIC, 0U});
         if (image->metadata().legacy_type_tag != lux::scene::SceneAsset::legacy_type_tag)
             return lux::cxx::unexpected(AssetDecodeFailure{EAssetDecodeError::INVALID_TYPE, 0U});
         if (!image->information().empty())
             return lux::cxx::unexpected(AssetDecodeFailure{EAssetDecodeError::INVALID_LAYOUT, 0U});
-        auto description = lux::scene::detail::decode(
-            image->data().view(),
-            image->data().size(),
-            limits.max_decoded_bytes
-        );
+        auto description =
+            lux::scene::detail::decode(image->data().view(), image->data().size(), limits.max_decoded_bytes);
         if (!description)
         {
             const auto code = description.error() == EAssetCodecError::OUT_OF_MEMORY
-                ? EAssetDecodeError::ALLOCATION_FAILURE
-                : EAssetDecodeError::INVALID_PAYLOAD;
+                                  ? EAssetDecodeError::ALLOCATION_FAILURE
+                                  : EAssetDecodeError::INVALID_PAYLOAD;
             return lux::cxx::unexpected(AssetDecodeFailure{code, 0U});
         }
-        try
         {
             std::vector<AssetAuxiliaryPayload> auxiliary(
                 image->auxiliaryPayloads().begin(),
@@ -425,14 +411,9 @@ namespace lux::asset
                 std::move(auxiliary)
             );
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(AssetDecodeFailure{EAssetDecodeError::ALLOCATION_FAILURE, 0U});
-        }
     }
 
-    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
-    TAssetSerDeser<lux::scene::SceneAsset>::encode(
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<lux::scene::SceneAsset>::encode(
         const lux::scene::SceneAsset& asset,
         const AssetEncodeLimits& limits
     ) noexcept
@@ -440,9 +421,8 @@ namespace lux::asset
         auto payload = lux::scene::detail::encode(asset.data(), limits.max_encoded_bytes);
         if (!payload)
         {
-            const auto code = payload.error() == EAssetCodecError::OUT_OF_MEMORY
-                ? EAssetEncodeError::ALLOCATION_FAILURE
-                : EAssetEncodeError::INVALID_PAYLOAD;
+            const auto code = payload.error() == EAssetCodecError::OUT_OF_MEMORY ? EAssetEncodeError::ALLOCATION_FAILURE
+                                                                                 : EAssetEncodeError::INVALID_PAYLOAD;
             return lux::cxx::unexpected(AssetEncodeFailure{code, 0U});
         }
         return detail::encodeCookedAssetImage(

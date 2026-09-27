@@ -37,12 +37,11 @@ namespace lux::toolchain
         bool no_mips{};
     };
 
-    [[nodiscard]] LUX_ENGINE_TOOLCHAIN_TEXTURE_PUBLIC lux::cxx::expected<
-        std::shared_ptr<const lux::asset::TextureAsset>,
-        TextureCookFailure
-    > cookTexture(
-        lux::asset::AssetInfo metadata,
-        lux::cxx::SharedBytes<> authoring_image,
-        const TextureCookConfiguration& configuration
-    ) noexcept;
+    [[nodiscard]] LUX_ENGINE_TOOLCHAIN_TEXTURE_PUBLIC lux::cxx::
+        expected<std::shared_ptr<const lux::asset::TextureAsset>, TextureCookFailure>
+        cookTexture(
+            lux::asset::AssetInfo metadata,
+            lux::cxx::SharedBytes<> authoring_image,
+            const TextureCookConfiguration& configuration
+        ) noexcept;
 } // namespace lux::toolchain

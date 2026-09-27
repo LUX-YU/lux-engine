@@ -12,12 +12,20 @@ namespace lux::shadergen
 {
     uint64_t computeFingerprint(const ShaderIR& ir) noexcept
     {
-        uint64_t f = 1469598103934665603ull;  // FNV-1a 64
-        auto mix  = [&](uint64_t x) noexcept { f ^= x; f *= 1099511628211ull; };
-        auto mixf = [&](float v) noexcept { uint32_t u; std::memcpy(&u, &v, 4); mix(u); };
+        uint64_t f = 1469598103934665603ull; // FNV-1a 64
+        auto mix = [&](uint64_t x) noexcept {
+            f ^= x;
+            f *= 1099511628211ull;
+        };
+        auto mixf = [&](float v) noexcept {
+            uint32_t u;
+            std::memcpy(&u, &v, 4);
+            mix(u);
+        };
         auto mixs = [&](const std::string& s) noexcept {
             mix(s.size());
-            for (char ch : s) mix(static_cast<unsigned char>(ch));
+            for (char ch : s)
+                mix(static_cast<unsigned char>(ch));
         };
 
         mix(ir.values.size());
@@ -25,10 +33,13 @@ namespace lux::shadergen
         {
             mix(static_cast<uint16_t>(v.op));
             mix(static_cast<uint8_t>(v.type));
-            for (int k = 0; k < 4; ++k) mix(v.operands[k]);
+            for (int k = 0; k < 4; ++k)
+                mix(v.operands[k]);
             mix(v.slot);
-            for (int k = 0; k < 4; ++k) mix(v.swizzle[k]);
-            for (int k = 0; k < 4; ++k) mixf(v.constant[k]);
+            for (int k = 0; k < 4; ++k)
+                mix(v.swizzle[k]);
+            for (int k = 0; k < 4; ++k)
+                mixf(v.constant[k]);
         }
         mix(ir.outputs.size());
         for (const auto& o : ir.outputs)
@@ -41,7 +52,8 @@ namespace lux::shadergen
             // case; otherwise dflt has no effect on emission, and two graphs
             // that differ only in dflt must still hash identically.
             if (o.value_id == kNoValue)
-                for (int k = 0; k < 4; ++k) mixf(o.dflt[k]);
+                for (int k = 0; k < 4; ++k)
+                    mixf(o.dflt[k]);
         }
         mix(ir.inputs.size());
         for (const auto& s : ir.inputs)
@@ -68,7 +80,7 @@ namespace lux::shadergen
         for (const auto& r : ir.raw_blocks)
         {
             mixs(r.language);
-            mixs(r.code);  // raw text goes straight into the shader -> must be fingerprinted
+            mixs(r.code); // raw text goes straight into the shader -> must be fingerprinted
         }
         return f;
     }

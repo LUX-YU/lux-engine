@@ -48,12 +48,10 @@ namespace lux::script::lua
         inline static constexpr std::string_view name = "lux.lua.value";
         inline static constexpr std::uint32_t version = 1;
     };
-    template <class T, class Policy> struct LuaValueOverride
-    {
-    };
-    template <class T> struct LuaGeneratedValue
-    {
-    };
+    template <class T, class Policy> struct TLuaValueOverride
+    {};
+    template <class T> struct TLuaGeneratedValue
+    {};
     class LuaValueReader;
     class LuaValueWriter;
 
@@ -64,26 +62,32 @@ namespace lux::script::lua
 
     // An optional owns only a successfully constructed T. Explicit reverse reset is independent of
     // tuple's implementation-defined element destruction order. No T is default constructed.
-    template <class... T> class LuaValueSlots final
+    template <class... T> class TLuaValueSlots final
     {
-      public:
-        LuaValueSlots() noexcept = default;
-        LuaValueSlots(const LuaValueSlots &) = delete;
-        LuaValueSlots &operator=(const LuaValueSlots &) = delete;
-        ~LuaValueSlots() noexcept { clear(std::index_sequence_for<T...>{}); }
-        template <std::size_t I, class V> void put(V &&value) noexcept
+    public:
+        TLuaValueSlots() noexcept = default;
+        TLuaValueSlots(const TLuaValueSlots&) = delete;
+        TLuaValueSlots& operator=(const TLuaValueSlots&) = delete;
+        ~TLuaValueSlots() noexcept
+        {
+            clear(std::index_sequence_for<T...>{});
+        }
+        template <std::size_t I, class V> void put(V&& value) noexcept
         {
             using Value = std::tuple_element_t<I, std::tuple<T...>>;
-            static_assert(std::is_nothrow_constructible_v<Value, V &&> && std::is_nothrow_destructible_v<Value>);
+            static_assert(std::is_nothrow_constructible_v<Value, V&&> && std::is_nothrow_destructible_v<Value>);
             std::get<I>(values_).emplace(std::forward<V>(value));
         }
-        template <std::size_t I> auto &get() noexcept { return *std::get<I>(values_); }
-        template <class F> decltype(auto) apply(F &&f) noexcept
+        template <std::size_t I> auto& get() noexcept
         {
-            return std::apply([&](auto &...slot) noexcept -> decltype(auto) { return f(*slot...); }, values_);
+            return *std::get<I>(values_);
+        }
+        template <class F> decltype(auto) apply(F&& f) noexcept
+        {
+            return std::apply([&](auto&... slot) noexcept -> decltype(auto) { return f(*slot...); }, values_);
         }
 
-      private:
+    private:
         template <std::size_t... I> void clear(std::index_sequence<I...>) noexcept
         {
             (std::get<sizeof...(T) - 1 - I>(values_).reset(), ...);
@@ -93,19 +97,29 @@ namespace lux::script::lua
 
     namespace detail
     {
-        enum class ELuaPlainKind : std::uint8_t { NUMBER, BOOLEAN, RECORD };
-        struct LuaFieldLookup final { std::uint64_t hash; std::uint32_t ordinal; };
+        enum class ELuaPlainKind : std::uint8_t
+        {
+            NUMBER,
+            BOOLEAN,
+            RECORD
+        };
+        struct LuaFieldLookup final
+        {
+            std::uint64_t hash;
+            std::uint32_t ordinal;
+        };
         constexpr std::uint64_t luaFieldHash(std::string_view value) noexcept
         {
             std::uint64_t hash = 14695981039346656037ULL;
-            for (unsigned char c : value) hash = (hash ^ c) * 1099511628211ULL;
+            for (unsigned char c : value)
+                hash = (hash ^ c) * 1099511628211ULL;
             return hash;
         }
-        template <std::size_t N>
-        consteval auto makeLuaFieldLookup(const std::array<std::string_view, N>& keys) noexcept
+        template <std::size_t N> consteval auto makeLuaFieldLookup(const std::array<std::string_view, N>& keys) noexcept
         {
             std::array<LuaFieldLookup, N> result{};
-            for (std::size_t i{}; i < N; ++i) result[i] = {luaFieldHash(keys[i]), static_cast<std::uint32_t>(i)};
+            for (std::size_t i{}; i < N; ++i)
+                result[i] = {luaFieldHash(keys[i]), static_cast<std::uint32_t>(i)};
             for (std::size_t i = 1U; i < N; ++i)
                 for (std::size_t j = i; j != 0U && result[j].hash < result[j - 1U].hash; --j)
                 {
@@ -129,7 +143,11 @@ namespace lux::script::lua
             std::span<double> scratch;
             std::array<std::string_view, 33U> path{};
             std::size_t path_size{}, cursor{};
-            [[nodiscard]] bool reject(ELuaValueError code) noexcept { failure->code = code; return false; }
+            [[nodiscard]] bool reject(ELuaValueError code) noexcept
+            {
+                failure->code = code;
+                return false;
+            }
             [[nodiscard]] bool reserve(std::size_t& slot) noexcept
             {
                 slot = cursor++;
@@ -141,7 +159,10 @@ namespace lux::script::lua
                 path_size = depth + 1U;
             }
         };
-        struct LuaCodecTable final { int table{}, keys{}; };
+        struct LuaCodecTable final
+        {
+            int table{}, keys{};
+        };
         static_assert(std::is_trivially_destructible_v<LuaCodecFrame>);
         static_assert(std::is_trivially_destructible_v<LuaCodecTable>);
         class LUX_FUNCTION_PUBLIC LuaPlainAccess final
@@ -173,38 +194,54 @@ namespace lux::script::lua
         };
         class LUX_FUNCTION_PUBLIC LuaValueAccess final
         {
-          public:
+        public:
             // Initialization is a protected cold operation, including trampoline allocation.
-            [[nodiscard]] static bool initialize(lua_State *) noexcept;
-            [[nodiscard]] static int top(lua_State *) noexcept;
-            [[nodiscard]] static int absolute(lua_State *, int) noexcept;
-            [[nodiscard]] static bool boolean(lua_State *, int, bool &) noexcept;
-            [[nodiscard]] static bool number(lua_State *, int, double &) noexcept;
-            [[nodiscard]] static bool pushBoolean(lua_State *, bool) noexcept;
-            [[nodiscard]] static bool pushNumber(lua_State *, double) noexcept;
-            [[nodiscard]] static int failure(lua_State *, const char *) noexcept;
-            [[nodiscard]] static bool table(lua_State *, int fields) noexcept;
+            [[nodiscard]] static bool initialize(lua_State*) noexcept;
+            [[nodiscard]] static int top(lua_State*) noexcept;
+            [[nodiscard]] static int absolute(lua_State*, int) noexcept;
+            [[nodiscard]] static bool boolean(lua_State*, int, bool&) noexcept;
+            [[nodiscard]] static bool number(lua_State*, int, double&) noexcept;
+            [[nodiscard]] static bool pushBoolean(lua_State*, bool) noexcept;
+            [[nodiscard]] static bool pushNumber(lua_State*, double) noexcept;
+            [[nodiscard]] static int failure(lua_State*, const char*) noexcept;
+            [[nodiscard]] static bool table(lua_State*, int fields) noexcept;
             [[nodiscard]] static bool prepare(lua_State*, const LuaCodecPlan&) noexcept;
             [[nodiscard]] static bool prepareShape(lua_State*, const LuaCodecShape&) noexcept;
             [[nodiscard]] static LuaValueResult<void> writePlan(lua_State*, const LuaCodecPlan&, const void*) noexcept;
-            [[nodiscard]] static LuaValueResult<void> readPlan(lua_State*, int, const LuaCodecPlan&, std::span<double>) noexcept;
-            [[nodiscard]] static LuaValueResult<void> shape(lua_State *, int,
-                                                            std::span<const std::string_view>, const LuaCodecShape* = nullptr) noexcept;
-            [[nodiscard]] static bool field(lua_State*, int, std::string_view, const LuaCodecShape* = nullptr, std::size_t = 0U) noexcept;
-            [[nodiscard]] static bool setField(lua_State*, int, std::string_view, const LuaCodecShape* = nullptr, std::size_t = 0U) noexcept;
+            [[nodiscard]] static LuaValueResult<void>
+            readPlan(lua_State*, int, const LuaCodecPlan&, std::span<double>) noexcept;
+            [[nodiscard]] static LuaValueResult<void> shape(
+                lua_State*,
+                int,
+                std::span<const std::string_view>,
+                const LuaCodecShape* = nullptr
+            ) noexcept;
+            [[nodiscard]] static bool field(
+                lua_State*,
+                int,
+                std::string_view,
+                const LuaCodecShape* = nullptr,
+                std::size_t = 0U
+            ) noexcept;
+            [[nodiscard]] static bool setField(
+                lua_State*,
+                int,
+                std::string_view,
+                const LuaCodecShape* = nullptr,
+                std::size_t = 0U
+            ) noexcept;
             // Only discard scratch values created by this API. They are never marked to-be-closed.
-            static void restoreScratch(lua_State *, int) noexcept;
+            static void restoreScratch(lua_State*, int) noexcept;
         };
     } // namespace detail
 
     class LuaValueReader final
     {
-      public:
+    public:
         // Trusted adapter entry; codecs only receive the resulting restricted reader.
-        LuaValueReader(lua_State *state, int index, std::size_t depth = 0) noexcept
+        LuaValueReader(lua_State* state, int index, std::size_t depth = 0) noexcept
             : state_(state), index_(index > 0 ? index : detail::LuaValueAccess::absolute(state, index)), depth_(depth)
-        {
-        }
+        {}
         [[nodiscard]] LuaValueResult<bool> boolean() const noexcept
         {
             bool value{};
@@ -230,26 +267,33 @@ namespace lux::script::lua
                 return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::RANGE});
             return static_cast<T>(value);
         }
-        [[nodiscard]] LuaValueResult<void> shape(std::span<const std::string_view> keys, const detail::LuaCodecShape* plan = nullptr) const noexcept
+        [[nodiscard]] LuaValueResult<void> shape(
+            std::span<const std::string_view> keys,
+            const detail::LuaCodecShape* plan = nullptr
+        ) const noexcept
         {
             if (depth_ >= 32 || keys.size() > 64)
                 return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::CAPACITY});
             return detail::LuaValueAccess::shape(state_, index_, keys, plan);
         }
         template <class T, class Policy = LuaValuePolicy>
-        [[nodiscard]] LuaValueResult<T> field(std::string_view, const detail::LuaCodecShape* = nullptr, std::size_t = 0U) const noexcept;
+        [[nodiscard]] LuaValueResult<T> field(
+            std::string_view,
+            const detail::LuaCodecShape* = nullptr,
+            std::size_t = 0U
+        ) const noexcept;
 
-      private:
-        template <class, class> friend struct LuaValueCodec;
-        lua_State *state_{};
+    private:
+        template <class, class> friend struct TLuaValueCodec;
+        lua_State* state_{};
         int index_{};
         std::size_t depth_{};
     };
 
     class LuaValueWriter final
     {
-      public:
-        explicit LuaValueWriter(lua_State *state, std::size_t depth = 0) noexcept : state_(state), depth_(depth) {}
+    public:
+        explicit LuaValueWriter(lua_State* state, std::size_t depth = 0) noexcept : state_(state), depth_(depth) {}
         [[nodiscard]] LuaValueResult<void> boolean(bool value) noexcept
         {
             if (!detail::LuaValueAccess::pushBoolean(state_, value))
@@ -263,7 +307,7 @@ namespace lux::script::lua
                 return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::VM_FAILURE});
             return {};
         }
-        template <class F> [[nodiscard]] LuaValueResult<void> record(std::size_t count, F &&fields) noexcept
+        template <class F> [[nodiscard]] LuaValueResult<void> record(std::size_t count, F&& fields) noexcept
         {
             if (depth_ >= 32 || count > 64)
                 return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::CAPACITY});
@@ -278,16 +322,21 @@ namespace lux::script::lua
             return result;
         }
         template <class T, class Policy = LuaValuePolicy>
-        [[nodiscard]] LuaValueResult<void> field(std::string_view, const T&, const detail::LuaCodecShape* = nullptr, std::size_t = 0U) noexcept;
+        [[nodiscard]] LuaValueResult<void> field(
+            std::string_view,
+            const T&,
+            const detail::LuaCodecShape* = nullptr,
+            std::size_t = 0U
+        ) noexcept;
 
-      private:
-        lua_State *state_{};
+    private:
+        lua_State* state_{};
         std::size_t depth_{};
         int table_{};
-        template <class, class> friend struct LuaValueCodec;
+        template <class, class> friend struct TLuaValueCodec;
     };
 
-    template <class T> struct LuaScalarValue
+    template <class T> struct TLuaScalarValue
     {
         inline static constexpr std::string_view name = [] {
             if constexpr (std::is_same_v<T, bool>)
@@ -304,14 +353,14 @@ namespace lux::script::lua
         inline static constexpr std::uint32_t version = 1;
         inline static constexpr std::size_t storage = sizeof(T);
         inline static constexpr std::size_t depth = 0;
-        static LuaValueResult<T> read(LuaValueReader &input) noexcept
+        static LuaValueResult<T> read(LuaValueReader& input) noexcept
         {
             if constexpr (std::is_same_v<T, bool>)
                 return input.boolean();
             else
                 return input.number<T>();
         }
-        static LuaValueResult<void> push(LuaValueWriter &output, const T &value) noexcept
+        static LuaValueResult<void> push(LuaValueWriter& output, const T& value) noexcept
         {
             if constexpr (std::is_same_v<T, bool>)
                 return output.boolean(value);
@@ -320,23 +369,24 @@ namespace lux::script::lua
         }
     };
 
-    template <class T, class Policy = LuaValuePolicy> struct LuaValueCodec
+    template <class T, class Policy = LuaValuePolicy> struct TLuaValueCodec
     {
         using Value = std::remove_cvref_t<T>;
-        using Override = LuaValueOverride<Value, Policy>;
+        using Override = TLuaValueOverride<Value, Policy>;
         inline static constexpr bool custom = requires { Override::name; };
         // Selection is for the complete representation, not separately for read and push.
         using Rule = std::conditional_t<
-            custom, Override,
-            std::conditional_t<LuaValueScalar<Value>, LuaScalarValue<Value>, LuaGeneratedValue<Value>>>;
-        inline static constexpr bool can_read = requires(LuaValueReader &input) {
+            custom,
+            Override,
+            std::conditional_t<LuaValueScalar<Value>, TLuaScalarValue<Value>, TLuaGeneratedValue<Value>>>;
+        inline static constexpr bool can_read = requires(LuaValueReader& input) {
             { Rule::template read<Policy>(input) } noexcept -> std::same_as<LuaValueResult<Value>>;
-        } || requires(LuaValueReader &input) {
+        } || requires(LuaValueReader& input) {
             { Rule::read(input) } noexcept -> std::same_as<LuaValueResult<Value>>;
         };
-        inline static constexpr bool can_push = requires(LuaValueWriter &output, const Value &value) {
+        inline static constexpr bool can_push = requires(LuaValueWriter& output, const Value& value) {
             { Rule::template push<Policy>(output, value) } noexcept -> std::same_as<LuaValueResult<void>>;
-        } || requires(LuaValueWriter &output, const Value &value) {
+        } || requires(LuaValueWriter& output, const Value& value) {
             { Rule::push(output, value) } noexcept -> std::same_as<LuaValueResult<void>>;
         };
         static consteval std::size_t storageSize() noexcept
@@ -398,12 +448,12 @@ namespace lux::script::lua
             integer(sizeof(Value));
             integer(alignof(Value));
             if constexpr (lux::semantic::TypeDeclared<Value>)
-                text(lux::semantic::TypeTraits<Value>::CanonicalName);
+                text(lux::semantic::TTypeTraits<Value>::CanonicalName);
             if constexpr (requires { Rule::template fieldsFingerprint<Policy>(); })
                 integer(Rule::template fieldsFingerprint<Policy>());
             return hash;
         }
-        static LuaValueResult<Value> read(LuaValueReader &input) noexcept
+        static LuaValueResult<Value> read(LuaValueReader& input) noexcept
         {
             if constexpr (can_read && bounded && plainCount() > 1U && plainCount() <= 8192U)
             {
@@ -411,7 +461,8 @@ namespace lux::script::lua
                     return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::CAPACITY});
                 std::array<double, plainCount()> scratch;
                 const auto read = detail::LuaValueAccess::readPlan(input.state_, input.index_, plan(), scratch);
-                if (!read) return lux::cxx::unexpected(read.error());
+                if (!read)
+                    return lux::cxx::unexpected(read.error());
                 std::size_t cursor{};
                 return consumePlain(scratch, cursor);
             }
@@ -432,28 +483,33 @@ namespace lux::script::lua
             {
                 if constexpr (std::is_enum_v<Value> || std::is_aggregate_v<Value>)
                     return Rule::template plainCount<Policy>();
-                else return 0;
+                else
+                    return 0;
             }
-            else return 0;
+            else
+                return 0;
         }
         static bool validatePlain(double value) noexcept
         {
             if constexpr (LuaValueScalar<Value>)
             {
-                if (!std::isfinite(value)) return false;
-                if constexpr (std::is_same_v<Value, bool>) return true;
+                if (!std::isfinite(value))
+                    return false;
+                if constexpr (std::is_same_v<Value, bool>)
+                    return true;
                 else if constexpr (std::is_integral_v<Value>)
                     return std::trunc(value) == value &&
-                        value >= static_cast<double>((std::numeric_limits<Value>::lowest)()) &&
-                        value <= static_cast<double>((std::numeric_limits<Value>::max)());
-                else return value >= -static_cast<double>((std::numeric_limits<Value>::max)()) &&
-                    value <= static_cast<double>((std::numeric_limits<Value>::max)());
+                           value >= static_cast<double>((std::numeric_limits<Value>::lowest)()) &&
+                           value <= static_cast<double>((std::numeric_limits<Value>::max)());
+                else
+                    return value >= -static_cast<double>((std::numeric_limits<Value>::max)()) &&
+                           value <= static_cast<double>((std::numeric_limits<Value>::max)());
             }
             else
             {
                 using Underlying = typename Rule::Underlying;
-                return LuaValueCodec<Underlying, Policy>::validatePlain(value) &&
-                    Rule::valid(static_cast<Value>(static_cast<Underlying>(value)));
+                return TLuaValueCodec<Underlying, Policy>::validatePlain(value) &&
+                       Rule::valid(static_cast<Value>(static_cast<Underlying>(value)));
             }
         }
         static bool writePlain(detail::LuaCodecFrame& frame, const void* pointer, std::size_t level) noexcept
@@ -462,11 +518,13 @@ namespace lux::script::lua
             {
                 const auto value = *static_cast<const Value*>(pointer);
                 if constexpr (std::is_enum_v<Value>)
-                    if (!Rule::valid(value)) return frame.reject(ELuaValueError::RANGE);
+                    if (!Rule::valid(value))
+                        return frame.reject(ELuaValueError::RANGE);
                 detail::LuaPlainAccess::writeNumber(frame, static_cast<double>(value), std::is_same_v<Value, bool>);
                 return true;
             }
-            else return Rule::template writePlain<Policy>(frame, *static_cast<const Value*>(pointer), level);
+            else
+                return Rule::template writePlain<Policy>(frame, *static_cast<const Value*>(pointer), level);
         }
         static bool readPlain(detail::LuaCodecFrame& frame, int input, std::size_t level) noexcept
         {
@@ -475,12 +533,15 @@ namespace lux::script::lua
                 std::size_t slot{};
                 double value{};
                 if (!frame.reserve(slot) ||
-                    !detail::LuaPlainAccess::readNumber(frame, input, std::is_same_v<Value, bool>, value)) return false;
-                if (!validatePlain(value)) return frame.reject(ELuaValueError::RANGE);
+                    !detail::LuaPlainAccess::readNumber(frame, input, std::is_same_v<Value, bool>, value))
+                    return false;
+                if (!validatePlain(value))
+                    return frame.reject(ELuaValueError::RANGE);
                 frame.scratch[slot] = value;
                 return true;
             }
-            else return Rule::template readPlain<Policy>(frame, input, level);
+            else
+                return Rule::template readPlain<Policy>(frame, input, level);
         }
         static const detail::LuaCodecPlan& plan() noexcept
         {
@@ -488,24 +549,32 @@ namespace lux::script::lua
             {
                 static constexpr detail::LuaCodecPlan result{
                     std::is_same_v<Value, bool> ? detail::ELuaPlainKind::BOOLEAN : detail::ELuaPlainKind::NUMBER,
-                    2U, {}, &writePlain, &readPlain, nullptr
+                    2U,
+                    {},
+                    &writePlain,
+                    &readPlain,
+                    nullptr
                 };
                 return result;
             }
-            else return Rule::template plan<Policy>();
+            else
+                return Rule::template plan<Policy>();
         }
         static bool prepare(lua_State* state) noexcept
         {
             if constexpr (!custom && requires { Rule::template prepare<Policy>(state); })
                 return Rule::template prepare<Policy>(state);
-            else return true;
+            else
+                return true;
         }
         static Value consumePlain(std::span<const double> values, std::size_t& cursor) noexcept
         {
-            if constexpr (LuaValueScalar<Value>) return static_cast<Value>(values[cursor++]);
-            else return Rule::template consumePlain<Policy>(values, cursor);
+            if constexpr (LuaValueScalar<Value>)
+                return static_cast<Value>(values[cursor++]);
+            else
+                return Rule::template consumePlain<Policy>(values, cursor);
         }
-        static LuaValueResult<void> push(LuaValueWriter &output, const Value &value) noexcept
+        static LuaValueResult<void> push(LuaValueWriter& output, const Value& value) noexcept
         {
             if constexpr (can_push && bounded && plainCount() > 1U && plainCount() <= 8192U)
             {
@@ -522,23 +591,33 @@ namespace lux::script::lua
         }
     };
 
-    template <class T, class Policy> LuaValueResult<T> LuaValueReader::field(std::string_view name, const detail::LuaCodecShape* plan, std::size_t ordinal) const noexcept
+    template <class T, class Policy>
+    LuaValueResult<T> LuaValueReader::field(
+        std::string_view name,
+        const detail::LuaCodecShape* plan,
+        std::size_t ordinal
+    ) const noexcept
     {
         const auto base = detail::LuaValueAccess::top(state_);
         if (!detail::LuaValueAccess::field(state_, index_, name, plan, ordinal))
             return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::VM_FAILURE});
         LuaValueReader child{state_, base + 1, depth_ + 1};
-        auto value = LuaValueCodec<T, Policy>::read(child);
+        auto value = TLuaValueCodec<T, Policy>::read(child);
         detail::LuaValueAccess::restoreScratch(state_, base);
         if (!value)
             value.error().prepend(name);
         return value;
     }
     template <class T, class Policy>
-    LuaValueResult<void> LuaValueWriter::field(std::string_view name, const T& value, const detail::LuaCodecShape* plan, std::size_t ordinal) noexcept
+    LuaValueResult<void> LuaValueWriter::field(
+        std::string_view name,
+        const T& value,
+        const detail::LuaCodecShape* plan,
+        std::size_t ordinal
+    ) noexcept
     {
         const auto base = detail::LuaValueAccess::top(state_);
-        auto result = LuaValueCodec<T, Policy>::push(*this, value);
+        auto result = TLuaValueCodec<T, Policy>::push(*this, value);
         if (result && detail::LuaValueAccess::top(state_) != base + 1)
             result = lux::cxx::unexpected(LuaValueFailure{ELuaValueError::CONSTRUCTION});
         if (result && !detail::LuaValueAccess::setField(state_, table_, name, plan, ordinal))
@@ -549,24 +628,27 @@ namespace lux::script::lua
         return result;
     }
 
-    template <std::size_t N> struct LuaFieldName final
+    template <std::size_t N> struct TLuaFieldName final
     {
         char text[N];
-        constexpr LuaFieldName(const char (&value)[N]) noexcept
+        constexpr TLuaFieldName(const char (&value)[N]) noexcept
         {
             for (std::size_t i{}; i < N; ++i)
                 text[i] = value[i];
         }
-        constexpr operator std::string_view() const noexcept { return {text, N - 1}; }
+        constexpr operator std::string_view() const noexcept
+        {
+            return {text, N - 1};
+        }
     };
-    template <auto Member, LuaFieldName Name> struct LuaValueField final
+    template <auto Member, TLuaFieldName Name> struct TLuaValueField final
     {
         inline static constexpr auto member = Member;
         inline static constexpr std::string_view name = Name;
         template <class T> using Value = std::remove_cvref_t<decltype(std::declval<T>().*Member)>;
     };
 
-    template <class T, class... Field> struct LuaRecordValue
+    template <class T, class... Field> struct TLuaRecordValue
     {
         static_assert(!std::is_union_v<T>, "Lua values do not support unions");
         inline static constexpr std::string_view name = "lux.lua.raw-record";
@@ -583,7 +665,7 @@ namespace lux::script::lua
                      hash ^= c;
                      hash *= 1099511628211ULL;
                  }
-                 hash ^= LuaValueCodec<typename Field::template Value<T>, Policy>::representation();
+                 hash ^= TLuaValueCodec<typename Field::template Value<T>, Policy>::representation();
                  hash *= 1099511628211ULL;
              }()),
              ...);
@@ -592,87 +674,109 @@ namespace lux::script::lua
         template <class Policy> static consteval std::size_t plainCount() noexcept
         {
             if constexpr (sizeof...(Field) > 64U ||
-                !((LuaValueCodec<typename Field::template Value<T>, Policy>::plainCount() != 0U) && ...))
+                          !((TLuaValueCodec<typename Field::template Value<T>, Policy>::plainCount() != 0U) && ...))
                 return 0U;
-            else return 1U + (std::size_t{0U} + ... +
-                LuaValueCodec<typename Field::template Value<T>, Policy>::plainCount());
+            else
+                return 1U + (std::size_t{0U} + ... +
+                             TLuaValueCodec<typename Field::template Value<T>, Policy>::plainCount());
         }
         template <class Policy> static const detail::LuaCodecPlan& plan() noexcept
         {
-            static constexpr std::array<detail::LuaCodecField, sizeof...(Field)> fields{{
-                {Field::name, &LuaValueCodec<typename Field::template Value<T>, Policy>::plan}...
-            }};
-            static constexpr detail::LuaCodecPlan result{detail::ELuaPlainKind::RECORD,
-                static_cast<std::uint32_t>(depthFor<Policy>() * 4U + 8U), fields,
-                &LuaValueCodec<T, Policy>::writePlain, &LuaValueCodec<T, Policy>::readPlain, &shape_plan};
+            static constexpr std::array<detail::LuaCodecField, sizeof...(Field)> fields{
+                {{Field::name, &TLuaValueCodec<typename Field::template Value<T>, Policy>::plan}...}
+            };
+            static constexpr detail::LuaCodecPlan result{
+                detail::ELuaPlainKind::RECORD,
+                static_cast<std::uint32_t>(depthFor<Policy>() * 4U + 8U),
+                fields,
+                &TLuaValueCodec<T, Policy>::writePlain,
+                &TLuaValueCodec<T, Policy>::readPlain,
+                &shape_plan
+            };
             return result;
         }
-        template<class Policy>
+        template <class Policy>
         static bool writePlain(detail::LuaCodecFrame& frame, const T& value, std::size_t level) noexcept
         {
             const auto table = detail::LuaPlainAccess::writeRecord(frame, shape_plan);
             std::size_t ordinal{};
-            const bool success = (([&]() noexcept {
-                frame.field(level, Field::name);
-                if (!LuaValueCodec<typename Field::template Value<T>, Policy>::writePlain(
-                    frame, std::addressof(value.*Field::member), level + 1U)) return false;
-                frame.path_size = level + 1U;
-                detail::LuaPlainAccess::writeField(frame, table, ordinal++);
-                return true;
-            }()) && ...);
-            if (success) detail::LuaPlainAccess::finishRecord(frame, table);
+            const bool success =
+                (([&]() noexcept {
+                     frame.field(level, Field::name);
+                     if (!TLuaValueCodec<typename Field::template Value<T>, Policy>::writePlain(
+                             frame,
+                             std::addressof(value.*Field::member),
+                             level + 1U
+                         ))
+                         return false;
+                     frame.path_size = level + 1U;
+                     detail::LuaPlainAccess::writeField(frame, table, ordinal++);
+                     return true;
+                 }()) &&
+                 ...);
+            if (success)
+                detail::LuaPlainAccess::finishRecord(frame, table);
             return success;
         }
-        template<class Policy>
+        template <class Policy>
         static bool readPlain(detail::LuaCodecFrame& frame, int input, std::size_t level) noexcept
         {
             std::size_t slot{};
             detail::LuaCodecTable table;
-            if (!frame.reserve(slot) || !detail::LuaPlainAccess::readRecord(frame, input, shape_plan, table)) return false;
+            if (!frame.reserve(slot) || !detail::LuaPlainAccess::readRecord(frame, input, shape_plan, table))
+                return false;
             std::size_t ordinal{};
-            const bool success = (([&]() noexcept {
-                frame.field(level, Field::name);
-                const auto child = detail::LuaPlainAccess::readField(frame, table, ordinal++);
-                if (!LuaValueCodec<typename Field::template Value<T>, Policy>::readPlain(frame, child, level + 1U))
-                    return false;
-                detail::LuaPlainAccess::popField(frame);
-                return true;
-            }()) && ...);
-            if (success) detail::LuaPlainAccess::finishRecord(frame, table);
+            const bool success =
+                (([&]() noexcept {
+                     frame.field(level, Field::name);
+                     const auto child = detail::LuaPlainAccess::readField(frame, table, ordinal++);
+                     if (!TLuaValueCodec<typename Field::template Value<T>, Policy>::readPlain(
+                             frame,
+                             child,
+                             level + 1U
+                         ))
+                         return false;
+                     detail::LuaPlainAccess::popField(frame);
+                     return true;
+                 }()) &&
+                 ...);
+            if (success)
+                detail::LuaPlainAccess::finishRecord(frame, table);
             return success;
         }
         template <class Policy> static bool prepare(lua_State* state) noexcept
         {
             return detail::LuaValueAccess::prepareShape(state, shape_plan) &&
-                (LuaValueCodec<typename Field::template Value<T>, Policy>::prepare(state) && ...);
+                   (TLuaValueCodec<typename Field::template Value<T>, Policy>::prepare(state) && ...);
         }
-        template <class Policy>
-        static T consumePlain(std::span<const double> values, std::size_t& cursor) noexcept
+        template <class Policy> static T consumePlain(std::span<const double> values, std::size_t& cursor) noexcept
         {
             ++cursor; // A record has no scalar payload. Never read its uninitialized scratch slot.
-            return T{LuaValueCodec<typename Field::template Value<T>, Policy>::consumePlain(values, cursor)...};
+            return T{TLuaValueCodec<typename Field::template Value<T>, Policy>::consumePlain(values, cursor)...};
         }
-        using Slots = LuaValueSlots<typename Field::template Value<T>...>;
+        using Slots = TLuaValueSlots<typename Field::template Value<T>...>;
         template <class Policy> static consteval std::size_t storageFor() noexcept
         {
             std::size_t bytes = sizeof(Slots) + sizeof(T) + 2 * sizeof(LuaValueResult<void>);
-            for (auto child : {std::size_t{0}, LuaValueCodec<typename Field::template Value<T>, Policy>::storage...})
+            for (auto child : {std::size_t{0}, TLuaValueCodec<typename Field::template Value<T>, Policy>::storage...})
                 bytes = bytes > 65536 || child > 65536 - bytes ? 65537 : bytes + child;
             return bytes;
         }
         template <class Policy> static consteval std::size_t depthFor() noexcept
         {
             std::size_t value{};
-            for (auto child : {std::size_t{0}, LuaValueCodec<typename Field::template Value<T>, Policy>::depth...})
+            for (auto child : {std::size_t{0}, TLuaValueCodec<typename Field::template Value<T>, Policy>::depth...})
                 if (child > value)
                     value = child;
             return value > 32 ? std::size_t{33} : value + 1;
         }
         template <class Policy = LuaValuePolicy>
-        static LuaValueResult<T> read(LuaValueReader &input) noexcept
-            requires(std::is_aggregate_v<T> &&
-                     (LuaValueCodec<typename Field::template Value<T>, Policy>::can_read && ...) &&
-                     requires { T{std::declval<typename Field::template Value<T>>()...}; })
+        static LuaValueResult<T> read(LuaValueReader& input) noexcept
+            requires(
+                std::is_aggregate_v<T> &&
+                (TLuaValueCodec<typename Field::template Value<T>, Policy>::can_read && ...) &&
+                requires { T{std::declval<typename Field::template Value<T>>()...}; }
+            )
         {
             static_assert(noexcept(T{std::declval<typename Field::template Value<T>>()...}));
             auto shape = input.shape(keys, &shape_plan);
@@ -695,19 +799,23 @@ namespace lux::script::lua
             }(std::index_sequence_for<Field...>{});
             if (!result)
                 return lux::cxx::unexpected(result.error());
-            return values.apply([](auto &...field) noexcept { return T{std::move(field)...}; });
+            return values.apply([](auto&... field) noexcept { return T{std::move(field)...}; });
         }
         template <class Policy = LuaValuePolicy>
-        static LuaValueResult<void> push(LuaValueWriter &output, const T &value) noexcept
-            requires((LuaValueCodec<typename Field::template Value<T>, Policy>::can_push && ...))
+        static LuaValueResult<void> push(LuaValueWriter& output, const T& value) noexcept
+            requires((TLuaValueCodec<typename Field::template Value<T>, Policy>::can_push && ...))
         {
-            return output.record(sizeof...(Field), [&](LuaValueWriter &table) noexcept {
+            return output.record(sizeof...(Field), [&](LuaValueWriter& table) noexcept {
                 LuaValueResult<void> result;
                 std::size_t ordinal{};
                 (([&]() noexcept {
                      if (result)
-                         result = table.template field<typename Field::template Value<T>, Policy>(Field::name,
-                                                                                                  value.*Field::member, &shape_plan, ordinal++);
+                         result = table.template field<typename Field::template Value<T>, Policy>(
+                             Field::name,
+                             value.*Field::member,
+                             &shape_plan,
+                             ordinal++
+                         );
                  }()),
                  ...);
                 return result;
@@ -715,7 +823,7 @@ namespace lux::script::lua
         }
     };
 
-    template <class T, T... Values> struct LuaEnumValue
+    template <class T, T... Values> struct TLuaEnumValue
     {
         using Underlying = std::underlying_type_t<T>;
         static_assert(std::is_same_v<Underlying, std::int32_t> || std::is_same_v<Underlying, std::uint32_t>);
@@ -727,18 +835,31 @@ namespace lux::script::lua
             ((hash = (hash ^ static_cast<std::uint64_t>(Values)) * 1099511628211ULL), ...);
             return hash;
         }
-        static constexpr bool valid(T value) noexcept { return ((value == Values) || ...); }
-        template <class Policy> static consteval std::size_t plainCount() noexcept { return 1U; }
+        static constexpr bool valid(T value) noexcept
+        {
+            return ((value == Values) || ...);
+        }
+        template <class Policy> static consteval std::size_t plainCount() noexcept
+        {
+            return 1U;
+        }
         template <class Policy> static const detail::LuaCodecPlan& plan() noexcept
         {
-            static constexpr detail::LuaCodecPlan result{detail::ELuaPlainKind::NUMBER, 2U, {},
-                &LuaValueCodec<T, Policy>::writePlain, &LuaValueCodec<T, Policy>::readPlain, nullptr};
+            static constexpr detail::LuaCodecPlan result{
+                detail::ELuaPlainKind::NUMBER,
+                2U,
+                {},
+                &TLuaValueCodec<T, Policy>::writePlain,
+                &TLuaValueCodec<T, Policy>::readPlain,
+                nullptr
+            };
             return result;
         }
-        template <class Policy>
-        static T consumePlain(std::span<const double> values, std::size_t& cursor) noexcept
-        { return static_cast<T>(static_cast<Underlying>(values[cursor++])); }
-        static LuaValueResult<T> read(LuaValueReader &input) noexcept
+        template <class Policy> static T consumePlain(std::span<const double> values, std::size_t& cursor) noexcept
+        {
+            return static_cast<T>(static_cast<Underlying>(values[cursor++]));
+        }
+        static LuaValueResult<T> read(LuaValueReader& input) noexcept
         {
             auto value = input.template number<Underlying>();
             if (!value)
@@ -748,7 +869,7 @@ namespace lux::script::lua
                 return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::RANGE});
             return result;
         }
-        static LuaValueResult<void> push(LuaValueWriter &output, const T &value) noexcept
+        static LuaValueResult<void> push(LuaValueWriter& output, const T& value) noexcept
         {
             if (!valid(value))
                 return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::RANGE});

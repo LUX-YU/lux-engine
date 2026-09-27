@@ -23,10 +23,7 @@ namespace lux::asset
         inline static constexpr std::uint32_t primary_magic = 0x0130914AU;
         inline static constexpr std::uint32_t legacy_type_tag = 11U;
 
-        [[nodiscard]] static lux::cxx::expected<
-            std::shared_ptr<const TextureAtlasAsset>,
-            AssetDecodeFailure
-        > create(
+        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const TextureAtlasAsset>, AssetDecodeFailure> create(
             AssetInfo info,
             std::shared_ptr<const lux::rdesc::TextureAtlas> data,
             std::vector<AssetAuxiliaryPayload> auxiliary = {}
@@ -48,10 +45,7 @@ namespace lux::asset
         inline static constexpr std::uint32_t primary_magic = 0x0130914BU;
         inline static constexpr std::uint32_t legacy_type_tag = 12U;
 
-        [[nodiscard]] static lux::cxx::expected<
-            std::shared_ptr<const FlipbookClipAsset>,
-            AssetDecodeFailure
-        > create(
+        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const FlipbookClipAsset>, AssetDecodeFailure> create(
             AssetInfo info,
             std::shared_ptr<const lux::rdesc::FlipbookClip> data,
             std::vector<AssetAuxiliaryPayload> auxiliary = {}
@@ -65,27 +59,31 @@ namespace lux::asset
         ) noexcept;
     };
 
-    template <>
-    struct LUX_ASSET_PUBLIC TAssetSerDeser<TextureAtlasAsset> final
+    template <> struct LUX_ASSET_PUBLIC TAssetSerDeser<TextureAtlasAsset> final
     {
-        [[nodiscard]] static lux::cxx::expected<
-            std::shared_ptr<const TextureAtlasAsset>,
-            AssetDecodeFailure
-        > decode(AssetId requested, lux::cxx::SharedBytes<> image, const AssetDecodeLimits& limits) noexcept;
+        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const TextureAtlasAsset>, AssetDecodeFailure> decode(
+            AssetId requested,
+            lux::cxx::SharedBytes<> image,
+            const AssetDecodeLimits& limits
+        ) noexcept;
 
-        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
-        encode(const TextureAtlasAsset& asset, const AssetEncodeLimits& limits) noexcept;
+        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
+            const TextureAtlasAsset& asset,
+            const AssetEncodeLimits& limits
+        ) noexcept;
     };
 
-    template <>
-    struct LUX_ASSET_PUBLIC TAssetSerDeser<FlipbookClipAsset> final
+    template <> struct LUX_ASSET_PUBLIC TAssetSerDeser<FlipbookClipAsset> final
     {
-        [[nodiscard]] static lux::cxx::expected<
-            std::shared_ptr<const FlipbookClipAsset>,
-            AssetDecodeFailure
-        > decode(AssetId requested, lux::cxx::SharedBytes<> image, const AssetDecodeLimits& limits) noexcept;
+        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const FlipbookClipAsset>, AssetDecodeFailure> decode(
+            AssetId requested,
+            lux::cxx::SharedBytes<> image,
+            const AssetDecodeLimits& limits
+        ) noexcept;
 
-        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
-        encode(const FlipbookClipAsset& asset, const AssetEncodeLimits& limits) noexcept;
+        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
+            const FlipbookClipAsset& asset,
+            const AssetEncodeLimits& limits
+        ) noexcept;
     };
 } // namespace lux::asset

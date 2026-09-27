@@ -27,16 +27,16 @@ namespace lux::rdesc
         std::uint32_t size{};
         std::uint32_t alignment{};
 
-        friend bool operator==(const ScriptValueType&, const ScriptValueType&)
-            noexcept = default;
+        friend bool operator==(const ScriptValueType&, const ScriptValueType&) noexcept = default;
     };
 
     template <class Value>
-    requires lux::semantic::TypeDeclared<Value>
-    [[nodiscard]] inline ScriptValueType
-    makeScriptValueType(lux::semantic::EValuePass pass = lux::semantic::EValuePass::VALUE)
+        requires lux::semantic::TypeDeclared<Value>
+    [[nodiscard]] inline ScriptValueType makeScriptValueType(
+        lux::semantic::EValuePass pass = lux::semantic::EValuePass::VALUE
+    )
     {
-        using Traits = lux::semantic::TypeTraits<std::remove_cv_t<Value>>;
+        using Traits = lux::semantic::TTypeTraits<std::remove_cv_t<Value>>;
         return {
             std::string(Traits::CanonicalName),
             lux::semantic::typeId(Traits::CanonicalName),
@@ -50,9 +50,7 @@ namespace lux::rdesc
     struct ScriptFunction final
     {
         std::string name;
-        lux::script::ScriptSymbolId symbol_id{
-            lux::script::InvalidScriptSymbolId
-        };
+        lux::script::ScriptSymbolId symbol_id{lux::script::InvalidScriptSymbolId};
         std::vector<ScriptValueType> args;
         std::vector<ScriptValueType> returns;
 
@@ -91,8 +89,7 @@ namespace lux::rdesc
         std::string source_hash;
         std::string built_at;
 
-        friend bool operator==(const ScriptProvenance&, const ScriptProvenance&)
-            noexcept = default;
+        friend bool operator==(const ScriptProvenance&, const ScriptProvenance&) noexcept = default;
     };
 
     struct LuaSourceScript final
@@ -100,8 +97,7 @@ namespace lux::rdesc
         std::string entry;
         std::vector<lux::script::ScriptSymbolId> suspension_capable_exports;
 
-        friend bool operator==(const LuaSourceScript&, const LuaSourceScript&)
-            noexcept = default;
+        friend bool operator==(const LuaSourceScript&, const LuaSourceScript&) noexcept = default;
     };
 
     struct NativeModuleScript final
@@ -112,10 +108,7 @@ namespace lux::rdesc
         std::uint32_t state_align{1U};
         std::vector<std::byte> state_defaults;
 
-        friend bool operator==(
-            const NativeModuleScript&,
-            const NativeModuleScript&
-        ) noexcept = default;
+        friend bool operator==(const NativeModuleScript&, const NativeModuleScript&) noexcept = default;
     };
 
     struct CppStaticScript final
@@ -123,18 +116,15 @@ namespace lux::rdesc
         std::string descriptor;
         std::vector<lux::script::ScriptSymbolId> suspension_capable_exports;
 
-        friend bool operator==(
-            const CppStaticScript&,
-            const CppStaticScript&
-        ) noexcept = default;
+        friend bool operator==(const CppStaticScript&, const CppStaticScript&) noexcept = default;
     };
 
     class Script final
     {
-      public:
+    public:
         static constexpr std::uint32_t kSchemaVersion = 12U;
 
-        enum class Kind : std::uint8_t
+        enum class EKind : std::uint8_t
         {
             UNKNOWN = 0,
             LUA_SOURCE = 1,
@@ -142,11 +132,7 @@ namespace lux::rdesc
             CPP_STATIC = 6,
         };
 
-        using Body = std::variant<
-            std::monostate,
-            LuaSourceScript,
-            NativeModuleScript,
-            CppStaticScript>;
+        using VBody = std::variant<std::monostate, LuaSourceScript, NativeModuleScript, CppStaticScript>;
 
         std::uint32_t schema_version{kSchemaVersion};
         std::string module_name;
@@ -156,17 +142,17 @@ namespace lux::rdesc
         std::vector<ScriptApiRequirement> api_requirements;
         std::vector<lux::script::ScriptEventSourceDescription> event_requirements;
         ScriptProvenance provenance;
-        Body body;
+        VBody body;
 
-        [[nodiscard]] Kind kind() const noexcept
+        [[nodiscard]] EKind kind() const noexcept
         {
             if (std::holds_alternative<LuaSourceScript>(body))
-                return Kind::LUA_SOURCE;
+                return EKind::LUA_SOURCE;
             if (std::holds_alternative<NativeModuleScript>(body))
-                return Kind::NATIVE_MODULE;
+                return EKind::NATIVE_MODULE;
             if (std::holds_alternative<CppStaticScript>(body))
-                return Kind::CPP_STATIC;
-            return Kind::UNKNOWN;
+                return EKind::CPP_STATIC;
+            return EKind::UNKNOWN;
         }
     };
 
@@ -183,8 +169,8 @@ namespace lux::rdesc
             }
             const auto* builtin = lux::semantic::builtinLayout(type.type_id);
             return builtin == nullptr ||
-                (builtin->canonical_name == type.canonical_name && builtin->abi_kind == type.abi_kind &&
-                 builtin->size == type.size && builtin->alignment == type.alignment);
+                   (builtin->canonical_name == type.canonical_name && builtin->abi_kind == type.abi_kind &&
+                    builtin->size == type.size && builtin->alignment == type.alignment);
         }
 
         [[nodiscard]] inline bool validScriptFunction(const ScriptFunction& function) noexcept
@@ -209,7 +195,7 @@ namespace lux::rdesc
         [[nodiscard]] inline bool validScriptBody(const Script& description) noexcept
         {
             if (description.schema_version != Script::kSchemaVersion || description.module_name.empty() ||
-                description.kind() == Script::Kind::UNKNOWN)
+                description.kind() == Script::EKind::UNKNOWN)
             {
                 return false;
             }
@@ -223,20 +209,21 @@ namespace lux::rdesc
                 }
             }
             if (const auto* cpp_static = std::get_if<CppStaticScript>(&description.body);
-                cpp_static != nullptr && (cpp_static->descriptor.empty() ||
-                    cpp_static->suspension_capable_exports.size() > std::numeric_limits<std::uint32_t>::max() ||
-                    !std::ranges::is_sorted(cpp_static->suspension_capable_exports) ||
-                    std::ranges::adjacent_find(cpp_static->suspension_capable_exports) !=
-                        cpp_static->suspension_capable_exports.end()))
+                cpp_static != nullptr &&
+                (cpp_static->descriptor.empty() ||
+                 cpp_static->suspension_capable_exports.size() > std::numeric_limits<std::uint32_t>::max() ||
+                 !std::ranges::is_sorted(cpp_static->suspension_capable_exports) ||
+                 std::ranges::adjacent_find(cpp_static->suspension_capable_exports) !=
+                     cpp_static->suspension_capable_exports.end()))
             {
                 return false;
             }
             if (const auto* lua = std::get_if<LuaSourceScript>(&description.body);
-                lua != nullptr && (lua->entry.empty() ||
-                    lua->suspension_capable_exports.size() > std::numeric_limits<std::uint32_t>::max() ||
-                    !std::ranges::is_sorted(lua->suspension_capable_exports) ||
-                    std::ranges::adjacent_find(lua->suspension_capable_exports) !=
-                        lua->suspension_capable_exports.end()))
+                lua != nullptr &&
+                (lua->entry.empty() ||
+                 lua->suspension_capable_exports.size() > std::numeric_limits<std::uint32_t>::max() ||
+                 !std::ranges::is_sorted(lua->suspension_capable_exports) ||
+                 std::ranges::adjacent_find(lua->suspension_capable_exports) != lua->suspension_capable_exports.end()))
             {
                 return false;
             }
@@ -249,7 +236,6 @@ namespace lux::rdesc
         if (!detail::validScriptBody(description))
             return false;
 
-        try
         {
             std::unordered_set<lux::script::ScriptSymbolId> symbols;
             symbols.reserve(description.exports.size());
@@ -260,8 +246,8 @@ namespace lux::rdesc
             }
             const bool has_begin = description.lifecycle.begin_play != lux::script::InvalidScriptSymbolId;
             const bool has_end = description.lifecycle.end_play != lux::script::InvalidScriptSymbolId;
-            const bool is_duplicate_role = has_begin && has_end &&
-                description.lifecycle.begin_play == description.lifecycle.end_play;
+            const bool is_duplicate_role =
+                has_begin && has_end && description.lifecycle.begin_play == description.lifecycle.end_play;
             const bool is_missing_begin = has_begin && !symbols.contains(description.lifecycle.begin_play);
             const bool is_missing_end = has_end && !symbols.contains(description.lifecycle.end_play);
             if (is_duplicate_role || is_missing_begin || is_missing_end)
@@ -271,8 +257,8 @@ namespace lux::rdesc
                 for (const auto symbol : lua->suspension_capable_exports)
                 {
                     const bool is_missing_export = !symbols.contains(symbol);
-                    const bool is_lifecycle = symbol == description.lifecycle.begin_play ||
-                        symbol == description.lifecycle.end_play;
+                    const bool is_lifecycle =
+                        symbol == description.lifecycle.begin_play || symbol == description.lifecycle.end_play;
                     if (is_missing_export || is_lifecycle)
                         return false;
                 }
@@ -282,8 +268,8 @@ namespace lux::rdesc
                 for (const auto symbol : cpp_static->suspension_capable_exports)
                 {
                     const bool is_missing_export = !symbols.contains(symbol);
-                    const bool is_lifecycle = symbol == description.lifecycle.begin_play ||
-                        symbol == description.lifecycle.end_play;
+                    const bool is_lifecycle =
+                        symbol == description.lifecycle.begin_play || symbol == description.lifecycle.end_play;
                     if (is_missing_export || is_lifecycle)
                         return false;
                 }
@@ -299,10 +285,7 @@ namespace lux::rdesc
                 }
             }
             if (description.event_requirements.size() > std::numeric_limits<std::uint32_t>::max() ||
-                !std::ranges::is_sorted(
-                    description.event_requirements,
-                    lux::script::ScriptEventSourceLess{}
-                ))
+                !std::ranges::is_sorted(description.event_requirements, lux::script::ScriptEventSourceLess{}))
             {
                 return false;
             }
@@ -314,19 +297,15 @@ namespace lux::rdesc
                 for (std::size_t previous{}; previous < index; ++previous)
                 {
                     const auto& candidate = description.event_requirements[previous];
-                    const bool duplicate_identity = candidate.system_id == requirement.system_id &&
-                        candidate.event_id == requirement.event_id;
+                    const bool duplicate_identity =
+                        candidate.system_id == requirement.system_id && candidate.event_id == requirement.event_id;
                     const bool duplicate_source_name = candidate.system_name == requirement.system_name &&
-                        candidate.event_name == requirement.event_name;
+                                                       candidate.event_name == requirement.event_name;
                     if (duplicate_identity || duplicate_source_name)
                         return false;
                 }
             }
             return true;
-        }
-        catch (const std::bad_alloc&)
-        {
-            return false;
         }
     }
 }

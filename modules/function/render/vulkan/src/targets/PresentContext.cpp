@@ -36,16 +36,14 @@ namespace lux::render
             PresentSemaphoreCreateOps ops
         ) noexcept
             : device_(device), ops_(ops)
-        {
-        }
+        {}
 
         PresentSemaphoreCreateCandidate::~PresentSemaphoreCreateCandidate() noexcept
         {
             rollback();
         }
 
-        PresentSemaphoreCreateCandidate::PresentSemaphoreCreateCandidate(
-            PresentSemaphoreCreateCandidate&& other
+        PresentSemaphoreCreateCandidate::PresentSemaphoreCreateCandidate(PresentSemaphoreCreateCandidate&& other
         ) noexcept
             : device_(std::exchange(other.device_, VkDevice{})), ops_(other.ops_),
               acquire_semaphores_(std::move(other.acquire_semaphores_)),
@@ -55,8 +53,9 @@ namespace lux::render
             other.present_semaphores_.clear();
         }
 
-        PresentSemaphoreCreateCandidate&
-        PresentSemaphoreCreateCandidate::operator=(PresentSemaphoreCreateCandidate&& other) noexcept
+        PresentSemaphoreCreateCandidate& PresentSemaphoreCreateCandidate::operator=(
+            PresentSemaphoreCreateCandidate&& other
+        ) noexcept
         {
             if (this == &other)
                 return *this;
@@ -159,8 +158,7 @@ namespace lux::render
 
     PresentContext::PresentContext(ConstructionKey, ResourceContext& res_ctx, RenderSurface&& surface)
         : res_ctx_(res_ctx), surface_(std::move(surface))
-    {
-    }
+    {}
 
     Expected<std::unique_ptr<PresentContext>> PresentContext::create(
         ResourceContext& res_ctx,
@@ -197,8 +195,7 @@ namespace lux::render
         if (close_required_ && !closed_)
         {
             renderFatal("PresentContext destroyed without a successful close(); "
-                        "presentation completion was not proven"
-            );
+                        "presentation completion was not proven");
         }
         // Member order performs the complete teardown: provider_ (swapchain),
         // then owning semaphore vectors, then surface_. No hand-written reset.
@@ -246,8 +243,7 @@ namespace lux::render
             ) &&
             std::all_of(present_per_image_.begin(), present_per_image_.end(), [](const gapi::vk::Semaphore& semaphore) {
                 return semaphore.handle() != VK_NULL_HANDLE;
-            }
-            );
+            });
         if (existing_set_valid)
             return {};
 

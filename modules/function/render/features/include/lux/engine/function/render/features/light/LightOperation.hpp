@@ -33,7 +33,7 @@ namespace lux::render
 {
     struct FeatureFactory;
     class RenderProgramSession;
-    template <typename T> class RenderRequest;
+    template <typename T> class TRenderRequest;
 
     // =========================================================================
     //  Feature-scoped operation name constants (allocated dynamically at
@@ -45,10 +45,11 @@ namespace lux::render
         name = UpsertLight,
         method = upsertLight,
         bulk = LightBatch,
-        bulk_method = upsertLights) UpsertLightPayload
+        bulk_method = upsertLights
+    ) UpsertLightPayload
     {
         RenderSceneId scene_id{};
-        RenderEntityId entity{};
+        ERenderEntityId entity{};
         std::uint32_t transition_milliseconds{0u};
         uint8_t light_type{0}; // 0=Dir, 1=Point, 2=Spot, 3=Area
         RenderLargePosition3D spatial_position{};
@@ -75,7 +76,7 @@ namespace lux::render
     struct LUX_OP(lane = program, kind = stream, name = RemoveLight, method = removeLight) RemoveLightPayload
     {
         RenderSceneId scene_id{};
-        RenderEntityId entity{};
+        ERenderEntityId entity{};
         std::uint32_t transition_milliseconds{0u};
     };
     static_assert(std::is_trivially_copyable_v<RemoveLightPayload>);
@@ -96,7 +97,8 @@ namespace lux::render
         name = LightStats,
         method = stats,
         reply = LightStatsReply,
-        opcode = command) LightStatsPayload final
+        opcode = command
+    ) LightStatsPayload final
     {
         RenderSceneId scene_id{};
     };
@@ -111,7 +113,7 @@ namespace lux::render
     // =========================================================================
 
     inline UpsertLightPayload
-    toLightPayload(RenderSceneId scene_id, RenderEntityId entity, const LightDescriptor& desc)
+    toLightPayload(RenderSceneId scene_id, ERenderEntityId entity, const VLightDescriptor& desc)
     {
         UpsertLightPayload p{};
         p.scene_id = scene_id;
@@ -185,7 +187,7 @@ namespace lux::render
         return p;
     }
 
-    inline LightDescriptor fromLightPayload(const UpsertLightPayload& p)
+    inline VLightDescriptor fromLightPayload(const UpsertLightPayload& p)
     {
         switch (p.light_type)
         {
@@ -259,9 +261,9 @@ namespace lux::render
         display = Light,
         feature = LightFeature,
         feature_header = lux / engine / render / renderer / features / light / LightFeature.hpp,
-        multiplicity = single) LightCommTag
-    {
-    };
+        multiplicity = single
+    ) LightCommTag
+    {};
     static_assert(std::is_trivially_copyable_v<LightCommTag>);
 
     class LightProxy; // 生成于 comm/genops/LightOperation.ops.hpp
@@ -271,8 +273,8 @@ namespace lux::render
     LUX_RENDER_FEATURE_CLIENT_PUBLIC void lightUpsert(
         LightProxy proxy,
         RenderSceneId scene_id,
-        RenderEntityId entity,
-        const LightDescriptor& desc,
+        ERenderEntityId entity,
+        const VLightDescriptor& desc,
         std::uint32_t transition_milliseconds = 0u
     );
 } // namespace lux::render

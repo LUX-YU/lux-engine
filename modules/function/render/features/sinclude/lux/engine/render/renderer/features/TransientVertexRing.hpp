@@ -55,8 +55,11 @@ namespace lux::render
         /// Create one host-mapped VERTEX_BUFFER slot of @p slot_bytes per frame-in-flight
         /// (at least one). On any slot's failure the already-created slots are rolled
         /// back and the ring is left empty.
-        [[nodiscard]] Expected<void>
-        create(VmaAllocator allocator, std::uint32_t frames_in_flight, VkDeviceSize slot_bytes)
+        [[nodiscard]] Expected<void> create(
+            VmaAllocator allocator,
+            std::uint32_t frames_in_flight,
+            VkDeviceSize slot_bytes
+        )
         {
             allocator_ = allocator;
             const std::uint32_t count = std::max<std::uint32_t>(1u, frames_in_flight);

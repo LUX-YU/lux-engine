@@ -18,7 +18,7 @@
 #include <lux/engine/render/comm/server/RenderServer.hpp>
 #include <lux/engine/function/render/client/protocol/FeatureOps.hpp>
 #include <lux/engine/function/render/client/protocol/FeatureParamsOperation.hpp>
-// registerFeatureParamsOp (EOpKind::Param)
+// registerFeatureParamsOp (EOpKind::PARAM)
 
 #include <array>
 #include <cstddef>
@@ -31,7 +31,7 @@ namespace lux::render
     /// Blob), void(Ctx&, std::span<const Payload>) for Bulk. A Param-kind op uses
     /// the SHARED setParams handler (registerFeatureParamsOp), so its Handler is
     /// omitted — default nullptr.
-    template <FeatureOpDesc Op, auto Handler = nullptr> struct ServerOp
+    template <FeatureOpDesc Op, auto Handler = nullptr> struct TServerOp
     {
         using Desc = Op;
         static constexpr auto handler = Handler;
@@ -40,7 +40,7 @@ namespace lux::render
     /// Generates the factory's register/unregister fns from an ordered op list.
     /// The ops[] order it emits matches FeatureOpIds<Ops...> on the client (both
     /// derive from the same per-feature declaration order).
-    template <class... ServerOps> struct FeatureOpRegistrar
+    template <class... ServerOps> struct TFeatureOpRegistrar
     {
         using Dispatcher = GeneralRenderServer::Dispatcher;
 
@@ -54,7 +54,7 @@ namespace lux::render
             {
                 const std::array<EOpKind, sizeof...(ServerOps)> kinds{ServerOps::Desc::kind...};
                 for (std::size_t i = 0; i < kinds.size(); ++i)
-                    if (kinds[i] == EOpKind::Param)
+                    if (kinds[i] == EOpKind::PARAM)
                         return static_cast<int>(i);
                 return -1;
             }
@@ -99,9 +99,9 @@ namespace lux::render
         {
             using Op = typename SOp::Desc;
             constexpr OpCode oc = opcode_of_v<Op>;
-            if constexpr (Op::kind == EOpKind::Param)
+            if constexpr (Op::kind == EOpKind::PARAM)
                 return registerFeatureParamsOp(&d); // shared SetFeatureParams handler (no per-op handler)
-            else if constexpr (Op::kind == EOpKind::Bulk)
+            else if constexpr (Op::kind == EOpKind::BULK)
                 return d.allocateAndRegisterBulk<typename Op::Payload, SOp::handler>(oc, Op::name);
             else
                 return d.allocateAndRegisterUnary<typename Op::Payload, SOp::handler>(oc, Op::name);

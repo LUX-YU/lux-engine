@@ -45,9 +45,9 @@ namespace lux::render
     /// to a stable RG buffer name via vertexProductRgName().
     enum class EVertexProductKind : std::uint8_t
     {
-        Skinning = 0, ///< SkinningFeature — linear-blend skinned vertices
-        Morph = 1,    ///< (reserved) morph-target blending
-        Cloth = 2,    ///< (reserved) GPU cloth simulation
+        SKINNING = 0, ///< SkinningFeature — linear-blend skinned vertices
+        MORPH = 1,    ///< (reserved) morph-target blending
+        CLOTH = 2,    ///< (reserved) GPU cloth simulation
     };
 
     /// Stable RG buffer name a producer of @p kind imports (importBuffer) and

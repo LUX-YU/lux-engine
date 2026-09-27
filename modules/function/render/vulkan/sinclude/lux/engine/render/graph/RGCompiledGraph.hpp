@@ -83,11 +83,11 @@ namespace lux::render
             VkDescriptorSetLayout layout{VK_NULL_HANDLE};
             enum class EUpdateFreq : uint8_t
             {
-                Immutable,
-                PerFIF,
-                PerView
+                IMMUTABLE,
+                PER_FIF,
+                PER_VIEW
             };
-            EUpdateFreq frequency{EUpdateFreq::Immutable};
+            EUpdateFreq frequency{EUpdateFreq::IMMUTABLE};
         };
         std::vector<SlotBinding> bindings;
         uint32_t total_ds_count{0}; ///< FIF × MaxViews × bindings_per_view
@@ -198,35 +198,35 @@ namespace lux::render
         {
             enum class EType : uint8_t
             {
-                SetPassContext, ///< Stores current pass_index for subsequent commands
-                BindPipeline,
-                BindDescriptorSets,
-                SetViewport,
-                SetScissor,
-                PushConstants,
-                BeginRendering,
-                EndRendering,
-                Dispatch,
-                DispatchIndirect,
-                DrawDirect, ///< vkCmdDraw (fullscreen quad, simple draws)
-                DrawIndexedIndirectCount,
-                PipelineBarrier,
-                FillBuffer,
-                ClearCounters,
-                InvokeKernelFn, ///< Invoke pass kernel_fn with compiled bindings/context
-                CopyBuffer,
+                SET_PASS_CONTEXT, ///< Stores current pass_index for subsequent commands
+                BIND_PIPELINE,
+                BIND_DESCRIPTOR_SETS,
+                SET_VIEWPORT,
+                SET_SCISSOR,
+                PUSH_CONSTANTS,
+                BEGIN_RENDERING,
+                END_RENDERING,
+                DISPATCH,
+                DISPATCH_INDIRECT,
+                DRAW_DIRECT, ///< vkCmdDraw (fullscreen quad, simple draws)
+                DRAW_INDEXED_INDIRECT_COUNT,
+                PIPELINE_BARRIER,
+                FILL_BUFFER,
+                CLEAR_COUNTERS,
+                INVOKE_KERNEL_FN, ///< Invoke pass kernel_fn with compiled bindings/context
+                COPY_BUFFER,
                 /// Local-read merged-group subpass boundary:
                 /// vkCmdSetRenderingAttachmentLocations + ...InputAttachmentIndices
                 /// for the CURRENT sub-pass, plus (for sub-pass > 0) the by-region
-                /// intra-scope barrier. Deliberately NOT EType::PipelineBarrier so
+                /// intra-scope barrier. Deliberately NOT EType::PIPELINE_BARRIER so
                 /// the dynamic-rendering-compatible scan stays true.
-                LocalReadBoundary,
+                LOCAL_READ_BOUNDARY,
                 // ---- Generic kernel sub-command dispatch ----
-                KernelCommand, ///< Dispatched to KernelDescriptor::ReplayFn
+                KERNEL_COMMAND, ///< Dispatched to KernelDescriptor::ReplayFn
             };
             EType type{};
-            uint32_t data_offset{
-                0}; ///< Offset into command_data (cumulative; grows with scene content -> must be 32-bit)
+            /// Offset into command_data (cumulative; grows with scene content -> must be 32-bit).
+            uint32_t data_offset{0};
             uint16_t data_size{0}; ///< Size of one command's arguments in command_data (per-command, bounded)
         };
 
@@ -236,13 +236,13 @@ namespace lux::render
             uint16_t data_field_offset{0};
             enum class ESource : uint8_t
             {
-                FrameIndex,
-                ViewIndex,
-                SceneIndex,
-                ImageHandle,
-                BufferHandle,
-                TimelineSemaphoreValue,
-                KernelPatch, ///< Resolved by KernelDescriptor::PatchFn (source_param encodes kernel ID + sub-source)
+                FRAME_INDEX,
+                VIEW_INDEX,
+                SCENE_INDEX,
+                IMAGE_HANDLE,
+                BUFFER_HANDLE,
+                TIMELINE_SEMAPHORE_VALUE,
+                KERNEL_PATCH, ///< Resolved by KernelDescriptor::PatchFn (source_param encodes kernel ID + sub-source)
             };
             ESource source{};
             uint16_t source_param{0}; ///< e.g. resource_idx or slot index
@@ -307,7 +307,8 @@ namespace lux::render
             uint32_t frame_slot,
             VkDescriptorSet scene_ds,
             const std::vector<std::vector<VkDescriptorSet>>* transient_sets,
-            uint32_t view_id);
+            uint32_t view_id
+        );
 
         uint32_t slot{0};
         ResolveFn resolve{nullptr};

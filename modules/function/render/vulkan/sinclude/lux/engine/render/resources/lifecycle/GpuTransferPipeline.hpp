@@ -144,14 +144,14 @@ namespace lux::render
 
     struct TransferCompletion
     {
-        enum class Kind : uint8_t
+        enum class EKind : uint8_t
         {
-            MeshBuffer,
-            Texture2D,
-            TextureCube,
-            Texture2DReplacement
+            MESH_BUFFER,
+            TEXTURE_2D,
+            TEXTURE_CUBE,
+            TEXTURE_2D_REPLACEMENT
         };
-        Kind kind{};
+        EKind kind{};
 
         /// true → this is a FAILURE terminal state carrying no GPU objects (the
         /// worker already destroyed its own partials). The render thread settles
@@ -183,8 +183,7 @@ namespace lux::render
         VkBuffer stg_buf{VK_NULL_HANDLE};
         VmaAllocation stg_alloc{nullptr};
 
-        union
-        {
+        union {
             struct
             {
                 VkBuffer vbo_buf;
@@ -253,9 +252,9 @@ namespace lux::render
     };
 
     // =========================================================================
-    using UploadJob = std::variant<MeshTransferTask, TextureTransferTask, CubeTransferTask>;
+    using VUploadJob = std::variant<MeshTransferTask, TextureTransferTask, CubeTransferTask>;
 
-    using GpuTransferResult = std::variant<RecordedBatch, TransferCompletion>;
+    using VGpuTransferResult = std::variant<RecordedBatch, TransferCompletion>;
 
     enum class EGpuTransferMode : std::uint8_t
     {
@@ -274,10 +273,11 @@ namespace lux::render
             using LifecycleFn = void (*)(
                 void*,
                 std::uint32_t,
-                TransferCompletion::Kind,
+                TransferCompletion::EKind,
                 std::uint32_t,
                 std::uint32_t,
-                EUploadLifecycleState) noexcept;
+                EUploadLifecycleState
+            ) noexcept;
 
             DeviceContext* device_ctx = nullptr;
             uint32_t queue_capacity = 64;
@@ -385,7 +385,7 @@ namespace lux::render
         void processMeshTransfer(MeshTransferTask task, TransferStopToken stop_token);
         void processTextureTransfer(TextureTransferTask task, TransferStopToken stop_token);
         void processCubeTransfer(CubeTransferTask task, TransferStopToken stop_token);
-        [[nodiscard]] bool publishResult(GpuTransferResult result);
+        [[nodiscard]] bool publishResult(VGpuTransferResult result);
         void publishRecorded(RecordedBatch batch);
 
         // Internal helpers for common worker patterns.
@@ -412,7 +412,7 @@ namespace lux::render
         /// slot, instead of leaking it and hanging the request forever. Meshes
         /// pass slot_index = mesh_index.
         void pushFailure(
-            TransferCompletion::Kind kind,
+            TransferCompletion::EKind kind,
             uint32_t request_id,
             uint32_t slot_index,
             uint32_t resource_gen,
@@ -420,7 +420,7 @@ namespace lux::render
         );
         void notifyLifecycle(
             std::uint32_t request_id,
-            TransferCompletion::Kind kind,
+            TransferCompletion::EKind kind,
             std::uint32_t resource_handle,
             std::uint32_t resource_gen,
             EUploadLifecycleState state
@@ -432,8 +432,8 @@ namespace lux::render
 
         // ── Members ─────────────────────────────────────────────────────
 
-        lux::cxx::SpscLockFreeRingQueue<UploadJob> jobs_;
-        lux::cxx::SpscLockFreeRingQueue<GpuTransferResult> results_;
+        lux::cxx::SpscLockFreeRingQueue<VUploadJob> jobs_;
+        lux::cxx::SpscLockFreeRingQueue<VGpuTransferResult> results_;
         std::thread transfer_thread_;
         std::atomic<bool> stop_requested_{false};
         std::atomic<bool> accepting_{true};

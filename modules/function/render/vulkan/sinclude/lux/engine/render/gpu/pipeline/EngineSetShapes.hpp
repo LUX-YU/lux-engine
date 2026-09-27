@@ -29,9 +29,9 @@
 
 #include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
 #include <lux/engine/function/render/features/core/ShadingInputSlot.hpp> // kShadingInputSlotCount (Light b11)
-#include <lux/engine/description/LayoutContract.hpp>                   // rdesc::EBindFrequency
-#include <lux/engine/description/ShaderInfo.hpp>                       // rdesc::ShaderInfo
-#include <lux/engine/render/gpu/pipeline/SpirvPatcher.hpp>             // SpirvRelocation
+#include <lux/engine/description/LayoutContract.hpp>                     // rdesc::EBindFrequency
+#include <lux/engine/description/ShaderInfo.hpp>                         // rdesc::ShaderInfo
+#include <lux/engine/render/gpu/pipeline/SpirvPatcher.hpp>               // SpirvRelocation
 
 #include <vulkan/vulkan.h>
 
@@ -49,11 +49,11 @@ namespace lux::render
     /// tagged with an enum and resolved at build time instead.
     enum class EBindingCountSource : uint8_t
     {
-        Fixed,                ///< Use the literal value of the count field.
-        Bindless2DTextures,   ///< Device-derived: bindless 2D texture table capacity.
-        BindlessCubeTextures, ///< Device-derived: bindless cube texture table capacity.
-        VertexPoolSlots,      ///< kVertexPoolMaxCount.
-        MaterialFamilies,     ///< kMaterialFamilyBindingCount (one binding per family).
+        FIXED,                  ///< Use the literal value of the count field.
+        BINDLESS_2D_TEXTURES,   ///< Device-derived: bindless 2D texture table capacity.
+        BINDLESS_CUBE_TEXTURES, ///< Device-derived: bindless cube texture table capacity.
+        VERTEX_POOL_SLOTS,      ///< kVertexPoolMaxCount.
+        MATERIAL_FAMILIES,      ///< kMaterialFamilyBindingCount (one binding per family).
     };
 
     struct EngineSetBindingShape
@@ -62,7 +62,7 @@ namespace lux::render
         VkDescriptorType type{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER};
         VkShaderStageFlags stages{0};
         VkDescriptorBindingFlags binding_flags{0};
-        EBindingCountSource count_source{EBindingCountSource::Fixed};
+        EBindingCountSource count_source{EBindingCountSource::FIXED};
         uint32_t count{1};
     };
 
@@ -126,13 +126,15 @@ namespace lux::render
                 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                 kF,
                 kUAB_PB,
-                EBindingCountSource::Bindless2DTextures},
+                EBindingCountSource::BINDLESS_2D_TEXTURES
+            },
             EngineSetBindingShape{
                 1,
                 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                 kF,
                 kUAB_PB_VAR,
-                EBindingCountSource::BindlessCubeTextures},
+                EBindingCountSource::BINDLESS_CUBE_TEXTURES
+            },
         };
 
         // SET 3 — Light + shadow + shading inputs: b0-3 are lights; b4-10 are
@@ -156,8 +158,9 @@ namespace lux::render
                 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                 kF,
                 kUAB,
-                EBindingCountSource::Fixed,
-                kShadingInputSlotCount},
+                EBindingCountSource::FIXED,
+                kShadingInputSlotCount
+            },
         };
 
         // SET 4 — Material: one identically-shaped SSBO per family (count =
@@ -168,7 +171,8 @@ namespace lux::render
                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 kF,
                 kUAB,
-                EBindingCountSource::MaterialFamilies},
+                EBindingCountSource::MATERIAL_FAMILIES
+            },
         };
 
         // SET 5 — Particle:**空**。
@@ -199,7 +203,8 @@ namespace lux::render
                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 kVFC,
                 kUAB_PB,
-                EBindingCountSource::VertexPoolSlots},
+                EBindingCountSource::VERTEX_POOL_SLOTS
+            },
         };
     } // namespace engine_sets
 
@@ -213,13 +218,13 @@ namespace lux::render
     ///   FEATURE    varies with the feature combination (instance/light/material/particle/cull)
     ///   PASS_LOCAL per pass (no engine set lives here — it's the domain of private sets)
     inline constexpr std::array<EngineSetShape, kDescriptorSetCount> kEngineSetShapes{{
-        {EDescriptorSetSlot::Scene, engine_sets::kScene, true, false, rdesc::EBindFrequency::GLOBAL},
-        {EDescriptorSetSlot::Instance, engine_sets::kInstance, true, false, rdesc::EBindFrequency::FEATURE},
-        {EDescriptorSetSlot::Texture, engine_sets::kTexture, true, false, rdesc::EBindFrequency::BINDLESS},
-        {EDescriptorSetSlot::Light, engine_sets::kLight, true, false, rdesc::EBindFrequency::FEATURE},
-        {EDescriptorSetSlot::Material, engine_sets::kMaterial, true, true, rdesc::EBindFrequency::FEATURE},
-        {EDescriptorSetSlot::Particle, engine_sets::kParticle, false, false, rdesc::EBindFrequency::FEATURE},
-        {EDescriptorSetSlot::Compute, engine_sets::kCompute, false, false, rdesc::EBindFrequency::FEATURE},
+        {EDescriptorSetSlot::SCENE, engine_sets::kScene, true, false, rdesc::EBindFrequency::GLOBAL},
+        {EDescriptorSetSlot::INSTANCE, engine_sets::kInstance, true, false, rdesc::EBindFrequency::FEATURE},
+        {EDescriptorSetSlot::TEXTURE, engine_sets::kTexture, true, false, rdesc::EBindFrequency::BINDLESS},
+        {EDescriptorSetSlot::LIGHT, engine_sets::kLight, true, false, rdesc::EBindFrequency::FEATURE},
+        {EDescriptorSetSlot::MATERIAL, engine_sets::kMaterial, true, true, rdesc::EBindFrequency::FEATURE},
+        {EDescriptorSetSlot::PARTICLE, engine_sets::kParticle, false, false, rdesc::EBindFrequency::FEATURE},
+        {EDescriptorSetSlot::COMPUTE, engine_sets::kCompute, false, false, rdesc::EBindFrequency::FEATURE},
         // The vertex pool belongs to FEATURE, not BINDLESS — the domain is a
         // *grouping key* chosen by "lifetime + budget," not an assertion
         // about update frequency. Reason: BINDLESS's other member (the
@@ -234,7 +239,7 @@ namespace lux::render
         // and the vertex pool shares its domain and lifetime with the rest
         // of the per-scene resources. Pipelines still bind only 4 sets
         // (verified in practice).
-        {EDescriptorSetSlot::VertexPool, engine_sets::kVertexPool, true, false, rdesc::EBindFrequency::FEATURE},
+        {EDescriptorSetSlot::VERTEX_POOL, engine_sets::kVertexPool, true, false, rdesc::EBindFrequency::FEATURE},
     }};
 
     // ── Position constants for domain merging ─────────────────────────────
@@ -261,7 +266,7 @@ namespace lux::render
             return 0;
         switch (shape.bindings[0].count_source)
         {
-        case EBindingCountSource::MaterialFamilies:
+        case EBindingCountSource::MATERIAL_FAMILIES:
             return kMaterialFamilyBindingCount;
         default:
             return static_cast<uint32_t>(shape.bindings.size());
@@ -291,8 +296,10 @@ namespace lux::render
     /// the shape table; (2) when routing claims an engine set, checking
     /// entry by entry that a reflected binding really lives in this set
     /// (number exists + type matches).
-    [[nodiscard]] constexpr const EngineSetBindingShape*
-    engineShapeBindingFor(uint32_t canonical_set, uint32_t binding) noexcept
+    [[nodiscard]] constexpr const EngineSetBindingShape* engineShapeBindingFor(
+        uint32_t canonical_set,
+        uint32_t binding
+    ) noexcept
     {
         if (canonical_set >= kEngineSetShapes.size())
             return nullptr;
@@ -417,20 +424,20 @@ namespace lux::render
                 uint32_t repeat = 1;
                 switch (b.count_source)
                 {
-                case EBindingCountSource::VertexPoolSlots:
+                case EBindingCountSource::VERTEX_POOL_SLOTS:
                     n = kVertexPoolMaxCount;
                     break;
-                case EBindingCountSource::MaterialFamilies:
+                case EBindingCountSource::MATERIAL_FAMILIES:
                     n = 1;
                     repeat = kMaterialFamilyBindingCount;
                     break;
                 // Bindless capacity is device-derived — see the comment
                 // above; this case is never hit here.
-                case EBindingCountSource::Bindless2DTextures:
-                case EBindingCountSource::BindlessCubeTextures:
+                case EBindingCountSource::BINDLESS_2D_TEXTURES:
+                case EBindingCountSource::BINDLESS_CUBE_TEXTURES:
                     n = 0;
                     break;
-                case EBindingCountSource::Fixed:
+                case EBindingCountSource::FIXED:
                 default:
                     break;
                 }
@@ -609,8 +616,8 @@ namespace lux::render
                     s.set,
                     b.binding,
                     domainSetSlot(kEngineSetShapes[e->canonical_set].frequency),
-                    engineSetDomainOffset(e->canonical_set) + e->canonical_binding}
-                );
+                    engineSetDomainOffset(e->canonical_set) + e->canonical_binding
+                });
             }
 
         // Relocation of private sets (the real allocation strategy): the
@@ -819,18 +826,22 @@ namespace lux::render
     static_assert(
         contract_shape_check::firstPositionNotInShape() == -1,
         "LayoutContract 与 EngineSetShapes 漂移:某条 engine_set 契约条目的 canonical 位置"
-        "在形状表里不存在(会静默落进邻居 set 的域内区间)。用 firstPositionNotInShape() 定位。");
+        "在形状表里不存在(会静默落进邻居 set 的域内区间)。用 firstPositionNotInShape() 定位。"
+    );
     static_assert(
         contract_shape_check::firstTypeMismatch() == -1,
-        "LayoutContract 与 EngineSetShapes 漂移:描述符类型不一致。用 firstTypeMismatch() 定位。");
+        "LayoutContract 与 EngineSetShapes 漂移:描述符类型不一致。用 firstTypeMismatch() 定位。"
+    );
     static_assert(
         contract_shape_check::firstStageMismatch() == -1,
         "LayoutContract 与 EngineSetShapes 漂移:stage 可见性不一致(Plan 记录会失真)。"
-        "用 firstStageMismatch() 定位。");
+        "用 firstStageMismatch() 定位。"
+    );
     static_assert(
         contract_shape_check::firstBindingFlagsMismatch() == -1,
         "LayoutContract 与 EngineSetShapes 漂移:binding flags 不一致。"
-        "用 firstBindingFlagsMismatch() 定位。");
+        "用 firstBindingFlagsMismatch() 定位。"
+    );
 
     // ── binding 枚举表(A)与形状表(B)的编译期对账 ────────────────────────
     //
@@ -864,21 +875,25 @@ namespace lux::render
 
         inline constexpr std::array kNamedBindingEnums{
             NamedBindingEnum{
-                static_cast<uint32_t>(EDescriptorSetSlot::Scene),
+                static_cast<uint32_t>(EDescriptorSetSlot::SCENE),
                 static_cast<uint32_t>(ESceneSetBindings::COUNT),
-                "ESceneSetBindings"},
+                "ESceneSetBindings"
+            },
             NamedBindingEnum{
-                static_cast<uint32_t>(EDescriptorSetSlot::Texture),
+                static_cast<uint32_t>(EDescriptorSetSlot::TEXTURE),
                 static_cast<uint32_t>(ETextureSetBindings::COUNT),
-                "ETextureSetBindings"},
+                "ETextureSetBindings"
+            },
             NamedBindingEnum{
-                static_cast<uint32_t>(EDescriptorSetSlot::Light),
+                static_cast<uint32_t>(EDescriptorSetSlot::LIGHT),
                 static_cast<uint32_t>(ELightSetBindings::COUNT),
-                "ELightSetBindings"},
+                "ELightSetBindings"
+            },
             NamedBindingEnum{
-                static_cast<uint32_t>(EDescriptorSetSlot::VertexPool),
+                static_cast<uint32_t>(EDescriptorSetSlot::VERTEX_POOL),
                 static_cast<uint32_t>(EVertexPoolSetBindings::COUNT),
-                "EVertexPoolSetBindings"},
+                "EVertexPoolSetBindings"
+            },
         };
 
         /// 枚举的 COUNT 必须等于形状表里该 set 的实际 binding 数。
@@ -907,10 +922,12 @@ namespace lux::render
     static_assert(
         binding_enum_check::firstEnumCountMismatch() == -1,
         "DescriptorSetLayoutContract 的 binding 枚举与 EngineSetShapes 漂移:COUNT 与形状表的"
-        "binding 数不一致。用 firstEnumCountMismatch() 取下标,再查 kNamedBindingEnums[i].name。");
+        "binding 数不一致。用 firstEnumCountMismatch() 取下标,再查 kNamedBindingEnums[i].name。"
+    );
     static_assert(
         binding_enum_check::firstEnumBindingNotInShape() == -1,
         "DescriptorSetLayoutContract 的 binding 枚举与 EngineSetShapes 漂移:某个枚举值在形状表里"
-        "没有对应 binding。用 firstEnumBindingNotInShape() 定位。");
+        "没有对应 binding。用 firstEnumBindingNotInShape() 定位。"
+    );
 
 } // namespace lux::render

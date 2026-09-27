@@ -122,8 +122,11 @@ namespace lux::render
         {
             return hlod_exit_error_pixels_;
         }
-        [[nodiscard]] static std::uint32_t
-        transitionSeed(std::uint64_t stable_pick_id, RenderClusterWireId cluster, std::size_t instance_index) noexcept;
+        [[nodiscard]] static std::uint32_t transitionSeed(
+            std::uint64_t stable_pick_id,
+            RenderClusterWireId cluster,
+            std::size_t instance_index
+        ) noexcept;
         [[nodiscard]] std::vector<RenderClusterWireId> hierarchyParents() const;
         void forEachObject(const std::function<void(RenderObjectHandle)>& visitor) const;
         void forEachVisibleObject(const std::function<void(RenderObjectHandle)>& visitor) const;
@@ -144,8 +147,8 @@ namespace lux::render
         void shutdownPicking() noexcept;
         void onPickingFrameBegin(std::uint32_t frame_index) noexcept;
         void requestPick(const RequestRenderClusterPickPayload& request) noexcept;
-        [[nodiscard]] std::optional<RequestRenderClusterPickPayload>
-        pickRequestForView(std::uint32_t view_index) const noexcept;
+        [[nodiscard]] std::optional<RequestRenderClusterPickPayload> pickRequestForView(std::uint32_t view_index
+        ) const noexcept;
         void markPickSubmitted(std::uint32_t frame_index, const RequestRenderClusterPickPayload& request) noexcept;
         void failPick(
             const RequestRenderClusterPickPayload& request,
@@ -165,8 +168,11 @@ namespace lux::render
         /// Rebuild the fence-safe input slice for this frame. capacity_changed
         /// tells the feature to invalidate the graph because transient candidate
         /// buffers are sized from the same capacity.
-        [[nodiscard]] bool
-        prepareGpuCulling(std::uint32_t frame_index, const InstanceResources& instances, bool& capacity_changed);
+        [[nodiscard]] bool prepareGpuCulling(
+            std::uint32_t frame_index,
+            const InstanceResources& instances,
+            bool& capacity_changed
+        );
         [[nodiscard]] std::uint32_t gpuCullBufferCount() const noexcept;
         [[nodiscard]] VkBuffer gpuCullClusterBuffer(std::uint32_t index) const noexcept;
         [[nodiscard]] VkBuffer gpuCullInstanceBuffer(std::uint32_t index) const noexcept;

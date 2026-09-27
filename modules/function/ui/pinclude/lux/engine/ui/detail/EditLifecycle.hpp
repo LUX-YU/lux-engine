@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/ui/ValueEdit.hpp>
+#include <lux/engine/ui/Controls.hpp>
 
 namespace lux::ui::detail
 {

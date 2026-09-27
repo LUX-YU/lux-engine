@@ -1,4 +1,5 @@
 #include <lux/engine/resource/asset/storage/pak/PakCodec.hpp>
+#include <exception>
 #include <lux/engine/resource/asset/storage/VirtualPath.hpp>
 #include <lux/engine/serialization/CodecByteIO.hpp>
 
@@ -91,10 +92,10 @@ namespace lux::asset::detail
         bool readPageHeader(ByteReader& reader, PakPageHeader& header)
         {
             std::uint8_t kind = 0u;
-            const bool has_valid_header =
-                reader.u32(header.magic) && reader.u16(header.version) && reader.u8(kind) &&
-                reader.u8(header.level) && reader.u16(header.count) && reader.u16(header.reserved) &&
-                reader.u32(header.used_bytes) && reader.u64(header.next_leaf_offset);
+            const bool has_valid_header = reader.u32(header.magic) && reader.u16(header.version) && reader.u8(kind) &&
+                                          reader.u8(header.level) && reader.u16(header.count) &&
+                                          reader.u16(header.reserved) && reader.u32(header.used_bytes) &&
+                                          reader.u64(header.next_leaf_offset);
             if (!has_valid_header)
             {
                 return false;
@@ -105,8 +106,7 @@ namespace lux::asset::detail
             return true;
         }
 
-        template <class Value>
-        using SerializationResult = lux::cxx::expected<Value, SerializationFailure>;
+        template <class Value> using SerializationResult = lux::cxx::expected<Value, SerializationFailure>;
 
         [[nodiscard]] bool serializationFailed(std::string* error_out, SerializationFailure failure)
         {
@@ -132,7 +132,8 @@ namespace lux::asset::detail
                 count,
                 0u,
                 static_cast<std::uint32_t>(kPageHeaderBytes + payload.size()),
-                next_leaf_offset};
+                next_leaf_offset
+            };
             ByteWriter writer;
             writer.reserve(header.used_bytes);
             writePageHeader(writer, header);
@@ -280,14 +281,14 @@ namespace lux::asset::detail
                 const auto [begin, end] = chunks[i];
                 const auto next = i + 1u < level.size() ? level[i + 1u].offset : 0u;
                 if (!makePage(
-                    level[i].page,
-                    EPakPageKind::ENTRY_LEAF,
-                    0u,
-                    static_cast<std::uint16_t>(end - begin),
-                    next,
-                    encodeEntryRows(std::span<const PakEntry>{entries}.subspan(begin, end - begin)),
-                    error_out
-                ))
+                        level[i].page,
+                        EPakPageKind::ENTRY_LEAF,
+                        0u,
+                        static_cast<std::uint16_t>(end - begin),
+                        next,
+                        encodeEntryRows(std::span<const PakEntry>{entries}.subspan(begin, end - begin)),
+                        error_out
+                    ))
                 {
                     return false;
                 }
@@ -308,14 +309,14 @@ namespace lux::asset::detail
                     next_offset += kPakPageSize;
                     node.maximum_id = level[begin + count - 1u].maximum_id;
                     if (!makePage(
-                        node.page,
-                        EPakPageKind::ENTRY_INTERNAL,
-                        tree_level,
-                        static_cast<std::uint16_t>(count),
-                        0u,
-                        encodeEntryChildren(std::span<const PageNode>{level}.subspan(begin, count)),
-                        error_out
-                    ))
+                            node.page,
+                            EPakPageKind::ENTRY_INTERNAL,
+                            tree_level,
+                            static_cast<std::uint16_t>(count),
+                            0u,
+                            encodeEntryChildren(std::span<const PageNode>{level}.subspan(begin, count)),
+                            error_out
+                        ))
                     {
                         return false;
                     }
@@ -376,14 +377,14 @@ namespace lux::asset::detail
                 const auto [begin, end] = chunks[i];
                 const auto next = i + 1u < level.size() ? level[i + 1u].offset : 0u;
                 if (!makePage(
-                    level[i].page,
-                    EPakPageKind::PATH_LEAF,
-                    0u,
-                    static_cast<std::uint16_t>(end - begin),
-                    next,
-                    encodePathRows(std::span<const PakPathRow>{rows}.subspan(begin, end - begin)),
-                    error_out
-                ))
+                        level[i].page,
+                        EPakPageKind::PATH_LEAF,
+                        0u,
+                        static_cast<std::uint16_t>(end - begin),
+                        next,
+                        encodePathRows(std::span<const PakPathRow>{rows}.subspan(begin, end - begin)),
+                        error_out
+                    ))
                 {
                     return false;
                 }
@@ -414,14 +415,14 @@ namespace lux::asset::detail
                     next_offset += kPakPageSize;
                     node.maximum_path = level[begin + count - 1u].maximum_path;
                     if (!makePage(
-                        node.page,
-                        EPakPageKind::PATH_INTERNAL,
-                        tree_level,
-                        static_cast<std::uint16_t>(count),
-                        0u,
-                        encodePathChildren(std::span<const PageNode>{level}.subspan(begin, count)),
-                        error_out
-                    ))
+                            node.page,
+                            EPakPageKind::PATH_INTERNAL,
+                            tree_level,
+                            static_cast<std::uint16_t>(count),
+                            0u,
+                            encodePathChildren(std::span<const PageNode>{level}.subspan(begin, count)),
+                            error_out
+                        ))
                     {
                         return false;
                     }
@@ -522,7 +523,8 @@ namespace lux::asset::detail
             if (!readPageHeader(prelude, header))
                 return fail(error_out, "invalid Pak index page header");
             const bool is_invalid_header = header.magic != kPakPageMagic || header.version != kPakVersion ||
-                header.kind != expected || header.used_bytes < kPageHeaderBytes || header.used_bytes > kPakPageSize;
+                                           header.kind != expected || header.used_bytes < kPageHeaderBytes ||
+                                           header.used_bytes > kPakPageSize;
             if (is_invalid_header)
             {
                 return fail(error_out, "invalid Pak index page contract");
@@ -536,7 +538,9 @@ namespace lux::asset::detail
     }
 
     lux::cxx::expected<std::vector<std::byte>, std::string> encodePakImpl(
-        std::vector<PakWriteEntry> entries, std::size_t byte_limit, std::string_view mount_hint
+        std::vector<PakWriteEntry> entries,
+        std::size_t byte_limit,
+        std::string_view mount_hint
     )
     {
         const auto rejected = [](std::string message) { return lux::cxx::unexpected(std::move(message)); };
@@ -586,8 +590,10 @@ namespace lux::asset::detail
         TreeRoot entry_root, path_root;
         std::string error;
         if (!appendEntryTree(cooked, cursor, pages, entry_root, &error) ||
-            !appendPathTree(paths, cursor, pages, path_root, &error)) return rejected(std::move(error));
-        if (cursor > byte_limit) return rejected("Pak image byte limit exceeded");
+            !appendPathTree(paths, cursor, pages, path_root, &error))
+            return rejected(std::move(error));
+        if (cursor > byte_limit)
+            return rejected("Pak image byte limit exceeded");
 
         PakHeader header{};
         std::copy(std::begin(kPakFileMagic), std::end(kPakFileMagic), header.magic);
@@ -605,14 +611,19 @@ namespace lux::asset::detail
         header.entry_root_digest = entry_root.digest;
         header.path_root_digest = path_root.digest;
         const auto encoded_header = encodeHeader(header);
-        if (!encoded_header) return rejected("Pak header encoding failed");
+        if (!encoded_header)
+            return rejected("Pak header encoding failed");
         std::vector<std::byte> image(static_cast<std::size_t>(cursor));
         std::memcpy(image.data(), encoded_header->data(), encoded_header->size());
         for (std::size_t index{}; index < entries.size(); ++index)
         {
             if (cooked[index].size)
             {
-                std::memcpy(image.data() + cooked[index].offset, entries[index].source_bytes.data(), cooked[index].size);
+                std::memcpy(
+                    image.data() + cooked[index].offset,
+                    entries[index].source_bytes.data(),
+                    cooked[index].size
+                );
             }
         }
         for (const auto& page : pages)
@@ -654,7 +665,8 @@ namespace lux::asset::detail
                         lux::format(
                             "non-canonical vpath '{}' (err={})",
                             entries[i].vpath,
-                            static_cast<int>(*path_error))
+                            static_cast<int>(*path_error)
+                        )
                     );
                 }
             }
@@ -813,39 +825,24 @@ namespace lux::asset::detail
         }
         return true;
     }
-    catch (const std::bad_alloc&)
-    {
-        if (error_out != nullptr)
-        {
-            try
-            {
-                *error_out = "Pak allocation failed";
-            }
-            catch (...)
-            {
-            }
-        }
-        return false;
-    }
+
     catch (const std::length_error&)
     {
         if (error_out != nullptr)
         {
-            try
-            {
-                *error_out = "Pak binary serialization limit exceeded";
-            }
-            catch (...)
-            {
-            }
+            *error_out = "Pak binary serialization limit exceeded";
         }
         return false;
     }
 
     namespace
     {
-        bool decodeHeader(std::span<const std::byte> bytes, std::uint64_t file_size,
-            PakHeader& output, std::string* error_out)
+        bool decodeHeader(
+            std::span<const std::byte> bytes,
+            std::uint64_t file_size,
+            PakHeader& output,
+            std::string* error_out
+        )
         {
             output = {};
             if (file_size < kHeaderBytes + 2u * kPakPageSize || bytes.size() < kHeaderBytes)
@@ -856,9 +853,8 @@ namespace lux::asset::detail
                 reader.u32(output.version) && reader.u32(output.page_size) && reader.u32(output.flags) &&
                 reader.u64(output.entry_root_offset) && reader.u64(output.path_root_offset) &&
                 reader.u64(output.entry_count) && reader.u64(output.path_count) &&
-                reader.u64(output.index_page_count) &&
-                reader.u64(output.payload_end) && reader.u32(output.mount_hint_size) &&
-                reader.bytes(output.mount_hint, sizeof(output.mount_hint)) &&
+                reader.u64(output.index_page_count) && reader.u64(output.payload_end) &&
+                reader.u32(output.mount_hint_size) && reader.bytes(output.mount_hint, sizeof(output.mount_hint)) &&
                 readDigest(reader, output.entry_root_digest) && readDigest(reader, output.path_root_digest) &&
                 reader.bytes(output.reserved, sizeof(output.reserved));
             if (!has_valid_header)
@@ -869,11 +865,11 @@ namespace lux::asset::detail
                 !std::equal(std::begin(output.magic), std::end(output.magic), std::begin(kPakFileMagic)) ||
                 output.endian_tag != kPakEndianTag || output.version != kPakVersion || output.page_size != kPakPageSize;
             const bool is_invalid_capacity = output.mount_hint_size > kPakMountHintBytes ||
-                output.entry_count > kMaxPakEntries || output.path_count > output.entry_count ||
-                output.index_page_count < 2u;
-            const bool is_invalid_offsets = output.payload_end < kHeaderBytes ||
-                output.entry_root_offset < output.payload_end || output.path_root_offset < output.payload_end ||
-                output.entry_root_offset > file_size - kPakPageSize ||
+                                             output.entry_count > kMaxPakEntries ||
+                                             output.path_count > output.entry_count || output.index_page_count < 2u;
+            const bool is_invalid_offsets =
+                output.payload_end < kHeaderBytes || output.entry_root_offset < output.payload_end ||
+                output.path_root_offset < output.payload_end || output.entry_root_offset > file_size - kPakPageSize ||
                 output.path_root_offset > file_size - kPakPageSize;
             const bool is_invalid_header = is_invalid_identity || is_invalid_capacity || is_invalid_offsets;
             if (is_invalid_header)
@@ -887,7 +883,8 @@ namespace lux::asset::detail
     bool readPakHeader(std::istream& stream, std::uint64_t file_size, PakHeader& output, std::string* error_out)
     {
         output = {};
-        if (file_size < kHeaderBytes + 2u * kPakPageSize) return fail(error_out, "Pak is too small");
+        if (file_size < kHeaderBytes + 2u * kPakPageSize)
+            return fail(error_out, "Pak is too small");
         std::array<std::byte, kHeaderBytes> bytes{};
         stream.clear();
         stream.seekg(0, std::ios::beg);
@@ -907,7 +904,7 @@ namespace lux::asset::detail
         {
             const auto header = pakPageHeader(output);
             const bool is_invalid_header = header.magic != kPakPageMagic || header.version != kPakVersion ||
-                header.used_bytes < kPageHeaderBytes || header.used_bytes > kPakPageSize;
+                                           header.used_bytes < kPageHeaderBytes || header.used_bytes > kPakPageSize;
             if (is_invalid_header)
             {
                 return fail(error_out, "invalid Pak index page header");
@@ -935,8 +932,13 @@ namespace lux::asset::detail
         return validatePage(output, error_out);
     }
 
-    bool readPakPage(std::span<const std::byte> image, std::uint64_t file_size, std::uint64_t offset,
-        PakPage& output, std::string* error_out)
+    bool readPakPage(
+        std::span<const std::byte> image,
+        std::uint64_t file_size,
+        std::uint64_t offset,
+        PakPage& output,
+        std::string* error_out
+    )
     {
         if (file_size != image.size() || file_size < kPakPageSize || offset % kPakPageSize != 0 ||
             offset > file_size - kPakPageSize)
@@ -971,11 +973,11 @@ namespace lux::asset::detail
             PakEntry entry;
             std::uint16_t reserved = 0u;
             std::uint16_t path_size = 0u;
-            const bool has_valid_entry =
-                readUuid(reader, entry.id) && reader.u64(entry.offset) && reader.u64(entry.size) &&
-                reader.u64(entry.uncompressed_size) && reader.u32(entry.asset_magic) &&
-                reader.u8(entry.compression) && reader.u8(entry.flags) && reader.u16(reserved) &&
-                readDigest(reader, entry.content_digest) && reader.u16(path_size);
+            const bool has_valid_entry = readUuid(reader, entry.id) && reader.u64(entry.offset) &&
+                                         reader.u64(entry.size) && reader.u64(entry.uncompressed_size) &&
+                                         reader.u32(entry.asset_magic) && reader.u8(entry.compression) &&
+                                         reader.u8(entry.flags) && reader.u16(reserved) &&
+                                         readDigest(reader, entry.content_digest) && reader.u16(path_size);
             const bool is_invalid_entry = !has_valid_entry || path_size > kMaximumPathBytes;
             if (is_invalid_entry)
             {
@@ -1054,10 +1056,9 @@ namespace lux::asset::detail
             if (!reader.u16(path_size) || path_size > kMaximumPathBytes)
                 return fail(error_out, "invalid Pak path child row");
             child.maximum_key.resize(path_size);
-            const bool has_valid_key = path_size == 0u ||
-                reader.bytes(child.maximum_key.data(), child.maximum_key.size());
-            const bool has_valid_child = has_valid_key && reader.u64(child.offset) &&
-                readDigest(reader, child.digest);
+            const bool has_valid_key =
+                path_size == 0u || reader.bytes(child.maximum_key.data(), child.maximum_key.size());
+            const bool has_valid_child = has_valid_key && reader.u64(child.offset) && readDigest(reader, child.digest);
             if (!has_valid_child)
             {
                 return fail(error_out, "truncated Pak path child row");
@@ -1069,15 +1070,22 @@ namespace lux::asset::detail
 
     namespace
     {
-        template<bool Paths, class Source, class Row>
-        bool readTree(Source& source, std::uint64_t file_size, const PakHeader& header,
-            std::vector<Row>& output, std::string* error_out)
+        template <bool Paths, class Source, class Row>
+        bool readTree(
+            Source& source,
+            std::uint64_t file_size,
+            const PakHeader& header,
+            std::vector<Row>& output,
+            std::string* error_out
+        )
         {
             output.clear();
             using Key = std::conditional_t<Paths, std::string, AssetId>;
             const auto key = [](const Row& row) -> const Key& {
-                if constexpr (Paths) return row.vpath;
-                else return row.id;
+                if constexpr (Paths)
+                    return row.vpath;
+                else
+                    return row.id;
             };
             struct Pending final
             {
@@ -1086,8 +1094,11 @@ namespace lux::asset::detail
                 std::optional<Key> maximum;
             };
             const auto count = Paths ? header.path_count : header.entry_count;
-            std::vector<Pending> pending{{Paths ? header.path_root_offset : header.entry_root_offset,
-                Paths ? header.path_root_digest : header.entry_root_digest, {}}};
+            std::vector<Pending> pending{
+                {Paths ? header.path_root_offset : header.entry_root_offset,
+                 Paths ? header.path_root_digest : header.entry_root_digest,
+                 {}}
+            };
             std::unordered_set<std::uint64_t> visited;
             while (!pending.empty())
             {
@@ -1105,20 +1116,39 @@ namespace lux::asset::detail
                 if (kind == (Paths ? EPakPageKind::PATH_LEAF : EPakPageKind::ENTRY_LEAF))
                 {
                     std::vector<Row> rows;
-                    if constexpr (Paths) { if (!decodePathLeaf(page, rows, error_out)) return false; }
-                    else { if (!decodeEntryLeaf(page, rows, error_out)) return false; }
+                    if constexpr (Paths)
+                    {
+                        if (!decodePathLeaf(page, rows, error_out))
+                            return false;
+                    }
+                    else
+                    {
+                        if (!decodeEntryLeaf(page, rows, error_out))
+                            return false;
+                    }
                     if (current.maximum && (rows.empty() || key(rows.back()) != *current.maximum))
                         return fail(error_out, "Pak tree maximum key mismatch");
                     if (output.size() > count || rows.size() > count - output.size())
                         return fail(error_out, "Pak tree exceeds row count");
-                    output.insert(output.end(), std::make_move_iterator(rows.begin()),
-                        std::make_move_iterator(rows.end()));
+                    output.insert(
+                        output.end(),
+                        std::make_move_iterator(rows.begin()),
+                        std::make_move_iterator(rows.end())
+                    );
                 }
                 else if (kind == (Paths ? EPakPageKind::PATH_INTERNAL : EPakPageKind::ENTRY_INTERNAL))
                 {
                     std::vector<std::conditional_t<Paths, PakPathChild, PakEntryChild>> children;
-                    if constexpr (Paths) { if (!decodePathInternal(page, children, error_out)) return false; }
-                    else { if (!decodeEntryInternal(page, children, error_out)) return false; }
+                    if constexpr (Paths)
+                    {
+                        if (!decodePathInternal(page, children, error_out))
+                            return false;
+                    }
+                    else
+                    {
+                        if (!decodeEntryInternal(page, children, error_out))
+                            return false;
+                    }
                     if (current.maximum && children.back().maximum_key != *current.maximum)
                         return fail(error_out, "Pak tree maximum key mismatch");
                     for (std::size_t index = 1; index < children.size(); ++index)
@@ -1127,11 +1157,14 @@ namespace lux::asset::detail
                     for (auto it = children.rbegin(); it != children.rend(); ++it)
                         pending.push_back({it->offset, it->digest, it->maximum_key});
                 }
-                else return fail(error_out, "wrong page kind in Pak tree");
+                else
+                    return fail(error_out, "wrong page kind in Pak tree");
             }
             const auto less = [](const auto& left, const auto& right) {
-                if constexpr (Paths) return left.vpath < right.vpath;
-                else return left.id < right.id;
+                if constexpr (Paths)
+                    return left.vpath < right.vpath;
+                else
+                    return left.id < right.id;
             };
             const auto unordered = std::adjacent_find(output.begin(), output.end(), [&](const auto& a, const auto& b) {
                 return !less(a, b);
@@ -1142,18 +1175,31 @@ namespace lux::asset::detail
         }
     }
 
-    bool readAllPakEntries(std::istream& stream, std::uint64_t file_size, const PakHeader& header,
-        std::vector<PakEntry>& output, std::string* error_out)
+    bool readAllPakEntries(
+        std::istream& stream,
+        std::uint64_t file_size,
+        const PakHeader& header,
+        std::vector<PakEntry>& output,
+        std::string* error_out
+    )
     {
         return readTree<false>(stream, file_size, header, output, error_out);
     }
-    bool readAllPakEntries(std::span<const std::byte> image, const PakHeader& header,
-        std::vector<PakEntry>& output, std::string* error_out)
+    bool readAllPakEntries(
+        std::span<const std::byte> image,
+        const PakHeader& header,
+        std::vector<PakEntry>& output,
+        std::string* error_out
+    )
     {
         return readTree<false>(image, image.size(), header, output, error_out);
     }
-    bool readAllPakPaths(std::span<const std::byte> image, const PakHeader& header,
-        std::vector<PakPathRow>& output, std::string* error_out)
+    bool readAllPakPaths(
+        std::span<const std::byte> image,
+        const PakHeader& header,
+        std::vector<PakPathRow>& output,
+        std::string* error_out
+    )
     {
         return readTree<true>(image, image.size(), header, output, error_out);
     }

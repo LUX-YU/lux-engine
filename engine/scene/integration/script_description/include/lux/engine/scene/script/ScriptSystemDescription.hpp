@@ -19,11 +19,11 @@
 namespace lux::scene::script
 {
     using lux::simulation::SimulationDescription;
-    using lux::simulation::script::ScriptMountId;
-    using lux::simulation::script::HookScriptTarget;
     using lux::simulation::script::EventScriptTarget;
-    using lux::simulation::script::ScriptBindingTarget;
+    using lux::simulation::script::HookScriptTarget;
     using lux::simulation::script::ScriptBindingDescription;
+    using lux::simulation::script::VScriptBindingTarget;
+    using lux::simulation::script::ScriptMountId;
 
     struct SimulationScriptMount final
     {
@@ -37,17 +37,14 @@ namespace lux::scene::script
         friend bool operator==(const EntityScriptMount&, const EntityScriptMount&) noexcept = default;
     };
 
-    using ScriptMountScope = std::variant<
-        SimulationScriptMount,
-        EntityScriptMount
-    >;
+    using VScriptMountScope = std::variant<SimulationScriptMount, EntityScriptMount>;
 
     struct ScriptMountDescription final
     {
-        ScriptMountId               id;
-        lux::asset::AssetId         asset;
-        ScriptMountScope            scope;
-        bool                        enabled{true};
+        ScriptMountId id;
+        lux::asset::AssetId asset;
+        VScriptMountScope scope;
+        bool enabled{true};
         std::vector<ScriptBindingDescription> bindings;
 
         friend bool operator==(const ScriptMountDescription&, const ScriptMountDescription&) noexcept = default;
@@ -63,7 +60,7 @@ namespace lux::scene::script
             return mounts_;
         }
 
-      private:
+    private:
         std::vector<ScriptMountDescription> mounts_;
 
         friend class ScriptSystemDescriptionBuilder;
@@ -86,13 +83,14 @@ namespace lux::scene::script
     class LUX_ENGINE_SCENE_SCRIPT_DESCRIPTION_PUBLIC ScriptSystemDescriptionBuilder final
     {
     public:
-        [[nodiscard]] lux::cxx::expected<void, EScriptSystemDescriptionError>
-        addMount(ScriptMountDescription mount) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemDescriptionError> addMount(ScriptMountDescription mount
+        ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<ScriptSystemDescription, EScriptSystemDescriptionError>
-        build(const SimulationDescription& simulation) && noexcept;
+        [[nodiscard]] lux::cxx::expected<ScriptSystemDescription, EScriptSystemDescriptionError> build(
+            const SimulationDescription& simulation
+        ) && noexcept;
 
-      private:
+    private:
         struct BindingHash final
         {
             [[nodiscard]] std::size_t operator()(const ScriptBindingDescription& binding) const noexcept;

@@ -4,7 +4,7 @@
 #include <span>
 
 #include <lux/engine/function/visibility.h>
-#include <lux/engine/ui/UiIds.hpp>
+#include <lux/engine/ui/Ids.hpp>
 
 namespace lux::ui
 {

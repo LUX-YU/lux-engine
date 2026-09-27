@@ -78,7 +78,7 @@ namespace lux::render
     //   · 没有任何着色器声明 `set = 5` 或 `set = 6`
     //   · getParticleSetLayout() / getComputeSetLayout() 定义了但**从未被调用**
     //     (已随本次一并删除)
-    //   · GPU 驱动剔除实际走的是特性自声明的 set(EPlannedSetKind::FeatureExplicit),
+    //   · GPU 驱动剔除实际走的是特性自声明的 set(EPlannedSetKind::FEATURE_EXPLICIT),
     //     不是这里预留的 6 号
     //
     // 也就是说 EComputeSetBindings 那 4 条 binding 描述的是一个**没发生的设计**。
@@ -111,21 +111,21 @@ namespace lux::render
     // 特化只覆盖上面**还活着的** binding 枚举。三条随枚举一起删了
     //(Instance / Particle / Compute)—— 不是"没人用所以删",是被映射的那一端
     // 已经不存在了。
-    template <typename T> struct get_binding_set;
-    template <> struct get_binding_set<ESceneSetBindings>
+    template <typename T> struct TGetBindingSet;
+    template <> struct TGetBindingSet<ESceneSetBindings>
     {
-        static constexpr uint32_t value = static_cast<uint32_t>(EDescriptorSetSlot::Scene);
+        static constexpr uint32_t value = static_cast<uint32_t>(EDescriptorSetSlot::SCENE);
     };
-    template <> struct get_binding_set<ETextureSetBindings>
+    template <> struct TGetBindingSet<ETextureSetBindings>
     {
-        static constexpr uint32_t value = static_cast<uint32_t>(EDescriptorSetSlot::Texture);
+        static constexpr uint32_t value = static_cast<uint32_t>(EDescriptorSetSlot::TEXTURE);
     };
-    template <> struct get_binding_set<ELightSetBindings>
+    template <> struct TGetBindingSet<ELightSetBindings>
     {
-        static constexpr uint32_t value = static_cast<uint32_t>(EDescriptorSetSlot::Light);
+        static constexpr uint32_t value = static_cast<uint32_t>(EDescriptorSetSlot::LIGHT);
     };
-    template <> struct get_binding_set<EVertexPoolSetBindings>
+    template <> struct TGetBindingSet<EVertexPoolSetBindings>
     {
-        static constexpr uint32_t value = static_cast<uint32_t>(EDescriptorSetSlot::VertexPool);
+        static constexpr uint32_t value = static_cast<uint32_t>(EDescriptorSetSlot::VERTEX_POOL);
     };
 }

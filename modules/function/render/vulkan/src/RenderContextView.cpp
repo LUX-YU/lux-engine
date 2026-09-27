@@ -41,8 +41,10 @@ namespace lux::render
     }
 
     // ── Shaders ─────────────────────────────────────────────────────────
-    ShaderHandle
-    RenderContextView::createShaderModule(std::span<const std::byte> spirv, const lux::rdesc::ShaderInfo& info)
+    ShaderHandle RenderContextView::createShaderModule(
+        std::span<const std::byte> spirv,
+        const lux::rdesc::ShaderInfo& info
+    )
     {
         return ctx_->globalRegistry().must<ShaderResources>().add(spirv, info);
     }

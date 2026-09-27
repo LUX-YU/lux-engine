@@ -17,8 +17,7 @@ namespace lux::simulation::script
 
 namespace lux::semantic
 {
-    template <>
-    struct TypeTraits<lux::simulation::script::EScriptEndPlayReason> final
+    template <> struct TTypeTraits<lux::simulation::script::EScriptEndPlayReason> final
     {
         inline static constexpr std::string_view CanonicalName = "lux.simulation.ScriptEndPlayReason";
         inline static constexpr std::uint8_t AbiKind = static_cast<std::uint8_t>(EAbiKind::U32);

@@ -31,9 +31,7 @@ namespace lux::log
         public:
             using difference_type = std::ptrdiff_t;
 
-            BufSink(char* p, std::size_t cap) noexcept : p_(p), cap_(cap)
-            {
-            }
+            BufSink(char* p, std::size_t cap) noexcept : p_(p), cap_(cap) {}
 
             BufSink& operator=(char c) noexcept
             {
@@ -68,7 +66,8 @@ namespace lux::log
 
         static_assert(
             std::output_iterator<BufSink, char>,
-            "BufSink must model output_iterator<char> for std::vformat_to");
+            "BufSink must model output_iterator<char> for std::vformat_to"
+        );
 
         /// 单出口状态。output 的读侧走裸原子指针 RCU(与 events 的泵表同一套
         /// 纪律 —— atomic<shared_ptr> 在主流实现里带锁,会把锁放回每条日志的
@@ -78,7 +77,7 @@ namespace lux::log
             std::mutex admin;
             std::atomic<const OutputFn*> output{nullptr};
             std::vector<std::unique_ptr<OutputFn>> retired;
-            std::atomic<std::uint8_t> min_level{static_cast<std::uint8_t>(ELevel::Trace)};
+            std::atomic<std::uint8_t> min_level{static_cast<std::uint8_t>(ELevel::LOG_TRACE)};
             std::atomic<std::uint64_t> seq{0};
         };
 
@@ -99,13 +98,13 @@ namespace lux::log
     {
         switch (lv)
         {
-        case ELevel::Trace:
+        case ELevel::LOG_TRACE:
             return "trace";
-        case ELevel::Info:
+        case ELevel::LOG_INFO:
             return "info";
-        case ELevel::Warn:
+        case ELevel::LOG_WARN:
             return "warn";
-        case ELevel::Error:
+        case ELevel::LOG_ERROR:
             return "error";
         }
         return "?";
@@ -197,16 +196,16 @@ namespace lux::log
         int prio = ANDROID_LOG_INFO;
         switch (r.level)
         {
-        case ELevel::Trace:
+        case ELevel::LOG_TRACE:
             prio = ANDROID_LOG_VERBOSE;
             break;
-        case ELevel::Info:
+        case ELevel::LOG_INFO:
             prio = ANDROID_LOG_INFO;
             break;
-        case ELevel::Warn:
+        case ELevel::LOG_WARN:
             prio = ANDROID_LOG_WARN;
             break;
-        case ELevel::Error:
+        case ELevel::LOG_ERROR:
             prio = ANDROID_LOG_ERROR;
             break;
         }
@@ -251,7 +250,7 @@ namespace lux::log
         char buf[1024];
         std::size_t len = std::vformat_to(BufSink{buf, sizeof(buf)}, fmt, args).written();
 
-        using Codec = detail::Codec<std::string_view>;
+        using Codec = detail::TCodec<std::string_view>;
         // 预格式化文本超过记录容量时截文本本体(留完整前缀)——比置 truncated
         // 走「格式串原文」降级路径丢掉整条消息强。
         constexpr std::size_t kMaxText = kLogArgCapacity - sizeof(std::uint16_t);

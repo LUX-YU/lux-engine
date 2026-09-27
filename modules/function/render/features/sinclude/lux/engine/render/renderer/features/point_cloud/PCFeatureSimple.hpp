@@ -34,7 +34,7 @@ namespace lux::render
     {
     public:
         static constexpr phase_mask_t kExtractPhaseMask =
-            phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::PointCloud));
+            phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::POINT_CLOUD));
 
         struct Config
         {

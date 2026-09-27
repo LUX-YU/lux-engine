@@ -39,8 +39,7 @@ namespace lux::world::detail
         lux::cxx::algorithm::Sha256Digest digest;
     };
 
-    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC
-    lux::cxx::expected<WorldStorageVolumeHeader, WorldStorageCodecFailure>
+    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC lux::cxx::expected<WorldStorageVolumeHeader, WorldStorageCodecFailure>
     decodeWorldStorageVolumeHeader(
         std::span<const std::byte> wire,
         WorldBundleId expected_bundle,
@@ -49,16 +48,15 @@ namespace lux::world::detail
         const WorldStorageVolumeDescription& expected_description
     ) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC
-    lux::cxx::expected<WorldStorageChunkDescriptor, WorldStorageCodecFailure>
-    decodeWorldStorageChunkDescriptor(
-        std::span<const std::byte> wire,
-        const WorldStorageVolumeHeader& header,
-        std::uint32_t chunk
-    ) noexcept;
+    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC lux::cxx::
+        expected<WorldStorageChunkDescriptor, WorldStorageCodecFailure>
+        decodeWorldStorageChunkDescriptor(
+            std::span<const std::byte> wire,
+            const WorldStorageVolumeHeader& header,
+            std::uint32_t chunk
+        ) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC
-    lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
+    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
     decodeWorldStorageChunkPayload(
         std::span<const std::byte> stored_payload,
         const WorldStorageChunkDescriptor& descriptor,
@@ -72,15 +70,13 @@ namespace lux::world::detail
         std::vector<WorldPartitionRecord> records;
         std::vector<WorldPartitionExtent> extents;
 
-        [[nodiscard]] const WorldPartitionRecord*
-        find(partition::PartitionOrdinal partition) const noexcept;
+        [[nodiscard]] const WorldPartitionRecord* find(partition::PartitionOrdinal partition) const noexcept;
 
-        [[nodiscard]] std::span<const WorldPartitionExtent>
-        partitionExtents(const WorldPartitionRecord& record) const noexcept;
+        [[nodiscard]] std::span<const WorldPartitionExtent> partitionExtents(const WorldPartitionRecord& record
+        ) const noexcept;
     };
 
-    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC
-    lux::cxx::expected<WorldPartitionTablePage, WorldStorageCodecFailure>
+    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC lux::cxx::expected<WorldPartitionTablePage, WorldStorageCodecFailure>
     decodeWorldPartitionTablePage(
         std::span<const std::byte> wire,
         partition::PartitionOrdinal expected_first,

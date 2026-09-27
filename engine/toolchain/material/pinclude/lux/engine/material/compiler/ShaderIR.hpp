@@ -43,17 +43,38 @@ namespace lux::shadergen
     /// append at the end -- never reorder or change the meaning of an entry.
     enum class EOp : uint16_t
     {
-        CONSTANT,      ///< a literal (constant[])
-        INPUT,         ///< read a named input slot (slot -> inputs[])
+        CONSTANT,       ///< a literal (constant[])
+        INPUT,          ///< read a named input slot (slot -> inputs[])
         SAMPLE_TEXTURE, ///< sample a texture slot (slot -> textures[], operands[0]=uv)
-        PARAM,         ///< read a param slot (slot -> params[])
-        MUL, ADD, SUB, DIV, LERP, SATURATE, DOT, MIN, MAX,
+        PARAM,          ///< read a param slot (slot -> params[])
+        MUL,
+        ADD,
+        SUB,
+        DIV,
+        LERP,
+        SATURATE,
+        DOT,
+        MIN,
+        MAX,
         SWIZZLE,       ///< component reshuffle (swizzle[])
         CONSTRUCT,     ///< vecN(...)
         DECODE_NORMAL, ///< normal-map rgb -> tangent-space normal
-        POW, STEP, MOD, CROSS, REFLECT, ONE_MINUS, ABS, SQRT, FLOOR, FRACT,
-        SIN, COS, NORMALIZE, LENGTH, TBN_NORMAL,
-        RAW_EXPR,      ///< escape hatch: a backend-specific raw shader fragment (slot -> raw_blocks[], see §6.5)
+        POW,
+        STEP,
+        MOD,
+        CROSS,
+        REFLECT,
+        ONE_MINUS,
+        ABS,
+        SQRT,
+        FLOOR,
+        FRACT,
+        SIN,
+        COS,
+        NORMALIZE,
+        LENGTH,
+        TBN_NORMAL,
+        RAW_EXPR, ///< escape hatch: a backend-specific raw shader fragment (slot -> raw_blocks[], see §6.5)
     };
 
     inline constexpr uint32_t kNoValue = ~0u;
@@ -61,18 +82,22 @@ namespace lux::shadergen
     /// A single SSA value. operands are indices into values[] (kNoValue = unused).
     struct ShaderIRValue
     {
-        EOp        op;
+        EOp op;
         EValueType type;
-        uint32_t   operands[4] = { kNoValue, kNoValue, kNoValue, kNoValue };
+        uint32_t operands[4] = {kNoValue, kNoValue, kNoValue, kNoValue};
 
         // payload (interpreted according to op):
-        float    constant[4] = { 0, 0, 0, 0 };  ///< Constant
-        uint32_t slot        = 0;               ///< the slot index for Input/SampleTexture/Param/RawExpr
-        uint8_t  swizzle[4]  = { 0, 1, 2, 3 };  ///< Swizzle
+        float constant[4] = {0, 0, 0, 0};  ///< Constant
+        uint32_t slot = 0;                 ///< the slot index for Input/SampleTexture/Param/RawExpr
+        uint8_t swizzle[4] = {0, 1, 2, 3}; ///< Swizzle
     };
 
     /// Interpolation qualifier for a shading-stage input.
-    enum class EInterpolation : uint8_t { SMOOTH, FLAT };
+    enum class EInterpolation : uint8_t
+    {
+        SMOOTH,
+        FLAT
+    };
 
     /// A named input slot. Its semantics are defined by the client (for
     /// materials: uv0/world_normal/...); shadergen itself makes no assumption
@@ -83,9 +108,9 @@ namespace lux::shadergen
     /// location == -1 means unspecified (left for ShellTemplate to decide).
     struct InputSlot
     {
-        std::string    name;
-        EValueType     type          = EValueType::FLOAT;
-        int32_t        location      = -1;
+        std::string name;
+        EValueType type = EValueType::FLOAT;
+        int32_t location = -1;
         EInterpolation interpolation = EInterpolation::SMOOTH;
     };
 
@@ -99,8 +124,8 @@ namespace lux::shadergen
     struct ParamSlot
     {
         std::string name;
-        EValueType  type = EValueType::FLOAT;
-        float       dflt[4] = { 0, 0, 0, 0 };
+        EValueType type = EValueType::FLOAT;
+        float dflt[4] = {0, 0, 0, 0};
     };
 
     /// A backend-specific fragment for the RawExpr escape hatch (see §6.5).
@@ -117,8 +142,8 @@ namespace lux::shadergen
     /// ShaderIRValue, with no extra structural fields needed.
     struct RawBlock
     {
-        std::string language;  ///< "glsl" / "hlsl" / ...
-        std::string code;      ///< the fragment text, $0..$3 = the operands' expressions
+        std::string language; ///< "glsl" / "hlsl" / ...
+        std::string code;     ///< the fragment text, $0..$3 = the operands' expressions
     };
 
     /// A named output binding. Generic -- makes no assumption about whether
@@ -131,8 +156,8 @@ namespace lux::shadergen
     struct Output
     {
         std::string name;
-        uint32_t    value_id = kNoValue;
-        EValueType  type     = EValueType::FLOAT;
+        uint32_t value_id = kNoValue;
+        EValueType type = EValueType::FLOAT;
         /// Default used when value_id==kNoValue; emitted as a SPIR-V literal.
         float dflt[4] = {0, 0, 0, 0};
     };
@@ -141,12 +166,12 @@ namespace lux::shadergen
     /// expressions (no shading_model / render_state).
     struct ShaderIR
     {
-        std::vector<ShaderIRValue> values;     ///< SSA values in topological order
-        std::vector<Output>        outputs;    ///< named output bindings
-        std::vector<InputSlot>     inputs;     ///< named input slots
-        std::vector<TextureSlot>   textures;   ///< set2 bindless sampler slots
-        std::vector<ParamSlot>     params;     ///< set4 SSBO parameter slots
-        std::vector<RawBlock>      raw_blocks; ///< RawExpr text
+        std::vector<ShaderIRValue> values; ///< SSA values in topological order
+        std::vector<Output> outputs;       ///< named output bindings
+        std::vector<InputSlot> inputs;     ///< named input slots
+        std::vector<TextureSlot> textures; ///< set2 bindless sampler slots
+        std::vector<ParamSlot> params;     ///< set4 SSBO parameter slots
+        std::vector<RawBlock> raw_blocks;  ///< RawExpr text
 
         /// The codegen cache key is data derived from computeFingerprint(*this).
         /// Designed from scratch, decoupled from rdesc's

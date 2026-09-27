@@ -73,7 +73,8 @@ namespace lux::render
     {
         static_assert(
             std::is_trivially_copyable_v<Config>,
-            "CommConfig 必须可平凡拷贝 —— 它是直接 memcpy 过 comm 通道的。");
+            "CommConfig 必须可平凡拷贝 —— 它是直接 memcpy 过 comm 通道的。"
+        );
 
         if (param == nullptr || param_size != sizeof(Config))
             return renderFailure<err::comm::PayloadSizeMismatch>(
@@ -86,8 +87,11 @@ namespace lux::render
         return value;
     }
 
-    inline FeatureFactory
-    makeSimpleFactory(FeatureCreateFn create_fn, const char* name = "", FeatureDescriptor descriptor = {}) noexcept
+    inline FeatureFactory makeSimpleFactory(
+        FeatureCreateFn create_fn,
+        const char* name = "",
+        FeatureDescriptor descriptor = {}
+    ) noexcept
     {
         return FeatureFactory{
             create_fn,
@@ -95,7 +99,8 @@ namespace lux::render
             +[](void*, const TypeId*, uint32_t) {},
             name,
             -1,
-            descriptor};
+            descriptor
+        };
     }
 
 } // namespace lux::render

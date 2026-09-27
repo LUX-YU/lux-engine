@@ -22,8 +22,8 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/material/compiler/ShaderIR.hpp>
-#include <lux/engine/description/MaterialEnums.hpp>          // rdesc::EAlphaMode
-#include <lux/engine/description/ShaderInfo.hpp>             // CompiledShader holds a ShaderInfo value
+#include <lux/engine/description/MaterialEnums.hpp> // rdesc::EAlphaMode
+#include <lux/engine/description/ShaderInfo.hpp>    // CompiledShader holds a ShaderInfo value
 
 namespace lux::shadergen::glsl
 {
@@ -41,23 +41,22 @@ namespace lux::shadergen::glsl
     struct EmitParams
     {
         EMaterialPass pass{EMaterialPass::GBUFFER};
-        ::lux::rdesc::ELightingTechnique shading_model{::lux::rdesc::ELightingTechnique::PbrMetallicRoughness};
-        ::lux::rdesc::EAlphaMode alpha_mode{::lux::rdesc::EAlphaMode::Opaque};
+        ::lux::rdesc::ELightingTechnique shading_model{::lux::rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS};
+        ::lux::rdesc::EAlphaMode alpha_mode{::lux::rdesc::EAlphaMode::OPAQUE_SURFACE};
         float alpha_cutoff{0.5F};
     };
 
     /// Compilation output: SPIR-V words plus this shader's ShaderInfo (descriptor layout for set2/set4).
     struct CompiledShader
     {
-        std::vector<uint32_t>    spirv;
+        std::vector<uint32_t> spirv;
         ::lux::rdesc::ShaderInfo info;
     };
 
     /// Emits GLSL fragment source (pure: no shaderc, no device, unit-testable).
     /// Returns the source string on success; returns an error string on failure
     /// (e.g. for the Shadow/VisBuffer pass).
-    lux::cxx::expected<std::string, std::string>
-    emitGlsl(const ShaderIR& ir, const EmitParams& params);
+    lux::cxx::expected<std::string, std::string> emitGlsl(const ShaderIR& ir, const EmitParams& params);
 
     /// Runs emitGlsl and then compiles the result to SPIR-V via libshaderc (target
     /// env vulkan1.2). Wires up an IncluderInterface backed only by the canonical
@@ -65,7 +64,6 @@ namespace lux::shadergen::glsl
     /// Returns CompiledShader on success
     /// (SPIR-V plus ShaderInfo: textures map to set2, tex|param map to set4);
     /// returns an error string on failure.
-    lux::cxx::expected<CompiledShader, std::string>
-    compileToSpirv(const ShaderIR& ir, const EmitParams& params);
+    lux::cxx::expected<CompiledShader, std::string> compileToSpirv(const ShaderIR& ir, const EmitParams& params);
 
 } // namespace lux::shadergen::glsl

@@ -7,12 +7,11 @@
 namespace lux::render
 {
     RenderUploadSession::RenderUploadSession(
-        std::shared_ptr<RenderUploadChannel<>> channel,
+        std::shared_ptr<TRenderUploadChannel<>> channel,
         std::shared_ptr<RenderChannelSync> sync
     )
         : channel_(std::move(channel)), sync_(std::move(sync)), owner_thread_token_(currentThreadToken())
-    {
-    }
+    {}
 
     std::size_t RenderUploadSession::pumpReplies(std::size_t budget)
     {
@@ -63,14 +62,16 @@ namespace lux::render
         const TextureUploadMipInput mip{
             static_cast<std::uint32_t>(std::max(0, width)),
             static_cast<std::uint32_t>(std::max(0, height)),
-            byte_count};
+            byte_count
+        };
         if (pixels.empty() || byte_count == 0 || !validateTexture2DUpload(format, 1, &mip, UINT32_MAX).ok())
             return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
 
         return trySubmit<Texture2DCreatedReply>(
             [pixels = std::move(pixels), width, height, channels, format, generate_mips, mip](
                 Builder& builder,
-                auto callback) mutable {
+                auto callback
+            ) mutable {
                 CreateTexture2DPayload payload{};
                 payload.width = width;
                 payload.height = height;
@@ -120,31 +121,32 @@ namespace lux::render
             inputs[i] = TextureUploadMipInput{
                 mip_levels[i].width,
                 mip_levels[i].height,
-                static_cast<std::uint32_t>(mip_levels[i].pixels.size())};
+                static_cast<std::uint32_t>(mip_levels[i].pixels.size())
+            };
         }
         if (!validateTexture2DUpload(format, mip_count, inputs, UINT32_MAX).ok())
             return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
 
-        return trySubmit<Texture2DCreatedReply>(
-            [mip_levels = std::move(mip_levels), mip_count, channels, format, generate_mips](
-                Builder& builder,
-                auto callback) mutable {
-                CreateTexture2DPayload payload{};
-                payload.width = static_cast<std::int32_t>(mip_levels[0].width);
-                payload.height = static_cast<std::int32_t>(mip_levels[0].height);
-                payload.channels = channels;
-                payload.format = format;
-                payload.generate_mips = generate_mips;
-                payload.mip_count = mip_count;
-                for (std::uint32_t i = 0; i < mip_count; ++i)
-                {
-                    payload.mips[i].pixels = builder.pushSharedBytes(mip_levels[i].pixels);
-                    payload.mips[i].width = mip_levels[i].width;
-                    payload.mips[i].height = mip_levels[i].height;
-                }
-                builder.pushResource(type_ids::CreateTexture2D, payload, std::move(callback));
+        return trySubmit<Texture2DCreatedReply>([mip_levels = std::move(mip_levels),
+                                                 mip_count,
+                                                 channels,
+                                                 format,
+                                                 generate_mips](Builder& builder, auto callback) mutable {
+            CreateTexture2DPayload payload{};
+            payload.width = static_cast<std::int32_t>(mip_levels[0].width);
+            payload.height = static_cast<std::int32_t>(mip_levels[0].height);
+            payload.channels = channels;
+            payload.format = format;
+            payload.generate_mips = generate_mips;
+            payload.mip_count = mip_count;
+            for (std::uint32_t i = 0; i < mip_count; ++i)
+            {
+                payload.mips[i].pixels = builder.pushSharedBytes(mip_levels[i].pixels);
+                payload.mips[i].width = mip_levels[i].width;
+                payload.mips[i].height = mip_levels[i].height;
             }
-        );
+            builder.pushResource(type_ids::CreateTexture2D, payload, std::move(callback));
+        });
     }
 
     UploadSubmitResult<Texture2DCreatedReply> RenderUploadSession::tryCreateTexture2DMips(
@@ -184,32 +186,34 @@ namespace lux::render
             inputs[i] = TextureUploadMipInput{
                 mip_levels[i].width,
                 mip_levels[i].height,
-                static_cast<std::uint32_t>(mip_levels[i].pixels.size())};
+                static_cast<std::uint32_t>(mip_levels[i].pixels.size())
+            };
         }
         if (!validateTexture2DUpload(format, mip_count, inputs, UINT32_MAX).ok())
         {
             return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
         }
 
-        return trySubmit<TextureMipRangeReplacedReply>(
-            [handle, base_mip, mip_levels = std::move(mip_levels), mip_count, format, generate_mips](
-                Builder& builder,
-                auto callback) mutable {
-                ReplaceTexture2DMipRangePayload payload{};
-                payload.handle = handle;
-                payload.format = format;
-                payload.generate_mips = generate_mips;
-                payload.base_mip = base_mip;
-                payload.mip_count = mip_count;
-                for (std::uint32_t i = 0u; i < mip_count; ++i)
-                {
-                    payload.mips[i].pixels = builder.pushSharedBytes(mip_levels[i].pixels);
-                    payload.mips[i].width = mip_levels[i].width;
-                    payload.mips[i].height = mip_levels[i].height;
-                }
-                builder.pushResource(type_ids::ReplaceTexture2DMipRange, payload, std::move(callback));
+        return trySubmit<TextureMipRangeReplacedReply>([handle,
+                                                        base_mip,
+                                                        mip_levels = std::move(mip_levels),
+                                                        mip_count,
+                                                        format,
+                                                        generate_mips](Builder& builder, auto callback) mutable {
+            ReplaceTexture2DMipRangePayload payload{};
+            payload.handle = handle;
+            payload.format = format;
+            payload.generate_mips = generate_mips;
+            payload.base_mip = base_mip;
+            payload.mip_count = mip_count;
+            for (std::uint32_t i = 0u; i < mip_count; ++i)
+            {
+                payload.mips[i].pixels = builder.pushSharedBytes(mip_levels[i].pixels);
+                payload.mips[i].width = mip_levels[i].width;
+                payload.mips[i].height = mip_levels[i].height;
             }
-        );
+            builder.pushResource(type_ids::ReplaceTexture2DMipRange, payload, std::move(callback));
+        });
     }
 
     UploadSubmitResult<CubeTextureCreatedReply> RenderUploadSession::tryCreateCubeTexture(
@@ -242,8 +246,9 @@ namespace lux::render
         );
     }
 
-    UploadSubmitResult<Texture2DCreatedReply>
-    RenderUploadSession::tryCreatePersistentTexture2D(const PersistentTexture2DDesc& desc)
+    UploadSubmitResult<Texture2DCreatedReply> RenderUploadSession::tryCreatePersistentTexture2D(
+        const PersistentTexture2DDesc& desc
+    )
     {
         if (!validatePersistentTexture2DDesc(desc).ok())
             return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
@@ -254,12 +259,12 @@ namespace lux::render
                 CreatePersistentTexture2DPayload{.desc = desc},
                 std::move(callback)
             );
-        }
-        );
+        });
     }
 
-    UploadSubmitResult<TextureRegionsAppliedReply>
-    RenderUploadSession::tryUpdateTextureRegions(OwnedTextureUploadBatch batch)
+    UploadSubmitResult<TextureRegionsAppliedReply> RenderUploadSession::tryUpdateTextureRegions(
+        OwnedTextureUploadBatch batch
+    )
     {
         const bool is_invalid_destination = batch.dst.isNull();
         const bool is_empty_payload = batch.regions.empty() || batch.pixels.empty();
@@ -271,21 +276,20 @@ namespace lux::render
         const std::size_t region_bytes = batch.regions.size() * sizeof(TextureRegionDesc);
         auto owned_regions = std::make_shared<std::vector<TextureRegionDesc>>(std::move(batch.regions));
 
-        return trySubmit<TextureRegionsAppliedReply>(
-            [owned_regions = std::move(owned_regions), batch](Builder& builder, auto callback) mutable {
-                UpdateTextureRegionsPayload payload{};
-                payload.handle = batch.dst;
-                payload.content_revision = batch.content_revision;
-                payload.region_count = static_cast<std::uint32_t>(owned_regions->size());
-                payload.regions = builder.pushSharedBytes(
-                    std::static_pointer_cast<const void>(owned_regions),
-                    reinterpret_cast<const std::byte*>(owned_regions->data()),
-                    static_cast<std::uint32_t>(owned_regions->size() * sizeof(TextureRegionDesc))
-                );
-                payload.pixels = builder.pushSharedBytes(batch.pixels);
-                builder.pushResource(type_ids::UpdateTextureRegions, payload, std::move(callback));
-            }
-        );
+        return trySubmit<TextureRegionsAppliedReply>([owned_regions = std::move(owned_regions),
+                                                      batch](Builder& builder, auto callback) mutable {
+            UpdateTextureRegionsPayload payload{};
+            payload.handle = batch.dst;
+            payload.content_revision = batch.content_revision;
+            payload.region_count = static_cast<std::uint32_t>(owned_regions->size());
+            payload.regions = builder.pushSharedBytes(
+                std::static_pointer_cast<const void>(owned_regions),
+                reinterpret_cast<const std::byte*>(owned_regions->data()),
+                static_cast<std::uint32_t>(owned_regions->size() * sizeof(TextureRegionDesc))
+            );
+            payload.pixels = builder.pushSharedBytes(batch.pixels);
+            builder.pushResource(type_ids::UpdateTextureRegions, payload, std::move(callback));
+        });
     }
 
     std::uint64_t RenderUploadSession::currentThreadToken() noexcept

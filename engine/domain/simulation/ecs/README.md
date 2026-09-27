@@ -73,4 +73,4 @@ Parent 是否存在由正式描述与能力决定。不能把所有实体都视�
 - 业务失败、无效身份和关闭过程仍须准确表达，不能以“不处理 OOM”取消这些检查。
 - 公共通知发生在组件与历史状态一致之后；通知栈内不销毁仍在执行的 owner。
 
-相关说明：[持久身份](../../world/README.md)、[运行时查询](../../spatial/README.md)、[Simulation](../README.md)、[Scene Editor](../../../editor/editors/scene/README.md)。
+相关说明：[持久身份](../../world/README.md)、[运行时查询](../../spatial/README.md)、[Simulation](../README.md)、[Scene Editor](../../../editor/tools/scene/README.md)。

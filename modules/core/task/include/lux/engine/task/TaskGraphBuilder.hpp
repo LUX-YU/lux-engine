@@ -96,16 +96,11 @@ namespace lux::task
             static_assert(std::is_move_constructible_v<Callable>);
             static_assert(std::is_nothrow_invocable_r_v<void, const Callable&>);
 
-            try
             {
                 PendingTask pending;
                 (collectProperty(pending, std::get<Index>(std::forward<Tuple>(arguments))), ...);
                 pending.callable = TaskCallable(std::get<kCallableIndex>(std::forward<Tuple>(arguments)));
                 return addPending(std::move(pending));
-            }
-            catch (...)
-            {
-                return lux::cxx::unexpected(TaskGraphFailure{.code = ETaskGraphError::ALLOCATION_FAILURE});
             }
         }
 

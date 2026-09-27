@@ -90,8 +90,8 @@ namespace lux::render
                 build_nanoseconds,
                 compile_nanoseconds,
                 total_nanoseconds,
-                succeeded}
-            );
+                succeeded
+            });
             constexpr std::size_t kCompileHistoryCapacity = 4096u;
             if (compile_history_.size() > kCompileHistoryCapacity)
                 compile_history_.pop_front();
@@ -105,9 +105,9 @@ namespace lux::render
         std::unique_ptr<RGCompiledGraph> new_graph;
         RGResourceHandle new_color_handle{};
 
-        if (layout.hasSlot(TargetSlot::SCENE_COLOR))
+        if (layout.hasSlot(ETargetSlot::SCENE_COLOR))
         {
-            const auto& color_slot = layout.slot(TargetSlot::SCENE_COLOR);
+            const auto& color_slot = layout.slot(ETargetSlot::SCENE_COLOR);
 
             RGBuilder builder;
 
@@ -119,7 +119,7 @@ namespace lux::render
             {
                 ctx_.reportError(
                     renderError<err::graph::SlotFormatUnmapped>(
-                        static_cast<std::uint32_t>(TargetSlot::SCENE_COLOR),
+                        static_cast<std::uint32_t>(ETargetSlot::SCENE_COLOR),
                         static_cast<std::uint32_t>(color_slot.format)
                     ),
                     scene_index_
@@ -133,7 +133,7 @@ namespace lux::render
 
             RGImportedResourceInfo bb_import{};
             bb_import.image_getter = nullptr; // no getter; images injected via imported_slots
-            bb_import.update_group = static_cast<uint32_t>(RGUpdateGroup::GROUP_SWAPCHAIN);
+            bb_import.update_group = static_cast<uint32_t>(ERGUpdateGroup::GROUP_SWAPCHAIN);
             bb_import.initial_layout = toVkImageLayout(color_slot.initial_state);
             bb_import.final_layout = toVkImageLayout(color_slot.final_state);
             bb_import.preserve_content = color_slot.preserve_content;
@@ -151,7 +151,7 @@ namespace lux::render
             // which is also COLOR_ATTACHMENT_OUTPUT.
             bb_import.initial_stage = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-            auto backbuffer = builder.importSlottedTexture(TargetSlot::SCENE_COLOR, "SceneColor", bb_desc, bb_import);
+            auto backbuffer = builder.importSlottedTexture(ETargetSlot::SCENE_COLOR, "SceneColor", bb_desc, bb_import);
 
             RGTextureDescription depth_desc =
                 RGTextureDescription::Relative(1.0f, 1.0f, lux::rdesc::ETextureFormat::D32_SFLOAT);
@@ -177,9 +177,9 @@ namespace lux::render
             {
                 if ((transient_slots & (1u << si)) == 0u)
                     continue;
-                const auto slot = static_cast<TargetSlot>(si);
-                if (slot == TargetSlot::SCENE_COLOR || slot == TargetSlot::SCENE_DEPTH ||
-                    slot == TargetSlot::RESOLVE_COLOR)
+                const auto slot = static_cast<ETargetSlot>(si);
+                if (slot == ETargetSlot::SCENE_COLOR || slot == ETargetSlot::SCENE_DEPTH ||
+                    slot == ETargetSlot::RESOLVE_COLOR)
                 {
                     continue;
                 }
@@ -203,16 +203,16 @@ namespace lux::render
             // transient. No-op for a layout that declares only the primary slots.
             for (size_t si = 0; si < kTargetSlotCount; ++si)
             {
-                const auto extra_slot = static_cast<TargetSlot>(si);
-                if (extra_slot == TargetSlot::SCENE_COLOR || extra_slot == TargetSlot::SCENE_DEPTH ||
-                    extra_slot == TargetSlot::RESOLVE_COLOR)
+                const auto extra_slot = static_cast<ETargetSlot>(si);
+                if (extra_slot == ETargetSlot::SCENE_COLOR || extra_slot == ETargetSlot::SCENE_DEPTH ||
+                    extra_slot == ETargetSlot::RESOLVE_COLOR)
                     continue; // primary slots handled above
                 if (!layout.hasSlot(extra_slot))
                     continue;
                 const auto& sd = layout.slot(extra_slot);
                 RGImportedResourceInfo imp{};
                 imp.slot = extra_slot;
-                imp.update_group = static_cast<uint32_t>(RGUpdateGroup::GROUP_SWAPCHAIN);
+                imp.update_group = static_cast<uint32_t>(ERGUpdateGroup::GROUP_SWAPCHAIN);
                 imp.initial_layout = toVkImageLayout(sd.initial_state);
                 imp.final_layout = toVkImageLayout(sd.final_state);
                 imp.preserve_content = sd.preserve_content;

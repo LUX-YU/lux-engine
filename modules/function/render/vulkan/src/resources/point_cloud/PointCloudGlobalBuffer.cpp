@@ -1,14 +1,15 @@
 #include <lux/engine/render/resources/point_cloud/PointCloudGlobalBuffer.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
 
-#include <cassert>
-
 namespace lux::render
 {
 
     bool PointCloudGlobalBuffer::ensureSlotCapacity(uint32_t chunk_id, uint32_t capacity, TransferScheduler& scheduler)
     {
-        assert(isInitialized());
+        if (!isInitialized())
+        {
+            return false;
+        }
         if (capacity == 0)
             return false;
 

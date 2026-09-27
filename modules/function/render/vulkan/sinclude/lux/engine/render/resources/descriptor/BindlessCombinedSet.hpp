@@ -34,7 +34,7 @@ namespace lux::render
         VkDescriptorSetLayout descriptor_set_layout{VK_NULL_HANDLE};
 
         // Shader layout
-        uint32_t set_index = get_binding_set<ETextureSetBindings>::value;
+        uint32_t set_index = TGetBindingSet<ETextureSetBindings>::value;
         /// 2D 无绑定纹理数组。此前是字面量 0 加一句 "COMBINED_IMAGE_SAMPLER binding" ——
         /// 于是契约里的 ETextureSetBindings::TEXTURES 看起来"零使用",而它其实是这条
         /// **活 binding** 的唯一名字。旁边的 cube 路径一直是按名字给的
@@ -245,8 +245,11 @@ namespace lux::render
         };
 
         /// Queue an in-place 2D texture update for an existing live slot.
-        [[nodiscard]] bool
-        updateTextureMips(const SlotHandle& h, std::span<const TextureUpdateMip> mips, bool generate_mips);
+        [[nodiscard]] bool updateTextureMips(
+            const SlotHandle& h,
+            std::span<const TextureUpdateMip> mips,
+            bool generate_mips
+        );
 
         // ========== Persistent dynamic textures + region updates (U2-01) ==========
 

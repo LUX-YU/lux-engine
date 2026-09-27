@@ -81,8 +81,14 @@ namespace lux::render
         virtual void resize(VkExtent2D new_extent);
         [[nodiscard]] bool tryResize(VkExtent2D new_extent) noexcept;
         [[nodiscard]] bool tryApplyLayout(const RenderTargetLayout& layout) noexcept;
-        [[nodiscard]] bool valid() const noexcept { return backing_revision_ != 0; }
-        [[nodiscard]] uint64_t backingRevision() const noexcept { return backing_revision_; }
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return backing_revision_ != 0;
+        }
+        [[nodiscard]] uint64_t backingRevision() const noexcept
+        {
+            return backing_revision_;
+        }
         [[nodiscard]] bool recorded(uint32_t slot) const noexcept
         {
             return slot < recorded_slots_.size() && recorded_slots_[slot] != 0;

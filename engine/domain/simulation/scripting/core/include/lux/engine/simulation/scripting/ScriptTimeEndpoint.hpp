@@ -9,12 +9,12 @@ namespace lux::simulation::script
 {
     struct ScriptRealDelayEndpoint final
     {
+        using StartFn = lux::script::ScriptAbilityStartResult (*)(
+            void*, std::chrono::nanoseconds, lux::script::TScriptAbilityCompletion<void>
+        ) noexcept;
+
         void* context{};
-        lux::script::ScriptAbilityStartResult (*start)(
-            void*,
-            std::chrono::nanoseconds,
-            lux::script::ScriptAbilityCompletion<void>
-        ) noexcept{};
+        StartFn start{};
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
@@ -23,7 +23,7 @@ namespace lux::simulation::script
 
         [[nodiscard]] lux::script::ScriptAbilityStartResult invoke(
             std::chrono::nanoseconds duration,
-            lux::script::ScriptAbilityCompletion<void> completion
+            lux::script::TScriptAbilityCompletion<void> completion
         ) const noexcept
         {
             if (!*this)

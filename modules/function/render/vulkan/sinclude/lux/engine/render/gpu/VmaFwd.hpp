@@ -21,14 +21,18 @@ struct VmaVirtualBlock_T;
 using VmaVirtualBlock = VmaVirtualBlock_T*;
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-VkResult
-vmaFlushAllocation(VmaAllocator allocator, VmaAllocation allocation, VkDeviceSize offset, VkDeviceSize size);
+    VkResult vmaFlushAllocation(
+        VmaAllocator allocator,
+        VmaAllocation allocation,
+        VkDeviceSize offset,
+        VkDeviceSize size
+    );
 
-void
-vmaDestroyBuffer(VmaAllocator allocator, VkBuffer buffer, VmaAllocation allocation);
+    void vmaDestroyBuffer(VmaAllocator allocator, VkBuffer buffer, VmaAllocation allocation);
 
 #ifdef __cplusplus
 }

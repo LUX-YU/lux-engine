@@ -56,11 +56,8 @@ namespace lux::asset
             std::size_t decoded_bytes,
             std::size_t auxiliary_payloads
         ) noexcept
-            : max_image_bytes(image_bytes),
-              max_decoded_bytes(decoded_bytes),
-              max_auxiliary_payloads(auxiliary_payloads)
-        {
-        }
+            : max_image_bytes(image_bytes), max_decoded_bytes(decoded_bytes), max_auxiliary_payloads(auxiliary_payloads)
+        {}
 
         std::size_t max_image_bytes;
         std::size_t max_decoded_bytes;
@@ -71,10 +68,7 @@ namespace lux::asset
     {
         AssetEncodeLimits() = delete;
 
-        explicit constexpr AssetEncodeLimits(std::size_t encoded_bytes) noexcept
-            : max_encoded_bytes(encoded_bytes)
-        {
-        }
+        explicit constexpr AssetEncodeLimits(std::size_t encoded_bytes) noexcept : max_encoded_bytes(encoded_bytes) {}
 
         std::size_t max_encoded_bytes;
     };

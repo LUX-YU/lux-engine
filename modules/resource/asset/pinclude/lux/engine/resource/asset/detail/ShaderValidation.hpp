@@ -12,14 +12,13 @@ namespace lux::asset::detail
 
     [[nodiscard]] inline bool validSpirvWords(std::span<const std::uint32_t> words) noexcept
     {
-        return words.size() >= kSpirvHeaderWords && words[0] == kSpirvMagic && words[1] != 0U &&
-            words[3] != 0U && words[4] == 0U;
+        return words.size() >= kSpirvHeaderWords && words[0] == kSpirvMagic && words[1] != 0U && words[3] != 0U &&
+               words[4] == 0U;
     }
 
     [[nodiscard]] inline bool validSpirvBytes(std::span<const std::byte> bytes) noexcept
     {
-        if (bytes.size() < kSpirvHeaderWords * sizeof(std::uint32_t) ||
-            bytes.size() % sizeof(std::uint32_t) != 0U)
+        if (bytes.size() < kSpirvHeaderWords * sizeof(std::uint32_t) || bytes.size() % sizeof(std::uint32_t) != 0U)
         {
             return false;
         }

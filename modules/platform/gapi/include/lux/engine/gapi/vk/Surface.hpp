@@ -18,13 +18,9 @@ namespace lux::gapi::vk
 
         }
         */
-        Surface() : surface{VK_NULL_HANDLE}
-        {
-        }
+        Surface() : surface{VK_NULL_HANDLE} {}
 
-        Surface(VkSurfaceKHR surface) : surface{surface}
-        {
-        }
+        Surface(VkSurfaceKHR surface) : surface{surface} {}
 
         Surface(const Surface&) = delete;
         Surface& operator=(const Surface&) = delete;

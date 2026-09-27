@@ -13,21 +13,24 @@
 namespace lux::serialization
 {
     template <class Scalar, int Rows, int Columns, int Options, int MaxRows, int MaxColumns>
-    struct Serializer<Eigen::Matrix<Scalar, Rows, Columns, Options, MaxRows, MaxColumns>>
+    struct TSerializer<Eigen::Matrix<Scalar, Rows, Columns, Options, MaxRows, MaxColumns>>
     {
         using Matrix = Eigen::Matrix<Scalar, Rows, Columns, Options, MaxRows, MaxColumns>;
         static constexpr EWireExtent wire_extent =
-            Rows == Eigen::Dynamic || Columns == Eigen::Dynamic || WireTraits<Scalar>::extent == EWireExtent::VARIABLE
+            Rows == Eigen::Dynamic || Columns == Eigen::Dynamic || TWireTraits<Scalar>::extent == EWireExtent::VARIABLE
                 ? EWireExtent::VARIABLE
-                : WireTraits<Scalar>::extent;
+                : TWireTraits<Scalar>::extent;
         static constexpr std::size_t fixed_wire_size =
             wire_extent != EWireExtent::FIXED
                 ? 0U
-                : WireTraits<Scalar>::fixed_size * static_cast<std::size_t>(Rows) * static_cast<std::size_t>(Columns);
+                : TWireTraits<Scalar>::fixed_size * static_cast<std::size_t>(Rows) * static_cast<std::size_t>(Columns);
 
         template <class Writer>
-        [[nodiscard]] static SerializationResult
-        write(Writer& writer, const Matrix& value, const SerializationContext& context) noexcept
+        [[nodiscard]] static SerializationResult write(
+            Writer& writer,
+            const Matrix& value,
+            const SerializationContext& context
+        ) noexcept
         {
             SerializationResult result{};
             if constexpr (Rows == Eigen::Dynamic)
@@ -52,8 +55,11 @@ namespace lux::serialization
         }
 
         template <class Reader>
-        [[nodiscard]] static SerializationResult
-        read(Reader& reader, Matrix& value, const SerializationContext& context) noexcept
+        [[nodiscard]] static SerializationResult read(
+            Reader& reader,
+            Matrix& value,
+            const SerializationContext& context
+        ) noexcept
         {
             std::uint64_t rows = Rows == Eigen::Dynamic ? 0U : static_cast<std::uint64_t>(Rows);
             std::uint64_t columns = Columns == Eigen::Dynamic ? 0U : static_cast<std::uint64_t>(Columns);
@@ -75,10 +81,10 @@ namespace lux::serialization
                 }
                 columns = *encoded;
             }
-            const bool exceeds_element_budget = rows > context.budget().max_container_elements ||
-                columns > context.budget().max_container_elements;
-            const bool exceeds_product_budget = columns != 0U &&
-                rows > context.budget().max_container_elements / columns;
+            const bool exceeds_element_budget =
+                rows > context.budget().max_container_elements || columns > context.budget().max_container_elements;
+            const bool exceeds_product_budget =
+                columns != 0U && rows > context.budget().max_container_elements / columns;
             const bool exceeds_budget = exceeds_element_budget || exceeds_product_budget;
             if (exceeds_budget)
             {
@@ -86,16 +92,10 @@ namespace lux::serialization
                     SerializationFailure{ESerializationError::LIMIT_EXCEEDED, reader.offset()}
                 );
             }
-            try
             {
                 value.resize(static_cast<Eigen::Index>(rows), static_cast<Eigen::Index>(columns));
             }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected<SerializationFailure>(
-                    SerializationFailure{ESerializationError::ALLOCATION_FAILURE, reader.offset()}
-                );
-            }
+
             SerializationResult result{};
             for (Eigen::Index row{}; result && row < value.rows(); ++row)
             {
@@ -108,16 +108,19 @@ namespace lux::serialization
         }
     };
 
-    template <class Scalar, int Options> struct Serializer<Eigen::Quaternion<Scalar, Options>>
+    template <class Scalar, int Options> struct TSerializer<Eigen::Quaternion<Scalar, Options>>
     {
         using Quaternion = Eigen::Quaternion<Scalar, Options>;
-        static constexpr EWireExtent wire_extent = WireTraits<Scalar>::extent;
+        static constexpr EWireExtent wire_extent = TWireTraits<Scalar>::extent;
         static constexpr std::size_t fixed_wire_size =
-            wire_extent == EWireExtent::FIXED ? WireTraits<Scalar>::fixed_size * 4U : 0U;
+            wire_extent == EWireExtent::FIXED ? TWireTraits<Scalar>::fixed_size * 4U : 0U;
 
         template <class Writer>
-        [[nodiscard]] static SerializationResult
-        write(Writer& writer, const Quaternion& value, const SerializationContext& context) noexcept
+        [[nodiscard]] static SerializationResult write(
+            Writer& writer,
+            const Quaternion& value,
+            const SerializationContext& context
+        ) noexcept
         {
             SerializationResult result = serialization::write(writer, value.x(), context);
             if (result)
@@ -130,8 +133,11 @@ namespace lux::serialization
         }
 
         template <class Reader>
-        [[nodiscard]] static SerializationResult
-        read(Reader& reader, Quaternion& value, const SerializationContext& context) noexcept
+        [[nodiscard]] static SerializationResult read(
+            Reader& reader,
+            Quaternion& value,
+            const SerializationContext& context
+        ) noexcept
         {
             Scalar x{};
             Scalar y{};

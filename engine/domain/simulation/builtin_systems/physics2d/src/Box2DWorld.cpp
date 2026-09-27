@@ -4,7 +4,6 @@
 
 #include <cmath>
 #include <limits>
-#include <new>
 #include <vector>
 
 namespace lux::physics2d::detail
@@ -43,7 +42,6 @@ namespace lux::physics2d::detail
         {
             return false;
         }
-        try
         {
             impl_->bodies.assign(body_capacity, b2_nullBodyId);
             impl_->free_bodies.clear();
@@ -52,16 +50,14 @@ namespace lux::physics2d::detail
                 impl_->free_bodies.push_back(static_cast<BodyId>(index - 1U));
             return true;
         }
-        catch (const std::bad_alloc&)
-        {
-            return false;
-        }
     }
 
-    std::optional<Box2DWorld::BodyId> Box2DWorld::createBox(Eigen::Vector2f center,
-                                                            float angle,
-                                                            Eigen::Vector2f half_extents,
-                                                            bool dynamic) noexcept
+    std::optional<Box2DWorld::BodyId> Box2DWorld::createBox(
+        Eigen::Vector2f center,
+        float angle,
+        Eigen::Vector2f half_extents,
+        bool dynamic
+    ) noexcept
     {
         if (!impl_ || impl_->free_bodies.empty() || !center.allFinite() || !half_extents.allFinite() ||
             half_extents.x() <= 0.0F || half_extents.y() <= 0.0F || !std::isfinite(angle))
@@ -160,8 +156,10 @@ namespace lux::physics2d::detail
             return false;
         }
         bool found{};
-        const b2AABB bounds{{center.x() - half_extents.x(), center.y() - half_extents.y()},
-                            {center.x() + half_extents.x(), center.y() + half_extents.y()}};
+        const b2AABB bounds{
+            {center.x() - half_extents.x(), center.y() - half_extents.y()},
+            {center.x() + half_extents.x(), center.y() + half_extents.y()}
+        };
         auto filter = b2DefaultQueryFilter();
         b2World_OverlapAABB(
             impl_->world,
@@ -171,7 +169,8 @@ namespace lux::physics2d::detail
                 *static_cast<bool*>(context) = true;
                 return false;
             },
-            &found);
+            &found
+        );
         return found;
     }
 }

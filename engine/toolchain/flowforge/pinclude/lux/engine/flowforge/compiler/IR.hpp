@@ -60,13 +60,17 @@ namespace lux::flowforge
         IRContext(IRContext&& other) noexcept;
         IRContext& operator=(IRContext&& other) noexcept;
 
-        void* context() noexcept { return context_; }
-        const void* context() const noexcept { return context_; }
+        void* context() noexcept
+        {
+            return context_;
+        }
+        const void* context() const noexcept
+        {
+            return context_;
+        }
 
     private:
-        explicit IRContext(void* context) noexcept : context_(context)
-        {
-        }
+        explicit IRContext(void* context) noexcept : context_(context) {}
 
         void* context_ = nullptr;
     };
@@ -89,8 +93,7 @@ namespace lux::flowforge
         MLIRBuilder(MLIRBuilder&&) noexcept;
         MLIRBuilder& operator=(MLIRBuilder&&) noexcept;
 
-        [[nodiscard]] FlowForgeResult<std::unique_ptr<IR>>
-        generateIR(const FlowGraph& graph) noexcept;
+        [[nodiscard]] FlowForgeResult<std::unique_ptr<IR>> generateIR(const FlowGraph& graph) noexcept;
 
     private:
         explicit MLIRBuilder(std::unique_ptr<MLIRBuilderImpl> impl) noexcept;

@@ -33,7 +33,7 @@ namespace lux::material
         std::optional<ImportedTextureReference> occlusion_texture;
         std::optional<ImportedTextureReference> emissive_texture;
 
-        lux::rdesc::EAlphaMode alpha_mode{lux::rdesc::EAlphaMode::Opaque};
+        lux::rdesc::EAlphaMode alpha_mode{lux::rdesc::EAlphaMode::OPAQUE_SURFACE};
         float alpha_cutoff{0.5F};
         bool double_sided{};
         bool legacy_lit{};

@@ -23,12 +23,12 @@ namespace lux::render
     {
         inline bool supportsLayers(ELightingTechnique family) noexcept
         {
-            return family == ELightingTechnique::LegacyLit || family == ELightingTechnique::PbrMetallicRoughness;
+            return family == ELightingTechnique::LEGACY_LIT || family == ELightingTechnique::PBR_METALLIC_ROUGHNESS;
         }
 
         inline bool supportsAlphaCutout(ELightingTechnique family) noexcept
         {
-            return family == ELightingTechnique::PbrMetallicRoughness;
+            return family == ELightingTechnique::PBR_METALLIC_ROUGHNESS;
         }
     } // namespace detail
 
@@ -37,9 +37,9 @@ namespace lux::render
      */
     struct MaterialShaderKey
     {
-        ELightingTechnique family{ELightingTechnique::Unlit};
-        rdesc::EDiffuseModel diffuse_model{rdesc::EDiffuseModel::Lambert}; // only LegacyLit
-        rdesc::ESpecularModel specular_model{rdesc::ESpecularModel::None}; // only LegacyLit
+        ELightingTechnique family{ELightingTechnique::UNLIT};
+        rdesc::EDiffuseModel diffuse_model{rdesc::EDiffuseModel::LAMBERT}; // only LegacyLit
+        rdesc::ESpecularModel specular_model{rdesc::ESpecularModel::NONE}; // only LegacyLit
 
         bool has_base_color_texture{false};
         bool has_normal_texture{false};
@@ -52,7 +52,7 @@ namespace lux::render
         bool has_clearcoat_layer{false};
         bool has_sheen_layer{false};
 
-        rdesc::EAlphaMode alpha_mode{rdesc::EAlphaMode::Opaque};
+        rdesc::EAlphaMode alpha_mode{rdesc::EAlphaMode::OPAQUE_SURFACE};
         bool double_sided{false};
 
         bool operator==(const MaterialShaderKey&) const = default;
@@ -64,9 +64,9 @@ namespace lux::render
     {
         switch (key.family)
         {
-        case ELightingTechnique::Unlit:
-            key.diffuse_model = rdesc::EDiffuseModel::Lambert;
-            key.specular_model = rdesc::ESpecularModel::None;
+        case ELightingTechnique::UNLIT:
+            key.diffuse_model = rdesc::EDiffuseModel::LAMBERT;
+            key.specular_model = rdesc::ESpecularModel::NONE;
             key.has_normal_texture = false;
             key.has_occlusion_texture = false;
             key.has_ramp_texture = false;
@@ -74,31 +74,31 @@ namespace lux::render
             key.has_fresnel_layer = false;
             key.has_clearcoat_layer = false;
             key.has_sheen_layer = false;
-            key.alpha_mode = rdesc::EAlphaMode::Opaque;
+            key.alpha_mode = rdesc::EAlphaMode::OPAQUE_SURFACE;
             break;
 
-        case ELightingTechnique::LegacyLit:
+        case ELightingTechnique::LEGACY_LIT:
             key.has_occlusion_texture = false;
             key.has_ramp_texture = false;
             key.has_metallic_roughness_texture = false;
-            key.alpha_mode = rdesc::EAlphaMode::Opaque;
+            key.alpha_mode = rdesc::EAlphaMode::OPAQUE_SURFACE;
             break;
 
-        case ELightingTechnique::PbrMetallicRoughness:
-            key.diffuse_model = rdesc::EDiffuseModel::Lambert;
-            key.specular_model = rdesc::ESpecularModel::None;
+        case ELightingTechnique::PBR_METALLIC_ROUGHNESS:
+            key.diffuse_model = rdesc::EDiffuseModel::LAMBERT;
+            key.specular_model = rdesc::ESpecularModel::NONE;
             key.has_ramp_texture = false;
             break;
 
-        case ELightingTechnique::Stylized:
-            key.diffuse_model = rdesc::EDiffuseModel::Lambert;
-            key.specular_model = rdesc::ESpecularModel::None;
+        case ELightingTechnique::STYLIZED:
+            key.diffuse_model = rdesc::EDiffuseModel::LAMBERT;
+            key.specular_model = rdesc::ESpecularModel::NONE;
             key.has_occlusion_texture = false;
             key.has_metallic_roughness_texture = false;
             key.has_fresnel_layer = false;
             key.has_clearcoat_layer = false;
             key.has_sheen_layer = false;
-            key.alpha_mode = rdesc::EAlphaMode::Opaque;
+            key.alpha_mode = rdesc::EAlphaMode::OPAQUE_SURFACE;
             break;
 
         default:
@@ -113,7 +113,7 @@ namespace lux::render
             key.has_sheen_layer = false;
         }
         if (!detail::supportsAlphaCutout(key.family))
-            key.alpha_mode = rdesc::EAlphaMode::Opaque;
+            key.alpha_mode = rdesc::EAlphaMode::OPAQUE_SURFACE;
 
         return key;
     }
@@ -152,16 +152,16 @@ namespace lux::render
         if (k.double_sided)
             mask |= EShaderFeature::DOUBLE_SIDED;
 
-        if (k.family == ELightingTechnique::PbrMetallicRoughness)
+        if (k.family == ELightingTechnique::PBR_METALLIC_ROUGHNESS)
         {
-            if (k.alpha_mode == rdesc::EAlphaMode::Mask)
+            if (k.alpha_mode == rdesc::EAlphaMode::MASK)
                 mask |= EShaderFeature::ALPHA_CUTOUT;
             if (k.has_occlusion_texture)
                 mask |= EShaderFeature::HAS_AO_MAP;
             if (k.has_metallic_roughness_texture)
                 mask |= EShaderFeature::HAS_METALLIC_MAP;
         }
-        if (k.family == ELightingTechnique::Stylized)
+        if (k.family == ELightingTechnique::STYLIZED)
         {
             if (k.has_ramp_texture)
                 mask |= EShaderFeature::HAS_RAMP_MAP;

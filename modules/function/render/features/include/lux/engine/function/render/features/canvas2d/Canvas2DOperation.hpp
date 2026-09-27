@@ -27,6 +27,7 @@
 // ============================================================================
 
 #include <lux/engine/meta/MetaAnnotations.hpp>
+#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
 #include <lux/engine/description/Tilemap2D.hpp> // rdesc::kEmptyTile(组件层共用的编码约定)
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
@@ -42,17 +43,17 @@ namespace lux::render
 {
     /// Blend contract: premultiplied alpha (kept as an enum so a future
     /// straight-alpha path is a value, not a rewrite).
-    enum class Canvas2DAlphaMode : std::uint8_t
+    enum class ECanvas2DAlphaMode : std::uint8_t
     {
-        Premultiplied = 0,
-        Straight = 1,
+        PREMULTIPLIED = 0,
+        STRAIGHT = 1,
     };
 
     /// Sentinel bindless index meaning "no texture — draw the flat premultiplied tint".
     /// (The bindless allocator can hand out index 0 for a real texture, so 0 can't be the
     /// sentinel.) The image fragment shader branches on it, so an untextured image needs
-    /// no default/white texture. Producers set a real index (RTextureHandle::index) once a
-    /// texture resolves; the default leaves the draw tint-only.
+    /// no default/white texture. Only backend GPU records contain these indices. Wire inputs carry
+    /// generational remote texture handles; the default leaves the draw tint-only.
     inline constexpr std::uint32_t kNoTexture = 0xFFFFFFFFu;
 
     // ════════════════════════════════════════════════════════════════════════
@@ -60,8 +61,7 @@ namespace lux::render
     // ════════════════════════════════════════════════════════════════════════
 
     struct Image2DInstanceTag
-    {
-    };
+    {};
     /// Generational per-image owner handle into the scene's Canvas2D instance
     /// arena. A stale handle (generation mismatch) is rejected by every op.
     using Image2DHandle = lux::cxx::SlotKey<Image2DInstanceTag>;
@@ -87,35 +87,28 @@ namespace lux::render
     static_assert(quantizePriority(0.5f) < quantizePriority(1.0f));
     static_assert(quantizePriority(1.0f) < quantizePriority(1e30f));
 
-    /// GPU-resident per-image record — the std430 mirror the image vertex
-    /// shader pulls (keep canvas2d/image.vert in sync). Scalar fields only, so
-    /// C++ packing == std430 packing (48 B, array stride 48 in an SSBO).
+    /// Wire image input. The backend resolves texture identity before packing the GPU record.
     struct Image2DInstanceData
     {
         /// 2D affine world transform, column-major: [c0.x c0.y c1.x c1.y tx ty].
         /// The producer bakes size×pivot in; the VS expands a unit ±0.5 quad.
         float m[6]{1.f, 0.f, 0.f, 1.f, 0.f, 0.f};
         std::int32_t page_delta[2]{};
-        float uv[4]{0.f, 0.f, 1.f, 1.f};            ///< atlas rect: u0, v0, w, h
-        std::uint32_t tint{0xFFFFFFFFu};            ///< premultiplied RGBA8
-        std::uint32_t texture_bindless{kNoTexture}; ///< set-2 index / kNoTexture = tint-only
+        float uv[4]{0.f, 0.f, 1.f, 1.f}; ///< atlas rect: u0, v0, w, h
+        std::uint32_t tint{0xFFFFFFFFu}; ///< premultiplied RGBA8
+        RTextureHandle texture{};        ///< null means tint-only
     };
-    static_assert(
-        sizeof(Image2DInstanceData) == 56,
-        "Image2DInstanceData layout drift — keep canvas2d/image.vert in sync.");
     static_assert(std::is_trivially_copyable_v<Image2DInstanceData>);
 
     // ── PixelField kind (F2-09) ─────────────────────────────────────────────
 
     struct PixelFieldInstanceTag
-    {
-    };
+    {};
     /// Generational per-field-chunk owner handle into the canvas arena's
     /// PixelField kind store. A stale handle is rejected by every op.
     using PixelFieldInstanceHandle = lux::cxx::SlotKey<PixelFieldInstanceTag>;
 
-    /// GPU-resident per-field-chunk record — the std430 mirror the pixel-field
-    /// vertex/fragment shaders pull (keep canvas2d/pixel_field.vert in sync).
+    /// Wire field input; texture handles are resolved at adoption.
     /// The chunk quad is a unit ±0.5 quad placed by `m`; the fragment shader
     /// texelFetches the R16_UNORM material-id mirror (`field_texture`, cell ids
     /// round-trip exactly through the float sampler) and looks the id up in the
@@ -125,10 +118,9 @@ namespace lux::render
     {
         float m[6]{1.f, 0.f, 0.f, 1.f, 0.f, 0.f}; ///< column-major 2D affine (this CHUNK's extent baked in)
         std::int32_t page_delta[2]{};
-        std::uint32_t field_texture{
-            kNoTexture}; ///< bindless set-2 index of the R16_UNORM id mirror (C2-01: the scene ATLAS)
-        std::uint32_t palette_texture{kNoTexture}; ///< bindless set-2 index of the 256×1 RGBA8 palette
-        std::uint32_t cells_w{0};                  ///< this chunk's texel extent (texelFetch bounds)
+        RTextureHandle field_texture{};
+        RTextureHandle palette_texture{};
+        std::uint32_t cells_w{0}; ///< this chunk's texel extent (texelFetch bounds)
         std::uint32_t cells_h{0};
         std::uint32_t tint{0xFFFFFFFFu}; ///< premultiplied RGBA8 modulate
         /// C2-01: the chunk's texel origin inside the atlas texture (0,0 for a
@@ -137,9 +129,6 @@ namespace lux::render
         std::uint32_t atlas_y{0};
         std::uint32_t _pad0{0};
     };
-    static_assert(
-        sizeof(PixelField2DInstanceData) == 64,
-        "PixelField2DInstanceData layout drift — keep canvas2d/pixel_field.vert in sync.");
     static_assert(std::is_trivially_copyable_v<PixelField2DInstanceData>);
 
     // ── Offscreen groups (A2-04) ────────────────────────────────────────────
@@ -158,8 +147,8 @@ namespace lux::render
         display = Canvas2D,
         feature = Canvas2DFeature,
         multiplicity = single,
-        feature_header = lux / engine / render / renderer / features / canvas2d /
-                         Canvas2DFeature.hpp) Canvas2DCommConfig
+        feature_header = lux / engine / render / renderer / features / canvas2d / Canvas2DFeature.hpp
+    ) Canvas2DCommConfig
     {
         std::uint32_t offscreen_groups{0}; ///< clamped to kMaxCanvas2DGroups
     };
@@ -168,8 +157,7 @@ namespace lux::render
     // ── Tile kind (A2-02) ───────────────────────────────────────────────────
 
     struct Tile2DInstanceTag
-    {
-    };
+    {};
     /// Generational per-tilemap owner handle into the canvas arena's Tile kind
     /// store. A stale handle is rejected by every op.
     using Tile2DInstanceHandle = lux::cxx::SlotKey<Tile2DInstanceTag>;
@@ -181,8 +169,7 @@ namespace lux::render
     /// 不留 `inline constexpr auto kEmptyTile = rdesc::kEmptyTile;` 之类的转发别名。
     using lux::rdesc::kEmptyTile;
 
-    /// GPU-resident per-TILEMAP record — the std430 mirror the tile shaders
-    /// pull (keep canvas2d/tile.vert in sync). One instance = one whole
+    /// Wire tilemap input, packed into a private GPU record at adoption. One instance = one whole
     /// tilemap quad (the PixelField shape): the fragment shader texelFetches
     /// the R16_UNORM tile-INDEX texture, derives the tile's uv rect from the
     /// tileset's uniform grid (cols × rows, no margin/spacing in the MVP) and
@@ -192,18 +179,15 @@ namespace lux::render
     {
         float m[6]{1.f, 0.f, 0.f, 1.f, 0.f, 0.f}; ///< column-major 2D affine (full map extent baked in)
         std::int32_t page_delta[2]{};
-        std::uint32_t tileset_texture{kNoTexture}; ///< bindless set-2 index of the tileset atlas
-        std::uint32_t index_texture{kNoTexture};   ///< bindless set-2 index of the R16_UNORM tile-id map
-        std::uint32_t tiles_w{0};                  ///< index-map texel extent (texelFetch bounds)
+        RTextureHandle tileset_texture{};
+        RTextureHandle index_texture{};
+        std::uint32_t tiles_w{0}; ///< index-map texel extent (texelFetch bounds)
         std::uint32_t tiles_h{0};
         std::uint32_t tileset_grid{0};   ///< packed: cols (low 16) | rows (high 16)
         std::uint32_t tint{0xFFFFFFFFu}; ///< premultiplied RGBA8 modulate
         std::uint32_t atlas_x{0};        ///< tile-index atlas texel origin
         std::uint32_t atlas_y{0};
     };
-    static_assert(
-        sizeof(Tile2DInstanceData) == 64,
-        "Tile2DInstanceData layout drift — keep canvas2d/tile.vert in sync.");
     static_assert(std::is_trivially_copyable_v<Tile2DInstanceData>);
 
     [[nodiscard]] constexpr std::uint32_t packTilesetGrid(std::uint32_t cols, std::uint32_t rows) noexcept
@@ -219,10 +203,10 @@ namespace lux::render
     /// error (endless retry). Only CapacityExhausted is transient.
     enum class ECanvas2DCreateStatus : std::uint32_t
     {
-        Unknown = 0,
-        Ok = 1,
-        InvalidConfiguration = 2, ///< scene / Canvas2DFeature absent — permanent
-        CapacityExhausted = 3,    ///< arena at max capacity — transient
+        UNKNOWN = 0,
+        OK = 1,
+        INVALID_CONFIGURATION = 2, ///< scene / Canvas2DFeature absent — permanent
+        CAPACITY_EXHAUSTED = 3,    ///< arena at max capacity — transient
     };
 
     /// Create one GPU-resident image instance. Replies with its owner handle +
@@ -241,7 +225,7 @@ namespace lux::render
     struct Image2DSlotReply
     {
         Image2DHandle handle{};
-        ECanvas2DCreateStatus status{ECanvas2DCreateStatus::Unknown};
+        ECanvas2DCreateStatus status{ECanvas2DCreateStatus::UNKNOWN};
     };
     static_assert(std::is_trivially_copyable_v<Image2DSlotReply>);
 
@@ -273,7 +257,7 @@ namespace lux::render
         Image2DHandle handle{};
         float uv[4]{0.f, 0.f, 1.f, 1.f};
         std::uint32_t tint{0xFFFFFFFFu};
-        std::uint32_t texture_bindless{kNoTexture};
+        RTextureHandle texture{};
     };
     static_assert(std::is_trivially_copyable_v<UpdateImage2DVisualPayload>);
 
@@ -306,7 +290,8 @@ namespace lux::render
         kind = stream,
         name = AddPixelField2D,
         method = addPixelFieldRaw,
-        reply = PixelFieldSlotReply) AddPixelField2DPayload
+        reply = PixelFieldSlotReply
+    ) AddPixelField2DPayload
     {
         RenderSceneId scene{};
         PixelField2DInstanceData data{};
@@ -318,7 +303,7 @@ namespace lux::render
     struct PixelFieldSlotReply
     {
         PixelFieldInstanceHandle handle{};
-        ECanvas2DCreateStatus status{ECanvas2DCreateStatus::Unknown};
+        ECanvas2DCreateStatus status{ECanvas2DCreateStatus::UNKNOWN};
     };
     static_assert(std::is_trivially_copyable_v<PixelFieldSlotReply>);
 
@@ -336,7 +321,8 @@ namespace lux::render
         lane = program,
         kind = stream,
         name = UpdatePixelField2DTransform,
-        method = updatePixelFieldTransformRaw) UpdatePixelField2DTransformPayload
+        method = updatePixelFieldTransformRaw
+    ) UpdatePixelField2DTransformPayload
     {
         RenderSceneId scene{};
         PixelFieldInstanceHandle handle{};
@@ -370,7 +356,7 @@ namespace lux::render
     struct Tile2DSlotReply
     {
         Tile2DInstanceHandle handle{};
-        ECanvas2DCreateStatus status{ECanvas2DCreateStatus::Unknown};
+        ECanvas2DCreateStatus status{ECanvas2DCreateStatus::UNKNOWN};
     };
     static_assert(std::is_trivially_copyable_v<Tile2DSlotReply>);
 
@@ -417,11 +403,11 @@ namespace lux::render
 
 namespace lux::render
 {
-    class Canvas2DProxy;                       // 生成于 Canvas2DOperation.ops.hpp
-    template <typename T> class RenderRequest; // 前置声明:便捷面只按值返回它
+    class Canvas2DProxy;                        // 生成于 Canvas2DOperation.ops.hpp
+    template <typename T> class TRenderRequest; // 前置声明:便捷面只按值返回它
 
     // ── Image ──
-    [[nodiscard]] LUX_RENDER_FEATURE_CLIENT_PUBLIC RenderRequest<Image2DSlotReply> addImage(
+    [[nodiscard]] LUX_RENDER_FEATURE_CLIENT_PUBLIC TRenderRequest<Image2DSlotReply> addImage(
         Canvas2DProxy proxy,
         RenderSceneId scene,
         const Image2DInstanceData& data,
@@ -433,11 +419,17 @@ namespace lux::render
     LUX_RENDER_FEATURE_CLIENT_PUBLIC void removeImage(Canvas2DProxy proxy, RenderSceneId scene, Image2DHandle handle);
 
     /// 逐条自带 scene 的异构批次(转发生成面)。
-    LUX_RENDER_FEATURE_CLIENT_PUBLIC void updateTransforms(Canvas2DProxy proxy, std::span<const Image2DTransformEntry> entries);
+    LUX_RENDER_FEATURE_CLIENT_PUBLIC void updateTransforms(
+        Canvas2DProxy proxy,
+        std::span<const Image2DTransformEntry> entries
+    );
 
     /// scene 盖章批量:让单场景批次不可能写漏 scene(与上面同名成对)。
-    LUX_RENDER_FEATURE_CLIENT_PUBLIC void
-    updateTransforms(Canvas2DProxy proxy, RenderSceneId scene, std::span<Image2DTransformEntry> entries);
+    LUX_RENDER_FEATURE_CLIENT_PUBLIC void updateTransforms(
+        Canvas2DProxy proxy,
+        RenderSceneId scene,
+        std::span<Image2DTransformEntry> entries
+    );
 
     LUX_RENDER_FEATURE_CLIENT_PUBLIC void updateTransform(
         Canvas2DProxy proxy,
@@ -453,7 +445,7 @@ namespace lux::render
         Image2DHandle handle,
         const float uv[4],
         std::uint32_t tint,
-        std::uint32_t texture_bindless
+        RTextureHandle texture
     );
 
     LUX_RENDER_FEATURE_CLIENT_PUBLIC void updateKey(
@@ -468,7 +460,7 @@ namespace lux::render
     LUX_RENDER_FEATURE_CLIENT_PUBLIC void setEnabled(Canvas2DProxy proxy, RenderSceneId scene, bool enabled);
 
     // ── PixelField ──
-    [[nodiscard]] LUX_RENDER_FEATURE_CLIENT_PUBLIC RenderRequest<PixelFieldSlotReply> addPixelField(
+    [[nodiscard]] LUX_RENDER_FEATURE_CLIENT_PUBLIC TRenderRequest<PixelFieldSlotReply> addPixelField(
         Canvas2DProxy proxy,
         RenderSceneId scene,
         const PixelField2DInstanceData& data,
@@ -476,8 +468,11 @@ namespace lux::render
         bool visible = true
     );
 
-    LUX_RENDER_FEATURE_CLIENT_PUBLIC void
-    removePixelField(Canvas2DProxy proxy, RenderSceneId scene, PixelFieldInstanceHandle handle);
+    LUX_RENDER_FEATURE_CLIENT_PUBLIC void removePixelField(
+        Canvas2DProxy proxy,
+        RenderSceneId scene,
+        PixelFieldInstanceHandle handle
+    );
 
     LUX_RENDER_FEATURE_CLIENT_PUBLIC void updatePixelFieldTransform(
         Canvas2DProxy proxy,
@@ -496,7 +491,7 @@ namespace lux::render
     );
 
     // ── Tilemap ──
-    [[nodiscard]] LUX_RENDER_FEATURE_CLIENT_PUBLIC RenderRequest<Tile2DSlotReply> addTilemap(
+    [[nodiscard]] LUX_RENDER_FEATURE_CLIENT_PUBLIC TRenderRequest<Tile2DSlotReply> addTilemap(
         Canvas2DProxy proxy,
         RenderSceneId scene,
         const Tile2DInstanceData& data,
@@ -504,7 +499,11 @@ namespace lux::render
         bool visible = true
     );
 
-    LUX_RENDER_FEATURE_CLIENT_PUBLIC void removeTilemap(Canvas2DProxy proxy, RenderSceneId scene, Tile2DInstanceHandle handle);
+    LUX_RENDER_FEATURE_CLIENT_PUBLIC void removeTilemap(
+        Canvas2DProxy proxy,
+        RenderSceneId scene,
+        Tile2DInstanceHandle handle
+    );
 
     LUX_RENDER_FEATURE_CLIENT_PUBLIC void updateTilemapTransform(
         Canvas2DProxy proxy,

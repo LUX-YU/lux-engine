@@ -38,14 +38,19 @@ namespace lux::render
         }
 
         template <class Tag>
-        [[nodiscard]] bool
-        stableIdCollision(lux::cxx::StableNameIdView<Tag> lhs, lux::cxx::StableNameIdView<Tag> rhs) noexcept
+        [[nodiscard]] bool stableIdCollision(
+            lux::cxx::StableNameIdView<Tag> lhs,
+            lux::cxx::StableNameIdView<Tag> rhs
+        ) noexcept
         {
             return lhs.hash() == rhs.hash() && lhs.name() != rhs.name();
         }
 
-        lux::cxx::expected<TextureRefGPU, std::string>
-        resolveBindless(std::uint32_t resource_index, std::uint32_t aux, std::uint32_t flags) noexcept
+        lux::cxx::expected<TextureRefGPU, std::string> resolveBindless(
+            std::uint32_t resource_index,
+            std::uint32_t aux,
+            std::uint32_t flags
+        ) noexcept
         {
             return TextureRefGPU{0u, resource_index, aux, flags};
         }
@@ -53,8 +58,7 @@ namespace lux::render
     } // namespace
 
     lux::cxx::expected<TextureSamplingRepresentationCatalog, ETextureSamplingCatalogError>
-    TextureSamplingRepresentationCatalog::build(
-        std::vector<TextureSamplingRepresentationDescriptor> descriptors
+    TextureSamplingRepresentationCatalog::build(std::vector<TextureSamplingRepresentationDescriptor> descriptors
     ) noexcept
     {
         for (const auto& descriptor : descriptors)
@@ -65,8 +69,7 @@ namespace lux::render
             }
             if (!descriptor.resolve_reference)
             {
-                return lux::cxx::unexpected<ETextureSamplingCatalogError>(
-                    ETextureSamplingCatalogError::MISSING_RESOLVER
+                return lux::cxx::unexpected<ETextureSamplingCatalogError>(ETextureSamplingCatalogError::MISSING_RESOLVER
                 );
             }
             if (descriptor.shader_sampling_implementation.empty())
@@ -92,8 +95,7 @@ namespace lux::render
         auto by_id = descriptors;
         std::ranges::sort(by_id, {}, [](const TextureSamplingRepresentationDescriptor& descriptor) {
             return descriptor.id.hash();
-        }
-        );
+        });
         for (std::size_t index = 1u; index < by_id.size(); ++index)
         {
             const auto previous = by_id[index - 1u].id.view();
@@ -110,8 +112,9 @@ namespace lux::render
         return TextureSamplingRepresentationCatalog{std::move(descriptors)};
     }
 
-    const TextureSamplingRepresentationDescriptor*
-    TextureSamplingRepresentationCatalog::find(TextureSamplingRepresentationIdView id) const noexcept
+    const TextureSamplingRepresentationDescriptor* TextureSamplingRepresentationCatalog::find(
+        TextureSamplingRepresentationIdView id
+    ) const noexcept
     {
         for (const auto& descriptor : descriptors_)
         {
@@ -121,8 +124,9 @@ namespace lux::render
         return nullptr;
     }
 
-    const TextureSamplingRepresentationDescriptor*
-    TextureSamplingRepresentationCatalog::find(std::uint32_t representation_index) const noexcept
+    const TextureSamplingRepresentationDescriptor* TextureSamplingRepresentationCatalog::find(
+        std::uint32_t representation_index
+    ) const noexcept
     {
         return representation_index < descriptors_.size() ? &descriptors_[representation_index] : nullptr;
     }

@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <new>
 #include <utility>
 
 namespace lux::spatial
@@ -86,11 +85,9 @@ namespace lux::spatial
         std::vector<Spatial3DPartitionIndexEntry> entries
     ) noexcept
         : grid_origin_(grid_origin), cell_world_size_(cell_world_size), entries_(std::move(entries))
-    {
-    }
+    {}
 
-    lux::cxx::expected<Spatial3DPartitionIndex, Spatial3DPartitionIndexFailure>
-    Spatial3DPartitionIndex::create(
+    lux::cxx::expected<Spatial3DPartitionIndex, Spatial3DPartitionIndexFailure> Spatial3DPartitionIndex::create(
         math::Position3d grid_origin,
         double cell_world_size,
         std::vector<Spatial3DPartitionIndexEntry> entries
@@ -105,27 +102,21 @@ namespace lux::spatial
             return lux::cxx::unexpected(failure(ESpatial3DPartitionIndexError::EMPTY_INDEX));
         }
 
-        try
         {
             for (const auto& entry : entries)
             {
                 if (entry.partition.value == std::numeric_limits<std::uint32_t>::max())
                 {
-                    return lux::cxx::unexpected(failure(
-                        ESpatial3DPartitionIndexError::INVALID_PARTITION,
-                        entry.coordinate,
-                        entry.partition
-                    ));
+                    return lux::cxx::unexpected(
+                        failure(ESpatial3DPartitionIndexError::INVALID_PARTITION, entry.coordinate, entry.partition)
+                    );
                 }
             }
             std::sort(entries.begin(), entries.end(), coordinateLess);
-            const auto duplicate_coordinate = std::adjacent_find(
-                entries.begin(),
-                entries.end(),
-                [](const auto& left, const auto& right) noexcept {
+            const auto duplicate_coordinate =
+                std::adjacent_find(entries.begin(), entries.end(), [](const auto& left, const auto& right) noexcept {
                     return left.coordinate == right.coordinate;
-                }
-            );
+                });
             if (duplicate_coordinate != entries.end())
             {
                 return lux::cxx::unexpected(failure(
@@ -136,19 +127,13 @@ namespace lux::spatial
             }
 
             auto by_partition = entries;
-            std::sort(
-                by_partition.begin(),
-                by_partition.end(),
-                [](const auto& left, const auto& right) noexcept {
-                    return left.partition.value < right.partition.value;
-                }
-            );
+            std::sort(by_partition.begin(), by_partition.end(), [](const auto& left, const auto& right) noexcept {
+                return left.partition.value < right.partition.value;
+            });
             const auto duplicate_partition = std::adjacent_find(
                 by_partition.begin(),
                 by_partition.end(),
-                [](const auto& left, const auto& right) noexcept {
-                    return left.partition == right.partition;
-                }
+                [](const auto& left, const auto& right) noexcept { return left.partition == right.partition; }
             );
             if (duplicate_partition != by_partition.end())
             {
@@ -160,14 +145,11 @@ namespace lux::spatial
             }
             return Spatial3DPartitionIndex(grid_origin, cell_world_size, std::move(entries));
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(ESpatial3DPartitionIndexError::ALLOCATION_FAILURE));
-        }
     }
 
-    lux::cxx::expected<math::GridCoord3i64, Spatial3DPartitionIndexFailure>
-    Spatial3DPartitionIndex::coordinate(math::Position3d position) const noexcept
+    lux::cxx::expected<math::GridCoord3i64, Spatial3DPartitionIndexFailure> Spatial3DPartitionIndex::coordinate(
+        math::Position3d position
+    ) const noexcept
     {
         if (!math::isFinite(position))
         {
@@ -209,8 +191,8 @@ namespace lux::spatial
     ) const noexcept
     {
         const bool is_finite = math::isFinite(bounds.minimum) && math::isFinite(bounds.maximum);
-        const bool is_ordered = bounds.minimum.x < bounds.maximum.x &&
-            bounds.minimum.y < bounds.maximum.y && bounds.minimum.z < bounds.maximum.z;
+        const bool is_ordered = bounds.minimum.x < bounds.maximum.x && bounds.minimum.y < bounds.maximum.y &&
+                                bounds.minimum.z < bounds.maximum.z;
         if (!is_finite || !is_ordered)
         {
             return lux::cxx::unexpected(failure(ESpatial3DPartitionIndexError::INVALID_BOUNDS));
@@ -225,9 +207,7 @@ namespace lux::spatial
         auto last = coordinate(inclusive_maximum);
         if (!first || !last)
         {
-            return lux::cxx::unexpected(
-                failure(ESpatial3DPartitionIndexError::COORDINATE_OVERFLOW)
-            );
+            return lux::cxx::unexpected(failure(ESpatial3DPartitionIndexError::COORDINATE_OVERFLOW));
         }
 
         std::uint64_t x_count{};
@@ -235,11 +215,11 @@ namespace lux::spatial
         std::uint64_t z_count{};
         std::uint64_t plane_count{};
         std::uint64_t candidate_count{};
-        const bool valid_counts = axisCount(first->x, last->x, x_count) &&
-            axisCount(first->y, last->y, y_count) && axisCount(first->z, last->z, z_count) &&
-            checkedMultiply(x_count, y_count, plane_count) &&
-            checkedMultiply(plane_count, z_count, candidate_count) &&
-            candidate_count <= std::numeric_limits<std::size_t>::max();
+        const bool valid_counts = axisCount(first->x, last->x, x_count) && axisCount(first->y, last->y, y_count) &&
+                                  axisCount(first->z, last->z, z_count) &&
+                                  checkedMultiply(x_count, y_count, plane_count) &&
+                                  checkedMultiply(plane_count, z_count, candidate_count) &&
+                                  candidate_count <= std::numeric_limits<std::size_t>::max();
         if (!valid_counts)
         {
             return lux::cxx::unexpected(failure(ESpatial3DPartitionIndexError::COORDINATE_OVERFLOW));
@@ -248,12 +228,9 @@ namespace lux::spatial
         const std::size_t required_capacity = static_cast<std::size_t>(candidate_count);
         if (required_capacity > output.size())
         {
-            return lux::cxx::unexpected(failure(
-                ESpatial3DPartitionIndexError::OUTPUT_CAPACITY_EXCEEDED,
-                *first,
-                {},
-                required_capacity
-            ));
+            return lux::cxx::unexpected(
+                failure(ESpatial3DPartitionIndexError::OUTPUT_CAPACITY_EXCEEDED, *first, {}, required_capacity)
+            );
         }
 
         std::size_t written{};

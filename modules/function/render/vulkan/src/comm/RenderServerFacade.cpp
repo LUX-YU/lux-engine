@@ -21,367 +21,417 @@
 
 namespace lux::render
 {
-namespace detail
-{
-Expected<void> bindSwapchainInternal(GeneralRenderServer::Impl &impl, RenderSceneId scene_id, ViewHandle view,
-                                     const RenderTargetLayout &layout, bool replace_existing)
-{
-    using Entry = GeneralRenderServer::Impl::RenderTargetEntry;
-
-    if (!impl.swapchainProvider())
+    bool GeneralRenderServer::Impl::detachLayerAndReapIfEmpty(
+        RenderTargetId key,
+        RenderSceneId scene,
+        ViewHandle view,
+        uint64_t retire_serial
+    )
     {
-        return renderFailure<err::internal::Unspecified>();
+        const auto* target = targets_registry_.tryGet(key);
+        const auto texture = target ? target->texture : RTextureHandle{};
+        const auto removed = targets_registry_.detachLayerAndReapIfEmpty(key, scene, view, retire_serial);
+        if (!targets_registry_.tryGet(key))
+            render_ctx_->globalRegistry().must<TextureResources>().unpublish(texture);
+        return removed;
     }
 
-    auto *target = impl.surfaceTarget();
-    if (target && !target->layers.empty() && !replace_existing)
+    void GeneralRenderServer::Impl::retireTargetPool(RenderTargetEntry& target, uint64_t retire_serial)
     {
-        return renderFailure<err::internal::Unspecified>();
+        render_ctx_->globalRegistry().must<TextureResources>().unpublish(target.texture);
+        target.texture = {};
+        targets_registry_.retireTargetPool(target, retire_serial);
     }
 
-    auto *scene = impl.renderer_->getScene(scene_id);
-    if (!scene || !scene->getView(view))
+    namespace detail
     {
-        return renderFailure<err::internal::Unspecified>();
-    }
-
-    scene->compileGraphTemplate(layout);
-    if (!target)
-    {
-        Entry entry{};
-        entry.kind = Entry::EKind::Surface;
-        entry.layout = layout;
-        impl.targets_registry_.setSurfaceTarget(impl.targets_registry_.insert(std::move(entry)));
-        target = impl.targets_registry_.surfaceTarget();
-    }
-
-    target->layout = layout;
-    target->layers.clear();
-    target->layers.push_back(Entry::CompositeLayer::sceneView(scene_id, view));
-
-    const auto offscreen = impl.findOffscreenKeyByView(scene_id, view);
-    if (offscreen.isValid())
-    {
-        impl.detachLayerAndReapIfEmpty(offscreen, scene_id, view, impl.current_stamp_.serial);
-    }
-    return {};
-}
-} // namespace detail
-
-RenderTargetRegistry &GeneralRenderServer::targets() noexcept
-{
-    return impl_->targets();
-}
-
-const RenderTargetRegistry &GeneralRenderServer::targets() const noexcept
-{
-    return impl_->targets();
-}
-
-Renderer &GeneralRenderServer::renderer() noexcept
-{
-    return *impl_->renderer_;
-}
-
-ResourceContext &GeneralRenderServer::resourceContext() noexcept
-{
-    return *impl_->res_ctx_;
-}
-
-DeviceContext *GeneralRenderServer::deviceContext() noexcept
-{
-    return impl_->dev_ctx_.get();
-}
-
-Expected<DeviceCaps> GeneralRenderServer::deviceCaps() const noexcept
-{
-    if (!impl_->dev_ctx_)
-    {
-        return renderFailure<err::device::VulkanObjectCreationFailed>();
-    }
-    return impl_->dev_ctx_->caps();
-}
-
-const lux::render::CapacityPlan &GeneralRenderServer::capacityPlan() const noexcept
-{
-    static const lux::render::CapacityPlan empty{};
-    return impl_->render_ctx_ ? impl_->render_ctx_->capacityPlan() : empty;
-}
-
-SwapchainProvider *GeneralRenderServer::swapchainProvider() noexcept
-{
-    return impl_->swapchainProvider();
-}
-
-const FrameStamp &GeneralRenderServer::currentStamp() const noexcept
-{
-    return impl_->current_stamp_;
-}
-
-uint32_t GeneralRenderServer::framesInFlight() const noexcept
-{
-    return impl_->frames_in_flight_;
-}
-
-uint64_t GeneralRenderServer::gpuCompletedSerial() const noexcept
-{
-    return impl_->frame_driver_ ? impl_->frame_driver_->gpuCompletedSerial() : impl_->current_stamp_.serial;
-}
-
-void GeneralRenderServer::setExtension(void *extension, PreDestroySceneCallback pre_destroy) noexcept
-{
-    impl_->extension_ = extension;
-    impl_->pre_destroy_scene_cb_ = pre_destroy;
-}
-
-void *GeneralRenderServer::extension() const noexcept
-{
-    return impl_->extension_;
-}
-
-void *serverExtensionOf(void *user_state) noexcept
-{
-    return user_state ? static_cast<GeneralRenderServer::Impl *>(user_state)->extension_ : nullptr;
-}
-
-void GeneralRenderServer::deferSurfaceRelease(RenderTargetId target, std::unique_ptr<PresentContext> context,
-                                              std::function<void()> on_teardown)
-{
-    Impl::PendingResourceRelease release{};
-    release.target = target;
-    release.retire_serial = impl_->frame_driver_ ? impl_->frame_driver_->lastSubmittedSerial() : 0;
-    release.ctx = std::move(context);
-    release.on_teardown = std::move(on_teardown);
-    impl_->pending_resource_releases_.push_back(std::move(release));
-}
-
-void GeneralRenderServer::flushPendingResourceReleases()
-{
-    for (auto &release : impl_->pending_resource_releases_)
-    {
-        if (release.ctx)
+        Expected<void> bindSwapchainInternal(
+            GeneralRenderServer::Impl& impl,
+            RenderSceneId scene_id,
+            ViewHandle view,
+            const RenderTargetLayout& layout,
+            bool replace_existing
+        )
         {
-            auto closed = release.ctx->close();
-            if (!closed)
+            using Entry = GeneralRenderServer::Impl::RenderTargetEntry;
+
+            if (!impl.swapchainProvider())
             {
-                renderFatal("pending PresentContext close failed during flush");
+                return renderFailure<err::internal::Unspecified>();
+            }
+
+            auto* target = impl.surfaceTarget();
+            if (target && !target->layers.empty() && !replace_existing)
+            {
+                return renderFailure<err::internal::Unspecified>();
+            }
+
+            auto* scene = impl.renderer_->getScene(scene_id);
+            if (!scene || !scene->getView(view))
+            {
+                return renderFailure<err::internal::Unspecified>();
+            }
+
+            scene->compileGraphTemplate(layout);
+            if (!target)
+            {
+                Entry entry{};
+                entry.kind = Entry::EKind::SURFACE;
+                entry.layout = layout;
+                impl.targets_registry_.setSurfaceTarget(impl.targets_registry_.insert(std::move(entry)));
+                target = impl.targets_registry_.surfaceTarget();
+            }
+
+            target->layout = layout;
+            target->layers.clear();
+            target->layers.push_back(Entry::CompositeLayer::sceneView(scene_id, view));
+
+            const auto offscreen = impl.findOffscreenKeyByView(scene_id, view);
+            if (offscreen.isValid())
+            {
+                impl.detachLayerAndReapIfEmpty(offscreen, scene_id, view, impl.current_stamp_.serial);
+            }
+            return {};
+        }
+    } // namespace detail
+
+    RenderTargetRegistry& GeneralRenderServer::targets() noexcept
+    {
+        return impl_->targets();
+    }
+
+    const RenderTargetRegistry& GeneralRenderServer::targets() const noexcept
+    {
+        return impl_->targets();
+    }
+
+    Renderer& GeneralRenderServer::renderer() noexcept
+    {
+        return *impl_->renderer_;
+    }
+
+    ResourceContext& GeneralRenderServer::resourceContext() noexcept
+    {
+        return *impl_->res_ctx_;
+    }
+
+    DeviceContext* GeneralRenderServer::deviceContext() noexcept
+    {
+        return impl_->dev_ctx_.get();
+    }
+
+    Expected<DeviceCaps> GeneralRenderServer::deviceCaps() const noexcept
+    {
+        if (!impl_->dev_ctx_)
+        {
+            return renderFailure<err::device::VulkanObjectCreationFailed>();
+        }
+        return impl_->dev_ctx_->caps();
+    }
+
+    const lux::render::CapacityPlan& GeneralRenderServer::capacityPlan() const noexcept
+    {
+        static const lux::render::CapacityPlan empty{};
+        return impl_->render_ctx_ ? impl_->render_ctx_->capacityPlan() : empty;
+    }
+
+    SwapchainProvider* GeneralRenderServer::swapchainProvider() noexcept
+    {
+        return impl_->swapchainProvider();
+    }
+
+    const FrameStamp& GeneralRenderServer::currentStamp() const noexcept
+    {
+        return impl_->current_stamp_;
+    }
+
+    uint32_t GeneralRenderServer::framesInFlight() const noexcept
+    {
+        return impl_->frames_in_flight_;
+    }
+
+    uint64_t GeneralRenderServer::gpuCompletedSerial() const noexcept
+    {
+        return impl_->frame_driver_ ? impl_->frame_driver_->gpuCompletedSerial() : impl_->current_stamp_.serial;
+    }
+
+    void GeneralRenderServer::setExtension(void* extension, PreDestroySceneCallback pre_destroy) noexcept
+    {
+        impl_->extension_ = extension;
+        impl_->pre_destroy_scene_cb_ = pre_destroy;
+    }
+
+    void* GeneralRenderServer::extension() const noexcept
+    {
+        return impl_->extension_;
+    }
+
+    void* serverExtensionOf(void* user_state) noexcept
+    {
+        return user_state ? static_cast<GeneralRenderServer::Impl*>(user_state)->extension_ : nullptr;
+    }
+
+    void GeneralRenderServer::deferSurfaceRelease(
+        RenderTargetId target,
+        std::unique_ptr<PresentContext> context,
+        std::function<void()> on_teardown
+    )
+    {
+        Impl::PendingResourceRelease release{};
+        release.target = target;
+        release.retire_serial = impl_->frame_driver_ ? impl_->frame_driver_->lastSubmittedSerial() : 0;
+        release.ctx = std::move(context);
+        release.on_teardown = std::move(on_teardown);
+        impl_->pending_resource_releases_.push_back(std::move(release));
+    }
+
+    void GeneralRenderServer::flushPendingResourceReleases()
+    {
+        for (auto& release : impl_->pending_resource_releases_)
+        {
+            if (release.ctx)
+            {
+                auto closed = release.ctx->close();
+                if (!closed)
+                {
+                    renderFatal("pending PresentContext close failed during flush");
+                }
+            }
+            release.ctx.reset();
+            if (release.on_teardown)
+            {
+                release.on_teardown();
             }
         }
-        release.ctx.reset();
-        if (release.on_teardown)
-        {
-            release.on_teardown();
-        }
+        impl_->pending_resource_releases_.clear();
     }
-    impl_->pending_resource_releases_.clear();
-}
 
-FeatureTypeRegisteredReply GeneralRenderServer::addFeatureFactory(
-    const FeatureFactory &factory, std::shared_ptr<const void> code_lifetime)
-{
-    if (!impl_->renderer_)
-        return FeatureTypeRegisteredReply{.error = renderError<err::device::VulkanObjectCreationFailed>()};
-    auto &registry = impl_->renderer_->featureTypeRegistry();
-    FeatureTypeRecord record{};
-    record.factory = factory;
-    record.registration_leases.push_back(code_lifetime);
-    auto result = registry.add(std::move(record));
-    if (!result)
-        return FeatureTypeRegisteredReply{.error = result.error()};
-
-    auto &stored = registry.at(result->type_id);
-    if (result->status == EFeatureTypeRegisterStatus::Registered && factory.register_ops_fn)
+    FeatureTypeRegisteredReply GeneralRenderServer::addFeatureFactory(
+        const FeatureFactory& factory,
+        std::shared_ptr<const void> code_lifetime
+    )
     {
-        const auto registered = factory.register_ops_fn(&impl_->dispatcher, stored.ops, FeatureTypeRegistry::kMaxOps);
-        if (!registered || *registered != factory.operation_count)
+        if (!impl_->renderer_)
+            return FeatureTypeRegisteredReply{.error = renderError<err::device::VulkanObjectCreationFailed>()};
+        auto& registry = impl_->renderer_->featureTypeRegistry();
+        FeatureTypeRecord record{};
+        record.factory = factory;
+        record.registration_leases.push_back(code_lifetime);
+        auto result = registry.add(std::move(record));
+        if (!result)
+            return FeatureTypeRegisteredReply{.error = result.error()};
+
+        auto& stored = registry.at(result->type_id);
+        if (result->status == EFeatureTypeRegisterStatus::NEW_REGISTRATION && factory.register_ops_fn)
         {
-            // A failing registrar has already undone its own partial prefix.
-            if (registered && factory.unregister_ops_fn)
-                factory.unregister_ops_fn(&impl_->dispatcher, stored.ops, std::min(*registered, FeatureTypeRegistry::kMaxOps));
-            const auto error = registered ? renderError<err::feature::InvalidRegistration>() : registered.error();
-            registry.erase(result->type_id);
-            return FeatureTypeRegisteredReply{.error = error};
-        }
-        for (std::uint32_t index{}; index < *registered; ++index)
-        {
-            const bool invalid = stored.ops[index] == kInvalidTypeId;
-            const bool duplicate = std::find(stored.ops, stored.ops + index, stored.ops[index]) != stored.ops + index;
-            if (invalid || duplicate)
+            const auto registered =
+                factory.register_ops_fn(&impl_->dispatcher, stored.ops, FeatureTypeRegistry::kMaxOps);
+            if (!registered || *registered != factory.operation_count)
             {
-                factory.unregister_ops_fn(&impl_->dispatcher, stored.ops, *registered);
+                // A failing registrar has already undone its own partial prefix.
+                if (registered && factory.unregister_ops_fn)
+                    factory.unregister_ops_fn(
+                        &impl_->dispatcher,
+                        stored.ops,
+                        std::min(*registered, FeatureTypeRegistry::kMaxOps)
+                    );
+                const auto error = registered ? renderError<err::feature::InvalidRegistration>() : registered.error();
                 registry.erase(result->type_id);
-                return FeatureTypeRegisteredReply{.error = renderError<err::feature::InvalidRegistration>()};
+                return FeatureTypeRegisteredReply{.error = error};
             }
-        }
-        stored.op_count = *registered;
-    }
-    if (code_lifetime && std::ranges::find(impl_->code_owners_, code_lifetime) == impl_->code_owners_.end())
-        impl_->code_owners_.push_back(std::move(code_lifetime));
-    FeatureTypeRegisteredReply reply{};
-    reply.feature_type_id = result->type_id;
-    reply.status = static_cast<std::uint32_t>(result->status);
-    reply.op_count = stored.op_count;
-    std::copy_n(stored.ops, stored.op_count, reply.ops);
-    return reply;
-}
-
-std::vector<FeatureTypeRegisteredReply> GeneralRenderServer::addFeatureFactories(
-    std::span<const FeatureFactory> factories)
-{
-    std::vector<FeatureTypeRegisteredReply> results;
-    results.reserve(factories.size());
-    for (const auto &factory : factories)
-    {
-        results.push_back(addFeatureFactory(factory));
-    }
-    return results;
-}
-
-GeneralRenderServer::CreateSceneResult GeneralRenderServer::createScene(std::string_view name,
-                                                                        std::span<const FeatureInitParam> features,
-                                                                        lux::rdesc::ETextureFormat lit_color_format)
-{
-    RenderScene::Config config{};
-    config.scene_name = std::string(name);
-    config.pipeline.lit_color_format = lit_color_format;
-    auto scene_result = impl_->renderer_->addScene(std::move(config));
-
-    CreateSceneResult result;
-    result.scene_id = scene_result.scene_id;
-    auto *scene = impl_->renderer_->getScene(result.scene_id);
-    result.features.reserve(features.size());
-    result.feature_errors.reserve(features.size());
-
-    for (const auto &parameter : features)
-    {
-        const Expected<FeatureHandle> installed = [&]() -> Expected<FeatureHandle> {
-            if (!scene)
+            for (std::uint32_t index{}; index < *registered; ++index)
             {
-                return renderFailure<err::scene::NotFound>(result.scene_id.index);
+                const bool invalid = stored.ops[index] == kInvalidTypeId;
+                const bool duplicate =
+                    std::find(stored.ops, stored.ops + index, stored.ops[index]) != stored.ops + index;
+                if (invalid || duplicate)
+                {
+                    factory.unregister_ops_fn(&impl_->dispatcher, stored.ops, *registered);
+                    registry.erase(result->type_id);
+                    return FeatureTypeRegisteredReply{.error = renderError<err::feature::InvalidRegistration>()};
+                }
             }
-
-            const auto &feature = impl_->renderer_->featureTypeRegistry().at(parameter.feature_type_id).factory;
-            RenderScene::FeatureInstallScope scope(*scene, feature.descriptor);
-            return feature.create_fn(scene, parameter.param, parameter.param_size);
-        }();
-
-        result.features.push_back(installed ? *installed : FeatureHandle{});
-        result.feature_errors.push_back(installed ? RenderError{} : installed.error());
+            stored.op_count = *registered;
+        }
+        if (code_lifetime && std::ranges::find(impl_->code_owners_, code_lifetime) == impl_->code_owners_.end())
+            impl_->code_owners_.push_back(std::move(code_lifetime));
+        FeatureTypeRegisteredReply reply{};
+        reply.feature_type_id = result->type_id;
+        reply.status = static_cast<std::uint32_t>(result->status);
+        reply.op_count = stored.op_count;
+        std::copy_n(stored.ops, stored.op_count, reply.ops);
+        return reply;
     }
-    return result;
-}
 
-Expected<ViewHandle> GeneralRenderServer::createView(const ViewInitParam &parameter)
-{
-    auto *scene = impl_->renderer_->getScene(parameter.scene_id);
-    if (!scene)
+    std::vector<FeatureTypeRegisteredReply> GeneralRenderServer::addFeatureFactories(
+        std::span<const FeatureFactory> factories
+    )
     {
-        return renderFailure<err::internal::Unspecified>();
+        std::vector<FeatureTypeRegisteredReply> results;
+        results.reserve(factories.size());
+        for (const auto& factory : factories)
+        {
+            results.push_back(addFeatureFactory(factory));
+        }
+        return results;
     }
 
-    return scene->addView(ViewCreateInfo{
-        .initial_extent = parameter.extent,
-        .debug_name = parameter.name.data(),
-    });
-}
-
-Expected<void> GeneralRenderServer::bindSwapchain(RenderSceneId scene_id, ViewHandle view,
-                                                  const RenderTargetLayout &layout)
-{
-    return detail::bindSwapchainInternal(*impl_, scene_id, view, layout, false);
-}
-
-void GeneralRenderServer::unbindSwapchain()
-{
-    if (auto *target = impl_->surfaceTarget())
+    GeneralRenderServer::CreateSceneResult GeneralRenderServer::createScene(
+        std::string_view name,
+        std::span<const FeatureInitParam> features,
+        lux::rdesc::ETextureFormat lit_color_format
+    )
     {
-        target->layers.clear();
+        RenderScene::Config config{};
+        config.scene_name = std::string(name);
+        config.pipeline.lit_color_format = lit_color_format;
+        auto scene_result = impl_->renderer_->addScene(std::move(config));
+
+        CreateSceneResult result;
+        result.scene_id = scene_result.scene_id;
+        auto* scene = impl_->renderer_->getScene(result.scene_id);
+        result.features.reserve(features.size());
+        result.feature_errors.reserve(features.size());
+
+        for (const auto& parameter : features)
+        {
+            const Expected<FeatureHandle> installed = [&]() -> Expected<FeatureHandle> {
+                if (!scene)
+                {
+                    return renderFailure<err::scene::NotFound>(result.scene_id.index);
+                }
+
+                const auto& feature = impl_->renderer_->featureTypeRegistry().at(parameter.feature_type_id).factory;
+                RenderScene::FeatureInstallScope scope(*scene, feature.descriptor);
+                return feature.create_fn(scene, parameter.param, parameter.param_size);
+            }();
+
+            result.features.push_back(installed ? *installed : FeatureHandle{});
+            result.feature_errors.push_back(installed ? RenderError{} : installed.error());
+        }
+        return result;
     }
-}
 
-bool GeneralRenderServer::hasSwapchainBinding() const noexcept
-{
-    const auto *target = impl_->targets_registry_.surfaceTarget();
-    return target && !target->layers.empty();
-}
-
-RenderTargetLayout GeneralRenderServer::swapchainLayout() const
-{
-    auto *provider = impl_->swapchainProvider();
-    return provider ? provider->layout() : RenderTargetLayout{};
-}
-
-Expected<RTextureHandle> GeneralRenderServer::createTexture2D(const lux::rdesc::Texture &texture, bool generate_mips)
-{
-    auto &resources = impl_->render_ctx_->globalRegistry().must<TextureResources>();
-    auto result = resources.submit(texture, nullptr, VK_FORMAT_UNDEFINED, generate_mips);
-    if (!result)
+    Expected<ViewHandle> GeneralRenderServer::createView(const ViewInitParam& parameter)
     {
-        return lux::cxx::unexpected(result.error());
+        auto* scene = impl_->renderer_->getScene(parameter.scene_id);
+        if (!scene)
+        {
+            return renderFailure<err::internal::Unspecified>();
+        }
+
+        return scene->addView(ViewCreateInfo{
+            .initial_extent = parameter.extent,
+            .debug_name = parameter.name.data(),
+        });
     }
-    return RTextureHandle{result->index, result->gen};
-}
 
-ShaderHandle GeneralRenderServer::compileShader(std::span<const std::byte> spirv, const lux::rdesc::ShaderInfo *info)
-{
-    auto &resources = impl_->render_ctx_->globalRegistry().must<ShaderResources>();
-    const lux::rdesc::ShaderInfo default_info{};
-    return resources.add(spirv, info ? *info : default_info);
-}
-
-Expected<void> GeneralRenderServer::flushPendingGpuTransfers()
-{
-    auto &resource_context = *impl_->res_ctx_;
-    const VkDevice device = resource_context.logicalDevice();
-    const VkCommandPool pool = resource_context.commandPool().handle();
-
-    VkCommandBufferAllocateInfo allocation{};
-    allocation.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocation.commandPool = pool;
-    allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocation.commandBufferCount = 1;
-
-    VkCommandBuffer command = VK_NULL_HANDLE;
-    if (vkAllocateCommandBuffers(device, &allocation, &command) != VK_SUCCESS)
+    Expected<void> GeneralRenderServer::bindSwapchain(
+        RenderSceneId scene_id,
+        ViewHandle view,
+        const RenderTargetLayout& layout
+    )
     {
-        return renderFailure<err::internal::Unspecified>();
+        return detail::bindSwapchainInternal(*impl_, scene_id, view, layout, false);
     }
 
-    VkCommandBufferBeginInfo begin{};
-    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(command, &begin);
-
-    auto *mesh_resources = impl_->render_ctx_->globalRegistry().find<MeshResources>();
-    auto &texture_resources = impl_->render_ctx_->globalRegistry().must<TextureResources>();
-    texture_resources.bindlessSet2D().flushUploads(command, 0);
-    texture_resources.bindlessSetCube().flushUploads(command, 0);
-    vkEndCommandBuffer(command);
-
-    VkFenceCreateInfo fence_info{};
-    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    VkFence fence = VK_NULL_HANDLE;
-    vkCreateFence(device, &fence_info, nullptr, &fence);
-
-    VkSubmitInfo submit{};
-    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit.commandBufferCount = 1;
-    submit.pCommandBuffers = &command;
+    void GeneralRenderServer::unbindSwapchain()
     {
-        const std::scoped_lock queue_lock(resource_context.deviceContext().graphicsQueueMutex());
-        vkQueueSubmit(resource_context.graphicsQueue(), 1, &submit, fence);
+        if (auto* target = impl_->surfaceTarget())
+        {
+            target->layers.clear();
+        }
     }
-    vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
 
-    if (mesh_resources)
+    bool GeneralRenderServer::hasSwapchainBinding() const noexcept
     {
-        mesh_resources->retireFrameStagingBuffers(0);
+        const auto* target = impl_->targets_registry_.surfaceTarget();
+        return target && !target->layers.empty();
     }
-    texture_resources.bindlessSet2D().retireDeferredStaging(0);
-    texture_resources.bindlessSetCube().retireDeferredStaging(0);
 
-    vkDestroyFence(device, fence, nullptr);
-    vkFreeCommandBuffers(device, pool, 1, &command);
-    return {};
-}
+    RenderTargetLayout GeneralRenderServer::swapchainLayout() const
+    {
+        auto* provider = impl_->swapchainProvider();
+        return provider ? provider->layout() : RenderTargetLayout{};
+    }
+
+    Expected<RTextureHandle> GeneralRenderServer::createTexture2D(
+        const lux::rdesc::Texture& texture,
+        bool generate_mips
+    )
+    {
+        auto& resources = impl_->render_ctx_->globalRegistry().must<TextureResources>();
+        auto result = resources.submit(texture, nullptr, VK_FORMAT_UNDEFINED, generate_mips);
+        if (!result)
+        {
+            return lux::cxx::unexpected(result.error());
+        }
+        return resources.publishTexture(*result);
+    }
+
+    ShaderHandle GeneralRenderServer::compileShader(
+        std::span<const std::byte> spirv,
+        const lux::rdesc::ShaderInfo* info
+    )
+    {
+        auto& resources = impl_->render_ctx_->globalRegistry().must<ShaderResources>();
+        const lux::rdesc::ShaderInfo default_info{};
+        return resources.add(spirv, info ? *info : default_info);
+    }
+
+    Expected<void> GeneralRenderServer::flushPendingGpuTransfers()
+    {
+        auto& resource_context = *impl_->res_ctx_;
+        const VkDevice device = resource_context.logicalDevice();
+        const VkCommandPool pool = resource_context.commandPool().handle();
+
+        VkCommandBufferAllocateInfo allocation{};
+        allocation.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocation.commandPool = pool;
+        allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocation.commandBufferCount = 1;
+
+        VkCommandBuffer command = VK_NULL_HANDLE;
+        if (vkAllocateCommandBuffers(device, &allocation, &command) != VK_SUCCESS)
+        {
+            return renderFailure<err::internal::Unspecified>();
+        }
+
+        VkCommandBufferBeginInfo begin{};
+        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(command, &begin);
+
+        auto* mesh_resources = impl_->render_ctx_->globalRegistry().find<MeshResources>();
+        auto& texture_resources = impl_->render_ctx_->globalRegistry().must<TextureResources>();
+        texture_resources.bindlessSet2D().flushUploads(command, 0);
+        texture_resources.bindlessSetCube().flushUploads(command, 0);
+        vkEndCommandBuffer(command);
+
+        VkFenceCreateInfo fence_info{};
+        fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        VkFence fence = VK_NULL_HANDLE;
+        vkCreateFence(device, &fence_info, nullptr, &fence);
+
+        VkSubmitInfo submit{};
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &command;
+        {
+            const std::scoped_lock queue_lock(resource_context.deviceContext().graphicsQueueMutex());
+            vkQueueSubmit(resource_context.graphicsQueue(), 1, &submit, fence);
+        }
+        vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+
+        if (mesh_resources)
+        {
+            mesh_resources->retireFrameStagingBuffers(0);
+        }
+        texture_resources.bindlessSet2D().retireDeferredStaging(0);
+        texture_resources.bindlessSetCube().retireDeferredStaging(0);
+
+        vkDestroyFence(device, fence, nullptr);
+        vkFreeCommandBuffers(device, pool, 1, &command);
+        return {};
+    }
 } // namespace lux::render

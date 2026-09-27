@@ -17,7 +17,8 @@ namespace lux::render
         display = Fog,
         requires = lux.render.linear_depth.v1,
         feature = FogFeature,
-        feature_header = lux / engine / render / renderer / features / postprocess / FogFeature.hpp) FogCommConfig
+        feature_header = lux / engine / render / renderer / features / postprocess / FogFeature.hpp
+    ) FogCommConfig
     {
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};

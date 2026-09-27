@@ -23,17 +23,20 @@ namespace lux::render
         std::string_view schema;
         std::uint32_t schema_version{1};
         lux::serialization::PortableValueCodec portable{};
-        std::uint32_t attach_wire_size{};
         MaterializeRenderFeatureAttachFn materialize_attach{};
 
         [[nodiscard]] bool valid() const noexcept
         {
-            return !schema.empty() && schema_version != 0 && portable.valid() && attach_wire_size != 0U && materialize_attach != nullptr;
+            return !schema.empty() && schema_version != 0 && portable.valid() &&
+                   materialize_attach != nullptr;
         }
     };
 
     template <class CommConfig>
-    [[nodiscard]] RenderFeatureConfigCodec makeRenderFeatureConfigCodec(std::string_view schema, std::uint32_t version = 1) noexcept
+    [[nodiscard]] RenderFeatureConfigCodec makeRenderFeatureConfigCodec(
+        std::string_view schema,
+        std::uint32_t version = 1
+    ) noexcept
     {
         static_assert(std::is_nothrow_default_constructible_v<CommConfig>);
         static_assert(std::is_nothrow_destructible_v<CommConfig>);
@@ -42,11 +45,8 @@ namespace lux::render
             .schema = schema,
             .schema_version = version,
             .portable = lux::serialization::makePortableValueCodec<CommConfig>(),
-            .attach_wire_size = sizeof(CommConfig),
-            .materialize_attach = +[](
-                std::span<const std::byte> portable,
-                std::vector<std::byte>& attach_wire
-            ) noexcept -> lux::serialization::SerializationResult {
+            .materialize_attach = +[](std::span<const std::byte> portable, std::vector<std::byte>& attach_wire
+                                   ) noexcept -> lux::serialization::SerializationResult {
                 attach_wire.clear();
                 CommConfig value{};
                 auto decoded = lux::serialization::makePortableValueCodec<CommConfig>().decode(portable, &value);

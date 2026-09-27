@@ -34,10 +34,16 @@
 #include <string_view>
 #include <vector>
 
-#include "Passes.hpp"   // JitNativeSymbol
+#include "Passes.hpp" // JitNativeSymbol
 
-namespace mlir { class ExecutionEngine; }
-namespace lux::meta { struct RefInvokable; }
+namespace mlir
+{
+    class ExecutionEngine;
+}
+namespace lux::meta
+{
+    struct RefInvokable;
+}
 
 namespace lux::flowforge
 {
@@ -60,23 +66,29 @@ namespace lux::flowforge
         FlowScriptInstance(const FlowScriptInstance&) = delete;
         FlowScriptInstance& operator=(const FlowScriptInstance&) = delete;
 
-        [[nodiscard]] bool        hasEvent(std::string_view event) const;
-        [[nodiscard]] std::size_t eventCount() const { return events_.size(); }
+        [[nodiscard]] bool hasEvent(std::string_view event) const;
+        [[nodiscard]] std::size_t eventCount() const
+        {
+            return events_.size();
+        }
 
         /// Invoke an event entry. args[i] points at the STORAGE of the i-th
         /// payload parameter (packed convention: `&some_ptr` for a pointer
         /// parameter, `&some_float` for a scalar). The argument count must
         /// match the event's signature. The instance-state pointer is
         /// prepended internally — callers never pass it.
-        [[nodiscard]] FlowForgeResult<void> invoke(
-            std::string_view event,
-            std::span<void* const> args
-        ) noexcept;
+        [[nodiscard]] FlowForgeResult<void> invoke(std::string_view event, std::span<void* const> args) noexcept;
 
         /// The instance-state block: graph variables at their StateLayout
         /// offsets. Empty for a graph with no variables.
-        [[nodiscard]] std::span<std::byte> instanceState() { return state_; }
-        [[nodiscard]] std::span<const std::byte> instanceState() const { return state_; }
+        [[nodiscard]] std::span<std::byte> instanceState()
+        {
+            return state_;
+        }
+        [[nodiscard]] std::span<const std::byte> instanceState() const
+        {
+            return state_;
+        }
 
         /// Re-initialize the instance state to the declared defaults —
         /// same bytes a freshly compiled instance starts with.
@@ -101,9 +113,9 @@ namespace lux::flowforge
             std::size_t arg_count; ///< payload parameter count
         };
 
-        std::vector<EventEntry>                events_;
-        std::unique_ptr<IR>                    ir_;      // keeps the module alive
+        std::vector<EventEntry> events_;
+        std::unique_ptr<IR> ir_; // keeps the module alive
         std::unique_ptr<mlir::ExecutionEngine> engine_;
-        std::vector<std::byte>                 state_;   // instance-state block
+        std::vector<std::byte> state_; // instance-state block
     };
 }

@@ -30,8 +30,7 @@ namespace lux::asset
         inline static constexpr std::uint32_t primary_magic = 0x01309144U;
         inline static constexpr std::uint32_t legacy_type_tag = 2U;
 
-        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const ShaderAsset>, AssetDecodeFailure>
-        create(
+        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const ShaderAsset>, AssetDecodeFailure> create(
             AssetInfo info,
             std::shared_ptr<const ShaderAssetData> data,
             std::vector<AssetAuxiliaryPayload> auxiliary = {}
@@ -45,17 +44,17 @@ namespace lux::asset
         ) noexcept;
     };
 
-    template <>
-    struct LUX_ASSET_PUBLIC TAssetSerDeser<ShaderAsset> final
+    template <> struct LUX_ASSET_PUBLIC TAssetSerDeser<ShaderAsset> final
     {
-        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const ShaderAsset>, AssetDecodeFailure>
-        decode(
+        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<const ShaderAsset>, AssetDecodeFailure> decode(
             AssetId requested,
             lux::cxx::SharedBytes<> cooked_image,
             const AssetDecodeLimits& limits
         ) noexcept;
 
-        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
-        encode(const ShaderAsset& asset, const AssetEncodeLimits& limits) noexcept;
+        [[nodiscard]] static lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> encode(
+            const ShaderAsset& asset,
+            const AssetEncodeLimits& limits
+        ) noexcept;
     };
 } // namespace lux::asset

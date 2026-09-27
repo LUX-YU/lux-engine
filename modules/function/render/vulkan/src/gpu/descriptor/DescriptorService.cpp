@@ -49,8 +49,7 @@ namespace lux::render
 
     DescriptorService::DescriptorService(VkDevice device, VkDescriptorPool descriptor_pool)
         : device_(device), descriptor_pool_(descriptor_pool)
-    {
-    }
+    {}
 
     DescriptorService::~DescriptorService()
     {
@@ -122,8 +121,8 @@ namespace lux::render
         ci.pBindings = entry.bindings.data();
 
         // Attach per-binding flags (e.g. UPDATE_AFTER_BIND) when provided.
-        VkDescriptorSetLayoutBindingFlagsCreateInfo bf{
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO};
+        VkDescriptorSetLayoutBindingFlagsCreateInfo bf{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO
+        };
         if (!entry.binding_flags.empty())
         {
             bf.bindingCount = static_cast<uint32_t>(entry.binding_flags.size());
@@ -159,7 +158,8 @@ namespace lux::render
         alloc.pSetLayouts = &vk_layout;
 
         VkDescriptorSetVariableDescriptorCountAllocateInfo var_info{
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO};
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO
+        };
         if (variable_count > 0)
         {
             var_info.descriptorSetCount = 1;

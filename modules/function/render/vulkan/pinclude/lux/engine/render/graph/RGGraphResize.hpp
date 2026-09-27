@@ -47,7 +47,7 @@ namespace lux::render
         uint32_t frames_in_flight,
         std::function<void(RGPhysicalResourceTable&)> on_resources_allocated,
         std::function<void(RGResourceState&&)> on_old_state_retired,
-        uint32_t update_mask = static_cast<uint32_t>(RGUpdateGroup::GROUP_SWAPCHAIN)
+        uint32_t update_mask = static_cast<uint32_t>(ERGUpdateGroup::GROUP_SWAPCHAIN)
     );
 
 } // namespace lux::render

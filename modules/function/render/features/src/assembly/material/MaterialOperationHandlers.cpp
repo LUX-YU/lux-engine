@@ -27,6 +27,7 @@
 #include <lux/engine/render/gpu/RenderContext.hpp> // lookupRenderContext 的返回类型
 
 #include <cstdint>
+#include <cstring>
 
 namespace lux::render
 {
@@ -84,8 +85,7 @@ namespace lux::render
             // Any new material invalidates compiled scene graphs (per-material PSO sets).
             forEachSceneOnServer(user_state, [](RenderScene& scene) {
                 scene.invalidateGraph(EGraphInvalidationReason::MATERIAL_LAYOUT);
-            }
-            );
+            });
 
             auto h = result.value();
             return RMaterialHandle{h.index, h.gen};
@@ -115,17 +115,22 @@ namespace lux::render
             mat->remove(MaterialHandle{handle.index, handle.gen});
             forEachSceneOnServer(user_state, [](RenderScene& scene) {
                 scene.invalidateGraph(EGraphInvalidationReason::MATERIAL_LAYOUT);
-            }
-            );
+            });
         } // anonymous namespace (helpers)
     }
     void handleUploadGraphMaterial(GeneralRenderServer::Dispatcher::Ctx& ctx, const UploadGraphMaterialPayload& p)
     {
         auto desc_bytes = resolveExternalData(ctx.program, p.graph_desc);
-        const auto* data = reinterpret_cast<const GraphMaterialData*>(desc_bytes.data());
+        if (desc_bytes.size() != sizeof(GraphMaterialData))
+        {
+            replyToCurrent<UploadGraphMaterialPayload>(ctx, MaterialUploadedReply{{}, 1u});
+            return;
+        }
+        GraphMaterialData data;
+        std::memcpy(&data, desc_bytes.data(), sizeof(data));
         const RMaterialHandle h = serverUploadGraphMaterial(
             ctx.user_state,
-            *data,
+            data,
             p.graph_gbuffer_shader,
             p.graph_forward_shader,
             p.shader_key,
@@ -138,8 +143,11 @@ namespace lux::render
     void handleModifyGraphMaterial(GeneralRenderServer::Dispatcher::Ctx& ctx, const ModifyGraphMaterialPayload& p)
     {
         auto desc_bytes = resolveBlob(ctx.program, p.graph_desc);
-        const auto* data = reinterpret_cast<const GraphMaterialData*>(desc_bytes.data());
-        serverModifyGraphMaterial(ctx.user_state, p.handle, *data);
+        if (desc_bytes.size() != sizeof(GraphMaterialData))
+            return;
+        GraphMaterialData data;
+        std::memcpy(&data, desc_bytes.data(), sizeof(data));
+        serverModifyGraphMaterial(ctx.user_state, p.handle, data);
     }
 
     void handleDestroyMaterial(GeneralRenderServer::Dispatcher::Ctx& ctx, const DestroyMaterialPayload& p)

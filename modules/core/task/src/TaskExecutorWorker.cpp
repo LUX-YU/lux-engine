@@ -1,4 +1,5 @@
 #include <lux/engine/task/TaskExecutorDetail.hpp>
+#include <exception>
 #include <lux/engine/task/TaskExecutorFailureInjection.hpp>
 
 #include <algorithm>
@@ -6,6 +7,7 @@
 #include <cstdlib>
 #include <limits>
 #include <new>
+#include <system_error>
 #include <utility>
 
 namespace lux::task::detail
@@ -20,9 +22,7 @@ namespace lux::task::detail
         class ExecuteGuard final
         {
         public:
-            explicit ExecuteGuard(std::atomic_bool& executing) noexcept : executing_(executing)
-            {
-            }
+            explicit ExecuteGuard(std::atomic_bool& executing) noexcept : executing_(executing) {}
 
             ~ExecuteGuard() noexcept
             {
@@ -60,21 +60,8 @@ namespace lux::task::detail
                 workers.emplace_back([this, worker]() noexcept { workerLoop(worker); });
             }
         }
-        catch (const std::bad_alloc&)
-        {
-            stopping.store(true, std::memory_order_release);
-            worker_event.fetch_add(1U, std::memory_order_release);
-            worker_event.notify_all();
-            for (auto& worker : workers)
-            {
-                if (worker.joinable())
-                {
-                    worker.join();
-                }
-            }
-            return lux::cxx::unexpected(TaskExecutorFailure{ETaskExecutorError::ALLOCATION_FAILURE});
-        }
-        catch (...)
+
+        catch (const std::system_error&)
         {
             stopping.store(true, std::memory_order_release);
             worker_event.fetch_add(1U, std::memory_order_release);
@@ -118,14 +105,9 @@ namespace lux::task::detail
         {
             return lux::cxx::unexpected(TaskExecutorFailure{ETaskExecutorError::ALREADY_EXECUTING});
         }
-        try
         {
             reserveStorage(capacity);
             return {};
-        }
-        catch (...)
-        {
-            return lux::cxx::unexpected(TaskExecutorFailure{ETaskExecutorError::ALLOCATION_FAILURE});
         }
     }
 
@@ -138,13 +120,8 @@ namespace lux::task::detail
         }
         ExecuteGuard execute_guard(executing);
 
-        try
         {
             reserveStorage(graph.taskCount());
-        }
-        catch (...)
-        {
-            return lux::cxx::unexpected(TaskExecutorFailure{ETaskExecutorError::ALLOCATION_FAILURE});
         }
 
         if (graph.taskCount() == 0U)

@@ -52,20 +52,20 @@ namespace lux::process::world_loading
 
         [[nodiscard]] static lux::cxx::expected<WorldStorageSource, WorldStorageRuntimeFailure> create(
             std::shared_ptr<const lux::world::WorldDescription> world,
-            lux::async::OperationPort<ReadWorldStorageRange> read_port
+            lux::async::TOperationPort<ReadWorldStorageRange> read_port
         ) noexcept;
 
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] const lux::world::WorldDescription& world() const noexcept;
-        [[nodiscard]] const lux::async::OperationPort<ReadWorldStorageRange>& readPort() const noexcept;
+        [[nodiscard]] const lux::async::TOperationPort<ReadWorldStorageRange>& readPort() const noexcept;
 
     private:
         WorldStorageSource(
             std::shared_ptr<const lux::world::WorldDescription> world,
-            lux::async::OperationPort<ReadWorldStorageRange> read_port
+            lux::async::TOperationPort<ReadWorldStorageRange> read_port
         ) noexcept;
 
         std::shared_ptr<const lux::world::WorldDescription> world_;
-        lux::async::OperationPort<ReadWorldStorageRange> read_port_;
+        lux::async::TOperationPort<ReadWorldStorageRange> read_port_;
     };
 }

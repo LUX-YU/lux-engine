@@ -10,15 +10,15 @@ engine_target_add_ecs_component_codegen(NAME consumer_schema TARGET consumer_dom
 add_library(consumer_gui SHARED ${D2_CONSUMER_SOURCE_DIR}/Gui.cpp ${D2_CONSUMER_SOURCE_DIR}/GuiGesture.cpp)
 set_property(TARGET consumer_gui PROPERTY LUX_ARCH_LAYER EDITOR)
 target_compile_definitions(consumer_gui PRIVATE CONSUMER_GUI_LIBRARY)
-target_link_libraries(consumer_gui PUBLIC consumer_domain lux::engine::editor::editor_scene_ui)
+target_link_libraries(consumer_gui PUBLIC consumer_domain lux::engine::editor::editor_ui)
 engine_target_add_imgui_inspector_codegen(NAME consumer TARGET consumer_gui
     SOURCE_FILE "${D2_CONSUMER_SOURCE_DIR}/Gui.cpp"
     HEADER "${D2_CONSUMER_SOURCE_DIR}/include/consumer/Component.hpp"
     LOGICAL_PATH consumer/Component.hpp COMPONENTS consumer::Component)
 add_dependencies(consumer_gui consumer_domain)
 
-add_executable(consumer_protocol ${D2_CONSUMER_SOURCE_DIR}/main.cpp ${D2_CONSUMER_SOURCE_DIR}/SceneWorkflow.cpp)
-target_link_libraries(consumer_protocol PRIVATE consumer_domain consumer_gui lux::engine::editor::editor_app)
+add_executable(consumer_protocol ${D2_CONSUMER_SOURCE_DIR}/main.cpp)
+target_link_libraries(consumer_protocol PRIVATE consumer_domain consumer_gui)
 option(D2_MEASURE_COMPONENT_COPIES "Instrument only the test component, never normal timing artifacts" OFF)
 set(D2_EXPECT_ADOPT_COPIES 1 CACHE STRING "One after-value capture at field completion")
 foreach(target consumer_domain consumer_gui consumer_protocol)
@@ -36,3 +36,11 @@ foreach(target consumer_domain consumer_gui consumer_protocol)
     endif()
 endforeach()
 
+
+if(TARGET editor_app)
+    target_link_libraries(consumer_protocol PRIVATE lux::engine::editor::editor_app lux::engine::editor::editor_scene
+        lux::engine::editor::editor_material lux::engine::editor::editor_flowforge
+        lux::engine::editor::editor_project_tools lux::engine::editor::editor_settings lux::engine::editor::editor_launcher)
+    target_sources(consumer_protocol PRIVATE ${D2_CONSUMER_SOURCE_DIR}/SceneWorkflow.cpp)
+    target_compile_definitions(consumer_protocol PRIVATE LUX_TOOL_INTERNAL_TESTS)
+endif()

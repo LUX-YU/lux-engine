@@ -53,23 +53,30 @@ namespace lux::world
         WorldDescriptionBuilder(const WorldDescriptionBuilder&) = delete;
         WorldDescriptionBuilder& operator=(const WorldDescriptionBuilder&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
-        setIdentity(WorldBundleId bundle, WorldBundleGeneration generation, std::string_view name) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure> setIdentity(
+            WorldBundleId bundle,
+            WorldBundleGeneration generation,
+            std::string_view name
+        ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
-        addSchema(WorldDataSchemaId schema) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure> addSchema(WorldDataSchemaId schema) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
-        setPartitioner(WorldPartitionerDescriptor partitioner, std::uint32_t partition_count) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure> setPartitioner(
+            WorldPartitionerDescriptor partitioner,
+            std::uint32_t partition_count
+        ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
-        addStorageVolume(WorldStorageVolumeDescription volume) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure> addStorageVolume(
+            WorldStorageVolumeDescription volume
+        ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
-        addPartitionTablePage(WorldPartitionTablePageDescription page) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure> addPartitionTablePage(
+            WorldPartitionTablePageDescription page
+        ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure>
-        addPartitionIndex(WorldPartitionIndexDescription index) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, WorldDescriptionFailure> addPartitionIndex(
+            WorldPartitionIndexDescription index
+        ) noexcept;
 
         void clear() noexcept;
 

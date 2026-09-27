@@ -26,8 +26,7 @@ namespace lux::render
     PCFeatureTransient::PCFeatureTransient(Config cfg)
         : IPointCloudFeature(RenderFeature::Config{.name = "PointCloudTransient"}), cfg_(std::move(cfg)),
           point_size_(cfg_.point_size)
-    {
-    }
+    {}
 
     // The ring destroys itself (no-detach fallback; a runtime detach retired + nulled first).
     PCFeatureTransient::~PCFeatureTransient() = default;
@@ -46,7 +45,8 @@ namespace lux::render
         // 用 uViews)的管线必须带域合并标记,否则 PipelineManager 拒绝注册。
         const std::array stage_requests{
             PipelineStageRequest{EBuiltinShader::PC_SIMPLE_VERT, cfg_.vertex_shader},
-            PipelineStageRequest{EBuiltinShader::PC_SIMPLE_FRAG, cfg_.fragment_shader}};
+            PipelineStageRequest{EBuiltinShader::PC_SIMPLE_FRAG, cfg_.fragment_shader}
+        };
 
         auto stages = preparePipelineStages(shaders, stage_requests);
         if (!stages)
@@ -71,7 +71,8 @@ namespace lux::render
         if (auto r = ring_.create(
                 ctx.vmaAllocator(),
                 contextView().framesInFlight(),
-                static_cast<VkDeviceSize>(cfg_.max_points) * sizeof(GpuPointVertex));
+                static_cast<VkDeviceSize>(cfg_.max_points) * sizeof(GpuPointVertex)
+            );
             !r)
             return r;
 
@@ -125,7 +126,7 @@ namespace lux::render
             .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
             .setPipeline(pipeline_handle_)
             .bindSceneDS()
-            .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::PointCloud)))
+            .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::POINT_CLOUD)))
             .setKernelFn([this](const PassRecordContext& ctx) {
                 if (draw_count_ == 0)
                     return;
@@ -147,8 +148,7 @@ namespace lux::render
                 VkDeviceSize zero_offset = 0;
                 vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &slot.buffer, &zero_offset);
                 vkCmdDraw(ctx.cmd, draw_count_, 1, 0, 0);
-            }
-            )
+            })
             .setKernel("PointCloudTransientDraw");
     }
 

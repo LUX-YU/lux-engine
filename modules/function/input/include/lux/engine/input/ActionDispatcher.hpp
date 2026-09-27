@@ -25,9 +25,7 @@ namespace lux::input
     class ActionMapperDispatcher final : public IActionDispatcher
     {
     public:
-        explicit ActionMapperDispatcher(ActionMapper& mapper) : mapper_(mapper)
-        {
-        }
+        explicit ActionMapperDispatcher(ActionMapper& mapper) : mapper_(mapper) {}
 
         void dispatchTriggered(ActionId id, const InputValue& value) override
         {

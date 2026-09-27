@@ -9,49 +9,62 @@
 
 namespace lux::serialization
 {
-template <> struct Serializer<scene::Camera>
-{
-    static constexpr EWireExtent wire_extent = EWireExtent::VARIABLE;
-
-    template <class Writer>
-    static SerializationResult write(Writer &writer, const scene::Camera &value,
-                                     const SerializationContext &context) noexcept
+    template <> struct TSerializer<scene::Camera>
     {
-        return serialization::write(writer, std::tie(value.projection, value.primary), context);
-    }
+        static constexpr EWireExtent wire_extent = EWireExtent::VARIABLE;
 
-    template <class Reader>
-    static SerializationResult read(Reader &reader, scene::Camera &value, const SerializationContext &context) noexcept
-    {
-        scene::Camera decoded;
-        auto fields = std::tie(decoded.projection, decoded.primary);
-        auto result = serialization::read(reader, fields, context);
-        if (!result)
+        template <class Writer>
+        static SerializationResult write(
+            Writer& writer,
+            const scene::Camera& value,
+            const SerializationContext& context
+        ) noexcept
         {
-            return result;
+            return serialization::write(writer, std::tie(value.projection, value.primary), context);
         }
-        if (!scene::cameraProjection(decoded, 1.0))
+
+        template <class Reader>
+        static SerializationResult read(
+            Reader& reader,
+            scene::Camera& value,
+            const SerializationContext& context
+        ) noexcept
         {
-            return lux::cxx::unexpected(SerializationFailure{ESerializationError::INVALID_VALUE, reader.offset()});
+            scene::Camera decoded;
+            auto fields = std::tie(decoded.projection, decoded.primary);
+            auto result = serialization::read(reader, fields, context);
+            if (!result)
+            {
+                return result;
+            }
+            if (!scene::cameraProjection(decoded, 1.0))
+            {
+                return lux::cxx::unexpected(SerializationFailure{ESerializationError::INVALID_VALUE, reader.offset()});
+            }
+            value = std::move(decoded);
+            return {};
         }
-        value = std::move(decoded);
-        return {};
-    }
-};
+    };
 } // namespace lux::serialization
 
 #include <lux/engine/scene/Camera.ecs_schema.hpp>
 
 namespace lux::scene
 {
-std::span<const simulation::ecs::ComponentSchema> sceneRenderComponentSchemas() noexcept
-{
-    using namespace simulation::ecs;
-    static const std::array schemas{
-        makeComponentSchema<ResolvedMeshResources>(componentSchemaId("lux.scene.ResolvedMeshResources"), 1U,
-                                                   EComponentSnapshotPolicy::REBUILD, {}, nullptr,
-                                                   EComponentSemanticKind::RUNTIME_DERIVED),
-        generated::sceneCameraComponentSchemas().front()};
-    return schemas;
-}
+    std::span<const simulation::ecs::ComponentSchema> sceneRenderComponentSchemas() noexcept
+    {
+        using namespace simulation::ecs;
+        static const std::array schemas{
+            makeComponentSchema<ResolvedMeshResources>(
+                componentSchemaId("lux.scene.ResolvedMeshResources"),
+                1U,
+                EComponentSnapshotPolicy::REBUILD,
+                {},
+                nullptr,
+                EComponentSemanticKind::RUNTIME_DERIVED
+            ),
+            generated::sceneCameraComponentSchemas().front()
+        };
+        return schemas;
+    }
 } // namespace lux::scene

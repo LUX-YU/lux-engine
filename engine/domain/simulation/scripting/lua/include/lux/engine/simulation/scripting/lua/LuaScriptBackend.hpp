@@ -67,10 +67,12 @@ namespace lux::simulation::script
         std::size_t event_sources{};
     };
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC
-    lux::cxx::expected<LuaPreparedEntryRequirements, ELuaScriptBindingBackendError> describeLuaPreparedRequirements(
-        const lux::rdesc::Script& description,
-        std::span<const lux::script::lua::ScriptAbilityLuaContribution> contributions) noexcept;
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC lux::cxx::
+        expected<LuaPreparedEntryRequirements, ELuaScriptBindingBackendError>
+        describeLuaPreparedRequirements(
+            const lux::rdesc::Script& description,
+            std::span<const lux::script::lua::ScriptAbilityLuaContribution> contributions
+        ) noexcept;
 
     struct LuaScriptBackendConfig final
     {
@@ -118,12 +120,10 @@ namespace lux::simulation::script
 
     class LUX_ENGINE_SIMULATION_SCRIPT_LUA_PUBLIC LuaScriptBackend final
     {
-      public:
-        [[nodiscard]] static lux::cxx::expected<
-            LuaScriptBackend,
-            ELuaScriptBindingBackendError> create(
-                LuaScriptBackendConfig config
-            ) noexcept;
+    public:
+        [[nodiscard]] static lux::cxx::expected<LuaScriptBackend, ELuaScriptBindingBackendError> create(
+            LuaScriptBackendConfig config
+        ) noexcept;
         ~LuaScriptBackend();
 
         LuaScriptBackend(LuaScriptBackend&&) noexcept;
@@ -135,17 +135,17 @@ namespace lux::simulation::script
         [[nodiscard]] lux::script::lua::LuaRuntimeInfo runtimeInfo() const noexcept;
         [[nodiscard]] LuaScriptBackendStats stats() const noexcept;
         [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
-        [[nodiscard]] EScriptBackendResult prepareSyncStep(ScriptBackendInstance instance,
-                                                           const lux::rdesc::ScriptFunction& function,
-                                                           const ScriptSyncStepShape& shape,
-                                                           ScriptBackendPreparedMethod& method,
-                                                           PreparedScriptSyncStep& result) noexcept;
-
-      private:
-        struct Impl;
-        explicit LuaScriptBackend(
-            std::unique_ptr<Impl> state
+        [[nodiscard]] EScriptBackendResult prepareSyncStep(
+            ScriptBackendInstance instance,
+            const lux::rdesc::ScriptFunction& function,
+            const ScriptSyncStepShape& shape,
+            ScriptBackendPreparedMethod& method,
+            PreparedScriptSyncStep& result
         ) noexcept;
+
+    private:
+        struct Impl;
+        explicit LuaScriptBackend(std::unique_ptr<Impl> state) noexcept;
         std::unique_ptr<Impl> state_;
         friend struct detail::LuaAbilityProjectionAccess;
     };

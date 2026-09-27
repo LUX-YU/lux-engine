@@ -69,9 +69,8 @@ namespace
             if (!name.starts_with("--"))
                 return std::nullopt;
             name.erase(0U, 2U);
-            const bool flag = name == "inspect" || name == "embed" || name == "pack" ||
-                name == "pak_inspect" || name == "no_mips" || name == "left_handed" ||
-                name == "no_animations";
+            const bool flag = name == "inspect" || name == "embed" || name == "pack" || name == "pak_inspect" ||
+                              name == "no_mips" || name == "left_handed" || name == "no_animations";
             if (flag)
             {
                 result.flags.push_back(std::move(name));
@@ -96,14 +95,22 @@ namespace
     {
         using Format = lux::rdesc::ETexturePixelFormat;
         value = lowercase(std::move(value));
-        if (value == "rgba8_unorm") return Format::RGBA8_UNORM;
-        if (value == "rgba8_srgb") return Format::RGBA8_SRGB;
-        if (value == "rg8_unorm") return Format::RG8_UNORM;
-        if (value == "r8_unorm") return Format::R8_UNORM;
-        if (value == "bc1_srgb") return Format::BC1_SRGB;
-        if (value == "bc3_srgb") return Format::BC3_SRGB;
-        if (value == "bc5_unorm") return Format::BC5_UNORM;
-        if (value == "bc7_srgb") return Format::BC7_SRGB;
+        if (value == "rgba8_unorm")
+            return Format::RGBA8_UNORM;
+        if (value == "rgba8_srgb")
+            return Format::RGBA8_SRGB;
+        if (value == "rg8_unorm")
+            return Format::RG8_UNORM;
+        if (value == "r8_unorm")
+            return Format::R8_UNORM;
+        if (value == "bc1_srgb")
+            return Format::BC1_SRGB;
+        if (value == "bc3_srgb")
+            return Format::BC3_SRGB;
+        if (value == "bc5_unorm")
+            return Format::BC5_UNORM;
+        if (value == "bc7_srgb")
+            return Format::BC7_SRGB;
         if (value.starts_with("etc2_") || value.starts_with("astc_"))
             return Format::UNKNOWN;
         return std::nullopt;
@@ -113,9 +120,12 @@ namespace
     {
         using ColorSpace = lux::rdesc::ETextureColorSpace;
         value = lowercase(std::move(value));
-        if (value == "srgb") return ColorSpace::SRGB;
-        if (value == "linear") return ColorSpace::LINEAR;
-        if (value == "data") return ColorSpace::DATA;
+        if (value == "srgb")
+            return ColorSpace::SRGB;
+        if (value == "linear")
+            return ColorSpace::LINEAR;
+        if (value == "data")
+            return ColorSpace::DATA;
         return std::nullopt;
     }
 
@@ -160,11 +170,7 @@ namespace
             }
         }
 #if defined(_WIN32)
-        if (::MoveFileExW(
-                temporary.c_str(),
-                target.c_str(),
-                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH
-            ) == 0)
+        if (::MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) == 0)
         {
             fs::remove(temporary, error);
             return false;
@@ -225,17 +231,14 @@ namespace
 
     [[nodiscard]] lux::asset::AssetDecodeLimits imageLimits(lux::cxx::SharedBytes<> image) noexcept
     {
-        return lux::asset::AssetDecodeLimits{
-            image.size(),
-            image.size(),
-            image.size() / 16U + 1U
-        };
+        return lux::asset::AssetDecodeLimits{image.size(), image.size(), image.size() / 16U + 1U};
     }
 
     [[nodiscard]] std::optional<float> finiteFloat(const Options& options, std::string_view name, float fallback)
     {
         const auto text = options.value(name);
-        if (!text) return fallback;
+        if (!text)
+            return fallback;
         float value{};
         const auto parsed = std::from_chars(text->data(), text->data() + text->size(), value);
         if (parsed.ec != std::errc{} || parsed.ptr != text->data() + text->size() || !std::isfinite(value))
@@ -243,25 +246,21 @@ namespace
         return value;
     }
 
-    template <class Asset>
-    [[nodiscard]] std::optional<std::vector<std::byte>> encodeAsset(const Asset& asset)
+    template <class Asset> [[nodiscard]] std::optional<std::vector<std::byte>> encodeAsset(const Asset& asset)
     {
         const auto encoded = lux::asset::TAssetSerDeser<Asset>::encode(
             asset,
             lux::asset::AssetEncodeLimits{(std::numeric_limits<std::size_t>::max)()}
         );
-        if (!encoded) return std::nullopt;
+        if (!encoded)
+            return std::nullopt;
         auto owned = lux::cxx::SharedBytes<>::copyOf(*encoded);
         if (!lux::asset::inspectCookedAssetImage(asset.id(), owned, imageLimits(owned)))
             return std::nullopt;
         return *encoded;
     }
 
-    [[nodiscard]] fs::path assetOutputPath(
-        const fs::path& root,
-        std::string_view type,
-        lux::asset::AssetId id
-    )
+    [[nodiscard]] fs::path assetOutputPath(const fs::path& root, std::string_view type, lux::asset::AssetId id)
     {
         return root / type / (uuids::to_string(id.uuid()) + ".luxasset");
     }
@@ -273,42 +272,45 @@ namespace
         const std::shared_ptr<const Asset>& asset
     )
     {
-        if (!asset) return false;
+        if (!asset)
+            return false;
         const auto encoded = encodeAsset(*asset);
         return encoded && publishFile(assetOutputPath(root, type, asset->id()), *encoded);
     }
 
-    [[nodiscard]] bool writeModelProduct(
-        const fs::path& root,
-        const lux::toolchain::ModelCookProduct& product
-    )
+    [[nodiscard]] bool writeModelProduct(const fs::path& root, const lux::toolchain::ModelCookProduct& product)
     {
-        if (!writeAsset(root, "model", product.model)) return false;
+        if (!writeAsset(root, "model", product.model))
+            return false;
         for (const auto& mesh : product.meshes)
-            if (!writeAsset(root, "mesh", mesh)) return false;
+            if (!writeAsset(root, "mesh", mesh))
+                return false;
         for (const auto& material : product.materials)
-            if (!writeAsset(root, "material", material)) return false;
+            if (!writeAsset(root, "material", material))
+                return false;
         for (const auto& texture : product.textures)
-            if (!writeAsset(root, "texture", texture)) return false;
-        if (product.skeleton && !writeAsset(root, "skeleton", *product.skeleton)) return false;
+            if (!writeAsset(root, "texture", texture))
+                return false;
+        if (product.skeleton && !writeAsset(root, "skeleton", *product.skeleton))
+            return false;
         for (const auto& animation : product.animations)
-            if (!writeAsset(root, "animation", animation)) return false;
+            if (!writeAsset(root, "animation", animation))
+                return false;
         return true;
     }
 
-    [[nodiscard]] bool publishModelDirectory(
-        const fs::path& target,
-        const lux::toolchain::ModelCookProduct& product
-    )
+    [[nodiscard]] bool publishModelDirectory(const fs::path& target, const lux::toolchain::ModelCookProduct& product)
     {
-        if (target.empty() || target == target.root_path()) return false;
+        if (target.empty() || target == target.root_path())
+            return false;
         fs::path staging = target;
         staging += ".staging";
         fs::path backup = target;
         backup += ".backup";
         std::error_code error;
         fs::remove_all(staging, error);
-        if (error) return false;
+        if (error)
+            return false;
         fs::create_directories(staging, error);
         if (error || !writeModelProduct(staging, product))
         {
@@ -316,12 +318,14 @@ namespace
             return false;
         }
         fs::remove_all(backup, error);
-        if (error) return false;
+        if (error)
+            return false;
         const bool had_target = fs::exists(target, error) && !error;
         if (had_target)
         {
             fs::rename(target, backup, error);
-            if (error) return false;
+            if (error)
+                return false;
         }
         fs::rename(staging, target, error);
         if (error)
@@ -333,7 +337,8 @@ namespace
             }
             return false;
         }
-        if (had_target) fs::remove_all(backup, error);
+        if (had_target)
+            fs::remove_all(backup, error);
         return !error;
     }
 
@@ -354,10 +359,9 @@ namespace
             return 4;
         }
         constexpr float degrees_to_radians = 3.14159265358979323846F / 180.0F;
-        const Eigen::Quaternionf rotation =
-            Eigen::AngleAxisf(*z * degrees_to_radians, Eigen::Vector3f::UnitZ()) *
-            Eigen::AngleAxisf(*y * degrees_to_radians, Eigen::Vector3f::UnitY()) *
-            Eigen::AngleAxisf(*x * degrees_to_radians, Eigen::Vector3f::UnitX());
+        const Eigen::Quaternionf rotation = Eigen::AngleAxisf(*z * degrees_to_radians, Eigen::Vector3f::UnitZ()) *
+                                            Eigen::AngleAxisf(*y * degrees_to_radians, Eigen::Vector3f::UnitY()) *
+                                            Eigen::AngleAxisf(*x * degrees_to_radians, Eigen::Vector3f::UnitX());
         std::ostringstream identity_options;
         identity_options << std::setprecision(9) << *scale << ':' << *x << ':' << *y << ':' << *z << ':'
                          << options.has("left_handed") << ':' << !options.has("no_animations");
@@ -426,8 +430,8 @@ namespace
                 std::cerr << "unsupported texture format/color space\n";
                 return 4;
             }
-            const std::string identity_options = format_text + ":" + color_text +
-                (options.has("no_mips") ? ":no-mips" : ":mips");
+            const std::string identity_options =
+                format_text + ":" + color_text + (options.has("no_mips") ? ":no-mips" : ":mips");
             const auto cooked = lux::toolchain::cookTexture(
                 metadata(
                     deterministicId("texture", identity_options, *source_bytes),
@@ -435,11 +439,7 @@ namespace
                     source
                 ),
                 *source_bytes,
-                lux::toolchain::TextureCookConfiguration{
-                    *format,
-                    *color_space,
-                    options.has("no_mips")
-                }
+                lux::toolchain::TextureCookConfiguration{*format, *color_space, options.has("no_mips")}
             );
             if (!cooked)
             {
@@ -500,15 +500,12 @@ namespace
         if (!image)
             return 3;
         const auto id = image->metadata().id;
-        std::cout << "magic=0x" << std::hex << image->magic() << std::dec
-                  << " version=" << image->version()
-                  << " info=" << image->information().size()
-                  << " data=" << image->data().size() << '\n';
+        std::cout << "magic=0x" << std::hex << image->magic() << std::dec << " version=" << image->version()
+                  << " info=" << image->information().size() << " data=" << image->data().size() << '\n';
         if (image->magic() == lux::asset::TextureAsset::primary_magic)
         {
-            const auto texture = lux::asset::TAssetSerDeser<lux::asset::TextureAsset>::decode(
-                id, *bytes, imageLimits(*bytes)
-            );
+            const auto texture =
+                lux::asset::TAssetSerDeser<lux::asset::TextureAsset>::decode(id, *bytes, imageLimits(*bytes));
             if (!texture)
                 return 5;
             std::cout << "texture=" << (*texture)->data().width() << 'x' << (*texture)->data().height()
@@ -516,9 +513,8 @@ namespace
         }
         else if (image->magic() == lux::asset::ShaderAsset::primary_magic)
         {
-            const auto shader = lux::asset::TAssetSerDeser<lux::asset::ShaderAsset>::decode(
-                id, *bytes, imageLimits(*bytes)
-            );
+            const auto shader =
+                lux::asset::TAssetSerDeser<lux::asset::ShaderAsset>::decode(id, *bytes, imageLimits(*bytes));
             if (!shader)
                 return 6;
             std::cout << "shader_entries=" << (*shader)->data().info.entry_points.size()
@@ -526,10 +522,10 @@ namespace
         }
         else if (image->magic() == lux::asset::ModelAsset::primary_magic)
         {
-            const auto model = lux::asset::TAssetSerDeser<lux::asset::ModelAsset>::decode(
-                id, *bytes, imageLimits(*bytes)
-            );
-            if (!model) return 7;
+            const auto model =
+                lux::asset::TAssetSerDeser<lux::asset::ModelAsset>::decode(id, *bytes, imageLimits(*bytes));
+            if (!model)
+                return 7;
             std::cout << "model_primitives=" << (*model)->data().primitives.size()
                       << " nodes=" << (*model)->data().nodes.size() << '\n';
         }
@@ -582,17 +578,14 @@ namespace
                 if (index + 1U != payload.size())
                     text << ',';
             }
-            text << "\n};\ninline constexpr std::size_t " << *name << suffix << "_size = "
-                 << payload.size() << "U;\n\n";
+            text << "\n};\ninline constexpr std::size_t " << *name << suffix << "_size = " << payload.size()
+                 << "U;\n\n";
         };
         emit("_spirv", spirv);
         emit("_info", info);
         text << "} // namespace " << name_space << '\n';
         const std::string output = text.str();
-        return publishFile(
-            *output_text,
-            std::as_bytes(std::span<const char>{output.data(), output.size()})
-        ) ? 0 : 6;
+        return publishFile(*output_text, std::as_bytes(std::span<const char>{output.data(), output.size()})) ? 0 : 6;
     }
 
     [[nodiscard]] int packDirectory(const Options& options)
@@ -635,13 +628,7 @@ namespace
             }
             auto relative = file.lexically_relative(source);
             relative.replace_extension();
-            entries.push_back({
-                image->metadata().id,
-                image->magic(),
-                relative.generic_string(),
-                file,
-                {}
-            });
+            entries.push_back({image->metadata().id, image->magic(), relative.generic_string(), file, {}});
         }
         std::string message;
         const std::string mount_hint = options.value("mount_hint").value_or("/Game");

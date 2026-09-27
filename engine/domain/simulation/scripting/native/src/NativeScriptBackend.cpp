@@ -9,7 +9,6 @@
 #include <cstddef>
 #include <cstring>
 #include <limits>
-#include <new>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -30,7 +29,7 @@ namespace lux::simulation::script
             lux::asset::AssetId asset;
             const lux::script::NativeModule* module{};
             void* lease{};
-            void (*release)(void*) noexcept{};
+            void (*release)(void*) noexcept {};
             detail::BoundedClassStorage::ClassHandle state_class;
             detail::NativeFrameStorage::Layout frame_class;
         };
@@ -55,8 +54,8 @@ namespace lux::simulation::script
             [[nodiscard]] std::size_t bindingBytes() const noexcept
             {
                 return abilities.capacity() * sizeof(lux_script_prepared_ability) +
-                    local_abilities.capacity() * sizeof(PreparedLocalAsyncStart) +
-                    events.capacity() * sizeof(PreparedEvent);
+                       local_abilities.capacity() * sizeof(PreparedLocalAsyncStart) +
+                       events.capacity() * sizeof(PreparedEvent);
             }
             void resetForReuse() noexcept
             {
@@ -77,7 +76,10 @@ namespace lux::simulation::script
             std::size_t& total;
             const Instance& instance;
             const std::size_t previous{instance.bindingBytes()};
-            ~BindingCapacityUpdate() { total += instance.bindingBytes() - previous; }
+            ~BindingCapacityUpdate()
+            {
+                total += instance.bindingBytes() - previous;
+            }
         };
 
         struct PreparedCall final
@@ -112,11 +114,8 @@ namespace lux::simulation::script
             std::span<const detail::StorageClassPlan> frame_plans,
             std::span<const detail::StorageClassPlan> state_plans
         )
-            : resolver(source_resolver),
-              config(source_config),
-              module_capacity(source_config.module_capacity),
-              instance_capacity(source_config.instance_capacity),
-              record_layouts(source_config.record_layouts),
+            : resolver(source_resolver), config(source_config), module_capacity(source_config.module_capacity),
+              instance_capacity(source_config.instance_capacity), record_layouts(source_config.record_layouts),
               ability_contributions(source_config.abilities.begin(), source_config.abilities.end()),
               frame_storage(std::move(source_frame_storage)), state_storage(std::move(source_state_storage))
         {
@@ -158,7 +157,9 @@ namespace lux::simulation::script
         }
 
         [[nodiscard]] static detail::BoundedClassStorage::ClassHandle findStorageClass(
-            std::span<const StorageLayout> layouts, std::size_t size, std::size_t alignment
+            std::span<const StorageLayout> layouts,
+            std::size_t size,
+            std::size_t alignment
         ) noexcept
         {
             const auto found = std::ranges::find_if(layouts, [=](const auto& layout) noexcept {
@@ -168,34 +169,35 @@ namespace lux::simulation::script
         }
 
         [[nodiscard]] bool prepareStorageClasses(
-            ModuleEntry& entry, const lux::rdesc::NativeModuleScript& body
+            ModuleEntry& entry,
+            const lux::rdesc::NativeModuleScript& body
         ) noexcept
         {
             if (body.state_size != 0U)
             {
                 entry.state_class = findStorageClass(state_layouts, body.state_size, body.state_align);
-                if (!entry.state_class) return false;
+                if (!entry.state_class)
+                    return false;
             }
             std::size_t frame_size{};
             std::size_t frame_alignment{1U};
             for (const auto& function : entry.module->functions())
             {
-                if (function.step == nullptr) continue;
+                if (function.step == nullptr)
+                    continue;
                 frame_size = (std::max)(frame_size, static_cast<std::size_t>(function.step->frame_size));
                 frame_alignment = (std::max)(frame_alignment, static_cast<std::size_t>(function.step->frame_align));
             }
-            if (frame_size == 0U) return true;
+            if (frame_size == 0U)
+                return true;
             entry.frame_class = frame_storage.domain(frame_size, frame_alignment);
             return static_cast<bool>(entry.frame_class);
         }
 
-        [[nodiscard]] bool expectedLayout(
-            const lux::rdesc::ScriptValueType& semantic,
-            lux_script_type_desc& result
-        ) const noexcept
+        [[nodiscard]] bool expectedLayout(const lux::rdesc::ScriptValueType& semantic, lux_script_type_desc& result)
+            const noexcept
         {
-            if (const auto* builtin = lux::semantic::builtinLayout(
-                    semantic.type_id))
+            if (const auto* builtin = lux::semantic::builtinLayout(semantic.type_id))
             {
                 if (builtin->canonical_name != semantic.canonical_name)
                     return false;
@@ -206,11 +208,12 @@ namespace lux::simulation::script
                     builtin->alignment,
                     builtin->abi_kind,
                     static_cast<std::uint8_t>(semantic.pass),
-                    {}};
+                    {}
+                };
                 return true;
             }
-            const bool is_portable_custom_scalar = semantic.abi_kind >= LUX_SCRIPT_VK_BOOL &&
-                semantic.abi_kind <= LUX_SCRIPT_VK_DOUBLE;
+            const bool is_portable_custom_scalar =
+                semantic.abi_kind >= LUX_SCRIPT_VK_BOOL && semantic.abi_kind <= LUX_SCRIPT_VK_DOUBLE;
             if (is_portable_custom_scalar)
             {
                 result = lux_script_type_desc{
@@ -220,15 +223,12 @@ namespace lux::simulation::script
                     semantic.alignment,
                     semantic.abi_kind,
                     static_cast<std::uint8_t>(semantic.pass),
-                    {}};
+                    {}
+                };
                 return true;
             }
-            return record_layouts.resolve && record_layouts.resolve(
-                record_layouts.context,
-                semantic.type_id,
-                semantic.canonical_name,
-                result
-            );
+            return record_layouts.resolve &&
+                   record_layouts.resolve(record_layouts.context, semantic.type_id, semantic.canonical_name, result);
         }
 
         [[nodiscard]] bool sameType(
@@ -237,13 +237,10 @@ namespace lux::simulation::script
         ) const noexcept
         {
             lux_script_type_desc expected{};
-            return expectedLayout(semantic, expected) && native_type.name &&
-                native_type.type_id == semantic.type_id &&
-                semantic.canonical_name == native_type.name &&
-                native_type.kind == expected.kind &&
-                native_type.pass == static_cast<std::uint8_t>(semantic.pass) &&
-                native_type.size == expected.size &&
-                native_type.align == expected.align;
+            return expectedLayout(semantic, expected) && native_type.name && native_type.type_id == semantic.type_id &&
+                   semantic.canonical_name == native_type.name && native_type.kind == expected.kind &&
+                   native_type.pass == static_cast<std::uint8_t>(semantic.pass) && native_type.size == expected.size &&
+                   native_type.align == expected.align;
         }
 
         [[nodiscard]] bool sameType(
@@ -252,16 +249,21 @@ namespace lux::simulation::script
         ) const noexcept
         {
             return native_type.name != nullptr && native_type.type_id == semantic.type_id &&
-                semantic.canonical_name == native_type.name && native_type.kind == semantic.abi_kind &&
-                native_type.pass == static_cast<std::uint8_t>(semantic.pass) && native_type.size == semantic.size &&
-                native_type.align == semantic.alignment;
+                   semantic.canonical_name == native_type.name && native_type.kind == semantic.abi_kind &&
+                   native_type.pass == static_cast<std::uint8_t>(semantic.pass) && native_type.size == semantic.size &&
+                   native_type.align == semantic.alignment;
         }
 
-        static int finishLocalStart(void* invocation, lux_script_async_token* waiting,
-            const PreparedLocalAsyncStart& local, std::span<const lux::script::ScriptAbilityInputSlot> inputs) noexcept
+        static int finishLocalStart(
+            void* invocation,
+            lux_script_async_token* waiting,
+            const PreparedLocalAsyncStart& local,
+            std::span<const lux::script::ScriptAbilityInputSlot> inputs
+        ) noexcept
         {
             auto* step = detail::NativeAbilityProjectionAccess::step(invocation);
-            if (!step || !waiting) return -1;
+            if (!step || !waiting)
+                return -1;
             detail::NativeAbilityProjectionAccess::beginAbility(invocation);
             const auto result = local.start(*step, inputs);
             if (result.state == EScriptStepState::SUSPENDED && result.valid())
@@ -272,20 +274,35 @@ namespace lux::simulation::script
             return result.state == EScriptStepState::FAILED && result.error.valid() ? result.error.status : -1;
         }
         static int startLocalNext(
-            void* invocation, void* provider, const void*, lux_script_async_token* waiting
+            void* invocation,
+            void* provider,
+            const void*,
+            lux_script_async_token* waiting
         ) noexcept
         {
-            return finishLocalStart(
-                invocation, waiting, *static_cast<const PreparedLocalAsyncStart*>(provider), {}
-            );
+            return finishLocalStart(invocation, waiting, *static_cast<const PreparedLocalAsyncStart*>(provider), {});
         }
-        static int startLocalSeconds(void* invocation, void* provider, const void*, double duration,
-            lux_script_async_token* waiting) noexcept
+        static int startLocalSeconds(
+            void* invocation,
+            void* provider,
+            const void*,
+            double duration,
+            lux_script_async_token* waiting
+        ) noexcept
         {
-            const lux::script::ScriptAbilityInputSlot input{lux::semantic::TypeTraits<double>::AbiKind, {},
-                sizeof(double), lux::semantic::typeId(lux::semantic::TypeTraits<double>::CanonicalName), &duration};
-            return finishLocalStart(invocation, waiting, *static_cast<const PreparedLocalAsyncStart*>(provider),
-                std::span{&input, 1U});
+            const lux::script::ScriptAbilityInputSlot input{
+                lux::semantic::TTypeTraits<double>::AbiKind,
+                {},
+                sizeof(double),
+                lux::semantic::typeId(lux::semantic::TTypeTraits<double>::CanonicalName),
+                &duration
+            };
+            return finishLocalStart(
+                invocation,
+                waiting,
+                *static_cast<const PreparedLocalAsyncStart*>(provider),
+                std::span{&input, 1U}
+            );
         }
 
         [[nodiscard]] EScriptBackendResult bindAbilities(
@@ -299,7 +316,6 @@ namespace lux::simulation::script
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
             if (instance.module->module->eventWaitImports().size() > config.max_event_wait_imports_per_module)
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
-            try
             {
                 instance.abilities.clear();
                 instance.abilities.reserve(imports.size());
@@ -309,8 +325,8 @@ namespace lux::simulation::script
                 {
                     const auto contribution = std::ranges::find_if(ability_contributions, [&](const auto& candidate) {
                         return candidate.description != nullptr &&
-                            candidate.description->id.hash() == import.contract_id &&
-                            candidate.description->id.name() == import.contract_name;
+                               candidate.description->id.hash() == import.contract_id &&
+                               candidate.description->id.name() == import.contract_name;
                     });
                     if (contribution == ability_contributions.end() ||
                         contribution->description->schema_hash != import.schema_hash ||
@@ -320,7 +336,7 @@ namespace lux::simulation::script
                     }
                     const auto projected = std::ranges::find_if(contribution->methods, [&](const auto& candidate) {
                         return candidate.method.hash() == import.method_id &&
-                            candidate.method.name() == import.method_name;
+                               candidate.method.name() == import.method_name;
                     });
                     if (projected == contribution->methods.end() || projected->entry == nullptr)
                         return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
@@ -342,8 +358,8 @@ namespace lux::simulation::script
                     }
 
                     const bool mismatched_specialization = contribution->expected_dispatch != nullptr &&
-                        (contribution->expected_context != capability->context ||
-                         contribution->expected_dispatch != capability->dispatch);
+                                                           (contribution->expected_context != capability->context ||
+                                                            contribution->expected_dispatch != capability->dispatch);
                     if (mismatched_specialization)
                         return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
 
@@ -357,8 +373,8 @@ namespace lux::simulation::script
                             break;
                         }
                     }
-                    const bool is_invalid_method = method == nullptr ||
-                        static_cast<std::uint8_t>(method->kind) != import.method_kind ||
+                    const bool is_invalid_method =
+                        method == nullptr || static_cast<std::uint8_t>(method->kind) != import.method_kind ||
                         method->parameters.size() != import.arg_count || method->results.size() != import.result_count;
                     if (is_invalid_method)
                         return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
@@ -372,32 +388,29 @@ namespace lux::simulation::script
                         if (!sameType(import.results[index], method->results[index]))
                             return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                     }
-                    const auto local = capability->local_async.resolve(method->method,
-                        capability->context, capability->dispatch);
+                    const auto local =
+                        capability->local_async.resolve(method->method, capability->context, capability->dispatch);
                     instance.local_abilities.push_back(local);
                     if (local)
                     {
                         const bool invalid_shape = method->kind != lux::script::EScriptApiMethodKind::ASYNC_OPERATION ||
-                            !method->results.empty() || method->parameters.size() != local.argumentCount();
-                        if (invalid_shape) return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
-                        const auto entry = local.argumentCount() == 0U ?
-                            reinterpret_cast<lux_script_ability_direct_entry_fn>(&startLocalNext) :
-                            reinterpret_cast<lux_script_ability_direct_entry_fn>(&startLocalSeconds);
+                                                   !method->results.empty() ||
+                                                   method->parameters.size() != local.argumentCount();
+                        if (invalid_shape)
+                            return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
+                        const auto entry =
+                            local.argumentCount() == 0U
+                                ? reinterpret_cast<lux_script_ability_direct_entry_fn>(&startLocalNext)
+                                : reinterpret_cast<lux_script_ability_direct_entry_fn>(&startLocalSeconds);
                         instance.abilities.push_back({&instance.local_abilities.back(), capability->dispatch, entry});
                     }
-                    else instance.abilities.push_back({capability->context, capability->dispatch, projected->entry});
+                    else
+                        instance.abilities.push_back({capability->context, capability->dispatch, projected->entry});
                 }
             }
-            catch (const std::bad_alloc&)
-            {
-                return EScriptBackendResult::ALLOCATION_FAILURE;
-            }
-            instance.native_context = {
-                instance.state,
-                instance.abilities.data(),
-                static_cast<std::uint32_t>(instance.abilities.size()),
-                0U
-            };
+
+            instance.native_context =
+                {instance.state, instance.abilities.data(), static_cast<std::uint32_t>(instance.abilities.size()), 0U};
             return EScriptBackendResult::SUCCESS;
         }
 
@@ -410,7 +423,6 @@ namespace lux::simulation::script
             const auto imports = instance.module->module->eventWaitImports();
             if (imports.size() != context.events.size() || imports.size() > config.max_event_wait_imports_per_module)
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
-            try
             {
                 instance.events.clear();
                 instance.events.reserve(imports.size());
@@ -418,7 +430,7 @@ namespace lux::simulation::script
                 {
                     const auto found = std::ranges::find_if(context.events, [&](const auto& source) noexcept {
                         return source.source != nullptr && source.source->system_id == import.system_id &&
-                            source.source->event_id == import.event_id;
+                               source.source->event_id == import.event_id;
                     });
                     if (found == context.events.end() || !scriptEventImportMatches(import, *found->source))
                         return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
@@ -426,17 +438,9 @@ namespace lux::simulation::script
                 }
                 return EScriptBackendResult::SUCCESS;
             }
-            catch (const std::bad_alloc&)
-            {
-                return EScriptBackendResult::ALLOCATION_FAILURE;
-            }
         }
 
-        static int startEventWait(
-            void* opaque,
-            std::uint32_t ordinal,
-            lux_script_async_token* waiting_on
-        ) noexcept
+        static int startEventWait(void* opaque, std::uint32_t ordinal, lux_script_async_token* waiting_on) noexcept
         {
             auto& adapter = *static_cast<StepAdapter*>(opaque);
             if (adapter.context == nullptr || waiting_on == nullptr || ordinal >= adapter.events.size())
@@ -468,7 +472,8 @@ namespace lux::simulation::script
         }
 
         [[nodiscard]] NativeContinuation* createNativeContinuation(
-            PreparedCall& call, const lux_script_step_desc& step
+            PreparedCall& call,
+            const lux_script_step_desc& step
         ) noexcept
         {
             // Loader and preparation fixed this layout; frame capacity and lifetime remain dynamic.
@@ -492,8 +497,8 @@ namespace lux::simulation::script
 
         static void destroyNativeContinuation(NativeContinuation& continuation) noexcept
         {
-            if (!continuation.frame || continuation.call == nullptr ||
-                continuation.call->function == nullptr || continuation.call->function->step == nullptr)
+            if (!continuation.frame || continuation.call == nullptr || continuation.call->function == nullptr ||
+                continuation.call->function->step == nullptr)
             {
                 return;
             }
@@ -525,13 +530,13 @@ namespace lux::simulation::script
             if (packet.state == EScriptAwaitableState::READY && continuation.waiting_event_payload != nullptr)
             {
                 const auto* actual = packet.value != nullptr && packet.value->type.valid()
-                    ? std::addressof(packet.value->type)
-                    : nullptr;
+                                         ? std::addressof(packet.value->type)
+                                         : nullptr;
                 const auto& expected = *continuation.waiting_event_payload;
                 const bool is_mismatch = actual == nullptr || actual->type_id != expected.type_id ||
-                    actual->abi_kind != expected.kind || actual->size != expected.size ||
-                    actual->alignment != expected.align ||
-                    packet.value->bytes.size() != expected.size;
+                                         actual->abi_kind != expected.kind || actual->size != expected.size ||
+                                         actual->alignment != expected.align ||
+                                         packet.value->bytes.size() != expected.size;
                 if (is_mismatch)
                     return ScriptStepResult::failed(-1);
             }
@@ -539,10 +544,16 @@ namespace lux::simulation::script
             lux_script_step_resume_packet native_packet{};
             switch (packet.state)
             {
-            case EScriptAwaitableState::READY: native_packet.state = LUX_SCRIPT_RESUME_READY; break;
-            case EScriptAwaitableState::FAILED: native_packet.state = LUX_SCRIPT_RESUME_FAILED; break;
+            case EScriptAwaitableState::READY:
+                native_packet.state = LUX_SCRIPT_RESUME_READY;
+                break;
+            case EScriptAwaitableState::FAILED:
+                native_packet.state = LUX_SCRIPT_RESUME_FAILED;
+                break;
             case EScriptAwaitableState::CANCELLED:
-            case EScriptAwaitableState::PENDING: native_packet.state = LUX_SCRIPT_RESUME_CANCELLED; break;
+            case EScriptAwaitableState::PENDING:
+                native_packet.state = LUX_SCRIPT_RESUME_CANCELLED;
+                break;
             }
             native_packet.status = packet.error.status;
             if (packet.value != nullptr && packet.value->type.valid() && !packet.value->bytes.empty())
@@ -557,7 +568,10 @@ namespace lux::simulation::script
                 };
             }
             StepAdapter adapter{
-                continuation.call->instance->events, std::addressof(context), std::addressof(continuation)};
+                continuation.call->instance->events,
+                std::addressof(context),
+                std::addressof(continuation)
+            };
             const lux_script_step_host host{std::addressof(adapter), &startEventWait};
             lux_script_step_outcome outcome{};
             const auto status = continuation.call->function->step->resume(
@@ -612,11 +626,7 @@ namespace lux::simulation::script
                 destroyNativeContinuation(*continuation);
                 return step_result.valid() ? step_result : ScriptStepResult::failed(-1);
             }
-            result = {
-                continuation,
-                &resumeNativeContinuation,
-                &destroyNativeContinuationErased
-            };
+            result = {continuation, &resumeNativeContinuation, &destroyNativeContinuationErased};
             return step_result;
         }
 
@@ -625,14 +635,10 @@ namespace lux::simulation::script
             const lux::script::ScriptArtifact& artifact
         ) const noexcept
         {
-            const auto* body = std::get_if<lux::rdesc::NativeModuleScript>(
-                std::addressof(artifact.description().body)
-            );
-            if (!body || body->abi_version != LUX_SCRIPT_ABI_VERSION ||
-                module.abiVersion() != LUX_SCRIPT_ABI_VERSION ||
+            const auto* body = std::get_if<lux::rdesc::NativeModuleScript>(std::addressof(artifact.description().body));
+            if (!body || body->abi_version != LUX_SCRIPT_ABI_VERSION || module.abiVersion() != LUX_SCRIPT_ABI_VERSION ||
                 module.name() != artifact.description().module_name ||
-                module.stateLayoutHash() != body->state_layout_hash ||
-                module.stateSize() != body->state_size ||
+                module.stateLayoutHash() != body->state_layout_hash || module.stateSize() != body->state_size ||
                 module.stateAlignment() != body->state_align)
             {
                 return false;
@@ -640,15 +646,12 @@ namespace lux::simulation::script
             const auto functions = module.functions();
             if (functions.size() != artifact.description().exports.size())
                 return false;
-            for (std::size_t function_index{};
-                 function_index < functions.size(); ++function_index)
+            for (std::size_t function_index{}; function_index < functions.size(); ++function_index)
             {
                 const auto& native = functions[function_index];
                 const auto& semantic = artifact.description().exports[function_index];
-                if (!native.name || semantic.name != native.name ||
-                    semantic.symbol_id != native.symbol_id ||
-                    semantic.args.size() != native.arg_count ||
-                    semantic.returns.size() != native.return_count)
+                if (!native.name || semantic.name != native.name || semantic.symbol_id != native.symbol_id ||
+                    semantic.args.size() != native.arg_count || semantic.returns.size() != native.return_count)
                 {
                     return false;
                 }
@@ -657,8 +660,7 @@ namespace lux::simulation::script
                     if (!sameType(native.args[index], semantic.args[index]))
                         return false;
                 }
-                for (std::size_t index{};
-                     index < semantic.returns.size(); ++index)
+                for (std::size_t index{}; index < semantic.returns.size(); ++index)
                 {
                     if (!sameType(native.returns[index], semantic.returns[index]))
                         return false;
@@ -669,12 +671,10 @@ namespace lux::simulation::script
                 return false;
             for (const auto& import : event_imports)
             {
-                const auto found = std::ranges::find_if(
-                    artifact.description().event_requirements,
-                    [&](const auto& source) noexcept {
+                const auto found =
+                    std::ranges::find_if(artifact.description().event_requirements, [&](const auto& source) noexcept {
                         return source.system_id == import.system_id && source.event_id == import.event_id;
-                    }
-                );
+                    });
                 if (found == artifact.description().event_requirements.end() ||
                     !scriptEventImportMatches(import, *found))
                     return false;
@@ -694,8 +694,7 @@ namespace lux::simulation::script
                 auto& entry = modules[found->second];
                 if (!executableContractMatches(*entry.module, artifact))
                 {
-                    return EScriptBackendResult::
-                        EXECUTABLE_CONTRACT_MISMATCH;
+                    return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
                 }
                 result = std::addressof(entry);
                 return EScriptBackendResult::SUCCESS;
@@ -703,13 +702,7 @@ namespace lux::simulation::script
             if (modules.size() >= module_capacity)
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
             ResolvedNativeModule resolved;
-            if (!resolver.resolve ||
-                !resolver.resolve(
-                    resolver.context,
-                    asset_id,
-                    artifact,
-                    resolved
-                ) ||
+            if (!resolver.resolve || !resolver.resolve(resolver.context, asset_id, artifact, resolved) ||
                 !resolved.module)
             {
                 if (resolved.release)
@@ -723,18 +716,11 @@ namespace lux::simulation::script
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
             }
             bool module_appended{};
-            try
             {
-                modules.push_back(ModuleEntry{
-                    asset_id,
-                    resolved.module,
-                    resolved.lease,
-                    resolved.release});
+                modules.push_back(ModuleEntry{asset_id, resolved.module, resolved.lease, resolved.release});
                 module_appended = true;
                 auto& entry = modules.back();
-                const auto& body = std::get<lux::rdesc::NativeModuleScript>(
-                    artifact.description().body
-                );
+                const auto& body = std::get<lux::rdesc::NativeModuleScript>(artifact.description().body);
                 if (!prepareStorageClasses(entry, body))
                 {
                     modules.pop_back();
@@ -755,17 +741,6 @@ namespace lux::simulation::script
                 result = std::addressof(entry);
                 return EScriptBackendResult::SUCCESS;
             }
-            catch (const std::bad_alloc&)
-            {
-                if (module_appended)
-                {
-                    auto& entry = modules.back();
-                    modules.pop_back();
-                }
-                if (resolved.release)
-                    resolved.release(resolved.lease);
-                return EScriptBackendResult::ALLOCATION_FAILURE;
-            }
         }
 
         static EScriptBackendResult createInstance(
@@ -776,10 +751,8 @@ namespace lux::simulation::script
         ) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
-            const auto* body = std::get_if<lux::rdesc::NativeModuleScript>(
-                std::addressof(artifact.description().body));
-            if (!body || body->state_align == 0U ||
-                (body->state_align & (body->state_align - 1U)) != 0U ||
+            const auto* body = std::get_if<lux::rdesc::NativeModuleScript>(std::addressof(artifact.description().body));
+            if (!body || body->state_align == 0U || (body->state_align & (body->state_align - 1U)) != 0U ||
                 body->state_defaults.size() > body->state_size)
             {
                 return EScriptBackendResult::EXECUTABLE_CONTRACT_MISMATCH;
@@ -787,11 +760,7 @@ namespace lux::simulation::script
             if (self.free_instances.empty())
                 return EScriptBackendResult::CAPACITY_EXCEEDED;
             ModuleEntry* module{};
-            const auto module_result = self.resolveModule(
-                context.asset,
-                artifact,
-                module
-            );
+            const auto module_result = self.resolveModule(context.asset, artifact, module);
             if (module_result != EScriptBackendResult::SUCCESS)
                 return module_result;
             const auto instance_slot = self.free_instances.back();
@@ -815,11 +784,7 @@ namespace lux::simulation::script
                 std::memset(instance->state, 0, body->state_size);
                 if (!body->state_defaults.empty())
                 {
-                    std::memcpy(
-                        instance->state,
-                        body->state_defaults.data(),
-                        body->state_defaults.size()
-                    );
+                    std::memcpy(instance->state, body->state_defaults.data(), body->state_defaults.size());
                 }
             }
             const auto abilities = self.bindAbilities(*instance, context);
@@ -856,10 +821,8 @@ namespace lux::simulation::script
             auto* instance = static_cast<Instance*>(instance_value.value);
             if (!instance || !instance->module || !instance->module->module)
                 return EScriptBackendResult::CONSTRUCTION_FAILURE;
-            const auto* function = instance->module->module->findFunction(
-                description.symbol_id);
-            if (!function || !function->invoke ||
-                function->arg_count != description.args.size() ||
+            const auto* function = instance->module->module->findFunction(description.symbol_id);
+            if (!function || !function->invoke || function->arg_count != description.args.size() ||
                 function->return_count != description.returns.size())
             {
                 return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
@@ -871,14 +834,13 @@ namespace lux::simulation::script
             }
             for (std::size_t index{}; index < description.returns.size(); ++index)
             {
-                if (!self.sameType(
-                        function->returns[index],
-                        description.returns[index]))
+                if (!self.sameType(function->returns[index], description.returns[index]))
                 {
                     return EScriptBackendResult::UNSUPPORTED_SIGNATURE;
                 }
             }
-            if (self.free_prepared_calls.empty()) return EScriptBackendResult::CAPACITY_EXCEEDED;
+            if (self.free_prepared_calls.empty())
+                return EScriptBackendResult::CAPACITY_EXCEEDED;
             detail::NativeFrameStorage::Layout frame_class;
             if (function->step != nullptr)
             {
@@ -888,9 +850,8 @@ namespace lux::simulation::script
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
                 // The executable's envelope owns the prepared population. A small method must not
                 // steal a different population's small-frame capacity.
-                frame_class = self.frame_storage.prepare(
-                    instance->module->frame_class, step.frame_size, step.frame_align
-                );
+                frame_class =
+                    self.frame_storage.prepare(instance->module->frame_class, step.frame_size, step.frame_align);
                 if (!frame_class)
                     return EScriptBackendResult::CAPACITY_EXCEEDED;
             }
@@ -901,18 +862,13 @@ namespace lux::simulation::script
             result = {
                 std::addressof(prepared),
                 lux::script::BoundScriptCall{function->invoke, std::addressof(instance->native_context)},
-                function->step == nullptr
-                    ? BoundScriptStepCall{}
-                    : BoundScriptStepCall{std::addressof(prepared), &invokePreparedStep}
+                function->step == nullptr ? BoundScriptStepCall{}
+                                          : BoundScriptStepCall{std::addressof(prepared), &invokePreparedStep}
             };
             return EScriptBackendResult::SUCCESS;
         }
 
-        static void releaseMethod(
-            void* opaque,
-            ScriptBackendInstance,
-            ScriptBackendPreparedMethod method
-        ) noexcept
+        static void releaseMethod(void* opaque, ScriptBackendInstance, ScriptBackendPreparedMethod method) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
             auto* prepared = static_cast<PreparedCall*>(method.token);
@@ -927,15 +883,13 @@ namespace lux::simulation::script
             const auto slot = static_cast<std::size_t>(prepared - self.prepared_calls.data());
             if (prepared->instance == nullptr)
                 return;
-            if (prepared->frame_class && !self.frame_storage.releaseLayout(prepared->frame_class)) return;
+            if (prepared->frame_class && !self.frame_storage.releaseLayout(prepared->frame_class))
+                return;
             *prepared = {};
             self.free_prepared_calls.push_back(slot);
         }
 
-        static void destroyInstance(
-            void* opaque,
-            ScriptBackendInstance instance_value
-        ) noexcept
+        static void destroyInstance(void* opaque, ScriptBackendInstance instance_value) noexcept
         {
             auto& self = *static_cast<State*>(opaque);
             auto* instance = static_cast<Instance*>(instance_value.value);
@@ -947,9 +901,7 @@ namespace lux::simulation::script
                 std::memset(instance->state, 0, instance->state_size);
                 static_cast<void>(self.state_storage.release(instance->state_allocation));
             }
-            const auto instance_slot = static_cast<std::size_t>(
-                instance - self.instances.data()
-            );
+            const auto instance_slot = static_cast<std::size_t>(instance - self.instances.data());
             instance->resetForReuse();
             self.free_instances.push_back(instance_slot);
             if (self.live_instances != 0U)
@@ -994,19 +946,17 @@ namespace lux::simulation::script
             adapter.continuation->waiting_event_payload = nullptr;
     }
 
-    NativeScriptBackend::NativeScriptBackend(
-        NativeModuleResolver resolver,
-        NativeScriptBackendConfig config
-    ) noexcept
+    NativeScriptBackend::NativeScriptBackend(NativeModuleResolver resolver, NativeScriptBackendConfig config) noexcept
     {
-        const bool is_invalid_frame_budget = config.continuation_capacity != 0U &&
+        const bool is_invalid_frame_budget =
+            config.continuation_capacity != 0U &&
             (config.max_continuation_frame_bytes == 0U ||
-                config.continuation_frame_storage_bytes < config.max_continuation_frame_bytes);
-        const bool is_invalid_config = config.module_capacity == 0U || config.instance_capacity == 0U ||
-            config.prepared_call_capacity == 0U || config.max_ability_imports_per_module == 0U ||
-            is_invalid_frame_budget || config.continuation_frame_storage_alignment < alignof(std::max_align_t) ||
-            (config.continuation_frame_storage_alignment & (config.continuation_frame_storage_alignment - 1U)) !=
-                0U ||
+             config.continuation_frame_storage_bytes < config.max_continuation_frame_bytes);
+        const bool is_invalid_config =
+            config.module_capacity == 0U || config.instance_capacity == 0U || config.prepared_call_capacity == 0U ||
+            config.max_ability_imports_per_module == 0U || is_invalid_frame_budget ||
+            config.continuation_frame_storage_alignment < alignof(std::max_align_t) ||
+            (config.continuation_frame_storage_alignment & (config.continuation_frame_storage_alignment - 1U)) != 0U ||
             config.max_event_wait_imports_per_module == 0U;
         if (!resolver.resolve || is_invalid_config)
         {
@@ -1022,25 +972,29 @@ namespace lux::simulation::script
                     return;
             }
         }
-        try
         {
-            if (config.storage_populations.size() > config.module_capacity) return;
+            if (config.storage_populations.size() > config.module_capacity)
+                return;
             std::vector<detail::StorageClassPlan> state_plans;
             std::vector<detail::StorageClassPlan> frame_plans;
             std::size_t planned_instances{};
             std::size_t planned_continuations{};
             const auto append = [](auto& plans, std::size_t size, std::size_t alignment, std::size_t count) {
-                if (size == 0U || count == 0U) return true;
+                if (size == 0U || count == 0U)
+                    return true;
                 if (alignment == 0U || (alignment & (alignment - 1U)) != 0U ||
-                    size > (std::numeric_limits<std::size_t>::max)() - alignment + 1U) return false;
+                    size > (std::numeric_limits<std::size_t>::max)() - alignment + 1U)
+                    return false;
                 const auto stride = (size + alignment - 1U) & ~(alignment - 1U);
-                if (count > (std::numeric_limits<std::size_t>::max)() / stride) return false;
+                if (count > (std::numeric_limits<std::size_t>::max)() / stride)
+                    return false;
                 const auto bytes = count * stride;
                 for (auto& plan : plans)
                 {
                     if (plan.size == size && plan.alignment == alignment)
                     {
-                        if (plan.page_bytes > (std::numeric_limits<std::size_t>::max)() - bytes) return false;
+                        if (plan.page_bytes > (std::numeric_limits<std::size_t>::max)() - bytes)
+                            return false;
                         plan.page_bytes += bytes;
                         return true;
                     }
@@ -1053,9 +1007,10 @@ namespace lux::simulation::script
             for (const auto& population : config.storage_populations)
             {
                 const bool invalid = population.executable == nullptr ||
-                    population.instances > config.instance_capacity - planned_instances ||
-                    population.continuations > config.continuation_capacity - planned_continuations;
-                if (invalid) return;
+                                     population.instances > config.instance_capacity - planned_instances ||
+                                     population.continuations > config.continuation_capacity - planned_continuations;
+                if (invalid)
+                    return;
                 planned_instances += population.instances;
                 planned_continuations += population.continuations;
                 const auto& executable = *population.executable;
@@ -1065,30 +1020,41 @@ namespace lux::simulation::script
                 std::size_t frame_alignment{1U};
                 for (const auto& function : executable.functions())
                 {
-                    if (function.step == nullptr) continue;
+                    if (function.step == nullptr)
+                        continue;
                     const bool invalid_frame = function.step->frame_size > config.max_continuation_frame_bytes ||
-                        function.step->frame_align > config.continuation_frame_storage_alignment;
-                    if (invalid_frame) return;
+                                               function.step->frame_align > config.continuation_frame_storage_alignment;
+                    if (invalid_frame)
+                        return;
                     frame_size = (std::max)(frame_size, static_cast<std::size_t>(function.step->frame_size));
                     frame_alignment = (std::max)(frame_alignment, static_cast<std::size_t>(function.step->frame_align));
                 }
-                if (!append(frame_plans, frame_size, frame_alignment, population.continuations)) return;
+                if (!append(frame_plans, frame_size, frame_alignment, population.continuations))
+                    return;
             }
             detail::NativeFrameStorage frame_storage;
             if (!frame_plans.empty())
             {
                 auto created = detail::NativeFrameStorage::create(
-                    frame_plans, config.continuation_frame_storage_bytes, config.continuation_capacity,
-                    config.prepared_call_capacity, config.observe_storage);
-                if (!created) return;
+                    frame_plans,
+                    config.continuation_frame_storage_bytes,
+                    config.continuation_capacity,
+                    config.prepared_call_capacity,
+                    config.observe_storage
+                );
+                if (!created)
+                    return;
                 frame_storage = std::move(*created);
             }
             detail::BoundedClassStorage state_storage;
             if (!state_plans.empty())
             {
                 auto created = detail::BoundedClassStorage::create(
-                    state_plans, config.state_storage_bytes, config.instance_capacity,
-                    UINT64_MAX, config.observe_storage
+                    state_plans,
+                    config.state_storage_bytes,
+                    config.instance_capacity,
+                    UINT64_MAX,
+                    config.observe_storage
                 );
                 if (!created)
                     return;
@@ -1103,18 +1069,11 @@ namespace lux::simulation::script
                 state_plans
             );
         }
-        catch (const std::bad_alloc&)
-        {
-        }
     }
 
     NativeScriptBackend::~NativeScriptBackend() = default;
-    NativeScriptBackend::NativeScriptBackend(
-        NativeScriptBackend&&
-    ) noexcept = default;
-    NativeScriptBackend& NativeScriptBackend::operator=(
-        NativeScriptBackend&&
-    ) noexcept = default;
+    NativeScriptBackend::NativeScriptBackend(NativeScriptBackend&&) noexcept = default;
+    NativeScriptBackend& NativeScriptBackend::operator=(NativeScriptBackend&&) noexcept = default;
 
     NativeScriptBackend::operator bool() const noexcept
     {
@@ -1156,14 +1115,15 @@ namespace lux::simulation::script
 
     ScriptBackendDescriptor NativeScriptBackend::descriptor() noexcept
     {
-        return state_
-            ? ScriptBackendDescriptor{
-                lux::rdesc::Script::Kind::NATIVE_MODULE,
-                state_.get(),
-                &State::createInstance,
-                &State::prepareMethod,
-                &State::releaseMethod,
-                &State::destroyInstance}
-            : ScriptBackendDescriptor{};
+        if (!state_)
+            return {};
+        return ScriptBackendDescriptor{
+            lux::rdesc::Script::EKind::NATIVE_MODULE,
+            state_.get(),
+            &State::createInstance,
+            &State::prepareMethod,
+            &State::releaseMethod,
+            &State::destroyInstance
+        };
     }
 }

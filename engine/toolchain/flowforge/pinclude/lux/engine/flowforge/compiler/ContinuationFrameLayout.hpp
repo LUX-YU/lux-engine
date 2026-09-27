@@ -26,19 +26,22 @@ namespace lux::flowforge::detail
         [[nodiscard]] static std::optional<Interval> storageInterval(llvm::AllocaInst& slot)
         {
             const auto* count = llvm::dyn_cast<llvm::ConstantInt>(slot.getArraySize());
-            if (!count || !count->isOne()) return std::nullopt;
+            if (!count || !count->isOne())
+                return std::nullopt;
             for (auto* user : slot.users())
             {
                 if (auto* load = llvm::dyn_cast<llvm::LoadInst>(user))
                 {
-                    if (load->isVolatile() || load->isAtomic()) return std::nullopt;
+                    if (load->isVolatile() || load->isAtomic())
+                        return std::nullopt;
                 }
                 else if (auto* store = llvm::dyn_cast<llvm::StoreInst>(user))
                 {
                     if (store->getPointerOperand() != &slot || store->isVolatile() || store->isAtomic())
                         return std::nullopt;
                 }
-                else return std::nullopt;
+                else
+                    return std::nullopt;
             }
             struct Block final
             {
@@ -58,8 +61,10 @@ namespace lux::flowforge::detail
                     const auto* store = llvm::dyn_cast<llvm::StoreInst>(&instruction);
                     const bool reads = load && load->getPointerOperand() == &slot;
                     const bool writes = store && store->getPointerOperand() == &slot;
-                    if (reads && !item.defines) item.uses = true;
-                    if (writes) item.defines = true;
+                    if (reads && !item.defines)
+                        item.uses = true;
+                    if (writes)
+                        item.defines = true;
                     if (reads || writes)
                     {
                         result.first = (std::min)(result.first, position);
@@ -78,7 +83,8 @@ namespace lux::flowforge::detail
                     bool live_out{};
                     for (auto* successor : llvm::successors(item.block))
                         for (const auto& candidate : blocks)
-                            if (candidate.block == successor) live_out |= candidate.live_in;
+                            if (candidate.block == successor)
+                                live_out |= candidate.live_in;
                     const bool live_in = item.uses || (live_out && !item.defines);
                     changed |= live_in != item.live_in || live_out != item.live_out;
                     item.live_in = live_in;
@@ -87,8 +93,10 @@ namespace lux::flowforge::detail
             } while (changed);
             for (const auto& item : blocks)
             {
-                if (item.live_in) result.first = (std::min)(result.first, item.first);
-                if (item.live_out) result.last = (std::max)(result.last, item.last);
+                if (item.live_in)
+                    result.first = (std::min)(result.first, item.first);
+                if (item.live_out)
+                    result.last = (std::max)(result.last, item.last);
             }
             return result.first <= result.last ? std::optional{result} : std::nullopt;
         }
@@ -105,11 +113,13 @@ namespace lux::flowforge::detail
                 {
                     if (llvm::isa<llvm::GetElementPtrInst, llvm::BitCastInst>(user))
                     {
-                        if (addresses.insert(user).second) aliases.push_back(user);
+                        if (addresses.insert(user).second)
+                            aliases.push_back(user);
                     }
                     else if (auto* store = llvm::dyn_cast<llvm::StoreInst>(user))
                     {
-                        if (store->getValueOperand() == address) return true; // Address escapes.
+                        if (store->getValueOperand() == address)
+                            return true; // Address escapes.
                     }
                     else if (!llvm::isa<llvm::LoadInst, llvm::DbgInfoIntrinsic, llvm::LifetimeIntrinsic>(user))
                         return true; // Unknown aliasing/call contracts remain conservative.
@@ -120,17 +130,19 @@ namespace lux::flowforge::detail
             while (!work.empty())
             {
                 auto* block = work.pop_back_val();
-                if (!visited.insert(block).second) continue;
+                if (!visited.insert(block).second)
+                    continue;
                 bool killed{};
                 for (auto& instruction : *block)
                 {
                     if (auto* load = llvm::dyn_cast<llvm::LoadInst>(&instruction))
-                        if (addresses.contains(load->getPointerOperand())) return true;
+                        if (addresses.contains(load->getPointerOperand()))
+                            return true;
                     if (auto* store = llvm::dyn_cast<llvm::StoreInst>(&instruction))
                     {
                         const bool full_store = store->getPointerOperand() == &slot &&
-                            store->getValueOperand()->getType() == slot.getAllocatedType() &&
-                            llvm::cast<llvm::ConstantInt>(slot.getArraySize())->isOne();
+                                                store->getValueOperand()->getType() == slot.getAllocatedType() &&
+                                                llvm::cast<llvm::ConstantInt>(slot.getArraySize())->isOne();
                         if (full_store)
                         {
                             killed = true;
@@ -139,28 +151,33 @@ namespace lux::flowforge::detail
                     }
                 }
                 if (!killed)
-                    for (auto* successor : llvm::successors(block)) work.push_back(successor);
+                    for (auto* successor : llvm::successors(block))
+                        work.push_back(successor);
             }
             return false;
         }
         [[nodiscard]] static bool persists(llvm::AllocaInst& slot, std::span<llvm::BasicBlock* const> resumes)
         {
-            for (auto* entry : resumes) if (readsIncoming(slot, entry)) return true;
+            for (auto* entry : resumes)
+                if (readsIncoming(slot, entry))
+                    return true;
             return false;
         }
-        [[nodiscard]] static bool argumentPersists(llvm::Argument& argument,
-            std::span<llvm::BasicBlock* const> resumes)
+        [[nodiscard]] static bool argumentPersists(llvm::Argument& argument, std::span<llvm::BasicBlock* const> resumes)
         {
             llvm::SmallPtrSet<llvm::BasicBlock*, 32> visited;
             llvm::SmallVector<llvm::BasicBlock*, 16> work(resumes.begin(), resumes.end());
             while (!work.empty())
             {
                 auto* block = work.pop_back_val();
-                if (!visited.insert(block).second) continue;
+                if (!visited.insert(block).second)
+                    continue;
                 for (auto* user : argument.users())
                     if (auto* instruction = llvm::dyn_cast<llvm::Instruction>(user))
-                        if (instruction->getParent() == block) return true;
-                for (auto* successor : llvm::successors(block)) work.push_back(successor);
+                        if (instruction->getParent() == block)
+                            return true;
+                for (auto* successor : llvm::successors(block))
+                    work.push_back(successor);
             }
             return false;
         }

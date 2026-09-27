@@ -25,16 +25,20 @@ namespace lux::render
         }
     } // namespace
 
-    void
-    handleWaterSurfaceCreate(GeneralRenderServer::Dispatcher::Ctx& context, const WaterSurfaceCreatePayload& payload)
+    void handleWaterSurfaceCreate(
+        GeneralRenderServer::Dispatcher::Ctx& context,
+        const WaterSurfaceCreatePayload& payload
+    )
     {
         auto* water = resolveWater(context, payload.scene_id);
         const auto reply = water ? water->createSurface(payload.surface) : WaterSurfaceCreatedReply{{}, 1u};
         replyToCurrent<WaterSurfaceCreatePayload>(context, reply);
     }
 
-    void
-    handleWaterSurfaceUpdate(GeneralRenderServer::Dispatcher::Ctx& context, const WaterSurfaceUpdatePayload& payload)
+    void handleWaterSurfaceUpdate(
+        GeneralRenderServer::Dispatcher::Ctx& context,
+        const WaterSurfaceUpdatePayload& payload
+    )
     {
         if (auto* water = resolveWater(context, payload.scene_id))
             water->updateSurface(payload.handle, payload.surface);
@@ -61,8 +65,10 @@ namespace lux::render
         }
     }
 
-    void
-    handleWaterSurfaceDestroy(GeneralRenderServer::Dispatcher::Ctx& context, const WaterSurfaceDestroyPayload& payload)
+    void handleWaterSurfaceDestroy(
+        GeneralRenderServer::Dispatcher::Ctx& context,
+        const WaterSurfaceDestroyPayload& payload
+    )
     {
         if (auto* water = resolveWater(context, payload.scene_id))
             water->destroySurface(payload.handle);

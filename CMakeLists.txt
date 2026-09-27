@@ -100,5 +100,13 @@ include(LuxPlugins)
 
 add_subdirectory(modules)
 add_subdirectory(engine)
+if(LUX_PROFILE_HAS_EDITOR)
+    add_subdirectory(editor)
+endif()
+include(BuiltinPlugins)
+
+install(DIRECTORY examples/render-plugin/ DESTINATION share/lux-engine/examples/external-feature
+    FILES_MATCHING PATTERN "*.cpp" PATTERN "*.hpp" PATTERN "*.json" PATTERN "*.py"
+    PATTERN "*.vert" PATTERN "*.frag" PATTERN "CMakeLists.txt")
 
 lux_generate_capabilities()

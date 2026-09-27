@@ -1,9 +1,9 @@
 #pragma once
 
 #if defined __LUX_PARSE_TIME__
-#    define LUX_SCRIPT_META(...) __attribute__((annotate(#__VA_ARGS__)))
+#define LUX_SCRIPT_META(...) __attribute__((annotate(#__VA_ARGS__)))
 #else
-#    define LUX_SCRIPT_META(...)
+#define LUX_SCRIPT_META(...)
 #endif
 
 #define LUX_SCRIPT_ABILITY(...) LUX_SCRIPT_META(luxability::contract, __VA_ARGS__)

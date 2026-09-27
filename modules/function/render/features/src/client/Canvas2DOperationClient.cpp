@@ -7,7 +7,7 @@
 
 namespace lux::render
 {
-    RenderRequest<Image2DSlotReply> addImage(
+    TRenderRequest<Image2DSlotReply> addImage(
         Canvas2DProxy proxy,
         RenderSceneId scene,
         const Image2DInstanceData& data,
@@ -72,7 +72,7 @@ namespace lux::render
         Image2DHandle handle,
         const float uv[4],
         std::uint32_t tint,
-        std::uint32_t texture_bindless
+        RTextureHandle texture
     )
     {
         if (!proxy.valid())
@@ -82,7 +82,7 @@ namespace lux::render
         payload.handle = handle;
         std::memcpy(payload.uv, uv, sizeof(payload.uv));
         payload.tint = tint;
-        payload.texture_bindless = texture_bindless;
+        payload.texture = texture;
         proxy.updateVisualRaw(payload);
     }
 
@@ -113,7 +113,7 @@ namespace lux::render
         proxy.setEnabledRaw(SetCanvas2DEnabledPayload{scene, enabled ? 1u : 0u});
     }
 
-    RenderRequest<PixelFieldSlotReply> addPixelField(
+    TRenderRequest<PixelFieldSlotReply> addPixelField(
         Canvas2DProxy proxy,
         RenderSceneId scene,
         const PixelField2DInstanceData& data,
@@ -172,8 +172,13 @@ namespace lux::render
         proxy.updatePixelFieldKeyRaw(payload);
     }
 
-    RenderRequest<Tile2DSlotReply>
-    addTilemap(Canvas2DProxy proxy, RenderSceneId scene, const Tile2DInstanceData& data, float priority, bool visible)
+    TRenderRequest<Tile2DSlotReply> addTilemap(
+        Canvas2DProxy proxy,
+        RenderSceneId scene,
+        const Tile2DInstanceData& data,
+        float priority,
+        bool visible
+    )
     {
         AddTile2DPayload payload{};
         payload.scene = scene;

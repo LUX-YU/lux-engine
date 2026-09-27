@@ -12,7 +12,8 @@ namespace lux::simulation::ecs
         version = 1,
         snapshot = COPY,
         semantic = FOUNDATION,
-        editor = true
+        editor = true,
+        create = DEFAULT
     ) Transform2D final
     {
         Eigen::Vector2d LUX_MEMBER(display_name = Translation, speed = 0.05) translation{Eigen::Vector2d::Zero()};
@@ -36,7 +37,8 @@ namespace lux::simulation::ecs
         version = 1,
         snapshot = COPY,
         semantic = FOUNDATION,
-        editor = true
+        editor = true,
+        create = DEFAULT
     ) Transform3D final
     {
         Eigen::Vector3d LUX_MEMBER(display_name = Translation, speed = 0.05) translation{Eigen::Vector3d::Zero()};

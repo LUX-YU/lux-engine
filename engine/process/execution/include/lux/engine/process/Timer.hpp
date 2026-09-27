@@ -60,10 +60,8 @@ namespace lux::process
 
         using TimerSubmitResult = lux::cxx::expected<ETimerSubmitStatus, ETimerError>;
 
-        [[nodiscard]] LUX_PROCESS_EXECUTION_PUBLIC TimerSubmitResult submitTimer(
-            const std::shared_ptr<TimerState>& state,
-            TimerRequest& request
-        ) noexcept;
+        [[nodiscard]] LUX_PROCESS_EXECUTION_PUBLIC TimerSubmitResult
+        submitTimer(const std::shared_ptr<TimerState>& state, TimerRequest& request) noexcept;
 
         LUX_PROCESS_EXECUTION_PUBLIC void cancelTimer(TimerState* state, TimerRequest& request) noexcept;
         void stopTimerState(const std::shared_ptr<TimerState>& state) noexcept;
@@ -78,7 +76,7 @@ namespace lux::process
 
         TimerSender() noexcept = default;
 
-        template <class Receiver> class Operation final : private detail::TimerRequest
+        template <class Receiver> class TOperation final : private detail::TimerRequest
         {
         public:
             using operation_state_concept = stdexec::operation_state_t;
@@ -86,7 +84,7 @@ namespace lux::process
 
             struct Cancel final
             {
-                Operation* operation{};
+                TOperation* operation{};
 
                 void operator()() noexcept
                 {
@@ -99,19 +97,21 @@ namespace lux::process
 
             using StopCallback = stdexec::stop_callback_for_t<StopToken, Cancel>;
 
-            Operation(std::weak_ptr<detail::TimerState> state,
-                      std::chrono::steady_clock::duration delay,
-                      Receiver receiver)
+            TOperation(
+                std::weak_ptr<detail::TimerState> state,
+                std::chrono::steady_clock::duration delay,
+                Receiver receiver
+            )
                 : state_weak_(std::move(state)), receiver_(std::move(receiver))
             {
                 this->delay = delay;
-                this->complete = &Operation::completeRequest;
+                this->complete = &TOperation::completeRequest;
             }
 
-            Operation(const Operation&) = delete;
-            Operation& operator=(const Operation&) = delete;
-            Operation(Operation&&) = delete;
-            Operation& operator=(Operation&&) = delete;
+            TOperation(const TOperation&) = delete;
+            TOperation& operator=(const TOperation&) = delete;
+            TOperation(TOperation&&) = delete;
+            TOperation& operator=(TOperation&&) = delete;
 
             void start() & noexcept
             {
@@ -160,7 +160,7 @@ namespace lux::process
         private:
             static void completeRequest(detail::TimerRequest* request, bool stopped) noexcept
             {
-                auto& self = *static_cast<Operation*>(request);
+                auto& self = *static_cast<TOperation*>(request);
                 self.stop_callback_.reset();
                 self.state_.store(nullptr, std::memory_order_release);
                 if (stopped)
@@ -175,9 +175,9 @@ namespace lux::process
             std::optional<StopCallback> stop_callback_;
         };
 
-        template <class Receiver> [[nodiscard]] Operation<std::decay_t<Receiver>> connect(Receiver&& receiver) &&
+        template <class Receiver> [[nodiscard]] TOperation<std::decay_t<Receiver>> connect(Receiver&& receiver) &&
         {
-            return Operation<std::decay_t<Receiver>>{std::move(state_), delay_, std::forward<Receiver>(receiver)};
+            return TOperation<std::decay_t<Receiver>>{std::move(state_), delay_, std::forward<Receiver>(receiver)};
         }
 
         [[nodiscard]] stdexec::empty_env get_env() const noexcept

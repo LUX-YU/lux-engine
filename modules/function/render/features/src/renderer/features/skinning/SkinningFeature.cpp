@@ -45,8 +45,7 @@ namespace lux::render
     }
 
     SkinningFeature::SkinningFeature(Config cfg) : RenderFeature(RenderFeature::Config{.name = "Skinning"}), cfg_(cfg)
-    {
-    }
+    {}
 
     SkinningResources* SkinningFeature::skinningResources() noexcept
     {
@@ -149,13 +148,11 @@ namespace lux::render
             }
             const std::span<const GraphicsPipelineTemplate::ShaderSpecializationValue> specs{
                 skin_specs.data(),
-                skin_specs.size()};
-            auto pipeline = ctx.pipelineManager().registerComputePipelineReflected(
-                prepared->module(0),
-                prepared->info(0),
-                "SkinningCompute",
-                specs
-            );
+                skin_specs.size()
+            };
+            auto pipeline =
+                ctx.pipelineManager()
+                    .registerComputePipelineReflected(prepared->module(0), prepared->info(0), "SkinningCompute", specs);
             if (!pipeline)
                 return lux::cxx::unexpected(pipeline.error());
             compute_pipeline_ = *pipeline;
@@ -217,7 +214,7 @@ namespace lux::render
         //         producer's lifetime parity with SkinningResources (both owned
         //         by the scene) means no unpublish is needed here. ---
         if (auto* production = renderScene().resources().find<VertexProductionRegistry>())
-            production->publish(EVertexProductKind::Skinning);
+            production->publish(EVertexProductKind::SKINNING);
 
         return {};
     }
@@ -259,7 +256,7 @@ namespace lux::render
             out[0] = s->outputPool().buffer();
             return 1u;
         };
-        out_pool_rg_ = builder.importBuffer(vertexProductRgName(EVertexProductKind::Skinning), desc, imp);
+        out_pool_rg_ = builder.importBuffer(vertexProductRgName(EVertexProductKind::SKINNING), desc, imp);
 
         builder.addPass("Skinning", ERGPassType::COMPUTE)
             .setComputePipeline(compute_pipeline_)
@@ -272,7 +269,7 @@ namespace lux::render
                 builder.trackExternalBuffer("ext.SkinPalette"),
                 ERGResourceType::BUFFER
             )
-            .useEngineSet(EDescriptorSetSlot::VertexPool) // a macro override places this at set1 (canonical 7); the
+            .useEngineSet(EDescriptorSetSlot::VERTEX_POOL) // a macro override places this at set1 (canonical 7); the
                                                           // slot is resolved at compile time
             .setKernelFn([this](const PassRecordContext& ctx) {
                 // Single batched dispatch. Upload this frame's per-instance
@@ -291,16 +288,15 @@ namespace lux::render
                 SkinPC pc{static_cast<std::uint32_t>(s->dispatches().size())};
                 vkCmdPushConstants(ctx.cmd, ctx.pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(pc), &pc);
                 vkCmdDispatch(ctx.cmd, total_wg, 1, 1);
-            }
-            );
+            });
     }
 
     // The bound skin set must reference the SAME ring slot the upload command
     // wrote this frame. Both derive from serial % kMaxFramesInFlight, exposed by
     // SkinningResources::currentFrameIndex() — so we use it as the single source
     // of truth and ignore the framework's frame_slot (kept only as a fallback).
-    VkDescriptorSet
-    SkinningFeature::resolveSkinDS(const void* self, std::uint32_t frame_slot, std::uint32_t /*view_id*/) noexcept
+    VkDescriptorSet SkinningFeature::
+        resolveSkinDS(const void* self, std::uint32_t frame_slot, std::uint32_t /*view_id*/) noexcept
     {
         const auto* f = static_cast<const SkinningFeature*>(self);
         const std::uint32_t fi = f->skin_res_ ? f->skin_res_->currentFrameIndex() : (frame_slot % kMaxFramesInFlight);

@@ -55,7 +55,8 @@ namespace lux::render
     static_assert(
         sizeof(ViewPushPrefix) == 8,
         "视图前缀的大小是 C++ 与 GLSL 之间的 ABI:改它必须同步所有"
-        "着色器的推送常量块起手两字段,以及本文件下方的 kViewPushPrefixSize");
+        "着色器的推送常量块起手两字段,以及本文件下方的 kViewPushPrefixSize"
+    );
 
     /// 共享前缀占据的字节数。特性自己的推送参数从这个偏移起。
     inline constexpr uint32_t kViewPushPrefixSize = static_cast<uint32_t>(sizeof(ViewPushPrefix));
@@ -146,33 +147,31 @@ namespace lux::render
 
     /// Move-only owning callback wrapper backed by (fn_ptr + user_ptr).
     /// Captured lambdas are heap-owned once at graph build time.
-    template <typename R, typename... Args> class OwningDelegate
+    template <typename R, typename... Args> class TOwningDelegate
     {
     public:
         using InvokeFn = R (*)(void* user, Args... args);
         using DestroyFn = void (*)(void* user);
         using CloneFn = void* (*)(const void* user);
 
-        OwningDelegate() = default;
-        OwningDelegate(std::nullptr_t)
-        {
-        }
+        TOwningDelegate() = default;
+        TOwningDelegate(std::nullptr_t) {}
 
         template <
             typename F,
             typename D = std::decay_t<F>,
-            typename = std::enable_if_t<!std::is_same_v<D, OwningDelegate>>>
-        OwningDelegate(F&& fn)
+            typename = std::enable_if_t<!std::is_same_v<D, TOwningDelegate>>>
+        TOwningDelegate(F&& fn)
         {
             bind(std::forward<F>(fn));
         }
 
-        OwningDelegate(const OwningDelegate& other)
+        TOwningDelegate(const TOwningDelegate& other)
         {
             copyFrom(other);
         }
 
-        OwningDelegate& operator=(const OwningDelegate& other)
+        TOwningDelegate& operator=(const TOwningDelegate& other)
         {
             if (this != &other)
             {
@@ -182,12 +181,12 @@ namespace lux::render
             return *this;
         }
 
-        OwningDelegate(OwningDelegate&& other) noexcept
+        TOwningDelegate(TOwningDelegate&& other) noexcept
         {
             moveFrom(std::move(other));
         }
 
-        OwningDelegate& operator=(OwningDelegate&& other) noexcept
+        TOwningDelegate& operator=(TOwningDelegate&& other) noexcept
         {
             if (this != &other)
             {
@@ -197,7 +196,7 @@ namespace lux::render
             return *this;
         }
 
-        ~OwningDelegate()
+        ~TOwningDelegate()
         {
             reset();
         }
@@ -252,7 +251,7 @@ namespace lux::render
             }
         }
 
-        void copyFrom(const OwningDelegate& other)
+        void copyFrom(const TOwningDelegate& other)
         {
             invoke_ = other.invoke_;
             destroy_ = other.destroy_;
@@ -271,7 +270,7 @@ namespace lux::render
             }
         }
 
-        void moveFrom(OwningDelegate&& other) noexcept
+        void moveFrom(TOwningDelegate&& other) noexcept
         {
             user_ = other.user_;
             invoke_ = other.invoke_;
@@ -299,7 +298,7 @@ namespace lux::render
         CloneFn clone_ = nullptr;
     };
 
-    using PassRecordFn = OwningDelegate<void, const PassRecordContext&>;
-    using PassConditionFn = OwningDelegate<bool>;
+    using PassRecordFn = TOwningDelegate<void, const PassRecordContext&>;
+    using PassConditionFn = TOwningDelegate<bool>;
 
 } // namespace lux::render

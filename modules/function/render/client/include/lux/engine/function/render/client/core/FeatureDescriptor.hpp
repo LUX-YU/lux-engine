@@ -28,10 +28,10 @@
 namespace lux::render
 {
     /// How many instances of a feature type a single scene may hold.
-    enum class FeatureMultiplicity : std::uint8_t
+    enum class EFeatureMultiplicity : std::uint8_t
     {
-        MultiplePerScene, ///< default — any number of instances (today's behaviour)
-        SinglePerScene,   ///< at most one; a second install of this type is rejected
+        MULTIPLE_PER_SCENE, ///< default — any number of instances (today's behaviour)
+        SINGLE_PER_SCENE,   ///< at most one; a second install of this type is rejected
     };
 
     /// One declared dependency of a feature on another feature type.
@@ -108,9 +108,9 @@ namespace lux::render
         /// May be toggled at runtime; when false the manager rejects setEnabled(false).
         bool supports_runtime_disable{true};
 
-        /// At most one instance per scene? SinglePerScene → the install path rejects a
-        /// second instance of this type (default MultiplePerScene = today's behaviour).
-        FeatureMultiplicity multiplicity{FeatureMultiplicity::MultiplePerScene};
+        /// At most one instance per scene? SINGLE_PER_SCENE rejects a second instance
+        /// of this type (default MULTIPLE_PER_SCENE = today's behaviour).
+        EFeatureMultiplicity multiplicity{EFeatureMultiplicity::MULTIPLE_PER_SCENE};
 
         /// Per-tier device requirements (static storage, like deps/conflicts).
         /// EMPTY = installable at any tier with no whitelisted-feature needs

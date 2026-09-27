@@ -95,8 +95,10 @@ namespace lux::render
     /// 把一次失败渲染成人读文本:查 desc,按每一槽声明的 EErrorArg 展开实参,填模板。
     /// 可以跑在任意线程,也可以跑在消费侧进程 —— 名字在这里才被解析出来。
     /// 若 id 已失效(动态 feature 卸载后收到的旧事件),返回一条自证的占位文本。
-    [[nodiscard]] LUX_FUNCTION_PUBLIC std::string
-    formatRenderError(const RenderErrorRegistry& registry, const RenderError& error);
+    [[nodiscard]] LUX_FUNCTION_PUBLIC std::string formatRenderError(
+        const RenderErrorRegistry& registry,
+        const RenderError& error
+    );
 
     // ── 程序级入口 ───────────────────────────────────────────────────────
     //
@@ -119,8 +121,11 @@ namespace lux::render
 
     /// 组装一个失败值。实参按位置对应 T 声明的 args 槽。
     template <ErrorType T>
-    [[nodiscard]] RenderError
-    renderError(std::uint32_t arg0 = 0, std::uint32_t arg1 = 0, std::uint32_t arg2 = 0) noexcept
+    [[nodiscard]] RenderError renderError(
+        std::uint32_t arg0 = 0,
+        std::uint32_t arg1 = 0,
+        std::uint32_t arg2 = 0
+    ) noexcept
     {
         return makeError(errorTypeOf<T>(), arg0, arg1, arg2);
     }

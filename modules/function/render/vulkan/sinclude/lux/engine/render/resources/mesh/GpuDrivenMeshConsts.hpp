@@ -18,7 +18,7 @@ namespace lux::render
     // kMaxDrawsPerBiasGroup、视图路径传 0,那句话从来不成立。)
 
     /// Number of geometry-kind lanes used by mesh indirect/count buffers.
-    inline constexpr uint32_t kGeometryKindCount = static_cast<uint32_t>(EGeometryKind::Custom) + 1u;
+    inline constexpr uint32_t kGeometryKindCount = static_cast<uint32_t>(EGeometryKind::CUSTOM) + 1u;
 
     /// Sentinel used by cull shaders to mean "no geometry-kind filter".
     inline constexpr uint32_t kAnyGeometryKind = 0xFFFFFFFFu;
@@ -88,7 +88,8 @@ namespace lux::render
     static_assert(
         sizeof(MeshCullPushConstants) == 12u * sizeof(uint32_t) + 3u * sizeof(uint64_t),
         "MeshCullPushConstants must match the PC block in mesh_cull_unified.comp "
-        "(12 uints + three 64-bit buffer addresses)");
+        "(12 uints + three 64-bit buffer addresses)"
+    );
 
     /// VIEW-mode cull push constants.
     /// `geometry_kind_count_or_slice_count` is set to the number of EGeometryKind

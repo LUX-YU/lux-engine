@@ -17,18 +17,18 @@ namespace lux::math
         Eigen::Vector3f min{
             std::numeric_limits<float>::max(),
             std::numeric_limits<float>::max(),
-            std::numeric_limits<float>::max()};
+            std::numeric_limits<float>::max()
+        };
         Eigen::Vector3f max{
             -std::numeric_limits<float>::max(),
             -std::numeric_limits<float>::max(),
-            -std::numeric_limits<float>::max()};
+            -std::numeric_limits<float>::max()
+        };
 
         // ----- Constructors -----
 
         AABB() = default;
-        AABB(const Eigen::Vector3f& mn, const Eigen::Vector3f& mx) : min(mn), max(mx)
-        {
-        }
+        AABB(const Eigen::Vector3f& mn, const Eigen::Vector3f& mx) : min(mn), max(mx) {}
 
         // ----- Queries -----
 

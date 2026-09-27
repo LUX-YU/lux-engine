@@ -24,8 +24,7 @@ namespace lux::task
 
         constexpr TaskExecutorConfig(std::uint32_t workers, std::size_t task_capacity) noexcept
             : worker_count(workers), initial_task_capacity(task_capacity)
-        {
-        }
+        {}
 
         std::uint32_t worker_count;
         std::size_t initial_task_capacity;
@@ -53,8 +52,7 @@ namespace lux::task
     class LUX_CORE_TASK_PUBLIC TaskExecutor final
     {
     public:
-        [[nodiscard]] static lux::cxx::expected<TaskExecutor, TaskExecutorFailure> create(
-            TaskExecutorConfig config
+        [[nodiscard]] static lux::cxx::expected<TaskExecutor, TaskExecutorFailure> create(TaskExecutorConfig config
         ) noexcept;
 
         ~TaskExecutor() noexcept;

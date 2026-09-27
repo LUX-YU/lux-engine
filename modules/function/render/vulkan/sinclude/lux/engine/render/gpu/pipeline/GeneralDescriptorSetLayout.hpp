@@ -33,14 +33,14 @@ namespace lux::render
     /// Central mapping table: descriptor set slot → GPU resource type.
     /// Order matches EDescriptorSetSlot values.
     inline constexpr std::array<SetSlotMapping, kDescriptorSetCount> kSetSlotMappings = {{
-        {static_cast<uint32_t>(EDescriptorSetSlot::Scene), EGPUResourceType::Scene},
-        {static_cast<uint32_t>(EDescriptorSetSlot::Instance), EGPUResourceType::Instance},
-        {static_cast<uint32_t>(EDescriptorSetSlot::Texture), EGPUResourceType::Texture},
-        {static_cast<uint32_t>(EDescriptorSetSlot::Light), EGPUResourceType::Light},
-        {static_cast<uint32_t>(EDescriptorSetSlot::Material), EGPUResourceType::Material},
-        {static_cast<uint32_t>(EDescriptorSetSlot::Particle), EGPUResourceType::Particle},
-        {static_cast<uint32_t>(EDescriptorSetSlot::Compute), EGPUResourceType::Compute},
-        {static_cast<uint32_t>(EDescriptorSetSlot::VertexPool), EGPUResourceType::VertexPool},
+        {static_cast<uint32_t>(EDescriptorSetSlot::SCENE), EGPUResourceType::SCENE},
+        {static_cast<uint32_t>(EDescriptorSetSlot::INSTANCE), EGPUResourceType::INSTANCE},
+        {static_cast<uint32_t>(EDescriptorSetSlot::TEXTURE), EGPUResourceType::TEXTURE},
+        {static_cast<uint32_t>(EDescriptorSetSlot::LIGHT), EGPUResourceType::LIGHT},
+        {static_cast<uint32_t>(EDescriptorSetSlot::MATERIAL), EGPUResourceType::MATERIAL},
+        {static_cast<uint32_t>(EDescriptorSetSlot::PARTICLE), EGPUResourceType::PARTICLE},
+        {static_cast<uint32_t>(EDescriptorSetSlot::COMPUTE), EGPUResourceType::COMPUTE},
+        {static_cast<uint32_t>(EDescriptorSetSlot::VERTEX_POOL), EGPUResourceType::VERTEX_POOL},
     }};
 
     /**
@@ -79,9 +79,7 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC GeneralDescriptorSetLayout
     {
     public:
-        GeneralDescriptorSetLayout(DeviceContext& device_context) : device_context_(device_context)
-        {
-        }
+        GeneralDescriptorSetLayout(DeviceContext& device_context) : device_context_(device_context) {}
         ~GeneralDescriptorSetLayout();
 
         // Non-copyable, movable

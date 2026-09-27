@@ -4,6 +4,7 @@
 #include <lux/engine/render/resources/descriptor/BindlessCombinedSet.hpp>
 #include <lux/engine/function/render/client/resources/ops/TextureResourceOperation.hpp> // U2-00 region protocol
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
+#include <lux/engine/function/render/client/core/FeatureHandle.hpp>
 #include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/engine/function/render/client/core/FrameStamp.hpp>
 #include <lux/engine/description/Texture.hpp>
@@ -40,9 +41,31 @@ namespace lux::render
     };
 
     class LUX_FUNCTION_PUBLIC TextureResources final
-        : public GPUResourceBase<TextureResources, EGPUResourceType::Texture>
+        : public TGPUResourceBase<TextureResources, EGPUResourceType::TEXTURE>
     {
     public:
+        enum class ERemoteKind : std::uint8_t
+        {
+            TEXTURE_2D,
+            CUBE,
+            OUTPUT
+        };
+        struct RemoteTexture final
+        {
+            ERemoteKind kind{};
+            TextureHandle local;
+            RenderTargetId target;
+        };
+
+        // Runtime-scoped remote identity. Neither its index nor its generation
+        // is a descriptor slot; all wire consumers resolve it at adoption.
+        [[nodiscard]] RTextureHandle publishTexture(TextureHandle local, bool cube = false);
+        [[nodiscard]] RTextureHandle publishOutput(RenderTargetId target);
+        [[nodiscard]] const RemoteTexture* resolve(RTextureHandle remote) const noexcept;
+        [[nodiscard]] TextureHandle resolveTexture(RTextureHandle remote, bool cube = false) const noexcept;
+        [[nodiscard]] RTextureHandle remoteTexture(TextureHandle local, bool cube = false) const noexcept;
+        void unpublish(RTextureHandle remote) noexcept;
+
         struct InitInfo
         {
             DeviceContext* device_context;
@@ -295,6 +318,9 @@ namespace lux::render
          */
     private:
         struct TextureMipState;
+        struct RemoteTextureTag;
+        lux::cxx::SlotMap<RemoteTexture, RemoteTextureTag> remote_textures_;
+        std::vector<RTextureHandle> remote_2d_, remote_cube_;
         static lux::rdesc::Texture makeDefaultWhite();
         void createSharedPoolAndSet(VkDescriptorSetLayout layout, uint32_t tex2d_max, uint32_t cube_max);
         [[nodiscard]] bool initMipFeedback(std::uint32_t frames_in_flight, std::uint32_t capacity);

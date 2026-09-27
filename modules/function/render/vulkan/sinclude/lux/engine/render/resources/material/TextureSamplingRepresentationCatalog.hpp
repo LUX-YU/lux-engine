@@ -15,13 +15,12 @@
 namespace lux::render
 {
     struct TextureSamplingRepresentationIdTag final
-    {
-    };
+    {};
     using TextureSamplingRepresentationIdView = lux::cxx::StableNameIdView<TextureSamplingRepresentationIdTag>;
     using TextureSamplingRepresentationId = lux::cxx::StableNameId<TextureSamplingRepresentationIdTag>;
 
-    [[nodiscard]] constexpr TextureSamplingRepresentationIdView
-    textureSamplingRepresentationId(std::string_view name) noexcept
+    [[nodiscard]] constexpr TextureSamplingRepresentationIdView textureSamplingRepresentationId(std::string_view name
+    ) noexcept
     {
         return TextureSamplingRepresentationIdView{name};
     }
@@ -29,8 +28,9 @@ namespace lux::render
     inline constexpr auto kBindlessTextureSamplingRepresentation =
         textureSamplingRepresentationId("lux.render.texture.bindless");
 
-    [[nodiscard]] inline TextureSamplingRepresentationId
-    ownTextureSamplingRepresentationId(TextureSamplingRepresentationIdView id)
+    [[nodiscard]] inline TextureSamplingRepresentationId ownTextureSamplingRepresentationId(
+        TextureSamplingRepresentationIdView id
+    )
     {
         return TextureSamplingRepresentationId{id.name()};
     }
@@ -50,7 +50,8 @@ namespace lux::render
     using ResolveTextureSamplingReferenceFn = ResolveTextureSamplingReferenceResult (*)(
         std::uint32_t resource_index,
         std::uint32_t aux,
-        std::uint32_t flags) noexcept;
+        std::uint32_t flags
+    ) noexcept;
 
     struct TextureSamplingRepresentationDescriptor final
     {
@@ -73,10 +74,10 @@ namespace lux::render
         [[nodiscard]] static lux::cxx::expected<TextureSamplingRepresentationCatalog, ETextureSamplingCatalogError>
         build(std::vector<TextureSamplingRepresentationDescriptor> descriptors) noexcept;
 
-        [[nodiscard]] const TextureSamplingRepresentationDescriptor*
-        find(TextureSamplingRepresentationIdView id) const noexcept;
-        [[nodiscard]] const TextureSamplingRepresentationDescriptor*
-        find(std::uint32_t representation_index) const noexcept;
+        [[nodiscard]] const TextureSamplingRepresentationDescriptor* find(TextureSamplingRepresentationIdView id
+        ) const noexcept;
+        [[nodiscard]] const TextureSamplingRepresentationDescriptor* find(std::uint32_t representation_index
+        ) const noexcept;
 
         [[nodiscard]] std::span<const TextureSamplingRepresentationDescriptor> descriptors() const noexcept
         {
@@ -84,12 +85,10 @@ namespace lux::render
         }
 
     private:
-        explicit TextureSamplingRepresentationCatalog(
-            std::vector<TextureSamplingRepresentationDescriptor> descriptors
+        explicit TextureSamplingRepresentationCatalog(std::vector<TextureSamplingRepresentationDescriptor> descriptors
         ) noexcept
             : descriptors_(std::move(descriptors))
-        {
-        }
+        {}
 
         std::vector<TextureSamplingRepresentationDescriptor> descriptors_;
     };

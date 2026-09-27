@@ -36,9 +36,9 @@ namespace lux::render
         display = Skinning,
         feature = SkinningFeature,
         feature_header = lux / engine / render / renderer / features / skinning / SkinningFeature.hpp,
-        requires = lux.render.mesh_stack.v1) SkinningCommConfig
-    {
-    };
+        requires = lux.render.mesh_stack.v1
+    ) SkinningCommConfig
+    {};
     static_assert(std::is_trivially_copyable_v<SkinningCommConfig>);
 
     // ---- Per-instance bone palette upload (GPU skinning) ----
@@ -73,7 +73,8 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<BoneBatchEntry>);
 
-    struct LUX_OP(lane = program, kind = stream, name = UploadBoneBatch, method = uploadBoneBatch) UploadBoneBatchPayload
+    struct LUX_OP(lane = program, kind = stream, name = UploadBoneBatch, method = uploadBoneBatch)
+        UploadBoneBatchPayload
     {
         RenderSceneId scene_id{};
         uint32_t entry_count{0};

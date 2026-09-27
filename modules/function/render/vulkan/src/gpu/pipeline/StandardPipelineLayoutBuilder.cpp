@@ -80,8 +80,7 @@ namespace lux::render
             .set_layouts = set_layouts,
             .push_constants = push_constants,
             .debug_name = std::string(debug_name),
-        }
-        );
+        });
     }
 
 } // namespace lux::render

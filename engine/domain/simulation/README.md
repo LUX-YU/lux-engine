@@ -1,6 +1,6 @@
 # Simulation：世界演进、线程 owner 与稳定点
 
-Simulation 决定活动世界如何演进。World 描述和 Registry 存储内容，具体 System 执行演化或派生逻辑，Scene 完成它们的装配。
+Simulation 决定活动世界如何演进。World 描述和 Registry 存储内容，具体 SimulationSystem 执行演化逻辑，Scene 完成它们的装配。
 
 本文说明模块责任与推进协议，不记录阶段验收数字或构建目录。
 
@@ -9,13 +9,13 @@ Simulation 决定活动世界如何演进。World 描述和 Registry 存储内�
 ```text
 WorldDescription：恢复内容与能力
 Registry：当前 Entity 与组件
-Simulation：系统、任务图、时钟与执行状态
+Simulation：系统、任务图、实际采用时间与执行状态
 Scene：上述对象及 SceneSystem 的生命周期装配
 ```
 
 Simulation 不是窗口主循环，也不是 Renderer。没有 RenderSystem、Camera 或 Vulkan，Simulation 仍然可以执行逻辑、物理和脚本。
 
-内置系统放在 `builtin_systems/`，例如 Transform、Script、Physics2D。渲染集成是可选的 SceneSystem，位于 `engine/scene/builtin_systems/render/`。
+内置系统放在 `builtin_systems/`，例如 Script、Physics2D。Transform 是 SceneSystem，位于 `engine/scene/builtin_systems/transform/`。渲染集成是可选的 SceneSystem，位于 `engine/scene/builtin_systems/render/`。
 
 ## Editor 中的线程责任
 
@@ -27,16 +27,18 @@ TaskGraph／TaskExecutor 负责按访问约束执行系统任务。Main owner �
 
 当前 Editor Run 由 Main 发起单步，使用 caller 执行器。这不等同于已经提供任意系统负载下的异步单步或硬实时保证。
 
-## 演化和派生
+## 执行与变换同步
 
-[`Simulation`](composition/include/lux/engine/simulation/Simulation.hpp) 区分 `EVOLUTION` 与 `DERIVATION`，模式在构造时确定。
+[`Simulation`](composition/include/lux/engine/simulation/Simulation.hpp) 只执行一张游戏逻辑图，
+`execute(executor, SimulationTime)` 接收外部时间值，没有 EVOLUTION/DERIVATION 模式或 refresh 图。
+暂停意味着宿主不调用 SceneDriver.tick；Scene 的维护、变换同步和渲染发布继续。
 
-- 作者内容编辑需要派生更新，例如从局部 Transform 得到 WorldTransform。
-- 活动 Run 推进演化系统与模拟时钟。
-- 刷新派生数据不应冒充执行了一次模拟步。
-- 不能通过直接复用一个不兼容模式的实例，绕过系统启停、时钟及任务图约束。
+TransformSystem 在 Scene 同步阶段按观察到的变化批量更新 WorldTransform 缓存。
+Simulation 中需要当前 Local/Parent 写入后的世界变换时，使用
+`ecs::computeWorldTransform2D/3D(const Registry&, Entity)`；它只读当前父链，不改变缓存。
+读取缓存则得到上一个 Scene 同步点的值。两种语义不能混用，也不能用查询绕过任务图读写依赖。
 
-作者 Scene 和 Run 可以是独立实例，同时在同一个编辑器视口切换显示。隔离运行内容和决定显示位置是两项独立设计。
+作者和试玩可以是独立实例；实例隔离与安排 tick 是不同职责。
 
 ## 时钟与现实节奏
 
@@ -44,12 +46,13 @@ TaskGraph／TaskExecutor 负责按访问约束执行系统任务。Main owner �
 
 现有固定步长 Run 的约束是：每轮有限推进，计算和发布时间计入现实周期；落后时不积累无限追赶任务，也不重复执行同一步。
 
-未来固定步进、真实时间、外部驱动等时基应分别表达其语义。有限的内置类型可以使用 concept 与 variant；本文不宣称这些时基已全部实现，也不借此扩展当前 Run 模式。
+具体时钟在 Scene 层 Clock.hpp 中通过 Clock concept 和 VSimulationClock 表达，当前只有 FixedStepClock。Simulation 不拥有或借用调度时钟；只保存实际采用的 SimulationTime。
 
 ## 稳定点与发布背压
 
 ```text
-一次演化或作者派生完成
+可选的一次 Simulation 执行
+  → Scene 变换同步
   → 通用稳定点
   → 已安装 SceneSystem 提取变化
   → 必要更新被接纳

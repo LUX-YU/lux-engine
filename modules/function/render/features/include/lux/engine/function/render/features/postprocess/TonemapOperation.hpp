@@ -41,7 +41,8 @@ namespace lux::render
         feature = TonemapFeature,
         feature_header = lux / engine / render / renderer / features / postprocess / TonemapFeature.hpp,
         param_op = TonemapParams,
-        param_lane = program) TonemapCommConfig
+        param_lane = program
+    ) TonemapCommConfig
     {
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};   ///< fullscreen triangle
         ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){}; ///< tonemap.frag

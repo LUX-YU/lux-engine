@@ -23,7 +23,7 @@ namespace lux::render
         //    GpuDrivenMeshFeatureBase::initCommon 的管线布局分支成对
         //  · graph frag 可选无内置(空=跳过该族);finalize 已退役,
         //    wire 兼容:空合法,非空必须可解析
-        using DGFill = BuiltinShaderFill<DeferredGBufferCommConfig>;
+        using DGFill = TBuiltinShaderFill<DeferredGBufferCommConfig>;
         static constexpr DGFill kShaderFills[] = {
             {.field = &DeferredGBufferCommConfig::cull_compute_shader,
              .builtin = EBuiltinShader::MESH_CULL_UNIFIED_COMP,

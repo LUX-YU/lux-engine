@@ -56,7 +56,7 @@ namespace lux::render::vk_convert
             return VK_FORMAT_R16G16B16A16_SFLOAT;
         case ETextureFormatHint::RGBA32F:
             return VK_FORMAT_R32G32B32A32_SFLOAT;
-        case ETextureFormatHint::Auto:
+        case ETextureFormatHint::AUTO:
             return VK_FORMAT_UNDEFINED;
         default:
             return VK_FORMAT_UNDEFINED;
@@ -64,7 +64,7 @@ namespace lux::render::vk_convert
     }
 
     /// Convert VkFormat → ETextureFormatHint (for render-internal → cmd conversion).
-    /// Returns ETextureFormatHint::Auto for unrecognised formats.
+    /// Returns ETextureFormatHint::AUTO for unrecognised formats.
     inline ETextureFormatHint fromVk(VkFormat f) noexcept
     {
         switch (f)
@@ -82,7 +82,7 @@ namespace lux::render::vk_convert
         case VK_FORMAT_R32G32B32A32_SFLOAT:
             return ETextureFormatHint::RGBA32F;
         default:
-            return ETextureFormatHint::Auto;
+            return ETextureFormatHint::AUTO;
         }
     }
 
@@ -92,89 +92,93 @@ namespace lux::render::vk_convert
 
     namespace detail
     {
-        inline VkFilter toVkFilter(SamplerDesc::Filter f) noexcept
+        inline VkFilter toVkFilter(SamplerDesc::EFilter f) noexcept
         {
-            return f == SamplerDesc::Filter::Linear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+            return f == SamplerDesc::EFilter::LINEAR ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
         }
-        inline SamplerDesc::Filter fromVkFilter(VkFilter f) noexcept
+        inline SamplerDesc::EFilter fromVkFilter(VkFilter f) noexcept
         {
-            return f == VK_FILTER_LINEAR ? SamplerDesc::Filter::Linear : SamplerDesc::Filter::Nearest;
+            return f == VK_FILTER_LINEAR ? SamplerDesc::EFilter::LINEAR : SamplerDesc::EFilter::NEAREST;
         }
-        inline VkSamplerMipmapMode toVkMipmap(SamplerDesc::MipmapMode m) noexcept
+        inline VkSamplerMipmapMode toVkMipmap(SamplerDesc::EMipmapMode m) noexcept
         {
-            return m == SamplerDesc::MipmapMode::Linear ? VK_SAMPLER_MIPMAP_MODE_LINEAR
+            return m == SamplerDesc::EMipmapMode::LINEAR ? VK_SAMPLER_MIPMAP_MODE_LINEAR
                                                         : VK_SAMPLER_MIPMAP_MODE_NEAREST;
         }
-        inline SamplerDesc::MipmapMode fromVkMipmap(VkSamplerMipmapMode m) noexcept
+        inline SamplerDesc::EMipmapMode fromVkMipmap(VkSamplerMipmapMode m) noexcept
         {
-            return m == VK_SAMPLER_MIPMAP_MODE_LINEAR ? SamplerDesc::MipmapMode::Linear
-                                                      : SamplerDesc::MipmapMode::Nearest;
+            return m == VK_SAMPLER_MIPMAP_MODE_LINEAR ? SamplerDesc::EMipmapMode::LINEAR
+                                                      : SamplerDesc::EMipmapMode::NEAREST;
         }
-        inline VkSamplerAddressMode toVkAddr(SamplerDesc::AddressMode a) noexcept
+        inline VkSamplerAddressMode toVkAddr(SamplerDesc::EAddressMode a) noexcept
         {
             switch (a)
             {
-            case SamplerDesc::AddressMode::Repeat:
+            case SamplerDesc::EAddressMode::REPEAT:
                 return VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            case SamplerDesc::AddressMode::MirroredRepeat:
+            case SamplerDesc::EAddressMode::MIRRORED_REPEAT:
                 return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
-            case SamplerDesc::AddressMode::ClampToEdge:
+            case SamplerDesc::EAddressMode::CLAMP_TO_EDGE:
                 return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-            case SamplerDesc::AddressMode::ClampToBorder:
+            case SamplerDesc::EAddressMode::CLAMP_TO_BORDER:
                 return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
             default:
                 return VK_SAMPLER_ADDRESS_MODE_REPEAT;
             }
         }
-        inline SamplerDesc::AddressMode fromVkAddr(VkSamplerAddressMode a) noexcept
+        inline SamplerDesc::EAddressMode fromVkAddr(VkSamplerAddressMode a) noexcept
         {
             switch (a)
             {
             case VK_SAMPLER_ADDRESS_MODE_REPEAT:
-                return SamplerDesc::AddressMode::Repeat;
+                return SamplerDesc::EAddressMode::REPEAT;
             case VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT:
-                return SamplerDesc::AddressMode::MirroredRepeat;
+                return SamplerDesc::EAddressMode::MIRRORED_REPEAT;
             case VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE:
-                return SamplerDesc::AddressMode::ClampToEdge;
+                return SamplerDesc::EAddressMode::CLAMP_TO_EDGE;
             case VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER:
-                return SamplerDesc::AddressMode::ClampToBorder;
+                return SamplerDesc::EAddressMode::CLAMP_TO_BORDER;
             default:
-                return SamplerDesc::AddressMode::Repeat;
+                return SamplerDesc::EAddressMode::REPEAT;
             }
         }
         // Both enums are declared in the same order as the Vulkan values they
         // mirror, so the mapping is an index cast rather than a switch. The
         // static_asserts below pin the two endpoints of each range; a reordered
         // or extended enum trips them instead of silently shifting every value.
-        static_assert(static_cast<int>(SamplerDesc::CompareOp::Never) == VK_COMPARE_OP_NEVER);
-        static_assert(static_cast<int>(SamplerDesc::CompareOp::Always) == VK_COMPARE_OP_ALWAYS);
+        static_assert(static_cast<int>(SamplerDesc::ECompareOp::NEVER) == VK_COMPARE_OP_NEVER);
+        static_assert(static_cast<int>(SamplerDesc::ECompareOp::ALWAYS) == VK_COMPARE_OP_ALWAYS);
         static_assert(
-            static_cast<int>(SamplerDesc::BorderColor::TransparentBlackFloat) ==
-            VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK);
-        static_assert(static_cast<int>(SamplerDesc::BorderColor::OpaqueWhiteInt) == VK_BORDER_COLOR_INT_OPAQUE_WHITE);
+            static_cast<int>(SamplerDesc::EBorderColor::TRANSPARENT_BLACK_FLOAT) ==
+            VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
+        );
+        static_assert(
+            static_cast<int>(SamplerDesc::EBorderColor::OPAQUE_WHITE_INT) == VK_BORDER_COLOR_INT_OPAQUE_WHITE
+        );
         // The endpoints alone would not catch two interior values swapping, and
         // these two carry shadow correctness: the wrong compare op flips every
         // depth test, the wrong border makes out-of-atlas lookups read shadowed.
-        static_assert(static_cast<int>(SamplerDesc::CompareOp::LessOrEqual) == VK_COMPARE_OP_LESS_OR_EQUAL);
+        static_assert(static_cast<int>(SamplerDesc::ECompareOp::LESS_OR_EQUAL) == VK_COMPARE_OP_LESS_OR_EQUAL);
         static_assert(
-            static_cast<int>(SamplerDesc::BorderColor::OpaqueWhiteFloat) == VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE);
+            static_cast<int>(SamplerDesc::EBorderColor::OPAQUE_WHITE_FLOAT) == VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE
+        );
 
-        inline VkCompareOp toVkCompareOp(SamplerDesc::CompareOp v) noexcept
+        inline VkCompareOp toVkCompareOp(SamplerDesc::ECompareOp v) noexcept
         {
             return static_cast<VkCompareOp>(v);
         }
-        inline SamplerDesc::CompareOp fromVkCompareOp(VkCompareOp v) noexcept
+        inline SamplerDesc::ECompareOp fromVkCompareOp(VkCompareOp v) noexcept
         {
-            return static_cast<SamplerDesc::CompareOp>(v);
+            return static_cast<SamplerDesc::ECompareOp>(v);
         }
 
-        inline VkBorderColor toVkBorderColor(SamplerDesc::BorderColor v) noexcept
+        inline VkBorderColor toVkBorderColor(SamplerDesc::EBorderColor v) noexcept
         {
             return static_cast<VkBorderColor>(v);
         }
-        inline SamplerDesc::BorderColor fromVkBorderColor(VkBorderColor v) noexcept
+        inline SamplerDesc::EBorderColor fromVkBorderColor(VkBorderColor v) noexcept
         {
-            return static_cast<SamplerDesc::BorderColor>(v);
+            return static_cast<SamplerDesc::EBorderColor>(v);
         }
     } // namespace detail
 

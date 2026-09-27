@@ -86,7 +86,7 @@ namespace lux::render
     private:
         static constexpr uint32_t kBufferCount = 3;
 
-        struct FrameSlot
+        struct EFrameSlot
         {
             VkBuffer buffer{VK_NULL_HANDLE};
             VmaAllocation alloc{nullptr};
@@ -97,7 +97,7 @@ namespace lux::render
         GraphicsPipelineHandle pipeline_handle_{kInvalidPipelineHandle};
 
         VmaAllocator allocator_{nullptr};
-        FrameSlot slots_[kBufferCount]{};
+        EFrameSlot slots_[kBufferCount]{};
         uint32_t active_slot_{0};
         uint32_t frame_counter_{0};
         uint32_t draw_count_{0};

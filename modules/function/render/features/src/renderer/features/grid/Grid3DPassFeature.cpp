@@ -7,9 +7,7 @@
 
 namespace lux::render
 {
-    Grid3DPassFeature::Grid3DPassFeature(Config cfg) : cfg_(std::move(cfg))
-    {
-    }
+    Grid3DPassFeature::Grid3DPassFeature(Config cfg) : cfg_(std::move(cfg)) {}
 
     lux::render::Expected<void> Grid3DPassFeature::initAndAttachTo(RenderScene& /*scene*/)
     {
@@ -20,7 +18,8 @@ namespace lux::render
         // 用 uViews)的管线必须带域合并标记,否则注册被拒。
         const std::array stage_requests{
             RenderContextView::PipelineStageDesc{EBuiltinShader::GRID_VERT, cfg_.vertex_shader},
-            RenderContextView::PipelineStageDesc{EBuiltinShader::GRID_FRAG, cfg_.fragment_shader}};
+            RenderContextView::PipelineStageDesc{EBuiltinShader::GRID_FRAG, cfg_.fragment_shader}
+        };
 
         auto stages = cv.preparePipelineStages(stage_requests);
         if (!stages)
@@ -55,15 +54,14 @@ namespace lux::render
                         &grid_params_
                     );
                     vkCmdDraw(ctx.cmd, 3, 1, 0, 0);
-                }
-                )
+                })
                 .setKernel("Grid3DDraw")
                 // Painter order via stage, not .after(kSkyboxPassName): the grid overlay
                 // must draw after opaque + sky regardless of feature REGISTRATION order.
                 // Overlay sorts after Sky/Opaque in the write-after-write tie-break, and
                 // unlike .after(kSkyboxPassName) it still works when no Skybox is present
                 // (the old name reference silently did nothing then).
-                .stage(ERenderStage::Overlay);
+                .stage(ERenderStage::OVERLAY_STAGE);
     }
 
     void Grid3DPassFeature::onFrameBegin(const FeatureFrameContext& /*ctx*/)

@@ -74,10 +74,10 @@ namespace lux::render
     /// graph."
     enum class ESlotSource : uint8_t
     {
-        EngineShared,    ///< An engine-shared set; its shape comes from EngineSetShapes.
-        FeatureExplicit, ///< A shared set a feature explicitly declares via explicit_set_layouts.
-        PipelinePrivate, ///< Private to this pipeline; its shape is exactly its reflection.
-        ReflectionHole,  ///< Not referenced by the shader; falls back to that slot's engine-shared layout.
+        ENGINE_SHARED,    ///< An engine-shared set; its shape comes from EngineSetShapes.
+        FEATURE_EXPLICIT, ///< A shared set a feature explicitly declares via explicit_set_layouts.
+        PIPELINE_PRIVATE, ///< Private to this pipeline; its shape is exactly its reflection.
+        REFLECTION_HOLE,  ///< Not referenced by the shader; falls back to that slot's engine-shared layout.
         /// A merged, *multi-member* domain set (currently only the FEATURE
         /// domain: Instance/Light/Material/Particle/Compute/VertexPool
         /// sharing one set). logical_set holds the domain enum value
@@ -94,7 +94,7 @@ namespace lux::render
         /// after merging, the slot table is unchanged, and they keep using
         /// EngineShared — this has been confirmed by Skybox, and an
         /// already-verified path isn't touched purely for uniformity.
-        DomainMerged,
+        DOMAIN_MERGED,
     };
 
     /// The *explicit mapping* from slot -> logical set.
@@ -112,7 +112,7 @@ namespace lux::render
     struct ReflectedSlot
     {
         uint32_t slot{0}; ///< Index within this pipeline's layout array.
-        ESlotSource source{ESlotSource::PipelinePrivate};
+        ESlotSource source{ESlotSource::PIPELINE_PRIVATE};
         /// Logical identity: for EngineShared/ReflectionHole, the engine's
         /// canonical set number; for everything else, the slot itself
         /// (needs the owning pipeline alongside it to be uniquely
@@ -349,14 +349,16 @@ namespace lux::render
         /// given set slot of the template (used when a feature allocates a
         /// private set instance). Returns VK_NULL_HANDLE for a legacy
         /// (hand-assembled) template or an out-of-range slot.
-        [[nodiscard]] VkDescriptorSetLayout
-        templateSetLayout(GraphicsPipelineHandle handle, uint32_t set) const noexcept;
+        [[nodiscard]] VkDescriptorSetLayout templateSetLayout(GraphicsPipelineHandle handle, uint32_t set)
+            const noexcept;
 
         /// Resolves a source-shader private set through domain relocation.
         /// Returns an invalid result if the template is legacy, the source
         /// set is absent, or the resolved slot is not pipeline-private.
-        [[nodiscard]] ResolvedPrivateSetLayout
-        templatePrivateSetLayout(GraphicsPipelineHandle handle, uint32_t source_set) const noexcept;
+        [[nodiscard]] ResolvedPrivateSetLayout templatePrivateSetLayout(
+            GraphicsPipelineHandle handle,
+            uint32_t source_set
+        ) const noexcept;
 
         /// Registers a compute pipeline's reflected layout: the layout is
         /// built from a single shader's reflection + the contract (the same
@@ -420,8 +422,10 @@ namespace lux::render
         /// incrementing `layout_epoch` on every graph recompile would
         /// invalidate every cached PSO (PipelineKey includes the epoch),
         /// triggering an avalanche of rebuilds.
-        Expected<bool>
-        rebuildTemplateLayout(GraphicsPipelineHandle handle, std::span<const VkDescriptorSetLayout> set_layouts);
+        Expected<bool> rebuildTemplateLayout(
+            GraphicsPipelineHandle handle,
+            std::span<const VkDescriptorSetLayout> set_layouts
+        );
 
         /// The device's maxBoundDescriptorSets (0 = the reflected-layout
         /// environment hasn't been injected).

@@ -72,8 +72,8 @@ namespace lux::render
         return nullptr;
     }
 
-    const RenderFeature*
-    RenderFeatureSet::firstRequiring(FeatureTypeId type, const RenderFeature* exclude) const noexcept
+    const RenderFeature* RenderFeatureSet::firstRequiring(FeatureTypeId type, const RenderFeature* exclude)
+        const noexcept
     {
         if (type == kInvalidFeatureTypeId)
             return nullptr;
@@ -108,8 +108,8 @@ namespace lux::render
                 f->name(),
                 sn,
                 data,
-                size}
-            );
+                size
+            });
         }
         return descs;
     }

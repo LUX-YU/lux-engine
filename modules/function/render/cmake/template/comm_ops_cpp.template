@@ -76,22 +76,22 @@ namespace lux::render
 {% endfor %}        return sc->addFeature<::lux::render::{{ feature_type }}>(cfg);
     }
 {% endif %}
-    using {{ prefix }}Ops = FeatureOpRegistrar<
+    using {{ prefix }}Ops = TFeatureOpRegistrar<
 {%- set first = true -%}
 {%- for rec_idx in marked_record_decls -%}{%- set op = decl_from_index(rec_idx) -%}{%- if annotation_has(op, "luxop::op") -%}
 {%- set kind = annotation_get_for_or(op, "luxop::op", "kind", "") -%}
 {%- set opname = annotation_get_for_or(op, "luxop::op", "name", "") -%}
 {%- if not first %},
         {% endif -%}
-{%- if kind == "param" -%}ServerOp<{{ opname }}Op>{%- else -%}ServerOp<{{ opname }}Op, &handle{{ opname }}>{%- endif -%}
+{%- if kind == "param" -%}TServerOp<{{ opname }}Op>{%- else -%}TServerOp<{{ opname }}Op, &handle{{ opname }}>{%- endif -%}
 {%- set first = false -%}
 {%- set rb = annotation_get_for_or(op, "luxop::op", "bulk", "") -%}
 {%- if rb != "" -%},
-        ServerOp<{{ rb }}Op, &handle{{ rb }}>{%- endif -%}
+        TServerOp<{{ rb }}Op, &handle{{ rb }}>{%- endif -%}
 {%- endif -%}{%- endfor -%}
 {%- set param_op = annotation_get_for_or(cfg, "luxop::config", "param_op", "") -%}
 {%- if param_op != "" -%}{%- if not first %},
-        {% endif -%}ServerOp<{{ param_op }}Op>{%- endif -%}>;
+        {% endif -%}TServerOp<{{ param_op }}Op>{%- endif -%}>;
 
     const FeatureFactory k{{ prefix }}FeatureFactory{
         &{{ prefix }}CreateFn,
@@ -104,7 +104,7 @@ namespace lux::render
     };
     const RenderFeatureRegistration k{{ prefix }}RenderFeatureRegistration{
         .factory = k{{ prefix }}FeatureFactory,
-        .configuration = makeRenderFeatureConfigCodec<::{{ cfg.fq_name }}>("{{ feature_id }}.configuration"),
+        .configuration = {% if annotation_get_for_or(cfg, "luxop::config", "custom_codec", false) %}{{ prefix }}ConfigurationCodec(){% else %}makeRenderFeatureConfigCodec<::{{ cfg.fq_name }}>("{{ feature_id }}.configuration"){% endif %},
         .scene_configurable = {% if annotation_get_for_or(cfg, "luxop::config", "scene_configurable", true) %}true{% else %}false{% endif %}
     };
 {%- endif %}

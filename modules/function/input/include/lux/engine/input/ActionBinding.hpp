@@ -25,7 +25,7 @@ namespace lux::input
         BindingId binding_id = InvalidBindingId;
         ActionId action = InvalidActionId;
 
-        PhysicalInput source{};
+        VPhysicalInput source{};
 
         InputValue contribution = InputValue::makeAxis1D(1.0f);
 

@@ -63,8 +63,10 @@ namespace lux::classic_mesh
         }
     } // namespace
 
-    ClassicMeshBatchExp<void>
-    validateClassicMeshBatchBlob(const ClassicMeshBatchBlobV1& blob, const ClassicMeshBatchCodecLimits& limits) noexcept
+    ClassicMeshBatchExp<void> validateClassicMeshBatchBlob(
+        const ClassicMeshBatchBlobV1& blob,
+        const ClassicMeshBatchCodecLimits& limits
+    ) noexcept
     {
         if (limits.maximum_instances == 0u || limits.maximum_encoded_bytes < kHeaderBytes)
         {
@@ -76,23 +78,23 @@ namespace lux::classic_mesh
         {
             return lux::cxx::unexpected(failure(
                 EClassicMeshBatchCodecError::INVALID_INSTANCE,
-                "Classic Mesh batch must contain at least one instance")
-            );
+                "Classic Mesh batch must contain at least one instance"
+            ));
         }
         if (blob.instances.size() > limits.maximum_instances)
         {
             return lux::cxx::unexpected(failure(
                 EClassicMeshBatchCodecError::LIMIT_EXCEEDED,
-                "Classic Mesh batch instance count exceeds the codec limit")
-            );
+                "Classic Mesh batch instance count exceeds the codec limit"
+            ));
         }
         const auto encoded_bytes = kHeaderBytes + static_cast<std::uint64_t>(blob.instances.size()) * kInstanceBytes;
         if (encoded_bytes > limits.maximum_encoded_bytes)
         {
             return lux::cxx::unexpected(failure(
                 EClassicMeshBatchCodecError::LIMIT_EXCEEDED,
-                "Classic Mesh batch byte size exceeds the codec limit")
-            );
+                "Classic Mesh batch byte size exceeds the codec limit"
+            ));
         }
         for (const auto& instance : blob.instances)
         {
@@ -100,29 +102,31 @@ namespace lux::classic_mesh
             const bool is_invalid_rotation = !unitQuaternion(instance.rotation);
             const bool is_missing_mesh = instance.mesh_asset.isNull();
             const bool has_unknown_flags = (instance.flags & ~kClassicMeshInstanceKnownFlags) != 0u;
-            const bool is_invalid_instance = is_non_finite || is_invalid_rotation || is_missing_mesh ||
-                has_unknown_flags;
+            const bool is_invalid_instance =
+                is_non_finite || is_invalid_rotation || is_missing_mesh || has_unknown_flags;
             if (is_invalid_instance)
             {
                 return lux::cxx::unexpected(failure(
                     EClassicMeshBatchCodecError::INVALID_INSTANCE,
-                    "Classic Mesh batch contains an invalid instance")
-                );
+                    "Classic Mesh batch contains an invalid instance"
+                ));
             }
         }
         return {};
     }
 
-    ClassicMeshBatchExp<std::vector<std::byte>>
-    encodeClassicMeshBatchBlob(const ClassicMeshBatchBlobV1& blob, const ClassicMeshBatchCodecLimits& limits) noexcept
+    ClassicMeshBatchExp<std::vector<std::byte>> encodeClassicMeshBatchBlob(
+        const ClassicMeshBatchBlobV1& blob,
+        const ClassicMeshBatchCodecLimits& limits
+    ) noexcept
     {
         auto valid = validateClassicMeshBatchBlob(blob, limits);
         if (!valid)
             return lux::cxx::unexpected(std::move(valid.error()));
 
         ByteWriter writer;
-        writer.reserve(static_cast<std::size_t>(
-            kHeaderBytes + static_cast<std::uint64_t>(blob.instances.size()) * kInstanceBytes)
+        writer.reserve(
+            static_cast<std::size_t>(kHeaderBytes + static_cast<std::uint64_t>(blob.instances.size()) * kInstanceBytes)
         );
         writer.u32(kClassicMeshBatchBlobMagic);
         writer.u32(kClassicMeshBatchSchemaVersion);
@@ -148,14 +152,16 @@ namespace lux::classic_mesh
                 encoded.error().code == lux::serialization::ESerializationError::LIMIT_EXCEEDED
                     ? EClassicMeshBatchCodecError::LIMIT_EXCEEDED
                     : EClassicMeshBatchCodecError::ALLOCATION_FAILURE,
-                "Classic Mesh batch binary serialization failed")
-            );
+                "Classic Mesh batch binary serialization failed"
+            ));
         }
         return std::move(*encoded);
     }
 
-    ClassicMeshBatchExp<ClassicMeshBatchBlobV1>
-    decodeClassicMeshBatchBlob(std::span<const std::byte> bytes, const ClassicMeshBatchCodecLimits& limits) noexcept
+    ClassicMeshBatchExp<ClassicMeshBatchBlobV1> decodeClassicMeshBatchBlob(
+        std::span<const std::byte> bytes,
+        const ClassicMeshBatchCodecLimits& limits
+    ) noexcept
     {
         if (limits.maximum_instances == 0u || limits.maximum_encoded_bytes < kHeaderBytes)
         {
@@ -167,8 +173,8 @@ namespace lux::classic_mesh
         {
             return lux::cxx::unexpected(failure(
                 EClassicMeshBatchCodecError::LIMIT_EXCEEDED,
-                "Classic Mesh batch input exceeds the codec byte limit")
-            );
+                "Classic Mesh batch input exceeds the codec byte limit"
+            ));
         }
 
         std::string reader_error;
@@ -192,8 +198,8 @@ namespace lux::classic_mesh
         {
             return lux::cxx::unexpected(failure(
                 EClassicMeshBatchCodecError::UNSUPPORTED_VERSION,
-                "Classic Mesh batch schema version is unsupported")
-            );
+                "Classic Mesh batch schema version is unsupported"
+            ));
         }
         if (count == 0u)
         {
@@ -205,8 +211,8 @@ namespace lux::classic_mesh
         {
             return lux::cxx::unexpected(failure(
                 EClassicMeshBatchCodecError::LIMIT_EXCEEDED,
-                "Classic Mesh batch instance count exceeds the codec limit")
-            );
+                "Classic Mesh batch instance count exceeds the codec limit"
+            ));
         }
 
         const auto expected_bytes = kHeaderBytes + static_cast<std::uint64_t>(count) * kInstanceBytes;
@@ -214,8 +220,8 @@ namespace lux::classic_mesh
         {
             return lux::cxx::unexpected(failure(
                 EClassicMeshBatchCodecError::LIMIT_EXCEEDED,
-                "Classic Mesh batch decoded size exceeds the codec limit")
-            );
+                "Classic Mesh batch decoded size exceeds the codec limit"
+            ));
         }
         if (bytes.size() < expected_bytes)
         {
@@ -231,16 +237,10 @@ namespace lux::classic_mesh
         }
 
         ClassicMeshBatchBlobV1 result;
-        try
         {
             result.instances.resize(count);
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(
-                failure(EClassicMeshBatchCodecError::ALLOCATION_FAILURE, "Classic Mesh batch allocation failed")
-            );
-        }
+
         for (auto& instance : result.instances)
         {
             for (auto& value : instance.translation)

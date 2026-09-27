@@ -5,7 +5,7 @@
 #include <lux/engine/render/graph/ProgramEmitter.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
 #include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
-#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>             // domain slot resolution (kEngineSetShapes)
+#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp> // domain slot resolution (kEngineSetShapes)
 #include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp>
 // domain set instance (record-time collapsed binding)
 #include <lux/engine/render/graph/RGBarrierUtils.hpp>
@@ -56,8 +56,12 @@ namespace lux::render
         // ProgramEmitter is defined in ProgramEmitter.hpp (sinclude).
 
         // Emit a BeginRendering command with prebuilt header + per-attachment view patches.
-        void
-        emitBeginRendering(ProgramEmitter& e, uint32_t pi, const RGCompiledPass& cpass, const RGCompiledGraph& compiled)
+        void emitBeginRendering(
+            ProgramEmitter& e,
+            uint32_t pi,
+            const RGCompiledPass& cpass,
+            const RGCompiledGraph& compiled
+        )
         {
             const uint32_t group_idx = compiled.render_pass_layout.pass_to_group[pi];
             const auto& group = compiled.render_pass_layout.groups[group_idx];
@@ -174,13 +178,10 @@ namespace lux::render
             if (!patches.empty())
             {
                 const auto* bytes = reinterpret_cast<const std::byte*>(patches.data());
-                e.program.command_data.insert(
-                    e.program.command_data.end(),
-                    bytes,
-                    bytes + patches.size() * sizeof(ViewPatch)
-                );
+                e.program.command_data
+                    .insert(e.program.command_data.end(), bytes, bytes + patches.size() * sizeof(ViewPatch));
             }
-            e.program.commands.push_back({ExecutionProgram::Command::EType::BeginRendering, offset, total_size});
+            e.program.commands.push_back({ExecutionProgram::Command::EType::BEGIN_RENDERING, offset, total_size});
         }
     } // namespace
 
@@ -754,8 +755,7 @@ namespace lux::render
                 return a.geometry_kind < b.geometry_kind;
             }
             return a.bucket_id < b.bucket_id;
-        }
-        );
+        });
 
         // Assign offsets matching cull shader addressing.
         // Each lane maps to exactly one MDC entry.
@@ -938,10 +938,9 @@ namespace lux::render
                     const uint32_t ri = sync.image_patch_resource_idx[bi];
                     uint8_t src_is_final = 0u;
 
-                    const bool can_patch_first_touch = ri < compiled.original_graph.resources.size() &&
-                                                       ri < subsequent_view_patched.size() &&
-                                                       !subsequent_view_patched[ri] &&
-                                                       ri < compiled.imported_final_state_lut.size();
+                    const bool can_patch_first_touch =
+                        ri < compiled.original_graph.resources.size() && ri < subsequent_view_patched.size() &&
+                        !subsequent_view_patched[ri] && ri < compiled.imported_final_state_lut.size();
                     if (can_patch_first_touch)
                     {
                         const auto& resource = compiled.original_graph.resources[ri];
@@ -1097,7 +1096,7 @@ namespace lux::render
             const bool is_graphics = cpass.pass->type == ERGPassType::GRAPHICS;
 
             // --- Set pass context (executor tracks current pass) ---
-            emitter.emit(ExecutionProgram::Command::EType::SetPassContext, &pi, sizeof(uint32_t));
+            emitter.emit(ExecutionProgram::Command::EType::SET_PASS_CONTEXT, &pi, sizeof(uint32_t));
 
             // --- Pre-pass barriers ---
             const auto& sync = cpass.sync;
@@ -1108,7 +1107,11 @@ namespace lux::render
                     uint32_t pass_index;
                     uint32_t phase;
                 } bd{pi, 0};
-                emitter.emit(ExecutionProgram::Command::EType::PipelineBarrier, &bd, static_cast<uint16_t>(sizeof(bd)));
+                emitter.emit(
+                    ExecutionProgram::Command::EType::PIPELINE_BARRIER,
+                    &bd,
+                    static_cast<uint16_t>(sizeof(bd))
+                );
             }
 
             // --- Begin rendering (with prebuilt template) ---
@@ -1122,7 +1125,7 @@ namespace lux::render
             // location / input-index remaps (command-buffer dynamic state); the
             // non-first passes additionally carry the by-region intra-scope
             // barrier. Emitted as its own EType so the dynamic-rendering
-            // compatibility scan (no EType::PipelineBarrier inside a scope)
+            // compatibility scan (no EType::PIPELINE_BARRIER inside a scope)
             // stays truthful.
             if (is_graphics)
             {
@@ -1152,7 +1155,7 @@ namespace lux::render
                                 s < in_group->input_indices.size() ? in_group->input_indices[s] : VK_ATTACHMENT_UNUSED;
                         }
                         emitter.emit(
-                            ExecutionProgram::Command::EType::LocalReadBoundary,
+                            ExecutionProgram::Command::EType::LOCAL_READ_BOUNDARY,
                             &b,
                             static_cast<uint16_t>(sizeof(b))
                         );
@@ -1170,7 +1173,7 @@ namespace lux::render
                     VkPipeline pipeline;
                     VkPipelineLayout layout;
                 } bp{cpass.render.pipeline, cpass.render.pipeline_layout};
-                emitter.emit(ExecutionProgram::Command::EType::BindPipeline, &bp, static_cast<uint16_t>(sizeof(bp)));
+                emitter.emit(ExecutionProgram::Command::EType::BIND_PIPELINE, &bp, static_cast<uint16_t>(sizeof(bp)));
             }
 
             // --- Bind descriptor sets ---
@@ -1182,7 +1185,7 @@ namespace lux::render
                     VkDescriptorSet set;
                 } bd{recipe.slot, recipe.immutable_set};
                 const uint32_t cmd_idx = emitter.emit(
-                    ExecutionProgram::Command::EType::BindDescriptorSets,
+                    ExecutionProgram::Command::EType::BIND_DESCRIPTOR_SETS,
                     &bd,
                     static_cast<uint16_t>(sizeof(bd))
                 );
@@ -1192,7 +1195,7 @@ namespace lux::render
                     ExecutionProgram::DynamicPatch patch{};
                     patch.command_index = cmd_idx;
                     patch.data_field_offset = static_cast<uint16_t>(sizeof(uint32_t)); // offset of 'set' field
-                    patch.source = ExecutionProgram::DynamicPatch::ESource::FrameIndex;
+                    patch.source = ExecutionProgram::DynamicPatch::ESource::FRAME_INDEX;
                     patch.source_param = recipe.slot;
                     program.patches.push_back(patch);
                 }
@@ -1201,21 +1204,21 @@ namespace lux::render
             // --- Push constants (graphics: scene_index + view_index) ---
             if (is_graphics && !cpass.render.ds_bind_recipe.empty() && cpass.render.pipeline_layout != VK_NULL_HANDLE)
             {
-                emitter.emit(ExecutionProgram::Command::EType::PushConstants, &pi, sizeof(uint32_t));
+                emitter.emit(ExecutionProgram::Command::EType::PUSH_CONSTANTS, &pi, sizeof(uint32_t));
             }
 
             // --- Viewport / Scissor (every graphics pass) ---
             if (is_graphics && !cpass.pass->manual_viewport)
             {
-                emitter.emit(ExecutionProgram::Command::EType::SetViewport, &pi, sizeof(uint32_t));
-                emitter.emit(ExecutionProgram::Command::EType::SetScissor, &pi, sizeof(uint32_t));
+                emitter.emit(ExecutionProgram::Command::EType::SET_VIEWPORT, &pi, sizeof(uint32_t));
+                emitter.emit(ExecutionProgram::Command::EType::SET_SCISSOR, &pi, sizeof(uint32_t));
             }
 
             // --- Kernel-specific commands ---
             const uint32_t kernel_cmd_start = static_cast<uint32_t>(program.commands.size());
             if (cpass.execution_mode == EPassExecutionMode::COMPILED_CALLBACK)
             {
-                emitter.emit(ExecutionProgram::Command::EType::InvokeKernelFn, nullptr, 0);
+                emitter.emit(ExecutionProgram::Command::EType::INVOKE_KERNEL_FN, nullptr, 0);
             }
             else
             {
@@ -1232,13 +1235,13 @@ namespace lux::render
             if (cpass.execution_mode == EPassExecutionMode::COMPILED_NATIVE && cpass.pass->kernel_fn &&
                 static_cast<uint32_t>(program.commands.size()) == kernel_cmd_start)
             {
-                emitter.emit(ExecutionProgram::Command::EType::InvokeKernelFn, nullptr, 0);
+                emitter.emit(ExecutionProgram::Command::EType::INVOKE_KERNEL_FN, nullptr, 0);
             }
 
             // --- End rendering ---
             if (cpass.render.end_render_pass)
             {
-                emitter.emit(ExecutionProgram::Command::EType::EndRendering, nullptr, 0);
+                emitter.emit(ExecutionProgram::Command::EType::END_RENDERING, nullptr, 0);
             }
 
             auto& span = program.pass_spans[pi];
@@ -1256,15 +1259,15 @@ namespace lux::render
             bool compatible = true;
             for (const auto& cmd : program.commands)
             {
-                if (cmd.type == ExecutionProgram::Command::EType::BeginRendering)
+                if (cmd.type == ExecutionProgram::Command::EType::BEGIN_RENDERING)
                 {
                     inside_scope = true;
                 }
-                else if (cmd.type == ExecutionProgram::Command::EType::EndRendering)
+                else if (cmd.type == ExecutionProgram::Command::EType::END_RENDERING)
                 {
                     inside_scope = false;
                 }
-                else if (cmd.type == ExecutionProgram::Command::EType::PipelineBarrier && inside_scope)
+                else if (cmd.type == ExecutionProgram::Command::EType::PIPELINE_BARRIER && inside_scope)
                 {
                     compatible = false;
                     break;

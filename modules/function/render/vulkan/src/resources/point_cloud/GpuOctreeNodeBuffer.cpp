@@ -3,7 +3,6 @@
 #include <vk_mem_alloc.h>
 #include <lux/engine/render/gpu/lifecycle/VRAMBudgetGuard.hpp>
 
-#include <cassert>
 #include <cstring>
 
 namespace lux::render
@@ -145,7 +144,10 @@ namespace lux::render
 
     uint32_t GpuOctreeNodeBuffer::upsertNode(uint32_t chunk_id, const GpuOctreeNode& node, TransferScheduler& scheduler)
     {
-        assert(isInitialized());
+        if (!isInitialized())
+        {
+            return kInvalidIndex;
+        }
 
         uint32_t index = kInvalidIndex;
         if (chunk_to_index_.contains(chunk_id))
@@ -173,10 +175,9 @@ namespace lux::render
                 .dst = buffer_,
                 .dst_offset = byte_offset,
                 .size = byte_size,
-                .domain = EBufferDomain::Storage_CS,
+                .domain = EBufferDomain::STORAGE_CS,
                 .priority = 0,
-            }
-            );
+            });
         }
 
         return index;
@@ -198,10 +199,9 @@ namespace lux::render
                 .dst = buffer_,
                 .dst_offset = 0,
                 .size = sizeof(uint32_t),
-                .domain = EBufferDomain::Storage_CS,
+                .domain = EBufferDomain::STORAGE_CS,
                 .priority = 0,
-            }
-            );
+            });
         }
     }
 
@@ -225,10 +225,9 @@ namespace lux::render
                     .dst = buffer_,
                     .dst_offset = byte_offset,
                     .size = sizeof(GpuOctreeNode),
-                    .domain = EBufferDomain::Storage_CS,
+                    .domain = EBufferDomain::STORAGE_CS,
                     .priority = 0,
-                }
-                );
+                });
             }
         }
         pending_zeros_.clear();

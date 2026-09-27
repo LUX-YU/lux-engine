@@ -13,24 +13,29 @@ namespace lux::simulation::script::detail
     {
         // A double representation of INT64_MAX rounds up on MSVC. Use the exact
         // exclusive power-of-two limit and check the rounded value before casting.
-        template<class Duration>
-        [[nodiscard]] std::optional<Duration> checkedDuration(double seconds) noexcept
+        template <class Duration> [[nodiscard]] std::optional<Duration> checkedDuration(double seconds) noexcept
         {
             using Rep = typename Duration::rep;
             static_assert(std::is_integral_v<Rep> && std::is_signed_v<Rep>);
             const auto count = std::ceil(static_cast<long double>(seconds) * 1'000'000'000.0L);
             static_assert(std::numeric_limits<Rep>::digits < 64);
-            constexpr auto exclusive_limit = static_cast<long double>(
-                std::uint64_t{1U} << std::numeric_limits<Rep>::digits);
-            if (count >= exclusive_limit) return std::nullopt;
+            constexpr auto exclusive_limit =
+                static_cast<long double>(std::uint64_t{1U} << std::numeric_limits<Rep>::digits);
+            if (count >= exclusive_limit)
+                return std::nullopt;
             return Duration{static_cast<Rep>(count)};
         }
     }
 
-    void ScriptTimers::prepare(const SimulationClock& clock, ScriptRuntimeLimits limits,
-        ScriptRealDelayEndpoint real_delay, ScriptExecution& execution, std::size_t instance_capacity)
+    void ScriptTimers::prepare(
+        const SimulationTime& time,
+        ScriptRuntimeLimits limits,
+        ScriptRealDelayEndpoint real_delay,
+        ScriptExecution& execution,
+        std::size_t instance_capacity
+    )
     {
-        clock_ = &clock;
+        time_ = &time;
         execution_ = &execution;
         real_delay_ = real_delay;
         next_capacity_ = limits.next_step_wait_capacity;
@@ -39,8 +44,8 @@ namespace lux::simulation::script::detail
         // logical limits unchanged, and avoid imposing a new combined-capacity input restriction.
         const auto next_slots = (std::min)(next_capacity_, limits.awaitable_capacity);
         const auto delay_slots = (std::min)(delay_capacity_, limits.awaitable_capacity);
-        const auto slots = next_slots > limits.awaitable_capacity - delay_slots ? limits.awaitable_capacity :
-            next_slots + delay_slots;
+        const auto slots =
+            next_slots > limits.awaitable_capacity - delay_slots ? limits.awaitable_capacity : next_slots + delay_slots;
         waits_.reserve(slots);
         external_.reserve(slots);
         heap_.reserve(delay_slots);
@@ -65,15 +70,18 @@ namespace lux::simulation::script::detail
         const auto binding = lux::script::bindScriptAbility<DelayAbility>(*this);
         const auto expected = publishScriptAbility(binding);
         const bool invalid = publication.context != this || publication.dispatch != expected.dispatch ||
-            publication.contract != expected.contract || publication.schema_hash != expected.schema_hash ||
-            publication.schema_version != expected.schema_version ||
-            publication.methods.data() != expected.methods.data();
-        if (invalid) return {};
+                             publication.contract != expected.contract ||
+                             publication.schema_hash != expected.schema_hash ||
+                             publication.schema_version != expected.schema_version ||
+                             publication.methods.data() != expected.methods.data();
+        if (invalid)
+            return {};
         return {this, expected.dispatch, &resolveLocal};
     }
 
     PreparedLocalAsyncStart ScriptTimers::resolveLocal(
-        void* context, lux::script::ScriptApiMethodIdView method
+        void* context,
+        lux::script::ScriptApiMethodIdView method
     ) noexcept
     {
         if (method == lux::script::ScriptApiMethodIdView{"lux.simulation.delay.next_step"})
@@ -88,37 +96,47 @@ namespace lux::simulation::script::detail
     {
         if (kind == ETimerKind::NEXT_STEP)
         {
-            const auto current = clock_->snapshot();
+            const auto current = (*time_);
             if (current.step_index == std::numeric_limits<std::uint64_t>::max())
                 return error(EScriptDelayStatus::DURATION_OVERFLOW);
-            if (next_count_ >= next_capacity_) return error(EScriptDelayStatus::CAPACITY_EXCEEDED);
+            if (next_count_ >= next_capacity_)
+                return error(EScriptDelayStatus::CAPACITY_EXCEEDED);
             result = {{}, current.step_index + 1U};
             return {};
         }
-        if (!std::isfinite(duration) || duration < 0.0) return error(EScriptDelayStatus::INVALID_DURATION);
+        if (!std::isfinite(duration) || duration < 0.0)
+            return error(EScriptDelayStatus::INVALID_DURATION);
         const auto converted = checkedDuration<SimulationDuration>(duration);
-        if (!converted) return error(EScriptDelayStatus::DURATION_OVERFLOW);
+        if (!converted)
+            return error(EScriptDelayStatus::DURATION_OVERFLOW);
         const auto count = converted->count();
-        const auto current = clock_->snapshot();
+        const auto current = (*time_);
         const bool step_overflow = current.step_index == std::numeric_limits<std::uint64_t>::max();
-        const bool deadline_overflow = count > 0 &&
-            current.elapsed.count() > std::numeric_limits<SimulationDuration::rep>::max() - count;
-        if (step_overflow || deadline_overflow) return error(EScriptDelayStatus::DURATION_OVERFLOW);
-        if (heap_.size() >= delay_capacity_) return error(EScriptDelayStatus::CAPACITY_EXCEEDED);
-        if (sequence_ == std::numeric_limits<std::uint64_t>::max()) return error(EScriptDelayStatus::DURATION_OVERFLOW);
+        const bool deadline_overflow =
+            count > 0 && current.elapsed.count() > std::numeric_limits<SimulationDuration::rep>::max() - count;
+        if (step_overflow || deadline_overflow)
+            return error(EScriptDelayStatus::DURATION_OVERFLOW);
+        if (heap_.size() >= delay_capacity_)
+            return error(EScriptDelayStatus::CAPACITY_EXCEEDED);
+        if (sequence_ == std::numeric_limits<std::uint64_t>::max())
+            return error(EScriptDelayStatus::DURATION_OVERFLOW);
         result = {current.elapsed + SimulationDuration{count}, current.step_index + 1U};
         return {};
     }
 
-    template<ScriptTimers::ETimerKind Kind>
-    ScriptStepResult ScriptTimers::startLocal(void* context, ScriptStepContext& step,
-        std::span<const lux::script::ScriptAbilityInputSlot> arguments) noexcept
+    template <ScriptTimers::ETimerKind Kind>
+    ScriptStepResult ScriptTimers::startLocal(
+        void* context,
+        ScriptStepContext& step,
+        std::span<const lux::script::ScriptAbilityInputSlot> arguments
+    ) noexcept
     {
         auto& self = *static_cast<ScriptTimers*>(context);
         double duration{};
         if constexpr (Kind == ETimerKind::NEXT_STEP)
         {
-            if (!arguments.empty()) return ScriptStepResult::failed(-1);
+            if (!arguments.empty())
+                return ScriptStepResult::failed(-1);
         }
         else
         {
@@ -127,7 +145,8 @@ namespace lux::simulation::script::detail
             std::memcpy(&duration, arguments.front().data, sizeof(duration));
         }
         const auto admitted = self.execution_->reserveLocalTimer(step);
-        if (!admitted) return ScriptStepResult::failed(awaitableCreateStatus(admitted.error()));
+        if (!admitted)
+            return ScriptStepResult::failed(awaitableCreateStatus(admitted.error()));
         Schedule schedule;
         auto planned = self.stopping_ ? error(EScriptDelayStatus::STOPPING) : self.planWait(Kind, duration, schedule);
         if (planned)
@@ -142,11 +161,14 @@ namespace lux::simulation::script::detail
 
     ScriptTimers::StartResult ScriptTimers::nextStep(Completion completion) noexcept
     {
-        if (stopping_ || !completion.active()) return error(EScriptDelayStatus::STOPPING);
+        if (stopping_ || !completion.active())
+            return error(EScriptDelayStatus::STOPPING);
         Schedule schedule;
-        if (auto planned = planWait(ETimerKind::NEXT_STEP, 0.0, schedule); !planned) return planned;
+        if (auto planned = planWait(ETimerKind::NEXT_STEP, 0.0, schedule); !planned)
+            return planned;
         const auto admission = execution_->timerAssociation(completion);
-        if (!admission) return error(EScriptDelayStatus::STOPPING);
+        if (!admission)
+            return error(EScriptDelayStatus::STOPPING);
         return registerWait(ETimerKind::NEXT_STEP, *admission, std::move(completion), schedule.deadline, schedule.step);
     }
 
@@ -157,13 +179,20 @@ namespace lux::simulation::script::detail
 
     ScriptTimers::StartResult ScriptTimers::simulationSeconds(double duration, Completion completion) noexcept
     {
-        if (stopping_ || !completion.active()) return error(EScriptDelayStatus::STOPPING);
+        if (stopping_ || !completion.active())
+            return error(EScriptDelayStatus::STOPPING);
         Schedule schedule;
-        if (auto planned = planWait(ETimerKind::SIMULATION_DELAY, duration, schedule); !planned) return planned;
+        if (auto planned = planWait(ETimerKind::SIMULATION_DELAY, duration, schedule); !planned)
+            return planned;
         const auto admission = execution_->timerAssociation(completion);
-        if (!admission) return error(EScriptDelayStatus::STOPPING);
+        if (!admission)
+            return error(EScriptDelayStatus::STOPPING);
         return registerWait(
-            ETimerKind::SIMULATION_DELAY, *admission, std::move(completion), schedule.deadline, schedule.step
+            ETimerKind::SIMULATION_DELAY,
+            *admission,
+            std::move(completion),
+            schedule.deadline,
+            schedule.step
         );
     }
 
@@ -176,12 +205,18 @@ namespace lux::simulation::script::detail
         if (duration == 0.0)
             return nextStep(std::move(completion));
         const auto converted = checkedDuration<std::chrono::nanoseconds>(duration);
-        if (!converted) return error(EScriptDelayStatus::DURATION_OVERFLOW);
+        if (!converted)
+            return error(EScriptDelayStatus::DURATION_OVERFLOW);
         return real_delay_.invoke(*converted, std::move(completion));
     }
 
-    ScriptTimers::StartResult ScriptTimers::registerWait(ETimerKind kind, const ScriptTimerAdmission& admission,
-        Completion completion, SimulationDuration deadline, std::uint64_t step) noexcept
+    ScriptTimers::StartResult ScriptTimers::registerWait(
+        ETimerKind kind,
+        const ScriptTimerAdmission& admission,
+        Completion completion,
+        SimulationDuration deadline,
+        std::uint64_t step
+    ) noexcept
     {
         const auto association = admission.association();
         auto& owner = instances_[association.instance.slot - 1U];
@@ -192,16 +227,29 @@ namespace lux::simulation::script::detail
         if (route == ETimerRoute::EXTERNAL_CAPABILITY)
         {
             const auto reserved = external_.tryEmplace(std::move(completion));
-            if (!reserved) return error(EScriptDelayStatus::ALLOCATION_FAILURE);
+            if (!reserved)
+                return error(EScriptDelayStatus::ALLOCATION_FAILURE);
             external = *reserved;
         }
         const auto inserted = waits_.tryEmplace(Wait{
-            {}, association, external, route, kind, deadline, step,
-            kind == ETimerKind::SIMULATION_DELAY ? sequence_++ : 0U, 0U, {}, {}, {}, owner.first
+            {},
+            association,
+            external,
+            route,
+            kind,
+            deadline,
+            step,
+            kind == ETimerKind::SIMULATION_DELAY ? sequence_++ : 0U,
+            0U,
+            {},
+            {},
+            {},
+            owner.first
         });
         if (!inserted)
         {
-            if (route == ETimerRoute::EXTERNAL_CAPABILITY) static_cast<void>(external_.erase(external));
+            if (route == ETimerRoute::EXTERNAL_CAPABILITY)
+                static_cast<void>(external_.erase(external));
             return error(EScriptDelayStatus::ALLOCATION_FAILURE);
         }
         const ScriptSourceId id{inserted->index + 1U, inserted->gen};
@@ -332,7 +380,8 @@ namespace lux::simulation::script::detail
             return std::tuple{due.association, due.route, due.external};
         }();
         const auto completed = [&]() noexcept {
-            if (route == ETimerRoute::OWNER_LOCAL) return execution_->completeLocalTimer(association, id);
+            if (route == ETimerRoute::OWNER_LOCAL)
+                return execution_->completeLocalTimer(association, id);
             const auto completion = external_[external];
             return lux::script::detail::ScriptAbilityOwnerCompletionAccess::success(completion);
         }();
@@ -344,13 +393,13 @@ namespace lux::simulation::script::detail
         if (completed)
             return true;
         return completed.error() == lux::script::EScriptAbilityCompletionError::STALE ||
-            completed.error() == lux::script::EScriptAbilityCompletionError::STOPPING ||
-            completed.error() == lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED;
+               completed.error() == lux::script::EScriptAbilityCompletionError::STOPPING ||
+               completed.error() == lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED;
     }
 
     bool ScriptTimers::promoteNextStep() noexcept
     {
-        const auto current = clock_->snapshot();
+        const auto current = (*time_);
         while (next_first_.valid())
         {
             if (waits_[key(next_first_)].minimum_step > current.step_index)
@@ -366,7 +415,7 @@ namespace lux::simulation::script::detail
 
     bool ScriptTimers::promoteSimulationDelay() noexcept
     {
-        const auto current = clock_->snapshot();
+        const auto current = (*time_);
         while (!heap_.empty())
         {
             const auto& wait = waits_[key(heap_.front())];

@@ -30,8 +30,9 @@ namespace lux::render
     inline constexpr std::string_view kSkyboxEquirectFragShaderName = "skybox_equirect.frag";
 
     /// Comm-layer config for SkyboxFeature.
-    struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(prefix = Skybox, id = lux.render.skybox.v1, display = Skybox, custom_create = true)
-        SkyboxCommConfig
+    struct LUX_TYPE_INFO(both)
+        LUX_COMM_CONFIG(prefix = Skybox, id = lux.render.skybox.v1, display = Skybox, custom_create = true)
+            SkyboxCommConfig
     {
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle cubemap_fragment LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
@@ -40,7 +41,8 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<SkyboxCommConfig>);
 
     /// Set an equirectangular (2D) texture as the skybox.
-    struct LUX_OP(lane = program, kind = stream, name = SkyboxSetEquirect, method = setEquirect) SkyboxSetEquirectPayload
+    struct LUX_OP(lane = program, kind = stream, name = SkyboxSetEquirect, method = setEquirect)
+        SkyboxSetEquirectPayload
     {
         RenderSceneId scene_id{};
         FeatureHandle feature{};
@@ -80,7 +82,8 @@ namespace lux::render
         name = SkyboxStats,
         method = stats,
         reply = SkyboxStatsReply,
-        opcode = command) SkyboxStatsPayload final
+        opcode = command
+    ) SkyboxStatsPayload final
     {
         RenderSceneId scene_id{};
     };

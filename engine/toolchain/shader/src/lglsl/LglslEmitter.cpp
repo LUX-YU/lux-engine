@@ -243,10 +243,7 @@ namespace lux::shadergen::lglsl
         class Emitter
         {
         public:
-            Emitter(std::string_view source, EEmitMode mode)
-                : source_(source),
-                  mode_(mode)
-            {}
+            Emitter(std::string_view source, EEmitMode mode) : source_(source), mode_(mode) {}
 
             lux::cxx::expected<EmitOutput, std::string> run()
             {
@@ -266,12 +263,10 @@ namespace lux::shadergen::lglsl
                     return lux::cxx::unexpected<std::string>(
                         lux::format("line {}: 资源块声明未闭合(缺 '}};')", block_start_line_)
                     );
-                if (mode_ == EEmitMode::Shader && out_.meta.stage == rdesc::EShaderType::UNDEFINED)
-                    return lux::cxx::unexpected<std::string>(
-                        "缺少 '//! lux-shader stage=...' pragma"
-                        "(.lglsl 必须自描述)"
-                    );
-                if (mode_ == EEmitMode::Header && out_.meta.stage != rdesc::EShaderType::UNDEFINED)
+                if (mode_ == EEmitMode::SHADER && out_.meta.stage == rdesc::EShaderType::UNDEFINED)
+                    return lux::cxx::unexpected<std::string>("缺少 '//! lux-shader stage=...' pragma"
+                                                             "(.lglsl 必须自描述)");
+                if (mode_ == EEmitMode::HEADER && out_.meta.stage != rdesc::EShaderType::UNDEFINED)
                     return lux::cxx::unexpected<std::string>(
                         "共享头(.lglslh)不应声明 lux-shader —— stage 属于包含它的着色器"
                     );
@@ -358,10 +353,8 @@ namespace lux::shadergen::lglsl
             {
                 const std::string_view name = declarationName(judged);
                 if (name.empty())
-                    return std::string(
-                        "无法从资源声明中提取名字"
-                        "(约定式解析;若为特殊形态请显式写 layout)"
-                    );
+                    return std::string("无法从资源声明中提取名字"
+                                       "(约定式解析;若为特殊形态请显式写 layout)");
 
                 const auto* entry = rdesc::findLogicalResource(name);
 
@@ -452,7 +445,7 @@ namespace lux::shadergen::lglsl
             }
 
             std::string_view source_;
-            EEmitMode mode_{EEmitMode::Shader};
+            EEmitMode mode_{EEmitMode::SHADER};
             EmitOutput out_{};
 
             bool in_block_{false};

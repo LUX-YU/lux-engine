@@ -74,7 +74,8 @@ namespace lux::render
         // 是个空操作 —— 但标记本身是注册通过的前提。
         const std::array stage_requests{
             PipelineStageRequest{EBuiltinShader::TONEMAP_VERT, cfg_.vertex_shader},
-            PipelineStageRequest{EBuiltinShader::TONEMAP_FRAG, cfg_.fragment_shader}};
+            PipelineStageRequest{EBuiltinShader::TONEMAP_FRAG, cfg_.fragment_shader}
+        };
 
         auto stages = preparePipelineStages(shaders, stage_requests);
         if (!stages)
@@ -165,10 +166,9 @@ namespace lux::render
 
                 // Draw fullscreen triangle
                 vkCmdDraw(rec.cmd, 3, 1, 0, 0);
-            }
-            )
+            })
             .setKernel("TonemapPass")
-            .stage(ERenderStage::PostProcess); // HDR→LDR scene composite — runs BEFORE the
+            .stage(ERenderStage::POST_PROCESS_STAGE); // HDR→LDR scene composite — runs BEFORE the
                                                // Overlay-stage grid/gizmos that draw on top
     }
 

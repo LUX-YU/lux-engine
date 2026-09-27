@@ -358,8 +358,8 @@ namespace lux::render
                 current_group.key.subpass_count = 1;
                 current_group.passes.push_back(RGPassInRenderPass{
                     pass_idx,
-                    /*subpass_index*/ 0u}
-                );
+                    /*subpass_index*/ 0u
+                });
 
                 has_current_group = true;
             }
@@ -378,8 +378,8 @@ namespace lux::render
                              pass_idx,
                              graph.passes[pass_idx],
                              key,
-                             color_budget)
-                )
+                             color_budget
+                         ))
                 {
                     // Absorbed as a local-read consumer: the group
                     // key is now the attachment UNION and stays open — a
@@ -404,8 +404,8 @@ namespace lux::render
                     current_group.key.subpass_count = 1;
                     current_group.passes.push_back(RGPassInRenderPass{
                         pass_idx,
-                        /*subpass_index*/ 0u}
-                    );
+                        /*subpass_index*/ 0u
+                    });
                 }
             }
         }

@@ -53,8 +53,11 @@ namespace lux::render
             const RGPhysicalResourceTable& physical_resources,
             uint32_t frames_in_flight
         );
-        std::optional<RenderError>
-        computeGroupExtents(RGRecordContext& record_context, const RGCompiledGraph& graph, VkExtent2D extent);
+        std::optional<RenderError> computeGroupExtents(
+            RGRecordContext& record_context,
+            const RGCompiledGraph& graph,
+            VkExtent2D extent
+        );
 
         void destroyImageViews(RGRecordContext& record_context);
 

@@ -39,9 +39,9 @@ namespace lux::render
 
     enum class EIndexType : uint8_t
     {
-        None = 0,
-        UInt16,
-        UInt32
+        NONE = 0,
+        UINT16,
+        UINT32
     };
 
     /// Max discrete LOD levels per mesh (LOD0 + up to 3 simplified). Caps the
@@ -88,7 +88,7 @@ namespace lux::render
         uint32_t vertex_stride{0};
         BufferRange vertex_buffer_range{};
         BufferRange index_buffer_range{};
-        EIndexType index_type{EIndexType::UInt32};
+        EIndexType index_type{EIndexType::UINT32};
         uint32_t index_count{0};
         // Discrete-LOD index sub-ranges within the (concatenated) IBO. lod_count>=1;
         // [0]=LOD0 (== the whole mesh when single-LOD). Built in create/allocateOnly.
@@ -124,7 +124,7 @@ namespace lux::render
         uint32_t vertex_stride{0};
         std::span<const std::byte> vertex_buffer{};
         std::span<const std::byte> index_buffer{}; // concatenated [LOD0 .. LODn]
-        EIndexType index_type{EIndexType::None};
+        EIndexType index_type{EIndexType::NONE};
         std::optional<math::AABB> bounds{};
         // Per-LOD index counts within `index_buffer` (LOD0 first; sum == total).
         // Empty ⇒ single-LOD mesh (the whole index_buffer is LOD0).
@@ -141,7 +141,7 @@ namespace lux::render
         uint16_t ibo_segment{0};
     };
 
-    class LUX_FUNCTION_PUBLIC MeshResources final : public GPUResourceBase<MeshResources, EGPUResourceType::Mesh>
+    class LUX_FUNCTION_PUBLIC MeshResources final : public TGPUResourceBase<MeshResources, EGPUResourceType::MESH>
     {
     public:
         struct ArenaTelemetry final
@@ -371,7 +371,7 @@ namespace lux::render
         }
         EIndexType indexType(MeshHandle h) const
         {
-            return alive(h) ? gpu_records_[h.index].index_type : EIndexType::None;
+            return alive(h) ? gpu_records_[h.index].index_type : EIndexType::NONE;
         }
         [[nodiscard]] const std::optional<lux::render::CapacityShortfall>& lastCapacityShortfall() const noexcept
         {
@@ -488,7 +488,8 @@ namespace lux::render
                 used,
                 capacity > used ? capacity - used : 0u,
                 arena.largestFreeBlock(),
-                arena.fragmentationRatio()};
+                arena.fragmentationRatio()
+            };
         }
 
         // —— Tools —— //
@@ -498,8 +499,11 @@ namespace lux::render
         }
 
         // DESIGN-04: ChainedArenaAllocator-based sub-allocation with free+coalescing
-        Expected<SegmentedRange>
-        suballoc(ChainedArenaAllocator& arena, std::span<const std::byte> data, uint64_t alignment = 256);
+        Expected<SegmentedRange> suballoc(
+            ChainedArenaAllocator& arena,
+            std::span<const std::byte> data,
+            uint64_t alignment = 256
+        );
 
         /// Allocate a new GPU buffer segment and add it to the vector / chained arena.
         bool addBufferSegment(
@@ -531,7 +535,7 @@ namespace lux::render
             std::uint64_t effective,
             std::uint64_t bytes,
             std::uint64_t available_bytes,
-            lux::render::CapacityPlanReason reason
+            lux::render::ECapacityPlanReason reason
         ) noexcept;
         bool destroyNow(MeshHandle h);
 
@@ -546,7 +550,7 @@ namespace lux::render
         ///   处拒绝非段 0 的网格,把这条不变量守住。
         static uint32_t calcIndexStartInSegment(EIndexType it, const BufferRange& ir, uint32_t sub_first)
         {
-            const uint32_t index_size = (it == EIndexType::UInt16 ? 2u : 4u);
+            const uint32_t index_size = (it == EIndexType::UINT16 ? 2u : 4u);
             return static_cast<uint32_t>(ir.offset / index_size) + sub_first;
         }
 
@@ -575,8 +579,8 @@ namespace lux::render
         SlicedSSBO<MeshInfoGpu> segments_ssbo_;
 
         static constexpr std::size_t kMeshRecordsPerPage = 4096u;
-        StableRecordPages<MeshCpuRecord, kMeshRecordsPerPage> cpu_records_;
-        StableRecordPages<MeshGpuRecord, kMeshRecordsPerPage> gpu_records_;
+        TStableRecordPages<MeshCpuRecord, kMeshRecordsPerPage> cpu_records_;
+        TStableRecordPages<MeshGpuRecord, kMeshRecordsPerPage> gpu_records_;
         std::vector<uint32_t> gens_;
         std::vector<uint32_t> free_;
         std::vector<uint32_t> instance_refcounts_;

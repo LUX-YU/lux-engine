@@ -35,7 +35,7 @@ namespace lux::render
 
         PendingDestroy p{};
         p.retire_serial = serial;
-        p.type = PendingType::Buffer;
+        p.type = EPendingType::BUFFER;
         p.payload.buffer = {buffer, allocation};
         enqueue(std::move(p));
     }
@@ -52,7 +52,7 @@ namespace lux::render
 
         PendingDestroy p{};
         p.retire_serial = serial;
-        p.type = PendingType::DescriptorSet;
+        p.type = EPendingType::DESCRIPTOR_SET;
         p.payload.desc_set = {pool, set};
         enqueue(std::move(p));
     }
@@ -69,7 +69,7 @@ namespace lux::render
 
         PendingDestroy p{};
         p.retire_serial = serial;
-        p.type = PendingType::Image;
+        p.type = EPendingType::IMAGE;
         p.payload.image = {image, allocation};
         enqueue(std::move(p));
     }
@@ -86,7 +86,7 @@ namespace lux::render
 
         PendingDestroy p{};
         p.retire_serial = serial;
-        p.type = PendingType::ImageView;
+        p.type = EPendingType::IMAGE_VIEW;
         p.payload.image_view = {view};
         enqueue(std::move(p));
     }
@@ -103,7 +103,7 @@ namespace lux::render
 
         PendingDestroy p{};
         p.retire_serial = serial;
-        p.type = PendingType::Sampler;
+        p.type = EPendingType::SAMPLER;
         p.payload.sampler = {sampler};
         enqueue(std::move(p));
     }
@@ -120,7 +120,7 @@ namespace lux::render
 
         PendingDestroy p{};
         p.retire_serial = serial;
-        p.type = PendingType::RawBuffer;
+        p.type = EPendingType::RAW_BUFFER;
         p.payload.raw_buffer = {buffer};
         enqueue(std::move(p));
     }
@@ -137,7 +137,7 @@ namespace lux::render
 
         PendingDestroy p{};
         p.retire_serial = serial;
-        p.type = PendingType::DeviceMemory;
+        p.type = EPendingType::DEVICE_MEMORY;
         p.payload.device_memory = {memory};
         enqueue(std::move(p));
     }
@@ -154,7 +154,7 @@ namespace lux::render
 
         PendingDestroy p{};
         p.retire_serial = serial;
-        p.type = PendingType::Semaphore;
+        p.type = EPendingType::SEMAPHORE;
         p.payload.semaphore = {semaphore};
         enqueue(std::move(p));
     }
@@ -225,28 +225,28 @@ namespace lux::render
     {
         switch (p.type)
         {
-        case PendingType::Buffer:
+        case EPendingType::BUFFER:
             vmaDestroyBuffer(allocator_, p.payload.buffer.buffer, p.payload.buffer.allocation);
             break;
-        case PendingType::RawBuffer:
+        case EPendingType::RAW_BUFFER:
             vkDestroyBuffer(device_, p.payload.raw_buffer.buffer, nullptr);
             break;
-        case PendingType::DescriptorSet:
+        case EPendingType::DESCRIPTOR_SET:
             vkFreeDescriptorSets(device_, p.payload.desc_set.pool, 1, &p.payload.desc_set.set);
             break;
-        case PendingType::Image:
+        case EPendingType::IMAGE:
             vmaDestroyImage(allocator_, p.payload.image.image, p.payload.image.allocation);
             break;
-        case PendingType::ImageView:
+        case EPendingType::IMAGE_VIEW:
             vkDestroyImageView(device_, p.payload.image_view.view, nullptr);
             break;
-        case PendingType::Sampler:
+        case EPendingType::SAMPLER:
             vkDestroySampler(device_, p.payload.sampler.sampler, nullptr);
             break;
-        case PendingType::DeviceMemory:
+        case EPendingType::DEVICE_MEMORY:
             vkFreeMemory(device_, p.payload.device_memory.memory, nullptr);
             break;
-        case PendingType::Semaphore:
+        case EPendingType::SEMAPHORE:
             vkDestroySemaphore(device_, p.payload.semaphore.semaphore, nullptr);
             break;
         }

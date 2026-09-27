@@ -17,7 +17,7 @@ namespace lux::rdesc
 
         std::array<std::array<float, 4U>, kMaxParams> parameter_defaults{};
         std::uint32_t parameter_count{};
-        EAlphaMode alpha_mode{EAlphaMode::Opaque};
+        EAlphaMode alpha_mode{EAlphaMode::OPAQUE_SURFACE};
         bool double_sided{};
         std::vector<std::uint32_t> gbuffer_spirv;
         ShaderInfo gbuffer_info;
@@ -37,7 +37,7 @@ namespace lux::rdesc
         std::uint32_t tex_override_mask{};
         std::array<lux::asset::AssetId, kMaxTextures> texture_slot_ids{};
         std::uint32_t render_state_override{};
-        EAlphaMode alpha_mode{EAlphaMode::Opaque};
+        EAlphaMode alpha_mode{EAlphaMode::OPAQUE_SURFACE};
         bool double_sided{};
     };
 } // namespace lux::rdesc

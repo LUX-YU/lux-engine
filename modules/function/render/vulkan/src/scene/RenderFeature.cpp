@@ -6,20 +6,21 @@
 // 而反向依赖 scene(那正是 L4 内部那个强连通分量的一半)。
 #include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
-
-#include <cassert>
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 
 namespace lux::render
 {
     RenderScene& RenderFeature::renderScene() noexcept
     {
-        assert(scene_ && "RenderFeature::renderScene() called before attach");
+        if (!scene_)
+            renderFatal("RenderFeature::renderScene() called before attach");
         return *scene_;
     }
 
     const RenderScene& RenderFeature::renderScene() const noexcept
     {
-        assert(scene_ && "RenderFeature::renderScene() called before attach");
+        if (!scene_)
+            renderFatal("RenderFeature::renderScene() called before attach");
         return *scene_;
     }
 

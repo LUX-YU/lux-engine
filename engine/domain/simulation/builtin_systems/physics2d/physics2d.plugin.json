@@ -1,6 +1,6 @@
 {
   "format": "lux.engine.plugin",
-  "version": 1,
+  "version": 2,
   "plugin": {
     "id": "lux.builtin.physics2d",
     "version": 1,
@@ -16,7 +16,7 @@
     "dependencies": [
       {
         "plugin": "lux.builtin.runtime",
-        "version": 1
+        "version": 2
       }
     ]
   }

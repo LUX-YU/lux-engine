@@ -42,7 +42,7 @@
     "id": "{{ id }}.configuration", "version": 1, "display_name": "{{ prefix }} configuration",
     "fields": [
 {% set field_emitted = false %}{% for field_id in cfg.field_decls %}{% set f = decl_from_id(field_id) %}
-{% if f.visibility == 1 and not annotation_get_for_or(f, "luxtype::member", "skip_static", false) %}
+{% if f.visibility == 1 and not annotation_get_for_or(f, "luxtype::member", "skip_static", false) and not annotation_get_for_or(cfg, marker, "custom_codec", false) %}
 {% if field_emitted %},{% endif %}{% set field_emitted = true %}
       {"id": "{{ f.name }}", "type": "{{ cxx_str(f.type_id) }}", "display_name": "{{ f.name }}"}
 {% endif %}{% endfor %}

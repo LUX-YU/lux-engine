@@ -7,10 +7,13 @@ namespace lux::simulation::ecs
     namespace
     {
         template <class Visitor>
-        lux::cxx::expected<void, EEntityPlanError> visitPlanned(const Registry &registry, std::size_t count,
-                                                                Visitor &&visit)
+        lux::cxx::expected<void, EEntityPlanError> visitPlanned(
+            const Registry& registry,
+            std::size_t count,
+            Visitor&& visit
+        )
         {
-            const auto *pool = registry.storage<Entity>();
+            const auto* pool = registry.storage<Entity>();
             const auto size = pool ? pool->size() : 0;
             std::size_t available = pool ? pool->free_list() : 0;
             using Traits = entt::entt_traits<Entity>;
@@ -35,17 +38,17 @@ namespace lux::simulation::ecs
         }
     } // namespace
 
-    lux::cxx::expected<EntityCreationPlan, EEntityPlanError> planEntityCreation(const Registry &registry,
-                                                                                std::size_t count)
+    lux::cxx::expected<EntityCreationPlan, EEntityPlanError> planEntityCreation(
+        const Registry& registry,
+        std::size_t count
+    )
     {
         EntityCreationPlan result;
         result.entities_.reserve(count);
-        const auto planned = visitPlanned(registry, count,
-                                          [&](std::size_t, Entity entity)
-                                          {
-                                              result.entities_.push_back(entity);
-                                              return true;
-                                          });
+        const auto planned = visitPlanned(registry, count, [&](std::size_t, Entity entity) {
+            result.entities_.push_back(entity);
+            return true;
+        });
         if (!planned)
         {
             return lux::cxx::unexpected(planned.error());
@@ -53,10 +56,13 @@ namespace lux::simulation::ecs
         return result;
     }
 
-    lux::cxx::expected<void, EEntityPlanError> validateEntityCreation(const Registry &registry,
-                                                                      const EntityCreationPlan &plan)
+    lux::cxx::expected<void, EEntityPlanError> validateEntityCreation(
+        const Registry& registry,
+        const EntityCreationPlan& plan
+    )
     {
-        return visitPlanned(registry, plan.entities().size(),
-                            [&](std::size_t index, Entity entity) { return plan.entities()[index] == entity; });
+        return visitPlanned(registry, plan.entities().size(), [&](std::size_t index, Entity entity) {
+            return plan.entities()[index] == entity;
+        });
     }
 } // namespace lux::simulation::ecs

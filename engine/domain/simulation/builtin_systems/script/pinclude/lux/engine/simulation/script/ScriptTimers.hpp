@@ -13,9 +13,14 @@ namespace lux::simulation::script::detail
     {
     public:
         using StartResult = lux::script::ScriptAbilityStartResult;
-        using Completion = lux::script::ScriptAbilityCompletion<void>;
-        void prepare(const SimulationClock& clock, ScriptRuntimeLimits limits, ScriptRealDelayEndpoint real_delay,
-            ScriptExecution& execution, std::size_t instance_capacity);
+        using Completion = lux::script::TScriptAbilityCompletion<void>;
+        void prepare(
+            const SimulationTime& time,
+            ScriptRuntimeLimits limits,
+            ScriptRealDelayEndpoint real_delay,
+            ScriptExecution& execution,
+            std::size_t instance_capacity
+        );
         void beginInstance(ScriptInstanceId instance) noexcept;
         [[nodiscard]] PreparedLocalAsyncCatalog localCatalog(const ScriptApiCapabilityPublication& binding) noexcept;
         [[nodiscard]] StartResult nextStep(Completion completion) noexcept;
@@ -26,13 +31,24 @@ namespace lux::simulation::script::detail
         [[nodiscard]] bool promoteSimulationDelay() noexcept;
         [[nodiscard]] std::optional<ScriptSourceCancellation> cancel(ScriptSourceId id) noexcept;
         [[nodiscard]] std::optional<ScriptSourceCancellation> cancelNext(ScriptInstanceId instance) noexcept;
-        void stop() noexcept { stopping_ = true; }
+        void stop() noexcept
+        {
+            stopping_ = true;
+        }
         void shutdown() noexcept;
         void writeStats(ScriptRuntimeStats& stats) const noexcept;
 
     private:
-        enum class ETimerKind : std::uint8_t { NEXT_STEP, SIMULATION_DELAY };
-        enum class ETimerRoute : std::uint8_t { OWNER_LOCAL, EXTERNAL_CAPABILITY };
+        enum class ETimerKind : std::uint8_t
+        {
+            NEXT_STEP,
+            SIMULATION_DELAY
+        };
+        enum class ETimerRoute : std::uint8_t
+        {
+            OWNER_LOCAL,
+            EXTERNAL_CAPABILITY
+        };
         struct TimerTag;
         struct ExternalTag;
         using ExternalStorage = lux::cxx::SlotMap<Completion, ExternalTag>;
@@ -64,14 +80,23 @@ namespace lux::simulation::script::detail
             return id.valid() ? Key{id.slot - 1U, id.generation} : Key::invalid();
         }
         [[nodiscard]] static StartResult error(EScriptDelayStatus status) noexcept;
-        [[nodiscard]] StartResult registerWait(ETimerKind kind, const ScriptTimerAdmission& admission,
-            Completion completion, SimulationDuration deadline, std::uint64_t step) noexcept;
-        struct Schedule final { SimulationDuration deadline; std::uint64_t step{}; };
+        [[nodiscard]] StartResult registerWait(
+            ETimerKind kind,
+            const ScriptTimerAdmission& admission,
+            Completion completion,
+            SimulationDuration deadline,
+            std::uint64_t step
+        ) noexcept;
+        struct Schedule final
+        {
+            SimulationDuration deadline;
+            std::uint64_t step{};
+        };
         [[nodiscard]] StartResult planWait(ETimerKind kind, double duration, Schedule& result) const noexcept;
         [[nodiscard]] static PreparedLocalAsyncStart resolveLocal(void*, lux::script::ScriptApiMethodIdView) noexcept;
-        template<ETimerKind Kind>
-        [[nodiscard]] static ScriptStepResult startLocal(void*, ScriptStepContext&,
-            std::span<const lux::script::ScriptAbilityInputSlot>) noexcept;
+        template <ETimerKind Kind>
+        [[nodiscard]] static ScriptStepResult
+        startLocal(void*, ScriptStepContext&, std::span<const lux::script::ScriptAbilityInputSlot>) noexcept;
         [[nodiscard]] bool earlier(ScriptSourceId left, ScriptSourceId right) const noexcept;
         void swapHeap(std::size_t left, std::size_t right) noexcept;
         void siftUp(std::size_t index) noexcept;
@@ -79,7 +104,7 @@ namespace lux::simulation::script::detail
         void eraseHeap(std::size_t index) noexcept;
         [[nodiscard]] bool completeDue(ScriptSourceId id, bool& backpressured) noexcept;
 
-        const SimulationClock* clock_{};
+        const SimulationTime* time_{};
         ScriptExecution* execution_{};
         ScriptRealDelayEndpoint real_delay_;
         Storage waits_;

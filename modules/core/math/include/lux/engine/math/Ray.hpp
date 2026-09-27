@@ -6,7 +6,7 @@ namespace lux::math
     /**
      * @brief A 3D ray defined by an origin point and a (normalized) direction.
      */
-    template <class Scalar> struct BasicRay
+    template <class Scalar> struct TBasicRay
     {
         using Vector = Eigen::Matrix<Scalar, 3, 1>;
         Vector origin = Vector::Zero();
@@ -19,7 +19,7 @@ namespace lux::math
         }
     };
 
-    using Ray = BasicRay<float>;
-    using Ray3d = BasicRay<double>;
+    using Ray = TBasicRay<float>;
+    using Ray3d = TBasicRay<double>;
 
 } // namespace lux::math

@@ -41,12 +41,10 @@ namespace lux::simulation
     namespace detail
     {
         template <class Value>
-        inline constexpr bool kValidEndpointParameter = []
-        {
+        inline constexpr bool kValidEndpointParameter = [] {
             using Reference = std::remove_reference_t<Value>;
             using Base = std::remove_cv_t<Reference>;
-            if constexpr (!lux::semantic::TypeDeclared<Base> ||
-                          std::is_pointer_v<Base> ||
+            if constexpr (!lux::semantic::TypeDeclared<Base> || std::is_pointer_v<Base> ||
                           std::is_rvalue_reference_v<Value>)
             {
                 return false;
@@ -58,44 +56,36 @@ namespace lux::simulation
             return true;
         }();
 
-        template <class Value>
-        [[nodiscard]] consteval lux::semantic::Type endpointParameter() noexcept
+        template <class Value> [[nodiscard]] consteval lux::semantic::Type endpointParameter() noexcept
         {
             static_assert(kValidEndpointParameter<Value>);
             using Base = std::remove_cv_t<std::remove_reference_t<Value>>;
-            constexpr auto pass = std::is_lvalue_reference_v<Value>
-                ? lux::semantic::EValuePass::CONST_REF
-                : lux::semantic::EValuePass::VALUE;
+            constexpr auto pass = std::is_lvalue_reference_v<Value> ? lux::semantic::EValuePass::CONST_REF
+                                                                    : lux::semantic::EValuePass::VALUE;
             return lux::semantic::makeType<Base>(pass);
         }
 
-        template <class Signature>
-        struct EndpointSignatureStorage;
+        template <class Signature> struct TEndpointSignatureStorage;
 
-        template <class... Parameters>
-        struct EndpointSignatureStorage<void(Parameters...)> final
+        template <class... Parameters> struct TEndpointSignatureStorage<void(Parameters...)> final
         {
             static_assert((kValidEndpointParameter<Parameters> && ...));
 
-            inline static constexpr std::array<
-                lux::semantic::Type,
-                sizeof...(Parameters)> parameter_types{
-                    endpointParameter<Parameters>()...};
-            inline static constexpr std::array<lux::semantic::Type, 0U>
-                return_types{};
+            inline static constexpr std::array<lux::semantic::Type, sizeof...(Parameters)> parameter_types{
+                endpointParameter<Parameters>()...
+            };
+            inline static constexpr std::array<lux::semantic::Type, 0U> return_types{};
 
-            [[nodiscard]] static constexpr lux::semantic::SignatureView
-            view() noexcept
+            [[nodiscard]] static constexpr lux::semantic::SignatureView view() noexcept
             {
                 return {parameter_types, return_types};
             }
         };
 
         template <class... Parameters>
-        struct EndpointSignatureStorage<void(Parameters...) noexcept> final
-            : EndpointSignatureStorage<void(Parameters...)>
-        {
-        };
+        struct TEndpointSignatureStorage<void(Parameters...) noexcept> final
+            : TEndpointSignatureStorage<void(Parameters...)>
+        {};
     }
 
     template <class Signature>
@@ -111,7 +101,11 @@ namespace lux::simulation
         return {
             id,
             diagnostic_name,
-            detail::EndpointSignatureStorage<Signature>::view(), script_capable, stable_resume, contract_version};
+            detail::TEndpointSignatureStorage<Signature>::view(),
+            script_capable,
+            stable_resume,
+            contract_version
+        };
     }
 
     template <class Payload>
@@ -133,16 +127,15 @@ namespace lux::simulation
             route,
             lux::semantic::makeType<Payload>().type_id,
             payload_schema_name,
-            payload_schema_version, owner_reproduction};
+            payload_schema_version,
+            owner_reproduction
+        };
     }
 
-    [[nodiscard]] constexpr bool validHookPointSpec(
-        const HookPointSpec& spec
-    ) noexcept
+    [[nodiscard]] constexpr bool validHookPointSpec(const HookPointSpec& spec) noexcept
     {
-        if (!spec.id.valid() || spec.diagnostic_name.empty() ||
-            !spec.signature.returns.empty() || spec.contract_version == 0U ||
-            (spec.stable_resume && !spec.script_capable))
+        if (!spec.id.valid() || spec.diagnostic_name.empty() || !spec.signature.returns.empty() ||
+            spec.contract_version == 0U || (spec.stable_resume && !spec.script_capable))
         {
             return false;
         }
@@ -154,15 +147,10 @@ namespace lux::simulation
         return true;
     }
 
-    [[nodiscard]] constexpr bool validEventPointSpec(
-        const EventPointSpec& spec
-    ) noexcept
+    [[nodiscard]] constexpr bool validEventPointSpec(const EventPointSpec& spec) noexcept
     {
-        return spec.id.valid() && !spec.diagnostic_name.empty() &&
-            spec.dispatch_hook.valid() && spec.payload_type != 0U &&
-            !spec.payload_schema_name.empty() &&
-            spec.payload_schema_version != 0U &&
-            (spec.route == EEventRoute::SIMULATION_BROADCAST ||
-             spec.route == EEventRoute::ENTITY_TARGETED);
+        return spec.id.valid() && !spec.diagnostic_name.empty() && spec.dispatch_hook.valid() &&
+               spec.payload_type != 0U && !spec.payload_schema_name.empty() && spec.payload_schema_version != 0U &&
+               (spec.route == EEventRoute::SIMULATION_BROADCAST || spec.route == EEventRoute::ENTITY_TARGETED);
     }
 }

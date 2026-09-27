@@ -28,7 +28,7 @@ namespace lux::render
     {
     public:
         static constexpr phase_mask_t kExtractPhaseMask =
-            phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::GBuffer));
+            phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::G_BUFFER));
 
         struct Config
         {

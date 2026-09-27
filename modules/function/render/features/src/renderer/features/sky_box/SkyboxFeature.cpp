@@ -21,9 +21,7 @@ namespace lux::render
     // RenderFeature lifecycle
     // ==================================================================
 
-    SkyboxFeature::SkyboxFeature(Config cfg) : cfg_(std::move(cfg))
-    {
-    }
+    SkyboxFeature::SkyboxFeature(Config cfg) : cfg_(std::move(cfg)) {}
 
     lux::render::Expected<void> SkyboxFeature::initAndAttachTo(RenderScene& /*scene*/)
     {
@@ -39,7 +37,8 @@ namespace lux::render
         const std::array backfill{
             ShaderStageSlot{EBuiltinShader::SKYBOX_VERT, &cfg_.vertex_shader},
             ShaderStageSlot{EBuiltinShader::SKYBOX_CUBEMAP_FRAG, &cfg_.cubemap_fragment},
-            ShaderStageSlot{EBuiltinShader::SKYBOX_EQUIRECT_FRAG, &cfg_.equirect_fragment}};
+            ShaderStageSlot{EBuiltinShader::SKYBOX_EQUIRECT_FRAG, &cfg_.equirect_fragment}
+        };
         if (auto filled = resolveShaderStages(shaders, backfill); !filled)
             return filled;
 
@@ -135,7 +134,8 @@ namespace lux::render
             tmpl.descriptor_set_count = 3;
             const std::array<const lux::rdesc::ShaderInfo*, 2> equi_infos{
                 &prepared->info(0),
-                &prepared->info(equi_index)};
+                &prepared->info(equi_index)
+            };
             auto handle = ctx.pipelineManager().registerGraphicsTemplate(tmpl, equi_infos);
             if (!handle)
                 return lux::cxx::unexpected(handle.error());
@@ -150,7 +150,8 @@ namespace lux::render
             tmpl.descriptor_set_count = 3;
             const std::array<const lux::rdesc::ShaderInfo*, 2> cube_infos{
                 &prepared->info(0),
-                &prepared->info(cube_index)};
+                &prepared->info(cube_index)
+            };
             auto handle = ctx.pipelineManager().registerGraphicsTemplate(tmpl, cube_infos);
             if (!handle)
                 return lux::cxx::unexpected(handle.error());
@@ -184,7 +185,7 @@ namespace lux::render
                 .write(color_target, lux::render::ETextureRole::COLOR_ATTACHMENT)
                 .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
                 .setPipeline(base_pipeline)
-                .stage(ERenderStage::Sky); // after opaque, before overlays (Grid/Gizmo)
+                .stage(ERenderStage::SKY_STAGE); // after opaque, before overlays (Grid/Gizmo)
 
         if (has_equirect && has_cubemap)
             pass.addPipeline(cubemap_handle_);
@@ -196,11 +197,11 @@ namespace lux::render
         // onto the texture table's slot — verified by testing to trigger
         // VUID-00358.
         pass.bindSceneDS()
-            .bindImmutableDS(EDescriptorSetSlot::Texture, ctx.globalRegistry().descriptorSetOf<TextureResources>())
+            .bindImmutableDS(EDescriptorSetSlot::TEXTURE, ctx.globalRegistry().descriptorSetOf<TextureResources>())
             .setKernelFn(
                 [this, has_equirect, has_cubemap, equirect_variant, cubemap_variant](const PassRecordContext& ctx) {
                     ++pass_visits_;
-                    if (active_mode_ == ActiveMode::NONE)
+                    if (active_mode_ == EActiveMode::NONE)
                     {
                         ++inactive_pass_visits_;
                         return;
@@ -208,7 +209,7 @@ namespace lux::render
 
                     uint32_t push_index = 0u;
 
-                    if (active_mode_ == ActiveMode::EQUIRECT)
+                    if (active_mode_ == EActiveMode::EQUIRECT)
                     {
                         if (!has_equirect)
                             return;
@@ -221,7 +222,7 @@ namespace lux::render
                         }
                         push_index = equirect_bindless_index_;
                     }
-                    else // ActiveMode::CUBEMAP
+                    else // EActiveMode::CUBEMAP
                     {
                         if (!has_cubemap)
                             return;
@@ -270,13 +271,16 @@ namespace lux::render
         // sampler2D[] slot the texture pool may have since reused.
         if (texture.isNull())
         {
-            active_mode_ = ActiveMode::NONE;
+            active_mode_ = EActiveMode::NONE;
             return true;
         }
-        equirect_bindless_index_ = texture.index;
+        const auto local = renderContext().globalRegistry().must<TextureResources>().resolveTexture(texture);
+        if (!local.isValid())
+            return false;
+        equirect_bindless_index_ = local.index;
         rotation_radians_ = rotation_radians;
         intensity_ = intensity;
-        active_mode_ = ActiveMode::EQUIRECT;
+        active_mode_ = EActiveMode::EQUIRECT;
         return true;
     }
 
@@ -284,21 +288,24 @@ namespace lux::render
     {
         if (cube.isNull()) // disable (see applyEquirectangularHandle)
         {
-            active_mode_ = ActiveMode::NONE;
+            active_mode_ = EActiveMode::NONE;
             return true;
         }
         // The handle-based cubemap path expects a SINGLE cube-texture handle stored in cube.
-        cubemap_bindless_index_ = cube.index;
+        const auto local = renderContext().globalRegistry().must<TextureResources>().resolveTexture(cube, true);
+        if (!local.isValid())
+            return false;
+        cubemap_bindless_index_ = local.index;
         rotation_radians_ = rotation_radians;
         intensity_ = intensity;
-        active_mode_ = ActiveMode::CUBEMAP;
+        active_mode_ = EActiveMode::CUBEMAP;
         return true;
     }
 
     SkyboxStatsReply SkyboxFeature::stats() const noexcept
     {
         const auto bindless_index =
-            active_mode_ == ActiveMode::CUBEMAP ? cubemap_bindless_index_ : equirect_bindless_index_;
+            active_mode_ == EActiveMode::CUBEMAP ? cubemap_bindless_index_ : equirect_bindless_index_;
         return SkyboxStatsReply{
             static_cast<std::uint32_t>(active_mode_),
             bindless_index,
@@ -307,7 +314,8 @@ namespace lux::render
             inactive_pass_visits_,
             pipeline_bind_failures_,
             intensity_,
-            rotation_radians_};
+            rotation_radians_
+        };
     }
 
 } // namespace lux::render

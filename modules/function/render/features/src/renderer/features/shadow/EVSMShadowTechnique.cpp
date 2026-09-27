@@ -57,22 +57,16 @@ namespace lux::render
         // to the same layout object, matching hand-built behavior.
         if (!blur_h_pipeline_.valid())
         {
-            auto h = ctx.pipelineManager().registerComputePipelineReflected(
-                blur_h_obj->module,
-                blur_h_obj->info,
-                "EVSMBlurH"
-            );
+            auto h = ctx.pipelineManager()
+                         .registerComputePipelineReflected(blur_h_obj->module, blur_h_obj->info, "EVSMBlurH");
             if (!h)
                 return;
             blur_h_pipeline_ = *h;
         }
         if (!blur_v_pipeline_.valid())
         {
-            auto v = ctx.pipelineManager().registerComputePipelineReflected(
-                blur_v_obj->module,
-                blur_v_obj->info,
-                "EVSMBlurV"
-            );
+            auto v = ctx.pipelineManager()
+                         .registerComputePipelineReflected(blur_v_obj->module, blur_v_obj->info, "EVSMBlurV");
             if (!v)
                 return;
             blur_v_pipeline_ = *v;

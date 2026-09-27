@@ -45,27 +45,28 @@
 
 namespace lux::asset::detail
 {
-    inline constexpr std::uint32_t kMeshDescMagic     = 0x48534D4Cu; // 'LMSH' (LE)
-    inline constexpr std::uint32_t kMeshDescTrailer   = 0x45534D4Cu; // 'LMSE'
-    inline constexpr std::uint32_t kMeshEndianTag     = 0x01020304u;
+    inline constexpr std::uint32_t kMeshDescMagic = 0x48534D4Cu;   // 'LMSH' (LE)
+    inline constexpr std::uint32_t kMeshDescTrailer = 0x45534D4Cu; // 'LMSE'
+    inline constexpr std::uint32_t kMeshEndianTag = 0x01020304u;
     inline constexpr std::uint32_t kMeshSchemaVersion = 2u; // v2: appended LOD chain (decode tolerant of v1)
 
     inline constexpr std::uint32_t kMaxMeshVertexCount = 1u << 24; // ~16.7M, defensive
-    inline constexpr std::uint32_t kMaxMeshIndexCount  = 1u << 24;
-    inline constexpr std::uint32_t kMaxMeshLodCount    = 8u;          // defensive cap on LOD levels
+    inline constexpr std::uint32_t kMaxMeshIndexCount = 1u << 24;
+    inline constexpr std::uint32_t kMaxMeshLodCount = 8u; // defensive cap on LOD levels
 
-    /// Encode a Mesh into a compact binary blob. Reports allocation and layout-budget failure. Marked LUX_ASSET_PUBLIC so the asset module's own
+    /// Encode a Mesh into a compact binary blob. Reports allocation and layout-budget failure.
+    /// Marked LUX_ASSET_PUBLIC so the asset module's own
     /// test target can link against it through the pinclude path; pinclude
     /// headers are not installed, so external consumers cannot see it.
     using MeshDescriptionEncodeResult =
         lux::cxx::expected<std::vector<std::byte>, lux::serialization::SerializationFailure>;
-    LUX_ASSET_PUBLIC MeshDescriptionEncodeResult
-    encodeMeshDescription(const lux::rdesc::Mesh& mesh);
+    LUX_ASSET_PUBLIC MeshDescriptionEncodeResult encodeMeshDescription(const lux::rdesc::Mesh& mesh);
 
     /// Decode a Mesh. Returns false and (optionally) writes a human-readable
     /// error message into *error_out on any malformed input.
-    LUX_ASSET_PUBLIC bool
-    decodeMeshDescription(std::span<const std::byte> blob,
-                          lux::rdesc::Mesh&          out,
-                          std::string*               error_out = nullptr) noexcept;
+    LUX_ASSET_PUBLIC bool decodeMeshDescription(
+        std::span<const std::byte> blob,
+        lux::rdesc::Mesh& out,
+        std::string* error_out = nullptr
+    ) noexcept;
 }

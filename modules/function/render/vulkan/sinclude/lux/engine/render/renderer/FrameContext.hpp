@@ -1,6 +1,7 @@
 #pragma once
 #include <lux/engine/render/targets/RenderTargetBinding.hpp>
 #include <lux/engine/function/render/client/core/FrameStamp.hpp>
+#include <lux/engine/function/render/client/RenderProgram.hpp>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -28,6 +29,15 @@ namespace lux::render
      */
     struct FrameRuntime
     {
+        // Storage belongs to the driver's FIF slot and survives partial submit
+        // failure. It is reused only after that slot's fence or device termination.
+        std::vector<RenderSubmissionState>* submissions{};
+        void retainSubmission(const RenderSubmissionState& state) const noexcept
+        {
+            if (submissions && state.record(stamp.serial))
+                submissions->push_back(state);
+        }
+
         FrameStamp stamp = {};    ///< Authoritative frame identity.
         uint32_t image_index = 0; ///< Swapchain image index.
 

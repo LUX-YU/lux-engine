@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
-#include <new>
+#include <stdexcept>
 #include <type_traits>
 
 namespace lux::asset
@@ -55,8 +55,7 @@ namespace lux::asset
             std::uint64_t source_mtime{};
         };
 
-        template <class Info>
-        struct WireHeader final
+        template <class Info> struct TWireHeader final
         {
             std::uint32_t magic{};
             std::uint32_t version{};
@@ -73,8 +72,8 @@ namespace lux::asset
             std::uint64_t size{};
         };
 
-        using WireHeaderV1 = WireHeader<WireAssetInfoV1>;
-        using WireHeaderV2 = WireHeader<WireAssetInfoV2>;
+        using WireHeaderV1 = TWireHeader<WireAssetInfoV1>;
+        using WireHeaderV2 = TWireHeader<WireAssetInfoV2>;
 
         static_assert(sizeof(WireAssetInfoV1) == 32U);
         static_assert(sizeof(WireAssetInfoV2) == 360U);
@@ -145,8 +144,7 @@ namespace lux::asset
 
         try
         {
-            const auto inspect = [&]<class Header>()
-                -> lux::cxx::expected<CookedAssetImage, AssetDecodeFailure> {
+            const auto inspect = [&]<class Header>() -> lux::cxx::expected<CookedAssetImage, AssetDecodeFailure> {
                 const auto bytes = image.view();
                 if (bytes.size() < sizeof(Header))
                     return lux::cxx::unexpected(failure(EAssetDecodeError::TRUNCATED, bytes.size()));
@@ -154,17 +152,13 @@ namespace lux::asset
                 Header header{};
                 std::memcpy(&header, bytes.data(), sizeof(header));
                 const bool invalid_info = header.info_offset != sizeof(Header) ||
-                    !validRange(header.info_offset, header.info_size, bytes.size());
+                                          !validRange(header.info_offset, header.info_size, bytes.size());
                 const bool invalid_data = !validRange(header.data_offset, header.data_size, bytes.size()) ||
-                    header.data_offset != header.info_offset + header.info_size;
+                                          header.data_offset != header.info_offset + header.info_size;
                 if (invalid_info || invalid_data)
                     return lux::cxx::unexpected(failure(EAssetDecodeError::INVALID_LAYOUT));
 
-                CookedAssetMetadata metadata{
-                    AssetId{header.metadata.id},
-                    header.metadata.type,
-                    header.metadata.date
-                };
+                CookedAssetMetadata metadata{AssetId{header.metadata.id}, header.metadata.type, header.metadata.date};
                 if constexpr (std::is_same_v<Header, WireHeaderV2>)
                 {
                     metadata.display_name = header.metadata.display_name;
@@ -219,16 +213,13 @@ namespace lux::asset
                     const auto duplicate = std::find_if(
                         result_auxiliary.begin(),
                         result_auxiliary.end(),
-                        [tag = auxiliary.tag](const AssetAuxiliaryPayload& value) noexcept {
-                            return value.tag == tag;
-                        }
+                        [tag = auxiliary.tag](const AssetAuxiliaryPayload& value) noexcept { return value.tag == tag; }
                     );
                     if (duplicate != result_auxiliary.end())
                         return lux::cxx::unexpected(failure(EAssetDecodeError::INVALID_LAYOUT, offset));
-                    result_auxiliary.push_back({
-                        auxiliary.tag,
-                        image.subspan(offset, static_cast<std::size_t>(auxiliary.size))
-                    });
+                    result_auxiliary.push_back(
+                        {auxiliary.tag, image.subspan(offset, static_cast<std::size_t>(auxiliary.size))}
+                    );
                     offset += static_cast<std::size_t>(auxiliary.size);
                 }
                 return result;
@@ -238,15 +229,9 @@ namespace lux::asset
                 return inspect.template operator()<WireHeaderV1>();
             if (version == kCookedAssetVersionV2)
                 return inspect.template operator()<WireHeaderV2>();
-            return lux::cxx::unexpected(
-                failure(EAssetDecodeError::UNSUPPORTED_VERSION, sizeof(std::uint32_t))
-            );
+            return lux::cxx::unexpected(failure(EAssetDecodeError::UNSUPPORTED_VERSION, sizeof(std::uint32_t)));
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(EAssetDecodeError::ALLOCATION_FAILURE));
-        }
-        catch (...)
+        catch (const std::length_error&)
         {
             return lux::cxx::unexpected(failure(EAssetDecodeError::INVALID_LAYOUT));
         }

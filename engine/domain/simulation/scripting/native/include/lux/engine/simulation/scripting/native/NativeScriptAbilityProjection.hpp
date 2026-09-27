@@ -17,11 +17,7 @@ namespace lux::simulation::script::detail
     };
 
     template <class Result, class Start>
-    [[nodiscard]] int startNativeAbility(
-        void* invocation,
-        lux_script_async_token* waiting_on,
-        Start start
-    ) noexcept
+    [[nodiscard]] int startNativeAbility(void* invocation, lux_script_async_token* waiting_on, Start start) noexcept
     {
         auto* step = NativeAbilityProjectionAccess::step(invocation);
         if (step == nullptr || waiting_on == nullptr)

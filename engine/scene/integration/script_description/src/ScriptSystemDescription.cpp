@@ -1,4 +1,5 @@
 #include <lux/engine/scene/script/ScriptSystemDescription.hpp>
+#include <exception>
 
 #include <algorithm>
 #include <new>
@@ -9,22 +10,19 @@
 namespace lux::scene::script
 {
     using namespace lux::simulation;
-    using lux::simulation::script::ScriptMountId;
-    using lux::simulation::script::HookScriptTarget;
     using lux::simulation::script::EventScriptTarget;
-    using lux::simulation::script::ScriptBindingTarget;
+    using lux::simulation::script::HookScriptTarget;
     using lux::simulation::script::ScriptBindingDescription;
+    using lux::simulation::script::VScriptBindingTarget;
+    using lux::simulation::script::ScriptMountId;
 
-    std::size_t ScriptSystemDescriptionBuilder::BindingHash::operator()(
-        const ScriptBindingDescription& binding
+    std::size_t ScriptSystemDescriptionBuilder::BindingHash::operator()(const ScriptBindingDescription& binding
     ) const noexcept
     {
         const auto target_hash = std::visit(
-            [](const auto& target) noexcept
-            {
+            [](const auto& target) noexcept {
                 using Target = std::remove_cvref_t<decltype(target)>;
-                const auto endpoint = [&]() noexcept
-                {
+                const auto endpoint = [&]() noexcept {
                     if constexpr (std::is_same_v<Target, HookScriptTarget>)
                         return target.hook.value;
                     else
@@ -41,8 +39,7 @@ namespace lux::scene::script
         return symbol_hash ^ (target_hash + 0x9e3779b9U + (symbol_hash << 6U) + (symbol_hash >> 2U));
     }
 
-    lux::cxx::expected<void, EScriptSystemDescriptionError>
-    ScriptSystemDescriptionBuilder::addMount(
+    lux::cxx::expected<void, EScriptSystemDescriptionError> ScriptSystemDescriptionBuilder::addMount(
         ScriptMountDescription mount
     ) noexcept
     {
@@ -50,8 +47,7 @@ namespace lux::scene::script
             (std::holds_alternative<EntityScriptMount>(mount.scope) &&
              !std::get<EntityScriptMount>(mount.scope).object.valid()))
         {
-            return lux::cxx::unexpected(
-                EScriptSystemDescriptionError::INVALID_MOUNT);
+            return lux::cxx::unexpected(EScriptSystemDescriptionError::INVALID_MOUNT);
         }
         try
         {
@@ -60,8 +56,7 @@ namespace lux::scene::script
             for (const auto& binding : mount.bindings)
             {
                 const bool is_valid_target = std::visit(
-                    [](const auto& target) noexcept
-                    {
+                    [](const auto& target) noexcept {
                         using Target = std::remove_cvref_t<decltype(target)>;
                         if constexpr (std::is_same_v<Target, HookScriptTarget>)
                             return target.system.valid() && target.hook.valid();
@@ -103,64 +98,42 @@ namespace lux::scene::script
                 mounts_.pop_back();
                 return lux::cxx::unexpected(EScriptSystemDescriptionError::ALLOCATION_FAILURE);
             }
-            catch (const std::bad_alloc&)
-            {
-                mount_ids_.erase(mount_id);
-                if (entity_object)
-                    entity_objects_.erase(*entity_object);
-                mounts_.pop_back();
-                return lux::cxx::unexpected(EScriptSystemDescriptionError::ALLOCATION_FAILURE);
-            }
             return {};
         }
         catch (const std::length_error&)
         {
             return lux::cxx::unexpected(EScriptSystemDescriptionError::ALLOCATION_FAILURE);
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(EScriptSystemDescriptionError::ALLOCATION_FAILURE);
-        }
     }
 
-    lux::cxx::expected<ScriptSystemDescription, EScriptSystemDescriptionError>
-    ScriptSystemDescriptionBuilder::build(
+    lux::cxx::expected<ScriptSystemDescription, EScriptSystemDescriptionError> ScriptSystemDescriptionBuilder::build(
         const SimulationDescription& simulation
     ) && noexcept
     {
         for (const auto& mount : mounts_)
         {
-            const bool simulation_scope =
-                std::holds_alternative<SimulationScriptMount>(mount.scope);
+            const bool simulation_scope = std::holds_alternative<SimulationScriptMount>(mount.scope);
             for (const auto& binding : mount.bindings)
             {
                 const auto validation = std::visit(
-                    [&](const auto& target) noexcept
-                    {
+                    [&](const auto& target) noexcept {
                         using Target = std::remove_cvref_t<decltype(target)>;
                         if constexpr (std::is_same_v<Target, HookScriptTarget>)
                         {
                             const auto hook = simulation.findHookPoint(target.system, target.hook);
-                            return hook && hook.scriptCapable()
-                                ? EScriptSystemDescriptionError::INVALID_MOUNT
-                                : EScriptSystemDescriptionError::TARGET_NOT_FOUND;
+                            return hook && hook.scriptCapable() ? EScriptSystemDescriptionError::INVALID_MOUNT
+                                                                : EScriptSystemDescriptionError::TARGET_NOT_FOUND;
                         }
                         else
                         {
-                            const auto event = simulation.findEvent(
-                                target.system,
-                                target.event
-                            );
+                            const auto event = simulation.findEvent(target.system, target.event);
                             if (!event || !event.dispatchHook().scriptCapable())
                             {
-                                return EScriptSystemDescriptionError::
-                                    TARGET_NOT_FOUND;
+                                return EScriptSystemDescriptionError::TARGET_NOT_FOUND;
                             }
-                            if (simulation_scope && event.route() ==
-                                EEventRoute::ENTITY_TARGETED)
+                            if (simulation_scope && event.route() == EEventRoute::ENTITY_TARGETED)
                             {
-                                return EScriptSystemDescriptionError::
-                                    SCOPE_MISMATCH;
+                                return EScriptSystemDescriptionError::SCOPE_MISMATCH;
                             }
                             return EScriptSystemDescriptionError::INVALID_MOUNT;
                         }

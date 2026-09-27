@@ -5,7 +5,7 @@ generate_visibility_header(
     GENERATE_FILE_PATH lux/engine/scene/mesh_query/visibility.h)
 
 add_component(COMPONENT_NAME scene_mesh_query NAMESPACE lux::engine::scene
-    OUTPUT_NAME lux_engine_scene_mesh_query SOURCE_FILES src/MeshQuerySystem.cpp)
+    OUTPUT_NAME lux_engine_scene_mesh_query SOURCE_FILES src/MeshQuerySystem.cpp src/MeshQuery.cpp)
 component_include_directories(scene_mesh_query
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include)
@@ -21,14 +21,3 @@ component_add_transitive_commands(scene_mesh_query
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)")
 lux_engine_install_components(PROJECT_NAME lux-engine-scene-mesh-query
     VERSION ${PROJECT_VERSION} NAMESPACE lux::engine::scene COMPONENTS scene_mesh_query)
-
-if(BUILD_TESTING)
-    add_executable(scene_mesh_query_test test/mesh_query.cpp)
-    target_link_libraries(scene_mesh_query_test PRIVATE lux::engine::scene::scene_mesh_query)
-    if(MSVC)
-        target_compile_options(scene_mesh_query_test PRIVATE /UNDEBUG)
-    else()
-        target_compile_options(scene_mesh_query_test PRIVATE -UNDEBUG)
-    endif()
-    add_test(NAME scene.mesh_query COMMAND scene_mesh_query_test)
-endif()

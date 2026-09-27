@@ -116,7 +116,7 @@ namespace lux::render
                 {
                     if (ctx.slot_resource_idx[si] != ri)
                         continue;
-                    const auto s = static_cast<TargetSlot>(si);
+                    const auto s = static_cast<ETargetSlot>(si);
                     if (ctx.target_layout->hasSlot(s))
                     {
                         const auto final_state = ctx.target_layout->slot(s).final_state;

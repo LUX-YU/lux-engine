@@ -6,14 +6,14 @@
 
 namespace lux::rdesc
 {
-    enum : uint8_t
+    enum class EShaderInfoOp : uint8_t
     {
-        OP_ENTRY_POINT = 0x01,
-        OP_BINDING = 0x02,
-        OP_PUSH_CONST = 0x03,
-        OP_SPEC_CONST = 0x04,
-        OP_VERTEX_INPUT = 0x05,
-        OP_END = 0xFF
+        ENTRY_POINT = 0x01,
+        BINDING = 0x02,
+        PUSH_CONST = 0x03,
+        SPEC_CONST = 0x04,
+        VERTEX_INPUT = 0x05,
+        END = 0xFF
     };
 
     // ================= Basic buffer I/O (little-endian) =================
@@ -139,9 +139,9 @@ namespace lux::rdesc
         {
             payload.clear();
         }
-        void flush(std::vector<std::byte>& out, uint8_t opcode)
+        void flush(std::vector<std::byte>& out, EShaderInfoOp opcode)
         {
-            appendU8(out, opcode);
+            appendU8(out, static_cast<uint8_t>(opcode));
             appendU32(out, static_cast<uint32_t>(payload.size()));
             if (!payload.empty())
             {
@@ -162,7 +162,7 @@ namespace lux::rdesc
         {
             pb.putStr(ep.name);
             pb.put<uint8_t>(static_cast<uint8_t>(ep.stage));
-            pb.flush(out, OP_ENTRY_POINT);
+            pb.flush(out, EShaderInfoOp::ENTRY_POINT);
         }
 
         // bindings
@@ -177,7 +177,7 @@ namespace lux::rdesc
                 pb.putStr(b.name);
                 pb.put<uint32_t>(b.blockSize);
                 pb.put<uint8_t>(b.writable ? 1u : 0u);
-                pb.flush(out, OP_BINDING);
+                pb.flush(out, EShaderInfoOp::BINDING);
             }
         }
 
@@ -186,7 +186,7 @@ namespace lux::rdesc
         {
             pb.put<uint32_t>(pc.offset);
             pb.put<uint32_t>(pc.size);
-            pb.flush(out, OP_PUSH_CONST);
+            pb.flush(out, EShaderInfoOp::PUSH_CONST);
         }
 
         // spec constants
@@ -201,19 +201,19 @@ namespace lux::rdesc
             // Fixed 8-byte slot
             switch (sc.default_value.kind)
             {
-            case SpecDefaultValue::Kind::Bool: {
+            case SpecDefaultValue::EKind::BOOL: {
                 pb.put<uint8_t>(sc.default_value.v.b8);
                 pb.putPad(7);
             }
             break;
-            case SpecDefaultValue::Kind::Int:
+            case SpecDefaultValue::EKind::INT:
                 pb.put<int64_t>(sc.default_value.v.i64);
                 break;
-            case SpecDefaultValue::Kind::UInt:
+            case SpecDefaultValue::EKind::UINT:
                 pb.put<uint64_t>(sc.default_value.v.u64);
                 break;
-            case SpecDefaultValue::Kind::Float:
-            case SpecDefaultValue::Kind::Double:
+            case SpecDefaultValue::EKind::FLOAT:
+            case SpecDefaultValue::EKind::DOUBLE:
                 pb.put<double>(sc.default_value.v.f64);
                 break;
             default:
@@ -222,7 +222,7 @@ namespace lux::rdesc
             }
             pb.put<uint32_t>(sc.vec_size);
             pb.put<uint32_t>(sc.columns);
-            pb.flush(out, OP_SPEC_CONST);
+            pb.flush(out, EShaderInfoOp::SPEC_CONST);
         }
 
         // vertex inputs
@@ -234,11 +234,11 @@ namespace lux::rdesc
             pb.put<uint32_t>(vi.vec_size);
             pb.put<uint32_t>(vi.columns);
             pb.put<uint32_t>(vi.array_size);
-            pb.flush(out, OP_VERTEX_INPUT);
+            pb.flush(out, EShaderInfoOp::VERTEX_INPUT);
         }
 
         // END
-        appendU8(out, OP_END);
+        appendU8(out, static_cast<uint8_t>(EShaderInfoOp::END));
         appendU32(out, 0u);
 
         out.shrink_to_fit();
@@ -275,7 +275,7 @@ namespace lux::rdesc
                 return fail("read size");
             }
 
-            if (op == OP_END)
+            if (op == static_cast<uint8_t>(EShaderInfoOp::END))
             {
                 if (sz != 0)
                 {
@@ -300,7 +300,7 @@ namespace lux::rdesc
 
             switch (op)
             {
-            case OP_ENTRY_POINT: {
+            case static_cast<uint8_t>(EShaderInfoOp::ENTRY_POINT): {
                 EntryPointInfo ep{};
                 if (!rdStr(ep.name))
                 {
@@ -316,7 +316,7 @@ namespace lux::rdesc
             }
             break;
 
-            case OP_BINDING: {
+            case static_cast<uint8_t>(EShaderInfoOp::BINDING): {
                 EDescriptorBindingInfo b{};
                 if (!rdU32(b.set))
                 {
@@ -354,7 +354,7 @@ namespace lux::rdesc
             }
             break;
 
-            case OP_PUSH_CONST: {
+            case static_cast<uint8_t>(EShaderInfoOp::PUSH_CONST): {
                 PushConstantRangeInfo pc{};
                 if (!rdU32(pc.offset))
                 {
@@ -368,7 +368,7 @@ namespace lux::rdesc
             }
             break;
 
-            case OP_SPEC_CONST: {
+            case static_cast<uint8_t>(EShaderInfoOp::SPEC_CONST): {
                 SpecConstantInfo sc{};
                 if (!rdU32(sc.id))
                 {
@@ -388,7 +388,7 @@ namespace lux::rdesc
                 {
                     return fail("sc.kind");
                 }
-                sc.default_value.kind = static_cast<SpecDefaultValue::Kind>(kind);
+                sc.default_value.kind = static_cast<SpecDefaultValue::EKind>(kind);
 
                 if (!rdU32(sc.default_value.bit_width))
                 {
@@ -397,7 +397,7 @@ namespace lux::rdesc
 
                 switch (sc.default_value.kind)
                 {
-                case SpecDefaultValue::Kind::Bool: {
+                case SpecDefaultValue::EKind::BOOL: {
                     uint8_t b = 0;
                     if (!rdU8(b))
                     {
@@ -411,7 +411,7 @@ namespace lux::rdesc
                     p += 7; // skip pad
                 }
                 break;
-                case SpecDefaultValue::Kind::Int: {
+                case SpecDefaultValue::EKind::INT: {
                     int64_t v = 0;
                     if (!rdI64(v))
                     {
@@ -420,7 +420,7 @@ namespace lux::rdesc
                     sc.default_value.v.i64 = v;
                 }
                 break;
-                case SpecDefaultValue::Kind::UInt: {
+                case SpecDefaultValue::EKind::UINT: {
                     uint64_t v = 0;
                     if (!rdU64(v))
                     {
@@ -429,8 +429,8 @@ namespace lux::rdesc
                     sc.default_value.v.u64 = v;
                 }
                 break;
-                case SpecDefaultValue::Kind::Float:
-                case SpecDefaultValue::Kind::Double: {
+                case SpecDefaultValue::EKind::FLOAT:
+                case SpecDefaultValue::EKind::DOUBLE: {
                     double v = 0;
                     if (!rdF64(v))
                     {
@@ -462,7 +462,7 @@ namespace lux::rdesc
             }
             break;
 
-            case OP_VERTEX_INPUT: {
+            case static_cast<uint8_t>(EShaderInfoOp::VERTEX_INPUT): {
                 VertexInputAttribute vi{};
                 if (!rdU32(vi.location))
                 {
@@ -477,7 +477,7 @@ namespace lux::rdesc
                 {
                     return fail("vi.base");
                 }
-                vi.base = static_cast<VertexScalarBase>(base);
+                vi.base = static_cast<EVertexScalarBase>(base);
                 if (!rdU32(vi.vec_size))
                 {
                     return fail("vi.vec_size");

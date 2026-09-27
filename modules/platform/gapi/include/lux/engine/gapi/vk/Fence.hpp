@@ -23,9 +23,7 @@ namespace lux::gapi::vk
         Fence(const Fence&) = delete;
         Fence& operator=(const Fence&) = delete;
 
-        Fence(Fence&& other) noexcept : fence(std::exchange(other.fence, VkFence{}))
-        {
-        }
+        Fence(Fence&& other) noexcept : fence(std::exchange(other.fence, VkFence{})) {}
 
         // Rebinding a live Vulkan owner cannot be correct without the device and
         // allocator needed to release its current handle. No caller needs assignment;

@@ -8,7 +8,7 @@ SceneDescription 是静态资产描述；SceneInstance 是运行时组合对象�
 
 - `worldDescription()`：持久世界描述。
 - `registry()`：实际活动 Entity 与组件。
-- `simulation()`：演化与派生执行。
+- `simulation()`：游戏规则执行与实际采用时间。
 - SceneSystem 查找、能力查询、实例身份与唯一推进记录；阶段由 SceneDriver 调用。
 
 WorldDescription 不是 Registry。当前 API 不存在另一份拥有全部业务内容的 `World` 实例，文档不能把概念上的 World 与已实现类型混为一谈。
@@ -27,22 +27,30 @@ Render Feature 的运行配置与提取接线属于可选渲染集成。
 Scene 不提供 `executePresentation()`、`updateViews()` 等承担相同职责的专门入口。
 
 ```text
-Simulation 结束或作者派生完成
+维护及可选 Simulation 执行
+  → Scene 变换同步
   → Scene 通用稳定点
   → 已安装系统各自执行其工作
 ```
 
-RenderSystem 可以在稳定点提取并发布数据。Renderer 负责采用、绘制与 GPU 资源退休。这不要求 Scene 核心认识相机投影、高亮、阴影或拾取算法。
+RenderSystem 在发布阶段提取并提交数据。Renderer 负责采用、绘制与 GPU 资源退休。这不要求 Scene 核心认识相机投影、高亮、阴影或拾取算法。
 
 ## 唯一驱动与描述
 
 SceneSystemDescription 是 SceneDescription 中一条不可变系统记录的借用视图；沿用原来的记录与 codec，不复制配置目录。磁盘输入验证真实资产引用，程序装配允许已经解析的合法空 World／Simulation，两者进入同一个 SceneInstance 创建算法。
 
-SceneDriver 借用 TaskExecutor，无实例 map。play／pause／step／stop 记录控制意图；advance 先维护，再接续既有步骤，最后才接纳新步骤。时钟在 Simulation 执行后立即读取，成功阶段分别记录；必要发布等待不会重复执行相同 delta。暂停仍可维护和刷新作者变化，不执行零时间演化。
+SceneDriver 借用 TaskExecutor，提供 maintain、tick(scene, time)、publish。
+宿主决定时间与是否演化；Driver 不拥有播放状态、调度 Clock 或实例目录。
+maintain 采用已就绪结果；tick 执行一次 Simulation；publish 顺序执行同步、稳定和发布 Hook。
+TransformSystem 在同步阶段合并局部/层级变化，MeshQuery 在稳定阶段采用缓存，RenderSystem 发布渲染更新。
+没有 tick 的作者场景和暂停实例也能同步 Transform；不会执行物理或脚本。
 
-维护轮次与阶段游标跨调用保留。若维护刚好耗尽本轮调用额度，下一次先接续尚未取得机会的阶段；发布额度为零时不重新开始已经完成的维护轮次。真正尝试发布后遇到后端背压，则继续正常维护和重试。这样即使每轮只有一次系统调用，维护与必要发布也都能取得机会，Stop 无需等待新预算。
+无待办不重算，真实背压保留阶段游标和未接纳包；不重复执行同步或已完成的稳定处理。
+维护 Hook 独立访问已就绪结果，没有每轮人工次数预算。队列容量、资源在途限制和停止协议仍然保留。
+实例故障保留原错误和实际采用的 SimulationTime；DEFERRED 不排队、不改变时间。
 
-固定 dt 的目标时间为本步开始加 dt；落后时不积累无界追赶。Main 拥有实例写入与结果采用，TaskGraph 执行符合访问约束的系统任务，Process 负责异步读取和编译。Main 中不可分离的长计算仍会延迟 UI 帧生产，不能将独立 Render 线程描述为任意慢 Simulation 下保证恒定帧率。
+时钟定义集中于 Clock.hpp，具体类型按值放入 VSimulationClock，Simulation 只接收纯时间。
+固定步长落后时不积累无界追赶；Main 中的长计算仍会延迟 UI 帧生产。
 
 ## 可选 RenderSystem 与相机
 
@@ -72,7 +80,7 @@ Editor 可以保留作者 Scene 并从捕获创建独立 Run，保护作者组�
 
 默认在同一视口切换作者与 Run。编辑时由编辑器 CameraMan 观察作者内容；Play 使用 Run 的用户 Camera；Stop 恢复编辑观察状态。CameraMan 不属于 Run 捕获和游戏导出。
 
-UI 本身是独立 SceneInstance 中的 UIRenderSystem／UiRenderFeature，无须游戏 Camera。CameraMan、游戏 Camera 和 UI 输出三者不混用。
+UI 本身是独立 SceneInstance 中的 RenderSystem／RenderFeature，无须游戏 Camera。CameraMan、游戏 Camera 和 UI 输出三者不混用。
 
 ## 建立与销毁
 
@@ -88,4 +96,4 @@ LuxObject 通知中可以请求逻辑关闭，物理删除发生在安全点，�
 
 仅从描述中移除 RenderSystem 不会自动移除已经链接的 DLL。无渲染消费者需要独立验证其配置、链接和运行时依赖，而不是以“没有创建设备”替代“没有后端依赖”。
 
-相关说明：[World](../domain/world/README.md)、[Simulation](../domain/simulation/README.md)、[RenderSystem](builtin_systems/render/README.md)、[Scene Editor](../editor/editors/scene/README.md)。
+相关说明：[World](../domain/world/README.md)、[Simulation](../domain/simulation/README.md)、[RenderSystem](builtin_systems/render/README.md)、[Scene Editor](../editor/tools/scene/README.md)。

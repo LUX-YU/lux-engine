@@ -18,8 +18,7 @@ namespace lux::simulation
         std::span<const SimulationTaskSpec> tasks{DefaultSimulationTasks};
     };
 
-    [[nodiscard]] constexpr bool validSimulationSystemDescription(
-        const SimulationSystemDescription& description
+    [[nodiscard]] constexpr bool validSimulationSystemDescription(const SimulationSystemDescription& description
     ) noexcept
     {
         if (!lux::system::validSystemTypeDescription(description.type))

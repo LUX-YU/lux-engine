@@ -16,8 +16,8 @@ namespace lux::render
         id = lux.render.hzb.v1,
         display = Hzb,
         feature = HzbFeature,
-        feature_header = lux / engine / render / renderer / features / hzb / HzbFeature.hpp) HzbCommTag
-    {
-    };
+        feature_header = lux / engine / render / renderer / features / hzb / HzbFeature.hpp
+    ) HzbCommTag
+    {};
     static_assert(std::is_trivially_copyable_v<HzbCommTag>);
 }

@@ -75,8 +75,11 @@ namespace lux::render
     /// peer (the writer) and rewinds the frame index by ring_phase. The result is
     /// fed to per_frame_views[idx][frame] / getHandle(frame) at every resolve site.
     /// MVP: copies == ring_size == FIF (HZB), so slot parity == absolute-frame parity.
-    inline std::pair<uint32_t, uint32_t>
-    resolveRingTarget(const RGPhysicalResourceTable& table, uint32_t res_idx, uint32_t frame_index)
+    inline std::pair<uint32_t, uint32_t> resolveRingTarget(
+        const RGPhysicalResourceTable& table,
+        uint32_t res_idx,
+        uint32_t frame_index
+    )
     {
         if (const auto* pr = table.tryGet(res_idx))
         {

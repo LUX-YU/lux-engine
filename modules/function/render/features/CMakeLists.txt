@@ -757,12 +757,10 @@ add_custom_command(OUTPUT "${_render_declaration}" "${_render_exports}"
     DEPENDS ${_render_fragments} "${PROJECT_SOURCE_DIR}/cmake/render_plugin.py"
         "${PROJECT_SOURCE_DIR}/cmake/plugin_descriptor.py" VERBATIM)
 target_sources(render_features PRIVATE "${_render_exports}")
+add_custom_target(render_plugin_declaration DEPENDS "${_render_declaration}" "${_render_exports}")
 file(GLOB_RECURSE _render_plugin_sources CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.lglsl")
-set(_render_editor_arguments)
-if(TARGET render_feature_meta)
-    set(_render_editor_arguments EDITOR_TARGET render_feature_meta)
-endif()
-lux_add_plugin_exports(TARGET render_features ${_render_editor_arguments} MODULE_ID lux.builtin.render
-    DESCRIPTION "${_render_declaration}" INPUTS ${_render_plugin_sources} "${_render_exports}")
+# The repository composition attaches runtime/editor exports after both owners exist.
+set_property(TARGET render_features PROPERTY LUX_PLUGIN_DESCRIPTION_INPUT "${_render_declaration}")
+set_property(TARGET render_features PROPERTY LUX_PLUGIN_SOURCE_INPUTS "${_render_plugin_sources};${_render_exports}")

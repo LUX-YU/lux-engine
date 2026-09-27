@@ -36,7 +36,8 @@ namespace lux::render
         id = lux.render.grid3d.v1,
         display = Grid3DPass,
         feature = Grid3DPassFeature,
-        feature_header = lux / engine / render / renderer / features / grid / Grid3DPassFeature.hpp) Grid3DCommConfig
+        feature_header = lux / engine / render / renderer / features / grid / Grid3DPassFeature.hpp
+    ) Grid3DCommConfig
     {
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};

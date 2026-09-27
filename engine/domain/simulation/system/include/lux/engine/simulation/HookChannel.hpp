@@ -16,9 +16,13 @@
 
 namespace lux::simulation
 {
-    class SimulationBuilder;
-    struct SimulationBroadcastRoute final {};
-    template <class Target> struct EntityTargetedRoute final { using TargetType = Target; };
+    class SimulationSystemInstaller;
+    struct SimulationBroadcastRoute final
+    {};
+    template <class Target> struct TEntityTargetedRoute final
+    {
+        using TargetType = Target;
+    };
 
     struct HookChannelCapacity final
     {
@@ -35,21 +39,26 @@ namespace lux::simulation
             std::size_t lane{};
             bool active{};
             void* channel{};
-            bool (*failed)(const void*, std::size_t) noexcept{};
+            bool (*failed)(const void*, std::size_t) noexcept {};
         };
-        template <class Route> struct HookChannelTarget;
-        template <> struct HookChannelTarget<SimulationBroadcastRoute> { using Type = std::monostate; };
-        template <class Target> struct HookChannelTarget<EntityTargetedRoute<Target>> { using Type = Target; };
+        template <class Route> struct THookChannelTarget;
+        template <> struct THookChannelTarget<SimulationBroadcastRoute>
+        {
+            using Type = std::monostate;
+        };
+        template <class Target> struct THookChannelTarget<TEntityTargetedRoute<Target>>
+        {
+            using Type = Target;
+        };
     }
 
     // Typed occurrence storage only. Subscribers and dispatch timing belong to the consuming Hook.
-    template <class Route, class Payload>
-    class HookChannel final
+    template <class Route, class Payload> class THookChannel final
     {
         static_assert(std::is_nothrow_copy_constructible_v<Payload>);
         static_assert(std::is_nothrow_move_constructible_v<Payload>);
         static_assert(std::is_nothrow_destructible_v<Payload>);
-        using Target = typename detail::HookChannelTarget<Route>::Type;
+        using Target = typename detail::THookChannelTarget<Route>::Type;
 
     public:
         // Non-scalar owners must explicitly declare their field-wise ownership copy.
@@ -83,7 +92,10 @@ namespace lux::simulation
                 }
                 return *this;
             }
-            ~Writer() noexcept { release(); }
+            ~Writer() noexcept
+            {
+                release();
+            }
             [[nodiscard]] bool record(Target target, Payload payload) noexcept
             {
                 if (records_ == nullptr)
@@ -103,8 +115,13 @@ namespace lux::simulation
             }
 
         private:
-            Writer(std::vector<Occurrence>& records, bool& active, bool& failed,
-                std::size_t capacity, OwnedCopy copy) noexcept
+            Writer(
+                std::vector<Occurrence>& records,
+                bool& active,
+                bool& failed,
+                std::size_t capacity,
+                OwnedCopy copy
+            ) noexcept
                 : records_(&records), active_(&active), failed_(&failed), capacity_(capacity), copy_(copy)
             {
                 active = true;
@@ -120,7 +137,7 @@ namespace lux::simulation
             bool* failed_{};
             std::size_t capacity_{};
             OwnedCopy copy_{};
-            friend class HookChannel;
+            friend class THookChannel;
         };
 
         class Producer final
@@ -133,20 +150,21 @@ namespace lux::simulation
                     return {};
                 return channel_->beginPrepared(slot_->lane);
             }
+
         private:
-            Producer(HookChannel* channel, detail::HookChannelProducerSlot* slot) noexcept
+            Producer(THookChannel* channel, detail::HookChannelProducerSlot* slot) noexcept
                 : channel_(channel), slot_(slot)
             {}
-            HookChannel* channel_{};
+            THookChannel* channel_{};
             detail::HookChannelProducerSlot* slot_{};
-            friend class SimulationBuilder;
+            friend class SimulationSystemInstaller;
         };
 
-        HookChannel() = default;
-        HookChannel(const HookChannel&) = delete;
-        HookChannel& operator=(const HookChannel&) = delete;
-        HookChannel(HookChannel&&) = delete;
-        HookChannel& operator=(HookChannel&&) = delete;
+        THookChannel() = default;
+        THookChannel(const THookChannel&) = delete;
+        THookChannel& operator=(const THookChannel&) = delete;
+        THookChannel(THookChannel&&) = delete;
+        THookChannel& operator=(THookChannel&&) = delete;
 
         [[nodiscard]] EEndpointMutationError prepare(HookChannelCapacity capacity, OwnedCopy copy = nullptr) noexcept
         {
@@ -165,32 +183,24 @@ namespace lux::simulation
                 return EEndpointMutationError::PAYLOAD_NOT_OWNED;
             const auto max_records = capacity.max_bytes / sizeof(Occurrence);
             const bool is_invalid_capacity = capacity.producers == 0U || capacity.occurrences_per_producer == 0U ||
-                capacity.producers > max_records / capacity.occurrences_per_producer;
+                                             capacity.producers > max_records / capacity.occurrences_per_producer;
             if (is_invalid_capacity)
                 return EEndpointMutationError::CAPACITY_EXCEEDED;
             const auto remaining = max_records - capacity.producers * capacity.occurrences_per_producer;
             if (capacity.owner_occurrences > remaining / 2U)
                 return EEndpointMutationError::CAPACITY_EXCEEDED;
-            try
-            {
-                lanes_.clear();
-                lanes_.resize(capacity.producers);
-                for (auto& lane : lanes_)
-                    lane.records.reserve(capacity.occurrences_per_producer);
-                owner_.records.clear();
-                deferred_.records.clear();
-                owner_.records.reserve(capacity.owner_occurrences);
-                deferred_.records.reserve(capacity.owner_occurrences);
-                capacity_ = capacity;
-                copy_ = copy;
-                prepared_ = true;
-                return EEndpointMutationError::NONE;
-            }
-            catch (const std::bad_alloc&)
-            {
-                prepared_ = false;
-                return EEndpointMutationError::ALLOCATION_FAILURE;
-            }
+            lanes_.clear();
+            lanes_.resize(capacity.producers);
+            for (auto& lane : lanes_)
+                lane.records.reserve(capacity.occurrences_per_producer);
+            owner_.records.clear();
+            deferred_.records.clear();
+            owner_.records.reserve(capacity.owner_occurrences);
+            deferred_.records.reserve(capacity.owner_occurrences);
+            capacity_ = capacity;
+            copy_ = copy;
+            prepared_ = true;
+            return EEndpointMutationError::NONE;
         }
 
         [[nodiscard]] Writer begin(std::size_t producer) noexcept
@@ -205,7 +215,7 @@ namespace lux::simulation
         [[nodiscard]] Writer beginOwner(const HookInvocation& invocation) noexcept
         {
             const bool allowed = composed_ && invocation.owner_ == execution_owner_ &&
-                invocation.system() == delivery_system_ && invocation.hook() == delivery_hook_;
+                                 invocation.system() == delivery_system_ && invocation.hook() == delivery_hook_;
             return allowed ? beginOwnerPrepared() : Writer{};
         }
 
@@ -254,7 +264,7 @@ namespace lux::simulation
         [[nodiscard]] bool failed() const noexcept
         {
             return owner_.failed || deferred_.failed ||
-                std::ranges::any_of(lanes_, [](const auto& lane) noexcept { return lane.failed; });
+                   std::ranges::any_of(lanes_, [](const auto& lane) noexcept { return lane.failed; });
         }
 
         void reset() noexcept
@@ -321,7 +331,7 @@ namespace lux::simulation
         [[nodiscard]] bool writerActive() const noexcept
         {
             return owner_.active || deferred_.active ||
-                std::ranges::any_of(lanes_, [](const auto& lane) noexcept { return lane.active; });
+                   std::ranges::any_of(lanes_, [](const auto& lane) noexcept { return lane.active; });
         }
 
         std::vector<Lane> lanes_;
@@ -336,6 +346,6 @@ namespace lux::simulation
         const void* execution_owner_{};
         lux::system::SystemInstanceId delivery_system_;
         HookPointId delivery_hook_;
-        friend class SimulationBuilder;
+        friend class SimulationSystemInstaller;
     };
 }

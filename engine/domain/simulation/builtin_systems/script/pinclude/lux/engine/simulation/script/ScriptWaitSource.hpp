@@ -8,7 +8,10 @@ namespace lux::simulation::script::detail
     {
         std::uint32_t slot{};
         std::uint32_t generation{};
-        [[nodiscard]] constexpr bool valid() const noexcept { return slot != 0U && generation != 0U; }
+        [[nodiscard]] constexpr bool valid() const noexcept
+        {
+            return slot != 0U && generation != 0U;
+        }
         friend constexpr bool operator==(ScriptSourceId, ScriptSourceId) noexcept = default;
     };
 
@@ -44,11 +47,16 @@ namespace lux::simulation::script::detail
     class ScriptTimerAdmission final
     {
     public:
-        [[nodiscard]] ScriptTimerAssociation association() const noexcept { return association_; }
+        [[nodiscard]] ScriptTimerAssociation association() const noexcept
+        {
+            return association_;
+        }
+
     private:
         friend class ScriptExecution;
         ScriptTimerAdmission(ScriptTimerAssociation association, void* result) noexcept
-            : association_(association), result_(result) {}
+            : association_(association), result_(result)
+        {}
         ScriptTimerAssociation association_;
         void* result_{};
     };

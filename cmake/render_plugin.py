@@ -21,7 +21,7 @@ for record in records:
         if requirement:
             optional = requirement.endswith("?")
             feature["dependencies"].append(dict(feature=requirement.rstrip("?"), version=1, optional=optional))
-value = dict(format="lux.engine.plugin", version=1,
+value = dict(format="lux.engine.plugin", version=2,
     plugin=dict(id="lux.builtin.render", version=1, source="builtin", author="Lux",
         description="Builtin render feature implementations.", runtime_library=dict(exports=["render"]), dependencies=[]),
     abilities=[], implementations=[], systems=[], components=[],

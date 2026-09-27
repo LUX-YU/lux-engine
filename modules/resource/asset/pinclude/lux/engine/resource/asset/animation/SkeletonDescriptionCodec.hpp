@@ -42,13 +42,13 @@
 
 namespace lux::asset::detail
 {
-    inline constexpr std::uint32_t kSkeletonDescMagic    = 0x534B534Cu; // 'LSKS' (LE)
-    inline constexpr std::uint32_t kSkeletonDescTrailer  = 0x454B534Cu; // 'LSKE'
-    inline constexpr std::uint32_t kSkeletonEndianTag    = 0x01020304u;
+    inline constexpr std::uint32_t kSkeletonDescMagic = 0x534B534Cu;   // 'LSKS' (LE)
+    inline constexpr std::uint32_t kSkeletonDescTrailer = 0x454B534Cu; // 'LSKE'
+    inline constexpr std::uint32_t kSkeletonEndianTag = 0x01020304u;
     inline constexpr std::uint32_t kSkeletonSchemaVersion = 2u; // v2: + Skeleton::global_transform
 
-    inline constexpr std::uint32_t kMaxSkelStringLen     = 64u * 1024u;
-    inline constexpr std::uint32_t kMaxSkelBoneCount     = 65535u;
+    inline constexpr std::uint32_t kMaxSkelStringLen = 64u * 1024u;
+    inline constexpr std::uint32_t kMaxSkelBoneCount = 65535u;
 
     /// Encode a Skeleton into a compact binary blob. Never fails (other
     /// than std::bad_alloc).
@@ -57,13 +57,13 @@ namespace lux::asset::detail
     /// installed, so external consumers still cannot see this declaration.
     using SkeletonDescriptionEncodeResult =
         lux::cxx::expected<std::vector<std::byte>, lux::serialization::SerializationFailure>;
-    LUX_ASSET_PUBLIC SkeletonDescriptionEncodeResult
-    encodeSkeletonDescription(const lux::rdesc::Skeleton& skel);
+    LUX_ASSET_PUBLIC SkeletonDescriptionEncodeResult encodeSkeletonDescription(const lux::rdesc::Skeleton& skel);
 
     /// Decode a Skeleton. Returns false and (optionally) writes a
     /// human-readable error message into *error_out on any malformed input.
-    LUX_ASSET_PUBLIC bool
-    decodeSkeletonDescription(std::span<const std::byte> blob,
-                              lux::rdesc::Skeleton&       out,
-                              std::string*                error_out = nullptr) noexcept;
+    LUX_ASSET_PUBLIC bool decodeSkeletonDescription(
+        std::span<const std::byte> blob,
+        lux::rdesc::Skeleton& out,
+        std::string* error_out = nullptr
+    ) noexcept;
 }

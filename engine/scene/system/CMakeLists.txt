@@ -14,7 +14,6 @@ target_link_libraries(
     INTERFACE
         lux::engine::scene::scene_description
         lux::engine::system::domain_system_description
-        lux::engine::core::object
         lux::engine::core::serialization
         lux::cxx::compile_time
 )
@@ -22,7 +21,7 @@ component_add_transitive_commands(
     scene_system
     "find_package(lux-engine-scene-description REQUIRED COMPONENTS scene_description)"
     "find_package(lux-engine-domain-system-description REQUIRED COMPONENTS domain_system_description)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS object serialization)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
 )
 

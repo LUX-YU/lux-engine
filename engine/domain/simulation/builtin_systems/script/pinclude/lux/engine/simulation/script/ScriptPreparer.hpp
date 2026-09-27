@@ -32,13 +32,16 @@ namespace lux::simulation::script::detail
         void releaseCatalog() noexcept;
 
     private:
-        [[nodiscard]] const ScriptBackendDescriptor* backend(lux::rdesc::Script::Kind kind) const noexcept;
-        [[nodiscard]] const PreparedScriptApiCapability*
-        capability(const lux::script::ScriptApiContractId&) const noexcept;
+        [[nodiscard]] const ScriptBackendDescriptor* backend(lux::rdesc::Script::EKind kind) const noexcept;
+        [[nodiscard]] const PreparedScriptApiCapability* capability(const lux::script::ScriptApiContractId&)
+            const noexcept;
         [[nodiscard]] static bool validBeginPlay(const lux::rdesc::ScriptFunction& function) noexcept;
         [[nodiscard]] static bool validEndPlay(const lux::rdesc::ScriptFunction& function) noexcept;
-        [[nodiscard]] static bool eventMatches(const lux::script::ScriptEventSourceDescription& requirement,
-            const SimulationEventView& described, const ScriptEventEndpointDescriptor& endpoint) noexcept;
+        [[nodiscard]] static bool eventMatches(
+            const lux::script::ScriptEventSourceDescription& requirement,
+            const SimulationEventView& described,
+            const ScriptEventEndpointDescriptor& endpoint
+        ) noexcept;
 
         ScriptArtifactResolver artifacts_;
         std::array<ScriptBackendDescriptor, 7U> backends_{};

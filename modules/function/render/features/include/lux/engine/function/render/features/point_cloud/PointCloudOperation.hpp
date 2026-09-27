@@ -38,14 +38,18 @@ namespace lux::render
     /// 通信身份 tag:只为承载 prefix 与 no_factory(五模式共享一套 op,
     /// 工厂/描述符全手写)。不是 wire 类型。
     struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(prefix = PointCloud, no_factory = true) PointCloudCommTag
-    {
-    };
+    {};
 
     // =========================================================================
     //  Per-mode CommConfig structs (trivially copyable, transferred as attachments)
     // =========================================================================
-    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(prefix = PCSimple, factory = kPCFeatureSimpleFactory, id = lux.render.point_cloud_simple.v1,
-        display = PCSimple, scene_configurable = false) PCSimpleCommConfig
+    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(
+        prefix = PCSimple,
+        factory = kPCFeatureSimpleFactory,
+        id = lux.render.point_cloud_simple.v1,
+        display = PCSimple,
+        scene_configurable = false
+    ) PCSimpleCommConfig
     {
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
@@ -55,8 +59,13 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<PCSimpleCommConfig>);
 
-    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(prefix = PCGPUDriven, factory = kPCFeatureGPUDrivenFactory, id = lux.render.point_cloud_gpudriven.v1,
-        display = PCGPUDriven, scene_configurable = false) PCGPUDrivenCommConfig
+    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(
+        prefix = PCGPUDriven,
+        factory = kPCFeatureGPUDrivenFactory,
+        id = lux.render.point_cloud_gpudriven.v1,
+        display = PCGPUDriven,
+        scene_configurable = false
+    ) PCGPUDrivenCommConfig
     {
         ShaderHandle compute_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
@@ -66,8 +75,13 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<PCGPUDrivenCommConfig>);
 
-    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(prefix = PCLOD, factory = kPCFeatureLODFactory, id = lux.render.point_cloud_lod.v1,
-        display = PCLOD, scene_configurable = false) PCLODCommConfig
+    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(
+        prefix = PCLOD,
+        factory = kPCFeatureLODFactory,
+        id = lux.render.point_cloud_lod.v1,
+        display = PCLOD,
+        scene_configurable = false
+    ) PCLODCommConfig
     {
         ShaderHandle compute_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
@@ -79,8 +93,13 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<PCLODCommConfig>);
 
-    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(prefix = PCSplatting, factory = kPCFeatureSplattingFactory, id = lux.render.point_cloud_splatting.v1,
-        display = PCSplatting, scene_configurable = false) PCSplattingCommConfig
+    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(
+        prefix = PCSplatting,
+        factory = kPCFeatureSplattingFactory,
+        id = lux.render.point_cloud_splatting.v1,
+        display = PCSplatting,
+        scene_configurable = false
+    ) PCSplattingCommConfig
     {
         ShaderHandle compute_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
@@ -92,8 +111,13 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<PCSplattingCommConfig>);
 
-    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(prefix = PCTransient, factory = kPCFeatureTransientFactory, id = lux.render.point_cloud_transient.v1,
-        display = PCTransient, scene_configurable = false) PCTransientCommConfig
+    struct LUX_TYPE_INFO(both) LUX_COMM_VARIANT(
+        prefix = PCTransient,
+        factory = kPCFeatureTransientFactory,
+        id = lux.render.point_cloud_transient.v1,
+        display = PCTransient,
+        scene_configurable = false
+    ) PCTransientCommConfig
     {
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
@@ -118,8 +142,15 @@ namespace lux::render
             return (to_u8(r) << 0) | (to_u8(g) << 8) | (to_u8(b) << 16) | (to_u8(intensity) << 24);
         }
 
-        static constexpr PointCloudPoint
-        make(float px, float py, float pz, float r, float g, float b, float intensity = 1.0f) noexcept
+        static constexpr PointCloudPoint make(
+            float px,
+            float py,
+            float pz,
+            float r,
+            float g,
+            float b,
+            float intensity = 1.0f
+        ) noexcept
         {
             return {px, py, pz, pack(r, g, b, intensity)};
         }
@@ -147,7 +178,8 @@ namespace lux::render
         name = PointCloudUpload,
         method = uploadChunk,
         reply = PointCloudChunkUploadedReply,
-        opcode = resource) UploadPointCloudChunkPayload
+        opcode = resource
+    ) UploadPointCloudChunkPayload
     {
         RenderSceneId scene_id{};
         uint32_t chunk_id{0};
@@ -172,7 +204,8 @@ namespace lux::render
         name = PointCloudClearAll,
         method = clearAll,
         reply = GenericOkReply,
-        opcode = command) ClearAllPointCloudPayload
+        opcode = command
+    ) ClearAllPointCloudPayload
     {
         RenderSceneId scene_id{};
     };
@@ -185,7 +218,8 @@ namespace lux::render
         name = PointCloudClearChunk,
         method = clearChunk,
         reply = GenericOkReply,
-        opcode = command) ClearPointCloudChunkPayload
+        opcode = command
+    ) ClearPointCloudChunkPayload
     {
         RenderSceneId scene_id{};
         uint32_t chunk_id{0};

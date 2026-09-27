@@ -73,7 +73,7 @@ namespace lux::events
             [[nodiscard]] virtual std::string_view typeName() const noexcept = 0;
         };
 
-        template <DomainEvent Event> class Channel;
+        template <DomainEvent Event> class TChannel;
     }
 
     class Subscription final
@@ -91,8 +91,7 @@ namespace lux::events
         Subscription(Subscription&& other) noexcept
             : channel_(std::exchange(other.channel_, nullptr)), per_pump_(std::exchange(other.per_pump_, nullptr)),
               subscription_id_(std::exchange(other.subscription_id_, 0u))
-        {
-        }
+        {}
 
         Subscription& operator=(Subscription&& other) noexcept
         {
@@ -121,12 +120,11 @@ namespace lux::events
         }
 
     private:
-        template <DomainEvent Event> friend class detail::Channel;
+        template <DomainEvent Event> friend class detail::TChannel;
 
         Subscription(detail::ChannelBase& channel, void* per_pump, std::uint64_t subscription_id) noexcept
             : channel_(&channel), per_pump_(per_pump), subscription_id_(subscription_id)
-        {
-        }
+        {}
 
         detail::ChannelBase* channel_{nullptr};
         void* per_pump_{nullptr};
@@ -185,7 +183,7 @@ namespace lux::events
 
     private:
         friend class DomainEvents;
-        template <DomainEvent Event> friend class detail::Channel;
+        template <DomainEvent Event> friend class detail::TChannel;
 
         struct Badge final
         {
@@ -195,9 +193,7 @@ namespace lux::events
         };
 
     public:
-        EventPump(Badge, DomainEvents& events, std::string name) noexcept : events_(&events), name_(std::move(name))
-        {
-        }
+        EventPump(Badge, DomainEvents& events, std::string name) noexcept : events_(&events), name_(std::move(name)) {}
 
     private:
         using DrainFn = std::size_t (*)(detail::ChannelBase&, void*) noexcept;
@@ -224,7 +220,7 @@ namespace lux::events
 
     namespace detail
     {
-        template <DomainEvent Event> class Channel final : public ChannelBase
+        template <DomainEvent Event> class TChannel final : public ChannelBase
         {
         public:
             using HandlerFn = lux::cxx::move_only_function<void(const Event&)>;
@@ -248,9 +244,7 @@ namespace lux::events
                 bool in_drain{false};
             };
 
-            explicit Channel(DomainEvents& owner) noexcept : owner_(&owner)
-            {
-            }
+            explicit TChannel(DomainEvents& owner) noexcept : owner_(&owner) {}
 
             void publish(Event event)
             {
@@ -293,7 +287,7 @@ namespace lux::events
                     storage->config = default_config_;
                     per_pump = storage.get();
                     per_pumps_.push_back(std::move(storage));
-                    pump.addDrainEntry(*this, per_pump, &Channel::drainThunk);
+                    pump.addDrainEntry(*this, per_pump, &TChannel::drainThunk);
                 }
 
                 const auto id = next_subscription_id_++;
@@ -337,8 +331,8 @@ namespace lux::events
                         lux::cxx::type_name<Event>(),
                         per_pump->pump->name(),
                         per_pump->dropped,
-                        per_pump->pending.size()}
-                    );
+                        per_pump->pending.size()
+                    });
                 }
             }
 
@@ -365,7 +359,7 @@ namespace lux::events
 
             static std::size_t drainThunk(ChannelBase& base, void* opaque) noexcept
             {
-                return static_cast<Channel&>(base).drainFor(*static_cast<PerPump*>(opaque));
+                return static_cast<TChannel&>(base).drainFor(*static_cast<PerPump*>(opaque));
             }
 
             static std::size_t drainFor(PerPump& per_pump) noexcept
@@ -441,7 +435,7 @@ namespace lux::events
             ownerCheck();
             return channelOf<Event>().subscribe(
                 pump,
-                typename detail::Channel<Event>::HandlerFn{std::forward<Handler>(handler)}
+                typename detail::TChannel<Event>::HandlerFn{std::forward<Handler>(handler)}
             );
         }
 
@@ -465,21 +459,21 @@ namespace lux::events
         }
 
     private:
-        template <DomainEvent Event> [[nodiscard]] detail::Channel<Event>* findChannel() noexcept
+        template <DomainEvent Event> [[nodiscard]] detail::TChannel<Event>* findChannel() noexcept
         {
             const auto found = channels_.find(kEventTypeId<Event>);
             if (found == channels_.end())
                 return nullptr;
             if (found->second->typeName() != lux::cxx::type_name<Event>())
                 std::terminate();
-            return static_cast<detail::Channel<Event>*>(found->second.get());
+            return static_cast<detail::TChannel<Event>*>(found->second.get());
         }
 
-        template <DomainEvent Event> [[nodiscard]] detail::Channel<Event>& channelOf()
+        template <DomainEvent Event> [[nodiscard]] detail::TChannel<Event>& channelOf()
         {
             if (auto* existing = findChannel<Event>())
                 return *existing;
-            auto channel = std::make_unique<detail::Channel<Event>>(*this);
+            auto channel = std::make_unique<detail::TChannel<Event>>(*this);
             auto* result = channel.get();
             channels_.emplace(kEventTypeId<Event>, std::move(channel));
             return *result;
@@ -492,7 +486,7 @@ namespace lux::events
 
     namespace detail
     {
-        template <DomainEvent Event> void Channel<Event>::ownerCheck() const noexcept
+        template <DomainEvent Event> void TChannel<Event>::ownerCheck() const noexcept
         {
             owner_->ownerCheck();
         }

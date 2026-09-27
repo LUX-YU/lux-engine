@@ -174,7 +174,8 @@ namespace lux::render
                         &alloc_ci,
                         &slice_ssbos_[fi],
                         &slice_ssbo_allocs_[fi],
-                        &alloc_info) != VK_SUCCESS)
+                        &alloc_info
+                    ) != VK_SUCCESS)
                 {
                     return false;
                 }
@@ -199,7 +200,8 @@ namespace lux::render
                         &alloc_ci,
                         &config_ubos_[fi],
                         &config_ubo_allocs_[fi],
-                        &alloc_info) != VK_SUCCESS)
+                        &alloc_info
+                    ) != VK_SUCCESS)
                 {
                     return false;
                 }
@@ -224,7 +226,8 @@ namespace lux::render
                         &alloc_ci,
                         &spot_shadow_map_ssbos_[fi],
                         &spot_shadow_map_ssbo_allocs_[fi],
-                        &alloc_info) != VK_SUCCESS)
+                        &alloc_info
+                    ) != VK_SUCCESS)
                 {
                     return false;
                 }
@@ -249,7 +252,8 @@ namespace lux::render
                         &alloc_ci,
                         &point_shadow_map_ssbos_[fi],
                         &point_shadow_map_ssbo_allocs_[fi],
-                        &alloc_info) != VK_SUCCESS)
+                        &alloc_info
+                    ) != VK_SUCCESS)
                 {
                     return false;
                 }
@@ -546,8 +550,10 @@ namespace lux::render
         ++debug_last_upload_.sequence;
     }
 
-    std::shared_ptr<const ShadowResources::PerViewCache>
-    ShadowResources::findViewCache(uint32_t scene_key, uint32_t view_handle) const noexcept
+    std::shared_ptr<const ShadowResources::PerViewCache> ShadowResources::findViewCache(
+        uint32_t scene_key,
+        uint32_t view_handle
+    ) const noexcept
     {
         const auto it = per_view_cache_.find(makeViewCacheKey(scene_key, view_handle));
         if (it == per_view_cache_.end())

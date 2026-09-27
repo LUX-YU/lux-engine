@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <exception>
 #include <limits>
-#include <new>
 #include <utility>
 
 namespace lux::simulation::script::detail
@@ -17,7 +16,8 @@ namespace lux::simulation::script::detail
     }
 
     ScriptBindings::BatchTicket::BatchTicket(BatchTicket&& other) noexcept
-        : owner_(std::exchange(other.owner_, nullptr)) {}
+        : owner_(std::exchange(other.owner_, nullptr))
+    {}
 
     ScriptBindings::BatchTicket::~BatchTicket() noexcept
     {
@@ -59,7 +59,6 @@ namespace lux::simulation::script::detail
         std::size_t max_resume_payload
     ) noexcept
     {
-        try
         {
             dispatch_ = dispatch;
             max_resume_payload_ = max_resume_payload;
@@ -127,10 +126,6 @@ namespace lux::simulation::script::detail
                     return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
             return {};
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
-        }
     }
 
     lux::cxx::expected<ScriptBindings::BatchTicket, EScriptSystemError> ScriptBindings::reserveBatch(
@@ -154,8 +149,8 @@ namespace lux::simulation::script::detail
             if (placement.existing)
             {
                 const auto& config = configurations_[placement.slot];
-                if (config.count != input.bindings.size() || !std::equal(input.bindings.begin(),
-                        input.bindings.end(), descriptions_.begin() + config.first))
+                if (config.count != input.bindings.size() ||
+                    !std::equal(input.bindings.begin(), input.bindings.end(), descriptions_.begin() + config.first))
                     return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
                 continue;
             }
@@ -197,7 +192,7 @@ namespace lux::simulation::script::detail
                     if (!endpoint)
                         return lux::cxx::unexpected(EScriptSystemError::SCRIPT_ENDPOINT_NOT_FOUND);
                     const bool invalid_scope = std::holds_alternative<SimulationScriptScope>(input.scope) &&
-                        event_endpoints_[*endpoint].route == EEventRoute::ENTITY_TARGETED;
+                                               event_endpoints_[*endpoint].route == EEventRoute::ENTITY_TARGETED;
                     if (invalid_scope)
                         return lux::cxx::unexpected(EScriptSystemError::SCOPE_MISMATCH);
                     if (++event_reservations_[*endpoint] > events_[*endpoint].capacity)
@@ -271,13 +266,11 @@ namespace lux::simulation::script::detail
         return configurations_[slot].methods;
     }
 
-    bool ScriptBindings::matches(
-        std::uint32_t slot, std::span<const ScriptBindingDescription> bindings
-    ) const noexcept
+    bool ScriptBindings::matches(std::uint32_t slot, std::span<const ScriptBindingDescription> bindings) const noexcept
     {
         const auto& config = configurations_[slot];
         return config.count == bindings.size() &&
-            std::equal(bindings.begin(), bindings.end(), descriptions_.begin() + config.first);
+               std::equal(bindings.begin(), bindings.end(), descriptions_.begin() + config.first);
     }
 
     lux::script::ScriptSymbolId ScriptBindings::methodSymbol(std::size_t method_slot) const noexcept
@@ -305,13 +298,14 @@ namespace lux::simulation::script::detail
     {
         const auto index_bytes = method_hooks_.capacity() * sizeof(std::uint32_t) + runnable_backing_bytes_;
         return index_bytes + bindings_.capacity() * sizeof(Binding) +
-            descriptions_.capacity() * sizeof(ScriptBindingDescription) +
-            configurations_.capacity() * sizeof(Configuration) +
-            symbols_.capacity() * sizeof(lux::script::ScriptSymbolId);
+               descriptions_.capacity() * sizeof(ScriptBindingDescription) +
+               configurations_.capacity() * sizeof(Configuration) +
+               symbols_.capacity() * sizeof(lux::script::ScriptSymbolId);
     }
 
     ScriptBindings::Result ScriptBindings::validateMethods(
-        std::uint32_t slot, const lux::script::ScriptArtifact& artifact
+        std::uint32_t slot,
+        const lux::script::ScriptArtifact& artifact
     ) const noexcept
     {
         const auto& config = configurations_[slot];
@@ -322,13 +316,13 @@ namespace lux::simulation::script::detail
             if (function == nullptr)
                 return lux::cxx::unexpected(EScriptSystemError::SYMBOL_NOT_FOUND);
             const bool is_hook = binding.kind == EBindingKind::HOOK;
-            const bool signature_matches = is_hook
-                ? sameScriptHookSignature(*function, hook_endpoints_[binding.bucket].signature)
-                : sameScriptEventSignature(*function, event_endpoints_[binding.bucket].payload_type);
+            const bool signature_matches =
+                is_hook ? sameScriptHookSignature(*function, hook_endpoints_[binding.bucket].signature)
+                        : sameScriptEventSignature(*function, event_endpoints_[binding.bucket].payload_type);
             if (!signature_matches)
                 return lux::cxx::unexpected(EScriptSystemError::SIGNATURE_MISMATCH);
             const bool invalid_scope = !is_hook && !config.entity_scope &&
-                event_endpoints_[binding.bucket].route == EEventRoute::ENTITY_TARGETED;
+                                       event_endpoints_[binding.bucket].route == EEventRoute::ENTITY_TARGETED;
             if (invalid_scope)
                 return lux::cxx::unexpected(EScriptSystemError::SCOPE_MISMATCH);
         }
@@ -336,7 +330,9 @@ namespace lux::simulation::script::detail
     }
 
     ScriptBindings::Result ScriptBindings::publish(
-        std::uint32_t slot, ScriptInstanceId instance, ecs::Entity entity
+        std::uint32_t slot,
+        ScriptInstanceId instance,
+        ecs::Entity entity
     ) noexcept
     {
         auto& config = configurations_[slot];
@@ -388,7 +384,8 @@ namespace lux::simulation::script::detail
                 {
                     failed = true;
                     error = inserted.error == EEndpointMutationError::CAPACITY_EXCEEDED
-                        ? EScriptSystemError::CAPACITY_EXCEEDED : EScriptSystemError::ALLOCATION_FAILURE;
+                                ? EScriptSystemError::CAPACITY_EXCEEDED
+                                : EScriptSystemError::ALLOCATION_FAILURE;
                 }
             }
             if (failed)
@@ -471,7 +468,10 @@ namespace lux::simulation::script::detail
         }
     }
 
-    ScriptBindings::Traversal::~Traversal() noexcept { owner_.finishTraversal(); }
+    ScriptBindings::Traversal::~Traversal() noexcept
+    {
+        owner_.finishTraversal();
+    }
 
     void ScriptBindings::finishTraversal() noexcept
     {
@@ -561,10 +561,9 @@ namespace lux::simulation::script::detail
             const auto described = simulation.findHookPoint(endpoint.system, endpoint.hook);
             const bool is_invalid_identity = !endpoint.system.valid() || !endpoint.hook.valid();
             const bool is_invalid_functions = endpoint.connect == nullptr || endpoint.disconnect == nullptr;
-            const bool is_invalid_signature =
-                !described || !described.scriptCapable() ||
-                described.parameterCount() != endpoint.signature.parameters.size() ||
-                !endpoint.signature.returns.empty();
+            const bool is_invalid_signature = !described || !described.scriptCapable() ||
+                                              described.parameterCount() != endpoint.signature.parameters.size() ||
+                                              !endpoint.signature.returns.empty();
             if (is_invalid_identity || is_invalid_functions || is_invalid_signature)
                 return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
 
@@ -573,9 +572,10 @@ namespace lux::simulation::script::detail
                 if (described.parameterAt(parameter) != endpoint.signature.parameters[parameter])
                     return lux::cxx::unexpected(EScriptSystemError::SIGNATURE_MISMATCH);
             }
-            const auto inserted =
-                hook_index_.emplace(EndpointKey{endpoint.system.value, endpoint.hook.value},
-                                            static_cast<std::uint32_t>(index));
+            const auto inserted = hook_index_.emplace(
+                EndpointKey{endpoint.system.value, endpoint.hook.value},
+                static_cast<std::uint32_t>(index)
+            );
             if (!inserted.second)
                 return lux::cxx::unexpected(EScriptSystemError::DUPLICATE_ENDPOINT);
         }
@@ -589,28 +589,28 @@ namespace lux::simulation::script::detail
             const auto described = simulation.findEvent(endpoint.system, endpoint.event);
             const auto& owned = endpoint.payload_projection.owned_layout;
             const auto* builtin = lux::semantic::builtinLayout(owned.type_id);
-            const bool is_invalid_builtin = builtin != nullptr &&
+            const bool is_invalid_builtin =
+                builtin != nullptr &&
                 (builtin->canonical_name != owned.canonical_name || builtin->abi_kind != owned.abi_kind ||
                  builtin->size != owned.size || builtin->alignment != owned.alignment);
             const bool is_invalid_identity = !endpoint.system.valid() || !endpoint.event.valid();
-            const bool is_invalid_functions =
-                endpoint.connect == nullptr || endpoint.disconnect == nullptr;
-            const bool is_invalid_signature =
-                !described || !described.dispatchHook().scriptCapable() ||
-                described.route() != endpoint.route ||
-                described.payloadType() != endpoint.payload_type.type_id ||
-                described.payloadSchemaName() != endpoint.payload_type.canonical_name ||
-                endpoint.payload_type.pass != lux::semantic::EValuePass::CONST_REF ||
-                owned.type_id != endpoint.payload_type.type_id ||
-                owned.canonical_name != endpoint.payload_type.canonical_name || owned.abi_kind == 0U ||
-                owned.size == 0U || owned.alignment == 0U ||
-                (owned.alignment & (owned.alignment - 1U)) != 0U || is_invalid_builtin;
+            const bool is_invalid_functions = endpoint.connect == nullptr || endpoint.disconnect == nullptr;
+            const bool is_invalid_signature = !described || !described.dispatchHook().scriptCapable() ||
+                                              described.route() != endpoint.route ||
+                                              described.payloadType() != endpoint.payload_type.type_id ||
+                                              described.payloadSchemaName() != endpoint.payload_type.canonical_name ||
+                                              endpoint.payload_type.pass != lux::semantic::EValuePass::CONST_REF ||
+                                              owned.type_id != endpoint.payload_type.type_id ||
+                                              owned.canonical_name != endpoint.payload_type.canonical_name ||
+                                              owned.abi_kind == 0U || owned.size == 0U || owned.alignment == 0U ||
+                                              (owned.alignment & (owned.alignment - 1U)) != 0U || is_invalid_builtin;
             if (is_invalid_identity || is_invalid_functions || is_invalid_signature)
                 return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
 
-            const auto inserted =
-                event_index_.emplace(EndpointKey{endpoint.system.value, endpoint.event.value},
-                                             static_cast<std::uint32_t>(index));
+            const auto inserted = event_index_.emplace(
+                EndpointKey{endpoint.system.value, endpoint.event.value},
+                static_cast<std::uint32_t>(index)
+            );
             if (!inserted.second)
                 return lux::cxx::unexpected(EScriptSystemError::DUPLICATE_ENDPOINT);
         }

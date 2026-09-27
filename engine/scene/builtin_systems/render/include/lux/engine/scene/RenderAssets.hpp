@@ -1,77 +1,79 @@
 #pragma once
 
-#include <lux/engine/process/TaskScope.hpp>
-#include <lux/engine/process/asset_loading/AssetLoadSender.hpp>
-#include <lux/engine/render/RenderRuntime.hpp>
-#include <lux/engine/scene/SceneInstanceId.hpp>
-#include <lux/engine/scene/render/visibility.h>
-#include <lux/engine/simulation/ecs/Entity.hpp>
-#include <variant>
+#include <lux/engine/scene/MeshQuery.hpp>
+#include <lux/engine/scene/RenderResources.hpp>
+#include <lux/engine/scene/ResolvedMeshResources.hpp>
+#include <lux/engine/scene/SceneSystem.hpp>
+#include <lux/engine/simulation/ecs/ComponentChangeSet.hpp>
+#include <lux/engine/simulation/ecs/Registry.hpp>
+#include <lux/engine/simulation/ecs/Visual.hpp>
+#include <unordered_map>
 
 namespace lux::scene
 {
-namespace detail
-{
-class RenderAssets;
-}
+    class RenderSystem;
+    class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderAssets final
+    {
+    public:
+        ~RenderAssets();
+        [[nodiscard]] static RenderAssets* find(simulation::ecs::Registry&, system::SystemInstanceId) noexcept;
+        [[nodiscard]] static const RenderAssets* find(
+            const simulation::ecs::Registry&,
+            system::SystemInstanceId
+        ) noexcept;
+        [[nodiscard]] render::RenderResult<void> replaceInput(RenderAssetInput) noexcept;
+        [[nodiscard]] std::span<const RenderAssetStatus> statuses() const noexcept;
+        [[nodiscard]] std::uint64_t revision() const noexcept
+        {
+            static_cast<void>(statuses());
+            return revision_;
+        }
+        [[nodiscard]] render::RenderResult<void> retry(const RenderAssetKey&) noexcept;
 
-enum class ERenderAssetState : std::uint8_t
-{
-    UNREFERENCED,
-    READING,
-    UPLOADING,
-    READY,
-    FAILED,
-    CANCELLED,
-    CAPACITY
-};
-
-struct RenderAssetKey final
-{
-    SceneInstanceId instance;
-    simulation::ecs::Entity entity{simulation::ecs::NullEntity};
-    asset::AssetId mesh, material;
-    std::uint64_t source_version{}, sequence{};
-    friend bool operator==(const RenderAssetKey &, const RenderAssetKey &) = default;
-};
-
-struct RenderAssetStatus final
-{
-    RenderAssetKey key;
-    ERenderAssetState state{ERenderAssetState::READING};
-    std::variant<std::monostate, process::asset_loading::AssetLoadFailure, process::ETaskStartError,
-                 render::ERenderUploadSubmitError>
-        failure;
-    render::RenderError render_failure;
-    std::uint32_t backend_status{};
-    asset::AssetId failed_dependency;
-};
-
-struct RenderAssetLimits final
-{
-    std::size_t requests{1024};
-    std::size_t transitions_per_turn{16};
-    asset::AssetDecodeLimits decode{16 * 1024 * 1024, 32 * 1024 * 1024, 16};
-};
-
-// One immutable asset source/version, shared by author and Run instances.
-// Its read port must retain that exact source; a version number does not
-// turn a mutable VFS into a snapshot. Tasks belong to the host scope.
-class LUX_ENGINE_SCENE_RENDER_PUBLIC RenderAssetSource final
-{
-  public:
-    RenderAssetSource(render::RenderRuntime &, process::TaskScope &, process::asset_loading::AssetReadPort,
-                      std::uint64_t source_version, RenderAssetLimits = {}, std::shared_ptr<const void> code = {});
-    ~RenderAssetSource();
-    RenderAssetSource(const RenderAssetSource &) = delete;
-    RenderAssetSource &operator=(const RenderAssetSource &) = delete;
-    [[nodiscard]] std::uint64_t version() const noexcept;
-
-  private:
-    friend class detail::RenderAssets;
-    friend class RenderSystem;
-    [[nodiscard]] bool uses(const render::RenderRuntime &) const noexcept;
-    struct Impl;
-    std::unique_ptr<Impl> impl_;
-};
+    private:
+        friend class RenderSystem;
+        static RenderAssets& install(
+            simulation::ecs::Registry&,
+            system::SystemInstanceId,
+            SceneInstanceId,
+            RenderResources&,
+            RenderAssetInput
+        );
+        static void uninstall(simulation::ecs::Registry&, system::SystemInstanceId) noexcept;
+        RenderAssets(simulation::ecs::Registry&, SceneInstanceId, RenderResources&, RenderAssetInput);
+        void maintain(SceneStageContext&);
+        void synchronizeQuery(MeshQuery&);
+        [[nodiscard]] bool pending() const noexcept;
+        struct Association final
+        {
+            RenderAssetKey key;
+            RenderResourceId mesh, material;
+            RenderAssetStatus row;
+            render::RenderSubmissionState submission;
+            bool fresh{};
+            bool geometry_observed{};
+        };
+        simulation::ecs::Registry& registry_;
+        SceneInstanceId instance_;
+        RenderResources& resources_;
+        RenderAssetInput input_;
+        std::optional<RenderAssetInput> replacement_;
+        std::unordered_map<simulation::ecs::Entity, Association> current_;
+        mutable std::vector<RenderAssetStatus> snapshot_;
+        std::unordered_map<asset::AssetId, const void*> query_sources_;
+        std::uint64_t sequence_{};
+        mutable bool changed_{true};
+        mutable std::uint64_t revision_{};
+        bool first_{true}, query_dirty_{true};
+        simulation::ecs::TExtractionChangeSet<
+            simulation::ecs::Mesh3D,
+            simulation::ecs::TComponentList<>,
+            simulation::ecs::TComponentList<>>
+            changes_;
+        entt::scoped_connection destroyed_;
+        std::vector<simulation::ecs::Entity> pending_, departures_;
+        void departed(simulation::ecs::Registry&, simulation::ecs::Entity);
+        void release(Association&) noexcept;
+        void associate(simulation::ecs::Entity, bool fresh = false);
+    };
 } // namespace lux::scene

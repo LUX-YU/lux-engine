@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstdint>
+#include <exception>
 #include <limits>
 #include <memory>
 #include <new>
@@ -27,21 +28,19 @@ namespace lux::render
     //  Aligned allocator for the payload blob
     // -----------------------------------------------------------------------------
 
-    template <typename T, std::size_t Alignment> class AlignedAllocator
+    template <typename T, std::size_t Alignment> class TAlignedAllocator
     {
     public:
         using value_type = T;
 
-        AlignedAllocator() noexcept = default;
+        TAlignedAllocator() noexcept = default;
 
-        template <typename U> constexpr AlignedAllocator(const AlignedAllocator<U, Alignment>&) noexcept
-        {
-        }
+        template <typename U> constexpr TAlignedAllocator(const TAlignedAllocator<U, Alignment>&) noexcept {}
 
         [[nodiscard]] T* allocate(std::size_t n)
         {
             if (n > (std::numeric_limits<std::size_t>::max)() / sizeof(T))
-                throw std::bad_array_new_length{};
+                std::terminate();
 
             void* p = ::operator new(n * sizeof(T), std::align_val_t{Alignment});
             return static_cast<T*>(p);
@@ -54,20 +53,20 @@ namespace lux::render
 
         template <typename U> struct rebind
         {
-            using other = AlignedAllocator<U, Alignment>;
+            using other = TAlignedAllocator<U, Alignment>;
         };
 
         using is_always_equal = std::true_type;
     };
 
     template <typename T, typename U, std::size_t Alignment>
-    constexpr bool operator==(const AlignedAllocator<T, Alignment>&, const AlignedAllocator<U, Alignment>&) noexcept
+    constexpr bool operator==(const TAlignedAllocator<T, Alignment>&, const TAlignedAllocator<U, Alignment>&) noexcept
     {
         return true;
     }
 
     template <typename T, typename U, std::size_t Alignment>
-    constexpr bool operator!=(const AlignedAllocator<T, Alignment>&, const AlignedAllocator<U, Alignment>&) noexcept
+    constexpr bool operator!=(const TAlignedAllocator<T, Alignment>&, const TAlignedAllocator<U, Alignment>&) noexcept
     {
         return false;
     }
@@ -121,7 +120,7 @@ namespace lux::render
     /// 分发完全走 `CmdRecord::type_id`(op id);附件类型只是 `AttachmentRecord`
     /// 上的自证标签,供消费方在 `static_cast` 前做一次等值守卫。
     ///
-    /// **1/2/4/5 为引擎保留;其余值归各模块自取。**
+    /// **1/2/4/5/6 为引擎保留;其余值归各模块自取。**
     ///
     /// ⚠️ 这里**没有分配机制**(对比 op 侧的 allocateSlot / freeSlot / generation /
     /// 名字索引),所以模块间不撞号只能靠这条约定。谁新加一个类型,自己往下取值,
@@ -138,36 +137,37 @@ namespace lux::render
         /// `object/object_size`; unlike BorrowedBytes/OwnedBytes there is no
         /// intermediate byte-range wrapper to unwrap on the render thread.
         inline constexpr TypeId OwnedObject = 5;
+        inline constexpr TypeId SubmissionState = 6; ///< Passive RenderSubmissionState, never a callback
     }
 
-    enum class CmdFlags : std::uint16_t
+    enum class ECmdFlags : std::uint16_t
     {
-        None = 0,
-        ExpectsReply = 1u << 0,
-        DeferredReply = 1u << 1,
+        NONE = 0,
+        EXPECTS_REPLY = 1u << 0,
+        DEFERRED_REPLY = 1u << 1,
     };
 
-    inline constexpr std::uint16_t toUnderlying(CmdFlags flags) noexcept
+    inline constexpr std::uint16_t toUnderlying(ECmdFlags flags) noexcept
     {
         return static_cast<std::uint16_t>(flags);
     }
 
-    inline constexpr CmdFlags operator|(CmdFlags lhs, CmdFlags rhs) noexcept
+    inline constexpr ECmdFlags operator|(ECmdFlags lhs, ECmdFlags rhs) noexcept
     {
-        return static_cast<CmdFlags>(toUnderlying(lhs) | toUnderlying(rhs));
+        return static_cast<ECmdFlags>(toUnderlying(lhs) | toUnderlying(rhs));
     }
 
-    inline constexpr CmdFlags operator&(CmdFlags lhs, CmdFlags rhs) noexcept
+    inline constexpr ECmdFlags operator&(ECmdFlags lhs, ECmdFlags rhs) noexcept
     {
-        return static_cast<CmdFlags>(toUnderlying(lhs) & toUnderlying(rhs));
+        return static_cast<ECmdFlags>(toUnderlying(lhs) & toUnderlying(rhs));
     }
 
-    inline constexpr std::uint16_t operator|(std::uint16_t lhs, CmdFlags rhs) noexcept
+    inline constexpr std::uint16_t operator|(std::uint16_t lhs, ECmdFlags rhs) noexcept
     {
         return static_cast<std::uint16_t>(lhs | toUnderlying(rhs));
     }
 
-    inline constexpr bool hasFlag(std::uint16_t flags, CmdFlags bit) noexcept
+    inline constexpr bool hasFlag(std::uint16_t flags, ECmdFlags bit) noexcept
     {
         return (flags & toUnderlying(bit)) != 0;
     }
@@ -177,7 +177,7 @@ namespace lux::render
         return (value + (alignment - 1)) & ~(alignment - 1);
     }
 
-    template <typename T> struct CommandTraits
+    template <typename T> struct TCommandTraits
     {
         static constexpr bool has_reply = false;
         static constexpr TypeId reply_type_id = kInvalidTypeId;
@@ -197,13 +197,13 @@ namespace lux::render
     /// 一条命令在**分发期**失败的方式(还没到 handler 的业务逻辑)。
     enum class EDispatchFailure : uint32_t
     {
-        Unspecified = 0,
-        InvalidOpcode = 1,
-        PayloadOutOfBounds = 2,
-        UnknownTypeId = 3,
-        TypeIdGeneration = 4,
-        HandlerRejected = 5,
-        PayloadValidation = 6,
+        UNSPECIFIED = 0,
+        INVALID_OPCODE = 1,
+        PAYLOAD_OUT_OF_BOUNDS = 2,
+        UNKNOWN_TYPE_ID = 3,
+        TYPE_ID_GENERATION = 4,
+        HANDLER_REJECTED = 5,
+        PAYLOAD_VALIDATION = 6,
     };
 
     // Payload of a ReplyCommandFailed reply (kReplyCommandFailedTypeId, above).
@@ -221,7 +221,7 @@ namespace lux::render
     };
     static_assert(std::is_trivially_copyable_v<CommandFailedReply>);
 
-    template <typename T> inline constexpr bool command_has_reply_v = CommandTraits<T>::has_reply;
+    template <typename T> inline constexpr bool command_has_reply_v = TCommandTraits<T>::has_reply;
 
     struct CmdRecord
     {
@@ -296,8 +296,7 @@ namespace lux::render
             void (*deleter)(void*) noexcept
         ) noexcept
             : type_id(type), object(value), object_size(value_size), accounted_size(charged_size), destroy(deleter)
-        {
-        }
+        {}
 
         ~AttachmentRecord()
         {
@@ -311,8 +310,7 @@ namespace lux::render
             : type_id(std::exchange(other.type_id, kInvalidTypeId)), object(std::exchange(other.object, nullptr)),
               object_size(std::exchange(other.object_size, 0)), accounted_size(std::exchange(other.accounted_size, 0)),
               destroy(std::exchange(other.destroy, nullptr))
-        {
-        }
+        {}
 
         AttachmentRecord& operator=(AttachmentRecord&& other) noexcept
         {

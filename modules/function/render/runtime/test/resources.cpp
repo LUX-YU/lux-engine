@@ -1,5 +1,7 @@
 #include <lux/engine/render/RenderRuntime.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cassert>
 #include <chrono>
 #include <iostream>
@@ -26,7 +28,8 @@ int main()
     auto runtime = std::move(*created);
     const auto pump = [&] {
         std::size_t controls = 2, programs = 1;
-        const auto adopted = runtime->poll(3, controls, programs);
+        const auto adopted = runtime->collectCompletions(3);
+        assert(runtime->submitPending(controls, programs));
         assert(adopted && *adopted <= 3 && controls <= 2 && programs <= 1);
     };
     const auto until = [&](auto condition) {
@@ -43,76 +46,34 @@ int main()
         assert(false && "The requested completion did not arrive");
     };
 
-    // No window, CPU UI or SceneInstance is involved. Vulkan really creates
-    // the Scene; zero Main adoption budget retains the late result's record.
-    auto late = runtime->createScene({.name = "late CPU owner"}, {});
-    assert(late);
-    auto late_receipt = late->receipt();
-    std::size_t commands = 1, programs = 0;
-    assert(runtime->poll(0, commands, programs));
-    assert(commands == 0);
-    assert(late_receipt.status().state == ESceneResourceState::CREATING);
-    *late = {};
-    until([&] { return late_receipt.status().state == ESceneResourceState::RETIRED; });
-    assert(late_receipt.status().scene.isValid() && late_receipt.status().failure.ok());
-
-    auto survivor = runtime->createScene({.name = "independent Scene"}, {});
-    assert(survivor);
-    until([&] { return survivor->status().state == ESceneResourceState::READY; });
-    const auto stable_identity = survivor->id();
-
-    auto early_view = runtime->openView(*survivor, {.extent = {80, 60}});
-    assert(early_view);
-    commands = 1;
-    assert(runtime->poll(0, commands, programs));
-    assert(commands == 0);
-    early_view->reset(); // No explicit drain needed in a View facade destructor.
-    until([&] { return runtime->statistics().views == 0; });
-    assert(survivor->status().state == ESceneResourceState::READY);
-
-    auto image_view = runtime->openView(*survivor, {.extent = {64, 48}});
-    assert(image_view);
-    until([&] { return (*image_view)->status().state == EViewState::READY; });
-    auto image = (*image_view)->acquireImage();
-    assert(image && image->lease.valid());
-    const auto image_evidence = runtime->imageEvidence(*image);
-    assert(image_evidence && image_evidence->evidence == EImageEvidence::REQUESTED);
-    image_view->reset();
-    for (unsigned i = 0; i < 6; ++i)
+    // Fill the reply ring with a fixed upload set before Main adopts replies.
+    // Once forwarded, no more requests/Programs may rescue a deferred reply:
+    // freeing reply capacity must itself make the backend retry publication.
+    std::array<TRenderRequest<Texture2DCreatedReply>, 8> textures;
+    const std::array pixels{std::byte{255}, std::byte{255}, std::byte{255}, std::byte{255}};
+    auto upload = runtime->upload();
+    assert(upload);
+    for (auto& request : textures)
     {
-        pump();
+        auto submitted = upload->tryCreateTexture2DCopy(pixels, 1, 1, 4, EPixelFormat::RGBA8_UNORM, false);
+        assert(submitted);
+        request = std::move(*submitted);
     }
-    assert(runtime->statistics().views == 1); // A real CPU image borrow still exists.
-    *image = {};
-    until([&] { return runtime->statistics().views == 0; });
-
-    auto failed = runtime->createScene({.name = "invalid Feature"}, {{17, 0xFFFFFF, {}, {}}});
-    assert(failed);
-    auto failure_receipt = failed->receipt();
-    until([&] { return failure_receipt.status().state == ESceneResourceState::ATTACHING; });
-    // The attachment is in flight; destroy its CPU owner before its reply.
-    *failed = {};
-    until([&] { return failure_receipt.status().state == ESceneResourceState::RETIRED; });
-    const auto failure = failure_receipt.status();
-    assert(failure.failure.type == renderError<err::feature::TypeNotRegistered>(0xFFFFFF).type);
-    assert(failure.feature == 17 && failure.request != 0);
-    assert(survivor->id() == stable_identity && survivor->status().state == ESceneResourceState::READY);
-
-    // A Program attachment, unlike the read-only receipt, holds a use. The
-    // bounded idle rotation must release it even if no more frames are drawn.
-    auto receipt = survivor->receipt();
-    RenderProgram<> input;
-    RenderProgramSession::Builder builder(input);
-    builder.begin({});
-    input.kind = ERenderProgramKind::StateUpdate;
-    builder.emplaceAttachment<RenderSceneLease>(901, survivor->retain());
-    assert(*runtime->submit(input) == EFrameSubmit::SUBMITTED);
-    *survivor = {};
-    until([&] { return receipt.status().state == ESceneResourceState::RETIRED; });
-    assert(receipt.status().failure.ok());
-    assert(runtime->statistics().runtime_leases == 0);
-    assert(runtime->statistics().frames == 0); // Retirement did not fabricate a draw.
-    assert(runtime->statistics().validation_errors == 0);
+    std::size_t uploads = textures.size(), no_programs{};
+    assert(runtime->submitPending(uploads, no_programs));
+    assert(uploads == 0);
+    std::this_thread::sleep_for(50ms);
+    until([&] { return std::ranges::all_of(textures, [](const auto& request) { return request.isReady(); }); });
+    assert(runtime->statistics().accepted_frames == 0);
+    auto upload_control = runtime->control();
+    assert(upload_control);
+    for (auto& request : textures)
+    {
+        const auto result = request.tryResult();
+        assert(result && result->get().status == 0 && result->get().handle.isValid());
+        until([&] { return upload_control->get().canSubmit(); });
+        upload_control->get().destroyTexture(result->get().handle);
+    }
 
     assert(runtime->beginClose());
     bool complete{};
@@ -125,10 +86,12 @@ int main()
     });
     assert(runtime->joinStopped());
     assert(runtime->status().state == ERenderRuntimeState::RETIRED);
-    // Retained receipts remain observations after the runtime is destroyed.
-    runtime.reset();
-    assert(failure_receipt.status().failure.type == failure.failure.type);
-    assert(receipt.status().state == ESceneResourceState::RETIRED);
-    std::cout << "PASS actual Vulkan Scene/View creation, late owner release, CPU image guard, Feature failure, "
-                 "independent Scene, Program use retirement; no draw submitted\n";
+    {
+        auto automatic = RenderRuntime::create({});
+        assert(automatic);
+        auto scene = (*automatic)->control()->get().createScene({.name = "RAII pending creation"});
+        automatic->reset(); // No manual poll/close/join; the request must reach a terminal state.
+        assert(scene.isReady());
+    }
+    std::cout << "PASS upload reply-ring backpressure and idle transport retirement\n";
 }

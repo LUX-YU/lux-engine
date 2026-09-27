@@ -1,0 +1,727 @@
+#pragma once
+#include <lux/engine/ui/Root.hpp>
+#include <lux/engine/editor/ui/ComponentEditors.hpp>
+#include <lux/engine/editor/ui/SpatialInteraction.hpp>
+#include <lux/engine/ui/Element.hpp>
+#include <lux/engine/scene/Camera.hpp>
+#include <lux/engine/scene/MeshQuery.hpp>
+#include <lux/engine/simulation/ecs/Transform.hpp>
+#include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/editing/scene/FieldEdit.hpp>
+#include <lux/engine/editor/metadata/SceneRegistrations.hpp>
+#include <lux/engine/function/render/client/core/RenderSceneId.hpp>
+#include <lux/engine/object/LuxObject.hpp>
+#include <lux/engine/resource/asset/model/ModelAsset.hpp>
+#include <lux/engine/world/WorldObjectId.hpp>
+#include <lux/engine/editor/ui/CloseReview.hpp>
+#include <lux/engine/editor/detail/SignalDelivery.hpp>
+#include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
+#include <algorithm>
+#include <array>
+#include <limits>
+#include <lux/engine/editor/detail/AssetSave.hpp>
+#include <lux/engine/editor/detail/AssetSource.hpp>
+#include <lux/engine/editor/EditorContext.hpp>
+#include <lux/engine/editor/editing/EditHistory.hpp>
+#include <lux/engine/editor/scene/detail/SceneOpening.hpp>
+#include <lux/engine/editor/scene/detail/SceneSource.hpp>
+#include <lux/engine/editor/scene/SceneEditor.hpp>
+#include <lux/engine/editor/scene/detail/EditorEntity.hpp>
+#include <lux/engine/editor/scene/detail/ModelCreation.hpp>
+#include <lux/engine/editor/scene/detail/SceneContent.hpp>
+#include <lux/engine/process/CompletionWork.hpp>
+#include <lux/engine/function/render/features/genops/Grid3DOperation.ops.hpp>
+#include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
+#include <lux/engine/render/RenderRuntime.hpp>
+#include <lux/engine/resource/asset/material/MaterialAssets.hpp>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
+#include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/SceneRuntime.hpp>
+#include <lux/engine/EngineContext.hpp>
+#include <lux/engine/scene/RenderSceneState.hpp>
+#include <lux/cxx/core/scope_exit.hpp>
+#include <lux/engine/scene/WorldMaterializer.hpp>
+#include <lux/engine/simulation/ecs/EntityCreationPlan.hpp>
+#include <lux/engine/simulation/ecs/Parent.hpp>
+#include <lux/engine/simulation/ecs/Transform.hpp>
+#include <lux/engine/simulation/ecs/Visual.hpp>
+#include <random>
+#include <unordered_set>
+
+namespace lux::editor::ui
+{
+    class SceneContentElement;
+}
+
+namespace lux::editor::scene
+{
+    struct SceneSaveCapture final
+    {
+        lux::scene::SceneCapture capture;
+        asset::AssetId copy_identity;
+        // Written only by the CPU encoding task; Main reads after the save reaches its terminal state.
+        std::shared_ptr<lux::scene::ScenePackage> copied;
+    };
+    struct SceneEncoder final
+    {
+        EditorResult<lux::cxx::SharedBytes<>> operator()(const SceneSaveCapture& input, std::stop_token stop)
+            const noexcept
+        {
+            auto package = lux::scene::buildScenePackage(input.capture, 256U * 1024U * 1024U, stop);
+            if (!package)
+                return lux::cxx::unexpected(
+                    EditorFailure{EEditorError::SOURCE_FAILURE, "scene.capture", 0, {}, package.error()}
+                );
+            if (!input.copy_identity.isNull())
+            {
+                auto copied = detail::copySceneSource(*package, input.copy_identity, stop);
+                if (!copied)
+                    return lux::cxx::unexpected(copied.error());
+                package = std::move(*copied);
+                *input.copied = *package;
+            }
+            auto encoded = lux::scene::encodeScenePackage(*package, 256U * 1024U * 1024U, stop);
+            if (!encoded)
+            {
+                return lux::cxx::unexpected(EditorFailure{
+                    EEditorError::SOURCE_FAILURE,
+                    "scene.encode",
+                    static_cast<std::uint64_t>(encoded.error().code),
+                    {},
+                    encoded.error()
+                });
+            }
+            auto owner = std::make_shared<const std::vector<std::byte>>(std::move(*encoded));
+            return lux::cxx::SharedBytes<>::fromOwner(owner, *owner);
+        }
+    };
+    using SceneSave = lux::editor::detail::TAssetSave<SceneSaveCapture, SceneEncoder>;
+
+    using ModelReadResult = EditorResult<std::shared_ptr<const lux::asset::ModelAsset>>;
+    constexpr editing::HistoryLimits kHistoryLimits{1024, 64U * 1024U * 1024U, 16U * 1024U * 1024U, 256};
+
+    struct EditingGuard final
+    {
+        explicit EditingGuard(bool& busy) noexcept : busy_(busy)
+        {
+            busy_ = true;
+        }
+        ~EditingGuard()
+        {
+            busy_ = false;
+        }
+        bool& busy_;
+    };
+
+    struct PlaybackBuild final
+    {
+        lux::scene::SceneCapture capture;
+        std::stop_token stop;
+        EditorResult<lux::scene::ScenePackage> operator()() noexcept
+        {
+            auto result = lux::scene::buildScenePackage(capture, 256U * 1024U * 1024U, stop);
+            if (!result)
+                return lux::cxx::unexpected(EditorFailure{
+                    result.error().code == lux::scene::EScenePackageError::CANCELLED ? EEditorError::CANCELLED
+                                                                                     : EEditorError::SOURCE_FAILURE,
+                    "run.capture",
+                    0,
+                    {},
+                    result.error()
+                });
+            return std::move(*result);
+        }
+    };
+    struct SceneSourceCodec final
+    {
+        using Source = lux::scene::ScenePackage;
+        static constexpr std::size_t max_bytes = 256U * 1024U * 1024U;
+        static asset::AssetId identity(const Source& source) noexcept
+        {
+            return source.scene->id();
+        }
+        static EditorResult<Source> decode(const lux::cxx::SharedBytes<>&, std::stop_token) noexcept;
+    };
+    class SceneEditor::Impl final
+    {
+        friend class SceneEditor;
+        friend class SceneEditorTestAccess;
+        friend class ui::SceneContentElement;
+        friend class ui::OutlinerElement;
+        friend class ui::OutlinerPane;
+        friend class ui::ResourceElement;
+        friend class ui::ResourcePane;
+
+    public:
+        Impl(EditorResult<void>&, EditorContext&);
+        ~Impl();
+
+    private:
+        SceneEditor* editor{};
+        EditorContext& editor_context_;
+        lux::scene::SceneRuntime& runtime_;
+        std::optional<lux::scene::SceneInstanceId> scene, run_scene, candidate_scene_;
+        lux::cxx::scope_exit<std::function<void()>> scenes_guard_;
+        void destroyScene(std::optional<lux::scene::SceneInstanceId>& id) noexcept
+        {
+            if (id && !runtime_.destroy(*id))
+                std::terminate();
+            id.reset();
+        }
+        bool safe(lux::scene::SceneInstanceId id) const noexcept
+        {
+            return bool(runtime_.getSceneRegistry(id));
+        }
+        lux::simulation::ecs::Registry& registry(lux::scene::SceneInstanceId id) const noexcept
+        {
+            const auto borrowed = runtime_.getSceneRegistry(id);
+            if (!borrowed)
+                std::terminate();
+            return borrowed->get();
+        }
+        const lux::simulation::ecs::Registry& readRegistry(lux::scene::SceneInstanceId id) const noexcept
+        {
+            const auto borrowed = std::as_const(runtime_).getSceneRegistry(id);
+            if (!borrowed)
+                std::terminate();
+            return borrowed->get();
+        }
+        const lux::scene::SceneDriveSnapshot& progress(lux::scene::SceneInstanceId id) const noexcept
+        {
+            return readRegistry(id).ctx().get<std::reference_wrapper<const lux::scene::SceneDriveSnapshot>>().get();
+        }
+        process::CompletionWork completion_work_;
+        bool completion_deferred_{};
+        void adoptCompletions() noexcept;
+        void applyChanges() noexcept;
+        void adoptAssetResults();
+        std::shared_ptr<const lux::scene::ScenePackage> source;
+        lux::scene::RenderAssetInput asset_source;
+        lux::scene::RenderSceneReceipt render_receipt;
+
+        std::optional<detail::SceneContent> content;
+        lux::simulation::ecs::Entity editor_camera{lux::simulation::ecs::NullEntity};
+        std::unique_ptr<editing::EditHistory> history;
+        std::optional<SceneEditing> scene_editing;
+        RunStatus run_status;
+        std::uint64_t next_run{1};
+        std::chrono::nanoseconds run_delta{std::chrono::milliseconds(16)};
+        std::uint64_t step_baseline_{};
+        bool single_step{};
+        std::stop_source run_stop;
+        std::optional<EditorResult<lux::scene::ScenePackage>> run_prepared_;
+        process::Task run_preparation;
+        std::unique_ptr<lux::scene::ScenePackage> run_source;
+        lux::scene::RenderAssetInput run_assets;
+
+        std::unique_ptr<editing::EditHistory> run_history;
+        std::unique_ptr<SceneEditing> run_editing;
+        SelectionNotice selection_, run_selection;
+        editing::Revision structure_revision{};
+        std::vector<entt::scoped_connection> run_connections;
+        void runStructureChanged(lux::simulation::ecs::Registry&, lux::simulation::ecs::Entity) noexcept
+        {
+            run_catalog_changed = true;
+        }
+        void observeRun()
+        {
+            namespace ecs = lux::simulation::ecs;
+            auto& registry = this->registry(*run_scene);
+            run_connections.emplace_back(registry.on_construct<ecs::Entity>().connect<&Impl::runStructureChanged>(*this)
+            );
+            run_connections.emplace_back(registry.on_destroy<ecs::Entity>().connect<&Impl::runStructureChanged>(*this));
+            run_connections.emplace_back(registry.on_construct<ecs::Parent>().connect<&Impl::runStructureChanged>(*this)
+            );
+            run_connections.emplace_back(registry.on_update<ecs::Parent>().connect<&Impl::runStructureChanged>(*this));
+            run_connections.emplace_back(registry.on_destroy<ecs::Parent>().connect<&Impl::runStructureChanged>(*this));
+            run_selection = {*run_scene, ecs::NullEntity, 0};
+            run_catalog_changed = true; // Consumers build their directory from existing Registry contents.
+        }
+        lux::scene::RenderSceneReceipt run_receipt;
+        double run_page_size{};
+        bool run_catalog_changed{};
+        bool runSettled() const noexcept
+        {
+            const auto state = run_status.state;
+            return state == ERunState::IDLE || state == ERunState::FINISHED || state == ERunState::FAILED;
+        }
+
+        std::shared_ptr<const SceneResourceSnapshot> resource_snapshot;
+        std::variant<
+            std::monostate,
+            EditorFailure,
+            lux::simulation::SimulationExecutionFailure,
+            lux::scene::SceneExecutionFailure,
+            editing::EditFailure>
+            failure;
+        std::uint64_t observed_resources{};
+        lux::scene::SceneInstanceId resource_instance;
+        bool editing_busy{};
+        bool finishing_interaction{};
+        std::variant<std::monostate, SceneSave> save;
+        std::uint64_t next_save{1};
+        std::vector<asset::AssetId> changed_assets;
+        object::Connection assets_connection;
+
+        struct Placement final
+        {
+            ModelCreationId id;
+            AssetReference reference;
+            Eigen::Vector3d position;
+            lux::partition::PartitionOrdinal partition;
+            editing::StateId base;
+            std::stop_source stop;
+            VModelCreationStatus status{ModelCreationPending{}};
+            std::variant<std::monostate, std::shared_ptr<const asset::ModelAsset>> work;
+            std::optional<ModelReadResult> loaded;
+            process::Task task;
+
+            Placement(
+                ModelCreationId request,
+                AssetReference asset,
+                const Eigen::Vector3d& at,
+                lux::partition::PartitionOrdinal location,
+                editing::StateId state
+            )
+                : id(request), reference(asset), position(at), partition(location), base(state)
+            {}
+            void start(
+                process::ExecutionRuntime& runtime,
+                process::asset_loading::AssetReadPort port,
+                process::CompletionWork::Request completed
+            )
+            {
+                stop = std::stop_source{};
+                status = ModelCreationPending{};
+                auto admitted = runtime.submit(
+                    {"Read model", "asset"},
+                    [port = std::move(port), cpu = runtime.cpu(), id = reference.asset, stop = stop.get_token()](
+                        process::TaskReporter
+                    ) mutable noexcept {
+                        auto read = stdexec::then(
+                            process::asset_loading::loadAsset<asset::ModelAsset>(
+                                std::move(port),
+                                cpu,
+                                id,
+                                {256U * 1024U * 1024U, 512U * 1024U * 1024U, 64},
+                                stop
+                            ),
+                            [](std::shared_ptr<const asset::ModelAsset> model) noexcept -> ModelReadResult {
+                                return model;
+                            }
+                        );
+                        return stdexec::upon_error(
+                            std::move(read),
+                            [](process::asset_loading::AssetLoadFailure failure) noexcept -> ModelReadResult {
+                                return lux::cxx::unexpected(EditorFailure{
+                                    EEditorError::SOURCE_FAILURE,
+                                    "model.load",
+                                    static_cast<std::uint64_t>(failure.code),
+                                    {},
+                                    failure
+                                });
+                            }
+                        );
+                    },
+                    [this,
+                     completed](process::TTaskResult<std::shared_ptr<const asset::ModelAsset>, EditorFailure>&& value
+                    ) noexcept {
+                        loaded.emplace(lux::editor::detail::taskResult(std::move(value)));
+                        task = {};
+                        completed.request();
+                    }
+                );
+                if (!admitted)
+                {
+                    status = EditorFailure{
+                        EEditorError::EXECUTION_FAILURE,
+                        "model.load",
+                        static_cast<std::uint64_t>(admitted.error()),
+                        {},
+                        admitted.error()
+                    };
+                    completed.request();
+                    return;
+                }
+                task = std::move(*admitted);
+            }
+            bool pending() const noexcept
+            {
+                return std::holds_alternative<ModelCreationPending>(status);
+            }
+        };
+        std::variant<std::monostate, Placement> placement;
+        std::uint64_t next_placement{1};
+
+        static auto structureFailure(ESceneStructureError code, std::string_view message)
+        {
+            return lux::cxx::unexpected(editing::makeEditFailure(
+                editing::EEditError::PRECONDITION_FAILED,
+                static_cast<std::uint64_t>(code),
+                message
+            ));
+        }
+
+        class ParentEdit;
+        editing::EditOperationPtr makeParentEdit(SceneEditor&, SceneWriteTarget, lux::world::WorldObjectId);
+
+        class ObjectEdit;
+        editing::EditOperationPtr makeObjectEdit(
+            SceneEditor&,
+            editing::StateId,
+            std::vector<detail::ObjectContent>,
+            bool creation,
+            std::string label
+        );
+        lux::scene::SceneInstanceId inspectedScene() const noexcept
+        {
+            return run_scene ? *run_scene : *scene;
+        }
+        const SelectionNotice& inspectedSelection() const noexcept
+        {
+            return run_scene ? run_selection : selection_;
+        }
+        SelectionNotice& inspectedSelection() noexcept
+        {
+            return run_scene ? run_selection : selection_;
+        }
+        lux::simulation::ecs::Entity resolve(lux::simulation::ecs::Entity ref) const noexcept
+        {
+            if (!scene)
+                return lux::simulation::ecs::NullEntity;
+            const auto current = inspectedScene();
+            return readRegistry(current).valid(ref) ? ref : lux::simulation::ecs::NullEntity;
+        }
+        editing::EditHistory& inspectedHistory() const noexcept
+        {
+            if (auto* current = run_history.get())
+            {
+                return *current;
+            }
+            return *history;
+        }
+        std::uint64_t highlighted_selection{UINT64_MAX};
+        editing::Revision highlighted_structure{};
+        lux::render::FeatureHandle highlighted_feature{};
+        lux::scene::SceneInstanceId highlighted_instance{};
+        lux::render::TRenderProgram<> highlight_program;
+        bool highlight_pending{};
+
+        float work_plane_height{};
+        bool work_plane_pending{};
+        lux::render::TRenderProgram<> work_plane_program;
+
+        lux::system::SystemInstanceId viewport_system_, candidate_viewport_;
+        const lux::scene::RenderSceneState* renderFor(std::optional<lux::scene::SceneInstanceId> id) const noexcept
+        {
+            if (!id || !viewport_system_.valid())
+                return nullptr;
+            return lux::scene::RenderSceneState::find(readRegistry(*id), viewport_system_);
+        }
+        const lux::scene::RenderSceneState* inspectedRender() const noexcept
+        {
+            return renderFor(run_scene ? run_scene : scene);
+        }
+
+        bool submit(lux::render::TRenderProgram<>& input)
+        {
+            const auto result = editor_context_.renderRuntime().submit(input);
+            if (!result)
+            {
+                failure = EditorFailure{EEditorError::SOURCE_FAILURE, "scene.feature.submit", 0, {}, result.error()};
+                return false;
+            }
+            if (*result == lux::render::EFrameSubmit::BACKPRESSURED)
+            {
+                return false;
+            }
+            return true;
+        }
+
+        void updateWorkPlane()
+        {
+            auto* system = renderFor(scene);
+            if (!work_plane_pending || !system ||
+                editor_context_.renderResources().sceneReceipt(system->resource).status().state !=
+                    lux::scene::ESceneResourceState::READY)
+            {
+                return;
+            }
+
+            const auto type = lux::render::kGrid3DDescriptor.type;
+            const auto feature = editor_context_.renderResources().sceneFeature(system->resource, type);
+            if (!feature.isValid())
+            {
+                return;
+            }
+
+            const auto ids = editor_context_.renderRuntime().features().ops<lux::render::Grid3DOperationIds>(
+                editor_context_.renderRuntime().features().nameOfType(type)
+            );
+            work_plane_program.clear_keep_capacity();
+            lux::render::RenderProgramSession::Builder builder(work_plane_program);
+            lux::render::Grid3DSetParamsPayload payload{
+                editor_context_.renderResources().sceneReceipt(system->resource).status().scene,
+                feature
+            };
+            payload.planeY = work_plane_height;
+            builder.push(
+                lux::render::opcode_of_v<lux::render::Grid3DSetParamsOp>,
+                ids.id<lux::render::Grid3DSetParamsOp>(),
+                payload
+            );
+            auto use = editor_context_.renderResources().capture(std::span{&system->resource, 1});
+            if (!use)
+            {
+                failure = EditorFailure{EEditorError::SOURCE_FAILURE, "scene.feature.capture", 0, {}, use.error()};
+                return;
+            }
+            builder.emplaceAttachment<lux::render::RenderSubmissionState>(
+                lux::render::attachment_types::SubmissionState,
+                std::move(*use)
+            );
+            if (submit(work_plane_program))
+            {
+                work_plane_pending = false;
+            }
+        }
+
+        void updateHighlight()
+        {
+            if (!scene)
+                return;
+            const auto current = inspectedScene();
+            auto& registry = readRegistry(current);
+            const auto& selected_state = inspectedSelection();
+            auto* system = inspectedRender();
+            if (!system || editor_context_.renderResources().sceneReceipt(system->resource).status().state !=
+                               lux::scene::ESceneResourceState::READY)
+            {
+                return;
+            }
+            const auto type = lux::render::kHighlightDescriptor.type;
+            const auto feature = editor_context_.renderResources().sceneFeature(system->resource, type);
+            if (!feature.isValid())
+            {
+                return;
+            }
+            if (highlighted_selection != selected_state.revision || highlighted_structure != structure_revision ||
+                highlighted_feature != feature || highlighted_instance != current)
+            {
+                highlighted_selection = selected_state.revision;
+                highlighted_structure = structure_revision;
+                highlighted_feature = feature;
+                highlighted_instance = current;
+                std::vector<lux::render::ERenderEntityId> targets;
+                const auto selected = resolve(selected_state.object);
+                if (selected != lux::simulation::ecs::NullEntity)
+                {
+                    for (const auto mesh : registry.view<lux::simulation::ecs::Mesh3D>())
+                    {
+                        auto entity = mesh;
+                        const auto candidate = entity;
+                        for (std::size_t depth{}; entity != lux::simulation::ecs::NullEntity &&
+                                                  depth <= registry.storage<lux::simulation::ecs::Entity>()->size();
+                             ++depth)
+                        {
+                            if (entity == selected)
+                            {
+                                if (registry.all_of<lux::simulation::ecs::Mesh3D>(candidate))
+                                {
+                                    targets.push_back(
+                                        static_cast<lux::render::ERenderEntityId>(entt::to_integral(candidate))
+                                    );
+                                }
+                                break;
+                            }
+                            const auto* parent = registry.try_get<lux::simulation::ecs::Parent>(entity);
+                            entity = parent ? parent->entity : lux::simulation::ecs::NullEntity;
+                            if (entity != lux::simulation::ecs::NullEntity && !registry.valid(entity))
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+                const auto ids = editor_context_.renderRuntime().features().ops<lux::render::HighlightOperationIds>(
+                    editor_context_.renderRuntime().features().nameOfType(type)
+                );
+                highlight_program.clear_keep_capacity();
+                lux::render::RenderProgramSession::Builder builder(highlight_program);
+                lux::render::HighlightReplaceTargetsPayload payload{
+                    editor_context_.renderResources().sceneReceipt(system->resource).status().scene,
+                    feature
+                };
+                payload.targets =
+                    builder.pushBlob(std::as_bytes(std::span(targets)), alignof(lux::render::ERenderEntityId));
+                builder.push(
+                    lux::render::opcode_of_v<lux::render::HighlightReplaceTargetsOp>,
+                    ids.id<lux::render::HighlightReplaceTargetsOp>(),
+                    payload
+                );
+                auto use = editor_context_.renderResources().capture(std::span{&system->resource, 1});
+                if (!use)
+                {
+                    failure = EditorFailure{EEditorError::SOURCE_FAILURE, "scene.feature.capture", 0, {}, use.error()};
+                    return;
+                }
+                builder.emplaceAttachment<lux::render::RenderSubmissionState>(
+                    lux::render::attachment_types::SubmissionState,
+                    std::move(*use)
+                );
+                highlight_pending = true;
+            }
+            if (highlight_pending && submit(highlight_program))
+            {
+                highlight_pending = false;
+            }
+        }
+
+        editing::HistoryId observed_history;
+        bool observed_run{};
+
+        AssetEditStatus asset_status_;
+        std::optional<EditorResult<SceneSourceCodec::Source>> read_result_;
+        process::Task reading_;
+        std::shared_ptr<const lux::scene::ScenePackage> candidate_;
+
+        std::unique_ptr<editing::EditHistory> candidate_history_;
+        lux::scene::RenderAssetInput candidate_assets_;
+        std::optional<SaveRequestId> change_save_;
+        std::shared_ptr<lux::scene::ScenePackage> copied_source_;
+        std::optional<detail::SceneContent> candidate_content_;
+        std::optional<SceneEditing> candidate_editing_;
+        bool resume_after_change_{}, hide_requested_{}, replacing_{};
+        EditorResult<void> changeAsset(EAssetChange, asset::AssetId = {}, bool reload = false);
+        EditorResult<void> reviewAsset(EAssetChangeDecision, std::string_view);
+        void startAssetChange();
+        void applyAssetChange();
+        void assetFailure(EditorFailure);
+        void restorePlayback();
+        EditorResult<void> prepareCandidate();
+        void adoptCandidate();
+
+        EditorResult<editing::HistorySnapshot> reviewClose() const;
+        bool isEditingBusy() const noexcept;
+        editing::EditResult<void> checkEditAdmission() const noexcept;
+        std::string_view writeRestriction() const noexcept;
+        EditorResult<lux::scene::SceneCapture> captureSource() const;
+        EditorResult<SaveRequestId> requestSave(std::string origin);
+        EditorResult<SaveRequestId> requestSaveAs(std::string_view);
+        std::span<const SaveRequestId> saveRequests() const noexcept;
+        EditorResult<VSaveRequestStatus> saveStatus(SaveRequestId id) const;
+        EditorResult<void> retrySave(SaveRequestId id);
+        EditorResult<void> abandonSave(SaveRequestId id);
+        EditorResult<void> acknowledgeSave(SaveRequestId id);
+        SelectionNotice selection() const noexcept;
+        const ProjectStorage& project() const noexcept;
+        ProjectStorage& project() noexcept;
+        EditorResult<void> selectRenderSystem(lux::system::SystemInstanceId);
+        lux::system::SystemInstanceId selectedRenderSystem() const noexcept;
+        EditorResult<void> select(lux::simulation::ecs::Entity id);
+        lux::scene::SceneInstanceId instance() const noexcept;
+        lux::scene::QueryResult<bool> raycastNearest(
+            lux::scene::SceneInstanceId instance,
+            const lux::math::Ray3d& ray,
+            double maximum_distance,
+            lux::scene::RayHit3D& hit,
+            lux::scene::MeshQueryWork* work = nullptr
+        ) const;
+        EditorResult<lux::simulation::ecs::Entity> viewportCamera();
+        EditorResult<void> setWorkPlaneHeight(double height);
+        EditorResult<void> navigateCamera(
+            lux::simulation::ecs::Entity ref,
+            const lux::simulation::ecs::Transform3D& pose,
+            const lux::scene::Camera& projection
+        );
+        editing::EditResult<lux::simulation::ecs::Entity> createCameraFromView(
+            lux::simulation::ecs::Entity source,
+            editing::StateId base,
+            lux::partition::PartitionOrdinal partition
+        );
+        const void* component(lux::simulation::ecs::Entity object, lux::cxx::TypeToken type) const noexcept;
+        editing::EditResult<SceneWriteTarget> writeTarget(lux::simulation::ecs::Entity object) const noexcept;
+        editing::EditResult<void> checkStructure(editing::StateId state) const noexcept;
+        bool supportsObjectSpace(EObjectSpace space) const noexcept;
+        bool supportsHierarchy() const noexcept;
+        editing::EditResult<lux::simulation::ecs::Entity> createObject(
+            editing::StateId base,
+            lux::partition::PartitionOrdinal partition,
+            EObjectSpace space
+        );
+        editing::EditResult<editing::ApplyResult> eraseObjects(
+            editing::StateId base,
+            std::span<const lux::simulation::ecs::Entity> input
+        );
+        editing::EditResult<editing::ApplyResult> reparent(
+            SceneWriteTarget target,
+            lux::simulation::ecs::Entity parent
+        );
+        editing::EditResult<std::vector<lux::simulation::ecs::Entity>> createEntitiesFromModel(
+            editing::StateId base,
+            const lux::asset::ModelAsset& asset,
+            const Eigen::Vector3d& position,
+            lux::partition::PartitionOrdinal partition
+        );
+        std::size_t partitionCount() const noexcept;
+        EditorResult<ModelCreationId> requestModelCreation(
+            AssetReference reference,
+            const Eigen::Vector3d& position,
+            lux::partition::PartitionOrdinal partition
+        );
+        EditorResult<VModelCreationStatus> modelCreationStatus(ModelCreationId id) const;
+        EditorResult<void> retryModelCreation(ModelCreationId id, editing::StateId base);
+        EditorResult<void> cancelModelCreation(ModelCreationId id);
+        EditorResult<void> acknowledgeModelCreation(ModelCreationId id);
+        editing::EditResult<editing::ApplyResult> executeContent(editing::EditOperationPtr& operation);
+        SceneEditing& editing() noexcept;
+        const SceneEditing& editing() const noexcept;
+        std::uint64_t componentVersion(lux::simulation::ecs::Entity object, lux::cxx::TypeToken type) const noexcept;
+        bool fieldEditWritable(const FieldEditToken& token) const noexcept;
+        editing::EditResult<void> fieldEdited(const FieldEditToken& token);
+        editing::EditResult<void> finishFieldEdits();
+        editing::EditResult<editing::ApplyResult> finishFieldEdit(const FieldEditToken& token);
+        std::shared_ptr<const SceneResourceSnapshot> resources() const noexcept;
+        EditorResult<void> retryResource(const lux::scene::RenderAssetKey& key);
+        std::string diagnostic() const;
+        EditorResult<lux::render::RenderSceneId> renderScene() const;
+        double coordinatePageSize() const noexcept;
+        editing::HistoryId historyId() const noexcept;
+        editing::EditResult<editing::HistoryTargetView> historyView() const noexcept;
+        editing::EditResult<editing::HistoryTargetResult> undo() noexcept;
+        editing::EditResult<editing::HistoryTargetResult> redo() noexcept;
+        CloseRequest close_request_;
+        bool close_prepared_{};
+        std::optional<ECloseDecision> close_decision_;
+        void event(object::EventView& event) noexcept;
+        EditorResult<void> finishEditing();
+        void update() noexcept;
+        EditorResult<RunId> play(std::chrono::nanoseconds fixed_step = std::chrono::milliseconds(16));
+        EditorResult<void> pauseRun(RunId id);
+        EditorResult<void> resumeRun(RunId id);
+        EditorResult<void> stepRun(RunId id);
+        EditorResult<void> stopRun(RunId id);
+        RunStatus runStatus() const;
+        double runCoordinatePageSize() const noexcept;
+        void observePlaybackRender();
+        void adoptPlayback();
+        void updatePlayback();
+        void observePlayback();
+        void beginPauseEditing();
+        void failPlayback(EditorFailure, ERunPhase = ERunPhase::STARTUP);
+        void createContent(
+            EditorResult<void>& status,
+            assets::AssetImporter& importer,
+            std::span<const ui::SpatialInteractionRegistration> viewports
+        );
+        EditorResult<void> finishContentEditing();
+        void syncInspector();
+        std::unique_ptr<lux::ui::Pane> creation_pane_;
+        std::unique_ptr<ui::SceneContentElement> content_;
+        std::unique_ptr<ui::InspectorPane> inspector_;
+        std::unique_ptr<ui::OutlinerPane> outliner_;
+        std::unique_ptr<ui::ResourcePane> resources_;
+        object::Connection close_connection_;
+    };
+
+} // namespace lux::editor::scene

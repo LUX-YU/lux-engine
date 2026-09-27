@@ -1,5 +1,6 @@
 #include <lux/engine/simulation/Simulation.hpp>
-#include <lux/engine/simulation/SimulationBuilder.hpp>
+#include <exception>
+#include <lux/engine/simulation/SimulationSystemInstaller.hpp>
 #include <lux/engine/simulation/SimulationSystemContract.hpp>
 #include <lux/engine/system/detail/SystemDependencyOrder.hpp>
 
@@ -24,8 +25,8 @@ namespace lux::simulation
         {
             lux::system::SystemInstanceId instance;
             lux::cxx::TypeToken type;
-            void *object{};
-            void (*destroy)(void *) noexcept {};
+            void* object{};
+            void (*destroy)(void*) noexcept {};
         };
 
     } // namespace
@@ -41,13 +42,13 @@ namespace lux::simulation
         {
             lux::system::SystemInstanceId system;
             EventPointId event;
-            void *context{};
-            void (*destroy)(void *) noexcept {};
-            bool (*seal)(void *) noexcept {};
-            bool (*failed)(void *) noexcept {};
-            void (*reset)(void *) noexcept {};
-            void (*discard)(void *) noexcept {};
-            void (*authorize_script)(void *, bool) noexcept {};
+            void* context{};
+            void (*destroy)(void*) noexcept {};
+            bool (*seal)(void*) noexcept {};
+            bool (*failed)(void*) noexcept {};
+            void (*reset)(void*) noexcept {};
+            void (*discard)(void*) noexcept {};
+            void (*authorize_script)(void*, bool) noexcept {};
             std::size_t producer_count{};
             std::vector<std::unique_ptr<ChannelProducer>> producers;
             std::size_t script_endpoint{kInvalidOrdinal};
@@ -65,11 +66,12 @@ namespace lux::simulation
             std::optional<ecs::EcsCommandFailure> command_failure;
         };
 
-        explicit Impl(ecs::Registry &registry_value,
-                      std::shared_ptr<const SimulationDescription> description_value) noexcept
+        explicit Impl(
+            ecs::Registry& registry_value,
+            std::shared_ptr<const SimulationDescription> description_value
+        ) noexcept
             : registry(&registry_value), description(std::move(description_value))
-        {
-        }
+        {}
 
         ~Impl() noexcept
         {
@@ -85,7 +87,7 @@ namespace lux::simulation
                     iterator->object = nullptr;
                 }
             }
-            for (auto &channel : channels)
+            for (auto& channel : channels)
             {
                 channel.destroy(channel.context);
             }
@@ -94,7 +96,7 @@ namespace lux::simulation
         std::vector<std::shared_ptr<const void>> code_owners;
 
         // Systems borrow channel storage; channels are released after every System destructor has returned.
-        ecs::Registry *registry{};
+        ecs::Registry* registry{};
         std::vector<ChannelRecord> channels;
         std::shared_ptr<const SimulationDescription> description;
         std::vector<SystemObjectRecord> systems;
@@ -102,15 +104,13 @@ namespace lux::simulation
         std::vector<lux::system::SystemInstanceId> script_ability_providers;
         std::vector<script::ScriptHookEndpointDescriptor> script_hooks;
         std::vector<script::ScriptEventEndpointDescriptor> script_events;
-        SimulationClock clock;
+        SimulationTime time;
         std::unique_ptr<ecs::EcsCommandBuffer> commands;
         std::vector<std::unique_ptr<CommandProducer>> command_producers;
         ExecutionState execution;
-        // Both graphs reference the same installed systems and stable callable storage.
+        // The execution graph borrows stable callable storage.
         std::vector<task::TaskCallable> callables;
         task::TaskGraph graph;
-        task::TaskGraph derivation_graph;
-        std::unique_ptr<ecs::EcsCommandBuffer> derivation_commands;
         SimulationHookCallbacks hook_callbacks;
         std::size_t stable_hook_count{};
         std::size_t script_hook_count{};
@@ -118,7 +118,6 @@ namespace lux::simulation
         bool sealed{};
         bool stopped{};
         bool executing{};
-        ESimulationMode mode{ESimulationMode::EVOLUTION};
         std::vector<std::unique_ptr<detail::PreparedHookInvocation>> hook_invocations;
         [[nodiscard]] bool hasUnboundScriptEndpoints() const noexcept
         {
@@ -126,17 +125,17 @@ namespace lux::simulation
             {
                 return false;
             }
-            const bool hooks_connected =
-                std::ranges::any_of(script_hooks, [](const auto &endpoint) noexcept
-                                    { return endpoint.connected != nullptr && endpoint.connected(endpoint.context); });
-            const bool events_connected =
-                std::ranges::any_of(script_events, [](const auto &endpoint) noexcept
-                                    { return endpoint.connected != nullptr && endpoint.connected(endpoint.context); });
+            const bool hooks_connected = std::ranges::any_of(script_hooks, [](const auto& endpoint) noexcept {
+                return endpoint.connected != nullptr && endpoint.connected(endpoint.context);
+            });
+            const bool events_connected = std::ranges::any_of(script_events, [](const auto& endpoint) noexcept {
+                return endpoint.connected != nullptr && endpoint.connected(endpoint.context);
+            });
             return hooks_connected || events_connected;
         }
     };
 
-    struct SimulationBuilder::Impl final
+    struct SimulationSystemInstaller::Impl final
     {
         struct PendingExecution final
         {
@@ -144,9 +143,9 @@ namespace lux::simulation
             task::TaskResources resources;
             task::TaskCallable callable;
             task::ETaskAffinity affinity;
-            detail::PreparedHookInvocation *invocation{};
+            detail::PreparedHookInvocation* invocation{};
         };
-        explicit Impl(Simulation::Impl &owner_value) noexcept : owner(&owner_value) {}
+        explicit Impl(Simulation::Impl& owner_value) noexcept : owner(&owner_value) {}
 
         [[nodiscard]] std::size_t ordinalOf(lux::system::SystemInstanceId instance) const noexcept
         {
@@ -162,51 +161,60 @@ namespace lux::simulation
 
         [[nodiscard]] bool isDeclaredPredecessor(std::size_t current, std::size_t candidate) const noexcept
         {
-            const auto &values = predecessors[current];
+            const auto& values = predecessors[current];
             return std::find(values.begin(), values.end(), candidate) != values.end();
         }
 
-        [[nodiscard]] SystemObjectRecord *findRecord(lux::system::SystemInstanceId instance) noexcept
+        [[nodiscard]] SystemObjectRecord* findRecord(lux::system::SystemInstanceId instance) noexcept
         {
-            const auto iterator = std::find_if(owner->systems.begin(), owner->systems.end(),
-                                               [instance](const SystemObjectRecord &record) noexcept
-                                               { return record.instance == instance; });
+            const auto iterator = std::find_if(
+                owner->systems.begin(),
+                owner->systems.end(),
+                [instance](const SystemObjectRecord& record) noexcept { return record.instance == instance; }
+            );
             return iterator != owner->systems.end() ? &*iterator : nullptr;
         }
 
-        Simulation::Impl *owner{};
+        Simulation::Impl* owner{};
         task::TaskGraphBuilder graph_builder;
         std::vector<std::vector<std::size_t>> predecessors;
         std::vector<bool> primary_tasks;
         std::vector<PendingExecution> pending_execution;
         std::vector<task::TaskHandle> all_primary_tasks;
         std::optional<SimulationSystemBuildFailure> pending_failure;
-        const SimulationSystemRegistration *current_registration{};
+        const SimulationSystemRegistration* current_registration{};
         std::size_t current_ordinal{kInvalidOrdinal};
     };
 
     namespace
     {
-        [[nodiscard]] SimulationSystemBuildFailure buildFailure(ESimulationSystemBuildError code,
-                                                                lux::system::SystemInstanceId system = {},
-                                                                lux::system::SystemInstanceId related = {}) noexcept
+        [[nodiscard]] SimulationSystemBuildFailure buildFailure(
+            ESimulationSystemBuildError code,
+            lux::system::SystemInstanceId system = {},
+            lux::system::SystemInstanceId related = {}
+        ) noexcept
         {
             return SimulationSystemBuildFailure{code, system, related};
         }
 
-        void reportSystemFailure(void *state, lux::system::SystemInstanceId system) noexcept
+        void reportSystemFailure(void* state, lux::system::SystemInstanceId system) noexcept
         {
-            auto &failure = *static_cast<std::atomic<std::uint64_t> *>(state);
+            auto& failure = *static_cast<std::atomic<std::uint64_t>*>(state);
             auto expected = failure.load(std::memory_order_acquire);
-            while ((expected == 0U || system.value < expected) &&
-                   !failure.compare_exchange_weak(expected, system.value, std::memory_order_acq_rel,
-                                                  std::memory_order_acquire))
+            while ((expected == 0U || system.value < expected) && !failure.compare_exchange_weak(
+                                                                      expected,
+                                                                      system.value,
+                                                                      std::memory_order_acq_rel,
+                                                                      std::memory_order_acquire
+                                                                  ))
             {
             }
         }
 
-        [[nodiscard]] std::size_t descriptionOrdinal(const SimulationDescription &description,
-                                                     lux::system::SystemInstanceId instance) noexcept
+        [[nodiscard]] std::size_t descriptionOrdinal(
+            const SimulationDescription& description,
+            lux::system::SystemInstanceId instance
+        ) noexcept
         {
             for (std::size_t ordinal{}; ordinal < description.systemCount(); ++ordinal)
             {
@@ -219,9 +227,11 @@ namespace lux::simulation
         }
 
         [[nodiscard]] lux::cxx::expected<std::vector<std::size_t>, SimulationSystemBuildFailure> dependencyOrder(
-            const SimulationDescription &description, std::vector<std::vector<std::size_t>> &predecessors) noexcept
+            const SimulationDescription& description,
+            std::vector<std::vector<std::size_t>>& predecessors
+        ) noexcept
         {
-            try
+
             {
                 const std::size_t count = description.systemCount();
                 predecessors.assign(count, {});
@@ -260,29 +270,35 @@ namespace lux::simulation
                 }
                 return std::move(*order);
             }
-            catch (const std::bad_alloc &)
-            {
-                return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE));
-            }
         }
     } // namespace
 
-    ecs::Registry &SimulationBuilder::registry() noexcept
+    ecs::Registry& SimulationSystemInstaller::registry() noexcept
     {
         return *impl_->owner->registry;
     }
 
-    const SimulationClock &SimulationBuilder::clock() const noexcept
+    const SimulationTime& SimulationSystemInstaller::time() const noexcept
     {
-        return impl_->owner->clock;
+        return impl_->owner->time;
     }
 
-    lux::cxx::expected<SimulationBuilder::ChannelOwnership, SimulationSystemBuildFailure> SimulationBuilder::
-        ownHookChannel(lux::system::SystemInstanceId system, EventPointId event, EEventRoute route,
-                       lux::semantic::TypeId payload, void *context, std::size_t producer_count,
-                       bool owner_reproduction, void (*destroy)(void *) noexcept, bool (*seal)(void *) noexcept,
-                       bool (*failed)(void *) noexcept, void (*reset)(void *) noexcept,
-                       void (*discard)(void *) noexcept, void (*authorize_script)(void *, bool) noexcept) noexcept
+    lux::cxx::expected<SimulationSystemInstaller::ChannelOwnership, SimulationSystemBuildFailure>
+    SimulationSystemInstaller::ownHookChannel(
+        lux::system::SystemInstanceId system,
+        EventPointId event,
+        EEventRoute route,
+        lux::semantic::TypeId payload,
+        void* context,
+        std::size_t producer_count,
+        bool owner_reproduction,
+        void (*destroy)(void*) noexcept,
+        bool (*seal)(void*) noexcept,
+        bool (*failed)(void*) noexcept,
+        void (*reset)(void*) noexcept,
+        void (*discard)(void*) noexcept,
+        void (*authorize_script)(void*, bool) noexcept
+    ) noexcept
     {
         const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
         const auto described = impl_->owner->description->findEvent(system, event);
@@ -293,69 +309,68 @@ namespace lux::simulation
         {
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT, system));
         }
-        const bool duplicate = std::ranges::any_of(impl_->owner->channels, [&](const auto &channel) noexcept
-                                                   { return channel.system == system && channel.event == event; });
+        const bool duplicate = std::ranges::any_of(impl_->owner->channels, [&](const auto& channel) noexcept {
+            return channel.system == system && channel.event == event;
+        });
         if (duplicate)
         {
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::DUPLICATE_SCRIPT_ENDPOINT, system));
         }
-        try
+
         {
-            impl_->owner->channels.push_back({system,
-                                              event,
-                                              context,
-                                              destroy,
-                                              seal,
-                                              failed,
-                                              reset,
-                                              discard,
-                                              authorize_script,
-                                              producer_count,
-                                              {},
-                                              kInvalidOrdinal});
+            impl_->owner->channels.push_back(
+                {system,
+                 event,
+                 context,
+                 destroy,
+                 seal,
+                 failed,
+                 reset,
+                 discard,
+                 authorize_script,
+                 producer_count,
+                 {},
+                 kInvalidOrdinal}
+            );
             return ChannelOwnership{impl_->owner, described.dispatchHook().id()};
-        }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, system));
         }
     }
 
-    lux::cxx::expected<detail::HookChannelProducerSlot *, SimulationSystemBuildFailure> SimulationBuilder::
-        bindChannelProducer(SimulationExecutionPoint producer, void *channel) noexcept
+    lux::cxx::expected<detail::HookChannelProducerSlot*, SimulationSystemBuildFailure> SimulationSystemInstaller::
+        bindChannelProducer(SimulationExecutionPoint producer, void* channel) noexcept
     {
         const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
-        auto found = std::ranges::find_if(impl_->owner->channels,
-                                          [channel](const auto &value) noexcept { return value.context == channel; });
+        auto found = std::ranges::find_if(impl_->owner->channels, [channel](const auto& value) noexcept {
+            return value.context == channel;
+        });
         if (!current || current.instanceId() != producer.system || found == impl_->owner->channels.end())
         {
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT));
         }
-        const bool duplicate = std::ranges::any_of(found->producers, [producer](const auto &value) noexcept
-                                                   { return value->point == producer; });
+        const bool duplicate = std::ranges::any_of(found->producers, [producer](const auto& value) noexcept {
+            return value->point == producer;
+        });
         if (duplicate || found->producers.size() == found->producer_count)
         {
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT));
         }
-        try
+
         {
             auto binding = std::make_unique<Simulation::Impl::ChannelProducer>();
             binding->point = producer;
-            auto *slot = &binding->slot;
+            auto* slot = &binding->slot;
             found->producers.push_back(std::move(binding));
             return slot;
         }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, producer.system));
-        }
     }
 
-    lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationBuilder::publishScriptAbility(
-        lux::system::SystemInstanceId provider, const lux::script::ScriptAbilityBinding &binding) noexcept
+    lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationSystemInstaller::publishScriptAbility(
+        lux::system::SystemInstanceId provider,
+        const lux::script::ScriptAbilityBinding& binding
+    ) noexcept
     {
         const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
-        const auto *provider_record = impl_->findRecord(provider);
+        const auto* provider_record = impl_->findRecord(provider);
         const bool is_current_provider = current && current.instanceId() == provider;
         const bool has_owned_provider =
             provider_record != nullptr &&
@@ -371,13 +386,14 @@ namespace lux::simulation
         {
             if (impl_->owner->script_abilities[index].contract == binding.description->id)
             {
-                return lux::cxx::unexpected(
-                    buildFailure(ESimulationSystemBuildError::SCRIPT_CAPABILITY_AMBIGUOUS_PROVIDER, provider,
-                                 impl_->owner->script_ability_providers[index]));
+                return lux::cxx::unexpected(buildFailure(
+                    ESimulationSystemBuildError::SCRIPT_CAPABILITY_AMBIGUOUS_PROVIDER,
+                    provider,
+                    impl_->owner->script_ability_providers[index]
+                ));
             }
         }
 
-        try
         {
             const std::size_t next_size = impl_->owner->script_abilities.size() + 1U;
             impl_->owner->script_abilities.reserve(next_size);
@@ -386,19 +402,18 @@ namespace lux::simulation
             impl_->owner->script_ability_providers.push_back(provider);
             return {};
         }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, provider));
-        }
     }
 
-    std::span<const script::ScriptApiCapabilityPublication> SimulationBuilder::scriptApiCapabilities() const noexcept
+    std::span<const script::ScriptApiCapabilityPublication> SimulationSystemInstaller::scriptApiCapabilities(
+    ) const noexcept
     {
         return impl_->owner->script_abilities;
     }
 
-    lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationBuilder::publishScriptHook(
-        lux::system::SystemInstanceId provider, script::ScriptHookEndpointDescriptor endpoint) noexcept
+    lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationSystemInstaller::publishScriptHook(
+        lux::system::SystemInstanceId provider,
+        script::ScriptHookEndpointDescriptor endpoint
+    ) noexcept
     {
         const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
         const auto described = impl_->owner->description->findHookPoint(provider, endpoint.hook);
@@ -416,36 +431,34 @@ namespace lux::simulation
         {
             if (described.parameterAt(index) != endpoint.signature.parameters[index])
             {
-                return lux::cxx::unexpected(
-                    buildFailure(ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT, provider));
+                return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT, provider)
+                );
             }
         }
-        const bool duplicate =
-            std::ranges::any_of(impl_->owner->script_hooks, [&](const auto &value) noexcept
-                                { return value.system == endpoint.system && value.hook == endpoint.hook; });
+        const bool duplicate = std::ranges::any_of(impl_->owner->script_hooks, [&](const auto& value) noexcept {
+            return value.system == endpoint.system && value.hook == endpoint.hook;
+        });
         if (duplicate)
         {
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::DUPLICATE_SCRIPT_ENDPOINT, provider));
         }
-        try
+
         {
             impl_->owner->script_hooks.push_back(endpoint);
             endpoint.bind_owner(endpoint.context, impl_->owner);
             return {};
         }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, provider));
-        }
     }
 
-    lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationBuilder::publishScriptEvent(
-        lux::system::SystemInstanceId provider, script::ScriptEventEndpointDescriptor endpoint) noexcept
+    lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationSystemInstaller::publishScriptEvent(
+        lux::system::SystemInstanceId provider,
+        script::ScriptEventEndpointDescriptor endpoint
+    ) noexcept
     {
         const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
         const auto described = impl_->owner->description->findEvent(provider, endpoint.event);
-        const auto &owned = endpoint.payload_projection.owned_layout;
-        const auto *builtin = lux::semantic::builtinLayout(owned.type_id);
+        const auto& owned = endpoint.payload_projection.owned_layout;
+        const auto* builtin = lux::semantic::builtinLayout(owned.type_id);
         const bool is_invalid_builtin =
             builtin != nullptr &&
             (builtin->canonical_name != owned.canonical_name || builtin->abi_kind != owned.abi_kind ||
@@ -465,39 +478,36 @@ namespace lux::simulation
         {
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT, provider));
         }
-        const bool duplicate =
-            std::ranges::any_of(impl_->owner->script_events, [&](const auto &value) noexcept
-                                { return value.system == endpoint.system && value.event == endpoint.event; });
+        const bool duplicate = std::ranges::any_of(impl_->owner->script_events, [&](const auto& value) noexcept {
+            return value.system == endpoint.system && value.event == endpoint.event;
+        });
         if (duplicate)
         {
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::DUPLICATE_SCRIPT_ENDPOINT, provider));
         }
-        try
+
         {
-            auto channel = std::ranges::find_if(impl_->owner->channels,
-                                                [&](const auto &value) noexcept
-                                                {
-                                                    return value.context == endpoint.channel_context &&
-                                                           value.system == provider && value.event == endpoint.event;
-                                                });
+            auto channel = std::ranges::find_if(impl_->owner->channels, [&](const auto& value) noexcept {
+                return value.context == endpoint.channel_context && value.system == provider &&
+                       value.event == endpoint.event;
+            });
             if (channel == impl_->owner->channels.end())
             {
-                return lux::cxx::unexpected(
-                    buildFailure(ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT, provider));
+                return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT, provider)
+                );
             }
             impl_->owner->script_events.push_back(endpoint);
             channel->script_endpoint = impl_->owner->script_events.size() - 1U;
             return {};
         }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, provider));
-        }
     }
 
-    lux::cxx::expected<void *, SimulationSystemBuildFailure> SimulationBuilder::emplaceErased(
-        lux::system::SystemInstanceId instance, lux::cxx::TypeToken type, void *object,
-        void (*destroy)(void *) noexcept) noexcept
+    lux::cxx::expected<void*, SimulationSystemBuildFailure> SimulationSystemInstaller::emplaceErased(
+        lux::system::SystemInstanceId instance,
+        lux::cxx::TypeToken type,
+        void* object,
+        void (*destroy)(void*) noexcept
+    ) noexcept
     {
         const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
         if (!current || current.instanceId() != instance || !type.isValid() || object == nullptr || destroy == nullptr)
@@ -509,21 +519,18 @@ namespace lux::simulation
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::DUPLICATE_SYSTEM, instance));
         }
 
-        try
         {
             impl_->owner->systems.push_back({instance, type, object, destroy});
             return object;
         }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, instance));
-        }
     }
 
-    void *SimulationBuilder::findInstalledErased(lux::system::SystemInstanceId instance,
-                                                 lux::cxx::TypeToken type) noexcept
+    void* SimulationSystemInstaller::findInstalledErased(
+        lux::system::SystemInstanceId instance,
+        lux::cxx::TypeToken type
+    ) noexcept
     {
-        auto *record = impl_->findRecord(instance);
+        auto* record = impl_->findRecord(instance);
         if (record == nullptr || record->type.hash() != type.hash() || record->type.name() != type.name())
         {
             return nullptr;
@@ -531,7 +538,10 @@ namespace lux::simulation
         return record->object;
     }
 
-    void *SimulationBuilder::findErased(lux::system::SystemInstanceId instance, lux::cxx::TypeToken type) noexcept
+    void* SimulationSystemInstaller::findErased(
+        lux::system::SystemInstanceId instance,
+        lux::cxx::TypeToken type
+    ) noexcept
     {
         const std::size_t requested = impl_->ordinalOf(instance);
         if (requested == kInvalidOrdinal)
@@ -540,26 +550,31 @@ namespace lux::simulation
         }
         if (requested != impl_->current_ordinal && !impl_->isDeclaredPredecessor(impl_->current_ordinal, requested))
         {
-            impl_->pending_failure =
-                buildFailure(ESimulationSystemBuildError::UNDECLARED_CONSTRUCTOR_DEPENDENCY,
-                             impl_->owner->description->systemAt(impl_->current_ordinal).instanceId(), instance);
+            impl_->pending_failure = buildFailure(
+                ESimulationSystemBuildError::UNDECLARED_CONSTRUCTOR_DEPENDENCY,
+                impl_->owner->description->systemAt(impl_->current_ordinal).instanceId(),
+                instance
+            );
             return nullptr;
         }
         return findInstalledErased(instance, type);
     }
 
-    SimulationBuilder::FailureReporter SimulationBuilder::failureReporter() noexcept
+    SimulationSystemInstaller::FailureReporter SimulationSystemInstaller::failureReporter() noexcept
     {
         return FailureReporter{&impl_->owner->execution.system_failure, &reportSystemFailure};
     }
 
-    const SimulationSystemRegistration *SimulationBuilder::currentRegistration() const noexcept
+    const SimulationSystemRegistration* SimulationSystemInstaller::currentRegistration() const noexcept
     {
         return impl_->current_registration;
     }
 
-    lux::cxx::expected<SimulationBuilder::CommandBinding, SimulationSystemBuildFailure> SimulationBuilder::
-        allocateCommandProducer(SimulationExecutionPoint point, ecs::EcsCommandProducerCapacity capacity) noexcept
+    lux::cxx::expected<SimulationSystemInstaller::CommandBinding, SimulationSystemBuildFailure>
+    SimulationSystemInstaller::allocateCommandProducer(
+        SimulationExecutionPoint point,
+        ecs::EcsCommandProducerCapacity capacity
+    ) noexcept
     {
         const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
         const auto instance = point.system;
@@ -569,13 +584,15 @@ namespace lux::simulation
         {
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION, instance));
         }
-        const bool duplicate = std::ranges::any_of(impl_->owner->command_producers, [point](const auto &value) noexcept
-                                                   { return value->point == point; });
+        const bool duplicate =
+            std::ranges::any_of(impl_->owner->command_producers, [point](const auto& value) noexcept {
+                return value->point == point;
+            });
         if (duplicate)
         {
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT, instance));
         }
-        try
+
         {
             if (!impl_->owner->commands)
             {
@@ -584,17 +601,13 @@ namespace lux::simulation
             auto producer = std::make_unique<Simulation::Impl::CommandProducer>();
             producer->point = point;
             producer->capacity = capacity;
-            auto *slot = &producer->slot;
+            auto* slot = &producer->slot;
             impl_->owner->command_producers.push_back(std::move(producer));
             return CommandBinding{SimulationCommandProducer{impl_->owner->commands.get(), slot}, failureReporter()};
         }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, instance));
-        }
     }
 
-    lux::cxx::expected<SimulationCommandProducer, SimulationSystemBuildFailure> SimulationBuilder::
+    lux::cxx::expected<SimulationCommandProducer, SimulationSystemBuildFailure> SimulationSystemInstaller::
         prepareCommandProducer(SimulationExecutionPoint point, ecs::EcsCommandProducerCapacity capacity) noexcept
     {
         auto result = allocateCommandProducer(point, capacity);
@@ -605,9 +618,12 @@ namespace lux::simulation
         return result->producer;
     }
 
-    lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationBuilder::addPrimaryTask(
-        lux::system::SystemInstanceId instance, task::TaskResources resources, task::TaskCallable callable,
-        SimulationTaskId stage) noexcept
+    lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationSystemInstaller::addPrimaryTask(
+        lux::system::SystemInstanceId instance,
+        task::TaskResources resources,
+        task::TaskCallable callable,
+        SimulationTaskId stage
+    ) noexcept
     {
         const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
         if (!current || current.instanceId() != instance)
@@ -619,10 +635,13 @@ namespace lux::simulation
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::DUPLICATE_PRIMARY_TASK, instance));
         }
 
-        try
         {
-            auto added = addExecutionTask(SimulationExecutionPoint::task(instance, stage), std::move(resources),
-                                          std::move(callable), task::ETaskAffinity::WORKER);
+            auto added = addExecutionTask(
+                SimulationExecutionPoint::task(instance, stage),
+                std::move(resources),
+                std::move(callable),
+                task::ETaskAffinity::WORKER
+            );
             if (!added)
             {
                 return added;
@@ -633,64 +652,64 @@ namespace lux::simulation
             }
             return {};
         }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, instance));
-        }
     }
 
-    lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationBuilder::addExecutionTask(
-        SimulationExecutionPoint point, task::TaskResources resources, task::TaskCallable callable,
-        task::ETaskAffinity affinity, detail::PreparedHookInvocation *invocation) noexcept
+    lux::cxx::expected<void, SimulationSystemBuildFailure> SimulationSystemInstaller::addExecutionTask(
+        SimulationExecutionPoint point,
+        task::TaskResources resources,
+        task::TaskCallable callable,
+        task::ETaskAffinity affinity,
+        detail::PreparedHookInvocation* invocation
+    ) noexcept
     {
         const auto current = impl_->owner->description->systemAt(impl_->current_ordinal);
         const bool is_invalid_hook = point.kind == ESimulationExecutionPoint::HOOK &&
                                      (!current || !current.findHookPoint(HookPointId{point.point}));
         const bool is_unknown_task = point.kind == ESimulationExecutionPoint::SYSTEM_TASK &&
-                                     std::ranges::none_of(current.tasks(), [point](const auto &stage) noexcept
-                                                          { return stage.id.value == point.point; });
+                                     std::ranges::none_of(current.tasks(), [point](const auto& stage) noexcept {
+                                         return stage.id.value == point.point;
+                                     });
         if (!point.valid() || !current || current.instanceId() != point.system || is_invalid_hook || is_unknown_task)
         {
-            return lux::cxx::unexpected(
-                buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT, point.system));
+            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT, point.system)
+            );
         }
-        if (std::ranges::any_of(impl_->pending_execution,
-                                [point](const auto &item) noexcept { return item.point == point; }))
+        if (std::ranges::any_of(impl_->pending_execution, [point](const auto& item) noexcept {
+                return item.point == point;
+            }))
         {
-            return lux::cxx::unexpected(
-                buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT, point.system));
+            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT, point.system)
+            );
         }
-        try
+
         {
-            impl_->pending_execution.push_back(
-                {point, std::move(resources), std::move(callable), affinity, invocation});
+            impl_->pending_execution.push_back({point, std::move(resources), std::move(callable), affinity, invocation}
+            );
             return {};
-        }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE, point.system));
         }
     }
 
-    detail::PreparedHookInvocation *SimulationBuilder::allocateHookInvocation()
+    detail::PreparedHookInvocation* SimulationSystemInstaller::allocateHookInvocation()
     {
         auto cell = std::make_unique<detail::PreparedHookInvocation>();
-        auto *result = cell.get();
+        auto* result = cell.get();
         impl_->owner->hook_invocations.push_back(std::move(cell));
         return result;
     }
 
     Simulation::Simulation(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
-    Simulation::Simulation(Simulation &&) noexcept = default;
-    Simulation &Simulation::operator=(Simulation &&) noexcept = default;
+    Simulation::Simulation(Simulation&&) noexcept = default;
+    Simulation& Simulation::operator=(Simulation&&) noexcept = default;
     Simulation::~Simulation() noexcept = default;
 
     lux::cxx::expected<Simulation, SimulationSystemBuildFailure> Simulation::create(
-        ecs::Registry &registry, std::shared_ptr<const SimulationDescription> description,
-        const SimulationSystemRegistry &system_types, ESimulationMode mode) noexcept
+        ecs::Registry& registry,
+        std::shared_ptr<const SimulationDescription> description,
+        const SimulationSystemRegistry& system_types
+    ) noexcept
     {
-        if (!description || mode > ESimulationMode::DERIVATION)
+        if (!description)
         {
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION));
         }
@@ -698,10 +717,9 @@ namespace lux::simulation
         try
         {
             auto impl = std::make_unique<Impl>(registry, std::move(description));
-            impl->mode = mode;
             impl->systems.reserve(impl->description->systemCount());
 
-            SimulationBuilder::Impl build(*impl);
+            SimulationSystemInstaller::Impl build(*impl);
             auto order = dependencyOrder(*impl->description, build.predecessors);
             if (!order)
             {
@@ -709,25 +727,28 @@ namespace lux::simulation
             }
             build.primary_tasks.resize(impl->description->systemCount());
 
-            std::vector<const SimulationSystemRegistration *> registrations(impl->description->systemCount(), nullptr);
+            std::vector<const SimulationSystemRegistration*> registrations(impl->description->systemCount(), nullptr);
             for (std::size_t ordinal{}; ordinal < impl->description->systemCount(); ++ordinal)
             {
                 const auto system = impl->description->systemAt(ordinal);
-                const auto *registration = system_types.find(system.type());
+                const auto* registration = system_types.find(system.type());
                 if (registration == nullptr)
                 {
                     return lux::cxx::unexpected(
-                        buildFailure(ESimulationSystemBuildError::UNKNOWN_SYSTEM_TYPE, system.instanceId()));
+                        buildFailure(ESimulationSystemBuildError::UNKNOWN_SYSTEM_TYPE, system.instanceId())
+                    );
                 }
                 if (registration->description == nullptr || registration->description->type.version != system.version())
                 {
                     return lux::cxx::unexpected(
-                        buildFailure(ESimulationSystemBuildError::VERSION_MISMATCH, system.instanceId()));
+                        buildFailure(ESimulationSystemBuildError::VERSION_MISMATCH, system.instanceId())
+                    );
                 }
                 if (!matchesSimulationSystemContract(system, *registration->description))
                 {
                     return lux::cxx::unexpected(
-                        buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION, system.instanceId()));
+                        buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION, system.instanceId())
+                    );
                 }
                 if (system.multiplicity() == lux::system::ESystemMultiplicity::SINGLE_PER_OWNER)
                 {
@@ -736,8 +757,11 @@ namespace lux::simulation
                         const auto candidate = impl->description->systemAt(previous);
                         if (candidate.type() == system.type())
                         {
-                            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::DUPLICATE_SYSTEM,
-                                                                     system.instanceId(), candidate.instanceId()));
+                            return lux::cxx::unexpected(buildFailure(
+                                ESimulationSystemBuildError::DUPLICATE_SYSTEM,
+                                system.instanceId(),
+                                candidate.instanceId()
+                            ));
                         }
                     }
                 }
@@ -745,7 +769,7 @@ namespace lux::simulation
                 impl->code_owners.push_back(registration->code_lifetime);
             }
 
-            SimulationBuilder builder(build);
+            SimulationSystemInstaller builder(build);
             for (const std::size_t ordinal : *order)
             {
                 build.current_ordinal = ordinal;
@@ -763,20 +787,19 @@ namespace lux::simulation
                 if (build.findRecord(system.instanceId()) == nullptr)
                 {
                     return lux::cxx::unexpected(
-                        buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION, system.instanceId()));
+                        buildFailure(ESimulationSystemBuildError::INVALID_DESCRIPTION, system.instanceId())
+                    );
                 }
             }
 
             // Resolve L1 semantic order before submitting anything to the single-pass L0 graph builder.
-            auto &pending = build.pending_execution;
-            std::ranges::sort(pending,
-                              [](const auto &left, const auto &right) noexcept
-                              {
-                                  return std::tie(left.point.system, left.point.kind, left.point.point) <
-                                         std::tie(right.point.system, right.point.kind, right.point.point);
-                              });
+            auto& pending = build.pending_execution;
+            std::ranges::sort(pending, [](const auto& left, const auto& right) noexcept {
+                return std::tie(left.point.system, left.point.kind, left.point.point) <
+                       std::tie(right.point.system, right.point.kind, right.point.point);
+            });
             const auto count = pending.size();
-            for (const auto &point : pending)
+            for (const auto& point : pending)
             {
                 const auto hook =
                     point.point.kind == ESimulationExecutionPoint::HOOK
@@ -798,40 +821,41 @@ namespace lux::simulation
             }
             std::vector<std::vector<std::size_t>> before(count);
             std::vector<std::vector<std::size_t>> after(count);
-            const auto resolve = [&](SimulationExecutionPoint point) noexcept
-            {
+            const auto resolve = [&](SimulationExecutionPoint point) noexcept {
                 const auto found = std::ranges::lower_bound(
-                    pending, point,
-                    [&](const auto &left, const auto &right) noexcept
-                    {
+                    pending,
+                    point,
+                    [&](const auto& left, const auto& right) noexcept {
                         ++impl->graph_preparation_stats.identity_comparisons;
                         return std::tie(left.system, left.kind, left.point) <
                                std::tie(right.system, right.kind, right.point);
                     },
-                    [](const auto &item) noexcept { return item.point; });
+                    [](const auto& item) noexcept { return item.point; }
+                );
                 return found != pending.end() && found->point == point
                            ? static_cast<std::size_t>(found - pending.begin())
                            : count;
             };
-            for (const auto &endpoint : impl->script_hooks)
+            for (const auto& endpoint : impl->script_hooks)
             {
                 if (resolve(SimulationExecutionPoint::hook(endpoint.system, endpoint.hook)) == count)
                 {
                     return lux::cxx::unexpected(
-                        buildFailure(ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT, endpoint.system));
+                        buildFailure(ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT, endpoint.system)
+                    );
                 }
             }
-            for (const auto &endpoint : impl->script_events)
+            for (const auto& endpoint : impl->script_events)
             {
                 const auto event = impl->description->findEvent(endpoint.system, endpoint.event);
                 if (resolve(SimulationExecutionPoint::hook(endpoint.system, event.dispatchHook().id())) == count)
                 {
                     return lux::cxx::unexpected(
-                        buildFailure(ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT, endpoint.system));
+                        buildFailure(ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT, endpoint.system)
+                    );
                 }
             }
-            const auto add_edge = [&](SimulationExecutionPoint from, SimulationExecutionPoint to)
-            {
+            const auto add_edge = [&](SimulationExecutionPoint from, SimulationExecutionPoint to) {
                 const auto a = resolve(from);
                 const auto b = resolve(to);
                 if (a == count || b == count || a == b)
@@ -845,12 +869,15 @@ namespace lux::simulation
                 }
                 return true;
             };
-            for (const auto &edge : impl->description->executionDependencies())
+            for (const auto& edge : impl->description->executionDependencies())
             {
                 if (!add_edge(edge.before, edge.after))
                 {
-                    return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT,
-                                                             edge.before.system, edge.after.system));
+                    return lux::cxx::unexpected(buildFailure(
+                        ESimulationSystemBuildError::INVALID_EXECUTION_POINT,
+                        edge.before.system,
+                        edge.after.system
+                    ));
                 }
             }
             std::vector<std::size_t> remaining(count);
@@ -895,9 +922,8 @@ namespace lux::simulation
             impl->graph_preparation_stats.reachability_storage_bytes =
                 reachability.capacity() * sizeof(std::unique_ptr<HookReachability>) +
                 search.capacity() * sizeof(std::size_t);
-            const auto cached_reachability = [&](std::size_t hook) -> const HookReachability &
-            {
-                auto &cached = reachability[hook];
+            const auto cached_reachability = [&](std::size_t hook) -> const HookReachability& {
+                auto& cached = reachability[hook];
                 if (cached)
                 {
                     return *cached;
@@ -905,8 +931,7 @@ namespace lux::simulation
                 cached = std::make_unique<HookReachability>();
                 cached->ancestors.resize(count);
                 cached->descendants.resize(count);
-                const auto walk = [&](const auto &edges, auto &visited)
-                {
+                const auto walk = [&](const auto& edges, auto& visited) {
                     ++impl->graph_preparation_stats.reachability_walks;
                     search.clear();
                     visited[hook] = true;
@@ -934,8 +959,7 @@ namespace lux::simulation
                     (cached->ancestors.capacity() + cached->descendants.capacity() + 7U) / 8U;
                 return *cached;
             };
-            const auto reaches = [&](std::size_t from, std::size_t target)
-            {
+            const auto reaches = [&](std::size_t from, std::size_t target) {
                 if (from == target)
                 {
                     return true;
@@ -966,21 +990,23 @@ namespace lux::simulation
                 {
                     if (!reaches(task, hook) && !reaches(hook, task))
                     {
-                        return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::AMBIGUOUS_HOOK_ORDER,
-                                                                 pending[hook].point.system,
-                                                                 pending[task].point.system));
+                        return lux::cxx::unexpected(buildFailure(
+                            ESimulationSystemBuildError::AMBIGUOUS_HOOK_ORDER,
+                            pending[hook].point.system,
+                            pending[task].point.system
+                        ));
                     }
                 }
             }
-            for (auto &channel : impl->channels)
+            for (auto& channel : impl->channels)
             {
                 const auto event = impl->description->findEvent(channel.system, channel.event);
                 const auto delivery =
                     resolve(SimulationExecutionPoint::hook(channel.system, event.dispatchHook().id()));
                 const auto declared = impl->description->channelProducers();
-                const auto declaration_count = std::ranges::count_if(
-                    declared, [&](const auto &producer) noexcept
-                    { return producer.system == channel.system && producer.event == channel.event; });
+                const auto declaration_count = std::ranges::count_if(declared, [&](const auto& producer) noexcept {
+                    return producer.system == channel.system && producer.event == channel.event;
+                });
                 if (static_cast<std::size_t>(declaration_count) != channel.producer_count)
                 {
                     return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT));
@@ -989,14 +1015,18 @@ namespace lux::simulation
                 {
                     return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT));
                 }
-                std::ranges::sort(
-                    channel.producers, [](const auto &a, const auto &b) noexcept
-                    { return std::tie(a->point.system, a->point.point) < std::tie(b->point.system, b->point.point); });
+                std::ranges::sort(channel.producers, [](const auto& a, const auto& b) noexcept {
+                    return std::tie(a->point.system, a->point.point) < std::tie(b->point.system, b->point.point);
+                });
                 for (std::size_t lane{}; lane < channel.producers.size(); ++lane)
                 {
-                    auto &producer = *channel.producers[lane];
-                    const SimulationChannelProducer expected{channel.system, channel.event, producer.point.system,
-                                                             SimulationTaskId{producer.point.point}};
+                    auto& producer = *channel.producers[lane];
+                    const SimulationChannelProducer expected{
+                        channel.system,
+                        channel.event,
+                        producer.point.system,
+                        SimulationTaskId{producer.point.point}
+                    };
                     if (std::ranges::find(declared, expected) == declared.end())
                     {
                         return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT));
@@ -1009,15 +1039,13 @@ namespace lux::simulation
                     producer.slot.lane = lane;
                 }
             }
-            std::ranges::sort(impl->command_producers,
-                              [](const auto &a, const auto &b) noexcept
-                              {
-                                  return std::tie(a->point.system, a->point.kind, a->point.point) <
-                                         std::tie(b->point.system, b->point.kind, b->point.point);
-                              });
+            std::ranges::sort(impl->command_producers, [](const auto& a, const auto& b) noexcept {
+                return std::tie(a->point.system, a->point.kind, a->point.point) <
+                       std::tie(b->point.system, b->point.kind, b->point.point);
+            });
             std::vector<ecs::EcsCommandProducerCapacity> command_capacities;
             command_capacities.reserve(impl->command_producers.size());
-            for (auto &producer : impl->command_producers)
+            for (auto& producer : impl->command_producers)
             {
                 const auto stage = resolve(producer->point);
                 if (stage == count)
@@ -1041,46 +1069,20 @@ namespace lux::simulation
                 producer->slot.producer = command_capacities.size();
                 command_capacities.push_back(producer->capacity);
             }
-            std::vector<task::TaskResources> derivation_resources;
-            derivation_resources.reserve(count);
             impl->callables.reserve(count);
-            for (auto &item : pending)
+            for (auto& item : pending)
             {
-                derivation_resources.push_back(item.resources);
                 impl->callables.push_back(std::move(item.callable));
             }
             const task::TaskResourceKey fence{lux::cxx::Fnv1a64::hash("lux.simulation.execution"), 1U};
             std::vector<task::TaskHandle> handles(count);
             // Preserve ordering through omitted evolution nodes: A -> skipped B -> C still orders A before C.
             // Only the retained nodes enter this owner's graph; there are no per-frame skipped-task callbacks.
-            std::vector<std::vector<std::size_t>> retained_predecessors(mode == ESimulationMode::DERIVATION ? count
-                                                                                                            : 0);
             for (const auto ordinal : execution_order)
             {
-                auto &item = pending[ordinal];
+                auto& item = pending[ordinal];
                 auto dependencies_from = std::span<const std::size_t>{before[ordinal]};
-                std::vector<std::size_t> retained;
-                if (mode == ESimulationMode::DERIVATION)
-                {
-                    for (const auto predecessor : before[ordinal])
-                    {
-                        const auto &incoming = retained_predecessors[predecessor];
-                        retained.insert(retained.end(), incoming.begin(), incoming.end());
-                    }
-                    std::ranges::sort(retained);
-                    retained.erase(std::unique(retained.begin(), retained.end()), retained.end());
-                    const auto system = impl->description->findSystem(item.point.system);
-                    const auto *registration = system_types.find(system.type());
-                    const bool selected =
-                        item.point.kind == ESimulationExecutionPoint::SYSTEM_TASK && registration->supports_derivation;
-                    if (!selected)
-                    {
-                        retained_predecessors[ordinal] = std::move(retained);
-                        continue;
-                    }
-                    retained_predecessors[ordinal].push_back(ordinal);
-                    dependencies_from = retained;
-                }
+
                 std::vector<task::TaskHandle> dependencies;
                 dependencies.reserve(dependencies_from.size());
                 for (const auto predecessor : dependencies_from)
@@ -1096,7 +1098,7 @@ namespace lux::simulation
                 std::vector<std::size_t> channels;
                 for (std::size_t channel{}; hook && channel < impl->channels.size(); ++channel)
                 {
-                    const auto &endpoint = impl->channels[channel];
+                    const auto& endpoint = impl->channels[channel];
                     const auto described = impl->description->findEvent(endpoint.system, endpoint.event);
                     if (endpoint.system == item.point.system && described.dispatchHook().id() == hook.id())
                     {
@@ -1105,17 +1107,19 @@ namespace lux::simulation
                         if (is_incomplete_channel)
                         {
                             return lux::cxx::unexpected(
-                                buildFailure(ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT));
+                                buildFailure(ESimulationSystemBuildError::INVALID_SCRIPT_ENDPOINT)
+                            );
                         }
                         channels.push_back(channel);
                     }
                 }
-                std::ranges::sort(channels, [&](auto a, auto b) noexcept
-                                  { return impl->channels[a].event.value < impl->channels[b].event.value; });
-                std::vector<detail::HookChannelProducerSlot *> producer_slots;
-                for (auto &channel : impl->channels)
+                std::ranges::sort(channels, [&](auto a, auto b) noexcept {
+                    return impl->channels[a].event.value < impl->channels[b].event.value;
+                });
+                std::vector<detail::HookChannelProducerSlot*> producer_slots;
+                for (auto& channel : impl->channels)
                 {
-                    for (auto &producer : channel.producers)
+                    for (auto& producer : channel.producers)
                     {
                         if (producer->point == item.point)
                         {
@@ -1123,13 +1127,9 @@ namespace lux::simulation
                         }
                     }
                 }
-                if (mode == ESimulationMode::DERIVATION && !producer_slots.empty())
-                {
-                    return lux::cxx::unexpected(
-                        buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT, item.point.system));
-                }
-                std::vector<detail::SimulationCommandSlot *> command_slots;
-                for (auto &producer : impl->command_producers)
+
+                std::vector<detail::SimulationCommandSlot*> command_slots;
+                for (auto& producer : impl->command_producers)
                 {
                     if (producer->point == item.point)
                     {
@@ -1138,51 +1138,59 @@ namespace lux::simulation
                 }
                 item.resources.values.push_back(is_script_hook ? task::write(fence) : task::read(fence));
                 auto task = build.graph_builder.add(
-                    task::dependencies(dependencies), std::move(item.resources),
+                    task::dependencies(dependencies),
+                    std::move(item.resources),
                     task::on(is_script_hook ? task::ETaskAffinity::CALLER_THREAD : task::ETaskAffinity::WORKER),
-                    [owner = impl.get(), callable = &impl->callables[ordinal], point = item.point, is_script_hook,
-                     is_stable, invocation_cell = item.invocation, channels = std::move(channels),
-                     producer_slots = std::move(producer_slots), command_slots = std::move(command_slots)]() noexcept
-                    {
-                        for (auto *slot : command_slots)
+                    [owner = impl.get(),
+                     callable = &impl->callables[ordinal],
+                     point = item.point,
+                     is_script_hook,
+                     is_stable,
+                     invocation_cell = item.invocation,
+                     channels = std::move(channels),
+                     producer_slots = std::move(producer_slots),
+                     command_slots = std::move(command_slots)]() noexcept {
+                        for (auto* slot : command_slots)
                         {
                             slot->active = true;
                         }
                         struct CommandScope final
                         {
-                            std::span<detail::SimulationCommandSlot *const> slots;
+                            std::span<detail::SimulationCommandSlot* const> slots;
                             ~CommandScope() noexcept
                             {
-                                for (auto *slot : slots)
+                                for (auto* slot : slots)
                                 {
                                     slot->active = false;
                                 }
                             }
                         } commands{command_slots};
-                        for (auto *slot : producer_slots)
+                        for (auto* slot : producer_slots)
                         {
                             slot->active = true;
                         }
                         struct ProducerScope final
                         {
-                            std::span<detail::HookChannelProducerSlot *const> slots;
+                            std::span<detail::HookChannelProducerSlot* const> slots;
                             ~ProducerScope() noexcept
                             {
-                                for (auto *slot : slots)
+                                for (auto* slot : slots)
                                 {
                                     slot->active = false;
                                 }
                             }
                         } producers{producer_slots};
-                        const auto failed = [&]() noexcept
-                        { return owner->execution.system_failure.load(std::memory_order_acquire) != 0U; };
-                        const auto fail = [&]() noexcept
-                        { reportSystemFailure(&owner->execution.system_failure, point.system); };
+                        const auto failed = [&]() noexcept {
+                            return owner->execution.system_failure.load(std::memory_order_acquire) != 0U;
+                        };
+                        const auto fail = [&]() noexcept {
+                            reportSystemFailure(&owner->execution.system_failure, point.system);
+                        };
                         if (failed())
                         {
                             if (is_script_hook && owner->hook_callbacks.failed != nullptr)
                             {
-                                owner->hook_callbacks.failed(owner->hook_callbacks.context, owner->clock.snapshot());
+                                owner->hook_callbacks.failed(owner->hook_callbacks.context, owner->time);
                             }
                             for (auto index : channels)
                             {
@@ -1190,16 +1198,16 @@ namespace lux::simulation
                             }
                             return;
                         }
-                        const auto step = owner->clock.snapshot();
-                        const HookInvocation invocation{owner, point.system,   HookPointId{point.point},
-                                                        step,  is_script_hook, is_stable};
+                        const auto step = owner->time;
+                        const HookInvocation
+                            invocation{owner, point.system, HookPointId{point.point}, step, is_script_hook, is_stable};
                         if (invocation_cell != nullptr)
                         {
                             invocation_cell->current = &invocation;
                         }
                         struct Exit final
                         {
-                            detail::PreparedHookInvocation *cell;
+                            detail::PreparedHookInvocation* cell;
                             ~Exit() noexcept
                             {
                                 if (cell != nullptr)
@@ -1208,7 +1216,7 @@ namespace lux::simulation
                                 }
                             }
                         } exit{invocation_cell};
-                        const auto &observer = owner->hook_callbacks;
+                        const auto& observer = owner->hook_callbacks;
                         if (is_script_hook && observer.before != nullptr &&
                             !observer.before(observer.context, step, is_stable))
                         {
@@ -1216,7 +1224,7 @@ namespace lux::simulation
                         }
                         for (auto index : channels)
                         {
-                            const auto &channel = owner->channels[index];
+                            const auto& channel = owner->channels[index];
                             if (!channel.seal(channel.context))
                             {
                                 fail();
@@ -1227,14 +1235,14 @@ namespace lux::simulation
                             (*callable)();
                         }
                         // Check only this stage's lanes before publishing dependency readiness.
-                        for (const auto *slot : producer_slots)
+                        for (const auto* slot : producer_slots)
                         {
                             if (slot->failed == nullptr || slot->failed(slot->channel, slot->lane))
                             {
                                 fail();
                             }
                         }
-                        for (auto *slot : command_slots)
+                        for (auto* slot : command_slots)
                         {
                             if (owner->commands->producerFailure(slot->producer))
                             {
@@ -1243,10 +1251,10 @@ namespace lux::simulation
                         }
                         for (auto index : channels)
                         {
-                            const auto &channel = owner->channels[index];
+                            const auto& channel = owner->channels[index];
                             if (!failed() && channel.script_endpoint != kInvalidOrdinal)
                             {
-                                const auto &endpoint = owner->script_events[channel.script_endpoint];
+                                const auto& endpoint = owner->script_events[channel.script_endpoint];
                                 channel.authorize_script(channel.context, true);
                                 endpoint.consume(endpoint.context);
                                 channel.authorize_script(channel.context, false);
@@ -1281,7 +1289,7 @@ namespace lux::simulation
                         }
                         for (auto index : channels)
                         {
-                            const auto &channel = owner->channels[index];
+                            const auto& channel = owner->channels[index];
                             if (failed())
                             {
                                 channel.discard(channel.context);
@@ -1291,7 +1299,8 @@ namespace lux::simulation
                                 channel.reset(channel.context);
                             }
                         }
-                    });
+                    }
+                );
                 if (!task)
                 {
                     return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::TASK_GRAPH_FAILURE));
@@ -1308,160 +1317,46 @@ namespace lux::simulation
                     return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::COMMAND_PREPARE_FAILURE));
                 }
 
-                task::TaskCallable flush(
-                    [owner = impl.get()]() noexcept
+                task::TaskCallable flush([owner = impl.get()]() noexcept {
+                    if (owner->execution.system_failure.load(std::memory_order_acquire) != 0U)
                     {
-                        if (owner->execution.system_failure.load(std::memory_order_acquire) != 0U)
+                        if (!owner->execution.command_failure)
                         {
-                            if (!owner->execution.command_failure)
+                            for (std::size_t index{}; index < owner->command_producers.size(); ++index)
                             {
-                                for (std::size_t index{}; index < owner->command_producers.size(); ++index)
+                                const auto failure = owner->commands->producerFailure(index);
+                                if (failure)
                                 {
-                                    const auto failure = owner->commands->producerFailure(index);
-                                    if (failure)
-                                    {
-                                        owner->execution.command_failure = failure;
-                                        break;
-                                    }
+                                    owner->execution.command_failure = failure;
+                                    break;
                                 }
                             }
-                            owner->commands->discardPending();
-                            return;
                         }
-                        // A scripted graph commits at its named Hooks. Observer follow-up commands from its
-                        // final commit belong to the next step, never after final derived-data propagation.
-                        if (owner->mode == ESimulationMode::EVOLUTION && owner->script_hook_count != 0U)
-                        {
-                            return;
-                        }
-                        auto applied = ecs::applyEcsCommands(*owner->registry, *owner->commands);
-                        if (!applied)
-                        {
-                            owner->execution.command_failure = applied.error();
-                        }
-                    });
+                        owner->commands->discardPending();
+                        return;
+                    }
+                    // A scripted graph commits at its named Hooks. Observer follow-up commands from its
+                    // final commit belong to the next step, never after final derived-data propagation.
+                    if (owner->script_hook_count != 0U)
+                    {
+                        return;
+                    }
+                    auto applied = ecs::applyEcsCommands(*owner->registry, *owner->commands);
+                    if (!applied)
+                    {
+                        owner->execution.command_failure = applied.error();
+                    }
+                });
                 auto flush_task = build.graph_builder.add(
-                    task::dependencies(build.all_primary_tasks), ecs::ecsCommandFlushTaskResources(),
-                    task::on(task::ETaskAffinity::CALLER_THREAD), std::move(flush));
+                    task::dependencies(build.all_primary_tasks),
+                    ecs::ecsCommandFlushTaskResources(),
+                    task::on(task::ETaskAffinity::CALLER_THREAD),
+                    std::move(flush)
+                );
                 if (!flush_task)
                 {
                     return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::TASK_GRAPH_FAILURE));
                 }
-            }
-
-            if (mode == ESimulationMode::EVOLUTION)
-            {
-                // Paused refresh has its own graph and command storage. Evolution
-                // follow-up commands remain pending for the next actual step.
-                task::TaskGraphBuilder derivation;
-                std::vector<task::TaskHandle> derived_handles(count);
-                std::vector<std::vector<std::size_t>> retained(count);
-                std::vector<task::TaskHandle> leaves;
-                if (impl->commands)
-                {
-                    impl->derivation_commands = std::make_unique<ecs::EcsCommandBuffer>();
-                    auto prepared = impl->derivation_commands->prepare(command_capacities);
-                    if (!prepared)
-                    {
-                        return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::COMMAND_PREPARE_FAILURE));
-                    }
-                }
-                for (const auto ordinal : execution_order)
-                {
-                    const auto &item = pending[ordinal];
-                    std::vector<std::size_t> predecessors;
-                    for (const auto previous : before[ordinal])
-                    {
-                        predecessors.insert(predecessors.end(), retained[previous].begin(), retained[previous].end());
-                    }
-                    std::ranges::sort(predecessors);
-                    predecessors.erase(std::unique(predecessors.begin(), predecessors.end()), predecessors.end());
-                    const auto system = impl->description->findSystem(item.point.system);
-                    const auto *registration = system_types.find(system.type());
-                    if (item.point.kind != ESimulationExecutionPoint::SYSTEM_TASK || !registration->supports_derivation)
-                    {
-                        retained[ordinal] = std::move(predecessors);
-                        continue;
-                    }
-                    std::vector<task::TaskHandle> dependencies;
-                    for (const auto previous : predecessors)
-                    {
-                        dependencies.push_back(derived_handles[previous]);
-                    }
-                    std::vector<detail::SimulationCommandSlot *> slots;
-                    for (auto &producer : impl->command_producers)
-                    {
-                        if (producer->point == item.point)
-                        {
-                            slots.push_back(&producer->slot);
-                        }
-                    }
-                    // Recreate access declarations; item.resources was moved into
-                    // the evolution graph. The same systems use the same resources.
-                    auto resources = std::move(derivation_resources[ordinal]);
-                    auto added =
-                        derivation.add(task::dependencies(dependencies), std::move(resources), task::on(item.affinity),
-                                       [owner = impl.get(), callable = &impl->callables[ordinal], point = item.point,
-                                        slots = std::move(slots)]() noexcept
-                                       {
-                                           if (owner->execution.system_failure.load(std::memory_order_acquire) != 0U)
-                                           {
-                                               return;
-                                           }
-                                           for (auto *slot : slots)
-                                           {
-                                               slot->commands = owner->derivation_commands.get();
-                                               slot->active = true;
-                                           }
-                                           (*callable)();
-                                           for (auto *slot : slots)
-                                           {
-                                               if (owner->derivation_commands->producerFailure(slot->producer))
-                                               {
-                                                   reportSystemFailure(&owner->execution.system_failure, point.system);
-                                               }
-                                               slot->active = false;
-                                               slot->commands = owner->commands.get();
-                                           }
-                                       });
-                    if (!added)
-                    {
-                        return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::TASK_GRAPH_FAILURE));
-                    }
-                    derived_handles[ordinal] = *added;
-                    leaves.push_back(*added);
-                    retained[ordinal].push_back(ordinal);
-                }
-                if (impl->derivation_commands)
-                {
-                    auto flush =
-                        derivation.add(task::dependencies(leaves), ecs::ecsCommandFlushTaskResources(),
-                                       task::on(task::ETaskAffinity::CALLER_THREAD),
-                                       [owner = impl.get()]() noexcept
-                                       {
-                                           if (owner->execution.system_failure.load(std::memory_order_acquire) != 0U)
-                                           {
-                                               owner->derivation_commands->discardPending();
-                                               return;
-                                           }
-                                           auto applied =
-                                               ecs::applyEcsCommands(*owner->registry, *owner->derivation_commands);
-                                           if (!applied)
-                                           {
-                                               owner->execution.command_failure = applied.error();
-                                           }
-                                       });
-                    if (!flush)
-                    {
-                        return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::TASK_GRAPH_FAILURE));
-                    }
-                }
-                auto derived = std::move(derivation).build();
-                if (!derived)
-                {
-                    return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::TASK_GRAPH_FAILURE));
-                }
-                impl->derivation_graph = std::move(*derived);
             }
 
             auto graph = std::move(build.graph_builder).build();
@@ -1472,9 +1367,9 @@ namespace lux::simulation
             impl->graph = std::move(*graph);
             return Simulation(std::move(impl));
         }
-        catch (const std::bad_alloc &)
+        catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::ALLOCATION_FAILURE));
+            std::terminate();
         }
         catch (...)
         {
@@ -1482,7 +1377,7 @@ namespace lux::simulation
         }
     }
 
-    const SimulationDescription &Simulation::description() const noexcept
+    const SimulationDescription& Simulation::description() const noexcept
     {
         return *impl_->description;
     }
@@ -1502,9 +1397,9 @@ namespace lux::simulation
         return impl_->script_events;
     }
 
-    const SimulationClock &Simulation::clock() const noexcept
+    const SimulationTime& Simulation::time() const noexcept
     {
-        return impl_->clock;
+        return impl_->time;
     }
 
     std::size_t Simulation::taskCount() const noexcept
@@ -1521,20 +1416,19 @@ namespace lux::simulation
     }
 
     lux::cxx::expected<SimulationHookConnection, SimulationSystemBuildFailure> Simulation::bindHookCallbacks(
-        SimulationHookCallbacks callbacks) noexcept
+        SimulationHookCallbacks callbacks
+    ) noexcept
     {
         const bool is_invalid = impl_->executing || impl_->stopped || impl_->hook_callbacks.context != nullptr ||
                                 callbacks.context == nullptr || callbacks.before == nullptr ||
-                                callbacks.after == nullptr || impl_->stable_hook_count != 1U ||
-                                impl_->mode == ESimulationMode::DERIVATION;
+                                callbacks.after == nullptr || impl_->stable_hook_count != 1U;
         if (is_invalid)
         {
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT));
         }
         impl_->hook_callbacks = callbacks;
-        return SimulationHookConnection{impl_.get(), [](void *context) noexcept
-                                        {
-                                            auto &state = *static_cast<Impl *>(context);
+        return SimulationHookConnection{impl_.get(), [](void* context) noexcept {
+                                            auto& state = *static_cast<Impl*>(context);
                                             if (state.executing)
                                             {
                                                 std::terminate();
@@ -1546,7 +1440,7 @@ namespace lux::simulation
 
     lux::cxx::expected<void, SimulationSystemBuildFailure> Simulation::seal() noexcept
     {
-        const bool missing_hooks = impl_->mode == ESimulationMode::EVOLUTION && impl_->hasUnboundScriptEndpoints();
+        const bool missing_hooks = impl_->hasUnboundScriptEndpoints();
         if (impl_->stopped || missing_hooks)
         {
             return lux::cxx::unexpected(buildFailure(ESimulationSystemBuildError::INVALID_EXECUTION_POINT));
@@ -1565,27 +1459,9 @@ namespace lux::simulation
     }
 
     lux::cxx::expected<void, SimulationExecutionFailure> Simulation::execute(
-        task::TaskExecutor &executor, SimulationDuration effective_delta) noexcept
-    {
-        if (impl_->mode != ESimulationMode::EVOLUTION)
-        {
-            return lux::cxx::unexpected(SimulationExecutionFailure{ESimulationExecutionError::WRONG_MODE});
-        }
-        return executePreparedGraph(executor, effective_delta, true);
-    }
-
-    ESimulationMode Simulation::mode() const noexcept
-    {
-        return impl_->mode;
-    }
-
-    lux::cxx::expected<void, SimulationExecutionFailure> Simulation::refresh(task::TaskExecutor &executor) noexcept
-    {
-        return executePreparedGraph(executor, SimulationDuration{}, false);
-    }
-
-    lux::cxx::expected<void, SimulationExecutionFailure> Simulation::executePreparedGraph(
-        task::TaskExecutor &executor, SimulationDuration effective_delta, bool advance) noexcept
+        task::TaskExecutor& executor,
+        const SimulationTime& time
+    ) noexcept
     {
         if (impl_->executing)
         {
@@ -1595,7 +1471,7 @@ namespace lux::simulation
         {
             return lux::cxx::unexpected(SimulationExecutionFailure{ESimulationExecutionError::STOPPED});
         }
-        if (impl_->mode == ESimulationMode::EVOLUTION && impl_->hasUnboundScriptEndpoints())
+        if (impl_->hasUnboundScriptEndpoints())
         {
             return lux::cxx::unexpected(SimulationExecutionFailure{ESimulationExecutionError::NOT_SEALED});
         }
@@ -1606,44 +1482,48 @@ namespace lux::simulation
                 return lux::cxx::unexpected(SimulationExecutionFailure{ESimulationExecutionError::NOT_SEALED});
             }
         }
-        const auto clock = impl_->clock.snapshot();
-        const auto delta_count = effective_delta.count();
-        const auto elapsed_count = clock.elapsed.count();
-        const bool is_negative_delta = delta_count < 0;
-        const bool is_step_overflow = advance && clock.step_index == std::numeric_limits<std::uint64_t>::max();
-        const bool is_time_overflow =
-            delta_count > 0 && elapsed_count > std::numeric_limits<SimulationDuration::rep>::max() - delta_count;
-        if (is_negative_delta || is_step_overflow || is_time_overflow)
+        const auto& previous = impl_->time;
+        const bool is_invalid_elapsed = time.elapsed < previous.elapsed;
+        const bool is_invalid_delta =
+            time.delta.count() < 0 || (!is_invalid_elapsed && time.delta != time.elapsed - previous.elapsed);
+        const bool is_step_overflow = previous.step_index == std::numeric_limits<std::uint64_t>::max();
+        const bool is_invalid_step = is_step_overflow || time.step_index != previous.step_index + 1U;
+        const bool is_invalid_time = is_invalid_elapsed || is_invalid_delta || is_invalid_step;
+        if (is_invalid_time)
         {
-            return lux::cxx::unexpected(
-                SimulationExecutionFailure{ESimulationExecutionError::INVALID_STEP_TIME, {}, {}, {}});
+            return lux::cxx::unexpected(SimulationExecutionFailure{ESimulationExecutionError::INVALID_STEP_TIME});
         }
-        if (advance)
-        {
-            impl_->clock.advance(effective_delta);
-        }
+        impl_->time = time;
         impl_->execution.system_failure.store(0U, std::memory_order_release);
         impl_->execution.command_failure.reset();
         impl_->executing = true;
-        auto executed = executor.execute(!advance && impl_->mode == ESimulationMode::EVOLUTION ? impl_->derivation_graph
-                                                                                               : impl_->graph);
+        auto executed = executor.execute(impl_->graph);
         impl_->executing = false;
         if (!executed)
         {
             return lux::cxx::unexpected(
-                SimulationExecutionFailure{ESimulationExecutionError::TASK_EXECUTOR_FAILURE, {}, executed.error(), {}});
+                SimulationExecutionFailure{ESimulationExecutionError::TASK_EXECUTOR_FAILURE, {}, executed.error(), {}}
+            );
         }
 
         const std::uint64_t system_failure = impl_->execution.system_failure.load(std::memory_order_acquire);
         if (impl_->execution.command_failure)
         {
             return lux::cxx::unexpected(SimulationExecutionFailure{
-                ESimulationExecutionError::ECS_COMMAND_FAILURE, {}, {}, *impl_->execution.command_failure});
+                ESimulationExecutionError::ECS_COMMAND_FAILURE,
+                {},
+                {},
+                *impl_->execution.command_failure
+            });
         }
         if (system_failure != 0U)
         {
             return lux::cxx::unexpected(SimulationExecutionFailure{
-                ESimulationExecutionError::SYSTEM_TASK_FAILURE, lux::system::SystemInstanceId{system_failure}, {}, {}});
+                ESimulationExecutionError::SYSTEM_TASK_FAILURE,
+                lux::system::SystemInstanceId{system_failure},
+                {},
+                {}
+            });
         }
         return {};
     }

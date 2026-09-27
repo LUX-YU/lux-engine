@@ -132,8 +132,8 @@ namespace lux::navigation::detour3d
         [[nodiscard]] bool validDescription(const NavigationRegion3DDescription& value) noexcept
         {
             const bool is_invalid_region = !value.region.valid() || !valid(value.agent);
-            const bool is_invalid_resolution = !finitePositive(value.horizontal_resolution) ||
-                !finitePositive(value.vertical_resolution);
+            const bool is_invalid_resolution =
+                !finitePositive(value.horizontal_resolution) || !finitePositive(value.vertical_resolution);
             const bool is_invalid_area_count = value.areas.empty() || value.areas.size() > kMaximumAreas;
             const bool is_invalid_description = is_invalid_region || is_invalid_resolution || is_invalid_area_count;
             if (is_invalid_description)
@@ -142,15 +142,12 @@ namespace lux::navigation::detour3d
             }
             for (const auto& area : value.areas)
             {
-                const bool is_invalid_boundary_count = area.boundary.size() < 3u ||
-                    area.boundary.size() > kMaximumBoundaryPoints;
+                const bool is_invalid_boundary_count =
+                    area.boundary.size() < 3u || area.boundary.size() > kMaximumBoundaryPoints;
                 const bool is_invalid_traversal = area.traversal_flags == 0u;
-                const bool has_finite_boundary = std::ranges::all_of(
-                    area.boundary,
-                    [](const auto& point) { return lux::math::isFinite(point); }
-                );
-                const bool is_invalid_area = is_invalid_boundary_count || is_invalid_traversal ||
-                    !has_finite_boundary;
+                const bool has_finite_boundary =
+                    std::ranges::all_of(area.boundary, [](const auto& point) { return lux::math::isFinite(point); });
+                const bool is_invalid_area = is_invalid_boundary_count || is_invalid_traversal || !has_finite_boundary;
                 if (is_invalid_area)
                 {
                     return false;
@@ -178,14 +175,15 @@ namespace lux::navigation::detour3d
             {
                 const auto& portal = value.portals[index];
                 const bool is_invalid_identity = !portal.id.valid() || !portal.first_region.valid() ||
-                    !portal.second_region.valid() || portal.first_region == portal.second_region;
-                const bool is_invalid_region_link = portal.first_region != value.region &&
-                    portal.second_region != value.region;
-                const bool is_invalid_positions = !lux::math::isFinite(portal.first_position) ||
-                    !lux::math::isFinite(portal.second_position);
+                                                 !portal.second_region.valid() ||
+                                                 portal.first_region == portal.second_region;
+                const bool is_invalid_region_link =
+                    portal.first_region != value.region && portal.second_region != value.region;
+                const bool is_invalid_positions =
+                    !lux::math::isFinite(portal.first_position) || !lux::math::isFinite(portal.second_position);
                 const bool is_invalid_traversal = !finitePositive(portal.traversal_cost_scale);
-                const bool is_invalid_portal = is_invalid_identity || is_invalid_region_link ||
-                    is_invalid_positions || is_invalid_traversal;
+                const bool is_invalid_portal =
+                    is_invalid_identity || is_invalid_region_link || is_invalid_positions || is_invalid_traversal;
                 if (is_invalid_portal)
                 {
                     return false;
@@ -197,8 +195,9 @@ namespace lux::navigation::detour3d
             return true;
         }
 
-        [[nodiscard]] lux::cxx::expected<DecodedRegion, NavigationRegion3DFailure>
-        decodeRegion(const NavigationRegion3DBlob& blob) noexcept
+        [[nodiscard]] lux::cxx::expected<DecodedRegion, NavigationRegion3DFailure> decodeRegion(
+            const NavigationRegion3DBlob& blob
+        ) noexcept
         {
             if (!blob.valid())
             {
@@ -220,9 +219,9 @@ namespace lux::navigation::detour3d
                 readBinary(reader, result.horizontal_resolution) && readBinary(reader, result.vertical_resolution) &&
                 readBinary(reader, area_count) && readBinary(reader, portal_count);
             const bool is_invalid_header = !has_valid_header || magic != kRegionMagic ||
-                version != kNavigationRegion3DSchemaVersion || result.region != blob.region;
-            const bool is_invalid_counts = area_count == 0u || area_count > kMaximumAreas ||
-                portal_count > kMaximumPortals;
+                                           version != kNavigationRegion3DSchemaVersion || result.region != blob.region;
+            const bool is_invalid_counts =
+                area_count == 0u || area_count > kMaximumAreas || portal_count > kMaximumPortals;
             if (is_invalid_header || is_invalid_counts)
             {
                 return lux::cxx::unexpected(
@@ -235,9 +234,10 @@ namespace lux::navigation::detour3d
                 std::uint8_t point_count = 0u;
                 DecodedArea area;
                 const bool has_valid_area_header = readBinary(reader, point_count) &&
-                    readBinary(reader, area.area_class) && readBinary(reader, area.traversal_flags);
-                const bool is_invalid_area_header = !has_valid_area_header || point_count < 3u ||
-                    point_count > kMaximumBoundaryPoints;
+                                                   readBinary(reader, area.area_class) &&
+                                                   readBinary(reader, area.traversal_flags);
+                const bool is_invalid_area_header =
+                    !has_valid_area_header || point_count < 3u || point_count > kMaximumBoundaryPoints;
                 if (is_invalid_area_header)
                 {
                     return lux::cxx::unexpected(
@@ -301,8 +301,9 @@ namespace lux::navigation::detour3d
 
     } // namespace
 
-    lux::cxx::expected<NavigationRegion3DBlob, NavigationRegion3DFailure>
-    encodeNavigationRegion3D(const NavigationRegion3DDescription& description) noexcept
+    lux::cxx::expected<NavigationRegion3DBlob, NavigationRegion3DFailure> encodeNavigationRegion3D(
+        const NavigationRegion3DDescription& description
+    ) noexcept
     {
         if (!validDescription(description))
         {
@@ -359,20 +360,22 @@ namespace lux::navigation::detour3d
         return NavigationRegion3DBlob{
             description.region,
             kNavigationRegion3DSchemaVersion,
-            lux::cxx::SharedBytes<>::copyOf(bytes)};
+            lux::cxx::SharedBytes<>::copyOf(bytes)
+        };
     }
 
-    lux::cxx::expected<NavigationRegion3DBlob, NavigationRegion3DFailure>
-    navigationRegion3DBlobFromBytes(lux::cxx::SharedBytes<> payload) noexcept
+    lux::cxx::expected<NavigationRegion3DBlob, NavigationRegion3DFailure> navigationRegion3DBlobFromBytes(
+        lux::cxx::SharedBytes<> payload
+    ) noexcept
     {
         lux::cxx::BinaryReader reader{payload.view()};
         std::uint32_t magic = 0u;
         std::uint32_t version = 0u;
         NavigationRegionId region;
         const bool has_valid_header = readBinary(reader, magic) && readBinary(reader, version) &&
-            readBinary(reader, region.high) && readBinary(reader, region.low);
+                                      readBinary(reader, region.high) && readBinary(reader, region.low);
         const bool is_invalid_header = !has_valid_header || magic != kRegionMagic ||
-            version != kNavigationRegion3DSchemaVersion || !region.valid();
+                                       version != kNavigationRegion3DSchemaVersion || !region.valid();
         if (is_invalid_header)
         {
             return lux::cxx::unexpected(
@@ -382,14 +385,15 @@ namespace lux::navigation::detour3d
         return NavigationRegion3DBlob{region, kNavigationRegion3DSchemaVersion, std::move(payload)};
     }
 
-    lux::cxx::expected<PreparedNavigationRegion3D, NavigationRegion3DFailure>
-    prepareNavigationRegion3D(NavigationRegion3DBlob blob, std::uint64_t request_generation) noexcept
+    lux::cxx::expected<PreparedNavigationRegion3D, NavigationRegion3DFailure> prepareNavigationRegion3D(
+        NavigationRegion3DBlob blob,
+        std::uint64_t request_generation
+    ) noexcept
     {
         if (request_generation == 0u)
         {
-            return lux::cxx::unexpected(fail(
-                ENavigationRegion3DError::INVALID_REQUEST,
-                "navigation preparation requires a non-zero generation")
+            return lux::cxx::unexpected(
+                fail(ENavigationRegion3DError::INVALID_REQUEST, "navigation preparation requires a non-zero generation")
             );
         }
         auto decoded = decodeRegion(blob);
@@ -420,8 +424,8 @@ namespace lux::navigation::detour3d
             indices.reserve(area.boundary.size());
             for (const auto& point : area.boundary)
             {
-                const auto quantize =
-                    [](double value, double origin, float resolution) -> std::optional<std::uint16_t> {
+                const auto quantize = [](double value, double origin, float resolution
+                                      ) -> std::optional<std::uint16_t> {
                     const auto scaled = std::round((value - origin) / static_cast<double>(resolution));
                     if (!std::isfinite(scaled) || scaled < 0.0 || scaled > 65'535.0)
                     {
@@ -435,7 +439,8 @@ namespace lux::navigation::detour3d
                 if (!x || !y || !z)
                 {
                     return lux::cxx::unexpected(
-                        fail(ENavigationRegion3DError::INVALID_CONTENT, "navigation region exceeds quantized extent"));
+                        fail(ENavigationRegion3DError::INVALID_CONTENT, "navigation region exceeds quantized extent")
+                    );
                 }
                 const QuantizedPoint quantized{*x, *y, *z};
                 const auto found = point_indices.find(quantized);
@@ -491,8 +496,8 @@ namespace lux::navigation::detour3d
                     return lux::cxx::unexpected(fail(
                         ENavigationRegion3DError::INVALID_CONTENT,
                         "navigation topology contains a non-manifold "
-                        "edge")
-                    );
+                        "edge"
+                    ));
                 }
                 neighbours[first.area][first.edge] = area_index;
                 neighbours[area_index][edge] = first.area;
@@ -503,9 +508,9 @@ namespace lux::navigation::detour3d
         const auto layer_count = (decoded->areas.size() + kAreasPerLayer - 1u) / kAreasPerLayer;
         if (layer_count == 0u || layer_count > 16'384u)
         {
-            return lux::cxx::unexpected(fail(
-                ENavigationRegion3DError::CAPACITY_EXHAUSTED,
-                "navigation region requires too many storage layers"));
+            return lux::cxx::unexpected(
+                fail(ENavigationRegion3DError::CAPACITY_EXHAUSTED, "navigation region requires too many storage layers")
+            );
         }
         std::vector<detail::PreparedLayer> layers;
         layers.reserve(layer_count);
@@ -516,31 +521,33 @@ namespace lux::navigation::detour3d
             return std::array<float, 3u>{
                 static_cast<float>(point.x - minimum.x),
                 static_cast<float>(point.y - minimum.y),
-                static_cast<float>(point.z - minimum.z)};
-        };
-        const auto interiorPoint =
-            [](const DecodedArea& area, const lux::math::Position3d& midpoint, double epsilon) noexcept {
-                lux::math::Position3d centroid{};
-                for (const auto& point : area.boundary)
-                {
-                    centroid.x += point.x;
-                    centroid.y += point.y;
-                    centroid.z += point.z;
-                }
-                const auto inverse = 1.0 / static_cast<double>(area.boundary.size());
-                centroid.x *= inverse;
-                centroid.y *= inverse;
-                centroid.z *= inverse;
-                const auto dx = centroid.x - midpoint.x;
-                const auto dz = centroid.z - midpoint.z;
-                const auto length = std::sqrt(dx * dx + dz * dz);
-                if (length <= 1.0e-12)
-                    return midpoint;
-                return lux::math::Position3d{
-                    midpoint.x + dx / length * epsilon,
-                    midpoint.y,
-                    midpoint.z + dz / length * epsilon};
+                static_cast<float>(point.z - minimum.z)
             };
+        };
+        const auto interiorPoint = [](const DecodedArea& area, const lux::math::Position3d& midpoint, double epsilon
+                                   ) noexcept {
+            lux::math::Position3d centroid{};
+            for (const auto& point : area.boundary)
+            {
+                centroid.x += point.x;
+                centroid.y += point.y;
+                centroid.z += point.z;
+            }
+            const auto inverse = 1.0 / static_cast<double>(area.boundary.size());
+            centroid.x *= inverse;
+            centroid.y *= inverse;
+            centroid.z *= inverse;
+            const auto dx = centroid.x - midpoint.x;
+            const auto dz = centroid.z - midpoint.z;
+            const auto length = std::sqrt(dx * dx + dz * dz);
+            if (length <= 1.0e-12)
+                return midpoint;
+            return lux::math::Position3d{
+                midpoint.x + dx / length * epsilon,
+                midpoint.y,
+                midpoint.z + dz / length * epsilon
+            };
+        };
 
         for (std::size_t layer_index = 0u; layer_index < layer_count; ++layer_index)
         {
@@ -598,17 +605,16 @@ namespace lux::navigation::detour3d
                     const lux::math::Position3d midpoint{
                         (first.x + second.x) * 0.5,
                         (first.y + second.y) * 0.5,
-                        (first.z + second.z) * 0.5};
+                        (first.z + second.z) * 0.5
+                    };
                     const auto epsilon = std::max(static_cast<double>(decoded->horizontal_resolution) * 0.25, 1.0e-4);
                     const auto source = interiorPoint(decoded->areas[area_index], midpoint, epsilon);
                     const auto destination = interiorPoint(decoded->areas[neighbour], midpoint, epsilon);
                     const auto local_source = toLocal(source);
                     const auto local_destination = toLocal(destination);
                     connection_vertices.insert(connection_vertices.end(), local_source.begin(), local_source.end());
-                    connection_vertices.insert(
-                        connection_vertices.end(),
-                        local_destination.begin(),
-                        local_destination.end());
+                    connection_vertices
+                        .insert(connection_vertices.end(), local_destination.begin(), local_destination.end());
                     connection_radii.push_back(std::max(decoded->horizontal_resolution, decoded->agent.radius));
                     connection_directions.push_back(DT_OFFMESH_CON_BIDIR);
                     connection_areas.push_back(decoded->areas[area_index].area_class);
@@ -657,14 +663,16 @@ namespace lux::navigation::detour3d
             {
                 dtFree(navigation_data);
                 return lux::cxx::unexpected(
-                    fail(ENavigationRegion3DError::BUILD_FAILED, "navigation backend rejected one storage layer"));
+                    fail(ENavigationRegion3DError::BUILD_FAILED, "navigation backend rejected one storage layer")
+                );
             }
             owned_bytes += static_cast<std::uint64_t>(navigation_data_size);
             maximum_polygons_per_layer = std::max(maximum_polygons_per_layer, area_count + connection_ids.size());
             layers.push_back(detail::PreparedLayer{
                 std::unique_ptr<unsigned char, detail::NavigationDataOwner>{navigation_data},
                 navigation_data_size,
-                0u});
+                0u
+            });
         }
 
         auto* navigation_raw = dtAllocNavMesh();
@@ -677,10 +685,12 @@ namespace lux::navigation::detour3d
         navigation_parameters.orig[2] = 0.0f;
         navigation_parameters.tileWidth = std::max(
             decoded->horizontal_resolution,
-            static_cast<float>(maximum.x - minimum.x) + decoded->horizontal_resolution);
+            static_cast<float>(maximum.x - minimum.x) + decoded->horizontal_resolution
+        );
         navigation_parameters.tileHeight = std::max(
             decoded->horizontal_resolution,
-            static_cast<float>(maximum.z - minimum.z) + decoded->horizontal_resolution);
+            static_cast<float>(maximum.z - minimum.z) + decoded->horizontal_resolution
+        );
         navigation_parameters.maxTiles = static_cast<int>(layer_count);
         navigation_parameters.maxPolys = static_cast<int>(maximum_polygons_per_layer);
         const auto navigation_status = navigation->init(&navigation_parameters);
@@ -689,7 +699,8 @@ namespace lux::navigation::detour3d
             if (dtStatusDetail(navigation_status, DT_OUT_OF_MEMORY))
                 std::abort();
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::BUILD_FAILED, "navigation backend rejected prepared content"));
+                fail(ENavigationRegion3DError::BUILD_FAILED, "navigation backend rejected prepared content")
+            );
         }
         auto* query_raw = dtAllocNavMeshQuery();
         if (!query_raw)
@@ -701,7 +712,8 @@ namespace lux::navigation::detour3d
             if (dtStatusDetail(query_status, DT_OUT_OF_MEMORY))
                 std::abort();
             return lux::cxx::unexpected(
-                fail(ENavigationRegion3DError::BUILD_FAILED, "navigation query rejected prepared content"));
+                fail(ENavigationRegion3DError::BUILD_FAILED, "navigation query rejected prepared content")
+            );
         }
 
         auto data = std::make_shared<PreparedNavigationRegion3D::Data>();

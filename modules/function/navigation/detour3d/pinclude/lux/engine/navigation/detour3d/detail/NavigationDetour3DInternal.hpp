@@ -77,8 +77,10 @@ namespace lux::navigation::detour3d::detail
         return std::isfinite(value) && value > 0.0f;
     }
 
-    [[nodiscard]] inline bool
-    sameAgent(const NavigationAgentConstraints& left, const NavigationAgentConstraints& right) noexcept
+    [[nodiscard]] inline bool sameAgent(
+        const NavigationAgentConstraints& left,
+        const NavigationAgentConstraints& right
+    ) noexcept
     {
         return left == right;
     }
@@ -120,8 +122,7 @@ namespace lux::navigation::detour3d
     {
         explicit Control(Navigation3DBackendConfig value) noexcept
             : config(value), owner_thread(std::this_thread::get_id())
-        {
-        }
+        {}
 
         [[nodiscard]] bool isOwner() const noexcept
         {

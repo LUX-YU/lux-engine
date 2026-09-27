@@ -6,8 +6,7 @@ namespace lux::render
 
     StagingBuffer::StagingBuffer(VmaAllocator allocator, VkBuffer buffer, VmaAllocation allocation) noexcept
         : allocator_(allocator), buffer_(buffer), allocation_(allocation)
-    {
-    }
+    {}
 
     StagingBuffer::~StagingBuffer()
     {

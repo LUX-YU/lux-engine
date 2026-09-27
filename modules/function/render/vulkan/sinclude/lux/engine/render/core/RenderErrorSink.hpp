@@ -43,8 +43,7 @@ namespace lux::render
             const auto batch = std::span<RenderErrorEvent>{ring_.data(), count_};
             const auto same = std::ranges::find_if(batch, [&](const RenderErrorEvent& e) {
                 return e.scene_index == scene_index && e.error.type == error.type && e.error.args == error.args;
-            }
-            );
+            });
             if (same != batch.end())
             {
                 ++same->occurrences;

@@ -21,14 +21,13 @@ namespace lux::serialization
         VARIABLE,
     };
 
-    template <class T> struct Serializer;
+    template <class T> struct TSerializer;
 
     template <class T>
-    concept HasSerializerDefinition = requires { sizeof(Serializer<std::remove_cvref_t<T>>); };
+    concept HasSerializerDefinition = requires { sizeof(TSerializer<std::remove_cvref_t<T>>); };
 
     template <class T>
-    concept SequenceContainer = requires(T value, std::size_t size)
-    {
+    concept SequenceContainer = requires(T value, std::size_t size) {
         typename T::value_type;
         value.resize(size);
         value.begin();
@@ -37,16 +36,14 @@ namespace lux::serialization
     };
 
     template <class T>
-    concept MapContainer = requires(T value, typename T::key_type key, typename T::mapped_type mapped)
-    {
+    concept MapContainer = requires(T value, typename T::key_type key, typename T::mapped_type mapped) {
         value.try_emplace(std::move(key), std::move(mapped)).second;
         value.find(key);
         value.get_allocator();
     };
 
     template <class T>
-    concept SetContainer = !MapContainer<T> && requires(T value, typename T::key_type key)
-    {
+    concept SetContainer = !MapContainer<T> && requires(T value, typename T::key_type key) {
         value.insert(std::move(key)).second;
         value.find(key);
         value.get_allocator();
@@ -63,29 +60,23 @@ namespace lux::serialization
             std::size_t fixed_size{};
         };
 
-        template <class T> struct WireIsArray : std::false_type
-        {
-        };
+        template <class T> struct TWireIsArray : std::false_type
+        {};
 
-        template <class T, std::size_t Size> struct WireIsArray<std::array<T, Size>> : std::true_type
-        {
-        };
+        template <class T, std::size_t Size> struct TWireIsArray<std::array<T, Size>> : std::true_type
+        {};
 
-        template <class T> struct WireIsPair : std::false_type
-        {
-        };
+        template <class T> struct TWireIsPair : std::false_type
+        {};
 
-        template <class First, class Second> struct WireIsPair<std::pair<First, Second>> : std::true_type
-        {
-        };
+        template <class First, class Second> struct TWireIsPair<std::pair<First, Second>> : std::true_type
+        {};
 
-        template <class T, class = void> struct WireIsTupleLike : std::false_type
-        {
-        };
+        template <class T, class = void> struct TWireIsTupleLike : std::false_type
+        {};
 
-        template <class T> struct WireIsTupleLike<T, std::void_t<decltype(std::tuple_size<T>::value)>> : std::true_type
-        {
-        };
+        template <class T> struct TWireIsTupleLike<T, std::void_t<decltype(std::tuple_size<T>::value)>> : std::true_type
+        {};
 
         template <class T> consteval WireShape wireShape();
 
@@ -117,7 +108,7 @@ namespace lux::serialization
 
         template <class T, std::size_t Index = 0U> consteval WireShape typeStaticWireShape()
         {
-            using Fields = std::remove_cvref_t<decltype(lux::meta::TypeStaticInfo<T>::fields)>;
+            using Fields = std::remove_cvref_t<decltype(lux::meta::TTypeStaticInfo<T>::fields)>;
             if constexpr (Index == std::tuple_size_v<Fields>)
             {
                 return {EWireExtent::TAG, 0U};
@@ -147,16 +138,16 @@ namespace lux::serialization
             using U = std::remove_cvref_t<T>;
             if constexpr (HasSerializerDefinition<U>)
             {
-                if constexpr (requires { Serializer<U>::wire_extent; })
+                if constexpr (requires { TSerializer<U>::wire_extent; })
                 {
-                    constexpr auto extent = Serializer<U>::wire_extent;
+                    constexpr auto extent = TSerializer<U>::wire_extent;
                     if constexpr (extent == EWireExtent::TAG)
                         return {extent, 0U};
                     else if constexpr (extent == EWireExtent::FIXED)
                     {
-                        static_assert(requires { Serializer<U>::fixed_wire_size; });
-                        static_assert(Serializer<U>::fixed_wire_size != 0U);
-                        return {extent, Serializer<U>::fixed_wire_size};
+                        static_assert(requires { TSerializer<U>::fixed_wire_size; });
+                        static_assert(TSerializer<U>::fixed_wire_size != 0U);
+                        return {extent, TSerializer<U>::fixed_wire_size};
                     }
                     else
                         return {EWireExtent::VARIABLE, 0U};
@@ -172,20 +163,20 @@ namespace lux::serialization
                 return wireShape<std::underlying_type_t<U>>();
             else if constexpr (std::is_bounded_array_v<U>)
                 return repeat(wireShape<std::remove_extent_t<U>>(), std::extent_v<U>);
-            else if constexpr (WireIsArray<U>::value)
+            else if constexpr (TWireIsArray<U>::value)
                 return repeat(wireShape<typename U::value_type>(), std::tuple_size_v<U>);
-            else if constexpr (WireIsPair<U>::value)
+            else if constexpr (TWireIsPair<U>::value)
                 return combine(wireShape<typename U::first_type>(), wireShape<typename U::second_type>());
             else if constexpr (lux::meta::HasTypeStaticInfo<U>)
                 return typeStaticWireShape<U>();
-            else if constexpr (WireIsTupleLike<U>::value)
+            else if constexpr (TWireIsTupleLike<U>::value)
                 return tupleWireShape<U>();
             else
                 return {EWireExtent::VARIABLE, 0U};
         }
     }
 
-    template <class T> struct WireTraits
+    template <class T> struct TWireTraits
     {
     private:
         inline static constexpr auto kShape = detail::wireShape<T>();

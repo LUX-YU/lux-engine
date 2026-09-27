@@ -31,22 +31,22 @@ namespace lux::simulation
         ESystemAccessMode mode{ESystemAccessMode::READ};
     };
 
-    template <class Component> struct ComponentRead final
+    template <class Component> struct TComponentRead final
     {
         using component_type = Component;
     };
 
-    template <class Component> struct ComponentWrite final
+    template <class Component> struct TComponentWrite final
     {
         using component_type = Component;
     };
 
-    template <class External> struct ExternalRead final
+    template <class External> struct TExternalRead final
     {
         using external_type = External;
     };
 
-    template <class External> struct ExternalWrite final
+    template <class External> struct TExternalWrite final
     {
         using external_type = External;
     };
@@ -59,39 +59,39 @@ namespace lux::simulation
 
     namespace detail
     {
-        template <class Access> struct ComponentSystemAccessTraits;
+        template <class Access> struct TComponentSystemAccessTraits;
 
-        template <class Component> struct ComponentSystemAccessTraits<ComponentRead<Component>> final
+        template <class Component> struct TComponentSystemAccessTraits<TComponentRead<Component>> final
         {
             using ComponentType = Component;
             static constexpr ESystemAccessMode kMode = ESystemAccessMode::READ;
         };
 
-        template <class Component> struct ComponentSystemAccessTraits<ComponentWrite<Component>> final
+        template <class Component> struct TComponentSystemAccessTraits<TComponentWrite<Component>> final
         {
             using ComponentType = Component;
             static constexpr ESystemAccessMode kMode = ESystemAccessMode::WRITE;
         };
 
         template <class Access>
-        concept ComponentSystemAccess = requires { typename ComponentSystemAccessTraits<Access>::ComponentType; };
+        concept ComponentSystemAccess = requires { typename TComponentSystemAccessTraits<Access>::ComponentType; };
 
-        template <class Access> struct ExternalSystemAccessTraits;
+        template <class Access> struct TExternalSystemAccessTraits;
 
-        template <class External> struct ExternalSystemAccessTraits<ExternalRead<External>> final
+        template <class External> struct TExternalSystemAccessTraits<TExternalRead<External>> final
         {
             using ExternalType = External;
             static constexpr ESystemAccessMode kMode = ESystemAccessMode::READ;
         };
 
-        template <class External> struct ExternalSystemAccessTraits<ExternalWrite<External>> final
+        template <class External> struct TExternalSystemAccessTraits<TExternalWrite<External>> final
         {
             using ExternalType = External;
             static constexpr ESystemAccessMode kMode = ESystemAccessMode::WRITE;
         };
 
         template <class Access>
-        concept ExternalSystemAccess = requires { typename ExternalSystemAccessTraits<Access>::ExternalType; };
+        concept ExternalSystemAccess = requires { typename TExternalSystemAccessTraits<Access>::ExternalType; };
 
         template <class Access>
         inline constexpr bool kSystemAccessElement = ComponentSystemAccess<Access> || ExternalSystemAccess<Access>;
@@ -110,14 +110,16 @@ namespace lux::simulation
                 [&] {
                     if constexpr (ComponentSystemAccess<Access>)
                     {
-                        using Component = typename ComponentSystemAccessTraits<Access>::ComponentType;
+                        using Component = typename TComponentSystemAccessTraits<Access>::ComponentType;
                         result[index++] = SystemComponentAccess{
                             lux::cxx::typeToken<Component>(),
                             entt::type_hash<Component>::value(),
-                            ComponentSystemAccessTraits<Access>::kMode};
+                            TComponentSystemAccessTraits<Access>::kMode
+                        };
                     }
                 }(),
-                ...);
+                ...
+            );
             return result;
         }
 
@@ -129,13 +131,15 @@ namespace lux::simulation
                 [&] {
                     if constexpr (ExternalSystemAccess<Access>)
                     {
-                        using External = typename ExternalSystemAccessTraits<Access>::ExternalType;
+                        using External = typename TExternalSystemAccessTraits<Access>::ExternalType;
                         result[index++] = SystemExternalAccess{
                             lux::cxx::typeToken<External>(),
-                            ExternalSystemAccessTraits<Access>::kMode};
+                            TExternalSystemAccessTraits<Access>::kMode
+                        };
                     }
                 }(),
-                ...);
+                ...
+            );
             return result;
         }
 
@@ -156,7 +160,7 @@ namespace lux::simulation
 
     template <class... Access>
         requires(detail::kSystemAccessElement<Access> && ...)
-    class StaticSystemAccessDescriptor final
+    class TStaticSystemAccessDescriptor final
     {
     private:
         inline static constexpr auto kComponents = detail::systemComponentAccesses<Access...>();
@@ -177,7 +181,7 @@ namespace lux::simulation
         template <class Type> inline constexpr bool kTrustedSystemAccessDescriptor = false;
 
         template <class... Access>
-        inline constexpr bool kTrustedSystemAccessDescriptor<StaticSystemAccessDescriptor<Access...>> = true;
+        inline constexpr bool kTrustedSystemAccessDescriptor<TStaticSystemAccessDescriptor<Access...>> = true;
 
         template <class Type>
         concept TrustedSystemAccessDescriptor = kTrustedSystemAccessDescriptor<std::remove_cvref_t<Type>>;
@@ -187,7 +191,7 @@ namespace lux::simulation
         requires(detail::kSystemAccessElement<Access> && ...)
     [[nodiscard]] consteval auto makeSystemAccessSpec() noexcept
     {
-        return StaticSystemAccessDescriptor<Access...>{};
+        return TStaticSystemAccessDescriptor<Access...>{};
     }
 
 }

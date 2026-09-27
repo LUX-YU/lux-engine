@@ -9,9 +9,13 @@ namespace lux::input
 {
     void Input::sample(lux::window::LuxWindow& window)
     {
-        InputSnapshot next;
-        next.keys_held = state_->snapshot.keys_held;
-        next.mouse_held = state_->snapshot.mouse_held;
+        auto& next = state_->snapshot;
+        next.keys_just_pressed.reset();
+        next.keys_just_released.reset();
+        next.mouse_just_pressed = next.mouse_just_released = 0;
+        next.scroll_dx = next.scroll_dy = 0;
+        next.keyboard_captured_by_ui = next.mouse_captured_by_ui = false;
+        next.events.clear();
 
         const auto events = window.drainInputEvents();
         detail::applyGlfwWindowEvents(next, events);
@@ -30,6 +34,5 @@ namespace lux::input
         next.sample_dt = state_->sampled ? static_cast<float>(now - state_->previous_sample_time) : 0.0f;
         state_->previous_sample_time = now;
         state_->sampled = true;
-        state_->snapshot = std::move(next);
     }
 }

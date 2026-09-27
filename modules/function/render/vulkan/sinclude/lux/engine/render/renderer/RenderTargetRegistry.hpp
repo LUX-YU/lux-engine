@@ -16,7 +16,9 @@
 
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp> // RenderTargetId / ViewHandle
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
+#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
 #include <lux/engine/function/render/client/RenderTargetLayout.hpp>
+#include <lux/engine/function/render/client/RenderProgram.hpp>
 #include <lux/engine/render/targets/RenderTargetBinding.hpp>
 #include <lux/engine/render/targets/OffscreenImagePool.hpp>
 #include <lux/engine/render/targets/PresentContext.hpp>
@@ -55,8 +57,8 @@ namespace lux::render
     {
         enum class EKind : uint8_t
         {
-            Offscreen,
-            Surface
+            OFFSCREEN,
+            SURFACE
         };
 
         /// 合成链上的一层。两种形态:
@@ -72,28 +74,28 @@ namespace lux::render
         {
             enum class EKind : uint8_t
             {
-                SceneView,
-                CustomRecord
+                SCENE_VIEW,
+                CUSTOM_RECORD
             };
 
             /// 自定义录制:相位已由链算好,回调按它开 rendering / 收尾。
             using RecordFn =
                 void (*)(void* user, VkCommandBuffer cmd, const RenderTargetBinding& binding, const LayerPhase& phase);
 
-            EKind kind{EKind::SceneView};
+            EKind kind{EKind::SCENE_VIEW};
 
-            // kind == SceneView
+            // kind == SCENE_VIEW
             RenderSceneId scene_id{};
             ViewHandle view_id{};
 
-            // kind == CustomRecord
+            // kind == CUSTOM_RECORD
             RecordFn record{nullptr};
             void* user{nullptr};
 
             [[nodiscard]] static CompositeLayer sceneView(RenderSceneId s, ViewHandle v) noexcept
             {
                 CompositeLayer l{};
-                l.kind = EKind::SceneView;
+                l.kind = EKind::SCENE_VIEW;
                 l.scene_id = s;
                 l.view_id = v;
                 return l;
@@ -102,14 +104,19 @@ namespace lux::render
             [[nodiscard]] static CompositeLayer customRecord(RecordFn fn, void* user) noexcept
             {
                 CompositeLayer l{};
-                l.kind = EKind::CustomRecord;
+                l.kind = EKind::CUSTOM_RECORD;
                 l.record = fn;
                 l.user = user;
                 return l;
             }
         };
 
-        EKind kind{EKind::Offscreen};
+        EKind kind{EKind::OFFSCREEN};
+        RTextureHandle texture; // Non-owning remote identity of the sampled output.
+        RenderSubmissionState production;
+        std::uint64_t produced_serial{}, produced_revision{};
+        std::uint32_t produced_slot{};
+        bool frozen{};     // Terminal sampling-only output; cannot be rebound or resized.
         uint32_t flags{0}; ///< kTargetFlag*(决定池类型/退休路由)
         RenderTargetLayout layout;
         std::unique_ptr<OffscreenImagePool> pool; ///< Offscreen only
@@ -138,7 +145,8 @@ namespace lux::render
             RenderTargetRegistry& reg,
             const RenderTargetLayout& layout,
             VkExtent2D extent,
-            uint32_t target_flags);
+            uint32_t target_flags
+        );
 
         /// 池退休扩展点:取走 pool 并返回 true = 接管(调用方自管退休列表);
         /// 返回 false = 本类按 fence 水位延迟释放。
@@ -146,7 +154,8 @@ namespace lux::render
             RenderTargetRegistry& reg,
             std::unique_ptr<OffscreenImagePool>& pool,
             uint32_t target_flags,
-            uint64_t retire_serial);
+            uint64_t retire_serial
+        );
 
         RenderTargetRegistry() = default;
         ~RenderTargetRegistry() = default;
@@ -242,8 +251,11 @@ namespace lux::render
         bool detachLayerAndReapIfEmpty(RenderTargetId key, RenderSceneId s, ViewHandle v, uint64_t retire_serial);
 
         // ── 池的创建与退休 ──────────────────────────────────────────────
-        [[nodiscard]] std::unique_ptr<OffscreenImagePool>
-        makeTargetPool(const RenderTargetLayout& layout, VkExtent2D extent, uint32_t target_flags);
+        [[nodiscard]] std::unique_ptr<OffscreenImagePool> makeTargetPool(
+            const RenderTargetLayout& layout,
+            VkExtent2D extent,
+            uint32_t target_flags
+        );
 
         /// **统一销毁门控**:所有 target 池的退休都必须走这里 —— 直接 vkDestroy
         /// 或直接进延迟表都会绕开扩展点接管的描述符退休语义。

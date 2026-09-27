@@ -46,8 +46,7 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC RenderContext
     {
         struct ConstructionKey final
-        {
-        };
+        {};
 
     public:
         struct CreateInfo

@@ -1,5 +1,5 @@
 #include <lux/engine/render/renderer/features/shadow/MeshShadowFeature.hpp>
-#include <lux/engine/function/render/features/resources/lighting/EShadowTechnique.hpp> // EShadowTechnique (technique id)
+#include <lux/engine/function/render/features/resources/lighting/EShadowTechnique.hpp>
 #include <lux/engine/render/renderer/features/shadow/IShadowTechnique.hpp>
 // IShadowTechnique + ShadowFrameContext — polymorphic caster/post dispatch
 #include <vk_mem_alloc.h>
@@ -27,8 +27,8 @@
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/function/render/features/deferred/DeferredGBufferOperation.hpp>
 // kDeferredGBufferDrawPassName
-#include <lux/engine/function/render/features/shadow/ShadowMapOperation.hpp>         // kShadowViewUploadPassName
-#include <lux/engine/function/render/features/shadow/MeshShadowOperation.hpp>        // kMeshShadowDrawPassName
+#include <lux/engine/function/render/features/shadow/ShadowMapOperation.hpp>  // kShadowViewUploadPassName
+#include <lux/engine/function/render/features/shadow/MeshShadowOperation.hpp> // kMeshShadowDrawPassName
 #include <lux/engine/render/scene/View.hpp> // View::handle (canonical-view resolution)
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/VulkanCheck.hpp>
@@ -157,9 +157,7 @@ namespace lux::render
     //  Construction / destruction
     // =========================================================================
 
-    MeshShadowFeature::MeshShadowFeature(Config cfg) : cfg_(cfg)
-    {
-    }
+    MeshShadowFeature::MeshShadowFeature(Config cfg) : cfg_(cfg) {}
 
     MeshShadowFeature::~MeshShadowFeature()
     {
@@ -191,7 +189,8 @@ namespace lux::render
             const std::array backfill{
                 ShaderStageSlot{EBuiltinShader::MESH_CULL_UNIFIED_COMP, &cfg_.shadow_cull_shader},
                 ShaderStageSlot{EBuiltinShader::MDC_COMPACT_COMP, &cfg_.shadow_compact_shader},
-                ShaderStageSlot{EBuiltinShader::CLEAR_COUNT_BUFFERS_COMP, &cfg_.shadow_clear_shader}};
+                ShaderStageSlot{EBuiltinShader::CLEAR_COUNT_BUFFERS_COMP, &cfg_.shadow_clear_shader}
+            };
             if (auto filled = resolveShaderStages(shaders, backfill); !filled)
                 return filled;
             // Legacy PCF caster shaders (shadow_vert_shader / shadow_frag_shader): the
@@ -247,7 +246,8 @@ namespace lux::render
             const VkPushConstantRange pc{
                 VK_SHADER_STAGE_COMPUTE_BIT,
                 0,
-                static_cast<uint32_t>(sizeof(MeshCullPushConstants))};
+                static_cast<uint32_t>(sizeof(MeshCullPushConstants))
+            };
             const std::array layouts{cull_set_layout_};
             const std::array pcs{pc};
             auto pl = ctx.pipelineLayoutService().getOrCreate(
@@ -283,13 +283,8 @@ namespace lux::render
                 aci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
                 VmaAllocationInfo alloc_info{};
-                VK_CHECK(vmaCreateBuffer(
-                    vma_,
-                    &ci,
-                    &aci,
-                    &shadow_mdc_info_buf_[i],
-                    &shadow_mdc_info_alloc_[i],
-                    &alloc_info)
+                VK_CHECK(
+                    vmaCreateBuffer(vma_, &ci, &aci, &shadow_mdc_info_buf_[i], &shadow_mdc_info_alloc_[i], &alloc_info)
                 );
                 shadow_mdc_info_mapped_[i] = alloc_info.pMappedData;
                 shadow_mdc_info_buf_size_[i] = kInitialMdcInfoSize;
@@ -322,7 +317,8 @@ namespace lux::render
                 const VkPushConstantRange clear_pc{
                     VK_SHADER_STAGE_COMPUTE_BIT,
                     0,
-                    static_cast<uint32_t>(sizeof(MeshCullPushConstants))};
+                    static_cast<uint32_t>(sizeof(MeshCullPushConstants))
+                };
                 const std::array clear_layouts{shadow_clear_ds_layout_};
                 const std::array clear_pcs{clear_pc};
                 auto clear_layout = ctx.pipelineLayoutService().getOrCreate(
@@ -429,8 +425,7 @@ namespace lux::render
             auto c = shadow_res->findViewCache(scene_key, view.handle.index);
             if (c && !c->slices.empty())
                 slice_cache = std::move(c);
-        }
-        );
+        });
         const std::span<const ShadowSliceGPU> slices =
             slice_cache ? std::span<const ShadowSliceGPU>{slice_cache->slices} : std::span<const ShadowSliceGPU>{};
         const uint32_t slice_count = clampShadowSliceCount(slices, max_shadow_slices_);
@@ -552,8 +547,8 @@ namespace lux::render
                     &aci,
                     &shadow_mdc_info_buf_[slot],
                     &shadow_mdc_info_alloc_[slot],
-                    &alloc_info)
-                );
+                    &alloc_info
+                ));
                 shadow_mdc_info_mapped_[slot] = alloc_info.pMappedData;
                 shadow_mdc_info_buf_size_[slot] = ci.size;
                 // No descriptor rewrite: binding 7 is bound via the per-frame
@@ -677,7 +672,8 @@ namespace lux::render
                 fd.bias_groups[g].scissor.offset = {min_x, min_y};
                 fd.bias_groups[g].scissor.extent = {
                     static_cast<uint32_t>(max_x - min_x),
-                    static_cast<uint32_t>(max_y - min_y)};
+                    static_cast<uint32_t>(max_y - min_y)
+                };
             }
         }
 
@@ -718,7 +714,8 @@ namespace lux::render
                     slices[s].origin_local_page_size[0],
                     slices[s].origin_local_page_size[1],
                     slices[s].origin_local_page_size[2],
-                    slices[s].origin_local_page_size[3]};
+                    slices[s].origin_local_page_size[3]
+                };
             }
         }
     }
@@ -938,7 +935,7 @@ namespace lux::render
             .frustum_ubo_rg = {},
             .draw_count_rg = shadow_count_rg_,
             .indirect_rg = shadow_indirect_rg_,
-            .pass_mask = static_cast<uint32_t>(passMaskForPhase(ECoreRenderPhase::Shadow)),
+            .pass_mask = static_cast<uint32_t>(passMaskForPhase(ECoreRenderPhase::SHADOW)),
             .geometry_mask = supportedGeometryMask(),
             .max_slices = static_cast<uint32_t>(max_shadow_slices_),
             .draw_list_count = shadow_mdc_count_,
@@ -972,8 +969,7 @@ namespace lux::render
                     &shadow_mdc_for_compact
                 );
                 vkCmdDispatch(pctx.cmd, (shadow_mdc_for_compact + 63u) / 64u, 1u, 1u);
-            }
-            )
+            })
             .setKernel(
                 "MdcCompact",
                 makeKernelConfig(MdcCompactKernelConfig{
@@ -1030,7 +1026,7 @@ namespace lux::render
             ERGResourceType::BUFFER
         );
 
-        shadow_draw.useEngineSet(EDescriptorSetSlot::Instance)
+        shadow_draw.useEngineSet(EDescriptorSetSlot::INSTANCE)
             .bindTransientDS(2, shadow_visible_tds)
             .read(shadow_indirect_rg_, ERGBufferRole::INDIRECT)
             .read(shadow_count_rg_, ERGBufferRole::INDIRECT)
@@ -1042,14 +1038,14 @@ namespace lux::render
             // scope (lighting orders itself .after this pass).
             // Unknown name (forward-only scenes) is ignored by design.
             .before(kDeferredGBufferDrawPassName)
-            .setPhaseMask(1ULL << static_cast<uint8_t>(ECoreRenderPhase::Shadow))
+            .setPhaseMask(1ULL << static_cast<uint8_t>(ECoreRenderPhase::SHADOW))
             .setManualViewport(true);
 
         if (vpr != nullptr)
         {
             // 顶点池按逻辑身份声明,收进 FEATURE 域槽(与 Instance 去重到同一
             // 个槽 —— 一次域绑定覆盖两者)。
-            shadow_draw.useEngineSet(EDescriptorSetSlot::VertexPool);
+            shadow_draw.useEngineSet(EDescriptorSetSlot::VERTEX_POOL);
             // Order shadow draw after every compute-vertex producer (skinning, ...).
             if (auto* vproducers = renderScene().resources().find<VertexProductionRegistry>())
                 for (const auto& prod : vproducers->producers())
@@ -1124,7 +1120,8 @@ namespace lux::render
         ShaderHandle fh{};
         const std::array caster_slots{
             ShaderStageSlot{tech.casterVertVariant(), &vh},
-            ShaderStageSlot{tech.casterFragVariant(), &fh}};
+            ShaderStageSlot{tech.casterFragVariant(), &fh}
+        };
         if (!resolveShaderStages(shaders, caster_slots))
             return; // 与本函数其余早退口径一致:未就绪即不注册,下次再试
 

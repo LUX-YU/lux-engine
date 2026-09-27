@@ -29,7 +29,7 @@ namespace lux::render
     /// baked-shader id.
     struct VariantBucketDesc
     {
-        ELightingTechnique family{ELightingTechnique::Unlit};
+        ELightingTechnique family{ELightingTechnique::UNLIT};
         ShaderFeatureMask feature_mask{0};
         // Graph family only: the material's baked per-pass frag shaders. The
         // mesh feature builds this bucket's own PSO from them (R1). Null for
@@ -42,7 +42,7 @@ namespace lux::render
         // cull-mode tier in the per-bucket PSO build; graph_alpha_mode is carried
         // for the (deferred) transparent-routing decision (Blend is not yet a
         // separate pass -> currently rendered opaque, see GpuDrivenMeshFeatureBase).
-        lux::rdesc::EAlphaMode graph_alpha_mode{lux::rdesc::EAlphaMode::Opaque};
+        lux::rdesc::EAlphaMode graph_alpha_mode{lux::rdesc::EAlphaMode::OPAQUE_SURFACE};
         bool graph_double_sided{false};
     };
 

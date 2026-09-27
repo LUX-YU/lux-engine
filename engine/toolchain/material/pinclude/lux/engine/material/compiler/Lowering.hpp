@@ -6,6 +6,5 @@
 
 namespace lux::material::compiler
 {
-    [[nodiscard]] lux::cxx::expected<MaterialIR, MaterialCompileFailure>
-    lowerMaterial(const MaterialGraph& graph);
+    [[nodiscard]] lux::cxx::expected<MaterialIR, MaterialCompileFailure> lowerMaterial(const MaterialGraph& graph);
 } // namespace lux::material::compiler

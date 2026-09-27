@@ -48,7 +48,7 @@ namespace lux::toolchain
             return ModelCookFailure{code, ordinal, std::move(detail)};
         }
 
-        [[nodiscard]] Eigen::Affine3f toEigen(const aiMatrix4x4 &value) noexcept
+        [[nodiscard]] Eigen::Affine3f toEigen(const aiMatrix4x4& value) noexcept
         {
             Eigen::Affine3f result;
             result.matrix() << value.a1, value.a2, value.a3, value.a4, value.b1, value.b2, value.b3, value.b4, value.c1,
@@ -56,8 +56,11 @@ namespace lux::toolchain
             return result;
         }
 
-        [[nodiscard]] lux::asset::AssetId deriveId(lux::asset::AssetId model, std::string_view kind,
-                                                   std::string_view key) noexcept
+        [[nodiscard]] lux::asset::AssetId deriveId(
+            lux::asset::AssetId model,
+            std::string_view kind,
+            std::string_view key
+        ) noexcept
         {
             lux::cxx::algorithm::Sha256 hasher;
             hasher.update(model.bytes());
@@ -76,16 +79,22 @@ namespace lux::toolchain
             return lux::asset::AssetId{bytes};
         }
 
-        [[nodiscard]] lux::asset::AssetInfo subAssetInfo(const lux::asset::AssetInfo &model, lux::asset::AssetId id,
-                                                         lux::asset::AssetTypeId type,
-                                                         std::string_view display_name) noexcept
+        [[nodiscard]] lux::asset::AssetInfo subAssetInfo(
+            const lux::asset::AssetInfo& model,
+            lux::asset::AssetId id,
+            lux::asset::AssetTypeId type,
+            std::string_view display_name
+        ) noexcept
         {
             auto result = model;
             result.id = id;
             result.type = type;
             result.display_name.fill('\0');
-            std::memcpy(result.display_name.data(), display_name.data(),
-                        (std::min)(display_name.size(), result.display_name.size() - 1U));
+            std::memcpy(
+                result.display_name.data(),
+                display_name.data(),
+                (std::min)(display_name.size(), result.display_name.size() - 1U)
+            );
             return result;
         }
 
@@ -98,7 +107,7 @@ namespace lux::toolchain
             {
                 return {};
             }
-            for (const auto &part : path)
+            for (const auto& part : path)
             {
                 if (part == "..")
                 {
@@ -107,7 +116,7 @@ namespace lux::toolchain
             }
             auto key = path.generic_string();
 #ifdef _WIN32
-            for (auto &value : key)
+            for (auto& value : key)
             {
                 if (value >= 'A' && value <= 'Z')
                 {
@@ -120,15 +129,15 @@ namespace lux::toolchain
 
         struct CapturedFiles final
         {
-            const ModelSource &source;
-            std::unordered_map<std::string, const ModelSourceFile *> files;
+            const ModelSource& source;
+            std::unordered_map<std::string, const ModelSourceFile*> files;
             ModelSourceRequests requested;
             std::string rejected_path;
 
-            explicit CapturedFiles(const ModelSource &value) : source(value)
+            explicit CapturedFiles(const ModelSource& value) : source(value)
             {
                 files.reserve(value.files.size());
-                for (const auto &file : value.files)
+                for (const auto& file : value.files)
                 {
                     const auto key = sourceKey(file.path);
                     if (key.empty() || !files.emplace(key, &file).second)
@@ -138,7 +147,7 @@ namespace lux::toolchain
                 }
             }
 
-            const ModelSourceFile *find(std::string_view path)
+            const ModelSourceFile* find(std::string_view path)
             {
                 const auto key = sourceKey(path);
                 if (key.empty())
@@ -151,7 +160,7 @@ namespace lux::toolchain
                 {
                     return found->second->state == EModelSourceState::PRESENT ? found->second : nullptr;
                 }
-                if (!std::ranges::any_of(requested.paths, [&](const auto &value) { return sourceKey(value) == key; }))
+                if (!std::ranges::any_of(requested.paths, [&](const auto& value) { return sourceKey(value) == key; }))
                 {
                     std::string spelling(path);
                     std::replace(spelling.begin(), spelling.end(), '\\', '/');
@@ -163,9 +172,9 @@ namespace lux::toolchain
 
         class CapturedStream final : public Assimp::IOStream
         {
-          public:
+        public:
             explicit CapturedStream(lux::cxx::SharedBytes<> bytes) : bytes_(std::move(bytes)) {}
-            std::size_t Read(void *output, std::size_t size, std::size_t count) override
+            std::size_t Read(void* output, std::size_t size, std::size_t count) override
             {
                 if (!size || !count)
                 {
@@ -176,7 +185,10 @@ namespace lux::toolchain
                 cursor_ += units * size;
                 return units;
             }
-            std::size_t Write(const void *, std::size_t, std::size_t) override { return 0; }
+            std::size_t Write(const void*, std::size_t, std::size_t) override
+            {
+                return 0;
+            }
             aiReturn Seek(std::size_t offset, aiOrigin origin) override
             {
                 std::size_t next{};
@@ -209,41 +221,56 @@ namespace lux::toolchain
                 cursor_ = next;
                 return aiReturn_SUCCESS;
             }
-            std::size_t Tell() const override { return cursor_; }
-            std::size_t FileSize() const override { return bytes_.size(); }
+            std::size_t Tell() const override
+            {
+                return cursor_;
+            }
+            std::size_t FileSize() const override
+            {
+                return bytes_.size();
+            }
             void Flush() override {}
 
-          private:
+        private:
             lux::cxx::SharedBytes<> bytes_;
             std::size_t cursor_{};
         };
 
         class CapturedIO final : public Assimp::IOSystem
         {
-          public:
-            explicit CapturedIO(CapturedFiles &files) : files_(files) {}
-            bool Exists(const char *path) const override { return files_.find(path) != nullptr; }
-            char getOsSeparator() const override { return '/'; }
-            Assimp::IOStream *Open(const char *path, const char *mode) override
+        public:
+            explicit CapturedIO(CapturedFiles& files) : files_(files) {}
+            bool Exists(const char* path) const override
+            {
+                return files_.find(path) != nullptr;
+            }
+            char getOsSeparator() const override
+            {
+                return '/';
+            }
+            Assimp::IOStream* Open(const char* path, const char* mode) override
             {
                 if (std::strpbrk(mode, "wa+"))
                 {
                     return nullptr;
                 }
-                const auto *file = files_.find(path);
+                const auto* file = files_.find(path);
                 return file ? new CapturedStream(file->bytes) : nullptr;
             }
-            void Close(Assimp::IOStream *stream) override { delete stream; }
-            bool ComparePaths(const char *first, const char *second) const override
+            void Close(Assimp::IOStream* stream) override
+            {
+                delete stream;
+            }
+            bool ComparePaths(const char* first, const char* second) const override
             {
                 return sourceKey(first) == sourceKey(second);
             }
 
-          private:
-            CapturedFiles &files_;
+        private:
+            CapturedFiles& files_;
         };
 
-        [[nodiscard]] std::optional<lux::cxx::SharedBytes<>> readOwned(const std::filesystem::path &path)
+        [[nodiscard]] std::optional<lux::cxx::SharedBytes<>> readOwned(const std::filesystem::path& path)
         {
             std::ifstream stream(path, std::ios::binary | std::ios::ate);
             if (!stream)
@@ -257,7 +284,7 @@ namespace lux::toolchain
             }
             auto storage = std::make_shared<std::vector<std::byte>>(static_cast<std::size_t>(end));
             stream.seekg(0, std::ios::beg);
-            stream.read(reinterpret_cast<char *>(storage->data()), static_cast<std::streamsize>(storage->size()));
+            stream.read(reinterpret_cast<char*>(storage->data()), static_cast<std::streamsize>(storage->size()));
             if (!stream)
             {
                 return std::nullopt;
@@ -265,12 +292,17 @@ namespace lux::toolchain
             return lux::cxx::SharedBytes<>::fromOwner(storage, *storage);
         }
 
-        [[nodiscard]] lux::cxx::SharedBytes<> rgbaToTga(std::span<const std::uint8_t> rgba, int width, int height,
-                                                        ETextureProfile profile)
+        [[nodiscard]] lux::cxx::SharedBytes<> rgbaToTga(
+            std::span<const std::uint8_t> rgba,
+            int width,
+            int height,
+            ETextureProfile profile
+        )
         {
-            auto storage = std::make_shared<std::vector<std::byte>>(18U + static_cast<std::size_t>(width) *
-                                                                              static_cast<std::size_t>(height) * 4U);
-            auto &bytes = *storage;
+            auto storage = std::make_shared<std::vector<std::byte>>(
+                18U + static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4U
+            );
+            auto& bytes = *storage;
             bytes[2] = std::byte{2U};
             bytes[12] = static_cast<std::byte>(width & 0xFF);
             bytes[13] = static_cast<std::byte>((width >> 8) & 0xFF);
@@ -305,8 +337,10 @@ namespace lux::toolchain
             return lux::cxx::SharedBytes<>::fromOwner(storage, *storage);
         }
 
-        [[nodiscard]] std::optional<lux::cxx::SharedBytes<>> repackImage(lux::cxx::SharedBytes<> image,
-                                                                         ETextureProfile profile)
+        [[nodiscard]] std::optional<lux::cxx::SharedBytes<>> repackImage(
+            lux::cxx::SharedBytes<> image,
+            ETextureProfile profile
+        )
         {
             if (profile != ETextureProfile::METALLIC_ROUGHNESS && profile != ETextureProfile::OCCLUSION)
             {
@@ -320,9 +354,16 @@ namespace lux::toolchain
             int height{};
             int channels{};
             std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> decoded{
-                stbi_load_from_memory(reinterpret_cast<const stbi_uc *>(image.data()), static_cast<int>(image.size()),
-                                      &width, &height, &channels, STBI_rgb_alpha),
-                &stbi_image_free};
+                stbi_load_from_memory(
+                    reinterpret_cast<const stbi_uc*>(image.data()),
+                    static_cast<int>(image.size()),
+                    &width,
+                    &height,
+                    &channels,
+                    STBI_rgb_alpha
+                ),
+                &stbi_image_free
+            };
             if (!decoded || width <= 0 || height <= 0)
             {
                 return std::nullopt;
@@ -350,7 +391,7 @@ namespace lux::toolchain
             return {Format::BC7_SRGB, Color::SRGB, false};
         }
 
-        [[nodiscard]] const char *profileName(ETextureProfile profile) noexcept
+        [[nodiscard]] const char* profileName(ETextureProfile profile) noexcept
         {
             switch (profile)
             {
@@ -368,7 +409,7 @@ namespace lux::toolchain
             return "texture";
         }
 
-        [[nodiscard]] bool looksLikePbr(const aiMaterial &material) noexcept
+        [[nodiscard]] bool looksLikePbr(const aiMaterial& material) noexcept
         {
             aiString path;
             if (material.GetTexture(aiTextureType_BASE_COLOR, 0U, &path) == AI_SUCCESS ||
@@ -383,11 +424,11 @@ namespace lux::toolchain
 
         struct CookContext final
         {
-            const aiScene &scene;
-            const std::filesystem::path &source;
-            const ModelCookConfiguration &configuration;
-            const lux::asset::AssetInfo &model_info;
-            CapturedFiles *captured{};
+            const aiScene& scene;
+            const std::filesystem::path& source;
+            const ModelCookConfiguration& configuration;
+            const lux::asset::AssetInfo& model_info;
+            CapturedFiles* captured{};
             ModelCookProduct product;
             std::vector<std::string> material_keys, mesh_keys, animation_keys;
             std::unordered_map<std::string, std::size_t> texture_by_key;
@@ -398,8 +439,11 @@ namespace lux::toolchain
         };
 
         template <class Name>
-        lux::cxx::expected<std::vector<std::string>, ModelCookFailure> identityKeys(std::uint32_t count,
-                                                                                    std::string_view role, Name name)
+        lux::cxx::expected<std::vector<std::string>, ModelCookFailure> identityKeys(
+            std::uint32_t count,
+            std::string_view role,
+            Name name
+        )
         {
             std::vector<std::string> keys;
             keys.reserve(count);
@@ -413,9 +457,11 @@ namespace lux::toolchain
                 }
                 else if (key.empty())
                 {
-                    return lux::cxx::unexpected(
-                        failure(EModelCookError::AMBIGUOUS_SOURCE_IDENTITY, index,
-                                std::string(role) + " requires unique source names for stable reimport"));
+                    return lux::cxx::unexpected(failure(
+                        EModelCookError::AMBIGUOUS_SOURCE_IDENTITY,
+                        index,
+                        std::string(role) + " requires unique source names for stable reimport"
+                    ));
                 }
                 else
                 {
@@ -423,8 +469,11 @@ namespace lux::toolchain
                 }
                 if (!used.emplace(key, index).second)
                 {
-                    return lux::cxx::unexpected(failure(EModelCookError::AMBIGUOUS_SOURCE_IDENTITY, index,
-                                                        "Ambiguous " + std::string(role) + " source name: " + key));
+                    return lux::cxx::unexpected(failure(
+                        EModelCookError::AMBIGUOUS_SOURCE_IDENTITY,
+                        index,
+                        "Ambiguous " + std::string(role) + " source name: " + key
+                    ));
                 }
                 keys.push_back(std::move(key));
             }
@@ -432,15 +481,19 @@ namespace lux::toolchain
         }
 
         [[nodiscard]] lux::cxx::expected<lux::cxx::SharedBytes<>, ModelCookFailure> textureSource(
-            const CookContext &context, const aiString &texture_path, std::string &stable_key)
+            const CookContext& context,
+            const aiString& texture_path,
+            std::string& stable_key
+        )
         {
-            if (const aiTexture *embedded = context.scene.GetEmbeddedTexture(texture_path.C_Str()))
+            if (const aiTexture* embedded = context.scene.GetEmbeddedTexture(texture_path.C_Str()))
             {
                 stable_key = "embedded:" + std::string{texture_path.C_Str()};
                 if (embedded->mHeight == 0U)
                 {
                     return lux::cxx::SharedBytes<>::copyOf(
-                        {reinterpret_cast<const std::byte *>(embedded->pcData), embedded->mWidth});
+                        {reinterpret_cast<const std::byte*>(embedded->pcData), embedded->mWidth}
+                    );
                 }
                 const std::size_t pixel_count = static_cast<std::size_t>(embedded->mWidth) * embedded->mHeight;
                 std::vector<std::uint8_t> rgba(pixel_count * 4U);
@@ -451,19 +504,24 @@ namespace lux::toolchain
                     rgba[pixel * 4U + 2U] = embedded->pcData[pixel].b;
                     rgba[pixel * 4U + 3U] = embedded->pcData[pixel].a;
                 }
-                return rgbaToTga(rgba, static_cast<int>(embedded->mWidth), static_cast<int>(embedded->mHeight),
-                                 ETextureProfile::BASE_COLOR);
+                return rgbaToTga(
+                    rgba,
+                    static_cast<int>(embedded->mWidth),
+                    static_cast<int>(embedded->mHeight),
+                    ETextureProfile::BASE_COLOR
+                );
             }
 
             const auto relative = std::filesystem::path{texture_path.C_Str()}.lexically_normal();
             stable_key = relative.generic_string();
             if (context.captured)
             {
-                const auto *file = context.captured->find((context.source.parent_path() / relative).generic_string());
+                const auto* file = context.captured->find((context.source.parent_path() / relative).generic_string());
                 if (!file)
                 {
                     return lux::cxx::unexpected(
-                        failure(EModelCookError::IO_FAILURE, 0, "Cannot read captured texture: " + stable_key));
+                        failure(EModelCookError::IO_FAILURE, 0, "Cannot read captured texture: " + stable_key)
+                    );
                 }
                 return file->bytes;
             }
@@ -471,14 +529,19 @@ namespace lux::toolchain
             if (!bytes)
             {
                 return lux::cxx::unexpected(
-                    failure(EModelCookError::IO_FAILURE, 0U, "cannot read external texture: " + stable_key));
+                    failure(EModelCookError::IO_FAILURE, 0U, "cannot read external texture: " + stable_key)
+                );
             }
             return *bytes;
         }
 
         [[nodiscard]] lux::cxx::expected<std::optional<lux::material::ImportedTextureReference>, ModelCookFailure>
-        cookTextureReference(CookContext &context, const aiMaterial &material, aiTextureType type,
-                             ETextureProfile profile)
+        cookTextureReference(
+            CookContext& context,
+            const aiMaterial& material,
+            aiTextureType type,
+            ETextureProfile profile
+        )
         {
             aiString path;
             if (material.GetTexture(type, 0U, &path) != AI_SUCCESS)
@@ -495,39 +558,50 @@ namespace lux::toolchain
             const std::string cache_key = stable_key + "|" + profileName(profile);
             if (const auto found = context.texture_by_key.find(cache_key); found != context.texture_by_key.end())
             {
-                const auto &asset = context.product.textures[found->second];
+                const auto& asset = context.product.textures[found->second];
                 return std::optional<lux::material::ImportedTextureReference>{
-                    lux::material::ImportedTextureReference{asset->id(), textureConfiguration(profile).color_space}};
+                    lux::material::ImportedTextureReference{asset->id(), textureConfiguration(profile).color_space}
+                };
             }
 
             auto cook_source = repackImage(*source, profile);
             if (!cook_source)
             {
                 return lux::cxx::unexpected(
-                    failure(EModelCookError::TEXTURE_COOK_FAILED, 0U, "cannot repack texture: " + stable_key));
+                    failure(EModelCookError::TEXTURE_COOK_FAILED, 0U, "cannot repack texture: " + stable_key)
+                );
             }
             const auto texture_id = deriveId(context.model_info.id, "texture", cache_key);
-            auto cooked = cookTexture(subAssetInfo(context.model_info, texture_id, lux::asset::TextureAsset::asset_type,
-                                                   std::filesystem::path{stable_key}.stem().string()),
-                                      *cook_source, textureConfiguration(profile));
+            auto cooked = cookTexture(
+                subAssetInfo(
+                    context.model_info,
+                    texture_id,
+                    lux::asset::TextureAsset::asset_type,
+                    std::filesystem::path{stable_key}.stem().string()
+                ),
+                *cook_source,
+                textureConfiguration(profile)
+            );
             if (!cooked)
             {
                 return lux::cxx::unexpected(
-                    failure(EModelCookError::TEXTURE_COOK_FAILED, 0U, "TextureCooker rejected: " + stable_key));
+                    failure(EModelCookError::TEXTURE_COOK_FAILED, 0U, "TextureCooker rejected: " + stable_key)
+                );
             }
             const std::size_t index = context.product.textures.size();
             context.texture_by_key.emplace(cache_key, index);
             context.product.textures.push_back(*cooked);
             return std::optional<lux::material::ImportedTextureReference>{
-                lux::material::ImportedTextureReference{texture_id, textureConfiguration(profile).color_space}};
+                lux::material::ImportedTextureReference{texture_id, textureConfiguration(profile).color_space}
+            };
         }
 
-        [[nodiscard]] lux::cxx::expected<void, ModelCookFailure> cookMaterials(CookContext &context)
+        [[nodiscard]] lux::cxx::expected<void, ModelCookFailure> cookMaterials(CookContext& context)
         {
             context.product.materials.reserve(context.scene.mNumMaterials);
             for (std::uint32_t ordinal = 0U; ordinal < context.scene.mNumMaterials; ++ordinal)
             {
-                const aiMaterial &source = *context.scene.mMaterials[ordinal];
+                const aiMaterial& source = *context.scene.mMaterials[ordinal];
                 lux::material::ImportedMaterialDescription imported;
                 if (looksLikePbr(source))
                 {
@@ -565,18 +639,21 @@ namespace lux::toolchain
                     const std::string_view value{alpha_mode.C_Str(), alpha_mode.length};
                     if (value == "MASK")
                     {
-                        imported.alpha_mode = lux::rdesc::EAlphaMode::Mask;
+                        imported.alpha_mode = lux::rdesc::EAlphaMode::MASK;
                     }
                     else if (value == "BLEND")
                     {
-                        imported.alpha_mode = lux::rdesc::EAlphaMode::Blend;
+                        imported.alpha_mode = lux::rdesc::EAlphaMode::BLEND;
                     }
                 }
                 aiGetMaterialFloat(&source, AI_MATKEY_GLTF_ALPHACUTOFF, &imported.alpha_cutoff);
 
                 auto base_color = cookTextureReference(
-                    context, source, looksLikePbr(source) ? aiTextureType_BASE_COLOR : aiTextureType_DIFFUSE,
-                    ETextureProfile::BASE_COLOR);
+                    context,
+                    source,
+                    looksLikePbr(source) ? aiTextureType_BASE_COLOR : aiTextureType_DIFFUSE,
+                    ETextureProfile::BASE_COLOR
+                );
                 if (!base_color)
                 {
                     return lux::cxx::unexpected(base_color.error());
@@ -598,8 +675,12 @@ namespace lux::toolchain
                 }
                 if (!*metallic_roughness)
                 {
-                    metallic_roughness = cookTextureReference(context, source, aiTextureType_DIFFUSE_ROUGHNESS,
-                                                              ETextureProfile::METALLIC_ROUGHNESS);
+                    metallic_roughness = cookTextureReference(
+                        context,
+                        source,
+                        aiTextureType_DIFFUSE_ROUGHNESS,
+                        ETextureProfile::METALLIC_ROUGHNESS
+                    );
                     if (!metallic_roughness)
                     {
                         return lux::cxx::unexpected(metallic_roughness.error());
@@ -628,25 +709,31 @@ namespace lux::toolchain
                 const std::string key = context.captured ? context.material_keys[ordinal] : std::to_string(ordinal);
                 const auto material_id = deriveId(context.model_info.id, "material", key);
                 auto material = lux::material::cookImportedMaterial(
-                    subAssetInfo(context.model_info, material_id, lux::asset::MaterialAsset::asset_type,
-                                 source_name.length == 0U ? "material" : source_name.C_Str()),
-                    imported);
+                    subAssetInfo(
+                        context.model_info,
+                        material_id,
+                        lux::asset::MaterialAsset::asset_type,
+                        source_name.length == 0U ? "material" : source_name.C_Str()
+                    ),
+                    imported
+                );
                 if (!material)
                 {
                     return lux::cxx::unexpected(
-                        failure(EModelCookError::MATERIAL_COOK_FAILED, ordinal, material.error().message));
+                        failure(EModelCookError::MATERIAL_COOK_FAILED, ordinal, material.error().message)
+                    );
                 }
                 context.product.materials.push_back(*material);
             }
             return {};
         }
 
-        [[nodiscard]] lux::cxx::expected<void, ModelCookFailure> cookSkeleton(CookContext &context)
+        [[nodiscard]] lux::cxx::expected<void, ModelCookFailure> cookSkeleton(CookContext& context)
         {
             std::unordered_map<std::string, aiMatrix4x4> offsets;
             for (std::uint32_t mesh = 0U; mesh < context.scene.mNumMeshes; ++mesh)
             {
-                const aiMesh &source = *context.scene.mMeshes[mesh];
+                const aiMesh& source = *context.scene.mMeshes[mesh];
                 for (std::uint32_t bone = 0U; bone < source.mNumBones; ++bone)
                 {
                     offsets.try_emplace(source.mBones[bone]->mName.C_Str(), source.mBones[bone]->mOffsetMatrix);
@@ -659,14 +746,15 @@ namespace lux::toolchain
             if (context.configuration.make_left_handed)
             {
                 return lux::cxx::unexpected(
-                    failure(EModelCookError::UNSUPPORTED_FEATURE, 0U, "left-handed skinned import is not qualified"));
+                    failure(EModelCookError::UNSUPPORTED_FEATURE, 0U, "left-handed skinned import is not qualified")
+                );
             }
 
             auto skeleton = std::make_shared<lux::rdesc::Skeleton>();
             skeleton->bones.reserve(offsets.size());
             bool first_bone{};
-            std::function<void(const aiNode *, std::int32_t, const Eigen::Affine3f &)> walk =
-                [&](const aiNode *node, std::int32_t parent, const Eigen::Affine3f &accumulated) {
+            std::function<void(const aiNode*, std::int32_t, const Eigen::Affine3f&)> walk =
+                [&](const aiNode* node, std::int32_t parent, const Eigen::Affine3f& accumulated) {
                     std::int32_t self = -1;
                     const std::string name = node->mName.C_Str();
                     if (const auto found = offsets.find(name); found != offsets.end())
@@ -699,7 +787,8 @@ namespace lux::toolchain
             if (skeleton->bones.empty())
             {
                 return lux::cxx::unexpected(
-                    failure(EModelCookError::INVALID_SKELETON, 0U, "mesh bones have no matching scene nodes"));
+                    failure(EModelCookError::INVALID_SKELETON, 0U, "mesh bones have no matching scene nodes")
+                );
             }
             if (context.has_import_transform)
             {
@@ -709,18 +798,23 @@ namespace lux::toolchain
             const auto skeleton_id = deriveId(context.model_info.id, "skeleton", "root");
             auto asset = lux::asset::SkeletonAsset::create(
                 subAssetInfo(context.model_info, skeleton_id, lux::asset::SkeletonAsset::asset_type, "skeleton"),
-                std::move(skeleton));
+                std::move(skeleton)
+            );
             if (!asset)
             {
                 return lux::cxx::unexpected(
-                    failure(EModelCookError::INVALID_SKELETON, 0U, "typed SkeletonAsset validation failed"));
+                    failure(EModelCookError::INVALID_SKELETON, 0U, "typed SkeletonAsset validation failed")
+                );
             }
             context.product.skeleton = *asset;
             return {};
         }
 
-        void fillBoneInfluences(const CookContext &context, const aiMesh &mesh,
-                                std::vector<lux::rdesc::Vertex> &vertices)
+        void fillBoneInfluences(
+            const CookContext& context,
+            const aiMesh& mesh,
+            std::vector<lux::rdesc::Vertex>& vertices
+        )
         {
             std::vector<std::vector<std::pair<std::int32_t, float>>> influences(mesh.mNumVertices);
             for (std::uint32_t bone = 0U; bone < mesh.mNumBones; ++bone)
@@ -741,9 +835,10 @@ namespace lux::toolchain
             }
             for (std::size_t vertex = 0U; vertex < vertices.size(); ++vertex)
             {
-                auto &values = influences[vertex];
-                std::sort(values.begin(), values.end(),
-                          [](const auto &left, const auto &right) noexcept { return left.second > right.second; });
+                auto& values = influences[vertex];
+                std::sort(values.begin(), values.end(), [](const auto& left, const auto& right) noexcept {
+                    return left.second > right.second;
+                });
                 const std::size_t count =
                     (std::min)(values.size(), static_cast<std::size_t>(lux::rdesc::max_bone_influence));
                 float sum{};
@@ -763,29 +858,32 @@ namespace lux::toolchain
             }
         }
 
-        [[nodiscard]] lux::cxx::expected<void, ModelCookFailure> cookMeshes(CookContext &context)
+        [[nodiscard]] lux::cxx::expected<void, ModelCookFailure> cookMeshes(CookContext& context)
         {
             context.product.meshes.reserve(context.scene.mNumMeshes);
             for (std::uint32_t ordinal = 0U; ordinal < context.scene.mNumMeshes; ++ordinal)
             {
-                const aiMesh &source = *context.scene.mMeshes[ordinal];
+                const aiMesh& source = *context.scene.mMeshes[ordinal];
                 if (source.mNumVertices == 0U || source.mNumFaces == 0U ||
                     source.mMaterialIndex >= context.product.materials.size())
                 {
-                    return lux::cxx::unexpected(failure(EModelCookError::INVALID_MESH, ordinal,
-                                                        "mesh has no geometry or references an invalid material"));
+                    return lux::cxx::unexpected(failure(
+                        EModelCookError::INVALID_MESH,
+                        ordinal,
+                        "mesh has no geometry or references an invalid material"
+                    ));
                 }
                 auto mesh = std::make_shared<lux::rdesc::Mesh>();
                 mesh->vertices.resize(source.mNumVertices);
                 for (std::uint32_t vertex = 0U; vertex < source.mNumVertices; ++vertex)
                 {
-                    auto &destination = mesh->vertices[vertex];
-                    destination.position = {source.mVertices[vertex].x, source.mVertices[vertex].y,
-                                            source.mVertices[vertex].z};
+                    auto& destination = mesh->vertices[vertex];
+                    destination.position =
+                        {source.mVertices[vertex].x, source.mVertices[vertex].y, source.mVertices[vertex].z};
                     if (source.mNormals)
                     {
-                        destination.normal = {source.mNormals[vertex].x, source.mNormals[vertex].y,
-                                              source.mNormals[vertex].z};
+                        destination
+                            .normal = {source.mNormals[vertex].x, source.mNormals[vertex].y, source.mNormals[vertex].z};
                     }
                     if (source.mTextureCoords[0])
                     {
@@ -793,13 +891,13 @@ namespace lux::toolchain
                     }
                     if (source.mTangents)
                     {
-                        destination.tangent = {source.mTangents[vertex].x, source.mTangents[vertex].y,
-                                               source.mTangents[vertex].z};
+                        destination.tangent =
+                            {source.mTangents[vertex].x, source.mTangents[vertex].y, source.mTangents[vertex].z};
                     }
                     if (source.mBitangents)
                     {
-                        destination.bitangent = {source.mBitangents[vertex].x, source.mBitangents[vertex].y,
-                                                 source.mBitangents[vertex].z};
+                        destination.bitangent =
+                            {source.mBitangents[vertex].x, source.mBitangents[vertex].y, source.mBitangents[vertex].z};
                     }
                     for (std::uint8_t influence = 0U; influence < lux::rdesc::max_bone_influence; ++influence)
                     {
@@ -813,7 +911,7 @@ namespace lux::toolchain
                 }
                 if (context.has_import_transform && !source.HasBones())
                 {
-                    for (auto &vertex : mesh->vertices)
+                    for (auto& vertex : mesh->vertices)
                     {
                         vertex.position = context.import_transform * vertex.position;
                         vertex.normal = (context.import_rotation * vertex.normal).normalized();
@@ -828,13 +926,14 @@ namespace lux::toolchain
                     if (source.mFaces[face].mNumIndices != 3U)
                     {
                         return lux::cxx::unexpected(
-                            failure(EModelCookError::INVALID_MESH, ordinal, "triangulation did not produce triangles"));
+                            failure(EModelCookError::INVALID_MESH, ordinal, "triangulation did not produce triangles")
+                        );
                     }
-                    mesh->indices.insert(mesh->indices.end(), source.mFaces[face].mIndices,
-                                         source.mFaces[face].mIndices + 3U);
+                    mesh->indices
+                        .insert(mesh->indices.end(), source.mFaces[face].mIndices, source.mFaces[face].mIndices + 3U);
                 }
                 lux::math::AABB bounds;
-                for (const auto &vertex : mesh->vertices)
+                for (const auto& vertex : mesh->vertices)
                 {
                     bounds.merge(vertex.position);
                 }
@@ -846,7 +945,7 @@ namespace lux::toolchain
                     constexpr std::array ratios{0.5F, 0.25F, 0.1F};
                     constexpr float maximum_error = 0.05F;
                     std::size_t previous = mesh->indices.size();
-                    const float *positions = mesh->vertices.front().position.data();
+                    const float* positions = mesh->vertices.front().position.data();
                     for (const float ratio : ratios)
                     {
                         const auto target =
@@ -854,8 +953,17 @@ namespace lux::toolchain
                         std::vector<std::uint32_t> indices(mesh->indices.size());
                         float error{};
                         const auto count = meshopt_simplify(
-                            indices.data(), mesh->indices.data(), mesh->indices.size(), positions,
-                            mesh->vertices.size(), sizeof(lux::rdesc::Vertex), target, maximum_error, 0U, &error);
+                            indices.data(),
+                            mesh->indices.data(),
+                            mesh->indices.size(),
+                            positions,
+                            mesh->vertices.size(),
+                            sizeof(lux::rdesc::Vertex),
+                            target,
+                            maximum_error,
+                            0U,
+                            &error
+                        );
                         if (count == 0U || count >= previous)
                         {
                             break;
@@ -869,20 +977,26 @@ namespace lux::toolchain
                 const std::string key = context.captured ? context.mesh_keys[ordinal] : std::to_string(ordinal);
                 const auto mesh_id = deriveId(context.model_info.id, "mesh", key);
                 auto asset = lux::asset::MeshAsset::create(
-                    subAssetInfo(context.model_info, mesh_id, lux::asset::MeshAsset::asset_type,
-                                 source.mName.length == 0U ? "mesh" : source.mName.C_Str()),
-                    std::move(mesh));
+                    subAssetInfo(
+                        context.model_info,
+                        mesh_id,
+                        lux::asset::MeshAsset::asset_type,
+                        source.mName.length == 0U ? "mesh" : source.mName.C_Str()
+                    ),
+                    std::move(mesh)
+                );
                 if (!asset)
                 {
                     return lux::cxx::unexpected(
-                        failure(EModelCookError::INVALID_MESH, ordinal, "typed MeshAsset validation failed"));
+                        failure(EModelCookError::INVALID_MESH, ordinal, "typed MeshAsset validation failed")
+                    );
                 }
                 context.product.meshes.push_back(*asset);
             }
             return {};
         }
 
-        [[nodiscard]] lux::cxx::expected<void, ModelCookFailure> cookAnimations(CookContext &context)
+        [[nodiscard]] lux::cxx::expected<void, ModelCookFailure> cookAnimations(CookContext& context)
         {
             if (!context.configuration.import_animations || !context.product.skeleton)
             {
@@ -891,7 +1005,7 @@ namespace lux::toolchain
             context.product.animations.reserve(context.scene.mNumAnimations);
             for (std::uint32_t ordinal = 0U; ordinal < context.scene.mNumAnimations; ++ordinal)
             {
-                const aiAnimation &source = *context.scene.mAnimations[ordinal];
+                const aiAnimation& source = *context.scene.mAnimations[ordinal];
                 const float ticks_per_second =
                     source.mTicksPerSecond > 0.0 ? static_cast<float>(source.mTicksPerSecond) : 25.0F;
                 const float seconds_per_tick = 1.0F / ticks_per_second;
@@ -901,7 +1015,7 @@ namespace lux::toolchain
                 clip->loop = true;
                 for (std::uint32_t channel = 0U; channel < source.mNumChannels; ++channel)
                 {
-                    const aiNodeAnim &input = *source.mChannels[channel];
+                    const aiNodeAnim& input = *source.mChannels[channel];
                     const auto bone = context.bone_by_name.find(input.mNodeName.C_Str());
                     if (bone == context.bone_by_name.end())
                     {
@@ -917,9 +1031,11 @@ namespace lux::toolchain
                             continue;
                         }
                         track.times_t.push_back(time);
-                        track.translations.emplace_back(input.mPositionKeys[key].mValue.x,
-                                                        input.mPositionKeys[key].mValue.y,
-                                                        input.mPositionKeys[key].mValue.z);
+                        track.translations.emplace_back(
+                            input.mPositionKeys[key].mValue.x,
+                            input.mPositionKeys[key].mValue.y,
+                            input.mPositionKeys[key].mValue.z
+                        );
                     }
                     for (std::uint32_t key = 0U; key < input.mNumRotationKeys; ++key)
                     {
@@ -929,8 +1045,12 @@ namespace lux::toolchain
                             continue;
                         }
                         track.times_r.push_back(time);
-                        Eigen::Quaternionf value{input.mRotationKeys[key].mValue.w, input.mRotationKeys[key].mValue.x,
-                                                 input.mRotationKeys[key].mValue.y, input.mRotationKeys[key].mValue.z};
+                        Eigen::Quaternionf value{
+                            input.mRotationKeys[key].mValue.w,
+                            input.mRotationKeys[key].mValue.x,
+                            input.mRotationKeys[key].mValue.y,
+                            input.mRotationKeys[key].mValue.z
+                        };
                         track.rotations.push_back(value.normalized());
                     }
                     for (std::uint32_t key = 0U; key < input.mNumScalingKeys; ++key)
@@ -941,8 +1061,11 @@ namespace lux::toolchain
                             continue;
                         }
                         track.times_s.push_back(time);
-                        track.scales.emplace_back(input.mScalingKeys[key].mValue.x, input.mScalingKeys[key].mValue.y,
-                                                  input.mScalingKeys[key].mValue.z);
+                        track.scales.emplace_back(
+                            input.mScalingKeys[key].mValue.x,
+                            input.mScalingKeys[key].mValue.y,
+                            input.mScalingKeys[key].mValue.z
+                        );
                     }
                     if (!track.times_t.empty() || !track.times_r.empty() || !track.times_s.empty())
                     {
@@ -955,7 +1078,7 @@ namespace lux::toolchain
                 }
                 if (clip->duration <= 0.0F)
                 {
-                    for (const auto &track : clip->tracks)
+                    for (const auto& track : clip->tracks)
                     {
                         if (!track.times_t.empty())
                         {
@@ -981,20 +1104,28 @@ namespace lux::toolchain
                 const auto animation_id = deriveId(context.model_info.id, "animation", key);
                 const std::string display_name = clip->name;
                 auto asset = lux::asset::AnimationClipAsset::create(
-                    subAssetInfo(context.model_info, animation_id, lux::asset::AnimationClipAsset::asset_type,
-                                 display_name),
-                    std::move(clip));
+                    subAssetInfo(
+                        context.model_info,
+                        animation_id,
+                        lux::asset::AnimationClipAsset::asset_type,
+                        display_name
+                    ),
+                    std::move(clip)
+                );
                 if (!asset)
                 {
-                    return lux::cxx::unexpected(failure(EModelCookError::INVALID_ANIMATION, ordinal,
-                                                        "typed AnimationClipAsset validation failed"));
+                    return lux::cxx::unexpected(failure(
+                        EModelCookError::INVALID_ANIMATION,
+                        ordinal,
+                        "typed AnimationClipAsset validation failed"
+                    ));
                 }
                 context.product.animations.push_back(*asset);
             }
             return {};
         }
 
-        void buildNodes(const aiNode &source, lux::rdesc::ModelDescription &model)
+        void buildNodes(const aiNode& source, lux::rdesc::ModelDescription& model)
         {
             const auto node_index = static_cast<std::uint32_t>(model.nodes.size());
             model.nodes.push_back({});
@@ -1010,8 +1141,11 @@ namespace lux::toolchain
     } // namespace
 
     static lux::cxx::expected<ModelCookProduct, ModelCookFailure> cookModelImpl(
-        lux::asset::AssetInfo model_info, const std::filesystem::path &source,
-        const ModelCookConfiguration &configuration, CapturedFiles *captured)
+        lux::asset::AssetInfo model_info,
+        const std::filesystem::path& source,
+        const ModelCookConfiguration& configuration,
+        CapturedFiles* captured
+    )
     {
         const bool invalid_rotation =
             !configuration.pre_rotation.coeffs().allFinite() || configuration.pre_rotation.norm() <= 1.0e-6F;
@@ -1022,7 +1156,8 @@ namespace lux::toolchain
         if (invalid_rotation || !std::isfinite(configuration.uniform_scale) || configuration.uniform_scale <= 0.0F)
         {
             return lux::cxx::unexpected(
-                failure(EModelCookError::INVALID_CONFIGURATION, 0U, "invalid model cook configuration"));
+                failure(EModelCookError::INVALID_CONFIGURATION, 0U, "invalid model cook configuration")
+            );
         }
         {
             Assimp::Importer importer;
@@ -1036,7 +1171,7 @@ namespace lux::toolchain
             {
                 flags |= aiProcess_MakeLeftHanded;
             }
-            const aiScene *scene = importer.ReadFile(source.string(), flags);
+            const aiScene* scene = importer.ReadFile(source.string(), flags);
             if (scene == nullptr || scene->mRootNode == nullptr || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) != 0U)
             {
                 return lux::cxx::unexpected(failure(EModelCookError::IMPORT_FAILED, 0U, importer.GetErrorString()));
@@ -1047,25 +1182,31 @@ namespace lux::toolchain
                 // Discover the complete external texture closure before material/shader compilation.
                 for (unsigned material{}; material < scene->mNumMaterials; ++material)
                 {
-                    constexpr std::array texture_types{aiTextureType_BASE_COLOR,        aiTextureType_DIFFUSE,
-                                                       aiTextureType_NORMALS,           aiTextureType_METALNESS,
-                                                       aiTextureType_DIFFUSE_ROUGHNESS, aiTextureType_AMBIENT_OCCLUSION,
-                                                       aiTextureType_EMISSIVE};
+                    constexpr std::array texture_types{
+                        aiTextureType_BASE_COLOR,
+                        aiTextureType_DIFFUSE,
+                        aiTextureType_NORMALS,
+                        aiTextureType_METALNESS,
+                        aiTextureType_DIFFUSE_ROUGHNESS,
+                        aiTextureType_AMBIENT_OCCLUSION,
+                        aiTextureType_EMISSIVE
+                    };
                     for (const auto type : texture_types)
                     {
                         aiString path;
                         if (scene->mMaterials[material]->GetTexture(type, 0, &path) == AI_SUCCESS &&
                             !scene->GetEmbeddedTexture(path.C_Str()))
                         {
-                            captured->find(
-                                (source.parent_path() / std::filesystem::path(path.C_Str())).generic_string());
+                            captured->find((source.parent_path() / std::filesystem::path(path.C_Str())).generic_string()
+                            );
                         }
                     }
                 }
                 if (!captured->requested.paths.empty() || !captured->rejected_path.empty())
                 {
                     return lux::cxx::unexpected(
-                        failure(EModelCookError::IO_FAILURE, 0, "Model source dependencies require capture"));
+                        failure(EModelCookError::IO_FAILURE, 0, "Model source dependencies require capture")
+                    );
                 }
             }
 
@@ -1081,8 +1222,10 @@ namespace lux::toolchain
                     return std::string(scene->mMeshes[index]->mName.C_Str());
                 });
                 auto animations = identityKeys(
-                    configuration.import_animations ? scene->mNumAnimations : 0, "animation",
-                    [&](std::uint32_t index) { return std::string(scene->mAnimations[index]->mName.C_Str()); });
+                    configuration.import_animations ? scene->mNumAnimations : 0,
+                    "animation",
+                    [&](std::uint32_t index) { return std::string(scene->mAnimations[index]->mName.C_Str()); }
+                );
                 if (!materials)
                 {
                     return lux::cxx::unexpected(std::move(materials.error()));
@@ -1129,17 +1272,19 @@ namespace lux::toolchain
                 if (material >= context.product.materials.size())
                 {
                     return lux::cxx::unexpected(
-                        failure(EModelCookError::INVALID_MODEL, mesh, "primitive references an invalid material"));
+                        failure(EModelCookError::INVALID_MODEL, mesh, "primitive references an invalid material")
+                    );
                 }
                 description->primitives.push_back(
-                    {context.product.meshes[mesh]->id(), context.product.materials[material]->id()});
+                    {context.product.meshes[mesh]->id(), context.product.materials[material]->id()}
+                );
             }
             buildNodes(*scene->mRootNode, *description);
             if (context.product.skeleton)
             {
                 description->skeleton = (*context.product.skeleton)->id();
             }
-            for (const auto &animation : context.product.animations)
+            for (const auto& animation : context.product.animations)
             {
                 description->animations.push_back(animation->id());
             }
@@ -1149,22 +1294,28 @@ namespace lux::toolchain
             if (!model)
             {
                 return lux::cxx::unexpected(
-                    failure(EModelCookError::INVALID_MODEL, 0U, "typed ModelAsset validation failed"));
+                    failure(EModelCookError::INVALID_MODEL, 0U, "typed ModelAsset validation failed")
+                );
             }
             context.product.model = *model;
             return std::move(context.product);
         }
     }
 
-    lux::cxx::expected<ModelCookProduct, ModelCookFailure> cookModel(lux::asset::AssetInfo info,
-                                                                     const std::filesystem::path &source,
-                                                                     const ModelCookConfiguration &config) noexcept
+    lux::cxx::expected<ModelCookProduct, ModelCookFailure> cookModel(
+        lux::asset::AssetInfo info,
+        const std::filesystem::path& source,
+        const ModelCookConfiguration& config
+    ) noexcept
     {
         return cookModelImpl(std::move(info), source, config, nullptr);
     }
 
-    ModelCookAttempt cookModel(lux::asset::AssetInfo info, const ModelSource &source,
-                               const ModelCookConfiguration &config)
+    VModelCookAttempt cookModel(
+        lux::asset::AssetInfo info,
+        const ModelSource& source,
+        const ModelCookConfiguration& config
+    )
     {
         CapturedFiles captured(source);
         if (source.files.size() > 4096 || sourceKey(source.entry).empty() || !captured.rejected_path.empty())
@@ -1174,8 +1325,11 @@ namespace lux::toolchain
         auto result = cookModelImpl(std::move(info), std::filesystem::path(source.entry), config, &captured);
         if (!captured.rejected_path.empty())
         {
-            return failure(EModelCookError::INVALID_SOURCE, 0,
-                           "Model dependency escapes its source directory: " + captured.rejected_path);
+            return failure(
+                EModelCookError::INVALID_SOURCE,
+                0,
+                "Model dependency escapes its source directory: " + captured.rejected_path
+            );
         }
         if (!captured.requested.paths.empty())
         {
@@ -1189,7 +1343,10 @@ namespace lux::toolchain
     }
 
     lux::cxx::expected<std::vector<ModelSourceFile>, ModelCookFailure> readModelSourceFiles(
-        const std::filesystem::path &root, std::span<const std::string> paths, std::size_t max_bytes)
+        const std::filesystem::path& root,
+        std::span<const std::string> paths,
+        std::size_t max_bytes
+    )
     {
         const auto rejected = [](std::string detail) {
             return lux::cxx::unexpected(failure(EModelCookError::IO_FAILURE, 0, std::move(detail)));
@@ -1207,7 +1364,7 @@ namespace lux::toolchain
         std::vector<ModelSourceFile> files;
         files.reserve(paths.size());
         std::size_t bytes{};
-        for (const auto &path : paths)
+        for (const auto& path : paths)
         {
             const auto key = sourceKey(path);
             if (key.empty())
@@ -1232,7 +1389,8 @@ namespace lux::toolchain
             if (!exists)
             {
                 files.push_back(
-                    {std::filesystem::path(path).lexically_normal().generic_string(), EModelSourceState::MISSING, {}});
+                    {std::filesystem::path(path).lexically_normal().generic_string(), EModelSourceState::MISSING, {}}
+                );
                 continue;
             }
             if (!std::filesystem::is_regular_file(full, error) || error)
@@ -1247,14 +1405,17 @@ namespace lux::toolchain
             }
             auto storage = std::make_shared<std::vector<std::byte>>(static_cast<std::size_t>(length));
             input.seekg(0);
-            input.read(reinterpret_cast<char *>(storage->data()), static_cast<std::streamsize>(storage->size()));
+            input.read(reinterpret_cast<char*>(storage->data()), static_cast<std::streamsize>(storage->size()));
             if (!input || input.peek() != std::char_traits<char>::eof() || input.bad())
             {
                 return rejected("Model dependency changed or failed while being captured: " + path);
             }
             bytes += storage->size();
-            files.push_back({std::filesystem::path(path).lexically_normal().generic_string(),
-                             EModelSourceState::PRESENT, lux::cxx::SharedBytes<>::fromOwner(storage, *storage)});
+            files.push_back(
+                {std::filesystem::path(path).lexically_normal().generic_string(),
+                 EModelSourceState::PRESENT,
+                 lux::cxx::SharedBytes<>::fromOwner(storage, *storage)}
+            );
         }
         return files;
     }

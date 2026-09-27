@@ -49,12 +49,8 @@ namespace lux::script
             const void*,
             std::uint32_t
         ) noexcept;
-        using FailureFn = CompletionResult (*)(
-            void*,
-            std::uint64_t,
-            std::uint64_t,
-            ScriptAbilityOperationError
-        ) noexcept;
+        using FailureFn =
+            CompletionResult (*)(void*, std::uint64_t, std::uint64_t, ScriptAbilityOperationError) noexcept;
         using ActiveFn = bool (*)(void*, std::uint64_t, std::uint64_t) noexcept;
 
         ScriptAbilityErasedCompletion() = default;
@@ -64,11 +60,8 @@ namespace lux::script
             return lease_ != nullptr && context_ != nullptr && success_ != nullptr && failure_ != nullptr;
         }
 
-        [[nodiscard]] CompletionResult success(
-            lux::semantic::TypeId type,
-            const void* value,
-            std::uint32_t size
-        ) const noexcept
+        [[nodiscard]] CompletionResult success(lux::semantic::TypeId type, const void* value, std::uint32_t size)
+            const noexcept
         {
             if (!*this)
                 return lux::cxx::unexpected<EScriptAbilityCompletionError>(EScriptAbilityCompletionError::STALE);
@@ -134,24 +127,13 @@ namespace lux::script
             SuccessFn owner_success,
             FailureFn owner_failure
         ) noexcept
-            : lease_(std::move(lease)),
-              context_(context),
-              token_a_(token_a),
-              token_b_(token_b),
-              success_(success),
-              failure_(failure),
-              active_(active),
-              owner_context_(owner_context),
-              owner_success_(owner_success),
+            : lease_(std::move(lease)), context_(context), token_a_(token_a), token_b_(token_b), success_(success),
+              failure_(failure), active_(active), owner_context_(owner_context), owner_success_(owner_success),
               owner_failure_(owner_failure)
-        {
-        }
+        {}
 
-        [[nodiscard]] CompletionResult successOwner(
-            lux::semantic::TypeId type,
-            const void* value,
-            std::uint32_t size
-        ) const noexcept
+        [[nodiscard]] CompletionResult successOwner(lux::semantic::TypeId type, const void* value, std::uint32_t size)
+            const noexcept
         {
             if (owner_context_ == nullptr || owner_success_ == nullptr)
                 return lux::cxx::unexpected<EScriptAbilityCompletionError>(EScriptAbilityCompletionError::STALE);
@@ -178,12 +160,10 @@ namespace lux::script
     };
 
     using ScriptAbilityErasedCallResult = lux::cxx::expected<void, ScriptAbilityOperationError>;
-    using ScriptAbilityErasedInvokeFn = ScriptAbilityErasedCallResult (*)(
-        void*,
-        const void*,
-        std::span<const ScriptAbilityInputSlot>,
-        std::span<ScriptAbilityOutputSlot>
-    ) noexcept;
+    using ScriptInputSlots = std::span<const ScriptAbilityInputSlot>;
+    using ScriptOutputSlots = std::span<ScriptAbilityOutputSlot>;
+    using ScriptAbilityErasedInvokeFn =
+        ScriptAbilityErasedCallResult (*)(void*, const void*, ScriptInputSlots, ScriptOutputSlots) noexcept;
     using ScriptAbilityErasedStartFn = ScriptAbilityStartResult (*)(
         void*,
         const void*,
@@ -202,25 +182,21 @@ namespace lux::script
     };
 
     template <class Value>
-    [[nodiscard]] constexpr bool scriptAbilityInputMatches(
-        const ScriptAbilityInputSlot& slot
-    ) noexcept
+    [[nodiscard]] constexpr bool scriptAbilityInputMatches(const ScriptAbilityInputSlot& slot) noexcept
     {
         using Type = std::remove_cvref_t<Value>;
-        return slot.data != nullptr && slot.type_id == lux::semantic::typeId(
-            lux::semantic::TypeTraits<Type>::CanonicalName
-        ) && slot.size == sizeof(Type);
+        return slot.data != nullptr &&
+               slot.type_id == lux::semantic::typeId(lux::semantic::TTypeTraits<Type>::CanonicalName) &&
+               slot.size == sizeof(Type);
     }
 
     template <class Value>
-    [[nodiscard]] constexpr bool scriptAbilityOutputMatches(
-        const ScriptAbilityOutputSlot& slot
-    ) noexcept
+    [[nodiscard]] constexpr bool scriptAbilityOutputMatches(const ScriptAbilityOutputSlot& slot) noexcept
     {
         using Type = std::remove_cvref_t<Value>;
-        return slot.data != nullptr && slot.type_id == lux::semantic::typeId(
-            lux::semantic::TypeTraits<Type>::CanonicalName
-        ) && slot.size == sizeof(Type);
+        return slot.data != nullptr &&
+               slot.type_id == lux::semantic::typeId(lux::semantic::TTypeTraits<Type>::CanonicalName) &&
+               slot.size == sizeof(Type);
     }
 
     enum class EScriptAbilityReceiverKind : std::uint8_t
@@ -259,12 +235,9 @@ namespace lux::script
         if (value.empty())
             return false;
         const auto is_alpha = [](char character) noexcept {
-            return (character >= 'a' && character <= 'z') ||
-                (character >= 'A' && character <= 'Z') || character == '_';
+            return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || character == '_';
         };
-        const auto is_digit = [](char character) noexcept {
-            return character >= '0' && character <= '9';
-        };
+        const auto is_digit = [](char character) noexcept { return character >= '0' && character <= '9'; };
         if (!is_alpha(value.front()))
             return false;
         for (const char character : value.substr(1U))
@@ -320,14 +293,12 @@ namespace lux::script
 
     template <class Value>
     inline constexpr bool ScriptAbilityValueShapeSupported =
-        !std::is_rvalue_reference_v<Value> &&
-        !std::is_volatile_v<std::remove_reference_t<Value>> &&
+        !std::is_rvalue_reference_v<Value> && !std::is_volatile_v<std::remove_reference_t<Value>> &&
         (!std::is_lvalue_reference_v<Value> || std::is_const_v<std::remove_reference_t<Value>>);
 
     template <class Value>
         requires lux::semantic::TypeDeclared<std::remove_cvref_t<Value>>
-    [[nodiscard]] consteval ScriptAbilityValueDescription makeScriptAbilityValue(
-        EScriptAbilityValueLifetime lifetime
+    [[nodiscard]] consteval ScriptAbilityValueDescription makeScriptAbilityValue(EScriptAbilityValueLifetime lifetime
     ) noexcept
     {
         static_assert(
@@ -335,10 +306,9 @@ namespace lux::script
             "Script Ability values support only value or const lvalue-reference shapes"
         );
         using Type = std::remove_cvref_t<Value>;
-        using Traits = lux::semantic::TypeTraits<Type>;
-        constexpr auto pass = std::is_lvalue_reference_v<Value>
-            ? lux::semantic::EValuePass::CONST_REF
-            : lux::semantic::EValuePass::VALUE;
+        using Traits = lux::semantic::TTypeTraits<Type>;
+        constexpr auto pass =
+            std::is_lvalue_reference_v<Value> ? lux::semantic::EValuePass::CONST_REF : lux::semantic::EValuePass::VALUE;
         return {
             lux::semantic::typeId(Traits::CanonicalName),
             Traits::CanonicalName,
@@ -410,8 +380,7 @@ namespace lux::script
         }
     } // namespace detail
 
-    [[nodiscard]] constexpr bool scriptAbilityMethodIdsUnique(
-        std::span<const ScriptAbilityMethodDescription> methods
+    [[nodiscard]] constexpr bool scriptAbilityMethodIdsUnique(std::span<const ScriptAbilityMethodDescription> methods
     ) noexcept
     {
         for (std::size_t left{}; left < methods.size(); ++left)
@@ -468,28 +437,24 @@ namespace lux::script
         return hash.value == 0U ? 1U : hash.value;
     }
 
-    template <class Ability>
-    struct ScriptAbilityTraits;
+    template <class Ability> struct TScriptAbilityTraits;
 
-    template <class Ability>
-    class ScriptAbilityCpp;
+    template <class Ability> class TScriptAbilityCpp;
 
-    template <class Ability, class Context>
-    class ScriptAbilityCoroutine;
+    template <class Ability, class Context> class TScriptAbilityCoroutine;
 
-    template <class Ability, class Provider>
-    class ScriptAbilityStatic;
+    template <class Ability, class Provider> class TScriptAbilityStatic;
 
     template <class Ability, class Provider>
-    [[nodiscard]] auto bindScriptAbility(Provider& provider) noexcept
-        -> decltype(ScriptAbilityTraits<Ability>::bind(provider))
+    [[nodiscard]] auto bindScriptAbility(Provider& provider
+    ) noexcept -> decltype(TScriptAbilityTraits<Ability>::bind(provider))
     {
-        return ScriptAbilityTraits<Ability>::bind(provider);
+        return TScriptAbilityTraits<Ability>::bind(provider);
     }
 
     template <class Ability>
-    [[nodiscard]] auto bindScriptAbility() noexcept -> decltype(ScriptAbilityTraits<Ability>::bind())
+    [[nodiscard]] auto bindScriptAbility() noexcept -> decltype(TScriptAbilityTraits<Ability>::bind())
     {
-        return ScriptAbilityTraits<Ability>::bind();
+        return TScriptAbilityTraits<Ability>::bind();
     }
 } // namespace lux::script

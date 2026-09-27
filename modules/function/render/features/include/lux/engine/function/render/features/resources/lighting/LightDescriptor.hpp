@@ -17,9 +17,9 @@
 namespace lux::render
 {
     // ===== Common light flags =====
-    enum LightDescriptorFlags : uint32_t
+    enum class ELightDescriptorFlag : std::uint32_t
     {
-        LIGHT_FLAG_CAST_SHADOW = 1u << 0,
+        CAST_SHADOW = 1u << 0,
     };
 
     // ===== Directional-cascade counts =====
@@ -40,7 +40,8 @@ namespace lux::render
     inline constexpr uint32_t kShadowCascadeSlots = 8;
     static_assert(
         kMaxShadowCascades <= kShadowCascadeSlots,
-        "the cascade limit cannot exceed the slots the split array carries");
+        "the cascade limit cannot exceed the slots the split array carries"
+    );
 
     // ===== Per-type descriptors (GPU-ready fields, no alignment padding) =====
     struct LUX_TYPE_INFO(runtime) DirectionalLightDesc
@@ -115,5 +116,5 @@ namespace lux::render
     /// Render-domain light descriptor — a variant of all supported light types.
     /// Created via lightDescriptorFromComponent() from ECS data,
     /// consumed by LightResources without any ECS dependency.
-    using LightDescriptor = std::variant<DirectionalLightDesc, PointLightDesc, SpotLightDesc, AreaLightDesc>;
+    using VLightDescriptor = std::variant<DirectionalLightDesc, PointLightDesc, SpotLightDesc, AreaLightDesc>;
 } // namespace lux::render

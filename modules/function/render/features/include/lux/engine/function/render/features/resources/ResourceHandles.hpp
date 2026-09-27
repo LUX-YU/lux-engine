@@ -5,28 +5,36 @@
 
 namespace lux::render
 {
-    struct MeshHandleTag {};
+    struct MeshHandleTag
+    {};
     using MeshHandle = TypedSlotHandle<MeshHandleTag>;
 
-    struct MaterialHandleTag {};
+    struct MaterialHandleTag
+    {};
     using MaterialHandle = TypedSlotHandle<MaterialHandleTag>;
 
-    struct LightHandleTag {};
+    struct LightHandleTag
+    {};
     using LightHandle = TypedSlotHandle<LightHandleTag>;
 
-    struct TrajectoryHandleTag {};
+    struct TrajectoryHandleTag
+    {};
     using TrajectoryHandle = TypedSlotHandle<TrajectoryHandleTag>;
 
-    struct MeshTag {};
+    struct MeshTag
+    {};
     using RMeshHandle = RenderResourceHandle<MeshTag>;
 
-    struct MaterialTag {};
+    struct MaterialTag
+    {};
     using RMaterialHandle = RenderResourceHandle<MaterialTag>;
 
-    struct LightTag {};
+    struct LightTag
+    {};
     using RLightHandle = RenderResourceHandle<LightTag>;
 
-    struct AABBHandleTag {};
+    struct AABBHandleTag
+    {};
     using RAABBHandle = RenderResourceHandle<AABBHandleTag>;
 
 }

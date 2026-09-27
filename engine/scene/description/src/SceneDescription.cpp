@@ -9,8 +9,7 @@ namespace lux::scene
         std::size_t binding_index
     ) noexcept
         : description_(&description), binding_index_(binding_index)
-    {
-    }
+    {}
 
     SceneRequirementBindingView::operator bool() const noexcept
     {
@@ -38,8 +37,7 @@ namespace lux::scene
         std::size_t dependency_index
     ) noexcept
         : description_(&description), dependency_index_(dependency_index)
-    {
-    }
+    {}
 
     SceneSystemDependencyView::operator bool() const noexcept
     {
@@ -56,10 +54,12 @@ namespace lux::scene
         return description_->systems_[description_->dependencies_[dependency_index_].after_system].id;
     }
 
-    SceneSystemDescription::SceneSystemDescription(const SceneDescription& description, std::size_t system_index) noexcept
+    SceneSystemDescription::SceneSystemDescription(
+        const SceneDescription& description,
+        std::size_t system_index
+    ) noexcept
         : description_(&description), system_index_(system_index)
-    {
-    }
+    {}
 
     SceneSystemDescription::operator bool() const noexcept
     {
@@ -104,10 +104,8 @@ namespace lux::scene
     std::span<const std::byte> SceneSystemDescription::configurationPayload() const noexcept
     {
         const auto& system = description_->systems_[system_index_];
-        return std::span<const std::byte>(description_->configuration_payload_).subspan(
-            system.configuration_offset,
-            system.configuration_size
-        );
+        return std::span<const std::byte>(description_->configuration_payload_)
+            .subspan(system.configuration_offset, system.configuration_size);
     }
 
     std::size_t SceneSystemDescription::requirementBindingCount() const noexcept
@@ -136,7 +134,8 @@ namespace lux::scene
         return {};
     }
 
-    SceneRequirementBindingView SceneSystemDescription::findRequirementBinding(std::string_view requirement) const noexcept
+    SceneRequirementBindingView SceneSystemDescription::findRequirementBinding(std::string_view requirement
+    ) const noexcept
     {
         for (std::size_t ordinal{}; ordinal < description_->requirement_bindings_.size(); ++ordinal)
         {
@@ -172,7 +171,8 @@ namespace lux::scene
     SceneSystemDescription SceneDescription::findSystem(system::SystemInstanceId id) const noexcept
     {
         const auto found = system_ordinals_.find(id.value);
-        return found != system_ordinals_.end() ? SceneSystemDescription(*this, found->second) : SceneSystemDescription{};
+        return found != system_ordinals_.end() ? SceneSystemDescription(*this, found->second)
+                                               : SceneSystemDescription{};
     }
 
     SceneSystemDescription SceneDescription::findSystem(std::string_view instance_name) const noexcept
@@ -181,8 +181,8 @@ namespace lux::scene
             return system.instance_name == instance_name;
         });
         return found != systems_.end()
-            ? SceneSystemDescription(*this, static_cast<std::size_t>(std::distance(systems_.begin(), found)))
-            : SceneSystemDescription{};
+                   ? SceneSystemDescription(*this, static_cast<std::size_t>(std::distance(systems_.begin(), found)))
+                   : SceneSystemDescription{};
     }
 
     std::size_t SceneDescription::dependencyCount() const noexcept

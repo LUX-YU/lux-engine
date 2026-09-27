@@ -3,6 +3,7 @@
 #include <lux/engine/toolchain/shader/SpirvReflection.hpp>
 
 #include <cstring>
+#include <exception>
 #include <new>
 #include <utility>
 
@@ -41,10 +42,9 @@ namespace lux::toolchain
             lux::rdesc::ShaderInfo reflected{};
             if (!reflectSpirv(spirv.data(), spirv.size(), reflected))
                 return lux::cxx::unexpected(failure(EShaderCookError::REFLECTION_FAILED));
-            auto data = std::make_shared<const lux::asset::ShaderAssetData>(lux::asset::ShaderAssetData{
-                lux::rdesc::Shader{spirv.data(), spirv.size()},
-                std::move(reflected)
-            });
+            auto data = std::make_shared<const lux::asset::ShaderAssetData>(
+                lux::asset::ShaderAssetData{lux::rdesc::Shader{spirv.data(), spirv.size()}, std::move(reflected)}
+            );
             auto asset = lux::asset::ShaderAsset::create(std::move(metadata), std::move(data));
             if (!asset)
                 return lux::cxx::unexpected(failure(EShaderCookError::INVALID_COOKED_SHADER));
@@ -52,7 +52,7 @@ namespace lux::toolchain
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(failure(EShaderCookError::ALLOCATION_FAILURE));
+            std::terminate();
         }
         catch (...)
         {

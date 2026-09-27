@@ -76,7 +76,8 @@ namespace lux::render
                                     true,
                                     root_buffer_,
                                     root_allocation_,
-                                    &mapped))
+                                    &mapped
+                                ))
         {
             shutdown();
             return false;
@@ -118,7 +119,8 @@ namespace lux::render
                 true,
                 leaf.buffer,
                 leaf.allocation,
-                &mapped))
+                &mapped
+            ))
         {
             return false;
         }
@@ -163,8 +165,7 @@ namespace lux::render
     {
         return static_cast<std::uint32_t>(std::count_if(leaves_.begin(), leaves_.end(), [](const Leaf& leaf) {
             return leaf.buffer != VK_NULL_HANDLE;
-        })
-        );
+        }));
     }
 
     void SparseInstancePageTable::destroyBuffer(VkBuffer buffer, VmaAllocation allocation)
@@ -226,7 +227,8 @@ namespace lux::render
                 false,
                 page.buffer,
                 page.allocation,
-                nullptr))
+                nullptr
+            ))
         {
             return false;
         }
@@ -249,7 +251,8 @@ namespace lux::render
                 false,
                 buffer,
                 allocation,
-                nullptr))
+                nullptr
+            ))
         {
             return false;
         }
@@ -351,8 +354,7 @@ namespace lux::render
                 .destination_offset = sparse_bda_ ? static_cast<VkDeviceSize>(page_offset) * stride_
                                                   : static_cast<VkDeviceSize>(first) * stride_,
                 .size = size,
-            }
-            );
+            });
             total += size;
         };
 

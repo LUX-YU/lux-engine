@@ -27,9 +27,7 @@
 
 namespace lux::render
 {
-    HzbFeature::HzbFeature(Config cfg) : RenderFeature(RenderFeature::Config{.name = "Hzb"}), cfg_(cfg)
-    {
-    }
+    HzbFeature::HzbFeature(Config cfg) : RenderFeature(RenderFeature::Config{.name = "Hzb"}), cfg_(cfg) {}
 
     lux::render::Expected<void> HzbFeature::initAndAttachTo(RenderScene& /*scene*/)
     {
@@ -98,8 +96,7 @@ namespace lux::render
             sreg.addViewDestroyedHook([res, sets](uint32_t /*scene_key*/, uint32_t view_id) {
                 res->evictView(view_id);
                 sets->erase(view_id); // 描述符集由场景 arena 拥有,这里只丢句柄
-            }
-            );
+            });
         }
 
         // --- 4. Compute pipeline (set0, set1-depth) + push constant ---
@@ -260,8 +257,7 @@ namespace lux::render
             vp.params[2] = static_cast<float>(hzb_res_->mipCount(view_id)); // >= 1 → ready
             vp.params[3] = 0.0f;
             hzb_res_->writeViewParams(view_id, hzb_res_->curIndex(view_id), vp);
-        }
-        );
+        });
     }
 
     void HzbFeature::addPasses(RGBuilder& builder)
@@ -320,8 +316,7 @@ namespace lux::render
                     ms->slot[slot].data(),
                     static_cast<uint32_t>(ms->slot[slot].size())
                 );
-            }
-            );
+            });
     }
 
 } // namespace lux::render

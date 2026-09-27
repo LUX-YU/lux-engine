@@ -47,22 +47,18 @@ namespace lux::render
         //  addBeginFrameHook 时显式传入。资源仍可声明 kUploadPhase 表达"我需要哪个
         //  阶段"这一**能力**,安装点读它传进来,见 SceneResources。)
 
-        template <typename T, typename = void> struct HasGetDescriptorSet : std::false_type
-        {
-        };
+        template <typename T, typename = void> struct THasGetDescriptorSet : std::false_type
+        {};
         template <typename T>
-        struct HasGetDescriptorSet<T, std::void_t<decltype(std::declval<const T&>().getDescriptorSet())>>
+        struct THasGetDescriptorSet<T, std::void_t<decltype(std::declval<const T&>().getDescriptorSet())>>
             : std::true_type
-        {
-        };
+        {};
 
-        template <typename T, typename = void> struct HasShutdown : std::false_type
-        {
-        };
+        template <typename T, typename = void> struct THasShutdown : std::false_type
+        {};
         template <typename T>
-        struct HasShutdown<T, std::void_t<decltype(std::declval<T&>().shutdown())>> : std::true_type
-        {
-        };
+        struct THasShutdown<T, std::void_t<decltype(std::declval<T&>().shutdown())>> : std::true_type
+        {};
 
         /// Does T declare an init()? Detected the same way as the two above —
         /// duck typing, not a base class. This registry deliberately never required
@@ -75,20 +71,16 @@ namespace lux::render
         /// This is the predicate that splits the two ensure<> overloads, so what it
         /// answers is exactly the question that matters: "can this type be published
         /// without being initialized?"
-        template <typename T, typename = void> struct HasInit : std::false_type
-        {
-        };
-        template <typename T> struct HasInit<T, std::void_t<decltype(&T::init)>> : std::true_type
-        {
-        };
+        template <typename T, typename = void> struct THasInit : std::false_type
+        {};
+        template <typename T> struct THasInit<T, std::void_t<decltype(&T::init)>> : std::true_type
+        {};
 
-        template <typename T, typename = void> struct HasIsInitialized : std::false_type
-        {
-        };
+        template <typename T, typename = void> struct THasIsInitialized : std::false_type
+        {};
         template <typename T>
-        struct HasIsInitialized<T, std::void_t<decltype(std::declval<const T&>().isInitialized())>> : std::true_type
-        {
-        };
+        struct THasIsInitialized<T, std::void_t<decltype(std::declval<const T&>().isInitialized())>> : std::true_type
+        {};
 
         /// init() comes in three shapes across the module — void, bool, and
         /// Expected<void>. Normalize at the seam rather than forcing 16 signatures
@@ -105,7 +97,7 @@ namespace lux::render
                 // 并让 isInitialized() 保持 false:诚实答案在那个标志里。所以有这个
                 // 标志的类型,由标志裁定成败;没有的(如 ShaderResources,其文档注释
                 // 明写"不会失败")才照字面当作必定成功。
-                if constexpr (HasIsInitialized<T>::value)
+                if constexpr (THasIsInitialized<T>::value)
                 {
                     if (!obj.isInitialized())
                         return renderFailure<err::feature::ResourceInitFailed>();
@@ -132,10 +124,10 @@ namespace lux::render
     //  ResourceHandle<T> — strong-typed O(1) accessor returned by emplace()
     // ─────────────────────────────────────────────────────────────────────
 
-    template <typename T> class ResourceHandle
+    template <typename T> class TResourceHandle
     {
     public:
-        ResourceHandle() = default;
+        TResourceHandle() = default;
 
         [[nodiscard]] T* get() const noexcept;
         [[nodiscard]] T* operator->() const noexcept
@@ -158,9 +150,7 @@ namespace lux::render
 
     private:
         friend class ResourceRegistry;
-        ResourceHandle(ResourceRegistry* reg, uint32_t idx) : registry_(reg), idx_(idx)
-        {
-        }
+        TResourceHandle(ResourceRegistry* reg, uint32_t idx) : registry_(reg), idx_(idx) {}
 
         ResourceRegistry* registry_{nullptr};
         uint32_t idx_{UINT32_MAX};
@@ -189,9 +179,9 @@ namespace lux::render
         /// Construct a resource of type T in-place and register it.
         /// First registration of a given type is discoverable via find<T>().
         /// @return A ResourceHandle<T> for direct O(1) access.
-        template <typename T, typename... Args> ResourceHandle<T> emplace(Args&&... args)
+        template <typename T, typename... Args> TResourceHandle<T> emplace(Args&&... args)
         {
-            return ResourceHandle<T>{this, publishOwned<T>(new T(std::forward<Args>(args)...))};
+            return TResourceHandle<T>{this, publishOwned<T>(new T(std::forward<Args>(args)...))};
         }
 
         // ── ensure<T> — idempotent get-or-create, in TWO constrained flavours ──
@@ -215,7 +205,7 @@ namespace lux::render
         /// every call site decided for itself whether to null-check — and they
         /// disagreed. The type says it here.
         template <typename T, typename... Args>
-            requires(!detail::HasInit<T>::value)
+            requires(!detail::THasInit<T>::value)
         T& ensure(Args&&... args)
         {
             if (T* existing = find<T>())
@@ -240,7 +230,7 @@ namespace lux::render
         ///         configured by whoever got here first. Probe find<T>() beforehand
         ///         if you need to know which.
         template <typename T, typename... Args>
-            requires detail::HasInit<T>::value
+            requires detail::THasInit<T>::value
         [[nodiscard]] Expected<T*> ensure(Args&&... init_args)
         {
             if (T* existing = find<T>())
@@ -448,13 +438,13 @@ namespace lux::render
         {
             Slot s;
             s.ptr = ErasedPtr(raw, [](void* p) { delete static_cast<T*>(p); });
-            if constexpr (detail::HasGetDescriptorSet<T>::value)
+            if constexpr (detail::THasGetDescriptorSet<T>::value)
             {
                 s.ds_getter = [](const void* p) -> VkDescriptorSet {
                     return static_cast<const T*>(p)->getDescriptorSet();
                 };
             }
-            if constexpr (detail::HasShutdown<T>::value)
+            if constexpr (detail::THasShutdown<T>::value)
             {
                 s.shutdown_fn = [](void* p) { static_cast<T*>(p)->shutdown(); };
             }
@@ -473,18 +463,18 @@ namespace lux::render
 
         lux::cxx::AutoSparseSet<Slot> slots_;
         std::unordered_map<std::uint64_t, uint32_t> type_map_; // key = lux::cxx::type_hash<T>()
-        std::array<std::vector<BeginFrameHook>, static_cast<size_t>(EUploadPhase::Count)> begin_frame_hooks_{};
+        std::array<std::vector<BeginFrameHook>, static_cast<size_t>(EUploadPhase::COUNT)> begin_frame_hooks_{};
         std::vector<ViewDestroyedHook> view_destroyed_hooks_{};
     };
 
     // ── ResourceHandle<T> out-of-line definitions ───────────────────────
 
-    template <typename T> T* ResourceHandle<T>::get() const noexcept
+    template <typename T> T* TResourceHandle<T>::get() const noexcept
     {
         return registry_ ? registry_->getAs<T>(idx_) : nullptr;
     }
 
-    template <typename T> VkDescriptorSet ResourceHandle<T>::descriptorSet() const noexcept
+    template <typename T> VkDescriptorSet TResourceHandle<T>::descriptorSet() const noexcept
     {
         return registry_ ? registry_->getDescriptorSet(idx_) : VkDescriptorSet{};
     }

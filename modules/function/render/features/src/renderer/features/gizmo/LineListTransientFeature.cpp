@@ -40,8 +40,7 @@ namespace lux::render
 
     LineListTransientFeature::LineListTransientFeature(Config cfg)
         : RenderFeature(RenderFeature::Config{.name = "LineListTransient"}), cfg_(std::move(cfg))
-    {
-    }
+    {}
 
     // The ring destroys itself (no-detach fallback; a runtime detach retired + nulled first).
     LineListTransientFeature::~LineListTransientFeature() = default;
@@ -61,7 +60,8 @@ namespace lux::render
         // 用 uViews)的管线必须带域合并标记,否则注册被拒。
         const std::array stage_requests{
             RenderContextView::PipelineStageDesc{EBuiltinShader::LINE_LIST_VERT, cfg_.vertex_shader},
-            RenderContextView::PipelineStageDesc{EBuiltinShader::LINE_LIST_FRAG, cfg_.fragment_shader}};
+            RenderContextView::PipelineStageDesc{EBuiltinShader::LINE_LIST_FRAG, cfg_.fragment_shader}
+        };
 
         auto stages = cv.preparePipelineStages(stage_requests);
         if (!stages)
@@ -81,7 +81,8 @@ namespace lux::render
         if (auto r = ring_.create(
                 cv.vmaAllocator(),
                 cv.framesInFlight(),
-                static_cast<VkDeviceSize>(cfg_.max_vertices) * sizeof(GizmoVertex));
+                static_cast<VkDeviceSize>(cfg_.max_vertices) * sizeof(GizmoVertex)
+            );
             !r)
             return r;
 
@@ -133,7 +134,7 @@ namespace lux::render
             .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
             .setPipeline(pipeline_handle_)
             .bindSceneDS()
-            .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::Gizmo)))
+            .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::GIZMO)))
             .setKernelFn([this](const PassRecordContext& ctx) {
                 if (draw_count_ == 0)
                     return;
@@ -145,10 +146,9 @@ namespace lux::render
                 VkDeviceSize zero_offset = 0;
                 vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &slot.buffer, &zero_offset);
                 vkCmdDraw(ctx.cmd, draw_count_, 1, 0, 0);
-            }
-            )
+            })
             .setKernel("LineListTransientDraw")
-            .stage(ERenderStage::Overlay); // overlay — composited on top of the post-processed
+            .stage(ERenderStage::OVERLAY_STAGE); // overlay — composited on top of the post-processed
                                            // (tonemapped) image, after the grid
     }
 

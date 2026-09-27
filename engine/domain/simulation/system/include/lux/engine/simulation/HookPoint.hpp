@@ -11,7 +11,10 @@
 
 namespace lux::simulation
 {
-    namespace script { template <class Signature> class ScriptHookEndpoint; }
+    namespace script
+    {
+        template <class Signature> class TScriptHookEndpoint;
+    }
     enum class EEndpointMutationError : std::uint8_t
     {
         NONE,
@@ -50,43 +53,33 @@ namespace lux::simulation
         }
     };
 
-    template <class Signature>
-    class HookPoint;
+    template <class Signature> class THookPoint;
 
-    template <class... Parameters>
-    class HookPoint<void(Parameters...)>
+    template <class... Parameters> class THookPoint<void(Parameters...)>
     {
     public:
-        using Callback = void (*)(void *, Parameters...) noexcept;
+        using Callback = void (*)(void*, Parameters...) noexcept;
 
-        HookPoint() = default;
-        HookPoint(const HookPoint &) = delete;
-        HookPoint &operator=(const HookPoint &) = delete;
-        HookPoint(HookPoint &&) = delete;
-        HookPoint &operator=(HookPoint &&) = delete;
-        ~HookPoint() = default;
+        THookPoint() = default;
+        THookPoint(const THookPoint&) = delete;
+        THookPoint& operator=(const THookPoint&) = delete;
+        THookPoint(THookPoint&&) = delete;
+        THookPoint& operator=(THookPoint&&) = delete;
+        ~THookPoint() = default;
 
         [[nodiscard]] EEndpointMutationError prepare(std::size_t handler_capacity) noexcept
         {
             if (dispatch_active_)
                 return EEndpointMutationError::DISPATCH_ACTIVE;
 
-            try
-            {
-                handlers_.clear();
-                handlers_.reserve(handler_capacity);
-                handler_capacity_ = handler_capacity;
-                prepared_ = true;
-                return EEndpointMutationError::NONE;
-            }
-            catch (const std::bad_alloc &)
-            {
-                prepared_ = false;
-                return EEndpointMutationError::ALLOCATION_FAILURE;
-            }
+            handlers_.clear();
+            handlers_.reserve(handler_capacity);
+            handler_capacity_ = handler_capacity;
+            prepared_ = true;
+            return EEndpointMutationError::NONE;
         }
 
-        [[nodiscard]] EndpointConnectResult connect(void *context, Callback callback) noexcept
+        [[nodiscard]] EndpointConnectResult connect(void* context, Callback callback) noexcept
         {
             if (!prepared_)
                 return {{}, EEndpointMutationError::NOT_PREPARED};
@@ -117,8 +110,8 @@ namespace lux::simulation
         [[nodiscard]] std::size_t dispatch(const HookInvocation& invocation, Parameters... parameters) noexcept
         {
             const bool wrong_owner = binding_owner_ != nullptr && invocation.owner_ != binding_owner_;
-            const bool wrong_endpoint = binding_system_.valid() &&
-                (invocation.system_ != binding_system_ || invocation.hook_ != binding_hook_);
+            const bool wrong_endpoint =
+                binding_system_.valid() && (invocation.system_ != binding_system_ || invocation.hook_ != binding_hook_);
             if (wrong_owner || wrong_endpoint || (binding_system_.valid() && !invocation.scriptCapable()))
                 return 0U;
             if (!prepared_ || dispatch_active_)
@@ -126,7 +119,7 @@ namespace lux::simulation
 
             dispatch_active_ = true;
             std::size_t calls{};
-            for (const auto &handler : handlers_.values())
+            for (const auto& handler : handlers_.values())
             {
                 handler.callback(handler.context, parameters...);
                 ++calls;
@@ -145,7 +138,7 @@ namespace lux::simulation
 
         struct Handler final
         {
-            void *context{};
+            void* context{};
             Callback callback{};
         };
 
@@ -169,11 +162,10 @@ namespace lux::simulation
         const void* binding_owner_{};
         lux::system::SystemInstanceId binding_system_;
         HookPointId binding_hook_;
-        template <class> friend class script::ScriptHookEndpoint;
+        template <class> friend class script::TScriptHookEndpoint;
     };
 
     template <class... Parameters>
-    class HookPoint<void(Parameters...) noexcept> final : public HookPoint<void(Parameters...)>
-    {
-    };
+    class THookPoint<void(Parameters...) noexcept> final : public THookPoint<void(Parameters...)>
+    {};
 }

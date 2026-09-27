@@ -7,8 +7,8 @@
 #include <lux/cxx/memory/SharedBytes.hpp>
 
 #include <array>
-#include <cassert>
 #include <cstdint>
+#include <exception>
 #include <memory>
 #include <span>
 #include <type_traits>
@@ -51,8 +51,7 @@ namespace lux::asset
         [[nodiscard]] std::span<const AssetAuxiliaryPayload> auxiliaryPayloads() const noexcept;
         [[nodiscard]] lux::cxx::SharedBytes<> auxiliaryPayload(AssetPayloadTag tag) const noexcept;
 
-        template <class ConcreteAsset>
-        [[nodiscard]] const ConcreteAsset* as() const noexcept
+        template <class ConcreteAsset> [[nodiscard]] const ConcreteAsset* as() const noexcept
         {
             static_assert(std::is_base_of_v<Asset, ConcreteAsset>);
             static_assert(requires { ConcreteAsset::asset_type; });
@@ -67,8 +66,7 @@ namespace lux::asset
         std::vector<AssetAuxiliaryPayload> auxiliary_;
     };
 
-    template <class Data>
-    class TAsset : public Asset
+    template <class Data> class TAsset : public Asset
     {
     public:
         using data_type = Data;
@@ -84,20 +82,18 @@ namespace lux::asset
         }
 
     protected:
-        TAsset(
-            AssetInfo info,
-            std::shared_ptr<const Data> data,
-            std::vector<AssetAuxiliaryPayload> auxiliary
-        ) noexcept
+        TAsset(AssetInfo info, std::shared_ptr<const Data> data, std::vector<AssetAuxiliaryPayload> auxiliary) noexcept
             : Asset(std::move(info), std::move(auxiliary)), data_(std::move(data))
         {
-            assert(data_);
+            if (!data_)
+            {
+                std::terminate();
+            }
         }
 
     private:
         std::shared_ptr<const Data> data_;
     };
 
-    template <class ConcreteAsset>
-    struct TAssetSerDeser;
+    template <class ConcreteAsset> struct TAssetSerDeser;
 } // namespace lux::asset

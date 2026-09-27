@@ -25,7 +25,7 @@
 #include <lux/engine/render/resources/lighting/ShadowFrameExtData.hpp>
 #include <lux/engine/render/resources/mesh/MeshInstanceExtData.hpp>
 #include <lux/engine/render/resources/mesh/GpuDrivenMeshConsts.hpp>
-#include <lux/engine/render/resources/mesh/MdcTable.hpp>                          // MdcEntry variant select
+#include <lux/engine/render/resources/mesh/MdcTable.hpp>                            // MdcEntry variant select
 #include <lux/engine/function/render/features/resources/mesh/RenderObjectTypes.hpp> // EGeometryKind
 
 #include <algorithm>
@@ -52,23 +52,23 @@ namespace lux::render::kernels
     //  Shadow sub-command IDs (used by KernelCommand emit/replay)
     // =========================================================================
 
-    enum ShadowSubCmd : uint8_t
+    enum class EShadowSubCmd : uint8_t
     {
-        kUploadFrustums = 0,
-        kCullPushConstants = 1,
-        kDrawLaneSetup = 2,
-        kBindIndexBuffer = 3,
+        UPLOAD_FRUSTUMS = 0,
+        CULL_PUSH_CONSTANTS = 1,
+        DRAW_LANE_SETUP = 2,
+        BIND_INDEX_BUFFER = 3,
     };
 
     // =========================================================================
     //  Shadow DynamicPatch sub-source IDs
     // =========================================================================
 
-    enum ShadowPatchSource : uint16_t
+    enum class EShadowPatchSource : uint16_t
     {
-        kSliceCount = 0,
-        kGroupCount = 1,
-        kInstanceSlotCount = 2,
+        SLICE_COUNT = 0,
+        GROUP_COUNT = 1,
+        INSTANCE_SLOT_COUNT = 2,
     };
 
     // =========================================================================
@@ -102,7 +102,12 @@ namespace lux::render::kernels
 
         // Sub-command: UploadFrustums
         uint32_t dummy = 0;
-        e.emitKernelCommand(kid, kUploadFrustums, &dummy, static_cast<uint16_t>(sizeof(dummy)));
+        e.emitKernelCommand(
+            kid,
+            static_cast<uint8_t>(EShadowSubCmd::UPLOAD_FRUSTUMS),
+            &dummy,
+            static_cast<uint16_t>(sizeof(dummy))
+        );
 
         // FillBuffer (generic command — no change)
         struct
@@ -115,8 +120,9 @@ namespace lux::render::kernels
             cfg.draw_count_rg.index,
             0,
             static_cast<VkDeviceSize>(std::max(cfg.mdc_count, 1u)) * sizeof(uint32_t),
-            0};
-        e.emit(ExecutionProgram::Command::EType::FillBuffer, &fill, static_cast<uint16_t>(sizeof(fill)));
+            0
+        };
+        e.emit(ExecutionProgram::Command::EType::FILL_BUFFER, &fill, static_cast<uint16_t>(sizeof(fill)));
 
         // Sub-command: CullPushConstants via the shared factory (SSOT with the
         // view fill + replay). slice_count / bias-group count default to 0 and are
@@ -124,7 +130,12 @@ namespace lux::render::kernels
         // shadow MDC table.
         auto pc =
             makeShadowCullPushConstants(cfg.pass_mask, cfg.geometry_mask, cfg.extension_flags, cfg.view_mdc_count);
-        e.emitKernelCommand(kid, kCullPushConstants, &pc, static_cast<uint16_t>(sizeof(pc)));
+        e.emitKernelCommand(
+            kid,
+            static_cast<uint8_t>(EShadowSubCmd::CULL_PUSH_CONSTANTS),
+            &pc,
+            static_cast<uint16_t>(sizeof(pc))
+        );
 
         // Dispatch (generic command, patched via KernelPatch)
         struct
@@ -132,14 +143,15 @@ namespace lux::render::kernels
             uint32_t x, y, z;
         } dispatch{1, 1, 1};
         const uint32_t cmd_idx =
-            e.emit(ExecutionProgram::Command::EType::Dispatch, &dispatch, static_cast<uint16_t>(sizeof(dispatch)));
+            e.emit(ExecutionProgram::Command::EType::DISPATCH, &dispatch, static_cast<uint16_t>(sizeof(dispatch)));
 
         ExecutionProgram::DynamicPatch patch{};
         patch.command_index = cmd_idx;
         patch.data_field_offset = 0;
-        patch.source = ExecutionProgram::DynamicPatch::ESource::KernelPatch;
+        patch.source = ExecutionProgram::DynamicPatch::ESource::KERNEL_PATCH;
         // Encode: high 8 bits = kernel ID, low 8 bits = sub-source
-        patch.source_param = (static_cast<uint16_t>(kid) << 8) | kInstanceSlotCount;
+        patch.source_param = (static_cast<uint16_t>(kid) << 8) |
+            static_cast<uint16_t>(EShadowPatchSource::INSTANCE_SLOT_COUNT);
         e.program.patches.push_back(patch);
     }
 
@@ -203,7 +215,7 @@ namespace lux::render::kernels
                 VkPipeline pipeline;
                 VkPipelineLayout layout;
             } bp{variants[vidx], cpass.render.pipeline_layout};
-            e.emit(ExecutionProgram::Command::EType::BindPipeline, &bp, static_cast<uint16_t>(sizeof(bp)));
+            e.emit(ExecutionProgram::Command::EType::BIND_PIPELINE, &bp, static_cast<uint16_t>(sizeof(bp)));
             last_vidx = vidx;
         };
 
@@ -222,7 +234,12 @@ namespace lux::render::kernels
                 uint32_t lane_id;
                 uint32_t atlas_resolution;
             } lane_data{g, cfg.atlas_resolution};
-            e.emitKernelCommand(kid, kDrawLaneSetup, &lane_data, static_cast<uint16_t>(sizeof(lane_data)));
+            e.emitKernelCommand(
+                kid,
+                static_cast<uint8_t>(EShadowSubCmd::DRAW_LANE_SETUP),
+                &lane_data,
+                static_cast<uint16_t>(sizeof(lane_data))
+            );
 
             for (uint32_t m = 0; m < vmc; ++m)
             {
@@ -239,7 +256,12 @@ namespace lux::render::kernels
                         uint32_t resource_idx;
                         uint32_t index_type;
                     } bind_idx{cfg.index_buffers_rg[mdc.ibo_segment].index, static_cast<uint32_t>(mdc.index_type)};
-                    e.emitKernelCommand(kid, kBindIndexBuffer, &bind_idx, static_cast<uint16_t>(sizeof(bind_idx)));
+                    e.emitKernelCommand(
+                        kid,
+                        static_cast<uint8_t>(EShadowSubCmd::BIND_INDEX_BUFFER),
+                        &bind_idx,
+                        static_cast<uint16_t>(sizeof(bind_idx))
+                    );
                     last_ibo_segment = mdc.ibo_segment;
                     last_index_type = mdc.index_type;
                 }
@@ -254,7 +276,7 @@ namespace lux::render::kernels
                 {
                     const uint32_t vidx =
                         (mdc_entries != nullptr && m < cfg.view_mdc_count &&
-                         mdc_entries[m].geometry_kind == static_cast<uint8_t>(EGeometryKind::SkinnedMesh))
+                         mdc_entries[m].geometry_kind == static_cast<uint8_t>(EGeometryKind::SKINNED_MESH))
                             ? family_count
                             : 0u;
                     bindVariant(vidx);
@@ -275,9 +297,10 @@ namespace lux::render::kernels
                     static_cast<VkDeviceSize>(shadow_mdc) * sizeof(VkDrawIndexedIndirectCommand),
                     static_cast<VkDeviceSize>(shadow_mdc) * sizeof(uint32_t),
                     1u,
-                    kIndirectCommandSize};
+                    kIndirectCommandSize
+                };
                 e.emit(
-                    ExecutionProgram::Command::EType::DrawIndexedIndirectCount,
+                    ExecutionProgram::Command::EType::DRAW_INDEXED_INDIRECT_COUNT,
                     &draw,
                     static_cast<uint16_t>(sizeof(draw))
                 );
@@ -289,20 +312,24 @@ namespace lux::render::kernels
     //  Shadow Replay Functions (KernelDescriptor::ReplayFn)
     // =========================================================================
 
-    static void
-    replayShadowCullCommand(uint32_t sub_cmd, const void* data, uint16_t data_size, KernelReplayContext& ctx)
+    static void replayShadowCullCommand(
+        uint32_t sub_cmd,
+        const void* data,
+        uint16_t data_size,
+        KernelReplayContext& ctx
+    )
     {
         const auto* ext = getShadowExt(ctx.frame_ctx);
 
         switch (sub_cmd)
         {
-        case kUploadFrustums: {
+        case static_cast<uint8_t>(EShadowSubCmd::UPLOAD_FRUSTUMS): {
             const bool is_missing_extension = ext == nullptr;
             const bool is_missing_frustum_data = !is_missing_extension && ext->frustum_data == nullptr;
             const bool is_empty_frustum_data = !is_missing_extension && ext->frustum_size == 0;
             const bool is_missing_cull_buffer = !is_missing_extension && ext->cull_ubo == VK_NULL_HANDLE;
-            const bool is_invalid_upload = is_missing_extension || is_missing_frustum_data || is_empty_frustum_data ||
-                is_missing_cull_buffer;
+            const bool is_invalid_upload =
+                is_missing_extension || is_missing_frustum_data || is_empty_frustum_data || is_missing_cull_buffer;
             if (is_invalid_upload)
                 break;
 
@@ -338,7 +365,7 @@ namespace lux::render::kernels
             vkCmdPipelineBarrier2(ctx.cmd, &dep);
             break;
         }
-        case kCullPushConstants: {
+        case static_cast<uint8_t>(EShadowSubCmd::CULL_PUSH_CONSTANTS): {
             MeshCullPushConstants pc{};
             if (data_size < sizeof(pc))
                 break;
@@ -377,10 +404,14 @@ namespace lux::render::kernels
         }
     }
 
-    static void
-    replayShadowDrawCommand(uint32_t sub_cmd, const void* data, uint16_t data_size, KernelReplayContext& ctx)
+    static void replayShadowDrawCommand(
+        uint32_t sub_cmd,
+        const void* data,
+        uint16_t data_size,
+        KernelReplayContext& ctx
+    )
     {
-        if (sub_cmd == kBindIndexBuffer)
+        if (sub_cmd == static_cast<uint8_t>(EShadowSubCmd::BIND_INDEX_BUFFER))
         {
             struct
             {
@@ -397,7 +428,7 @@ namespace lux::render::kernels
             return; // 不触碰 skip_next_draw —— 那是每条 lane 的状态
         }
 
-        if (sub_cmd != kDrawLaneSetup)
+        if (sub_cmd != static_cast<uint8_t>(EShadowSubCmd::DRAW_LANE_SETUP))
             return;
 
         const auto* ext = getShadowExt(ctx.frame_ctx);
@@ -437,16 +468,16 @@ namespace lux::render::kernels
     {
         switch (source_param)
         {
-        case kSliceCount: {
+        case static_cast<uint16_t>(EShadowPatchSource::SLICE_COUNT): {
             const auto* ext = getShadowExt(frame_ctx);
             const uint32_t sc = ext ? ext->slice_count : 0;
             return (sc + kCullDispatchWorkgroupSize - 1u) / kCullDispatchWorkgroupSize;
         }
-        case kGroupCount: {
+        case static_cast<uint16_t>(EShadowPatchSource::GROUP_COUNT): {
             const auto* ext = getShadowExt(frame_ctx);
             return ext ? ext->group_count : 0;
         }
-        case kInstanceSlotCount: {
+        case static_cast<uint16_t>(EShadowPatchSource::INSTANCE_SLOT_COUNT): {
             const auto isl = meshInstanceExtSlot();
             uint32_t alive = 0;
             if (isl != kInvalidExtSlot && frame_ctx.ext_data[isl])

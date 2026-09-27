@@ -36,9 +36,9 @@ namespace lux::flowforge
         // and copy `state_defaults` in before the first invoke. Kept on the
         // IR object rather than as module attributes so the MLIR -> LLVM
         // translation never sees foreign dialect attributes.
-        uint64_t               state_size = 0;
-        uint64_t               state_hash = 0;
-        uint32_t               state_align = 1;
+        uint64_t state_size = 0;
+        uint64_t state_hash = 0;
+        uint32_t state_align = 1;
         std::vector<std::byte> state_defaults;
     };
 }

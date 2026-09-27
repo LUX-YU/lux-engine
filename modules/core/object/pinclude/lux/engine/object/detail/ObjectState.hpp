@@ -1,91 +1,67 @@
 #pragma once
 
-#include <atomic>
-#include <memory>
-#include <mutex>
-#include <thread>
-#include <vector>
-
-#include <lux/cxx/memory/intrusive_ptr.hpp>
+#include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/object/LuxObject.hpp>
+#include <mutex>
 
 namespace lux::object::detail
 {
-    enum class EListenerLane : std::uint8_t
-    {
-        DIRECT,
-        QUEUED,
-        PENDING
-    };
-
     struct ConnectionControl final
     {
-        std::atomic_size_t refs{0};
+        std::atomic_size_t refs{};
         std::atomic_bool connected{true};
-        std::size_t owner_position{0};
-        std::size_t signal_index{0};
-        std::size_t position{0};
-        EListenerLane lane{EListenerLane::DIRECT};
-        EDelivery delivery{EDelivery::DIRECT};
+        lux::cxx::intrusive_ptr<SignalStorage> storage;
         lux::cxx::intrusive_ptr<ObjectState> receiver;
-        ObjectInvokeThunk invoke{nullptr};
-        std::shared_ptr<void> context;
-    };
-
-    struct SignalBucket final
-    {
-        std::vector<ConnectionControl*> direct;
-        std::vector<ConnectionControl*> queued;
-        std::vector<ConnectionControl*> pending;
-    };
-
-    struct IncomingLink final
-    {
-        lux::cxx::intrusive_ptr<ObjectState> sender;
-        lux::cxx::intrusive_ptr<ConnectionControl> control;
+        lux::cxx::SlotKey<ConnectionControl> key;
+        SignalCallback callback;
+        EDelivery delivery{EDelivery::DIRECT};
+        ConnectionControl* previous_incoming{};
+        ConnectionControl* next_incoming{};
+        ConnectionControl* next_cancelled{};
+        bool incoming_linked{}; // Receiver mutex only.
     };
 
     struct ObjectState final
     {
-        ObjectState(LuxObject* value, ObjectDispatcherRef dispatcher_value, std::thread::id affinity_value) noexcept;
-        ~ObjectState();
-
-        std::atomic_size_t refs{0};
-        std::atomic<LuxObject*> object{nullptr};
+        ObjectState(LuxObject* value, ObjectDispatcherRef queue) noexcept : object(value), dispatcher(std::move(queue))
+        {}
+        std::atomic_size_t refs{};
+        std::atomic<LuxObject*> object;
         ObjectDispatcherRef dispatcher;
-        std::thread::id affinity;
+        std::mutex mutex;
+        ConnectionControl* incoming{};
 
-        std::vector<SignalBucket> buckets;
-
-        std::vector<lux::cxx::intrusive_ptr<ConnectionControl>> owned_connections;
-        std::vector<ConnectionControl*> pending_removals;
-        std::size_t active_notify_depth{0};
-        std::mutex incoming_mutex;
-        std::vector<IncomingLink> incoming;
-
-        [[nodiscard]] lux::cxx::intrusive_ptr<ConnectionControl> install(
-            const SignalDescriptor& signal,
-            lux::cxx::intrusive_ptr<ObjectState> receiver,
-            ObjectInvokeThunk invoke,
-            EDelivery delivery,
-            std::shared_ptr<void> context
-        );
-
-        void notify(const SignalDescriptor& signal, const void* payload);
-        void requestDisconnect(ConnectionControl* control) noexcept;
-        void removeConnection(ConnectionControl* control) noexcept;
-        void maintainAfterNotify() noexcept;
-        void finishNotify() noexcept;
+        [[nodiscard]] bool addIncoming(ConnectionControl&) noexcept;
+        void removeIncoming(ConnectionControl&) noexcept;
         void closeOwner() noexcept;
-
-        void
-        addIncoming(lux::cxx::intrusive_ptr<ObjectState> sender, lux::cxx::intrusive_ptr<ConnectionControl> control);
-
-        void removeIncoming(const ObjectState* sender, const ConnectionControl* control) noexcept;
-
-    private:
-        void append(SignalBucket& bucket, ConnectionControl& control, EDelivery delivery);
-        void ensureSignalCapacity(std::size_t required_count);
-        void removePhysical(ConnectionControl& control) noexcept;
     };
-} // namespace lux::object::detail
+
+    struct SignalStorage final
+    {
+        using Records =
+            lux::cxx::StableSlotMap<lux::cxx::intrusive_ptr<ConnectionControl>, ConnectionControl, lux::cxx::NoAux, 8>;
+        SignalStorage(ObjectDispatcherRef queue, QueuedMessageFactory factory) noexcept
+            : dispatcher(std::move(queue)), queue_factory(factory)
+        {}
+        std::atomic_size_t refs{};
+        const std::thread::id affinity{std::this_thread::get_id()};
+        ObjectDispatcherRef dispatcher;
+        QueuedMessageFactory queue_factory;
+        Records records;
+        std::atomic_bool closed{};
+        std::size_t depth{}, visible_count{};
+        bool maintaining{};
+        std::mutex cancel_mutex;
+        ConnectionControl* cancelled{};
+        SignalStorage* next_maintenance{}; // Dispatcher mutex only, with one owning reference.
+        bool maintenance_queued{};
+
+        void cancel(ConnectionControl&) noexcept;
+        void remove(ConnectionControl&) noexcept;
+        void maintain() noexcept;
+        void close() noexcept;
+        [[nodiscard]] SignalDelivery emit(const void*) noexcept;
+    };
+
+    void scheduleSignalMaintenance(const ObjectDispatcherRef&, SignalStorage&) noexcept;
+}

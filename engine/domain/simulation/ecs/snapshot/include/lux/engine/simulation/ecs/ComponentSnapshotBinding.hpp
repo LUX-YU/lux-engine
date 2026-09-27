@@ -62,8 +62,8 @@ namespace lux::simulation::ecs
             target_storage.reserve(source_storage->size());
             auto entities = source_storage->each();
             using Iterator = decltype(entities.begin());
-            const detail::StorageEntityIterator<Iterator> first(entities.begin());
-            const detail::StorageEntityIterator<Iterator> last(entities.end());
+            const detail::TStorageEntityIterator<Iterator> first(entities.begin());
+            const detail::TStorageEntityIterator<Iterator> last(entities.end());
             if constexpr (std::is_empty_v<Component>)
             {
                 target_storage.insert(first, last);
@@ -79,8 +79,7 @@ namespace lux::simulation::ecs
             detail::CloneComponentStorageFn clone
         ) noexcept
             : schema_(&schema), clone_(clone)
-        {
-        }
+        {}
 
         template <class Component>
         friend constexpr ComponentSnapshotBinding bindComponentSnapshot(const ComponentSchema&) noexcept;

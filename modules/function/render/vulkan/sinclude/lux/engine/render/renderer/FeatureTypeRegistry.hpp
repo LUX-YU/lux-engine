@@ -61,8 +61,8 @@ namespace lux::render
     /// numeric values ride the wire FeatureTypeRegisteredReply::status field.
     enum class EFeatureTypeRegisterStatus : std::uint32_t
     {
-        Registered = 0,        ///< newly inserted; type_id is fresh, op handlers were just bound
-        AlreadyRegistered = 1, ///< same factory already present; type_id is the EXISTING id (idempotent)
+        NEW_REGISTRATION = 0,        ///< newly inserted; type_id is fresh, op handlers were just bound
+        EXISTING_REGISTRATION = 1, ///< same factory already present; type_id is the EXISTING id (idempotent)
     };
 
     /// Successful registration result: a valid type_id (>=1) plus which scope it was.
@@ -70,7 +70,7 @@ namespace lux::render
     struct FeatureTypeAddResult
     {
         std::uint32_t type_id{0};
-        EFeatureTypeRegisterStatus status{EFeatureTypeRegisterStatus::Registered};
+        EFeatureTypeRegisterStatus status{EFeatureTypeRegisterStatus::NEW_REGISTRATION};
     };
 
     class FeatureTypeRegistry
@@ -106,8 +106,9 @@ namespace lux::render
             if (invalid_count)
                 return renderFailure<err::feature::OperationLimitExceeded>(factory.operation_count, kMaxOps);
             const bool invalid_functions = factory.operation_count != 0u &&
-                (factory.register_ops_fn == nullptr || factory.unregister_ops_fn == nullptr);
-            const bool invalid_parameter = factory.param_set_op_index < -1 ||
+                                           (factory.register_ops_fn == nullptr || factory.unregister_ops_fn == nullptr);
+            const bool invalid_parameter =
+                factory.param_set_op_index < -1 ||
                 (factory.param_set_op_index >= 0 &&
                  static_cast<std::uint32_t>(factory.param_set_op_index) >= factory.operation_count);
             if (invalid_functions || invalid_parameter)
@@ -137,7 +138,7 @@ namespace lux::render
                         shared.registration_leases.emplace_back();
                     else
                         shared.registration_leases.push_back(std::move(record.registration_leases.front()));
-                    return FeatureTypeAddResult{id, EFeatureTypeRegisterStatus::AlreadyRegistered};
+                    return FeatureTypeAddResult{id, EFeatureTypeRegisterStatus::EXISTING_REGISTRATION};
                 }
             }
 
@@ -165,7 +166,7 @@ namespace lux::render
             }
 
             const std::uint32_t id = types_.insert(std::move(record));
-            return FeatureTypeAddResult{id, EFeatureTypeRegisterStatus::Registered};
+            return FeatureTypeAddResult{id, EFeatureTypeRegisterStatus::NEW_REGISTRATION};
         }
 
         [[nodiscard]] bool contains(std::uint32_t id) const noexcept
@@ -272,17 +273,19 @@ namespace lux::render
         [[nodiscard]] static bool sameFactory(const FeatureFactory& a, const FeatureFactory& b) noexcept
         {
             const bool same_functions = a.create_fn == b.create_fn && a.register_ops_fn == b.register_ops_fn &&
-                a.unregister_ops_fn == b.unregister_ops_fn;
-            const bool same_operations = a.operation_count == b.operation_count &&
-                a.param_set_op_index == b.param_set_op_index;
+                                        a.unregister_ops_fn == b.unregister_ops_fn;
+            const bool same_operations =
+                a.operation_count == b.operation_count && a.param_set_op_index == b.param_set_op_index;
             const bool same_names = a.name != nullptr && b.name != nullptr && std::string_view(a.name) == b.name;
             const auto& x = a.descriptor;
             const auto& y = b.descriptor;
-            const bool same_descriptor = x.type == y.type && x.name == y.name && x.canonical_name == y.canonical_name && x.abi_version == y.abi_version &&
-                x.creates_view_state == y.creates_view_state && x.supports_runtime_disable == y.supports_runtime_disable &&
-                x.multiplicity == y.multiplicity && x.dependencies.data() == y.dependencies.data() &&
-                x.dependencies.size() == y.dependencies.size() && x.conflicts.data() == y.conflicts.data() &&
-                x.conflicts.size() == y.conflicts.size() && x.level_profiles.data() == y.level_profiles.data() &&
+            const bool same_descriptor =
+                x.type == y.type && x.name == y.name && x.canonical_name == y.canonical_name &&
+                x.abi_version == y.abi_version && x.creates_view_state == y.creates_view_state &&
+                x.supports_runtime_disable == y.supports_runtime_disable && x.multiplicity == y.multiplicity &&
+                x.dependencies.data() == y.dependencies.data() && x.dependencies.size() == y.dependencies.size() &&
+                x.conflicts.data() == y.conflicts.data() && x.conflicts.size() == y.conflicts.size() &&
+                x.level_profiles.data() == y.level_profiles.data() &&
                 x.level_profiles.size() == y.level_profiles.size();
             return same_functions && same_operations && same_names && same_descriptor;
         }

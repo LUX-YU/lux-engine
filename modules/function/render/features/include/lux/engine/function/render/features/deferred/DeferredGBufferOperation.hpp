@@ -26,7 +26,7 @@ namespace lux::render
     // bit space is what stops the next collision — the compiler now sees every
     // bit at the point a new one is added.
     inline constexpr GpuDrivenMeshExtFlags kDeferredGBufferKnownExtFlags =
-        GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::HZB} | GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::LocalReadScope};
+        GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::HZB} | GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::LOCAL_READ_SCOPE};
 
     // =========================================================================
     //  Default shader ASSET names for DeferredGBufferFeature — what a client
@@ -56,7 +56,8 @@ namespace lux::render
         id = lux.render.deferred_gbuffer.v1,
         display = DeferredGBuffer,
         requires = lux.render.mesh_stack.v1,
-        custom_create = true) DeferredGBufferCommConfig
+        custom_create = true
+    ) DeferredGBufferCommConfig
     {
         ShaderHandle gbuffer_vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle gbuffer_unlit_fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};

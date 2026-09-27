@@ -41,7 +41,8 @@ namespace lux::render
     static_assert(
         sizeof(ClusterParamsGPU) == 208,
         "ClusterParamsGPU 与 GLSL 侧 ClusterParamsUBO 的 std140 布局漂移"
-        "(64+64+16+16+16+16+16=208);改这里必须同步 GLSL 字段表");
+        "(64+64+16+16+16+16+16=208);改这里必须同步 GLSL 字段表"
+    );
     static_assert(alignof(ClusterParamsGPU) == 16);
 
     /**

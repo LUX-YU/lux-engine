@@ -52,14 +52,10 @@ namespace lux::simulation::script
     }
 
     template <class Result, class Starter>
-        requires std::is_void_v<Result> ||
-            (lux::semantic::TypeDeclared<Result> && std::is_trivially_copyable_v<Result>)
-    [[nodiscard]] ScriptStepResult invokeScriptAbilityAsync(
-        ScriptStepContext& context,
-        Starter&& starter
-    ) noexcept
+        requires std::is_void_v<Result> || (lux::semantic::TypeDeclared<Result> && std::is_trivially_copyable_v<Result>)
+    [[nodiscard]] ScriptStepResult invokeScriptAbilityAsync(ScriptStepContext& context, Starter&& starter) noexcept
     {
-        using Completion = lux::script::ScriptAbilityCompletion<Result>;
+        using Completion = lux::script::TScriptAbilityCompletion<Result>;
         static_assert(std::is_nothrow_invocable_r_v<lux::script::ScriptAbilityStartResult, Starter, Completion>);
 
         std::optional<PreparedResumeType> result_type;
@@ -88,12 +84,17 @@ namespace lux::simulation::script
     }
 
     // Only prepared projections call this overload. User starter lambdas retain the external protocol.
-    template<class Result, class Starter, class... Arguments>
-    [[nodiscard]] ScriptStepResult invokePreparedScriptAbilityAsync(ScriptStepContext& context,
-        PreparedLocalAsyncStart local, Starter&& starter, Arguments&... arguments) noexcept
+    template <class Result, class Starter, class... Arguments>
+    [[nodiscard]] ScriptStepResult invokePreparedScriptAbilityAsync(
+        ScriptStepContext& context,
+        PreparedLocalAsyncStart local,
+        Starter&& starter,
+        Arguments&... arguments
+    ) noexcept
     {
         if constexpr (std::is_void_v<Result>)
-            if (local) return local.startTyped(context, arguments...);
+            if (local)
+                return local.startTyped(context, arguments...);
         return invokeScriptAbilityAsync<Result>(context, std::forward<Starter>(starter));
     }
 
@@ -114,9 +115,8 @@ namespace lux::simulation::script
         {
             if (result->pass != lux::semantic::EValuePass::VALUE)
             {
-                return ScriptStepResult::failed(
-                    detail::invocationStatus(EScriptAbilityInvocationStatus::INVALID_CONTEXT)
-                );
+                return ScriptStepResult::failed(detail::invocationStatus(EScriptAbilityInvocationStatus::INVALID_CONTEXT
+                ));
             }
             result_type = PreparedResumeType{result->type_id, result->abi_kind, result->size, result->alignment};
         }

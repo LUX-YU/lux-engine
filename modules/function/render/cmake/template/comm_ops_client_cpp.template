@@ -44,13 +44,13 @@ namespace lux::render
         send<{{ opname }}Op>(*session_, ops_, payload);
     }
 {%- else if kind == "blob" %}
-    {% if reply != "" %}RenderRequest<::lux::render::{{ reply }}> {% else %}void {% endif %}{{ prefix }}Proxy::{{ method }}(
+    {% if reply != "" %}TRenderRequest<::lux::render::{{ reply }}> {% else %}void {% endif %}{{ prefix }}Proxy::{{ method }}(
         ::{{ op.fq_name }} payload, std::span<const std::byte> blob_bytes, std::size_t align)
     {
         {% if reply != "" %}return {% endif %}sendBlob<{{ opname }}Op>(*session_, ops_, payload, blob_bytes, align);
     }
 {%- else if reply != "" %}
-    RenderRequest<::lux::render::{{ reply }}> {{ prefix }}Proxy::{{ method }}(const ::{{ op.fq_name }}& payload)
+    TRenderRequest<::lux::render::{{ reply }}> {{ prefix }}Proxy::{{ method }}(const ::{{ op.fq_name }}& payload)
     {
         return sendWithReply<{{ opname }}Op>(*session_, ops_, payload);
     }
@@ -78,7 +78,7 @@ namespace lux::render
 {%- set reply = annotation_get_for_or(op, "luxop::op", "reply", "") -%}
 {%- set method = annotation_get_for_or(op, "luxop::op", "method", "") -%}
 {%- if reply != "" %}
-    RenderRequest<::lux::render::{{ reply }}> {{ prefix }}ControlClient::{{ method }}(
+    TRenderRequest<::lux::render::{{ reply }}> {{ prefix }}ControlClient::{{ method }}(
         const ::{{ op.fq_name }}& payload)
     {
         return sendWithReply<{{ opname }}Op>(*session_, ops_, payload);
@@ -102,7 +102,7 @@ namespace lux::render
 {%- set reply = annotation_get_for_or(op, "luxop::op", "reply", "") -%}
 {%- set method = annotation_get_for_or(op, "luxop::op", "method", "") -%}
     lux::cxx::expected<
-        {% if reply != "" %}RenderRequest<::lux::render::{{ reply }}>{% else %}void{% endif %},
+        {% if reply != "" %}TRenderRequest<::lux::render::{{ reply }}>{% else %}void{% endif %},
         ERenderUploadSubmitError> {{ prefix }}UploadClient::{{ method }}(
 {%- if kind == "blob" %}
             ::{{ op.fq_name }} payload,

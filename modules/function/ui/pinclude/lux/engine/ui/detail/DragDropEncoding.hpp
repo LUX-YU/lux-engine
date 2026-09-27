@@ -51,8 +51,8 @@ namespace lux::ui::detail
         return encoded;
     }
 
-    [[nodiscard]] inline std::optional<DragDropPayloadView>
-    decodeDragDropPayload(std::span<const std::byte> bytes) noexcept
+    [[nodiscard]] inline std::optional<DragDropPayloadView> decodeDragDropPayload(std::span<const std::byte> bytes
+    ) noexcept
     {
         if (bytes.size() < sizeof(DragDropPayloadHeader))
             return std::nullopt;

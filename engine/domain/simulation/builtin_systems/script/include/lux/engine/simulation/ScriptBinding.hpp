@@ -23,7 +23,7 @@ namespace lux::simulation::script
     struct HookScriptTarget final
     {
         lux::system::SystemInstanceId system;
-        HookPointId      hook;
+        HookPointId hook;
 
         friend constexpr bool operator==(HookScriptTarget, HookScriptTarget) noexcept = default;
     };
@@ -31,20 +31,17 @@ namespace lux::simulation::script
     struct EventScriptTarget final
     {
         lux::system::SystemInstanceId system;
-        EventPointId     event;
+        EventPointId event;
 
         friend constexpr bool operator==(EventScriptTarget, EventScriptTarget) noexcept = default;
     };
 
-    using ScriptBindingTarget = std::variant<
-        HookScriptTarget,
-        EventScriptTarget
-    >;
+    using VScriptBindingTarget = std::variant<HookScriptTarget, EventScriptTarget>;
 
     struct ScriptBindingDescription final
     {
         lux::script::ScriptSymbolId symbol{lux::script::InvalidScriptSymbolId};
-        ScriptBindingTarget         target;
+        VScriptBindingTarget target;
 
         friend bool operator==(const ScriptBindingDescription&, const ScriptBindingDescription&) noexcept = default;
     };

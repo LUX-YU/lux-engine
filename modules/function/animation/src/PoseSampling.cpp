@@ -133,12 +133,7 @@ namespace lux::animation
         const std::size_t n = skeleton.bones.size();
         out.resize(n);
         for (std::size_t i = 0; i < n; ++i)
-            decomposeBindLocal(
-                skeleton.bones[i].bind_local,
-                out[i].translation,
-                out[i].rotation,
-                out[i].scale
-            );
+            decomposeBindLocal(skeleton.bones[i].bind_local, out[i].translation, out[i].rotation, out[i].scale);
     }
 
     // -------------------------------------------------------------------------

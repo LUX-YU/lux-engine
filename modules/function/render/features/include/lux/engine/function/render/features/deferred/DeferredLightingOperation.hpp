@@ -66,11 +66,13 @@ namespace lux::render
         id = lux.render.deferred_lighting.v1,
         display = DeferredLighting,
         requires = "lux.render.deferred_gbuffer.v1,lux.render.shadow_map.v1?",
-        custom_create = true) DeferredLightingCommConfig
+        custom_create = true
+    ) DeferredLightingCommConfig
     {
         uint32_t comm_config_version{kDeferredLightingCommConfigVersion};
-        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};   ///< fullscreen triangle
-        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){}; ///< deferred_lighting.frag (variant chosen by `technique` if empty)
+        ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){}; ///< fullscreen triangle
+        ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true)
+            LUX_NO_MEMBER(){}; ///< deferred_lighting.frag (variant chosen by `technique` if empty)
         ELightingReadMode read_mode{ELightingReadMode::SAMPLED};
 
         ShaderHandle cluster_build_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};

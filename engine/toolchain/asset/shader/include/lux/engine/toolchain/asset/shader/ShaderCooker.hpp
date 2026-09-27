@@ -28,11 +28,7 @@ namespace lux::toolchain
         std::size_t offset{};
     };
 
-    [[nodiscard]] LUX_ENGINE_TOOLCHAIN_SHADER_ASSET_PUBLIC lux::cxx::expected<
-        std::shared_ptr<const lux::asset::ShaderAsset>,
-        ShaderCookFailure
-    > cookShader(
-        lux::asset::AssetInfo metadata,
-        lux::cxx::SharedBytes<> spirv
-    ) noexcept;
+    [[nodiscard]] LUX_ENGINE_TOOLCHAIN_SHADER_ASSET_PUBLIC lux::cxx::
+        expected<std::shared_ptr<const lux::asset::ShaderAsset>, ShaderCookFailure>
+        cookShader(lux::asset::AssetInfo metadata, lux::cxx::SharedBytes<> spirv) noexcept;
 } // namespace lux::toolchain

@@ -1,5 +1,5 @@
 #pragma once
-// Generated TypeStaticInfo projection. No offsets, registrars, or runtime data.
+// Generated TTypeStaticInfo projection. No offsets, registrars, or runtime data.
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 #include <tuple>
 {% if include_dir %}#include <{{ include_dir }}>{% else %}#include "{{ source_path }}"{% endif %}
@@ -8,7 +8,7 @@ namespace lux::meta
 {
 {% for decl_index in marked_record_decls %}{% set decl = decl_from_index(decl_index) %}{% if annotation_has(decl, "type_info") and annotation_get_for_or(decl, "luxref::class", "type_info", "both") != "runtime" %}
     template <>
-    struct TypeStaticInfo<::{{ decl.fq_name }}>
+    struct TTypeStaticInfo<::{{ decl.fq_name }}>
     {
         static constexpr bool available = true;
         using type = ::{{ decl.fq_name }};

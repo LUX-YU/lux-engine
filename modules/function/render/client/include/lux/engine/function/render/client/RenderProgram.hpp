@@ -5,26 +5,86 @@
 #include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>
 #include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/cxx/concurrent/BoundedSpscFrameRing.hpp>
+#include <lux/engine/function/visibility.h>
 
 #include <concepts>
 #include <cstring>
 #include <optional>
+#include <mutex>
 #include <utility>
 
 namespace lux::render
 {
-    template <std::size_t PayloadAlignment = 64> struct CommandStorage
+    // Passive, domain-neutral evidence shared by prepared packets and installed
+    // backend bindings. Completion notification schedules adoption; it never destroys resources.
+    class LUX_FUNCTION_PUBLIC RenderSubmissionState final
     {
-        using PayloadVector = std::vector<std::byte, AlignedAllocator<std::byte, PayloadAlignment>>;
+        struct Record;
+
+    public:
+        class LUX_FUNCTION_PUBLIC Observer final
+        {
+        public:
+            Observer() noexcept = default;
+            [[nodiscard]] bool cpuReleased() const noexcept;
+            [[nodiscard]] bool complete() const noexcept;
+            [[nodiscard]] std::uint64_t recorded() const noexcept;
+            [[nodiscard]] std::uint64_t submitted() const noexcept;
+            [[nodiscard]] std::uint64_t completed() const noexcept;
+            // Joins an already-live immutable publication; cannot resurrect one
+            // whose last CPU holder returned. The Observer remains passive.
+            [[nodiscard]] RenderSubmissionState acquire() const noexcept;
+
+        private:
+            friend class RenderSubmissionState;
+            explicit Observer(std::shared_ptr<Record> record) noexcept : record_(std::move(record)) {}
+            std::shared_ptr<Record> record_;
+        };
+
+        RenderSubmissionState() noexcept = default;
+        ~RenderSubmissionState() noexcept;
+        RenderSubmissionState(const RenderSubmissionState&) noexcept;
+        RenderSubmissionState& operator=(const RenderSubmissionState&) noexcept;
+        RenderSubmissionState(RenderSubmissionState&&) noexcept;
+        RenderSubmissionState& operator=(RenderSubmissionState&&) noexcept;
+        [[nodiscard]] static Expected<RenderSubmissionState> create(
+            std::shared_ptr<void> completion = {},
+            void (*wake)(void*) noexcept = nullptr
+        ) noexcept;
+        [[nodiscard]] Observer observe() const noexcept
+        {
+            return Observer(record_);
+        }
+        [[nodiscard]] explicit operator bool() const noexcept
+        {
+            return bool(record_);
+        }
+        friend bool operator==(const RenderSubmissionState&, const RenderSubmissionState&) noexcept = default;
+
+        // Render-owner only. Recording deduplicates a binding sampled by several
+        // views in the same frame. Submission and completion require real GPU proof.
+        [[nodiscard]] bool record(std::uint64_t serial) const noexcept;
+        void submit(std::uint64_t serial) const noexcept;
+        void finish(std::uint64_t serial) const noexcept;
+
+    private:
+        explicit RenderSubmissionState(std::shared_ptr<Record> record) noexcept : record_(std::move(record)) {}
+        void reset() noexcept;
+        std::shared_ptr<Record> record_;
+    };
+
+    template <std::size_t PayloadAlignment = 64> struct TCommandStorage
+    {
+        using PayloadVector = std::vector<std::byte, TAlignedAllocator<std::byte, PayloadAlignment>>;
 
         PayloadVector payload;
         std::vector<AttachmentRecord> attachments;
 
-        CommandStorage() = default;
-        CommandStorage(const CommandStorage&) = delete;
-        CommandStorage& operator=(const CommandStorage&) = delete;
-        CommandStorage(CommandStorage&&) noexcept = default;
-        CommandStorage& operator=(CommandStorage&&) noexcept = default;
+        TCommandStorage() = default;
+        TCommandStorage(const TCommandStorage&) = delete;
+        TCommandStorage& operator=(const TCommandStorage&) = delete;
+        TCommandStorage(TCommandStorage&&) noexcept = default;
+        TCommandStorage& operator=(TCommandStorage&&) noexcept = default;
 
         void reserveStorage(const ProgramMemoryHints& hints)
         {
@@ -57,13 +117,12 @@ namespace lux::render
         std::span<const AttachmentRecord> attachments{};
 
         template <std::size_t PayloadAlignment>
-        CommandPacketView(const CommandStorage<PayloadAlignment>& storage) noexcept
+        CommandPacketView(const TCommandStorage<PayloadAlignment>& storage) noexcept
             : payload(storage.payload), attachments(storage.attachments)
-        {
-        }
+        {}
 
-        [[nodiscard]] Expected<std::span<const std::byte>>
-        bytes(std::uint32_t offset, std::uint32_t size) const noexcept
+        [[nodiscard]] Expected<std::span<const std::byte>> bytes(std::uint32_t offset, std::uint32_t size)
+            const noexcept
         {
             if (offset > payload.size() || size > payload.size() - offset)
                 return renderFailure<err::comm::PayloadOutOfBounds>(offset, size);
@@ -75,8 +134,8 @@ namespace lux::render
             return bytes(command.payload_offset, command.payload_size);
         }
 
-        [[nodiscard]] Expected<std::reference_wrapper<const AttachmentRecord>>
-        attachment(std::uint32_t index) const noexcept
+        [[nodiscard]] Expected<std::reference_wrapper<const AttachmentRecord>> attachment(std::uint32_t index
+        ) const noexcept
         {
             if (index >= attachments.size())
                 return renderFailure<err::comm::AttachmentIndexOutOfRange>(
@@ -89,24 +148,24 @@ namespace lux::render
 
     enum class ERenderProgramKind : std::uint8_t
     {
-        StateUpdate,
-        Frame,
+        STATE_UPDATE,
+        FRAME,
     };
 
-    template <std::size_t PayloadAlignment = 64> struct RenderProgram : CommandStorage<PayloadAlignment>
+    template <std::size_t PayloadAlignment = 64> struct TRenderProgram : TCommandStorage<PayloadAlignment>
     {
-        using Storage = CommandStorage<PayloadAlignment>;
+        using Storage = TCommandStorage<PayloadAlignment>;
         using MemoryHints = ProgramMemoryHints;
 
         std::vector<CmdRecord> commands;
 
-        ERenderProgramKind kind{ERenderProgramKind::StateUpdate};
+        ERenderProgramKind kind{ERenderProgramKind::STATE_UPDATE};
 
-        RenderProgram() = default;
-        RenderProgram(const RenderProgram&) = delete;
-        RenderProgram& operator=(const RenderProgram&) = delete;
-        RenderProgram(RenderProgram&&) noexcept = default;
-        RenderProgram& operator=(RenderProgram&&) noexcept = default;
+        TRenderProgram() = default;
+        TRenderProgram(const TRenderProgram&) = delete;
+        TRenderProgram& operator=(const TRenderProgram&) = delete;
+        TRenderProgram(TRenderProgram&&) noexcept = default;
+        TRenderProgram& operator=(TRenderProgram&&) noexcept = default;
 
         void reserve(const ProgramMemoryHints& hints)
         {
@@ -116,12 +175,12 @@ namespace lux::render
 
         void clear_keep_capacity() noexcept
         {
-            kind = ERenderProgramKind::StateUpdate;
+            kind = ERenderProgramKind::STATE_UPDATE;
             commands.clear();
             this->clearStorage();
         }
 
-        void swap(RenderProgram& other) noexcept
+        void swap(TRenderProgram& other) noexcept
         {
             using std::swap;
             swap(kind, other.kind);
@@ -137,7 +196,7 @@ namespace lux::render
         std::size_t attachment_capacity{2};
     };
 
-    template <std::size_t PayloadAlignment = 64> struct OperationPacket final : CommandStorage<PayloadAlignment>
+    template <std::size_t PayloadAlignment = 64> struct TOperationPacket final : TCommandStorage<PayloadAlignment>
     {
         using MemoryHints = OperationMemoryHints;
 
@@ -145,11 +204,11 @@ namespace lux::render
         bool has_command{false};
         std::size_t accounted_byte_count{0};
 
-        OperationPacket() = default;
-        OperationPacket(const OperationPacket&) = delete;
-        OperationPacket& operator=(const OperationPacket&) = delete;
-        OperationPacket(OperationPacket&&) noexcept = default;
-        OperationPacket& operator=(OperationPacket&&) noexcept = default;
+        TOperationPacket() = default;
+        TOperationPacket(const TOperationPacket&) = delete;
+        TOperationPacket& operator=(const TOperationPacket&) = delete;
+        TOperationPacket(TOperationPacket&&) noexcept = default;
+        TOperationPacket& operator=(TOperationPacket&&) noexcept = default;
 
         void reserve(const OperationMemoryHints& hints)
         {
@@ -199,18 +258,18 @@ namespace lux::render
         }
     };
 
-    template <std::size_t PayloadAlignment = 64> struct ReplyPacket
+    template <std::size_t PayloadAlignment = 64> struct TReplyPacket
     {
-        using PayloadVector = std::vector<std::byte, AlignedAllocator<std::byte, PayloadAlignment>>;
+        using PayloadVector = std::vector<std::byte, TAlignedAllocator<std::byte, PayloadAlignment>>;
 
         std::vector<ReplyRecord> replies;
         PayloadVector payload;
 
-        ReplyPacket() = default;
-        ReplyPacket(const ReplyPacket&) = delete;
-        ReplyPacket& operator=(const ReplyPacket&) = delete;
-        ReplyPacket(ReplyPacket&&) = delete;
-        ReplyPacket& operator=(ReplyPacket&&) = delete;
+        TReplyPacket() = default;
+        TReplyPacket(const TReplyPacket&) = delete;
+        TReplyPacket& operator=(const TReplyPacket&) = delete;
+        TReplyPacket(TReplyPacket&&) = delete;
+        TReplyPacket& operator=(TReplyPacket&&) = delete;
 
         void reserve(const ProgramMemoryHints& hints)
         {
@@ -269,7 +328,8 @@ namespace lux::render
             RenderError result{};
             result.type = ErrorTypeId{
                 terminal_error_words[0].load(std::memory_order_relaxed),
-                terminal_error_words[1].load(std::memory_order_relaxed)};
+                terminal_error_words[1].load(std::memory_order_relaxed)
+            };
             for (std::size_t index = 0u; index < result.args.size(); ++index)
             {
                 result.args[index] = terminal_error_words[index + 2u].load(std::memory_order_relaxed);
@@ -281,6 +341,7 @@ namespace lux::render
         {
             work_epoch.fetch_add(1, std::memory_order_release);
             work_epoch.notify_all();
+            notifyExternal();
         }
 
         /// Server-side reply publication. In addition to waking local waiters,
@@ -293,9 +354,7 @@ namespace lux::render
             work_epoch.fetch_add(1, std::memory_order_release);
             reply_epoch.notify_all();
             work_epoch.notify_all();
-            const auto wake = external_wake.load(std::memory_order_acquire);
-            if (wake)
-                wake(external_wake_context.load(std::memory_order_acquire));
+            notifyExternal();
         }
 
         /// Client-side response release: wakes the server because response
@@ -311,16 +370,12 @@ namespace lux::render
             work_epoch.notify_all();
         }
 
-        void bindExternalWake(void* context, ExternalWake wake) noexcept
+        // Cold registration. Callbacks only wake their owner; they must not register or dispatch here.
+        void bindExternalWake(const std::shared_ptr<void>& context, ExternalWake wake)
         {
-            external_wake_context.store(context, std::memory_order_release);
-            external_wake.store(wake, std::memory_order_release);
-        }
-
-        void unbindExternalWake() noexcept
-        {
-            external_wake.store(nullptr, std::memory_order_release);
-            external_wake_context.store(nullptr, std::memory_order_release);
+            std::lock_guard lock(external_mutex_);
+            std::erase_if(external_wakes_, [](const auto& entry) { return entry.owner.expired(); });
+            external_wakes_.push_back({context, wake});
         }
 
         void requestStop() noexcept
@@ -330,6 +385,7 @@ namespace lux::render
             reply_epoch.fetch_add(1, std::memory_order_release);
             work_epoch.notify_all();
             reply_epoch.notify_all();
+            notifyExternal();
         }
 
         [[nodiscard]] bool isStopping() const noexcept
@@ -337,10 +393,21 @@ namespace lux::render
             return stopping.load(std::memory_order_acquire);
         }
 
-        std::atomic<void*> external_wake_context{nullptr};
-        std::atomic<ExternalWake> external_wake{nullptr};
-
     private:
+        struct Wake final
+        {
+            std::weak_ptr<void> owner;
+            ExternalWake wake;
+        };
+        std::mutex external_mutex_;
+        std::vector<Wake> external_wakes_;
+        void notifyExternal() noexcept
+        {
+            std::lock_guard lock(external_mutex_);
+            for (const auto& entry : external_wakes_)
+                if (auto owner = entry.owner.lock())
+                    entry.wake(owner.get());
+        }
         std::atomic<std::uint32_t> terminal_error_state{0u};
         std::array<std::atomic<std::uint32_t>, 5u> terminal_error_words{};
     };
@@ -356,10 +423,9 @@ namespace lux::render
         ReplyPacketView() noexcept = default;
 
         template <std::size_t PayloadAlignment>
-        ReplyPacketView(const ReplyPacket<PayloadAlignment>& packet) noexcept
+        ReplyPacketView(const TReplyPacket<PayloadAlignment>& packet) noexcept
             : replies(packet.replies), payload(packet.payload)
-        {
-        }
+        {}
 
         [[nodiscard]] Expected<std::span<const std::byte>> bytes(const ReplyRecord& reply) const noexcept
         {
@@ -401,19 +467,16 @@ namespace lux::render
         template <typename F>
             requires std::invocable<F&, ReplyPacketView, const ReplyRecord&>
         ReplyDispatchCallback(F&& fn) : dispatch(std::forward<F>(fn))
-        {
-        }
+        {}
 
         ReplyDispatchCallback(Dispatch on_reply, Failure on_failure)
             : dispatch(std::move(on_reply)), failure(std::move(on_failure))
-        {
-        }
+        {}
 
         ReplyDispatchCallback(Dispatch on_reply, Failure on_failure, PrepareMainAdoption prepare_adoption)
             : dispatch(std::move(on_reply)), failure(std::move(on_failure)),
               prepare_main_adoption(std::move(prepare_adoption))
-        {
-        }
+        {}
 
         void operator()(ReplyPacketView packet, const ReplyRecord& reply) const
         {
@@ -455,58 +518,56 @@ namespace lux::render
     }
 
     template <std::size_t PayloadAlignment>
-    [[nodiscard]] ReplyPacketView replyPacketView(const ReplyPacket<PayloadAlignment>& packet) noexcept
+    [[nodiscard]] ReplyPacketView replyPacketView(const TReplyPacket<PayloadAlignment>& packet) noexcept
     {
         return ReplyPacketView{packet};
     }
 
-    template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64> struct RenderProgramChannel
+    template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64> struct TRenderProgramChannel
     {
         static constexpr std::size_t request_slot_count = 4;
 
-        explicit RenderProgramChannel(std::size_t max_pending_packets = 2) noexcept
+        explicit TRenderProgramChannel(std::size_t max_pending_packets = 2) noexcept
             : requests(max_pending_packets), responses(max_pending_packets)
-        {
-        }
+        {}
 
-        lux::cxx::BoundedSpscFrameRing<RenderProgram<RequestAlignment>, request_slot_count> requests;
-        lux::cxx::BoundedSpscFrameRing<ReplyPacket<ReplyAlignment>, 4> responses;
+        lux::cxx::BoundedSpscFrameRing<TRenderProgram<RequestAlignment>, request_slot_count> requests;
+        lux::cxx::BoundedSpscFrameRing<TReplyPacket<ReplyAlignment>, 4> responses;
 
-        [[nodiscard]] static std::shared_ptr<RenderProgramChannel> create(std::size_t max_pending_packets = 2)
+        [[nodiscard]] static std::shared_ptr<TRenderProgramChannel> create(std::size_t max_pending_packets = 2)
         {
-            return std::make_shared<RenderProgramChannel>(max_pending_packets);
+            return std::make_shared<TRenderProgramChannel>(max_pending_packets);
         }
     };
 
-    template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64> struct RenderControlChannel
+    template <std::size_t RequestAlignment = 64, std::size_t ReplyAlignment = 64> struct TRenderControlChannel
     {
-        explicit RenderControlChannel(std::size_t queue_capacity = 16) : requests(queue_capacity)
-        {
-        }
+        explicit TRenderControlChannel(std::size_t queue_capacity = 16) : requests(queue_capacity) {}
 
-        lux::cxx::SpscLockFreeRingQueue<OperationPacket<RequestAlignment>> requests;
-        lux::cxx::BoundedSpscFrameRing<ReplyPacket<ReplyAlignment>, 4> responses{2};
+        lux::cxx::SpscLockFreeRingQueue<TOperationPacket<RequestAlignment>> requests;
+        lux::cxx::BoundedSpscFrameRing<TReplyPacket<ReplyAlignment>, 4> responses{2};
 
-        [[nodiscard]] static std::shared_ptr<RenderControlChannel> create(std::size_t queue_capacity = 16)
+        [[nodiscard]] static std::shared_ptr<TRenderControlChannel> create(std::size_t queue_capacity = 16)
         {
-            return std::make_shared<RenderControlChannel>(queue_capacity);
+            return std::make_shared<TRenderControlChannel>(queue_capacity);
         }
     };
 
-    template <std::size_t ReplyAlignment = 64> class RenderUploadChannel final
+    template <std::size_t ReplyAlignment = 64> class TRenderUploadChannel final
     {
     public:
-        using ResponsePacket = ReplyPacket<ReplyAlignment>;
+        using ResponsePacket = TReplyPacket<ReplyAlignment>;
 
-        explicit RenderUploadChannel(std::size_t queue_capacity = 64, std::size_t byte_budget = 256u * 1024u * 1024u)
+        explicit TRenderUploadChannel(std::size_t queue_capacity = 64, std::size_t byte_budget = 256u * 1024u * 1024u)
             : requests(queue_capacity), byte_budget_(byte_budget)
-        {
-        }
+        {}
 
-        [[nodiscard]] static std::shared_ptr<RenderUploadChannel>
-        create(std::size_t queue_capacity = 64, std::size_t byte_budget = 256u * 1024u * 1024u)
+        [[nodiscard]] static std::shared_ptr<TRenderUploadChannel> create(
+            std::size_t queue_capacity = 64,
+            std::size_t byte_budget = 256u * 1024u * 1024u
+        )
         {
-            return std::make_shared<RenderUploadChannel>(queue_capacity, byte_budget);
+            return std::make_shared<TRenderUploadChannel>(queue_capacity, byte_budget);
         }
 
         [[nodiscard]] bool tryReserveBytes(std::size_t bytes) noexcept
@@ -520,7 +581,8 @@ namespace lux::render
                         used,
                         used + bytes,
                         std::memory_order_acq_rel,
-                        std::memory_order_relaxed))
+                        std::memory_order_relaxed
+                    ))
                 {
                     auto high = payload_high_water_.load(std::memory_order_relaxed);
                     const auto current = used + bytes;
@@ -528,7 +590,8 @@ namespace lux::render
                                                  high,
                                                  current,
                                                  std::memory_order_relaxed,
-                                                 std::memory_order_relaxed))
+                                                 std::memory_order_relaxed
+                                             ))
                     {
                     }
                     return true;
@@ -572,7 +635,7 @@ namespace lux::render
             return queue_high_water_.load(std::memory_order_relaxed);
         }
 
-        lux::cxx::SpscLockFreeRingQueue<OperationPacket<>> requests;
+        lux::cxx::SpscLockFreeRingQueue<TOperationPacket<>> requests;
         lux::cxx::BoundedSpscFrameRing<ResponsePacket, 4> responses{2};
 
     private:

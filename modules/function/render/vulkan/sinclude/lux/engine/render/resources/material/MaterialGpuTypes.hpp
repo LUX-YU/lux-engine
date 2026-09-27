@@ -22,12 +22,12 @@
 namespace lux::render
 {
     // ===== Material Common Flags =====
-    enum : uint32_t
+    enum class EMaterialGpuFlag : uint32_t
     {
-        MATF_DOUBLE_SIDED = 1u << 0,
-        MATF_CAST_SHADOWS = 1u << 1,
-        MATF_RECEIVE_SHADOWS = 1u << 2,
-        MATF_SMITH_MASKING = 1u << 3,
+        DOUBLE_SIDED = 1u << 0,
+        CAST_SHADOWS = 1u << 1,
+        RECEIVE_SHADOWS = 1u << 2,
+        SMITH_MASKING = 1u << 3,
     };
 
     // ===== Texture sampling representation reference, aligned to 16B =====
@@ -67,7 +67,7 @@ namespace lux::render
         uint32_t shading_model_id; // EShadingModel::UNLIT = 0
         uint32_t feature_mask;     // ShaderFeatureMask
         uint32_t tex_mask;         // bit0: base_color, bit1: emissive
-        uint32_t flags;            // MATF_*
+        uint32_t flags;            // EMaterialGpuFlag bits
         uint32_t _header_pad[4]{}; // pad header to 32B
 
         aligned16vec4 base_color; // rgba
@@ -112,7 +112,7 @@ namespace lux::render
     // =====================================================================
     struct alignas(16) PbrFamilyGPU
     {
-        uint32_t shading_model_id; // EShadingModel::PbrMetallicRoughness = 200
+        uint32_t shading_model_id; // EShadingModel::PBR_METALLIC_ROUGHNESS = 200
         uint32_t feature_mask;
         uint32_t tex_mask; // bit0: base_color, bit1: metallic_roughness,
                            // bit2: normal, bit3: occlusion, bit4: emissive
@@ -180,7 +180,7 @@ namespace lux::render
         uint32_t shading_model_id; // EShadingModel::GRAPH = 400
         uint32_t feature_mask;     // unused (graph bakes its own shading)
         uint32_t tex_mask;         // bit i set if tex slot i bound
-        uint32_t flags;            // MATF_*
+        uint32_t flags;            // EMaterialGpuFlag bits
         uint32_t _header_pad[4]{}; // pad header to 32B
 
         aligned16vec4 params[16]; // generic param lanes (256B)
@@ -203,28 +203,28 @@ namespace lux::render
     // =====================================================================
     //  Family GPU type trait: ELightingTechnique → GPU struct type
     // =====================================================================
-    template <ELightingTechnique> struct family_gpu_type;
-    template <> struct family_gpu_type<ELightingTechnique::Unlit>
+    template <ELightingTechnique> struct TFamilyGpuType;
+    template <> struct TFamilyGpuType<ELightingTechnique::UNLIT>
     {
         using type = UnlitFamilyGPU;
     };
-    template <> struct family_gpu_type<ELightingTechnique::LegacyLit>
+    template <> struct TFamilyGpuType<ELightingTechnique::LEGACY_LIT>
     {
         using type = LegacyLitFamilyGPU;
     };
-    template <> struct family_gpu_type<ELightingTechnique::PbrMetallicRoughness>
+    template <> struct TFamilyGpuType<ELightingTechnique::PBR_METALLIC_ROUGHNESS>
     {
         using type = PbrFamilyGPU;
     };
-    template <> struct family_gpu_type<ELightingTechnique::Stylized>
+    template <> struct TFamilyGpuType<ELightingTechnique::STYLIZED>
     {
         using type = StylizedFamilyGPU;
     };
-    template <> struct family_gpu_type<ELightingTechnique::Graph>
+    template <> struct TFamilyGpuType<ELightingTechnique::GRAPH>
     {
         using type = GraphFamilyGPU;
     };
 
-    template <ELightingTechnique F> using family_gpu_t = typename family_gpu_type<F>::type;
+    template <ELightingTechnique F> using family_gpu_t = typename TFamilyGpuType<F>::type;
 
 } // namespace lux::render

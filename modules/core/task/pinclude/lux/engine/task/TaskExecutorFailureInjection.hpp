@@ -13,7 +13,5 @@ namespace lux::task::detail
     };
 
     LUX_CORE_TASK_PUBLIC void failNextTaskExecutorOperationForTest(ETaskExecutorFailurePoint point) noexcept;
-    [[nodiscard]] LUX_CORE_TASK_PUBLIC bool consumeTaskExecutorFailureForTest(
-        ETaskExecutorFailurePoint point
-    ) noexcept;
+    [[nodiscard]] LUX_CORE_TASK_PUBLIC bool consumeTaskExecutorFailureForTest(ETaskExecutorFailurePoint point) noexcept;
 }

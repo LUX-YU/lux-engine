@@ -11,7 +11,8 @@ add_component(
     OUTPUT_NAME    lux_engine_scene_composition
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneInstance.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneBuilder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRuntime.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneSystemInstaller.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneDriver.cpp
 )
 
@@ -33,6 +34,7 @@ target_link_libraries(
         lux::engine::scene::scene_system
         lux::engine::simulation::ecs::schema
         lux::engine::resource::identity
+        lux::engine::process::process_execution
 )
 component_add_transitive_commands(
     scene_composition
@@ -42,6 +44,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-scene-system REQUIRED COMPONENTS scene_system)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS schema)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
+    "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
 )
 
 lux_engine_install_components(
@@ -52,13 +55,22 @@ lux_engine_install_components(
 )
 
 if(BUILD_TESTING)
-    add_executable(scene_driver_test test/driver.cpp)
-    target_link_libraries(scene_driver_test PRIVATE scene_composition)
+    add_executable(scene_driver_test test/driver.cpp test/transform.cpp)
+    target_include_directories(scene_driver_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
+    target_link_libraries(scene_driver_test PRIVATE scene_composition lux::engine::scene::scene_transform)
     if(MSVC)
         target_compile_options(scene_driver_test PRIVATE /UNDEBUG)
     else()
         target_compile_options(scene_driver_test PRIVATE -UNDEBUG)
     endif()
     add_test(NAME scene.driver COMMAND scene_driver_test)
-    add_test(NAME scene.driver_small_budget COMMAND scene_driver_test --small-budget)
+    add_executable(scene_runtime_test test/runtime.cpp)
+    target_link_libraries(scene_runtime_test PRIVATE scene_composition lux::engine::scene::scene_transform)
+    if(MSVC)
+        target_compile_options(scene_runtime_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(scene_runtime_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME scene.runtime COMMAND scene_runtime_test)
+
 endif()

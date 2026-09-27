@@ -45,16 +45,16 @@ namespace lux::render
 
     enum class EBufferDomain : uint8_t
     {
-        VertexInput,    ///< VBO/IBO — read by VERTEX_INPUT stage
-        Storage_VS,     ///< SSBO read by vertex shader
-        Storage_CS,     ///< SSBO read by compute shader
-        Storage_FS,     ///< SSBO read by fragment shader
-        Storage_VS_CS,  ///< SSBO read by vertex + compute
-        Storage_VS_FS,  ///< SSBO read by vertex + fragment
-        Storage_All,    ///< SSBO read by vertex + compute + fragment
-        VertexInput_CS, ///< VBO/SSBO read by vertex input + compute shader
-        Sampled_FS,     ///< Image sampled in fragment shader
-        TransferDst,    ///< Fresh buffer/image — no prior reader, skip pre-barrier
+        VERTEX_INPUT,    ///< VBO/IBO — read by VERTEX_INPUT stage
+        STORAGE_VS,      ///< SSBO read by vertex shader
+        STORAGE_CS,      ///< SSBO read by compute shader
+        STORAGE_FS,      ///< SSBO read by fragment shader
+        STORAGE_VS_CS,   ///< SSBO read by vertex + compute
+        STORAGE_VS_FS,   ///< SSBO read by vertex + fragment
+        STORAGE_ALL,     ///< SSBO read by vertex + compute + fragment
+        VERTEX_INPUT_CS, ///< VBO/SSBO read by vertex input + compute shader
+        SAMPLED_FS,      ///< Image sampled in fragment shader
+        TRANSFER_DST,    ///< Fresh buffer/image — no prior reader, skip pre-barrier
     };
 
     // =========================================================================
@@ -71,37 +71,41 @@ namespace lux::render
     {
         switch (domain)
         {
-        case EBufferDomain::VertexInput:
+        case EBufferDomain::VERTEX_INPUT:
             return {
                 VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT,
-                VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_2_INDEX_READ_BIT};
-        case EBufferDomain::Storage_VS:
+                VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_2_INDEX_READ_BIT
+            };
+        case EBufferDomain::STORAGE_VS:
             return {VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT};
-        case EBufferDomain::Storage_CS:
+        case EBufferDomain::STORAGE_CS:
             return {VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT};
-        case EBufferDomain::Storage_FS:
+        case EBufferDomain::STORAGE_FS:
             return {VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT};
-        case EBufferDomain::Storage_VS_CS:
+        case EBufferDomain::STORAGE_VS_CS:
             return {
                 VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                VK_ACCESS_2_SHADER_STORAGE_READ_BIT};
-        case EBufferDomain::Storage_VS_FS:
+                VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+            };
+        case EBufferDomain::STORAGE_VS_FS:
             return {
                 VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                VK_ACCESS_2_SHADER_STORAGE_READ_BIT};
-        case EBufferDomain::Storage_All:
+                VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+            };
+        case EBufferDomain::STORAGE_ALL:
             return {
                 VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
                     VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                VK_ACCESS_2_SHADER_STORAGE_READ_BIT};
-        case EBufferDomain::VertexInput_CS:
+                VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+            };
+        case EBufferDomain::VERTEX_INPUT_CS:
             return {
                 VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_2_INDEX_READ_BIT |
-                    VK_ACCESS_2_SHADER_STORAGE_READ_BIT};
-        case EBufferDomain::Sampled_FS:
+                VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_2_INDEX_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+            };
+        case EBufferDomain::SAMPLED_FS:
             return {VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT};
-        case EBufferDomain::TransferDst:
+        case EBufferDomain::TRANSFER_DST:
             return {VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE};
         }
         return {VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE};
@@ -118,7 +122,7 @@ namespace lux::render
         VkBuffer dst{VK_NULL_HANDLE};
         VkDeviceSize dst_offset{0};
         VkDeviceSize size{0};
-        EBufferDomain domain{EBufferDomain::Storage_All};
+        EBufferDomain domain{EBufferDomain::STORAGE_ALL};
         int8_t priority{0}; ///< Lower values are recorded first (grow=-1, data=0)
     };
 
@@ -132,7 +136,7 @@ namespace lux::render
         VkImageSubresourceLayers subresource{};
         VkOffset3D offset{};
         VkExtent3D extent{};
-        EBufferDomain domain{EBufferDomain::Sampled_FS};
+        EBufferDomain domain{EBufferDomain::SAMPLED_FS};
     };
 
     // =========================================================================
@@ -141,12 +145,12 @@ namespace lux::render
 
     struct QFOTAcquireRequest
     {
-        enum class Kind : uint8_t
+        enum class EKind : uint8_t
         {
-            Buffer,
-            Image
+            BUFFER,
+            IMAGE
         };
-        Kind kind{Kind::Buffer};
+        EKind kind{EKind::BUFFER};
 
         // Buffer QFOT
         VkBuffer buffer{VK_NULL_HANDLE};
@@ -160,7 +164,7 @@ namespace lux::render
 
         uint32_t src_family{VK_QUEUE_FAMILY_IGNORED};
         uint32_t dst_family{VK_QUEUE_FAMILY_IGNORED};
-        EBufferDomain domain{EBufferDomain::VertexInput};
+        EBufferDomain domain{EBufferDomain::VERTEX_INPUT};
     };
 
 } // namespace lux::render

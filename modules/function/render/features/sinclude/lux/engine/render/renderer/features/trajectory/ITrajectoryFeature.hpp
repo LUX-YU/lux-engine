@@ -21,11 +21,11 @@ namespace lux::render
      *
      * The numerical values are stable — do not reorder.
      */
-    enum class TrajectoryMode : uint8_t
+    enum class ETrajectoryMode : uint8_t
     {
-        Line = 1,   ///< LINE_STRIP rendering (simplest, fastest)
-        Ribbon = 2, ///< Compute-expanded screen-facing triangle strip
-        Tube = 3,   ///< Compute-expanded cylindrical triangle mesh
+        LINE = 1,   ///< LINE_STRIP rendering (simplest, fastest)
+        RIBBON = 2, ///< Compute-expanded screen-facing triangle strip
+        TUBE = 3,   ///< Compute-expanded cylindrical triangle mesh
     };
 
     /**
@@ -37,6 +37,6 @@ namespace lux::render
         using RenderFeature::RenderFeature;
 
         /// The mode this feature implements.
-        [[nodiscard]] virtual TrajectoryMode mode() const noexcept = 0;
+        [[nodiscard]] virtual ETrajectoryMode mode() const noexcept = 0;
     };
 } // namespace lux::render

@@ -32,9 +32,7 @@ namespace lux::semantic
         STRUCT_REF = 10U,
     };
 
-    [[nodiscard]] constexpr TypeId typeId(
-        std::string_view canonical_name
-    ) noexcept
+    [[nodiscard]] constexpr TypeId typeId(std::string_view canonical_name) noexcept
     {
         std::uint64_t result = 14695981039346656037ULL;
         for (const auto value : canonical_name)
@@ -53,12 +51,10 @@ namespace lux::semantic
 
         [[nodiscard]] constexpr bool valid() const noexcept
         {
-            return type_id != InvalidTypeId && !canonical_name.empty() &&
-                type_id == typeId(canonical_name);
+            return type_id != InvalidTypeId && !canonical_name.empty() && type_id == typeId(canonical_name);
         }
 
-        friend constexpr bool operator==(const Type&, const Type&) noexcept =
-            default;
+        friend constexpr bool operator==(const Type&, const Type&) noexcept = default;
     };
 
     struct SignatureView final
@@ -76,17 +72,15 @@ namespace lux::semantic
         std::uint32_t alignment{};
     };
 
-    template <class Value>
-    struct TypeTraits;
+    template <class Value> struct TTypeTraits;
 
-#define LUX_SEMANTIC_BUILTIN(tag, cpp_type, canonical, abi_kind_value)         \
-    template <>                                                                \
-    struct TypeTraits<cpp_type> final                                           \
-    {                                                                          \
-        inline static constexpr std::string_view CanonicalName = canonical;    \
-        inline static constexpr std::uint8_t AbiKind = abi_kind_value;         \
-        inline static constexpr std::uint32_t Size = sizeof(cpp_type);         \
-        inline static constexpr std::uint32_t Alignment = alignof(cpp_type);   \
+#define LUX_SEMANTIC_BUILTIN(tag, cpp_type, canonical, abi_kind_value)                                                 \
+    template <> struct TTypeTraits<cpp_type> final                                                                     \
+    {                                                                                                                  \
+        inline static constexpr std::string_view CanonicalName = canonical;                                            \
+        inline static constexpr std::uint8_t AbiKind = abi_kind_value;                                                 \
+        inline static constexpr std::uint32_t Size = sizeof(cpp_type);                                                 \
+        inline static constexpr std::uint32_t Alignment = alignof(cpp_type);                                           \
     };
 
 #include <lux/engine/core/semantic/SemanticBuiltin.def>
@@ -94,33 +88,22 @@ namespace lux::semantic
 #undef LUX_SEMANTIC_BUILTIN
 
     template <class Value>
-    concept TypeDeclared = requires
-    {
-        { TypeTraits<std::remove_cv_t<Value>>::CanonicalName }
-            -> std::convertible_to<std::string_view>;
-        { TypeTraits<std::remove_cv_t<Value>>::AbiKind }
-            -> std::convertible_to<std::uint8_t>;
+    concept TypeDeclared = requires {
+        { TTypeTraits<std::remove_cv_t<Value>>::CanonicalName } -> std::convertible_to<std::string_view>;
+        { TTypeTraits<std::remove_cv_t<Value>>::AbiKind } -> std::convertible_to<std::uint8_t>;
     };
 
     template <class Value>
         requires TypeDeclared<Value>
-    [[nodiscard]] consteval Type makeType(
-        EValuePass pass = EValuePass::VALUE
-    ) noexcept
+    [[nodiscard]] consteval Type makeType(EValuePass pass = EValuePass::VALUE) noexcept
     {
-        constexpr auto name =
-            TypeTraits<std::remove_cv_t<Value>>::CanonicalName;
+        constexpr auto name = TTypeTraits<std::remove_cv_t<Value>>::CanonicalName;
         return Type{typeId(name), name, pass};
     }
 
     inline constexpr auto BuiltinLayouts = std::array{
-#define LUX_SEMANTIC_BUILTIN(tag, cpp_type, canonical, abi_kind_value)         \
-        Layout{                                                                \
-            typeId(canonical),                                                 \
-            canonical,                                                         \
-            abi_kind_value,                                                    \
-            sizeof(cpp_type),                                                  \
-            alignof(cpp_type)},
+#define LUX_SEMANTIC_BUILTIN(tag, cpp_type, canonical, abi_kind_value)                                                 \
+    Layout{typeId(canonical), canonical, abi_kind_value, sizeof(cpp_type), alignof(cpp_type)},
 #include <lux/engine/core/semantic/SemanticBuiltin.def>
 #undef LUX_SEMANTIC_BUILTIN
     };
@@ -135,13 +118,9 @@ namespace lux::semantic
         return nullptr;
     }
 
-    [[nodiscard]] constexpr bool sameSignature(
-        SignatureView left,
-        SignatureView right
-    ) noexcept
+    [[nodiscard]] constexpr bool sameSignature(SignatureView left, SignatureView right) noexcept
     {
-        if (left.parameters.size() != right.parameters.size() ||
-            left.returns.size() != right.returns.size())
+        if (left.parameters.size() != right.parameters.size() || left.returns.size() != right.returns.size())
         {
             return false;
         }

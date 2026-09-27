@@ -13,7 +13,7 @@ namespace lux::render
 {
     namespace
     {
-        lux::cxx::expected<RenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError> submitGraphMaterial(
+        lux::cxx::expected<TRenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError> submitGraphMaterial(
             MaterialUploadClient client,
             const GraphMaterialData& data,
             UploadGraphMaterialPayload payload
@@ -37,14 +37,16 @@ namespace lux::render
         }
     } // namespace
 
-    lux::cxx::expected<RenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError>
-    uploadGraphMaterial(MaterialUploadClient client, const GraphMaterialData& data)
+    lux::cxx::expected<TRenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError> uploadGraphMaterial(
+        MaterialUploadClient client,
+        const GraphMaterialData& data
+    )
     {
         UploadGraphMaterialPayload payload{};
         return submitGraphMaterial(client, data, payload);
     }
 
-    lux::cxx::expected<RenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError> uploadGraphMaterial(
+    lux::cxx::expected<TRenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError> uploadGraphMaterial(
         MaterialUploadClient client,
         const GraphMaterialData& data,
         ShaderHandle gbuffer_shader,
@@ -67,8 +69,11 @@ namespace lux::render
         return submitGraphMaterial(client, data, payload);
     }
 
-    lux::cxx::expected<void, ERenderUploadSubmitError>
-    modifyGraphMaterial(MaterialUploadClient client, RMaterialHandle handle, const GraphMaterialData& data)
+    lux::cxx::expected<void, ERenderUploadSubmitError> modifyGraphMaterial(
+        MaterialUploadClient client,
+        RMaterialHandle handle,
+        const GraphMaterialData& data
+    )
     {
         ModifyGraphMaterialPayload payload{};
         payload.handle = handle;

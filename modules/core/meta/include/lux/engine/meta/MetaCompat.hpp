@@ -25,7 +25,8 @@ namespace lux::meta
         /* Ptr       */ {0, 0, 0, 0, 0, 1, 0, 0, 0},
         /* PtrC      */ {0, 0, 0, 0, 0, 0, 0, 0, 0},
         /* CPtr      */ {0, 0, 0, 0, 0, 0, 0, 0, 0},
-        /* CPtrC     */ {0, 0, 0, 0, 0, 0, 0, 0, 0}};
+        /* CPtrC     */ {0, 0, 0, 0, 0, 0, 0, 0, 0}
+    };
 
     /**
      * @brief 9×9 table describing *assignment* compatibility.
@@ -46,7 +47,8 @@ namespace lux::meta
         /* Ptr       */ {0, 0, 0, 0, 0, 1, 0, 0, 0},
         /* PtrC      */ {0, 0, 0, 0, 0, 0, 0, 0, 0},
         /* CPtr      */ {0, 0, 0, 0, 0, 0, 0, 0, 0},
-        /* CPtrC     */ {0, 0, 0, 0, 0, 0, 0, 0, 0}};
+        /* CPtrC     */ {0, 0, 0, 0, 0, 0, 0, 0, 0}
+    };
 
     //--------------------------------------------------------------------------------------------------
     // 2.  Helper – fast check when base types match
@@ -60,7 +62,8 @@ namespace lux::meta
         //            src:    Void    Bool    Int8   Uint8   Int16   Uint16  Int32    Uint32   Int64    Uint64   Float
         //            Double  Record  Unknown
         /* dst=Void    */ {
-            {false, false, false, false, false, false, false, false, false, false, false, false, false, false}},
+            {false, false, false, false, false, false, false, false, false, false, false, false, false, false}
+        },
         /* dst=Bool    */
         {{false, true, false, false, false, false, false, false, false, false, false, false, false, false}},
         /* dst=Int8    */
@@ -92,7 +95,7 @@ namespace lux::meta
     //--------------------------------------------------------------------------------------------------
     static constexpr inline bool canImplicitlyConvert(const QualType& dst, const QualType& src) noexcept
     {
-        if (dst.qual != p_to_underlying(ETypeQual::Value) || src.qual != p_to_underlying(ETypeQual::Value))
+        if (dst.qual != p_to_underlying(ETypeQual::VALUE) || src.qual != p_to_underlying(ETypeQual::VALUE))
             return false;
 
         if (dst.base >= p_base_type_num || src.base >= p_base_type_num)

@@ -6,8 +6,7 @@ namespace lux::asset
 {
     Asset::Asset(AssetInfo info, std::vector<AssetAuxiliaryPayload> auxiliary) noexcept
         : info_(std::move(info)), auxiliary_(std::move(auxiliary))
-    {
-    }
+    {}
 
     Asset::~Asset() noexcept = default;
 

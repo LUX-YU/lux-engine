@@ -46,9 +46,7 @@ namespace lux::rdesc
         float shadow_bias{0.005F};
         float shadow_normal_bias{0.01F};
         std::uint32_t cascade_count{4U};
-        std::array<float, kLightCascadeSlots> cascade_splits{
-            0.1F, 0.25F, 0.5F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F
-        };
+        std::array<float, kLightCascadeSlots> cascade_splits{0.1F, 0.25F, 0.5F, 1.0F, 0.0F, 0.0F, 0.0F, 0.0F};
 
         friend bool operator==(const LightDescription&, const LightDescription&) noexcept = default;
     };

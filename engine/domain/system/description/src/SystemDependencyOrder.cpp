@@ -1,27 +1,24 @@
 #include <lux/engine/system/detail/SystemDependencyOrder.hpp>
 
 #include <algorithm>
-#include <new>
 #include <queue>
 #include <utility>
 
 namespace lux::system::detail
 {
-    lux::cxx::expected<std::vector<std::size_t>, ESystemDependencyOrderError>
-    deterministicSystemOrder(
+    lux::cxx::expected<std::vector<std::size_t>, ESystemDependencyOrderError> deterministicSystemOrder(
         std::span<const SystemInstanceId> instances,
         std::span<const SystemDependencyOrdinalEdge> edges
     ) noexcept
     {
-        try
         {
             std::vector<std::size_t> indegree(instances.size());
             std::vector<std::vector<std::size_t>> successors(instances.size());
             for (const auto edge : edges)
             {
-                const bool is_invalid = edge.before >= instances.size() || edge.after >= instances.size() ||
-                    edge.before == edge.after;
-                if (is_invalid)
+                const bool is_invalid_edge =
+                    edge.before >= instances.size() || edge.after >= instances.size() || edge.before == edge.after;
+                if (is_invalid_edge)
                 {
                     return lux::cxx::unexpected(ESystemDependencyOrderError::INVALID_EDGE);
                 }
@@ -63,10 +60,6 @@ namespace lux::system::detail
                 return lux::cxx::unexpected(ESystemDependencyOrderError::CYCLE);
             }
             return result;
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(ESystemDependencyOrderError::ALLOCATION_FAILURE);
         }
     }
 } // namespace lux::system::detail

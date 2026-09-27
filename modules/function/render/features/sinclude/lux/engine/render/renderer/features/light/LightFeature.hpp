@@ -47,8 +47,6 @@ namespace lux::render
 
     // No-arg ctor defined out-of-class so Config{} is evaluated where the class is
     // complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
-    inline LightFeature::LightFeature() : LightFeature(Config{})
-    {
-    }
+    inline LightFeature::LightFeature() : LightFeature(Config{}) {}
 
 } // namespace lux::render

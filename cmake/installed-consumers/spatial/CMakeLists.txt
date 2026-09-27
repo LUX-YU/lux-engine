@@ -8,6 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 find_package(lux-cmake-toolset CONFIG REQUIRED)
+find_package(lux-engine-core REQUIRED COMPONENTS meta)
 find_package(lux-engine-function REQUIRED COMPONENTS render_client)
 find_package(lux-engine-scene-mesh-query REQUIRED COMPONENTS scene_mesh_query)
 if(TARGET lux::engine::function::render_feature_client OR TARGET lux::engine::function::render_features OR

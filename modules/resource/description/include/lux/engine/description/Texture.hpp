@@ -28,10 +28,10 @@ namespace lux::rdesc
         ETC2_RGB8_SRGB,
         ETC2_RGBA8_UNORM,
         ETC2_RGBA8_SRGB,
-        ASTC_4x4_UNORM,
-        ASTC_4x4_SRGB,
-        ASTC_6x6_UNORM,
-        ASTC_6x6_SRGB,
+        ASTC_4X4_UNORM,
+        ASTC_4X4_SRGB,
+        ASTC_6X6_UNORM,
+        ASTC_6X6_SRGB,
     };
 
     enum class ETextureColorSpace : uint8_t
@@ -85,10 +85,10 @@ namespace lux::rdesc
         case ETexturePixelFormat::ETC2_RGB8_SRGB:
         case ETexturePixelFormat::ETC2_RGBA8_UNORM:
         case ETexturePixelFormat::ETC2_RGBA8_SRGB:
-        case ETexturePixelFormat::ASTC_4x4_UNORM:
-        case ETexturePixelFormat::ASTC_4x4_SRGB:
-        case ETexturePixelFormat::ASTC_6x6_UNORM:
-        case ETexturePixelFormat::ASTC_6x6_SRGB:
+        case ETexturePixelFormat::ASTC_4X4_UNORM:
+        case ETexturePixelFormat::ASTC_4X4_SRGB:
+        case ETexturePixelFormat::ASTC_6X6_UNORM:
+        case ETexturePixelFormat::ASTC_6X6_SRGB:
             return true;
         default:
             return false;
@@ -165,11 +165,15 @@ namespace lux::rdesc
          * @param data Pointer to the texture pixel data
          * @param size Size of the texture data in bytes
          */
-        [[nodiscard]] static lux::cxx::expected<Texture, ETextureCreateError>
-        fromShared(TextureInfo info, lux::cxx::SharedBytes<> pixels) noexcept;
+        [[nodiscard]] static lux::cxx::expected<Texture, ETextureCreateError> fromShared(
+            TextureInfo info,
+            lux::cxx::SharedBytes<> pixels
+        ) noexcept;
 
-        [[nodiscard]] static lux::cxx::expected<Texture, ETextureCreateError>
-        copyOf(TextureInfo info, std::span<const std::byte> pixels);
+        [[nodiscard]] static lux::cxx::expected<Texture, ETextureCreateError> copyOf(
+            TextureInfo info,
+            std::span<const std::byte> pixels
+        );
 
         Texture(const Texture&) = default;
         Texture& operator=(const Texture&) = default;
@@ -263,8 +267,7 @@ namespace lux::rdesc
     private:
         Texture(TextureInfo info, lux::cxx::SharedBytes<> pixels) noexcept
             : info_(std::move(info)), pixels_(std::move(pixels))
-        {
-        }
+        {}
 
         TextureInfo info_{};
         lux::cxx::SharedBytes<> pixels_;

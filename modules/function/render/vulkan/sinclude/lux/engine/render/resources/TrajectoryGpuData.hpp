@@ -42,8 +42,17 @@ namespace lux::render
         }
 
         /// Construct a complete vertex.
-        static constexpr GpuTrajectoryVertex
-        make(float px, float py, float pz, float r, float g, float b, float a, float t, float w) noexcept
+        static constexpr GpuTrajectoryVertex make(
+            float px,
+            float py,
+            float pz,
+            float r,
+            float g,
+            float b,
+            float a,
+            float t,
+            float w
+        ) noexcept
         {
             return {px, py, pz, packColor(r, g, b, a), t, w};
         }
@@ -84,7 +93,8 @@ namespace lux::render
     };
     static_assert(
         sizeof(TrajectoryDrawCommand) == 16,
-        "TrajectoryDrawCommand must be 16 bytes to match VkDrawIndirectCommand");
+        "TrajectoryDrawCommand must be 16 bytes to match VkDrawIndirectCommand"
+    );
 
     /// Header for indirect draw buffer (used with vkCmdDrawIndirectCount).
     struct TrajectoryIndirectHeader
@@ -94,6 +104,7 @@ namespace lux::render
     };
     static_assert(
         sizeof(TrajectoryIndirectHeader) == 16,
-        "TrajectoryIndirectHeader must be 16 bytes to match VkDrawIndirectCommand");
+        "TrajectoryIndirectHeader must be 16 bytes to match VkDrawIndirectCommand"
+    );
 
 } // namespace lux::render

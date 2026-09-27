@@ -29,7 +29,7 @@ namespace lux::render
     {
     public:
         static constexpr phase_mask_t kExtractPhaseMask =
-            phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::ForwardTrans));
+            phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::FORWARD_TRANS));
 
         struct Config
         {
@@ -46,9 +46,9 @@ namespace lux::render
         // -----------------------------------------------------------------------
         //  ITrajectoryFeature
         // -----------------------------------------------------------------------
-        [[nodiscard]] TrajectoryMode mode() const noexcept override
+        [[nodiscard]] ETrajectoryMode mode() const noexcept override
         {
-            return TrajectoryMode::Line;
+            return ETrajectoryMode::LINE;
         }
 
         // -----------------------------------------------------------------------

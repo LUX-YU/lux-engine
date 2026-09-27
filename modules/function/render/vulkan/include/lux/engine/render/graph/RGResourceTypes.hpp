@@ -28,7 +28,7 @@ namespace lux::render
     struct RGImportedResourceInfo
     {
         ExternalImageGetter image_getter = nullptr;
-        uint32_t update_group = static_cast<uint32_t>(RGUpdateGroup::GROUP_NONE);
+        uint32_t update_group = static_cast<uint32_t>(ERGUpdateGroup::GROUP_NONE);
 
         VkImageLayout initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
         VkImageLayout final_layout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -42,7 +42,7 @@ namespace lux::render
         /// Slot assignment — when set, the compiler registers this resource in
         /// RGCompiledGraph::slot_resource_idx so the recorder can inject per-frame
         /// images from RGFrameContext::imported_slots without name-based lookups.
-        std::optional<TargetSlot> slot;
+        std::optional<ETargetSlot> slot;
 
         /// When true, the first render-pass group that writes this resource uses
         /// LOAD_OP_LOAD instead of LOAD_OP_CLEAR — preserving content written by
@@ -53,7 +53,7 @@ namespace lux::render
     struct RGImportedBufferInfo
     {
         ExternalBufferGetter buffer_getter = nullptr;
-        uint32_t update_group = static_cast<uint32_t>(RGUpdateGroup::GROUP_NONE);
+        uint32_t update_group = static_cast<uint32_t>(ERGUpdateGroup::GROUP_NONE);
 
         VkAccessFlags2 initial_access = 0;
         VkAccessFlags2 final_access = 0;
@@ -92,8 +92,11 @@ namespace lux::render
         /// 显存代价由创建者用本开关显式拒绝。
         bool keep_transient = false;
 
-        static RGTextureDescription
-        Absolute(uint32_t w, uint32_t h, lux::rdesc::ETextureFormat fmt = lux::rdesc::ETextureFormat::RGBA8_UNORM)
+        static RGTextureDescription Absolute(
+            uint32_t w,
+            uint32_t h,
+            lux::rdesc::ETextureFormat fmt = lux::rdesc::ETextureFormat::RGBA8_UNORM
+        )
         {
             RGTextureDescription d;
             d.width = w;
@@ -103,8 +106,11 @@ namespace lux::render
             return d;
         }
 
-        static RGTextureDescription
-        Relative(float scale_w, float scale_h, lux::rdesc::ETextureFormat fmt = lux::rdesc::ETextureFormat::RGBA8_UNORM)
+        static RGTextureDescription Relative(
+            float scale_w,
+            float scale_h,
+            lux::rdesc::ETextureFormat fmt = lux::rdesc::ETextureFormat::RGBA8_UNORM
+        )
         {
             RGTextureDescription d;
             d.width_scale = scale_w;
@@ -154,7 +160,7 @@ namespace lux::render
         // For FORWARD_REFERENCE resources: required vs optional dependency. A
         // required reference left unresolved at compile time (no producer with this
         // name) fails compilation fast instead of degrading to a null view.
-        ERGReference reference_mode{ERGReference::Optional};
+        ERGReference reference_mode{ERGReference::REFERENCE_OPTIONAL};
 
         RGResourceDescription() = default;
         RGResourceDescription(RGResourceDescription&&) = default;
@@ -165,13 +171,11 @@ namespace lux::render
               desc(other.desc),
               import_info(other.import_info ? std::make_unique<RGImportedResourceInfo>(*other.import_info) : nullptr),
               import_buffer_info(
-                  other.import_buffer_info ? std::make_unique<RGImportedBufferInfo>(*other.import_buffer_info)
-                                           : nullptr
+                  other.import_buffer_info ? std::make_unique<RGImportedBufferInfo>(*other.import_buffer_info) : nullptr
               ),
               ring_size(other.ring_size), ring_phase(other.ring_phase), pingpong_peer(other.pingpong_peer),
               reference_mode(other.reference_mode)
-        {
-        }
+        {}
 
         RGResourceDescription& operator=(const RGResourceDescription& other)
         {

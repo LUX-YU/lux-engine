@@ -14,8 +14,7 @@
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/meta/RuntimeObject.hpp>
 
-
- /**
+/**
   * @namespace lux::flowforge
   * @brief Contains classes and functions that represent a flow graph system with nodes and pins.
   */
@@ -34,20 +33,21 @@ namespace lux::flowforge
      */
     enum class ENodeOperation : uint8_t
     {
-        INVALID = 0,      ///< Undefined or placeholder operation.
-        START,            // 0 exec in, 1 exec out
-        BRANCH,           // 1 exec in, 2 exec out (true/false). 1 data in (bool).
-        SEQUENCE,         // 1 exec in, n exec out.
-        FOR_LOOP,         // 1 exec in, 2 exec out (loop body), exec out (completed). 2 data in (first/last index). 1 data out (index).
-        WHILE_LOOP,       // 1 exec in, 2 exec out (loop body), exec out (completed). 1 data in (bool condition). 1 data out (index).
-		RETURN,           // 1 exec in, 0 exec out. n data in (return value).
-        BREAK,            // 1 exec in, 0 exec out. Exits the innermost enclosing loop.
+        INVALID = 0, ///< Undefined or placeholder operation.
+        START,       // 0 exec in, 1 exec out
+        BRANCH,      // 1 exec in, 2 exec out (true/false). 1 data in (bool).
+        SEQUENCE,    // 1 exec in, n exec out.
+        FOR_LOOP,    // 1 exec in, 2 exec out (body/completed). 2 data in (first/last index). 1 data out (index).
+        WHILE_LOOP,  // 1 exec in, 2 exec out (body/completed). 1 data in (condition). 1 data out (index).
+        RETURN,      // 1 exec in, 0 exec out. n data in (return value).
+        BREAK,       // 1 exec in, 0 exec out. Exits the innermost enclosing loop.
 
         // functional
-        FUNC_DEF_START,   // 0 exec in, 1 exec out (return). n data out (arguments).
-        FUNC_RETURN,      // 1 exec in, 0 exec out. n data in (return value).
-        NATIVE_FUNC_CALL, // 1 exec in, 1 exec out. n data in (arguments). n data out (return value).
-        GRAPH_FUNC_CALL,  // 1 exec in, 1 exec out. n data in (arguments). n data out (return values). Calls a FuncDef in the same graph.
+        FUNC_DEF_START,      // 0 exec in, 1 exec out (return). n data out (arguments).
+        FUNC_RETURN,         // 1 exec in, 0 exec out. n data in (return value).
+        NATIVE_FUNC_CALL,    // 1 exec in, 1 exec out. n data in (arguments). n data out (return value).
+        GRAPH_FUNC_CALL,     // 1 exec in, 1 exec out. n data in (arguments). n data out (returns).
+                             // Calls a FuncDef in the same graph.
         SCRIPT_ABILITY_CALL, // Explicit Script Ability call; identity is ContractId + MethodId.
         SCRIPT_EVENT_WAIT, // Explicit one-shot Script Event wait; concrete identity is owned by its domain projection.
 
@@ -55,41 +55,42 @@ namespace lux::flowforge
         // engine-provided pointers (event/function parameters). CREATE_OBJECT
         // is reserved but deliberately unimplemented (allocation/destruction
         // semantics undecided; use a reflected factory native call instead).
-        CREATE_OBJECT,    // reserved, unimplemented.
-        GET_OBJECT,       // 0 exec in, 0 exec out. 1 data out (object reference).
-        SET_OBJECT,       // 1 exec in, 1 exec out. 1 data in (set value). 1 data out (object reference).
-        GET_FIELD,        // pure (memory read). 1 data in (object reference). 1 data out (field value).
-        SET_FIELD,        // 1 exec in, 1 exec out. 1 data in (object reference) + 1 data in (value). 1 data out (object passthrough).
+        CREATE_OBJECT, // reserved, unimplemented.
+        GET_OBJECT,    // 0 exec in, 0 exec out. 1 data out (object reference).
+        SET_OBJECT,    // 1 exec in, 1 exec out. 1 data in (set value). 1 data out (object reference).
+        GET_FIELD,     // pure (memory read). 1 data in (object reference). 1 data out (field value).
+        SET_FIELD,     // 1 exec in, 1 exec out. 2 data in (object reference and value).
+                       // 1 data out (object passthrough).
 
         // Operations/Mathematical — PURE nodes: no exec pins, re-evaluated on
         // demand at every use site (UE-style dataflow semantics).
-        ADD,              // pure. 2 data in (operands). 1 data out (result).
-        SUBTRACT,         // pure. 2 data in (operands). 1 data out (result).
-        MULTIPLY,         // pure. 2 data in (operands). 1 data out (result).
-        DIVIDE,           // pure. 2 data in (operands). 1 data out (result).
-        MODULO,           // pure. 2 data in (operands). 1 data out (result).
-        LOGICAL_AND,      // pure. 2 data in (operands, bool). 1 data out (bool).
-        LOGICAL_OR,       // pure. 2 data in (operands, bool). 1 data out (bool).
-        LOGICAL_NOT,      // pure. 1 data in (operand, bool).  1 data out (bool).
-        NEGATE,           // pure. 1 data in (operand).        1 data out (result).
+        ADD,         // pure. 2 data in (operands). 1 data out (result).
+        SUBTRACT,    // pure. 2 data in (operands). 1 data out (result).
+        MULTIPLY,    // pure. 2 data in (operands). 1 data out (result).
+        DIVIDE,      // pure. 2 data in (operands). 1 data out (result).
+        MODULO,      // pure. 2 data in (operands). 1 data out (result).
+        LOGICAL_AND, // pure. 2 data in (operands, bool). 1 data out (bool).
+        LOGICAL_OR,  // pure. 2 data in (operands, bool). 1 data out (bool).
+        LOGICAL_NOT, // pure. 1 data in (operand, bool).  1 data out (bool).
+        NEGATE,      // pure. 1 data in (operand).        1 data out (result).
 
         // Comparisons — pure, result is always bool.
-        CMP_EQ,           // pure. 2 data in (operands). 1 data out (bool).
-        CMP_NE,           // pure. 2 data in (operands). 1 data out (bool).
-        CMP_LT,           // pure. 2 data in (operands). 1 data out (bool).
-        CMP_LE,           // pure. 2 data in (operands). 1 data out (bool).
-        CMP_GT,           // pure. 2 data in (operands). 1 data out (bool).
-        CMP_GE,           // pure. 2 data in (operands). 1 data out (bool).
+        CMP_EQ, // pure. 2 data in (operands). 1 data out (bool).
+        CMP_NE, // pure. 2 data in (operands). 1 data out (bool).
+        CMP_LT, // pure. 2 data in (operands). 1 data out (bool).
+        CMP_LE, // pure. 2 data in (operands). 1 data out (bool).
+        CMP_GT, // pure. 2 data in (operands). 1 data out (bool).
+        CMP_GE, // pure. 2 data in (operands). 1 data out (bool).
 
         // Graph-local variables. GET is pseudo-pure: it reads the variable
         // slot at every use (never cached), so a Set earlier on the exec
         // chain is always observed.
-        GET_VARIABLE,     // pure (memory read). 1 data out (value).
-        SET_VARIABLE,     // 1 exec in, 1 exec out. 1 data in (value). 1 data out (value passthrough).
+        GET_VARIABLE, // pure (memory read). 1 data out (value).
+        SET_VARIABLE, // 1 exec in, 1 exec out. 1 data in (value). 1 data out (value passthrough).
 
         // EVENT
-        ON_EVENT,         // 0 exec in, 1 exec out, 1 data out (event payload).
-        SEND_EVENT        // 1 exec in, 0 exec out. 1 data in (event payload).
+        ON_EVENT,  // 0 exec in, 1 exec out, 1 data out (event payload).
+        SEND_EVENT // 1 exec in, 0 exec out. 1 data in (event payload).
     };
 
     /**
@@ -102,45 +103,84 @@ namespace lux::flowforge
     {
         switch (op)
         {
-        case ENodeOperation::INVALID:       return "Invalid";
-        case ENodeOperation::START:         return "Start";
-        case ENodeOperation::BRANCH:        return "Branch";
-        case ENodeOperation::SEQUENCE:      return "Sequence";
-        case ENodeOperation::FOR_LOOP:      return "For Loop";
-        case ENodeOperation::WHILE_LOOP:    return "While Loop";
-        case ENodeOperation::BREAK:         return "Break";
-        case ENodeOperation::FUNC_DEF_START:return "Function Definition Start";
-        case ENodeOperation::FUNC_RETURN:   return "Function Return";
-        case ENodeOperation::NATIVE_FUNC_CALL:return "Native Function Call";
-        case ENodeOperation::GRAPH_FUNC_CALL: return "Graph Function Call";
-        case ENodeOperation::SCRIPT_ABILITY_CALL: return "Script Ability Call";
-        case ENodeOperation::SCRIPT_EVENT_WAIT: return "Script Event Wait";
-        case ENodeOperation::CREATE_OBJECT: return "Create Object";
-        case ENodeOperation::GET_OBJECT:    return "Get Object";
-        case ENodeOperation::SET_OBJECT:    return "Set Object";
-        case ENodeOperation::GET_FIELD:     return "Get Field";
-        case ENodeOperation::SET_FIELD:     return "Set Field";
-        case ENodeOperation::ADD:           return "Add";
-        case ENodeOperation::SUBTRACT:      return "Subtract";
-        case ENodeOperation::MULTIPLY:      return "Multiply";
-        case ENodeOperation::DIVIDE:        return "Divide";
-        case ENodeOperation::MODULO:        return "Modulo";
-        case ENodeOperation::LOGICAL_AND:   return "Logical And";
-        case ENodeOperation::LOGICAL_OR:    return "Logical Or";
-        case ENodeOperation::LOGICAL_NOT:   return "Logical Not";
-        case ENodeOperation::NEGATE:        return "Negate";
-        case ENodeOperation::CMP_EQ:        return "Equal";
-        case ENodeOperation::CMP_NE:        return "Not Equal";
-        case ENodeOperation::CMP_LT:        return "Less";
-        case ENodeOperation::CMP_LE:        return "Less Equal";
-        case ENodeOperation::CMP_GT:        return "Greater";
-        case ENodeOperation::CMP_GE:        return "Greater Equal";
-        case ENodeOperation::GET_VARIABLE:  return "Get Variable";
-        case ENodeOperation::SET_VARIABLE:  return "Set Variable";
-        case ENodeOperation::RETURN:        return "Return";
-        case ENodeOperation::ON_EVENT:      return "On Event";
-        case ENodeOperation::SEND_EVENT:    return "Send Event";
-        default:                            return "Unknown";
+        case ENodeOperation::INVALID:
+            return "Invalid";
+        case ENodeOperation::START:
+            return "Start";
+        case ENodeOperation::BRANCH:
+            return "Branch";
+        case ENodeOperation::SEQUENCE:
+            return "Sequence";
+        case ENodeOperation::FOR_LOOP:
+            return "For Loop";
+        case ENodeOperation::WHILE_LOOP:
+            return "While Loop";
+        case ENodeOperation::BREAK:
+            return "Break";
+        case ENodeOperation::FUNC_DEF_START:
+            return "Function Definition Start";
+        case ENodeOperation::FUNC_RETURN:
+            return "Function Return";
+        case ENodeOperation::NATIVE_FUNC_CALL:
+            return "Native Function Call";
+        case ENodeOperation::GRAPH_FUNC_CALL:
+            return "Graph Function Call";
+        case ENodeOperation::SCRIPT_ABILITY_CALL:
+            return "Script Ability Call";
+        case ENodeOperation::SCRIPT_EVENT_WAIT:
+            return "Script Event Wait";
+        case ENodeOperation::CREATE_OBJECT:
+            return "Create Object";
+        case ENodeOperation::GET_OBJECT:
+            return "Get Object";
+        case ENodeOperation::SET_OBJECT:
+            return "Set Object";
+        case ENodeOperation::GET_FIELD:
+            return "Get Field";
+        case ENodeOperation::SET_FIELD:
+            return "Set Field";
+        case ENodeOperation::ADD:
+            return "Add";
+        case ENodeOperation::SUBTRACT:
+            return "Subtract";
+        case ENodeOperation::MULTIPLY:
+            return "Multiply";
+        case ENodeOperation::DIVIDE:
+            return "Divide";
+        case ENodeOperation::MODULO:
+            return "Modulo";
+        case ENodeOperation::LOGICAL_AND:
+            return "Logical And";
+        case ENodeOperation::LOGICAL_OR:
+            return "Logical Or";
+        case ENodeOperation::LOGICAL_NOT:
+            return "Logical Not";
+        case ENodeOperation::NEGATE:
+            return "Negate";
+        case ENodeOperation::CMP_EQ:
+            return "Equal";
+        case ENodeOperation::CMP_NE:
+            return "Not Equal";
+        case ENodeOperation::CMP_LT:
+            return "Less";
+        case ENodeOperation::CMP_LE:
+            return "Less Equal";
+        case ENodeOperation::CMP_GT:
+            return "Greater";
+        case ENodeOperation::CMP_GE:
+            return "Greater Equal";
+        case ENodeOperation::GET_VARIABLE:
+            return "Get Variable";
+        case ENodeOperation::SET_VARIABLE:
+            return "Set Variable";
+        case ENodeOperation::RETURN:
+            return "Return";
+        case ENodeOperation::ON_EVENT:
+            return "On Event";
+        case ENodeOperation::SEND_EVENT:
+            return "Send Event";
+        default:
+            return "Unknown";
         }
     }
 
@@ -169,7 +209,7 @@ namespace lux::flowforge
         case ENodeOperation::CMP_GT:
         case ENodeOperation::CMP_GE:
         case ENodeOperation::GET_VARIABLE:
-        case ENodeOperation::GET_FIELD:   // pseudo-pure memory read (never cached)
+        case ENodeOperation::GET_FIELD: // pseudo-pure memory read (never cached)
         case ENodeOperation::GET_OBJECT:
             return true;
         default:
@@ -183,11 +223,11 @@ namespace lux::flowforge
      */
     enum class EPinKind : uint8_t
     {
-        UNKNOWN,   ///< Pin kind not specified.
-        EXEC_IN,   ///< Executable input pin.
-        EXEC_OUT,  ///< Executable output pin.
-        DATA_IN,   ///< Data input pin.
-        DATA_OUT   ///< Data output pin.
+        UNKNOWN,  ///< Pin kind not specified.
+        EXEC_IN,  ///< Executable input pin.
+        EXEC_OUT, ///< Executable output pin.
+        DATA_IN,  ///< Data input pin.
+        DATA_OUT  ///< Data output pin.
     };
 
     /**
@@ -196,14 +236,14 @@ namespace lux::flowforge
      */
     enum class ELinkError
     {
-        SUCCESS,       ///< Link operation succeeded.
-        INVALID_PIN,   ///< The pin was invalid.
-        WRONG_KIND,    ///< Linking pins of incompatible kinds.
-        HAS_LINKED,    ///< Pins are already linked.
-        SAME_NODE,     ///< Attempting to link pins on the same node where it isn't allowed.
-        UNLINKED,      ///< The pins were unlinked successfully.
-		UNMATCHED,     ///< The pins are not linked.
-        UNKNOWN        ///< An unknown error occurred.
+        SUCCESS,     ///< Link operation succeeded.
+        INVALID_PIN, ///< The pin was invalid.
+        WRONG_KIND,  ///< Linking pins of incompatible kinds.
+        HAS_LINKED,  ///< Pins are already linked.
+        SAME_NODE,   ///< Attempting to link pins on the same node where it isn't allowed.
+        UNLINKED,    ///< The pins were unlinked successfully.
+        UNMATCHED,   ///< The pins are not linked.
+        UNKNOWN      ///< An unknown error occurred.
     };
 
     /**
@@ -212,7 +252,7 @@ namespace lux::flowforge
      */
     struct LastLink
     {
-        bool      exist{false};    ///< Indicates if a previous link existed.
+        bool exist{false};  ///< Indicates if a previous link existed.
         PinId in_pin_id{};  ///< ID of the input pin previously linked.
         PinId out_pin_id{}; ///< ID of the output pin previously linked.
     };
@@ -230,8 +270,8 @@ namespace lux::flowforge
      */
     struct DataPinInfo
     {
-        std::string                name;
-        const lux::meta::RefType*  type;
+        std::string name;
+        const lux::meta::RefType* type;
     };
 
     /**
@@ -322,10 +362,10 @@ namespace lux::flowforge
         void setId(PinId id);
 
     private:
-        PinId       id_; ///< Stable shared-topology identity.
-        EPinKind    kind_;             ///< The kind of this pin.
-        std::string name_;             ///< A user-defined name for this pin.
-        Node*       node_;             ///< Pointer to the parent Node.
+        PinId id_;         ///< Stable shared-topology identity.
+        EPinKind kind_;    ///< The kind of this pin.
+        std::string name_; ///< A user-defined name for this pin.
+        Node* node_;       ///< Pointer to the parent Node.
     };
 
     /**
@@ -385,7 +425,6 @@ namespace lux::flowforge
          * @return An ELinkError indicating the unlink result.
          */
         ELinkError unlinkFrom(Pin* pin) override;
-
     };
 
     /**
@@ -439,7 +478,6 @@ namespace lux::flowforge
         const ExecInPin* nextPin() const;
 
         ExecInPin* nextPin();
-
     };
 
     /**
@@ -499,49 +537,49 @@ namespace lux::flowforge
          */
         ELinkError unlinkFrom(Pin* pin) override;
 
-		/**
+        /**
 		 * @brief Sets the constant data for this DataInPin.
 		 * @param value The Constant value to set.
 		 * @return True if the data was set successfully, false otherwise.
 		 */
         bool setConstantData(lux::meta::RuntimeObject value);
-		
+
         /**
          * @brief Gets the constant data stored in this DataInPin.
          * @return A const reference to the Constant data.
          */
         const lux::meta::RuntimeObject& constantData() const;
         lux::meta::RuntimeObject& constantData();
-        
+
         /**
          * @brief Resets the constant data to a default value based on the pin's type.
          * This creates a new default constant of the appropriate type.
          */
         void resetConstantData();
 
-		/**
+        /**
 		 * @brief Checks if this DataInPin is a constant.
 		 * @return True if it is a constant, false otherwise.
 		 */
         bool validConstant() const;
 
-		/**
+        /**
 		 * @brief Checks if this DataInPin allows a default value.
 		 * @return True if default value is allowed, false otherwise.
 		 */
         bool allowDefault() const;
 
-		/**
+        /**
 		 * @brief Checks if this DataInPin is necessary for the operation.
 		 * @return True if it is necessary, false otherwise.
 		 */
         bool isNecessary() const;
 
     private:
-        DataPinInfo                info_; ///< Type info for this data pin.
-		bool                       allow_default_; ///< Flag to allow default value.
-        bool 					   is_necessary_; ///< Flag to indicate if this pin is necessary.
-        lux::meta::RuntimeObject   data_; ///< Constant data storage.
+        DataPinInfo info_;              ///< Type info for this data pin.
+        bool allow_default_;            ///< Flag to allow default value.
+        bool is_necessary_;             ///< Flag to indicate if this pin is necessary.
+        lux::meta::RuntimeObject data_; ///< Constant data storage.
     };
 
     /**
@@ -623,7 +661,7 @@ namespace lux::flowforge
         friend class Pin;
         // HasExecOutPin manages heap-allocated extra exec-out pins and must be able
         // to de-register them from out_pins_ before deleting them.
-        template<typename T> friend class HasExecOutPin;
+        template <typename T> friend class THasExecOutPin;
 
     public:
         /**
@@ -660,7 +698,10 @@ namespace lux::flowforge
          */
         void assignStableId(NodeId id);
         void assignGraph(FlowGraph* graph) noexcept;
-        [[nodiscard]] FlowGraph* graph() const noexcept { return graph_; }
+        [[nodiscard]] FlowGraph* graph() const noexcept
+        {
+            return graph_;
+        }
 
         /**
          * @brief Name of the NodeRegistry creator that instantiated this
@@ -668,8 +709,14 @@ namespace lux::flowforge
          *        serializer uses it to re-instantiate registry-backed nodes
          *        (native calls in particular) on load.
          */
-        const std::string& creatorName() const { return creator_name_; }
-        void setCreatorName(std::string_view name) { creator_name_ = name; }
+        const std::string& creatorName() const
+        {
+            return creator_name_;
+        }
+        void setCreatorName(std::string_view name)
+        {
+            creator_name_ = name;
+        }
 
         /**
          * @brief Gets the operation type of this Node.
@@ -704,15 +751,27 @@ namespace lux::flowforge
          * @brief Gets the input pins of this Node.
          * @return A const reference to a vector of Pin pointers.
          */
-        std::vector<Pin*>& inPins(){ return in_pins_; }
-        const std::vector<Pin*>& inPins() const { return in_pins_; }
+        std::vector<Pin*>& inPins()
+        {
+            return in_pins_;
+        }
+        const std::vector<Pin*>& inPins() const
+        {
+            return in_pins_;
+        }
 
         /**
          * @brief Gets the output pins of this Node.
          * @return A const reference to a vector of Pin pointers.
          */
-		std::vector<Pin*>& outPins() { return out_pins_; }
-        const std::vector<Pin*>& outPins() const { return out_pins_; }
+        std::vector<Pin*>& outPins()
+        {
+            return out_pins_;
+        }
+        const std::vector<Pin*>& outPins() const
+        {
+            return out_pins_;
+        }
 
     protected:
         /**
@@ -740,32 +799,35 @@ namespace lux::flowforge
         void removeOutPin(Pin* pin);
 
     private:
-        std::vector<Pin*> in_pins_;   ///< A list of pointers to this Node's input pins.
-        std::vector<Pin*> out_pins_;  ///< A list of pointers to this Node's output pins.
+        std::vector<Pin*> in_pins_;  ///< A list of pointers to this Node's input pins.
+        std::vector<Pin*> out_pins_; ///< A list of pointers to this Node's output pins.
 
-        NodeId            id_;        ///< Stable shared-topology identity.
-        FlowGraph*        graph_{};   ///< Borrowed graph while attached.
-        ENodeOperation    operation_; ///< The operation type of the Node.
-        std::string       name_;      ///< A user-defined name for the Node.
-        std::string       creator_name_; ///< NodeRegistry creator that built this node (may be empty).
+        NodeId id_;                ///< Stable shared-topology identity.
+        FlowGraph* graph_{};       ///< Borrowed graph while attached.
+        ENodeOperation operation_; ///< The operation type of the Node.
+        std::string name_;         ///< A user-defined name for the Node.
+        std::string creator_name_; ///< NodeRegistry creator that built this node (may be empty).
     };
 
-    template<typename Dervied>
-	class HasExecInPin
-	{
+    template <typename Dervied> class THasExecInPin
+    {
     public:
-        HasExecInPin(std::string_view name)
-			: in_pin_(static_cast<Dervied*>(this), name){ }
+        THasExecInPin(std::string_view name) : in_pin_(static_cast<Dervied*>(this), name) {}
 
-        ExecInPin& execInPin() { return in_pin_; }
-        const ExecInPin& execInPin() const { return in_pin_; }
+        ExecInPin& execInPin()
+        {
+            return in_pin_;
+        }
+        const ExecInPin& execInPin() const
+        {
+            return in_pin_;
+        }
 
     private:
         ExecInPin in_pin_;
-	};
+    };
 
-	template<typename Dervied>
-    class HasExecOutPin
+    template <typename Dervied> class THasExecOutPin
     {
     public:
         void addExecOutPin(std::string_view name)
@@ -803,7 +865,7 @@ namespace lux::flowforge
         }
 
     public:
-        HasExecOutPin(std::string_view name, std::initializer_list<std::string_view> out_pin_names = {})
+        THasExecOutPin(std::string_view name, std::initializer_list<std::string_view> out_pin_names = {})
             : fix_out_pin_(static_cast<Dervied*>(this), name)
         {
             for (auto name : out_pin_names)
@@ -812,7 +874,7 @@ namespace lux::flowforge
             }
         }
 
-        ~HasExecOutPin()
+        ~THasExecOutPin()
         {
             // Extra pins are heap-allocated and owned here; delete them (their
             // destructors unlink any exec links). No removeOutPin needed — the
@@ -823,28 +885,44 @@ namespace lux::flowforge
             }
         }
 
-		ExecOutPin& execOutPin() { return fix_out_pin_; }
-        const ExecOutPin& execOutPin() const { return fix_out_pin_; }
+        ExecOutPin& execOutPin()
+        {
+            return fix_out_pin_;
+        }
+        const ExecOutPin& execOutPin() const
+        {
+            return fix_out_pin_;
+        }
 
-		std::span<ExecOutPin*> extraOutPins() { return extra_out_pins_; }
+        std::span<ExecOutPin*> extraOutPins()
+        {
+            return extra_out_pins_;
+        }
         [[nodiscard]] std::size_t extraOutPinStorageBytes() const noexcept
         {
             return extra_out_pins_.capacity() * sizeof(ExecOutPin*);
         }
-		std::span<const ExecOutPin* const> extraOutPins() const { return extra_out_pins_; }
+        std::span<const ExecOutPin* const> extraOutPins() const
+        {
+            return extra_out_pins_;
+        }
 
     private:
-		ExecOutPin               fix_out_pin_;
-		std::vector<ExecOutPin*> extra_out_pins_;
+        ExecOutPin fix_out_pin_;
+        std::vector<ExecOutPin*> extra_out_pins_;
     };
 
-	class ExecIntermediateNode :
-        public Node, 
-        public HasExecInPin<ExecIntermediateNode>, 
-        public HasExecOutPin<ExecIntermediateNode>
+    class ExecIntermediateNode : public Node,
+                                 public THasExecInPin<ExecIntermediateNode>,
+                                 public THasExecOutPin<ExecIntermediateNode>
     {
     public:
-        ExecIntermediateNode(uint64_t id, ENodeOperation op, 
-            std::string_view in_pin_name = "->", std::string_view fix_out_pin_name = "->", std::initializer_list<std::string_view> out_pin_names = {});
+        ExecIntermediateNode(
+            uint64_t id,
+            ENodeOperation op,
+            std::string_view in_pin_name = "->",
+            std::string_view fix_out_pin_name = "->",
+            std::initializer_list<std::string_view> out_pin_names = {}
+        );
     };
 } // namespace lux::flowforge

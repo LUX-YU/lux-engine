@@ -2,16 +2,13 @@
 #include <lux/engine/task/TaskExecutorDetail.hpp>
 #include <lux/engine/task/TaskExecutorFailureInjection.hpp>
 
-#include <new>
 #include <utility>
 
 namespace lux::task
 {
     struct TaskExecutor::Impl final : detail::TaskExecutorImpl
     {
-        explicit Impl(TaskExecutorConfig config) : detail::TaskExecutorImpl(config)
-        {
-        }
+        explicit Impl(TaskExecutorConfig config) : detail::TaskExecutorImpl(config) {}
     };
 
     lux::cxx::expected<TaskExecutor, TaskExecutorFailure> TaskExecutor::create(TaskExecutorConfig config) noexcept
@@ -19,7 +16,6 @@ namespace lux::task
         if (detail::consumeTaskExecutorFailureForTest(detail::ETaskExecutorFailurePoint::ALLOCATION))
             return lux::cxx::unexpected(TaskExecutorFailure{ETaskExecutorError::ALLOCATION_FAILURE});
 
-        try
         {
             auto impl = std::make_unique<Impl>(config);
             auto started = impl->startWorkers();
@@ -28,14 +24,6 @@ namespace lux::task
                 return lux::cxx::unexpected(started.error());
             }
             return TaskExecutor(std::move(impl));
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(TaskExecutorFailure{ETaskExecutorError::ALLOCATION_FAILURE});
-        }
-        catch (...)
-        {
-            return lux::cxx::unexpected(TaskExecutorFailure{ETaskExecutorError::WORKER_CREATION_FAILURE});
         }
     }
 

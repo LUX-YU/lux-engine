@@ -1,4 +1,5 @@
 message("-------- Plaform Layer --------")
+add_subdirectory(process)
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
     # Offline tools do not configure interactive platform domains.
     add_subdirectory(dynamic_library)
@@ -26,6 +27,7 @@ else()
 endif()
 
 if(LUX_PLATFORM_COMPONENTS)
+    list(APPEND LUX_PLATFORM_COMPONENTS platform_process)
     lux_engine_install_components(
         PROJECT_NAME lux-engine-platform
         VERSION      0.0.1

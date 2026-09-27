@@ -12,9 +12,7 @@ namespace lux::gapi::vk
     public:
         using Builder = LogicalDeviceBuilder;
 
-        LogicalDevice() : device(VK_NULL_HANDLE)
-        {
-        }
+        LogicalDevice() : device(VK_NULL_HANDLE) {}
 
         LogicalDevice(VkPhysicalDevice pdevice, const VkDeviceCreateInfo& ci, VkAllocationCallbacks* allocator)
         {
@@ -63,13 +61,17 @@ namespace lux::gapi::vk
             return DeviceMemory{device, ai, allocator};
         }
 
-        DeviceMemory
-        allocateMemory(VkDeviceSize size, uint32_t memoryTypeIndex, VkAllocationCallbacks* allocator = nullptr)
+        DeviceMemory allocateMemory(
+            VkDeviceSize size,
+            uint32_t memoryTypeIndex,
+            VkAllocationCallbacks* allocator = nullptr
+        )
         {
             VkMemoryAllocateInfo ai{
                 .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                 .allocationSize = size,
-                .memoryTypeIndex = memoryTypeIndex};
+                .memoryTypeIndex = memoryTypeIndex
+            };
 
             return DeviceMemory{device, ai, allocator};
         }
@@ -126,14 +128,18 @@ namespace lux::gapi::vk
         // }
         // const float queue_priority[] = { 1.0f };
         // addQueueCreateInfo(graphic_queue_family_index, 1, queue_priority);
-        inline LogicalDeviceBuilder&
-        addQueueCreateInfo(uint32_t queueFamilyIndex, uint32_t queueCount, const float* pQueuePriorities)
+        inline LogicalDeviceBuilder& addQueueCreateInfo(
+            uint32_t queueFamilyIndex,
+            uint32_t queueCount,
+            const float* pQueuePriorities
+        )
         {
             VkDeviceQueueCreateInfo create_info{
                 .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
                 .queueFamilyIndex = queueFamilyIndex,
                 .queueCount = queueCount,
-                .pQueuePriorities = pQueuePriorities};
+                .pQueuePriorities = pQueuePriorities
+            };
 
             create_queue_infos.push_back(create_info);
             return *this;

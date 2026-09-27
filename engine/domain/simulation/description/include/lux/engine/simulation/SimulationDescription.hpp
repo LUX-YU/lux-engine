@@ -27,18 +27,15 @@ namespace lux::simulation
 
     class LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC SimulationDataView final
     {
-      public:
+    public:
         SimulationDataView() noexcept = default;
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] const SimulationDataSchemaId& schema() const noexcept;
         [[nodiscard]] std::uint32_t version() const noexcept;
         [[nodiscard]] std::span<const std::byte> payload() const noexcept;
 
-      private:
-        SimulationDataView(
-            const SimulationDescription& description,
-            std::size_t data_index
-        ) noexcept;
+    private:
+        SimulationDataView(const SimulationDescription& description, std::size_t data_index) noexcept;
 
         const SimulationDescription* description_{};
         std::size_t data_index_{};
@@ -47,7 +44,7 @@ namespace lux::simulation
 
     class LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC SimulationSystemView final
     {
-      public:
+    public:
         SimulationSystemView() noexcept = default;
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] lux::system::SystemInstanceId instanceId() const noexcept;
@@ -64,25 +61,16 @@ namespace lux::simulation
         [[nodiscard]] bool hasCapability(std::string_view name) const noexcept;
         [[nodiscard]] std::span<const SimulationTaskDescription> tasks() const noexcept;
         [[nodiscard]] std::size_t hookPointCount() const noexcept;
-        [[nodiscard]] SimulationHookPointView hookPointAt(
-            std::size_t index
-        ) const noexcept;
-        [[nodiscard]] SimulationHookPointView findHookPoint(
-            HookPointId id
-        ) const noexcept;
-        [[nodiscard]] SimulationHookPointView findHookPoint(
-            std::string_view name
-        ) const noexcept;
+        [[nodiscard]] SimulationHookPointView hookPointAt(std::size_t index) const noexcept;
+        [[nodiscard]] SimulationHookPointView findHookPoint(HookPointId id) const noexcept;
+        [[nodiscard]] SimulationHookPointView findHookPoint(std::string_view name) const noexcept;
         [[nodiscard]] std::size_t eventCount() const noexcept;
         [[nodiscard]] SimulationEventView eventAt(std::size_t index) const noexcept;
         [[nodiscard]] SimulationEventView findEvent(std::string_view name) const noexcept;
         [[nodiscard]] SimulationEventView findEvent(EventPointId id) const noexcept;
 
-      private:
-        SimulationSystemView(
-            const SimulationDescription& description,
-            std::size_t system_index
-        ) noexcept;
+    private:
+        SimulationSystemView(const SimulationDescription& description, std::size_t system_index) noexcept;
 
         const SimulationDescription* description_{};
         std::size_t system_index_{};
@@ -92,10 +80,9 @@ namespace lux::simulation
         friend class SimulationDependencyView;
     };
 
-    class LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC
-        SimulationHookPointView final
+    class LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC SimulationHookPointView final
     {
-      public:
+    public:
         SimulationHookPointView() noexcept = default;
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] SimulationSystemView system() const noexcept;
@@ -106,10 +93,9 @@ namespace lux::simulation
         [[nodiscard]] bool stableResume() const noexcept;
         [[nodiscard]] std::uint32_t contractVersion() const noexcept;
         [[nodiscard]] std::uint64_t contractHash() const noexcept;
-        [[nodiscard]] lux::semantic::Type parameterAt(
-            std::size_t index
-        ) const noexcept;
-      private:
+        [[nodiscard]] lux::semantic::Type parameterAt(std::size_t index) const noexcept;
+
+    private:
         SimulationHookPointView(
             const SimulationDescription& description,
             std::size_t system_index,
@@ -127,7 +113,7 @@ namespace lux::simulation
 
     class LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC SimulationEventView final
     {
-      public:
+    public:
         SimulationEventView() noexcept = default;
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] SimulationSystemView system() const noexcept;
@@ -141,7 +127,7 @@ namespace lux::simulation
         [[nodiscard]] std::uint32_t payloadSchemaVersion() const noexcept;
         [[nodiscard]] bool ownerReproduction() const noexcept;
 
-      private:
+    private:
         SimulationEventView(
             const SimulationDescription& description,
             std::size_t system_index,
@@ -157,17 +143,14 @@ namespace lux::simulation
 
     class LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC SimulationDependencyView final
     {
-      public:
+    public:
         SimulationDependencyView() noexcept = default;
         [[nodiscard]] explicit operator bool() const noexcept;
         [[nodiscard]] SimulationSystemView before() const noexcept;
         [[nodiscard]] SimulationSystemView after() const noexcept;
 
-      private:
-        SimulationDependencyView(
-            const SimulationDescription& description,
-            std::size_t dependency_index
-        ) noexcept;
+    private:
+        SimulationDependencyView(const SimulationDescription& description, std::size_t dependency_index) noexcept;
 
         const SimulationDescription* description_{};
         std::size_t dependency_index_{};
@@ -176,7 +159,7 @@ namespace lux::simulation
 
     class LUX_ENGINE_SIMULATION_DESCRIPTION_PUBLIC SimulationDescription final
     {
-      public:
+    public:
         SimulationDescription() noexcept = default;
         SimulationDescription(SimulationDescription&&) noexcept = default;
         SimulationDescription& operator=(SimulationDescription&&) noexcept = default;
@@ -191,38 +174,24 @@ namespace lux::simulation
         [[nodiscard]] std::size_t retainedBytes() const noexcept;
         [[nodiscard]] std::span<const SimulationDataSchemaId> schemas() const noexcept;
         [[nodiscard]] SimulationDataView dataAt(std::size_t index) const noexcept;
-        [[nodiscard]] SimulationDataView findData(
-            const SimulationDataSchemaId& schema
-        ) const noexcept;
+        [[nodiscard]] SimulationDataView findData(const SimulationDataSchemaId& schema) const noexcept;
         [[nodiscard]] std::size_t systemCount() const noexcept;
         [[nodiscard]] SimulationSystemView systemAt(std::size_t index) const noexcept;
-        [[nodiscard]] SimulationSystemView findSystem(
-            lux::system::SystemInstanceId id
-        ) const noexcept;
-        [[nodiscard]] SimulationSystemView findSystem(
-            std::string_view instance_name
-        ) const noexcept;
+        [[nodiscard]] SimulationSystemView findSystem(lux::system::SystemInstanceId id) const noexcept;
+        [[nodiscard]] SimulationSystemView findSystem(std::string_view instance_name) const noexcept;
         [[nodiscard]] bool hasCapability(std::string_view name) const noexcept;
-        [[nodiscard]] SimulationHookPointView findHookPoint(
-            lux::system::SystemInstanceId system,
-            HookPointId hook
-        ) const noexcept;
+        [[nodiscard]] SimulationHookPointView findHookPoint(lux::system::SystemInstanceId system, HookPointId hook)
+            const noexcept;
         [[nodiscard]] SimulationHookPointView findHookPoint(
             std::string_view system_instance,
             std::string_view hook_name
         ) const noexcept;
-        [[nodiscard]] SimulationEventView findEvent(
-            lux::system::SystemInstanceId system,
-            EventPointId event
-        ) const noexcept;
-        [[nodiscard]] SimulationEventView findEvent(
-            std::string_view system_instance,
-            std::string_view event_name
-        ) const noexcept;
+        [[nodiscard]] SimulationEventView findEvent(lux::system::SystemInstanceId system, EventPointId event)
+            const noexcept;
+        [[nodiscard]] SimulationEventView findEvent(std::string_view system_instance, std::string_view event_name)
+            const noexcept;
         [[nodiscard]] std::size_t constructionDependencyCount() const noexcept;
-        [[nodiscard]] SimulationDependencyView constructionDependencyAt(
-            std::size_t index
-        ) const noexcept;
+        [[nodiscard]] SimulationDependencyView constructionDependencyAt(std::size_t index) const noexcept;
         [[nodiscard]] std::span<const SimulationExecutionDependency> executionDependencies() const noexcept
         {
             return execution_dependencies_;
@@ -232,7 +201,7 @@ namespace lux::simulation
             return channel_producers_;
         }
 
-      private:
+    private:
         struct DataRecord final
         {
             std::size_t schema_ordinal{};
@@ -245,8 +214,7 @@ namespace lux::simulation
         {
             std::uint64_t type_id{};
             std::string canonical_name;
-            lux::semantic::EValuePass pass{
-                lux::semantic::EValuePass::VALUE};
+            lux::semantic::EValuePass pass{lux::semantic::EValuePass::VALUE};
         };
 
         struct HookRecord final

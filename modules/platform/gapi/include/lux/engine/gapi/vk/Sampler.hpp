@@ -8,9 +8,7 @@ namespace lux::gapi::vk
     class Sampler
     {
     public:
-        Sampler() : sampler(VK_NULL_HANDLE)
-        {
-        }
+        Sampler() : sampler(VK_NULL_HANDLE) {}
 
         Sampler(VkDevice device, const VkSamplerCreateInfo& info, VkAllocationCallbacks* allocator = nullptr)
         {

@@ -136,7 +136,7 @@ namespace lux::input
             s.value = InputValue{};
             s.down = false;
             s.trigger_state = ETriggerState::NONE;
-            s.events = ActionEvent_None;
+            s.events = actionEventMask(EActionEvent::NONE);
             s.dominant_binding = InvalidBindingId;
         }
 
@@ -163,7 +163,7 @@ namespace lux::input
             s.value = value;
             s.down = true;
             s.trigger_state = ETriggerState::TRIGGERED;
-            s.events = ActionEvent_Triggered;
+            s.events = actionEventMask(EActionEvent::TRIGGERED);
         }
         injected_triggered_.clear();
 
@@ -320,7 +320,8 @@ namespace lux::input
             const InputActionDesc* desc = registry_.find(bs.action_id);
             assert(
                 desc && "ActionMapper: binding references an unregistered ActionId — "
-                        "call actionRegistry().registerAction() before use");
+                        "call actionRegistry().registerAction() before use"
+            );
             if (!desc)
                 continue; // Release safety: skip unregistered actions.
 
@@ -375,10 +376,10 @@ namespace lux::input
                 switch (s.trigger_state)
                 {
                 case ETriggerState::TRIGGERED:
-                    s.events |= ActionEvent_Triggered;
+                    s.events |= actionEventMask(EActionEvent::TRIGGERED);
                     break;
                 case ETriggerState::ONGOING:
-                    s.events |= ActionEvent_Ongoing;
+                    s.events |= actionEventMask(EActionEvent::ONGOING);
                     break;
                 case ETriggerState::NONE:
                     break;
@@ -390,10 +391,10 @@ namespace lux::input
                 switch (s.trigger_state)
                 {
                 case ETriggerState::TRIGGERED:
-                    s.events |= ActionEvent_Triggered;
+                    s.events |= actionEventMask(EActionEvent::TRIGGERED);
                     break;
                 case ETriggerState::ONGOING:
-                    s.events |= ActionEvent_Ongoing;
+                    s.events |= actionEventMask(EActionEvent::ONGOING);
                     break;
                 case ETriggerState::NONE:
                     break;
@@ -417,9 +418,9 @@ namespace lux::input
             bool is_completed = !s.active() && was_active;
 
             if (is_started)
-                s.events |= ActionEvent_Started;
+                s.events |= actionEventMask(EActionEvent::STARTED);
             if (is_completed)
-                s.events |= ActionEvent_Completed;
+                s.events |= actionEventMask(EActionEvent::COMPLETED);
 
             // held_seconds
             if (s.active() && was_active)

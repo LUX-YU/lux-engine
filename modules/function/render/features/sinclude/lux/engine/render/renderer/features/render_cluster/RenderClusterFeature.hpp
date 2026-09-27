@@ -45,7 +45,5 @@ namespace lux::render
         VkDescriptorSetLayout pick_set_layout_{VK_NULL_HANDLE};
     };
 
-    inline RenderClusterFeature::RenderClusterFeature() : RenderClusterFeature(Config{})
-    {
-    }
+    inline RenderClusterFeature::RenderClusterFeature() : RenderClusterFeature(Config{}) {}
 } // namespace lux::render

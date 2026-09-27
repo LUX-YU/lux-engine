@@ -4,7 +4,7 @@
 
 namespace lux::render
 {
-    enum class RenderEntityId : std::uint64_t
+    enum class ERenderEntityId : std::uint64_t
     {
     };
 }

@@ -35,9 +35,11 @@ namespace lux::asset
     );
 
     // Pure CPU encoding over owning byte captures; no filesystem access.
-    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<std::vector<std::byte>, std::string>
-    encodePak(const std::vector<PakWriteEntry>& entries, std::size_t byte_limit,
-              std::string_view mount_hint = "/Game");
+    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<std::vector<std::byte>, std::string> encodePak(
+        const std::vector<PakWriteEntry>& entries,
+        std::size_t byte_limit,
+        std::string_view mount_hint = "/Game"
+    );
 
     struct PakInspectEntry final
     {
@@ -70,9 +72,12 @@ namespace lux::asset
 
     // Pure, bounded decoding after a Process read. Validates both index trees and payload digests;
     // payload slices retain the exact input image without re-reading a mutable filesystem path.
-    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<PakDecodedImage, std::string>
-    decodePak(const lux::cxx::SharedBytes<>& image, std::size_t entry_limit);
+    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<PakDecodedImage, std::string> decodePak(
+        const lux::cxx::SharedBytes<>& image,
+        std::size_t entry_limit
+    );
 
-    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<PakInspectInfo, std::string>
-    inspectPak(const std::filesystem::path& pak_path);
+    [[nodiscard]] LUX_ASSET_PUBLIC lux::cxx::expected<PakInspectInfo, std::string> inspectPak(
+        const std::filesystem::path& pak_path
+    );
 } // namespace lux::asset

@@ -28,7 +28,7 @@
  * Wire-up to the rest of the renderer (R1.4 + R1.5):
  *
  *   - VertexPoolRegistry exposes registered sources as a bindless SSBO
- *     array under EDescriptorSetSlot::VertexPool (new slot, added in R1.4).
+ *     array under EDescriptorSetSlot::VERTEX_POOL (new slot, added in R1.4).
  *   - InstanceProperty (R1.5) gains vertex_pool_id / vertex_base /
  *     vertex_count fields so vertex shaders can do, uniformly:
  *
@@ -51,9 +51,9 @@ namespace lux::render
     /// shader code (which is uniform across kinds — that's the whole point).
     enum class EVertexSourceKind : std::uint8_t
     {
-        StaticPool = 0,      ///< Resident; written once at upload time.
-        TransientPool = 1,   ///< Per-frame; compute writes, render reads.
-        VirtualGeometry = 2, ///< (Reserved) Nanite-style streamed geometry.
+        STATIC_POOL = 0,      ///< Resident; written once at upload time.
+        TRANSIENT_POOL = 1,   ///< Per-frame; compute writes, render reads.
+        VIRTUAL_GEOMETRY = 2, ///< (Reserved) Nanite-style streamed geometry.
     };
 
     /// Reference to a contiguous range of vertices in a registered pool.
@@ -73,15 +73,18 @@ namespace lux::render
             return pool_id != ~0u;
         }
 
-        [[nodiscard]] friend constexpr bool
-        operator==(const VertexSourceHandle& a, const VertexSourceHandle& b) noexcept
+        [[nodiscard]] friend constexpr bool operator==(
+            const VertexSourceHandle& a,
+            const VertexSourceHandle& b
+        ) noexcept
         {
             return a.pool_id == b.pool_id && a.vertex_base == b.vertex_base && a.vertex_count == b.vertex_count;
         }
     };
     static_assert(
         sizeof(VertexSourceHandle) == 12,
-        "VertexSourceHandle must remain trivially packable for GPU upload.");
+        "VertexSourceHandle must remain trivially packable for GPU upload."
+    );
 
     inline constexpr VertexSourceHandle kInvalidVertexSourceHandle{};
 

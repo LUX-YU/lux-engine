@@ -21,6 +21,8 @@ namespace lux::system
         std::uint32_t configuration_schema_version{};
         std::span<const std::string_view> capabilities;
         ESystemMultiplicity multiplicity{ESystemMultiplicity::MULTIPLE};
+        // Exact World partitioner names, or the single value "*" for partition-independent systems.
+        std::span<const std::string_view> supported_world_types;
     };
 
     [[nodiscard]] constexpr bool validSystemTypeDescription(const SystemTypeDescription& value) noexcept
@@ -54,6 +56,26 @@ namespace lux::system
                 }
             }
         }
+        if (value.supported_world_types.empty())
+            return false;
+        for (std::size_t index{}; index < value.supported_world_types.size(); ++index)
+        {
+            const auto name = value.supported_world_types[index];
+            const bool invalid_name = name.empty() || (name == "*" && value.supported_world_types.size() != 1);
+            if (invalid_name)
+                return false;
+            for (std::size_t previous{}; previous < index; ++previous)
+                if (name == value.supported_world_types[previous])
+                    return false;
+        }
         return true;
+    }
+
+    [[nodiscard]] constexpr bool supportsWorldType(const SystemTypeDescription& value, std::string_view name) noexcept
+    {
+        for (const auto supported : value.supported_world_types)
+            if (supported == "*" || supported == name)
+                return true;
+        return false;
     }
 } // namespace lux::system

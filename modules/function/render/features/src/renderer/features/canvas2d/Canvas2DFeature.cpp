@@ -74,8 +74,7 @@ namespace lux::render
     }
 
     Canvas2DFeature::Canvas2DFeature(Config cfg) : RenderFeature(RenderFeature::Config{cfg.name}), cfg_(std::move(cfg))
-    {
-    }
+    {}
 
     Canvas2DFeature::~Canvas2DFeature() = default;
 
@@ -101,6 +100,7 @@ namespace lux::render
             const bool fresh = (scene.resources().find<Canvas2DInstanceArena>() == nullptr);
 
             Canvas2DInstanceArena::InitInfo ii{};
+            ii.textures = &renderContext().globalRegistry().must<TextureResources>();
             ii.device_context = &ctx.deviceContext();
             ii.descriptor_svc = &ctx.descriptorService();
             ii.arena = &scene.descriptorArena();
@@ -122,7 +122,7 @@ namespace lux::render
                 scene.transferScheduler().contributors().add(makeTransferContributor(arena_, /*priority=*/1));
             }
             // init() 本身返回 void(不可失败),真正的成败看它建出来的描述符集。
-            if (!arena_->initialized() || arena_->descriptorSet(ECanvas2DKind::Image) == VK_NULL_HANDLE)
+            if (!arena_->initialized() || arena_->descriptorSet(ECanvas2DKind::IMAGE) == VK_NULL_HANDLE)
                 return renderFailure<err::device::VulkanObjectCreationFailed>();
         }
 
@@ -138,7 +138,8 @@ namespace lux::render
             RenderContextView::BuiltinShaderSlot{EBuiltinShader::CANVAS2D_IMAGE_VERT, &cfg_.vertex_shader},
             RenderContextView::BuiltinShaderSlot{EBuiltinShader::CANVAS2D_IMAGE_FRAG, &cfg_.fragment_shader},
             RenderContextView::BuiltinShaderSlot{EBuiltinShader::CANVAS2D_FIELD_VERT, &field_vert},
-            RenderContextView::BuiltinShaderSlot{EBuiltinShader::CANVAS2D_FIELD_FRAG, &field_frag}};
+            RenderContextView::BuiltinShaderSlot{EBuiltinShader::CANVAS2D_FIELD_FRAG, &field_frag}
+        };
         if (auto filled = cv.createBuiltinShaderModules(shader_slots); !filled)
             return filled;
 
@@ -178,7 +179,8 @@ namespace lux::render
         ShaderHandle tile_frag{};
         const std::array tile_slots{
             RenderContextView::BuiltinShaderSlot{EBuiltinShader::CANVAS2D_TILE_VERT, &tile_vert},
-            RenderContextView::BuiltinShaderSlot{EBuiltinShader::CANVAS2D_TILE_FRAG, &tile_frag}};
+            RenderContextView::BuiltinShaderSlot{EBuiltinShader::CANVAS2D_TILE_FRAG, &tile_frag}
+        };
         if (auto filled = cv.createBuiltinShaderModules(tile_slots); !filled)
             return filled;
         auto tile_tmpl = makeCanvas2DImageTemplate();
@@ -221,7 +223,8 @@ namespace lux::render
             ShaderHandle co_frag{};
             const std::array composite_slots{
                 RenderContextView::BuiltinShaderSlot{EBuiltinShader::TONEMAP_VERT, &fs_vert},
-                RenderContextView::BuiltinShaderSlot{EBuiltinShader::CANVAS2D_GROUP_COMPOSITE_FRAG, &co_frag}};
+                RenderContextView::BuiltinShaderSlot{EBuiltinShader::CANVAS2D_GROUP_COMPOSITE_FRAG, &co_frag}
+            };
             if (auto filled = cv.createBuiltinShaderModules(composite_slots); !filled)
                 return filled;
             auto co_tmpl = makeCanvas2DImageTemplate(); // premultiplied blend, no depth
@@ -232,22 +235,24 @@ namespace lux::render
                 const VkPushConstantRange pc{
                     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                     0,
-                    kViewPushPrefixSize};
+                    kViewPushPrefixSize
+                };
                 const std::array set_layouts{
-                    ctx.descriptorLayouts().getLayout(EDescriptorSetSlot::Scene), // set 0
+                    ctx.descriptorLayouts().getLayout(EDescriptorSetSlot::SCENE), // set 0
                     composite_ds_layout_,                                         // set 1
                 };
                 const std::array pcs{pc};
                 const PipelineLayoutDesc composite_layout_desc{
                     .set_layouts = set_layouts,
                     .push_constants = pcs,
-                    .debug_name = "Canvas2DGroupCompositeLayout"};
+                    .debug_name = "Canvas2DGroupCompositeLayout"
+                };
                 auto composite_layout = ctx.pipelineLayoutService().getOrCreate(composite_layout_desc);
                 if (!composite_layout)
                     return lux::cxx::unexpected(composite_layout.error());
                 co_tmpl.pipeline_layout = *composite_layout;
                 co_tmpl.push_constant_ranges.assign(pcs.begin(), pcs.end());
-                co_tmpl.resource_slot_map.push_back({EDescriptorSetSlot::Scene, 0});
+                co_tmpl.resource_slot_map.push_back({EDescriptorSetSlot::SCENE, 0});
             }
             const std::vector<const lux::rdesc::ShaderInfo*> co_infos = {
                 cv.shaderInfo(fs_vert),
@@ -289,7 +294,7 @@ namespace lux::render
                     rect.layerCount = 1;
                     vkCmdClearAttachments(ctx.cmd, 1, &ca, 1, &rect);
                 }
-                int bound_kind = static_cast<int>(ECanvas2DKind::Image); // pass-level state
+                int bound_kind = static_cast<int>(ECanvas2DKind::IMAGE); // pass-level state
                 for (const Canvas2DRun& run : arena_->runs())
                 {
                     if (run.group != group)
@@ -328,14 +333,14 @@ namespace lux::render
             // with variant 0 before the kernel); the kernel rebinds pipeline + set 1
             // PER RUN on kind changes (R6b) — every kind shares ONE pipeline layout,
             // so set 0 / set 2 stay bound across switches.
-            .bindImmutableDS(1, arena_->descriptorSet(ECanvas2DKind::Image))
+            .bindImmutableDS(1, arena_->descriptorSet(ECanvas2DKind::IMAGE))
             // set 2 = the global bindless combined-sampler atlas (same set the 3D
             // material path samples).
             .bindImmutableDS(
-                EDescriptorSetSlot::Texture,
+                EDescriptorSetSlot::TEXTURE,
                 contextView().globalRegistry().descriptorSetOf<TextureResources>()
             )
-            .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::ForwardTrans)))
+            .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::FORWARD_TRANS)))
             .setKernelFn(makeDrawKernel(0))
             .setKernel("Canvas2DDraw")
             // Overlay (post-tonemap), NOT Transparent. LDR 2D content (images/tilemap/
@@ -347,7 +352,7 @@ namespace lux::render
             // tonemap the same way the grid/gizmo overlays do (same Overlay stage; the RG
             // auto-LOADs SceneColor for a non-first writer, so it blends over prior content
             // rather than clearing — a 3D scene with no 2D content is unaffected).
-            .stage(ERenderStage::Overlay);
+            .stage(ERenderStage::OVERLAY_STAGE);
 
         // Offscreen groups (A2-04): draw into a transient RGBA8 RT, then composite.
         const std::uint32_t groups = std::min(cfg_.offscreen_groups, kMaxCanvas2DGroups);
@@ -370,15 +375,15 @@ namespace lux::render
                 .addPipeline(field_pipeline_handle_)
                 .addPipeline(tile_pipeline_handle_)
                 .bindSceneDS()
-                .bindImmutableDS(1, arena_->descriptorSet(ECanvas2DKind::Image))
+                .bindImmutableDS(1, arena_->descriptorSet(ECanvas2DKind::IMAGE))
                 .bindImmutableDS(
-                    EDescriptorSetSlot::Texture,
+                    EDescriptorSetSlot::TEXTURE,
                     contextView().globalRegistry().descriptorSetOf<TextureResources>()
                 )
-                .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::ForwardTrans)))
+                .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::FORWARD_TRANS)))
                 .setKernelFn(makeDrawKernel(static_cast<std::uint8_t>(g)))
                 .setKernel("Canvas2DDraw")
-                .stage(ERenderStage::Transparent);
+                .stage(ERenderStage::TRANSPARENT_STAGE);
 
             auto comp_tds = builder.createTransientDS(
                 ds_name,
@@ -397,14 +402,13 @@ namespace lux::render
                 .setPipeline(composite_pipeline_)
                 .bindSceneDS()
                 .bindTransientDS(1, comp_tds)
-                .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::ForwardTrans)))
+                .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::FORWARD_TRANS)))
                 .setKernelFn([](const PassRecordContext& rec) {
                     vkCmdDraw(rec.cmd, 3, 1, 0, 0); // fullscreen triangle
-                }
-                )
+                })
                 .setKernel("FullscreenQuad")
                 .after("Canvas2D")             // composite over the direct 2D content
-                .stage(ERenderStage::Overlay); // post-tonemap, matches the direct pass above
+                .stage(ERenderStage::OVERLAY_STAGE); // post-tonemap, matches the direct pass above
         }
     }
 

@@ -23,7 +23,7 @@ namespace lux::render
         .dependencies = {k{{ prefix }}Deps.items.data(), k{{ prefix }}Deps.count},
 {%- endif %}
 {%- if annotation_get_for_or(cfg, "luxop::config", "multiplicity", "") == "single" %}
-        .multiplicity = FeatureMultiplicity::SinglePerScene,
+        .multiplicity = EFeatureMultiplicity::SINGLE_PER_SCENE,
 {%- endif %}
         .canonical_name = "{{ feature_id }}",
     };

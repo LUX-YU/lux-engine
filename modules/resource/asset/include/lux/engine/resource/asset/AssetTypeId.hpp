@@ -12,9 +12,7 @@ namespace lux::asset
     public:
         constexpr AssetTypeId() = default;
 
-        explicit constexpr AssetTypeId(std::uint64_t value) noexcept : value_(value)
-        {
-        }
+        explicit constexpr AssetTypeId(std::uint64_t value) noexcept : value_(value) {}
 
         [[nodiscard]] static constexpr AssetTypeId fromName(std::string_view name) noexcept
         {

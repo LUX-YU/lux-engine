@@ -6,7 +6,7 @@ Process 提供异步执行、资产读取和内容加载设施。它不成为所
 
 | 子模块 | 接点 |
 | --- | --- |
-| `execution` | ExecutionRuntime、TaskScope、Main 投递、计时设施 |
+| `execution` | ExecutionRuntime、Task、TaskScope、CompletionWork、计时设施 |
 | `asset_loading` | 资产读取端点与 AssetLoadSender |
 | `world_loading` | World 存储读取与 WorldPartitionLoadSender |
 
@@ -20,7 +20,9 @@ Process 提供异步执行、资产读取和内容加载设施。它不成为所
 owner 验证并捕获请求
   → sender 执行有限工作
   → set_value / set_error / set_stopped
-  → Main 在正常推进点采用结果
+  → collectCompletions 收取完成
+  → dispatchTaskEvents 移动交付结果
+  → 业务 owner 在安全点采用
 ```
 
 “任务完成”不等于“业务已经采用”，更不等于 GPU 完成。停止结果不能当作成功结果，失败之前已经发生的文件效果也不能因错误返回而被抹掉。
@@ -45,10 +47,19 @@ Simulation 的系统并行使用现有 TaskGraph 和明确访问契约。资产�
 
 ## 接纳与关闭
 
-拒绝接纳保留调用方输入；接纳后 operation state、输入资源和代码有效期由明确 owner 保持。取消意图不是任务已停止的事实。
+接纳拒绝不会调用 sender 工厂。需要保留可重试输入的调用方应在工厂内部移动，不能在构造工厂捕获时提前移动唯一副本。
+接纳后 operation state、输入资源和代码有效期由明确 owner 保持。取消意图不是任务已停止的事实。
 
 关闭期间继续推进必要完成，直到已接纳工作获得终态并解除借用。不能用强制结束进程或空日志代替正常收尾。
 
 本文不新增 OOM 恢复工程；正常 IO、解码、编译和业务错误仍须准确保留。
 
-相关说明：[World](../domain/world/README.md)、[Simulation](../domain/simulation/README.md)、[Scene Editor](../editor/editors/scene/README.md)。
+相关说明：[World](../domain/world/README.md)、[Simulation](../domain/simulation/README.md)、[Scene Editor](../../editor/tools/scene/README.md)。
+
+## 统一任务接口
+
+`submit(TaskOptions, factory(TaskReporter), completed(TTaskResult<T,E>&&))` 接纳成功即启动。
+Task 只管理取消和寿命；结果交给回调，不提供 ready/take/acknowledge。
+析构撤销业务交付、请求停止，并仅通过 collectCompletions 等待真实完成。
+TaskScope 服务结果可在纯收取阶段处理运输/存储事实；不得操作 Pane/Registry 或启动新的 UI 业务。
+Runtime 必须比其所有 Task/TaskScope 活得久。任务元信息有界，进度合并，端口用不透明 correlation 关联父任务。

@@ -49,16 +49,16 @@ namespace lux::render
 
     enum class ECoreRenderPhase : render_phase_id
     {
-        Depth = 0,
-        GBuffer = 1,
-        ForwardOpaque = 2,
-        ForwardTrans = 3,
-        Shadow = 4,
+        DEPTH = 0,
+        G_BUFFER = 1,
+        FORWARD_OPAQUE = 2,
+        FORWARD_TRANS = 3,
+        SHADOW = 4,
         UI = 5,
-        PostProcess = 6,
-        PointCloud = 7,  ///< point-cloud items (P2-B: centralised phase constant)
-        OctreeDebug = 8, ///< octree wireframe overlay
-        Gizmo = 9,       ///< gizmo overlays (line list, tri overlay)
+        POST_PROCESS = 6,
+        POINT_CLOUD = 7,  ///< point-cloud items (P2-B: centralised phase constant)
+        OCTREE_DEBUG = 8, ///< octree wireframe overlay
+        GIZMO = 9,        ///< gizmo overlays (line list, tri overlay)
     };
 
     // ========== Render-graph pass painter-order sort key ==========
@@ -74,19 +74,19 @@ namespace lux::render
     /// are NOT a draw order). Gaps of 1000 leave room to insert stages later.
     enum class ERenderStage : uint16_t
     {
-        Early = 1000,       ///< shadow atlas / pre-scene compute
-        Geometry = 2000,    ///< depth prepass / GBuffer
-        Opaque = 3000,      ///< deferred lighting / forward opaque
-        Sky = 4000,         ///< skybox — after opaque, before transparent
-        Transparent = 5000, ///< blended geometry
-        PostProcess = 6000, ///< bloom / tonemap / HDR→LDR scene composite
-        Overlay = 7000,     ///< grid / gizmo / debug — composited ON TOP of the
+        EARLY_STAGE = 1000,        ///< shadow atlas / pre-scene compute
+        GEOMETRY_STAGE = 2000,     ///< depth prepass / GBuffer
+        OPAQUE_STAGE = 3000,       ///< deferred lighting / forward opaque
+        SKY_STAGE = 4000,          ///< skybox — after opaque, before transparent
+        TRANSPARENT_STAGE = 5000,  ///< blended geometry
+        POST_PROCESS_STAGE = 6000, ///< bloom / tonemap / HDR→LDR scene composite
+        OVERLAY_STAGE = 7000,      ///< grid / gizmo / debug — composited ON TOP of the
                             ///< post-processed image. MUST outrank PostProcess: the
                             ///< overlays write the same SceneColor that tonemap writes,
                             ///< so a lower stage lets tonemap overwrite them and the
                             ///< grid/AABB vanish (editor registers them last for this).
-        Present = 8000,
-        Default = Opaque, ///< unset == Opaque ⇒ ties fall back to declaration order
+        PRESENT_STAGE = 8000,
+        DEFAULT_STAGE = OPAQUE_STAGE, ///< unset == Opaque ⇒ ties fall back to declaration order
     };
 
     // ========== Texture enums (canonical definitions in lux::gapi::Image.hpp) ==========
@@ -200,8 +200,8 @@ namespace lux::render
     /// explicit and its failure mode chosen rather than silent.
     enum class ERGReference : uint8_t
     {
-        Optional, ///< no producer → reader pruned by dead-pass (current behaviour); consumer degrades
-        Required, ///< no producer → compile FAILS FAST with a named error (no silent VUID downstream)
+        REFERENCE_OPTIONAL, ///< no producer → reader pruned by dead-pass (current behaviour); consumer degrades
+        REFERENCE_REQUIRED, ///< no producer → compile FAILS FAST with a named error (no silent VUID downstream)
     };
 
     // ========== Queue type ==========
@@ -216,7 +216,7 @@ namespace lux::render
 
     // ========== Update Group ==========
 
-    enum class RGUpdateGroup : uint32_t
+    enum class ERGUpdateGroup : uint32_t
     {
         GROUP_NONE = 0,
         GROUP_SWAPCHAIN = 1 << 0,
@@ -226,12 +226,12 @@ namespace lux::render
         GROUP_ALL = 0xFFFFFFFF
     };
 
-    inline uint32_t operator|(RGUpdateGroup a, RGUpdateGroup b)
+    inline uint32_t operator|(ERGUpdateGroup a, ERGUpdateGroup b)
     {
         return static_cast<uint32_t>(a) | static_cast<uint32_t>(b);
     }
 
-    inline uint32_t operator&(uint32_t a, RGUpdateGroup b)
+    inline uint32_t operator&(uint32_t a, ERGUpdateGroup b)
     {
         return a & static_cast<uint32_t>(b);
     }

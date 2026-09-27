@@ -7,8 +7,8 @@ namespace lux::render
     void lightUpsert(
         LightProxy proxy,
         RenderSceneId scene_id,
-        RenderEntityId entity,
-        const LightDescriptor& descriptor,
+        ERenderEntityId entity,
+        const VLightDescriptor& descriptor,
         std::uint32_t transition_milliseconds
     )
     {

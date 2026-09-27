@@ -83,11 +83,7 @@ namespace lux::world
         addRetainedArray(result, name_.capacity(), sizeof(char));
         addRetainedArray(result, schemas_.capacity(), sizeof(WorldDataSchemaId));
         addRetainedArray(result, storage_volumes_.capacity(), sizeof(WorldStorageVolumeDescription));
-        addRetainedArray(
-            result,
-            partition_table_.pages().size(),
-            sizeof(WorldPartitionTablePageDescription)
-        );
+        addRetainedArray(result, partition_table_.pages().size(), sizeof(WorldPartitionTablePageDescription));
         addRetainedArray(result, partition_indexes_.capacity(), sizeof(WorldPartitionIndexDescription));
         for (const auto& schema : schemas_)
             addRetainedArray(result, schema.name.capacity(), sizeof(char));

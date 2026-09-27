@@ -7,8 +7,14 @@ C++20 engine libraries, offline asset tools, and a Vulkan editor.
 - `engine/process/`: asynchronous execution and loading.
 - `engine/scene/`: World/Simulation composition and optional scene systems.
 - `engine/toolchain/`: asset compilation, script generation, and packaging.
-- `engine/editor/`: editor application and UI.
+- `editor/`: editor product, project services, editing tools and UI.
+- `examples/`: external consumers of the public SDK.
 - `cmake/`: build, dependency, and installation support.
+
+Dependencies point downwards: `editor -> engine -> modules`. Editor can also use
+modules directly. PLAYER never adds the editor tree.
+The existing `lux/engine/...` installed header prefix names the SDK, not a source
+directory or a dependency on the editor product.
 
 ## Build and install
 
@@ -58,12 +64,20 @@ outside the product source tree. Historical reports remain available in Git hist
 | Spatial | [分区索引与运行时实体查询](engine/domain/spatial/README.md) |
 | Simulation | [世界演进、Main owner 与稳定点](engine/domain/simulation/README.md) |
 | ECS | [Entity、组件与相机数据](engine/domain/simulation/ecs/README.md) |
-| Plugins | [元信息目录、typed 导出与追加装配](engine/editor/metadata/README.md) |
+| Plugins | [元信息目录、typed 导出与追加装配](editor/metadata/README.md) |
 | Math | [射线生成与几何相交](modules/core/math/README.md) |
 | Process | [有限异步工作与结果采用](engine/process/README.md) |
 | Scene | [World／Simulation 装配与可选能力](engine/scene/README.md) |
 | Scene Render | [通用推进与 Feature 提取](engine/scene/builtin_systems/render/README.md) |
 | Render | [Feature、View 与 GPU 资源](modules/function/render/README.md) |
-| Editor | [编辑器业务与模块边界](engine/editor/README.md) |
-| Scene Editor | [CameraMan、选择、放置与历史](engine/editor/editors/scene/README.md) |
-| Editor Rendering | [View、图像引用与相机接线](engine/editor/rendering/README.md) |
+| Editor | [编辑器业务与模块边界](editor/README.md) |
+| Scene Editor | [CameraMan、选择、放置与历史](editor/tools/scene/README.md) |
+| Editor Context | [共享设施与关闭顺序](editor/context/README.md) |
+
+## Tests
+
+`BUILD_TESTING=ON` builds the retained regression suite. It focuses on ownership,
+publication, scene driving and current editor workflows. Retired stable and
+duplicate suites have been removed rather than hidden behind another switch.
+Installed SDK consumers in `cmake/installed-consumers` are separate release checks;
+ordinary iteration does not rebuild them automatically.

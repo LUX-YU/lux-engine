@@ -33,16 +33,16 @@ namespace lux::simulation::script::detail
         std::uint32_t method_slot{};
         ScriptInstanceId instance;
         const PreparedInvocation* prepared{};
-        void (*entry)(ScriptExecution&, const ScriptMethodReference&, lux_script_call_frame&, bool) noexcept{};
+        void (*entry)(ScriptExecution&, const ScriptMethodReference&, lux_script_call_frame&, bool) noexcept {};
     };
 
     // The endpoint ABI borrows this operation port, never the runtime State or its containers.
     struct ScriptBindingDispatch final
     {
         void* context{};
-        bool (*prepare)(void*, ScriptMethodReference&) noexcept{};
-        void (*hook)(void*, std::uint32_t, lux_script_call_frame&) noexcept{};
-        void (*event)(void*, std::uint32_t, ecs::Entity, lux_script_call_frame&) noexcept{};
+        bool (*prepare)(void*, ScriptMethodReference&) noexcept {};
+        void (*hook)(void*, std::uint32_t, lux_script_call_frame&) noexcept {};
+        void (*event)(void*, std::uint32_t, ecs::Entity, lux_script_call_frame&) noexcept {};
     };
 
     class ScriptBindings final
@@ -86,11 +86,14 @@ namespace lux::simulation::script::detail
         void commitBatch(BatchTicket&& ticket) noexcept;
 
         [[nodiscard]] ScriptBindingLayout layout(std::uint32_t slot) const noexcept;
-        [[nodiscard]] bool
-        matches(std::uint32_t slot, std::span<const ScriptBindingDescription> bindings) const noexcept;
+        [[nodiscard]] bool matches(std::uint32_t slot, std::span<const ScriptBindingDescription> bindings)
+            const noexcept;
         [[nodiscard]] lux::script::ScriptSymbolId methodSymbol(std::size_t method_slot) const noexcept;
         [[nodiscard]] bool methodUsedByBinding(std::size_t method_slot) const noexcept;
-        [[nodiscard]] std::size_t methodCount() const noexcept { return symbols_.size(); }
+        [[nodiscard]] std::size_t methodCount() const noexcept
+        {
+            return symbols_.size();
+        }
         [[nodiscard]] std::size_t backingBytes() const noexcept;
         [[nodiscard]] std::uint64_t assemblyEndpointCountVisits() const noexcept
         {
@@ -99,8 +102,8 @@ namespace lux::simulation::script::detail
         [[nodiscard]] std::optional<std::uint32_t> findHook(HookScriptTarget target) const noexcept;
         [[nodiscard]] std::optional<std::uint32_t> findEvent(EventScriptTarget target) const noexcept;
         [[nodiscard]] const ScriptEventEndpointDescriptor& eventEndpoint(std::uint32_t slot) const noexcept;
-        [[nodiscard]] Result
-        validateMethods(std::uint32_t slot, const lux::script::ScriptArtifact& artifact) const noexcept;
+        [[nodiscard]] Result validateMethods(std::uint32_t slot, const lux::script::ScriptArtifact& artifact)
+            const noexcept;
 
         [[nodiscard]] Result publish(std::uint32_t slot, ScriptInstanceId instance, ecs::Entity entity) noexcept;
         void withdraw(std::uint32_t slot) noexcept;
@@ -108,8 +111,7 @@ namespace lux::simulation::script::detail
         void writeInvocationStats(ScriptRuntimeStats& output) const noexcept;
         [[nodiscard]] Result connect() noexcept;
         [[nodiscard]] Result disconnect() noexcept;
-        template <class Invoke>
-        void visitHook(std::uint32_t bucket, Invoke&& invoke) noexcept
+        template <class Invoke> void visitHook(std::uint32_t bucket, Invoke&& invoke) noexcept
         {
             Traversal traversal{*this};
             auto& lane = hooks_[bucket];
@@ -131,8 +133,7 @@ namespace lux::simulation::script::detail
                 invoke(handlers[next]);
             }
         }
-        template <class Invoke>
-        void visitEvent(std::uint32_t bucket, ecs::Entity entity, Invoke&& invoke) noexcept
+        template <class Invoke> void visitEvent(std::uint32_t bucket, ecs::Entity entity, Invoke&& invoke) noexcept
         {
             Traversal traversal{*this};
             const auto visit = [this, &invoke](const ScriptMethodReference& handler) noexcept {
@@ -146,7 +147,11 @@ namespace lux::simulation::script::detail
         }
 
     private:
-        enum class EBindingKind : std::uint8_t { HOOK, EVENT };
+        enum class EBindingKind : std::uint8_t
+        {
+            HOOK,
+            EVENT
+        };
         struct EndpointKey final
         {
             std::uint64_t system{};
@@ -160,7 +165,7 @@ namespace lux::simulation::script::detail
         struct HandlerTag;
         using HandlerStorage = lux::cxx::SlotMap<ScriptMethodReference, HandlerTag>;
         using HandlerKey = HandlerStorage::key_type;
-        using EventHandlerStorage = lux::simulation::detail::DenseEntityHandlerStorage<ScriptMethodReference>;
+        using EventHandlerStorage = lux::simulation::detail::TDenseEntityHandlerStorage<ScriptMethodReference>;
         class RunnableIndex final
         {
         public:
@@ -174,7 +179,10 @@ namespace lux::simulation::script::detail
                         break;
                 }
             }
-            [[nodiscard]] std::size_t count() const noexcept { return count_; }
+            [[nodiscard]] std::size_t count() const noexcept
+            {
+                return count_;
+            }
             [[nodiscard]] bool test(std::size_t index) const noexcept
             {
                 return (levels_[0][index / 64U] & (std::uint64_t{1U} << (index % 64U))) != 0U;
@@ -183,26 +191,37 @@ namespace lux::simulation::script::detail
             {
                 if (test(index) == enabled)
                     return;
-                if (enabled) ++count_; else --count_;
+                if (enabled)
+                    ++count_;
+                else
+                    --count_;
                 for (auto& level : levels_)
                 {
                     auto& word = level[index / 64U];
                     const auto old = word;
                     const auto mask = std::uint64_t{1U} << (index % 64U);
-                    if (enabled) word |= mask; else word &= ~mask;
+                    if (enabled)
+                        word |= mask;
+                    else
+                        word &= ~mask;
                     if ((old == 0U) == (word == 0U))
                         break;
                     enabled = word != 0U;
                     index /= 64U;
                 }
             }
-            [[nodiscard]] std::size_t next(std::size_t index) const noexcept { return nextAt(0U, index); }
+            [[nodiscard]] std::size_t next(std::size_t index) const noexcept
+            {
+                return nextAt(0U, index);
+            }
             [[nodiscard]] std::size_t backingBytes() const noexcept
             {
                 std::size_t bytes{};
-                for (const auto& level : levels_) bytes += level.capacity() * sizeof(std::uint64_t);
+                for (const auto& level : levels_)
+                    bytes += level.capacity() * sizeof(std::uint64_t);
                 return bytes;
             }
+
         private:
             [[nodiscard]] std::size_t nextAt(std::size_t depth, std::size_t index) const noexcept
             {
@@ -255,7 +274,10 @@ namespace lux::simulation::script::detail
         };
         struct Traversal final
         {
-            explicit Traversal(ScriptBindings& owner) noexcept : owner_(owner) { ++owner_.traversal_depth_; }
+            explicit Traversal(ScriptBindings& owner) noexcept : owner_(owner)
+            {
+                ++owner_.traversal_depth_;
+            }
             ~Traversal() noexcept;
             ScriptBindings& owner_;
         };

@@ -1,88 +1,61 @@
 #pragma once
 
-#include <cstddef>
-#include <type_traits>
-
 #include <lux/cxx/memory/intrusive_ptr.hpp>
+#include <lux/engine/object/detail/MessageEnvelope.hpp>
 #include <lux/engine/object/detail/ObjectStorageFwd.hpp>
-#include <lux/engine/object/detail/SignalDescriptor.hpp>
+#include <type_traits>
 
 namespace lux::object
 {
+    class LuxObject;
+
     namespace detail
     {
-        struct GeneratedSignalAccess;
+        using QueuedMessageFactory =
+            MessageEnvelope (*)(lux::cxx::intrusive_ptr<ConnectionControl>, const void*) noexcept;
 
-        LUX_CORE_PUBLIC void invokeQueuedConnection(ConnectionControl* control, const void* payload) noexcept;
-
+        // A fallible value-copy factory. Dispatch itself does not catch foreign exceptions.
         template <class Payload>
-        [[nodiscard]] MessageEnvelope
-        makeQueuedSignalMessage(lux::cxx::intrusive_ptr<ConnectionControl> control, const void* payload) noexcept
+        [[nodiscard]] MessageEnvelope makeQueuedSignalMessage(
+            lux::cxx::intrusive_ptr<ConnectionControl> control,
+            const void* payload
+        ) noexcept
         {
             if constexpr (std::is_void_v<Payload>)
-            {
-                return makeMessage([control = std::move(control)] { invokeQueuedConnection(control.get(), nullptr); });
-            }
+                return makeMessage([control = std::move(control)]() noexcept {
+                    invokeConnection(control.get(), nullptr);
+                });
             else
-            {
-                static_assert(std::is_copy_constructible_v<Payload>);
-                return makeMessage(
-                    [control = std::move(control), value = Payload(*static_cast<const Payload*>(payload))]() mutable {
-                        invokeQueuedConnection(control.get(), &value);
-                    }
-                );
-            }
+                return makeMessage([control = std::move(control), value = *static_cast<const Payload*>(payload)](
+                                   ) mutable noexcept { invokeConnection(control.get(), &value); });
         }
-    } // namespace detail
+    }
 
-    template <class Owner, class Payload = void> class Signal final
+    template <class Payload = void> class TSignal final
     {
     public:
-        using owner_type = Owner;
         using payload_type = Payload;
+        explicit TSignal(LuxObject& owner) noexcept : owner_(&owner) {}
+        ~TSignal() noexcept
+        {
+            detail::closeSignal(storage_.get());
+        }
+        TSignal(const TSignal&) = delete;
+        TSignal& operator=(const TSignal&) = delete;
+        TSignal(TSignal&&) = delete;
+        TSignal& operator=(TSignal&&) = delete;
 
     private:
-        friend struct detail::GeneratedSignalAccess;
-        template <class Derived, class Base> friend class Object;
-
-        constexpr Signal(std::size_t dense_index, std::size_t lineage_size) noexcept
-            : descriptor_{
-                  dense_index,
-                  lineage_size,
-                  lux::cxx::typeToken<Owner>(),
-                  lux::cxx::typeToken<Payload>(),
-                  queueFactory()}
-        {
-        }
-
-        [[nodiscard]] static consteval detail::QueuedMessageFactory queueFactory()
+        friend class LuxObject;
+        [[nodiscard]] static constexpr detail::QueuedMessageFactory queueFactory() noexcept
         {
             if constexpr (std::is_void_v<Payload> || std::is_copy_constructible_v<Payload>)
-            {
                 return &detail::makeQueuedSignalMessage<Payload>;
-            }
             else
-            {
                 return nullptr;
-            }
         }
 
-        detail::SignalDescriptor descriptor_;
+        LuxObject* owner_;
+        lux::cxx::intrusive_ptr<detail::SignalStorage> storage_;
     };
-
-    namespace detail
-    {
-        /** Internal code-generation bridge; production source use is gated. */
-        struct GeneratedSignalAccess final
-        {
-            template <class SignalType>
-            [[nodiscard]] static consteval SignalType make(std::size_t index, std::size_t lineage_size) noexcept
-            {
-                return SignalType{index, lineage_size};
-            }
-        };
-    } // namespace detail
-
-    static_assert(std::is_standard_layout_v<Signal<int, int>>);
-    static_assert(sizeof(Signal<int, int>) == sizeof(detail::SignalDescriptor));
-} // namespace lux::object
+}

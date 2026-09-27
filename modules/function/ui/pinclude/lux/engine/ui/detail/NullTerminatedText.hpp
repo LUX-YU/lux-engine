@@ -26,7 +26,10 @@ namespace lux::ui::detail
             data_ = heap_.c_str();
         }
 
-        [[nodiscard]] const char* c_str() const noexcept { return data_; }
+        [[nodiscard]] const char* c_str() const noexcept
+        {
+            return data_;
+        }
 
     private:
         std::array<char, kLocalCapacity> local_{};

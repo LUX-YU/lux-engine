@@ -13,8 +13,7 @@ namespace lux::render
 {
     /// Tag for the generational feature handle.
     struct FeatureTag
-    {
-    };
+    {};
 
     /// Generational feature handle (index + generation). A reused feature slot
     /// bumps its generation, so a stale FeatureHandle is rejected by the scene's
@@ -25,8 +24,7 @@ namespace lux::render
 
     /// Tag for the generational view handle.
     struct ViewTag
-    {
-    };
+    {};
 
     /// Generational view handle (index + generation). A reused view slot bumps its
     /// generation, so a stale ViewHandle (held by a client across a view
@@ -37,8 +35,7 @@ namespace lux::render
 
     /// Tag for the generational render-target handle.
     struct RenderTargetTag
-    {
-    };
+    {};
 
     /// 一等渲染目标句柄(RenderTarget 一等化设计 §1):Surface(窗口宿主的
     /// 呈现目标)与 Offscreen(图像目标)统一寻址。生成式:target 销毁后

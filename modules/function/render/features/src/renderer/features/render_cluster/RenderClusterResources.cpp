@@ -149,20 +149,18 @@ namespace lux::render
                               child_ids.insert(key(header.children[index])).second;
         }
         const bool is_invalid_identity = header.scene_id.isNull() || !header.id.valid() || header.revision == 0u;
-        const bool is_invalid_instance_count = header.instance_count != instances.size() ||
-            header.instance_count == 0u;
-        const bool is_invalid_auxiliary_counts =
-            (object_count != 0u && object_count != instances.size()) ||
-            (pick_token_count != 0u && pick_token_count != instances.size());
-        const bool is_invalid_bounds = !std::isfinite(header.bounds_radius) || header.bounds_radius < 0.0f ||
-            !std::isfinite(header.lod_error);
-        const bool is_invalid_hlod_error = !std::isfinite(header.hlod_enter_error_pixels) ||
-            !std::isfinite(header.hlod_exit_error_pixels) ||
-            header.hlod_enter_error_pixels <= header.hlod_exit_error_pixels ||
-            header.hlod_exit_error_pixels < 0.0f;
+        const bool is_invalid_instance_count = header.instance_count != instances.size() || header.instance_count == 0u;
+        const bool is_invalid_auxiliary_counts = (object_count != 0u && object_count != instances.size()) ||
+                                                 (pick_token_count != 0u && pick_token_count != instances.size());
+        const bool is_invalid_bounds =
+            !std::isfinite(header.bounds_radius) || header.bounds_radius < 0.0f || !std::isfinite(header.lod_error);
+        const bool is_invalid_hlod_error =
+            !std::isfinite(header.hlod_enter_error_pixels) || !std::isfinite(header.hlod_exit_error_pixels) ||
+            header.hlod_enter_error_pixels <= header.hlod_exit_error_pixels || header.hlod_exit_error_pixels < 0.0f;
         const bool is_invalid_hierarchy = !hierarchy_valid;
         const bool is_invalid_header = is_invalid_identity || is_invalid_instance_count ||
-            is_invalid_auxiliary_counts || is_invalid_bounds || is_invalid_hlod_error || is_invalid_hierarchy;
+                                       is_invalid_auxiliary_counts || is_invalid_bounds || is_invalid_hlod_error ||
+                                       is_invalid_hierarchy;
         if (is_invalid_header)
         {
             return false;
@@ -291,8 +289,8 @@ namespace lux::render
         std::vector<VisibilityChange> changes;
         const bool is_invalid_parent = !family_parent.valid();
         const bool is_invalid_scene_time = !std::isfinite(scene_time);
-        const bool is_invalid_transition_time = !std::isfinite(transition_duration_seconds) ||
-            transition_duration_seconds < 0.0f;
+        const bool is_invalid_transition_time =
+            !std::isfinite(transition_duration_seconds) || transition_duration_seconds < 0.0f;
         const bool is_invalid_request = is_invalid_parent || is_invalid_scene_time || is_invalid_transition_time;
         if (is_invalid_request)
             return changes;
@@ -308,8 +306,8 @@ namespace lux::render
                 transition,
                 cluster.transition_start_time,
                 cluster.transition_duration,
-                family_seed}
-            );
+                family_seed
+            });
         };
         const auto set_draw_visible = [this](Cluster& cluster, bool visible) {
             if (cluster.visible == visible)
@@ -360,50 +358,53 @@ namespace lux::render
                 emit(cluster, ETransitionAction::NONE);
             }
         };
-        const auto request_visibility =
-            [scene_time, transition_duration_seconds, &coverage_at, &emit, &set_draw_visible, &settle](
-                Cluster& cluster,
-                bool visible) {
-                settle(cluster);
-                const auto already_requested = visible ? cluster.visibility_state == EVisibilityState::VISIBLE ||
-                                                             cluster.visibility_state == EVisibilityState::FADING_IN
-                                                       : cluster.visibility_state == EVisibilityState::HIDDEN ||
-                                                             cluster.visibility_state == EVisibilityState::FADING_OUT;
-                if (already_requested)
-                    return;
-                if (transition_duration_seconds <= 0.0f)
-                {
-                    cluster.visibility_state = visible ? EVisibilityState::VISIBLE : EVisibilityState::HIDDEN;
-                    cluster.transition_start_time = scene_time;
-                    cluster.transition_duration = 0.0f;
-                    set_draw_visible(cluster, visible);
-                    emit(cluster, ETransitionAction::NONE);
-                    return;
-                }
+        const auto request_visibility = [scene_time,
+                                         transition_duration_seconds,
+                                         &coverage_at,
+                                         &emit,
+                                         &set_draw_visible,
+                                         &settle](Cluster& cluster, bool visible) {
+            settle(cluster);
+            const auto already_requested = visible ? cluster.visibility_state == EVisibilityState::VISIBLE ||
+                                                         cluster.visibility_state == EVisibilityState::FADING_IN
+                                                   : cluster.visibility_state == EVisibilityState::HIDDEN ||
+                                                         cluster.visibility_state == EVisibilityState::FADING_OUT;
+            if (already_requested)
+                return;
+            if (transition_duration_seconds <= 0.0f)
+            {
+                cluster.visibility_state = visible ? EVisibilityState::VISIBLE : EVisibilityState::HIDDEN;
+                cluster.transition_start_time = scene_time;
+                cluster.transition_duration = 0.0f;
+                set_draw_visible(cluster, visible);
+                emit(cluster, ETransitionAction::NONE);
+                return;
+            }
 
-                const auto coverage = coverage_at(cluster);
-                cluster.transition_duration = transition_duration_seconds;
-                if (visible)
-                {
-                    set_draw_visible(cluster, true);
-                    cluster.visibility_state = EVisibilityState::FADING_IN;
-                    cluster.transition_start_time = scene_time - coverage * transition_duration_seconds;
-                    emit(cluster, ETransitionAction::FADE_IN);
-                }
-                else
-                {
-                    cluster.visibility_state = EVisibilityState::FADING_OUT;
-                    cluster.transition_start_time = scene_time - (1.0f - coverage) * transition_duration_seconds;
-                    emit(cluster, ETransitionAction::FADE_OUT);
-                }
-            };
+            const auto coverage = coverage_at(cluster);
+            cluster.transition_duration = transition_duration_seconds;
+            if (visible)
+            {
+                set_draw_visible(cluster, true);
+                cluster.visibility_state = EVisibilityState::FADING_IN;
+                cluster.transition_start_time = scene_time - coverage * transition_duration_seconds;
+                emit(cluster, ETransitionAction::FADE_IN);
+            }
+            else
+            {
+                cluster.visibility_state = EVisibilityState::FADING_OUT;
+                cluster.transition_start_time = scene_time - (1.0f - coverage) * transition_duration_seconds;
+                emit(cluster, ETransitionAction::FADE_OUT);
+            }
+        };
 
         std::unordered_set<std::string> visited;
         std::unordered_set<std::string> visiting;
         std::function<void(const std::string&, bool)> reconcile_family;
         reconcile_family = [this, &visited, &visiting, &request_visibility, &reconcile_family](
                                const std::string& family_key,
-                               bool family_enabled) {
+                               bool family_enabled
+                           ) {
             const auto parent = clusters_.find(family_key);
             if (parent == clusters_.end())
                 return;
@@ -491,8 +492,7 @@ namespace lux::render
         return static_cast<std::size_t>(std::ranges::count_if(clusters_, [](const auto& entry) {
             return entry.second.visibility_state == EVisibilityState::FADING_IN ||
                    entry.second.visibility_state == EVisibilityState::FADING_OUT;
-        })
-        );
+        }));
     }
 
     std::uint32_t RenderClusterResources::transitionSeed(
@@ -665,7 +665,8 @@ namespace lux::render
                     true,
                     &slot.buffer,
                     &allocation,
-                    &slot.mapped) ||
+                    &slot.mapped
+                ) ||
                 slot.buffer == VK_NULL_HANDLE || slot.mapped == nullptr)
             {
                 slot.allocation = allocation;
@@ -726,7 +727,8 @@ namespace lux::render
                     true,
                     &frame.cluster_buffer,
                     &cluster_allocation,
-                    &frame.cluster_mapped))
+                    &frame.cluster_mapped
+                ))
             {
                 retireGpuCullFrames(candidate);
                 return false;
@@ -741,7 +743,8 @@ namespace lux::render
                     true,
                     &frame.instance_buffer,
                     &instance_allocation,
-                    &frame.instance_mapped))
+                    &frame.instance_mapped
+                ))
             {
                 frame.instance_allocation = instance_allocation;
                 retireGpuCullFrames(candidate);
@@ -758,7 +761,8 @@ namespace lux::render
                     true,
                     &frame.candidate_dispatch_buffer,
                     &dispatch_allocation,
-                    &frame.candidate_dispatch_mapped))
+                    &frame.candidate_dispatch_mapped
+                ))
             {
                 frame.candidate_dispatch_allocation = dispatch_allocation;
                 retireGpuCullFrames(candidate);
@@ -1086,10 +1090,10 @@ namespace lux::render
     {
         const bool is_invalid_generation = request.request_generation == 0u;
         const bool is_invalid_coordinates = !std::isfinite(request.normalized_x) ||
-            !std::isfinite(request.normalized_y) || request.normalized_x < 0.0f ||
-            request.normalized_x > 1.0f || request.normalized_y < 0.0f || request.normalized_y > 1.0f;
-        const bool is_invalid_distance = !std::isfinite(request.maximum_distance) ||
-            request.maximum_distance <= 0.0f;
+                                            !std::isfinite(request.normalized_y) || request.normalized_x < 0.0f ||
+                                            request.normalized_x > 1.0f || request.normalized_y < 0.0f ||
+                                            request.normalized_y > 1.0f;
+        const bool is_invalid_distance = !std::isfinite(request.maximum_distance) || request.maximum_distance <= 0.0f;
         const bool is_invalid_request = is_invalid_generation || is_invalid_coordinates || is_invalid_distance;
         if (is_invalid_request)
         {
@@ -1100,8 +1104,8 @@ namespace lux::render
         pending_pick_ = request;
     }
 
-    std::optional<RequestRenderClusterPickPayload>
-    RenderClusterResources::pickRequestForView(std::uint32_t view_index) const noexcept
+    std::optional<RequestRenderClusterPickPayload> RenderClusterResources::pickRequestForView(std::uint32_t view_index
+    ) const noexcept
     {
         if (!pending_pick_ || pending_pick_->view_index != view_index)
             return std::nullopt;
@@ -1124,8 +1128,10 @@ namespace lux::render
         }
     }
 
-    void
-    RenderClusterResources::failPick(const RequestRenderClusterPickPayload& request, ERenderPickStatus status) noexcept
+    void RenderClusterResources::failPick(
+        const RequestRenderClusterPickPayload& request,
+        ERenderPickStatus status
+    ) noexcept
     {
         if (status != ERenderPickStatus::STALE)
             status = ERenderPickStatus::FAILED;
@@ -1146,7 +1152,8 @@ namespace lux::render
                 pending_pick_->view_generation,
                 ERenderPickStatus::PENDING,
                 0.0f,
-                0u};
+                0u
+            };
         }
         for (const auto& slot : pick_gpu_slots_)
         {
@@ -1158,7 +1165,8 @@ namespace lux::render
                     slot.request.view_generation,
                     ERenderPickStatus::PENDING,
                     0.0f,
-                    0u};
+                    0u
+                };
             }
         }
         if (latest_pick_.request_generation == request_generation)

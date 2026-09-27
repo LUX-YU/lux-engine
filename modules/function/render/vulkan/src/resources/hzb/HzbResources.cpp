@@ -18,7 +18,8 @@ namespace lux::render
 {
     static_assert(
         sizeof(HzbResources::ViewParams) == 112u,
-        "HzbResources::ViewParams must be 112 bytes (std140 exact-origin layout)");
+        "HzbResources::ViewParams must be 112 bytes (std140 exact-origin layout)"
+    );
 
     namespace
     {

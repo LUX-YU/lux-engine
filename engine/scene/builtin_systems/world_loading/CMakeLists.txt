@@ -4,7 +4,7 @@ generate_visibility_header(
     DISABLE_DLL_MACRO_NAME LUX_ENGINE_SCENE_WORLD_LOADING_DLL_DISABLE
     GENERATE_FILE_PATH lux/engine/scene/world_loading/visibility.h)
 add_component(COMPONENT_NAME scene_world_loading NAMESPACE lux::engine::scene
-    OUTPUT_NAME lux_engine_scene_world_loading SOURCE_FILES src/WorldLoadingSystem.cpp src/Observer.cpp)
+    OUTPUT_NAME lux_engine_scene_world_loading SOURCE_FILES src/WorldLoadingSystem.cpp src/WorldResidency.cpp src/Observer.cpp)
 include(${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/schema/cmake/engine_ecs_codegen.cmake)
 engine_target_add_ecs_component_codegen(
     NAME scene_observer_component_codegen TARGET scene_world_loading
@@ -19,6 +19,8 @@ engine_target_add_static_type_info(
 component_include_directories(scene_world_loading
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include)
+target_include_directories(scene_world_loading PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
+
 target_compile_definitions(scene_world_loading PRIVATE LUX_ENGINE_SCENE_WORLD_LOADING_LIBRARY)
 target_link_libraries(scene_world_loading PUBLIC
     lux::engine::scene::scene_world_materialization lux::engine::process::process_world_loading)

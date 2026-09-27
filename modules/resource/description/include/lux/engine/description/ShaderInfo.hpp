@@ -68,19 +68,18 @@ namespace lux::rdesc
     // —— Specialization Constant ——
     struct SpecDefaultValue
     {
-        enum class Kind : uint8_t
+        enum class EKind : uint8_t
         {
-            Bool,
-            Int,
-            UInt,
-            Float,
-            Double,
-            Unknown
-        } kind = Kind::Unknown;
+            BOOL,
+            INT,
+            UINT,
+            FLOAT,
+            DOUBLE,
+            UNKNOWN
+        } kind = EKind::UNKNOWN;
         uint32_t bit_width = 32; // 8/16/32/64, or 16/32/64 for float
         // Stored uniformly in a 64-bit container; floats use f64
-        union
-        {
+        union {
             int64_t i64;
             uint64_t u64;
             double f64;
@@ -99,20 +98,20 @@ namespace lux::rdesc
     };
 
     // Vertex input, only valid in the VERTEX stage
-    enum class VertexScalarBase : uint8_t
+    enum class EVertexScalarBase : uint8_t
     {
-        Bool,
-        Int,
-        UInt,
-        Float,
-        Double,
-        Unknown
+        BOOL,
+        INT,
+        UINT,
+        FLOAT,
+        DOUBLE,
+        UNKNOWN
     };
     struct VertexInputAttribute
     {
         uint32_t location = 0;
         std::string name;
-        VertexScalarBase base = VertexScalarBase::Unknown;
+        EVertexScalarBase base = EVertexScalarBase::UNKNOWN;
         uint32_t vec_size = 1;
         uint32_t columns = 1;
         uint32_t array_size = 1;
@@ -231,7 +230,10 @@ namespace lux::rdesc
         static constexpr size_t npos = static_cast<size_t>(-1);
 
         LUX_RESOURCE_PUBLIC static std::vector<std::byte> serialize(const ShaderInfo& info);
-        LUX_RESOURCE_PUBLIC static bool
-        deserialize(std::span<const std::byte> buffer, ShaderInfo& out, std::string* err = nullptr);
+        LUX_RESOURCE_PUBLIC static bool deserialize(
+            std::span<const std::byte> buffer,
+            ShaderInfo& out,
+            std::string* err = nullptr
+        );
     };
 }

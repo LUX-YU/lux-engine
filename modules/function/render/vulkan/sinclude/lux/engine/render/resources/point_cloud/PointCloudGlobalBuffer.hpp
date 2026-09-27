@@ -45,9 +45,9 @@ namespace lux::render
      *   buf.upload(cid, packed_verts, scheduler);
      * @endcode
      */
-    class LUX_FUNCTION_PUBLIC PointCloudGlobalBuffer final : public SlotArenaBuffer<GpuPointVertex>
+    class LUX_FUNCTION_PUBLIC PointCloudGlobalBuffer final : public TSlotArenaBuffer<GpuPointVertex>
     {
-        using Base = SlotArenaBuffer<GpuPointVertex>;
+        using Base = TSlotArenaBuffer<GpuPointVertex>;
 
     public:
         static constexpr uint32_t kInvalidChunkId = Base::kInvalidId;

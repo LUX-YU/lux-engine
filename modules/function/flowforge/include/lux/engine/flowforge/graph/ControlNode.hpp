@@ -6,7 +6,7 @@ namespace lux::flowforge
      * @class StartNode
      * @brief A special node representing the entry point of a flow graph.
      */
-    class StartNode :  public Node, public HasExecOutPin<StartNode>
+    class StartNode : public Node, public THasExecOutPin<StartNode>
     {
     public:
         /**
@@ -58,7 +58,7 @@ namespace lux::flowforge
         const DataInPin& dataInPin() const;
 
     private:
-        DataInPin  data_in_pin_;       ///< The boolean condition input pin.
+        DataInPin data_in_pin_; ///< The boolean condition input pin.
     };
 
     /**
@@ -95,8 +95,8 @@ namespace lux::flowforge
          */
         [[nodiscard]] PinId removeExecOutPin();
 
-		using ExecIntermediateNode::addExecOutPin;
-		using ExecIntermediateNode::removeExecOutPin;
+        using ExecIntermediateNode::addExecOutPin;
+        using ExecIntermediateNode::removeExecOutPin;
 
     private:
         std::vector<std::unique_ptr<ExecOutPin>> exec_out_pins_; ///< The executable output pins.
@@ -151,9 +151,9 @@ namespace lux::flowforge
         const DataOutPin& indexPin() const;
 
     private:
-        DataInPin  first_index_; ///< The input pin specifying the start index.
-        DataInPin  last_index_;  ///< The input pin specifying the end index.
-        DataOutPin index_;       ///< The output pin exposing the current loop index.
+        DataInPin first_index_; ///< The input pin specifying the start index.
+        DataInPin last_index_;  ///< The input pin specifying the end index.
+        DataOutPin index_;      ///< The output pin exposing the current loop index.
     };
 
     /**
@@ -193,10 +193,10 @@ namespace lux::flowforge
         const DataInPin& dataInPin() const;
 
     private:
-        DataInPin  data_in_pin_; ///< The boolean condition input pin.
+        DataInPin data_in_pin_; ///< The boolean condition input pin.
     };
 
-	class ReturnNode : public Node, public HasExecInPin<ReturnNode>
+    class ReturnNode : public Node, public THasExecInPin<ReturnNode>
     {
     public:
         ReturnNode();
@@ -221,7 +221,7 @@ namespace lux::flowforge
      *        nested inside a ForLoop/WhileLoop body — the MLIR builder
      *        rejects a Break outside any loop at compile time.
      */
-    class BreakNode : public Node, public HasExecInPin<BreakNode>
+    class BreakNode : public Node, public THasExecInPin<BreakNode>
     {
     public:
         BreakNode();

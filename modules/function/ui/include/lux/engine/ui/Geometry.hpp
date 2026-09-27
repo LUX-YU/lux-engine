@@ -28,6 +28,17 @@ namespace lux::ui
         [[nodiscard]] constexpr bool operator==(const Size&) const noexcept = default;
     };
 
+    struct Rect final
+    {
+        Point position;
+        Size size;
+    };
+
+    struct Insets final
+    {
+        float left{}, top{}, right{}, bottom{};
+    };
+
     struct Color final
     {
         float red{};

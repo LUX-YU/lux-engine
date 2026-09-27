@@ -34,8 +34,7 @@ namespace lux::input
         )
             : name_(std::move(name)), consumes_keyboard_(consumes_keyboard), consumes_mouse_(consumes_mouse),
               priority_(priority)
-        {
-        }
+        {}
 
         // ------------------------------------------------------------------ //
         //  Identity                                                           //

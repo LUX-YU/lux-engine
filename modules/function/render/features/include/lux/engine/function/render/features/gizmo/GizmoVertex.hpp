@@ -34,8 +34,15 @@ namespace lux::render
             return (to_u8(r) << 0) | (to_u8(g) << 8) | (to_u8(b) << 16) | (to_u8(a) << 24);
         }
 
-        static constexpr GizmoVertex
-        make(float px, float py, float pz, float r, float g, float b, float a = 1.0f) noexcept
+        static constexpr GizmoVertex make(
+            float px,
+            float py,
+            float pz,
+            float r,
+            float g,
+            float b,
+            float a = 1.0f
+        ) noexcept
         {
             return {px, py, pz, pack(r, g, b, a)};
         }

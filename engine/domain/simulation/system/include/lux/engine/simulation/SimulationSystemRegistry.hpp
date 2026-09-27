@@ -17,7 +17,7 @@
 
 namespace lux::simulation
 {
-    class SimulationBuilder;
+    class SimulationSystemInstaller;
 
     enum class ESimulationSystemBuildError : std::uint8_t
     {
@@ -50,7 +50,7 @@ namespace lux::simulation
     };
 
     using InstallSimulationSystemFn = lux::cxx::expected<void, SimulationSystemBuildFailure> (*)(
-        SimulationBuilder& builder,
+        SimulationSystemInstaller& builder,
         SimulationSystemView description
     ) noexcept;
 
@@ -65,7 +65,6 @@ namespace lux::simulation
         // Runtime code contract: tasks only recompute derived data from current facts. Such a system
         // must not evolve persistent content, advance private time, or publish execution hooks/events.
         // This capability belongs to the implementation, not to untrusted document configuration.
-        bool supports_derivation{};
         std::shared_ptr<const void> code_lifetime;
     };
 
@@ -95,11 +94,13 @@ namespace lux::simulation
         SimulationSystemRegistry(const SimulationSystemRegistry&) = delete;
         SimulationSystemRegistry& operator=(const SimulationSystemRegistry&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<void, SimulationSystemRegistrationFailure>
-        add(SimulationSystemRegistration registration) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, SimulationSystemRegistrationFailure> add(
+            SimulationSystemRegistration registration
+        ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<void, SimulationSystemRegistrationFailure>
-        add(std::span<const SimulationSystemRegistration> registrations) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, SimulationSystemRegistrationFailure> add(
+            std::span<const SimulationSystemRegistration> registrations
+        ) noexcept;
 
         [[nodiscard]] const SimulationSystemRegistration* find(const lux::system::SystemTypeId& type) const noexcept;
         [[nodiscard]] std::span<const SimulationSystemRegistration> all() const noexcept;

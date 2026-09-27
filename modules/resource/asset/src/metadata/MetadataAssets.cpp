@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <new>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -19,29 +19,21 @@ namespace lux::asset
 {
     namespace
     {
-        [[nodiscard]] AssetDecodeFailure decodeFailure(
-            EAssetDecodeError code,
-            std::size_t offset = 0U
-        ) noexcept
+        [[nodiscard]] AssetDecodeFailure decodeFailure(EAssetDecodeError code, std::size_t offset = 0U) noexcept
         {
             return AssetDecodeFailure{code, offset};
         }
 
-        [[nodiscard]] AssetEncodeFailure encodeFailure(
-            EAssetEncodeError code,
-            std::size_t offset = 0U
-        ) noexcept
+        [[nodiscard]] AssetEncodeFailure encodeFailure(EAssetEncodeError code, std::size_t offset = 0U) noexcept
         {
             return AssetEncodeFailure{code, offset};
         }
 
         [[nodiscard]] bool canonicalizeAuxiliary(std::vector<AssetAuxiliaryPayload>& auxiliary) noexcept
         {
-            std::sort(
-                auxiliary.begin(),
-                auxiliary.end(),
-                [](const auto& left, const auto& right) noexcept { return left.tag < right.tag; }
-            );
+            std::sort(auxiliary.begin(), auxiliary.end(), [](const auto& left, const auto& right) noexcept {
+                return left.tag < right.tag;
+            });
             for (std::size_t index = 0U; index < auxiliary.size(); ++index)
             {
                 const bool invalid = auxiliary[index].tag == 0U || auxiliary[index].bytes.empty();
@@ -56,18 +48,17 @@ namespace lux::asset
         {
             if (mesh.vertices.empty() || mesh.indices.empty() || mesh.indices.size() % 3U != 0U ||
                 mesh.vertices.size() > detail::kMaxMeshVertexCount ||
-                mesh.indices.size() > detail::kMaxMeshIndexCount ||
-                mesh.lods.size() > detail::kMaxMeshLodCount)
+                mesh.indices.size() > detail::kMaxMeshIndexCount || mesh.lods.size() > detail::kMaxMeshLodCount)
             {
                 return false;
             }
             for (const auto index : mesh.indices)
-                if (index >= mesh.vertices.size()) return false;
+                if (index >= mesh.vertices.size())
+                    return false;
             for (const auto& vertex : mesh.vertices)
             {
-                if (!vertex.position.allFinite() || !vertex.normal.allFinite() ||
-                    !vertex.tangent.allFinite() || !vertex.uv.allFinite() ||
-                    !vertex.bitangent.allFinite())
+                if (!vertex.position.allFinite() || !vertex.normal.allFinite() || !vertex.tangent.allFinite() ||
+                    !vertex.uv.allFinite() || !vertex.bitangent.allFinite())
                 {
                     return false;
                 }
@@ -82,8 +73,7 @@ namespace lux::asset
                     {
                         for (std::uint8_t previous = 0U; previous < influence; ++previous)
                         {
-                            if (vertex.bone.weights[previous] > 0.0F &&
-                                vertex.bone.bone_ids[previous] == bone)
+                            if (vertex.bone.weights[previous] > 0.0F && vertex.bone.bone_ids[previous] == bone)
                             {
                                 return false;
                             }
@@ -102,12 +92,12 @@ namespace lux::asset
                     lod.indices.size() > detail::kMaxMeshIndexCount)
                     return false;
                 for (const auto index : lod.indices)
-                    if (index >= mesh.vertices.size()) return false;
+                    if (index >= mesh.vertices.size())
+                        return false;
                 previous_index_count = lod.indices.size();
             }
-            return !mesh.bounds ||
-                (mesh.bounds->min.allFinite() && mesh.bounds->max.allFinite() &&
-                 (mesh.bounds->min.array() <= mesh.bounds->max.array()).all());
+            return !mesh.bounds || (mesh.bounds->min.allFinite() && mesh.bounds->max.allFinite() &&
+                                    (mesh.bounds->min.array() <= mesh.bounds->max.array()).all());
         }
 
         [[nodiscard]] bool validSkeleton(const lux::rdesc::Skeleton& skeleton) noexcept
@@ -121,35 +111,36 @@ namespace lux::asset
             for (std::size_t index = 0U; index < skeleton.bones.size(); ++index)
             {
                 const auto& bone = skeleton.bones[index];
-                if (bone.name.empty() || bone.name.size() > detail::kMaxSkelStringLen ||
-                    bone.parent_index < -1 || bone.parent_index >= static_cast<std::int32_t>(index) ||
-                    !bone.bind_local.matrix().allFinite() || !bone.inv_bind_world.matrix().allFinite())
+                if (bone.name.empty() || bone.name.size() > detail::kMaxSkelStringLen || bone.parent_index < -1 ||
+                    bone.parent_index >= static_cast<std::int32_t>(index) || !bone.bind_local.matrix().allFinite() ||
+                    !bone.inv_bind_world.matrix().allFinite())
                 {
                     return false;
                 }
-                if (bone.parent_index == -1) ++root_count;
+                if (bone.parent_index == -1)
+                    ++root_count;
                 for (std::size_t previous = 0U; previous < index; ++previous)
-                    if (skeleton.bones[previous].name == bone.name) return false;
+                    if (skeleton.bones[previous].name == bone.name)
+                        return false;
             }
             return root_count != 0U;
         }
 
         [[nodiscard]] bool validAnimation(const lux::rdesc::AnimationClip& clip) noexcept
         {
-            if (clip.name.empty() || clip.name.size() > detail::kMaxAcStringLen ||
-                !std::isfinite(clip.duration) || clip.duration <= 0.0F ||
-                clip.tracks.empty() || clip.tracks.size() > detail::kMaxAcTrackCount)
+            if (clip.name.empty() || clip.name.size() > detail::kMaxAcStringLen || !std::isfinite(clip.duration) ||
+                clip.duration <= 0.0F || clip.tracks.empty() || clip.tracks.size() > detail::kMaxAcTrackCount)
             {
                 return false;
             }
             for (const auto& track : clip.tracks)
             {
                 const bool count_mismatch = track.times_t.size() != track.translations.size() ||
-                    track.times_r.size() != track.rotations.size() ||
-                    track.times_s.size() != track.scales.size();
+                                            track.times_r.size() != track.rotations.size() ||
+                                            track.times_s.size() != track.scales.size();
                 const bool count_overflow = track.times_t.size() > detail::kMaxAcKeyCount ||
-                    track.times_r.size() > detail::kMaxAcKeyCount ||
-                    track.times_s.size() > detail::kMaxAcKeyCount;
+                                            track.times_r.size() > detail::kMaxAcKeyCount ||
+                                            track.times_s.size() > detail::kMaxAcKeyCount;
                 if (track.bone_index < 0 || count_mismatch || count_overflow)
                     return false;
                 const auto sortedFinite = [duration = clip.duration](const std::vector<float>& times) noexcept {
@@ -157,24 +148,31 @@ namespace lux::asset
                     for (std::size_t index = 0U; index < times.size(); ++index)
                     {
                         const float time = times[index];
-                        if (!std::isfinite(time) || time < 0.0F || time > duration ||
-                            (index != 0U && time <= previous))
+                        if (!std::isfinite(time) || time < 0.0F || time > duration || (index != 0U && time <= previous))
                             return false;
                         previous = time;
                     }
                     return true;
                 };
-                if (track.times_t.empty() && track.times_r.empty() && track.times_s.empty()) return false;
+                if (track.times_t.empty() && track.times_r.empty() && track.times_s.empty())
+                    return false;
                 if (!sortedFinite(track.times_t) || !sortedFinite(track.times_r) || !sortedFinite(track.times_s))
                     return false;
-                for (const auto& value : track.translations) if (!value.allFinite()) return false;
+                for (const auto& value : track.translations)
+                    if (!value.allFinite())
+                        return false;
                 for (const auto& value : track.rotations)
-                    if (!value.coeffs().allFinite() || std::abs(value.norm() - 1.0F) > 1.0e-4F) return false;
-                for (const auto& value : track.scales) if (!value.allFinite()) return false;
+                    if (!value.coeffs().allFinite() || std::abs(value.norm() - 1.0F) > 1.0e-4F)
+                        return false;
+                for (const auto& value : track.scales)
+                    if (!value.allFinite())
+                        return false;
                 for (const auto& previous : clip.tracks)
                 {
-                    if (&previous == &track) break;
-                    if (previous.bone_index == track.bone_index) return false;
+                    if (&previous == &track)
+                        break;
+                    if (previous.bone_index == track.bone_index)
+                        return false;
                 }
             }
             return true;
@@ -194,8 +192,8 @@ namespace lux::asset
 
         [[nodiscard]] std::size_t animationRetained(const lux::rdesc::AnimationClip& clip) noexcept
         {
-            std::size_t result = sizeof(clip) + clip.name.capacity() +
-                clip.tracks.capacity() * sizeof(lux::rdesc::BoneTrack);
+            std::size_t result =
+                sizeof(clip) + clip.name.capacity() + clip.tracks.capacity() * sizeof(lux::rdesc::BoneTrack);
             const auto add = [&result](std::size_t count, std::size_t stride) noexcept {
                 if (stride != 0U && count > ((std::numeric_limits<std::size_t>::max)() - result) / stride)
                     return false;
@@ -218,8 +216,7 @@ namespace lux::asset
         }
 
         template <class ConcreteAsset, class Data, class Decode, class Retained>
-        [[nodiscard]] lux::cxx::expected<std::shared_ptr<const ConcreteAsset>, AssetDecodeFailure>
-        decodeMetadata(
+        [[nodiscard]] lux::cxx::expected<std::shared_ptr<const ConcreteAsset>, AssetDecodeFailure> decodeMetadata(
             AssetId requested,
             lux::cxx::SharedBytes<> bytes,
             const AssetDecodeLimits& limits,
@@ -259,11 +256,7 @@ namespace lux::asset
                     std::move(auxiliary)
                 );
             }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::ALLOCATION_FAILURE));
-            }
-            catch (...)
+            catch (const std::length_error&)
             {
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
             }
@@ -281,8 +274,10 @@ namespace lux::asset
                 const auto information = encode(asset.data());
                 if (!information)
                 {
-                    const auto error = information.error().code == lux::serialization::ESerializationError::ALLOCATION_FAILURE
-                        ? EAssetEncodeError::ALLOCATION_FAILURE : EAssetEncodeError::LIMIT_EXCEEDED;
+                    const auto error =
+                        information.error().code == lux::serialization::ESerializationError::ALLOCATION_FAILURE
+                            ? EAssetEncodeError::ALLOCATION_FAILURE
+                            : EAssetEncodeError::LIMIT_EXCEEDED;
                     return lux::cxx::unexpected(encodeFailure(error));
                 }
                 if (information->empty())
@@ -299,11 +294,7 @@ namespace lux::asset
                     limits
                 );
             }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::ALLOCATION_FAILURE));
-            }
-            catch (...)
+            catch (const std::length_error&)
             {
                 return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_PAYLOAD));
             }
@@ -316,8 +307,7 @@ namespace lux::asset
         std::vector<AssetAuxiliaryPayload> auxiliary
     ) noexcept
         : TAsset(std::move(info), std::move(data), std::move(auxiliary))
-    {
-    }
+    {}
 
     lux::cxx::expected<std::shared_ptr<const MeshAsset>, AssetDecodeFailure> MeshAsset::create(
         AssetInfo info,
@@ -328,15 +318,11 @@ namespace lux::asset
         if (info.id.isNull() || !data || !validMesh(*data) || !canonicalizeAuxiliary(auxiliary))
             return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
         info.type = asset_type;
-        try
+
         {
             return std::shared_ptr<const MeshAsset>(
                 new MeshAsset(std::move(info), std::move(data), std::move(auxiliary))
             );
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::ALLOCATION_FAILURE));
         }
     }
 
@@ -346,8 +332,7 @@ namespace lux::asset
         std::vector<AssetAuxiliaryPayload> auxiliary
     ) noexcept
         : TAsset(std::move(info), std::move(data), std::move(auxiliary))
-    {
-    }
+    {}
 
     lux::cxx::expected<std::shared_ptr<const SkeletonAsset>, AssetDecodeFailure> SkeletonAsset::create(
         AssetInfo info,
@@ -358,15 +343,11 @@ namespace lux::asset
         if (info.id.isNull() || !data || !validSkeleton(*data) || !canonicalizeAuxiliary(auxiliary))
             return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
         info.type = asset_type;
-        try
+
         {
             return std::shared_ptr<const SkeletonAsset>(
                 new SkeletonAsset(std::move(info), std::move(data), std::move(auxiliary))
             );
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::ALLOCATION_FAILURE));
         }
     }
 
@@ -376,11 +357,9 @@ namespace lux::asset
         std::vector<AssetAuxiliaryPayload> auxiliary
     ) noexcept
         : TAsset(std::move(info), std::move(data), std::move(auxiliary))
-    {
-    }
+    {}
 
-    lux::cxx::expected<std::shared_ptr<const AnimationClipAsset>, AssetDecodeFailure>
-    AnimationClipAsset::create(
+    lux::cxx::expected<std::shared_ptr<const AnimationClipAsset>, AssetDecodeFailure> AnimationClipAsset::create(
         AssetInfo info,
         std::shared_ptr<const lux::rdesc::AnimationClip> data,
         std::vector<AssetAuxiliaryPayload> auxiliary
@@ -389,20 +368,15 @@ namespace lux::asset
         if (info.id.isNull() || !data || !validAnimation(*data) || !canonicalizeAuxiliary(auxiliary))
             return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
         info.type = asset_type;
-        try
+
         {
             return std::shared_ptr<const AnimationClipAsset>(
                 new AnimationClipAsset(std::move(info), std::move(data), std::move(auxiliary))
             );
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::ALLOCATION_FAILURE));
-        }
     }
 
-    lux::cxx::expected<std::shared_ptr<const MeshAsset>, AssetDecodeFailure>
-    TAssetSerDeser<MeshAsset>::decode(
+    lux::cxx::expected<std::shared_ptr<const MeshAsset>, AssetDecodeFailure> TAssetSerDeser<MeshAsset>::decode(
         AssetId requested,
         lux::cxx::SharedBytes<> image,
         const AssetDecodeLimits& limits
@@ -414,23 +388,22 @@ namespace lux::asset
             limits,
             &detail::decodeMeshDescription,
             [](const lux::rdesc::Mesh& mesh) noexcept {
-                return lux::rdesc::meshRetainedBytes(mesh).value_or(
-                    (std::numeric_limits<std::size_t>::max)()
-                );
+                return lux::rdesc::meshRetainedBytes(mesh).value_or((std::numeric_limits<std::size_t>::max)());
             }
         );
     }
 
-    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
-    TAssetSerDeser<MeshAsset>::encode(const MeshAsset& asset, const AssetEncodeLimits& limits) noexcept
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<MeshAsset>::encode(
+        const MeshAsset& asset,
+        const AssetEncodeLimits& limits
+    ) noexcept
     {
         if (!validMesh(asset.data()))
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
         return encodeMetadata(asset, limits, &detail::encodeMeshDescription);
     }
 
-    lux::cxx::expected<std::shared_ptr<const SkeletonAsset>, AssetDecodeFailure>
-    TAssetSerDeser<SkeletonAsset>::decode(
+    lux::cxx::expected<std::shared_ptr<const SkeletonAsset>, AssetDecodeFailure> TAssetSerDeser<SkeletonAsset>::decode(
         AssetId requested,
         lux::cxx::SharedBytes<> image,
         const AssetDecodeLimits& limits
@@ -445,8 +418,7 @@ namespace lux::asset
         );
     }
 
-    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
-    TAssetSerDeser<SkeletonAsset>::encode(
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<SkeletonAsset>::encode(
         const SkeletonAsset& asset,
         const AssetEncodeLimits& limits
     ) noexcept
@@ -456,12 +428,9 @@ namespace lux::asset
         return encodeMetadata(asset, limits, &detail::encodeSkeletonDescription);
     }
 
-    lux::cxx::expected<std::shared_ptr<const AnimationClipAsset>, AssetDecodeFailure>
-    TAssetSerDeser<AnimationClipAsset>::decode(
-        AssetId requested,
-        lux::cxx::SharedBytes<> image,
-        const AssetDecodeLimits& limits
-    ) noexcept
+    lux::cxx::expected<std::shared_ptr<const AnimationClipAsset>, AssetDecodeFailure> TAssetSerDeser<
+        AnimationClipAsset>::
+        decode(AssetId requested, lux::cxx::SharedBytes<> image, const AssetDecodeLimits& limits) noexcept
     {
         return decodeMetadata<AnimationClipAsset, lux::rdesc::AnimationClip>(
             requested,
@@ -472,8 +441,7 @@ namespace lux::asset
         );
     }
 
-    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
-    TAssetSerDeser<AnimationClipAsset>::encode(
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<AnimationClipAsset>::encode(
         const AnimationClipAsset& asset,
         const AssetEncodeLimits& limits
     ) noexcept

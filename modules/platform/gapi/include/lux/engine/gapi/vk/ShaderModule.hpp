@@ -7,9 +7,7 @@ namespace lux::gapi::vk
     class ShaderModule
     {
     public:
-        ShaderModule() : shader_module(VK_NULL_HANDLE)
-        {
-        }
+        ShaderModule() : shader_module(VK_NULL_HANDLE) {}
 
         ShaderModule(VkDevice device, const VkShaderModuleCreateInfo& info, VkAllocationCallbacks* allocator = nullptr)
         {

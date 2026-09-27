@@ -33,11 +33,11 @@ namespace lux::render
     /// `static constexpr OpCode opcode` — e.g. a reply-bearing op on CommandOp).
     enum class EOpKind : std::uint8_t
     {
-        Stream,   ///< per-frame fire-and-forget POD, no reply          (CommandOp,  push)
-        Resource, ///< create / lifecycle carrying a reply              (ResourceOp, pushResource)
-        Bulk,     ///< N copies of one POD in a single command          (BulkData,   pushBulk)
-        Blob,     ///< payload embeds a BlobRef to variable-length data (CommandOp,  pushBlob + push)
-        Param,    ///< Stream specialised as a reflected param setter   (CommandOp,  push)
+        STREAM,   ///< per-frame fire-and-forget POD, no reply          (CommandOp,  push)
+        RESOURCE, ///< create / lifecycle carrying a reply              (ResourceOp, pushResource)
+        BULK,     ///< N copies of one POD in a single command          (BulkData,   pushBulk)
+        BLOB,     ///< payload embeds a BlobRef to variable-length data (CommandOp,  pushBlob + push)
+        PARAM,    ///< Stream specialised as a reflected param setter   (CommandOp,  push)
     };
 
     /// Which transport admits an operation. This is deliberately independent
@@ -45,9 +45,9 @@ namespace lux::render
     /// lifetime and scheduling semantics.
     enum class EOperationLane : std::uint8_t
     {
-        Program, ///< retained-state updates and lexical frame programs
-        Control, ///< scene/view/feature/query/destroy; legal with no frame open
-        Upload,  ///< owning persistent payload; bounded and non-blocking
+        PROGRAM, ///< retained-state updates and lexical frame programs
+        CONTROL, ///< scene/view/feature/query/destroy; legal with no frame open
+        UPLOAD,  ///< owning persistent payload; bounded and non-blocking
     };
 
     /// An op descriptor: a tag type carrying { Payload, kind, name }. The server
@@ -68,27 +68,25 @@ namespace lux::render
         {
             switch (kind)
             {
-            case EOpKind::Resource:
+            case EOpKind::RESOURCE:
                 return opcodes::ResourceOp;
-            case EOpKind::Bulk:
+            case EOpKind::BULK:
                 return opcodes::BulkData;
             default:
                 return opcodes::CommandOp; // Stream / Blob / Param
             }
         }
 
-        template <class Op, class = void> struct OpcodeOf : std::integral_constant<OpCode, defaultOpcode(Op::kind)>
-        {
-        };
+        template <class Op, class = void> struct TOpcodeOf : std::integral_constant<OpCode, defaultOpcode(Op::kind)>
+        {};
 
         template <class Op>
-        struct OpcodeOf<Op, std::void_t<decltype(Op::opcode)>> : std::integral_constant<OpCode, Op::opcode>
-        {
-        };
+        struct TOpcodeOf<Op, std::void_t<decltype(Op::opcode)>> : std::integral_constant<OpCode, Op::opcode>
+        {};
     } // namespace detail
 
     /// Comm opcode an op routes on: its kind's default, or the op's override.
-    template <class Op> inline constexpr OpCode opcode_of_v = detail::OpcodeOf<Op>::value;
+    template <class Op> inline constexpr OpCode opcode_of_v = detail::TOpcodeOf<Op>::value;
 
     // ── reply_type_id derived from the Reply TYPE (kills hand-picked ids) ──────
     //  Same Reply shape → same id on both ends (constexpr, header-shared); no central
@@ -107,16 +105,16 @@ namespace lux::render
     //  Built from the register reply's ops[]; looked up by op TYPE, never by a
     //  raw index. Ops... order must match the server registrar's order (both come
     //  from the same per-feature declaration).
-    template <FeatureOpDesc... Ops> class FeatureOpIds
+    template <FeatureOpDesc... Ops> class TFeatureOpIds
     {
     public:
         static constexpr std::size_t kCount = sizeof...(Ops);
 
-        FeatureOpIds() = default;
+        TFeatureOpIds() = default;
 
-        [[nodiscard]] static FeatureOpIds fromOps(const TypeId* ops, std::uint32_t count) noexcept
+        [[nodiscard]] static TFeatureOpIds fromOps(const TypeId* ops, std::uint32_t count) noexcept
         {
-            FeatureOpIds out;
+            TFeatureOpIds out;
             const std::size_t n = count < kCount ? count : kCount;
             for (std::size_t i = 0; i < n; ++i)
                 out.ids_[i] = ops[i];

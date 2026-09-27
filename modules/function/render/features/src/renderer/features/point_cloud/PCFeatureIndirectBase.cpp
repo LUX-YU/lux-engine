@@ -47,8 +47,7 @@ namespace lux::render
     )
         : IPointCloudFeature(feature_cfg), pass_label_(pass_label), compute_shader_id_(compute_shader_id),
           max_nodes_(max_nodes)
-    {
-    }
+    {}
 
     lux::render::Expected<void> PCFeatureIndirectBase::initAndAttachTo(RenderScene& /*scene*/)
     {
@@ -72,7 +71,8 @@ namespace lux::render
         const PipelineLayoutDesc cull_layout_desc{
             .set_layouts = set_layouts,
             .push_constants = std::span<const VkPushConstantRange>{},
-            .debug_name = "PointCloudCullLayout"};
+            .debug_name = "PointCloudCullLayout"
+        };
         auto compute_layout = ctx.pipelineLayoutService().getOrCreate(cull_layout_desc);
         if (!compute_layout)
             return lux::cxx::unexpected(compute_layout.error());
@@ -334,8 +334,7 @@ namespace lux::render
 
                 const uint32_t groups = (node_buf_->nodeHighWaterMark() + 63u) / 64u;
                 vkCmdDispatch(ctx.cmd, groups, 1, 1);
-            }
-            )
+            })
             .setKernel("PointCloudCull");
     }
 
@@ -395,7 +394,7 @@ namespace lux::render
             .setPipeline(draw_handle_)
             .bindSceneDS()
             .read(indirect_rg, ERGBufferRole::INDIRECT)
-            .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::PointCloud)))
+            .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::POINT_CLOUD)))
             .setKernelFn(
                 [this, indirect_rg, push_constant_fn = std::move(push_constant_fn)](const PassRecordContext& ctx) {
                     if (!global_buf_ || global_buf_->buffer() == VK_NULL_HANDLE)

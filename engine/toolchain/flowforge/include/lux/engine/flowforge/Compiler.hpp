@@ -55,8 +55,7 @@ namespace lux::flowforge
         std::uint64_t pin_id{};
     };
 
-    template <class Value>
-    using FlowForgeResult = lux::cxx::expected<Value, FlowForgeFailure>;
+    template <class Value> using FlowForgeResult = lux::cxx::expected<Value, FlowForgeFailure>;
 
     struct FlowForgeCompileOptions final
     {
@@ -78,17 +77,14 @@ namespace lux::flowforge
     compileFlowForgeObject(const FlowGraph&, const FlowForgeCompileOptions&) noexcept;
 
     // Blocking linker/file work. Failure retains the compiled object for a later retry.
-    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowForgeResult<lux::script::ScriptArtifact>
-    linkFlowForgeObject(const FlowForgeObject&, const std::filesystem::path& linker = {}) noexcept;
-
-    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC
-    FlowForgeResult<lux::script::ScriptArtifact>
-    compileFlowForgeScript(
-        const FlowGraph& graph,
-        FlowForgeCompileOptions options
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowForgeResult<lux::script::ScriptArtifact> linkFlowForgeObject(
+        const FlowForgeObject&,
+        const std::filesystem::path& linker = {}
     ) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC
-    FlowForgeResult<std::vector<lux::script::ScriptBindingHint>>
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowForgeResult<lux::script::ScriptArtifact>
+    compileFlowForgeScript(const FlowGraph& graph, FlowForgeCompileOptions options) noexcept;
+
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowForgeResult<std::vector<lux::script::ScriptBindingHint>>
     describeFlowForgeBindingHints(const FlowGraph& graph) noexcept;
 }

@@ -55,7 +55,8 @@ namespace lux::classic_mesh
         std::uint32_t flags{
             static_cast<std::uint32_t>(EClassicMeshInstanceFlag::VISIBLE) |
             static_cast<std::uint32_t>(EClassicMeshInstanceFlag::CAST_SHADOW) |
-            static_cast<std::uint32_t>(EClassicMeshInstanceFlag::RECEIVE_SHADOW)};
+            static_cast<std::uint32_t>(EClassicMeshInstanceFlag::RECEIVE_SHADOW)
+        };
 
         friend bool operator==(const ClassicMeshBatchInstanceV1&, const ClassicMeshBatchInstanceV1&) = default;
     };

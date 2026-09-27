@@ -24,8 +24,8 @@ namespace
 
     void face(lux::rdesc::Mesh& mesh, Eigen::Vector3f normal, Eigen::Vector3f center, float size)
     {
-        const Eigen::Vector3f tangent = std::abs(normal.y()) > 0.5F ?
-            Eigen::Vector3f::UnitX().eval() : Eigen::Vector3f::UnitY().eval();
+        const Eigen::Vector3f tangent =
+            std::abs(normal.y()) > 0.5F ? Eigen::Vector3f::UnitX().eval() : Eigen::Vector3f::UnitY().eval();
         const Eigen::Vector3f bitangent = normal.cross(tangent);
         const std::array<Eigen::Vector2f, 4> corners{{{-1, -1}, {1, -1}, {1, 1}, {-1, 1}}};
         const auto first = static_cast<std::uint32_t>(mesh.vertices.size());
@@ -45,7 +45,7 @@ namespace
             mesh.indices.push_back(first + index);
     }
 
-    template<class Asset>
+    template <class Asset>
     bool append(std::vector<lux::asset::PakWriteEntry>& entries, const Asset& asset, std::string path)
     {
         auto bytes = lux::asset::TAssetSerDeser<Asset>::encode(asset, lux::asset::AssetEncodeLimits{16 * 1024 * 1024});
@@ -104,7 +104,9 @@ int main(int argc, char** argv)
             material.double_sided = true;
             const auto name = "Materials/Material-" + std::to_string(index);
             auto asset = lux::material::cookImportedMaterial(
-                info(20 + index, lux::asset::MaterialAsset::asset_type, name.c_str()), material);
+                info(20 + index, lux::asset::MaterialAsset::asset_type, name.c_str()),
+                material
+            );
             if (!asset)
             {
                 std::fprintf(stderr, "Material cook failed: %s\n", asset.error().message.c_str());

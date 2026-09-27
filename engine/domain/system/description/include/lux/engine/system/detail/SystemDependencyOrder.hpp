@@ -25,8 +25,8 @@ namespace lux::system::detail
         ALLOCATION_FAILURE,
     };
 
-    [[nodiscard]] LUX_ENGINE_SYSTEM_DESCRIPTION_PUBLIC
-        lux::cxx::expected<std::vector<std::size_t>, ESystemDependencyOrderError>
+    [[nodiscard]] LUX_ENGINE_SYSTEM_DESCRIPTION_PUBLIC lux::cxx::
+        expected<std::vector<std::size_t>, ESystemDependencyOrderError>
         deterministicSystemOrder(
             std::span<const SystemInstanceId> instances,
             std::span<const SystemDependencyOrdinalEdge> edges

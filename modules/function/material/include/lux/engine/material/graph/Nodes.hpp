@@ -21,13 +21,13 @@ namespace lux::material
         ADD,
         SUB,
         DIV,
-        DOT,        ///< -> Float
+        DOT, ///< -> Float
         MIN,
         MAX,
         POW,
         STEP,
         MOD,
-        CROSS,      ///< Vec3 x Vec3 -> Vec3
+        CROSS, ///< Vec3 x Vec3 -> Vec3
         REFLECT,
         // ternary (currently unsupported by the 2-pin Math node)
         LERP,
@@ -50,9 +50,12 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::CONSTANT;
         ConstantNode();
-        [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<ConstantNode>(*this); }
+        [[nodiscard]] std::unique_ptr<Node> clone() const override
+        {
+            return std::make_unique<ConstantNode>(*this);
+        }
 
-        float         value[4]   = { 0, 0, 0, 0 };
+        float value[4] = {0, 0, 0, 0};
         EValueType value_type = EValueType::VEC4;
 
         /// Sets the constant's type and updates the output pin to match (called
@@ -66,7 +69,10 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::INPUT;
         InputNode();
-        [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<InputNode>(*this); }
+        [[nodiscard]] std::unique_ptr<Node> clone() const override
+        {
+            return std::make_unique<InputNode>(*this);
+        }
 
         EMaterialInput input = EMaterialInput::UV0;
         void setInput(EMaterialInput);
@@ -79,7 +85,10 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::SAMPLE_TEXTURE;
         SampleTextureNode();
-        [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<SampleTextureNode>(*this); }
+        [[nodiscard]] std::unique_ptr<Node> clone() const override
+        {
+            return std::make_unique<SampleTextureNode>(*this);
+        }
 
         uint32_t texture_slot = 0;
     };
@@ -93,9 +102,12 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::PARAM;
         explicit ParamNode(EValueType type = EValueType::VEC4);
-        [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<ParamNode>(*this); }
+        [[nodiscard]] std::unique_ptr<Node> clone() const override
+        {
+            return std::make_unique<ParamNode>(*this);
+        }
 
-        uint32_t      param_slot = 0;
+        uint32_t param_slot = 0;
         EValueType type;
 
         /// Sets the parameter's type and updates the output pin to match (called
@@ -111,9 +123,12 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::MATH;
         explicit MathNode(EMathOp op = EMathOp::MUL);
-        [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<MathNode>(*this); }
+        [[nodiscard]] std::unique_ptr<Node> clone() const override
+        {
+            return std::make_unique<MathNode>(*this);
+        }
 
-        EMathOp       op;
+        EMathOp op;
         EValueType operand_type = EValueType::FLOAT;
 
         /// Sets the operand type and updates both input pins to match (and the
@@ -128,7 +143,10 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::DECODE_NORMAL;
         DecodeNormalNode();
-        [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<DecodeNormalNode>(*this); }
+        [[nodiscard]] std::unique_ptr<Node> clone() const override
+        {
+            return std::make_unique<DecodeNormalNode>(*this);
+        }
     };
 
     /// Transforms a tangent-space normal into world space: mat3(T,B,N) * n
@@ -139,7 +157,10 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::TBN_TRANSFORM;
         TbnTransformNode();
-        [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<TbnTransformNode>(*this); }
+        [[nodiscard]] std::unique_ptr<Node> clone() const override
+        {
+            return std::make_unique<TbnTransformNode>(*this);
+        }
     };
 
     /// Component reshuffle / truncation (e.g. a vec4 texture's .rgb -> vec3, so
@@ -150,13 +171,15 @@ namespace lux::material
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::SWIZZLE;
-        explicit SwizzleNode(EValueType source_type = EValueType::VEC4,
-                             EValueType out_type    = EValueType::VEC3);
-        [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<SwizzleNode>(*this); }
+        explicit SwizzleNode(EValueType source_type = EValueType::VEC4, EValueType out_type = EValueType::VEC3);
+        [[nodiscard]] std::unique_ptr<Node> clone() const override
+        {
+            return std::make_unique<SwizzleNode>(*this);
+        }
 
         EValueType source_type;
         EValueType out_type;
-        uint8_t       components[4] = { 0, 1, 2, 3 };
+        uint8_t components[4] = {0, 1, 2, 3};
 
         /// Sets the source/output types and updates the pins to match (the input
         /// pin's type is authoritative — resolveInput type-checks against it).
@@ -171,7 +194,10 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::CONSTRUCT;
         explicit ConstructNode(EValueType out_type = EValueType::VEC3);
-        [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<ConstructNode>(*this); }
+        [[nodiscard]] std::unique_ptr<Node> clone() const override
+        {
+            return std::make_unique<ConstructNode>(*this);
+        }
 
         EValueType out_type;
         void setType(EValueType);
@@ -183,7 +209,10 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::OUTPUT_SURFACE;
         OutputSurfaceNode();
-        [[nodiscard]] std::unique_ptr<Node> clone() const override { return std::make_unique<OutputSurfaceNode>(*this); }
+        [[nodiscard]] std::unique_ptr<Node> clone() const override
+        {
+            return std::make_unique<OutputSurfaceNode>(*this);
+        }
     };
 
 } // namespace lux::material

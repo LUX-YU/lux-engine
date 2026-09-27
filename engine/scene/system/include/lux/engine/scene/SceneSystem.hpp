@@ -12,54 +12,51 @@
 
 namespace lux::scene
 {
-enum class ESceneExecutionError : std::uint8_t
-{
-    SYSTEM_FAILURE,
-};
+    enum class ESceneExecutionError : std::uint8_t
+    {
+        SYSTEM_FAILURE,
+    };
 
-struct SceneExecutionFailure final
-{
-    ESceneExecutionError code{ESceneExecutionError::SYSTEM_FAILURE};
-    system::SystemInstanceId system{};
-    std::any cause; // Original owning domain failure; Scene has no Render dependency.
-};
+    struct SceneExecutionFailure final
+    {
+        ESceneExecutionError code{ESceneExecutionError::SYSTEM_FAILURE};
+        system::SystemInstanceId system{};
+        std::any cause; // Original owning domain failure; Scene has no Render dependency.
+    };
 
-enum class ESceneProgress : std::uint8_t
-{
-    COMPLETE,
-    PENDING,
-};
+    enum class ESceneProgress : std::uint8_t
+    {
+        COMPLETE,
+        PENDING,
+    };
 
-using SceneStageResult = lux::cxx::expected<ESceneProgress, SceneExecutionFailure>;
+    using SceneStageResult = lux::cxx::expected<ESceneProgress, SceneExecutionFailure>;
 
-// A turn shares the admission allowance across all instances. It is not a
-// reply budget, and a failed submission does not consume it.
-struct SceneStageContext final
-{
-    std::size_t &publications;
-    // One pending resource-request visit, including its bounded dependency
-    // set. Shared across instances; separate from replies and Program slots.
-    std::size_t &resource_steps;
-    std::chrono::nanoseconds elapsed{};
-    std::uint64_t step{};
-    std::chrono::nanoseconds delta{};
-    // Structural adoption occurs between completed steps, never in the middle
-    // of a suspended stable/publication traversal.
-    bool allow_structure{true};
-    bool invalidated{};
-    std::stop_token stop;
-};
+    // One maintenance/stable/publication traversal. Hooks never wait for IO or
+    // retry a backpressured submission in place. New work is visited next time.
+    struct SceneStageContext final
+    {
+        std::chrono::nanoseconds elapsed{};
+        std::uint64_t step{};
+        std::chrono::nanoseconds delta{};
+        // Structural adoption occurs between completed steps, never in the middle
+        // of a suspended stable/publication traversal.
+        bool allow_structure{true};
+        bool publication_needed{};
+        std::stop_token stop;
+    };
 
-enum class ESceneSystemPhase : std::uint8_t
-{
-    MAINTENANCE,
-    STABLE,
-    PUBLICATION,
-};
+    enum class ESceneSystemPhase : std::uint8_t
+    {
+        MAINTENANCE,
+        SYNCHRONIZATION,
+        STABLE,
+        PUBLICATION,
+    };
 
-template <class Type>
-concept SceneSystem = requires {
-    requires system::validSystemTypeDescription(Type::Description);
-    requires std::is_nothrow_destructible_v<Type>;
-};
+    template <class Type>
+    concept SceneSystem = requires {
+        requires system::validSystemTypeDescription(Type::Description);
+        requires std::is_nothrow_destructible_v<Type>;
+    };
 } // namespace lux::scene

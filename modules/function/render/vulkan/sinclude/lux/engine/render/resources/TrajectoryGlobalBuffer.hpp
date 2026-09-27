@@ -28,9 +28,9 @@ namespace lux::render
 {
     class TransferScheduler;
 
-    class LUX_FUNCTION_PUBLIC TrajectoryGlobalBuffer final : public SlotArenaBuffer<GpuTrajectoryVertex>
+    class LUX_FUNCTION_PUBLIC TrajectoryGlobalBuffer final : public TSlotArenaBuffer<GpuTrajectoryVertex>
     {
-        using Base = SlotArenaBuffer<GpuTrajectoryVertex>;
+        using Base = TSlotArenaBuffer<GpuTrajectoryVertex>;
 
     public:
         static constexpr uint32_t kInvalidTrajectoryId = Base::kInvalidId;
@@ -49,8 +49,11 @@ namespace lux::render
         bool ensureSlotCapacity(uint32_t trajectory_id, uint32_t capacity, TransferScheduler& scheduler);
 
         /// 往槽位尾部追加,返回实际写入数(容量不足时截断,满则返回 0)。
-        uint32_t
-        append(uint32_t trajectory_id, std::span<const GpuTrajectoryVertex> data, TransferScheduler& scheduler);
+        uint32_t append(
+            uint32_t trajectory_id,
+            std::span<const GpuTrajectoryVertex> data,
+            TransferScheduler& scheduler
+        );
 
         // ── 领域命名转发 ────────────────────────────────────────────────────
         void clearTrajectory(uint32_t trajectory_id) noexcept

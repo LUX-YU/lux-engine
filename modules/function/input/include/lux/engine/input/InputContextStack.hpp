@@ -2,7 +2,7 @@
 #include "InputContext.hpp"
 #include <vector>
 #include <algorithm>
-#include <cassert>
+#include <exception>
 
 namespace lux::input
 {
@@ -17,14 +17,16 @@ namespace lux::input
         /// Duplicate pushes of the same pointer are silently ignored.
         void push(InputContext* ctx)
         {
-            assert(ctx && "InputContextStack: null context pushed");
+            if (ctx == nullptr)
+            {
+                std::terminate();
+            }
             if (contains(ctx))
                 return;
             auto it =
                 std::upper_bound(stack_.begin(), stack_.end(), ctx, [](const InputContext* a, const InputContext* b) {
                     return a->priority() < b->priority();
-                }
-                );
+                });
             stack_.insert(it, ctx);
         }
 

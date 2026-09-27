@@ -29,13 +29,14 @@
 
 namespace lux::window
 {
-    LuxWindow::LuxWindow(int width, int height, std::string title) : _parameter{width, height, std::move(title)}
+    void* LuxWindow::nativeHandle() const noexcept
     {
+        return nullptr;
     }
 
-    LuxWindow::LuxWindow(const InitParameter& parameter) : _parameter{parameter}
-    {
-    }
+    LuxWindow::LuxWindow(int width, int height, std::string title) : _parameter{width, height, std::move(title)} {}
+
+    LuxWindow::LuxWindow(const InitParameter& parameter) : _parameter{parameter} {}
 
     LuxWindow::~LuxWindow() = default;
 
@@ -69,9 +70,7 @@ namespace lux::window
         return false;
     }
 
-    void LuxWindow::hideCursor(bool)
-    {
-    }
+    void LuxWindow::hideCursor(bool) {}
 
     bool LuxWindow::setRawMouseMotion(bool)
     {
@@ -90,15 +89,13 @@ namespace lux::window
         }
     }
 
-    void LuxWindow::setCursorPos(double, double)
-    {
-    }
+    void LuxWindow::setCursorPos(double, double) {}
 
-    std::vector<WindowInputEvent> LuxWindow::drainInputEvents()
+    std::span<const VWindowInputEvent> LuxWindow::drainInputEvents()
     {
-        auto events = std::move(pending_input_events_);
-        pending_input_events_.clear();
-        return events;
+        drained_input_events_.clear();
+        drained_input_events_.swap(pending_input_events_);
+        return drained_input_events_;
     }
 
     int LuxWindow::exec()
@@ -111,13 +108,9 @@ namespace lux::window
         _exit_behavior = behavior;
     }
 
-    void LuxWindow::exit()
-    {
-    }
+    void LuxWindow::exit() {}
 
-    void LuxWindow::hide(bool)
-    {
-    }
+    void LuxWindow::hide(bool) {}
 
     std::string LuxWindow::windowFrameworkName() const
     {
@@ -164,13 +157,12 @@ namespace lux::window
         return std::span<const char* const>{kExtensions};
     }
 
-    void LuxWindow::pollEvents()
-    {
-    }
+    void LuxWindow::pollEvents() {}
 
-    void LuxWindow::waitEvents()
-    {
-    }
+    void LuxWindow::waitEvents() {}
+
+    void LuxWindow::waitEvents(double) {}
+    void LuxWindow::wakeEvents() noexcept {}
 
     double LuxWindow::timeAfterFirstInitialization()
     {
@@ -187,9 +179,7 @@ namespace lux::window
         return nullptr;
     }
 
-    void LuxWindow::makeContextCurrent(GLFWwindow*)
-    {
-    }
+    void LuxWindow::makeContextCurrent(GLFWwindow*) {}
 
     LuxWindow::ProcPtr LuxWindow::getProcAddress(const char*)
     {
@@ -201,8 +191,6 @@ namespace lux::window
         return true;
     }
 
-    void LuxWindow::newFrame()
-    {
-    }
+    void LuxWindow::newFrame() {}
 
 } // namespace lux::window

@@ -36,8 +36,7 @@ namespace lux::render
         : jobs_(cfg.queue_capacity), results_(std::max(cfg.result_capacity, cfg.queue_capacity + 1u)),
           notify_work_(cfg.notify_work), notify_work_state_(cfg.notify_work_state), lifecycle_(cfg.lifecycle),
           lifecycle_state_(cfg.lifecycle_state)
-    {
-    }
+    {}
 
     Expected<std::unique_ptr<GpuTransferPipeline>> GpuTransferPipeline::create(const Config& config)
     {
@@ -105,7 +104,7 @@ namespace lux::render
             freeUnsubmittedCompletion(shutdown_completions_[shutdown_completion_cursor_]);
         shutdown_completions_.clear();
 
-        GpuTransferResult result{};
+        VGpuTransferResult result{};
         while (results_.tryPop(result) == lux::cxx::EQueuePopResult::VALUE)
         {
             if (auto* batch = std::get_if<RecordedBatch>(&result))
@@ -316,7 +315,7 @@ namespace lux::render
             shutdown_completion_cursor_ = 0;
         }
 
-        GpuTransferResult result{};
+        VGpuTransferResult result{};
         while (count < max && results_.tryPop(result) == lux::cxx::EQueuePopResult::VALUE)
         {
             result_space_epoch_.fetch_add(1, std::memory_order_release);
@@ -444,7 +443,8 @@ namespace lux::render
                                                 observed,
                                                 timeline_value,
                                                 std::memory_order_release,
-                                                std::memory_order_relaxed))
+                                                std::memory_order_relaxed
+                                            ))
         {
         }
         job_epoch_.fetch_add(1, std::memory_order_release);
@@ -454,8 +454,11 @@ namespace lux::render
 
     void GpuTransferPipeline::freeUnsubmittedCompletion(TransferCompletion& c)
     {
-        using Kind = TransferCompletion::Kind;
-        if (c.kind == Kind::Texture2D || c.kind == Kind::TextureCube || c.kind == Kind::Texture2DReplacement)
+        using ECompletionKind = TransferCompletion::EKind;
+        const bool is_texture_completion = c.kind == ECompletionKind::TEXTURE_2D ||
+            c.kind == ECompletionKind::TEXTURE_CUBE ||
+            c.kind == ECompletionKind::TEXTURE_2D_REPLACEMENT;
+        if (is_texture_completion)
         {
             vkDestroyImageView(device_, c.texture.view, nullptr);
             vkDestroySampler(device_, c.texture.sampler, nullptr);
@@ -514,7 +517,7 @@ namespace lux::render
     }
 
     void GpuTransferPipeline::pushFailure(
-        TransferCompletion::Kind kind,
+        TransferCompletion::EKind kind,
         uint32_t request_id,
         uint32_t slot_index,
         uint32_t resource_gen,
@@ -536,7 +539,7 @@ namespace lux::render
 
     void GpuTransferPipeline::notifyLifecycle(
         std::uint32_t request_id,
-        TransferCompletion::Kind kind,
+        TransferCompletion::EKind kind,
         std::uint32_t resource_handle,
         std::uint32_t resource_gen,
         EUploadLifecycleState state
@@ -551,7 +554,7 @@ namespace lux::render
         return needs_ownership_transfer_;
     }
 
-    bool GpuTransferPipeline::publishResult(GpuTransferResult result)
+    bool GpuTransferPipeline::publishResult(VGpuTransferResult result)
     {
         while (results_.tryPush(std::move(result)) != lux::cxx::EQueuePushResult::ACCEPTED)
         {
@@ -675,7 +678,7 @@ namespace lux::render
         worker_running_.store(true, std::memory_order_release);
         for (;;)
         {
-            UploadJob job{};
+            VUploadJob job{};
             if (jobs_.tryPop(job) == lux::cxx::EQueuePopResult::VALUE)
             {
                 std::visit(
@@ -718,36 +721,36 @@ namespace lux::render
         const auto resource_gen = task.resource_gen;
         notifyLifecycle(
             request_id,
-            TransferCompletion::Kind::MeshBuffer,
+            TransferCompletion::EKind::MESH_BUFFER,
             resource_handle,
             resource_gen,
-            EUploadLifecycleState::Accepted
+            EUploadLifecycleState::ACCEPTED
         );
         notifyLifecycle(
             request_id,
-            TransferCompletion::Kind::MeshBuffer,
+            TransferCompletion::EKind::MESH_BUFFER,
             resource_handle,
             resource_gen,
-            EUploadLifecycleState::ValidatedAndReserved
+            EUploadLifecycleState::VALIDATED_AND_RESERVED
         );
         if (!accepting_.load(std::memory_order_acquire) ||
-            jobs_.tryPush(UploadJob{std::move(task)}) != lux::cxx::EQueuePushResult::ACCEPTED)
+            jobs_.tryPush(VUploadJob{std::move(task)}) != lux::cxx::EQueuePushResult::ACCEPTED)
         {
             notifyLifecycle(
                 request_id,
-                TransferCompletion::Kind::MeshBuffer,
+                TransferCompletion::EKind::MESH_BUFFER,
                 resource_handle,
                 resource_gen,
-                EUploadLifecycleState::Failed
+                EUploadLifecycleState::FAILED
             );
             return false;
         }
         notifyLifecycle(
             request_id,
-            TransferCompletion::Kind::MeshBuffer,
+            TransferCompletion::EKind::MESH_BUFFER,
             resource_handle,
             resource_gen,
-            EUploadLifecycleState::TransferQueued
+            EUploadLifecycleState::TRANSFER_QUEUED
         );
         job_epoch_.fetch_add(1, std::memory_order_release);
         job_epoch_.notify_one();
@@ -759,17 +762,18 @@ namespace lux::render
         const auto request_id = task.request_id;
         const auto resource_handle = task.slot_index;
         const auto resource_gen = task.resource_gen;
-        const auto kind =
-            task.replacement ? TransferCompletion::Kind::Texture2DReplacement : TransferCompletion::Kind::Texture2D;
-        notifyLifecycle(request_id, kind, resource_handle, resource_gen, EUploadLifecycleState::Accepted);
-        notifyLifecycle(request_id, kind, resource_handle, resource_gen, EUploadLifecycleState::ValidatedAndReserved);
+        const auto kind = task.replacement
+            ? TransferCompletion::EKind::TEXTURE_2D_REPLACEMENT
+            : TransferCompletion::EKind::TEXTURE_2D;
+        notifyLifecycle(request_id, kind, resource_handle, resource_gen, EUploadLifecycleState::ACCEPTED);
+        notifyLifecycle(request_id, kind, resource_handle, resource_gen, EUploadLifecycleState::VALIDATED_AND_RESERVED);
         if (!accepting_.load(std::memory_order_acquire) ||
-            jobs_.tryPush(UploadJob{std::move(task)}) != lux::cxx::EQueuePushResult::ACCEPTED)
+            jobs_.tryPush(VUploadJob{std::move(task)}) != lux::cxx::EQueuePushResult::ACCEPTED)
         {
-            notifyLifecycle(request_id, kind, resource_handle, resource_gen, EUploadLifecycleState::Failed);
+            notifyLifecycle(request_id, kind, resource_handle, resource_gen, EUploadLifecycleState::FAILED);
             return false;
         }
-        notifyLifecycle(request_id, kind, resource_handle, resource_gen, EUploadLifecycleState::TransferQueued);
+        notifyLifecycle(request_id, kind, resource_handle, resource_gen, EUploadLifecycleState::TRANSFER_QUEUED);
         job_epoch_.fetch_add(1, std::memory_order_release);
         job_epoch_.notify_one();
         return true;
@@ -782,36 +786,36 @@ namespace lux::render
         const auto resource_gen = task.resource_gen;
         notifyLifecycle(
             request_id,
-            TransferCompletion::Kind::TextureCube,
+            TransferCompletion::EKind::TEXTURE_CUBE,
             resource_handle,
             resource_gen,
-            EUploadLifecycleState::Accepted
+            EUploadLifecycleState::ACCEPTED
         );
         notifyLifecycle(
             request_id,
-            TransferCompletion::Kind::TextureCube,
+            TransferCompletion::EKind::TEXTURE_CUBE,
             resource_handle,
             resource_gen,
-            EUploadLifecycleState::ValidatedAndReserved
+            EUploadLifecycleState::VALIDATED_AND_RESERVED
         );
         if (!accepting_.load(std::memory_order_acquire) ||
-            jobs_.tryPush(UploadJob{std::move(task)}) != lux::cxx::EQueuePushResult::ACCEPTED)
+            jobs_.tryPush(VUploadJob{std::move(task)}) != lux::cxx::EQueuePushResult::ACCEPTED)
         {
             notifyLifecycle(
                 request_id,
-                TransferCompletion::Kind::TextureCube,
+                TransferCompletion::EKind::TEXTURE_CUBE,
                 resource_handle,
                 resource_gen,
-                EUploadLifecycleState::Failed
+                EUploadLifecycleState::FAILED
             );
             return false;
         }
         notifyLifecycle(
             request_id,
-            TransferCompletion::Kind::TextureCube,
+            TransferCompletion::EKind::TEXTURE_CUBE,
             resource_handle,
             resource_gen,
-            EUploadLifecycleState::TransferQueued
+            EUploadLifecycleState::TRANSFER_QUEUED
         );
         job_epoch_.fetch_add(1, std::memory_order_release);
         job_epoch_.notify_one();
@@ -831,7 +835,12 @@ namespace lux::render
             // mesh-arena range), so the render thread only sends the status!=0
             // reply here; arena reclamation stays with the mesh resource.
             const auto fail = [&] {
-                pushFailure(TransferCompletion::Kind::MeshBuffer, task.request_id, task.mesh_index, task.resource_gen);
+                pushFailure(
+                    TransferCompletion::EKind::MESH_BUFFER,
+                    task.request_id,
+                    task.mesh_index,
+                    task.resource_gen
+                );
             };
             if (st.stopRequested())
             {
@@ -910,7 +919,7 @@ namespace lux::render
             // 5. Hand off the recorded CB + completion (timeline_value assigned
             //    by flushPendingSubmits at submit time).
             TransferCompletion tc{};
-            tc.kind = TransferCompletion::Kind::MeshBuffer;
+            tc.kind = TransferCompletion::EKind::MESH_BUFFER;
             tc.requires_queue_family_ownership_transfer = false;
             tc.request_id = task.request_id;
             tc.resource_handle = task.mesh_index;
@@ -934,7 +943,12 @@ namespace lux::render
         else
         {
             const auto fail = [&] {
-                pushFailure(TransferCompletion::Kind::MeshBuffer, task.request_id, task.mesh_index, task.resource_gen);
+                pushFailure(
+                    TransferCompletion::EKind::MESH_BUFFER,
+                    task.request_id,
+                    task.mesh_index,
+                    task.resource_gen
+                );
             };
             if (st.stopRequested())
             {
@@ -958,7 +972,7 @@ namespace lux::render
             staging_copied_bytes_.fetch_add(static_cast<std::uint64_t>(total), std::memory_order_relaxed);
 
             TransferCompletion tc{};
-            tc.kind = TransferCompletion::Kind::MeshBuffer;
+            tc.kind = TransferCompletion::EKind::MESH_BUFFER;
             tc.requires_queue_family_ownership_transfer = false;
             tc.timeline_value = 0; // StagingOnly: render thread records copy
             tc.request_id = task.request_id;
@@ -985,8 +999,9 @@ namespace lux::render
 
     void GpuTransferPipeline::processTextureTransfer(TextureTransferTask task, TransferStopToken st)
     {
-        const auto completion_kind =
-            task.replacement ? TransferCompletion::Kind::Texture2DReplacement : TransferCompletion::Kind::Texture2D;
+        const auto completion_kind = task.replacement
+            ? TransferCompletion::EKind::TEXTURE_2D_REPLACEMENT
+            : TransferCompletion::EKind::TEXTURE_2D;
         // Every bail-out below MUST settle the client request (else it hangs
         // forever). Creation releases its reserved slot; replacement failure
         // leaves the existing slot and its current image untouched.
@@ -1404,7 +1419,7 @@ namespace lux::render
         // Every bail-out below MUST settle the client request (else it hangs
         // forever) and release the reserved bindless slot.
         const auto fail = [&] {
-            pushFailure(TransferCompletion::Kind::TextureCube, task.request_id, task.slot_index, task.resource_gen);
+            pushFailure(TransferCompletion::EKind::TEXTURE_CUBE, task.request_id, task.slot_index, task.resource_gen);
         };
 
         if (st.stopRequested())
@@ -1635,7 +1650,7 @@ namespace lux::render
             }
 
             TransferCompletion tc{};
-            tc.kind = TransferCompletion::Kind::TextureCube;
+            tc.kind = TransferCompletion::EKind::TEXTURE_CUBE;
             tc.request_id = task.request_id;
             tc.resource_handle = task.slot_index;
             tc.resource_gen = task.resource_gen;
@@ -1664,7 +1679,7 @@ namespace lux::render
         else // StagingOnly
         {
             TransferCompletion tc{};
-            tc.kind = TransferCompletion::Kind::TextureCube;
+            tc.kind = TransferCompletion::EKind::TEXTURE_CUBE;
             tc.timeline_value = 0;
             tc.request_id = task.request_id;
             tc.resource_handle = task.slot_index;

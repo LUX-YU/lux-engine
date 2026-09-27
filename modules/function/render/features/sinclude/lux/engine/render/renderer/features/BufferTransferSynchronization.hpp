@@ -11,8 +11,10 @@ namespace lux::render
     /// A host fence wait proves completion, but does not replace this device
     /// memory dependency in the new command buffer.
     template <std::size_t N>
-    inline void
-    synchronizeBeforeBufferTransferWrites(VkCommandBuffer command_buffer, const std::array<VkBuffer, N>& buffers)
+    inline void synchronizeBeforeBufferTransferWrites(
+        VkCommandBuffer command_buffer,
+        const std::array<VkBuffer, N>& buffers
+    )
     {
         std::array<VkBufferMemoryBarrier2, N> barriers{};
         std::uint32_t count = 0u;

@@ -13,12 +13,13 @@ namespace lux::script::lua
     public:
         explicit ScriptEngineImpl(LuaVmConfiguration config) : allocator_(config)
         {
-            const bool invalid_mode = config.gc_mode != ELuaGcMode::INCREMENTAL &&
-                config.gc_mode != ELuaGcMode::GENERATIONAL;
+            const bool invalid_mode =
+                config.gc_mode != ELuaGcMode::INCREMENTAL && config.gc_mode != ELuaGcMode::GENERATIONAL;
             if (invalid_mode || std::ranges::any_of(config.gc_parameters, [](int value) { return value < -1; }))
                 return;
             L_ = lua_newstate(allocator_.callback(), &allocator_, config.seed);
-            if (!L_) return;
+            if (!L_)
+                return;
             lua_pushcfunction(L_, &luxLuaBootstrap);
             if (lua_pcall(L_, 0, 0, 0) != LUA_OK)
             {
@@ -28,13 +29,15 @@ namespace lux::script::lua
             }
             lua_gc(L_, config.gc_mode == ELuaGcMode::GENERATIONAL ? LUA_GCGEN : LUA_GCINC);
             for (int index{}; index < LUA_GCPN; ++index)
-                if (config.gc_parameters[index] != -1) lua_gc(L_, LUA_GCPARAM, index, config.gc_parameters[index]);
+                if (config.gc_parameters[index] != -1)
+                    lua_gc(L_, LUA_GCPARAM, index, config.gc_parameters[index]);
         }
         [[nodiscard]] LuaAllocationStats allocationStats() const noexcept
         {
             auto result = allocator_.stats();
             if (result.enabled && L_)
-                for (int i{}; i < LUA_GCPN; ++i) result.gc_parameters[i] = lua_gc(L_, LUA_GCPARAM, i, -1);
+                for (int i{}; i < LUA_GCPN; ++i)
+                    result.gc_parameters[i] = lua_gc(L_, LUA_GCPARAM, i, -1);
             return result;
         }
 

@@ -23,11 +23,23 @@ namespace lux::flowforge
         {
             return lux::script::ScriptApiMethodIdView{method_.name()};
         }
-        [[nodiscard]] std::uint32_t expectedSchemaVersion() const noexcept { return schema_version_; }
-        [[nodiscard]] std::uint64_t expectedSchemaHash() const noexcept { return schema_hash_; }
+        [[nodiscard]] std::uint32_t expectedSchemaVersion() const noexcept
+        {
+            return schema_version_;
+        }
+        [[nodiscard]] std::uint64_t expectedSchemaHash() const noexcept
+        {
+            return schema_hash_;
+        }
         [[nodiscard]] std::size_t descriptionBytes() const noexcept;
-        [[nodiscard]] lux::script::EScriptApiMethodKind methodKind() const noexcept { return kind_; }
-        [[nodiscard]] lux::script::EScriptAbilityReceiverKind receiverKind() const noexcept { return receiver_; }
+        [[nodiscard]] lux::script::EScriptApiMethodKind methodKind() const noexcept
+        {
+            return kind_;
+        }
+        [[nodiscard]] lux::script::EScriptAbilityReceiverKind receiverKind() const noexcept
+        {
+            return receiver_;
+        }
         [[nodiscard]] std::span<const lux::script::ScriptAbilityParameterDescription> parameters() const noexcept
         {
             return parameters_;
@@ -48,8 +60,7 @@ namespace lux::flowforge
     private:
         struct TypeStorage;
 
-        [[nodiscard]] const lux::meta::RefType* storeType(
-            const lux::script::ScriptAbilityValueDescription& description
+        [[nodiscard]] const lux::meta::RefType* storeType(const lux::script::ScriptAbilityValueDescription& description
         );
 
         lux::script::ScriptApiContractId contract_;

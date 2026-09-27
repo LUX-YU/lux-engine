@@ -57,7 +57,8 @@ namespace lux::render
                         /*cpu_writable=*/true,
                         &buf,
                         &alloc,
-                        &mapped) &&
+                        &mapped
+                    ) &&
                     buf != VK_NULL_HANDLE && mapped != nullptr)
                 {
                     std::memset(mapped, 0xFF, static_cast<std::size_t>(init_size));
@@ -118,8 +119,13 @@ namespace lux::render
     // =========================================================================
     //  Pure cell math (no GPU / no state — CPU-unit-testable)
     // =========================================================================
-    void
-    SpatialCullGrid::cellCoord(float world_x, float world_y, float cell_size, int32_t& out_cx, int32_t& out_cy) noexcept
+    void SpatialCullGrid::cellCoord(
+        float world_x,
+        float world_y,
+        float cell_size,
+        int32_t& out_cx,
+        int32_t& out_cy
+    ) noexcept
     {
         const float inv = 1.0f / cell_size;
         out_cx = static_cast<int32_t>(std::floor(world_x * inv));
@@ -188,8 +194,8 @@ namespace lux::render
             extract_scratch_.push_back(InstanceXY{
                 slot,
                 static_cast<float>(cull.bsphere_page[0]) * page_size + cull.bsphere[0],
-                static_cast<float>(cull.bsphere_page[2]) * page_size + cull.bsphere[2]}
-            );
+                static_cast<float>(cull.bsphere_page[2]) * page_size + cull.bsphere[2]
+            });
         }
         update(serial, cameras, extract_scratch_, slot_count);
     }
@@ -314,7 +320,8 @@ namespace lux::render
                     /*cpu_writable=*/true,
                     &buf,
                     &alloc,
-                    &mapped) ||
+                    &mapped
+                ) ||
                 buf == VK_NULL_HANDLE || mapped == nullptr)
             {
                 // Leave the slot null rather than publishing a half-built handle.

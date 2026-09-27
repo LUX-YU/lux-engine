@@ -16,7 +16,7 @@
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/function/render/features/deferred/DeferredGBufferOperation.hpp>
 // kDeferredGBufferDrawPassName
-#include <lux/engine/function/render/features/shadow/MeshShadowOperation.hpp>        // kMeshShadowDrawPassName
+#include <lux/engine/function/render/features/shadow/MeshShadowOperation.hpp> // kMeshShadowDrawPassName
 #include <lux/engine/function/render/features/shadow/ShadowMapOperation.hpp>
 // kShadowViewUploadPassName / kEvsmBlurVPassName
 #include <lux/engine/render/scene/View.hpp>
@@ -81,9 +81,7 @@ namespace lux::render
     //  Construction / destruction
     // =========================================================================
 
-    DeferredLightingFeature::DeferredLightingFeature(Config cfg) : cfg_(std::move(cfg))
-    {
-    }
+    DeferredLightingFeature::DeferredLightingFeature(Config cfg) : cfg_(std::move(cfg)) {}
 
     DeferredLightingFeature::~DeferredLightingFeature()
     {
@@ -213,7 +211,8 @@ namespace lux::render
             ShaderStageSlot{EBuiltinShader::CLUSTER_COUNT_COMP, &cfg_.cluster_count_shader},
             ShaderStageSlot{EBuiltinShader::CLUSTER_SCAN_COMP, &cfg_.cluster_scan_shader},
             ShaderStageSlot{EBuiltinShader::CLUSTER_FILL_COMP, &cfg_.cluster_fill_shader},
-            ShaderStageSlot{EBuiltinShader::CLEAR_COUNT_BUFFERS_COMP, &cfg_.cluster_clear_shader}};
+            ShaderStageSlot{EBuiltinShader::CLEAR_COUNT_BUFFERS_COMP, &cfg_.cluster_clear_shader}
+        };
         if (auto filled = resolveShaderStages(shaders, backfill); !filled)
             return filled;
 
@@ -317,8 +316,8 @@ namespace lux::render
             //   Light → Vulkan set 2
             // (GBuffer at set 1 has no standard EDescriptorSetSlot mapping;
             //  it is bound manually via bindImmutableDS().)
-            tmpl.resource_slot_map.push_back({EDescriptorSetSlot::Scene, 0});
-            tmpl.resource_slot_map.push_back({EDescriptorSetSlot::Light, 2});
+            tmpl.resource_slot_map.push_back({EDescriptorSetSlot::SCENE, 0});
+            tmpl.resource_slot_map.push_back({EDescriptorSetSlot::LIGHT, 2});
 
             // Reflected layout: set 0 Scene / set 2 Light are engine_set
             // (routed to the shared table via the contract); set 1 GBuffer
@@ -402,11 +401,8 @@ namespace lux::render
             // uses all 8 bindings, so its shape is exactly what reflection
             // sees -> built purely from reflection; PC is also derived from
             // reflection.
-            auto h = ctx.pipelineManager().registerComputePipelineReflected(
-                shader_obj->module,
-                shader_obj->info,
-                debug_name
-            );
+            auto h = ctx.pipelineManager()
+                         .registerComputePipelineReflected(shader_obj->module, shader_obj->info, debug_name);
             if (!h)
                 return kInvalidComputePipelineHandle;
             cluster_clear_ds_layout_ = ctx.pipelineManager().computeSetLayout(*h, 0);
@@ -477,7 +473,7 @@ namespace lux::render
                           {2, EDescriptorType::INPUT_ATTACHMENT, gbuf_emissive, {}, EImageLayout::RENDERING_LOCAL_READ},
                           {3, EDescriptorType::INPUT_ATTACHMENT, gbuf_depth, {}, EImageLayout::RENDERING_LOCAL_READ},
                       }
-                )
+                  )
                 : builder.createTransientDS(
                       "GBufferDS",
                       gbuffer_ds_layout_,
@@ -503,7 +499,7 @@ namespace lux::render
                            gbuffer_sampler_,
                            EImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL},
                       }
-                );
+                  );
 
         // ---- Reference shadow atlas (forward ref — if ShadowMapFeature absent, pass is pruned) ----
         auto shadow_atlas = builder.referenceTexture(cfg_.shadow_atlas);
@@ -660,8 +656,8 @@ namespace lux::render
                     VkBuffer overflow_buf = rec.resolveBufferHandle(cluster_overflow);
                     const bool is_missing_params = params_buf == VK_NULL_HANDLE;
                     const bool is_missing_counts = counts_buf == VK_NULL_HANDLE || offsets_buf == VK_NULL_HANDLE;
-                    const bool is_missing_indices = heads_buf == VK_NULL_HANDLE ||
-                        indices_buf == VK_NULL_HANDLE || overflow_buf == VK_NULL_HANDLE;
+                    const bool is_missing_indices =
+                        heads_buf == VK_NULL_HANDLE || indices_buf == VK_NULL_HANDLE || overflow_buf == VK_NULL_HANDLE;
                     const bool is_missing_buffer = is_missing_params || is_missing_counts || is_missing_indices;
                     if (is_missing_buffer)
                     {
@@ -752,8 +748,7 @@ namespace lux::render
                     {
                         vkCmdDispatch(rec.cmd, (cluster_count + 63u) / 64u, 1u, 1u);
                     }
-                }
-                )
+                })
                 .setKernel("ClusterBuild");
 
         if (clustered_enabled)
@@ -767,7 +762,7 @@ namespace lux::render
                 .setComputePipeline(cluster_count_pipeline_)
                 .bindTransientDS(0, cluster_tds)
                 .useEngineSet(
-                    EDescriptorSetSlot::Light,
+                    EDescriptorSetSlot::LIGHT,
                     builder.trackExternalBuffer("ext.LightResources"),
                     ERGResourceType::BUFFER
                 )
@@ -782,8 +777,7 @@ namespace lux::render
                     if (total == 0u || rec.pipeline_layout == VK_NULL_HANDLE)
                         return;
                     vkCmdDispatch(rec.cmd, total, 1u, 1u);
-                }
-                )
+                })
                 .setKernel("ClusterCount");
 
             builder.addPass("PrefixScan", ERGPassType::COMPUTE)
@@ -802,7 +796,7 @@ namespace lux::render
                 .setComputePipeline(cluster_fill_pipeline_)
                 .bindTransientDS(0, cluster_tds)
                 .useEngineSet(
-                    EDescriptorSetSlot::Light,
+                    EDescriptorSetSlot::LIGHT,
                     builder.trackExternalBuffer("ext.LightResources"),
                     ERGResourceType::BUFFER
                 )
@@ -826,8 +820,7 @@ namespace lux::render
                     if (total == 0u || rec.pipeline_layout == VK_NULL_HANDLE)
                         return;
                     vkCmdDispatch(rec.cmd, total, 1u, 1u);
-                }
-                )
+                })
                 .setKernel("ClusterFill");
         }
 
@@ -859,7 +852,7 @@ namespace lux::render
             .bindSceneDS()
             .bindTransientDS(1, gbuffer_tds)
             .useEngineSet(
-                EDescriptorSetSlot::Light,
+                EDescriptorSetSlot::LIGHT,
                 builder.trackExternalBuffer("ext.LightResources"),
                 ERGResourceType::BUFFER
             )

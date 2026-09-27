@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <new>
 #include <utility>
 
 namespace lux::spatial
@@ -76,11 +75,9 @@ namespace lux::spatial
         std::vector<Spatial2DPartitionIndexEntry> entries
     ) noexcept
         : grid_origin_(grid_origin), cell_world_size_(cell_world_size), entries_(std::move(entries))
-    {
-    }
+    {}
 
-    lux::cxx::expected<Spatial2DPartitionIndex, Spatial2DPartitionIndexFailure>
-    Spatial2DPartitionIndex::create(
+    lux::cxx::expected<Spatial2DPartitionIndex, Spatial2DPartitionIndexFailure> Spatial2DPartitionIndex::create(
         math::Position2d grid_origin,
         double cell_world_size,
         std::vector<Spatial2DPartitionIndexEntry> entries
@@ -95,27 +92,21 @@ namespace lux::spatial
             return lux::cxx::unexpected(failure(ESpatial2DPartitionIndexError::EMPTY_INDEX));
         }
 
-        try
         {
             for (const auto& entry : entries)
             {
                 if (entry.partition.value == std::numeric_limits<std::uint32_t>::max())
                 {
-                    return lux::cxx::unexpected(failure(
-                        ESpatial2DPartitionIndexError::INVALID_PARTITION,
-                        entry.coordinate,
-                        entry.partition
-                    ));
+                    return lux::cxx::unexpected(
+                        failure(ESpatial2DPartitionIndexError::INVALID_PARTITION, entry.coordinate, entry.partition)
+                    );
                 }
             }
             std::sort(entries.begin(), entries.end(), coordinateLess);
-            const auto duplicate_coordinate = std::adjacent_find(
-                entries.begin(),
-                entries.end(),
-                [](const auto& left, const auto& right) noexcept {
+            const auto duplicate_coordinate =
+                std::adjacent_find(entries.begin(), entries.end(), [](const auto& left, const auto& right) noexcept {
                     return left.coordinate == right.coordinate;
-                }
-            );
+                });
             if (duplicate_coordinate != entries.end())
             {
                 return lux::cxx::unexpected(failure(
@@ -126,19 +117,13 @@ namespace lux::spatial
             }
 
             auto by_partition = entries;
-            std::sort(
-                by_partition.begin(),
-                by_partition.end(),
-                [](const auto& left, const auto& right) noexcept {
-                    return left.partition.value < right.partition.value;
-                }
-            );
+            std::sort(by_partition.begin(), by_partition.end(), [](const auto& left, const auto& right) noexcept {
+                return left.partition.value < right.partition.value;
+            });
             const auto duplicate_partition = std::adjacent_find(
                 by_partition.begin(),
                 by_partition.end(),
-                [](const auto& left, const auto& right) noexcept {
-                    return left.partition == right.partition;
-                }
+                [](const auto& left, const auto& right) noexcept { return left.partition == right.partition; }
             );
             if (duplicate_partition != by_partition.end())
             {
@@ -150,14 +135,11 @@ namespace lux::spatial
             }
             return Spatial2DPartitionIndex(grid_origin, cell_world_size, std::move(entries));
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(ESpatial2DPartitionIndexError::ALLOCATION_FAILURE));
-        }
     }
 
-    lux::cxx::expected<math::GridCoord2i64, Spatial2DPartitionIndexFailure>
-    Spatial2DPartitionIndex::coordinate(math::Position2d position) const noexcept
+    lux::cxx::expected<math::GridCoord2i64, Spatial2DPartitionIndexFailure> Spatial2DPartitionIndex::coordinate(
+        math::Position2d position
+    ) const noexcept
     {
         if (!math::isFinite(position))
         {
@@ -217,9 +199,8 @@ namespace lux::spatial
 
         std::uint64_t x_count{};
         std::uint64_t y_count{};
-        const bool valid_counts = axisCount(first->x, last->x, x_count) &&
-            axisCount(first->y, last->y, y_count) &&
-            (y_count == 0U || x_count <= std::numeric_limits<std::uint64_t>::max() / y_count);
+        const bool valid_counts = axisCount(first->x, last->x, x_count) && axisCount(first->y, last->y, y_count) &&
+                                  (y_count == 0U || x_count <= std::numeric_limits<std::uint64_t>::max() / y_count);
         if (!valid_counts)
         {
             return lux::cxx::unexpected(failure(ESpatial2DPartitionIndexError::COORDINATE_OVERFLOW));
@@ -233,12 +214,9 @@ namespace lux::spatial
         const std::size_t required_capacity = static_cast<std::size_t>(candidate_count);
         if (required_capacity > output.size())
         {
-            return lux::cxx::unexpected(failure(
-                ESpatial2DPartitionIndexError::OUTPUT_CAPACITY_EXCEEDED,
-                *first,
-                {},
-                required_capacity
-            ));
+            return lux::cxx::unexpected(
+                failure(ESpatial2DPartitionIndexError::OUTPUT_CAPACITY_EXCEEDED, *first, {}, required_capacity)
+            );
         }
 
         std::size_t written{};

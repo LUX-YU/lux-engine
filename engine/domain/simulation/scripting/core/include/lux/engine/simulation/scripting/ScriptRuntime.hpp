@@ -154,10 +154,7 @@ namespace lux::simulation::script
             reset();
         }
 
-        [[nodiscard]] bool resize(
-            std::size_t size,
-            std::size_t alignment = alignof(std::max_align_t)
-        ) noexcept
+        [[nodiscard]] bool resize(std::size_t size, std::size_t alignment = alignof(std::max_align_t)) noexcept
         {
             const bool is_invalid_alignment = alignment == 0U || (alignment & (alignment - 1U)) != 0U;
             if (is_invalid_alignment)
@@ -177,11 +174,7 @@ namespace lux::simulation::script
                 size_ = size;
                 return true;
             }
-            auto* replacement = static_cast<std::byte*>(
-                ::operator new(size, std::align_val_t{allocation_alignment}, std::nothrow)
-            );
-            if (replacement == nullptr)
-                return false;
+            auto* replacement = static_cast<std::byte*>(::operator new(size, std::align_val_t{allocation_alignment}));
             if (size_ != 0U)
                 std::memcpy(replacement, data(), (std::min)(size_, size));
             releaseSpill();
@@ -192,7 +185,10 @@ namespace lux::simulation::script
             return true;
         }
 
-        void clear() noexcept { reset(); }
+        void clear() noexcept
+        {
+            reset();
+        }
 
         [[nodiscard]] std::byte* data() noexcept
         {
@@ -272,18 +268,19 @@ namespace lux::simulation::script
 
         PreparedResumeType() noexcept = default;
 
-        constexpr PreparedResumeType(lux::semantic::TypeId id, std::uint8_t kind,
-            std::uint32_t bytes, std::uint32_t align) noexcept
+        constexpr PreparedResumeType(
+            lux::semantic::TypeId id,
+            std::uint8_t kind,
+            std::uint32_t bytes,
+            std::uint32_t align
+        ) noexcept
             : type_id(id), size(bytes), alignment(align), abi_kind(kind)
         {}
 
         PreparedResumeType(const lux::rdesc::ScriptValueType& type) noexcept
-            : type_id(type.type_id),
-              size(type.size),
-              alignment(type.alignment),
-              abi_kind(type.abi_kind), owned(type.pass == lux::semantic::EValuePass::VALUE)
-        {
-        }
+            : type_id(type.type_id), size(type.size), alignment(type.alignment), abi_kind(type.abi_kind),
+              owned(type.pass == lux::semantic::EValuePass::VALUE)
+        {}
 
         PreparedResumeType& operator=(const lux::rdesc::ScriptValueType& type) noexcept
         {
@@ -298,40 +295,47 @@ namespace lux::simulation::script
         [[nodiscard]] constexpr bool valid() const noexcept
         {
             const bool valid_shape = type_id != lux::semantic::InvalidTypeId && size != 0U && alignment != 0U &&
-                (alignment & (alignment - 1U)) == 0U && size % alignment == 0U && owned;
+                                     (alignment & (alignment - 1U)) == 0U && size % alignment == 0U && owned;
             if (!valid_shape)
                 return false;
             switch (abi_kind)
             {
-            case LUX_SCRIPT_VK_BOOL: return size == sizeof(bool) && alignment == alignof(bool);
+            case LUX_SCRIPT_VK_BOOL:
+                return size == sizeof(bool) && alignment == alignof(bool);
             case LUX_SCRIPT_VK_INT32:
-            case LUX_SCRIPT_VK_UINT32: return size == 4U && alignment == 4U;
+            case LUX_SCRIPT_VK_UINT32:
+                return size == 4U && alignment == 4U;
             case LUX_SCRIPT_VK_INT64:
-            case LUX_SCRIPT_VK_UINT64: return size == 8U && alignment == 8U;
-            case LUX_SCRIPT_VK_FLOAT: return size == sizeof(float) && alignment == alignof(float);
-            case LUX_SCRIPT_VK_DOUBLE: return size == sizeof(double) && alignment == alignof(double);
-            case LUX_SCRIPT_VK_STRUCT_REF: return true;
-            default: return false;
+            case LUX_SCRIPT_VK_UINT64:
+                return size == 8U && alignment == 8U;
+            case LUX_SCRIPT_VK_FLOAT:
+                return size == sizeof(float) && alignment == alignof(float);
+            case LUX_SCRIPT_VK_DOUBLE:
+                return size == sizeof(double) && alignment == alignof(double);
+            case LUX_SCRIPT_VK_STRUCT_REF:
+                return true;
+            default:
+                return false;
             }
         }
 
         [[nodiscard]] constexpr bool matches(const lux::rdesc::ScriptValueType& type) const noexcept
         {
             return valid() && type_id == type.type_id && size == type.size && alignment == type.alignment &&
-                abi_kind == type.abi_kind;
+                   abi_kind == type.abi_kind;
         }
 
         [[nodiscard]] constexpr bool matches(const PreparedResumeType& type) const noexcept
         {
             return valid() && type.valid() && type_id == type.type_id && size == type.size &&
-                alignment == type.alignment && abi_kind == type.abi_kind;
+                   alignment == type.alignment && abi_kind == type.abi_kind;
         }
     };
 
     template <lux::semantic::TypeDeclared Value>
     [[nodiscard]] constexpr PreparedResumeType makePreparedResumeType() noexcept
     {
-        using Traits = lux::semantic::TypeTraits<Value>;
+        using Traits = lux::semantic::TTypeTraits<Value>;
         static_assert(Traits::Size == sizeof(Value) && Traits::Alignment == alignof(Value));
         return {lux::semantic::typeId(Traits::CanonicalName), Traits::AbiKind, Traits::Size, Traits::Alignment};
     }
@@ -369,14 +373,14 @@ namespace lux::simulation::script
             return complete_ != nullptr && instance_.valid() && awaitable_.valid();
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptAwaitableCompletionError> ready(
-            ScriptOwnedResumeValue value = {}) const noexcept
+        [[nodiscard]] lux::cxx::expected<void, EScriptAwaitableCompletionError> ready(ScriptOwnedResumeValue value = {})
+            const noexcept
         {
             return complete(EScriptAwaitableState::READY, std::move(value), {});
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptAwaitableCompletionError> fail(
-            ScriptStepError error) const noexcept
+        [[nodiscard]] lux::cxx::expected<void, EScriptAwaitableCompletionError> fail(ScriptStepError error
+        ) const noexcept
         {
             return complete(EScriptAwaitableState::FAILED, {}, error);
         }
@@ -402,29 +406,33 @@ namespace lux::simulation::script
             );
         }
 
-        using CompleteFn = lux::cxx::expected<void, EScriptAwaitableCompletionError> (*)(void*,
-                                                                                         ScriptInstanceId,
-                                                                                         ScriptAwaitableId,
-                                                                                         EScriptAwaitableState,
-                                                                                         ScriptOwnedResumeValue,
-                                                                                         ScriptStepError) noexcept;
+        using CompleteFn = lux::cxx::expected<void, EScriptAwaitableCompletionError> (*)(
+            void*,
+            ScriptInstanceId,
+            ScriptAwaitableId,
+            EScriptAwaitableState,
+            ScriptOwnedResumeValue,
+            ScriptStepError
+        ) noexcept;
         using QueryFn = bool (*)(void*, ScriptInstanceId, ScriptAwaitableId) noexcept;
         using AbilitySuccessFn = lux::script::ScriptAbilityErasedCompletion::SuccessFn;
         using AbilityFailureFn = lux::script::ScriptAbilityErasedCompletion::FailureFn;
         using AbilityActiveFn = lux::script::ScriptAbilityErasedCompletion::ActiveFn;
 
-        ScriptAwaitableCompletion(std::shared_ptr<void> lease,
-                                  void* context,
-                                  CompleteFn complete,
-                                  QueryFn query,
-                                  ScriptInstanceId instance,
-                                  ScriptAwaitableId awaitable,
-                                  AbilitySuccessFn ability_success,
-                                  AbilityFailureFn ability_failure,
-                                  AbilityActiveFn ability_active,
-                                  void* ability_owner_context = nullptr,
-                                  AbilitySuccessFn ability_owner_success = nullptr,
-                                  AbilityFailureFn ability_owner_failure = nullptr) noexcept
+        ScriptAwaitableCompletion(
+            std::shared_ptr<void> lease,
+            void* context,
+            CompleteFn complete,
+            QueryFn query,
+            ScriptInstanceId instance,
+            ScriptAwaitableId awaitable,
+            AbilitySuccessFn ability_success,
+            AbilityFailureFn ability_failure,
+            AbilityActiveFn ability_active,
+            void* ability_owner_context = nullptr,
+            AbilitySuccessFn ability_owner_success = nullptr,
+            AbilityFailureFn ability_owner_failure = nullptr
+        ) noexcept
             : lease_(std::move(lease)), context_(context), complete_(complete), query_(query), instance_(instance),
               awaitable_(awaitable), ability_success_(ability_success), ability_failure_(ability_failure),
               ability_active_(ability_active), ability_owner_context_(ability_owner_context),
@@ -432,10 +440,7 @@ namespace lux::simulation::script
         {}
 
     private:
-        [[nodiscard]] static constexpr std::uint64_t pack(
-            std::uint32_t slot,
-            std::uint32_t generation
-        ) noexcept
+        [[nodiscard]] static constexpr std::uint64_t pack(std::uint32_t slot, std::uint32_t generation) noexcept
         {
             return (static_cast<std::uint64_t>(slot) << 32U) | generation;
         }
@@ -443,7 +448,8 @@ namespace lux::simulation::script
         [[nodiscard]] lux::cxx::expected<void, EScriptAwaitableCompletionError> complete(
             EScriptAwaitableState state,
             ScriptOwnedResumeValue value,
-            ScriptStepError error) const noexcept
+            ScriptStepError error
+        ) const noexcept
         {
             if (complete_ == nullptr)
                 return lux::cxx::unexpected<EScriptAwaitableCompletionError>(EScriptAwaitableCompletionError::STOPPING);
@@ -473,8 +479,7 @@ namespace lux::simulation::script
     [[nodiscard]] constexpr bool supportsExternalResumeLayout(std::size_t size, std::size_t alignment) noexcept
     {
         const bool is_valid_alignment = alignment != 0U && (alignment & (alignment - 1U)) == 0U;
-        return size <= ScriptOwnedBytes::InlineCapacity && is_valid_alignment &&
-            alignment <= alignof(std::max_align_t);
+        return size <= ScriptOwnedBytes::InlineCapacity && is_valid_alignment && alignment <= alignof(std::max_align_t);
     }
 
     enum class EScriptAwaitableCreateError : std::uint8_t
@@ -497,7 +502,8 @@ namespace lux::simulation::script
         ScriptAwaitableFactory& operator=(ScriptAwaitableFactory&&) = delete;
 
         [[nodiscard]] lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError> create(
-            std::optional<PreparedResumeType> result_type = std::nullopt) const noexcept
+            std::optional<PreparedResumeType> result_type = std::nullopt
+        ) const noexcept
         {
             if (create_ == nullptr)
                 return lux::cxx::unexpected<EScriptAwaitableCreateError>(EScriptAwaitableCreateError::STOPPING);
@@ -510,13 +516,15 @@ namespace lux::simulation::script
                 discard_(context_, instance_, awaitable);
         }
 
-        using CreateFn = lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError> (*)(
-            void*,
-            ScriptInstanceId,
-            std::optional<PreparedResumeType>) noexcept;
+        using CreateFn = lux::cxx::expected<
+            ScriptAwaitableRegistration,
+            EScriptAwaitableCreateError> (*)(void*, ScriptInstanceId, std::optional<PreparedResumeType>) noexcept;
         using DiscardFn = void (*)(void*, ScriptInstanceId, ScriptAwaitableId) noexcept;
 
-        [[nodiscard]] bool belongsTo(const void* owner) const noexcept { return context_ == owner; }
+        [[nodiscard]] bool belongsTo(const void* owner) const noexcept
+        {
+            return context_ == owner;
+        }
 
     private:
         ScriptAwaitableFactory(void* context, CreateFn create, DiscardFn discard, ScriptInstanceId instance) noexcept
@@ -557,7 +565,10 @@ namespace lux::simulation::script
     class ScriptSystem;
     struct ScriptEventAdmissionScopeTag;
     using ScriptEventAdmissionScope = lux::cxx::ScopeId<ScriptEventAdmissionScopeTag>;
-    namespace detail { class ScriptRuntimeAccess; }
+    namespace detail
+    {
+        class ScriptRuntimeAccess;
+    }
 
     class ScriptEventAdmissionHandle final
     {
@@ -567,6 +578,7 @@ namespace lux::simulation::script
         {
             return scope_.isValid() && instance_.valid() && layout_epoch_ != 0U;
         }
+
     private:
         ScriptEventAdmissionScope scope_;
         ScriptInstanceId instance_;
@@ -612,8 +624,7 @@ namespace lux::simulation::script
     private:
         ScriptEventWaitFactory(void* context, WaitFn wait, ScriptInstanceId instance) noexcept
             : context_(context), wait_(wait), instance_(instance)
-        {
-        }
+        {}
 
         void* context_{};
         WaitFn wait_{};
@@ -631,8 +642,7 @@ namespace lux::simulation::script
             ScriptAwaitableFactory::DiscardFn discard,
             ScriptEventWaitFactory::WaitFn wait_event = nullptr
         ) noexcept
-            : instance(instance),
-              awaitables(context, create, discard, instance),
+            : instance(instance), awaitables(context, create, discard, instance),
               event_waits(context, wait_event, instance)
         {}
 

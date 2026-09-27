@@ -61,15 +61,14 @@ namespace lux::spatial
             std::vector<Spatial3DPartitionIndexEntry> entries
         ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<math::GridCoord3i64, Spatial3DPartitionIndexFailure>
-        coordinate(math::Position3d position) const noexcept;
+        [[nodiscard]] lux::cxx::expected<math::GridCoord3i64, Spatial3DPartitionIndexFailure> coordinate(
+            math::Position3d position
+        ) const noexcept;
 
         [[nodiscard]] const partition::PartitionOrdinal* find(math::GridCoord3i64 coordinate) const noexcept;
 
-        [[nodiscard]] lux::cxx::expected<
-            std::optional<partition::PartitionOrdinal>,
-            Spatial3DPartitionIndexFailure
-        > find(math::Position3d position) const noexcept;
+        [[nodiscard]] lux::cxx::expected<std::optional<partition::PartitionOrdinal>, Spatial3DPartitionIndexFailure>
+        find(math::Position3d position) const noexcept;
 
         [[nodiscard]] lux::cxx::expected<std::size_t, Spatial3DPartitionIndexFailure> query(
             const Spatial3DQueryBounds& bounds,

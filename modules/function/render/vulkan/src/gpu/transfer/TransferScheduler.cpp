@@ -1,9 +1,9 @@
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <vk_mem_alloc.h>
 
 #include <algorithm>
 #include <cstring>
-#include <cassert>
 
 namespace lux::render
 {
@@ -96,7 +96,8 @@ namespace lux::render
 
     StagingAlloc TransferScheduler::allocateStaging(VkDeviceSize bytes)
     {
-        assert(initialized_);
+        if (!initialized_)
+            renderFatal("TransferScheduler::allocateStaging() before initialization");
 
         // Fast path: ring sub-allocation.
         auto sub = ring_.suballocate(bytes);
@@ -203,7 +204,7 @@ namespace lux::render
         EBufferDomain prev_domain{};
         for (const auto& c : buffer_copies_)
         {
-            if (c.domain == EBufferDomain::TransferDst)
+            if (c.domain == EBufferDomain::TRANSFER_DST)
                 continue; // New buffer, no reader yet.
             if (c.dst == prev_buf && c.domain == prev_domain)
                 continue; // Already emitted.
@@ -233,7 +234,7 @@ namespace lux::render
         // the later ones would carry a stale old_layout anyway).
         for (const auto& c : image_copies_)
         {
-            if (c.domain == EBufferDomain::TransferDst && c.old_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+            if (c.domain == EBufferDomain::TRANSFER_DST && c.old_layout == VK_IMAGE_LAYOUT_UNDEFINED)
                 continue; // Brand-new image.
 
             bool seen = false;
@@ -458,8 +459,7 @@ namespace lux::render
             if (a.dst != b.dst)
                 return a.dst < b.dst;
             return static_cast<uint8_t>(a.domain) < static_cast<uint8_t>(b.domain);
-        }
-        );
+        });
 
         VkBuffer prev_buf = VK_NULL_HANDLE;
         EBufferDomain prev_domain{};
@@ -533,7 +533,7 @@ namespace lux::render
         {
             auto sa = domainToStageAccess(q.domain);
 
-            if (q.kind == QFOTAcquireRequest::Kind::Buffer)
+            if (q.kind == QFOTAcquireRequest::EKind::BUFFER)
             {
                 VkBufferMemoryBarrier2 b{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
                 b.srcStageMask = VK_PIPELINE_STAGE_2_NONE;

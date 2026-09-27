@@ -60,24 +60,14 @@ namespace lux::render
         virtual ~IShadowTechnique() = default;
 
         // ── Startup / shutdown (once per technique lifetime). ───────────
-        virtual void buildResources()
-        {
-        }
-        virtual void destroyResources()
-        {
-        }
+        virtual void buildResources() {}
+        virtual void destroyResources() {}
 
         // ── Per-frame scheduling. Each technique chooses how many and what
         //    kind of GPU passes it emits. ─────────────────────────────────
-        virtual void recordFrameSetup(const ShadowFrameContext&)
-        {
-        }
-        virtual void recordShadowPasses(const ShadowFrameContext&)
-        {
-        }
-        virtual void recordPostFrame(const ShadowFrameContext&)
-        {
-        }
+        virtual void recordFrameSetup(const ShadowFrameContext&) {}
+        virtual void recordShadowPasses(const ShadowFrameContext&) {}
+        virtual void recordPostFrame(const ShadowFrameContext&) {}
 
         // ── Caster pass declaration. The mesh shadow caster pipeline depends on
         //    the mesh vertex shader (owned by MeshShadowFeature), so a technique

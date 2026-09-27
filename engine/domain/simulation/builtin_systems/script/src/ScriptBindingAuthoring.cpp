@@ -2,15 +2,16 @@
 #include <lux/engine/simulation/scripting/ScriptSignatureCompatibility.hpp>
 
 #include <algorithm>
-#include <new>
 #include <optional>
 
 namespace lux::simulation::script
 {
-    ScriptBindingCandidates listScriptBindingCandidates(const lux::script::ScriptArtifact& artifact,
-                                                        lux::script::ScriptSymbolId symbol,
-                                                        const lux::simulation::SimulationDescription& simulation,
-                                                        bool entity_scope) noexcept
+    ScriptBindingCandidates listScriptBindingCandidates(
+        const lux::script::ScriptArtifact& artifact,
+        lux::script::ScriptSymbolId symbol,
+        const lux::simulation::SimulationDescription& simulation,
+        bool entity_scope
+    ) noexcept
     {
         using namespace lux::simulation;
         using namespace lux::simulation::script;
@@ -19,7 +20,6 @@ namespace lux::simulation::script
             return lux::cxx::unexpected(EScriptBindingAuthoringError::SYMBOL_NOT_FOUND);
         const auto& lifecycle = artifact.description().lifecycle;
         const bool is_lifecycle = lifecycle.begin_play == symbol || lifecycle.end_play == symbol;
-        try
         {
             std::vector<ScriptBindingCandidate> result;
             for (std::size_t system_index{}; system_index < simulation.systemCount(); ++system_index)
@@ -36,8 +36,10 @@ namespace lux::simulation::script
                     else if (!function->returns.empty())
                         compatibility = EScriptBindingCompatibility::RETURN_NOT_SUPPORTED;
                     else if (!sameScriptHookSignature(
-                                 *function, hook.parameterCount(),
-                                 [hook](std::size_t index) noexcept { return hook.parameterAt(index); }))
+                                 *function,
+                                 hook.parameterCount(),
+                                 [hook](std::size_t index) noexcept { return hook.parameterAt(index); }
+                             ))
                         compatibility = EScriptBindingCompatibility::SIGNATURE_MISMATCH;
                     result.push_back({HookScriptTarget{system.instanceId(), hook.id()}, compatibility, symbol});
                 }
@@ -53,30 +55,31 @@ namespace lux::simulation::script
                         compatibility = EScriptBindingCompatibility::SCOPE_MISMATCH;
                     else if (!function->returns.empty())
                         compatibility = EScriptBindingCompatibility::RETURN_NOT_SUPPORTED;
-                    else if (!sameScriptEventSignature(*function, {event.payloadType(), event.payloadSchemaName(),
-                                                                   lux::semantic::EValuePass::CONST_REF}))
+                    else if (!sameScriptEventSignature(
+                                 *function,
+                                 {event.payloadType(), event.payloadSchemaName(), lux::semantic::EValuePass::CONST_REF}
+                             ))
                         compatibility = EScriptBindingCompatibility::SIGNATURE_MISMATCH;
                     result.push_back({EventScriptTarget{system.instanceId(), event.id()}, compatibility, symbol});
                 }
             }
             return result;
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(EScriptBindingAuthoringError::ALLOCATION_FAILURE);
-        }
     }
 
     lux::cxx::expected<lux::simulation::script::ScriptBindingDescription, EScriptBindingAuthoringError>
-    selectScriptBinding(lux::script::ScriptSymbolId symbol, std::span<const ScriptBindingCandidate> candidates,
-                        const lux::simulation::script::ScriptBindingTarget* explicit_target,
-                        std::span<const lux::simulation::script::ScriptBindingTarget> suggestions) noexcept
+    selectScriptBinding(
+        lux::script::ScriptSymbolId symbol,
+        std::span<const ScriptBindingCandidate> candidates,
+        const lux::simulation::script::VScriptBindingTarget* explicit_target,
+        std::span<const lux::simulation::script::VScriptBindingTarget> suggestions
+    ) noexcept
     {
         using namespace lux::simulation::script;
         if (std::ranges::none_of(candidates, [symbol](const auto& value) noexcept { return value.symbol == symbol; }))
             return lux::cxx::unexpected(EScriptBindingAuthoringError::SYMBOL_NOT_FOUND);
-        std::optional<ScriptBindingTarget> selected;
-        const auto inspect = [&](const ScriptBindingTarget& target) -> std::optional<EScriptBindingAuthoringError> {
+        std::optional<VScriptBindingTarget> selected;
+        const auto inspect = [&](const VScriptBindingTarget& target) -> std::optional<EScriptBindingAuthoringError> {
             const auto found = std::ranges::find(candidates, target, &ScriptBindingCandidate::target);
             if (found == candidates.end())
                 return EScriptBindingAuthoringError::TARGET_NOT_FOUND;
@@ -105,32 +108,41 @@ namespace lux::simulation::script
         return ScriptBindingDescription{symbol, *selected};
     }
     lux::cxx::expected<ScriptBindingDescription, EScriptBindingAuthoringError> selectScriptBindingFromHints(
-        const lux::script::ScriptArtifact& artifact, lux::script::ScriptSymbolId symbol,
-        const SimulationDescription& simulation, bool entity_scope, const ScriptBindingTarget* explicit_target,
-        std::span<const lux::script::ScriptBindingHint> hints) noexcept
+        const lux::script::ScriptArtifact& artifact,
+        lux::script::ScriptSymbolId symbol,
+        const SimulationDescription& simulation,
+        bool entity_scope,
+        const VScriptBindingTarget* explicit_target,
+        std::span<const lux::script::ScriptBindingHint> hints
+    ) noexcept
     {
         auto candidates = listScriptBindingCandidates(artifact, symbol, simulation, entity_scope);
-        if (!candidates) return lux::cxx::unexpected(candidates.error());
+        if (!candidates)
+            return lux::cxx::unexpected(candidates.error());
         // A retained user choice does not become invalid because a source suggestion changed or disappeared.
-        if (explicit_target != nullptr) return selectScriptBinding(symbol, *candidates, explicit_target, {});
-        try
+        if (explicit_target != nullptr)
+            return selectScriptBinding(symbol, *candidates, explicit_target, {});
         {
-            std::vector<ScriptBindingTarget> targets;
+            std::vector<VScriptBindingTarget> targets;
             for (const auto& hint : hints)
             {
-                if (hint.symbol != symbol) continue;
+                if (hint.symbol != symbol)
+                    continue;
                 const std::string_view qualified = hint.target.qualified_name;
                 const auto separator = qualified.find('.');
                 const bool invalid_name = separator == std::string_view::npos || separator == 0U ||
-                    separator + 1U == qualified.size() || qualified.find('.', separator + 1U) != std::string_view::npos;
-                if (invalid_name) return lux::cxx::unexpected(EScriptBindingAuthoringError::TARGET_NOT_FOUND);
+                                          separator + 1U == qualified.size() ||
+                                          qualified.find('.', separator + 1U) != std::string_view::npos;
+                if (invalid_name)
+                    return lux::cxx::unexpected(EScriptBindingAuthoringError::TARGET_NOT_FOUND);
                 const auto system_name = qualified.substr(0U, separator);
                 const auto point_name = qualified.substr(separator + 1U);
                 const auto before = targets.size();
                 for (std::size_t index{}; index < simulation.systemCount(); ++index)
                 {
                     const auto system = simulation.systemAt(index);
-                    if (system.instanceName() != system_name) continue;
+                    if (system.instanceName() != system_name)
+                        continue;
                     if (hint.target.kind == lux::script::EScriptBindingHintKind::HOOK)
                     {
                         for (std::size_t point{}; point < system.hookPointCount(); ++point)
@@ -154,10 +166,6 @@ namespace lux::simulation::script
                     return lux::cxx::unexpected(EScriptBindingAuthoringError::TARGET_NOT_FOUND);
             }
             return selectScriptBinding(symbol, *candidates, nullptr, targets);
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(EScriptBindingAuthoringError::ALLOCATION_FAILURE);
         }
     }
 } // namespace lux::simulation::script

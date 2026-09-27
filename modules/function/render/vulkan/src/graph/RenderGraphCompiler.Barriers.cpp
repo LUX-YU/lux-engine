@@ -5,7 +5,7 @@
 #include <lux/engine/render/graph/ProgramEmitter.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
 #include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
-#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>             // domain slot resolution (kEngineSetShapes)
+#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp> // domain slot resolution (kEngineSetShapes)
 #include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp>
 // domain set instance (record-time collapsed binding)
 #include <lux/engine/render/graph/RGBarrierUtils.hpp>
@@ -76,7 +76,7 @@ namespace lux::render
                 return -1;
             for (const auto& rslot : refl->slots)
                 if (rslot.slot == slot_index)
-                    return rslot.source == ESlotSource::DomainMerged ? static_cast<int>(rslot.logical_set) : -1;
+                    return rslot.source == ESlotSource::DOMAIN_MERGED ? static_cast<int>(rslot.logical_set) : -1;
             return -1;
         };
 
@@ -186,14 +186,14 @@ namespace lux::render
                         // domain). Compute pipelines don't currently
                         // participate in merging; this branch exists only
                         // for completeness.
-                        if (slot.source == ESlotSource::DomainMerged)
+                        if (slot.source == ESlotSource::DOMAIN_MERGED)
                         {
                             if (want < kEngineSetShapes.size() &&
                                 static_cast<uint32_t>(kEngineSetShapes[want].frequency) == slot.logical_set)
                                 return slot.slot;
                             continue;
                         }
-                        if (slot.source != ESlotSource::EngineShared && slot.source != ESlotSource::ReflectionHole)
+                        if (slot.source != ESlotSource::ENGINE_SHARED && slot.source != ESlotSource::REFLECTION_HOLE)
                             continue;
                         if (slot.logical_set == want)
                             return slot.slot;
@@ -274,7 +274,8 @@ namespace lux::render
                     domain_recipe.provider = DescriptorProvider{
                         domain_sets,
                         slot_domain == static_cast<int>(rdesc::EBindFrequency::GLOBAL) ? &resolveGlobalDomainSet
-                                                                                       : &resolveFeatureDomainSet};
+                                                                                       : &resolveFeatureDomainSet
+                    };
                     cpass.render.ds_bind_recipe.push_back(domain_recipe);
 
                     // FORCE A REBIND ON EVERY PASS, NO CROSS-PASS DEDUP — the
@@ -299,22 +300,22 @@ namespace lux::render
                 recipe.slot = slot;
                 switch (binding.source)
                 {
-                case EDSBindingSource::Immutable:
+                case EDSBindingSource::IMMUTABLE:
                     recipe.resolve = &DSBindRecipe::resolveImmutable;
                     recipe.immutable_set = binding.immutable_set;
                     break;
-                case EDSBindingSource::Scene:
+                case EDSBindingSource::SCENE:
                     recipe.resolve = &DSBindRecipe::resolveScene;
                     break;
-                case EDSBindingSource::Transient:
+                case EDSBindingSource::TRANSIENT:
                     recipe.resolve = &DSBindRecipe::resolveTransient;
                     recipe.transient_ds_index = binding.transient_ds_index;
                     break;
-                case EDSBindingSource::Resource:
+                case EDSBindingSource::RESOURCE:
                     recipe.resolve = &DSBindRecipe::resolveResource;
                     recipe.provider = binding.provider;
                     break;
-                case EDSBindingSource::EngineDomain:
+                case EDSBindingSource::ENGINE_DOMAIN:
                     // 走到这里 = useEngineSet 的域解析没成功:要么该逻辑集不在
                     // FEATURE/GLOBAL 域(BINDLESS 请用 bindImmutableDS),要么本图
                     // 压根没有域实例(scene-less 测试图)。上面的 collapsing 分支
@@ -331,8 +332,8 @@ namespace lux::render
 
                 const bool force_rebind = (binding.mode == EDSBindMode::PER_FIF) ||
                                           (binding.mode == EDSBindMode::VERSIONED) ||
-                                          (binding.source == EDSBindingSource::Scene) ||
-                                          (binding.source == EDSBindingSource::Transient)
+                                          (binding.source == EDSBindingSource::SCENE) ||
+                                          (binding.source == EDSBindingSource::TRANSIENT)
                                           // A domain slot (BINDLESS falls here too: the instance is
                                           // whatever global table the binding already carries) follows
                                           // the same forced-rebind, no-cross-pass-dedup rule as
@@ -342,11 +343,11 @@ namespace lux::render
                 uint64_t identity = 0ull;
                 if (!force_rebind)
                 {
-                    if (binding.source == EDSBindingSource::Immutable)
+                    if (binding.source == EDSBindingSource::IMMUTABLE)
                     {
                         identity = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(binding.immutable_set));
                     }
-                    else if (binding.source == EDSBindingSource::Resource)
+                    else if (binding.source == EDSBindingSource::RESOURCE)
                     {
                         identity = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(binding.provider.resource));
                     }

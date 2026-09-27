@@ -42,7 +42,8 @@ namespace lux::asset
             });
             for (std::size_t index = 0U; index < values.size(); ++index)
                 if (values[index].tag == 0U || values[index].bytes.empty() ||
-                    (index != 0U && values[index - 1U].tag == values[index].tag)) return false;
+                    (index != 0U && values[index - 1U].tag == values[index].tag))
+                    return false;
             return true;
         }
 
@@ -50,8 +51,7 @@ namespace lux::asset
         {
             std::vector<std::byte> bytes;
 
-            template <class Type>
-            void pod(const Type& value)
+            template <class Type> void pod(const Type& value)
             {
                 const auto offset = bytes.size();
                 bytes.resize(offset + sizeof(Type));
@@ -82,10 +82,10 @@ namespace lux::asset
             std::span<const std::byte> bytes;
             std::size_t offset{};
 
-            template <class Type>
-            [[nodiscard]] bool pod(Type& value) noexcept
+            template <class Type> [[nodiscard]] bool pod(Type& value) noexcept
             {
-                if (sizeof(Type) > bytes.size() - offset) return false;
+                if (sizeof(Type) > bytes.size() - offset)
+                    return false;
                 std::memcpy(&value, bytes.data() + offset, sizeof(Type));
                 offset += sizeof(Type);
                 return true;
@@ -93,7 +93,8 @@ namespace lux::asset
 
             [[nodiscard]] bool raw(void* target, std::size_t size) noexcept
             {
-                if (size > bytes.size() - offset) return false;
+                if (size > bytes.size() - offset)
+                    return false;
                 std::memcpy(target, bytes.data() + offset, size);
                 offset += size;
                 return true;
@@ -102,7 +103,8 @@ namespace lux::asset
             [[nodiscard]] bool string(std::string& value) noexcept
             {
                 std::uint32_t size{};
-                if (!pod(size) || size > kMaxString || size > bytes.size() - offset) return false;
+                if (!pod(size) || size > kMaxString || size > bytes.size() - offset)
+                    return false;
                 value.resize(size);
                 return raw(value.data(), size);
             }
@@ -124,8 +126,8 @@ namespace lux::asset
 
         [[nodiscard]] bool validAtlas(const lux::rdesc::TextureAtlas& atlas) noexcept
         {
-            if (atlas.name.empty() || atlas.name.size() > kMaxString ||
-                atlas.texture.isNull() || atlas.frames.size() > kMaxItems)
+            if (atlas.name.empty() || atlas.name.size() > kMaxString || atlas.texture.isNull() ||
+                atlas.frames.size() > kMaxItems)
             {
                 return false;
             }
@@ -133,32 +135,36 @@ namespace lux::asset
             {
                 const auto& frame = atlas.frames[index];
                 if (frame.name.empty() || frame.name.size() > kMaxString || !finite(frame.uv_rect) ||
-                    !frame.pivot.allFinite()) return false;
+                    !frame.pivot.allFinite())
+                    return false;
                 const bool invalid_uv = frame.uv_rect.x() < 0.0F || frame.uv_rect.y() < 0.0F ||
-                    frame.uv_rect.z() <= 0.0F || frame.uv_rect.w() <= 0.0F ||
-                    frame.uv_rect.x() + frame.uv_rect.z() > 1.0F ||
-                    frame.uv_rect.y() + frame.uv_rect.w() > 1.0F;
-                const bool invalid_pivot = frame.pivot.x() < 0.0F || frame.pivot.x() > 1.0F ||
-                    frame.pivot.y() < 0.0F || frame.pivot.y() > 1.0F;
-                if (invalid_uv || invalid_pivot) return false;
+                                        frame.uv_rect.z() <= 0.0F || frame.uv_rect.w() <= 0.0F ||
+                                        frame.uv_rect.x() + frame.uv_rect.z() > 1.0F ||
+                                        frame.uv_rect.y() + frame.uv_rect.w() > 1.0F;
+                const bool invalid_pivot = frame.pivot.x() < 0.0F || frame.pivot.x() > 1.0F || frame.pivot.y() < 0.0F ||
+                                           frame.pivot.y() > 1.0F;
+                if (invalid_uv || invalid_pivot)
+                    return false;
                 for (std::size_t previous = 0U; previous < index; ++previous)
-                    if (atlas.frames[previous].name == frame.name) return false;
+                    if (atlas.frames[previous].name == frame.name)
+                        return false;
             }
             return true;
         }
 
         [[nodiscard]] bool validClip(const lux::rdesc::FlipbookClip& clip) noexcept
         {
-            if (clip.name.empty() || clip.name.size() > kMaxString ||
-                clip.atlas.isNull() || clip.frames.empty() ||
+            if (clip.name.empty() || clip.name.size() > kMaxString || clip.atlas.isNull() || clip.frames.empty() ||
                 clip.frames.size() > kMaxItems || clip.events.size() > kMaxItems)
             {
                 return false;
             }
             for (const auto& frame : clip.frames)
-                if (!std::isfinite(frame.duration) || frame.duration <= 0.0F) return false;
+                if (!std::isfinite(frame.duration) || frame.duration <= 0.0F)
+                    return false;
             for (const auto& event : clip.events)
-                if (event.frame_index >= clip.frames.size()) return false;
+                if (event.frame_index >= clip.frames.size())
+                    return false;
             return true;
         }
 
@@ -174,7 +180,8 @@ namespace lux::asset
             for (const auto& frame : atlas.frames)
             {
                 writer.string(frame.name);
-                for (int index = 0; index < 4; ++index) writer.pod(frame.uv_rect[index]);
+                for (int index = 0; index < 4; ++index)
+                    writer.pod(frame.uv_rect[index]);
                 writer.pod(frame.pivot.x());
                 writer.pod(frame.pivot.y());
             }
@@ -186,9 +193,8 @@ namespace lux::asset
         {
             Reader reader{bytes};
             std::uint32_t magic{}, endian{}, version{}, count{}, trailer{};
-            if (!reader.pod(magic) || !reader.pod(endian) || !reader.pod(version) ||
-                magic != kAtlasMagic || endian != kEndian || version != kVersion ||
-                !reader.string(atlas.name) || !reader.id(atlas.texture) ||
+            if (!reader.pod(magic) || !reader.pod(endian) || !reader.pod(version) || magic != kAtlasMagic ||
+                endian != kEndian || version != kVersion || !reader.string(atlas.name) || !reader.id(atlas.texture) ||
                 !reader.pod(count) || count > kMaxItems)
             {
                 return false;
@@ -196,12 +202,16 @@ namespace lux::asset
             atlas.frames.resize(count);
             for (auto& frame : atlas.frames)
             {
-                if (!reader.string(frame.name)) return false;
-                for (int index = 0; index < 4; ++index) if (!reader.pod(frame.uv_rect[index])) return false;
-                if (!reader.pod(frame.pivot.x()) || !reader.pod(frame.pivot.y())) return false;
+                if (!reader.string(frame.name))
+                    return false;
+                for (int index = 0; index < 4; ++index)
+                    if (!reader.pod(frame.uv_rect[index]))
+                        return false;
+                if (!reader.pod(frame.pivot.x()) || !reader.pod(frame.pivot.y()))
+                    return false;
             }
             return reader.pod(trailer) && trailer == kAtlasTrailer && reader.offset == reader.bytes.size() &&
-                validAtlas(atlas);
+                   validAtlas(atlas);
         }
 
         [[nodiscard]] std::vector<std::byte> encodeClip(const lux::rdesc::FlipbookClip& clip)
@@ -237,25 +247,27 @@ namespace lux::asset
             Reader reader{bytes};
             std::uint32_t magic{}, endian{}, version{}, frame_count{}, event_count{}, trailer{};
             std::uint8_t loop{}, reserved{};
-            if (!reader.pod(magic) || !reader.pod(endian) || !reader.pod(version) ||
-                magic != kClipMagic || endian != kEndian || version != kVersion ||
-                !reader.string(clip.name) || !reader.id(clip.atlas) ||
-                !reader.pod(loop) || loop > 1U || !reader.pod(reserved) || reserved != 0U ||
-                !reader.pod(reserved) || reserved != 0U || !reader.pod(reserved) || reserved != 0U ||
-                !reader.pod(frame_count) || frame_count > kMaxItems)
+            if (!reader.pod(magic) || !reader.pod(endian) || !reader.pod(version) || magic != kClipMagic ||
+                endian != kEndian || version != kVersion || !reader.string(clip.name) || !reader.id(clip.atlas) ||
+                !reader.pod(loop) || loop > 1U || !reader.pod(reserved) || reserved != 0U || !reader.pod(reserved) ||
+                reserved != 0U || !reader.pod(reserved) || reserved != 0U || !reader.pod(frame_count) ||
+                frame_count > kMaxItems)
             {
                 return false;
             }
             clip.loop = loop != 0U;
             clip.frames.resize(frame_count);
             for (auto& frame : clip.frames)
-                if (!reader.pod(frame.frame_index) || !reader.pod(frame.duration)) return false;
-            if (!reader.pod(event_count) || event_count > kMaxItems) return false;
+                if (!reader.pod(frame.frame_index) || !reader.pod(frame.duration))
+                    return false;
+            if (!reader.pod(event_count) || event_count > kMaxItems)
+                return false;
             clip.events.resize(event_count);
             for (auto& event : clip.events)
-                if (!reader.pod(event.frame_index) || !reader.pod(event.event_id)) return false;
+                if (!reader.pod(event.frame_index) || !reader.pod(event.event_id))
+                    return false;
             return reader.pod(trailer) && trailer == kClipTrailer && reader.offset == reader.bytes.size() &&
-                validClip(clip);
+                   validClip(clip);
         }
 
         template <class Asset, class Data, class Decode>
@@ -267,20 +279,21 @@ namespace lux::asset
         ) noexcept
         {
             auto image = inspectCookedAssetImage(requested, std::move(bytes), limits);
-            if (!image) return lux::cxx::unexpected(image.error());
+            if (!image)
+                return lux::cxx::unexpected(image.error());
             if (image->magic() != Asset::primary_magic)
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_MAGIC));
             if (image->metadata().legacy_type_tag != Asset::legacy_type_tag)
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_TYPE));
             if (!image->data().empty() || image->information().empty())
                 return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_LAYOUT));
-            try
             {
                 auto data = std::make_shared<Data>();
                 if (!decode(image->information().view(), *data))
                     return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
                 std::vector<AssetAuxiliaryPayload> auxiliary(
-                    image->auxiliaryPayloads().begin(), image->auxiliaryPayloads().end()
+                    image->auxiliaryPayloads().begin(),
+                    image->auxiliaryPayloads().end()
                 );
                 return Asset::create(
                     AssetInfo{
@@ -294,10 +307,6 @@ namespace lux::asset
                     std::move(data),
                     std::move(auxiliary)
                 );
-            }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::ALLOCATION_FAILURE));
             }
         }
 
@@ -328,11 +337,9 @@ namespace lux::asset
         std::vector<AssetAuxiliaryPayload> auxiliary
     ) noexcept
         : TAsset(std::move(info), std::move(data), std::move(auxiliary))
-    {
-    }
+    {}
 
-    lux::cxx::expected<std::shared_ptr<const TextureAtlasAsset>, AssetDecodeFailure>
-    TextureAtlasAsset::create(
+    lux::cxx::expected<std::shared_ptr<const TextureAtlasAsset>, AssetDecodeFailure> TextureAtlasAsset::create(
         AssetInfo info,
         std::shared_ptr<const lux::rdesc::TextureAtlas> data,
         std::vector<AssetAuxiliaryPayload> auxiliary
@@ -341,15 +348,10 @@ namespace lux::asset
         if (info.id.isNull() || !data || !validAtlas(*data) || !canonicalize(auxiliary))
             return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
         info.type = asset_type;
-        try
         {
             return std::shared_ptr<const TextureAtlasAsset>(
                 new TextureAtlasAsset(std::move(info), std::move(data), std::move(auxiliary))
             );
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::ALLOCATION_FAILURE));
         }
     }
 
@@ -359,11 +361,9 @@ namespace lux::asset
         std::vector<AssetAuxiliaryPayload> auxiliary
     ) noexcept
         : TAsset(std::move(info), std::move(data), std::move(auxiliary))
-    {
-    }
+    {}
 
-    lux::cxx::expected<std::shared_ptr<const FlipbookClipAsset>, AssetDecodeFailure>
-    FlipbookClipAsset::create(
+    lux::cxx::expected<std::shared_ptr<const FlipbookClipAsset>, AssetDecodeFailure> FlipbookClipAsset::create(
         AssetInfo info,
         std::shared_ptr<const lux::rdesc::FlipbookClip> data,
         std::vector<AssetAuxiliaryPayload> auxiliary
@@ -372,67 +372,56 @@ namespace lux::asset
         if (info.id.isNull() || !data || !validClip(*data) || !canonicalize(auxiliary))
             return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::INVALID_PAYLOAD));
         info.type = asset_type;
-        try
         {
             return std::shared_ptr<const FlipbookClipAsset>(
                 new FlipbookClipAsset(std::move(info), std::move(data), std::move(auxiliary))
             );
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(decodeFailure(EAssetDecodeError::ALLOCATION_FAILURE));
-        }
     }
 
-    lux::cxx::expected<std::shared_ptr<const TextureAtlasAsset>, AssetDecodeFailure>
-    TAssetSerDeser<TextureAtlasAsset>::decode(
-        AssetId requested,
-        lux::cxx::SharedBytes<> image,
-        const AssetDecodeLimits& limits
-    ) noexcept
+    lux::cxx::expected<std::shared_ptr<const TextureAtlasAsset>, AssetDecodeFailure> TAssetSerDeser<TextureAtlasAsset>::
+        decode(AssetId requested, lux::cxx::SharedBytes<> image, const AssetDecodeLimits& limits) noexcept
     {
         return decodeTyped<TextureAtlasAsset, lux::rdesc::TextureAtlas>(
-            requested, std::move(image), limits, &decodeAtlas
+            requested,
+            std::move(image),
+            limits,
+            &decodeAtlas
         );
     }
 
-    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
-    TAssetSerDeser<TextureAtlasAsset>::encode(
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<TextureAtlasAsset>::encode(
         const TextureAtlasAsset& asset,
         const AssetEncodeLimits& limits
     ) noexcept
     {
         if (!validAtlas(asset.data()))
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
-        try { return encodeTyped(asset, limits, encodeAtlas(asset.data())); }
-        catch (const std::bad_alloc&) {
-            return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::ALLOCATION_FAILURE));
+        {
+            return encodeTyped(asset, limits, encodeAtlas(asset.data()));
         }
     }
 
-    lux::cxx::expected<std::shared_ptr<const FlipbookClipAsset>, AssetDecodeFailure>
-    TAssetSerDeser<FlipbookClipAsset>::decode(
-        AssetId requested,
-        lux::cxx::SharedBytes<> image,
-        const AssetDecodeLimits& limits
-    ) noexcept
+    lux::cxx::expected<std::shared_ptr<const FlipbookClipAsset>, AssetDecodeFailure> TAssetSerDeser<FlipbookClipAsset>::
+        decode(AssetId requested, lux::cxx::SharedBytes<> image, const AssetDecodeLimits& limits) noexcept
     {
         return decodeTyped<FlipbookClipAsset, lux::rdesc::FlipbookClip>(
-            requested, std::move(image), limits, &decodeClip
+            requested,
+            std::move(image),
+            limits,
+            &decodeClip
         );
     }
 
-    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
-    TAssetSerDeser<FlipbookClipAsset>::encode(
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<FlipbookClipAsset>::encode(
         const FlipbookClipAsset& asset,
         const AssetEncodeLimits& limits
     ) noexcept
     {
         if (!validClip(asset.data()))
             return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::INVALID_ASSET));
-        try { return encodeTyped(asset, limits, encodeClip(asset.data())); }
-        catch (const std::bad_alloc&) {
-            return lux::cxx::unexpected(encodeFailure(EAssetEncodeError::ALLOCATION_FAILURE));
+        {
+            return encodeTyped(asset, limits, encodeClip(asset.data()));
         }
     }
 } // namespace lux::asset

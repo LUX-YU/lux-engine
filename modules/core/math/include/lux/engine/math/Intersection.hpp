@@ -53,8 +53,11 @@ namespace lux::math
      * Tests front-face only (counter-clockwise winding).
      * Set `cull_backface = false` to test both faces.
      */
-    inline std::optional<TriangleHit>
-    rayIntersectsTriangle(const Ray& ray, const Triangle& tri, bool cull_backface = false)
+    inline std::optional<TriangleHit> rayIntersectsTriangle(
+        const Ray& ray,
+        const Triangle& tri,
+        bool cull_backface = false
+    )
     {
         constexpr float kEpsilon = 1e-8f;
 

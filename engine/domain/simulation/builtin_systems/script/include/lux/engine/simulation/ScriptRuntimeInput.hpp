@@ -15,7 +15,7 @@ namespace lux::simulation::script
     {
         ScriptMountId id;
         lux::asset::AssetId asset;
-        ScriptInstanceScope scope;
+        VScriptInstanceScope scope;
         std::vector<ScriptBindingDescription> bindings;
         // Original finite composition position, including disabled/pending positions in a loader description.
         // Omission is allowed for a complete initial batch or a known ID; first late admission must name it.
@@ -24,7 +24,7 @@ namespace lux::simulation::script
 
     struct ScriptEndpointCapacity final
     {
-        ScriptBindingTarget target;
+        VScriptBindingTarget target;
         std::size_t handler_capacity{};
     };
 

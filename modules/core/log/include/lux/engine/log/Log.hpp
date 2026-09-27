@@ -119,7 +119,7 @@ namespace lux::log
     {
         if (static_cast<std::uint8_t>(lv) < static_cast<std::uint8_t>(minLevel()))
             return;
-        using Codec = detail::Codec<std::remove_cvref_t<Args>...>;
+        using Codec = detail::TCodec<std::remove_cvref_t<Args>...>;
         LogRecord r;
         r.format = fmt.get().data();
         r.format_len = static_cast<std::uint32_t>(fmt.get().size());
@@ -134,19 +134,19 @@ namespace lux::log
 
     template <class... Args> void trace(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
     {
-        logf(ELevel::Trace, category, fmt, std::forward<Args>(args)...);
+        logf(ELevel::LOG_TRACE, category, fmt, std::forward<Args>(args)...);
     }
     template <class... Args> void info(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
     {
-        logf(ELevel::Info, category, fmt, std::forward<Args>(args)...);
+        logf(ELevel::LOG_INFO, category, fmt, std::forward<Args>(args)...);
     }
     template <class... Args> void warn(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
     {
-        logf(ELevel::Warn, category, fmt, std::forward<Args>(args)...);
+        logf(ELevel::LOG_WARN, category, fmt, std::forward<Args>(args)...);
     }
     template <class... Args> void error(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
     {
-        logf(ELevel::Error, category, fmt, std::forward<Args>(args)...);
+        logf(ELevel::LOG_ERROR, category, fmt, std::forward<Args>(args)...);
     }
 
     // (The LogSink interface, addSink/clearSinks/flushAll and the built-in

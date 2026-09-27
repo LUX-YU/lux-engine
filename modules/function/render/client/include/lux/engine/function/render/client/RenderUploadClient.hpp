@@ -54,7 +54,7 @@ namespace lux::render
 
         struct PreparedUpload final
         {
-            OperationPacket<> packet;
+            TOperationPacket<> packet;
             TypeId expected_reply_type{kInvalidTypeId};
             ReplyDispatchCallback callback;
         };
@@ -84,13 +84,13 @@ namespace lux::render
         }
 
         template <class Reply, class Record>
-        [[nodiscard]] UploadSubmitResult<Reply>
-        trySubmit(Record&& record, UploadPayloadAccounting accounting = {}) const
+        [[nodiscard]] UploadSubmitResult<Reply> trySubmit(Record&& record, UploadPayloadAccounting accounting = {})
+            const
         {
             if (!control_ || control_->submit == nullptr)
                 return lux::cxx::unexpected(ERenderUploadSubmitError::STOPPING);
 
-            OperationPacket<> packet;
+            TOperationPacket<> packet;
             Builder builder(packet);
             builder.begin();
             std::invoke(std::forward<Record>(record), builder);
@@ -105,7 +105,7 @@ namespace lux::render
                 return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
             }
 
-            auto [request, callback] = RenderRequestFactory<Reply>::make();
+            auto [request, callback] = TRenderRequestFactory<Reply>::make();
             auto prepared = std::make_shared<PreparedUpload>();
             prepared->packet = std::move(packet);
             prepared->expected_reply_type = prepared_reply_type;
@@ -119,13 +119,15 @@ namespace lux::render
         }
 
         template <class Record>
-        [[nodiscard]] UploadSubmitNoReplyResult
-        trySubmitNoReply(Record&& record, UploadPayloadAccounting accounting = {}) const
+        [[nodiscard]] UploadSubmitNoReplyResult trySubmitNoReply(
+            Record&& record,
+            UploadPayloadAccounting accounting = {}
+        ) const
         {
             if (!control_ || control_->submit == nullptr)
                 return lux::cxx::unexpected(ERenderUploadSubmitError::STOPPING);
 
-            OperationPacket<> packet;
+            TOperationPacket<> packet;
             Builder builder(packet);
             builder.begin();
             std::invoke(std::forward<Record>(record), builder);
@@ -209,14 +211,16 @@ namespace lux::render
             EPixelFormat format = EPixelFormat::RGBA8_SRGB
         ) const;
 
-        [[nodiscard]] UploadSubmitResult<Texture2DCreatedReply>
-        tryCreatePersistentTexture2D(const PersistentTexture2DDesc& desc) const;
+        [[nodiscard]] UploadSubmitResult<Texture2DCreatedReply> tryCreatePersistentTexture2D(
+            const PersistentTexture2DDesc& desc
+        ) const;
 
-        [[nodiscard]] UploadSubmitResult<TextureRegionsAppliedReply>
-        tryUpdateTextureRegions(OwnedTextureUploadBatch batch) const;
+        [[nodiscard]] UploadSubmitResult<TextureRegionsAppliedReply> tryUpdateTextureRegions(
+            OwnedTextureUploadBatch batch
+        ) const;
 
         void reapTextureCreate(
-            ScopedRenderRequest<Texture2DCreatedReply>&& request,
+            TScopedRenderRequest<Texture2DCreatedReply>&& request,
             lux::cxx::move_only_function<void(RTextureHandle)> destroy
         ) const;
 
@@ -256,9 +260,7 @@ namespace lux::render
             UploadPayloadAccounting accounting
         ) const;
 
-        explicit RenderUploadClient(std::shared_ptr<Control> control) noexcept : control_(std::move(control))
-        {
-        }
+        explicit RenderUploadClient(std::shared_ptr<Control> control) noexcept : control_(std::move(control)) {}
 
         std::shared_ptr<Control> control_;
     };

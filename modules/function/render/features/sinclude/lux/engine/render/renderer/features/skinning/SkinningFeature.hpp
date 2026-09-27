@@ -75,8 +75,11 @@ namespace lux::render
         /// this frame. @p frame_slot (framework FIF index) is only a fallback.
         /// DSResolverFn-compatible. view_id unused: skinning runs once per
         /// scene, not per view (its output pool is shared by every view).
-        static VkDescriptorSet
-        resolveSkinDS(const void* self, std::uint32_t frame_slot, std::uint32_t view_id) noexcept;
+        static VkDescriptorSet resolveSkinDS(
+            const void* self,
+            std::uint32_t frame_slot,
+            std::uint32_t view_id
+        ) noexcept;
 
         Config cfg_{};
 
@@ -94,8 +97,6 @@ namespace lux::render
 
     // No-arg ctor defined out-of-class so Config{} is evaluated where the class is
     // complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
-    inline SkinningFeature::SkinningFeature() : SkinningFeature(Config{})
-    {
-    }
+    inline SkinningFeature::SkinningFeature() : SkinningFeature(Config{}) {}
 
 } // namespace lux::render

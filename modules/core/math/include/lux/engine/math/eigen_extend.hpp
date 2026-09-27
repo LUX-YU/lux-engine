@@ -19,7 +19,8 @@ namespace LuxEigenExt
     {
         static_assert(
             std::is_same_v<Scalar, typename Derived::Scalar>,
-            "Euler angles must have the same scalar type as template <Scalar>.");
+            "Euler angles must have the same scalar type as template <Scalar>."
+        );
 
         using Vec3 = Eigen::Matrix<Scalar, 3, 1>;
         // Note: euler[0], euler[1], and euler[2] correspond to X/Y/Z rotations, respectively.
@@ -36,7 +37,8 @@ namespace LuxEigenExt
     {
         static_assert(
             std::is_same_v<Scalar, typename Derived::Scalar>,
-            "Euler angles must have the same scalar type as template <Scalar>.");
+            "Euler angles must have the same scalar type as template <Scalar>."
+        );
 
         // First, construct an identity transformation.
         Affine3<Scalar> ret = Affine3<Scalar>::Identity();
@@ -52,7 +54,8 @@ namespace LuxEigenExt
     {
         static_assert(
             std::is_same_v<Scalar, typename Derived::Scalar>,
-            "Euler angles must have the same scalar type as template <Scalar>.");
+            "Euler angles must have the same scalar type as template <Scalar>."
+        );
 
         target.prerotate(euler2Quaternion<Scalar>(euler));
     }
@@ -129,8 +132,14 @@ namespace LuxEigenExt
      * 5. TOrthographicProjection
      ************************************************************************/
     template <typename Scalar, bool OpenGLNDC = false>
-    Matrix4<Scalar>
-    TOrthographicProjection(Scalar left, Scalar right, Scalar bottom, Scalar top, Scalar near_p, Scalar far_p)
+    Matrix4<Scalar> TOrthographicProjection(
+        Scalar left,
+        Scalar right,
+        Scalar bottom,
+        Scalar top,
+        Scalar near_p,
+        Scalar far_p
+    )
     {
         const Scalar width = (right - left);
         const Scalar centerX = (right + left);
@@ -162,8 +171,14 @@ namespace LuxEigenExt
      * 6. TPerspectiveProjection (6.1)
      ************************************************************************/
     template <typename Scalar, bool OpenGLNDC = false>
-    Matrix4<Scalar>
-    TPerspectiveProjection(Scalar left, Scalar right, Scalar bottom, Scalar top, Scalar near_p, Scalar far_p)
+    Matrix4<Scalar> TPerspectiveProjection(
+        Scalar left,
+        Scalar right,
+        Scalar bottom,
+        Scalar top,
+        Scalar near_p,
+        Scalar far_p
+    )
     {
         Matrix4<Scalar> ret;
 
@@ -237,15 +252,19 @@ namespace LuxEigenExt
     }
 
     template <typename DerivedEuler, typename DerivedTrans, typename Scalar = typename DerivedEuler::Scalar>
-    Affine3<Scalar>
-    TRotateAndTranslate(const Eigen::MatrixBase<DerivedEuler>& euler, const Eigen::MatrixBase<DerivedTrans>& trans)
+    Affine3<Scalar> TRotateAndTranslate(
+        const Eigen::MatrixBase<DerivedEuler>& euler,
+        const Eigen::MatrixBase<DerivedTrans>& trans
+    )
     {
         static_assert(
             std::is_same_v<Scalar, typename DerivedEuler::Scalar>,
-            "Euler angles must have the same scalar type as template <Scalar>.");
+            "Euler angles must have the same scalar type as template <Scalar>."
+        );
         static_assert(
             std::is_same_v<Scalar, typename DerivedTrans::Scalar>,
-            "Translation must have the same scalar type as template <Scalar>.");
+            "Translation must have the same scalar type as template <Scalar>."
+        );
         // 1) First, construct the rotation part.
         Affine3<Scalar> ret = TRotateMatrixFromEuler<Scalar>(euler);
 
@@ -264,7 +283,8 @@ namespace LuxEigenExt
     {
         static_assert(
             std::is_same_v<Scalar, typename Derived::Scalar>,
-            "Translation must have the same scalar type as template <Scalar>.");
+            "Translation must have the same scalar type as template <Scalar>."
+        );
 
         // Usually, initialize to identity. Default construction does not guarantee an identity matrix.
         Affine3<Scalar> ret = Affine3<Scalar>::Identity();

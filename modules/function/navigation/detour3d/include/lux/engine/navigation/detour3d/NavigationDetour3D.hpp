@@ -127,15 +127,15 @@ namespace lux::navigation::detour3d
         /// stale/cancel path used when a main-thread completion can no longer
         /// enter live storage; callers must drive it to completion before
         /// destroying a material prepared batch.
-        [[nodiscard]] lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure>
-        advanceRetirementOne() noexcept;
+        [[nodiscard]] lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure> advanceRetirementOne(
+        ) noexcept;
 
     private:
         explicit PreparedNavigationRegion3D(std::shared_ptr<Data> data) noexcept;
         std::shared_ptr<Data> data_;
 
         friend LUX_FUNCTION_PUBLIC lux::cxx::expected<PreparedNavigationRegion3D, NavigationRegion3DFailure>
-        prepareNavigationRegion3D(NavigationRegion3DBlob, std::uint64_t) noexcept;
+            prepareNavigationRegion3D(NavigationRegion3DBlob, std::uint64_t) noexcept;
         friend class Navigation3DBackend;
         friend class NavigationRegion3DLease;
     };
@@ -167,8 +167,9 @@ namespace lux::navigation::detour3d
         Navigation3DBackend(const Navigation3DBackend&) = delete;
         Navigation3DBackend& operator=(const Navigation3DBackend&) = delete;
 
-        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<Navigation3DBackend>, NavigationRegion3DFailure>
-        create(Navigation3DBackendConfig config = {}) noexcept;
+        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<Navigation3DBackend>, NavigationRegion3DFailure> create(
+            Navigation3DBackendConfig config = {}
+        ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<std::unique_ptr<NavigationRegion3DLease>, NavigationRegion3DFailure>
         adoptPrepared(PreparedNavigationRegion3D&& prepared) noexcept;
@@ -180,8 +181,8 @@ namespace lux::navigation::detour3d
         /// Advances at most one orphaned retirement granule.  Leases normally
         /// drive their own region; this owner-level seam makes a relinquished
         /// lease safe without doing bulk work in its destructor.
-        [[nodiscard]] lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure>
-        advanceRetirementOne() noexcept;
+        [[nodiscard]] lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure> advanceRetirementOne(
+        ) noexcept;
 
     private:
         struct Control;
@@ -211,15 +212,15 @@ namespace lux::navigation::detour3d
 
         [[nodiscard]] NavigationRegionId region() const noexcept;
         [[nodiscard]] ENavigationRegion3DLeaseState state() const noexcept;
-        [[nodiscard]] lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure>
-        advancePreparationOne() noexcept;
+        [[nodiscard]] lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure> advancePreparationOne(
+        ) noexcept;
         [[nodiscard]] lux::cxx::expected<void, NavigationRegion3DFailure> publish() noexcept;
         [[nodiscard]] lux::cxx::expected<void, NavigationRegion3DFailure> hide() noexcept;
         /// Logically hides ACTIVE content or cancels unpublished content, then
         /// transfers it to the bounded retirement queue.
         [[nodiscard]] lux::cxx::expected<void, NavigationRegion3DFailure> beginRetirement() noexcept;
-        [[nodiscard]] lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure>
-        advanceRetirementOne() noexcept;
+        [[nodiscard]] lux::cxx::expected<NavigationRegion3DStepResult, NavigationRegion3DFailure> advanceRetirementOne(
+        ) noexcept;
         void reset() noexcept;
 
     private:

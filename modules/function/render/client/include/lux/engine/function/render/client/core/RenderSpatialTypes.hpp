@@ -26,8 +26,10 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<RenderSpatialTransform3D>);
     static_assert(sizeof(RenderSpatialTransform3D) == 64u);
 
-    [[nodiscard]] inline bool
-    canRebaseRenderPageDelta(const std::int32_t page_delta[3], const std::int64_t origin_delta[3]) noexcept
+    [[nodiscard]] inline bool canRebaseRenderPageDelta(
+        const std::int32_t page_delta[3],
+        const std::int64_t origin_delta[3]
+    ) noexcept
     {
         for (std::size_t axis = 0u; axis < 3u; ++axis)
         {
@@ -50,8 +52,10 @@ namespace lux::render
         }
     }
 
-    [[nodiscard]] inline bool
-    canRebaseRenderPageDelta2D(const std::int32_t page_delta[2], const std::int64_t origin_delta[3]) noexcept
+    [[nodiscard]] inline bool canRebaseRenderPageDelta2D(
+        const std::int32_t page_delta[2],
+        const std::int64_t origin_delta[3]
+    ) noexcept
     {
         for (std::size_t axis = 0u; axis < 2u; ++axis)
         {
@@ -76,8 +80,8 @@ namespace lux::render
 
     /// Explicit-transient-world helper. The matrix is local to page zero;
     /// it is never interpreted as an absolute large-world matrix.
-    [[nodiscard]] inline RenderSpatialTransform3D
-    makeTransientRenderSpatialTransform3D(const float local_matrix[16]) noexcept
+    [[nodiscard]] inline RenderSpatialTransform3D makeTransientRenderSpatialTransform3D(const float local_matrix[16]
+    ) noexcept
     {
         RenderSpatialTransform3D result{};
         for (std::size_t column = 0; column != 3u; ++column)

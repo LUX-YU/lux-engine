@@ -125,7 +125,8 @@ namespace lux::render
                 std::any_of(flags.begin(), flags.end(), [](VkDescriptorBindingFlags f) { return f != 0; });
 
             VkDescriptorSetLayoutBindingFlagsCreateInfo bf{
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO};
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO
+            };
             bf.bindingCount = static_cast<uint32_t>(flags.size());
             bf.pBindingFlags = flags.data();
 
@@ -191,7 +192,8 @@ namespace lux::render
                 std::any_of(flags.begin(), flags.end(), [](VkDescriptorBindingFlags f) { return f != 0; });
 
             VkDescriptorSetLayoutBindingFlagsCreateInfo bf{
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO};
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO
+            };
             bf.bindingCount = static_cast<uint32_t>(flags.size());
             bf.pBindingFlags = flags.data();
 
@@ -221,15 +223,15 @@ namespace lux::render
         const auto resolveCount = [this](const EngineSetBindingShape& b) -> uint32_t {
             switch (b.count_source)
             {
-            case EBindingCountSource::Bindless2DTextures:
+            case EBindingCountSource::BINDLESS_2D_TEXTURES:
                 return bindless_2d_count_;
-            case EBindingCountSource::BindlessCubeTextures:
+            case EBindingCountSource::BINDLESS_CUBE_TEXTURES:
                 return bindless_cube_count_;
-            case EBindingCountSource::VertexPoolSlots:
+            case EBindingCountSource::VERTEX_POOL_SLOTS:
                 return kVertexPoolMaxCount;
-            case EBindingCountSource::MaterialFamilies:
+            case EBindingCountSource::MATERIAL_FAMILIES:
                 return 1u; // expanded into N bindings, each with count 1
-            case EBindingCountSource::Fixed:
+            case EBindingCountSource::FIXED:
             default:
                 return b.count;
             }
@@ -241,7 +243,7 @@ namespace lux::render
             // identically-shaped bindings driven by the constant (Material's
             // per-family SSBO).
             const uint32_t repeat =
-                (shape.expand_by_count_source && b.count_source == EBindingCountSource::MaterialFamilies)
+                (shape.expand_by_count_source && b.count_source == EBindingCountSource::MATERIAL_FAMILIES)
                     ? kMaterialFamilyBindingCount
                     : 1u;
             for (uint32_t i = 0; i < repeat; ++i)

@@ -63,8 +63,7 @@ namespace lux::gapi::vk
             : device_(std::exchange(other.device_, VkDevice{})), allocator_(std::exchange(other.allocator_, nullptr)),
               destroy_swapchain_(std::exchange(other.destroy_swapchain_, nullptr)),
               swapchain_(std::exchange(other.swapchain_, VkSwapchainKHR{}))
-        {
-        }
+        {}
 
         Swapchain& operator=(Swapchain&& other) noexcept
         {
@@ -97,8 +96,9 @@ namespace lux::gapi::vk
             swapchain_ = VK_NULL_HANDLE;
         }
 
-        [[nodiscard]] SwapchainImagesResult
-        images(PFN_vkGetSwapchainImagesKHR get_swapchain_images = &vkGetSwapchainImagesKHR) const noexcept;
+        [[nodiscard]] SwapchainImagesResult images(
+            PFN_vkGetSwapchainImagesKHR get_swapchain_images = &vkGetSwapchainImagesKHR
+        ) const noexcept;
 
         inline VkSwapchainKHR handle() const noexcept
         {
@@ -117,8 +117,7 @@ namespace lux::gapi::vk
             VkSwapchainKHR handle
         ) noexcept
             : device_(device), allocator_(allocator), destroy_swapchain_(destroy_swapchain), swapchain_(handle)
-        {
-        }
+        {}
 
         VkDevice device_{VK_NULL_HANDLE};
         const VkAllocationCallbacks* allocator_{nullptr};
@@ -139,8 +138,7 @@ namespace lux::gapi::vk
             return lux::cxx::unexpected(SwapchainBuildError{
                 ESwapchainBuildStage::CREATE,
                 std::nullopt,
-            }
-            );
+            });
         }
 
         VkSwapchainKHR handle = VK_NULL_HANDLE;
@@ -150,16 +148,14 @@ namespace lux::gapi::vk
             return lux::cxx::unexpected(SwapchainBuildError{
                 ESwapchainBuildStage::CREATE,
                 result,
-            }
-            );
+            });
         }
         if (handle == VK_NULL_HANDLE)
         {
             return lux::cxx::unexpected(SwapchainBuildError{
                 ESwapchainBuildStage::CREATE,
                 std::nullopt,
-            }
-            );
+            });
         }
         return Swapchain(device, allocator, destroy_swapchain, handle);
     }
@@ -171,8 +167,7 @@ namespace lux::gapi::vk
             return lux::cxx::unexpected(SwapchainBuildError{
                 ESwapchainBuildStage::ENUMERATE_IMAGES,
                 std::nullopt,
-            }
-            );
+            });
         }
 
         for (std::uint32_t attempt = 0; attempt < 3; ++attempt)
@@ -184,16 +179,14 @@ namespace lux::gapi::vk
                 return lux::cxx::unexpected(SwapchainBuildError{
                     ESwapchainBuildStage::ENUMERATE_IMAGES,
                     count_result,
-                }
-                );
+                });
             }
             if (image_count == 0)
             {
                 return lux::cxx::unexpected(SwapchainBuildError{
                     ESwapchainBuildStage::ENUMERATE_IMAGES,
                     std::nullopt,
-                }
-                );
+                });
             }
 
             const std::uint32_t capacity = image_count;
@@ -206,16 +199,14 @@ namespace lux::gapi::vk
                 return lux::cxx::unexpected(SwapchainBuildError{
                     ESwapchainBuildStage::ENUMERATE_IMAGES,
                     values_result,
-                }
-                );
+                });
             }
             if (image_count > capacity)
             {
                 return lux::cxx::unexpected(SwapchainBuildError{
                     ESwapchainBuildStage::ENUMERATE_IMAGES,
                     std::nullopt,
-                }
-                );
+                });
             }
 
             std::vector<Image> result_images;
@@ -228,8 +219,7 @@ namespace lux::gapi::vk
         return lux::cxx::unexpected(SwapchainBuildError{
             ESwapchainBuildStage::ENUMERATE_IMAGES,
             VK_INCOMPLETE,
-        }
-        );
+        });
     }
 
     class SwapchainBuilder
@@ -237,8 +227,7 @@ namespace lux::gapi::vk
     public:
         SwapchainBuilder(const PhysicalDevice& physical_device, const Surface& surface)
             : SwapchainBuilder(physical_device.handle(), surface.handle(), SwapchainBuildOps::defaults())
-        {
-        }
+        {}
 
         SwapchainBuilder(VkPhysicalDevice physical_device, VkSurfaceKHR surface, SwapchainBuildOps ops) noexcept
             : physical_device_{physical_device}, surface_handle_{surface}, ops_(ops)
@@ -262,8 +251,10 @@ namespace lux::gapi::vk
             create_info.oldSwapchain = VK_NULL_HANDLE;
         }
 
-        [[nodiscard]] SwapchainBuildResult
-        build(VkDevice device, const VkAllocationCallbacks* allocator = nullptr) noexcept
+        [[nodiscard]] SwapchainBuildResult build(
+            VkDevice device,
+            const VkAllocationCallbacks* allocator = nullptr
+        ) noexcept
         {
             auto support = detail::querySwapChainSupport(physical_device_, surface_handle_, ops_.surface_queries);
             if (!support)
@@ -275,44 +266,40 @@ namespace lux::gapi::vk
                 return lux::cxx::unexpected(SwapchainBuildError{
                     ESwapchainBuildStage::SURFACE_FORMATS,
                     std::nullopt,
-                }
-                );
+                });
             }
             if (support_details.presentModes.empty())
             {
                 return lux::cxx::unexpected(SwapchainBuildError{
                     ESwapchainBuildStage::SURFACE_PRESENT_MODES,
                     std::nullopt,
-                }
-                );
+                });
             }
 
             const auto& capabilities = support_details.capabilities;
-            const bool is_invalid_current_extent = capabilities.currentExtent.width == 0 ||
-                capabilities.currentExtent.height == 0;
-            const bool is_invalid_max_extent = capabilities.maxImageExtent.width == 0 ||
-                capabilities.maxImageExtent.height == 0;
+            const bool is_invalid_current_extent =
+                capabilities.currentExtent.width == 0 || capabilities.currentExtent.height == 0;
+            const bool is_invalid_max_extent =
+                capabilities.maxImageExtent.width == 0 || capabilities.maxImageExtent.height == 0;
             const bool is_invalid_capabilities = is_invalid_current_extent || is_invalid_max_extent;
             if (is_invalid_capabilities)
             {
                 return lux::cxx::unexpected(SwapchainBuildError{
                     ESwapchainBuildStage::SURFACE_CAPABILITIES,
                     std::nullopt,
-                }
-                );
+                });
             }
-            const bool is_invalid_image_extent = create_info.imageExtent.width == 0 ||
-                create_info.imageExtent.height == 0;
-            const bool is_invalid_queue_families = queue_family_index[0] == UINT32_MAX ||
-                queue_family_index[1] == UINT32_MAX;
+            const bool is_invalid_image_extent =
+                create_info.imageExtent.width == 0 || create_info.imageExtent.height == 0;
+            const bool is_invalid_queue_families =
+                queue_family_index[0] == UINT32_MAX || queue_family_index[1] == UINT32_MAX;
             const bool is_invalid_configuration = is_invalid_image_extent || is_invalid_queue_families;
             if (is_invalid_configuration)
             {
                 return lux::cxx::unexpected(SwapchainBuildError{
                     ESwapchainBuildStage::CONFIGURE,
                     std::nullopt,
-                }
-                );
+                });
             }
 
             create_info.imageExtent.width = std::clamp(
@@ -444,8 +431,10 @@ namespace lux::gapi::vk
         /// the fallback for drivers that do not expose mailbox, and is the only
         /// mode that shaves the last vblank of latency — at the cost of a torn
         /// picture, which is easily mistaken for a renderer bug.
-        VkPresentModeKHR
-        choosePresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes, bool vsyncEnabled)
+        VkPresentModeKHR choosePresentMode(
+            const std::vector<VkPresentModeKHR>& availablePresentModes,
+            bool vsyncEnabled
+        )
         {
             if (!vsyncEnabled)
             {

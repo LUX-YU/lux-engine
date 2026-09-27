@@ -120,9 +120,12 @@ namespace lux::render
 
     private:
         [[nodiscard]] VkDescriptorPool createPool() const;
-        [[nodiscard]] VkResult
-        tryAllocate(VkDescriptorPool pool, VkDescriptorSetLayout layout, uint32_t variable_count, VkDescriptorSet& out)
-            const noexcept;
+        [[nodiscard]] VkResult tryAllocate(
+            VkDescriptorPool pool,
+            VkDescriptorSetLayout layout,
+            uint32_t variable_count,
+            VkDescriptorSet& out
+        ) const noexcept;
 
         VkDevice device_{VK_NULL_HANDLE};
         PoolSizeTemplate tmpl_{};

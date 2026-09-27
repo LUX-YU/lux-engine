@@ -33,8 +33,11 @@ namespace lux::render
     // Symmetric out-of-line destroy — lets callers that only manage a raw VMA
     // buffer (e.g. SpatialCullGrid's per-FIF mask ring) release it without
     // pulling vk_mem_alloc.h into their translation unit. No-op on a null buffer.
-    LUX_FUNCTION_PUBLIC void
-    destroyGpuBufferVmaBuffer(VmaAllocator allocator, VkBuffer buffer, VmaAllocation allocation);
+    LUX_FUNCTION_PUBLIC void destroyGpuBufferVmaBuffer(
+        VmaAllocator allocator,
+        VkBuffer buffer,
+        VmaAllocation allocation
+    );
 
     LUX_FUNCTION_PUBLIC void flushGpuBufferVmaAllocation(
         VmaAllocator allocator,
@@ -79,9 +82,9 @@ namespace lux::render
 
     // --- Policy: Slicing ---
     // Only stores the slices_ variable when IsSliced=true
-    template <bool IsSliced> struct SlicePolicy;
+    template <bool IsSliced> struct TSlicePolicy;
 
-    template <> struct SlicePolicy<true>
+    template <> struct TSlicePolicy<true>
     {
     protected:
         uint32_t slices_ = 1;
@@ -97,12 +100,10 @@ namespace lux::render
         }
     };
 
-    template <> struct SlicePolicy<false>
+    template <> struct TSlicePolicy<false>
     {
     protected:
-        void initSlices(uint32_t)
-        {
-        }
+        void initSlices(uint32_t) {}
 
     public:
         [[nodiscard]] constexpr uint32_t slices() const
@@ -113,9 +114,9 @@ namespace lux::render
 
     // --- Policy: Mapping ---
     // Only CPU_TO_GPU stores the mapped_ pointer
-    template <typename T, EGpuBufferType Type> struct MapPolicy;
+    template <typename T, EGpuBufferType Type> struct TMapPolicy;
 
-    template <typename T> struct MapPolicy<T, EGpuBufferType::CPU_TO_GPU>
+    template <typename T> struct TMapPolicy<T, EGpuBufferType::CPU_TO_GPU>
     {
     protected:
         void* mapped_ = nullptr;
@@ -125,7 +126,7 @@ namespace lux::render
         }
     };
 
-    template <typename T> struct MapPolicy<T, EGpuBufferType::GPU_ONLY>
+    template <typename T> struct TMapPolicy<T, EGpuBufferType::GPU_ONLY>
     {
     protected:
         // GPU_ONLY mode has no member variables
@@ -143,18 +144,14 @@ namespace lux::render
         VkDeviceSize max;
     };
 
-    template <EGpuBufferType Type, bool IsSliced> struct DirtyPolicy;
+    template <EGpuBufferType Type, bool IsSliced> struct TDirtyPolicy;
 
     // Case 1: GPU_ONLY -> no dirty tracking needed
-    template <bool IsSliced> struct DirtyPolicy<EGpuBufferType::GPU_ONLY, IsSliced>
+    template <bool IsSliced> struct TDirtyPolicy<EGpuBufferType::GPU_ONLY, IsSliced>
     {
     protected:
-        void resetDirty(uint32_t)
-        {
-        }
-        void markDirty(uint32_t, VkDeviceSize, VkDeviceSize)
-        {
-        }
+        void resetDirty(uint32_t) {}
+        void markDirty(uint32_t, VkDeviceSize, VkDeviceSize) {}
         DirtyRange getDirty(uint32_t) const
         {
             return {0, 0};
@@ -162,7 +159,7 @@ namespace lux::render
     };
 
     // Case 2: CPU_TO_GPU + Sliced -> requires vector
-    template <> struct DirtyPolicy<EGpuBufferType::CPU_TO_GPU, true>
+    template <> struct TDirtyPolicy<EGpuBufferType::CPU_TO_GPU, true>
     {
     protected:
         std::vector<DirtyRange> dirty_state_;
@@ -191,7 +188,7 @@ namespace lux::render
     };
 
     // Case 3: CPU_TO_GPU + Single -> only needs a single variable, no vector needed
-    template <> struct DirtyPolicy<EGpuBufferType::CPU_TO_GPU, false>
+    template <> struct TDirtyPolicy<EGpuBufferType::CPU_TO_GPU, false>
     {
     protected:
         DirtyRange dirty_state_;
@@ -220,26 +217,18 @@ namespace lux::render
     // When true, maintains a CPU-side std::vector<T> + epoch-based dirty tracking.
     // This is the strategy used by the former SlicedSSBO for persistent data with
     // random sparse updates (lights, materials, mesh info).
-    template <typename T, bool HasMirror> struct HostMirrorPolicy;
+    template <typename T, bool HasMirror> struct THostMirrorPolicy;
 
-    template <typename T> struct HostMirrorPolicy<T, false>
+    template <typename T> struct THostMirrorPolicy<T, false>
     {
     protected:
-        void initHostMirror(uint32_t, uint32_t, bool)
-        {
-        }
-        void resizeHostMirror(uint32_t, uint32_t)
-        {
-        }
-        void clearHostMirror()
-        {
-        }
-        void moveHostMirror(HostMirrorPolicy&&) noexcept
-        {
-        }
+        void initHostMirror(uint32_t, uint32_t, bool) {}
+        void resizeHostMirror(uint32_t, uint32_t) {}
+        void clearHostMirror() {}
+        void moveHostMirror(THostMirrorPolicy&&) noexcept {}
     };
 
-    template <typename T> struct HostMirrorPolicy<T, true>
+    template <typename T> struct THostMirrorPolicy<T, true>
     {
     protected:
         std::vector<T> hm_values_;            // Host-side data copy (indexed by slot)
@@ -284,7 +273,7 @@ namespace lux::render
             hm_dirty_indices_.clear();
         }
 
-        void moveHostMirror(HostMirrorPolicy&& o) noexcept
+        void moveHostMirror(THostMirrorPolicy&& o) noexcept
         {
             hm_values_ = std::move(o.hm_values_);
             hm_elem_epoch_ = std::move(o.hm_elem_epoch_);
@@ -327,7 +316,7 @@ namespace lux::render
         // the triple travels together on move (closing the old moveFrom leak that
         // dropped the queue pointer) and the buffer's ONLY destruction path is the
         // FIF-gated queue — no inline vmaDestroyBuffer. (C1)
-        FifOwnedAllocated<VkBuffer> buffer_owned_;
+        TFifOwnedAllocated<VkBuffer> buffer_owned_;
 
     public:
         /// Late-bind centralized deferred destroy queue (called after RenderContext creation).
@@ -381,11 +370,11 @@ namespace lux::render
     // =========================================================================
 
     template <GpuBufferElement T, EGpuBufferType Type, bool IsSliced, bool HostMirror = false>
-    class GpuBuffer : public GpuBufferBase,
-                      public SlicePolicy<IsSliced>,
-                      public MapPolicy<T, Type>,
-                      public DirtyPolicy<Type, IsSliced>,
-                      public HostMirrorPolicy<T, HostMirror>
+    class TGpuBuffer : public GpuBufferBase,
+                       public TSlicePolicy<IsSliced>,
+                       public TMapPolicy<T, Type>,
+                       public TDirtyPolicy<Type, IsSliced>,
+                       public THostMirrorPolicy<T, HostMirror>
     {
         // Compile-time policy flags
         static constexpr bool IsCpuWritable = (Type == EGpuBufferType::CPU_TO_GPU);
@@ -393,27 +382,28 @@ namespace lux::render
 
         static_assert(
             !HasMirror || (IsCpuWritable && IsSliced),
-            "HostMirror mode requires CPU_TO_GPU + Sliced (epoch dirty needs host copy and per-slice sync)");
+            "HostMirror mode requires CPU_TO_GPU + Sliced (epoch dirty needs host copy and per-slice sync)"
+        );
 
     public:
-        GpuBuffer() = default;
-        explicit GpuBuffer(const GpuBufferCreateInfo& ci)
+        TGpuBuffer() = default;
+        explicit TGpuBuffer(const GpuBufferCreateInfo& ci)
         {
             init(ci);
         }
-        ~GpuBuffer()
+        ~TGpuBuffer()
         {
             destroy();
         }
 
         // Move only
-        GpuBuffer(const GpuBuffer&) = delete;
-        GpuBuffer& operator=(const GpuBuffer&) = delete;
-        GpuBuffer(GpuBuffer&& o) noexcept
+        TGpuBuffer(const TGpuBuffer&) = delete;
+        TGpuBuffer& operator=(const TGpuBuffer&) = delete;
+        TGpuBuffer(TGpuBuffer&& o) noexcept
         {
             moveFrom(std::move(o));
         }
-        GpuBuffer& operator=(GpuBuffer&& o) noexcept
+        TGpuBuffer& operator=(TGpuBuffer&& o) noexcept
         {
             if (this != &o)
             {
@@ -674,8 +664,11 @@ namespace lux::render
         }
 
         // ---------- Capacity ----------
-        [[nodiscard]] bool
-        reserve(uint32_t min_capacity, bool preserve_data = true, VkCommandBuffer cmd = VK_NULL_HANDLE)
+        [[nodiscard]] bool reserve(
+            uint32_t min_capacity,
+            bool preserve_data = true,
+            VkCommandBuffer cmd = VK_NULL_HANDLE
+        )
         {
             if (min_capacity <= capacity_)
                 return true;
@@ -700,7 +693,8 @@ namespace lux::render
                     IsCpuWritable,
                     &new_buf,
                     &new_alloc,
-                    IsCpuWritable ? &new_ptr : nullptr))
+                    IsCpuWritable ? &new_ptr : nullptr
+                ))
                 return false;
 
             // 2. Migration (Only for CPU_TO_GPU)
@@ -1327,7 +1321,7 @@ namespace lux::render
         }
 
         // Move implementation
-        void moveFrom(GpuBuffer&& o) noexcept
+        void moveFrom(TGpuBuffer&& o) noexcept
         {
             // Move Base. buffer_owned_ carries (buffer, allocation, queue) as ONE
             // unit — this is what closes the old moveFrom leak, where the queue
@@ -1375,18 +1369,18 @@ namespace lux::render
 
     /// Dynamic SSBO: CPU-writable, sliced for multi-frame (Instance transforms, etc.)
     /// Direct mapped writes, per-slice range dirty tracking.
-    template <typename T> using DynamicSSBO = GpuBuffer<T, EGpuBufferType::CPU_TO_GPU, true, false>;
+    template <typename T> using DynamicSSBO = TGpuBuffer<T, EGpuBufferType::CPU_TO_GPU, true, false>;
 
     /// Static buffer: GPU-only, no mapping, no slicing (Mesh VBO/IBO).
-    template <typename T> using StaticBuffer = GpuBuffer<T, EGpuBufferType::GPU_ONLY, false, false>;
+    template <typename T> using StaticBuffer = TGpuBuffer<T, EGpuBufferType::GPU_ONLY, false, false>;
 
     /// Single-frame staging: CPU-writable, not sliced.
-    template <typename T> using StagingSSBO = GpuBuffer<T, EGpuBufferType::CPU_TO_GPU, false, false>;
+    template <typename T> using StagingSSBO = TGpuBuffer<T, EGpuBufferType::CPU_TO_GPU, false, false>;
 
     /// SlicedSSBO: CPU-writable, sliced, WITH host mirror + epoch dirty tracking.
     /// This is the unified replacement for the old standalone SlicedSSBO class.
     /// API: add(), remove(), modify(), get(), touch(), uploadDataSlice(), clearAll(), globalEpoch().
-    template <typename T> using SlicedSSBO = GpuBuffer<T, EGpuBufferType::CPU_TO_GPU, true, true>;
+    template <typename T> using SlicedSSBO = TGpuBuffer<T, EGpuBufferType::CPU_TO_GPU, true, true>;
 
     // =========================================================================
     //  6. SSBOInitConfig — convenience config that converts to GpuBufferCreateInfo
@@ -1409,7 +1403,8 @@ namespace lux::render
                 .initial_capacity = initial_dense_capacity,
                 .slices = slices,
                 .allow_shader_write = allow_shader_write,
-                .clear_on_remove = clear_on_remove};
+                .clear_on_remove = clear_on_remove
+            };
         }
     };
 

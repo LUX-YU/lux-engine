@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <exception>
 #include <limits>
 #include <new>
 #include <utility>
@@ -73,10 +74,10 @@ namespace lux::toolchain
 
         [[nodiscard]] bool validConfiguration(const TextureCookConfiguration& configuration) noexcept
         {
-            const bool valid_format = isRawFormat(configuration.output_format) ||
-                isSupportedCompressedFormat(configuration.output_format);
+            const bool valid_format =
+                isRawFormat(configuration.output_format) || isSupportedCompressedFormat(configuration.output_format);
             const bool valid_color_space = configuration.color_space >= lux::rdesc::ETextureColorSpace::SRGB &&
-                configuration.color_space <= lux::rdesc::ETextureColorSpace::DATA;
+                                           configuration.color_space <= lux::rdesc::ETextureColorSpace::DATA;
             return valid_format && valid_color_space;
         }
 
@@ -107,8 +108,7 @@ namespace lux::toolchain
             destination_width = (std::max)(1, source_width / 2);
             destination_height = (std::max)(1, source_height / 2);
             destination.resize(
-                static_cast<std::size_t>(destination_width) *
-                static_cast<std::size_t>(destination_height) * 4U
+                static_cast<std::size_t>(destination_width) * static_cast<std::size_t>(destination_height) * 4U
             );
             for (int y = 0; y < destination_height; ++y)
             {
@@ -121,18 +121,18 @@ namespace lux::toolchain
                         {
                             const int source_x = (std::min)(source_width - 1, x * 2 + kernel_x);
                             const int source_y = (std::min)(source_height - 1, y * 2 + kernel_y);
-                            const auto source_index = (
-                                static_cast<std::size_t>(source_y) * static_cast<std::size_t>(source_width) +
-                                static_cast<std::size_t>(source_x)
-                            ) * 4U;
+                            const auto source_index =
+                                (static_cast<std::size_t>(source_y) * static_cast<std::size_t>(source_width) +
+                                 static_cast<std::size_t>(source_x)) *
+                                4U;
                             for (std::size_t channel = 0U; channel < sum.size(); ++channel)
                                 sum[channel] += source[source_index + channel];
                         }
                     }
-                    const auto destination_index = (
-                        static_cast<std::size_t>(y) * static_cast<std::size_t>(destination_width) +
-                        static_cast<std::size_t>(x)
-                    ) * 4U;
+                    const auto destination_index =
+                        (static_cast<std::size_t>(y) * static_cast<std::size_t>(destination_width) +
+                         static_cast<std::size_t>(x)) *
+                        4U;
                     for (std::size_t channel = 0U; channel < sum.size(); ++channel)
                         destination[destination_index + channel] = static_cast<std::uint8_t>(sum[channel] / 4U);
                 }
@@ -184,18 +184,12 @@ namespace lux::toolchain
                     {
                         for (std::uint32_t x = 0U; x < 4U; ++x)
                         {
-                            const int source_x = (std::min)(
-                                width - 1,
-                                static_cast<int>(block_x * 4U + x)
-                            );
-                            const int source_y = (std::min)(
-                                height - 1,
-                                static_cast<int>(block_y * 4U + y)
-                            );
-                            const auto source_index = (
-                                static_cast<std::size_t>(source_y) * static_cast<std::size_t>(width) +
-                                static_cast<std::size_t>(source_x)
-                            ) * 4U;
+                            const int source_x = (std::min)(width - 1, static_cast<int>(block_x * 4U + x));
+                            const int source_y = (std::min)(height - 1, static_cast<int>(block_y * 4U + y));
+                            const auto source_index =
+                                (static_cast<std::size_t>(source_y) * static_cast<std::size_t>(width) +
+                                 static_cast<std::size_t>(source_x)) *
+                                4U;
                             const auto block_index = (static_cast<std::size_t>(y) * 4U + x) * 4U;
                             std::memcpy(block_rgba.data() + block_index, rgba.data() + source_index, 4U);
                         }
@@ -264,9 +258,8 @@ namespace lux::toolchain
             output_info.pixel_format = configuration.output_format;
             output_info.color_space = configuration.color_space;
             output_info.layers = 1U;
-            output_info.flags = configuration.no_mips
-                ? lux::rdesc::toUnderlying(ETextureAssetFlags::NO_MIPS)
-                : lux::rdesc::toUnderlying(ETextureAssetFlags::NONE);
+            output_info.flags = configuration.no_mips ? lux::rdesc::toUnderlying(ETextureAssetFlags::NO_MIPS)
+                                                      : lux::rdesc::toUnderlying(ETextureAssetFlags::NONE);
             if (isSupportedCompressedFormat(configuration.output_format))
                 output_info.flags |= lux::rdesc::toUnderlying(ETextureAssetFlags::COMPRESSED);
 
@@ -277,8 +270,14 @@ namespace lux::toolchain
                 const std::uint32_t level = output_info.mip_count - 1U;
                 std::vector<std::byte> level_payload;
                 const bool encoded = isRawFormat(configuration.output_format)
-                    ? encodeRawMip(configuration.output_format, current, level_payload)
-                    : encodeCompressedMip(configuration.output_format, current, mip_width, mip_height, level_payload);
+                                         ? encodeRawMip(configuration.output_format, current, level_payload)
+                                         : encodeCompressedMip(
+                                               configuration.output_format,
+                                               current,
+                                               mip_width,
+                                               mip_height,
+                                               level_payload
+                                           );
                 if (!encoded)
                     return false;
                 const std::uint64_t offset = output_payload.size();
@@ -316,11 +315,11 @@ namespace lux::toolchain
             return lux::cxx::unexpected(failure(ETextureCookError::INVALID_SOURCE));
         if (!validConfiguration(configuration))
         {
-            const bool unsupported = !isRawFormat(configuration.output_format) &&
-                !isSupportedCompressedFormat(configuration.output_format);
-            return lux::cxx::unexpected(failure(
-                unsupported ? ETextureCookError::UNSUPPORTED_FORMAT : ETextureCookError::INVALID_OPTIONS
-            ));
+            const bool unsupported =
+                !isRawFormat(configuration.output_format) && !isSupportedCompressedFormat(configuration.output_format);
+            return lux::cxx::unexpected(
+                failure(unsupported ? ETextureCookError::UNSUPPORTED_FORMAT : ETextureCookError::INVALID_OPTIONS)
+            );
         }
         if (authoring_image.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)()))
             return lux::cxx::unexpected(failure(ETextureCookError::RANGE_OVERFLOW));
@@ -332,12 +331,12 @@ namespace lux::toolchain
             int source_channels{};
             std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> decoded{
                 stbi_load_from_memory(
-                reinterpret_cast<const stbi_uc*>(authoring_image.data()),
-                static_cast<int>(authoring_image.size()),
-                &width,
-                &height,
-                &source_channels,
-                STBI_rgb_alpha
+                    reinterpret_cast<const stbi_uc*>(authoring_image.data()),
+                    static_cast<int>(authoring_image.size()),
+                    &width,
+                    &height,
+                    &source_channels,
+                    STBI_rgb_alpha
                 ),
                 &stbi_image_free
             };
@@ -346,14 +345,7 @@ namespace lux::toolchain
 
             TextureInfo texture_info{};
             std::vector<std::byte> payload;
-            const bool built = buildTexture(
-                decoded.get(),
-                width,
-                height,
-                configuration,
-                texture_info,
-                payload
-            );
+            const bool built = buildTexture(decoded.get(), width, height, configuration, texture_info, payload);
             if (!built || payload.empty())
                 return lux::cxx::unexpected(failure(ETextureCookError::RANGE_OVERFLOW));
 
@@ -372,7 +364,7 @@ namespace lux::toolchain
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(failure(ETextureCookError::ALLOCATION_FAILURE));
+            std::terminate();
         }
         catch (...)
         {

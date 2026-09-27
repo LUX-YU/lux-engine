@@ -7,8 +7,7 @@
 
 namespace lux::graph
 {
-    template<class Tag>
-    struct StableId final
+    template <class Tag> struct TStableId final
     {
         std::uint64_t value{};
 
@@ -17,18 +16,22 @@ namespace lux::graph
             return value != 0U;
         }
 
-        [[nodiscard]] constexpr auto operator<=>(const StableId&) const noexcept = default;
+        [[nodiscard]] constexpr auto operator<=>(const TStableId&) const noexcept = default;
     };
 
-    struct NodeIdTag final {};
-    struct PinIdTag final {};
-    struct NodeTypeIdTag final {};
-    struct PinSemanticIdTag final {};
+    struct NodeIdTag final
+    {};
+    struct PinIdTag final
+    {};
+    struct NodeTypeIdTag final
+    {};
+    struct PinSemanticIdTag final
+    {};
 
-    using NodeId = StableId<NodeIdTag>;
-    using PinId = StableId<PinIdTag>;
-    using NodeTypeId = StableId<NodeTypeIdTag>;
-    using PinSemanticId = StableId<PinSemanticIdTag>;
+    using NodeId = TStableId<NodeIdTag>;
+    using PinId = TStableId<PinIdTag>;
+    using NodeTypeId = TStableId<NodeTypeIdTag>;
+    using PinSemanticId = TStableId<PinSemanticIdTag>;
 
     enum class EPinDirection : std::uint8_t
     {
@@ -98,10 +101,9 @@ namespace lux::graph
 
 namespace std
 {
-    template<class Tag>
-    struct hash<lux::graph::StableId<Tag>> final
+    template <class Tag> struct hash<lux::graph::TStableId<Tag>> final
     {
-        [[nodiscard]] size_t operator()(lux::graph::StableId<Tag> id) const noexcept
+        [[nodiscard]] size_t operator()(lux::graph::TStableId<Tag> id) const noexcept
         {
             return hash<std::uint64_t>{}(id.value);
         }

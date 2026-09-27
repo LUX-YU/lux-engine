@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <limits>
-#include <new>
 #include <unordered_set>
 #include <utility>
 
@@ -17,8 +16,7 @@ namespace lux::world
         return pages_;
     }
 
-    const WorldPartitionTablePageDescription*
-    WorldPartitionTable::findPage(PartitionOrdinal partition) const noexcept
+    const WorldPartitionTablePageDescription* WorldPartitionTable::findPage(PartitionOrdinal partition) const noexcept
     {
         const auto iterator = std::upper_bound(
             pages_.begin(),
@@ -38,8 +36,7 @@ namespace lux::world
 
     WorldPartitionView::WorldPartitionView(const WorldPartitionLayout& layout, std::size_t partition_index) noexcept
         : layout_(&layout), partition_index_(partition_index)
-    {
-    }
+    {}
 
     PartitionOrdinal WorldPartitionView::ordinal() const noexcept
     {
@@ -108,18 +105,15 @@ namespace lux::world
 
     namespace
     {
-        template <class Rollback>
-        class MutationRollback final
+        template <class Rollback> class TMutationRollback final
         {
         public:
-            explicit MutationRollback(Rollback rollback) noexcept : rollback_(std::move(rollback))
-            {
-            }
+            explicit TMutationRollback(Rollback rollback) noexcept : rollback_(std::move(rollback)) {}
 
-            MutationRollback(const MutationRollback&) = delete;
-            MutationRollback& operator=(const MutationRollback&) = delete;
+            TMutationRollback(const TMutationRollback&) = delete;
+            TMutationRollback& operator=(const TMutationRollback&) = delete;
 
-            ~MutationRollback()
+            ~TMutationRollback()
             {
                 if (active_)
                     rollback_();
@@ -173,17 +167,17 @@ namespace lux::world
 
     WorldPartitionLayoutBuilder::~WorldPartitionLayoutBuilder() = default;
     WorldPartitionLayoutBuilder::WorldPartitionLayoutBuilder(WorldPartitionLayoutBuilder&&) noexcept = default;
-    WorldPartitionLayoutBuilder&
-    WorldPartitionLayoutBuilder::operator=(WorldPartitionLayoutBuilder&&) noexcept = default;
+    WorldPartitionLayoutBuilder& WorldPartitionLayoutBuilder::operator=(WorldPartitionLayoutBuilder&&) noexcept =
+        default;
 
-    lux::cxx::expected<void, WorldPartitionFailure>
-    WorldPartitionLayoutBuilder::addPartition(WorldPartitionId id, std::span<const WorldObjectId> objects) noexcept
+    lux::cxx::expected<void, WorldPartitionFailure> WorldPartitionLayoutBuilder::addPartition(
+        WorldPartitionId id,
+        std::span<const WorldObjectId> objects
+    ) noexcept
     {
         if (impl_->invalid_universe)
         {
-            return lux::cxx::unexpected(
-                partitionFailure(impl_->universe_error, impl_->universe_error_object)
-            );
+            return lux::cxx::unexpected(partitionFailure(impl_->universe_error, impl_->universe_error_object));
         }
         if (!id.valid())
             return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::INVALID_PARTITION_ID, {}, id));
@@ -191,23 +185,16 @@ namespace lux::world
             return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::EMPTY_PARTITION, {}, id));
         if (impl_->partition_ids.contains(id))
             return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::DUPLICATE_PARTITION_ID, {}, id));
-        if (detail::consumeWorldPartitionFailureForTest(
-                detail::EWorldPartitionFailurePoint::MUTATION_ALLOCATION))
+        if (detail::consumeWorldPartitionFailureForTest(detail::EWorldPartitionFailurePoint::MUTATION_ALLOCATION))
             return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::ALLOCATION_FAILURE, {}, id));
 
-        try
         {
             std::vector<WorldObjectId> copied(objects.begin(), objects.end());
             std::sort(copied.begin(), copied.end(), WorldObjectIdLess{});
             for (std::size_t index{}; index < copied.size(); ++index)
             {
                 const WorldObjectId object = copied[index];
-                if (!std::binary_search(
-                        impl_->objects.begin(),
-                        impl_->objects.end(),
-                        object,
-                        WorldObjectIdLess{}
-                    ))
+                if (!std::binary_search(impl_->objects.begin(), impl_->objects.end(), object, WorldObjectIdLess{}))
                 {
                     return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::UNKNOWN_OBJECT, object, id));
                 }
@@ -225,9 +212,8 @@ namespace lux::world
                 impl_->partition_ids.size() == std::numeric_limits<std::size_t>::max();
             const bool is_assignment_count_overflow =
                 copied.size() > std::numeric_limits<std::size_t>::max() - impl_->assigned_objects.size();
-            const bool is_size_overflow = is_partition_count_overflow ||
-                is_partition_id_count_overflow ||
-                is_assignment_count_overflow;
+            const bool is_size_overflow =
+                is_partition_count_overflow || is_partition_id_count_overflow || is_assignment_count_overflow;
             if (is_size_overflow)
                 return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::SIZE_OVERFLOW, {}, id));
 
@@ -237,7 +223,7 @@ namespace lux::world
 
             bool partition_inserted = false;
             std::size_t assigned_inserted{};
-            MutationRollback rollback([&]() noexcept {
+            TMutationRollback rollback([&]() noexcept {
                 for (std::size_t rollback_index{}; rollback_index < assigned_inserted; ++rollback_index)
                     impl_->assigned_objects.erase(copied[rollback_index]);
                 if (partition_inserted)
@@ -263,19 +249,13 @@ namespace lux::world
             rollback.commit();
             return {};
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::ALLOCATION_FAILURE, {}, id));
-        }
     }
 
     lux::cxx::expected<WorldPartitionLayout, WorldPartitionFailure> WorldPartitionLayoutBuilder::build() && noexcept
     {
         if (impl_->invalid_universe)
         {
-            return lux::cxx::unexpected(
-                partitionFailure(impl_->universe_error, impl_->universe_error_object)
-            );
+            return lux::cxx::unexpected(partitionFailure(impl_->universe_error, impl_->universe_error_object));
         }
         if (impl_->assigned_objects.size() != impl_->objects.size())
         {
@@ -298,7 +278,6 @@ namespace lux::world
             return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::SIZE_OVERFLOW));
         }
 
-        try
         {
             WorldPartitionLayout result;
             std::sort(
@@ -322,10 +301,6 @@ namespace lux::world
             }
             return result;
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::ALLOCATION_FAILURE));
-        }
     }
 
     lux::cxx::expected<WorldPartitionBuildProduct, WorldPartitionFailure> WorldPartitionBuildProduct::build(
@@ -339,7 +314,6 @@ namespace lux::world
         if (partitioner.version == 0U)
             return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::INVALID_PARTITIONER_VERSION));
 
-        try
         {
             std::sort(
                 indexes.begin(),
@@ -380,10 +354,6 @@ namespace lux::world
 
             return WorldPartitionBuildProduct(std::move(partitioner), std::move(layout), std::move(indexes));
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(partitionFailure(EWorldPartitionError::ALLOCATION_FAILURE));
-        }
     }
 
     WorldPartitionBuildProduct::WorldPartitionBuildProduct(
@@ -392,8 +362,7 @@ namespace lux::world
         std::vector<WorldPartitionIndexArtifact> indexes
     ) noexcept
         : partitioner_(std::move(partitioner)), layout_(std::move(layout)), indexes_(std::move(indexes))
-    {
-    }
+    {}
 
     const WorldPartitionerDescriptor& WorldPartitionBuildProduct::partitioner() const noexcept
     {
@@ -410,8 +379,8 @@ namespace lux::world
         return indexes_;
     }
 
-    const WorldPartitionIndexArtifact*
-    WorldPartitionBuildProduct::findIndex(const PartitionIndexTypeId& type) const noexcept
+    const WorldPartitionIndexArtifact* WorldPartitionBuildProduct::findIndex(const PartitionIndexTypeId& type
+    ) const noexcept
     {
         if (!type.valid())
             return nullptr;

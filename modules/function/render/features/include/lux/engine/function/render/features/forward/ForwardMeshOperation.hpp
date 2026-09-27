@@ -48,7 +48,8 @@ namespace lux::render
         id = lux.render.forward_mesh.v1,
         display = ForwardMesh,
         requires = lux.render.mesh_stack.v1,
-        custom_create = true) ForwardMeshCommConfig
+        custom_create = true
+    ) ForwardMeshCommConfig
     {
         ShaderHandle forward_cull_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle forward_compact_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};

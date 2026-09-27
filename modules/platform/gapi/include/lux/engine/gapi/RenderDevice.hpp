@@ -16,9 +16,7 @@ namespace lux::gapi
     class RenderDevice
     {
     public:
-        LUX_PLATFORM_GAPI_PUBLIC virtual ~RenderDevice()
-        {
-        }
+        LUX_PLATFORM_GAPI_PUBLIC virtual ~RenderDevice() {}
 
         LUX_PLATFORM_GAPI_PUBLIC virtual EDeviceType deviceType() = 0;
 

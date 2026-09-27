@@ -25,7 +25,7 @@ namespace lux::render
         //  · clear 为"回填 + 可选":回填后非空必须可解析(原判据
         //    valid() && !has_shader 的等价形)
         //  · finalize 已退役,wire 兼容:空合法,非空必须可解析
-        using MSFill = BuiltinShaderFill<MeshShadowCommConfig>;
+        using MSFill = TBuiltinShaderFill<MeshShadowCommConfig>;
         static constexpr MSFill kShaderFills[] = {
             {.field = &MeshShadowCommConfig::shadow_cull_shader, .builtin = EBuiltinShader::MESH_CULL_UNIFIED_COMP},
             {.field = &MeshShadowCommConfig::shadow_compact_shader, .builtin = EBuiltinShader::MDC_COMPACT_COMP},
@@ -39,7 +39,7 @@ namespace lux::render
             .comm_version = kMeshShadowCommConfigVersion,
             .descriptor_layout_version = kMeshShadowDescriptorLayoutVersion,
             .known_ext_flags =
-                GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::HZB} | GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::Bindless},
+                GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::HZB} | GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::BINDLESS},
         };
 
         auto& shaders = sc->renderContext().globalRegistry().must<ShaderResources>();

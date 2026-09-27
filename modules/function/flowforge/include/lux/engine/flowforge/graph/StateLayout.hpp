@@ -21,7 +21,10 @@
 
 #include <lux/engine/function/visibility.h>
 
-namespace lux::meta { struct RefType; }
+namespace lux::meta
+{
+    struct RefType;
+}
 
 namespace lux::flowforge
 {
@@ -29,24 +32,25 @@ namespace lux::flowforge
 
     struct StateFieldLayout
     {
-        uint64_t                  var_id = 0;
-        std::string               name;
-        const lux::meta::RefType* type   = nullptr;
-        uint32_t                  offset = 0;   ///< byte offset inside the block
+        uint64_t var_id = 0;
+        std::string name;
+        const lux::meta::RefType* type = nullptr;
+        uint32_t offset = 0; ///< byte offset inside the block
     };
 
     struct StateLayout
     {
-        std::vector<StateFieldLayout> fields;    ///< ordered by var_id
-        uint32_t                      size  = 0; ///< total block bytes (0 = stateless graph)
-        uint32_t                      align = 1; ///< required block alignment
-        uint64_t                      hash  = 0; ///< stable layout identity (hot-reload compare)
-        std::vector<std::byte>        defaults;  ///< `size` bytes: default values at offsets
+        std::vector<StateFieldLayout> fields; ///< ordered by var_id
+        uint32_t size = 0;                    ///< total block bytes (0 = stateless graph)
+        uint32_t align = 1;                   ///< required block alignment
+        uint64_t hash = 0;                    ///< stable layout identity (hot-reload compare)
+        std::vector<std::byte> defaults;      ///< `size` bytes: default values at offsets
 
         const StateFieldLayout* find(uint64_t var_id) const
         {
             for (const auto& f : fields)
-                if (f.var_id == var_id) return &f;
+                if (f.var_id == var_id)
+                    return &f;
             return nullptr;
         }
     };
@@ -56,6 +60,5 @@ namespace lux::flowforge
     /// block alignment). On an invalid variable (missing type, non-scalar,
     /// missing or type-mismatched default value) writes a diagnostic to
     /// error_out and returns an EMPTY layout.
-    StateLayout computeStateLayout(
-        const FlowGraph& graph, std::string* error_out = nullptr);
+    StateLayout computeStateLayout(const FlowGraph& graph, std::string* error_out = nullptr);
 }

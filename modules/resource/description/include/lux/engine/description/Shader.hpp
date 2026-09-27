@@ -14,9 +14,7 @@ namespace lux::rdesc
         Shader() = default;
 
         /// Take ownership of an existing byte buffer (no copy).
-        explicit Shader(std::vector<std::byte> bytes) noexcept : data_(std::move(bytes))
-        {
-        }
+        explicit Shader(std::vector<std::byte> bytes) noexcept : data_(std::move(bytes)) {}
 
         /// Copy `size` bytes from `data` into owned storage. `data` is
         /// borrowed — the caller keeps ownership of its buffer.

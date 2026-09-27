@@ -30,7 +30,7 @@ namespace lux::render
     enum class EShadingInputSlot : uint8_t
     {
         /// 屏幕空间环境光遮蔽,.r 通道,1.0 = 完全不遮蔽(中性)。
-        AmbientOcclusion = 0,
+        AMBIENT_OCCLUSION = 0,
 
         COUNT
     };

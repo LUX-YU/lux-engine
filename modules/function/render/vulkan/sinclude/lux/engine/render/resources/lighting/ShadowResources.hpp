@@ -34,7 +34,7 @@ namespace lux::render
     class SceneDescriptorArena;
     class IShadowTechnique;
 
-    class LUX_FUNCTION_PUBLIC ShadowResources final : public GPUResourceBase<ShadowResources, EGPUResourceType::Shadow>
+    class LUX_FUNCTION_PUBLIC ShadowResources final : public TGPUResourceBase<ShadowResources, EGPUResourceType::SHADOW>
     {
     public:
         /// Sets the domain-set dual-write target.
@@ -43,8 +43,10 @@ namespace lux::render
         /// in-domain offset: this class writes bindings b4-b10 (the shadow
         /// block) of the Light set. Its own shadow set is feature-private and
         /// does not participate in the merge.
-        [[nodiscard]] Expected<void>
-        setDomainWriteTarget(std::span<const VkDescriptorSet> sets, uint32_t binding_offset);
+        [[nodiscard]] Expected<void> setDomainWriteTarget(
+            std::span<const VkDescriptorSet> sets,
+            uint32_t binding_offset
+        );
 
         struct InitInfo
         {
@@ -76,8 +78,11 @@ namespace lux::render
 
         /// Full rebuild with new page/slice settings.
         /// Destroys all GPU resources and recreates them. Requires GPU idle.
-        [[nodiscard]] bool
-        tryRebuild(uint32_t new_atlas_page_resolution, uint32_t new_atlas_page_count, uint32_t new_max_shadow_slices);
+        [[nodiscard]] bool tryRebuild(
+            uint32_t new_atlas_page_resolution,
+            uint32_t new_atlas_page_count,
+            uint32_t new_max_shadow_slices
+        );
 
         // ── GPUResourceBase hooks (shadowed, no virtual) ──────────────────────
         [[nodiscard]] VkDescriptorSet descriptorSet(uint32_t frame_slot) const noexcept
@@ -252,14 +257,18 @@ namespace lux::render
         /// for as long as it reads the slices (it pins them against a LATER
         /// setCachedData on this same thread — see the replay note above).
         /// Returns null if no entry exists.
-        [[nodiscard]] std::shared_ptr<const PerViewCache>
-        findViewCache(uint32_t scene_key, uint32_t view_handle) const noexcept;
+        [[nodiscard]] std::shared_ptr<const PerViewCache> findViewCache(uint32_t scene_key, uint32_t view_handle)
+            const noexcept;
         /// Refresh the debug last-upload bookkeeping for a cache entry without
         /// touching its slice data. Used by ShadowViewUpload to record the
         /// current frame stamp on the cache it consumed (the entry was written
         /// by an earlier eager setCachedData with no frame info).
-        void
-        stampCacheFrame(uint32_t scene_key, uint32_t view_handle, uint64_t frame_id, uint32_t frame_index) noexcept;
+        void stampCacheFrame(
+            uint32_t scene_key,
+            uint32_t view_handle,
+            uint64_t frame_id,
+            uint32_t frame_index
+        ) noexcept;
 
         void evictSceneView(uint32_t scene_key, uint32_t view_id);
 

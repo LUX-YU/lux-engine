@@ -5,10 +5,19 @@
 
 namespace lux::script::lua
 {
-    enum class ELuaGcMode : std::uint8_t { INCREMENTAL, GENERATIONAL };
+    enum class ELuaGcMode : std::uint8_t
+    {
+        INCREMENTAL,
+        GENERATIONAL
+    };
     enum class ELuaGcParameter : std::uint8_t
     {
-        MINOR_MULTIPLIER, MAJOR_TO_MINOR, MINOR_TO_MAJOR, PAUSE, STEP_MULTIPLIER, STEP_SIZE
+        MINOR_MULTIPLIER,
+        MAJOR_TO_MINOR,
+        MINOR_TO_MAJOR,
+        PAUSE,
+        STEP_MULTIPLIER,
+        STEP_SIZE
     };
     struct LuaVmConfiguration final
     {

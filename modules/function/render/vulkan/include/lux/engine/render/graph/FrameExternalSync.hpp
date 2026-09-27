@@ -31,13 +31,21 @@ namespace lux::render
     /// before executing — so it samples the producer's finished output. @p stage is
     /// a VkPipelineStageFlags2 (e.g. VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT), passed
     /// as uint64_t to keep this header vulkan.h-free. Call from populateFrameContext.
-    LUX_FUNCTION_PUBLIC void
-    addExternalGraphicsWait(RGFrameContext& ctx, VkSemaphore semaphore, uint64_t value, uint64_t stage);
+    LUX_FUNCTION_PUBLIC void addExternalGraphicsWait(
+        RGFrameContext& ctx,
+        VkSemaphore semaphore,
+        uint64_t value,
+        uint64_t stage
+    );
 
     /// Make this frame's GRAPHICS submit SIGNAL @p semaphore to @p value when done,
     /// so the producer's next frame can wait on it (ping-pong). NOTE: a signal applies
     /// to ONE submit; with multiple views/submits per frame, inject the signal from a
     /// single view only (signaling the same timeline value twice is invalid).
-    LUX_FUNCTION_PUBLIC void
-    addExternalGraphicsSignal(RGFrameContext& ctx, VkSemaphore semaphore, uint64_t value, uint64_t stage);
+    LUX_FUNCTION_PUBLIC void addExternalGraphicsSignal(
+        RGFrameContext& ctx,
+        VkSemaphore semaphore,
+        uint64_t value,
+        uint64_t stage
+    );
 } // namespace lux::render

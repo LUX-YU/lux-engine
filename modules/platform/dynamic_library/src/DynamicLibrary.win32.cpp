@@ -49,7 +49,7 @@ namespace lux::engine::platform
         {
             if (any(mode & ELoadMode::INSTALLED_PLUGIN))
                 return LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_APPLICATION_DIR |
-                    LOAD_LIBRARY_SEARCH_SYSTEM32;
+                       LOAD_LIBRARY_SEARCH_SYSTEM32;
             DWORD flags = 0;
             if (any(mode & ELoadMode::ALTERED_SEARCH_PATH))
                 flags |= LOAD_WITH_ALTERED_SEARCH_PATH;

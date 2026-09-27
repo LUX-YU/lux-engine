@@ -12,7 +12,7 @@
 
 namespace lux::serialization
 {
-    template <> struct Serializer<uuids::uuid>
+    template <> struct TSerializer<uuids::uuid>
     {
         static constexpr EWireExtent wire_extent = EWireExtent::FIXED;
         static constexpr std::size_t fixed_wire_size = 16U;

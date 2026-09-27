@@ -8,67 +8,68 @@
 
 namespace lux::simulation::script
 {
-enum class ECppStaticScriptBridgeError : std::uint8_t
-{
-    INVALID_DESCRIPTOR,
-    ALLOCATION_FAILURE,
-};
+    enum class ECppStaticScriptBridgeError : std::uint8_t
+    {
+        INVALID_DESCRIPTOR,
+        ALLOCATION_FAILURE,
+    };
 
-using CppStaticDescriptionResult = lux::cxx::expected<lux::rdesc::Script, ECppStaticScriptBridgeError>;
+    using CppStaticDescriptionResult = lux::cxx::expected<lux::rdesc::Script, ECppStaticScriptBridgeError>;
 
-// Asset production only: the backend retains the generated constant contract, not this owning copy.
-[[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC CppStaticDescriptionResult
-materializeCppStaticScript(const CppStaticContract &contract) noexcept;
+    // Asset production only: the backend retains the generated constant contract, not this owning copy.
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC CppStaticDescriptionResult
+    materializeCppStaticScript(const CppStaticContract& contract) noexcept;
 
-struct CppStaticScriptPoolDescription final
-{
-    const CppStaticContract *descriptor{};
-    std::size_t instance_capacity{};
-    std::size_t coroutine_capacity{};
-    std::size_t coroutine_frame_storage_bytes{};
-    std::size_t coroutine_frame_storage_alignment{alignof(std::max_align_t)};
-    std::size_t prepared_method_capacity{};
-    std::size_t max_coroutine_frame_bytes{512U};
-    bool observe_storage{};
-};
+    struct CppStaticScriptPoolDescription final
+    {
+        const CppStaticContract* descriptor{};
+        std::size_t instance_capacity{};
+        std::size_t coroutine_capacity{};
+        std::size_t coroutine_frame_storage_bytes{};
+        std::size_t coroutine_frame_storage_alignment{alignof(std::max_align_t)};
+        std::size_t prepared_method_capacity{};
+        std::size_t max_coroutine_frame_bytes{512U};
+        bool observe_storage{};
+    };
 
-struct CppStaticScriptBackendStats final
-{
-    std::size_t frame_storage_bytes{};
-    std::size_t active_frames{};
-    std::size_t frame_high_water{};
-    std::size_t frame_capacity_failures{};
-    std::size_t heap_frame_allocations{};
-    std::size_t prepared_method_storage_bytes{};
-    std::size_t active_prepared_methods{};
-    std::uint64_t contract_validations{};
-    std::uint64_t contract_cache_hits{};
-    std::size_t active_artifact_associations{};
-    std::size_t cached_artifacts{};
-    std::size_t artifact_association_storage_bytes{};
-    std::size_t artifact_index_bucket_count{};
-    std::size_t frame_metadata_bytes{};
-    bool frame_observation_collected{};
-};
+    struct CppStaticScriptBackendStats final
+    {
+        std::size_t frame_storage_bytes{};
+        std::size_t active_frames{};
+        std::size_t frame_high_water{};
+        std::size_t frame_capacity_failures{};
+        std::size_t heap_frame_allocations{};
+        std::size_t prepared_method_storage_bytes{};
+        std::size_t active_prepared_methods{};
+        std::uint64_t contract_validations{};
+        std::uint64_t contract_cache_hits{};
+        std::size_t active_artifact_associations{};
+        std::size_t cached_artifacts{};
+        std::size_t artifact_association_storage_bytes{};
+        std::size_t artifact_index_bucket_count{};
+        std::size_t frame_metadata_bytes{};
+        bool frame_observation_collected{};
+    };
 
-class LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC CppStaticScriptBackend final
-{
-  public:
-    [[nodiscard]] static lux::cxx::expected<CppStaticScriptBackend, ECppStaticScriptBridgeError> create(
-        std::span<const CppStaticScriptPoolDescription> pools) noexcept;
-    ~CppStaticScriptBackend();
-    CppStaticScriptBackend(CppStaticScriptBackend &&) noexcept;
-    CppStaticScriptBackend &operator=(CppStaticScriptBackend &&) noexcept;
-    CppStaticScriptBackend(const CppStaticScriptBackend &) = delete;
-    CppStaticScriptBackend &operator=(const CppStaticScriptBackend &) = delete;
+    class LUX_ENGINE_SIMULATION_SCRIPT_CPP_STATIC_PUBLIC CppStaticScriptBackend final
+    {
+    public:
+        [[nodiscard]] static lux::cxx::expected<CppStaticScriptBackend, ECppStaticScriptBridgeError> create(
+            std::span<const CppStaticScriptPoolDescription> pools
+        ) noexcept;
+        ~CppStaticScriptBackend();
+        CppStaticScriptBackend(CppStaticScriptBackend&&) noexcept;
+        CppStaticScriptBackend& operator=(CppStaticScriptBackend&&) noexcept;
+        CppStaticScriptBackend(const CppStaticScriptBackend&) = delete;
+        CppStaticScriptBackend& operator=(const CppStaticScriptBackend&) = delete;
 
-    [[nodiscard]] explicit operator bool() const noexcept;
-    [[nodiscard]] CppStaticScriptBackendStats stats() const noexcept;
-    [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
+        [[nodiscard]] explicit operator bool() const noexcept;
+        [[nodiscard]] CppStaticScriptBackendStats stats() const noexcept;
+        [[nodiscard]] ScriptBackendDescriptor descriptor() noexcept;
 
-  private:
-    struct State;
-    explicit CppStaticScriptBackend(std::unique_ptr<State> state) noexcept;
-    std::unique_ptr<State> state_;
-};
+    private:
+        struct State;
+        explicit CppStaticScriptBackend(std::unique_ptr<State> state) noexcept;
+        std::unique_ptr<State> state_;
+    };
 } // namespace lux::simulation::script

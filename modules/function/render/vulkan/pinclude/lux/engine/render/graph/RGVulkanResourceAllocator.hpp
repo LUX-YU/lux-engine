@@ -140,11 +140,11 @@ namespace lux::render
         /// (它是设备属性,不随图变化)。
         enum class ELazyMemory : std::uint8_t
         {
-            Unprobed,
-            Available,
-            Absent
+            UNPROBED,
+            AVAILABLE,
+            ABSENT
         };
-        ELazyMemory lazy_memory_{ELazyMemory::Unprobed};
+        ELazyMemory lazy_memory_{ELazyMemory::UNPROBED};
 
         uint64_t current_frame_ = 0;
 

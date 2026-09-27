@@ -34,7 +34,7 @@ namespace lux::rdesc
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC ShaderResources final : public GPUResourceBase<ShaderResources, EGPUResourceType::Shader>
+    class LUX_FUNCTION_PUBLIC ShaderResources final : public TGPUResourceBase<ShaderResources, EGPUResourceType::SHADER>
     {
     public:
         struct InitInfo
@@ -100,8 +100,10 @@ namespace lux::render
         ///
         /// 补丁结果走与普通 add() 相同的去重路径:多条管线把同一个着色器打成相同字节
         /// 时,只会有一个 VkShaderModule。
-        [[nodiscard]] Expected<ShaderHandle>
-        addMergedLayoutVariant(ShaderHandle source, const lux::rdesc::ShaderInfo& info);
+        [[nodiscard]] Expected<ShaderHandle> addMergedLayoutVariant(
+            ShaderHandle source,
+            const lux::rdesc::ShaderInfo& info
+        );
 
         /// 把一条管线的**全部 stage** 一次切换到域合并布局,并取回它们的模块与反射。
         ///

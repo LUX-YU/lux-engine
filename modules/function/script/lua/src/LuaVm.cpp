@@ -2,13 +2,14 @@
 
 #include <lua.hpp>
 
-
 namespace lux::script::lua::detail
 {
     int bootstrapLuaOperation(lua_State* state, int (*operation)(lua_State*), void* context) noexcept
     {
-        if (state == nullptr || operation == nullptr) return LUA_ERRRUN;
-        if (!lua_checkstack(state, 2)) return LUA_ERRMEM;
+        if (state == nullptr || operation == nullptr)
+            return LUA_ERRRUN;
+        if (!lua_checkstack(state, 2))
+            return LUA_ERRMEM;
         const auto base = lua_gettop(state);
         // The standard VM represents a zero-upvalue C function without allocating a closure.
         lua_pushcfunction(state, operation);
@@ -30,23 +31,17 @@ namespace lux::script::lua::detail
         }
     } // namespace
 
-    bool configureLuaVm(
-        lua_State* state,
-        LuaRuntimeInfo& result
-    ) noexcept
+    bool configureLuaVm(lua_State* state, LuaRuntimeInfo& result) noexcept
     {
-        if (state == nullptr) return false;
+        if (state == nullptr)
+            return false;
         if (lua_version(state) != LUA_VERSION_NUM)
             return false;
         result = {"Lua55", LUA_RELEASE};
         return true;
     }
 
-    LuaResumeResult resumeLuaVm(
-        lua_State* thread,
-        lua_State* caller,
-        int argument_count
-    ) noexcept
+    LuaResumeResult resumeLuaVm(lua_State* thread, lua_State* caller, int argument_count) noexcept
     {
         if (thread == nullptr || argument_count < 0)
             return {LUA_ERRRUN, 0};
@@ -60,19 +55,10 @@ namespace lux::script::lua::detail
         if (state == nullptr || result_count < 0 || result_count > lua_gettop(state))
             return luaL_error(state, "invalid Lux Lua yield result count");
         const auto preserved_count = lua_gettop(state) - result_count;
-        return lua_yieldk(
-            state,
-            result_count,
-            static_cast<lua_KContext>(preserved_count),
-            &finishYieldedAbility
-        );
+        return lua_yieldk(state, result_count, static_cast<lua_KContext>(preserved_count), &finishYieldedAbility);
     }
 
-    bool setLuaChunkEnvironment(
-        lua_State* state,
-        int chunk_index,
-        int environment_index
-    ) noexcept
+    bool setLuaChunkEnvironment(lua_State* state, int chunk_index, int environment_index) noexcept
     {
         if (state == nullptr)
             return false;

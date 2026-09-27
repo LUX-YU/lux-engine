@@ -21,10 +21,12 @@ namespace lux::physics2d::detail
         Box2DWorld& operator=(const Box2DWorld&) = delete;
 
         [[nodiscard]] bool prepare(std::size_t body_capacity) noexcept;
-        [[nodiscard]] std::optional<BodyId> createBox(Eigen::Vector2f center,
-                                                      float angle,
-                                                      Eigen::Vector2f half_extents,
-                                                      bool dynamic) noexcept;
+        [[nodiscard]] std::optional<BodyId> createBox(
+            Eigen::Vector2f center,
+            float angle,
+            Eigen::Vector2f half_extents,
+            bool dynamic
+        ) noexcept;
         void destroyBody(BodyId body) noexcept;
         void setTransform(BodyId body, Eigen::Vector2f center, float angle) noexcept;
         void setLinearVelocity(BodyId body, Eigen::Vector2f velocity) noexcept;

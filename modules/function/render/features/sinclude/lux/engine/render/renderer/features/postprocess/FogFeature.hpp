@@ -35,9 +35,7 @@ namespace lux::render
             ShaderHandle fragment_shader{};
         };
 
-        explicit FogFeature(Config config) noexcept : config_(config)
-        {
-        }
+        explicit FogFeature(Config config) noexcept : config_(config) {}
 
         [[nodiscard]] std::string_view name() const override
         {
@@ -46,7 +44,7 @@ namespace lux::render
 
         [[nodiscard]] std::uint32_t requiredTargetSlots() const override
         {
-            return 1u << static_cast<std::uint32_t>(TargetSlot::LINEAR_DEPTH);
+            return 1u << static_cast<std::uint32_t>(ETargetSlot::LINEAR_DEPTH);
         }
 
         Expected<void> initAndAttachTo(RenderScene&) override;

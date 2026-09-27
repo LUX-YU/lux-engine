@@ -70,8 +70,8 @@ namespace lux::world
 
         [[nodiscard]] std::span<const WorldPartitionTablePageDescription> pages() const noexcept;
 
-        [[nodiscard]] const WorldPartitionTablePageDescription*
-        findPage(partition::PartitionOrdinal partition) const noexcept;
+        [[nodiscard]] const WorldPartitionTablePageDescription* findPage(partition::PartitionOrdinal partition
+        ) const noexcept;
 
     private:
         std::vector<WorldPartitionTablePageDescription> pages_;
@@ -194,7 +194,8 @@ namespace lux::world
 
         [[nodiscard]] lux::cxx::expected<void, WorldPartitionFailure> addPartition(
             WorldPartitionId id,
-            std::span<const WorldObjectId> objects) noexcept;
+            std::span<const WorldObjectId> objects
+        ) noexcept;
 
         [[nodiscard]] lux::cxx::expected<WorldPartitionLayout, WorldPartitionFailure> build() && noexcept;
 
@@ -240,18 +241,21 @@ namespace lux::world
         [[nodiscard]] static lux::cxx::expected<WorldPartitionBuildProduct, WorldPartitionFailure> build(
             WorldPartitionerDescriptor partitioner,
             WorldPartitionLayout layout,
-            std::vector<WorldPartitionIndexArtifact> indexes) noexcept;
+            std::vector<WorldPartitionIndexArtifact> indexes
+        ) noexcept;
 
         [[nodiscard]] const WorldPartitionerDescriptor& partitioner() const noexcept;
         [[nodiscard]] const WorldPartitionLayout& layout() const noexcept;
         [[nodiscard]] std::span<const WorldPartitionIndexArtifact> indexes() const noexcept;
-        [[nodiscard]] const WorldPartitionIndexArtifact* findIndex(
-            const partition::PartitionIndexTypeId& type) const noexcept;
+        [[nodiscard]] const WorldPartitionIndexArtifact* findIndex(const partition::PartitionIndexTypeId& type
+        ) const noexcept;
 
     private:
-        WorldPartitionBuildProduct(WorldPartitionerDescriptor partitioner,
-                                   WorldPartitionLayout layout,
-                                   std::vector<WorldPartitionIndexArtifact> indexes) noexcept;
+        WorldPartitionBuildProduct(
+            WorldPartitionerDescriptor partitioner,
+            WorldPartitionLayout layout,
+            std::vector<WorldPartitionIndexArtifact> indexes
+        ) noexcept;
 
         WorldPartitionerDescriptor partitioner_;
         WorldPartitionLayout layout_;

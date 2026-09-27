@@ -9,9 +9,7 @@ namespace lux::gapi::vk
     class Buffer
     {
     public:
-        Buffer() : buffer(VK_NULL_HANDLE)
-        {
-        }
+        Buffer() : buffer(VK_NULL_HANDLE) {}
 
         Buffer(VkDevice device, const VkBufferCreateInfo& info, VkAllocationCallbacks* allocator = nullptr)
         {

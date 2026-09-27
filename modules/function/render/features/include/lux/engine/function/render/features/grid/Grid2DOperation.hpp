@@ -27,7 +27,8 @@ namespace lux::render
         id = lux.render.grid2d.v1,
         display = Grid2DPass,
         feature = Grid2DPassFeature,
-        feature_header = lux / engine / render / renderer / features / grid / Grid2DPassFeature.hpp) Grid2DCommConfig
+        feature_header = lux / engine / render / renderer / features / grid / Grid2DPassFeature.hpp
+    ) Grid2DCommConfig
     {
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};

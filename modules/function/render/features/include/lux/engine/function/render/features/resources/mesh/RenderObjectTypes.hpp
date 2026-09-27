@@ -8,11 +8,11 @@ namespace lux::render
 
     enum class EGeometryKind : uint8_t
     {
-        StaticMesh = 0,
-        SkinnedMesh,
-        Particle,
-        Decal,
-        Custom,
+        STATIC_MESH = 0,
+        SKINNED_MESH,
+        PARTICLE,
+        DECAL,
+        CUSTOM,
     };
 
     /// 一个 GPU 驱动剔除/绘制批次所属的 pass 域(驱动 cull kernel 的 geometry_mask)。
@@ -21,25 +21,25 @@ namespace lux::render
     /// 故移到它真正的同族这里——EGeometryKind / EPassBit / PassMask 旁边。
     enum class EPassDomain : uint8_t
     {
-        DepthPrepass = 0,
-        Shadow,
-        GBuffer,
-        DeferredLighting,
-        ForwardOpaque,
-        ForwardTransparent,
-        Emissive,
-        Velocity,
-        Custom,
+        DEPTH_PREPASS = 0,
+        SHADOW,
+        G_BUFFER,
+        DEFERRED_LIGHTING,
+        FORWARD_OPAQUE,
+        FORWARD_TRANSPARENT,
+        EMISSIVE,
+        VELOCITY,
+        CUSTOM,
     };
 
-    enum EPassBit : uint16_t
+    enum class EPassBit : uint16_t
     {
-        eBasePass = 1u << 0,
-        eShadow = 1u << 1,
-        eGBuffer = 1u << 2,
-        eDepthPrepass = 1u << 3,
-        eEmissive = 1u << 4,
-        eTransparent = 1u << 5,
+        PASS_BASE = 1u << 0,
+        PASS_SHADOW = 1u << 1,
+        PASS_G_BUFFER = 1u << 2,
+        PASS_DEPTH_PREPASS = 1u << 3,
+        PASS_EMISSIVE = 1u << 4,
+        PASS_TRANSPARENT = 1u << 5,
     };
 
     using PassMask = uint16_t;
@@ -60,7 +60,7 @@ namespace lux::render
     }
 
     inline constexpr PassMask kPassMaskOpaqueDefault =
-        static_cast<PassMask>(eBasePass | eGBuffer | eDepthPrepass | eShadow);
+        EPassBit::PASS_BASE | EPassBit::PASS_G_BUFFER | EPassBit::PASS_DEPTH_PREPASS | EPassBit::PASS_SHADOW;
 
     // ── 每实例标志位 ────────────────────────────────────────────────────────
     //

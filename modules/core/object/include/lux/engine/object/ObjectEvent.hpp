@@ -6,7 +6,6 @@
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/core/visibility.h>
 #include <lux/engine/object/ObjectDispatcher.hpp>
-#include <lux/engine/object/ObjectWeakRef.hpp>
 #include <lux/engine/object/detail/MessageEnvelope.hpp>
 
 namespace lux::object
@@ -18,8 +17,7 @@ namespace lux::object
     public:
         template <class Event>
         explicit EventView(Event& event) noexcept : type_(lux::cxx::typeToken<Event>()), data_(std::addressof(event))
-        {
-        }
+        {}
 
         [[nodiscard]] lux::cxx::TypeToken type() const noexcept
         {
@@ -46,16 +44,19 @@ namespace lux::object
         bool accepted_{false};
     };
 
-    enum class EEventPostStatus
-    {
-        POSTED,
-        NO_DISPATCHER,
-        CLOSED
-    };
-
     namespace detail
     {
         [[nodiscard]] LUX_CORE_PUBLIC bool sendEventErased(LuxObject& target, EventView& event) noexcept;
+        [[nodiscard]] LUX_CORE_PUBLIC bool routeEventErased(
+            LuxObject& target,
+            LuxObject& boundary,
+            EventView& event
+        ) noexcept;
+    }
+
+    [[nodiscard]] inline bool sendEvent(LuxObject& target, EventView& event) noexcept
+    {
+        return detail::sendEventErased(target, event);
     }
 
     template <class Event> [[nodiscard]] bool sendEvent(LuxObject& target, Event& event) noexcept
@@ -64,22 +65,17 @@ namespace lux::object
         return detail::sendEventErased(target, view);
     }
 
-    template <class Event> [[nodiscard]] EEventPostStatus postEvent(ObjectWeakRef target, Event event)
+    // Ancestors filter from boundary down, then unaccepted events bubble from target up.
+    // The boundary must belong to the target's parent chain on this thread.
+    [[nodiscard]] inline bool routeEvent(LuxObject& target, LuxObject& boundary, EventView& event) noexcept
     {
-        const auto dispatcher = target.dispatcherRef();
-
-        if (!dispatcher)
-        {
-            return EEventPostStatus::NO_DISPATCHER;
-        }
-
-        auto message = detail::makeMessage([target = std::move(target), event = std::move(event)]() mutable {
-            if (auto* object = target.getOnCurrent())
-                static_cast<void>(sendEvent(*object, event));
-        }
-        );
-
-        return detail::post(dispatcher, std::move(message)) == detail::EPostStatus::POSTED ? EEventPostStatus::POSTED
-                                                                                           : EEventPostStatus::CLOSED;
+        return detail::routeEventErased(target, boundary, event);
     }
+
+    template <class Event> [[nodiscard]] bool routeEvent(LuxObject& target, LuxObject& boundary, Event& event) noexcept
+    {
+        EventView view{event};
+        return detail::routeEventErased(target, boundary, view);
+    }
+
 } // namespace lux::object

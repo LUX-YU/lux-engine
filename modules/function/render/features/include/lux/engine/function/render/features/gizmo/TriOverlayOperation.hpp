@@ -23,8 +23,8 @@ namespace lux::render
         id = lux.render.tri_overlay.v1,
         display = TriOverlayTransient,
         feature = TriOverlayTransientFeature,
-        feature_header = lux / engine / render / renderer / features / gizmo /
-                         TriOverlayTransientFeature.hpp) TriOverlayTransientCommConfig
+        feature_header = lux / engine / render / renderer / features / gizmo / TriOverlayTransientFeature.hpp
+    ) TriOverlayTransientCommConfig
     {
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
@@ -46,7 +46,8 @@ namespace lux::render
         name = TriOverlayUpload,
         method = uploadTriangles,
         reply = TriOverlayUploadedReply,
-        opcode = resource) UploadTriOverlayPayload
+        opcode = resource
+    ) UploadTriOverlayPayload
     {
         RenderSceneId scene_id{};
         uint32_t chunk_id{0};

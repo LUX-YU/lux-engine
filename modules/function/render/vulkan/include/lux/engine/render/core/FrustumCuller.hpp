@@ -17,18 +17,18 @@ namespace lux::render
             float d{0.f};
         };
 
-        enum Side : uint32_t
+        enum class ESide : std::uint32_t
         {
-            Left = 0,
-            Right,
-            Bottom,
-            Top,
-            Near,
-            Far,
-            Count
+            PLANE_LEFT = 0,
+            PLANE_RIGHT,
+            PLANE_BOTTOM,
+            PLANE_TOP,
+            PLANE_NEAR,
+            PLANE_FAR,
+            PLANE_COUNT
         };
 
-        std::array<Plane, Count> planes{};
+        std::array<Plane, static_cast<std::size_t>(ESide::PLANE_COUNT)> planes{};
 
         /// Extract frustum planes from a row-major view-projection matrix.
         static Frustum fromViewProj(const Eigen::Matrix4f& vp);
@@ -73,9 +73,7 @@ namespace lux::render
     class FrustumCuller
     {
     public:
-        explicit FrustumCuller(const Frustum& f) : frustum_(f)
-        {
-        }
+        explicit FrustumCuller(const Frustum& f) : frustum_(f) {}
 
         [[nodiscard]] const Frustum& frustum() const noexcept
         {

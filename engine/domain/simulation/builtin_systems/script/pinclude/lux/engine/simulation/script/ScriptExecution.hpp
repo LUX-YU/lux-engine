@@ -13,7 +13,7 @@ namespace lux::simulation::script::detail
     struct ScriptExecutionFailureSink final
     {
         void* context{};
-        void (*fault)(void*, std::uint32_t, lux::script::ScriptSymbolId, EScriptSystemError, std::int32_t) noexcept{};
+        void (*fault)(void*, std::uint32_t, lux::script::ScriptSymbolId, EScriptSystemError, std::int32_t) noexcept {};
     };
 
     class ScriptExecution final
@@ -39,8 +39,8 @@ namespace lux::simulation::script::detail
             ScriptInstanceId identity;
             [[nodiscard]] bool current() const noexcept
             {
-                return record != nullptr && record->id == identity &&
-                    !record->admission_revoked && record->authority.current();
+                return record != nullptr && record->id == identity && !record->admission_revoked &&
+                       record->authority.current();
             }
         };
 
@@ -140,22 +140,30 @@ namespace lux::simulation::script::detail
         class AwaitableStorage final
         {
             static constexpr std::uint32_t NoSlot = (std::numeric_limits<std::uint32_t>::max)();
+
         public:
             void reserve(std::size_t capacity)
             {
-                if (active_ != 0U) std::terminate();
+                if (active_ != 0U)
+                    std::terminate();
                 if (records_.empty())
                 {
                     records_.resize(capacity);
-                    for (auto& record : records_) record.id.generation = 1U;
+                    for (auto& record : records_)
+                        record.id.generation = 1U;
                 }
-                else if (records_.size() != capacity) std::terminate();
+                else if (records_.size() != capacity)
+                    std::terminate();
                 rebuildFreeList();
             }
-            [[nodiscard]] AwaitableRecord* acquire(ExecutionInstance& owner,
-                const std::optional<PreparedResumeType>& type, bool external) noexcept
+            [[nodiscard]] AwaitableRecord* acquire(
+                ExecutionInstance& owner,
+                const std::optional<PreparedResumeType>& type,
+                bool external
+            ) noexcept
             {
-                if (free_head_ == NoSlot) return nullptr;
+                if (free_head_ == NoSlot)
+                    return nullptr;
                 const auto slot = free_head_;
                 auto& record = records_[slot];
                 free_head_ = record.next_free;
@@ -170,7 +178,8 @@ namespace lux::simulation::script::detail
             }
             [[nodiscard]] AwaitableRecord* find(AwaitableKey key) noexcept
             {
-                if (key.index >= records_.size()) return nullptr;
+                if (key.index >= records_.size())
+                    return nullptr;
                 auto& record = records_[key.index];
                 return record.id.slot != 0U && record.id.generation == key.gen ? &record : nullptr;
             }
@@ -192,21 +201,33 @@ namespace lux::simulation::script::detail
                     record.next_free = free_head_;
                     free_head_ = slot;
                 }
-                else record.id.generation = 0U;
+                else
+                    record.id.generation = 0U;
             }
-            [[nodiscard]] bool empty() const noexcept { return active_ == 0U; }
-            [[nodiscard]] std::size_t size() const noexcept { return active_; }
-            [[nodiscard]] std::size_t capacity() const noexcept { return records_.size(); }
+            [[nodiscard]] bool empty() const noexcept
+            {
+                return active_ == 0U;
+            }
+            [[nodiscard]] std::size_t size() const noexcept
+            {
+                return active_;
+            }
+            [[nodiscard]] std::size_t capacity() const noexcept
+            {
+                return records_.size();
+            }
             [[nodiscard]] std::size_t storageBytes() const noexcept
             {
                 return records_.capacity() * sizeof(AwaitableRecord);
             }
             void clear() noexcept
             {
-                if (active_ != 0U) std::terminate();
+                if (active_ != 0U)
+                    std::terminate();
                 // Keep the physical bank and generations for a prepare retry.
                 rebuildFreeList();
             }
+
         private:
             void rebuildFreeList() noexcept
             {
@@ -214,7 +235,8 @@ namespace lux::simulation::script::detail
                 for (std::size_t i = records_.size(); i > 0U; --i)
                 {
                     auto& record = records_[i - 1U];
-                    if (record.id.generation == 0U) continue;
+                    if (record.id.generation == 0U)
+                        continue;
                     record.next_free = free_head_;
                     free_head_ = static_cast<std::uint32_t>(i - 1U);
                 }
@@ -268,9 +290,8 @@ namespace lux::simulation::script::detail
             bool external_completion
         ) noexcept
         {
-            const bool is_invalid_result_type = result_type &&
-                (!result_type->valid() ||
-                    result_type->size > limits_.max_resume_payload_bytes);
+            const bool is_invalid_result_type =
+                result_type && (!result_type->valid() || result_type->size > limits_.max_resume_payload_bytes);
             if (is_invalid_result_type)
             {
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::INVALID_RESULT_TYPE);
@@ -286,9 +307,11 @@ namespace lux::simulation::script::detail
         // Private allocation kernel. Arbitrary result descriptions enter through
         // reserveAwaitable; prepared Events carry the layout proved by Preparer and
         // the current admission lookup.
-        [[nodiscard]] lux::cxx::expected<AwaitableRecord*, EScriptAwaitableCreateError>
-        admitAwaitable(ExecutionInstance& owner, const std::optional<PreparedResumeType>& result_type,
-                       bool external_completion) noexcept
+        [[nodiscard]] lux::cxx::expected<AwaitableRecord*, EScriptAwaitableCreateError> admitAwaitable(
+            ExecutionInstance& owner,
+            const std::optional<PreparedResumeType>& result_type,
+            bool external_completion
+        ) noexcept
         {
 
             if (stopping_)
@@ -310,15 +333,17 @@ namespace lux::simulation::script::detail
                 }
             }
             record.instance_next = owner.first_awaitable;
-            if (record.instance_next) record.instance_next->instance_previous = &record;
+            if (record.instance_next)
+                record.instance_next->instance_previous = &record;
             owner.first_awaitable = &record;
             if (external_completion)
                 ingress_.open(id, record.result_type);
             return &record;
         }
-        [[nodiscard]] lux::cxx::expected<ScriptAwaitableId, EScriptAwaitableCreateError>
-        createAwaitableRecord(
-            ScriptInstanceId instance, const std::optional<PreparedResumeType>& result_type) noexcept
+        [[nodiscard]] lux::cxx::expected<ScriptAwaitableId, EScriptAwaitableCreateError> createAwaitableRecord(
+            ScriptInstanceId instance,
+            const std::optional<PreparedResumeType>& result_type
+        ) noexcept
         {
             auto* owner = findExecutionInstance(instance);
             if (owner == nullptr)
@@ -328,19 +353,28 @@ namespace lux::simulation::script::detail
                 return lux::cxx::unexpected(record.error());
             return (*record)->id;
         }
-        [[nodiscard]] lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError>
-        createAwaitable(ScriptInstanceId instance, const std::optional<PreparedResumeType>& type) noexcept
+        [[nodiscard]] lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError> createAwaitable(
+            ScriptInstanceId instance,
+            const std::optional<PreparedResumeType>& type
+        ) noexcept
         {
             const auto created = createAwaitableRecord(instance, type);
             if (!created)
                 return lux::cxx::unexpected(created.error());
-            return ingress_.registration(instance, *created, this, &ScriptExecution::completeAbilityOwnerErased,
-                &ScriptExecution::failAbilityOwnerErased);
+            return ingress_.registration(
+                instance,
+                *created,
+                this,
+                &ScriptExecution::completeAbilityOwnerErased,
+                &ScriptExecution::failAbilityOwnerErased
+            );
         }
         [[nodiscard]] static lux::cxx::expected<ScriptAwaitableRegistration, EScriptAwaitableCreateError>
-        createAwaitableErased(void* context,
-                              ScriptInstanceId instance,
-                              std::optional<PreparedResumeType> result_type) noexcept
+        createAwaitableErased(
+            void* context,
+            ScriptInstanceId instance,
+            std::optional<PreparedResumeType> result_type
+        ) noexcept
         {
             return static_cast<ScriptExecution*>(context)->createAwaitable(instance, result_type);
         }
@@ -354,7 +388,7 @@ namespace lux::simulation::script::detail
             if (state == EScriptAwaitableState::READY)
             {
                 const bool is_invalid_value = error.valid() || value.bytes.size() > limits_.max_resume_payload_bytes ||
-                    value.type.valid() != record.result_type.has_value();
+                                              value.type.valid() != record.result_type.has_value();
                 if (is_invalid_value)
                     return false;
                 if (!record.result_type)
@@ -380,11 +414,14 @@ namespace lux::simulation::script::detail
             return finishAwaitableOwner(*record, state, &value, error);
         }
         [[nodiscard]] lux::cxx::expected<void, EScriptAwaitableCompletionError> finishAwaitableOwner(
-            AwaitableRecord& record, EScriptAwaitableState state, ScriptOwnedResumeValue* supplied,
+            AwaitableRecord& record,
+            EScriptAwaitableState state,
+            ScriptOwnedResumeValue* supplied,
             ScriptStepError error
         ) noexcept
         {
-            if (stopping_) return lux::cxx::unexpected(EScriptAwaitableCompletionError::STOPPING);
+            if (stopping_)
+                return lux::cxx::unexpected(EScriptAwaitableCompletionError::STOPPING);
             if (record.state != EScriptAwaitableState::PENDING || record.release_pending)
                 return lux::cxx::unexpected(EScriptAwaitableCompletionError::ALREADY_TERMINAL);
             if (!validAwaitableOutcome(record, state, supplied ? *supplied : record.value, error))
@@ -392,7 +429,8 @@ namespace lux::simulation::script::detail
             if (record.continuation.valid() && resumes_.count >= resumes_.records.size())
                 return lux::cxx::unexpected(EScriptAwaitableCompletionError::RESUME_QUEUE_FULL);
             record.state = state;
-            if (supplied != nullptr) record.value = std::move(*supplied);
+            if (supplied != nullptr)
+                record.value = std::move(*supplied);
             record.error = error;
             releaseSource(record);
             if (record.external_completion)
@@ -438,9 +476,8 @@ namespace lux::simulation::script::detail
             }
 
             const auto completed = owner.finishAwaitableOwner(*record, EScriptAwaitableState::READY, &value, {});
-            return completed
-                ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
-                : lux::cxx::unexpected(ScriptCompletionIngress::abilityError(completed.error()));
+            return completed ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
+                             : lux::cxx::unexpected(ScriptCompletionIngress::abilityError(completed.error()));
         }
         [[nodiscard]] static lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>
         failAbilityOwnerErased(
@@ -458,9 +495,8 @@ namespace lux::simulation::script::detail
                 {},
                 {error.status}
             );
-            return completed
-                ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
-                : lux::cxx::unexpected(ScriptCompletionIngress::abilityError(completed.error()));
+            return completed ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
+                             : lux::cxx::unexpected(ScriptCompletionIngress::abilityError(completed.error()));
         }
         [[nodiscard]] static EScriptEventWaitError eventWaitError(EScriptAwaitableCreateError error) noexcept
         {
@@ -493,7 +529,8 @@ namespace lux::simulation::script::detail
             if (!ExecutionAccess{owner, instance}.current())
                 return lux::cxx::unexpected(EScriptEventWaitError::INVALID_INSTANCE);
             const auto* source = owner->events.resolve(instance, admission);
-            if (source == nullptr) return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
+            if (source == nullptr)
+                return lux::cxx::unexpected(EScriptEventWaitError::UNDECLARED_SOURCE);
             const auto endpoint_slot = source->endpoint_slot;
             const auto target = source->entity_targeted ? owner->events.target() : ecs::NullEntity;
             if (source->entity_targeted && target == ecs::NullEntity)
@@ -525,13 +562,13 @@ namespace lux::simulation::script::detail
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> attachWaiter(
             ScriptAwaitableId awaitable,
             ScriptInstanceId instance,
-            ScriptContinuationId continuation) noexcept
+            ScriptContinuationId continuation
+        ) noexcept
         {
             auto* record = awaitables_.find(awaitableKey(awaitable));
             if (record == nullptr || record->instance != instance || record->continuation.valid())
                 return lux::cxx::unexpected(EScriptSystemError::INVOCATION_FAILURE);
-            if (record->state != EScriptAwaitableState::PENDING &&
-                resumes_.count >= resumes_.records.size())
+            if (record->state != EScriptAwaitableState::PENDING && resumes_.count >= resumes_.records.size())
             {
                 return lux::cxx::unexpected(EScriptSystemError::RESUME_QUEUE_FULL);
             }
@@ -544,9 +581,13 @@ namespace lux::simulation::script::detail
         }
         struct AwaitableOutcome final
         {
-            AwaitableOutcome(EScriptAwaitableState result_state, ScriptOwnedResumeValue&& result,
-                ScriptStepError result_error) noexcept
-                : state(result_state), value(std::move(result)), error(result_error) {}
+            AwaitableOutcome(
+                EScriptAwaitableState result_state,
+                ScriptOwnedResumeValue&& result,
+                ScriptStepError result_error
+            ) noexcept
+                : state(result_state), value(std::move(result)), error(result_error)
+            {}
             EScriptAwaitableState state{EScriptAwaitableState::CANCELLED};
             ScriptOwnedResumeValue value;
             ScriptStepError error;
@@ -555,10 +596,12 @@ namespace lux::simulation::script::detail
         void unlinkAwaitableOwnership(AwaitableRecord& record, ExecutionAccess access) noexcept
         {
             auto* owner = access.record;
-            if (record.instance_previous) record.instance_previous->instance_next = record.instance_next;
+            if (record.instance_previous)
+                record.instance_previous->instance_next = record.instance_next;
             else if (owner != nullptr && owner->first_awaitable == &record)
                 owner->first_awaitable = record.instance_next;
-            if (record.instance_next) record.instance_next->instance_previous = record.instance_previous;
+            if (record.instance_next)
+                record.instance_next->instance_previous = record.instance_previous;
             record.instance_previous = nullptr;
             record.instance_next = nullptr;
         }
@@ -573,7 +616,8 @@ namespace lux::simulation::script::detail
         {
             auto* record = &value;
             const auto id = record->id;
-            if (record->release_pending) return true;
+            if (record->release_pending)
+                return true;
             releaseSource(*record);
             unlinkAwaitableOwnership(*record, access);
             if (record->external_completion)
@@ -610,7 +654,9 @@ namespace lux::simulation::script::detail
         };
 
         [[nodiscard]] bool takeAwaitable(
-            AwaitableRecord& value, ExecutionAccess access, std::optional<AwaitableOutcome>& outcome
+            AwaitableRecord& value,
+            ExecutionAccess access,
+            std::optional<AwaitableOutcome>& outcome
         ) noexcept
         {
             auto* record = &value;
@@ -710,15 +756,23 @@ namespace lux::simulation::script::detail
                 current = next;
             }
         }
-        void faultInvocation(std::uint32_t slot, lux::script::ScriptSymbolId symbol,
-            EScriptSystemError error, std::int32_t status = 0) noexcept
+        void faultInvocation(
+            std::uint32_t slot,
+            lux::script::ScriptSymbolId symbol,
+            EScriptSystemError error,
+            std::int32_t status = 0
+        ) noexcept
         {
             failures_.fault(failures_.context, slot, symbol, error, status);
         }
         [[nodiscard]] bool beginSuspension(
-            std::uint32_t mount_slot, std::uint32_t method_slot, ScriptInstanceId instance_id,
-            const PreparedMethod& method, ScriptBackendContinuation backend_continuation,
-            ScriptStepResult result, bool hook_single_flight
+            std::uint32_t mount_slot,
+            std::uint32_t method_slot,
+            ScriptInstanceId instance_id,
+            const PreparedMethod& method,
+            ScriptBackendContinuation backend_continuation,
+            ScriptStepResult result,
+            bool hook_single_flight
         ) noexcept
         {
             // The caller just revalidated its Invocation after backend code; no user
@@ -744,11 +798,7 @@ namespace lux::simulation::script::detail
             {
                 backend_continuation.destroy(backend_continuation.state);
                 discardAwaitable(instance_id, result.waiting_on);
-                faultInvocation(
-                    mount_slot,
-                    method.symbol,
-                    EScriptSystemError::INSTANCE_CONTINUATION_CAPACITY_EXCEEDED
-                );
+                faultInvocation(mount_slot, method.symbol, EScriptSystemError::INSTANCE_CONTINUATION_CAPACITY_EXCEEDED);
                 return false;
             }
             if (continuations_.size() >= limits_.continuation_capacity)
@@ -758,13 +808,14 @@ namespace lux::simulation::script::detail
                 faultInvocation(mount_slot, method.symbol, EScriptSystemError::CONTINUATION_CAPACITY_EXCEEDED);
                 return false;
             }
-            auto inserted = continuations_.tryEmplace(
-                ContinuationRecord{{},
-                                   instance_id,
-                                   backend_continuation,
-                                   result.waiting_on,
-                                   method_slot,
-                                   hook_single_flight});
+            auto inserted = continuations_.tryEmplace(ContinuationRecord{
+                {},
+                instance_id,
+                backend_continuation,
+                result.waiting_on,
+                method_slot,
+                hook_single_flight
+            });
             if (!inserted)
             {
                 backend_continuation.destroy(backend_continuation.state);
@@ -810,7 +861,8 @@ namespace lux::simulation::script::detail
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> resumeOne(ScriptAwaitableId ready) noexcept
         {
             auto* wait = awaitables_.find(awaitableKey(ready));
-            if (wait == nullptr) return {};
+            if (wait == nullptr)
+                return {};
             const ResumeRecord resume{wait->instance, wait->continuation, ready};
             auto* instance = wait->owner;
             auto* continuation = continuations_.find(continuationKey(resume.continuation));
@@ -880,63 +932,96 @@ namespace lux::simulation::script::detail
             faultInvocation(slot, symbol, EScriptSystemError::INVOCATION_FAILURE, status);
             return lux::cxx::unexpected(EScriptSystemError::INVOCATION_FAILURE);
         }
+
     public:
         using Result = lux::cxx::expected<void, EScriptSystemError>;
-        ScriptExecution(ScriptInstances& instances, ScriptBindings& bindings, ScriptEventWaits& events,
-            ScriptTimers& timers, ScriptCompletionIngress& ingress) noexcept
-            : instance_owner_(instances), binding_owner_(bindings), event_owner_(events),
-              timer_owner_(timers), ingress_(ingress) {}
+        ScriptExecution(
+            ScriptInstances& instances,
+            ScriptBindings& bindings,
+            ScriptEventWaits& events,
+            ScriptTimers& timers,
+            ScriptCompletionIngress& ingress
+        ) noexcept
+            : instance_owner_(instances), binding_owner_(bindings), event_owner_(events), timer_owner_(timers),
+              ingress_(ingress)
+        {}
         ScriptExecution(const ScriptExecution&) = delete;
         ScriptExecution& operator=(const ScriptExecution&) = delete;
 
-        void prepare(ScriptRuntimeLimits configured, std::size_t instance_capacity,
-            std::size_t method_capacity, ScriptExecutionFailureSink failures);
+        void prepare(
+            ScriptRuntimeLimits configured,
+            std::size_t instance_capacity,
+            std::size_t method_capacity,
+            ScriptExecutionFailureSink failures
+        );
         void beginInstance(ScriptInstanceId instance, std::uint32_t slot) noexcept
         {
             execution_instances_[instance.slot - 1U] = {instance, slot};
             execution_instances_[instance.slot - 1U].authority = instance_owner_.authorityAccess(instance, slot);
             execution_instances_[instance.slot - 1U].events = instance_owner_.eventImports(slot);
         }
-        void enablePrepared() noexcept { prepared_ = true; }
-        void stop() noexcept { stopping_ = true; }
-        [[nodiscard]] std::size_t resultPins() const noexcept { return result_write_pins_; }
-        [[nodiscard]] std::size_t activeContinuations() const noexcept { return continuations_.size(); }
+        void enablePrepared() noexcept
+        {
+            prepared_ = true;
+        }
+        void stop() noexcept
+        {
+            stopping_ = true;
+        }
+        [[nodiscard]] std::size_t resultPins() const noexcept
+        {
+            return result_write_pins_;
+        }
+        [[nodiscard]] std::size_t activeContinuations() const noexcept
+        {
+            return continuations_.size();
+        }
         [[nodiscard]] std::size_t activeAwaitables() const noexcept
         {
             return awaitables_.size() - pending_awaitable_releases_;
         }
-        [[nodiscard]] std::size_t physicalAwaitableCapacity() const noexcept { return awaitables_.capacity(); }
+        [[nodiscard]] std::size_t physicalAwaitableCapacity() const noexcept
+        {
+            return awaitables_.capacity();
+        }
 
-        [[nodiscard]] lux::cxx::expected<ScriptTimerAdmission, EScriptAwaitableCreateError>
-        reserveLocalTimer(const ScriptStepContext& context) noexcept
+        [[nodiscard]] lux::cxx::expected<ScriptTimerAdmission, EScriptAwaitableCreateError> reserveLocalTimer(
+            const ScriptStepContext& context
+        ) noexcept
         {
             auto* owner = findExecutionInstance(context.instance);
             if (!context.awaitables.belongsTo(this) || owner == nullptr || !owner->authority.current())
                 return lux::cxx::unexpected(EScriptAwaitableCreateError::INVALID_INSTANCE);
             const auto record = admitAwaitable(*owner, std::nullopt, false);
-            if (!record) return lux::cxx::unexpected(record.error());
+            if (!record)
+                return lux::cxx::unexpected(record.error());
             return ScriptTimerAdmission{{context.instance, (*record)->id}, *record};
         }
         void discardLocalTimer(ScriptTimerAssociation association) noexcept
         {
             discardAwaitable(association.instance, association.awaitable);
         }
-        [[nodiscard]] lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>
-        completeLocalTimer(ScriptTimerAssociation association, ScriptSourceId source) noexcept
+        [[nodiscard]] lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError> completeLocalTimer(
+            ScriptTimerAssociation association,
+            ScriptSourceId source
+        ) noexcept
         {
             auto* owner = findExecutionInstance(association.instance);
             auto* record = awaitables_.find(awaitableKey(association.awaitable));
             const bool invalid = owner == nullptr || !owner->authority.current() || record == nullptr ||
-                record->instance != association.instance || record->external_completion || record->result_type ||
-                record->source != ScriptWaitSource{source, EScriptWaitSource::TIMER};
-            if (invalid) return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::STALE);
+                                 record->instance != association.instance || record->external_completion ||
+                                 record->result_type ||
+                                 record->source != ScriptWaitSource{source, EScriptWaitSource::TIMER};
+            if (invalid)
+                return lux::cxx::unexpected(lux::script::EScriptAbilityCompletionError::STALE);
             const auto completed = finishAwaitableOwner(*record, EScriptAwaitableState::READY, nullptr, {});
-            return completed ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{} :
-                lux::cxx::unexpected(ScriptCompletionIngress::abilityError(completed.error()));
+            return completed ? lux::cxx::expected<void, lux::script::EScriptAbilityCompletionError>{}
+                             : lux::cxx::unexpected(ScriptCompletionIngress::abilityError(completed.error()));
         }
 
         [[nodiscard]] std::optional<ScriptTimerAdmission> timerAssociation(
-            const lux::script::ScriptAbilityCompletion<void>& completion) noexcept
+            const lux::script::TScriptAbilityCompletion<void>& completion
+        ) noexcept
         {
             std::uint64_t a{}, b{};
             if (!lux::script::detail::ScriptAbilityOwnerCompletionAccess::matchOwner(completion, this, a, b))
@@ -946,8 +1031,8 @@ namespace lux::simulation::script::detail
             auto* record = awaitables_.find(awaitableKey(id));
             const auto* owner = findExecutionInstance(instance);
             const bool matches = !stopping_ && owner != nullptr && owner->authority.current() && record != nullptr &&
-                record->instance == instance && record->state == EScriptAwaitableState::PENDING &&
-                !record->release_pending && record->source.kind == EScriptWaitSource::NONE;
+                                 record->instance == instance && record->state == EScriptAwaitableState::PENDING &&
+                                 !record->release_pending && record->source.kind == EScriptWaitSource::NONE;
             return matches ? std::optional{ScriptTimerAdmission{{instance, id}, record}} : std::nullopt;
         }
         void attachTimer(const ScriptTimerAdmission& admission, ScriptSourceId id) noexcept
@@ -1013,14 +1098,23 @@ namespace lux::simulation::script::detail
         {
             handler.entry(*this, handler, frame, hook_invocation);
         }
+
     private:
-        static void invokeSyncEntry(ScriptExecution& owner, const Handler& handler,
-            lux_script_call_frame& frame, bool) noexcept
+        static void invokeSyncEntry(
+            ScriptExecution& owner,
+            const Handler& handler,
+            lux_script_call_frame& frame,
+            bool
+        ) noexcept
         {
             owner.invokeSync(handler, frame);
         }
-        static void invokeStepEntry(ScriptExecution& owner, const Handler& handler,
-            lux_script_call_frame& frame, bool hook) noexcept
+        static void invokeStepEntry(
+            ScriptExecution& owner,
+            const Handler& handler,
+            lux_script_call_frame& frame,
+            bool hook
+        ) noexcept
         {
             owner.invokeStep(handler, frame, hook);
         }
@@ -1041,8 +1135,12 @@ namespace lux::simulation::script::detail
             // incarnation.
             if (!access.sameIncarnation())
                 return;
-            faultInvocation(handler.mount_slot, instance_owner_.methodSymbol(handler.method_slot),
-                EScriptSystemError::INVOCATION_FAILURE, status);
+            faultInvocation(
+                handler.mount_slot,
+                instance_owner_.methodSymbol(handler.method_slot),
+                EScriptSystemError::INVOCATION_FAILURE,
+                status
+            );
         }
         void invokeStep(const Handler& handler, lux_script_call_frame& frame, bool hook_invocation) noexcept
         {
@@ -1060,8 +1158,7 @@ namespace lux::simulation::script::detail
             };
             const auto result = [&]() noexcept {
                 ++step_invocations_;
-                return method.backend.resumable.invoke(
-                    method.backend.resumable.context, frame, context, continuation);
+                return method.backend.resumable.invoke(method.backend.resumable.context, frame, context, continuation);
             }();
             if (!access.current())
             {
@@ -1082,22 +1179,31 @@ namespace lux::simulation::script::detail
             if (result.state == EScriptStepState::SUSPENDED)
             {
                 static_cast<void>(beginSuspension(
-                    handler.mount_slot, handler.method_slot, access.instance(),
-                    method, continuation, result, hook_invocation
+                    handler.mount_slot,
+                    handler.method_slot,
+                    access.instance(),
+                    method,
+                    continuation,
+                    result,
+                    hook_invocation
                 ));
                 return;
             }
             if (continuation)
                 continuation.destroy(continuation.state);
             faultInvocation(
-                handler.mount_slot, method.symbol, EScriptSystemError::INVOCATION_FAILURE, result.error.status
+                handler.mount_slot,
+                method.symbol,
+                EScriptSystemError::INVOCATION_FAILURE,
+                result.error.status
             );
             return;
         }
         // A prepared Event has already copied into its owned layout and released
         // its source. Copy may reenter: terminal state and queue capacity are dynamic.
-        [[nodiscard]] lux::cxx::expected<void, EScriptAwaitableCompletionError>
-        finishPreparedEvent(AwaitableRecord& record) noexcept
+        [[nodiscard]] lux::cxx::expected<void, EScriptAwaitableCompletionError> finishPreparedEvent(
+            AwaitableRecord& record
+        ) noexcept
         {
             if (stopping_)
                 return lux::cxx::unexpected(EScriptAwaitableCompletionError::STOPPING);
@@ -1113,6 +1219,7 @@ namespace lux::simulation::script::detail
             }
             return {};
         }
+
     public:
         template <bool CopyMayReenter>
         void completeClaimedEventWaiter(const ScriptClaimedEventWait& waiter, lux_script_call_frame& frame) noexcept
@@ -1121,8 +1228,9 @@ namespace lux::simulation::script::detail
             const auto awaitable = waiter.awaitable;
             auto* record = awaitables_.find(awaitableKey(awaitable));
             const bool is_stale = record == nullptr || record->release_pending ||
-                record->source != ScriptWaitSource{id, EScriptWaitSource::EVENT};
-            if (is_stale) return;
+                                  record->source != ScriptWaitSource{id, EScriptWaitSource::EVENT};
+            if (is_stale)
+                return;
             const auto instance = record->instance;
             auto* owner = record->owner;
             const ExecutionAccess execution{owner, instance};
@@ -1138,20 +1246,25 @@ namespace lux::simulation::script::detail
                 // Keep actual packet validation in that function; no ACTIVE state
                 // or short-lived result borrow is carried across a user boundary.
                 const bool valid_frame = frame.arg_count == 1U && frame.args != nullptr;
-                const bool copied = valid_frame && endpoint.payload_projection.copy(
-                    endpoint.context, frame.args[0], record->value.bytes.span());
+                const bool copied =
+                    valid_frame &&
+                    endpoint.payload_projection.copy(endpoint.context, frame.args[0], record->value.bytes.span());
                 if (copied)
                 {
                     event_payload_copy_bytes_ += record->value.bytes.size();
                     releaseSource(*record);
-                    if (const auto completed = finishPreparedEvent(*record); completed) return;
+                    if (const auto completed = finishPreparedEvent(*record); completed)
+                        return;
                 }
                 // Preserve the old physical-capacity window while error cleanup
                 // may reenter, even though the completed scalar copy needed no pin.
                 ResultWritePin pin(*this, *record);
                 static_cast<void>(eraseAwaitableRecord(*record, execution));
-                faultInvocation(owner->mount_slot, lux::script::InvalidScriptSymbolId,
-                    copied ? EScriptSystemError::RESUME_QUEUE_FULL : EScriptSystemError::INVOCATION_FAILURE);
+                faultInvocation(
+                    owner->mount_slot,
+                    lux::script::InvalidScriptSymbolId,
+                    copied ? EScriptSystemError::RESUME_QUEUE_FULL : EScriptSystemError::INVOCATION_FAILURE
+                );
                 return;
             }
             ResultWritePin pin(*this, *record);
@@ -1159,15 +1272,19 @@ namespace lux::simulation::script::detail
             bool copied{};
             {
                 UserInvocationScope invocation(*this);
-                copied = !is_invalid_frame && endpoint.payload_projection.copy(
-                    endpoint.context, frame.args[0], record->value.bytes.span());
+                copied = !is_invalid_frame &&
+                         endpoint.payload_projection.copy(endpoint.context, frame.args[0], record->value.bytes.span());
             }
             const bool still_live = !stopping_ && !record->release_pending && execution.current();
             if (!copied || !still_live)
             {
                 static_cast<void>(eraseAwaitableRecord(*record, execution));
-                if (still_live) faultInvocation(owner->mount_slot, lux::script::InvalidScriptSymbolId,
-                    EScriptSystemError::INVOCATION_FAILURE);
+                if (still_live)
+                    faultInvocation(
+                        owner->mount_slot,
+                        lux::script::InvalidScriptSymbolId,
+                        EScriptSystemError::INVOCATION_FAILURE
+                    );
                 return;
             }
             event_payload_copy_bytes_ += record->value.bytes.size();
@@ -1191,7 +1308,10 @@ namespace lux::simulation::script::detail
                 return;
             }
         }
-        [[nodiscard]] bool hasPendingExternalCompletions() const noexcept { return ingress_.hasPendingInWindow(); }
+        [[nodiscard]] bool hasPendingExternalCompletions() const noexcept
+        {
+            return ingress_.hasPendingInWindow();
+        }
         [[nodiscard]] bool drainExternalCompletions() noexcept
         {
             while (const auto* external = ingress_.peek())
@@ -1209,9 +1329,9 @@ namespace lux::simulation::script::detail
                 ScriptOwnedResumeValue value;
                 const bool expects_value = record->result_type.has_value();
                 const bool has_value = external->type != lux::semantic::InvalidTypeId;
-                const bool is_invalid_external_value = expects_value != has_value ||
-                    (expects_value && (external->type != record->result_type->type_id ||
-                        external->size != record->result_type->size));
+                const bool is_invalid_external_value =
+                    expects_value != has_value || (expects_value && (external->type != record->result_type->type_id ||
+                                                                     external->size != record->result_type->size));
                 if (external->state == EScriptAwaitableState::READY && is_invalid_external_value)
                 {
                     const auto instance = external->instance;
@@ -1262,10 +1382,12 @@ namespace lux::simulation::script::detail
                 result = owner_.resumeOne(*record);
                 return true;
             }
+
         private:
             friend class ScriptExecution;
             ResumeBatch(ScriptExecution& owner, std::size_t budget) noexcept
-                : owner_(owner), region_(owner.instance_owner_), remaining_(owner.stopping_ ? 0U : budget) {}
+                : owner_(owner), region_(owner.instance_owner_), remaining_(owner.stopping_ ? 0U : budget)
+            {}
             ScriptExecution& owner_;
             ScriptInstances::Protection region_;
             std::size_t remaining_{};
@@ -1277,6 +1399,7 @@ namespace lux::simulation::script::detail
 
         void shutdown() noexcept;
         void writeStats(ScriptRuntimeStats& result) const noexcept;
+
     private:
         ScriptInstances& instance_owner_;
         ScriptBindings& binding_owner_;

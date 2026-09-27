@@ -19,8 +19,10 @@ namespace lux::render
         UNKNOWN = 1u << 7u
     };
 
-    [[nodiscard]] constexpr EGraphInvalidationReason
-    operator|(EGraphInvalidationReason left, EGraphInvalidationReason right) noexcept
+    [[nodiscard]] constexpr EGraphInvalidationReason operator|(
+        EGraphInvalidationReason left,
+        EGraphInvalidationReason right
+    ) noexcept
     {
         return static_cast<EGraphInvalidationReason>(
             static_cast<std::uint32_t>(left) | static_cast<std::uint32_t>(right)

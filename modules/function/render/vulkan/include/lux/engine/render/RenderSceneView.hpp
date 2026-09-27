@@ -37,9 +37,7 @@ namespace lux::render
     public:
         /// Wrap a subject. The facade is a non-owning view; @p scene must outlive
         /// it (it always does — the scene outlives every feature it serves).
-        explicit RenderSceneView(RenderScene& scene) noexcept : scene_(&scene)
-        {
-        }
+        explicit RenderSceneView(RenderScene& scene) noexcept : scene_(&scene) {}
 
         // ── Per-scene resource registry (find<T> instantiates on caller's T) ──
         [[nodiscard]] ResourceRegistry& resources() noexcept;

@@ -158,8 +158,10 @@ namespace lux::render
         return v + 1u;
     }
 
-    [[nodiscard]] inline uint32_t
-    normalizeShadowTileResolution(uint32_t requested_resolution, uint32_t page_resolution) noexcept
+    [[nodiscard]] inline uint32_t normalizeShadowTileResolution(
+        uint32_t requested_resolution,
+        uint32_t page_resolution
+    ) noexcept
     {
         const uint32_t req = std::max(requested_resolution, 1u);
         const uint32_t page = std::max(page_resolution, 1u);
@@ -204,8 +206,7 @@ namespace lux::render
     public:
         ShadowAtlasPacker(uint32_t page_resolution, uint32_t page_count)
             : page_resolution_(std::max(page_resolution, 1u)), pages_(page_count)
-        {
-        }
+        {}
 
         [[nodiscard]] uint32_t pageResolution() const noexcept
         {
@@ -258,8 +259,11 @@ namespace lux::render
     };
 
     /// Allocate one tile, halving the request until it fits or hits the floor.
-    [[nodiscard]] inline bool
-    allocateTileWithFallback(ShadowAtlasPacker& packer, uint32_t requested_resolution, ShadowTileAllocation& out_tile)
+    [[nodiscard]] inline bool allocateTileWithFallback(
+        ShadowAtlasPacker& packer,
+        uint32_t requested_resolution,
+        ShadowTileAllocation& out_tile
+    )
     {
         const uint32_t page_resolution = packer.pageResolution();
         const uint32_t min_resolution = normalizeShadowTileResolution(kMinShadowTileResolution, page_resolution);
@@ -379,8 +383,7 @@ namespace lux::render
             if (ea != eb)
                 return ea > eb;
             return a.identity < b.identity; // total order — no ties left to chance
-        }
-        );
+        });
 
         const auto tryAllocate = [](ShadowAtlasPacker& p, const ShadowCasterRequest& r) {
             if (std::max(r.tile_count, 1u) == 6u)
@@ -417,8 +420,7 @@ namespace lux::render
             ordered = survivors;
             std::sort(ordered.begin(), ordered.end(), [](const ShadowCasterRequest& a, const ShadowCasterRequest& b) {
                 return a.identity < b.identity;
-            }
-            );
+            });
             ShadowAtlasPacker verify = packer;
             uint32_t verify_used = slices_already_used;
             bool all_fit = true;

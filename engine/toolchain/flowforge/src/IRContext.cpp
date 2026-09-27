@@ -1,4 +1,5 @@
 #include "FlowForgeDialect.h"
+#include <exception>
 #include "FlowForgeVersionCompat.h"
 #include FLOWFORGE_ARITH_DIALECT_INCLUDE
 
@@ -17,8 +18,14 @@ namespace lux::flowforge
     IR::IR() : impl_(std::make_unique<IRImpl>()) {}
     IR::~IR() = default;
 
-    IRImpl& IR::impl() { return *impl_; }
-    const IRImpl& IR::impl() const { return *impl_; }
+    IRImpl& IR::impl()
+    {
+        return *impl_;
+    }
+    const IRImpl& IR::impl() const
+    {
+        return *impl_;
+    }
 
     FlowForgeResult<std::string> IR::toString() const noexcept
     {
@@ -34,7 +41,7 @@ namespace lux::flowforge
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+            std::terminate();
         }
         catch (...)
         {
@@ -55,7 +62,7 @@ namespace lux::flowforge
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+            std::terminate();
         }
         catch (...)
         {
@@ -63,9 +70,7 @@ namespace lux::flowforge
         }
     }
 
-    IRContext::IRContext(IRContext&& other) noexcept
-        : context_(std::exchange(other.context_, nullptr))
-    {}
+    IRContext::IRContext(IRContext&& other) noexcept : context_(std::exchange(other.context_, nullptr)) {}
 
     IRContext& IRContext::operator=(IRContext&& other) noexcept
     {

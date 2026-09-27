@@ -25,16 +25,16 @@ namespace lux::render
     // ---------------------------------------------------------------
     enum class EDescriptorSetSlot : uint32_t
     {
-        Scene = 0,
-        Instance = 1,
-        Texture = 2,
-        Light = 3,
-        Material = 4,
-        Particle = 5,   ///< GPU particle SSBO (compute simulation + vertex billboard)
-        Compute = 6,    ///< GPU-driven compute cull descriptor set
-        VertexPool = 7, ///< Bindless vertex source array (R1.4 of render-refactor;
-                        ///<   reads in VERTEX_BIT + COMPUTE_BIT; one descriptorCount
-                        ///<   slot per registered IVertexSource)
+        SCENE = 0,
+        INSTANCE = 1,
+        TEXTURE = 2,
+        LIGHT = 3,
+        MATERIAL = 4,
+        PARTICLE = 5,    ///< GPU particle SSBO (compute simulation + vertex billboard)
+        COMPUTE = 6,     ///< GPU-driven compute cull descriptor set
+        VERTEX_POOL = 7, ///< Bindless vertex source array (R1.4 of render-refactor;
+                         ///<   reads in VERTEX_BIT + COMPUTE_BIT; one descriptorCount
+                         ///<   slot per registered IVertexSource)
         COUNT           // <-- add new sets before this
     };
 

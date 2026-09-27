@@ -15,11 +15,11 @@ namespace lux::flowforge
      * @param id The unique ID for this Node.
      */
     BranchNode::BranchNode(uint64_t id)
-        : ExecIntermediateNode(id, ENodeOperation::BRANCH, "->", "True", { "False" }),
-        data_in_pin_(this, DataPinInfo{ "Condition", &lux::meta::ref_type_of_v<bool> }, true)
+        : ExecIntermediateNode(id, ENodeOperation::BRANCH, "->", "True", {"False"}),
+          data_in_pin_(this, DataPinInfo{"Condition", &lux::meta::ref_type_of_v<bool>}, true)
     {
         setName("Branch");
-        data_in_pin_.setConstantData(lux::meta::RuntimeObject(bool{ false }));
+        data_in_pin_.setConstantData(lux::meta::RuntimeObject(bool{false}));
     }
 
     const ExecOutPin& BranchNode::execOutPinUp() const
@@ -29,30 +29,31 @@ namespace lux::flowforge
 
     const ExecOutPin& BranchNode::execOutPinDown() const
     {
-		return *extraOutPins()[0];
+        return *extraOutPins()[0];
     }
 
     /**
      * @brief Retrieves the DataInPin that provides the boolean condition.
      * @return A constant reference to the DataInPin.
      */
-    const DataInPin& BranchNode::dataInPin() const { return data_in_pin_; }
+    const DataInPin& BranchNode::dataInPin() const
+    {
+        return data_in_pin_;
+    }
 
     /**
      * @brief Default constructor for a StartNode, sets the Node ID to the pointer of this object.
      */
-     StartNode::StartNode() 
-         : StartNode(reinterpret_cast<uintptr_t>(this)) { }
+    StartNode::StartNode() : StartNode(reinterpret_cast<uintptr_t>(this)) {}
 
-     /**
+    /**
       * @brief Constructs a StartNode with a specified ID.
       * @param id The unique ID for this Node.
       */
-     StartNode::StartNode(uint64_t id) 
-         : Node(id, ENodeOperation::START), HasExecOutPin("->")
-     {
-         setName("Start");
-     }
+    StartNode::StartNode(uint64_t id) : Node(id, ENodeOperation::START), THasExecOutPin("->")
+    {
+        setName("Start");
+    }
 
     // ====================== SequenceNode ======================
 
@@ -65,8 +66,7 @@ namespace lux::flowforge
      * @brief Constructs a SequenceNode with a specified ID.
      * @param id The unique ID for this Node.
      */
-    SequenceNode::SequenceNode(uint64_t id)
-        : ExecIntermediateNode(id, ENodeOperation::SEQUENCE, "->", "->")
+    SequenceNode::SequenceNode(uint64_t id) : ExecIntermediateNode(id, ENodeOperation::SEQUENCE, "->", "->")
     {
         setName("Sequence");
     }
@@ -123,9 +123,9 @@ namespace lux::flowforge
     // loop runs [first, last).
     ForLoopNode::ForLoopNode(uint64_t id)
         : ExecIntermediateNode(id, ENodeOperation::FOR_LOOP, "->", "loop body", {"Completed"}),
-        first_index_(this, DataPinInfo{ "First Index", &lux::meta::ref_type_of_v<int32_t> }, true),
-        last_index_(this, DataPinInfo{ "Last Index", &lux::meta::ref_type_of_v<int32_t> }, true),
-        index_(this, DataPinInfo{ "Index", &lux::meta::ref_type_of_v<int32_t> })
+          first_index_(this, DataPinInfo{"First Index", &lux::meta::ref_type_of_v<int32_t>}, true),
+          last_index_(this, DataPinInfo{"Last Index", &lux::meta::ref_type_of_v<int32_t>}, true),
+          index_(this, DataPinInfo{"Index", &lux::meta::ref_type_of_v<int32_t>})
     {
         setName("For Loop");
         first_index_.setConstantData(lux::meta::RuntimeObject(int32_t{0}));
@@ -136,31 +136,46 @@ namespace lux::flowforge
      * @brief Retrieves the ExecOutPin used for the loop body execution path.
      * @return A constant reference to the ExecOutPin.
      */
-    const ExecOutPin& ForLoopNode::loopBody() const { return execOutPin(); }
+    const ExecOutPin& ForLoopNode::loopBody() const
+    {
+        return execOutPin();
+    }
 
     /**
      * @brief Retrieves the ExecOutPin triggered when the loop completes.
      * @return A constant reference to the ExecOutPin.
      */
-    const ExecOutPin& ForLoopNode::completed() const { return *extraOutPins()[0]; }
+    const ExecOutPin& ForLoopNode::completed() const
+    {
+        return *extraOutPins()[0];
+    }
 
     /**
      * @brief Retrieves the DataInPin representing the first iteration index.
      * @return A constant reference to the DataInPin.
      */
-    const DataInPin& ForLoopNode::first_index() const { return first_index_; }
+    const DataInPin& ForLoopNode::first_index() const
+    {
+        return first_index_;
+    }
 
     /**
      * @brief Retrieves the DataInPin representing the last iteration index.
      * @return A constant reference to the DataInPin.
      */
-    const DataInPin& ForLoopNode::lastIndex() const { return last_index_; }
+    const DataInPin& ForLoopNode::lastIndex() const
+    {
+        return last_index_;
+    }
 
     /**
      * @brief Retrieves the DataOutPin that holds the current loop index.
      * @return A constant reference to the DataOutPin.
      */
-    const DataOutPin& ForLoopNode::indexPin() const { return index_; }
+    const DataOutPin& ForLoopNode::indexPin() const
+    {
+        return index_;
+    }
 
     // ====================== WhileLoopNode ======================
 
@@ -174,52 +189,56 @@ namespace lux::flowforge
      * @param id The unique ID for this Node.
      */
     WhileLoopNode::WhileLoopNode(uint64_t id)
-        : ExecIntermediateNode(id, ENodeOperation::WHILE_LOOP, "->", "loop body", { "Completed" }),
-        data_in_pin_(this, DataPinInfo{ "Condition", &lux::meta::ref_type_of_v<bool> }, true)
+        : ExecIntermediateNode(id, ENodeOperation::WHILE_LOOP, "->", "loop body", {"Completed"}),
+          data_in_pin_(this, DataPinInfo{"Condition", &lux::meta::ref_type_of_v<bool>}, true)
     {
         setName("While Loop");
-        data_in_pin_.setConstantData(lux::meta::RuntimeObject(bool{ true }));
+        data_in_pin_.setConstantData(lux::meta::RuntimeObject(bool{true}));
     }
 
     /**
      * @brief Retrieves the ExecOutPin for the loop body execution path.
      * @return A constant reference to the ExecOutPin.
      */
-    const ExecOutPin& WhileLoopNode::loopBody() const { return execOutPin(); }
+    const ExecOutPin& WhileLoopNode::loopBody() const
+    {
+        return execOutPin();
+    }
 
     /**
      * @brief Retrieves the ExecOutPin triggered when the loop completes.
      * @return A constant reference to the ExecOutPin.
      */
-    const ExecOutPin& WhileLoopNode::completed() const { return *extraOutPins()[0]; }
+    const ExecOutPin& WhileLoopNode::completed() const
+    {
+        return *extraOutPins()[0];
+    }
 
     /**
      * @brief Retrieves the DataInPin representing the boolean loop condition.
      * @return A constant reference to the DataInPin.
      */
-    const DataInPin& WhileLoopNode::dataInPin() const { return data_in_pin_; }
+    const DataInPin& WhileLoopNode::dataInPin() const
+    {
+        return data_in_pin_;
+    }
 
-
-    ReturnNode::ReturnNode()
-        : ReturnNode(reinterpret_cast<uintptr_t>(this)){}
+    ReturnNode::ReturnNode() : ReturnNode(reinterpret_cast<uintptr_t>(this)) {}
 
     /**
      * @brief Constructs a ReturnNode with a specified ID.
      * @param id The unique ID for this Node.
      * @param type The runtime type info pointer for the return value type.
      */
-    ReturnNode::ReturnNode(uint64_t id)
-        : Node(id, ENodeOperation::RETURN), HasExecInPin("->")
+    ReturnNode::ReturnNode(uint64_t id) : Node(id, ENodeOperation::RETURN), THasExecInPin("->")
     {
-		setName("Return");
+        setName("Return");
     }
 
     // ====================== BreakNode ======================
-    BreakNode::BreakNode()
-        : BreakNode(reinterpret_cast<uintptr_t>(this)) {}
+    BreakNode::BreakNode() : BreakNode(reinterpret_cast<uintptr_t>(this)) {}
 
-    BreakNode::BreakNode(uint64_t id)
-        : Node(id, ENodeOperation::BREAK), HasExecInPin("->")
+    BreakNode::BreakNode(uint64_t id) : Node(id, ENodeOperation::BREAK), THasExecInPin("->")
     {
         setName("Break");
     }

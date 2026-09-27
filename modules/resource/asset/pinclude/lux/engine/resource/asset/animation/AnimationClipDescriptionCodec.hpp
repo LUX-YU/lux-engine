@@ -65,14 +65,14 @@
 
 namespace lux::asset::detail
 {
-    inline constexpr std::uint32_t kAcDescMagic       = 0x5343414Cu; // 'LACS' (LE)
-    inline constexpr std::uint32_t kAcDescTrailer     = 0x4543414Cu; // 'LACE'
-    inline constexpr std::uint32_t kAcEndianTag       = 0x01020304u;
-    inline constexpr std::uint32_t kAcSchemaVersion   = 2u;          // unorm16 rotations
+    inline constexpr std::uint32_t kAcDescMagic = 0x5343414Cu;   // 'LACS' (LE)
+    inline constexpr std::uint32_t kAcDescTrailer = 0x4543414Cu; // 'LACE'
+    inline constexpr std::uint32_t kAcEndianTag = 0x01020304u;
+    inline constexpr std::uint32_t kAcSchemaVersion = 2u; // unorm16 rotations
 
-    inline constexpr std::uint32_t kMaxAcStringLen    = 64u * 1024u;
-    inline constexpr std::uint32_t kMaxAcTrackCount   = 65535u;
-    inline constexpr std::uint32_t kMaxAcKeyCount     = 1u << 20;
+    inline constexpr std::uint32_t kMaxAcStringLen = 64u * 1024u;
+    inline constexpr std::uint32_t kMaxAcTrackCount = 65535u;
+    inline constexpr std::uint32_t kMaxAcKeyCount = 1u << 20;
 
     /// Encode an AnimationClip into a compact binary blob. Never fails
     /// (other than std::bad_alloc).
@@ -85,8 +85,9 @@ namespace lux::asset::detail
 
     /// Decode an AnimationClip. Returns false and (optionally) writes a
     /// human-readable error message into *error_out on any malformed input.
-    LUX_ASSET_PUBLIC bool
-    decodeAnimationClipDescription(std::span<const std::byte>      blob,
-                                   lux::rdesc::AnimationClip&       out,
-                                   std::string*                     error_out = nullptr) noexcept;
+    LUX_ASSET_PUBLIC bool decodeAnimationClipDescription(
+        std::span<const std::byte> blob,
+        lux::rdesc::AnimationClip& out,
+        std::string* error_out = nullptr
+    ) noexcept;
 }

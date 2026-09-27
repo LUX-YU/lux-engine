@@ -1,4 +1,5 @@
 #include <lux/engine/material/graph/MaterialGraph.hpp>
+#include <exception>
 #include <lux/engine/material/graph/Nodes.hpp>
 
 #include <utility>
@@ -14,10 +15,7 @@ namespace lux::material
             return lux::graph::NodeTypeId{static_cast<std::uint64_t>(kind) + 1U};
         }
 
-        [[nodiscard]] lux::graph::PinSemanticId pinSemantic(
-            EPinDirection direction,
-            std::size_t ordinal
-        ) noexcept
+        [[nodiscard]] lux::graph::PinSemanticId pinSemantic(EPinDirection direction, std::size_t ordinal) noexcept
         {
             const auto direction_bit = direction == EPinDirection::OUTPUT ? (std::uint64_t{1U} << 63U) : 0U;
             return lux::graph::PinSemanticId{direction_bit | static_cast<std::uint64_t>(ordinal + 1U)};
@@ -25,8 +23,8 @@ namespace lux::material
 
         [[nodiscard]] lux::graph::EPinDirection graphDirection(EPinDirection direction) noexcept
         {
-            return direction == EPinDirection::OUTPUT ? lux::graph::EPinDirection::OUTPUT :
-                                                       lux::graph::EPinDirection::INPUT;
+            return direction == EPinDirection::OUTPUT ? lux::graph::EPinDirection::OUTPUT
+                                                      : lux::graph::EPinDirection::INPUT;
         }
 
         [[nodiscard]] bool isConvertible(EValueType source, EValueType target) noexcept
@@ -112,7 +110,7 @@ namespace lux::material
         return true;
     }
 
-    NodeId MaterialGraph::addNode(std::unique_ptr<Node> node_value)
+    NodeId MaterialGraph::addNode(std::unique_ptr<Node> node_value) noexcept
     {
         if (!node_value)
             return {};
@@ -122,19 +120,11 @@ namespace lux::material
         node_value->setId(*id);
         if (!registerNodeStructure(*node_value, false))
             return {};
-        try
-        {
-            nodes_.emplace(*id, std::move(node_value));
-            return *id;
-        }
-        catch (...)
-        {
-            static_cast<void>(topology_.detachNode(*id));
-            return {};
-        }
+        nodes_.emplace(*id, std::move(node_value));
+        return *id;
     }
 
-    NodeId MaterialGraph::addNodeWithId(NodeId id, std::unique_ptr<Node> node_value)
+    NodeId MaterialGraph::addNodeWithId(NodeId id, std::unique_ptr<Node> node_value) noexcept
     {
         if (!node_value || !id.valid() || nodes_.find(id) != nodes_.end())
             return {};
@@ -152,16 +142,8 @@ namespace lux::material
         }();
         if (!registerNodeStructure(*node_value, pins_have_ids))
             return {};
-        try
-        {
-            nodes_.emplace(id, std::move(node_value));
-            return id;
-        }
-        catch (...)
-        {
-            static_cast<void>(topology_.detachNode(id));
-            return {};
-        }
+        nodes_.emplace(id, std::move(node_value));
+        return id;
     }
 
     std::unique_ptr<Node> MaterialGraph::extractNode(NodeId id)
@@ -201,8 +183,8 @@ namespace lux::material
         const auto* source_node = node(src);
         const auto* target_node = node(dst);
         const bool has_nodes = source_node != nullptr && target_node != nullptr;
-        const bool has_valid_pins = has_nodes && src_pin < source_node->outputs().size() &&
-            dst_pin < target_node->inputs().size();
+        const bool has_valid_pins =
+            has_nodes && src_pin < source_node->outputs().size() && dst_pin < target_node->inputs().size();
         const bool is_invalid_connection = src == dst || !has_valid_pins;
         if (is_invalid_connection)
         {
@@ -217,10 +199,9 @@ namespace lux::material
             return false;
         auto* source_node = node(src);
         auto* target_node = node(dst);
-        return static_cast<bool>(topology_.connect(
-            source_node->outputs()[src_pin].id,
-            target_node->inputs()[dst_pin].id
-        ));
+        return static_cast<bool>(
+            topology_.connect(source_node->outputs()[src_pin].id, target_node->inputs()[dst_pin].id)
+        );
     }
 
     void MaterialGraph::disconnect(NodeId dst, uint32_t dst_pin)
@@ -264,19 +245,19 @@ namespace lux::material
         : target_(std::exchange(other.target_, nullptr)), topology_(std::move(other.topology_)),
           layout_(std::move(other.layout_)), nodes_(std::move(other.nodes_)), inserted_(std::move(other.inserted_)),
           committed_(std::exchange(other.committed_, true)), topology_changed_(other.topology_changed_)
-    {
-    }
+    {}
 
     lux::cxx::expected<MaterialGraphEdit, lux::graph::GraphTopologyFailure> MaterialGraphEdit::prepare(
-        MaterialGraph& source, const MaterialGraphChange& change)
+        MaterialGraph& source,
+        const MaterialGraphChange& change
+    )
     {
         using Error = lux::graph::EGraphTopologyError;
-        const auto fail = [](Error error, NodeId node = {}, PinId pin = {})
-        {
+        const auto fail = [](Error error, NodeId node = {}, PinId pin = {}) {
             return lux::cxx::unexpected(lux::graph::GraphTopologyFailure{error, node, pin});
         };
-        const bool changes_topology = !change.insert.empty() || !change.erase.empty() ||
-            !change.connect.empty() || !change.disconnect.empty();
+        const bool changes_topology =
+            !change.insert.empty() || !change.erase.empty() || !change.connect.empty() || !change.disconnect.empty();
         if (!changes_topology)
         {
             MaterialGraphEdit result(source);
@@ -336,15 +317,15 @@ namespace lux::material
                 return fail(Error::DUPLICATE_NODE, node->id());
             }
             auto copy = node->clone();
-            const auto id = node->id().valid() ? stage.addNodeWithId(node->id(), std::move(copy)) : stage.addNode(std::move(copy));
+            const auto id =
+                node->id().valid() ? stage.addNodeWithId(node->id(), std::move(copy)) : stage.addNode(std::move(copy));
             if (!id.valid())
             {
                 return fail(Error::INVALID_ID, node->id());
             }
             result.inserted_.push_back(stage.node(id));
         }
-        const auto findNode = [&](NodeId id) -> const Node*
-        {
+        const auto findNode = [&](NodeId id) -> const Node* {
             if (const auto* inserted = stage.node(id))
             {
                 return inserted;
@@ -359,7 +340,8 @@ namespace lux::material
             {
                 return fail(Error::UNKNOWN_PIN, {}, from ? link.to : link.from);
             }
-            if (from->direction != lux::graph::EPinDirection::OUTPUT || to->direction != lux::graph::EPinDirection::INPUT)
+            if (from->direction != lux::graph::EPinDirection::OUTPUT ||
+                to->direction != lux::graph::EPinDirection::INPUT)
             {
                 return fail(Error::DIRECTION_MISMATCH, {}, link.from);
             }
@@ -414,19 +396,28 @@ namespace lux::material
         return result;
     }
 
-    std::span<const Node* const> MaterialGraphEdit::insertedNodes() const noexcept { return inserted_; }
+    std::span<const Node* const> MaterialGraphEdit::insertedNodes() const noexcept
+    {
+        return inserted_;
+    }
 
     lux::cxx::expected<void, lux::graph::GraphTopologyFailure> MaterialGraphEdit::place(
-        NodeId id, lux::graph::GraphNodeLayout value)
+        NodeId id,
+        lux::graph::GraphNodeLayout value
+    )
     {
         if (committed_ || !target_ || !std::isfinite(value.x) || !std::isfinite(value.y))
         {
-            return lux::cxx::unexpected(lux::graph::GraphTopologyFailure{lux::graph::EGraphTopologyError::INVALID_ID, id});
+            return lux::cxx::unexpected(
+                lux::graph::GraphTopologyFailure{lux::graph::EGraphTopologyError::INVALID_ID, id}
+            );
         }
         const auto& topology = topology_changed_ ? topology_ : target_->topology_;
         if (!topology.findNode(id))
         {
-            return lux::cxx::unexpected(lux::graph::GraphTopologyFailure{lux::graph::EGraphTopologyError::UNKNOWN_NODE, id});
+            return lux::cxx::unexpected(
+                lux::graph::GraphTopologyFailure{lux::graph::EGraphTopologyError::UNKNOWN_NODE, id}
+            );
         }
         return layout_.set(id, value);
     }

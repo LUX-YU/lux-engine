@@ -1,7 +1,7 @@
 #pragma once
 // ============================================================================
 //  GraphMaterialData.hpp — flat, trivially-copyable description of a node-graph
-//  material instance (the "Graph" family, ELightingTechnique::Graph).
+//  material instance (the "Graph" family, ELightingTechnique::GRAPH).
 //
 //  A graph material is a generic data blob: per-material param lanes + a small
 //  texture table. The graph-generated fragment shader reads these from the
@@ -15,6 +15,7 @@
 //  compiler); texture slot i maps to tex[i].
 // ============================================================================
 
+#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
 #include <cstdint>
 #include <type_traits>
 
@@ -27,8 +28,8 @@ namespace lux::render
 
         // param slot i -> params[i] = {x,y,z,w}; unused lanes stay zero.
         float params[kMaxParams][4]{};
-        // texture slot i -> bindless index (RTextureHandle.index); unused stay 0.
-        uint32_t tex_bindless[kMaxTextures]{};
+        // Remote textures are resolved to descriptor slots by MaterialResources.
+        RTextureHandle textures[kMaxTextures]{};
 
         uint32_t tex_mask{0};    // bit i set if texture slot i is bound
         uint32_t param_count{0}; // number of declared param lanes actually used
@@ -38,5 +39,6 @@ namespace lux::render
 
     static_assert(
         std::is_trivially_copyable_v<GraphMaterialData>,
-        "GraphMaterialData is sent as raw bytes over the comm channel");
+        "GraphMaterialData is sent as raw bytes over the comm channel"
+    );
 } // namespace lux::render

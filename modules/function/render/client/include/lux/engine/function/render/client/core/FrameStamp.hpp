@@ -4,7 +4,7 @@
 namespace lux::render
 {
     /// Strong-typed FIF slot index — prevents accidental mixing with serial.
-    enum class FrameSlot : uint32_t
+    enum class EFrameSlot : uint32_t
     {
     };
 
@@ -12,7 +12,7 @@ namespace lux::render
     struct FrameStamp
     {
         uint64_t serial;           ///< Monotonically increasing frame number (starts at 1).
-        FrameSlot slot;            ///< = serial % frames_in_flight (per-FIF array index).
+        EFrameSlot slot;            ///< = serial % frames_in_flight (per-FIF array index).
         uint32_t frames_in_flight; ///< System FIF configuration value.
         uint32_t image_index;      ///< Swapchain image index for this tick.
 
@@ -30,18 +30,17 @@ namespace lux::render
         // at the RenderContext ctor (the single authoritative gate), but a 0 here would
         // make beginTick's `serial % frames_in_flight_` a division by zero, so guard the
         // clock's own invariant defensively rather than trust every constructor caller.
-        explicit FrameClock(uint32_t fif) : frames_in_flight_(fif ? fif : 1u)
-        {
-        }
+        explicit FrameClock(uint32_t fif) : frames_in_flight_(fif ? fif : 1u) {}
 
         /// Produce the stamp for the current tick and advance.
         FrameStamp beginTick(uint32_t image_index)
         {
             FrameStamp s{
                 next_serial_,
-                static_cast<FrameSlot>(next_serial_ % frames_in_flight_),
+                static_cast<EFrameSlot>(next_serial_ % frames_in_flight_),
                 frames_in_flight_,
-                image_index};
+                image_index
+            };
             ++next_serial_;
             return s;
         }

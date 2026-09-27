@@ -8,8 +8,8 @@
 
 namespace lux::simulation::ecs
 {
-    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_VISUAL_PUBLIC std::span<const ComponentSchema>
-    visualComponentSchemas() noexcept;
+    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_VISUAL_PUBLIC std::span<const ComponentSchema> visualComponentSchemas(
+    ) noexcept;
 
     [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_VISUAL_PUBLIC ComponentSnapshotContribution
     visualComponentSnapshotContribution() noexcept;

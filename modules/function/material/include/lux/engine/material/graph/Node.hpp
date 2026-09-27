@@ -46,13 +46,12 @@ namespace lux::material
         COUNT
     };
 
-    LUX_ENGINE_MATERIAL_GRAPH_PUBLIC const char* toString(
-        EMatNodeKind kind) noexcept;
+    LUX_ENGINE_MATERIAL_GRAPH_PUBLIC const char* toString(EMatNodeKind kind) noexcept;
 
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC Node
     {
     public:
-        virtual ~Node();  // Defined in Node.cpp (MSVC export anchor)
+        virtual ~Node(); // Defined in Node.cpp (MSVC export anchor)
 
         Node& operator=(const Node&) = delete;
 
@@ -62,27 +61,58 @@ namespace lux::material
         /// from the graph an asset owns (the graph itself is move-only).
         [[nodiscard]] virtual std::unique_ptr<Node> clone() const = 0;
 
-        NodeId      id() const noexcept { return id_; }
-        void        setId(NodeId id) noexcept { id_ = id; }
-        EMatNodeKind kind() const noexcept { return kind_; }
+        NodeId id() const noexcept
+        {
+            return id_;
+        }
+        void setId(NodeId id) noexcept
+        {
+            id_ = id;
+        }
+        EMatNodeKind kind() const noexcept
+        {
+            return kind_;
+        }
 
         /// Safe downcast to a concrete node type — no RTTI. Keys kind() against
         /// the target's `kKind` constant (every concrete node declares one).
         /// Returns nullptr on a kind mismatch, exactly like the dynamic_cast it
         /// replaces.
-        template<class T> [[nodiscard]] T* as() noexcept
-        { return kind_ == T::kKind ? static_cast<T*>(this) : nullptr; }
+        template <class T> [[nodiscard]] T* as() noexcept
+        {
+            return kind_ == T::kKind ? static_cast<T*>(this) : nullptr;
+        }
 
-        template<class T> [[nodiscard]] const T* as() const noexcept
-        { return kind_ == T::kKind ? static_cast<const T*>(this) : nullptr; }
+        template <class T> [[nodiscard]] const T* as() const noexcept
+        {
+            return kind_ == T::kKind ? static_cast<const T*>(this) : nullptr;
+        }
 
-        const std::string& name() const noexcept { return name_; }
-        void               setName(std::string n) { name_ = std::move(n); }
+        const std::string& name() const noexcept
+        {
+            return name_;
+        }
+        void setName(std::string n)
+        {
+            name_ = std::move(n);
+        }
 
-        std::vector<DataPin>&       inputs()  noexcept { return in_pins_; }
-        const std::vector<DataPin>& inputs()  const noexcept { return in_pins_; }
-        std::vector<DataPin>&       outputs() noexcept { return out_pins_; }
-        const std::vector<DataPin>& outputs() const noexcept { return out_pins_; }
+        std::vector<DataPin>& inputs() noexcept
+        {
+            return in_pins_;
+        }
+        const std::vector<DataPin>& inputs() const noexcept
+        {
+            return in_pins_;
+        }
+        std::vector<DataPin>& outputs() noexcept
+        {
+            return out_pins_;
+        }
+        const std::vector<DataPin>& outputs() const noexcept
+        {
+            return out_pins_;
+        }
 
     protected:
         class ConstructionKey final
@@ -108,9 +138,9 @@ namespace lux::material
         // (prevents slicing).
         Node(const Node&) = default;
 
-        NodeId               id_{};
-        const EMatNodeKind   kind_;
-        std::string          name_;
+        NodeId id_{};
+        const EMatNodeKind kind_;
+        std::string name_;
         std::vector<DataPin> in_pins_;
         std::vector<DataPin> out_pins_;
     };

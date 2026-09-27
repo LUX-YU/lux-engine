@@ -80,8 +80,11 @@ namespace lux::render
         return true;
     }
 
-    uint32_t
-    MeshSectionTable::registerSection(const MeshSectionRecord& section, uint16_t ibo_segment, VkIndexType index_type)
+    uint32_t MeshSectionTable::registerSection(
+        const MeshSectionRecord& section,
+        uint16_t ibo_segment,
+        VkIndexType index_type
+    )
     {
         const SectionKey key = makeSectionKey(section, ibo_segment, index_type);
         const auto dedup_it = dedup_map_.find(key);
@@ -242,9 +245,8 @@ namespace lux::render
                 .dst = stream_.buffer(),
                 .dst_offset = chunk.dst_offset,
                 .size = chunk.size,
-                .domain = EBufferDomain::Storage_CS,
-            }
-            );
+                .domain = EBufferDomain::STORAGE_CS,
+            });
             offset += chunk.size;
         }
 

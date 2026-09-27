@@ -23,12 +23,13 @@
 
 namespace lux::events
 {
-    template <std::size_t Capacity> class InlineRecord
+    template <std::size_t Capacity> class TInlineRecord
     {
         static_assert(
             Capacity > 0 && Capacity <= 0xFFFF,
             "size field is u16; keep records small — this is an "
-            "inline-args buffer, not a data pipe");
+            "inline-args buffer, not a data pipe"
+        );
 
     public:
         static constexpr std::size_t kCapacity = Capacity;
@@ -101,14 +102,11 @@ namespace lux::events
     class InlineRecordReader
     {
     public:
-        InlineRecordReader(const std::byte* data, std::size_t size) noexcept : p_(data), end_(data + size)
-        {
-        }
+        InlineRecordReader(const std::byte* data, std::size_t size) noexcept : p_(data), end_(data + size) {}
 
         template <std::size_t N>
-        explicit InlineRecordReader(const InlineRecord<N>& r) noexcept : InlineRecordReader(r.data(), r.size())
-        {
-        }
+        explicit InlineRecordReader(const TInlineRecord<N>& r) noexcept : InlineRecordReader(r.data(), r.size())
+        {}
 
         template <class T>
             requires std::is_trivially_copyable_v<T>

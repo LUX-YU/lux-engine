@@ -3,7 +3,7 @@
 //  ResourceOperationCommon.hpp — shapes shared across resource op payloads
 // ============================================================================
 
-#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>  // TypeId
+#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp> // TypeId
 #include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
 #include <lux/engine/function/render/Capacity.hpp>
 
@@ -16,7 +16,7 @@ namespace lux::render
     /// resource kind's Destroy*Payload is an alias of this template, so they
     /// share one definition while remaining distinct types (each keeps its own
     /// type_id for command dispatch). Trivially copyable whenever HandleT is.
-    template <class HandleT> struct DestroyResourcePayload
+    template <class HandleT> struct TDestroyResourcePayload
     {
         HandleT handle{};
     };

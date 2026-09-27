@@ -18,8 +18,11 @@ namespace lux::gapi::vk
         /// Adopt an already-created handle together with everything required to
         /// destroy it. This is an owning operation; release() is the only way to
         /// detach the handle without destroying it.
-        [[nodiscard]] static Semaphore
-        adopt(VkDevice device, VkSemaphore handle, const VkAllocationCallbacks* allocator = nullptr) noexcept
+        [[nodiscard]] static Semaphore adopt(
+            VkDevice device,
+            VkSemaphore handle,
+            const VkAllocationCallbacks* allocator = nullptr
+        ) noexcept
         {
             Semaphore result;
             result.device_ = device;
@@ -34,8 +37,7 @@ namespace lux::gapi::vk
         Semaphore(Semaphore&& other) noexcept
             : device_(std::exchange(other.device_, VkDevice{})), allocator_(std::exchange(other.allocator_, nullptr)),
               semaphore_(std::exchange(other.semaphore_, VkSemaphore{}))
-        {
-        }
+        {}
 
         Semaphore& operator=(Semaphore&& other) noexcept
         {

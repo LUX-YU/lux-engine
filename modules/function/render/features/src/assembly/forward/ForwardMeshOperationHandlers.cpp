@@ -21,7 +21,7 @@ namespace lux::render
         //    的管线布局分支成对
         //  · pbr/stylized 默认 PCF 变体(EVSM 变体由 ShadowTechnique 选)
         //  · graph_fragment 可选无内置:空=跳过该族,非空必须可解析
-        using FMFill = BuiltinShaderFill<ForwardMeshCommConfig>;
+        using FMFill = TBuiltinShaderFill<ForwardMeshCommConfig>;
         static constexpr FMFill kShaderFills[] = {
             {.field = &ForwardMeshCommConfig::forward_cull_shader,
              .builtin = EBuiltinShader::MESH_CULL_UNIFIED_COMP,
@@ -38,7 +38,7 @@ namespace lux::render
             .comm_version = kForwardMeshCommConfigVersion,
             .descriptor_layout_version = kForwardMeshDescriptorLayoutVersion,
             .known_ext_flags =
-                GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::HZB} | GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::Bindless},
+                GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::HZB} | GpuDrivenMeshExtFlags{EGpuDrivenMeshExt::BINDLESS},
         };
 
         auto& shaders = sc->renderContext().globalRegistry().must<ShaderResources>();

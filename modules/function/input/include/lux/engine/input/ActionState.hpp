@@ -10,15 +10,20 @@ namespace lux::input
     //  Action event bitfield                                              //
     // ------------------------------------------------------------------ //
 
-    enum ActionEvent : uint8_t
+    enum class EActionEvent : std::uint8_t
     {
-        ActionEvent_None = 0,
-        ActionEvent_Started = 1 << 0,   ///< Became active this frame
-        ActionEvent_Ongoing = 1 << 1,   ///< Active but trigger not yet met
-        ActionEvent_Triggered = 1 << 2, ///< Trigger condition fully met
-        ActionEvent_Completed = 1 << 3, ///< Transitioned from active to inactive
-        ActionEvent_Canceled = 1 << 4,  ///< Interrupted before trigger was met
+        NONE = 0,
+        STARTED = 1 << 0,   ///< Became active this frame
+        ONGOING = 1 << 1,   ///< Active but trigger not yet met
+        TRIGGERED = 1 << 2, ///< Trigger condition fully met
+        COMPLETED = 1 << 3, ///< Transitioned from active to inactive
+        CANCELED = 1 << 4,  ///< Interrupted before trigger was met
     };
+
+    [[nodiscard]] constexpr std::uint8_t actionEventMask(EActionEvent event) noexcept
+    {
+        return static_cast<std::uint8_t>(event);
+    }
 
     /// Snapshot of the current state for a single ActionId.
     ///
@@ -40,7 +45,7 @@ namespace lux::input
         bool prev_down = false;
         float held_seconds = 0.0f;
 
-        uint8_t events = ActionEvent_None;
+        std::uint8_t events = actionEventMask(EActionEvent::NONE);
 
         ETriggerState trigger_state = ETriggerState::NONE;
         ETriggerState prev_trigger_state = ETriggerState::NONE;
@@ -50,23 +55,23 @@ namespace lux::input
         // ── Query helpers (all based on events / down / trigger_state) ── //
         [[nodiscard]] bool started() const noexcept
         {
-            return (events & ActionEvent_Started) != 0;
+            return (events & actionEventMask(EActionEvent::STARTED)) != 0;
         }
         [[nodiscard]] bool ongoing() const noexcept
         {
-            return (events & ActionEvent_Ongoing) != 0;
+            return (events & actionEventMask(EActionEvent::ONGOING)) != 0;
         }
         [[nodiscard]] bool triggered() const noexcept
         {
-            return (events & ActionEvent_Triggered) != 0;
+            return (events & actionEventMask(EActionEvent::TRIGGERED)) != 0;
         }
         [[nodiscard]] bool completed() const noexcept
         {
-            return (events & ActionEvent_Completed) != 0;
+            return (events & actionEventMask(EActionEvent::COMPLETED)) != 0;
         }
         [[nodiscard]] bool canceled() const noexcept
         {
-            return (events & ActionEvent_Canceled) != 0;
+            return (events & actionEventMask(EActionEvent::CANCELED)) != 0;
         }
         [[nodiscard]] bool active() const noexcept
         {

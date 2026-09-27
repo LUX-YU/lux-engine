@@ -24,16 +24,12 @@ namespace lux::render
     )
         : res_ctx_(res_ctx), layout_(layout), frames_in_flight_(frames_in_flight)
     {
-        try
         {
             recorded_slots_.resize(frames_in_flight);
             if (extent.width != 0 && extent.height != 0 && frames_in_flight != 0 && allocate(extent))
                 backing_revision_ = 1;
         }
-        catch (const std::bad_alloc&)
-        {
-            release();
-        }
+
         // No explicit layout transition — RG inserts correct barriers on first use.
     }
 
@@ -80,7 +76,6 @@ namespace lux::render
     {
         if (extent.width == 0 || extent.height == 0 || backing_revision_ == std::numeric_limits<uint64_t>::max())
             return false;
-        try
         {
             OffscreenImagePool prepared{res_ctx_, layout, extent, frames_in_flight_};
             if (!prepared.valid())
@@ -100,10 +95,6 @@ namespace lux::render
             retired_images_.push_back(std::move(retired));
             return true;
         }
-        catch (const std::bad_alloc&)
-        {
-            return false;
-        }
     }
 
     // =============================================================================
@@ -119,7 +110,7 @@ namespace lux::render
 
         for (size_t si = 0; si < kTargetSlotCount; ++si)
         {
-            if (!layout_.hasSlot(static_cast<TargetSlot>(si)))
+            if (!layout_.hasSlot(static_cast<ETargetSlot>(si)))
                 continue;
 
             auto& src = binding_.slot_images[si];
@@ -154,7 +145,7 @@ namespace lux::render
 
         for (size_t si = 0; si < kTargetSlotCount; ++si)
         {
-            const auto slot_enum = static_cast<TargetSlot>(si);
+            const auto slot_enum = static_cast<ETargetSlot>(si);
             if (!layout_.hasSlot(slot_enum))
                 continue;
 

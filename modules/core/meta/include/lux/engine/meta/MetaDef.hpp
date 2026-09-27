@@ -29,24 +29,24 @@ namespace lux::meta
      */
     enum class EBaseType : std::uint8_t // total 14 element, actually 4 bits
     {
-        Void,
+        VOID,
         // Fundamental start
-        Bool = 1,
+        BOOL = 1,
 
-        Int8,
-        Uint8,
-        Int16,
-        Uint16,
-        Int32,
-        Uint32,
-        Int64,
-        Uint64,
+        INT8,
+        UINT8,
+        INT16,
+        UINT16,
+        INT32,
+        UINT32,
+        INT64,
+        UINT64,
 
-        Float,
-        Double = 11,
+        FLOAT,
+        DOUBLE = 11,
         // Fundamental end
-        Record, //!< pointer / reference
-        Unknown
+        RECORD, //!< pointer / reference
+        UNKNOWN
     };
 
     /**
@@ -55,21 +55,21 @@ namespace lux::meta
      */
     enum class ETypeQual : std::uint8_t // total 9 element, actually 4 bits
     {
-        Value = 0,          //!< plain value   T
-        LRef = 1,           //!< non‑const l‑value ref  T&
-        RRef = 2,           //!< r‑value ref  T&&
-        LRefToConst = 3,    //!< const l‑value ref  const T&
-        RRefToConst = 4,    //!< const r‑value ref  const T&&
-        Ptr = 5,            //!< pointer  T*
-        PtrToConst = 6,     //!< const pointer  const T*
-        ConstPtr = 7,       ////!< const pointer  T* const
-        ConstPtrToConst = 8 //!< const pointer to const  const T* const
+        VALUE = 0,          //!< plain value   T
+        L_REF = 1,           //!< non‑const l‑value ref  T&
+        R_REF = 2,           //!< r‑value ref  T&&
+        L_REF_TO_CONST = 3,    //!< const l‑value ref  const T&
+        R_REF_TO_CONST = 4,    //!< const r‑value ref  const T&&
+        PTR = 5,            //!< pointer  T*
+        PTR_TO_CONST = 6,     //!< const pointer  const T*
+        CONST_PTR = 7,       ////!< const pointer  T* const
+        CONST_PTR_TO_CONST = 8 //!< const pointer to const  const T* const
     };
 
     static constexpr inline std::uint8_t p_base_type_num =
-        p_to_underlying(EBaseType::Unknown) + 1; // 4 bits for base type
+        p_to_underlying(EBaseType::UNKNOWN) + 1; // 4 bits for base type
     static constexpr inline std::uint8_t p_type_qual_num =
-        p_to_underlying(ETypeQual::ConstPtrToConst) + 1; // 4 bits for type qualifier
+        p_to_underlying(ETypeQual::CONST_PTR_TO_CONST) + 1; // 4 bits for type qualifier
 
     /**
      * @struct QualType
@@ -89,12 +89,12 @@ namespace lux::meta
 
     static inline constexpr bool p_is_base_fundamental(const QualType& t) noexcept
     {
-        return t.base >= p_to_underlying(EBaseType::Bool) && t.base <= p_to_underlying(EBaseType::Double);
+        return t.base >= p_to_underlying(EBaseType::BOOL) && t.base <= p_to_underlying(EBaseType::DOUBLE);
     }
 
     static inline constexpr bool p_is_base_record(const QualType& t) noexcept
     {
-        return t.base == p_to_underlying(EBaseType::Record);
+        return t.base == p_to_underlying(EBaseType::RECORD);
     }
 
     /**
@@ -106,35 +106,35 @@ namespace lux::meta
     {
         using B = std::remove_cvref_t<std::remove_pointer_t<U>>;
         if constexpr (std::is_void_v<B>)
-            return EBaseType::Void;
+            return EBaseType::VOID;
         else if constexpr (std::same_as<B, bool>)
-            return EBaseType::Bool;
+            return EBaseType::BOOL;
         else if constexpr (std::same_as<B, std::int8_t>)
-            return EBaseType::Int8;
+            return EBaseType::INT8;
         else if constexpr (std::same_as<B, std::uint8_t>)
-            return EBaseType::Uint8;
+            return EBaseType::UINT8;
         else if constexpr (std::same_as<B, std::int16_t>)
-            return EBaseType::Int16;
+            return EBaseType::INT16;
         else if constexpr (std::same_as<B, std::uint16_t>)
-            return EBaseType::Uint16;
+            return EBaseType::UINT16;
         else if constexpr (std::same_as<B, std::int32_t>)
-            return EBaseType::Int32;
+            return EBaseType::INT32;
         else if constexpr (std::same_as<B, std::uint32_t>)
-            return EBaseType::Uint32;
+            return EBaseType::UINT32;
         else if constexpr (std::same_as<B, std::int64_t>)
-            return EBaseType::Int64;
+            return EBaseType::INT64;
         else if constexpr (std::same_as<B, std::uint64_t>)
-            return EBaseType::Uint64;
+            return EBaseType::UINT64;
         else if constexpr (std::same_as<B, float>)
-            return EBaseType::Float;
+            return EBaseType::FLOAT;
         else if constexpr (std::same_as<B, double>)
-            return EBaseType::Double;
+            return EBaseType::DOUBLE;
         else if constexpr (std::is_enum_v<B>)
             return deduce_base<std::underlying_type_t<B>>();
         else if constexpr (std::is_class_v<B>)
-            return EBaseType::Record;
+            return EBaseType::RECORD;
         else
-            return EBaseType::Unknown;
+            return EBaseType::UNKNOWN;
     }
 
     //----------- 2.  Deduce qualifier ----------------------------------------------------
@@ -147,27 +147,27 @@ namespace lux::meta
             constexpr bool obj_const = std::is_const_v<Pointee>;
 
             if constexpr (ptr_const && obj_const)
-                return ETypeQual::ConstPtrToConst;
+                return ETypeQual::CONST_PTR_TO_CONST;
             else if constexpr (ptr_const && !obj_const)
-                return ETypeQual::ConstPtr;
+                return ETypeQual::CONST_PTR;
             else if constexpr (!ptr_const && obj_const)
-                return ETypeQual::PtrToConst;
+                return ETypeQual::PTR_TO_CONST;
             else
-                return ETypeQual::Ptr;
+                return ETypeQual::PTR;
         }
         else if constexpr (std::is_lvalue_reference_v<T>)
         {
             using Refee = std::remove_reference_t<T>;
-            return std::is_const_v<Refee> ? ETypeQual::LRefToConst : ETypeQual::LRef;
+            return std::is_const_v<Refee> ? ETypeQual::L_REF_TO_CONST : ETypeQual::L_REF;
         }
         else if constexpr (std::is_rvalue_reference_v<T>)
         {
             using Refee = std::remove_reference_t<T>;
-            return std::is_const_v<Refee> ? ETypeQual::RRefToConst : ETypeQual::RRef;
+            return std::is_const_v<Refee> ? ETypeQual::R_REF_TO_CONST : ETypeQual::R_REF;
         }
         else
         {
-            return ETypeQual::Value;
+            return ETypeQual::VALUE;
         }
     }
 
@@ -175,17 +175,18 @@ namespace lux::meta
     {
         return {
             static_cast<std::uint8_t>(p_to_underlying(deduce_base<std::remove_cvref_t<T>>())),
-            static_cast<std::uint8_t>(p_to_underlying(deduce_qual<T>()))};
+            static_cast<std::uint8_t>(p_to_underlying(deduce_qual<T>()))
+        };
     }
 
     // Because our reflection system currently supports only T*, const T, and const T&,
     // this function is already sufficient for our present needs.
-    template <class T> struct remove_one_modifier
+    template <class T> struct TRemoveOneModifier
     {
         using type = std::remove_cv_t<std::remove_reference_t<std::remove_pointer_t<T>>>;
     };
 
-    template <class T> using remove_one_modifier_t = typename remove_one_modifier<T>::type;
+    template <class T> using remove_one_modifier_t = typename TRemoveOneModifier<T>::type;
 
     /** @brief Produce @ref QualType for a C++ type `T`. */
     template <typename T> constexpr inline QualType __builtin_qual_type = make_qual_type<T>();

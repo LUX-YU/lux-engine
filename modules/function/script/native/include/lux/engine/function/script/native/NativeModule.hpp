@@ -45,9 +45,14 @@ namespace lux::script
         std::unique_ptr<State> state_;
     };
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC ScriptResult<NativeModule>
-    loadNativeModule(const std::filesystem::path& path, HostSymbolResolver resolver = {});
+    [[nodiscard]] LUX_FUNCTION_PUBLIC ScriptResult<NativeModule> loadNativeModule(
+        const std::filesystem::path& path,
+        HostSymbolResolver resolver = {}
+    );
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC ScriptResult<NativeModule>
-    loadNativeModule(std::span<const std::byte> image, std::string_view module_name, HostSymbolResolver resolver = {});
+    [[nodiscard]] LUX_FUNCTION_PUBLIC ScriptResult<NativeModule> loadNativeModule(
+        std::span<const std::byte> image,
+        std::string_view module_name,
+        HostSymbolResolver resolver = {}
+    );
 }

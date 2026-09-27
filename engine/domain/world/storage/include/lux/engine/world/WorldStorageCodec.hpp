@@ -87,8 +87,7 @@ namespace lux::world
         std::span<const WorldEncodedDataRecord> data;
     };
 
-    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC
-    lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
+    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
     encodeWorldStorageVolume(
         WorldBundleId bundle,
         WorldBundleGeneration generation,
@@ -97,16 +96,14 @@ namespace lux::world
         std::size_t max_encoded_bytes = std::numeric_limits<std::size_t>::max()
     ) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC
-    lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
+    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
     encodeWorldPartitionTablePage(
         partition::PartitionOrdinal first,
         std::span<const WorldPartitionRecord> records,
         std::span<const WorldPartitionExtent> extents
     ) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC
-    lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
+    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
     encodeWorldPartitionData(
         partition::PartitionOrdinal partition,
         std::span<const WorldEncodedObjectRecord> objects
@@ -114,14 +111,19 @@ namespace lux::world
 
     // Re-encode decoded data without requiring runtime or Editor component capabilities.
     // Unknown schema/version payloads are preserved byte for byte.
-    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC
-    lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
+    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC lux::cxx::expected<std::vector<std::byte>, WorldStorageCodecFailure>
     encodeWorldPartitionData(const WorldPartitionData& partition);
 
     // Pure validation of captured bytes; identity comes from their validated table record.
-    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC
-    lux::cxx::expected<WorldPartitionData, WorldStorageCodecFailure> decodeWorldPartitionData(
-        std::span<const std::byte> wire, WorldBundleId bundle, WorldBundleGeneration generation,
-        partition::PartitionOrdinal partition, WorldPartitionId id, std::uint32_t schema_count,
-        std::size_t decoded_limit, std::stop_token stop = {}) noexcept;
+    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC lux::cxx::expected<WorldPartitionData, WorldStorageCodecFailure>
+    decodeWorldPartitionData(
+        std::span<const std::byte> wire,
+        WorldBundleId bundle,
+        WorldBundleGeneration generation,
+        partition::PartitionOrdinal partition,
+        WorldPartitionId id,
+        std::uint32_t schema_count,
+        std::size_t decoded_limit,
+        std::stop_token stop = {}
+    ) noexcept;
 } // namespace lux::world

@@ -26,8 +26,8 @@ namespace lux::simulation
 
     struct SimulationDataSchemaIdLess final
     {
-        [[nodiscard]] bool
-        operator()(const SimulationDataSchemaId& left, const SimulationDataSchemaId& right) const noexcept
+        [[nodiscard]] bool operator()(const SimulationDataSchemaId& left, const SimulationDataSchemaId& right)
+            const noexcept
         {
             return left.hash < right.hash || (left.hash == right.hash && left.name < right.name);
         }

@@ -13,15 +13,24 @@ namespace lux::flowforge
             using lux::semantic::EAbiKind;
             switch (static_cast<EAbiKind>(abi_kind))
             {
-            case EAbiKind::BOOL: return lux::meta::EBaseType::Bool;
-            case EAbiKind::I32: return lux::meta::EBaseType::Int32;
-            case EAbiKind::U32: return lux::meta::EBaseType::Uint32;
-            case EAbiKind::I64: return lux::meta::EBaseType::Int64;
-            case EAbiKind::U64: return lux::meta::EBaseType::Uint64;
-            case EAbiKind::F32: return lux::meta::EBaseType::Float;
-            case EAbiKind::F64: return lux::meta::EBaseType::Double;
-            case EAbiKind::STRUCT_REF: return lux::meta::EBaseType::Record;
-            default: return lux::meta::EBaseType::Unknown;
+            case EAbiKind::BOOL:
+                return lux::meta::EBaseType::BOOL;
+            case EAbiKind::I32:
+                return lux::meta::EBaseType::INT32;
+            case EAbiKind::U32:
+                return lux::meta::EBaseType::UINT32;
+            case EAbiKind::I64:
+                return lux::meta::EBaseType::INT64;
+            case EAbiKind::U64:
+                return lux::meta::EBaseType::UINT64;
+            case EAbiKind::F32:
+                return lux::meta::EBaseType::FLOAT;
+            case EAbiKind::F64:
+                return lux::meta::EBaseType::DOUBLE;
+            case EAbiKind::STRUCT_REF:
+                return lux::meta::EBaseType::RECORD;
+            default:
+                return lux::meta::EBaseType::UNKNOWN;
             }
         }
     }
@@ -35,7 +44,7 @@ namespace lux::flowforge
     std::size_t ScriptEventAwaitNode::descriptionBytes() const noexcept
     {
         return sizeof(TypeStorage) + type_->name.capacity() + source_.system_name.capacity() +
-            source_.event_name.capacity() + source_.payload.canonical_name.capacity() + 4;
+               source_.event_name.capacity() + source_.payload.canonical_name.capacity() + 4;
     }
 
     ScriptEventAwaitNode::ScriptEventAwaitNode(
@@ -47,19 +56,17 @@ namespace lux::flowforge
     {
         type_->name = source_.payload.canonical_name;
         type_->type = {
-            .qtype = {
-                static_cast<std::uint8_t>(baseType(source_.payload.abi_kind)),
-                static_cast<std::uint8_t>(lux::meta::ETypeQual::Value)
-            },
-            .traits = {
-                .is_standard_layout = true,
-                .is_trivially_constructible = true,
-                .is_trivially_copyable = true,
-                .is_trivially_default_constructible = true,
-                .is_trivially_destructible = true,
-                .is_trivially_move_assignable = true,
-                .is_trivially_move_constructible = true
-            },
+            .qtype =
+                {static_cast<std::uint8_t>(baseType(source_.payload.abi_kind)),
+                 static_cast<std::uint8_t>(lux::meta::ETypeQual::VALUE)},
+            .traits =
+                {.is_standard_layout = true,
+                 .is_trivially_constructible = true,
+                 .is_trivially_copyable = true,
+                 .is_trivially_default_constructible = true,
+                 .is_trivially_destructible = true,
+                 .is_trivially_move_assignable = true,
+                 .is_trivially_move_constructible = true},
             .name = type_->name,
             .hash = source_.payload.type_id,
             .size = source_.payload.size,
@@ -71,8 +78,7 @@ namespace lux::flowforge
 
     ScriptEventAwaitNode::ScriptEventAwaitNode(const lux::script::ScriptEventSourceDescription& source)
         : ScriptEventAwaitNode(reinterpret_cast<std::uintptr_t>(this), source)
-    {
-    }
+    {}
 
     ScriptEventAwaitNode::~ScriptEventAwaitNode() = default;
 }

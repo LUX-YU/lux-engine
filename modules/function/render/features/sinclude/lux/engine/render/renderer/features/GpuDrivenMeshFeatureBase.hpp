@@ -22,10 +22,10 @@
 #include <lux/engine/render/gpu/ShaderObject.hpp>
 #include <lux/engine/render/gpu/VmaFwd.hpp>
 #include <lux/engine/function/render/features/core/VertexLayoutTypes.hpp> // VertexLayoutId
-#include <lux/engine/render/resources/material/MaterialFamily.hpp>      // EShadingModel
+#include <lux/engine/render/resources/material/MaterialFamily.hpp>        // EShadingModel
 #include <lux/engine/render/graph/RGPassTypes.hpp>
 #include <lux/engine/render/resources/mesh/MeshInstanceExtData.hpp>
-#include <lux/engine/function/render/graph/RGEnums.hpp>                           // phaseBit / ECoreRenderPhase
+#include <lux/engine/function/render/graph/RGEnums.hpp>                             // phaseBit / ECoreRenderPhase
 #include <lux/engine/function/render/features/resources/mesh/RenderObjectTypes.hpp> // EPassDomain / PassMask
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/gapi/vk/Pipeline.hpp>
@@ -269,8 +269,7 @@ namespace lux::render
                     buckets.push_back(MaterialResources::VariantBucketDesc{
                         .family = static_cast<ELightingTechnique>(fi),
                         .feature_mask = 0u,
-                    }
-                    );
+                    });
                 }
             }
             return buckets;
@@ -302,7 +301,7 @@ namespace lux::render
                 return fs_unlit;
             case EShadingModel::LEGACY_LIT_BASE:
                 return fs_unlit; // aliases Unlit (S15)
-            case EShadingModel::PbrMetallicRoughness:
+            case EShadingModel::PBR_METALLIC_ROUGHNESS:
                 return fs_pbr;
             case EShadingModel::STYLIZED:
                 return fs_stylized;

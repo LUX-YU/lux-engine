@@ -133,7 +133,8 @@ namespace lux::render
                 true,
                 &full_page_buffer_,
                 &full_allocation,
-                reinterpret_cast<void**>(&full_page_mapped_)) ||
+                reinterpret_cast<void**>(&full_page_mapped_)
+            ) ||
             full_page_buffer_ == VK_NULL_HANDLE || !full_page_mapped_)
         {
             full_page_allocation_ = full_allocation;
@@ -150,7 +151,8 @@ namespace lux::render
                 true,
                 &fallback_page_buffer_,
                 &fallback_allocation,
-                reinterpret_cast<void**>(&fallback_page_mapped_)) ||
+                reinterpret_cast<void**>(&fallback_page_mapped_)
+            ) ||
             fallback_page_buffer_ == VK_NULL_HANDLE || !fallback_page_mapped_)
         {
             fallback_page_allocation_ = fallback_allocation;
@@ -172,7 +174,8 @@ namespace lux::render
                     true,
                     &slot.buffer,
                     &metadata_allocation,
-                    reinterpret_cast<void**>(&slot.mapped)) ||
+                    reinterpret_cast<void**>(&slot.mapped)
+                ) ||
                 slot.buffer == VK_NULL_HANDLE || !slot.mapped)
             {
                 slot.allocation = metadata_allocation;
@@ -199,7 +202,8 @@ namespace lux::render
                     true,
                     &slot.buffer,
                     &count_allocation,
-                    reinterpret_cast<void**>(&slot.mapped)) ||
+                    reinterpret_cast<void**>(&slot.mapped)
+                ) ||
                 slot.buffer == VK_NULL_HANDLE || !slot.mapped)
             {
                 slot.allocation = count_allocation;
@@ -239,11 +243,8 @@ namespace lux::render
         {
             retire_scheduler_->purge(retire_owner_token_);
             free_slots_.insert(free_slots_.end(), retiring_slots_.begin(), retiring_slots_.end());
-            free_fallback_slots_.insert(
-                free_fallback_slots_.end(),
-                retiring_fallback_slots_.begin(),
-                retiring_fallback_slots_.end()
-            );
+            free_fallback_slots_
+                .insert(free_fallback_slots_.end(), retiring_fallback_slots_.begin(), retiring_fallback_slots_.end());
         }
         retiring_slots_.clear();
         retiring_fallback_slots_.clear();
@@ -310,8 +311,8 @@ namespace lux::render
             {
                 const bool has_cache_slot = candidate.cache_slot != kInvalidSlot;
                 const bool is_other_page = &candidate != &page;
-                const bool is_earlier_candidate = oldest == nullptr ||
-                    candidate.last_wanted_serial < oldest->last_wanted_serial;
+                const bool is_earlier_candidate =
+                    oldest == nullptr || candidate.last_wanted_serial < oldest->last_wanted_serial;
                 const bool is_candidate = has_cache_slot && is_other_page && is_earlier_candidate;
                 if (is_candidate)
                 {
@@ -348,11 +349,10 @@ namespace lux::render
                     continue;
                 }
                 const bool is_first_candidate = oldest == nullptr;
-                const bool is_better_cache = oldest != nullptr &&
-                    candidate.cache_slot == kInvalidSlot && oldest->cache_slot != kInvalidSlot;
-                const bool is_earlier_candidate = oldest != nullptr &&
-                    candidate.cache_slot == oldest->cache_slot &&
-                    candidate.last_wanted_serial < oldest->last_wanted_serial;
+                const bool is_better_cache =
+                    oldest != nullptr && candidate.cache_slot == kInvalidSlot && oldest->cache_slot != kInvalidSlot;
+                const bool is_earlier_candidate = oldest != nullptr && candidate.cache_slot == oldest->cache_slot &&
+                                                  candidate.last_wanted_serial < oldest->last_wanted_serial;
                 const bool is_candidate_better = is_first_candidate || is_better_cache || is_earlier_candidate;
                 if (is_candidate_better)
                 {
@@ -548,8 +548,7 @@ namespace lux::render
         retire_scheduler_->defer(deferred_destroy_->currentSerial(), retire_owner_token_, [this, slot] {
             std::erase(retiring_slots_, slot);
             free_slots_.push_back(slot);
-        }
-        );
+        });
     }
 
     void TerrainResources::deferFallbackSlotReturn(std::uint32_t slot) noexcept
@@ -563,45 +562,40 @@ namespace lux::render
         retire_scheduler_->defer(deferred_destroy_->currentSerial(), retire_owner_token_, [this, slot] {
             std::erase(retiring_fallback_slots_, slot);
             free_fallback_slots_.push_back(slot);
-        }
-        );
+        });
     }
 
     bool TerrainResources::upsert(const UploadTerrainPagePayload& header, std::span<const std::byte> page_data)
     {
         const bool is_invalid_identity = header.scene_id.isNull() || !accepts(header.id, header.revision);
-        const bool is_invalid_height = !std::isfinite(header.height_min) ||
-            !std::isfinite(header.height_max) || !(header.height_max > header.height_min);
-        const bool is_invalid_spacing = !std::isfinite(header.sample_spacing) ||
-            !(header.sample_spacing > 0.0f);
-        const bool is_invalid_geometric_error = !std::isfinite(header.geometric_error) ||
-            header.geometric_error < 0.0f;
+        const bool is_invalid_height = !std::isfinite(header.height_min) || !std::isfinite(header.height_max) ||
+                                       !(header.height_max > header.height_min);
+        const bool is_invalid_spacing = !std::isfinite(header.sample_spacing) || !(header.sample_spacing > 0.0f);
+        const bool is_invalid_geometric_error = !std::isfinite(header.geometric_error) || header.geometric_error < 0.0f;
         const bool is_invalid_hlod_error = !std::isfinite(header.hlod_enter_error_pixels) ||
-            !std::isfinite(header.hlod_exit_error_pixels) ||
-            !(header.hlod_enter_error_pixels > header.hlod_exit_error_pixels) ||
-            !(header.hlod_exit_error_pixels > 0.0f);
-        const bool is_invalid_transition = header.transition_milliseconds == 0u ||
-            header.transition_seed == 0u;
+                                           !std::isfinite(header.hlod_exit_error_pixels) ||
+                                           !(header.hlod_enter_error_pixels > header.hlod_exit_error_pixels) ||
+                                           !(header.hlod_exit_error_pixels > 0.0f);
+        const bool is_invalid_transition = header.transition_milliseconds == 0u || header.transition_seed == 0u;
         const bool is_invalid_hierarchy = header.hierarchy_level > 4u || header.child_count > 16u ||
-            ((header.hierarchy_level == 0u) != (header.child_count == 0u)) ||
-            header.weight_layer_count > 8u;
+                                          ((header.hierarchy_level == 0u) != (header.child_count == 0u)) ||
+                                          header.weight_layer_count > 8u;
         const bool is_invalid_payload = page_data.size() != expectedPageBytes();
         const bool is_invalid_header = is_invalid_identity || is_invalid_height || is_invalid_spacing ||
-            is_invalid_geometric_error || is_invalid_hlod_error || is_invalid_transition ||
-            is_invalid_hierarchy || is_invalid_payload;
+                                       is_invalid_geometric_error || is_invalid_hlod_error || is_invalid_transition ||
+                                       is_invalid_hierarchy || is_invalid_payload;
         if (is_invalid_header)
         {
             return false;
         }
         TerrainWirePageDataHeader data_header{};
         std::memcpy(&data_header, page_data.data(), sizeof(data_header));
-        const bool is_invalid_height_data = data_header.height_count != kHeightCount ||
-            data_header.weight_plane_bytes != kWeightBytes;
-        const bool is_invalid_hole_data = data_header.hole_bytes != kHoleBytes ||
-            data_header.min_max_node_count != kTerrainWireMinMaxNodeCount;
+        const bool is_invalid_height_data =
+            data_header.height_count != kHeightCount || data_header.weight_plane_bytes != kWeightBytes;
+        const bool is_invalid_hole_data =
+            data_header.hole_bytes != kHoleBytes || data_header.min_max_node_count != kTerrainWireMinMaxNodeCount;
         const bool is_invalid_fallback_data = data_header.fallback_height_count != kFallbackCount;
-        const bool is_invalid_data_header = is_invalid_height_data || is_invalid_hole_data ||
-            is_invalid_fallback_data;
+        const bool is_invalid_data_header = is_invalid_height_data || is_invalid_hole_data || is_invalid_fallback_data;
         if (is_invalid_data_header)
         {
             return false;
@@ -795,10 +789,10 @@ namespace lux::render
             const auto extent = static_cast<double>(page.header.sample_spacing) * kTerrainWireQuadEdge;
             for (const auto& view : views)
             {
-                const bool is_invalid_coordinate_page_size = !std::isfinite(view.coordinate_page_size) ||
-                    !(view.coordinate_page_size > 0.0f);
-                const bool is_invalid_projection_scale = !std::isfinite(view.projection_scale) ||
-                    !(view.projection_scale > 0.0f);
+                const bool is_invalid_coordinate_page_size =
+                    !std::isfinite(view.coordinate_page_size) || !(view.coordinate_page_size > 0.0f);
+                const bool is_invalid_projection_scale =
+                    !std::isfinite(view.projection_scale) || !(view.projection_scale > 0.0f);
                 const bool is_invalid_view = is_invalid_coordinate_page_size || is_invalid_projection_scale;
                 if (is_invalid_view)
                 {
@@ -895,10 +889,11 @@ namespace lux::render
             for (const auto& [page_key, page] : pages_)
             {
                 const bool is_not_desired = !desired[page_key];
-                const bool has_valid_data = page.data.size() >= sizeof(TerrainWirePageDataHeader) +
-                    static_cast<std::size_t>(kHeightCount) * sizeof(std::uint16_t);
-                const bool is_invalid_coordinate_page_size = !std::isfinite(view.coordinate_page_size) ||
-                    !(view.coordinate_page_size > 0.0f);
+                const bool has_valid_data =
+                    page.data.size() >=
+                    sizeof(TerrainWirePageDataHeader) + static_cast<std::size_t>(kHeightCount) * sizeof(std::uint16_t);
+                const bool is_invalid_coordinate_page_size =
+                    !std::isfinite(view.coordinate_page_size) || !(view.coordinate_page_size > 0.0f);
                 const bool is_invalid_debug_page = is_not_desired || !has_valid_data || is_invalid_coordinate_page_size;
                 if (is_invalid_debug_page)
                 {
@@ -1003,8 +998,7 @@ namespace lux::render
             if (left.distance_squared != right.distance_squared)
                 return left.distance_squared < right.distance_squared;
             return left.stable_key < right.stable_key;
-        }
-        );
+        });
         const auto wanted_count = std::min<std::size_t>(candidates.size(), capacity_pages_);
         for (std::size_t index = 0u; index < wanted_count; ++index)
             (void)promote(*candidates[index].page);

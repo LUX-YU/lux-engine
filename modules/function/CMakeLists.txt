@@ -90,9 +90,6 @@ if(TARGET material_graph)
     list(APPEND LUX_FUNCTION_COMPONENTS material_graph)
 endif()
 
-if(TARGET render_feature_meta)
-    list(APPEND LUX_FUNCTION_COMPONENTS render_feature_meta)
-endif()
 
 if(LUX_FUNCTION_COMPONENTS)
     lux_engine_install_components(

@@ -337,8 +337,8 @@ namespace lux::render
         const bool is_missing_height = height == 0;
         const bool is_missing_mips = mip_levels == 0;
         const bool is_undefined_format = fmt == VK_FORMAT_UNDEFINED;
-        const bool is_invalid_descriptor = is_missing_width || is_missing_height || is_missing_mips ||
-            is_undefined_format;
+        const bool is_invalid_descriptor =
+            is_missing_width || is_missing_height || is_missing_mips || is_undefined_format;
         if (is_invalid_descriptor)
             return SlotHandle{};
         if (!ensureRoom())
@@ -390,8 +390,7 @@ namespace lux::render
             0,
             plan,
             VK_IMAGE_LAYOUT_UNDEFINED,
-        }
-        );
+        });
         return {idx, gen_[idx]};
     }
 
@@ -460,8 +459,7 @@ namespace lux::render
                 0,
                 plan,
                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // persistent textures are always initialized
-            }
-            );
+            });
             next += count;
         }
         return true;
@@ -604,7 +602,7 @@ namespace lux::render
                         req.subresource = {image_aspect_, 0, face, 1};
                         req.offset = {0, 0, 0};
                         req.extent = {static_cast<uint32_t>(s.width), static_cast<uint32_t>(s.height), 1};
-                        req.domain = EBufferDomain::Sampled_FS;
+                        req.domain = EBufferDomain::SAMPLED_FS;
                         scheduler.submitImageCopy(req);
                     }
                 }
@@ -641,7 +639,7 @@ namespace lux::render
                         req.subresource = {image_aspect_, std::min(cr.mip_level, s.mip_levels - 1), cr.array_layer, 1};
                         req.offset = {static_cast<int32_t>(cr.x), static_cast<int32_t>(cr.y), 0};
                         req.extent = {std::max(1u, cr.width), std::max(1u, cr.height), 1};
-                        req.domain = EBufferDomain::Sampled_FS;
+                        req.domain = EBufferDomain::SAMPLED_FS;
                         scheduler.submitImageCopy(req);
                     }
 
@@ -676,7 +674,7 @@ namespace lux::render
                         req.subresource = {image_aspect_, 0, face, 1};
                         req.offset = {0, 0, 0};
                         req.extent = {static_cast<uint32_t>(s.width), static_cast<uint32_t>(s.height), 1};
-                        req.domain = EBufferDomain::Sampled_FS;
+                        req.domain = EBufferDomain::SAMPLED_FS;
                         scheduler.submitImageCopy(req);
                     }
                 }
@@ -708,7 +706,7 @@ namespace lux::render
                         req.subresource = {image_aspect_, std::min(cr.mip_level, s.mip_levels - 1), cr.array_layer, 1};
                         req.offset = {static_cast<int32_t>(cr.x), static_cast<int32_t>(cr.y), 0};
                         req.extent = {std::max(1u, cr.width), std::max(1u, cr.height), 1};
-                        req.domain = EBufferDomain::Sampled_FS;
+                        req.domain = EBufferDomain::SAMPLED_FS;
                         scheduler.submitImageCopy(req);
                     }
 
@@ -725,13 +723,13 @@ namespace lux::render
             for (const auto& b : pending_acquire_barriers_)
             {
                 QFOTAcquireRequest req{};
-                req.kind = QFOTAcquireRequest::Kind::Image;
+                req.kind = QFOTAcquireRequest::EKind::IMAGE;
                 req.image = b.image;
                 req.img_layout = b.oldLayout;
                 req.img_range = b.subresourceRange;
                 req.src_family = b.srcQueueFamilyIndex;
                 req.dst_family = b.dstQueueFamilyIndex;
-                req.domain = EBufferDomain::Sampled_FS;
+                req.domain = EBufferDomain::SAMPLED_FS;
                 scheduler.submitQFOTAcquire(req);
             }
             pending_acquire_barriers_.clear();
@@ -910,8 +908,8 @@ namespace lux::render
             const bool is_invalid_height = mip.height != eh;
             const bool is_invalid_format_size = need == 0;
             const bool is_invalid_byte_count = static_cast<std::uint64_t>(mip.bytes) != need;
-            const bool is_invalid_mip = is_invalid_width || is_invalid_height || is_invalid_format_size ||
-                is_invalid_byte_count;
+            const bool is_invalid_mip =
+                is_invalid_width || is_invalid_height || is_invalid_format_size || is_invalid_byte_count;
             if (is_invalid_mip)
                 return false;
 
@@ -942,8 +940,7 @@ namespace lux::render
             0,
             copy_plan,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        }
-        );
+        });
         return true;
     }
 
@@ -992,8 +989,7 @@ namespace lux::render
             face_stride,
             {},
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        }
-        );
+        });
         return true;
     }
 
@@ -1132,7 +1128,8 @@ namespace lux::render
         auto& device = rc_->logicalDevice();
 
         VkDescriptorSetVariableDescriptorCountAllocateInfo vci{
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO};
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO
+        };
         vci.descriptorSetCount = 1;
         vci.pDescriptorCounts = &varCount;
 
@@ -1152,7 +1149,8 @@ namespace lux::render
         VkDescriptorSet newSet = VK_NULL_HANDLE;
         {
             VkDescriptorSetVariableDescriptorCountAllocateInfo vci{
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO};
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO
+            };
             vci.descriptorSetCount = 1;
             vci.pDescriptorCounts = &newCount;
             VkDescriptorSetAllocateInfo ai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
@@ -1554,11 +1552,13 @@ namespace lux::render
                 image_aspect_,
                 std::min(cr.mip_level, s.mip_levels - 1),
                 cr.array_layer, // 0 for full-mip uploads; region updates target a layer
-                1};
+                1
+            };
             r.imageOffset = {
                 static_cast<int32_t>(cr.x), // 0 for full-mip uploads
                 static_cast<int32_t>(cr.y),
-                0};
+                0
+            };
             r.imageExtent = {std::max(1u, cr.width), std::max(1u, cr.height), 1};
             copies.push_back(r);
         }

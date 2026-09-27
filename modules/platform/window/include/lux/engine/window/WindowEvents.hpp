@@ -20,31 +20,29 @@ namespace lux::window
     };
 
     struct WindowCloseEvent
-    {
-    };
+    {};
     struct WindowFocusEvent
     {
+        std::uint64_t sequence{};
     };
     struct WindowLostFocusEvent
     {
+        std::uint64_t sequence{};
     };
     struct WindowMovedEvent
-    {
-    };
+    {};
     struct WindowMinimizedEvent
-    {
-    };
+    {};
     struct CursorEnterEvent
-    {
-    };
+    {};
     struct CursorLeaveEvent
-    {
-    };
+    {};
 
     struct CursorMoveEvent
     {
         double x{0.0};
         double y{0.0};
+        std::uint64_t sequence{};
     };
 
     // Backend-native facts. Window records them without assigning Input
@@ -55,6 +53,7 @@ namespace lux::window
         int scancode{0};
         int action{0};
         int modifiers{0};
+        std::uint64_t sequence{};
     };
 
     struct WindowMouseButtonEvent
@@ -62,27 +61,49 @@ namespace lux::window
         int button{0};
         int action{0};
         int modifiers{0};
+        std::uint64_t sequence{};
     };
 
     struct WindowScrollEvent
     {
         double x{0.0};
         double y{0.0};
+        std::uint64_t sequence{};
     };
 
     struct WindowTextEvent
     {
         std::uint32_t codepoint{0};
+        std::uint64_t sequence{};
     };
 
-    using WindowInputEvent = std::variant<WindowKeyEvent, WindowMouseButtonEvent, WindowScrollEvent, WindowTextEvent>;
+    enum class ECompositionStage : std::uint8_t
+    {
+        STARTED,
+        UPDATED,
+        COMMITTED,
+        CANCELLED
+    };
+    struct WindowCompositionEvent
+    {
+        ECompositionStage stage;
+        std::uint64_t sequence{};
+    };
+
+    using VWindowInputEvent = std::variant<
+        WindowKeyEvent,
+        WindowMouseButtonEvent,
+        WindowScrollEvent,
+        WindowTextEvent,
+        CursorMoveEvent,
+        WindowFocusEvent,
+        WindowLostFocusEvent,
+        WindowCompositionEvent>;
 
     struct DrawReadyEvent
-    {
-    };
+    {};
     struct DrawFinishedEvent
-    {
-    };
+    {};
 
     struct FileDropEvent
     {

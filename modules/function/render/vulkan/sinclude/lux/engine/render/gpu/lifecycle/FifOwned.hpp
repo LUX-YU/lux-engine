@@ -37,16 +37,16 @@
 namespace lux::render
 {
     // Trait: how to retire a single (allocation-less) Vulkan handle of type H.
-    template <class H> struct FifRetireTraits;
+    template <class H> struct TFifRetireTraits;
 
-    template <> struct FifRetireTraits<VkSampler>
+    template <> struct TFifRetireTraits<VkSampler>
     {
         static void retire(DeferredDestroyQueue& q, VkSampler h)
         {
             q.retireSampler(h);
         }
     };
-    template <> struct FifRetireTraits<VkImageView>
+    template <> struct TFifRetireTraits<VkImageView>
     {
         static void retire(DeferredDestroyQueue& q, VkImageView h)
         {
@@ -62,27 +62,25 @@ namespace lux::render
      * forthcoming FifOwnedAllocated<H> sibling — those are migrated in a later
      * increment (GpuBufferBase / BindlessCombinedSet image+view).
      */
-    template <class H> class FifOwned
+    template <class H> class TFifOwned
     {
     public:
-        FifOwned() = default;
+        TFifOwned() = default;
 
         /// Take ownership of @p handle; it will be retired through @p queue.
         /// @p queue must be non-null whenever @p handle is non-null and must
         /// outlive this FifOwned (see file-level lifetime contract).
-        FifOwned(DeferredDestroyQueue* queue, H handle) noexcept : queue_(queue), handle_(handle)
-        {
-        }
+        TFifOwned(DeferredDestroyQueue* queue, H handle) noexcept : queue_(queue), handle_(handle) {}
 
-        FifOwned(const FifOwned&) = delete;
-        FifOwned& operator=(const FifOwned&) = delete;
+        TFifOwned(const TFifOwned&) = delete;
+        TFifOwned& operator=(const TFifOwned&) = delete;
 
-        FifOwned(FifOwned&& o) noexcept : queue_(o.queue_), handle_(o.handle_)
+        TFifOwned(TFifOwned&& o) noexcept : queue_(o.queue_), handle_(o.handle_)
         {
             o.handle_ = VK_NULL_HANDLE; // source no longer owns; its retire() is a no-op
         }
 
-        FifOwned& operator=(FifOwned&& o) noexcept
+        TFifOwned& operator=(TFifOwned&& o) noexcept
         {
             if (this != &o)
             {
@@ -94,7 +92,7 @@ namespace lux::render
             return *this;
         }
 
-        ~FifOwned()
+        ~TFifOwned()
         {
             retire();
         }
@@ -121,7 +119,7 @@ namespace lux::render
         void retire() noexcept
         {
             if (handle_ != VK_NULL_HANDLE && queue_ != nullptr)
-                FifRetireTraits<H>::retire(*queue_, handle_);
+                TFifRetireTraits<H>::retire(*queue_, handle_);
             handle_ = VK_NULL_HANDLE;
         }
 
@@ -130,16 +128,16 @@ namespace lux::render
     };
 
     // Trait: how to retire a (handle + VmaAllocation) pair of type H.
-    template <class H> struct FifRetireAllocTraits;
+    template <class H> struct TFifRetireAllocTraits;
 
-    template <> struct FifRetireAllocTraits<VkBuffer>
+    template <> struct TFifRetireAllocTraits<VkBuffer>
     {
         static void retire(DeferredDestroyQueue& q, VkBuffer h, VmaAllocation a)
         {
             q.retireBuffer(h, a);
         }
     };
-    template <> struct FifRetireAllocTraits<VkImage>
+    template <> struct TFifRetireAllocTraits<VkImage>
     {
         static void retire(DeferredDestroyQueue& q, VkImage h, VmaAllocation a)
         {
@@ -157,24 +155,23 @@ namespace lux::render
      * a later retire as a silent no-op). The queue may be late-bound (setQueue)
      * before the first handle is adopted, matching GpuBuffer's setDeferredQueue.
      */
-    template <class H> class FifOwnedAllocated
+    template <class H> class TFifOwnedAllocated
     {
     public:
-        FifOwnedAllocated() = default;
-        FifOwnedAllocated(DeferredDestroyQueue* queue, H handle, VmaAllocation alloc) noexcept
+        TFifOwnedAllocated() = default;
+        TFifOwnedAllocated(DeferredDestroyQueue* queue, H handle, VmaAllocation alloc) noexcept
             : queue_(queue), handle_(handle), alloc_(alloc)
-        {
-        }
+        {}
 
-        FifOwnedAllocated(const FifOwnedAllocated&) = delete;
-        FifOwnedAllocated& operator=(const FifOwnedAllocated&) = delete;
+        TFifOwnedAllocated(const TFifOwnedAllocated&) = delete;
+        TFifOwnedAllocated& operator=(const TFifOwnedAllocated&) = delete;
 
-        FifOwnedAllocated(FifOwnedAllocated&& o) noexcept : queue_(o.queue_), handle_(o.handle_), alloc_(o.alloc_)
+        TFifOwnedAllocated(TFifOwnedAllocated&& o) noexcept : queue_(o.queue_), handle_(o.handle_), alloc_(o.alloc_)
         {
             o.handle_ = VK_NULL_HANDLE;
             o.alloc_ = VK_NULL_HANDLE;
         }
-        FifOwnedAllocated& operator=(FifOwnedAllocated&& o) noexcept
+        TFifOwnedAllocated& operator=(TFifOwnedAllocated&& o) noexcept
         {
             if (this != &o)
             {
@@ -187,7 +184,7 @@ namespace lux::render
             }
             return *this;
         }
-        ~FifOwnedAllocated()
+        ~TFifOwnedAllocated()
         {
             retire();
         }
@@ -231,7 +228,7 @@ namespace lux::render
         void retire() noexcept
         {
             if (handle_ != VK_NULL_HANDLE && queue_ != nullptr)
-                FifRetireAllocTraits<H>::retire(*queue_, handle_, alloc_);
+                TFifRetireAllocTraits<H>::retire(*queue_, handle_, alloc_);
             handle_ = VK_NULL_HANDLE;
             alloc_ = VK_NULL_HANDLE;
         }

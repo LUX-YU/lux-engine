@@ -9,11 +9,11 @@
 
 namespace lux::scene
 {
-struct LUX_TYPE_INFO(both) WorldLoadingConfiguration final
-{
-    std::vector<partition::PartitionOrdinal> LUX_MEMBER(display_name = BootstrapPartitions) bootstrap;
-};
+    struct LUX_TYPE_INFO(both) WorldLoadingConfiguration final
+    {
+        std::vector<partition::PartitionOrdinal> LUX_MEMBER(display_name = BootstrapPartitions) bootstrap;
+    };
 
-[[nodiscard]] LUX_ENGINE_SCENE_WORLD_LOADING_PUBLIC serialization::PortableValueCodec
-worldLoadingConfigurationCodec() noexcept;
+    [[nodiscard]] LUX_ENGINE_SCENE_WORLD_LOADING_PUBLIC serialization::PortableValueCodec
+    worldLoadingConfigurationCodec() noexcept;
 } // namespace lux::scene

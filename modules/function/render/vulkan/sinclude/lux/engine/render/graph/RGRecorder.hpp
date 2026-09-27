@@ -249,8 +249,10 @@ namespace lux::render
 
         /// Refresh dynamic imported handles before rendering this resource state.
         /// Must be called after upload phase and before record().
-        virtual void
-        refreshDynamicImportedResources(RGResourceState& resource_state, const RGCompiledGraph& compiled_graph) = 0;
+        virtual void refreshDynamicImportedResources(
+            RGResourceState& resource_state,
+            const RGCompiledGraph& compiled_graph
+        ) = 0;
 
         virtual void record(
             RGResourceState& resource_state,

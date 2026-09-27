@@ -12,6 +12,7 @@
 #include <lux/cxx/compile_time/expected.hpp>
 
 #include <cstddef>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <type_traits>
@@ -33,6 +34,8 @@ namespace lux::async
     struct SubmitOptions final
     {
         std::size_t accounted_bytes{0u};
+        // Opaque producer identity, forwarded unchanged by transports.
+        std::array<std::uint64_t, 2> correlation{};
     };
 
     using SubmitResult = lux::cxx::expected<void, ESubmitError>;
@@ -43,17 +46,17 @@ namespace lux::async
         typename T::Error;
     } && std::is_nothrow_move_constructible_v<T>;
 
-    template <class DomainError> class OperationFailure final
+    template <class DomainError> class TOperationFailure final
     {
     public:
-        [[nodiscard]] static OperationFailure runtime(ESubmitError error) noexcept
+        [[nodiscard]] static TOperationFailure runtime(ESubmitError error) noexcept
         {
-            return OperationFailure(error);
+            return TOperationFailure(error);
         }
 
-        [[nodiscard]] static OperationFailure domain(DomainError error) noexcept
+        [[nodiscard]] static TOperationFailure domain(DomainError error) noexcept
         {
-            return OperationFailure(std::move(error));
+            return TOperationFailure(std::move(error));
         }
 
         [[nodiscard]] bool isRuntime() const noexcept
@@ -77,19 +80,15 @@ namespace lux::async
         }
 
     private:
-        explicit OperationFailure(ESubmitError error) noexcept : value_(error)
-        {
-        }
+        explicit TOperationFailure(ESubmitError error) noexcept : value_(error) {}
 
-        explicit OperationFailure(DomainError error) noexcept : value_(std::in_place_index<1>, std::move(error))
-        {
-        }
+        explicit TOperationFailure(DomainError error) noexcept : value_(std::in_place_index<1>, std::move(error)) {}
 
         std::variant<ESubmitError, DomainError> value_;
     };
 
     template <Operation T>
-    using OperationOutcome = lux::cxx::expected<typename T::Value, OperationFailure<typename T::Error>>;
+    using OperationOutcome = lux::cxx::expected<typename T::Value, TOperationFailure<typename T::Error>>;
 
     template <Operation T> [[nodiscard]] constexpr lux::cxx::TypeToken operationType() noexcept
     {
@@ -98,15 +97,15 @@ namespace lux::async
 
     namespace detail
     {
-        template <Operation T> class OperationEndpoint
+        template <Operation T> class TOperationEndpoint
         {
         public:
             using Outcome = OperationOutcome<T>;
 
-            OperationEndpoint() = default;
-            OperationEndpoint(const OperationEndpoint&) = delete;
-            OperationEndpoint& operator=(const OperationEndpoint&) = delete;
-            virtual ~OperationEndpoint() = default;
+            TOperationEndpoint() = default;
+            TOperationEndpoint(const TOperationEndpoint&) = delete;
+            TOperationEndpoint& operator=(const TOperationEndpoint&) = delete;
+            virtual ~TOperationEndpoint() = default;
 
             /// A successful admission owns completion_state until it invokes
             /// complete exactly once. A rejected admission may invoke complete
@@ -121,19 +120,17 @@ namespace lux::async
         };
     }
 
-    template <Operation T> class OperationPort final
+    template <Operation T> class TOperationPort final
     {
     public:
-        using Endpoint = detail::OperationEndpoint<T>;
+        using Endpoint = detail::TOperationEndpoint<T>;
         using Outcome = OperationOutcome<T>;
 
-        OperationPort() noexcept = default;
+        TOperationPort() noexcept = default;
 
         /// Endpoint construction is the single implementation seam. The
         /// pointed-to object owns all scheduling and queue policy.
-        explicit OperationPort(std::shared_ptr<Endpoint> endpoint) noexcept : endpoint_(std::move(endpoint))
-        {
-        }
+        explicit TOperationPort(std::shared_ptr<Endpoint> endpoint) noexcept : endpoint_(std::move(endpoint)) {}
 
         [[nodiscard]] explicit operator bool() const noexcept
         {
@@ -161,7 +158,7 @@ namespace lux::async
             if (!endpoint_)
             {
                 const auto error = ESubmitError::UNKNOWN_OPERATION;
-                complete(completion_state, lux::cxx::unexpected(OperationFailure<typename T::Error>::runtime(error)));
+                complete(completion_state, lux::cxx::unexpected(TOperationFailure<typename T::Error>::runtime(error)));
                 return lux::cxx::unexpected(error);
             }
             return endpoint_->submit(std::move(operation), completion_state, complete, options);

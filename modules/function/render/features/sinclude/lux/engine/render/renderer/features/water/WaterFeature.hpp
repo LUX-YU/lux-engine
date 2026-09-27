@@ -35,7 +35,7 @@ namespace lux::render
 
         [[nodiscard]] std::uint32_t requiredTargetSlots() const override
         {
-            return 1u << static_cast<std::uint32_t>(TargetSlot::LINEAR_DEPTH);
+            return 1u << static_cast<std::uint32_t>(ETargetSlot::LINEAR_DEPTH);
         }
 
         Expected<void> initAndAttachTo(RenderScene&) override;
@@ -53,6 +53,7 @@ namespace lux::render
     private:
         struct SurfaceSlot final
         {
+            std::uint32_t normal_slot{0xffffffffu};
             WaterSurfaceDesc surface{};
             std::uint32_t generation{1u};
             float transition_start{0.0f};

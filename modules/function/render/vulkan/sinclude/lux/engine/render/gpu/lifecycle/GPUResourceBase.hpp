@@ -50,7 +50,7 @@ namespace lux::render
      * and dispatches shutdown/upload via stored function pointers — no
      * virtual call needed.
      */
-    template <typename Derived, EGPUResourceType ResourceType> class GPUResourceBase
+    template <typename Derived, EGPUResourceType ResourceType> class TGPUResourceBase
     {
     public:
         static constexpr EGPUResourceType resource_type = ResourceType;
@@ -62,9 +62,7 @@ namespace lux::render
 
         // ── Optional hooks — shadowed by Derived when needed ────────────────
 
-        void uploadData(VkCommandBuffer /*cb*/, const FrameStamp& /*stamp*/)
-        {
-        }
+        void uploadData(VkCommandBuffer /*cb*/, const FrameStamp& /*stamp*/) {}
 
         VkDescriptorSet getDescriptorSet() const
         {

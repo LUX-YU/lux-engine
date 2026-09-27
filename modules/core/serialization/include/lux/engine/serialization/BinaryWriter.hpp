@@ -19,9 +19,7 @@ namespace lux::serialization
     class BinaryWriter final
     {
     public:
-        explicit BinaryWriter(std::vector<std::byte>& destination) noexcept : destination_(&destination)
-        {
-        }
+        explicit BinaryWriter(std::vector<std::byte>& destination) noexcept : destination_(&destination) {}
 
         [[nodiscard]] std::size_t offset() const noexcept
         {
@@ -30,16 +28,9 @@ namespace lux::serialization
 
         [[nodiscard]] SerializationResult writeBytes(std::span<const std::byte> bytes) noexcept
         {
-            try
             {
                 destination_->insert(destination_->end(), bytes.begin(), bytes.end());
                 return {};
-            }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected<SerializationFailure>(
-                    SerializationFailure{ESerializationError::ALLOCATION_FAILURE, offset()}
-                );
             }
         }
 

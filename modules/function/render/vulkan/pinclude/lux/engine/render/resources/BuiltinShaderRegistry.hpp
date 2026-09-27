@@ -188,8 +188,11 @@ namespace lux::render
     /// 解析不出模块时返回 shader.builtin_unavailable 并带上是**哪一个** —— 而不是像
     /// 从前那样静默交回无效句柄。那条静默路径是一整串崩溃的起点:无效句柄一路传到
     /// `*shaders.get(h)` 才炸,现场离病根很远。
-    [[nodiscard]] inline Expected<ShaderHandle>
-    resolveShaderStage(ShaderResources& shaders, ShaderHandle configured, EBuiltinShader builtin)
+    [[nodiscard]] inline Expected<ShaderHandle> resolveShaderStage(
+        ShaderResources& shaders,
+        ShaderHandle configured,
+        EBuiltinShader builtin
+    )
     {
         if (configured.isValid())
             return configured;
@@ -220,8 +223,10 @@ namespace lux::render
 
     /// 批量回填一组句柄槽(典型场景:feature 的 Config 里有一串 shader 字段,客户端
     /// 只覆盖了其中几个)。任一槽解析失败即整体报错,不会留下半填状态。
-    [[nodiscard]] inline Expected<void>
-    resolveShaderStages(ShaderResources& shaders, std::span<const ShaderStageSlot> slots)
+    [[nodiscard]] inline Expected<void> resolveShaderStages(
+        ShaderResources& shaders,
+        std::span<const ShaderStageSlot> slots
+    )
     {
         for (const ShaderStageSlot& slot : slots)
         {
@@ -246,8 +251,10 @@ namespace lux::render
     ///
     /// 它把「解析内置着色器」和「批量域合并切换」串成一步,于是 feature 里再也不需要
     /// 逐 stage 写 ensure → merge → get 三段,也就不再有写错顺序的余地。
-    [[nodiscard]] inline Expected<PreparedPipelineStages>
-    preparePipelineStages(ShaderResources& shaders, std::span<const PipelineStageRequest> requests)
+    [[nodiscard]] inline Expected<PreparedPipelineStages> preparePipelineStages(
+        ShaderResources& shaders,
+        std::span<const PipelineStageRequest> requests
+    )
     {
         std::vector<ShaderHandle> resolved;
         resolved.reserve(requests.size());

@@ -1,4 +1,4 @@
-find_package(lux-cxx REQUIRED COMPONENTS compile_time)
+find_package(lux-cxx REQUIRED COMPONENTS compile_time container)
 find_package(stdexec CONFIG REQUIRED)
 
 generate_visibility_header(
@@ -14,6 +14,7 @@ add_component(
     OUTPUT_NAME    lux_engine_process_execution
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ExecutionRuntime.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Task.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Timer.cpp
 )
 
@@ -33,11 +34,14 @@ target_link_libraries(
     process_execution
     PUBLIC
         lux::engine::core::async_port
+        lux::cxx::compile_time
+        lux::cxx::container
         STDEXEC::stdexec
 )
 component_add_transitive_commands(
     process_execution
     "find_package(lux-engine-core REQUIRED COMPONENTS async_port)"
+    "find_package(lux-cxx REQUIRED COMPONENTS compile_time container)"
     "find_package(stdexec CONFIG REQUIRED)"
 )
 

@@ -4,7 +4,7 @@
 #include <array>
 #include <cstring>
 #include <limits>
-#include <new>
+#include <stdexcept>
 #include <type_traits>
 
 namespace lux::asset::detail
@@ -43,10 +43,7 @@ namespace lux::asset::detail
         static_assert(sizeof(AuxiliaryHeader) == 16U);
         static_assert(std::is_trivially_copyable_v<WireHeaderV2>);
 
-        [[nodiscard]] AssetEncodeFailure failure(
-            EAssetEncodeError code,
-            std::size_t offset = 0U
-        ) noexcept
+        [[nodiscard]] AssetEncodeFailure failure(EAssetEncodeError code, std::size_t offset = 0U) noexcept
         {
             return AssetEncodeFailure{code, offset};
         }
@@ -66,17 +63,14 @@ namespace lux::asset::detail
     ) noexcept
     {
         const bool invalid_metadata = request.metadata.id.isNull() || !request.metadata.type;
-        const bool invalid_payload = request.primary_magic == 0U ||
-            (request.information.empty() && request.data.empty());
+        const bool invalid_payload =
+            request.primary_magic == 0U || (request.information.empty() && request.data.empty());
         if (invalid_metadata || invalid_payload)
             return lux::cxx::unexpected(failure(EAssetEncodeError::INVALID_ASSET));
 
         try
         {
-            std::vector<AssetAuxiliaryPayload> auxiliary(
-                request.auxiliary.begin(),
-                request.auxiliary.end()
-            );
+            std::vector<AssetAuxiliaryPayload> auxiliary(request.auxiliary.begin(), request.auxiliary.end());
             std::sort(
                 auxiliary.begin(),
                 auxiliary.end(),
@@ -93,8 +87,7 @@ namespace lux::asset::detail
             }
 
             std::size_t encoded_size = sizeof(WireHeaderV2);
-            if (!checkedAdd(request.information.size(), encoded_size) ||
-                !checkedAdd(request.data.size(), encoded_size))
+            if (!checkedAdd(request.information.size(), encoded_size) || !checkedAdd(request.data.size(), encoded_size))
             {
                 return lux::cxx::unexpected(failure(EAssetEncodeError::LIMIT_EXCEEDED));
             }
@@ -144,11 +137,7 @@ namespace lux::asset::detail
             }
             return result;
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(EAssetEncodeError::ALLOCATION_FAILURE));
-        }
-        catch (...)
+        catch (const std::length_error&)
         {
             return lux::cxx::unexpected(failure(EAssetEncodeError::INVALID_PAYLOAD));
         }

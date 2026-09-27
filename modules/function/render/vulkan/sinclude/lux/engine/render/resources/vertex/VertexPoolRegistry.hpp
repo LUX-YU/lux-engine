@@ -7,7 +7,7 @@
  *
  * Responsibility:
  *
- *   - Own the descriptor set for EDescriptorSetSlot::VertexPool (set 7,
+ *   - Own the descriptor set for EDescriptorSetSlot::VERTEX_POOL (set 7,
  *     defined in DescriptorSetLayoutContract.hpp). The set has a single
  *     binding (binding 0) of type STORAGE_BUFFER with descriptorCount =
  *     kVertexPoolMaxCount, marked PARTIALLY_BOUND + UPDATE_AFTER_BIND.
@@ -76,8 +76,11 @@ namespace lux::render
         /// allocates the descriptor set, and zeros all slots.
         ///
         /// Returns false on DescriptorService failure.
-        [[nodiscard]] bool
-        init(DeviceContext& device_ctx, DescriptorService& descriptor_svc, SceneDescriptorArena& arena);
+        [[nodiscard]] bool init(
+            DeviceContext& device_ctx,
+            DescriptorService& descriptor_svc,
+            SceneDescriptorArena& arena
+        );
 
         void shutdown();
 
@@ -115,11 +118,13 @@ namespace lux::render
         }
 
         /// 设置域写目标(句柄组 + 域内偏移)。后域集是唯一写目标。
-        [[nodiscard]] Expected<void>
-        setDomainWriteTarget(std::span<const VkDescriptorSet> sets, uint32_t binding_offset);
+        [[nodiscard]] Expected<void> setDomainWriteTarget(
+            std::span<const VkDescriptorSet> sets,
+            uint32_t binding_offset
+        );
 
         /// The VkDescriptorSetLayout — same handle as
-        /// GeneralDescriptorSetLayout::getLayout(EDescriptorSetSlot::VertexPool)
+        /// GeneralDescriptorSetLayout::getLayout(EDescriptorSetSlot::VERTEX_POOL)
         /// when the registry is initialized against the same DescriptorService.
         [[nodiscard]] VkDescriptorSetLayout descriptorSetLayout() const noexcept;
 

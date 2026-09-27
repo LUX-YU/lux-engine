@@ -34,10 +34,10 @@ namespace lux::log
 {
     enum class ELevel : std::uint8_t
     {
-        Trace = 0,
-        Info = 1,
-        Warn = 2,
-        Error = 3,
+        LOG_TRACE = 0,
+        LOG_INFO = 1,
+        LOG_WARN = 2,
+        LOG_ERROR = 3,
     };
 
     struct LogRecord;
@@ -127,7 +127,8 @@ namespace lux::log
                 static_assert(
                     is_string_like<D>,
                     "unsupported log argument type — pass it "
-                    "pre-formatted (.string(), static_cast, ...)");
+                    "pre-formatted (.string(), static_cast, ...)"
+                );
         }
 
         /// 解码后的存储形态:字符串族一律 string_view(指进记录字节区,记录
@@ -170,7 +171,7 @@ namespace lux::log
         }
 
         /// 每个调用点实例化一份:pack 写入序 == decode 读回序,由同一模板钉死。
-        template <class... Ds> struct Codec
+        template <class... Ds> struct TCodec
         {
             static void pack(LogRecord& r, const Ds&... vs) noexcept
             {
@@ -186,11 +187,9 @@ namespace lux::log
             }
         };
 
-        template <> struct Codec<>
+        template <> struct TCodec<>
         {
-            static void pack(LogRecord&) noexcept
-            {
-            }
+            static void pack(LogRecord&) noexcept {}
             static void decode(const LogRecord& r, EmitArgsFn emit, void* user)
             {
                 // format_args 无默认构造(MSVC):零实参也经 make_format_args。

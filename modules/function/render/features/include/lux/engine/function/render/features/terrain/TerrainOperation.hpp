@@ -64,7 +64,8 @@ namespace lux::render
         name = TerrainPageUpload,
         method = upload,
         reply = TerrainPageUploadedReply,
-        opcode = resource) UploadTerrainPagePayload final
+        opcode = resource
+    ) UploadTerrainPagePayload final
     {
         RenderSceneId scene_id{};
         TerrainWireId id;
@@ -103,7 +104,8 @@ namespace lux::render
         name = TerrainPageRemove,
         method = remove,
         reply = TerrainPageRemovedReply,
-        opcode = command) RemoveTerrainPagePayload final
+        opcode = command
+    ) RemoveTerrainPagePayload final
     {
         RenderSceneId scene_id{};
         TerrainWireId id;
@@ -144,7 +146,8 @@ namespace lux::render
         name = TerrainPageCacheStats,
         method = stats,
         reply = TerrainPageCacheStatsReply,
-        opcode = command) QueryTerrainPageCacheStatsPayload final
+        opcode = command
+    ) QueryTerrainPageCacheStatsPayload final
     {
         RenderSceneId scene_id{};
     };
@@ -157,7 +160,8 @@ namespace lux::render
         requires = "lux.render.view_camera.v1,lux.render.deferred_gbuffer.v1",
         feature = TerrainFeature,
         feature_header = lux / engine / render / renderer / features / terrain / TerrainFeature.hpp,
-        multiplicity = single) TerrainCommConfig
+        multiplicity = single
+    ) TerrainCommConfig
     {
         /// Logical full-resolution page budget. Parent fallback pages use a
         /// separate bounded cache owned by TerrainResources.

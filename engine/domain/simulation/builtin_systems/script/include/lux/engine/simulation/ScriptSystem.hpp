@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/simulation/SystemAccessSpec.hpp>
-#include <lux/engine/simulation/SimulationClock.hpp>
+#include <lux/engine/simulation/SimulationTime.hpp>
 #include <lux/engine/simulation/SimulationSystemDescription.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 #include <lux/engine/simulation/scripting/ScriptBackend.hpp>
@@ -26,13 +26,13 @@ namespace lux::simulation::script
     {
         const lux::script::ScriptArtifact* artifact{};
         void* lease{};
-        void (*release)(void*) noexcept{};
+        void (*release)(void*) noexcept {};
     };
 
     struct ScriptArtifactResolver final
     {
         void* context{};
-        bool (*resolve)(void*, const lux::asset::AssetId&, ResolvedScriptArtifact&) noexcept{};
+        bool (*resolve)(void*, const lux::asset::AssetId&, ResolvedScriptArtifact&) noexcept {};
     };
 
     struct ScriptRuntimeLimits final
@@ -150,16 +150,29 @@ namespace lux::simulation::script
         std::int32_t status{};
     };
 
-    enum class EScriptLifecycleAdmission : std::uint8_t { ALLOW, RETIRE_ONLY };
+    enum class EScriptLifecycleAdmission : std::uint8_t
+    {
+        ALLOW,
+        RETIRE_ONLY
+    };
 
     enum class EScriptMountState : std::uint8_t
     {
-        INACTIVE, CONSTRUCTING, INITIALIZED, ACTIVE, RETIRING, FAULTED,
+        INACTIVE,
+        CONSTRUCTING,
+        INITIALIZED,
+        ACTIVE,
+        RETIRING,
+        FAULTED,
     };
 
     enum class EScriptMountSubmissionState : std::uint8_t
     {
-        NONE, ACCEPTED, ACTIVATED, REJECTED, CANCELLED,
+        NONE,
+        ACCEPTED,
+        ACTIVATED,
+        REJECTED,
+        CANCELLED,
     };
 
     struct ScriptMountStatus final
@@ -168,12 +181,12 @@ namespace lux::simulation::script
         std::uint64_t revision{};
         EScriptMountState state{EScriptMountState::INACTIVE};
         ScriptInstanceId instance;
-        ScriptInstanceScope scope;
+        VScriptInstanceScope scope;
         bool reclaimed{true};
         ScriptInstanceId retired_instance;
         std::uint64_t submission{};
         EScriptMountSubmissionState submission_state{EScriptMountSubmissionState::NONE};
-        ScriptInstanceScope submitted_scope;
+        VScriptInstanceScope submitted_scope;
         EScriptSystemError submission_error{EScriptSystemError::INVALID_INPUT};
     };
 
@@ -190,8 +203,7 @@ namespace lux::simulation::script
     };
 
     // Cold composition helper. The loader includes unresolved configurations when computing its plan.
-    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC
-    lux::cxx::expected<ScriptRuntimeCapacityPlan, EScriptSystemError>
+    [[nodiscard]] LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC lux::cxx::expected<ScriptRuntimeCapacityPlan, EScriptSystemError>
     planScriptRuntimeCapacity(std::span<const ScriptRuntimeMount> mounts) noexcept;
 
     class LUX_ENGINE_SIMULATION_SCRIPT_PUBLIC ScriptSystem final
@@ -208,6 +220,7 @@ namespace lux::simulation::script
             ExecutionRegion& operator=(ExecutionRegion&&) = delete;
             ~ExecutionRegion() noexcept;
             [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> finish() noexcept;
+
         private:
             friend class ScriptSystem;
             explicit ExecutionRegion(ScriptSystem& owner) noexcept : owner_(&owner) {}
@@ -218,25 +231,25 @@ namespace lux::simulation::script
         // Acceptance only. The current region remains callable until its owner's lifecycle commit.
         [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> requestStop() noexcept;
 
-        inline static constexpr auto Access = makeSystemAccessSpec<ComponentWrite<detail::ScriptAttachment>>();
+        inline static constexpr auto Access = makeSystemAccessSpec<TComponentWrite<detail::ScriptAttachment>>();
         inline static constexpr std::array<HookPointSpec, 0U> Hooks{};
         inline static constexpr std::array<EventPointSpec, 0U> Events{};
+        inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
         inline static constexpr SimulationSystemDescription Description{
-            .type = {
-                .canonical_name = "lux.simulation.ScriptSystem",
-                .version = 1U
-            },
-            .hooks          = Hooks,
-            .events         = Events
+            .type =
+                {.canonical_name = "lux.simulation.ScriptSystem",
+                 .version = 1U,
+                 .supported_world_types = SupportedWorldTypes},
+            .hooks = Hooks,
+            .events = Events
         };
 
-        [[nodiscard]] static lux::cxx::expected<ScriptSystem, EScriptSystemError>
-        create(
-            const SimulationDescription &simulation,
-            const ScriptRuntimeCapacityPlan &capacity,
+        [[nodiscard]] static lux::cxx::expected<ScriptSystem, EScriptSystemError> create(
+            const SimulationDescription& simulation,
+            const ScriptRuntimeCapacityPlan& capacity,
             std::span<const ScriptRuntimeMount> mounts,
-            ecs::Registry &registry,
-            const SimulationClock &clock,
+            ecs::Registry& registry,
+            const SimulationTime& time,
             ScriptRuntimeLimits limits,
             ScriptArtifactResolver artifacts,
             std::span<const ScriptApiCapabilityPublication> capabilities,
@@ -247,38 +260,38 @@ namespace lux::simulation::script
             ScriptRealDelayEndpoint real_delay = {}
         ) noexcept;
 
-        ScriptSystem(ScriptSystem &&) noexcept;
+        ScriptSystem(ScriptSystem&&) noexcept;
 
-        ScriptSystem &operator=(ScriptSystem &&) noexcept;
+        ScriptSystem& operator=(ScriptSystem&&) noexcept;
 
         ~ScriptSystem() noexcept;
 
-        ScriptSystem(const ScriptSystem &) = delete;
+        ScriptSystem(const ScriptSystem&) = delete;
 
-        ScriptSystem &operator=(const ScriptSystem &) = delete;
+        ScriptSystem& operator=(const ScriptSystem&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
-        prepare() noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> prepare() noexcept;
 
-        [[nodiscard]] lux::cxx::expected<ScriptStablePointReport, EScriptSystemError>
-        executeStablePoint() noexcept;
-        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
-        processLifecycle(EScriptLifecycleAdmission admission = EScriptLifecycleAdmission::ALLOW) noexcept;
+        [[nodiscard]] lux::cxx::expected<ScriptStablePointReport, EScriptSystemError> executeStablePoint() noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> processLifecycle(
+            EScriptLifecycleAdmission admission = EScriptLifecycleAdmission::ALLOW
+        ) noexcept;
         void beginStableAdmission() noexcept;
 
         // Owner-only assembly. Success accepts the whole batch; lifecycle executes at existing boundaries.
-        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
-        mountResolvedBatch(std::span<const ScriptRuntimeMount> mounts) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> mountResolvedBatch(
+            std::span<const ScriptRuntimeMount> mounts
+        ) noexcept;
         // Value snapshots; query does not acknowledge changes. Empty means the configuration is unknown.
-        [[nodiscard]] lux::cxx::expected<std::optional<ScriptMountStatus>, EScriptSystemError>
-        queryMountStatus(ScriptMountId id) const noexcept;
+        [[nodiscard]] lux::cxx::expected<std::optional<ScriptMountStatus>, EScriptSystemError> queryMountStatus(
+            ScriptMountId id
+        ) const noexcept;
         // Only copied entries are acknowledged. Uncopied entries remain queued, including at shutdown.
-        [[nodiscard]] lux::cxx::expected<ScriptMountStatusCollection, EScriptSystemError>
-        collectMountStatusChanges(std::span<ScriptMountStatus> output) noexcept;
+        [[nodiscard]] lux::cxx::expected<ScriptMountStatusCollection, EScriptSystemError> collectMountStatusChanges(
+            std::span<ScriptMountStatus> output
+        ) noexcept;
 
-
-        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError>
-        shutdown() noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EScriptSystemError> shutdown() noexcept;
 
         [[nodiscard]] bool isShutdown() const noexcept;
         [[nodiscard]] bool inExecutionRegion() const noexcept;

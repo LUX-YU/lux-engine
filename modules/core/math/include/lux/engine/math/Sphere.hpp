@@ -20,9 +20,7 @@ namespace lux::math
         float radius{0.0f};
 
         Sphere() = default;
-        Sphere(const Eigen::Vector3f& c, float r) : center(c), radius(r)
-        {
-        }
+        Sphere(const Eigen::Vector3f& c, float r) : center(c), radius(r) {}
 
         [[nodiscard]] bool isValid() const noexcept
         {

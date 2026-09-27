@@ -1,9 +1,10 @@
 #include <lux/engine/process/ExecutionRuntime.hpp>
+#include <lux/engine/process/CompletionWork.hpp>
+#include <lux/engine/process/detail/TaskState.hpp>
 
 #include <algorithm>
 #include <condition_variable>
 #include <mutex>
-#include <new>
 #include <system_error>
 #include <vector>
 
@@ -22,7 +23,7 @@ namespace lux::process
         {
             explicit RequestQueue(std::size_t capacity) : values(capacity) {}
 
-            [[nodiscard]] bool push(ScheduleRequest *request) noexcept
+            [[nodiscard]] bool push(ScheduleRequest* request) noexcept
             {
                 if (count == values.size())
                 {
@@ -34,43 +35,54 @@ namespace lux::process
                 return true;
             }
 
-            [[nodiscard]] ScheduleRequest *pop() noexcept
+            [[nodiscard]] ScheduleRequest* pop() noexcept
             {
                 if (count == 0U)
                 {
                     return nullptr;
                 }
-                auto *result = values[head];
+                auto* result = values[head];
                 values[head] = nullptr;
                 head = (head + 1U) % values.size();
                 --count;
                 return result;
             }
 
-            std::vector<ScheduleRequest *> values;
+            std::vector<ScheduleRequest*> values;
             std::size_t head{};
             std::size_t tail{};
             std::size_t count{};
         };
 
+        struct CompletionWorkState final
+        {
+            std::weak_ptr<ExecutionState> runtime;
+            void* owner{};
+            void (*run)(void*) noexcept {};
+            bool queued{}, cancelled{}, executing{};
+        };
+
         struct ExecutionState final
         {
             ExecutionState(ExecutionRuntimeConfig config, std::thread::id owner)
-                : cpu_queue(config.cpu_queue_capacity), main_queue(config.main_queue_capacity),
+                : cpu_queue(config.cpu_queue_capacity),
                   blocking_queue(config.blocking ? config.blocking->queue_capacity : 0U),
                   blocking_enabled(config.blocking.has_value()), owner_thread(owner)
-            {
-            }
+            {}
 
             std::atomic<EExecutionState> phase{EExecutionState::ACTIVE};
             std::mutex cpu_mutex;
             std::condition_variable cpu_ready;
             RequestQueue cpu_queue;
             std::vector<std::jthread> workers;
-            std::mutex main_mutex;
-            std::condition_variable main_ready;
-            RequestQueue main_queue;
-            std::size_t main_reserved{};
+            std::mutex completion_mutex;
+            std::condition_variable completion_ready;
+            std::vector<std::shared_ptr<CompletionWorkState>> ready_completion, completion_batch;
+            std::size_t completion_count{};
+            bool collecting_completions{};
+            std::uint64_t wake_epoch{};
+            std::atomic<void (*)() noexcept> wake_callback{};
+            bool stop_requested{};
             std::mutex blocking_mutex;
             std::condition_variable blocking_ready;
             RequestQueue blocking_queue;
@@ -81,21 +93,18 @@ namespace lux::process
 
         namespace
         {
-            void cpuWorker(ExecutionState &state) noexcept
+            void cpuWorker(ExecutionState& state) noexcept
             {
                 for (;;)
                 {
-                    ScheduleRequest *request{};
+                    ScheduleRequest* request{};
                     bool stopping{};
                     {
                         std::unique_lock lock{state.cpu_mutex};
-                        state.cpu_ready.wait(lock,
-                                             [&state]
-                                             {
-                                                 return state.cpu_queue.count != 0U ||
-                                                        state.phase.load(std::memory_order_acquire) !=
-                                                            EExecutionState::ACTIVE;
-                                             });
+                        state.cpu_ready.wait(lock, [&state] {
+                            return state.cpu_queue.count != 0U ||
+                                   state.phase.load(std::memory_order_acquire) != EExecutionState::ACTIVE;
+                        });
                         stopping = state.phase.load(std::memory_order_acquire) != EExecutionState::ACTIVE;
                         request = state.cpu_queue.pop();
                         if (request == nullptr && stopping)
@@ -109,21 +118,18 @@ namespace lux::process
                 }
             }
 
-            void blockingWorker(ExecutionState &state) noexcept
+            void blockingWorker(ExecutionState& state) noexcept
             {
                 for (;;)
                 {
-                    ScheduleRequest *request{};
+                    ScheduleRequest* request{};
                     bool stopping{};
                     {
                         std::unique_lock lock{state.blocking_mutex};
-                        state.blocking_ready.wait(lock,
-                                                  [&state]
-                                                  {
-                                                      return state.blocking_queue.count != 0U ||
-                                                             state.phase.load(std::memory_order_acquire) !=
-                                                                 EExecutionState::ACTIVE;
-                                                  });
+                        state.blocking_ready.wait(lock, [&state] {
+                            return state.blocking_queue.count != 0U ||
+                                   state.phase.load(std::memory_order_acquire) != EExecutionState::ACTIVE;
+                        });
                         stopping = state.phase.load(std::memory_order_acquire) != EExecutionState::ACTIVE;
                         request = state.blocking_queue.pop();
                         if (request == nullptr && stopping)
@@ -137,24 +143,28 @@ namespace lux::process
                 }
             }
 
-            void stopState(const std::shared_ptr<ExecutionState> &state) noexcept
+            void stopState(const std::shared_ptr<ExecutionState>& state) noexcept
             {
                 if (!state)
                 {
                     return;
                 }
                 auto expected = EExecutionState::ACTIVE;
-                if (state->phase.compare_exchange_strong(expected, EExecutionState::STOPPING, std::memory_order_acq_rel,
-                                                         std::memory_order_acquire))
+                if (state->phase.compare_exchange_strong(
+                        expected,
+                        EExecutionState::STOPPING,
+                        std::memory_order_acq_rel,
+                        std::memory_order_acquire
+                    ))
                 {
                     state->cpu_ready.notify_all();
                     state->blocking_ready.notify_all();
                 }
             }
 
-            void joinWorkers(ExecutionState &state) noexcept
+            void joinWorkers(ExecutionState& state) noexcept
             {
-                for (auto &worker : state.workers)
+                for (auto& worker : state.workers)
                 {
                     if (worker.joinable())
                     {
@@ -162,7 +172,7 @@ namespace lux::process
                     }
                 }
                 state.workers.clear();
-                for (auto &worker : state.blocking_workers)
+                for (auto& worker : state.blocking_workers)
                 {
                     if (worker.joinable())
                     {
@@ -173,8 +183,11 @@ namespace lux::process
             }
         } // namespace
 
-        ScheduleSubmitResult submitSchedule(const std::shared_ptr<ExecutionState> &state, EExecutionQueue queue,
-                                            ScheduleRequest &request) noexcept
+        ScheduleSubmitResult submitSchedule(
+            const std::shared_ptr<ExecutionState>& state,
+            EExecutionQueue queue,
+            ScheduleRequest& request
+        ) noexcept
         {
             if (!state || state->phase.load(std::memory_order_acquire) != EExecutionState::ACTIVE)
             {
@@ -196,22 +209,6 @@ namespace lux::process
                 return {};
             }
 
-            if (queue == EExecutionQueue::MAIN)
-            {
-                std::lock_guard lock{state->main_mutex};
-                if (state->phase.load(std::memory_order_acquire) != EExecutionState::ACTIVE)
-                {
-                    return lux::cxx::unexpected(EExecutionError::STOPPING);
-                }
-                const bool full = state->main_queue.count + state->main_reserved == state->main_queue.values.size();
-                if (full || !state->main_queue.push(&request))
-                {
-                    return lux::cxx::unexpected(EExecutionError::CAPACITY_EXCEEDED);
-                }
-                state->main_ready.notify_one();
-                return {};
-            }
-
             if (!state->blocking_enabled)
             {
                 return lux::cxx::unexpected(EExecutionError::CAPABILITY_UNAVAILABLE);
@@ -229,67 +226,24 @@ namespace lux::process
             return {};
         }
 
-        ScheduleSubmitResult reserveMainCompletion(const std::shared_ptr<ExecutionState> &state,
-                                                   ScheduleRequest &request) noexcept
-        {
-            if (!state)
-            {
-                return lux::cxx::unexpected(EExecutionError::STOPPING);
-            }
-            if (state->owner_thread != std::this_thread::get_id())
-            {
-                return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
-            }
-            std::lock_guard lock{state->main_mutex};
-            if (state->phase.load(std::memory_order_acquire) != EExecutionState::ACTIVE)
-            {
-                return lux::cxx::unexpected(EExecutionError::STOPPING);
-            }
-            if (request.terminal_reserved || request.retained_terminal)
-            {
-                return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
-            }
-            if (state->main_queue.count + state->main_reserved == state->main_queue.values.size())
-            {
-                return lux::cxx::unexpected(EExecutionError::CAPACITY_EXCEEDED);
-            }
-            ++state->main_reserved;
-            request.terminal_reserved = true;
-            return {};
-        }
-
-        void publishMainCompletion(const std::shared_ptr<ExecutionState> &state, ScheduleRequest &request) noexcept
-        {
-            {
-                std::lock_guard lock{state->main_mutex};
-                if (!request.terminal_reserved || state->main_reserved == 0)
-                {
-                    std::terminate(); // A sender completing twice violates the operation-state contract.
-                }
-                request.terminal_reserved = false;
-                request.retained_terminal = true;
-                --state->main_reserved;
-                if (!state->main_queue.push(&request))
-                {
-                    std::terminate(); // Reserved admission makes this unreachable for a conforming sender.
-                }
-            }
-            state->main_ready.notify_one();
-        }
     } // namespace detail
 
-    ExecutionRuntime::ExecutionRuntime(std::shared_ptr<detail::ExecutionState> state, TimerQueue timer) noexcept
-        : state_(std::move(state)), timer_(std::move(timer))
-    {
-    }
+    ExecutionRuntime::ExecutionRuntime(
+        std::shared_ptr<detail::ExecutionState> state,
+        TimerQueue timer,
+        std::size_t task_capacity,
+        std::size_t history_capacity
+    ) noexcept
+        : state_(std::move(state)), timer_(std::move(timer)),
+          tasks_(std::make_unique<detail::TaskRuntime>(*this, task_capacity, history_capacity))
+    {}
 
     ExecutionRuntime::CreateResult ExecutionRuntime::create(ExecutionRuntimeConfig config) noexcept
     {
         const bool is_invalid_blocking =
             config.blocking && (config.blocking->concurrency == 0U || config.blocking->queue_capacity == 0U);
         const bool is_invalid_config = config.cpu_concurrency == 0U || config.cpu_queue_capacity == 0U ||
-                                       config.main_queue_capacity == 0U || config.timer.capacity == 0U ||
-                                       is_invalid_blocking;
+                                       config.timer.capacity == 0U || config.task_capacity == 0 || is_invalid_blocking;
         if (is_invalid_config)
         {
             return lux::cxx::unexpected(EExecutionError::INVALID_ARGUMENT);
@@ -305,20 +259,10 @@ namespace lux::process
             return lux::cxx::unexpected(code);
         }
 
-        std::shared_ptr<detail::ExecutionState> state;
-        try
-        {
-            state = std::make_shared<detail::ExecutionState>(config, std::this_thread::get_id());
-            state->workers.reserve(config.cpu_concurrency);
-            if (config.blocking)
-            {
-                state->blocking_workers.reserve(config.blocking->concurrency);
-            }
-        }
-        catch (const std::bad_alloc &)
-        {
-            return lux::cxx::unexpected(EExecutionError::ALLOCATION_FAILURE);
-        }
+        auto state = std::make_shared<detail::ExecutionState>(config, std::this_thread::get_id());
+        state->workers.reserve(config.cpu_concurrency);
+        if (config.blocking)
+            state->blocking_workers.reserve(config.blocking->concurrency);
 
         try
         {
@@ -333,25 +277,18 @@ namespace lux::process
                     state->blocking_workers.emplace_back([raw = state.get()] { detail::blockingWorker(*raw); });
                 }
             }
-            return ExecutionRuntime{std::move(state), std::move(*timer)};
+            return ExecutionRuntime{
+                std::move(state),
+                std::move(*timer),
+                config.task_capacity,
+                config.task_history_capacity
+            };
         }
-        catch (const std::bad_alloc &)
-        {
-            detail::stopState(state);
-            detail::joinWorkers(*state);
-            return lux::cxx::unexpected(EExecutionError::ALLOCATION_FAILURE);
-        }
-        catch (const std::system_error &)
+        catch (const std::system_error&)
         {
             detail::stopState(state);
             detail::joinWorkers(*state);
             return lux::cxx::unexpected(EExecutionError::WORKER_CREATION_FAILURE);
-        }
-        catch (...)
-        {
-            detail::stopState(state);
-            detail::joinWorkers(*state);
-            return lux::cxx::unexpected(EExecutionError::BACKEND_FAILURE);
         }
     }
 
@@ -377,32 +314,26 @@ namespace lux::process
         requestStop();
         while (true)
         {
-            auto drained = drainMain();
-            if (!drained)
-            {
+            const auto epoch = wakeEpoch();
+            if (!collectCompletions())
                 std::terminate();
-            }
             auto joined = join();
             if (joined || joined.error() == EExecutionError::ALREADY_JOINED)
-            {
                 return;
-            }
-            if (joined.error() != EExecutionError::MAIN_QUEUE_NOT_DRAINED)
-            {
+            if (joined.error() != EExecutionError::WORK_PENDING)
                 std::terminate();
-            }
-            std::unique_lock lock{state_->main_mutex};
-            state_->main_ready.wait(lock,
-                                    [this] { return state_->main_queue.count != 0 || state_->main_reserved == 0; });
+            waitForWork(epoch);
         }
     }
 
-    ExecutionRuntime::ExecutionRuntime(ExecutionRuntime &&other) noexcept
-        : state_(std::move(other.state_)), timer_(std::move(other.timer_))
+    ExecutionRuntime::ExecutionRuntime(ExecutionRuntime&& other) noexcept
+        : state_(std::move(other.state_)), timer_(std::move(other.timer_)), tasks_(std::move(other.tasks_))
     {
+        if (tasks_)
+            tasks_->moveTo(*this);
     }
 
-    ExecutionRuntime &ExecutionRuntime::operator=(ExecutionRuntime &&other) noexcept
+    ExecutionRuntime& ExecutionRuntime::operator=(ExecutionRuntime&& other) noexcept
     {
         if (this == &other)
         {
@@ -418,6 +349,9 @@ namespace lux::process
         }
         state_ = std::move(other.state_);
         timer_ = std::move(other.timer_);
+        tasks_ = std::move(other.tasks_);
+        if (tasks_)
+            tasks_->moveTo(*this);
         return *this;
     }
 
@@ -431,9 +365,64 @@ namespace lux::process
         return CpuScheduler{state_};
     }
 
-    MainScheduler ExecutionRuntime::main() const noexcept
+    lux::cxx::expected<std::size_t, EExecutionError> ExecutionRuntime::collectCompletions() noexcept
     {
-        return MainScheduler{state_};
+        if (!tasks_ || state_->owner_thread != std::this_thread::get_id())
+            return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
+        if (state_->collecting_completions)
+            return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
+        state_->collecting_completions = true;
+        {
+            std::lock_guard lock{state_->completion_mutex};
+            state_->completion_batch.swap(state_->ready_completion);
+        }
+        auto count = tasks_->collect();
+        const auto size = state_->completion_batch.size();
+        for (std::size_t index{}; index < size; ++index)
+        {
+            const auto work = state_->completion_batch[index];
+            {
+                std::lock_guard lock{state_->completion_mutex};
+                work->queued = false;
+                if (work->cancelled)
+                    continue;
+                work->executing = true;
+            }
+            work->run(work->owner);
+            work->executing = false;
+            ++count;
+        }
+        state_->completion_batch.clear();
+        state_->collecting_completions = false;
+        return count;
+    }
+
+    lux::cxx::expected<std::size_t, EExecutionError> ExecutionRuntime::dispatchTaskEvents() noexcept
+    {
+        if (!tasks_ || state_->owner_thread != std::this_thread::get_id())
+            return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
+        if (tasks_->collecting || tasks_->dispatching || state_->collecting_completions)
+            return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
+        return tasks_->dispatch();
+    }
+
+    std::optional<TaskInfo> ExecutionRuntime::taskInfo(TaskId id) const noexcept
+    {
+        return tasks_->info(id);
+    }
+    std::vector<TaskInfo> ExecutionRuntime::taskInfos() const noexcept
+    {
+        return tasks_->infos();
+    }
+    bool ExecutionRuntime::requestStop(TaskId id) noexcept
+    {
+        return tasks_->requestStop(id);
+    }
+    void ExecutionRuntime::setTaskObserver(void* owner, TaskObserver observer) noexcept
+    {
+        tasks_->requireOwner();
+        tasks_->observer_owner = owner;
+        tasks_->observer = observer;
     }
 
     TimerClient ExecutionRuntime::timer() const noexcept
@@ -450,40 +439,134 @@ namespace lux::process
         return BlockingScheduler{state_};
     }
 
-    lux::cxx::expected<std::size_t, EExecutionError> ExecutionRuntime::drainMain(std::size_t budget) noexcept
+    CompletionWork::CompletionWork(ExecutionRuntime& runtime, void* owner, void (*run)(void*) noexcept)
+        : state_(std::make_shared<detail::CompletionWorkState>())
     {
-        if (!state_)
+        const auto& state = runtime.state_;
+        if (!state || state->owner_thread != std::this_thread::get_id() || !owner || !run)
+            std::terminate();
+        std::lock_guard lock{state->completion_mutex};
+        if (state->phase.load(std::memory_order_acquire) != detail::EExecutionState::ACTIVE)
+            std::terminate();
+        // Cancelled batch entries can still retain their node until the batch returns.
+        const auto count =
+            state->completion_count + state->ready_completion.size() + state->completion_batch.size() + 1;
+        state->ready_completion.reserve(count);
+        state->completion_batch.reserve(count);
+        state_->runtime = state;
+        state_->owner = owner;
+        state_->run = run;
+        ++state->completion_count;
+    }
+    CompletionWork::~CompletionWork() noexcept
+    {
+        cancel();
+    }
+    void CompletionWork::cancel() noexcept
+    {
+        const auto state = state_->runtime.lock();
+        if (!state)
+            return;
+        if (state->owner_thread != std::this_thread::get_id())
+            std::terminate();
+        std::lock_guard lock{state->completion_mutex};
+        if (state_->executing)
+            std::terminate();
+        if (!std::exchange(state_->cancelled, true))
+            --state->completion_count;
+        state_->owner = nullptr;
+    }
+    void CompletionWork::request() const noexcept
+    {
+        requester().request();
+    }
+    void CompletionWork::Request::request() const noexcept
+    {
+        const auto state = state_ ? state_->runtime.lock() : nullptr;
+        if (!state)
+            return;
         {
-            return lux::cxx::unexpected(EExecutionError::ALREADY_JOINED);
+            std::lock_guard lock{state->completion_mutex};
+            const bool closed =
+                state_->cancelled || state->phase.load(std::memory_order_acquire) == detail::EExecutionState::JOINED;
+            if (closed || state_->queued)
+                return;
+            state_->queued = true;
+            state->ready_completion.push_back(state_);
+            ++state->wake_epoch;
         }
+        state->completion_ready.notify_one();
+        if (const auto wake = state->wake_callback.load(std::memory_order_acquire))
+            wake();
+    }
+    std::uint64_t ExecutionRuntime::wakeEpoch() const noexcept
+    {
+        std::lock_guard lock{state_->completion_mutex};
+        return state_->wake_epoch;
+    }
+    bool ExecutionRuntime::hasPendingWork() const noexcept
+    {
+        if (tasks_->hasWork())
+            return true;
+        std::lock_guard lock{state_->completion_mutex};
+        return !state_->ready_completion.empty();
+    }
+    void ExecutionRuntime::wake() noexcept
+    {
+        {
+            std::lock_guard lock{state_->completion_mutex};
+            ++state_->wake_epoch;
+        }
+        state_->completion_ready.notify_one();
+        if (const auto wake = state_->wake_callback.load(std::memory_order_acquire))
+            wake();
+    }
+    void ExecutionRuntime::setWake(void (*wake)() noexcept) noexcept
+    {
         if (state_->owner_thread != std::this_thread::get_id())
-        {
+            std::terminate();
+        state_->wake_callback.store(wake, std::memory_order_release);
+    }
+    void ExecutionRuntime::waitForWork(std::uint64_t observed, std::chrono::steady_clock::time_point deadline) noexcept
+    {
+        if (state_->owner_thread != std::this_thread::get_id() || state_->collecting_completions)
+            std::terminate();
+        std::unique_lock lock{state_->completion_mutex};
+        const auto ready = [&] { return state_->wake_epoch != observed || !state_->ready_completion.empty(); };
+        if (deadline == std::chrono::steady_clock::time_point::max())
+            state_->completion_ready.wait(lock, ready);
+        else
+            state_->completion_ready.wait_until(lock, deadline, ready);
+    }
+    lux::cxx::expected<void, EExecutionError> ExecutionRuntime::validateWait() const noexcept
+    {
+        if (!state_ || state_->owner_thread != std::this_thread::get_id())
             return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
-        }
-        if (state_->phase.load(std::memory_order_acquire) == detail::EExecutionState::JOINED)
+        if (state_->collecting_completions)
+            return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
+        return {};
+    }
+    lux::cxx::expected<void, EExecutionError> ExecutionRuntime::waitUntil(
+        void* context,
+        bool (*ready)(void*) noexcept
+    ) noexcept
+    {
+        if (!state_ || state_->owner_thread != std::this_thread::get_id())
+            return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
+        if (ready(context))
+            return {};
+        if (state_->collecting_completions)
+            return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
+        while (!ready(context))
         {
-            return lux::cxx::unexpected(EExecutionError::ALREADY_JOINED);
+            const auto epoch = wakeEpoch();
+            const auto dispatched = collectCompletions();
+            if (!dispatched)
+                return lux::cxx::unexpected(dispatched.error());
+            if (!ready(context))
+                waitForWork(epoch);
         }
-
-        std::size_t completed{};
-        while (completed < budget)
-        {
-            detail::ScheduleRequest *request{};
-            {
-                std::lock_guard lock{state_->main_mutex};
-                request = state_->main_queue.pop();
-            }
-            if (request == nullptr)
-            {
-                break;
-            }
-            const bool stopped = !request->retained_terminal &&
-                                 (state_->phase.load(std::memory_order_acquire) != detail::EExecutionState::ACTIVE ||
-                                  request->cancel_requested.load(std::memory_order_acquire));
-            request->complete(request, stopped);
-            ++completed;
-        }
-        return completed;
+        return {};
     }
 
     void ExecutionRuntime::requestStop() noexcept
@@ -492,7 +575,8 @@ namespace lux::process
         {
             return;
         }
-        detail::stopState(state_);
+        state_->stop_requested = true;
+        tasks_->stop();
         timer_.requestStop();
     }
 
@@ -512,19 +596,22 @@ namespace lux::process
         {
             return lux::cxx::unexpected(EExecutionError::ALREADY_JOINED);
         }
-        if (phase != detail::EExecutionState::STOPPING)
+        if (!state_->stop_requested)
         {
             return lux::cxx::unexpected(EExecutionError::INVALID_STATE);
         }
+        if (!tasks_->settled())
+            return lux::cxx::unexpected(EExecutionError::WORK_PENDING);
         {
-            std::lock_guard lock{state_->main_mutex};
-            if (state_->main_queue.count != 0U || state_->main_reserved != 0U)
+            std::lock_guard lock{state_->completion_mutex};
+            if (!state_->ready_completion.empty())
             {
-                return lux::cxx::unexpected(EExecutionError::MAIN_QUEUE_NOT_DRAINED);
+                return lux::cxx::unexpected(EExecutionError::WORK_PENDING);
             }
         }
 
         timer_.requestStop();
+        detail::stopState(state_);
         detail::joinWorkers(*state_);
         state_->phase.store(detail::EExecutionState::JOINED, std::memory_order_release);
         return {};

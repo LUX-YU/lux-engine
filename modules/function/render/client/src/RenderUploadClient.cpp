@@ -80,15 +80,16 @@ namespace lux::render
         const TextureUploadMipInput mip{
             static_cast<std::uint32_t>(std::max(0, width)),
             static_cast<std::uint32_t>(std::max(0, height)),
-            byte_count};
+            byte_count
+        };
         if (pixels.empty() || byte_count == 0u || !validateTexture2DUpload(format, 1u, &mip, UINT32_MAX).ok())
         {
             return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
         }
 
         return trySubmit<Texture2DCreatedReply>(
-            [pixels = std::move(pixels), width, height, channels, format, generate_mips, mip](
-                Builder& builder) mutable {
+            [pixels = std::move(pixels), width, height, channels, format, generate_mips, mip](Builder& builder
+            ) mutable {
                 CreateTexture2DPayload payload{};
                 payload.width = width;
                 payload.height = height;
@@ -144,7 +145,8 @@ namespace lux::render
             inputs[i] = TextureUploadMipInput{
                 mip_levels[i].width,
                 mip_levels[i].height,
-                static_cast<std::uint32_t>(mip_levels[i].pixels.size())};
+                static_cast<std::uint32_t>(mip_levels[i].pixels.size())
+            };
             shared_bytes += mip_levels[i].pixels.size();
         }
         if (!validateTexture2DUpload(format, mip_count, inputs, UINT32_MAX).ok())
@@ -213,7 +215,8 @@ namespace lux::render
             inputs[i] = TextureUploadMipInput{
                 mip_levels[i].width,
                 mip_levels[i].height,
-                static_cast<std::uint32_t>(mip_levels[i].pixels.size())};
+                static_cast<std::uint32_t>(mip_levels[i].pixels.size())
+            };
             shared_bytes += mip_levels[i].pixels.size();
         }
         if (!validateTexture2DUpload(format, mip_count, inputs, UINT32_MAX).ok())
@@ -222,8 +225,8 @@ namespace lux::render
         }
 
         return trySubmit<TextureMipRangeReplacedReply>(
-            [handle, base_mip, mip_levels = std::move(mip_levels), mip_count, format, generate_mips](
-                Builder& builder) mutable {
+            [handle, base_mip, mip_levels = std::move(mip_levels), mip_count, format, generate_mips](Builder& builder
+            ) mutable {
                 ReplaceTexture2DMipRangePayload payload{};
                 payload.handle = handle;
                 payload.format = format;
@@ -281,8 +284,9 @@ namespace lux::render
         );
     }
 
-    UploadSubmitResult<Texture2DCreatedReply>
-    RenderUploadClient::tryCreatePersistentTexture2D(const PersistentTexture2DDesc& desc) const
+    UploadSubmitResult<Texture2DCreatedReply> RenderUploadClient::tryCreatePersistentTexture2D(
+        const PersistentTexture2DDesc& desc
+    ) const
     {
         if (!validatePersistentTexture2DDesc(desc).ok())
             return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
@@ -292,12 +296,12 @@ namespace lux::render
                 type_ids::CreatePersistentTexture2D,
                 CreatePersistentTexture2DPayload{.desc = desc}
             );
-        }
-        );
+        });
     }
 
-    UploadSubmitResult<TextureRegionsAppliedReply>
-    RenderUploadClient::tryUpdateTextureRegions(OwnedTextureUploadBatch batch) const
+    UploadSubmitResult<TextureRegionsAppliedReply> RenderUploadClient::tryUpdateTextureRegions(
+        OwnedTextureUploadBatch batch
+    ) const
     {
         const bool is_invalid_destination = batch.dst.isNull();
         const bool is_empty_payload = batch.regions.empty() || batch.pixels.empty();
@@ -329,7 +333,7 @@ namespace lux::render
     }
 
     void RenderUploadClient::reapTextureCreate(
-        ScopedRenderRequest<Texture2DCreatedReply>&& request,
+        TScopedRenderRequest<Texture2DCreatedReply>&& request,
         lux::cxx::move_only_function<void(RTextureHandle)> destroy
     ) const
     {
@@ -339,7 +343,6 @@ namespace lux::render
         observation.then([destroy = std::move(destroy)](const Texture2DCreatedReply& reply) mutable noexcept {
             if (!reply.handle.isNull() && destroy)
                 destroy(reply.handle);
-        }
-        );
+        });
     }
 }

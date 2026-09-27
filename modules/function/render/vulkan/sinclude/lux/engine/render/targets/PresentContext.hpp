@@ -37,8 +37,10 @@ namespace lux::render
 
     namespace detail
     {
-        [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<void>
-        waitPresentQueueIdle(VkQueue queue, PFN_vkQueueWaitIdle wait_idle) noexcept;
+        [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<void> waitPresentQueueIdle(
+            VkQueue queue,
+            PFN_vkQueueWaitIdle wait_idle
+        ) noexcept;
 
         [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<void> ensurePresentContextOpen(bool closed) noexcept;
 
@@ -106,8 +108,7 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC PresentContext
     {
         struct ConstructionKey final
-        {
-        };
+        {};
 
     public:
         /// surface 所有权移交进来;内部建 swapchain + 两套信号量。

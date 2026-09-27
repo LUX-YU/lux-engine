@@ -34,7 +34,8 @@ namespace lux::task
             requires(
                 !std::same_as<std::remove_cvref_t<Fn>, TaskCallable> &&
                 std::is_move_constructible_v<std::remove_cvref_t<Fn>> &&
-                std::is_nothrow_invocable_r_v<void, const std::remove_cvref_t<Fn>&>)
+                std::is_nothrow_invocable_r_v<void, const std::remove_cvref_t<Fn>&>
+            )
         explicit TaskCallable(Fn&& function)
         {
             using Function = std::remove_cvref_t<Fn>;

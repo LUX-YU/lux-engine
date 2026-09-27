@@ -21,8 +21,7 @@ namespace lux::render
     PCFeatureSimple::PCFeatureSimple(Config cfg)
         : IPointCloudFeature(RenderFeature::Config{.name = "PointCloudSimple"}), point_size_(cfg.initial_point_size),
           cfg_(std::move(cfg))
-    {
-    }
+    {}
 
     lux::render::Expected<void> PCFeatureSimple::initAndAttachTo(RenderScene& /*scene*/)
     {
@@ -33,7 +32,8 @@ namespace lux::render
         // 用 uViews)的管线必须带域合并标记,否则注册被拒。
         const std::array stage_requests{
             RenderContextView::PipelineStageDesc{EBuiltinShader::PC_SIMPLE_VERT, cfg_.vertex_shader},
-            RenderContextView::PipelineStageDesc{EBuiltinShader::PC_SIMPLE_FRAG, cfg_.fragment_shader}};
+            RenderContextView::PipelineStageDesc{EBuiltinShader::PC_SIMPLE_FRAG, cfg_.fragment_shader}
+        };
 
         auto stages = cv.preparePipelineStages(stage_requests);
         if (!stages)
@@ -58,11 +58,8 @@ namespace lux::render
         // 到绘制期才以「按未初始化缓冲画」的形式暴露。
         // ⚠️ 这个类型被两个点云 feature 用**不同容量** ensure —— 命中路径丢弃实参是
         //    既有行为(谁先到谁定容量),这里保持不变。
-        auto pc_r = sv.resources().ensure<PointCloudResources>(
-            cv.vmaAllocator(),
-            cfg.max_global_points,
-            cfg.max_octree_nodes
-        );
+        auto pc_r =
+            sv.resources().ensure<PointCloudResources>(cv.vmaAllocator(), cfg.max_global_points, cfg.max_octree_nodes);
         if (!pc_r)
             return lux::cxx::unexpected<RenderError>(pc_r.error());
         auto* pc_res = *pc_r;
@@ -92,7 +89,7 @@ namespace lux::render
             .write(builder.referenceTexture(cfg_.depth_target), lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT)
             .setPipeline(pipeline_handle_)
             .bindSceneDS()
-            .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::PointCloud)))
+            .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::POINT_CLOUD)))
             .setKernelFn([this](const PassRecordContext& ctx) {
                 if (!global_buf_ || global_buf_->buffer() == VK_NULL_HANDLE)
                     return;
@@ -119,10 +116,8 @@ namespace lux::render
                     if (slot.count == 0)
                         return;
                     vkCmdDraw(ctx.cmd, slot.count, 1, slot.first, 0);
-                }
-                );
-            }
-            )
+                });
+            })
             .setKernel("PointCloudDraw");
     }
 

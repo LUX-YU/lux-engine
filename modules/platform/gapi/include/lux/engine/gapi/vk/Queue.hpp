@@ -7,9 +7,7 @@ namespace lux::gapi::vk
     class Queue
     {
     public:
-        Queue() : queue(VK_NULL_HANDLE)
-        {
-        }
+        Queue() : queue(VK_NULL_HANDLE) {}
 
         Queue(VkDevice device, uint32_t queue_family_index, uint32_t queue_index)
         {

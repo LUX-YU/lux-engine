@@ -36,6 +36,7 @@
 #include <lux/engine/function/render/features/canvas2d/Canvas2DOperation.hpp>
 // Image2DInstanceData / Image2DHandle / quantizePriority / status
 #include <lux/engine/function/render/client/core/RenderSpatialTypes.hpp>
+#include <lux/engine/render/resources/TextureResources.hpp>
 #include <lux/engine/render/gpu/memory/PagedGpuStream.hpp>
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
@@ -57,9 +58,9 @@ namespace lux::render
     /// append only. (Tile / Particle arrive with their slices.)
     enum class ECanvas2DKind : std::uint8_t
     {
-        Image = 0,
-        PixelField = 1, ///< F2-09: R16_UNORM id mirror + palette lookup
-        Tile = 2,       ///< A2-02: R16_UNORM tile-index map + tileset atlas sample
+        IMAGE = 0,
+        PIXEL_FIELD = 1, ///< F2-09: R16_UNORM id mirror + palette lookup
+        TILE = 2,       ///< A2-02: R16_UNORM tile-index map + tileset atlas sample
         COUNT
     };
 
@@ -82,6 +83,49 @@ namespace lux::render
 
     class Canvas2DInstanceArena
     {
+        struct Image2DGpuData
+        {
+            /// 2D affine world transform, column-major: [c0.x c0.y c1.x c1.y tx ty].
+            /// The producer bakes size×pivot in; the VS expands a unit ±0.5 quad.
+            float m[6]{1.f, 0.f, 0.f, 1.f, 0.f, 0.f};
+            std::int32_t page_delta[2]{};
+            float uv[4]{0.f, 0.f, 1.f, 1.f};            ///< atlas rect: u0, v0, w, h
+            std::uint32_t tint{0xFFFFFFFFu};            ///< premultiplied RGBA8
+            std::uint32_t texture_bindless{kNoTexture}; ///< set-2 index / kNoTexture = tint-only
+        };
+        static_assert(sizeof(Image2DGpuData) == 56);
+        struct PixelField2DGpuData
+        {
+            float m[6]{1.f, 0.f, 0.f, 1.f, 0.f, 0.f}; ///< column-major 2D affine (this CHUNK's extent baked in)
+            std::int32_t page_delta[2]{};
+            std::uint32_t field_texture{kNoTexture
+            }; ///< bindless set-2 index of the R16_UNORM id mirror (C2-01: the scene ATLAS)
+            std::uint32_t palette_texture{kNoTexture}; ///< bindless set-2 index of the 256×1 RGBA8 palette
+            std::uint32_t cells_w{0};                  ///< this chunk's texel extent (texelFetch bounds)
+            std::uint32_t cells_h{0};
+            std::uint32_t tint{0xFFFFFFFFu}; ///< premultiplied RGBA8 modulate
+            /// C2-01: the chunk's texel origin inside the atlas texture (0,0 for a
+            /// dedicated texture). texelFetch reads atlas_origin + cell.
+            std::uint32_t atlas_x{0};
+            std::uint32_t atlas_y{0};
+            std::uint32_t _pad0{0};
+        };
+        static_assert(sizeof(PixelField2DGpuData) == 64);
+        struct Tile2DGpuData
+        {
+            float m[6]{1.f, 0.f, 0.f, 1.f, 0.f, 0.f}; ///< column-major 2D affine (full map extent baked in)
+            std::int32_t page_delta[2]{};
+            std::uint32_t tileset_texture{kNoTexture}; ///< bindless set-2 index of the tileset atlas
+            std::uint32_t index_texture{kNoTexture};   ///< bindless set-2 index of the R16_UNORM tile-id map
+            std::uint32_t tiles_w{0};                  ///< index-map texel extent (texelFetch bounds)
+            std::uint32_t tiles_h{0};
+            std::uint32_t tileset_grid{0};   ///< packed: cols (low 16) | rows (high 16)
+            std::uint32_t tint{0xFFFFFFFFu}; ///< premultiplied RGBA8 modulate
+            std::uint32_t atlas_x{0};        ///< tile-index atlas texel origin
+            std::uint32_t atlas_y{0};
+        };
+        static_assert(sizeof(Tile2DGpuData) == 64);
+
         struct Slot
         {
             std::uint32_t gen{0};
@@ -97,8 +141,8 @@ namespace lux::render
         {
         public:
             virtual ~IKindStore() = default;
-            virtual void
-            collectLiveKeys(std::vector<std::uint64_t>& out, std::uint64_t kind_field, std::uint8_t group) const = 0;
+            virtual void collectLiveKeys(std::vector<std::uint64_t>& out, std::uint64_t kind_field, std::uint8_t group)
+                const = 0;
             virtual void resetOrderCursor() = 0;
             /// Write @p slot at the kind's next order position; returns that position.
             [[nodiscard]] virtual std::uint32_t appendOrdered(std::uint32_t slot) = 0;
@@ -109,7 +153,7 @@ namespace lux::render
         /// descriptor set. Typed mutators are exposed through the arena's per-kind
         /// façade (handlers stay wire-typed); everything order-related goes through
         /// the shared IKindStore seam.
-        template <class Record> class KindStore final : public IKindStore
+        template <class Record> class TKindStore final : public IKindStore
         {
         public:
             void init(DeviceContext* dev, std::uint32_t cap, std::uint32_t max_cap)
@@ -135,8 +179,8 @@ namespace lux::render
             }
 
             // ── typed op entry points ────────────────────────────────────────
-            [[nodiscard]] ECanvas2DCreateStatus
-            add(const Record& r,
+            [[nodiscard]] ECanvas2DCreateStatus add(
+                const Record& r,
                 std::uint32_t key_hi,
                 bool visible,
                 std::uint8_t group,
@@ -153,7 +197,7 @@ namespace lux::render
                 else
                 {
                     if (!ensureCapacity(slot_count_ + 1))
-                        return ECanvas2DCreateStatus::CapacityExhausted;
+                        return ECanvas2DCreateStatus::CAPACITY_EXHAUSTED;
                     slot = slot_count_++;
                 }
                 Slot& s = slots_[slot];
@@ -165,7 +209,7 @@ namespace lux::render
                 records_.markDirty(slot);
                 out_slot = slot;
                 out_gen = s.gen;
-                return ECanvas2DCreateStatus::Ok;
+                return ECanvas2DCreateStatus::OK;
             }
 
             /// Returns true when the removal affected the draw order (was visible).
@@ -282,9 +326,8 @@ namespace lux::render
                             .dst = gpu,
                             .dst_offset = c.dst_offset,
                             .size = c.size,
-                            .domain = EBufferDomain::Storage_VS,
-                        }
-                        );
+                            .domain = EBufferDomain::STORAGE_VS,
+                        });
                         offset += c.size;
                     }
                 };
@@ -385,12 +428,12 @@ namespace lux::render
                 vkUpdateDescriptorSets(device_ctx_->logicalDevice(), 2, writes.data(), 0, nullptr);
             }
 
-            PagedGpuStream<Record> records_;
-            PagedGpuStream<std::uint32_t> order_;
+            TPagedGpuStream<Record> records_;
+            TPagedGpuStream<std::uint32_t> order_;
             std::vector<Slot> slots_;
             std::vector<std::uint32_t> free_;
-            std::vector<typename PagedGpuStream<Record>::UploadChunk> rec_chunks_;
-            std::vector<typename PagedGpuStream<std::uint32_t>::UploadChunk> ord_chunks_;
+            std::vector<typename TPagedGpuStream<Record>::UploadChunk> rec_chunks_;
+            std::vector<typename TPagedGpuStream<std::uint32_t>::UploadChunk> ord_chunks_;
 
             std::uint32_t slot_count_{0};
             std::uint32_t capacity_{0};
@@ -409,6 +452,7 @@ namespace lux::render
     public:
         struct InitInfo
         {
+            const TextureResources* textures{};
             DeviceContext* device_context{nullptr};
             DescriptorService* descriptor_svc{nullptr};
             SceneDescriptorArena* arena{nullptr};
@@ -428,6 +472,7 @@ namespace lux::render
         /// Idempotent (the feature calls it at every attach; the first one builds).
         void init(const InitInfo& info)
         {
+            textures_ = info.textures;
             if (initialized_)
                 return;
             device_ctx_ = info.device_context;
@@ -446,7 +491,8 @@ namespace lux::render
                 bindings[1].binding = 1;
                 std::array<VkDescriptorBindingFlags, 2> bind_flags{
                     VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
-                    VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT};
+                    VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
+                };
                 ds_layout_id_ = svc_->registerLayout(
                     {.bindings = bindings,
                      .binding_flags = bind_flags,
@@ -477,15 +523,31 @@ namespace lux::render
 
         // ── image-kind op entry points (wire-typed; handlers stay unchanged) ──
 
-        [[nodiscard]] ECanvas2DCreateStatus
-        add(const Image2DInstanceData& data, float priority, bool visible, Image2DHandle& out, std::uint32_t group = 0)
+        [[nodiscard]] ECanvas2DCreateStatus add(
+            const Image2DInstanceData& data,
+            float priority,
+            bool visible,
+            Image2DHandle& out,
+            std::uint32_t group = 0
+        )
         {
             out = {};
             if (!initialized_)
-                return ECanvas2DCreateStatus::InvalidConfiguration;
+                return ECanvas2DCreateStatus::INVALID_CONFIGURATION;
             std::uint32_t slot, gen;
-            const auto st = images_.add(data, quantizePriority(priority), visible, clampGroup(group), slot, gen);
-            if (st != ECanvas2DCreateStatus::Ok)
+            if (!textures_)
+                return ECanvas2DCreateStatus::INVALID_CONFIGURATION;
+            Image2DGpuData gpu;
+            std::copy(std::begin(data.m), std::end(data.m), gpu.m);
+            std::copy(std::begin(data.page_delta), std::end(data.page_delta), gpu.page_delta);
+            std::copy(std::begin(data.uv), std::end(data.uv), gpu.uv);
+            gpu.tint = data.tint;
+            const auto texture_bindless = textures_->resolveTexture(data.texture);
+            if (data.texture.isValid() && !texture_bindless.isValid())
+                return ECanvas2DCreateStatus::INVALID_CONFIGURATION;
+            gpu.texture_bindless = texture_bindless.index;
+            const auto st = images_.add(gpu, quantizePriority(priority), visible, clampGroup(group), slot, gen);
+            if (st != ECanvas2DCreateStatus::OK)
                 return st;
             if (visible)
                 order_dirty_ = true;
@@ -513,15 +575,20 @@ namespace lux::render
             }
         }
 
-        void writeVisual(Image2DHandle h, const float uv[4], std::uint32_t tint, std::uint32_t texture_bindless)
+        void writeVisual(Image2DHandle h, const float uv[4], std::uint32_t tint, RTextureHandle texture)
         {
+            if (!textures_)
+                return;
+            const auto local = textures_->resolveTexture(texture);
+            if (texture.isValid() && !local.isValid())
+                return;
             if (!initialized_ || h.isNull())
                 return;
             if (auto* r = images_.resolveRecord(h.index, h.gen))
             {
                 std::memcpy(r->uv, uv, sizeof(float) * 4);
                 r->tint = tint;
-                r->texture_bindless = texture_bindless;
+                r->texture_bindless = local.index;
                 images_.markRecordDirty(h.index);
             }
         }
@@ -541,15 +608,38 @@ namespace lux::render
 
         // ── PixelField-kind op entry points (F2-09; same grammar as images) ────
 
-        [[nodiscard]] ECanvas2DCreateStatus
-        addField(const PixelField2DInstanceData& data, float priority, bool visible, PixelFieldInstanceHandle& out)
+        [[nodiscard]] ECanvas2DCreateStatus addField(
+            const PixelField2DInstanceData& data,
+            float priority,
+            bool visible,
+            PixelFieldInstanceHandle& out
+        )
         {
             out = {};
             if (!initialized_)
-                return ECanvas2DCreateStatus::InvalidConfiguration;
+                return ECanvas2DCreateStatus::INVALID_CONFIGURATION;
             std::uint32_t slot, gen;
-            const auto st = fields_.add(data, quantizePriority(priority), visible, 0, slot, gen);
-            if (st != ECanvas2DCreateStatus::Ok)
+            if (!textures_)
+                return ECanvas2DCreateStatus::INVALID_CONFIGURATION;
+            PixelField2DGpuData gpu;
+            std::copy(std::begin(data.m), std::end(data.m), gpu.m);
+            std::copy(std::begin(data.page_delta), std::end(data.page_delta), gpu.page_delta);
+            gpu.tint = data.tint;
+            gpu.cells_w = data.cells_w;
+            gpu.cells_h = data.cells_h;
+            gpu.atlas_x = data.atlas_x;
+            gpu.atlas_y = data.atlas_y;
+            gpu._pad0 = data._pad0;
+            const auto field_texture = textures_->resolveTexture(data.field_texture);
+            if (data.field_texture.isValid() && !field_texture.isValid())
+                return ECanvas2DCreateStatus::INVALID_CONFIGURATION;
+            gpu.field_texture = field_texture.index;
+            const auto palette_texture = textures_->resolveTexture(data.palette_texture);
+            if (data.palette_texture.isValid() && !palette_texture.isValid())
+                return ECanvas2DCreateStatus::INVALID_CONFIGURATION;
+            gpu.palette_texture = palette_texture.index;
+            const auto st = fields_.add(gpu, quantizePriority(priority), visible, 0, slot, gen);
+            if (st != ECanvas2DCreateStatus::OK)
                 return st;
             if (visible)
                 order_dirty_ = true;
@@ -587,15 +677,38 @@ namespace lux::render
 
         // ── Tile-kind op entry points (A2-02; same grammar as images/fields) ───
 
-        [[nodiscard]] ECanvas2DCreateStatus
-        addTile(const Tile2DInstanceData& data, float priority, bool visible, Tile2DInstanceHandle& out)
+        [[nodiscard]] ECanvas2DCreateStatus addTile(
+            const Tile2DInstanceData& data,
+            float priority,
+            bool visible,
+            Tile2DInstanceHandle& out
+        )
         {
             out = {};
             if (!initialized_)
-                return ECanvas2DCreateStatus::InvalidConfiguration;
+                return ECanvas2DCreateStatus::INVALID_CONFIGURATION;
             std::uint32_t slot, gen;
-            const auto st = tiles_.add(data, quantizePriority(priority), visible, 0, slot, gen);
-            if (st != ECanvas2DCreateStatus::Ok)
+            if (!textures_)
+                return ECanvas2DCreateStatus::INVALID_CONFIGURATION;
+            Tile2DGpuData gpu;
+            std::copy(std::begin(data.m), std::end(data.m), gpu.m);
+            std::copy(std::begin(data.page_delta), std::end(data.page_delta), gpu.page_delta);
+            gpu.tint = data.tint;
+            gpu.tiles_w = data.tiles_w;
+            gpu.tiles_h = data.tiles_h;
+            gpu.tileset_grid = data.tileset_grid;
+            gpu.atlas_x = data.atlas_x;
+            gpu.atlas_y = data.atlas_y;
+            const auto tileset_texture = textures_->resolveTexture(data.tileset_texture);
+            if (data.tileset_texture.isValid() && !tileset_texture.isValid())
+                return ECanvas2DCreateStatus::INVALID_CONFIGURATION;
+            gpu.tileset_texture = tileset_texture.index;
+            const auto index_texture = textures_->resolveTexture(data.index_texture);
+            if (data.index_texture.isValid() && !index_texture.isValid())
+                return ECanvas2DCreateStatus::INVALID_CONFIGURATION;
+            gpu.index_texture = index_texture.index;
+            const auto st = tiles_.add(gpu, quantizePriority(priority), visible, 0, slot, gen);
+            if (st != ECanvas2DCreateStatus::OK)
                 return st;
             if (visible)
                 order_dirty_ = true;
@@ -662,11 +775,11 @@ namespace lux::render
         {
             switch (kind)
             {
-            case ECanvas2DKind::Image:
+            case ECanvas2DKind::IMAGE:
                 return images_.descriptorSet();
-            case ECanvas2DKind::PixelField:
+            case ECanvas2DKind::PIXEL_FIELD:
                 return fields_.descriptorSet();
-            case ECanvas2DKind::Tile:
+            case ECanvas2DKind::TILE:
                 return tiles_.descriptorSet();
             default:
                 return VK_NULL_HANDLE;
@@ -738,9 +851,10 @@ namespace lux::render
             ++order_rebuilds_;
         }
 
-        KindStore<Image2DInstanceData> images_;
-        KindStore<PixelField2DInstanceData> fields_;
-        KindStore<Tile2DInstanceData> tiles_;
+        const TextureResources* textures_{};
+        TKindStore<Image2DGpuData> images_;
+        TKindStore<PixelField2DGpuData> fields_;
+        TKindStore<Tile2DGpuData> tiles_;
 
         std::vector<std::uint64_t> key_scratch_;
         std::vector<Canvas2DRun> runs_;

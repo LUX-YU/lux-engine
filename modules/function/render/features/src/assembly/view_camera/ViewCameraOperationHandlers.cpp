@@ -73,8 +73,10 @@ namespace lux::render
         }
 
     } // anonymous namespace (helpers)
-    void
-    handleViewCameraUpdate(GeneralRenderServer::Dispatcher::Ctx& ctx, std::span<const ViewCameraUpdatePayload> updates)
+    void handleViewCameraUpdate(
+        GeneralRenderServer::Dispatcher::Ctx& ctx,
+        std::span<const ViewCameraUpdatePayload> updates
+    )
     {
         for (const auto& u : updates)
         {
@@ -127,7 +129,9 @@ namespace lux::render
     }
 
     void handleViewCameraRemove(
-        GeneralRenderServer::Dispatcher::Ctx& ctx, std::span<const ViewCameraRemovePayload> removals)
+        GeneralRenderServer::Dispatcher::Ctx& ctx,
+        std::span<const ViewCameraRemovePayload> removals
+    )
     {
         for (const auto& removal : removals)
         {

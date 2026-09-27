@@ -2,16 +2,21 @@
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
 
 #include <algorithm>
-#include <cassert>
 #include <cstring>
 
 namespace lux::render
 {
 
-    bool
-    TrajectoryGlobalBuffer::ensureSlotCapacity(uint32_t trajectory_id, uint32_t capacity, TransferScheduler& scheduler)
+    bool TrajectoryGlobalBuffer::ensureSlotCapacity(
+        uint32_t trajectory_id,
+        uint32_t capacity,
+        TransferScheduler& scheduler
+    )
     {
-        assert(isInitialized());
+        if (!isInitialized())
+        {
+            return false;
+        }
         if (capacity == 0)
             return false;
 
@@ -57,10 +62,9 @@ namespace lux::render
                 .dst = buffer_,
                 .dst_offset = elemBytes(first),
                 .size = elemBytes(old_count),
-                .domain = EBufferDomain::TransferDst,
+                .domain = EBufferDomain::TRANSFER_DST,
                 .priority = -1,
-            }
-            );
+            });
         }
 
         deferReturn(old_first, slot.capacity);
@@ -101,10 +105,9 @@ namespace lux::render
             .dst = buffer_,
             .dst_offset = byte_offset,
             .size = byte_size,
-            .domain = EBufferDomain::VertexInput_CS,
+            .domain = EBufferDomain::VERTEX_INPUT_CS,
             .priority = 0,
-        }
-        );
+        });
 
         slot.count += to_append;
         return to_append;

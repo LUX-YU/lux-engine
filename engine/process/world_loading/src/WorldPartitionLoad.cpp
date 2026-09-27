@@ -1,5 +1,6 @@
 #include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
 #include <lux/engine/world/storage/detail/WorldStorageCodec.hpp>
+#include <lux/engine/process/PortSender.hpp>
 
 #include <atomic>
 #include <limits>
@@ -18,15 +19,14 @@ namespace lux::process::world_loading
 
     WorldStorageSource::WorldStorageSource(
         std::shared_ptr<const lux::world::WorldDescription> world,
-        lux::async::OperationPort<ReadWorldStorageRange> read_port
+        lux::async::TOperationPort<ReadWorldStorageRange> read_port
     ) noexcept
         : world_(std::move(world)), read_port_(std::move(read_port))
-    {
-    }
+    {}
 
     lux::cxx::expected<WorldStorageSource, WorldStorageRuntimeFailure> WorldStorageSource::create(
         std::shared_ptr<const lux::world::WorldDescription> world,
-        lux::async::OperationPort<ReadWorldStorageRange> read_port
+        lux::async::TOperationPort<ReadWorldStorageRange> read_port
     ) noexcept
     {
         if (!world || !read_port)
@@ -44,7 +44,7 @@ namespace lux::process::world_loading
         return *world_;
     }
 
-    const lux::async::OperationPort<ReadWorldStorageRange>& WorldStorageSource::readPort() const noexcept
+    const lux::async::TOperationPort<ReadWorldStorageRange>& WorldStorageSource::readPort() const noexcept
     {
         return read_port_;
     }
@@ -65,19 +65,18 @@ namespace lux::process::world_loading
             partition::PartitionOrdinal partition_value,
             std::size_t max_bytes_value,
             std::stop_token stop_value,
+            process::TaskReporter reporter,
             void* receiver_value,
             void (*value_fn)(void*, lux::world::WorldPartitionData&&) noexcept,
             void (*error_fn)(void*, WorldStorageRuntimeFailure) noexcept,
             void (*stopped_fn)(void*) noexcept
         ) noexcept
             : source(std::move(source_value)), partition(partition_value), max_bytes(max_bytes_value), stop(stop_value),
-              receiver(receiver_value), set_value(value_fn), set_error(error_fn), set_stopped(stopped_fn)
-        {
-        }
+              correlation(taskCorrelation(reporter.id())), receiver(receiver_value), set_value(value_fn),
+              set_error(error_fn), set_stopped(stopped_fn)
+        {}
 
-        [[nodiscard]] WorldStorageRuntimeFailure mapFailure(
-            lux::world::WorldStorageCodecFailure failure
-        ) const noexcept
+        [[nodiscard]] WorldStorageRuntimeFailure mapFailure(lux::world::WorldStorageCodecFailure failure) const noexcept
         {
             using Input = lux::world::EWorldStorageCodecError;
             EWorldStorageRuntimeError code{EWorldStorageRuntimeError::DECODE_FAILURE};
@@ -141,8 +140,7 @@ namespace lux::process::world_loading
                 finishStopped();
                 return;
             }
-            if (size > std::numeric_limits<std::size_t>::max() ||
-                static_cast<std::size_t>(size) > max_bytes)
+            if (size > std::numeric_limits<std::size_t>::max() || static_cast<std::size_t>(size) > max_bytes)
             {
                 finishError({EWorldStorageRuntimeError::LIMIT_EXCEEDED, volume, offset});
                 return;
@@ -157,7 +155,7 @@ namespace lux::process::world_loading
                     self.callback_seen.store(true, std::memory_order_release);
                     self.complete(std::move(outcome));
                 },
-                lux::async::SubmitOptions{.accounted_bytes = accounted_bytes}
+                lux::async::SubmitOptions{.accounted_bytes = accounted_bytes, .correlation = correlation}
             );
             if (!submitted && !callback_seen.load(std::memory_order_acquire))
             {
@@ -221,8 +219,7 @@ namespace lux::process::world_loading
                 stage = EStage::DESCRIPTOR;
                 submit(
                     current.volume,
-                    header.descriptor_offset +
-                        static_cast<std::uint64_t>(current.chunk) * header.descriptor_stride,
+                    header.descriptor_offset + static_cast<std::uint64_t>(current.chunk) * header.descriptor_stride,
                     header.descriptor_stride
                 );
                 return;
@@ -246,12 +243,8 @@ namespace lux::process::world_loading
                 return;
             }
 
-            auto decoded_payload = lux::world::detail::decodeWorldStorageChunkPayload(
-                bytes,
-                descriptor,
-                max_bytes,
-                stop
-            );
+            auto decoded_payload =
+                lux::world::detail::decodeWorldStorageChunkPayload(bytes, descriptor, max_bytes, stop);
             if (!decoded_payload)
             {
                 finishCodecFailure(decoded_payload.error());
@@ -303,25 +296,12 @@ namespace lux::process::world_loading
                 finishError({EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR, current.volume});
                 return;
             }
-            try
+            if (partition_bytes.size() > max_bytes || decoded_payload->size() > max_bytes - partition_bytes.size())
             {
-                if (partition_bytes.size() > max_bytes ||
-                    decoded_payload->size() > max_bytes - partition_bytes.size())
-                {
-                    finishError({EWorldStorageRuntimeError::LIMIT_EXCEEDED, current.volume, descriptor.offset});
-                    return;
-                }
-                partition_bytes.insert(
-                    partition_bytes.end(),
-                    decoded_payload->begin(),
-                    decoded_payload->end()
-                );
-            }
-            catch (const std::bad_alloc&)
-            {
-                finishError({EWorldStorageRuntimeError::ALLOCATION_FAILURE});
+                finishError({EWorldStorageRuntimeError::LIMIT_EXCEEDED, current.volume, descriptor.offset});
                 return;
             }
+            partition_bytes.insert(partition_bytes.end(), decoded_payload->begin(), decoded_payload->end());
             if (beginNextPartitionChunk())
             {
                 return;
@@ -334,8 +314,8 @@ namespace lux::process::world_loading
         {
             while (partition_extent_index < partition_extent_count)
             {
-                const std::size_t extent_ordinal = static_cast<std::size_t>(first_partition_extent) +
-                    partition_extent_index;
+                const std::size_t extent_ordinal =
+                    static_cast<std::size_t>(first_partition_extent) + partition_extent_index;
                 if (extent_ordinal >= partition_page.extents.size())
                 {
                     finishError({EWorldStorageRuntimeError::CORRUPT_DESCRIPTOR});
@@ -351,7 +331,8 @@ namespace lux::process::world_loading
                     }
                     const auto volume_chunks = source.world().storageVolumes()[extent.volume].chunk_count;
                     const bool invalid_first = extent.first_chunk > volume_chunks;
-                    const bool invalid_count = extent.chunk_count == 0U ||
+                    const bool invalid_count =
+                        extent.chunk_count == 0U ||
                         (!invalid_first && extent.chunk_count > volume_chunks - extent.first_chunk);
                     if (invalid_first || invalid_count)
                     {
@@ -406,8 +387,10 @@ namespace lux::process::world_loading
         {
             if (!source || max_bytes == 0U || partition.value >= source.world().partitionCount())
             {
-                finishError({max_bytes == 0U ? EWorldStorageRuntimeError::LIMIT_EXCEEDED
-                                             : EWorldStorageRuntimeError::INVALID_PARTITION});
+                finishError(
+                    {max_bytes == 0U ? EWorldStorageRuntimeError::LIMIT_EXCEEDED
+                                     : EWorldStorageRuntimeError::INVALID_PARTITION}
+                );
                 return;
             }
             table_page = source.world().partitionTable().findPage(partition);
@@ -423,10 +406,11 @@ namespace lux::process::world_loading
         partition::PartitionOrdinal partition;
         std::size_t max_bytes{};
         std::stop_token stop;
+        std::array<std::uint64_t, 2> correlation{};
         void* receiver{};
-        void (*set_value)(void*, lux::world::WorldPartitionData&&) noexcept{};
-        void (*set_error)(void*, WorldStorageRuntimeFailure) noexcept{};
-        void (*set_stopped)(void*) noexcept{};
+        void (*set_value)(void*, lux::world::WorldPartitionData&&) noexcept {};
+        void (*set_error)(void*, WorldStorageRuntimeFailure) noexcept {};
+        void (*set_stopped)(void*) noexcept {};
         std::atomic_bool finished{};
         std::atomic_bool callback_seen{};
         EStage stage{EStage::HEADER};
@@ -448,6 +432,7 @@ namespace lux::process::world_loading
         partition::PartitionOrdinal partition,
         std::size_t max_bytes,
         std::stop_token stop,
+        process::TaskReporter reporter,
         void* receiver,
         void (*set_value)(void*, lux::world::WorldPartitionData&&) noexcept,
         void (*set_error)(void*, WorldStorageRuntimeFailure) noexcept,
@@ -458,13 +443,13 @@ namespace lux::process::world_loading
               partition,
               max_bytes,
               stop,
+              reporter,
               receiver,
               set_value,
               set_error,
               set_stopped
           ))
-    {
-    }
+    {}
 
     detail::WorldPartitionLoadMachine::~WorldPartitionLoadMachine() = default;
 

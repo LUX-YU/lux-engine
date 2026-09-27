@@ -48,8 +48,11 @@ namespace lux::render
         /// skipping that step is how a move-assign silently leaks a surface.
         RenderSurface& operator=(RenderSurface&& other) noexcept;
 
-        bool
-        init(window::LuxWindow& window, lux::gapi::vk::Instance& instance, VkAllocationCallbacks* allocator = nullptr);
+        bool init(
+            window::LuxWindow& window,
+            lux::gapi::vk::Instance& instance,
+            VkAllocationCallbacks* allocator = nullptr
+        );
 
         /// Create from a POD native window handle on the render thread (the
         /// command payload carries the handle across threads; Vulkan puts no

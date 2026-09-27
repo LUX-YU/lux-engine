@@ -14,17 +14,28 @@ namespace lux::material
     {
         switch (kind)
         {
-        case EMatNodeKind::CONSTANT:      return "Constant";
-        case EMatNodeKind::INPUT:         return "Input";
-        case EMatNodeKind::SAMPLE_TEXTURE: return "Sample Texture";
-        case EMatNodeKind::MATH:          return "Math";
-        case EMatNodeKind::SWIZZLE:       return "Swizzle";
-        case EMatNodeKind::CONSTRUCT:     return "Construct";
-        case EMatNodeKind::DECODE_NORMAL:  return "Decode Normal";
-        case EMatNodeKind::TBN_TRANSFORM:  return "TBN Transform";
-        case EMatNodeKind::PARAM:         return "Param";
-        case EMatNodeKind::OUTPUT_SURFACE: return "Output Surface";
-        default:                          return "Invalid";
+        case EMatNodeKind::CONSTANT:
+            return "Constant";
+        case EMatNodeKind::INPUT:
+            return "Input";
+        case EMatNodeKind::SAMPLE_TEXTURE:
+            return "Sample Texture";
+        case EMatNodeKind::MATH:
+            return "Math";
+        case EMatNodeKind::SWIZZLE:
+            return "Swizzle";
+        case EMatNodeKind::CONSTRUCT:
+            return "Construct";
+        case EMatNodeKind::DECODE_NORMAL:
+            return "Decode Normal";
+        case EMatNodeKind::TBN_TRANSFORM:
+            return "TBN Transform";
+        case EMatNodeKind::PARAM:
+            return "Param";
+        case EMatNodeKind::OUTPUT_SURFACE:
+            return "Output Surface";
+        default:
+            return "Invalid";
         }
     }
 
@@ -33,8 +44,8 @@ namespace lux::material
         DataPin makePin(const char* name, EValueType type, EPinDirection dir)
         {
             DataPin p{};
-            p.name      = name;
-            p.type      = type;
+            p.name = name;
+            p.type = type;
             p.direction = dir;
             return p;
         }
@@ -92,11 +103,11 @@ namespace lux::material
         operand_type = t;
         if (in_pins_.size() >= 2)
         {
-            in_pins_[0].type = t;  // Input pin type is authoritative — resolveInput type-checks against it
+            in_pins_[0].type = t; // Input pin type is authoritative — resolveInput type-checks against it
             in_pins_[1].type = t;
         }
         if (!out_pins_.empty())
-            out_pins_[0].type = t;  // Hint only; lowering derives Float for ops like Dot regardless
+            out_pins_[0].type = t; // Hint only; lowering derives Float for ops like Dot regardless
     }
 
     // ---- DecodeNormalNode ---------------------------------------------------
@@ -119,9 +130,11 @@ namespace lux::material
     void SwizzleNode::setTypes(EValueType source, EValueType out)
     {
         source_type = source;
-        out_type    = out;
-        if (!in_pins_.empty())  in_pins_[0].type  = source;  // Input pin type is authoritative
-        if (!out_pins_.empty()) out_pins_[0].type = out;
+        out_type = out;
+        if (!in_pins_.empty())
+            in_pins_[0].type = source; // Input pin type is authoritative
+        if (!out_pins_.empty())
+            out_pins_[0].type = out;
     }
 
     // ---- ParamNode ----------------------------------------------------------
@@ -135,7 +148,7 @@ namespace lux::material
     {
         type = t;
         if (!out_pins_.empty())
-            out_pins_[0].type = t;  // Output pin type is authoritative
+            out_pins_[0].type = t; // Output pin type is authoritative
     }
 
     // ---- TbnTransformNode ---------------------------------------------------
@@ -150,11 +163,11 @@ namespace lux::material
     ConstructNode::ConstructNode(EValueType out) : Node(ConstructionKey{}, EMatNodeKind::CONSTRUCT), out_type(out)
     {
         setName("Construct");
-        const int n = (out == EValueType::FLOAT) ? 1
-                    : (out == EValueType::VEC2)  ? 2
-                    : (out == EValueType::VEC3)  ? 3
-                                                    : 4;
-        static const char* const kComp[4] = { "x", "y", "z", "w" };
+        const int n = (out == EValueType::FLOAT)  ? 1
+                      : (out == EValueType::VEC2) ? 2
+                      : (out == EValueType::VEC3) ? 3
+                                                  : 4;
+        static const char* const kComp[4] = {"x", "y", "z", "w"};
         for (int i = 0; i < n; ++i)
             in_pins_.push_back(makePin(kComp[i], EValueType::FLOAT, EPinDirection::INPUT));
         out_pins_.push_back(makePin("out", out, EPinDirection::OUTPUT));

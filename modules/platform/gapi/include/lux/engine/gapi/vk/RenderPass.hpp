@@ -12,9 +12,7 @@ namespace lux::gapi::vk
     public:
         using Builder = RenderPassBuilder;
 
-        RenderPass() : render_pass(VK_NULL_HANDLE)
-        {
-        }
+        RenderPass() : render_pass(VK_NULL_HANDLE) {}
 
         RenderPass(VkDevice device, const VkRenderPassCreateInfo& info, VkAllocationCallbacks* allocator = nullptr)
         {

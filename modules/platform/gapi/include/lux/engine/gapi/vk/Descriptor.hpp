@@ -8,13 +8,9 @@ namespace lux::gapi::vk
     class DescriptorSetLayout
     {
     public:
-        DescriptorSetLayout() : descriptor_set_layout(VK_NULL_HANDLE)
-        {
-        }
+        DescriptorSetLayout() : descriptor_set_layout(VK_NULL_HANDLE) {}
 
-        DescriptorSetLayout(VkDescriptorSetLayout layout) : descriptor_set_layout(layout)
-        {
-        }
+        DescriptorSetLayout(VkDescriptorSetLayout layout) : descriptor_set_layout(layout) {}
 
         DescriptorSetLayout(
             VkDevice device,
@@ -138,9 +134,7 @@ namespace lux::gapi::vk
     public:
         using Builder = DescriptorSetAllocator;
 
-        DescriptorSet() : descriptor_set(VK_NULL_HANDLE)
-        {
-        }
+        DescriptorSet() : descriptor_set(VK_NULL_HANDLE) {}
 
         DescriptorSet(VkDevice device, const VkDescriptorSetAllocateInfo& info)
         {
@@ -178,8 +172,12 @@ namespace lux::gapi::vk
             }
         }
 
-        void
-        update(VkDevice device, const VkDescriptorBufferInfo& buffer_info, uint32_t binding, uint32_t array_element = 0)
+        void update(
+            VkDevice device,
+            const VkDescriptorBufferInfo& buffer_info,
+            uint32_t binding,
+            uint32_t array_element = 0
+        )
         {
             VkWriteDescriptorSet write_info = {
                 VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -191,7 +189,8 @@ namespace lux::gapi::vk
                 VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 nullptr,
                 &buffer_info,
-                nullptr};
+                nullptr
+            };
 
             vkUpdateDescriptorSets(device, 1, &write_info, 0, nullptr);
         }
@@ -270,9 +269,7 @@ namespace lux::gapi::vk
     public:
         using Builder = DescriptorPoolBuilder;
 
-        DescriptorPool() : descriptor_pool(VK_NULL_HANDLE)
-        {
-        }
+        DescriptorPool() : descriptor_pool(VK_NULL_HANDLE) {}
 
         DescriptorPool(const VkDescriptorPoolCreateInfo& create_info, VkDevice device, VkAllocationCallbacks* allocator)
         {

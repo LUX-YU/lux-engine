@@ -1,9 +1,9 @@
 #include <lux/engine/render/renderer/features/shadow/EVSMShadowResources.hpp>
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 
 #include <vk_mem_alloc.h>
 
 #include <algorithm>
-#include <cassert>
 #include <cstring>
 
 namespace lux::render
@@ -52,8 +52,8 @@ namespace lux::render
                 &config_ubo_allocs_[fi],
                 &alloc_info
             );
-            assert(br == VK_SUCCESS && "vmaCreateBuffer for EVSM config UBO failed");
-            (void)br;
+            if (br != VK_SUCCESS)
+                renderFatal("vmaCreateBuffer for EVSM config UBO failed");
             config_ubo_mapped_[fi] = alloc_info.pMappedData;
         }
 
@@ -145,8 +145,8 @@ namespace lux::render
         alloc_ci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 
         const VkResult ir = vmaCreateImage(allocator_, &img_ci, &alloc_ci, &image, &alloc, nullptr);
-        assert(ir == VK_SUCCESS && "vmaCreateImage for EVSM atlas failed");
-        (void)ir;
+        if (ir != VK_SUCCESS)
+            renderFatal("vmaCreateImage for EVSM atlas failed");
 
         VkImageViewCreateInfo view_ci{};
         view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -160,8 +160,8 @@ namespace lux::render
         view_ci.subresourceRange.layerCount = atlas_page_count_;
 
         const VkResult vr = vkCreateImageView(device_, &view_ci, nullptr, &view);
-        assert(vr == VK_SUCCESS && "vkCreateImageView for EVSM atlas failed");
-        (void)vr;
+        if (vr != VK_SUCCESS)
+            renderFatal("vkCreateImageView for EVSM atlas failed");
     }
 
     void EVSMShadowResources::createSampler()
@@ -176,7 +176,8 @@ namespace lux::render
         // border. That dead field was the stated reason this site stayed out of
         // the shared cache.
         sampler_ = descriptor_svc_->sampler(SamplerDesc::linearClamp());
-        assert(sampler_ != VK_NULL_HANDLE && "EVSM moment sampler unavailable");
+        if (sampler_ == VK_NULL_HANDLE)
+            renderFatal("EVSM moment sampler unavailable");
     }
 
 } // namespace lux::render

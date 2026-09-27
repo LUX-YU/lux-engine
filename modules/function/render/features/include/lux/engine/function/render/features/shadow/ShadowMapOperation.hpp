@@ -39,7 +39,8 @@ namespace lux::render
         custom_create = true,
         requires = lux.render.light.v1,
         param_op = ShadowMapParams,
-        param_lane = program) ShadowMapCommConfig
+        param_lane = program
+    ) ShadowMapCommConfig
     {
         ShaderHandle shadow_vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle shadow_fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};

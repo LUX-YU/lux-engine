@@ -12,8 +12,6 @@ namespace lux::render
 {
     namespace
     {
-        inline void meta_sidecar_anchor()
-        {
-        }
+        inline void meta_sidecar_anchor() {}
     }
 }

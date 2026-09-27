@@ -8,12 +8,12 @@
 
 namespace lux::render
 {
-    template <typename T> class ScopedRenderRequest;
+    template <typename T> class TScopedRenderRequest;
 
-    template <typename T> class RenderRequest
+    template <typename T> class TRenderRequest
     {
     public:
-        RenderRequest() = default;
+        TRenderRequest() = default;
 
         [[nodiscard]] bool isReady() const noexcept
         {
@@ -89,33 +89,27 @@ namespace lux::render
 
         std::shared_ptr<State> state_;
 
-        explicit RenderRequest(std::shared_ptr<State> s) : state_(std::move(s))
-        {
-        }
+        explicit TRenderRequest(std::shared_ptr<State> s) : state_(std::move(s)) {}
 
-        template <typename U, std::size_t A> friend struct RenderRequestFactory;
+        template <typename U, std::size_t A> friend struct TRenderRequestFactory;
     };
 
-    template <typename T> class ScopedRenderRequest
+    template <typename T> class TScopedRenderRequest
     {
     public:
-        explicit ScopedRenderRequest(RenderRequest<T>&& request) noexcept : request_(std::move(request))
-        {
-        }
+        explicit TScopedRenderRequest(TRenderRequest<T>&& request) noexcept : request_(std::move(request)) {}
 
-        ~ScopedRenderRequest()
+        ~TScopedRenderRequest()
         {
             request_.cancel();
         }
 
-        ScopedRenderRequest(const ScopedRenderRequest&) = delete;
-        ScopedRenderRequest& operator=(const ScopedRenderRequest&) = delete;
+        TScopedRenderRequest(const TScopedRenderRequest&) = delete;
+        TScopedRenderRequest& operator=(const TScopedRenderRequest&) = delete;
 
-        ScopedRenderRequest(ScopedRenderRequest&& other) noexcept : request_(std::move(other.request_))
-        {
-        }
+        TScopedRenderRequest(TScopedRenderRequest&& other) noexcept : request_(std::move(other.request_)) {}
 
-        ScopedRenderRequest& operator=(ScopedRenderRequest&& other) noexcept
+        TScopedRenderRequest& operator=(TScopedRenderRequest&& other) noexcept
         {
             if (this != &other)
             {
@@ -151,29 +145,29 @@ namespace lux::render
         /// owner.  The GPU request itself was never cancellable; this is used
         /// by the owner-reaper path that must observe a late resource handle
         /// and compensate it after its scene owner has gone away.
-        [[nodiscard]] RenderRequest<T> release() noexcept
+        [[nodiscard]] TRenderRequest<T> release() noexcept
         {
             return std::exchange(request_, {});
         }
 
     private:
-        RenderRequest<T> request_;
+        TRenderRequest<T> request_;
     };
 
-    template <typename Reply, std::size_t ReplyAlignment = 64> struct RenderRequestFactory
+    template <typename Reply, std::size_t ReplyAlignment = 64> struct TRenderRequestFactory
     {
-        using Packet = ReplyPacket<ReplyAlignment>;
+        using Packet = TReplyPacket<ReplyAlignment>;
         using Callback = ReplyDispatchCallback;
 
         struct Result
         {
-            RenderRequest<Reply> request;
+            TRenderRequest<Reply> request;
             Callback callback;
         };
 
         static Result make()
         {
-            auto state = std::make_shared<typename RenderRequest<Reply>::State>();
+            auto state = std::make_shared<typename TRenderRequest<Reply>::State>();
 
             auto settle_failure = [state](RenderError error) {
                 state->error = error;
@@ -241,28 +235,29 @@ namespace lux::render
                 }};
             };
             return {
-                RenderRequest<Reply>(state),
-                Callback{std::move(on_reply), std::move(settle_failure), std::move(prepare_main_adoption)}};
+                TRenderRequest<Reply>(state),
+                Callback{std::move(on_reply), std::move(settle_failure), std::move(prepare_main_adoption)}
+            };
         }
 
-        static RenderRequest<Reply> makeImmediate(Reply value)
+        static TRenderRequest<Reply> makeImmediate(Reply value)
         {
-            auto state = std::make_shared<typename RenderRequest<Reply>::State>();
+            auto state = std::make_shared<typename TRenderRequest<Reply>::State>();
             state->value = std::move(value);
             state->ready = true;
-            return RenderRequest<Reply>(state);
+            return TRenderRequest<Reply>(state);
         }
 
-        static RenderRequest<Reply> makeImmediateFailure(RenderError error)
+        static TRenderRequest<Reply> makeImmediateFailure(RenderError error)
         {
-            auto state = std::make_shared<typename RenderRequest<Reply>::State>();
+            auto state = std::make_shared<typename TRenderRequest<Reply>::State>();
             state->error = error;
             state->failed = true;
             state->ready = true;
-            return RenderRequest<Reply>(state);
+            return TRenderRequest<Reply>(state);
         }
 
-        static void bindRequestId(RenderRequest<Reply>& request, RequestId request_id) noexcept
+        static void bindRequestId(TRenderRequest<Reply>& request, RequestId request_id) noexcept
         {
             if (request.state_)
                 request.state_->request_id = request_id;

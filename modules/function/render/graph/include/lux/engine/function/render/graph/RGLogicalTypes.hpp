@@ -46,7 +46,7 @@ namespace lux::render
     {
         std::string_view name;
         phase_mask_t phase_mask{0};
-        ERenderStage stage{ERenderStage::Default};
+        ERenderStage stage{ERenderStage::DEFAULT_STAGE};
         std::span<const RGPassTextureRef> textures;
         std::span<const RGPassBufferRef> buffers;
         std::span<const std::string> after_passes;

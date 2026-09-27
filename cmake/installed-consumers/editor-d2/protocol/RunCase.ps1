@@ -22,37 +22,14 @@ function Invoke-Checked([string[]]$Arguments, [string]$Marker = '^PASS', [int]$E
     }
 }
 
-if ($Case.StartsWith('publication-')) {
-    $mode = $Case.Substring('publication-'.Length)
-    if ($mode -eq 'crash') {
-        Invoke-Checked @($caseRoot, $mode) '^DELIBERATE INTERRUPTION exit=86' 86
-        Invoke-Checked @($caseRoot, 'recover')
-    } else {
-        Invoke-Checked @($caseRoot, $mode)
-    }
-    exit 0
+if ($Case -notin @('new-assets', 'save-preservation', 'factory-rollback', 'material-gui', 'flow-gui', 'fixed-run')) {
+    throw "Unknown retained workflow: $Case"
 }
-if ($Case -in @('material_protocol', 'flow_protocol', 'model_protocol', 'import_protocol')) {
-    Invoke-Checked @($caseRoot)
-    if ($Case -in @('material_protocol', 'flow_protocol')) {
-        Invoke-Checked @($caseRoot, 'verify') '^PASS new-process '
-    }
-    exit 0
-}
-if ($Case.EndsWith('_protocol') -or $Case -eq 'process_completion') {
-    Invoke-Checked @()
-    exit 0
-}
-
-$fixtureMode = if ($Case -in @('save-hierarchy', 'save-structure', 'save-spatial')) { 'gpu-hierarchy' }
-    elseif ($Case -in @('dynamic-run', 'simulation-failure', 'dynamic-terminal', 'dynamic-cost', 'closing-terminal', 'failure-closing-terminal')) { 'gpu-dynamic' }
-    elseif ($Case -eq 'save-preservation') { 'gpu-preservation' }
-    elseif ($Case -eq 'resource-sharing') { 'gpu-sharing' }
-    elseif ($Case -eq 'cpu') { 'cpu' } else { 'gpu' }
+$fixtureMode = if ($Case -eq 'save-preservation') { 'gpu-preservation' } else { 'gpu' }
 & $Fixture $caseRoot $fixtureMode
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Copy-Item -LiteralPath $Seed -Destination (Join-Path $caseRoot 'Seed.luxpak')
-if ($Case -in @('material-gui', 'flow-gui', 'material-publish')) {
+if ($Case -in @('material-gui', 'flow-gui')) {
     $flow = $Case -eq 'flow-gui'
     $inputRoot = $caseRoot + '-input'
     $inputLog = $caseRoot + '-input.log'
@@ -93,9 +70,6 @@ mount_path = "Editable B"
 }
 if ($Case -eq 'save-preservation') {
     Copy-Item -LiteralPath (Join-Path $caseRoot 'Main.luxscene') -Destination (Join-Path $caseRoot 'Main.before.luxscene')
-}
-if ($Case -eq 'save-import-model') {
-    Set-Content -LiteralPath (Join-Path $caseRoot 'Triangle.obj') -Encoding utf8 -Value "o Triangle`nv 0 0 0`nv 1 0 0`nv 0 1 0`nf 1 2 3`n"
 }
 Invoke-Checked @((Join-Path $caseRoot 'Project.luxproject'), $Case) ('^PASS case=' + [regex]::Escape($Case) + ' ')
 if ($Case -eq 'save-preservation') {

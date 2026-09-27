@@ -1,414 +1,414 @@
 #include <algorithm>
 #include <limits>
-#include <lux/engine/scene/detail/RenderAssetRequest.hpp>
-#include <lux/engine/scene/detail/RenderAssets.hpp>
+#include <lux/engine/scene/detail/RenderResourcesImpl.hpp>
+#include <lux/engine/scene/RenderAssets.hpp>
 
 namespace lux::scene
 {
-struct RenderAssetSource::Impl final
-{
-    struct Key final
+    namespace ecs = simulation::ecs;
+    using detail::MeshState;
+    using detail::TAssetResult;
+    namespace
     {
-        asset::AssetId mesh, material;
-        friend bool operator==(const Key &, const Key &) = default;
-    };
-    struct Hash final
-    {
-        std::size_t operator()(const Key &k) const noexcept
+        struct AssetStates final
         {
-            return std::hash<asset::AssetId>{}(k.mesh) ^ (std::hash<asset::AssetId>{}(k.material) << 1);
-        }
-    };
-    render::RenderRuntime &runtime;
-    detail::AssetReads reads;
-    std::uint64_t version;
-    RenderAssetLimits limits;
-    std::shared_ptr<std::size_t> live{std::make_shared<std::size_t>()};
-    std::unordered_map<Key, std::weak_ptr<detail::AssetUse>, Hash> cache;
-
-    std::shared_ptr<detail::AssetUse> acquire(const RenderAssetKey &key, bool fresh)
-    {
-        const Key pair{key.mesh, key.material};
-        if (!fresh)
-        {
-            if (const auto found = cache.find(pair); found != cache.end())
-            {
-                if (auto use = found->second.lock())
-                {
-                    return use;
-                }
-            }
-        }
-        if (*live == limits.requests)
-        {
-            return {};
-        }
-        auto request = std::make_shared<detail::AssetRequest>();
-        request->live = live;
-        ++*live;
-        request->row.key = key;
-        request->mesh_use = reads.acquireMesh(runtime, pair.mesh, fresh);
-        request->material_use = reads.acquireMaterial(runtime, pair.material, fresh);
-        if (!request->mesh_use || !request->material_use)
-        {
-            return {};
-        }
-        request->mesh_read = request->mesh_use->resource->read;
-        auto use = std::make_shared<detail::AssetUse>(request);
-        cache[pair] = use;
-        // Remove expired weak keys at admission, not during static frames.
-        std::erase_if(cache, [](const auto &item) { return item.second.expired(); });
-        return use;
+            AssetStates() = default;
+            AssetStates(const AssetStates&) = delete;
+            AssetStates& operator=(const AssetStates&) = delete;
+            std::unordered_map<std::uint64_t, std::unique_ptr<RenderAssets>> values;
+        };
     }
-};
 
-RenderAssetSource::RenderAssetSource(render::RenderRuntime &runtime, process::TaskScope &scope,
-                                     process::asset_loading::AssetReadPort port, std::uint64_t version,
-                                     RenderAssetLimits limits, std::shared_ptr<const void> code)
-    : impl_(std::make_unique<Impl>(runtime, detail::AssetReads{scope, std::move(port), limits.decode, std::move(code)},
-                                   version, limits))
-{
-}
-RenderAssetSource::~RenderAssetSource() = default;
-std::uint64_t RenderAssetSource::version() const noexcept
-{
-    return impl_->version;
-}
-bool RenderAssetSource::uses(const render::RenderRuntime &runtime) const noexcept
-{
-    return &impl_->runtime == &runtime;
-}
-} // namespace lux::scene
-
-namespace lux::scene::detail
-{
-namespace ecs = simulation::ecs;
-namespace
-{
-struct SceneMeshUse final
-{
-    std::shared_ptr<AssetUse> resource;
-    std::shared_ptr<SceneAssetLifetime> scene;
-    static bool release(void *opaque, render::RenderControlSession &, std::size_t &, bool retired) noexcept
+    RenderAssets* RenderAssets::find(ecs::Registry& registry, system::SystemInstanceId system) noexcept
     {
-        const auto &self = *static_cast<SceneMeshUse *>(opaque);
-        // During normal operation the last extraction/Program use proves
-        // replacement adoption. Scene destruction instead waits for the
-        // Scene receipt: a remaining View may still draw its last state.
-        return retired || self.scene->alive ||
-               self.scene->receipt.status().state == render::ESceneResourceState::RETIRED;
+        auto* states = registry.ctx().find<AssetStates>();
+        if (!states)
+            return nullptr;
+        const auto entry = states->values.find(system.value);
+        return entry == states->values.end() ? nullptr : entry->second.get();
     }
-};
-} // namespace
 
-RenderAssets::RenderAssets(ecs::Registry &registry, SceneInstanceId id, render::RenderSceneReceipt receipt,
-                           std::shared_ptr<RenderAssetSource> source)
-    : registry_(registry), instance_(id), source_(std::move(source)),
-      lifetime_(std::make_shared<SceneAssetLifetime>(std::move(receipt)))
-{
-    if (source_)
+    const RenderAssets* RenderAssets::find(const ecs::Registry& registry, system::SystemInstanceId system) noexcept
+    {
+        const auto* states = registry.ctx().find<AssetStates>();
+        if (!states)
+            return nullptr;
+        const auto entry = states->values.find(system.value);
+        return entry == states->values.end() ? nullptr : entry->second.get();
+    }
+
+    RenderAssets& RenderAssets::install(
+        ecs::Registry& registry,
+        system::SystemInstanceId system,
+        SceneInstanceId id,
+        RenderResources& resources,
+        RenderAssetInput input
+    )
+    {
+        auto& states = registry.ctx().emplace<AssetStates>();
+        auto value = std::unique_ptr<RenderAssets>(new RenderAssets(registry, id, resources, std::move(input)));
+        const auto [entry, inserted] = states.values.emplace(system.value, std::move(value));
+        if (!inserted)
+            render::renderFatal("Duplicate RenderAssets system identity");
+        return *entry->second;
+    }
+
+    void RenderAssets::uninstall(ecs::Registry& registry, system::SystemInstanceId system) noexcept
+    {
+        if (auto* states = registry.ctx().find<AssetStates>())
+            states->values.erase(system.value);
+    }
+
+    RenderAssets::RenderAssets(
+        ecs::Registry& registry,
+        SceneInstanceId id,
+        RenderResources& resources,
+        RenderAssetInput input
+    )
+        : registry_(registry), instance_(id), resources_(resources), input_(std::move(input))
     {
         using namespace entt::literals;
-        changes_.attach(registry_, "scene.render.assets"_hs, [](auto &storage) {
+        changes_.attach(registry_, "scene.render.assets"_hs, [](auto& storage) {
             storage.template on_construct<ecs::Mesh3D>().template on_update<ecs::Mesh3D>();
         });
         destroyed_ = registry_.on_destroy<ecs::Mesh3D>().connect<&RenderAssets::departed>(this);
     }
-}
 
-RenderAssets::~RenderAssets()
-{
-    lifetime_->alive = false;
-    changes_.detach();
-    destroyed_.release();
-    // Remove only our current associations. Extraction observers are already
-    // disconnected by RenderSystem; no borrowed component outlives Registry.
-    for (const auto &[entity, item] : current_)
+    RenderAssets::~RenderAssets()
     {
-        if (registry_.valid(entity))
+        changes_.detach();
+        destroyed_.release();
+        // Remove only our current associations. Extraction observers are already
+        // disconnected by RenderSystem; no borrowed component outlives Registry.
+        for (auto& [entity, item] : current_)
         {
-            const auto *value = registry_.try_get<ResolvedMeshResources>(entity);
-            if (value && value->lifetime == item.lifetime)
+            release(item);
+            if (registry_.valid(entity))
             {
-                registry_.remove<ResolvedMeshResources>(entity);
+                const auto* value = registry_.try_get<ResolvedMeshResources>(entity);
+                if (value && value->submission == item.submission)
+                {
+                    registry_.remove<ResolvedMeshResources>(entity);
+                }
             }
         }
     }
-}
 
-void RenderAssets::departed(ecs::Registry &, ecs::Entity entity)
-{
-    departures_.push_back(entity);
-}
+    void RenderAssets::release(Association& item) noexcept
+    {
+        if (item.mesh.isValid())
+            resources_.release(std::exchange(item.mesh, {}));
+        if (item.material.isValid())
+            resources_.release(std::exchange(item.material, {}));
+    }
 
-void RenderAssets::associate(ecs::Entity entity, bool fresh)
-{
-    const auto *mesh = registry_.valid(entity) ? registry_.try_get<ecs::Mesh3D>(entity) : nullptr;
-    if (!mesh)
+    void RenderAssets::departed(ecs::Registry&, ecs::Entity entity)
     {
-        return;
+        departures_.push_back(entity);
     }
-    const auto existing = current_.find(entity);
-    if (!fresh && existing != current_.end() && existing->second.key.mesh == mesh->value.mesh &&
-        existing->second.key.material == mesh->value.material)
-    {
-        return;
-    }
-    if (sequence_ == std::numeric_limits<std::uint64_t>::max())
-    {
-        render::renderFatal("Render asset request identity exhausted");
-    }
-    const RenderAssetKey key{instance_,          entity,     mesh->value.mesh, mesh->value.material,
-                             source_->version(), ++sequence_};
-    Association next{.key = key, .fresh = fresh};
-    // Observation records intent only. Actual reads/retains are admitted
-    // from the shared resource budget during maintenance.
-    current_.insert_or_assign(entity, std::move(next));
-    if (std::ranges::find(pending_, entity) == pending_.end())
-    {
-        pending_.push_back(entity);
-    }
-    changed_ = true;
-    query_dirty_ = true;
-}
 
-void RenderAssets::replaceSource(std::shared_ptr<RenderAssetSource> value)
-{
-    replacement_ = std::move(value);
-}
-
-void RenderAssets::maintain(SceneStageContext &context)
-{
-    // Do not mutate component membership while another stable phase is pending.
-    if (!context.allow_structure)
+    void RenderAssets::associate(ecs::Entity entity, bool fresh)
     {
-        return;
-    }
-    if (replacement_)
-    {
-        source_ = std::move(replacement_);
-        for (auto &[entity, item] : current_)
+        const auto* mesh = registry_.valid(entity) ? registry_.try_get<ecs::Mesh3D>(entity) : nullptr;
+        if (!mesh)
         {
-            if (sequence_ == std::numeric_limits<std::uint64_t>::max())
-            {
-                render::renderFatal("Render asset request identity exhausted");
-            }
-            item.key.source_version = source_->version();
-            item.key.sequence = ++sequence_;
-            item.use.reset();
-            item.attempted = false;
-            item.lifetime.reset();
-            item.adopted = false;
-            item.geometry_observed = false;
-            if (std::ranges::find(pending_, entity) == pending_.end())
-            {
-                pending_.push_back(entity);
-            }
+            return;
+        }
+        const auto existing = current_.find(entity);
+        if (!fresh && existing != current_.end() && existing->second.key.mesh == mesh->value.mesh &&
+            existing->second.key.material == mesh->value.material)
+        {
+            return;
+        }
+        if (sequence_ == std::numeric_limits<std::uint64_t>::max())
+        {
+            render::renderFatal("Render asset request identity exhausted");
+        }
+        const RenderAssetKey
+            key{instance_, entity, mesh->value.mesh, mesh->value.material, input_.version, ++sequence_};
+        if (existing != current_.end())
+            release(existing->second);
+        Association next{.key = key, .fresh = fresh};
+        // Observation records intent only. Actual reads/retains are admitted
+        // during maintenance; the manager performs all shared IO/upload work.
+        current_.insert_or_assign(entity, std::move(next));
+        if (std::ranges::find(pending_, entity) == pending_.end())
+        {
+            pending_.push_back(entity);
         }
         changed_ = true;
         query_dirty_ = true;
     }
-    if (!source_)
+
+    render::RenderResult<void> RenderAssets::replaceInput(RenderAssetInput value) noexcept
     {
-        return;
+        if (!value)
+            return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+        replacement_ = std::move(value);
+        return {};
     }
-    auto &source = *source_->impl_;
-    for (const auto entity : departures_)
+
+    void RenderAssets::maintain(SceneStageContext& context)
     {
-        if (current_.erase(entity))
+        // Do not mutate component membership while another stable phase is pending.
+        if (!context.allow_structure)
         {
+            return;
+        }
+        if (replacement_)
+        {
+            input_ = std::move(*replacement_);
+            replacement_.reset();
+            for (auto& [entity, item] : current_)
+            {
+                if (sequence_ == std::numeric_limits<std::uint64_t>::max())
+                {
+                    render::renderFatal("Render asset request identity exhausted");
+                }
+                item.key.source_version = input_.version;
+                item.key.sequence = ++sequence_;
+                release(item);
+                item.row = {};
+                item.submission = {};
+                item.geometry_observed = false;
+                if (std::ranges::find(pending_, entity) == pending_.end())
+                {
+                    pending_.push_back(entity);
+                }
+            }
             changed_ = true;
             query_dirty_ = true;
-            context.invalidated = true;
         }
-        if (registry_.valid(entity))
+        if (!input_)
         {
-            registry_.remove<ResolvedMeshResources>(entity);
+            return;
         }
-        std::erase(pending_, entity);
-    }
-    departures_.clear();
-    if (std::exchange(first_, false))
-    {
-        for (const auto entity : registry_.view<ecs::Mesh3D>())
+        for (const auto entity : departures_)
         {
-            associate(entity);
-        }
-    }
-    else
-    {
-        for (const auto entity : changes_.view())
-        {
-            associate(entity);
-        }
-    }
-    changes_.clear();
-    auto remaining = std::min({source.limits.transitions_per_turn, pending_.size(), context.resource_steps});
-    while (remaining-- && !pending_.empty())
-    {
-        --context.resource_steps;
-        cursor_ %= pending_.size();
-        const auto entity = pending_[cursor_];
-        auto &item = current_.at(entity);
-        if (!item.use)
-        {
-            changed_ |= !item.attempted;
-            item.attempted = true;
-            item.use = source.acquire(item.key, item.fresh);
-        }
-        bool complete{};
-        if (item.use)
-        {
-            auto &request = *item.use->request;
-            const auto state = request.row.state;
-            request.acceptReplies();
-            if (!item.geometry_observed && request.mesh_read->state.load(std::memory_order_acquire) !=
-                                               AssetResult<asset::MeshAsset>::State::PENDING)
+            if (const auto found = current_.find(entity); found != current_.end())
             {
-                item.geometry_observed = true;
+                release(found->second);
+                current_.erase(found);
+                changed_ = true;
                 query_dirty_ = true;
-                context.invalidated = true;
+                context.publication_needed = true;
             }
-            if (source.runtime.status().state == render::ERenderRuntimeState::ACTIVE)
+            if (registry_.valid(entity))
             {
-                request.prepareStep(source.runtime, source.reads);
+                registry_.remove<ResolvedMeshResources>(entity);
             }
-            changed_ |= state != request.row.state;
-            if (request.row.state == ERenderAssetState::READY)
+            std::erase(pending_, entity);
+        }
+        departures_.clear();
+        if (std::exchange(first_, false))
+        {
+            for (const auto entity : registry_.view<ecs::Mesh3D>())
             {
-                if (!item.lifetime)
+                associate(entity);
+            }
+        }
+        else
+        {
+            for (const auto entity : changes_.view())
+            {
+                associate(entity);
+            }
+        }
+        changes_.clear();
+        // Visit the entry set once; callbacks never extend this traversal.
+        std::size_t cursor{};
+        auto remaining = pending_.size();
+        while (remaining-- && !pending_.empty())
+        {
+            cursor %= pending_.size();
+            const auto entity = pending_[cursor];
+            auto& item = current_.at(entity);
+            const auto prior = item.row.state;
+            const auto acquire = [&](RenderResourceId& id, auto request, asset::AssetId asset) {
+                if (id.isValid() || item.row.state == ERenderAssetState::FAILED)
+                    return;
+                const auto created = (resources_.*request)(input_, asset, item.fresh);
+                if (created)
+                    id = *created;
+                else
                 {
-                    auto ownership = std::make_shared<SceneMeshUse>(item.use, lifetime_);
-                    auto control = source.runtime.control();
-                    if (control)
+                    item.row.state = created.error().code == render::ERendererError::CAPACITY
+                                         ? ERenderAssetState::CAPACITY
+                                         : ERenderAssetState::FAILED;
+                    item.row.failure = created.error();
+                    item.row.failed_dependency = asset;
+                }
+            };
+            acquire(item.mesh, &RenderResources::requestMesh, item.key.mesh);
+            acquire(item.material, &RenderResources::requestMaterial, item.key.material);
+            bool complete = item.row.state == ERenderAssetState::FAILED;
+            if (item.mesh.isValid() && item.material.isValid())
+            {
+                const auto mesh = resources_.status(item.mesh), material = resources_.status(item.material);
+                if (!mesh || !material)
+                    render::renderFatal("Lost an owned render asset record");
+                item.row = *mesh;
+                const auto terminal = [](auto state) {
+                    return state == ERenderAssetState::FAILED || state == ERenderAssetState::CANCELLED ||
+                           state == ERenderAssetState::UNREFERENCED;
+                };
+                if (!terminal(mesh->state))
+                {
+                    if (terminal(material->state))
+                        item.row = *material;
+                    else if (mesh->state == ERenderAssetState::READY && material->state == ERenderAssetState::READY)
+                        item.row.state = ERenderAssetState::READY;
+                    else
+                        item.row.state =
+                            mesh->state == ERenderAssetState::READING && material->state == ERenderAssetState::READING
+                                ? ERenderAssetState::READING
+                                : ERenderAssetState::UPLOADING;
+                }
+                auto* mesh_record = resources_.impl_->find(item.mesh);
+                const auto& read = std::get<MeshState>(mesh_record->asset().payload).read;
+                if (!item.geometry_observed && (!read || read->state.load(std::memory_order_acquire) !=
+                                                             TAssetResult<asset::MeshAsset>::EState::PENDING))
+                {
+                    item.geometry_observed = true;
+                    query_dirty_ = true;
+                    context.publication_needed = true;
+                }
+                if (item.row.state == ERenderAssetState::READY)
+                {
+                    if (!item.submission)
                     {
-                        auto admitted =
-                            control->get().retainResource(ownership, &SceneMeshUse::release, source.reads.code);
-                        if (admitted)
-                        {
-                            item.lifetime = std::make_shared<render::RenderResourceUse>(std::move(*admitted));
-                        }
+                        const std::array ids{item.mesh, item.material};
+                        auto captured = resources_.capture(ids);
+                        if (captured)
+                            item.submission = std::move(*captured);
+                        else
+                            item.row.failure = captured.error();
+                    }
+                    if (item.submission)
+                    {
+                        registry_.emplace_or_replace<ResolvedMeshResources>(
+                            entity,
+                            item.key.mesh,
+                            item.key.material,
+                            *resources_.mesh(item.mesh),
+                            *resources_.material(item.material),
+                            item.submission
+                        );
+                        changed_ = true;
+                        context.publication_needed = true;
+                        complete = true;
                     }
                 }
-                if (item.lifetime)
+                else
                 {
-                    registry_.emplace_or_replace<ResolvedMeshResources>(entity, item.key.mesh, item.key.material,
-                                                                        request.mesh, request.material, item.lifetime);
-                    item.adopted = true;
-                    changed_ = true;
-                    context.invalidated = true;
-                    complete = true;
+                    if (item.row.state == ERenderAssetState::UNREFERENCED)
+                    {
+                        registry_.remove<ResolvedMeshResources>(entity);
+                        context.publication_needed = true;
+                    }
+                    complete = terminal(item.row.state) && item.geometry_observed;
                 }
+            }
+            changed_ |= prior != item.row.state;
+            if (complete)
+            {
+                pending_[cursor] = pending_.back();
+                pending_.pop_back();
             }
             else
             {
-                if (request.row.state == ERenderAssetState::UNREFERENCED)
-                {
-                    registry_.remove<ResolvedMeshResources>(entity);
-                    context.invalidated = true;
-                }
-                complete = (request.row.state == ERenderAssetState::FAILED ||
-                            request.row.state == ERenderAssetState::CANCELLED ||
-                            request.row.state == ERenderAssetState::UNREFERENCED) &&
-                           item.geometry_observed;
+                ++cursor;
             }
         }
-        if (complete)
-        {
-            pending_[cursor_] = pending_.back();
-            pending_.pop_back();
-        }
-        else
-        {
-            ++cursor_;
-        }
     }
-}
 
-bool RenderAssets::pending() const noexcept
-{
-    return bool(replacement_) ||
-           (source_ && (first_ || !changes_.empty() || !departures_.empty() || !pending_.empty()));
-}
-
-std::span<const RenderAssetStatus> RenderAssets::statuses() const
-{
-    if (changed_)
+    bool RenderAssets::pending() const noexcept
     {
-        snapshot_.clear();
-        snapshot_.reserve(current_.size());
-        for (const auto &[entity, item] : current_)
-        {
-            auto row = item.use ? item.use->request->row
-                                : RenderAssetStatus{.state = item.attempted ? ERenderAssetState::CAPACITY
-                                                                            : ERenderAssetState::READING};
-            row.key = item.key;
-            snapshot_.push_back(std::move(row));
-        }
-        changed_ = false;
-        ++revision_;
+        return bool(replacement_) ||
+               (input_ && (first_ || !changes_.empty() || !departures_.empty() || !pending_.empty()));
     }
-    return snapshot_;
-}
 
-render::RenderResult<void> RenderAssets::retry(const RenderAssetKey &key)
-{
-    const auto found = current_.find(key.entity);
-    if (found == current_.end() || found->second.key != key)
+    std::span<const RenderAssetStatus> RenderAssets::statuses() const noexcept
     {
-        return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+        if (changed_)
+        {
+            snapshot_.clear();
+            snapshot_.reserve(current_.size());
+            for (const auto& [entity, item] : current_)
+            {
+                auto row = item.row;
+                row.key = item.key;
+                snapshot_.push_back(std::move(row));
+            }
+            changed_ = false;
+            ++revision_;
+        }
+        return snapshot_;
     }
-    associate(key.entity, true);
-    return {};
-}
 
-void RenderAssets::synchronizeQuery(MeshQuerySystem &query)
-{
-    if (!source_ || !std::exchange(query_dirty_, false))
+    render::RenderResult<void> RenderAssets::retry(const RenderAssetKey& key) noexcept
     {
-        return;
+        const auto found = current_.find(key.entity);
+        if (found == current_.end() || found->second.key != key)
+        {
+            return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+        }
+        associate(key.entity, true);
+        return {};
     }
-    std::unordered_map<asset::AssetId, const void *> current;
-    for (const auto &[entity, item] : current_)
+
+    void RenderAssets::synchronizeQuery(MeshQuery& query)
     {
-        if (!item.use)
+        if (!std::exchange(query_dirty_, false))
         {
-            continue;
+            return;
         }
-        auto &read = *item.use->request->mesh_read;
-        using State = AssetResult<asset::MeshAsset>::State;
-        const auto state = read.state.load(std::memory_order_acquire);
-        if (state == State::PENDING)
+        std::unordered_map<asset::AssetId, const void*> current;
+        for (const auto& [entity, item] : current_)
         {
-            continue;
-        }
-        current[item.key.mesh] = &read;
-        if (const auto previous = query_sources_.find(item.key.mesh);
-            previous != query_sources_.end() && previous->second == &read)
-        {
-            continue;
-        }
-        if (state == State::VALUE && read.geometry)
-        {
-            query.setGeometry(item.key.mesh, *read.geometry);
-        }
-        else
-        {
-            query.setGeometryFailure(item.key.mesh,
-                                     state == State::VALUE
-                                         ? read.geometry.error()
-                                         : MeshQueryFailure{state == State::CANCELLED ? EMeshQueryError::CANCELLED
+            if (!item.mesh.isValid())
+            {
+                continue;
+            }
+            const auto* record = resources_.impl_->find(item.mesh);
+            const auto& result = std::get<MeshState>(record->asset().payload).read;
+            if (!result)
+                continue;
+            auto& read = *result;
+            using State = TAssetResult<asset::MeshAsset>::EState;
+            const auto state = read.state.load(std::memory_order_acquire);
+            if (state == State::PENDING)
+            {
+                continue;
+            }
+            current[item.key.mesh] = &read;
+            if (const auto previous = query_sources_.find(item.key.mesh);
+                previous != query_sources_.end() && previous->second == &read)
+            {
+                continue;
+            }
+            if (state == State::VALUE && read.geometry)
+            {
+                query.setGeometry(item.key.mesh, *read.geometry);
+            }
+            else
+            {
+                query.setGeometryFailure(item.key.mesh,
+                                         state == State::VALUE ? read.geometry.error()
+                                                               : MeshQueryFailure{state == State::CANCELLED
+                                                                                      ? EMeshQueryError::CANCELLED
                                                                                       : EMeshQueryError::ASSET_FAILURE,
-                                                            entity, item.key.mesh});
+                                                                                  entity,
+                                                                                  item.key.mesh});
+            }
         }
-    }
-    for (const auto &[id, read] : query_sources_)
-    {
-        if (!current.contains(id))
+        for (const auto& [id, read] : query_sources_)
         {
-            query.removeGeometry(id);
+            if (!current.contains(id))
+            {
+                query.removeGeometry(id);
+            }
         }
+        query_sources_ = std::move(current);
     }
-    query_sources_ = std::move(current);
-}
-} // namespace lux::scene::detail
+} // namespace lux::scene

@@ -1,4 +1,5 @@
 #include "lux/engine/flowforge/compiler/ScriptInstance.hpp"
+#include <exception>
 #include "lux/engine/flowforge/compiler/IR.hpp"
 #include "lux/engine/flowforge/compiler/IRImpl.hpp"
 #include "lux/engine/flowforge/graph/FlowGraph.hpp"
@@ -155,7 +156,7 @@ namespace lux::flowforge
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+            std::terminate();
         }
         catch (...)
         {
@@ -233,7 +234,7 @@ namespace lux::flowforge
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+            std::terminate();
         }
         catch (...)
         {

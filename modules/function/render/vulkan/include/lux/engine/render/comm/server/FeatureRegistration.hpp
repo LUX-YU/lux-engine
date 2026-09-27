@@ -39,8 +39,10 @@ namespace lux::render
     {
         /// Install an already-constructed feature into the (type-erased) scene.
         /// Forwards to RenderScene::addFeatureErased. Returns the generational handle.
-        LUX_FUNCTION_PUBLIC Expected<FeatureHandle>
-        installFeatureErased(void* scene, std::unique_ptr<RenderFeature> feature);
+        LUX_FUNCTION_PUBLIC Expected<FeatureHandle> installFeatureErased(
+            void* scene,
+            std::unique_ptr<RenderFeature> feature
+        );
     } // namespace detail
 
     /**
@@ -55,7 +57,8 @@ namespace lux::render
     {
         static_assert(
             std::is_base_of_v<RenderFeature, T>,
-            "addFeature<T>: T must derive from lux::render::RenderFeature");
+            "addFeature<T>: T must derive from lux::render::RenderFeature"
+        );
         return detail::installFeatureErased(scene, std::make_unique<T>(std::forward<Args>(args)...));
     }
 

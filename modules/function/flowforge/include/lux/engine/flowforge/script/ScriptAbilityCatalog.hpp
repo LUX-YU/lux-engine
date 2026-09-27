@@ -25,10 +25,9 @@ namespace lux::flowforge
         std::span<const lux::script::ScriptAbilityValueDescription> results;
     };
 
-    template <class Ability>
-    struct ScriptAbilityCatalog final
+    template <class Ability> struct TScriptAbilityCatalog final
     {
-        using Traits = lux::script::ScriptAbilityTraits<Ability>;
+        using Traits = lux::script::TScriptAbilityTraits<Ability>;
 
         inline static constexpr auto Nodes = []() consteval {
             std::array<ScriptAbilityNodeDescription, Traits::Methods.size()> result{};
@@ -55,7 +54,7 @@ namespace lux::flowforge
     template <class Ability>
     [[nodiscard]] constexpr std::span<const ScriptAbilityNodeDescription> scriptAbilityNodes() noexcept
     {
-        return ScriptAbilityCatalog<Ability>::Nodes;
+        return TScriptAbilityCatalog<Ability>::Nodes;
     }
 
     struct ScriptAbilityCatalogContribution final
@@ -83,10 +82,12 @@ namespace lux::flowforge
         ScriptAbilityNodeCatalogView() = default;
         explicit ScriptAbilityNodeCatalogView(std::span<const ScriptAbilityNodeDescription> nodes) noexcept
             : nodes_(nodes)
-        {
-        }
+        {}
 
-        [[nodiscard]] std::span<const ScriptAbilityNodeDescription> nodes() const noexcept { return nodes_; }
+        [[nodiscard]] std::span<const ScriptAbilityNodeDescription> nodes() const noexcept
+        {
+            return nodes_;
+        }
         [[nodiscard]] const ScriptAbilityNodeDescription* find(
             lux::script::ScriptApiContractIdView contract,
             lux::script::ScriptApiMethodIdView method
@@ -99,10 +100,14 @@ namespace lux::flowforge
     class ScriptAbilityNodeCatalog final
     {
     public:
-        [[nodiscard]] lux::cxx::expected<void, EScriptAbilityNodeCatalogError>
-        add(ScriptAbilityCatalogContribution contribution) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EScriptAbilityNodeCatalogError> add(
+            ScriptAbilityCatalogContribution contribution
+        ) noexcept;
 
-        [[nodiscard]] ScriptAbilityNodeCatalogView view() const noexcept { return ScriptAbilityNodeCatalogView(nodes_); }
+        [[nodiscard]] ScriptAbilityNodeCatalogView view() const noexcept
+        {
+            return ScriptAbilityNodeCatalogView(nodes_);
+        }
 
     private:
         std::vector<ScriptAbilityNodeDescription> nodes_;

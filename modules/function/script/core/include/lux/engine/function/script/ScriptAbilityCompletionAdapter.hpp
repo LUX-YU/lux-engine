@@ -9,7 +9,7 @@
 namespace lux::script
 {
     template <class Result>
-    [[nodiscard]] lux::cxx::expected<ScriptAbilityCompletion<Result>, ScriptAbilityOperationError>
+    [[nodiscard]] lux::cxx::expected<TScriptAbilityCompletion<Result>, ScriptAbilityOperationError>
     adaptScriptAbilityCompletion(ScriptAbilityErasedCompletion completion) noexcept
     {
         if (!completion)
@@ -18,6 +18,6 @@ namespace lux::script
                 static_cast<std::int32_t>(EScriptAbilityErasedCallStatus::INVALID_ARGUMENTS)
             });
         }
-        return ScriptAbilityCompletion<Result>::fromErased(std::move(completion));
+        return TScriptAbilityCompletion<Result>::fromErased(std::move(completion));
     }
 } // namespace lux::script

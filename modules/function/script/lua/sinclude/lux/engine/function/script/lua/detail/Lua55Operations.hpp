@@ -17,24 +17,17 @@ namespace lux::script::lua::detail
     // receives context at stack slot 1, returns no values and must contain only trivial locals.
     // Restores the caller's stack on success and failure; returns the VM's status code.
     [[nodiscard]] LUX_FUNCTION_PUBLIC int bootstrapLuaOperation(
-        lua_State* state, int (*operation)(lua_State*), void* context
-    ) noexcept;
-
-    [[nodiscard]] LUX_FUNCTION_PUBLIC bool configureLuaVm(
         lua_State* state,
-        LuaRuntimeInfo& result
+        int (*operation)(lua_State*),
+        void* context
     ) noexcept;
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC LuaResumeResult resumeLuaVm(
-        lua_State* thread,
-        lua_State* caller,
-        int argument_count
-    ) noexcept;
+    [[nodiscard]] LUX_FUNCTION_PUBLIC bool configureLuaVm(lua_State* state, LuaRuntimeInfo& result) noexcept;
 
-    [[nodiscard]] LUX_FUNCTION_PUBLIC int yieldLuaInvocation(
-        lua_State* state,
-        int result_count
-    ) noexcept;
+    [[nodiscard]] LUX_FUNCTION_PUBLIC LuaResumeResult
+    resumeLuaVm(lua_State* thread, lua_State* caller, int argument_count) noexcept;
+
+    [[nodiscard]] LUX_FUNCTION_PUBLIC int yieldLuaInvocation(lua_State* state, int result_count) noexcept;
 
     [[nodiscard]] LUX_FUNCTION_PUBLIC bool setLuaChunkEnvironment(
         lua_State* state,

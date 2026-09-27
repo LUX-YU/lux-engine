@@ -31,6 +31,7 @@ namespace lux::material::compiler
     /// current implementation always succeeds; expected<> is used to keep a
     /// uniform error-handling shape for this non-hot-path call and to leave
     /// room for a future conversion that can actually fail).
-    lux::cxx::expected<::lux::material::MaterialGraph, std::string>
-    materialToGraph(const ::lux::material::ImportedMaterialDescription& desc);
+    lux::cxx::expected<::lux::material::MaterialGraph, std::string> materialToGraph(
+        const ::lux::material::ImportedMaterialDescription& desc
+    );
 } // namespace lux::material::compiler

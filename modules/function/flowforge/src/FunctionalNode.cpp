@@ -9,9 +9,8 @@ namespace lux::flowforge
      * @param ref_function Reference to the meta function information.
      */
     NativeFuncCall::NativeFuncCall(uint64_t id, const lux::meta::RefFunction& ref_function)
-        : ExecIntermediateNode(id, ENodeOperation::NATIVE_FUNC_CALL)
-        , is_method_(false)
-        , invokable_info(&ref_function.invokable)
+        : ExecIntermediateNode(id, ENodeOperation::NATIVE_FUNC_CALL), is_method_(false),
+          invokable_info(&ref_function.invokable)
     {
         rebuildPins(nullptr);
         setName(ref_function.invokable.name);
@@ -23,12 +22,13 @@ namespace lux::flowforge
      * @param ref_class Reference to the class metadata.
      * @param ref_method Reference to the method metadata.
      */
-    NativeFuncCall::NativeFuncCall(uint64_t id,
+    NativeFuncCall::NativeFuncCall(
+        uint64_t id,
         const lux::meta::RefClass& ref_class,
-        const lux::meta::RefMethod& ref_method)
-        : ExecIntermediateNode(id, ENodeOperation::NATIVE_FUNC_CALL)
-        , is_method_(true)
-        , invokable_info(&ref_method.invokable)
+        const lux::meta::RefMethod& ref_method
+    )
+        : ExecIntermediateNode(id, ENodeOperation::NATIVE_FUNC_CALL), is_method_(true),
+          invokable_info(&ref_method.invokable)
     {
         rebuildPins(&ref_class.type);
         setName(ref_method.invokable.name);
@@ -40,8 +40,7 @@ namespace lux::flowforge
      */
     NativeFuncCall::NativeFuncCall(const lux::meta::RefFunction& ref_function)
         : NativeFuncCall(reinterpret_cast<uintptr_t>(this), ref_function)
-    {
-    }
+    {}
 
     /**
      * @brief Constructs a NativeFuncCall for a class method with a generated ID.
@@ -50,8 +49,7 @@ namespace lux::flowforge
      */
     NativeFuncCall::NativeFuncCall(const lux::meta::RefClass& ref_class, const lux::meta::RefMethod& ref_method)
         : NativeFuncCall(reinterpret_cast<uintptr_t>(this), ref_class, ref_method)
-    {
-    }
+    {}
 
     /**
      * @brief Helper function to create input pins based on the function/method parameter types.
@@ -67,8 +65,10 @@ namespace lux::flowforge
             // requires allowDefault() (the Self pin of methods deliberately
             // does not allow one).
             auto new_pin = std::make_unique<DataInPin>(
-                this, DataPinInfo{ std::string(param.name), &param.type },
-                /*allow_default=*/true);
+                this,
+                DataPinInfo{std::string(param.name), &param.type},
+                /*allow_default=*/true
+            );
             data_in_pins_.push_back(std::move(new_pin));
         }
     }
@@ -96,11 +96,11 @@ namespace lux::flowforge
             result_.reset();
         }
 
-        result_ = std::make_unique<DataOutPin>(this, DataPinInfo{ "Return", &invokable_info->return_type });
+        result_ = std::make_unique<DataOutPin>(this, DataPinInfo{"Return", &invokable_info->return_type});
         createPins(invokable_info->parameters);
         if (is_method_ && self_type_)
         {
-            auto self_pin = std::make_unique<DataInPin>(this, DataPinInfo{ "Self", self_type_ });
+            auto self_pin = std::make_unique<DataInPin>(this, DataPinInfo{"Self", self_type_});
             // Insert 'Self' pin at the beginning for convention
             data_in_pins_.insert(data_in_pins_.begin(), std::move(self_pin));
         }
@@ -108,7 +108,7 @@ namespace lux::flowforge
 
     void NativeFuncCall::rebind(const lux::meta::RefFunction& ref_function)
     {
-        is_method_     = false;
+        is_method_ = false;
         invokable_info = &ref_function.invokable;
         rebuildPins(nullptr);
         setName(ref_function.invokable.name);
@@ -116,7 +116,7 @@ namespace lux::flowforge
 
     void NativeFuncCall::rebind(const lux::meta::RefClass& ref_class, const lux::meta::RefMethod& ref_method)
     {
-        is_method_     = true;
+        is_method_ = true;
         invokable_info = &ref_method.invokable;
         rebuildPins(&ref_class.type);
         setName(ref_method.invokable.name);
@@ -164,85 +164,69 @@ namespace lux::flowforge
     }
 
     // ====================== FuncDefNode ======================
-    FuncDefNode::FuncDefNode(uint64_t id, std::string_view name,
-                             std::vector<FuncArgInfo> args,
-                             std::vector<FuncArgInfo> rets)
-        : Node(id, ENodeOperation::FUNC_DEF_START), HasExecOutPin("->"),
-          args_(std::move(args)), rets_(std::move(rets))
+    FuncDefNode::FuncDefNode(
+        uint64_t id,
+        std::string_view name,
+        std::vector<FuncArgInfo> args,
+        std::vector<FuncArgInfo> rets
+    )
+        : Node(id, ENodeOperation::FUNC_DEF_START), THasExecOutPin("->"), args_(std::move(args)), rets_(std::move(rets))
     {
         setName(name);
         for (const auto& a : args_)
         {
-            arg_pins_.push_back(std::make_unique<DataOutPin>(
-                this, DataPinInfo{ a.name, a.type }));
+            arg_pins_.push_back(std::make_unique<DataOutPin>(this, DataPinInfo{a.name, a.type}));
         }
     }
 
-    FuncDefNode::FuncDefNode(std::string_view name,
-                             std::vector<FuncArgInfo> args,
-                             std::vector<FuncArgInfo> rets)
-        : FuncDefNode(reinterpret_cast<uintptr_t>(this), name,
-                      std::move(args), std::move(rets))
-    {
-    }
+    FuncDefNode::FuncDefNode(std::string_view name, std::vector<FuncArgInfo> args, std::vector<FuncArgInfo> rets)
+        : FuncDefNode(reinterpret_cast<uintptr_t>(this), name, std::move(args), std::move(rets))
+    {}
 
     // ====================== FuncReturnNode ======================
     FuncReturnNode::FuncReturnNode(uint64_t id, const FuncDefNode& def)
-        : Node(id, ENodeOperation::FUNC_RETURN), HasExecInPin("->"), def_(&def)
+        : Node(id, ENodeOperation::FUNC_RETURN), THasExecInPin("->"), def_(&def)
     {
         setName("Return " + def.name());
         for (const auto& r : def.retInfos())
         {
-            ret_pins_.push_back(std::make_unique<DataInPin>(
-                this, DataPinInfo{ r.name, r.type }, /*allow_default=*/true));
+            ret_pins_.push_back(std::make_unique<DataInPin>(this, DataPinInfo{r.name, r.type}, /*allow_default=*/true));
         }
     }
 
-    FuncReturnNode::FuncReturnNode(const FuncDefNode& def)
-        : FuncReturnNode(reinterpret_cast<uintptr_t>(this), def)
-    {
-    }
+    FuncReturnNode::FuncReturnNode(const FuncDefNode& def) : FuncReturnNode(reinterpret_cast<uintptr_t>(this), def) {}
 
     // ====================== OnEventNode ======================
-    OnEventNode::OnEventNode(uint64_t id, std::string_view event_name,
-                             std::vector<FuncArgInfo> params)
-        : Node(id, ENodeOperation::ON_EVENT), HasExecOutPin("->"),
-          params_(std::move(params))
+    OnEventNode::OnEventNode(uint64_t id, std::string_view event_name, std::vector<FuncArgInfo> params)
+        : Node(id, ENodeOperation::ON_EVENT), THasExecOutPin("->"), params_(std::move(params))
     {
         setName(event_name);
         for (const auto& p : params_)
         {
-            param_pins_.push_back(std::make_unique<DataOutPin>(
-                this, DataPinInfo{ p.name, p.type }));
+            param_pins_.push_back(std::make_unique<DataOutPin>(this, DataPinInfo{p.name, p.type}));
         }
     }
 
-    OnEventNode::OnEventNode(std::string_view event_name,
-                             std::vector<FuncArgInfo> params)
+    OnEventNode::OnEventNode(std::string_view event_name, std::vector<FuncArgInfo> params)
         : OnEventNode(reinterpret_cast<uintptr_t>(this), event_name, std::move(params))
-    {
-    }
+    {}
 
     // ====================== GraphFuncCallNode ======================
     GraphFuncCallNode::GraphFuncCallNode(uint64_t id, const FuncDefNode& callee)
-        : ExecIntermediateNode(id, ENodeOperation::GRAPH_FUNC_CALL),
-          callee_(&callee)
+        : ExecIntermediateNode(id, ENodeOperation::GRAPH_FUNC_CALL), callee_(&callee)
     {
         setName("Call " + callee.name());
         for (const auto& a : callee.argInfos())
         {
-            arg_pins_.push_back(std::make_unique<DataInPin>(
-                this, DataPinInfo{ a.name, a.type }, /*allow_default=*/true));
+            arg_pins_.push_back(std::make_unique<DataInPin>(this, DataPinInfo{a.name, a.type}, /*allow_default=*/true));
         }
         for (const auto& r : callee.retInfos())
         {
-            result_pins_.push_back(std::make_unique<DataOutPin>(
-                this, DataPinInfo{ r.name, r.type }));
+            result_pins_.push_back(std::make_unique<DataOutPin>(this, DataPinInfo{r.name, r.type}));
         }
     }
 
     GraphFuncCallNode::GraphFuncCallNode(const FuncDefNode& callee)
         : GraphFuncCallNode(reinterpret_cast<uintptr_t>(this), callee)
-    {
-    }
+    {}
 }

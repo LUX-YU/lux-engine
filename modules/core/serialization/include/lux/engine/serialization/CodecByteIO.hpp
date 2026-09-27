@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/serialization/BinaryReader.hpp>
+#include <exception>
 
 #include <cstddef>
 #include <cstdint>
@@ -18,9 +19,7 @@ namespace lux::serialization
     class ByteWriter final
     {
     public:
-        ByteWriter() noexcept : writer_(bytes_)
-        {
-        }
+        ByteWriter() noexcept : writer_(bytes_) {}
 
         void reserve(std::size_t bytes) noexcept
         {
@@ -32,10 +31,7 @@ namespace lux::serialization
             {
                 bytes_.reserve(bytes);
             }
-            catch (const std::bad_alloc&)
-            {
-                failure_ = SerializationFailure{ESerializationError::ALLOCATION_FAILURE, writer_.offset()};
-            }
+
             catch (const std::length_error&)
             {
                 failure_ = SerializationFailure{ESerializationError::LIMIT_EXCEEDED, writer_.offset()};
@@ -115,9 +111,7 @@ namespace lux::serialization
     class ByteReader final
     {
     public:
-        ByteReader(std::span<const std::byte> bytes, std::string* error) noexcept : reader_(bytes), error_(error)
-        {
-        }
+        ByteReader(std::span<const std::byte> bytes, std::string* error) noexcept : reader_(bytes), error_(error) {}
 
         [[nodiscard]] bool ok() const noexcept
         {
@@ -134,12 +128,9 @@ namespace lux::serialization
                 failed_ = true;
                 if (error_ != nullptr)
                 {
-                    try
+
                     {
                         *error_ = message;
-                    }
-                    catch (const std::bad_alloc&)
-                    {
                     }
                 }
             }
@@ -205,15 +196,11 @@ namespace lux::serialization
                 fail("string length exceeds limit");
                 return false;
             }
-            try
+
             {
                 value.resize(size);
             }
-            catch (const std::bad_alloc&)
-            {
-                fail("allocation failure");
-                return false;
-            }
+
             return size == 0U || bytes(value.data(), size);
         }
 

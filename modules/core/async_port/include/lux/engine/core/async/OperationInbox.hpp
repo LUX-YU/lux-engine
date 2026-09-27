@@ -22,7 +22,7 @@ namespace lux::async
     /// Keeps OperationPort completions away from owner-thread state. Endpoint
     /// callbacks only append to a pre-reserved bounded inbox; the client drains
     /// outcomes at its own safe point. It owns no scheduler or worker policy.
-    template <Operation T, class Key> class OperationInbox final
+    template <Operation T, class Key> class TOperationInbox final
     {
     public:
         struct Completion final
@@ -31,17 +31,19 @@ namespace lux::async
             OperationOutcome<T> outcome;
         };
 
-        explicit OperationInbox(std::size_t capacity) : control_(std::make_shared<Control>(capacity))
-        {
-        }
+        explicit TOperationInbox(std::size_t capacity) : control_(std::make_shared<Control>(capacity)) {}
 
-        OperationInbox(const OperationInbox&) = delete;
-        OperationInbox& operator=(const OperationInbox&) = delete;
-        OperationInbox(OperationInbox&&) noexcept = default;
-        OperationInbox& operator=(OperationInbox&&) noexcept = default;
+        TOperationInbox(const TOperationInbox&) = delete;
+        TOperationInbox& operator=(const TOperationInbox&) = delete;
+        TOperationInbox(TOperationInbox&&) noexcept = default;
+        TOperationInbox& operator=(TOperationInbox&&) noexcept = default;
 
-        [[nodiscard]] SubmitResult
-        submit(const OperationPort<T>& port, T operation, Key key, SubmitOptions options = {}) noexcept
+        [[nodiscard]] SubmitResult submit(
+            const TOperationPort<T>& port,
+            T operation,
+            Key key,
+            SubmitOptions options = {}
+        ) noexcept
         {
             auto control = control_;
             if (!control || !control->accepting.load(std::memory_order_acquire))
@@ -55,13 +57,7 @@ namespace lux::async
                 return lux::cxx::unexpected(ESubmitError::QUEUE_FULL);
             }
 
-            auto state =
-                std::unique_ptr<CallbackState>{new (std::nothrow) CallbackState{std::move(control), std::move(key)}};
-            if (!state)
-            {
-                control_->in_flight.fetch_sub(1u, std::memory_order_release);
-                return lux::cxx::unexpected(ESubmitError::QUEUE_FULL);
-            }
+            auto state = std::unique_ptr<CallbackState>{new CallbackState{std::move(control), std::move(key)}};
             auto* raw_state = state.get();
             auto submitted = port.submit(
                 std::move(operation),

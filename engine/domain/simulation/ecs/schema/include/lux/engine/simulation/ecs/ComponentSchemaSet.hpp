@@ -18,6 +18,7 @@ namespace lux::simulation::ecs
         INVALID_CPP_TYPE,
         INVALID_VERSION,
         INVALID_OPERATIONS,
+        INVALID_CREATION,
         DUPLICATE_SCHEMA_ID,
         SCHEMA_ID_COLLISION,
         DUPLICATE_CPP_TYPE,
@@ -37,17 +38,23 @@ namespace lux::simulation::ecs
     public:
         ComponentSchemaSet() noexcept = default;
 
-        [[nodiscard]] static lux::cxx::expected<ComponentSchemaSet, SchemaFailure>
-        build(std::vector<ComponentSchema> schemas) noexcept;
+        [[nodiscard]] static lux::cxx::expected<ComponentSchemaSet, SchemaFailure> build(
+            std::vector<ComponentSchema> schemas
+        ) noexcept;
 
-        [[nodiscard]] static lux::cxx::expected<ComponentSchemaSet, SchemaFailure>
-        build(std::span<const ComponentSchema> schemas, std::shared_ptr<const void> code_lifetime) noexcept;
+        [[nodiscard]] static lux::cxx::expected<ComponentSchemaSet, SchemaFailure> build(
+            std::span<const ComponentSchema> schemas,
+            std::shared_ptr<const void> code_lifetime
+        ) noexcept;
 
-        [[nodiscard]] lux::cxx::expected<ComponentSchemaSet, SchemaFailure>
-        extended(std::span<const ComponentSchema> schemas) const noexcept;
+        [[nodiscard]] lux::cxx::expected<ComponentSchemaSet, SchemaFailure> extended(
+            std::span<const ComponentSchema> schemas
+        ) const noexcept;
 
-        [[nodiscard]] lux::cxx::expected<ComponentSchemaSet, SchemaFailure>
-        extended(std::span<const ComponentSchema> schemas, std::shared_ptr<const void> code_lifetime) const noexcept;
+        [[nodiscard]] lux::cxx::expected<ComponentSchemaSet, SchemaFailure> extended(
+            std::span<const ComponentSchema> schemas,
+            std::shared_ptr<const void> code_lifetime
+        ) const noexcept;
 
         [[nodiscard]] const ComponentSchema* find(const ComponentSchemaId& id) const noexcept;
 

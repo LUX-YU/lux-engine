@@ -5,7 +5,7 @@
 
 namespace lux::material
 {
-    struct MaterialSourceDocument final
+    struct MaterialSource final
     {
         lux::asset::AssetId id;
         std::string name;
@@ -38,13 +38,36 @@ namespace lux::material
     };
     template <class T> using MaterialSourceResult = lux::cxx::expected<T, MaterialSourceFailure>;
     [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC bool equalMaterialNodes(const Node&, const Node&) noexcept;
+    // Local draft validation; does not assign identities or construct a temporary graph.
+    [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialSourceResult<void> validateMaterialName(
+        std::string_view,
+        MaterialSourceLimits = {}
+    ) noexcept;
+    [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialSourceResult<void> validateMaterialTextureSlots(
+        std::span<const TextureSlotDecl>,
+        MaterialSourceLimits = {}
+    ) noexcept;
+    [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialSourceResult<void> validateMaterialParameterSlots(
+        std::span<const ParamSlotDecl>,
+        MaterialSourceLimits = {}
+    ) noexcept;
+    [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialSourceResult<void> validateMaterialNode(
+        const Node&,
+        MaterialSourceLimits = {}
+    ) noexcept;
     // In-memory structural validation. Does not format/parse TOML or run the compiler.
     [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialSourceResult<void> validateMaterialSource(
-        const MaterialSourceDocument &, MaterialSourceLimits = {}) noexcept;
+        const MaterialSource&,
+        MaterialSourceLimits = {}
+    ) noexcept;
     // .luxmaterial v1 is an editable source document. No file I/O, compiler, Editor or GPU state enters this codec.
     // Disconnected nodes, missing output and cycles remain saveable; compilation reports semantic diagnostics.
     [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialSourceResult<std::string> encodeMaterialSource(
-        const MaterialSourceDocument &, MaterialSourceLimits = {}) noexcept;
-    [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialSourceResult<MaterialSourceDocument> decodeMaterialSource(
-        std::string_view, MaterialSourceLimits = {}) noexcept;
+        const MaterialSource&,
+        MaterialSourceLimits = {}
+    ) noexcept;
+    [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialSourceResult<MaterialSource> decodeMaterialSource(
+        std::string_view,
+        MaterialSourceLimits = {}
+    ) noexcept;
 } // namespace lux::material

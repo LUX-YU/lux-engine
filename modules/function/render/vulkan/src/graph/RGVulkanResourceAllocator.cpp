@@ -28,9 +28,7 @@ namespace lux::render
         }
     } // namespace
 
-    RGVulkanResourceAllocator::RGVulkanResourceAllocator(ResourceContext& context) : context_(context)
-    {
-    }
+    RGVulkanResourceAllocator::RGVulkanResourceAllocator(ResourceContext& context) : context_(context) {}
 
     RGVulkanResourceAllocator::~RGVulkanResourceAllocator()
     {
@@ -347,7 +345,7 @@ namespace lux::render
         // 从外面完全看不出来发生了回退。
         if (phy.lifetime == ERGResourceLifetime::TRANSIENT)
         {
-            if (lazy_attachment && lazy_memory_ == ELazyMemory::Unprobed)
+            if (lazy_attachment && lazy_memory_ == ELazyMemory::UNPROBED)
             {
                 // 探测一次:能不能找到**必须**带 LAZILY_ALLOCATED 的内存类型。
                 // 这是设备属性,不随图变化,所以只做一次。
@@ -358,7 +356,7 @@ namespace lux::render
                 const VkResult found =
                     vmaFindMemoryTypeIndexForImageInfo(context_.vmaAllocator(), &image_info, &probe, &lazy_type);
 
-                lazy_memory_ = (found == VK_SUCCESS) ? ELazyMemory::Available : ELazyMemory::Absent;
+                lazy_memory_ = (found == VK_SUCCESS) ? ELazyMemory::AVAILABLE : ELazyMemory::ABSENT;
                 if (found == VK_SUCCESS)
                 {
                     VmaPoolCreateInfo pool_ci{};
@@ -509,8 +507,10 @@ namespace lux::render
         }
     }
 
-    void
-    RGVulkanResourceAllocator::deallocateToPool(const RGPhysicalResourceTable& table, const RGGraphDescription& graph)
+    void RGVulkanResourceAllocator::deallocateToPool(
+        const RGPhysicalResourceTable& table,
+        const RGGraphDescription& graph
+    )
     {
         // Return TRANSIENT/PERSISTENT resources to pool for future reuse
         for (uint32_t i = 0; i < table.size(); ++i)

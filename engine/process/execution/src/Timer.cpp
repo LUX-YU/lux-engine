@@ -1,10 +1,8 @@
 #include <lux/engine/process/Timer.hpp>
 
-
 #include <algorithm>
 #include <condition_variable>
 #include <mutex>
-#include <new>
 #include <system_error>
 #include <thread>
 #include <vector>
@@ -13,8 +11,7 @@ namespace lux::process::detail
 {
     struct TimerState final
     {
-        explicit TimerState(std::size_t requested_capacity)
-            : capacity(requested_capacity)
+        explicit TimerState(std::size_t requested_capacity) : capacity(requested_capacity)
         {
             heap.reserve(capacity);
             cancelled.reserve(capacity);
@@ -31,9 +28,7 @@ namespace lux::process::detail
 
         void startWorker()
         {
-            worker = std::jthread([this](std::stop_token token) noexcept {
-                run(token);
-            });
+            worker = std::jthread([this](std::stop_token token) noexcept { run(token); });
         }
 
         void swapNodes(std::size_t lhs, std::size_t rhs) noexcept
@@ -113,7 +108,7 @@ namespace lux::process::detail
                     cancelled.pop_back();
                     const auto index = request->heap_index;
                     const bool is_valid_index = request->queued && request->cancellation_queued &&
-                        index < heap.size() && heap[index] == request;
+                                                index < heap.size() && heap[index] == request;
                     if (!is_valid_index)
                         continue;
                     removeAt(index);
@@ -138,7 +133,7 @@ namespace lux::process::detail
                 const auto deadline = heap.front()->deadline;
                 const bool interrupted = cv.wait_until(lock, deadline, [this, deadline, &token] {
                     return stopping || token.stop_requested() || !cancelled.empty() || heap.empty() ||
-                        heap.front()->deadline < deadline;
+                           heap.front()->deadline < deadline;
                 });
                 if (interrupted || heap.empty())
                     continue;
@@ -258,26 +253,16 @@ namespace lux::process
         if (config.capacity == 0U)
             return lux::cxx::unexpected(ETimerError::INVALID_ARGUMENT);
 
-
         try
         {
             auto state = std::make_shared<detail::TimerState>(config.capacity);
 
-
             state->startWorker();
             return TimerQueue{std::move(state)};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(ETimerError::ALLOCATION_FAILURE);
         }
         catch (const std::system_error&)
         {
             return lux::cxx::unexpected(ETimerError::WORKER_CREATION_FAILURE);
-        }
-        catch (...)
-        {
-            return lux::cxx::unexpected(ETimerError::BACKEND_FAILURE);
         }
     }
 

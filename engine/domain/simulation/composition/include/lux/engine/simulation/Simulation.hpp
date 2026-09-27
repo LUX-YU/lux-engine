@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/simulation/SimulationClock.hpp>
+#include <lux/engine/simulation/SimulationTime.hpp>
 #include <lux/engine/simulation/SimulationDescription.hpp>
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
 #include <lux/engine/simulation/composition/visibility.h>
@@ -19,13 +19,6 @@
 
 namespace lux::simulation
 {
-    // Fixed at construction. A derived-data owner cannot later become an evolution owner.
-    enum class ESimulationMode : std::uint8_t
-    {
-        EVOLUTION,
-        DERIVATION
-    };
-
     enum class ESimulationExecutionError : std::uint8_t
     {
         INVALID_STEP_TIME,
@@ -34,7 +27,6 @@ namespace lux::simulation
         ECS_COMMAND_FAILURE,
         NOT_SEALED,
         STOPPED,
-        WRONG_MODE,
     };
 
     struct SimulationExecutionFailure final
@@ -56,24 +48,23 @@ namespace lux::simulation
 
     struct SimulationHookCallbacks final
     {
-        void *context{};
-        bool (*before)(void *, const SimulationClockSnapshot &, bool stable_resume) noexcept {};
-        bool (*after)(void *, const SimulationClockSnapshot &, bool stable_resume) noexcept {};
-        bool (*committed)(void *, const SimulationClockSnapshot &) noexcept {};
-        void (*failed)(void *, const SimulationClockSnapshot &) noexcept {};
+        void* context{};
+        bool (*before)(void*, const SimulationTime&, bool stable_resume) noexcept {};
+        bool (*after)(void*, const SimulationTime&, bool stable_resume) noexcept {};
+        bool (*committed)(void*, const SimulationTime&) noexcept {};
+        void (*failed)(void*, const SimulationTime&) noexcept {};
     };
 
     class SimulationHookConnection final
     {
-      public:
+    public:
         SimulationHookConnection() noexcept = default;
-        SimulationHookConnection(const SimulationHookConnection &) = delete;
-        SimulationHookConnection &operator=(const SimulationHookConnection &) = delete;
-        SimulationHookConnection(SimulationHookConnection &&other) noexcept
+        SimulationHookConnection(const SimulationHookConnection&) = delete;
+        SimulationHookConnection& operator=(const SimulationHookConnection&) = delete;
+        SimulationHookConnection(SimulationHookConnection&& other) noexcept
             : context_(std::exchange(other.context_, nullptr)), disconnect_(other.disconnect_)
-        {
-        }
-        SimulationHookConnection &operator=(SimulationHookConnection &&other) noexcept
+        {}
+        SimulationHookConnection& operator=(SimulationHookConnection&& other) noexcept
         {
             if (this != &other)
             {
@@ -95,31 +86,32 @@ namespace lux::simulation
             }
         }
 
-      private:
-        SimulationHookConnection(void *context, void (*disconnect)(void *) noexcept) noexcept
+    private:
+        SimulationHookConnection(void* context, void (*disconnect)(void*) noexcept) noexcept
             : context_(context), disconnect_(disconnect)
-        {
-        }
-        void *context_{};
-        void (*disconnect_)(void *) noexcept {};
+        {}
+        void* context_{};
+        void (*disconnect_)(void*) noexcept {};
         friend class Simulation;
     };
 
     class LUX_ENGINE_SIMULATION_COMPOSITION_PUBLIC Simulation final
     {
-      public:
-        Simulation(Simulation &&) noexcept;
-        Simulation &operator=(Simulation &&) noexcept;
+    public:
+        Simulation(Simulation&&) noexcept;
+        Simulation& operator=(Simulation&&) noexcept;
         ~Simulation() noexcept;
 
-        Simulation(const Simulation &) = delete;
-        Simulation &operator=(const Simulation &) = delete;
+        Simulation(const Simulation&) = delete;
+        Simulation& operator=(const Simulation&) = delete;
 
         [[nodiscard]] static lux::cxx::expected<Simulation, SimulationSystemBuildFailure> create(
-            ecs::Registry &registry, std::shared_ptr<const SimulationDescription> description,
-            const SimulationSystemRegistry &system_types, ESimulationMode mode = ESimulationMode::EVOLUTION) noexcept;
+            ecs::Registry& registry,
+            std::shared_ptr<const SimulationDescription> description,
+            const SimulationSystemRegistry& system_types
+        ) noexcept;
 
-        [[nodiscard]] const SimulationDescription &description() const noexcept;
+        [[nodiscard]] const SimulationDescription& description() const noexcept;
 
         [[nodiscard]] std::span<const script::ScriptApiCapabilityPublication> scriptApiCapabilities() const noexcept;
 
@@ -127,34 +119,27 @@ namespace lux::simulation
 
         [[nodiscard]] std::span<const script::ScriptEventEndpointDescriptor> scriptEventEndpoints() const noexcept;
 
-        [[nodiscard]] const SimulationClock &clock() const noexcept;
-        [[nodiscard]] ESimulationMode mode() const noexcept;
+        [[nodiscard]] const SimulationTime& time() const noexcept;
         [[nodiscard]] std::size_t taskCount() const noexcept;
         [[nodiscard]] std::size_t dependencyCount() const noexcept;
         [[nodiscard]] SimulationGraphPreparationStats graphPreparationStats() const noexcept;
 
         // The connection must be released while paused and before this Simulation is destroyed.
         [[nodiscard]] lux::cxx::expected<SimulationHookConnection, SimulationSystemBuildFailure> bindHookCallbacks(
-            SimulationHookCallbacks callbacks) noexcept;
+            SimulationHookCallbacks callbacks
+        ) noexcept;
         [[nodiscard]] lux::cxx::expected<void, SimulationSystemBuildFailure> seal() noexcept;
         void stop() noexcept;
 
         [[nodiscard]] lux::cxx::expected<void, SimulationExecutionFailure> execute(
-            task::TaskExecutor &executor, SimulationDuration effective_delta) noexcept;
-        // Runs the precompiled derivation graph against these same system instances.
-        // No clock/evolution/hooks advance; pending evolution commands remain untouched.
-        [[nodiscard]] lux::cxx::expected<void, SimulationExecutionFailure> refresh(
-            task::TaskExecutor &executor) noexcept;
-
-      private:
+            task::TaskExecutor& executor,
+            const SimulationTime& time
+        ) noexcept;
+    private:
         struct Impl;
         explicit Simulation(std::unique_ptr<Impl> impl) noexcept;
-        [[nodiscard]] lux::cxx::expected<void, SimulationExecutionFailure> executePreparedGraph(task::TaskExecutor &,
-                                                                                                SimulationDuration,
-                                                                                                bool advance) noexcept;
-
         std::unique_ptr<Impl> impl_;
 
-        friend class SimulationBuilder;
+        friend class SimulationSystemInstaller;
     };
 } // namespace lux::simulation

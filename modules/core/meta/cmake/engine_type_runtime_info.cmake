@@ -108,30 +108,6 @@ function(engine_add_type_runtime_info)
         message(FATAL_ERROR "[add_meta] REGISTER_FUNC_NAME parameter is required")
     endif()
 
-    foreach(_lux_meta_input IN LISTS ARGS_TARGET_FILES)
-        get_filename_component(_lux_meta_input_abs "${_lux_meta_input}" ABSOLUTE)
-        file(TO_CMAKE_PATH "${_lux_meta_input_abs}" _lux_meta_input_normalized)
-        set_property(
-            GLOBAL APPEND PROPERTY
-            LUX_ENGINE_META_TARGET_FILES "${_lux_meta_input_normalized}"
-        )
-    endforeach()
-
-    get_property(
-        _lux_object_validation_scheduled GLOBAL
-        PROPERTY LUX_OBJECT_SIGNAL_VALIDATION_SCHEDULED
-    )
-    if(NOT _lux_object_validation_scheduled AND
-       EXISTS "${CMAKE_SOURCE_DIR}/modules/core/object")
-        set_property(
-            GLOBAL PROPERTY LUX_OBJECT_SIGNAL_VALIDATION_SCHEDULED TRUE
-        )
-        cmake_language(
-            DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
-            CALL _lux_validate_object_signal_codegen
-        )
-    endif()
-
     # Set default values
     if(NOT ARGS_SOURCE_FILE)
         set(ARGS_SOURCE_FILE "")  # If empty, please supply compile options via EXTRA_COMPILE_OPTIONS.
@@ -185,57 +161,12 @@ function(engine_add_type_runtime_info)
                       "{\"explicit_registration\":${_explicit_registration}}"
     )
 
-    set(_has_signals OFF)
-    foreach(_header IN LISTS ARGS_TARGET_FILES)
-        file(READ "${_header}" _content)
-        if(_content MATCHES "static[ \t\r\n]+const[ \t\r\n]+signal_type[ \t\r\n]*<")
-            set(_has_signals ON)
-        endif()
-    endforeach()
-    if(_has_signals)
-        lux_codegen_add_projection(JOB ${ARGS_NAME} NAME object_signals
-            TEMPLATE ${LUX_ENGINE_META_DIR}/template/object_signals.template
-            OUTPUT_ROOT ${CMAKE_CURRENT_BINARY_DIR}/meta_gen OUTPUT_SUFFIX .signals.cpp FLAT_OUTPUT)
-        set_property(TARGET ${ARGS_NAME} PROPERTY LUX_HAS_OBJECT_SIGNALS TRUE)
-    endif()
-
     set_target_properties(${ARGS_NAME} PROPERTIES
         REGISTER_FUNC_NAME      "${ARGS_REGISTER_FUNC_NAME}"
         META_TARGET_FILES       "${ARGS_TARGET_FILES}"
         META_EXTRA_COMPILE_OPTIONS "${ARGS_EXTRA_COMPILE_OPTIONS}"
     )
 endfunction()
-function(_lux_validate_object_signal_codegen)
-    get_property(
-        _lux_meta_inputs GLOBAL PROPERTY LUX_ENGINE_META_TARGET_FILES
-    )
-    list(REMOVE_DUPLICATES _lux_meta_inputs)
-    file(GLOB_RECURSE _lux_public_headers LIST_DIRECTORIES false
-        "${CMAKE_SOURCE_DIR}/modules/*/include/*.hpp"
-    )
-    foreach(_lux_header IN LISTS _lux_public_headers)
-        file(READ "${_lux_header}" _lux_header_content)
-        if(NOT _lux_header_content MATCHES
-           "static[ \t\r\n]+const[ \t\r\n]+signal_type[ \t\r\n]*<")
-            continue()
-        endif()
-        file(TO_CMAKE_PATH "${_lux_header}" _lux_header_normalized)
-        list(FIND _lux_meta_inputs "${_lux_header_normalized}" _lux_meta_index)
-        if(_lux_meta_index EQUAL -1)
-            message(FATAL_ERROR
-                "Object: Signal header '${_lux_header_normalized}' is not "
-                "registered in engine_add_type_runtime_info(TARGET_FILES ...)."
-            )
-        endif()
-        if(NOT _lux_header_content MATCHES "LUX_OBJECT[ \t\r\n]*\\(")
-            message(FATAL_ERROR
-                "Object: Signal header '${_lux_header_normalized}' has no "
-                "LUX_OBJECT() declaration."
-            )
-        endif()
-    endforeach()
-endfunction()
-
 function(engine_target_add_type_runtime_info)
     set(one_value_args TARGET OUT_DIR TOP_LEVEL_REGISTER_FUNC_PREFIX CONFIG_FILE OUTPUT_FILENAME)
     set(multi_value_args METAS)
@@ -252,15 +183,10 @@ function(engine_target_add_type_runtime_info)
     endif()
 
     foreach(meta ${ARGS_METAS})
-        get_target_property(_has_signals ${meta} LUX_HAS_OBJECT_SIGNALS)
-        set(_projections type_runtime_info)
-        if(_has_signals)
-            list(APPEND _projections object_signals)
-        endif()
         lux_target_add_codegen(
             TARGET ${ARGS_TARGET}
             JOB ${meta}
-            PROJECTIONS ${_projections}
+            PROJECTIONS type_runtime_info
         )
     endforeach()
     list(JOIN ARGS_METAS ", " _meta_list_str)

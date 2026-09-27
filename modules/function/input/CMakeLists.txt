@@ -18,6 +18,7 @@ if(ANDROID)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/android/InputPlatform.cpp
     )
 else()
+    find_package(glfw3 REQUIRED)
     list(APPEND LUX_INPUT_SRCS
         ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/glfw/InputPlatform.cpp
     )
@@ -50,6 +51,10 @@ target_link_libraries(
     PRIVATE
         lux::engine::platform::window
 )
+
+if(NOT ANDROID)
+    target_link_libraries(input PRIVATE glfw)
+endif()
 
 component_add_transitive_commands(
     input

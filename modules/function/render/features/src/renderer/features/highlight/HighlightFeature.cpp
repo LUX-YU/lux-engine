@@ -1,4 +1,5 @@
 #include <lux/engine/render/renderer/features/highlight/HighlightFeature.hpp>
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
 
 // 生成物(构建树 pass_gen/,由 HighlightBlurPassParams.hpp /
@@ -34,15 +35,12 @@
 #include <algorithm>
 #include <array>
 #include <bit>
-#include <cassert>
 #include <cstdio>
 #include <vector>
 
 namespace lux::render
 {
-    HighlightFeature::HighlightFeature(Config cfg) : cfg_(std::move(cfg))
-    {
-    }
+    HighlightFeature::HighlightFeature(Config cfg) : cfg_(std::move(cfg)) {}
 
     HighlightFeature::~HighlightFeature()
     {
@@ -82,7 +80,8 @@ namespace lux::render
             ShaderStageSlot{EBuiltinShader::HIGHLIGHT_MASK_VERT, &cfg_.mask_vert},
             ShaderStageSlot{EBuiltinShader::HIGHLIGHT_MASK_FRAG, &cfg_.mask_frag},
             ShaderStageSlot{EBuiltinShader::HIGHLIGHT_BLUR_FRAG, &cfg_.blur_frag},
-            ShaderStageSlot{EBuiltinShader::HIGHLIGHT_COMPOSITE_FRAG, &cfg_.composite_frag}};
+            ShaderStageSlot{EBuiltinShader::HIGHLIGHT_COMPOSITE_FRAG, &cfg_.composite_frag}
+        };
         if (auto filled = resolveShaderStages(shaders, backfill); !filled)
             return filled;
 
@@ -93,8 +92,13 @@ namespace lux::render
         if (auto r = initCommon(cfg_.cull_shader, cfg_.extension_flags); !r)
             return r;
 
-        assert(shaders.get(cfg_.mask_vert) && "HighlightFeature: mask_vert is invalid");
-        assert(shaders.get(cfg_.mask_frag) && "HighlightFeature: mask_frag is invalid");
+        const bool is_missing_vertex_shader = shaders.get(cfg_.mask_vert) == nullptr;
+        const bool is_missing_fragment_shader = shaders.get(cfg_.mask_frag) == nullptr;
+        const bool is_missing_shader = is_missing_vertex_shader || is_missing_fragment_shader;
+        if (is_missing_shader)
+        {
+            renderFatal("HighlightFeature: a required shader handle is invalid");
+        }
 
         // ---- Visible-instance set layout (set 5: cull → draw) ----
         if (visible_set_layout_ == VK_NULL_HANDLE)
@@ -138,7 +142,8 @@ namespace lux::render
                     cfg_.mask_vert,
                     vlr,
                     kDefaultVertexLayoutId,
-                    [mask_frag](EShadingModel) { return mask_frag; });
+                    [mask_frag](EShadingModel) { return mask_frag; }
+                );
                 !family)
                 return family;
         }
@@ -155,7 +160,8 @@ namespace lux::render
             const std::array fullscreen_requests{
                 PipelineStageRequest{EBuiltinShader::TONEMAP_VERT, {}},
                 PipelineStageRequest{EBuiltinShader::HIGHLIGHT_BLUR_FRAG, cfg_.blur_frag},
-                PipelineStageRequest{EBuiltinShader::HIGHLIGHT_COMPOSITE_FRAG, cfg_.composite_frag}};
+                PipelineStageRequest{EBuiltinShader::HIGHLIGHT_COMPOSITE_FRAG, cfg_.composite_frag}
+            };
 
             auto fullscreen = preparePipelineStages(vs_shaders, fullscreen_requests);
             if (!fullscreen)
@@ -176,7 +182,8 @@ namespace lux::render
 
                 const std::array<const rdesc::ShaderInfo*, 2> infos{
                     &fullscreen->info(kVertexStage),
-                    &fullscreen->info(frag_stage)};
+                    &fullscreen->info(frag_stage)
+                };
                 auto handle = ctx.pipelineManager().registerGraphicsTemplate(tmpl, infos);
                 if (!handle)
                     return lux::cxx::unexpected(handle.error());
@@ -220,7 +227,7 @@ namespace lux::render
     // =========================================================================
     //  Render graph passes
     // =========================================================================
-    void HighlightFeature::replaceTargets(std::vector<RenderEntityId> targets)
+    void HighlightFeature::replaceTargets(std::vector<ERenderEntityId> targets)
     {
         std::ranges::sort(targets);
         targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
@@ -239,9 +246,7 @@ namespace lux::render
         auto mask_rg = builder.createTexture(cfg_.mask_target, mask_desc);
 
         // Feature-owned targets; conditional transient resources follow graph/FIF retirement.
-        auto chain = builder.conditionChain([this]() {
-            return instance_res_ != nullptr && !targets_.empty();
-        });
+        auto chain = builder.conditionChain([this]() { return instance_res_ != nullptr && !targets_.empty(); });
 
         // Page growth does not necessarily recompile the graph. A bounded bit
         // mask covers the configured slot limit, including future resident pages.
@@ -284,8 +289,8 @@ namespace lux::render
             builder,
             CullCompactParams{
                 .prefix = "Hl",
-                .phase = ECoreRenderPhase::GBuffer,
-                .domain = EPassDomain::GBuffer,
+                .phase = ECoreRenderPhase::G_BUFFER,
+                .domain = EPassDomain::G_BUFFER,
                 .cull_pass_name = "HighlightCull",
                 .compact_pass_name = "HighlightCompact",
                 .descriptor_layout_version = cfg_.descriptor_layout_version,
@@ -313,7 +318,7 @@ namespace lux::render
                 .write(mask_rg, lux::render::ETextureRole::COLOR_ATTACHMENT)
                 .setPipeline(bucket_pipelines_.pick(0u, variant_buckets[0]))
                 .bindSceneDS()
-                .useEngineSet(EDescriptorSetSlot::Instance)
+                .useEngineSet(EDescriptorSetSlot::INSTANCE)
                 // Mask shaders use ONLY sets 0/1/5/7 (view / instance / visible / vertex-pool). Unlike the
                 // gbuffer draw they sample no textures and read no per-material SSBO, so sets 2 (Texture)
                 // and 4 (Material) are intentionally left UNBOUND — which also keeps the spurious
@@ -324,14 +329,14 @@ namespace lux::render
                 .read(draw_count_rg_, ERGBufferRole::INDIRECT)
                 .read(visible_instance_rg_, ERGBufferRole::STORAGE)
                 .after("HighlightCompact")
-                .stage(ERenderStage::Overlay); // ordered before the composite via the mask read/write dep
+                .stage(ERenderStage::OVERLAY_STAGE); // ordered before the composite via the mask read/write dep
 
         const uint32_t bucket_count = static_cast<uint32_t>(variant_buckets.size());
         for (uint32_t b = 1; b < bucket_count; ++b)
             draw_pass.addPipeline(bucket_pipelines_.pick(b, variant_buckets[b]));
 
         if (vpr && vpr->isInitialized())
-            draw_pass.useEngineSet(EDescriptorSetSlot::VertexPool);
+            draw_pass.useEngineSet(EDescriptorSetSlot::VERTEX_POOL);
 
         // Order after skinning (live skeletal silhouette).
         if (auto* vproducers = renderScene().resources().find<VertexProductionRegistry>())
@@ -378,7 +383,8 @@ namespace lux::render
             .blur_src = mask_rg,
             .blur_src_sampler = mask_sampler_,
             .color_out = blur_h_rg,
-            .scalars = {.dir_x = 1.0f, .dir_y = 0.0f, .radius = cfg_.glow_radius}};
+            .scalars = {.dir_x = 1.0f, .dir_y = 0.0f, .radius = cfg_.glow_radius}
+        };
         auto blur_h_tds = pass_gen::createTransientDS(builder, blur_ds_layout_, blur_h_params);
         auto blur_h_pass = builder.addPass("HighlightBlurH", ERGPassType::GRAPHICS);
         pass_gen::declareGraphIO(blur_h_pass, blur_h_params);
@@ -388,18 +394,18 @@ namespace lux::render
             .setKernelFn([s = blur_h_params.scalars](const PassRecordContext& rec) {
                 pass_gen::pushScalars(rec, s);
                 vkCmdDraw(rec.cmd, 3, 1, 0, 0);
-            }
-            )
+            })
             .setKernel("FullscreenQuad")
             .after("HighlightMaskDraw")
-            .stage(ERenderStage::Overlay);
+            .stage(ERenderStage::OVERLAY_STAGE);
 
         // Vertical pass: blurH -> blurV (the finished blurred mask).
         const HighlightBlurPassParams blur_v_params{
             .blur_src = blur_h_rg,
             .blur_src_sampler = mask_sampler_,
             .color_out = blur_v_rg,
-            .scalars = {.dir_x = 0.0f, .dir_y = 1.0f, .radius = cfg_.glow_radius}};
+            .scalars = {.dir_x = 0.0f, .dir_y = 1.0f, .radius = cfg_.glow_radius}
+        };
         auto blur_v_tds = pass_gen::createTransientDS(builder, blur_ds_layout_, blur_v_params);
         auto blur_v_pass = builder.addPass("HighlightBlurV", ERGPassType::GRAPHICS);
         pass_gen::declareGraphIO(blur_v_pass, blur_v_params);
@@ -409,11 +415,10 @@ namespace lux::render
             .setKernelFn([s = blur_v_params.scalars](const PassRecordContext& rec) {
                 pass_gen::pushScalars(rec, s);
                 vkCmdDraw(rec.cmd, 3, 1, 0, 0);
-            }
-            )
+            })
             .setKernel("FullscreenQuad")
             .after("HighlightBlurH")
-            .stage(ERenderStage::Overlay);
+            .stage(ERenderStage::OVERLAY_STAGE);
 
         // ---- Composite the OUTER halo over SceneColor (samples blurred + sharp mask) ----
         const HighlightCompositePassParams halo_params{
@@ -422,11 +427,12 @@ namespace lux::render
             .mask = mask_rg,
             .mask_sampler = mask_sampler_,
             .color_out = builder.referenceTexture(cfg_.color_target),
-            .scalars = {
-                .color_r = cfg_.glow_color[0],
-                .color_g = cfg_.glow_color[1],
-                .color_b = cfg_.glow_color[2],
-                .intensity = cfg_.glow_intensity}};
+            .scalars =
+                {.color_r = cfg_.glow_color[0],
+                 .color_g = cfg_.glow_color[1],
+                 .color_b = cfg_.glow_color[2],
+                 .intensity = cfg_.glow_intensity}
+        };
         auto halo_tds = pass_gen::createTransientDS(builder, composite_ds_layout_, halo_params);
         auto halo_pass = builder.addPass("HighlightComposite", ERGPassType::GRAPHICS);
         pass_gen::declareGraphIO(halo_pass, halo_params);
@@ -436,11 +442,10 @@ namespace lux::render
             .setKernelFn([s = halo_params.scalars](const PassRecordContext& rec) {
                 pass_gen::pushScalars(rec, s);
                 vkCmdDraw(rec.cmd, 3, 1, 0, 0);
-            }
-            )
+            })
             .setKernel("FullscreenQuad")
             .after("HighlightBlurV")
-            .stage(ERenderStage::Overlay);
+            .stage(ERenderStage::OVERLAY_STAGE);
     }
 
 } // namespace lux::render

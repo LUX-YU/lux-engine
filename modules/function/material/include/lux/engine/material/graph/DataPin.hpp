@@ -35,8 +35,8 @@ namespace lux::material
      */
     struct PinLink
     {
-        NodeId   node{};               ///< Source node
-        uint32_t pin  = invalid_pin;   ///< Index of the output pin on the source node
+        NodeId node{};              ///< Source node
+        uint32_t pin = invalid_pin; ///< Index of the output pin on the source node
 
         bool valid() const noexcept
         {
@@ -52,11 +52,11 @@ namespace lux::material
      */
     struct DataPin
     {
-        std::string   name;
-        EValueType type      = EValueType::FLOAT;
+        std::string name;
+        EValueType type = EValueType::FLOAT;
         EPinDirection direction = EPinDirection::INPUT;
-        float         constant[4] = { 0, 0, 0, 0 }; ///< Default constant used when an input is unconnected
-        PinId         id;                           ///< Stable shared-topology identity
+        float constant[4] = {0, 0, 0, 0}; ///< Default constant used when an input is unconnected
+        PinId id;                         ///< Stable shared-topology identity
     };
 
 } // namespace lux::material

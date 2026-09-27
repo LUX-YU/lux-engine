@@ -61,7 +61,8 @@ namespace lux::render
                     /*cpu_writable=*/true,
                     &bone_palette_buffers_[i],
                     &bone_palette_allocs_[i],
-                    &bone_palette_mapped_[i]))
+                    &bone_palette_mapped_[i]
+                ))
             {
                 destroyPalettes();
                 return false;
@@ -120,7 +121,8 @@ namespace lux::render
                     /*cpu_writable=*/true,
                     &dispatch_params_buffers_[i],
                     &dispatch_params_allocs_[i],
-                    &dispatch_params_mapped_[i]))
+                    &dispatch_params_mapped_[i]
+                ))
             {
                 destroyDispatchRings();
                 if (output_registered_)

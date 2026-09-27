@@ -68,8 +68,7 @@ namespace lux::render
             SwapchainImageViews(SwapchainImageViews&& other) noexcept
                 : device_(std::exchange(other.device_, VkDevice{})), destroy_(std::exchange(other.destroy_, nullptr)),
                   views_(std::move(other.views_))
-            {
-            }
+            {}
 
             SwapchainImageViews& operator=(SwapchainImageViews&& other) noexcept
             {
@@ -128,8 +127,8 @@ namespace lux::render
 
         /// Translate the lower-level optional-VkResult error without inventing
         /// a driver result for local validation failures.
-        [[nodiscard]] LUX_FUNCTION_PUBLIC RenderError
-        mapSwapchainBuildError(const gapi::vk::SwapchainBuildError& error) noexcept;
+        [[nodiscard]] LUX_FUNCTION_PUBLIC RenderError mapSwapchainBuildError(const gapi::vk::SwapchainBuildError& error
+        ) noexcept;
 
         [[nodiscard]] LUX_FUNCTION_PUBLIC bool isRetryableSwapchainFailure(const RenderError& error) noexcept;
 
@@ -155,11 +154,15 @@ namespace lux::render
 
         /// Normalize only the explicitly recoverable WSI statuses. Any other
         /// non-success result retains its exact VkResult in a permanent error.
-        [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<SwapchainAcquireDisposition>
-        classifySwapchainAcquireResult(VkResult result, bool present_scaling) noexcept;
+        [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<SwapchainAcquireDisposition> classifySwapchainAcquireResult(
+            VkResult result,
+            bool present_scaling
+        ) noexcept;
 
-        [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<SwapchainPresentDisposition>
-        classifySwapchainPresentResult(VkResult result, bool present_scaling) noexcept;
+        [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<SwapchainPresentDisposition> classifySwapchainPresentResult(
+            VkResult result,
+            bool present_scaling
+        ) noexcept;
     } // namespace detail
 
     // =============================================================================
@@ -196,8 +199,11 @@ namespace lux::render
 
         // ── Lifecycle ────────────────────────────────────────────
 
-        [[nodiscard]] static Expected<SwapchainProvider>
-        create(ResourceContext& res_ctx, RenderSurface& surface, const Config& config);
+        [[nodiscard]] static Expected<SwapchainProvider> create(
+            ResourceContext& res_ctx,
+            RenderSurface& surface,
+            const Config& config
+        );
 
         ~SwapchainProvider();
 

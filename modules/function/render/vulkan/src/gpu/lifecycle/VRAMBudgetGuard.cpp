@@ -4,9 +4,7 @@
 namespace lux::render
 {
 
-    VRAMBudgetGuard::VRAMBudgetGuard(VmaAllocator allocator) noexcept : allocator_(allocator)
-    {
-    }
+    VRAMBudgetGuard::VRAMBudgetGuard(VmaAllocator allocator) noexcept : allocator_(allocator) {}
 
     bool VRAMBudgetGuard::canAllocate(VkDeviceSize bytes, float margin) const noexcept
     {

@@ -2,9 +2,7 @@
 
 namespace lux::script::lua
 {
-    ScriptRef::ScriptRef(int ref, ScriptEngine* engine) : ref_(ref), engine_(engine)
-    {
-    }
+    ScriptRef::ScriptRef(int ref, ScriptEngine* engine) : ref_(ref), engine_(engine) {}
     ScriptRef::~ScriptRef()
     {
         if (ref_ != LUA_NOREF)
@@ -38,15 +36,14 @@ namespace lux::script::lua
         return *this;
     }
 
-    ScriptEngine::ScriptEngine(LuaVmConfiguration config) : impl_(std::make_unique<ScriptEngineImpl>(config))
+    ScriptEngine::ScriptEngine(LuaVmConfiguration config) : impl_(std::make_unique<ScriptEngineImpl>(config)) {}
+
+    LuaAllocationStats ScriptEngine::allocationStats() const noexcept
     {
+        return impl_->allocationStats();
     }
 
-    LuaAllocationStats ScriptEngine::allocationStats() const noexcept { return impl_->allocationStats(); }
-
-    ScriptEngine::~ScriptEngine()
-    {
-    }
+    ScriptEngine::~ScriptEngine() {}
 
     std::optional<ScriptRef> ScriptEngine::parseScript(std::string_view script)
     {

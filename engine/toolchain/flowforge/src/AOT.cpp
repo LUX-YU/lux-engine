@@ -24,6 +24,7 @@
 //      (or link.exe) out of process: /DLL /NOENTRY /NODEFAULTLIB.
 //===========================================================================
 #include "lux/engine/flowforge/compiler/AOT.hpp"
+#include <exception>
 #include "lux/engine/flowforge/compiler/IR.hpp"
 #include "lux/engine/flowforge/compiler/IRImpl.hpp"
 #include "lux/engine/flowforge/compiler/Passes.hpp"
@@ -130,8 +131,8 @@ namespace lux::flowforge
             }
             std::ranges::sort(nodes, [](const auto* left, const auto* right) {
                 return left->contract().name() < right->contract().name() ||
-                    (left->contract().name() == right->contract().name() &&
-                     left->method().name() < right->method().name());
+                       (left->contract().name() == right->contract().name() &&
+                        left->method().name() < right->method().name());
             });
             std::vector<AbilityImportInfo> result;
             for (const auto* node : nodes)
@@ -186,7 +187,8 @@ namespace lux::flowforge
             using lux::meta::EBaseType;
             using lux::meta::ETypeQual;
             const auto qualifier = static_cast<ETypeQual>(type.qtype.qual);
-            const bool is_unsupported_qualifier = qualifier != ETypeQual::Value && qualifier != ETypeQual::LRefToConst;
+            const bool is_unsupported_qualifier =
+                qualifier != ETypeQual::VALUE && qualifier != ETypeQual::L_REF_TO_CONST;
             if (is_unsupported_qualifier)
             {
                 return std::nullopt;
@@ -195,19 +197,19 @@ namespace lux::flowforge
             const auto builtin = [&type]() -> std::optional<lux::rdesc::ScriptValueType> {
                 switch (static_cast<EBaseType>(type.qtype.base))
                 {
-                case EBaseType::Bool:
+                case EBaseType::BOOL:
                     return lux::rdesc::makeScriptValueType<bool>();
-                case EBaseType::Int32:
+                case EBaseType::INT32:
                     return lux::rdesc::makeScriptValueType<std::int32_t>();
-                case EBaseType::Uint32:
+                case EBaseType::UINT32:
                     return lux::rdesc::makeScriptValueType<std::uint32_t>();
-                case EBaseType::Int64:
+                case EBaseType::INT64:
                     return lux::rdesc::makeScriptValueType<std::int64_t>();
-                case EBaseType::Uint64:
+                case EBaseType::UINT64:
                     return lux::rdesc::makeScriptValueType<std::uint64_t>();
-                case EBaseType::Float:
+                case EBaseType::FLOAT:
                     return lux::rdesc::makeScriptValueType<float>();
-                case EBaseType::Double:
+                case EBaseType::DOUBLE:
                     return lux::rdesc::makeScriptValueType<double>();
                 default:
                     return std::nullopt;
@@ -223,7 +225,7 @@ namespace lux::flowforge
                 return builtin;
             }
 
-            if (static_cast<EBaseType>(type.qtype.base) != EBaseType::Record || type.name.empty() || type.size == 0U ||
+            if (static_cast<EBaseType>(type.qtype.base) != EBaseType::RECORD || type.name.empty() || type.size == 0U ||
                 type.alignment == 0U || (type.alignment & (type.alignment - 1U)) != 0U)
             {
                 return std::nullopt;
@@ -303,14 +305,10 @@ namespace lux::flowforge
                     ptr_type,
                     prepared_field(offsetof(lux_script_prepared_ability, provider_context))
                 );
-                auto* dispatch = builder.CreateLoad(
-                    ptr_type,
-                    prepared_field(offsetof(lux_script_prepared_ability, dispatch))
-                );
-                auto* entry = builder.CreateLoad(
-                    ptr_type,
-                    prepared_field(offsetof(lux_script_prepared_ability, direct_entry))
-                );
+                auto* dispatch =
+                    builder.CreateLoad(ptr_type, prepared_field(offsetof(lux_script_prepared_ability, dispatch)));
+                auto* entry =
+                    builder.CreateLoad(ptr_type, prepared_field(offsetof(lux_script_prepared_ability, direct_entry)));
                 llvm::SmallVector<llvm::Type*, 8> argument_types{ptr_type, ptr_type};
                 llvm::SmallVector<llvm::Value*, 8> arguments{provider, dispatch};
                 for (std::size_t index{}; index < description.parameters().size(); ++index)
@@ -386,8 +384,8 @@ namespace lux::flowforge
                     const bool is_event = callee->getName().starts_with("lux_ff_event_wait_");
                     if (!is_ability && !is_event)
                         continue;
-                    const auto prefix_size = is_event ? std::strlen("lux_ff_event_wait_") :
-                        std::strlen("lux_ff_ability_async_");
+                    const auto prefix_size =
+                        is_event ? std::strlen("lux_ff_event_wait_") : std::strlen("lux_ff_ability_async_");
                     const auto suffix = callee->getName().drop_front(prefix_size);
                     const auto separator = suffix.find("_node_");
                     std::uint64_t ordinal{};
@@ -463,13 +461,13 @@ namespace lux::flowforge
             );
             core->setDSOLocal(true);
 
-            struct FrameSlot final
+            struct EFrameSlot final
             {
                 std::uint64_t offset{}, size{}, alignment{};
                 bool needs_initial_value{};
             };
             std::vector<std::uint64_t> argument_offsets(target->arg_size(), UINT64_MAX);
-            std::vector<FrameSlot> slots;
+            std::vector<EFrameSlot> slots;
             std::uint64_t frame_size{sizeof(std::uint32_t)};
             std::uint64_t frame_alignment{alignof(std::uint32_t)};
             const auto& layout = module.getDataLayout();
@@ -592,38 +590,62 @@ namespace lux::flowforge
                     argument_types.push_back(ptr_type);
                     arguments.push_back(token);
                     auto* start_type = llvm::FunctionType::get(i32, argument_types, false);
-                    status = suspend_builder.CreateCall(
-                        start_type,
-                        start_async,
-                        arguments
-                    );
+                    status = suspend_builder.CreateCall(start_type, start_async, arguments);
                 }
                 const auto next_pc = static_cast<std::uint32_t>(await_index + 1U);
                 auto* accepted = llvm::BasicBlock::Create(context, "wait.accepted", core);
                 auto* rejected = llvm::BasicBlock::Create(context, "wait.rejected", core);
                 suspend_builder.CreateCondBr(
-                    suspend_builder.CreateICmpEQ(status, llvm::ConstantInt::get(i32, 0U)), accepted, rejected
+                    suspend_builder.CreateICmpEQ(status, llvm::ConstantInt::get(i32, 0U)),
+                    accepted,
+                    rejected
                 );
                 llvm::IRBuilder<> rejected_builder(rejected);
-                storeOutcomeField(rejected_builder, outcome_argument, offsetof(lux_script_step_outcome, state),
-                    llvm::ConstantInt::get(i8, LUX_SCRIPT_STEP_FAILED));
-                storeOutcomeField(rejected_builder, outcome_argument,
-                    offsetof(lux_script_step_outcome, status), status);
+                storeOutcomeField(
+                    rejected_builder,
+                    outcome_argument,
+                    offsetof(lux_script_step_outcome, state),
+                    llvm::ConstantInt::get(i8, LUX_SCRIPT_STEP_FAILED)
+                );
+                storeOutcomeField(
+                    rejected_builder,
+                    outcome_argument,
+                    offsetof(lux_script_step_outcome, status),
+                    status
+                );
                 rejected_builder.CreateRetVoid();
                 llvm::IRBuilder<> accepted_builder(accepted);
                 accepted_builder.CreateStore(llvm::ConstantInt::get(i32, next_pc), frame_argument);
-                storeOutcomeField(accepted_builder, outcome_argument, offsetof(lux_script_step_outcome, state),
-                    llvm::ConstantInt::get(i8, LUX_SCRIPT_STEP_SUSPENDED));
+                storeOutcomeField(
+                    accepted_builder,
+                    outcome_argument,
+                    offsetof(lux_script_step_outcome, state),
+                    llvm::ConstantInt::get(i8, LUX_SCRIPT_STEP_SUSPENDED)
+                );
                 const auto token_offset = offsetof(lux_script_step_outcome, waiting_on);
-                storeOutcomeField(accepted_builder, outcome_argument, token_offset,
-                    accepted_builder.CreateLoad(i32, token));
-                auto* generation_address = accepted_builder.CreateGEP(i8, token,
-                    llvm::ConstantInt::get(i64, offsetof(lux_script_async_token, generation)));
-                storeOutcomeField(accepted_builder, outcome_argument,
+                storeOutcomeField(
+                    accepted_builder,
+                    outcome_argument,
+                    token_offset,
+                    accepted_builder.CreateLoad(i32, token)
+                );
+                auto* generation_address = accepted_builder.CreateGEP(
+                    i8,
+                    token,
+                    llvm::ConstantInt::get(i64, offsetof(lux_script_async_token, generation))
+                );
+                storeOutcomeField(
+                    accepted_builder,
+                    outcome_argument,
                     token_offset + offsetof(lux_script_async_token, generation),
-                    accepted_builder.CreateLoad(i32, generation_address));
-                storeOutcomeField(accepted_builder, outcome_argument, offsetof(lux_script_step_outcome, status),
-                    llvm::ConstantInt::get(i32, 0U));
+                    accepted_builder.CreateLoad(i32, generation_address)
+                );
+                storeOutcomeField(
+                    accepted_builder,
+                    outcome_argument,
+                    offsetof(lux_script_step_outcome, status),
+                    llvm::ConstantInt::get(i32, 0U)
+                );
                 accepted_builder.CreateRetVoid();
 
                 auto* resume_entry = llvm::BasicBlock::Create(context, "resume." + std::to_string(next_pc), core);
@@ -704,7 +726,8 @@ namespace lux::flowforge
             for (auto& block : *core)
                 for (auto& instruction : block)
                     if (auto* allocation = llvm::dyn_cast<llvm::AllocaInst>(&instruction))
-                        if (allocation->getParent() != dispatch) local_allocations.push_back(allocation);
+                        if (allocation->getParent() != dispatch)
+                            local_allocations.push_back(allocation);
             for (auto* allocation : local_allocations)
                 allocation->moveBefore(&*dispatch->getFirstInsertionPt());
 
@@ -786,7 +809,8 @@ namespace lux::flowforge
                     error = "FlowForge dominance spill contains a dynamic allocation";
                     return false;
                 }
-                if (allocation == token_storage) continue; // Known write-on-success bridge; never survives return.
+                if (allocation == token_storage)
+                    continue; // Known write-on-success bridge; never survives return.
                 const bool persistent = detail::ContinuationFrameLayout::persists(*allocation, resume_entries);
                 const bool needs_initial = detail::ContinuationFrameLayout::readsIncoming(*allocation, cloned_entry);
                 if (!persistent)
@@ -794,9 +818,12 @@ namespace lux::flowforge
                     if (needs_initial)
                     {
                         llvm::IRBuilder<> local_builder(dispatch->getTerminator());
-                        local_builder.CreateMemSet(allocation, llvm::ConstantInt::get(i8, 0U),
+                        local_builder.CreateMemSet(
+                            allocation,
+                            llvm::ConstantInt::get(i8, 0U),
                             layout.getTypeAllocSize(allocation->getAllocatedType()) * count->getZExtValue(),
-                            allocation->getAlign());
+                            allocation->getAlign()
+                        );
                     }
                     continue;
                 }
@@ -807,9 +834,10 @@ namespace lux::flowforge
                 {
                     for (auto& shared : shared_slots)
                     {
-                        const bool disjoint = interval->last < shared.interval.first ||
-                            shared.interval.last < interval->first;
-                        if (!disjoint || shared.size < size || shared.alignment < alignment) continue;
+                        const bool disjoint =
+                            interval->last < shared.interval.first || shared.interval.last < interval->first;
+                        if (!disjoint || shared.size < size || shared.alignment < alignment)
+                            continue;
                         offset = shared.offset;
                         shared.interval.first = (std::min)(shared.interval.first, interval->first);
                         shared.interval.last = (std::max)(shared.interval.last, interval->last);
@@ -821,7 +849,8 @@ namespace lux::flowforge
                     frame_size = alignFrameOffset(frame_size, alignment);
                     offset = frame_size;
                     frame_size += size;
-                    if (interval && !needs_initial) shared_slots.push_back({offset, size, alignment, *interval});
+                    if (interval && !needs_initial)
+                        shared_slots.push_back({offset, size, alignment, *interval});
                 }
                 frame_alignment = (std::max)(frame_alignment, static_cast<std::uint64_t>(alignment));
                 slots.push_back({offset, size, alignment, needs_initial});
@@ -888,11 +917,16 @@ namespace lux::flowforge
             }
             for (const auto& slot : slots)
                 if (slot.needs_initial_value)
-                    start_builder.CreateMemSet(start_field(start_frame, slot.offset),
-                        llvm::ConstantInt::get(i8, 0U), slot.size, llvm::MaybeAlign(slot.alignment));
+                    start_builder.CreateMemSet(
+                        start_field(start_frame, slot.offset),
+                        llvm::ConstantInt::get(i8, 0U),
+                        slot.size,
+                        llvm::MaybeAlign(slot.alignment)
+                    );
             for (std::size_t index{}; index < start_core_arguments.size(); ++index)
             {
-                if (argument_offsets[index] == UINT64_MAX) continue;
+                if (argument_offsets[index] == UINT64_MAX)
+                    continue;
                 auto* address =
                     start_builder.CreateGEP(i8, start_frame, llvm::ConstantInt::get(i64, argument_offsets[index]));
                 start_builder.CreateStore(start_core_arguments[index], address);
@@ -923,8 +957,8 @@ namespace lux::flowforge
             {
                 if (argument_offsets[index] == UINT64_MAX)
                 {
-                    resume_core_arguments.push_back(llvm::PoisonValue::get(
-                        target->getFunctionType()->getParamType(index)));
+                    resume_core_arguments.push_back(llvm::PoisonValue::get(target->getFunctionType()->getParamType(index
+                    )));
                     continue;
                 }
                 auto* address =
@@ -1077,14 +1111,7 @@ namespace lux::flowforge
             steps.resize(events.size());
             for (std::size_t index{}; index < events.size(); ++index)
             {
-                if (!lowerEventToStateMachine(
-                        module,
-                        events[index],
-                        imports,
-                        event_imports,
-                        steps[index],
-                        error
-                    ))
+                if (!lowerEventToStateMachine(module, events[index], imports, event_imports, steps[index], error))
                     return false;
                 const bool expected_suspension =
                     suspension_analysis.firstSuspensionFrom(events[index].node->execOutPin()) != nullptr;
@@ -1112,7 +1139,7 @@ namespace lux::flowforge
             {
                 auto& function = *iterator++;
                 const bool is_suspension_marker = function.getName().starts_with("lux_ff_ability_async_") ||
-                    function.getName().starts_with("lux_ff_event_wait_");
+                                                  function.getName().starts_with("lux_ff_event_wait_");
                 if (function.isDeclaration() && function.use_empty() && is_suspension_marker)
                 {
                     function.eraseFromParent();
@@ -1160,8 +1187,8 @@ namespace lux::flowforge
                     if (!call || call->getCalledOperand() != f)
                     {
                         err = "import '" + name +
-                            "' is referenced by a "
-                            "non-call use (address taken?) — cannot slot it";
+                              "' is referenced by a "
+                              "non-call use (address taken?) — cannot slot it";
                         return false;
                     }
                     llvm::IRBuilder<> b(call);
@@ -1311,28 +1338,14 @@ namespace lux::flowforge
                 {i64, i64, i64, i32, i8, pad3, type_desc_ty},
                 "lux_script_event_wait_import_desc"
             );
-            auto* step_desc_ty =
-                llvm::StructType::create(
-                    ctx, {i32, i32, i64, ptr_ty, ptr_ty, ptr_ty, i32, i32}, "lux_script_step_desc");
+            auto* step_desc_ty = llvm::StructType::create(
+                ctx,
+                {i32, i32, i64, ptr_ty, ptr_ty, ptr_ty, i32, i32},
+                "lux_script_step_desc"
+            );
             auto* module_desc_ty = llvm::StructType::create(
                 ctx,
-                {
-                    ptr_ty,
-                    i32,
-                    i32,
-                    i64,
-                    i32,
-                    i32,
-                    ptr_ty,
-                    i32,
-                    i32,
-                    ptr_ty,
-                    i32,
-                    i32,
-                    ptr_ty,
-                    i32,
-                    i32
-                },
+                {ptr_ty, i32, i32, i64, i32, i32, ptr_ty, i32, i32, ptr_ty, i32, i32, ptr_ty, i32, i32},
                 "lux_script_module_desc"
             );
 
@@ -1510,27 +1523,23 @@ namespace lux::flowforge
                 const auto& payload = source.payload;
                 auto* payload_description = llvm::ConstantStruct::get(
                     type_desc_ty,
-                    {
-                        makeCStr(m, payload.canonical_name, "_lfd_event_payload"),
-                        llvm::ConstantInt::get(i64, payload.type_id),
-                        llvm::ConstantInt::get(i32, payload.size),
-                        llvm::ConstantInt::get(i32, payload.alignment),
-                        llvm::ConstantInt::get(i8, payload.abi_kind),
-                        llvm::ConstantInt::get(i8, LUX_SCRIPT_PASS_VALUE),
-                        pad_zero
-                    }
+                    {makeCStr(m, payload.canonical_name, "_lfd_event_payload"),
+                     llvm::ConstantInt::get(i64, payload.type_id),
+                     llvm::ConstantInt::get(i32, payload.size),
+                     llvm::ConstantInt::get(i32, payload.alignment),
+                     llvm::ConstantInt::get(i8, payload.abi_kind),
+                     llvm::ConstantInt::get(i8, LUX_SCRIPT_PASS_VALUE),
+                     pad_zero}
                 );
                 event_wait_descriptions.push_back(llvm::ConstantStruct::get(
                     event_wait_import_ty,
-                    {
-                        llvm::ConstantInt::get(i64, source.system_id),
-                        llvm::ConstantInt::get(i64, source.event_id),
-                        llvm::ConstantInt::get(i64, source.payload_schema_hash),
-                        llvm::ConstantInt::get(i32, source.payload_schema_version),
-                        llvm::ConstantInt::get(i8, static_cast<std::uint8_t>(source.route)),
-                        pad3_zero,
-                        payload_description
-                    }
+                    {llvm::ConstantInt::get(i64, source.system_id),
+                     llvm::ConstantInt::get(i64, source.event_id),
+                     llvm::ConstantInt::get(i64, source.payload_schema_hash),
+                     llvm::ConstantInt::get(i32, source.payload_schema_version),
+                     llvm::ConstantInt::get(i8, static_cast<std::uint8_t>(source.route)),
+                     pad3_zero,
+                     payload_description}
                 ));
             }
             llvm::Constant* event_wait_imports_ptr = null_ptr;
@@ -1568,23 +1577,21 @@ namespace lux::flowforge
                 llvm::GlobalValue::PrivateLinkage,
                 llvm::ConstantStruct::get(
                     module_desc_ty,
-                    {
-                        makeCStr(m, module_name, "_lfd_modname"),
-                        llvm::ConstantInt::get(i32, LUX_SCRIPT_ABI_VERSION),
-                        llvm::ConstantInt::get(i32, 0),
-                        llvm::ConstantInt::get(i64, state_layout_hash),
-                        llvm::ConstantInt::get(i32, state_size),
-                        llvm::ConstantInt::get(i32, state_align),
-                        fns_ptr,
-                        llvm::ConstantInt::get(i32, static_cast<uint32_t>(fn_descs.size())),
-                        llvm::ConstantInt::get(i32, 0),
-                        ability_imports_ptr,
-                        llvm::ConstantInt::get(i32, ability_descriptions.size()),
-                        llvm::ConstantInt::get(i32, 0),
-                        event_wait_imports_ptr,
-                        llvm::ConstantInt::get(i32, event_wait_descriptions.size()),
-                        llvm::ConstantInt::get(i32, 0)
-                    }
+                    {makeCStr(m, module_name, "_lfd_modname"),
+                     llvm::ConstantInt::get(i32, LUX_SCRIPT_ABI_VERSION),
+                     llvm::ConstantInt::get(i32, 0),
+                     llvm::ConstantInt::get(i64, state_layout_hash),
+                     llvm::ConstantInt::get(i32, state_size),
+                     llvm::ConstantInt::get(i32, state_align),
+                     fns_ptr,
+                     llvm::ConstantInt::get(i32, static_cast<uint32_t>(fn_descs.size())),
+                     llvm::ConstantInt::get(i32, 0),
+                     ability_imports_ptr,
+                     llvm::ConstantInt::get(i32, ability_descriptions.size()),
+                     llvm::ConstantInt::get(i32, 0),
+                     event_wait_imports_ptr,
+                     llvm::ConstantInt::get(i32, event_wait_descriptions.size()),
+                     llvm::ConstantInt::get(i32, 0)}
                 ),
                 "_lfd_module"
             );
@@ -1717,15 +1724,7 @@ namespace lux::flowforge
         std::vector<NativeStepInfo> steps;
         {
             std::string err;
-            if (!lowerAsyncEvents(
-                    *llmod,
-                    events,
-                    ability_imports,
-                    event_wait_imports,
-                    suspension_analysis,
-                    steps,
-                    err
-                ))
+            if (!lowerAsyncEvents(*llmod, events, ability_imports, event_wait_imports, suspension_analysis, steps, err))
                 return fail(std::move(err));
         }
 
@@ -1864,10 +1863,7 @@ namespace lux::flowforge
             std::ofstream os(obj_path, std::ios::binary | std::ios::trunc);
             if (!os)
                 return fail("cannot write " + obj_path.string());
-            os.write(
-                reinterpret_cast<const char*>(object.data()),
-                static_cast<std::streamsize>(object.size())
-            );
+            os.write(reinterpret_cast<const char*>(object.data()), static_cast<std::streamsize>(object.size()));
             os.close();
             if (!os)
             {
@@ -1945,7 +1941,7 @@ namespace lux::flowforge
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+            std::terminate();
         }
         catch (...)
         {
@@ -1972,7 +1968,7 @@ namespace lux::flowforge
         }
         catch (const std::bad_alloc&)
         {
-            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
+            std::terminate();
         }
         catch (...)
         {

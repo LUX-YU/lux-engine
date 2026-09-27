@@ -34,7 +34,7 @@ namespace lux::render
     /// Build-time pipeline-variant selectors for the GPU-driven mesh features.
     enum class EGpuDrivenMeshExt : std::uint32_t
     {
-        None = 0,
+        NONE = 0,
 
         /// Use the HZB-occlusion variant of the unified cull kernel. The no-HZB
         /// variant does not declare descriptor set 1, so this is a genuine
@@ -45,7 +45,7 @@ namespace lux::render
         /// Sample material textures through the bindless combined set.
         /// Accepted by ForwardMesh and MeshShadow; DeferredGBuffer leaves this
         /// bit unused (see the note below).
-        Bindless = 1u << 1,
+        BINDLESS = 1u << 1,
 
         /// This G-buffer takes part in a local-read merged scope: the deferred
         /// lighting consumer reads it through input attachments inside ONE
@@ -53,13 +53,12 @@ namespace lux::render
         /// KHR_dynamic_rendering_local_read — the feature gates on DeviceCaps
         /// with the SAME condition the lighting consumer resolves, so producer
         /// and consumer stay pipeline-remap consistent. DeferredGBuffer only.
-        LocalReadScope = 1u << 2,
+        LOCAL_READ_SCOPE = 1u << 2,
     };
 } // namespace lux::render
 
 template <> struct lux::cxx::enable_enum_flags<lux::render::EGpuDrivenMeshExt> : std::true_type
-{
-};
+{};
 
 namespace lux::render
 {
@@ -71,7 +70,8 @@ namespace lux::render
     // comment: bit 1 IS Bindless everywhere, and a feature that does not accept
     // it simply leaves it out of its known-flags set.
     static_assert(
-        static_cast<std::uint32_t>(EGpuDrivenMeshExt::Bindless) == (1u << 1),
-        "bit 1 stays Bindless — DeferredGBuffer's reserved bit is this one");
+        static_cast<std::uint32_t>(EGpuDrivenMeshExt::BINDLESS) == (1u << 1),
+        "bit 1 stays Bindless — DeferredGBuffer's reserved bit is this one"
+    );
 
 } // namespace lux::render

@@ -26,16 +26,28 @@ namespace lux::flowforge
         BinaryOpNode(ENodeOperation op, const lux::meta::RefType* operand_type);
         BinaryOpNode(uint64_t id, ENodeOperation op, const lux::meta::RefType* operand_type);
 
-        const DataInPin&  lhs() const { return lhs_; }
-        const DataInPin&  rhs() const { return rhs_; }
-        const DataOutPin& result() const { return result_; }
+        const DataInPin& lhs() const
+        {
+            return lhs_;
+        }
+        const DataInPin& rhs() const
+        {
+            return rhs_;
+        }
+        const DataOutPin& result() const
+        {
+            return result_;
+        }
 
-        const lux::meta::RefType* operandType() const { return operand_type_; }
+        const lux::meta::RefType* operandType() const
+        {
+            return operand_type_;
+        }
 
     private:
         const lux::meta::RefType* operand_type_;
-        DataInPin  lhs_;
-        DataInPin  rhs_;
+        DataInPin lhs_;
+        DataInPin rhs_;
         DataOutPin result_;
     };
 
@@ -49,14 +61,23 @@ namespace lux::flowforge
         UnaryOpNode(ENodeOperation op, const lux::meta::RefType* operand_type);
         UnaryOpNode(uint64_t id, ENodeOperation op, const lux::meta::RefType* operand_type);
 
-        const DataInPin&  operand() const { return operand_; }
-        const DataOutPin& result() const { return result_; }
+        const DataInPin& operand() const
+        {
+            return operand_;
+        }
+        const DataOutPin& result() const
+        {
+            return result_;
+        }
 
-        const lux::meta::RefType* operandType() const { return operand_type_; }
+        const lux::meta::RefType* operandType() const
+        {
+            return operand_type_;
+        }
 
     private:
         const lux::meta::RefType* operand_type_;
-        DataInPin  operand_;
+        DataInPin operand_;
         DataOutPin result_;
     };
 } // namespace lux::flowforge

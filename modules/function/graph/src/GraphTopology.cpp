@@ -8,7 +8,7 @@ namespace lux::graph
 {
     namespace
     {
-        template<class Record, class Id, class Projection>
+        template <class Record, class Id, class Projection>
         [[nodiscard]] const Record* findRecord(std::span<const Record> records, Id id, Projection projection) noexcept
         {
             const auto found = std::ranges::find_if(records, [id, projection](const Record& record) noexcept {
@@ -57,16 +57,11 @@ namespace lux::graph
             return lux::cxx::unexpected(failure(EGraphTopologyError::INVALID_TYPE, node.id));
         if (findNode(node.id) != nullptr)
             return lux::cxx::unexpected(failure(EGraphTopologyError::DUPLICATE_NODE, node.id));
-        try
         {
             nodes_.push_back(node);
             std::ranges::sort(nodes_, {}, [](const NodeRecord& value) noexcept { return value.id; });
             advanceNodeId(node.id);
             return {};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(EGraphTopologyError::ALLOCATION_FAILURE, node.id));
         }
     }
 
@@ -75,7 +70,6 @@ namespace lux::graph
         const auto* record = findNode(node);
         if (record == nullptr)
             return lux::cxx::unexpected(failure(EGraphTopologyError::UNKNOWN_NODE, node));
-        try
         {
             DetachedNode detached;
             detached.node = *record;
@@ -97,15 +91,10 @@ namespace lux::graph
             std::erase_if(nodes_, [node](const NodeRecord& value) { return value.id == node; });
             return detached;
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(EGraphTopologyError::ALLOCATION_FAILURE, node));
-        }
     }
 
     lux::cxx::expected<void, GraphTopologyFailure> GraphTopology::restoreNode(DetachedNode node) noexcept
     {
-        try
         {
             auto nodes = nodes_;
             auto pins = pins_;
@@ -123,10 +112,6 @@ namespace lux::graph
             for (const auto& pin : node.pins)
                 advancePinId(pin.id);
             return {};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(EGraphTopologyError::ALLOCATION_FAILURE, node.node.id));
         }
     }
 
@@ -149,8 +134,8 @@ namespace lux::graph
     {
         if (!pin.id.valid() || !pin.owner.valid())
             return lux::cxx::unexpected(failure(EGraphTopologyError::INVALID_ID, pin.owner, pin.id));
-        const bool is_invalid_direction = pin.direction != EPinDirection::INPUT &&
-            pin.direction != EPinDirection::OUTPUT;
+        const bool is_invalid_direction =
+            pin.direction != EPinDirection::INPUT && pin.direction != EPinDirection::OUTPUT;
         if (is_invalid_direction)
             return lux::cxx::unexpected(failure(EGraphTopologyError::INVALID_DIRECTION, pin.owner, pin.id));
         if (pin.fan_cap == 0U)
@@ -161,16 +146,11 @@ namespace lux::graph
             return lux::cxx::unexpected(failure(EGraphTopologyError::UNKNOWN_NODE, pin.owner, pin.id));
         if (findPin(pin.id) != nullptr)
             return lux::cxx::unexpected(failure(EGraphTopologyError::DUPLICATE_PIN, pin.owner, pin.id));
-        try
         {
             pins_.push_back(pin);
             std::ranges::sort(pins_, {}, [](const PinRecord& value) noexcept { return value.id; });
             advancePinId(pin.id);
             return {};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(EGraphTopologyError::ALLOCATION_FAILURE, pin.owner, pin.id));
         }
     }
 
@@ -179,7 +159,6 @@ namespace lux::graph
         const auto* record = findPin(pin);
         if (record == nullptr)
             return lux::cxx::unexpected(failure(EGraphTopologyError::UNKNOWN_PIN, {}, pin));
-        try
         {
             DetachedPin detached;
             detached.pin = *record;
@@ -190,15 +169,10 @@ namespace lux::graph
             std::erase_if(pins_, [pin](const PinRecord& value) { return value.id == pin; });
             return detached;
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(EGraphTopologyError::ALLOCATION_FAILURE, {}, pin));
-        }
     }
 
     lux::cxx::expected<void, GraphTopologyFailure> GraphTopology::restorePin(DetachedPin pin) noexcept
     {
-        try
         {
             auto nodes = nodes_;
             auto pins = pins_;
@@ -212,10 +186,6 @@ namespace lux::graph
             links_.swap(links);
             advancePinId(pin.pin.id);
             return {};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(EGraphTopologyError::ALLOCATION_FAILURE, pin.pin.owner, pin.pin.id));
         }
     }
 
@@ -235,17 +205,12 @@ namespace lux::graph
         const bool to_full = to_pin->fan_cap != kUnlimitedFan && linkCount(to) >= to_pin->fan_cap;
         if (from_full || to_full)
             return lux::cxx::unexpected(failure(EGraphTopologyError::FAN_CAP_EXCEEDED, {}, from, to));
-        try
         {
             links_.push_back(LinkRecord{from, to});
             std::ranges::sort(links_, [](const LinkRecord& left, const LinkRecord& right) noexcept {
                 return left.from < right.from || (left.from == right.from && left.to < right.to);
             });
             return {};
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(failure(EGraphTopologyError::ALLOCATION_FAILURE, {}, from, to));
         }
     }
 
@@ -330,8 +295,8 @@ namespace lux::graph
                 return lux::cxx::unexpected(failure(EGraphTopologyError::UNKNOWN_NODE, pin.owner, pin.id));
             if (pin.fan_cap == 0U)
                 return lux::cxx::unexpected(failure(EGraphTopologyError::INVALID_FAN_CAP, pin.owner, pin.id));
-            const bool is_invalid_direction = pin.direction != EPinDirection::INPUT &&
-                pin.direction != EPinDirection::OUTPUT;
+            const bool is_invalid_direction =
+                pin.direction != EPinDirection::INPUT && pin.direction != EPinDirection::OUTPUT;
             if (is_invalid_direction)
                 return lux::cxx::unexpected(failure(EGraphTopologyError::INVALID_DIRECTION, pin.owner, pin.id));
             if (!pin.semantic.valid())

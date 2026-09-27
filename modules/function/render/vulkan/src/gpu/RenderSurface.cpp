@@ -109,9 +109,9 @@ namespace lux::render
         // Extension entry point: Android's libvulkan.so exports only core
         // symbols, so a direct reference to vkCreateAndroidSurfaceKHR does not
         // link. Same treatment as vkGetPhysicalDeviceSurfaceCapabilities2KHR.
-        const auto fn = reinterpret_cast<PFN_vkCreateAndroidSurfaceKHR>(
-            vkGetInstanceProcAddr(instance, "vkCreateAndroidSurfaceKHR")
-        );
+        const auto fn =
+            reinterpret_cast<PFN_vkCreateAndroidSurfaceKHR>(vkGetInstanceProcAddr(instance, "vkCreateAndroidSurfaceKHR")
+            );
         if (fn == nullptr)
             return false; // VK_KHR_android_surface not enabled on the instance
 
@@ -143,8 +143,11 @@ namespace lux::render
 #endif
     }
 
-    bool
-    RenderSurface::init(window::LuxWindow& window, lux::gapi::vk::Instance& instance, VkAllocationCallbacks* allocator)
+    bool RenderSurface::init(
+        window::LuxWindow& window,
+        lux::gapi::vk::Instance& instance,
+        VkAllocationCallbacks* allocator
+    )
     {
         reset(); // re-init on a live object must not leak the previous surface
 

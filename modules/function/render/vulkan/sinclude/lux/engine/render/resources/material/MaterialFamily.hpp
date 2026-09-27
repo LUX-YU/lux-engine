@@ -33,13 +33,14 @@ namespace lux::render
     // police — this layer enforces no PSO-count policy).
     static_assert(
         kLightingTechniqueCount <= (1u << 4),
-        "family_id must fit the 4-bit material_type nibble (see packMaterialType)");
+        "family_id must fit the 4-bit material_type nibble (see packMaterialType)"
+    );
 
     // ===== Shading Model =====
     //  Numbering convention:
     //    Unlit      =   0 ..  49
     //    LegacyLit  = 100 .. 149  (encoded: 100 + diffuse*10 + specular)
-    //    PbrMetallicRoughness = 200 .. 249
+    //    PBR_METALLIC_ROUGHNESS = 200 .. 249
     //    Stylized   = 300 .. 349
     //    Graph      = 400 .. 449
     enum class EShadingModel : uint16_t
@@ -53,7 +54,7 @@ namespace lux::render
         LEGACY_LIT_BASE = 100,
 
         // --- PBR family ---
-        PbrMetallicRoughness = 200,
+        PBR_METALLIC_ROUGHNESS = 200,
 
         // --- Stylized family ---
         STYLIZED = 300,
@@ -112,7 +113,7 @@ namespace lux::render
         for (std::size_t fi = 0; fi < kLightingTechniqueCount; ++fi)
             if (v >= kFamilyShadingModelRange[fi][0] && v <= kFamilyShadingModelRange[fi][1])
                 return static_cast<ELightingTechnique>(fi);
-        return ELightingTechnique::Stylized; // >=500 (incl INVALID) — unreachable
+        return ELightingTechnique::STYLIZED; // >=500 (incl INVALID) — unreachable
     }
 
     // (materialToShadingModel(const rdesc::Material&) retired in W5a — the builtin
@@ -131,7 +132,8 @@ namespace lux::render
     {
         assert(
             family == getShadingModelFamily(model) &&
-            "packMaterialType: explicit family disagrees with the model-derived family");
+            "packMaterialType: explicit family disagrees with the model-derived family"
+        );
         return (static_cast<uint32_t>(family) << 12u) | (static_cast<uint32_t>(model) & 0xFFFu);
     }
 

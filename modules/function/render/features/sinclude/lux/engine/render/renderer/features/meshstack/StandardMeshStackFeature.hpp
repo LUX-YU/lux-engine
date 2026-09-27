@@ -33,6 +33,7 @@ namespace lux::render
     class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC StandardMeshStackFeature final : public RenderFeature
     {
     public:
+        void retainSubmissions(const FrameRuntime&) const noexcept override;
         struct Config
         {
             std::string name{"StandardMeshStack"};
@@ -50,8 +51,6 @@ namespace lux::render
 
     // No-arg ctor defined out-of-class so Config{} is evaluated where the class is
     // complete (GCC 11/12 reject Config{} / {} as an in-class default argument).
-    inline StandardMeshStackFeature::StandardMeshStackFeature() : StandardMeshStackFeature(Config{})
-    {
-    }
+    inline StandardMeshStackFeature::StandardMeshStackFeature() : StandardMeshStackFeature(Config{}) {}
 
 } // namespace lux::render

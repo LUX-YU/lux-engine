@@ -28,7 +28,7 @@ namespace lux::math
         Scalar viewport_width,
         Scalar viewport_height,
         const Eigen::Matrix<Scalar, 4, 4>& inv_view_proj,
-        BasicRay<RayScalar>& out_ray
+        TBasicRay<RayScalar>& out_ray
     )
     {
         const Scalar ndc_x = (Scalar(2) * screen_x / viewport_width) - Scalar(1);

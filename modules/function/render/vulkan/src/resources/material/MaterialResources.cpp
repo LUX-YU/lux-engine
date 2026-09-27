@@ -1,3 +1,4 @@
+#include <lux/engine/render/resources/TextureResources.hpp>
 #include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <algorithm>
 #include <lux/engine/render/resources/material/MaterialResources.hpp>
@@ -40,9 +41,7 @@ namespace lux::render
         free_handle_indices_.push_back(h.index);
     }
 
-    MaterialResources::MaterialResources()
-    {
-    }
+    MaterialResources::MaterialResources() {}
 
     MaterialResources::~MaterialResources()
     {
@@ -58,6 +57,9 @@ namespace lux::render
         if (bindless == nullptr)
             return false;
         texture_representation_index_ = bindless->representation_index;
+        if (!info.textures)
+            return false;
+        textures_ = info.textures;
         frames_in_flight_ = info.ssbo_config.slices;
         bucket_mgr_.seedFamilyBootstrapBuckets();
 
@@ -99,20 +101,20 @@ namespace lux::render
 
     void MaterialResources::writeDescriptorsOnSet(uint32_t set_index) const
     {
-        unlit_ssbo_.writeDescriptor(descriptor_sets_[set_index], static_cast<uint32_t>(ELightingTechnique::Unlit));
+        unlit_ssbo_.writeDescriptor(descriptor_sets_[set_index], static_cast<uint32_t>(ELightingTechnique::UNLIT));
         legacy_lit_ssbo_.writeDescriptor(
             descriptor_sets_[set_index],
-            static_cast<uint32_t>(ELightingTechnique::LegacyLit)
+            static_cast<uint32_t>(ELightingTechnique::LEGACY_LIT)
         );
         pbr_ssbo_.writeDescriptor(
             descriptor_sets_[set_index],
-            static_cast<uint32_t>(ELightingTechnique::PbrMetallicRoughness)
+            static_cast<uint32_t>(ELightingTechnique::PBR_METALLIC_ROUGHNESS)
         );
         stylized_ssbo_.writeDescriptor(
             descriptor_sets_[set_index],
-            static_cast<uint32_t>(ELightingTechnique::Stylized)
+            static_cast<uint32_t>(ELightingTechnique::STYLIZED)
         );
-        graph_ssbo_.writeDescriptor(descriptor_sets_[set_index], static_cast<uint32_t>(ELightingTechnique::Graph));
+        graph_ssbo_.writeDescriptor(descriptor_sets_[set_index], static_cast<uint32_t>(ELightingTechnique::GRAPH));
 
         // Also write the same batch of descriptors into each active scene's
         // domain set. This resource is global while there is one domain set
@@ -125,11 +127,11 @@ namespace lux::render
             if (dds == VK_NULL_HANDLE)
                 continue;
             const auto at = [&](uint32_t family) { return t.target.binding(family); };
-            unlit_ssbo_.writeDescriptor(dds, at(static_cast<uint32_t>(ELightingTechnique::Unlit)));
-            legacy_lit_ssbo_.writeDescriptor(dds, at(static_cast<uint32_t>(ELightingTechnique::LegacyLit)));
-            pbr_ssbo_.writeDescriptor(dds, at(static_cast<uint32_t>(ELightingTechnique::PbrMetallicRoughness)));
-            stylized_ssbo_.writeDescriptor(dds, at(static_cast<uint32_t>(ELightingTechnique::Stylized)));
-            graph_ssbo_.writeDescriptor(dds, at(static_cast<uint32_t>(ELightingTechnique::Graph)));
+            unlit_ssbo_.writeDescriptor(dds, at(static_cast<uint32_t>(ELightingTechnique::UNLIT)));
+            legacy_lit_ssbo_.writeDescriptor(dds, at(static_cast<uint32_t>(ELightingTechnique::LEGACY_LIT)));
+            pbr_ssbo_.writeDescriptor(dds, at(static_cast<uint32_t>(ELightingTechnique::PBR_METALLIC_ROUGHNESS)));
+            stylized_ssbo_.writeDescriptor(dds, at(static_cast<uint32_t>(ELightingTechnique::STYLIZED)));
+            graph_ssbo_.writeDescriptor(dds, at(static_cast<uint32_t>(ELightingTechnique::GRAPH)));
         }
     }
 
@@ -161,58 +163,52 @@ namespace lux::render
     {
         unlit_ssbo_.writeDescriptorTight(
             descriptor_sets_[current_frame_],
-            static_cast<uint32_t>(ELightingTechnique::Unlit),
+            static_cast<uint32_t>(ELightingTechnique::UNLIT),
             slice
         );
         legacy_lit_ssbo_.writeDescriptorTight(
             descriptor_sets_[current_frame_],
-            static_cast<uint32_t>(ELightingTechnique::LegacyLit),
+            static_cast<uint32_t>(ELightingTechnique::LEGACY_LIT),
             slice
         );
         pbr_ssbo_.writeDescriptorTight(
             descriptor_sets_[current_frame_],
-            static_cast<uint32_t>(ELightingTechnique::PbrMetallicRoughness),
+            static_cast<uint32_t>(ELightingTechnique::PBR_METALLIC_ROUGHNESS),
             slice
         );
         stylized_ssbo_.writeDescriptorTight(
             descriptor_sets_[current_frame_],
-            static_cast<uint32_t>(ELightingTechnique::Stylized),
+            static_cast<uint32_t>(ELightingTechnique::STYLIZED),
             slice
         );
         graph_ssbo_.writeDescriptorTight(
             descriptor_sets_[current_frame_],
-            static_cast<uint32_t>(ELightingTechnique::Graph),
+            static_cast<uint32_t>(ELightingTechnique::GRAPH),
             slice
         );
     }
 
     void MaterialResources::refreshAllDescriptorsOnSet(uint32_t set_index, uint32_t slice)
     {
-        unlit_ssbo_.writeDescriptorTight(
-            descriptor_sets_[set_index],
-            static_cast<uint32_t>(ELightingTechnique::Unlit),
-            slice
-        );
+        unlit_ssbo_
+            .writeDescriptorTight(descriptor_sets_[set_index], static_cast<uint32_t>(ELightingTechnique::UNLIT), slice);
         legacy_lit_ssbo_.writeDescriptorTight(
             descriptor_sets_[set_index],
-            static_cast<uint32_t>(ELightingTechnique::LegacyLit),
+            static_cast<uint32_t>(ELightingTechnique::LEGACY_LIT),
             slice
         );
         pbr_ssbo_.writeDescriptorTight(
             descriptor_sets_[set_index],
-            static_cast<uint32_t>(ELightingTechnique::PbrMetallicRoughness),
+            static_cast<uint32_t>(ELightingTechnique::PBR_METALLIC_ROUGHNESS),
             slice
         );
         stylized_ssbo_.writeDescriptorTight(
             descriptor_sets_[set_index],
-            static_cast<uint32_t>(ELightingTechnique::Stylized),
+            static_cast<uint32_t>(ELightingTechnique::STYLIZED),
             slice
         );
-        graph_ssbo_.writeDescriptorTight(
-            descriptor_sets_[set_index],
-            static_cast<uint32_t>(ELightingTechnique::Graph),
-            slice
-        );
+        graph_ssbo_
+            .writeDescriptorTight(descriptor_sets_[set_index], static_cast<uint32_t>(ELightingTechnique::GRAPH), slice);
     }
 
     // (MaterialResources::submit(rdesc::Material) — the builtin closure-material upload
@@ -221,7 +217,7 @@ namespace lux::render
     // Pack a flat GraphMaterialData blob into the GPU struct (shared by
     // submitGraph + modifyGraph). Graph materials are data-driven — no
     // rdesc::Material variant — so this is a separate path from submit().
-    void MaterialResources::packGraphGpu(const GraphMaterialData& data, GraphFamilyGPU& gpu) const
+    bool MaterialResources::packGraphGpu(const GraphMaterialData& data, GraphFamilyGPU& gpu) const
     {
         gpu.shading_model_id = static_cast<uint32_t>(EShadingModel::GRAPH);
         gpu.feature_mask = 0u;
@@ -234,8 +230,14 @@ namespace lux::render
         for (uint32_t i = 0; i < GraphMaterialData::kMaxTextures; ++i)
         {
             gpu.tex[i].representation_index = texture_representation_index_;
-            gpu.tex[i].resource_index = data.tex_bindless[i];
+            if ((data.tex_mask & (1u << i)) == 0)
+                continue;
+            const auto local = textures_->resolveTexture(data.textures[i]);
+            if (!local.isValid())
+                return false;
+            gpu.tex[i].resource_index = local.index;
         }
+        return true;
     }
 
     Expected<MaterialHandle> MaterialResources::submitGraph(
@@ -250,11 +252,12 @@ namespace lux::render
         ds_revision_.bump();
 
         GraphFamilyGPU gpu{};
-        packGraphGpu(data, gpu);
-        // double_sided also rides the GPU flags (MATF_DOUBLE_SIDED) for any
+        if (!packGraphGpu(data, gpu))
+            return renderFailure<err::resource::NotFound>();
+        // double_sided also rides the GPU flags (EMaterialGpuFlag::DOUBLE_SIDED) for any
         // shader-side two-sided handling; the load-bearing effect is the cull tier.
         if (double_sided)
-            gpu.flags |= MATF_DOUBLE_SIDED;
+            gpu.flags |= static_cast<uint32_t>(EMaterialGpuFlag::DOUBLE_SIDED);
         const SlotHandle local_slot = graph_ssbo_.add(gpu);
 
         const MaterialHandle ret = allocateGlobalHandle();
@@ -265,11 +268,11 @@ namespace lux::render
         const uint32_t bucket =
             (shader_key != 0)
                 ? bucket_mgr_.getOrCreateGraph(shader_key, gbuffer_shader, forward_shader, alpha_mode, double_sided)
-                : bucket_mgr_.getOrCreate(ELightingTechnique::Graph, 0u);
+                : bucket_mgr_.getOrCreate(ELightingTechnique::GRAPH, 0u);
         slot_records_.insert(
             ret,
             SlotRecord{
-                .family = ELightingTechnique::Graph,
+                .family = ELightingTechnique::GRAPH,
                 .shading_model = EShadingModel::GRAPH,
                 .local_slot = local_slot,
                 .feature_mask = 0u,
@@ -285,11 +288,12 @@ namespace lux::render
         auto* rec = slot_records_.find(slot);
         if (!rec)
             return renderError<err::resource::NotFound>();
-        if (rec->family != ELightingTechnique::Graph)
+        if (rec->family != ELightingTechnique::GRAPH)
             return renderError<err::resource::TypeMismatch>();
 
         GraphFamilyGPU gpu{};
-        packGraphGpu(data, gpu);
+        if (!packGraphGpu(data, gpu))
+            return renderError<err::resource::NotFound>();
         // In-place data update at the same slot — no descriptor/graph change.
         const bool ok = graph_ssbo_.modify(rec->local_slot, gpu);
         return ok ? RenderError{} : renderError<err::resource::ModifyFailed>();
@@ -340,19 +344,19 @@ namespace lux::render
 
         switch (rec->family)
         {
-        case ELightingTechnique::Unlit:
+        case ELightingTechnique::UNLIT:
             unlit_ssbo_.remove(rec->local_slot);
             break;
-        case ELightingTechnique::LegacyLit:
+        case ELightingTechnique::LEGACY_LIT:
             legacy_lit_ssbo_.remove(rec->local_slot);
             break;
-        case ELightingTechnique::PbrMetallicRoughness:
+        case ELightingTechnique::PBR_METALLIC_ROUGHNESS:
             pbr_ssbo_.remove(rec->local_slot);
             break;
-        case ELightingTechnique::Stylized:
+        case ELightingTechnique::STYLIZED:
             stylized_ssbo_.remove(rec->local_slot);
             break;
-        case ELightingTechnique::Graph:
+        case ELightingTechnique::GRAPH:
             graph_ssbo_.remove(rec->local_slot);
             break;
         default:
@@ -411,8 +415,9 @@ namespace lux::render
             .slices = ctx.framesInFlight(),
         };
         info.descriptor_pool = ctx.resourceContext().descriptorPool().handle();
-        info.set_layout = ctx.descriptorLayouts().getLayout(EDescriptorSetSlot::Material);
+        info.set_layout = ctx.descriptorLayouts().getLayout(EDescriptorSetSlot::MATERIAL);
         info.texture_sampling_catalog = &ctx.textureSamplingRepresentations();
+        info.textures = &ctx.globalRegistry().must<TextureResources>();
         // ensure<T>(init_args):构造 + init + **只在成功时发布**(同
         // ensureGlobalMeshResources)。失败不再往注册表里留一个谁也删不掉的
         // 未初始化实例,下一次调用自然重试。
@@ -423,7 +428,7 @@ namespace lux::render
 
         // 每帧维护由**安装点**登记 —— 资源自己不再继承帧接口。登记在 ensure 成功
         // 之后:失败对象会被销毁,而注册表没有 removeBeginFrameHook。
-        greg.addBeginFrameHook(EUploadPhase::Upload, [mat](const FrameStamp& s) { mat->onFrameBeginMaintenance(s); });
+        greg.addBeginFrameHook(EUploadPhase::UPLOAD, [mat](const FrameStamp& s) { mat->onFrameBeginMaintenance(s); });
         ctx.globalTransferScheduler().contributors().add(makeTransferContributor(mat, /*priority=*/5));
         mat->setDeferredQueue(&ctx.deferredDestroyQueue());
         return {};

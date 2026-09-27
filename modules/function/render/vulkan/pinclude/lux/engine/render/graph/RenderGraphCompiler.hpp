@@ -46,8 +46,11 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC RenderGraphCompiler
     {
     public:
-        static RGCompiledGraph
-        compile(RGGraphDescription graph, PipelineManager& pipeline_manager, const RGCompileOptions& options = {});
+        static RGCompiledGraph compile(
+            RGGraphDescription graph,
+            PipelineManager& pipeline_manager,
+            const RGCompileOptions& options = {}
+        );
 
     private:
         // 0) Resolve forward resource references — rewrite placeholder handles

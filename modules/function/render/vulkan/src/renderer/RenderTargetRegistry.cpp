@@ -24,7 +24,7 @@ namespace lux::render
         const auto& keys = targets_.keys();
         const auto& vals = targets_.values();
         for (size_t i = 0; i < vals.size(); ++i)
-            if (vals[i].kind == Entry::EKind::Offscreen)
+            if (vals[i].kind == Entry::EKind::OFFSCREEN)
                 for (const auto& l : vals[i].layers)
                     if (l.scene_id == s && l.view_id == v)
                         return keys[i];
@@ -56,7 +56,7 @@ namespace lux::render
                 removed = true;
             }
 
-        if (removed && t->layers.empty() && t->kind == Entry::EKind::Offscreen)
+        if (removed && t->layers.empty() && t->kind == Entry::EKind::OFFSCREEN)
         {
             retireTargetPool(*t, retire_serial);
             targets_.erase(key);
@@ -64,8 +64,11 @@ namespace lux::render
         return removed;
     }
 
-    std::unique_ptr<OffscreenImagePool>
-    RenderTargetRegistry::makeTargetPool(const RenderTargetLayout& layout, VkExtent2D extent, uint32_t target_flags)
+    std::unique_ptr<OffscreenImagePool> RenderTargetRegistry::makeTargetPool(
+        const RenderTargetLayout& layout,
+        VkExtent2D extent,
+        uint32_t target_flags
+    )
     {
         if (make_pool_cb_)
             if (auto pool = make_pool_cb_(*this, layout, extent, target_flags))

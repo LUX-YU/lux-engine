@@ -106,10 +106,10 @@ namespace lux::render
     // Typed-op: register/unregister generated from the op list. Shared by the 4
     // accumulating modes (Simple / GPUDriven / LOD / Splatting). The 5 handlers above are
     // the only hand-written pieces.
-    template <class Op, const char *Mode> struct PointCloudModeOp : Op
+    template <class Op, const char* Mode> struct TPointCloudModeOp : Op
     {
         inline static const std::string storage = std::string(Mode) + "." + Op::name;
-        inline static const char *name = storage.c_str();
+        inline static const char* name = storage.c_str();
     };
     inline constexpr char kSimpleMode[] = "PCSimple";
     inline constexpr char kGPUDrivenMode[] = "PCGPUDriven";
@@ -117,12 +117,13 @@ namespace lux::render
     inline constexpr char kSplattingMode[] = "PCSplatting";
     inline constexpr char kTransientMode[] = "PCTransient";
 
-    template <const char *Mode> using PCOps = FeatureOpRegistrar<
-        ServerOp<PointCloudModeOp<PointCloudUploadOp, Mode>, &handleUploadPointCloudChunk>,
-        ServerOp<PointCloudModeOp<PointCloudRemoveOp, Mode>, &handleRemovePointCloudChunk>,
-        ServerOp<PointCloudModeOp<PointCloudClearAllOp, Mode>, &handleClearAllPointCloud>,
-        ServerOp<PointCloudModeOp<PointCloudClearChunkOp, Mode>, &handleClearPointCloudChunk>,
-        ServerOp<PointCloudModeOp<PointCloudSetPointSizeOp, Mode>, &handleSetPointCloudPointSize>>;
+    template <const char* Mode>
+    using PCOps = TFeatureOpRegistrar<
+        TServerOp<TPointCloudModeOp<PointCloudUploadOp, Mode>, &handleUploadPointCloudChunk>,
+        TServerOp<TPointCloudModeOp<PointCloudRemoveOp, Mode>, &handleRemovePointCloudChunk>,
+        TServerOp<TPointCloudModeOp<PointCloudClearAllOp, Mode>, &handleClearAllPointCloud>,
+        TServerOp<TPointCloudModeOp<PointCloudClearChunkOp, Mode>, &handleClearPointCloudChunk>,
+        TServerOp<TPointCloudModeOp<PointCloudSetPointSizeOp, Mode>, &handleSetPointCloudPointSize>>;
 
     // =====================================================================
     //  PCFeatureSimple factory
@@ -288,12 +289,12 @@ namespace lux::render
     // remove/clear handlers no-op for transient (no PointCloudResources), so they register
     // uniformly rather than as placeholder slots (a stray remove/clear just gets a graceful
     // error reply instead of a hung request).
-    using PCTransientOps = FeatureOpRegistrar<
-        ServerOp<PointCloudModeOp<PointCloudUploadOp, kTransientMode>, &handleReplaceTransientPoints>,
-        ServerOp<PointCloudModeOp<PointCloudRemoveOp, kTransientMode>, &handleRemovePointCloudChunk>,
-        ServerOp<PointCloudModeOp<PointCloudClearAllOp, kTransientMode>, &handleClearAllPointCloud>,
-        ServerOp<PointCloudModeOp<PointCloudClearChunkOp, kTransientMode>, &handleClearPointCloudChunk>,
-        ServerOp<PointCloudModeOp<PointCloudSetPointSizeOp, kTransientMode>, &handleSetPointCloudPointSize>>;
+    using PCTransientOps = TFeatureOpRegistrar<
+        TServerOp<TPointCloudModeOp<PointCloudUploadOp, kTransientMode>, &handleReplaceTransientPoints>,
+        TServerOp<TPointCloudModeOp<PointCloudRemoveOp, kTransientMode>, &handleRemovePointCloudChunk>,
+        TServerOp<TPointCloudModeOp<PointCloudClearAllOp, kTransientMode>, &handleClearAllPointCloud>,
+        TServerOp<TPointCloudModeOp<PointCloudClearChunkOp, kTransientMode>, &handleClearPointCloudChunk>,
+        TServerOp<TPointCloudModeOp<PointCloudSetPointSizeOp, kTransientMode>, &handleSetPointCloudPointSize>>;
 
     static Expected<FeatureHandle> pcTransientCreateFn(void* scene_ptr, const void* param, size_t param_size)
     {

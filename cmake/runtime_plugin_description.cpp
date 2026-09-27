@@ -1,9 +1,14 @@
 // Native build tool: serialize the same typed export tables linked into the plugin.
 #include <lux/engine/scene/ScenePluginExports.hpp>
+#ifdef LUX_SCENE_RENDER_PLUGIN
 #include <lux/engine/scene/RenderScenePluginExports.hpp>
-#include <lux/engine/simulation/SimulationPluginExports.hpp>
+#include <lux/engine/simulation/ecs/TransformSchema.hpp>
+#include <lux/engine/simulation/ecs/VisualSchema.hpp>
+#endif
 #include <lux/engine/simulation/ecs/ComponentPluginExports.hpp>
+#ifdef LUX_SCENE_RENDER_PLUGIN
 #include <lux/engine/function/render/features/BuiltinFeatures.hpp>
+#endif
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <filesystem>
@@ -11,20 +16,28 @@
 #include <map>
 #include <string>
 
-extern "C" const lux::simulation::SimulationPluginExports *lux_simulation_exports_v1() noexcept;
 extern "C" const lux::scene::ScenePluginExports *lux_scene_exports_v1() noexcept;
 extern "C" const lux::simulation::ecs::ComponentPluginExports *lux_component_exports_v1() noexcept;
+#ifdef LUX_SCENE_RENDER_PLUGIN
 extern "C" const lux::scene::RenderScenePluginExports *lux_render_scene_exports_v1() noexcept;
+#endif
 
 int main(int argc, char **argv)
 {
     if (argc != 2) return 2;
     using Json = nlohmann::json;
-    Json value{{"format", "lux.engine.plugin"}, {"version", 1},
-        {"plugin", {{"id", "lux.builtin.runtime"}, {"version", 1}, {"source", "builtin"}, {"author", "Lux"},
-            {"description", "Builtin Scene and Simulation implementations."},
-            {"runtime_library", {{"exports", {"simulation", "scene", "components", "render_scene"}}}},
-            {"dependencies", {{{"plugin", "lux.builtin.render"}, {"version", 1}}}}}}};
+    Json value{{"format", "lux.engine.plugin"}, {"version", 2}};
+#ifdef LUX_SCENE_RENDER_PLUGIN
+    value["plugin"] = {{"id", "lux.builtin.scene_render"}, {"version", 1}, {"source", "builtin"}, {"author", "Lux"},
+        {"description", "Scene RenderSystem and feature integration."},
+        {"runtime_library", {{"exports", {"scene", "components", "render_scene"}}}},
+        {"dependencies", {{{"plugin", "lux.builtin.runtime"}, {"version", 2}},
+                          {{"plugin", "lux.builtin.render"}, {"version", 1}}}}};
+#else
+    value["plugin"] = {{"id", "lux.builtin.runtime"}, {"version", 2}, {"source", "builtin"}, {"author", "Lux"},
+        {"description", "Transform, World loading and CPU spatial query implementations."},
+        {"runtime_library", {{"exports", {"scene", "components"}}}}, {"dependencies", Json::array()}};
+#endif
     for (const auto *key : {"abilities", "implementations", "systems", "components", "configurations",
                             "render_features", "render_scene_bindings"}) value[key] = Json::array();
     std::map<std::string, bool> abilities;
@@ -36,6 +49,12 @@ int main(int argc, char **argv)
     const auto componentName = [&](lux::cxx::TypeToken type) -> std::string {
         for (const auto &entry : std::span{component_table->entries, component_table->count})
             if (entry.cpp_type == type) return std::string(entry.id.name);
+#ifdef LUX_SCENE_RENDER_PLUGIN
+        for (const auto& entry : lux::simulation::ecs::transformComponentSchemas())
+            if (entry.cpp_type == type) return std::string(entry.id.name);
+        for (const auto& entry : lux::simulation::ecs::visualComponentSchemas())
+            if (entry.cpp_type == type) return std::string(entry.id.name);
+#endif
         // External access uses a stable C++ contract name, not an installed layout or offset.
         std::string name(type.name());
         for (std::size_t p{}; (p = name.find("::", p)) != std::string::npos;) name.replace(p, 2, ".");
@@ -48,7 +67,7 @@ int main(int argc, char **argv)
                 "runtime_derived" : "authoring"}});
     const auto systemValue = [&](const lux::system::SystemTypeDescription &type, const char *domain, lux::cxx::TypeToken configuration_type) {
         Json system{{"id", type.canonical_name}, {"version", type.version}, {"domain", domain},
-                    {"requirements", Json::array()}};
+                    {"requirements", Json::array()}, {"supported_world_types", type.supported_world_types}};
         if (!type.configuration_schema_name.empty())
         {
             system["configuration"] = {{"id", type.configuration_schema_name}, {"version", type.configuration_schema_version}};
@@ -64,19 +83,7 @@ int main(int argc, char **argv)
         }
         return system;
     };
-    const auto simulation = lux_simulation_exports_v1();
-    for (const auto &entry : std::span{simulation->entries, simulation->count})
-    {
-        auto system = systemValue(entry.description->type, "simulation", entry.configuration.type);
-        system["access"] = {{"components", Json::array()}, {"external", Json::array()}};
-        for (const auto &access : entry.access.components)
-            system["access"]["components"].push_back({{"component", componentName(access.type)},
-                {"mode", access.mode == lux::simulation::ESystemAccessMode::WRITE ? "write" : "read"}});
-        for (const auto &access : entry.access.external)
-            system["access"]["external"].push_back({{"resource", componentName(access.type)},
-                {"mode", access.mode == lux::simulation::ESystemAccessMode::WRITE ? "write" : "read"}});
-        value["systems"].push_back(std::move(system));
-    }
+
     const auto scene = lux_scene_exports_v1();
     for (const auto &entry : std::span{scene->entries, scene->count})
     {
@@ -89,6 +96,7 @@ int main(int argc, char **argv)
         }
         value["systems"].push_back(std::move(system));
     }
+#ifdef LUX_SCENE_RENDER_PLUGIN
     const auto bindings = lux_render_scene_exports_v1();
     const auto features = lux::render::builtinRenderFeatureRegistrations();
     for (const auto &entry : std::span{bindings->entries, bindings->count})
@@ -107,6 +115,7 @@ int main(int argc, char **argv)
         }
         value["render_scene_bindings"].push_back(std::move(binding));
     }
+#endif
     const std::string output = value.dump(2) + "\n";
     std::ifstream previous(argv[1], std::ios::binary);
     if (std::string(std::istreambuf_iterator<char>(previous), {}) == output) return 0;

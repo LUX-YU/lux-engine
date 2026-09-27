@@ -10,11 +10,9 @@
 
 namespace lux::flowforge
 {
-    template<std::size_t Bits>
-    struct TypeSizeMap;
+    template <std::size_t Bits> struct TTypeSizeMap;
 
-    template<>
-    struct TypeSizeMap<8>
+    template <> struct TTypeSizeMap<8>
     {
         using type = std::uint8_t;
 
@@ -23,27 +21,21 @@ namespace lux::flowforge
             return builder.getI8Type();
         }
 
-        static auto getAttr(
-            mlir::OpBuilder& builder,
-            const lux::meta::RuntimeObject& object)
+        static auto getAttr(mlir::OpBuilder& builder, const lux::meta::RuntimeObject& object)
         {
-            return builder.getIntegerAttr(
-                builder.getI8Type(),
-                *static_cast<const std::uint8_t*>(object.data()));
+            return builder.getIntegerAttr(builder.getI8Type(), *static_cast<const std::uint8_t*>(object.data()));
         }
 
-        static auto getIndex(
-            mlir::OpBuilder& builder,
-            const lux::meta::RuntimeObject& object)
+        static auto getIndex(mlir::OpBuilder& builder, const lux::meta::RuntimeObject& object)
         {
             return builder.create<mlir::arith::ConstantIndexOp>(
                 builder.getUnknownLoc(),
-                *static_cast<const std::uint8_t*>(object.data()));
+                *static_cast<const std::uint8_t*>(object.data())
+            );
         }
     };
 
-    template<>
-    struct TypeSizeMap<16>
+    template <> struct TTypeSizeMap<16>
     {
         using type = std::uint16_t;
 
@@ -52,27 +44,24 @@ namespace lux::flowforge
             return FLOWFORGE_GET_I16_TYPE(builder);
         }
 
-        static auto getAttr(
-            mlir::OpBuilder& builder,
-            const lux::meta::RuntimeObject& object)
+        static auto getAttr(mlir::OpBuilder& builder, const lux::meta::RuntimeObject& object)
         {
             return builder.getIntegerAttr(
                 FLOWFORGE_GET_I16_TYPE(builder),
-                *static_cast<const std::uint16_t*>(object.data()));
+                *static_cast<const std::uint16_t*>(object.data())
+            );
         }
 
-        static auto getIndex(
-            mlir::OpBuilder& builder,
-            const lux::meta::RuntimeObject& object)
+        static auto getIndex(mlir::OpBuilder& builder, const lux::meta::RuntimeObject& object)
         {
             return builder.create<mlir::arith::ConstantIndexOp>(
                 builder.getUnknownLoc(),
-                *static_cast<const std::uint16_t*>(object.data()));
+                *static_cast<const std::uint16_t*>(object.data())
+            );
         }
     };
 
-    template<>
-    struct TypeSizeMap<32>
+    template <> struct TTypeSizeMap<32>
     {
         using type = std::uint32_t;
 
@@ -81,27 +70,21 @@ namespace lux::flowforge
             return builder.getI32Type();
         }
 
-        static auto getAttr(
-            mlir::OpBuilder& builder,
-            const lux::meta::RuntimeObject& object)
+        static auto getAttr(mlir::OpBuilder& builder, const lux::meta::RuntimeObject& object)
         {
-            return builder.getIntegerAttr(
-                builder.getI32Type(),
-                *static_cast<const std::uint32_t*>(object.data()));
+            return builder.getIntegerAttr(builder.getI32Type(), *static_cast<const std::uint32_t*>(object.data()));
         }
 
-        static auto getIndex(
-            mlir::OpBuilder& builder,
-            const lux::meta::RuntimeObject& object)
+        static auto getIndex(mlir::OpBuilder& builder, const lux::meta::RuntimeObject& object)
         {
             return builder.create<mlir::arith::ConstantIndexOp>(
                 builder.getUnknownLoc(),
-                *static_cast<const std::uint32_t*>(object.data()));
+                *static_cast<const std::uint32_t*>(object.data())
+            );
         }
     };
 
-    template<>
-    struct TypeSizeMap<64>
+    template <> struct TTypeSizeMap<64>
     {
         using type = std::uint64_t;
 
@@ -110,22 +93,17 @@ namespace lux::flowforge
             return builder.getI64Type();
         }
 
-        static auto getAttr(
-            mlir::OpBuilder& builder,
-            const lux::meta::RuntimeObject& object)
+        static auto getAttr(mlir::OpBuilder& builder, const lux::meta::RuntimeObject& object)
         {
-            return builder.getIntegerAttr(
-                builder.getI64Type(),
-                *static_cast<const std::uint64_t*>(object.data()));
+            return builder.getIntegerAttr(builder.getI64Type(), *static_cast<const std::uint64_t*>(object.data()));
         }
 
-        static auto getIndex(
-            mlir::OpBuilder& builder,
-            const lux::meta::RuntimeObject& object)
+        static auto getIndex(mlir::OpBuilder& builder, const lux::meta::RuntimeObject& object)
         {
             return builder.create<mlir::arith::ConstantIndexOp>(
                 builder.getUnknownLoc(),
-                *static_cast<const std::uint64_t*>(object.data()));
+                *static_cast<const std::uint64_t*>(object.data())
+            );
         }
     };
 }

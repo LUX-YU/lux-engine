@@ -1,6 +1,7 @@
 #pragma once
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
+
 #include <array>
-#include <cassert>
 #include <cstdint>
 #include <vulkan/vulkan.h>
 
@@ -22,7 +23,8 @@ namespace lux::render
 
         void push_color_format(VkFormat fmt) noexcept
         {
-            assert(color_count < kMaxColorAttachments);
+            if (color_count >= kMaxColorAttachments)
+                renderFatal("RenderPassKey: color attachment capacity exceeded");
             color_formats[color_count++] = fmt;
         }
     };

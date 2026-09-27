@@ -63,17 +63,17 @@ namespace lux::render
         /// reflection aggregation — reflection only sees the binding subset
         /// a given pipeline actually uses, and a bindless unbounded array
         /// reflects a different count in different shaders anyway.
-        EngineShared,
+        ENGINE_SHARED,
         /// A feature-owned set shared across pipelines (cull set / cluster
         /// set / compact caster set). Its shape is declared explicitly by
         /// the feature; the allocator only records it, never infers it.
-        FeatureExplicit,
+        FEATURE_EXPLICIT,
         /// A set private to a single pipeline (HDR input / blur / hzb build /
         /// cluster clear). Its shape equals that pipeline's reflection.
         /// **Private sets with the same number in different pipelines are
         /// different sets** (Tonemap's set1 has nothing to do with
         /// Canvas2D's set1), so they are recorded separately per owner.
-        PipelinePrivate,
+        PIPELINE_PRIVATE,
     };
 
     /// One set within the Plan.
@@ -104,7 +104,7 @@ namespace lux::render
         uint32_t domain_binding_count{0};
 
         uint32_t set{0}; ///< Slot number within its owning pipeline.
-        EPlannedSetKind kind{EPlannedSetKind::PipelinePrivate};
+        EPlannedSetKind kind{EPlannedSetKind::PIPELINE_PRIVATE};
         /// Owning-pipeline identity for PipelinePrivate sets (the graphics
         /// template's or compute pipeline's handle index, plus a category
         /// bit to disambiguate them); always 0 for EngineShared.
@@ -354,8 +354,11 @@ namespace lux::render
 
         /// Look up by logical identity. For an engine set, just pass its
         /// canonical number (owner_key is always 0).
-        [[nodiscard]] const PlannedSet*
-        find(uint32_t set, EPlannedSetKind kind = EPlannedSetKind::EngineShared, uint64_t owner_key = 0) const noexcept
+        [[nodiscard]] const PlannedSet* find(
+            uint32_t set,
+            EPlannedSetKind kind = EPlannedSetKind::ENGINE_SHARED,
+            uint64_t owner_key = 0
+        ) const noexcept
         {
             for (const auto& s : sets)
                 if (s.set == set && s.kind == kind && s.owner_key == owner_key)

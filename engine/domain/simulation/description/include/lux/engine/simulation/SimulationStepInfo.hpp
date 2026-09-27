@@ -15,16 +15,11 @@ namespace lux::simulation
 
 namespace lux::semantic
 {
-    template <>
-    struct TypeTraits<lux::simulation::SimulationStepInfo> final
+    template <> struct TTypeTraits<lux::simulation::SimulationStepInfo> final
     {
-        inline static constexpr std::string_view CanonicalName =
-            "lux.simulation.SimulationStepInfo";
-        inline static constexpr std::uint8_t AbiKind =
-            static_cast<std::uint8_t>(EAbiKind::STRUCT_REF);
-        inline static constexpr std::uint32_t Size =
-            sizeof(lux::simulation::SimulationStepInfo);
-        inline static constexpr std::uint32_t Alignment =
-            alignof(lux::simulation::SimulationStepInfo);
+        inline static constexpr std::string_view CanonicalName = "lux.simulation.SimulationStepInfo";
+        inline static constexpr std::uint8_t AbiKind = static_cast<std::uint8_t>(EAbiKind::STRUCT_REF);
+        inline static constexpr std::uint32_t Size = sizeof(lux::simulation::SimulationStepInfo);
+        inline static constexpr std::uint32_t Alignment = alignof(lux::simulation::SimulationStepInfo);
     };
 }

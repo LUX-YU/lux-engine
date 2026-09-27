@@ -55,7 +55,5 @@ namespace lux::render
         std::uint32_t patch_slot_{2u};
     };
 
-    inline TerrainFeature::TerrainFeature() : TerrainFeature(Config{})
-    {
-    }
+    inline TerrainFeature::TerrainFeature() : TerrainFeature(Config{}) {}
 } // namespace lux::render

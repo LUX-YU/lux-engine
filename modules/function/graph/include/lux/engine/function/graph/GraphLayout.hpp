@@ -12,8 +12,7 @@ namespace lux::graph
     class LUX_FUNCTION_GRAPH_PUBLIC GraphLayout final
     {
     public:
-        [[nodiscard]] lux::cxx::expected<void, GraphTopologyFailure>
-        set(NodeId node, GraphNodeLayout layout) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, GraphTopologyFailure> set(NodeId node, GraphNodeLayout layout) noexcept;
         [[nodiscard]] const GraphNodeLayout* find(NodeId node) const noexcept;
         [[nodiscard]] bool erase(NodeId node) noexcept;
         void clear() noexcept;

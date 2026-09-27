@@ -31,7 +31,7 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<CompileShaderPayload>);
 
     /// Client → Server: destroy a previously compiled shader.
-    using DestroyShaderPayload = DestroyResourcePayload<ShaderHandle>;
+    using DestroyShaderPayload = TDestroyResourcePayload<ShaderHandle>;
     static_assert(std::is_trivially_copyable_v<DestroyShaderPayload>);
 
 } // namespace lux::render

@@ -115,8 +115,12 @@ namespace lux::render
         SparseInstanceStreamStorage(const SparseInstanceStreamStorage&) = delete;
         SparseInstanceStreamStorage& operator=(const SparseInstanceStreamStorage&) = delete;
 
-        [[nodiscard]] bool
-        init(DeviceContext* device_context, std::uint32_t stride, std::uint32_t initial_capacity, bool sparse_bda);
+        [[nodiscard]] bool init(
+            DeviceContext* device_context,
+            std::uint32_t stride,
+            std::uint32_t initial_capacity,
+            bool sparse_bda
+        );
         void shutdown();
         [[nodiscard]] bool reserve(std::uint32_t new_capacity);
         void rollbackPages(std::uint32_t page_count);
@@ -128,8 +132,11 @@ namespace lux::render
         {
             return !dirty_upload_pages_.empty();
         }
-        [[nodiscard]] VkDeviceSize
-        collectUploadChunks(std::uint32_t count, bool full_upload, std::vector<UploadChunk>& chunks);
+        [[nodiscard]] VkDeviceSize collectUploadChunks(
+            std::uint32_t count,
+            bool full_upload,
+            std::vector<UploadChunk>& chunks
+        );
         void clearDirtyState();
 
         [[nodiscard]] VkBuffer buffer() const noexcept
@@ -181,7 +188,7 @@ namespace lux::render
         std::vector<std::uint8_t> dirty_upload_flags_;
     };
 
-    template <class T> class SparseInstanceStream final
+    template <class T> class TSparseInstanceStream final
     {
     public:
         using UploadChunk = SparseInstanceStreamStorage::UploadChunk;
@@ -218,8 +225,11 @@ namespace lux::render
         {
             return storage_.hasDirtyPages();
         }
-        [[nodiscard]] VkDeviceSize
-        collectUploadChunks(std::uint32_t count, bool full_upload, std::vector<UploadChunk>& chunks)
+        [[nodiscard]] VkDeviceSize collectUploadChunks(
+            std::uint32_t count,
+            bool full_upload,
+            std::vector<UploadChunk>& chunks
+        )
         {
             return storage_.collectUploadChunks(count, full_upload, chunks);
         }
@@ -256,7 +266,7 @@ namespace lux::render
         SparseInstanceStreamStorage storage_;
     };
 
-    template <class T> class StableInstanceCpuPages final
+    template <class T> class TStableInstanceCpuPages final
     {
     public:
         [[nodiscard]] bool reserve(std::uint32_t capacity)

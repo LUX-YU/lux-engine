@@ -24,38 +24,20 @@ namespace lux::simulation::script
         receiver = provider_instance
     ) DelayAbility
     {
-        LUX_SCRIPT_ASYNC(
-            id = lux.simulation.delay.next_step,
-            display = NextStep,
-            result_lifetime = awaitable
-        )
+        LUX_SCRIPT_ASYNC(id = lux.simulation.delay.next_step, display = NextStep, result_lifetime = awaitable)
         void nextStep() noexcept;
 
-        LUX_SCRIPT_ASYNC(
-            id = lux.simulation.delay.seconds,
-            display = Seconds,
-            result_lifetime = awaitable
-        )
-        void seconds(
-            LUX_SCRIPT_PARAM(lifetime = owned_value) double duration
-        ) noexcept;
+        LUX_SCRIPT_ASYNC(id = lux.simulation.delay.seconds, display = Seconds, result_lifetime = awaitable)
+        void seconds(LUX_SCRIPT_PARAM(lifetime = owned_value) double duration) noexcept;
 
         LUX_SCRIPT_ASYNC(
             id = lux.simulation.delay.simulation_seconds,
             display = SimulationSeconds,
             result_lifetime = awaitable
         )
-        void simulationSeconds(
-            LUX_SCRIPT_PARAM(lifetime = owned_value) double duration
-        ) noexcept;
+        void simulationSeconds(LUX_SCRIPT_PARAM(lifetime = owned_value) double duration) noexcept;
 
-        LUX_SCRIPT_ASYNC(
-            id = lux.simulation.delay.real_seconds,
-            display = RealSeconds,
-            result_lifetime = awaitable
-        )
-        void realSeconds(
-            LUX_SCRIPT_PARAM(lifetime = owned_value) double duration
-        ) noexcept;
+        LUX_SCRIPT_ASYNC(id = lux.simulation.delay.real_seconds, display = RealSeconds, result_lifetime = awaitable)
+        void realSeconds(LUX_SCRIPT_PARAM(lifetime = owned_value) double duration) noexcept;
     };
 } // namespace lux::simulation::script

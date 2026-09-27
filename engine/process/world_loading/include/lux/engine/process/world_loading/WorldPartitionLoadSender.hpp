@@ -3,6 +3,7 @@
 #include <lux/engine/partition/PartitionOrdinal.hpp>
 #include <lux/engine/process/world_loading/WorldStorageSource.hpp>
 #include <lux/engine/world/WorldPartitionData.hpp>
+#include <lux/engine/process/Task.hpp>
 
 #include <cstddef>
 #include <memory>
@@ -23,6 +24,7 @@ namespace lux::process::world_loading
                 lux::partition::PartitionOrdinal partition,
                 std::size_t max_bytes,
                 std::stop_token stop,
+                process::TaskReporter reporter,
                 void* receiver,
                 void (*set_value)(void*, lux::world::WorldPartitionData&&) noexcept,
                 void (*set_error)(void*, WorldStorageRuntimeFailure) noexcept,
@@ -48,8 +50,7 @@ namespace lux::process::world_loading
             using completion_signatures = stdexec::completion_signatures<
                 stdexec::set_value_t(lux::world::WorldPartitionData),
                 stdexec::set_error_t(WorldStorageRuntimeFailure),
-                stdexec::set_stopped_t()
-            >;
+                stdexec::set_stopped_t()>;
 
             WorldPartitionLoadSender(
                 WorldStorageSource source,
@@ -58,49 +59,59 @@ namespace lux::process::world_loading
                 std::stop_token stop
             ) noexcept
                 : source_(std::move(source)), partition_(partition), max_bytes_(max_bytes), stop_(stop)
-            {
-            }
+            {}
 
-            template <class Receiver>
-            class State final
+            template <class Receiver> class TState final
             {
+                struct Stop final
+                {
+                    std::stop_source* source;
+                    void operator()() const noexcept
+                    {
+                        source->request_stop();
+                    }
+                };
+                using Token = decltype(stdexec::get_stop_token(stdexec::get_env(std::declval<Receiver&>())));
+                using Callback = stdexec::stop_callback_for_t<Token, Stop>;
+
             public:
                 using operation_state_concept = stdexec::operation_state_t;
 
-                State(
+                TState(
                     WorldStorageSource source,
                     lux::partition::PartitionOrdinal partition,
                     std::size_t max_bytes,
                     std::stop_token stop,
                     Receiver receiver
                 )
-                    : receiver_(std::move(receiver)),
+                    : receiver_(std::move(receiver)), explicit_stop_(stop, Stop{&stop_}),
+                      ambient_stop_(stdexec::get_stop_token(stdexec::get_env(receiver_)), Stop{&stop_}),
                       machine_(
                           std::move(source),
                           partition,
                           max_bytes,
-                          stop,
+                          stop_.get_token(),
+                          process::detail::getTaskReporter(stdexec::get_env(receiver_)),
                           this,
                           [](void* state, lux::world::WorldPartitionData&& value) noexcept {
-                              auto& self = *static_cast<State*>(state);
+                              auto& self = *static_cast<TState*>(state);
                               stdexec::set_value(std::move(self.receiver_), std::move(value));
                           },
                           [](void* state, WorldStorageRuntimeFailure failure) noexcept {
-                              auto& self = *static_cast<State*>(state);
+                              auto& self = *static_cast<TState*>(state);
                               stdexec::set_error(std::move(self.receiver_), failure);
                           },
                           [](void* state) noexcept {
-                              auto& self = *static_cast<State*>(state);
+                              auto& self = *static_cast<TState*>(state);
                               stdexec::set_stopped(std::move(self.receiver_));
                           }
                       )
-                {
-                }
+                {}
 
-                State(const State&) = delete;
-                State& operator=(const State&) = delete;
-                State(State&&) = delete;
-                State& operator=(State&&) = delete;
+                TState(const TState&) = delete;
+                TState& operator=(const TState&) = delete;
+                TState(TState&&) = delete;
+                TState& operator=(TState&&) = delete;
 
                 void start() & noexcept
                 {
@@ -109,13 +120,15 @@ namespace lux::process::world_loading
 
             private:
                 Receiver receiver_;
+                std::stop_source stop_;
+                std::stop_callback<Stop> explicit_stop_;
+                Callback ambient_stop_;
                 WorldPartitionLoadMachine machine_;
             };
 
-            template <class Receiver>
-            [[nodiscard]] State<std::decay_t<Receiver>> connect(Receiver&& receiver) &&
+            template <class Receiver> [[nodiscard]] TState<std::decay_t<Receiver>> connect(Receiver&& receiver) &&
             {
-                return State<std::decay_t<Receiver>>{
+                return TState<std::decay_t<Receiver>>{
                     std::move(source_),
                     partition_,
                     max_bytes_,

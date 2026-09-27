@@ -23,8 +23,7 @@ namespace lux::world
     {
         inline constexpr std::uint32_t kWorldRootFormatVersion = 2U;
 
-        [[nodiscard]] lux::cxx::expected<std::vector<std::byte>, lux::asset::EAssetCodecError>
-        codecFailure() noexcept
+        [[nodiscard]] lux::cxx::expected<std::vector<std::byte>, lux::asset::EAssetCodecError> codecFailure() noexcept
         {
             return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
         }
@@ -43,18 +42,12 @@ namespace lux::world
             return static_cast<bool>(writer.writeUnsigned(value));
         }
 
-        [[nodiscard]] bool writeUuid(
-            lux::serialization::BinaryWriter& writer,
-            const uuids::uuid& value
-        ) noexcept
+        [[nodiscard]] bool writeUuid(lux::serialization::BinaryWriter& writer, const uuids::uuid& value) noexcept
         {
             return writeBytes(writer, value.as_bytes());
         }
 
-        [[nodiscard]] bool writeString(
-            lux::serialization::BinaryWriter& writer,
-            std::string_view value
-        ) noexcept
+        [[nodiscard]] bool writeString(lux::serialization::BinaryWriter& writer, std::string_view value) noexcept
         {
             if (value.size() > std::numeric_limits<std::uint32_t>::max())
                 return false;
@@ -81,9 +74,7 @@ namespace lux::world
             if (!size || *size > reader.remaining() || *size > decoded_limit)
                 return false;
             value.resize(*size);
-            return static_cast<bool>(
-                reader.readBytes(std::as_writable_bytes(std::span(value.data(), value.size())))
-            );
+            return static_cast<bool>(reader.readBytes(std::as_writable_bytes(std::span(value.data(), value.size()))));
         }
 
         [[nodiscard]] bool countFits(
@@ -104,7 +95,6 @@ namespace lux::world
             std::size_t max_encoded_bytes
         ) noexcept
         {
-            try
             {
                 std::vector<std::byte> output;
                 lux::serialization::BinaryWriter writer(output);
@@ -117,10 +107,8 @@ namespace lux::world
                 if (!valid_counts)
                     return codecFailure();
 
-                if (!writeUnsigned(writer, WorldAssetPrimaryMagic) ||
-                    !writeUnsigned(writer, kWorldRootFormatVersion) ||
-                    !writeUuid(writer, world.bundleId().value) ||
-                    !writeUuid(writer, world.generation().value) ||
+                if (!writeUnsigned(writer, WorldAssetPrimaryMagic) || !writeUnsigned(writer, kWorldRootFormatVersion) ||
+                    !writeUuid(writer, world.bundleId().value) || !writeUuid(writer, world.generation().value) ||
                     !writeString(writer, world.name()) ||
                     !writeUnsigned(writer, static_cast<std::uint32_t>(world.schemas().size())))
                 {
@@ -144,28 +132,21 @@ namespace lux::world
 
                 for (const auto& volume : world.storageVolumes())
                 {
-                    if (!writeString(writer, volume.member_name) ||
-                        !writeUnsigned(writer, volume.format_version) ||
-                        !writeUnsigned(writer, volume.chunk_count) ||
-                        !writeUnsigned(writer, volume.file_size))
+                    if (!writeString(writer, volume.member_name) || !writeUnsigned(writer, volume.format_version) ||
+                        !writeUnsigned(writer, volume.chunk_count) || !writeUnsigned(writer, volume.file_size))
                     {
                         return codecFailure();
                     }
                 }
 
-                if (!writeUnsigned(
-                        writer,
-                        static_cast<std::uint32_t>(world.partitionTable().pages().size())
-                    ))
+                if (!writeUnsigned(writer, static_cast<std::uint32_t>(world.partitionTable().pages().size())))
                 {
                     return codecFailure();
                 }
                 for (const auto& page : world.partitionTable().pages())
                 {
-                    if (!writeUnsigned(writer, page.first.value) ||
-                        !writeUnsigned(writer, page.count) ||
-                        !writeUnsigned(writer, page.chunk.volume) ||
-                        !writeUnsigned(writer, page.chunk.chunk))
+                    if (!writeUnsigned(writer, page.first.value) || !writeUnsigned(writer, page.count) ||
+                        !writeUnsigned(writer, page.chunk.volume) || !writeUnsigned(writer, page.chunk.chunk))
                     {
                         return codecFailure();
                     }
@@ -175,10 +156,8 @@ namespace lux::world
                     return codecFailure();
                 for (const auto& index : world.partitionIndexes())
                 {
-                    if (!writeUnsigned(writer, index.type.hash) ||
-                        !writeString(writer, index.type.name) ||
-                        !writeUnsigned(writer, index.version) ||
-                        !writeUnsigned(writer, index.root.volume) ||
+                    if (!writeUnsigned(writer, index.type.hash) || !writeString(writer, index.type.name) ||
+                        !writeUnsigned(writer, index.version) || !writeUnsigned(writer, index.root.volume) ||
                         !writeUnsigned(writer, index.root.chunk))
                     {
                         return codecFailure();
@@ -188,10 +167,6 @@ namespace lux::world
                 if (output.size() > max_encoded_bytes)
                     return codecFailure();
                 return output;
-            }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(lux::asset::EAssetCodecError::OUT_OF_MEMORY);
             }
         }
 
@@ -205,7 +180,6 @@ namespace lux::world
             if (input.size() > max_input_bytes)
                 return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
 
-            try
             {
                 lux::serialization::BinaryReader reader(input);
                 auto magic = reader.readUnsigned<std::uint32_t>();
@@ -213,10 +187,8 @@ namespace lux::world
                 WorldBundleId bundle;
                 WorldBundleGeneration generation;
                 std::string name;
-                if (!magic || !version || *magic != WorldAssetPrimaryMagic ||
-                    *version != kWorldRootFormatVersion ||
-                    !readUuid(reader, bundle.value) ||
-                    !readUuid(reader, generation.value) ||
+                if (!magic || !version || *magic != WorldAssetPrimaryMagic || *version != kWorldRootFormatVersion ||
+                    !readUuid(reader, bundle.value) || !readUuid(reader, generation.value) ||
                     !readString(reader, max_decoded_bytes, name))
                 {
                     return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
@@ -227,14 +199,13 @@ namespace lux::world
                     return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
 
                 auto schema_count = reader.readUnsigned<std::uint32_t>();
-                if (!schema_count ||
-                    !countFits(
-                        *schema_count,
-                        sizeof(std::uint64_t) + sizeof(std::uint32_t),
-                        reader.remaining(),
-                        max_decoded_bytes,
-                        sizeof(WorldDataSchemaId)
-                    ))
+                if (!schema_count || !countFits(
+                                         *schema_count,
+                                         sizeof(std::uint64_t) + sizeof(std::uint32_t),
+                                         reader.remaining(),
+                                         max_decoded_bytes,
+                                         sizeof(WorldDataSchemaId)
+                                     ))
                 {
                     return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                 }
@@ -243,14 +214,12 @@ namespace lux::world
                 {
                     auto hash = reader.readUnsigned<std::uint64_t>();
                     std::string schema_name;
-                    if (!hash ||
-                        !readString(reader, max_decoded_bytes, schema_name))
+                    if (!hash || !readString(reader, max_decoded_bytes, schema_name))
                     {
                         return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                     }
                     WorldDataSchemaId schema{*hash, std::move(schema_name)};
-                    if (!schema.valid() ||
-                        (ordinal != 0U && !WorldDataSchemaIdLess{}(previous_schema, schema)) ||
+                    if (!schema.valid() || (ordinal != 0U && !WorldDataSchemaIdLess{}(previous_schema, schema)) ||
                         !builder.addSchema(schema))
                     {
                         return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
@@ -260,8 +229,7 @@ namespace lux::world
 
                 auto partitioner_hash = reader.readUnsigned<std::uint64_t>();
                 std::string partitioner_name;
-                if (!partitioner_hash ||
-                    !readString(reader, max_decoded_bytes, partitioner_name))
+                if (!partitioner_hash || !readString(reader, max_decoded_bytes, partitioner_name))
                 {
                     return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                 }
@@ -278,14 +246,13 @@ namespace lux::world
                 }
 
                 auto volume_count = reader.readUnsigned<std::uint32_t>();
-                if (!volume_count ||
-                    !countFits(
-                        *volume_count,
-                        20U,
-                        reader.remaining(),
-                        max_decoded_bytes,
-                        sizeof(WorldStorageVolumeDescription)
-                    ))
+                if (!volume_count || !countFits(
+                                         *volume_count,
+                                         20U,
+                                         reader.remaining(),
+                                         max_decoded_bytes,
+                                         sizeof(WorldStorageVolumeDescription)
+                                     ))
                 {
                     return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                 }
@@ -307,14 +274,13 @@ namespace lux::world
                 }
 
                 auto page_count = reader.readUnsigned<std::uint32_t>();
-                if (!page_count ||
-                    !countFits(
-                        *page_count,
-                        16U,
-                        reader.remaining(),
-                        max_decoded_bytes,
-                        sizeof(WorldPartitionTablePageDescription)
-                    ))
+                if (!page_count || !countFits(
+                                       *page_count,
+                                       16U,
+                                       reader.remaining(),
+                                       max_decoded_bytes,
+                                       sizeof(WorldPartitionTablePageDescription)
+                                   ))
                 {
                     return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                 }
@@ -325,32 +291,28 @@ namespace lux::world
                     auto count = reader.readUnsigned<std::uint32_t>();
                     auto volume = reader.readUnsigned<std::uint32_t>();
                     auto chunk = reader.readUnsigned<std::uint32_t>();
-                    if (!first || !count || !volume || !chunk ||
-                        (ordinal != 0U && *first != previous_page_end) ||
+                    if (!first || !count || !volume || !chunk || (ordinal != 0U && *first != previous_page_end) ||
                         *count > std::numeric_limits<std::uint32_t>::max() - *first)
                     {
                         return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                     }
                     previous_page_end = *first + *count;
-                    if (!builder.addPartitionTablePage({
-                            partition::PartitionOrdinal{*first},
-                            *count,
-                            WorldChunkReference{*volume, *chunk}
-                        }))
+                    if (!builder.addPartitionTablePage(
+                            {partition::PartitionOrdinal{*first}, *count, WorldChunkReference{*volume, *chunk}}
+                        ))
                     {
                         return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                     }
                 }
 
                 auto index_count = reader.readUnsigned<std::uint32_t>();
-                if (!index_count ||
-                    !countFits(
-                        *index_count,
-                        24U,
-                        reader.remaining(),
-                        max_decoded_bytes,
-                        sizeof(WorldPartitionIndexDescription)
-                    ))
+                if (!index_count || !countFits(
+                                        *index_count,
+                                        24U,
+                                        reader.remaining(),
+                                        max_decoded_bytes,
+                                        sizeof(WorldPartitionIndexDescription)
+                                    ))
                 {
                     return lux::cxx::unexpected(lux::asset::EAssetCodecError::CODEC_FAILURE);
                 }
@@ -390,10 +352,6 @@ namespace lux::world
                 auto shared = std::make_shared<WorldDescription>(std::move(*world));
                 return shared;
             }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(lux::asset::EAssetCodecError::OUT_OF_MEMORY);
-            }
         }
     } // namespace detail
 
@@ -403,8 +361,7 @@ namespace lux::world
         std::vector<lux::asset::AssetAuxiliaryPayload> auxiliary
     ) noexcept
         : TAsset(std::move(info), std::move(data), std::move(auxiliary))
-    {
-    }
+    {}
 
     lux::cxx::expected<std::shared_ptr<const WorldAsset>, lux::asset::AssetDecodeFailure> WorldAsset::create(
         lux::asset::AssetInfo info,
@@ -412,57 +369,42 @@ namespace lux::world
         std::vector<lux::asset::AssetAuxiliaryPayload> auxiliary
     ) noexcept
     {
-        const bool invalid_world = !data || data->bundleId().value.is_nil() ||
-            data->generation().value.is_nil() || data->name().empty();
+        const bool invalid_world =
+            !data || data->bundleId().value.is_nil() || data->generation().value.is_nil() || data->name().empty();
         if (info.id.isNull() || invalid_world)
         {
-            return lux::cxx::unexpected(lux::asset::AssetDecodeFailure{
-                lux::asset::EAssetDecodeError::INVALID_PAYLOAD,
-                0U
-            });
+            return lux::cxx::unexpected(
+                lux::asset::AssetDecodeFailure{lux::asset::EAssetDecodeError::INVALID_PAYLOAD, 0U}
+            );
         }
         info.type = asset_type;
-        try
         {
-            std::sort(
-                auxiliary.begin(),
-                auxiliary.end(),
-                [](const auto& left, const auto& right) noexcept { return left.tag < right.tag; }
-            );
+            std::sort(auxiliary.begin(), auxiliary.end(), [](const auto& left, const auto& right) noexcept {
+                return left.tag < right.tag;
+            });
             for (std::size_t index = 0U; index < auxiliary.size(); ++index)
             {
                 const bool invalid = auxiliary[index].tag == 0U || auxiliary[index].bytes.empty();
                 const bool duplicate = index != 0U && auxiliary[index - 1U].tag == auxiliary[index].tag;
                 if (invalid || duplicate)
                 {
-                    return lux::cxx::unexpected(lux::asset::AssetDecodeFailure{
-                        lux::asset::EAssetDecodeError::INVALID_PAYLOAD,
-                        index
-                    });
+                    return lux::cxx::unexpected(
+                        lux::asset::AssetDecodeFailure{lux::asset::EAssetDecodeError::INVALID_PAYLOAD, index}
+                    );
                 }
             }
             return std::shared_ptr<const WorldAsset>(
                 new WorldAsset(std::move(info), std::move(data), std::move(auxiliary))
             );
         }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(lux::asset::AssetDecodeFailure{
-                lux::asset::EAssetDecodeError::ALLOCATION_FAILURE,
-                0U
-            });
-        }
     }
 } // namespace lux::world
 
 namespace lux::asset
 {
-    lux::cxx::expected<std::shared_ptr<const lux::world::WorldAsset>, AssetDecodeFailure>
-    TAssetSerDeser<lux::world::WorldAsset>::decode(
-        AssetId requested,
-        lux::cxx::SharedBytes<> cooked_image,
-        const AssetDecodeLimits& limits
-    ) noexcept
+    lux::cxx::expected<std::shared_ptr<const lux::world::WorldAsset>, AssetDecodeFailure> TAssetSerDeser<
+        lux::world::WorldAsset>::
+        decode(AssetId requested, lux::cxx::SharedBytes<> cooked_image, const AssetDecodeLimits& limits) noexcept
     {
         auto image = inspectCookedAssetImage(requested, std::move(cooked_image), limits);
         if (!image)
@@ -473,16 +415,12 @@ namespace lux::asset
             return lux::cxx::unexpected(AssetDecodeFailure{EAssetDecodeError::INVALID_TYPE, 0U});
         if (!image->information().empty())
             return lux::cxx::unexpected(AssetDecodeFailure{EAssetDecodeError::INVALID_LAYOUT, 0U});
-        auto world = lux::world::detail::decodeWorld(
-            image->data().view(),
-            image->data().size(),
-            limits.max_decoded_bytes
-        );
+        auto world =
+            lux::world::detail::decodeWorld(image->data().view(), image->data().size(), limits.max_decoded_bytes);
         if (!world)
         {
-            const auto code = world.error() == EAssetCodecError::OUT_OF_MEMORY
-                ? EAssetDecodeError::ALLOCATION_FAILURE
-                : EAssetDecodeError::INVALID_PAYLOAD;
+            const auto code = world.error() == EAssetCodecError::OUT_OF_MEMORY ? EAssetDecodeError::ALLOCATION_FAILURE
+                                                                               : EAssetDecodeError::INVALID_PAYLOAD;
             return lux::cxx::unexpected(AssetDecodeFailure{code, 0U});
         }
         std::vector<AssetAuxiliaryPayload> auxiliary(
@@ -503,8 +441,7 @@ namespace lux::asset
         );
     }
 
-    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure>
-    TAssetSerDeser<lux::world::WorldAsset>::encode(
+    lux::cxx::expected<std::vector<std::byte>, AssetEncodeFailure> TAssetSerDeser<lux::world::WorldAsset>::encode(
         const lux::world::WorldAsset& asset,
         const AssetEncodeLimits& limits
     ) noexcept
@@ -512,9 +449,8 @@ namespace lux::asset
         auto payload = lux::world::detail::encodeWorld(asset.data(), limits.max_encoded_bytes);
         if (!payload)
         {
-            const auto code = payload.error() == EAssetCodecError::OUT_OF_MEMORY
-                ? EAssetEncodeError::ALLOCATION_FAILURE
-                : EAssetEncodeError::INVALID_PAYLOAD;
+            const auto code = payload.error() == EAssetCodecError::OUT_OF_MEMORY ? EAssetEncodeError::ALLOCATION_FAILURE
+                                                                                 : EAssetEncodeError::INVALID_PAYLOAD;
             return lux::cxx::unexpected(AssetEncodeFailure{code, 0U});
         }
         return detail::encodeCookedAssetImage(

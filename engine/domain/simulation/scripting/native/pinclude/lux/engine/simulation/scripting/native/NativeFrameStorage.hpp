@@ -10,11 +10,15 @@ namespace lux::simulation::script::detail
     {
         static constexpr std::uint32_t Invalid = UINT32_MAX;
         static constexpr std::size_t Maximum = (std::numeric_limits<std::size_t>::max)();
+
     public:
         struct Layout final
         {
             std::uint32_t index{Invalid};
-            [[nodiscard]] explicit operator bool() const noexcept { return index != Invalid; }
+            [[nodiscard]] explicit operator bool() const noexcept
+            {
+                return index != Invalid;
+            }
         };
         struct Ticket final
         {
@@ -28,16 +32,24 @@ namespace lux::simulation::script::detail
         {
             friend class NativeFrameStorage;
             Ticket identity_;
+
         public:
             void* data{};
             Lease() noexcept = default;
             Lease(const Lease&) = delete;
             Lease& operator=(const Lease&) = delete;
             Lease& operator=(Lease&&) = delete;
-            Lease(Lease&& other) noexcept : identity_(std::exchange(other.identity_, {})),
-                data(std::exchange(other.data, nullptr)) {}
-            [[nodiscard]] Ticket ticket() const noexcept { return identity_; }
-            [[nodiscard]] explicit operator bool() const noexcept { return identity_.owner != nullptr; }
+            Lease(Lease&& other) noexcept
+                : identity_(std::exchange(other.identity_, {})), data(std::exchange(other.data, nullptr))
+            {}
+            [[nodiscard]] Ticket ticket() const noexcept
+            {
+                return identity_;
+            }
+            [[nodiscard]] explicit operator bool() const noexcept
+            {
+                return identity_.owner != nullptr;
+            }
         };
         struct Stats final
         {
@@ -48,28 +60,35 @@ namespace lux::simulation::script::detail
             std::uint64_t acquire_steps{}, release_steps{};
         };
         [[nodiscard]] static lux::cxx::expected<NativeFrameStorage, EClassStorageError> create(
-            std::span<const StorageClassPlan> plans, std::size_t budget, std::size_t capacity,
-            std::size_t layout_capacity, bool observe = false, std::uint64_t generation_limit = UINT64_MAX
+            std::span<const StorageClassPlan> plans,
+            std::size_t budget,
+            std::size_t capacity,
+            std::size_t layout_capacity,
+            bool observe = false,
+            std::uint64_t generation_limit = UINT64_MAX
         ) noexcept
         {
             const bool invalid = plans.empty() || plans.size() > 64U || capacity == 0U || capacity >= Invalid ||
-                layout_capacity == 0U || layout_capacity >= Invalid;
-            if (invalid) return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
+                                 layout_capacity == 0U || layout_capacity >= Invalid;
+            if (invalid)
+                return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
             std::size_t alignment = alignof(std::max_align_t);
             for (const auto& p : plans)
             {
                 const bool invalid_shape = p.size == 0U || p.size > UINT32_MAX || !powerOfTwo(p.alignment) ||
-                    p.size > Maximum - (p.alignment - 1U) || p.pages != 1U;
-                if (invalid_shape) return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
+                                           p.size > Maximum - (p.alignment - 1U) || p.pages != 1U;
+                if (invalid_shape)
+                    return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
                 alignment = (std::max)(alignment, p.alignment);
             }
             std::size_t bytes{}, regions{};
             for (const auto& p : plans)
             {
                 const auto stride = alignUp(p.size, p.alignment);
-                const bool invalid_domain = p.page_bytes == 0U || p.page_bytes % stride != 0U ||
-                    p.page_bytes > Maximum - (alignment - 1U);
-                if (invalid_domain) return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
+                const bool invalid_domain =
+                    p.page_bytes == 0U || p.page_bytes % stride != 0U || p.page_bytes > Maximum - (alignment - 1U);
+                if (invalid_domain)
+                    return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
                 const auto count = p.page_bytes / stride;
                 const auto backing = alignUp(p.page_bytes, alignment);
                 if (count > capacity - regions || backing > budget - bytes)
@@ -81,7 +100,8 @@ namespace lux::simulation::script::detail
                 return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
             auto remaining = budget - bytes;
             const auto consume = [&](std::size_t count, std::size_t size) noexcept {
-                if (count > remaining / size) return false;
+                if (count > remaining / size)
+                    return false;
                 remaining -= count * size;
                 return true;
             };
@@ -92,9 +112,7 @@ namespace lux::simulation::script::detail
                 return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
             NativeFrameStorage result;
             result.arena_.alignment = alignment;
-            result.arena_.data = ::operator new(bytes, std::align_val_t{alignment}, std::nothrow);
-            if (!result.arena_.data) return lux::cxx::unexpected(EClassStorageError::ALLOCATION_FAILURE);
-            try
+            result.arena_.data = ::operator new(bytes, std::align_val_t{alignment});
             {
                 result.domains_.resize(plans.size());
                 result.regions_.resize(regions);
@@ -105,9 +123,9 @@ namespace lux::simulation::script::detail
                 result.stats_.arena_bytes = bytes;
                 result.stats_.reserved_slots = regions;
                 result.stats_.metadata_bytes = sizeof(NativeFrameStorage) +
-                    result.domains_.capacity() * sizeof(Domain) +
-                    result.regions_.capacity() * sizeof(Region) + result.classes_.capacity() * sizeof(Class) +
-                    capacity * sizeof(Lease);
+                                               result.domains_.capacity() * sizeof(Domain) +
+                                               result.regions_.capacity() * sizeof(Region) +
+                                               result.classes_.capacity() * sizeof(Class) + capacity * sizeof(Lease);
                 if (result.stats_.metadata_bytes > budget - bytes)
                     return lux::cxx::unexpected(EClassStorageError::INVALID_CONFIGURATION);
                 std::uint32_t first{};
@@ -128,10 +146,6 @@ namespace lux::simulation::script::detail
                 result.free_class_ = 0U;
                 return result;
             }
-            catch (const std::bad_alloc&)
-            {
-                return lux::cxx::unexpected(EClassStorageError::ALLOCATION_FAILURE);
-            }
         }
         NativeFrameStorage() noexcept = default;
         NativeFrameStorage(const NativeFrameStorage&) = delete;
@@ -142,39 +156,54 @@ namespace lux::simulation::script::detail
         [[nodiscard]] Layout domain(std::size_t size, std::size_t alignment) const noexcept
         {
             for (std::uint32_t i{}; i < domains_.size(); ++i)
-                if (domains_[i].size == size && domains_[i].alignment == alignment) return {i};
+                if (domains_[i].size == size && domains_[i].alignment == alignment)
+                    return {i};
             return {};
         }
         [[nodiscard]] Layout prepare(Layout domain, std::size_t size, std::size_t alignment) noexcept
         {
-            if (domain.index >= domains_.size() || !powerOfTwo(alignment)) return {};
+            if (domain.index >= domains_.size() || !powerOfTwo(alignment))
+                return {};
             const auto& d = domains_[domain.index];
-            if (size == 0U || size > d.size || alignment > d.alignment || size > Maximum - alignment + 1U) return {};
+            if (size == 0U || size > d.size || alignment > d.alignment || size > Maximum - alignment + 1U)
+                return {};
             for (std::uint32_t i{}; i < classes_.size(); ++i)
             {
                 auto& c = classes_[i];
                 if (c.references && c.domain == domain.index && c.size == size && c.alignment == alignment)
                 {
-                    if (c.references == Invalid) return {};
+                    if (c.references == Invalid)
+                        return {};
                     ++c.references;
                     return {i};
                 }
             }
-            if (free_class_ == Invalid) return {};
+            if (free_class_ == Invalid)
+                return {};
             const auto index = free_class_;
             auto& c = classes_[index];
             free_class_ = c.nonfull;
             auto stride = alignUp(size, alignment);
-            if (stride < sizeof(std::uint32_t)) stride = d.stride; // One tiny frame per guarantee region.
-            c = {stride, static_cast<std::uint32_t>(size), static_cast<std::uint32_t>(alignment), domain.index,
-                Invalid, 1U, 0U};
+            if (stride < sizeof(std::uint32_t))
+                stride = d.stride; // One tiny frame per guarantee region.
+            c = {
+                stride,
+                static_cast<std::uint32_t>(size),
+                static_cast<std::uint32_t>(alignment),
+                domain.index,
+                Invalid,
+                1U,
+                0U
+            };
             return {index};
         }
         [[nodiscard]] bool releaseLayout(Layout layout) noexcept
         {
-            if (layout.index >= classes_.size()) return false;
+            if (layout.index >= classes_.size())
+                return false;
             auto& c = classes_[layout.index];
-            if (!c.references || (c.references == 1U && c.live != 0U)) return false;
+            if (!c.references || (c.references == 1U && c.live != 0U))
+                return false;
             if (--c.references == 0U)
             {
                 c.nonfull = free_class_;
@@ -187,25 +216,31 @@ namespace lux::simulation::script::detail
             if (lease || layout.index >= classes_.size() || active_ == capacity_ || generation_ == generation_limit_)
                 return fail();
             auto& c = classes_[layout.index];
-            if (!c.references) return fail();
+            if (!c.references)
+                return fail();
             auto& d = domains_[c.domain];
-            if (d.active == d.count) return fail();
+            if (d.active == d.count)
+                return fail();
             auto index = c.nonfull;
             if (index == Invalid)
             {
                 index = d.empty;
-                if (index == Invalid) return fail();
+                if (index == Invalid)
+                    return fail();
                 auto& r = regions_[index];
                 d.empty = r.next;
                 r = {layout.index, 0U, 0U, Invalid, Invalid, Invalid};
                 link(index);
-                if (stats_.observation_collected) stats_.active_region_bytes += d.stride;
+                if (stats_.observation_collected)
+                    stats_.active_region_bytes += d.stride;
             }
             auto& r = regions_[index];
             const auto slot = r.free == Invalid ? r.carved++ : r.free;
             void* data = pointer(d, c, index, slot);
-            if (r.free != Invalid) std::memcpy(&r.free, data, sizeof(r.free));
-            if (++r.live == d.stride / c.stride) unlink(index);
+            if (r.free != Invalid)
+                std::memcpy(&r.free, data, sizeof(r.free));
+            if (++r.live == d.stride / c.stride)
+                unlink(index);
             ++active_;
             ++d.active;
             ++c.live;
@@ -224,15 +259,19 @@ namespace lux::simulation::script::detail
         {
             const auto& live = lease.identity_;
             const bool matches = ticket.owner == this && live.owner == this && ticket.generation == live.generation &&
-                ticket.region == live.region && ticket.slot == live.slot;
-            if (!matches || live.region >= regions_.size()) return false;
+                                 ticket.region == live.region && ticket.slot == live.slot;
+            if (!matches || live.region >= regions_.size())
+                return false;
             auto& r = regions_[live.region];
-            if (r.layout >= classes_.size()) return false;
+            if (r.layout >= classes_.size())
+                return false;
             auto& c = classes_[r.layout];
             auto& d = domains_[c.domain];
             const auto slots = d.stride / c.stride;
-            if (!r.live || live.slot >= r.carved || lease.data != pointer(d, c, live.region, live.slot)) return false;
-            if (r.live == slots) link(live.region);
+            if (!r.live || live.slot >= r.carved || lease.data != pointer(d, c, live.region, live.slot))
+                return false;
+            if (r.live == slots)
+                link(live.region);
             --r.live;
             --c.live;
             --d.active;
@@ -243,7 +282,8 @@ namespace lux::simulation::script::detail
                 r.layout = Invalid;
                 r.next = d.empty;
                 d.empty = live.region;
-                if (stats_.observation_collected) stats_.active_region_bytes -= d.stride;
+                if (stats_.observation_collected)
+                    stats_.active_region_bytes -= d.stride;
             }
             else
             {
@@ -260,13 +300,17 @@ namespace lux::simulation::script::detail
             lease.data = nullptr;
             return true;
         }
-        [[nodiscard]] bool release(Lease& lease) noexcept { return release(lease, lease.ticket()); }
+        [[nodiscard]] bool release(Lease& lease) noexcept
+        {
+            return release(lease, lease.ticket());
+        }
         [[nodiscard]] Stats stats() const noexcept
         {
             auto result = stats_;
             result.active_allocations = active_;
             return result;
         }
+
     private:
         struct Arena final
         {
@@ -280,13 +324,18 @@ namespace lux::simulation::script::detail
             {
                 if (this != &other)
                 {
-                    if (data) ::operator delete(data, std::align_val_t{alignment});
+                    if (data)
+                        ::operator delete(data, std::align_val_t{alignment});
                     data = std::exchange(other.data, nullptr);
                     alignment = other.alignment;
                 }
                 return *this;
             }
-            ~Arena() { if (data) ::operator delete(data, std::align_val_t{alignment}); }
+            ~Arena()
+            {
+                if (data)
+                    ::operator delete(data, std::align_val_t{alignment});
+            }
         } arena_;
         struct Domain final
         {
@@ -302,7 +351,10 @@ namespace lux::simulation::script::detail
         {
             std::uint32_t layout{Invalid}, live{}, carved{}, free{Invalid}, previous{Invalid}, next{Invalid};
         };
-        [[nodiscard]] static bool powerOfTwo(std::size_t n) noexcept { return n && !(n & (n - 1U)); }
+        [[nodiscard]] static bool powerOfTwo(std::size_t n) noexcept
+        {
+            return n && !(n & (n - 1U));
+        }
         [[nodiscard]] static std::size_t alignUp(std::size_t n, std::size_t a) noexcept
         {
             return (n + a - 1U) & ~(a - 1U);
@@ -317,18 +369,26 @@ namespace lux::simulation::script::detail
             auto& head = classes_[r.layout].nonfull;
             r.previous = Invalid;
             r.next = head;
-            if (head != Invalid) regions_[head].previous = index;
+            if (head != Invalid)
+                regions_[head].previous = index;
             head = index;
         }
         void unlink(std::uint32_t index) noexcept
         {
             auto& r = regions_[index];
-            if (r.previous != Invalid) regions_[r.previous].next = r.next;
-            else classes_[r.layout].nonfull = r.next;
-            if (r.next != Invalid) regions_[r.next].previous = r.previous;
+            if (r.previous != Invalid)
+                regions_[r.previous].next = r.next;
+            else
+                classes_[r.layout].nonfull = r.next;
+            if (r.next != Invalid)
+                regions_[r.next].previous = r.previous;
             r.previous = r.next = Invalid;
         }
-        [[nodiscard]] bool fail() noexcept { ++stats_.capacity_failures; return false; }
+        [[nodiscard]] bool fail() noexcept
+        {
+            ++stats_.capacity_failures;
+            return false;
+        }
         std::vector<Domain> domains_;
         std::vector<Class> classes_;
         std::vector<Region> regions_;

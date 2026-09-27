@@ -15,8 +15,7 @@ namespace lux::render
 
     /// Tag for the generational scene handle.
     struct RenderSceneTag
-    {
-    };
+    {};
 
     /// Generational handle into the Renderer's scene slot map (index + generation).
     /// A reused scene slot bumps its generation, so a stale id (held after the

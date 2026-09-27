@@ -13,12 +13,11 @@ namespace lux::simulation::ecs
         INVALID_COPY_SCHEMA,
         DUPLICATE_BINDING,
         BINDING_MISMATCH,
-        ALLOCATION_FAILURE,
     };
 
     struct SnapshotError final
     {
-        ESnapshotError code{ESnapshotError::ALLOCATION_FAILURE};
+        ESnapshotError code{ESnapshotError::INVALID_COPY_SCHEMA};
         std::uint64_t storage_id{};
         ComponentSchemaId schema;
     };

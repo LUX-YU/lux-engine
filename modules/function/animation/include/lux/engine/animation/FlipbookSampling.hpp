@@ -22,8 +22,11 @@ namespace lux::animation
     /// Map a cursor (seconds) to a clip step index. Linear walk — clips are
     /// tens of steps; a prefix-sum cache is not worth its invalidation.
     /// @pre total > 0 and !clip.frames.empty().
-    [[nodiscard]] inline std::uint32_t
-    sampleFlipbookStep(const lux::rdesc::FlipbookClip& clip, float t, float total) noexcept
+    [[nodiscard]] inline std::uint32_t sampleFlipbookStep(
+        const lux::rdesc::FlipbookClip& clip,
+        float t,
+        float total
+    ) noexcept
     {
         if (clip.loop)
         {
@@ -50,8 +53,11 @@ namespace lux::animation
     }
 
     /// Append the event ids attached to @p step (fired when playback ENTERS it).
-    inline void
-    appendFlipbookStepEvents(const lux::rdesc::FlipbookClip& clip, std::uint32_t step, std::vector<std::uint32_t>& out)
+    inline void appendFlipbookStepEvents(
+        const lux::rdesc::FlipbookClip& clip,
+        std::uint32_t step,
+        std::vector<std::uint32_t>& out
+    )
     {
         for (const auto& e : clip.events)
             if (e.frame_index == step)

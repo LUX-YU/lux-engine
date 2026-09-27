@@ -19,8 +19,7 @@ namespace lux::flowforge
      * @param kind The EPinKind (input/output, exec/data).
      * @param name The optional name for this Pin.
      */
-    Pin::Pin(Node* node, EPinKind kind, std::string_view name)
-        : kind_(kind), name_(name), node_(node)
+    Pin::Pin(Node* node, EPinKind kind, std::string_view name) : kind_(kind), name_(name), node_(node)
     {
         if (EPinKind::DATA_IN == kind || EPinKind::EXEC_IN == kind)
         {
@@ -148,10 +147,7 @@ namespace lux::flowforge
      * @brief Constructs an ExecInPin for the specified Node.
      * @param node Pointer to the parent Node.
      */
-    ExecInPin::ExecInPin(Node* node, std::string_view name)
-        : Pin(node, EPinKind::EXEC_IN, name)
-    {
-    }
+    ExecInPin::ExecInPin(Node* node, std::string_view name) : Pin(node, EPinKind::EXEC_IN, name) {}
 
     /**
      * @brief Destructor. Unlinks from all connected ExecOutPins upon destruction.
@@ -257,10 +253,7 @@ namespace lux::flowforge
      * @brief Constructs an ExecOutPin for the specified Node.
      * @param node Pointer to the parent Node.
      */
-    ExecOutPin::ExecOutPin(Node* node, std::string_view name)
-        : Pin(node, EPinKind::EXEC_OUT, name)
-    {
-    }
+    ExecOutPin::ExecOutPin(Node* node, std::string_view name) : Pin(node, EPinKind::EXEC_OUT, name) {}
 
     /**
      * @brief Destructor. Unlinks from the connected ExecInPin upon destruction.
@@ -359,11 +352,9 @@ namespace lux::flowforge
     // gets stored as the VALUE (the old form of this bug produced garbage
     // "constants" that were really the RefType pointer's low bits).
     DataInPin::DataInPin(Node* node, const DataPinInfo& info, bool allow_default, bool is_necessary)
-        : Pin(node, EPinKind::DATA_IN, info.name),
-          info_(info),
-          allow_default_(allow_default),
-		  is_necessary_(is_necessary),
-          data_(lux::meta::RuntimeObject::defaultOf(info.type)){}
+        : Pin(node, EPinKind::DATA_IN, info.name), info_(info), allow_default_(allow_default),
+          is_necessary_(is_necessary), data_(lux::meta::RuntimeObject::defaultOf(info.type))
+    {}
 
     /**
      * @brief Destructor. Unlinks from the connected DataOutPin upon destruction.
@@ -400,7 +391,7 @@ namespace lux::flowforge
 
         if (!lux::meta::canInitialize(info().type, out_pin->info().type))
         {
-			return ELinkError::WRONG_KIND;
+            return ELinkError::WRONG_KIND;
         }
 
         return ELinkError::SUCCESS;
@@ -473,12 +464,12 @@ namespace lux::flowforge
 
     bool DataInPin::allowDefault() const
     {
-		return allow_default_;
+        return allow_default_;
     }
 
     bool DataInPin::isNecessary() const
     {
-		return is_necessary_;
+        return is_necessary_;
     }
 
     /**
@@ -511,10 +502,8 @@ namespace lux::flowforge
      * @param name Optional override name for this pin.
      */
     DataOutPin::DataOutPin(Node* node, const DataPinInfo& info, std::string name)
-        : Pin(node, EPinKind::DATA_OUT, name.empty() ? info.name : std::move(name))
-        , info_(info)
-    {
-    }
+        : Pin(node, EPinKind::DATA_OUT, name.empty() ? info.name : std::move(name)), info_(info)
+    {}
 
     /**
      * @brief Destructor. Unlinks from all connected DataInPins upon destruction.
@@ -629,21 +618,14 @@ namespace lux::flowforge
     /**
      * @brief Default constructor for an invalid Node (operation = INVALID, id = invalid_id).
      */
-    Node::Node()
-        : operation_(ENodeOperation::INVALID)
-    {
-    }
+    Node::Node() : operation_(ENodeOperation::INVALID) {}
 
     /**
      * @brief Constructs a Node with a given ID and operation type.
      * @param id The unique ID for the Node.
      * @param op The operation type, e.g., START, BRANCH, etc.
      */
-    Node::Node(uint64_t id, ENodeOperation op)
-        : id_(NodeId{id})
-        , operation_(op)
-    {
-    }
+    Node::Node(uint64_t id, ENodeOperation op) : id_(NodeId{id}), operation_(op) {}
 
     /**
      * @brief Virtual destructor for Node. Pins are automatically unlinked via their destructors.
@@ -719,10 +701,7 @@ namespace lux::flowforge
     {
         if (graph_ != nullptr && pin != nullptr)
             graph_->unregisterPin(*pin);
-        in_pins_.erase(
-            std::remove(in_pins_.begin(), in_pins_.end(), pin),
-            in_pins_.end()
-        );
+        in_pins_.erase(std::remove(in_pins_.begin(), in_pins_.end(), pin), in_pins_.end());
     }
 
     /**
@@ -733,10 +712,7 @@ namespace lux::flowforge
     {
         if (graph_ != nullptr && pin != nullptr)
             graph_->unregisterPin(*pin);
-        out_pins_.erase(
-            std::remove(out_pins_.begin(), out_pins_.end(), pin),
-            out_pins_.end()
-        );
+        out_pins_.erase(std::remove(out_pins_.begin(), out_pins_.end(), pin), out_pins_.end());
     }
 
     /**
@@ -748,8 +724,14 @@ namespace lux::flowforge
         name_ = name;
     }
 
-    ExecIntermediateNode::ExecIntermediateNode(uint64_t id, ENodeOperation op, std::string_view in_pin_name, 
-        std::string_view fix_out_pin_name, std::initializer_list<std::string_view> out_pin_names)
-        : Node(id, op), HasExecInPin(in_pin_name), HasExecOutPin(fix_out_pin_name, out_pin_names) { }
+    ExecIntermediateNode::ExecIntermediateNode(
+        uint64_t id,
+        ENodeOperation op,
+        std::string_view in_pin_name,
+        std::string_view fix_out_pin_name,
+        std::initializer_list<std::string_view> out_pin_names
+    )
+        : Node(id, op), THasExecInPin(in_pin_name), THasExecOutPin(fix_out_pin_name, out_pin_names)
+    {}
 
 } // namespace lux::flowforge

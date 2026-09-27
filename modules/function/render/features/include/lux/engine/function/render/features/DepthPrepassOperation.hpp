@@ -29,7 +29,8 @@ namespace lux::render
         id = lux.render.depth_prepass.v1,
         display = DepthPrepass,
         feature = DepthPrepassFeature,
-        feature_header = lux / engine / render / renderer / features / DepthPrepassFeature.hpp) DepthPrepassCommConfig
+        feature_header = lux / engine / render / renderer / features / DepthPrepassFeature.hpp
+    ) DepthPrepassCommConfig
     {
         ShaderHandle vertex_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         ShaderHandle fragment_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};

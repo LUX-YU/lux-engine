@@ -23,39 +23,42 @@ namespace lux::script::native
         [[nodiscard]] constexpr bool valid() const noexcept
         {
             return description != nullptr && description->id.isValid() &&
-                methods.size() == description->methods.size() && description->schema_version != 0U &&
-                description->schema_hash != 0U;
+                   methods.size() == description->methods.size() && description->schema_version != 0U &&
+                   description->schema_hash != 0U;
         }
     };
 
-    template <class Ability>
-    struct ScriptAbilityNativeTraits;
+    template <class Ability> struct TScriptAbilityNativeTraits;
 
     template <class Ability>
     [[nodiscard]] ScriptAbilityNativeContribution makeScriptAbilityNativeContribution() noexcept
     {
         return {
-            std::addressof(ScriptAbilityTraits<Ability>::Description),
-            ScriptAbilityNativeTraits<Ability>::Methods
+            std::addressof(TScriptAbilityTraits<Ability>::Description),
+            TScriptAbilityNativeTraits<Ability>::Methods
         };
     }
     template <class Ability, class Provider>
-        requires ScriptAbilityTraits<Ability>::template ProviderConforms<Provider>
-    [[nodiscard]] lux::cxx::expected<ScriptAbilityNativeContribution, EScriptAbilityBindingError>
+        requires TScriptAbilityTraits<Ability>::template
+    ProviderConforms<
+        Provider> [[nodiscard]] lux::cxx::expected<ScriptAbilityNativeContribution, EScriptAbilityBindingError>
     makeScriptAbilityNativeContribution(Provider& provider, ScriptAbilityBinding binding) noexcept
     {
-        using Traits = ScriptAbilityTraits<Ability>;
+        using Traits = TScriptAbilityTraits<Ability>;
         if (!binding.valid())
             return lux::cxx::unexpected(EScriptAbilityBindingError::INVALID_BINDING);
         const bool wrong_provider = binding.context != std::addressof(provider) ||
-            binding.dispatch != std::addressof(Traits::template ProviderDispatch<Provider>);
+                                    binding.dispatch != std::addressof(Traits::template ProviderDispatch<Provider>);
         const bool wrong_contract = binding.description->id != Traits::Description.id ||
-            binding.description->schema_hash != Traits::Description.schema_hash ||
-            binding.description->schema_version != Traits::Description.schema_version;
+                                    binding.description->schema_hash != Traits::Description.schema_hash ||
+                                    binding.description->schema_version != Traits::Description.schema_version;
         if (wrong_provider || wrong_contract)
             return lux::cxx::unexpected(EScriptAbilityBindingError::CONTRACT_MISMATCH);
-        return ScriptAbilityNativeContribution{std::addressof(Traits::Description),
-            ScriptAbilityNativeTraits<Ability>::template Entries<Provider>::Methods,
-            binding.context, binding.dispatch};
+        return ScriptAbilityNativeContribution{
+            std::addressof(Traits::Description),
+            TScriptAbilityNativeTraits<Ability>::template TEntries<Provider>::Methods,
+            binding.context,
+            binding.dispatch
+        };
     }
 } // namespace lux::script::native

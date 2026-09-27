@@ -37,7 +37,8 @@ namespace lux::render
         // Allocate one set — variable descriptor count applies to binding 1 (cube)
         uint32_t var_count = cube_max;
         VkDescriptorSetVariableDescriptorCountAllocateInfo vci{
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO};
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO
+        };
         vci.descriptorSetCount = 1;
         vci.pDescriptorCounts = &var_count;
 
@@ -144,6 +145,9 @@ namespace lux::render
         initialized_ = false;
 
         shutdownMipFeedback();
+        remote_textures_.clear();
+        remote_2d_.clear();
+        remote_cube_.clear();
         combined_.shutdown();
         combined_cube_.shutdown();
 
@@ -215,7 +219,7 @@ namespace lux::render
         const auto validation = validatePersistentTexture2DDesc(desc);
         if (!validation.ok())
         {
-            if (validation.status == ERegionUploadStatus::UnsupportedFormat)
+            if (validation.status == ERegionUploadStatus::UNSUPPORTED_FORMAT)
                 return renderFailure<err::asset::UnsupportedFormat>();
             return renderFailure<err::internal::InvalidArgument>();
         }
@@ -245,10 +249,10 @@ namespace lux::render
     {
         const SlotHandle sh{h.index, h.gen};
         if (!combined_.isTextureAlive(sh))
-            return ERegionUploadStatus::InvalidHandle;
+            return ERegionUploadStatus::INVALID_HANDLE;
         const auto it = persistent_descs_.find(h.index);
         if (it == persistent_descs_.end())
-            return ERegionUploadStatus::InvalidHandle; // immutable asset texture — not updatable
+            return ERegionUploadStatus::INVALID_HANDLE; // immutable asset texture — not updatable
 
         // Authoritative bounds check — the SAME pure validator the client used.
         if (const auto v = validateTextureRegions(it->second, regions, pixels.size()); !v.ok())
@@ -266,18 +270,22 @@ namespace lux::render
                 r.mip,
                 r.array_layer,
                 r.row_pitch_bytes,
-                r.data_offset}
-            );
+                r.data_offset
+            });
 
         return combined_.updateTextureRegions(sh, updates, pixels, regionTexelBytes(it->second.format))
-                   ? ERegionUploadStatus::Ok
-                   : ERegionUploadStatus::InvalidHandle;
+                   ? ERegionUploadStatus::OK
+                   : ERegionUploadStatus::INVALID_HANDLE;
     }
 
     bool TextureResources::remove(TextureHandle h)
     {
-        persistent_descs_.erase(h.index); // no-op for immutable asset textures
         const bool removed = combined_.removeTexture(SlotHandle{h.index, h.gen});
+        if (removed)
+        {
+            unpublish(remoteTexture(h));
+            persistent_descs_.erase(h.index);
+        }
         if (removed && h.index < mip_states_.size())
         {
             clearMipDemand(h.index);
@@ -288,7 +296,65 @@ namespace lux::render
 
     bool TextureResources::removeCube(TextureHandle h)
     {
-        return combined_cube_.removeTexture(SlotHandle{h.index, h.gen});
+        const bool removed = combined_cube_.removeTexture(SlotHandle{h.index, h.gen});
+        if (removed)
+            unpublish(remoteTexture(h, true));
+        return removed;
+    }
+
+    RTextureHandle TextureResources::publishTexture(TextureHandle local, bool cube)
+    {
+        if (const auto existing = remoteTexture(local, cube); existing.isValid())
+            return existing;
+        auto& reverse = cube ? remote_cube_ : remote_2d_;
+        if (reverse.size() <= local.index)
+            reverse.resize(std::size_t(local.index) + 1);
+        const auto key =
+            remote_textures_.emplace(RemoteTexture{cube ? ERemoteKind::CUBE : ERemoteKind::TEXTURE_2D, local, {}});
+        return reverse[local.index] = RTextureHandle{key.index, key.gen};
+    }
+
+    RTextureHandle TextureResources::publishOutput(RenderTargetId target)
+    {
+        const auto key = remote_textures_.emplace(RemoteTexture{ERemoteKind::OUTPUT, {}, target});
+        return {key.index, key.gen};
+    }
+
+    const TextureResources::RemoteTexture* TextureResources::resolve(RTextureHandle remote) const noexcept
+    {
+        return remote_textures_.find({remote.index, remote.gen});
+    }
+
+    TextureHandle TextureResources::resolveTexture(RTextureHandle remote, bool cube) const noexcept
+    {
+        const auto* entry = resolve(remote);
+        if (!entry || entry->kind != (cube ? ERemoteKind::CUBE : ERemoteKind::TEXTURE_2D))
+            return {};
+        const auto& set = cube ? combined_cube_ : combined_;
+        return set.isTextureAlive({entry->local.index, entry->local.gen}) ? entry->local : TextureHandle{};
+    }
+
+    RTextureHandle TextureResources::remoteTexture(TextureHandle local, bool cube) const noexcept
+    {
+        const auto& reverse = cube ? remote_cube_ : remote_2d_;
+        if (local.index >= reverse.size())
+            return {};
+        const auto remote = reverse[local.index];
+        const auto* entry = resolve(remote);
+        return entry && entry->local == local ? remote : RTextureHandle{};
+    }
+
+    void TextureResources::unpublish(RTextureHandle remote) noexcept
+    {
+        const auto* entry = resolve(remote);
+        if (!entry)
+            return;
+        if (entry->kind != ERemoteKind::OUTPUT)
+        {
+            auto& reverse = entry->kind == ERemoteKind::CUBE ? remote_cube_ : remote_2d_;
+            reverse[entry->local.index] = {};
+        }
+        remote_textures_.erase({remote.index, remote.gen});
     }
 
     Expected<TextureHandle> TextureResources::submitCube(
@@ -325,7 +391,8 @@ namespace lux::render
                     true,
                     &frame.buffer,
                     &frame.allocation,
-                    &mapped) ||
+                    &mapped
+                ) ||
                 frame.buffer == VK_NULL_HANDLE || mapped == nullptr)
             {
                 shutdownMipFeedback();
@@ -447,12 +514,12 @@ namespace lux::render
         const bool has_valid_base_mip = logical_base_mip < state.total_mips;
         const bool is_invalid_base_mip = !has_valid_base_mip || immutableTextureVkFormat(format) != state.format;
         const bool is_invalid_dimensions = !has_valid_base_mip ||
-            physical_width != std::max(state.width >> logical_base_mip, 1u) ||
-            physical_height != std::max(state.height >> logical_base_mip, 1u);
-        const bool is_invalid_mip_count = !has_valid_base_mip || physical_mip_count == 0u ||
-            physical_mip_count > state.total_mips - logical_base_mip;
-        const bool is_invalid_request = is_invalid_state || is_invalid_base_mip ||
-            is_invalid_dimensions || is_invalid_mip_count;
+                                           physical_width != std::max(state.width >> logical_base_mip, 1u) ||
+                                           physical_height != std::max(state.height >> logical_base_mip, 1u);
+        const bool is_invalid_mip_count =
+            !has_valid_base_mip || physical_mip_count == 0u || physical_mip_count > state.total_mips - logical_base_mip;
+        const bool is_invalid_request =
+            is_invalid_state || is_invalid_base_mip || is_invalid_dimensions || is_invalid_mip_count;
         if (is_invalid_request)
         {
             return false;
@@ -517,12 +584,13 @@ namespace lux::render
             {
                 continue;
             }
+            const auto texture = remoteTexture(TextureHandle{slot, combined_.genAt(slot)});
+            if (!texture.isValid())
+                continue;
             if (reply.count < limit)
             {
-                reply.entries[reply.count++] = TextureMipDemandEntry{
-                    RTextureHandle{slot, combined_.genAt(slot)},
-                    state.resident_base_mip,
-                    state.target_base_mip};
+                reply.entries[reply.count++] =
+                    TextureMipDemandEntry{texture, state.resident_base_mip, state.target_base_mip};
             }
             else
             {

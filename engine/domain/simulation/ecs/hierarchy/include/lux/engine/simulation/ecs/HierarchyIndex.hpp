@@ -31,6 +31,7 @@ namespace lux::simulation::ecs
         NOT_SYNCHRONIZED,
         CAPACITY_EXCEEDED,
         ALLOCATION_FAILURE,
+        COMMAND_RECORDING_FAILED,
     };
 
     enum class EHierarchyDeltaKind : std::uint8_t
@@ -123,10 +124,14 @@ namespace lux::simulation::ecs
 
     private:
         [[nodiscard]] lux::cxx::expected<void, EHierarchyError> prepare(std::size_t relation_capacity) noexcept;
-        [[nodiscard]] lux::cxx::expected<void, EHierarchyError>
-        apply(std::span<const detail::HierarchyMutation> mutations, HierarchyDeltaBatch& deltas) noexcept;
-        [[nodiscard]] lux::cxx::expected<void, EHierarchyError>
-        rebuild(std::span<const detail::HierarchyMutation> canonical_relations, HierarchyDeltaBatch& deltas) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EHierarchyError> apply(
+            std::span<const detail::HierarchyMutation> mutations,
+            HierarchyDeltaBatch& deltas
+        ) noexcept;
+        [[nodiscard]] lux::cxx::expected<void, EHierarchyError> rebuild(
+            std::span<const detail::HierarchyMutation> canonical_relations,
+            HierarchyDeltaBatch& deltas
+        ) noexcept;
         void invalidate(EHierarchyError error) noexcept;
         [[nodiscard]] std::size_t visitedNodesLastUpdate() const noexcept;
         [[nodiscard]] Entity firstChild(Entity parent) const noexcept;
@@ -140,9 +145,14 @@ namespace lux::simulation::ecs
         friend class detail::HierarchyMaintenance;
     };
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC lux::cxx::expected<void, EHierarchyError>
-    reparent(Registry& registry, Entity child, Entity parent) noexcept;
+    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC lux::cxx::expected<void, EHierarchyError> reparent(
+        Registry& registry,
+        Entity child,
+        Entity parent
+    ) noexcept;
 
-    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC lux::cxx::expected<void, EHierarchyError>
-    detach(Registry& registry, Entity child) noexcept;
+    [[nodiscard]] LUX_ENGINE_SIMULATION_ECS_HIERARCHY_PUBLIC lux::cxx::expected<void, EHierarchyError> detach(
+        Registry& registry,
+        Entity child
+    ) noexcept;
 }

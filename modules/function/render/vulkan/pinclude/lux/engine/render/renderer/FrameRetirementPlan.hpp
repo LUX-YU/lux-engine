@@ -46,8 +46,7 @@ namespace lux::render
                 const auto found =
                     std::find_if(retire_waits.begin(), retire_waits.end(), [&](const VkSemaphoreSubmitInfo& wait) {
                         return wait.semaphore == signal.semaphore;
-                    }
-                    );
+                    });
                 if (found == retire_waits.end())
                 {
                     retire_waits.push_back(signal);

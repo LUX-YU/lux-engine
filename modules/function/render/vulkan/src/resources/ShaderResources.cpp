@@ -99,8 +99,8 @@ namespace lux::render
                 const bool has_valid_slot = s < records_.size();
                 const bool has_live_module = has_valid_slot && records_[s].module != VK_NULL_HANDLE;
                 const bool has_matching_size = has_live_module && rec.bytes.size() == spirv_bytes.size();
-                const bool has_matching_bytes = has_matching_size &&
-                    std::equal(rec.bytes.begin(), rec.bytes.end(), spirv_bytes.begin());
+                const bool has_matching_bytes =
+                    has_matching_size && std::equal(rec.bytes.begin(), rec.bytes.end(), spirv_bytes.begin());
                 if (has_matching_bytes)
                 {
                     ++refcount_[s];
@@ -170,8 +170,10 @@ namespace lux::render
         return {};
     }
 
-    Expected<ShaderHandle>
-    ShaderResources::addMergedLayoutVariant(ShaderHandle source, const lux::rdesc::ShaderInfo& info)
+    Expected<ShaderHandle> ShaderResources::addMergedLayoutVariant(
+        ShaderHandle source,
+        const lux::rdesc::ShaderInfo& info
+    )
     {
         const auto src_bytes = spirvBytes(source);
         if (src_bytes.empty())

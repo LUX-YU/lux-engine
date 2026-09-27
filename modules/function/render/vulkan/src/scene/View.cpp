@@ -4,9 +4,7 @@
 namespace lux::render
 {
 
-    View::View()
-    {
-    }
+    View::View() {}
     View::~View() = default;
 
 } // namespace lux::render

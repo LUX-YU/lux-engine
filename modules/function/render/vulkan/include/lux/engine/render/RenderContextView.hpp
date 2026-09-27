@@ -22,14 +22,14 @@
 #include <vector>
 
 #include <lux/engine/render/core/vk_fwd.hpp> // VkDevice/VkShaderModule/VkPipelineLayout/VkDescriptorSetLayout
-#include <lux/engine/function/render/client/core/PipelineHandle.hpp>      // Graphics/ComputePipelineHandle
-#include <lux/engine/function/render/client/core/ResourceHandle.hpp>      // ShaderHandle
-#include <lux/engine/function/render/client/core/EngineSetSlot.hpp>       // EDescriptorSetSlot
+#include <lux/engine/function/render/client/core/PipelineHandle.hpp>        // Graphics/ComputePipelineHandle
+#include <lux/engine/function/render/client/core/ResourceHandle.hpp>        // ShaderHandle
+#include <lux/engine/function/render/client/core/EngineSetSlot.hpp>         // EDescriptorSetSlot
 #include <lux/engine/function/render/features/resources/EBuiltinShader.hpp> // EBuiltinShader
-#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>           // ResourceRegistry
-#include <lux/engine/render/core/FrameRetireScheduler.hpp>                // FrameRetireScheduler
-#include <lux/engine/render/core/PreparedPipelineStages.hpp>              // preparePipelineStages 的结果
-#include <lux/engine/function/render/client/core/Errors.hpp>              // Expected<ShaderHandle>
+#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>             // ResourceRegistry
+#include <lux/engine/render/core/FrameRetireScheduler.hpp>                  // FrameRetireScheduler
+#include <lux/engine/render/core/PreparedPipelineStages.hpp>                // preparePipelineStages 的结果
+#include <lux/engine/function/render/client/core/Errors.hpp>                // Expected<ShaderHandle>
 #include <lux/engine/function/visibility.h>
 
 // VMA handles — same fwd-typedefs the engine uses (core/VmaFwd.hpp), replicated
@@ -68,9 +68,7 @@ namespace lux::render
     public:
         /// Wrap a subject. The facade is a non-owning view; @p ctx must outlive it
         /// (it always does — the owning scene outlives every feature it serves).
-        explicit RenderContextView(RenderContext& ctx) noexcept : ctx_(&ctx)
-        {
-        }
+        explicit RenderContextView(RenderContext& ctx) noexcept : ctx_(&ctx) {}
 
         // ── Vulkan infrastructure ───────────────────────────────────────
         [[nodiscard]] VkDevice device() const noexcept;
@@ -85,8 +83,10 @@ namespace lux::render
         // ── Shaders (the engine's ShaderResources stays hidden) ─────────
         /// 解析一个内置着色器(configured 有效则原样返回)。解析不出模块时返回错误并
         /// 指出是哪一个 —— 不再交回一个无效句柄让调用方在取模块时才崩。
-        [[nodiscard]] Expected<ShaderHandle>
-        createBuiltinShaderModule(EBuiltinShader builtin, ShaderHandle configured = {});
+        [[nodiscard]] Expected<ShaderHandle> createBuiltinShaderModule(
+            EBuiltinShader builtin,
+            ShaderHandle configured = {}
+        );
 
         /// 一个待回填的着色器句柄槽:目标有效则保留,无效则填入内置解析结果。
         struct BuiltinShaderSlot
@@ -112,8 +112,10 @@ namespace lux::render
         /// 一次调用里做完,任一失败即整体报错。因为所有内部记录变动都发生在调用之内,
         /// 返回的模块与反射在此之后必然有效 —— 调用方写不出「先取指针再切换」那个顺序。
         [[nodiscard]] Expected<PreparedPipelineStages> preparePipelineStages(std::span<const PipelineStageDesc> stages);
-        [[nodiscard]] ShaderHandle
-        createShaderModule(std::span<const std::byte> spirv, const lux::rdesc::ShaderInfo& info);
+        [[nodiscard]] ShaderHandle createShaderModule(
+            std::span<const std::byte> spirv,
+            const lux::rdesc::ShaderInfo& info
+        );
         [[nodiscard]] VkShaderModule shaderModule(ShaderHandle handle) const;
         [[nodiscard]] const lux::rdesc::ShaderInfo* shaderInfo(ShaderHandle handle) const;
 

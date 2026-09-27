@@ -30,9 +30,9 @@ namespace lux::rdesc
      */
     enum class EAlphaMode : uint8_t
     {
-        Opaque,
-        Mask,
-        Blend
+        OPAQUE_SURFACE,
+        MASK,
+        BLEND
     };
 
     /**
@@ -40,11 +40,11 @@ namespace lux::rdesc
      */
     enum class ELightingTechnique : uint8_t
     {
-        Unlit,
-        LegacyLit,            ///< Classic lit workflow: diffuse + specular closures
-        PbrMetallicRoughness, ///< Metallic-Roughness workflow
-        Stylized,             ///< Toon / ramp-based workflow
-        Graph                 ///< Node-graph material — generic per-material param/texture blob (set 4 binding 4)
+        UNLIT,
+        LEGACY_LIT,            ///< Classic lit workflow: diffuse + specular closures
+        PBR_METALLIC_ROUGHNESS, ///< Metallic-Roughness workflow
+        STYLIZED,             ///< Toon / ramp-based workflow
+        GRAPH                 ///< Node-graph material — generic per-material param/texture blob (set 4 binding 4)
     };
 
     /**
@@ -52,9 +52,9 @@ namespace lux::rdesc
      */
     enum class EDiffuseModel : uint8_t
     {
-        Lambert,
-        OrenNayar,
-        Minnaert
+        LAMBERT,
+        OREN_NAYAR,
+        MINNAERT
     };
 
     /**
@@ -62,10 +62,10 @@ namespace lux::rdesc
      */
     enum class ESpecularModel : uint8_t
     {
-        None,
-        Phong,
-        BlinnPhong,
-        CookTorrance
+        NONE,
+        PHONG,
+        BLINN_PHONG,
+        COOK_TORRANCE
     };
 
 } // namespace lux::rdesc

@@ -30,10 +30,9 @@ namespace lux::render
         id = lux.render.view_camera.v1,
         display = StandardViewCamera,
         feature = StandardViewCameraFeature,
-        feature_header = lux / engine / render / renderer / features / view_camera /
-                         StandardViewCameraFeature.hpp) ViewCameraCommTag
-    {
-    };
+        feature_header = lux / engine / render / renderer / features / view_camera / StandardViewCameraFeature.hpp
+    ) ViewCameraCommTag
+    {};
     static_assert(std::is_trivially_copyable_v<ViewCameraCommTag>);
 
     /// Per-view camera update(核心 RenderProtocol 退役件):column-major 4x4,

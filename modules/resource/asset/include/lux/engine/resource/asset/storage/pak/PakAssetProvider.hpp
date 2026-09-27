@@ -36,8 +36,9 @@ namespace lux::asset
         /// Descendant pages are verified lazily against their parent digest.
         /// Every page/payload read owns an independent cursor, so unrelated
         /// World Sections can load concurrently.
-        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<PakAssetProvider>, std::string>
-        loadFromFile(const std::filesystem::path& pak_path);
+        [[nodiscard]] static lux::cxx::expected<std::shared_ptr<PakAssetProvider>, std::string> loadFromFile(
+            const std::filesystem::path& pak_path
+        );
 
         ~PakAssetProvider() override;
 

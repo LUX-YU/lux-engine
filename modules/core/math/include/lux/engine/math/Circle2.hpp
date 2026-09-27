@@ -14,9 +14,7 @@ namespace lux::math
         float radius{0.0f};
 
         Circle2() = default;
-        Circle2(const Eigen::Vector2f& c, float r) : center(c), radius(r)
-        {
-        }
+        Circle2(const Eigen::Vector2f& c, float r) : center(c), radius(r) {}
 
         [[nodiscard]] bool isValid() const noexcept
         {

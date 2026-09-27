@@ -18,10 +18,7 @@ namespace lux::flowforge
         [[nodiscard]] static FlowForgeResult<SuspensionAnalysis> create(const FlowGraph& graph) noexcept;
 
         [[nodiscard]] const Node* firstSuspensionFrom(const ExecOutPin& start) const;
-        [[nodiscard]] const Node* suspensionBetween(
-            const ExecOutPin& start,
-            const Node& target
-        ) const;
+        [[nodiscard]] const Node* suspensionBetween(const ExecOutPin& start, const Node& target) const;
 
     private:
         struct FunctionSummary final

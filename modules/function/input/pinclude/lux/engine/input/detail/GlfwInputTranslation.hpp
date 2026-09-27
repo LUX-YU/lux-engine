@@ -52,10 +52,19 @@ namespace lux::input::detail
         return static_cast<EKeyModifier>(modifiers & kKnownModifiers);
     }
 
-    inline void applyGlfwWindowEvents(InputSnapshot& snapshot, std::span<const lux::window::WindowInputEvent> events)
+    inline void applyGlfwWindowEvents(InputSnapshot& snapshot, std::span<const lux::window::VWindowInputEvent> events)
     {
         for (const auto& raw : events)
         {
+            if (const auto* focus = std::get_if<lux::window::WindowLostFocusEvent>(&raw))
+            {
+                snapshot.keys_just_released |= snapshot.keys_held;
+                snapshot.keys_held.reset();
+                snapshot.mouse_just_released |= snapshot.mouse_held;
+                snapshot.mouse_held = 0;
+                snapshot.events.emplace_back(FocusAction{false, focus->sequence});
+                continue;
+            }
             if (const auto* key = std::get_if<lux::window::WindowKeyEvent>(&raw))
             {
                 const EKey translated_key = glfwKey(key->key);
@@ -79,9 +88,13 @@ namespace lux::input::detail
                     }
                 }
 
-                snapshot.events.emplace_back(
-                    KeyAction{translated_key, key->scancode, translated_state, glfwModifiers(key->modifiers)}
-                );
+                snapshot.events.emplace_back(KeyAction{
+                    translated_key,
+                    key->scancode,
+                    translated_state,
+                    glfwModifiers(key->modifiers),
+                    key->sequence
+                });
                 continue;
             }
 
@@ -104,9 +117,12 @@ namespace lux::input::detail
                     }
                 }
 
-                snapshot.events.emplace_back(
-                    MouseButtonAction{translated_button, translated_state, glfwModifiers(mouse->modifiers)}
-                );
+                snapshot.events.emplace_back(MouseButtonAction{
+                    translated_button,
+                    translated_state,
+                    glfwModifiers(mouse->modifiers),
+                    mouse->sequence
+                });
                 continue;
             }
 
@@ -114,13 +130,44 @@ namespace lux::input::detail
             {
                 snapshot.scroll_dx += scroll->x;
                 snapshot.scroll_dy += scroll->y;
-                snapshot.events.emplace_back(MouseScrollAction{scroll->x, scroll->y});
+                snapshot.events.emplace_back(MouseScrollAction{scroll->x, scroll->y, scroll->sequence});
                 continue;
             }
 
+            if (const auto* cursor = std::get_if<lux::window::CursorMoveEvent>(&raw))
+            {
+                snapshot.events.emplace_back(CursorAction{cursor->x, cursor->y, cursor->sequence});
+                continue;
+            }
+            if (const auto* focus = std::get_if<lux::window::WindowFocusEvent>(&raw))
+            {
+                snapshot.events.emplace_back(FocusAction{true, focus->sequence});
+                continue;
+            }
+            if (const auto* composition = std::get_if<lux::window::WindowCompositionEvent>(&raw))
+            {
+                ECompositionStage stage{};
+                switch (composition->stage)
+                {
+                case window::ECompositionStage::STARTED:
+                    stage = ECompositionStage::STARTED;
+                    break;
+                case window::ECompositionStage::UPDATED:
+                    stage = ECompositionStage::UPDATED;
+                    break;
+                case window::ECompositionStage::COMMITTED:
+                    stage = ECompositionStage::COMMITTED;
+                    break;
+                case window::ECompositionStage::CANCELLED:
+                    stage = ECompositionStage::CANCELLED;
+                    break;
+                }
+                snapshot.events.emplace_back(CompositionAction{stage, composition->sequence});
+                continue;
+            }
             if (const auto* text = std::get_if<lux::window::WindowTextEvent>(&raw))
             {
-                snapshot.text_events.push_back(CharInput{text->codepoint});
+                snapshot.events.emplace_back(CharInput{text->codepoint, text->sequence});
             }
         }
     }

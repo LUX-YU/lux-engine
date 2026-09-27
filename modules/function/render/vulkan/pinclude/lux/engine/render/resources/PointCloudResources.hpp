@@ -24,7 +24,7 @@ namespace lux::render
      *  - PointCloudGlobalBuffer  — unified point SSBO (all chunks, all modes)
      *  - GpuOctreeNodeBuffer     — per-node metadata for compute-cull modes
      *
-     * Registered in GPUResourceRegistry under EGPUResourceType::PointCloud so
+     * Registered in GPUResourceRegistry under EGPUResourceType::POINT_CLOUD so
      * that any PCFeature* can access these buffers via:
      * @code
      *   auto* pc = ctx.gpuResources().getResource<PointCloudResources>();
@@ -39,7 +39,7 @@ namespace lux::render
      * if this has not been called yet.
      */
     class LUX_FUNCTION_PUBLIC PointCloudResources final
-        : public GPUResourceBase<PointCloudResources, EGPUResourceType::PointCloud>
+        : public TGPUResourceBase<PointCloudResources, EGPUResourceType::POINT_CLOUD>
     // (此前还继承 IFrameService,但**一个钩子都没重写** —— 每帧被遍历到,
     //  执行的是基类空实现。纯死重量,已摘除;零行为变化。)
     {
@@ -140,7 +140,7 @@ namespace lux::render
         /// Data is copied into the pending queue; the source can be freed after return.
         void queueUpload(uint32_t chunk_id, std::span<const GpuPointVertex> data)
         {
-            pending_ops_.push_back(PcOp{PcOpType::Upload, chunk_id, {data.begin(), data.end()}});
+            pending_ops_.push_back(PcOp{EPcOpType::UPLOAD, chunk_id, {data.begin(), data.end()}});
         }
 
         /// Queue a full clear: frees all point slots and removes all octree nodes.
@@ -152,14 +152,14 @@ namespace lux::render
         /// PointCloudGlobalBuffer::freeAllSlots().
         void queueClearAll()
         {
-            pending_ops_.push_back(PcOp{PcOpType::ClearAll, 0u, {}});
+            pending_ops_.push_back(PcOp{EPcOpType::CLEAR_ALL, 0u, {}});
         }
 
         /// Queue a lightweight chunk reset: sets point_count=0 and removes the
         /// octree node, but keeps the slot allocation for reuse.
         void queueResetChunk(uint32_t chunk_id)
         {
-            pending_ops_.push_back(PcOp{PcOpType::Reset, chunk_id, {}});
+            pending_ops_.push_back(PcOp{EPcOpType::RESET, chunk_id, {}});
         }
 
         bool hasPendingUploads() const noexcept
@@ -192,19 +192,19 @@ namespace lux::render
             {
                 switch (op.type)
                 {
-                case PcOpType::ClearAll:
+                case EPcOpType::CLEAR_ALL:
                     global_buf_.freeAllSlots();
                     node_buf_.removeAllNodes();
                     node_dirty = true;
                     break;
 
-                case PcOpType::Reset:
+                case EPcOpType::RESET:
                     global_buf_.resetSlot(op.chunk_id);
                     node_buf_.removeNode(op.chunk_id);
                     node_dirty = true;
                     break;
 
-                case PcOpType::Upload: {
+                case EPcOpType::UPLOAD: {
                     const auto count = static_cast<uint32_t>(op.data.size());
                     if (count == 0)
                         break;
@@ -261,11 +261,11 @@ namespace lux::render
         }
 
     private:
-        enum class PcOpType : uint8_t
+        enum class EPcOpType : uint8_t
         {
-            Upload,
-            Reset,
-            ClearAll
+            UPLOAD,
+            RESET,
+            CLEAR_ALL
         };
 
         // One ordered command stream. Keeping uploads, resets and clear-alls in a
@@ -274,7 +274,7 @@ namespace lux::render
         // survive" contract — see queueClearAll (#7).
         struct PcOp
         {
-            PcOpType type;
+            EPcOpType type;
             uint32_t chunk_id{0};             ///< Upload / Reset
             std::vector<GpuPointVertex> data; ///< Upload only
         };

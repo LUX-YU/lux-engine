@@ -24,8 +24,7 @@ namespace lux::gapi::vk
 
         CommandBuffer(CommandBuffer&& other) noexcept
             : command_buffer(std::exchange(other.command_buffer, VkCommandBuffer{}))
-        {
-        }
+        {}
 
         // Rebinding a live command-buffer owner needs the device and command pool
         // that allocated its current handle. Assignment has no valid implementation
@@ -69,8 +68,9 @@ namespace lux::gapi::vk
         }
 
         // begin command buffer
-        [[nodiscard]] VkResult
-        begin(VkCommandBufferUsageFlags flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT) noexcept
+        [[nodiscard]] VkResult begin(
+            VkCommandBufferUsageFlags flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+        ) noexcept
         {
             VkCommandBufferBeginInfo info{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, .flags = flags};
             return vkBeginCommandBuffer(command_buffer, &info);
@@ -107,7 +107,8 @@ namespace lux::gapi::vk
                 .framebuffer = framebuffer,
                 .renderArea = render_area,
                 .clearValueCount = clear_value_count,
-                .pClearValues = clear_values};
+                .pClearValues = clear_values
+            };
             vkCmdBeginRenderPass(command_buffer, &info, contents);
         }
 

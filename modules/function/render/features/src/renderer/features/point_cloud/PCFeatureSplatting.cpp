@@ -32,10 +32,9 @@ namespace lux::render
               cfg.max_nodes,
               RenderFeature::Config{.name = "PointCloudSplatting"},
               "Splat"
-        ),
+          ),
           max_size_(cfg.max_size), cfg_(std::move(cfg))
-    {
-    }
+    {}
 
     lux::render::Expected<void> PCFeatureSplatting::initAndAttachTo(RenderScene& scene)
     {
@@ -51,7 +50,8 @@ namespace lux::render
         // 用 uViews)的管线必须带域合并标记,否则 PipelineManager 拒绝注册。
         const std::array stage_requests{
             PipelineStageRequest{EBuiltinShader::PC_LOD_VERT, cfg_.vertex_shader},
-            PipelineStageRequest{EBuiltinShader::PC_SPLAT_FRAG, cfg_.fragment_shader}};
+            PipelineStageRequest{EBuiltinShader::PC_SPLAT_FRAG, cfg_.fragment_shader}
+        };
 
         auto stages = preparePipelineStages(shaders, stage_requests);
         if (!stages)

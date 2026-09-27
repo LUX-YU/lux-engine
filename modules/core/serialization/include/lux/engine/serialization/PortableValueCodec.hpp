@@ -11,21 +11,11 @@
 
 namespace lux::serialization
 {
-    inline constexpr SerializationBudget kPortableMetadataBudget{
-        1U << 20U,
-        1U << 16U,
-        32U
-    };
+    inline constexpr SerializationBudget kPortableMetadataBudget{1U << 20U, 1U << 16U, 32U};
 
     using EncodeDefaultPortableValueFn = SerializationResult (*)(std::vector<std::byte>& output) noexcept;
-    using EncodePortableValueFn = SerializationResult (*)(
-        const void* object,
-        std::vector<std::byte>& output
-    ) noexcept;
-    using DecodePortableValueFn = SerializationResult (*)(
-        std::span<const std::byte> input,
-        void* object
-    ) noexcept;
+    using EncodePortableValueFn = SerializationResult (*)(const void* object, std::vector<std::byte>& output) noexcept;
+    using DecodePortableValueFn = SerializationResult (*)(std::span<const std::byte> input, void* object) noexcept;
 
     struct PortableValueCodec final
     {
@@ -40,8 +30,7 @@ namespace lux::serialization
         }
     };
 
-    template <class Value>
-    [[nodiscard]] PortableValueCodec makePortableValueCodec() noexcept
+    template <class Value> [[nodiscard]] PortableValueCodec makePortableValueCodec() noexcept
     {
         static_assert(std::is_nothrow_default_constructible_v<Value>);
         static_assert(std::is_nothrow_destructible_v<Value>);
@@ -63,11 +52,7 @@ namespace lux::serialization
                 }
                 output.clear();
                 BinaryWriter writer(output);
-                return serialization::write(
-                    writer,
-                    *static_cast<const Value*>(object),
-                    kPortableMetadataBudget
-                );
+                return serialization::write(writer, *static_cast<const Value*>(object), kPortableMetadataBudget);
             },
             .decode = +[](std::span<const std::byte> input, void* object) noexcept -> SerializationResult {
                 if (object == nullptr)
@@ -77,11 +62,7 @@ namespace lux::serialization
                     );
                 }
                 BinaryReader reader(input);
-                auto result = serialization::read(
-                    reader,
-                    *static_cast<Value*>(object),
-                    kPortableMetadataBudget
-                );
+                auto result = serialization::read(reader, *static_cast<Value*>(object), kPortableMetadataBudget);
                 if (!result)
                 {
                     return result;

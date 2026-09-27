@@ -9,7 +9,8 @@ int main()
     using namespace lux;
     using namespace simulation::ecs;
     Registry world;
-    scene::MeshQuerySystem query(world);
+    scene::MeshQuerySystem system(world);
+    auto& query = world.ctx().get<scene::MeshQuery>();
     const std::array positions{Eigen::Vector3f{-1, -1, 0}, Eigen::Vector3f{1, -1, 0}, Eigen::Vector3f{0, 1, 0}};
     const std::array<std::uint32_t, 3> indices{0, 1, 2};
     const auto geometry = scene::MeshQueryGeometry::build(positions, indices);
@@ -19,7 +20,7 @@ int main()
     const auto entity = world.create();
     world.emplace<Mesh3D>(entity).value.mesh = source;
     world.emplace<WorldTransform3D>(entity).value.translation().z() = 4;
-    query.updateStablePoint();
+    system.updateStablePoint();
     scene::RayHit3D hit;
     const auto found = query.raycastNearest({Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitZ()}, 10, hit);
     assert(found && *found && hit.entity == entity && hit.distance == 4);

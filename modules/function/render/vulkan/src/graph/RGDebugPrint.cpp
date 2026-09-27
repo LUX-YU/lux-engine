@@ -96,19 +96,19 @@ namespace lux::render
     {
         switch (s)
         {
-        case EDescriptorSetSlot::Scene:
+        case EDescriptorSetSlot::SCENE:
             return "Scene";
-        case EDescriptorSetSlot::Instance:
+        case EDescriptorSetSlot::INSTANCE:
             return "Instance";
-        case EDescriptorSetSlot::Texture:
+        case EDescriptorSetSlot::TEXTURE:
             return "Texture";
-        case EDescriptorSetSlot::Light:
+        case EDescriptorSetSlot::LIGHT:
             return "Light";
-        case EDescriptorSetSlot::Material:
+        case EDescriptorSetSlot::MATERIAL:
             return "Material";
-        case EDescriptorSetSlot::Particle:
+        case EDescriptorSetSlot::PARTICLE:
             return "Particle";
-        case EDescriptorSetSlot::Compute:
+        case EDescriptorSetSlot::COMPUTE:
             return "Compute";
         default:
             return "UNKNOWN";
@@ -227,7 +227,7 @@ namespace lux::render
             os << "  [Relocations] canonical → merged(SpirvPatcher 的输入)\n";
             for (const auto& s : plan.sets)
             {
-                if (s.kind != EPlannedSetKind::EngineShared)
+                if (s.kind != EPlannedSetKind::ENGINE_SHARED)
                     continue;
                 const uint32_t dst_set = domainSetSlot(s.domain);
                 os << "      set" << s.set << " → set" << dst_set << "  binding +" << s.domain_binding_offset
@@ -238,13 +238,13 @@ namespace lux::render
                 const char* kind = "private";
                 switch (s.kind)
                 {
-                case EPlannedSetKind::EngineShared:
+                case EPlannedSetKind::ENGINE_SHARED:
                     kind = "engine ";
                     break;
-                case EPlannedSetKind::FeatureExplicit:
+                case EPlannedSetKind::FEATURE_EXPLICIT:
                     kind = "feature";
                     break;
-                case EPlannedSetKind::PipelinePrivate:
+                case EPlannedSetKind::PIPELINE_PRIVATE:
                     kind = "private";
                     break;
                 }
@@ -252,7 +252,7 @@ namespace lux::render
                 if (s.owner_key != 0)
                     os << " owner=0x" << std::hex << s.owner_key << std::dec;
                 os << "  bindings=" << s.bindings.size() << (s.update_after_bind ? "  UAB" : "");
-                if (s.kind == EPlannedSetKind::EngineShared)
+                if (s.kind == EPlannedSetKind::ENGINE_SHARED)
                 {
                     static constexpr const char* kDomainName[] = {"GLOBAL", "BINDLESS", "FEATURE", "PASS_LOCAL"};
                     const auto d = static_cast<std::size_t>(s.domain);
@@ -594,16 +594,16 @@ namespace lux::render
                     const char* source = "Immutable";
                     switch (dsb.source)
                     {
-                    case EDSBindingSource::Immutable:
+                    case EDSBindingSource::IMMUTABLE:
                         source = "Immutable";
                         break;
-                    case EDSBindingSource::Scene:
+                    case EDSBindingSource::SCENE:
                         source = "Scene";
                         break;
-                    case EDSBindingSource::Transient:
+                    case EDSBindingSource::TRANSIENT:
                         source = "Transient";
                         break;
-                    case EDSBindingSource::Resource:
+                    case EDSBindingSource::RESOURCE:
                         source = "Resource";
                         break;
                     }

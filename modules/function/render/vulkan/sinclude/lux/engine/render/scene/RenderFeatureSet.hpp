@@ -95,8 +95,8 @@ namespace lux::render
 
         /// 第一个仍**非可选地**依赖 @p type 的特性(跳过 @p exclude);无则 nullptr。
         /// 供卸载守卫用:另一个已装特性还要求它时,拒绝卸载。
-        [[nodiscard]] const RenderFeature*
-        firstRequiring(FeatureTypeId type, const RenderFeature* exclude) const noexcept;
+        [[nodiscard]] const RenderFeature* firstRequiring(FeatureTypeId type, const RenderFeature* exclude)
+            const noexcept;
 
         [[nodiscard]] std::vector<FeatureParamDesc> queryParamDescs() const;
 

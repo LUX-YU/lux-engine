@@ -11,7 +11,7 @@ add_component(
     COMPONENT_NAME process_world_loading
     NAMESPACE      lux::engine::process
     OUTPUT_NAME    lux_engine_process_world_loading
-    SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldPartitionLoad.cpp
+    SOURCE_FILES src/WorldPartitionLoad.cpp src/WorldMemoryStorageSource.cpp
 )
 add_library(lux::engine::process::world_loading ALIAS process_world_loading)
 component_include_directories(

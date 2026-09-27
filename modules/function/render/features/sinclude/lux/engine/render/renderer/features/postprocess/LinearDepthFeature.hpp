@@ -29,9 +29,7 @@ namespace lux::render
             ShaderHandle fragment_shader{};
         };
 
-        explicit LinearDepthFeature(Config cfg) : cfg_(cfg)
-        {
-        }
+        explicit LinearDepthFeature(Config cfg) : cfg_(cfg) {}
 
         std::string_view name() const override
         {
@@ -42,8 +40,8 @@ namespace lux::render
         /// 自动追加 SAMPLED)—— 槽声明管道的两种语义各用一位。
         uint32_t requiredTargetSlots() const override
         {
-            return (1u << static_cast<uint32_t>(TargetSlot::LINEAR_DEPTH)) |
-                   (1u << static_cast<uint32_t>(TargetSlot::SCENE_DEPTH));
+            return (1u << static_cast<uint32_t>(ETargetSlot::LINEAR_DEPTH)) |
+                   (1u << static_cast<uint32_t>(ETargetSlot::SCENE_DEPTH));
         }
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;

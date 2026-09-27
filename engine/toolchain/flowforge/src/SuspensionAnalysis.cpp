@@ -17,10 +17,7 @@ namespace lux::flowforge
 {
     namespace
     {
-        [[nodiscard]] const Node* earlierWitness(
-            const Node* left,
-            const Node* right
-        ) noexcept
+        [[nodiscard]] const Node* earlierWitness(const Node* left, const Node* right) noexcept
         {
             if (left == nullptr)
                 return right;
@@ -29,8 +26,7 @@ namespace lux::flowforge
             return left->id().value <= right->id().value ? left : right;
         }
 
-        template<class Callback>
-        void visitDirectExecution(const ExecOutPin& start, Callback&& callback)
+        template <class Callback> void visitDirectExecution(const ExecOutPin& start, Callback&& callback)
         {
             std::queue<const Node*> pending;
             std::unordered_set<const Node*> visited;
@@ -56,22 +52,16 @@ namespace lux::flowforge
         }
     }
 
-    SuspensionAnalysis::SuspensionAnalysis(const FlowGraph& graph) noexcept : graph_(&graph)
-    {
-    }
+    SuspensionAnalysis::SuspensionAnalysis(const FlowGraph& graph) noexcept : graph_(&graph) {}
 
     FlowForgeResult<SuspensionAnalysis> SuspensionAnalysis::create(const FlowGraph& graph) noexcept
     {
-        try
+
         {
             SuspensionAnalysis analysis(graph);
             if (auto built = analysis.build(); !built)
                 return lux::cxx::unexpected(std::move(built.error()));
             return analysis;
-        }
-        catch (const std::bad_alloc&)
-        {
-            return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::ALLOCATION_FAILURE});
         }
     }
 
@@ -161,16 +151,11 @@ namespace lux::flowforge
     const Node* SuspensionAnalysis::firstSuspensionFrom(const ExecOutPin& start) const
     {
         const Node* result{};
-        visitDirectExecution(start, [&](const Node& node) {
-            result = earlierWitness(result, callWitness(node));
-        });
+        visitDirectExecution(start, [&](const Node& node) { result = earlierWitness(result, callWitness(node)); });
         return result;
     }
 
-    const Node* SuspensionAnalysis::suspensionBetween(
-        const ExecOutPin& start,
-        const Node& target
-    ) const
+    const Node* SuspensionAnalysis::suspensionBetween(const ExecOutPin& start, const Node& target) const
     {
         struct Visit final
         {

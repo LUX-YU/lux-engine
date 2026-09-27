@@ -1,6 +1,8 @@
 #include <lux/engine/window/LuxWindow.hpp>
 
 #include <thread>
+#include <utility>
+#include <cstdlib>
 
 // Include Windows headers before GLFW to avoid APIENTRY macro redefinition warning.
 // minwindef.h (pulled in by windows.h) and glfw3.h both define APIENTRY; whichever
@@ -10,6 +12,8 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <commctrl.h>
+#include <imm.h>
 #endif
 
 // vulkan.h must precede glfw3.h so GLFW exposes glfwCreateWindowSurface
@@ -31,6 +35,15 @@ namespace lux::window
         // hide the window
         LuxWindow* window_impl = (LuxWindow*)glfwGetWindowUserPointer(window);
 
+        if (window_impl->on_close)
+        {
+            // A callback owns the decision. The OS flag must not force an exit
+            // while the application is still asking whether to save changes.
+            glfwSetWindowShouldClose(window, GLFW_FALSE);
+            window_impl->on_close(WindowCloseEvent{});
+            return;
+        }
+
         if (window_impl->_exit_behavior == EExitBehavior::EXIT)
         {
             return;
@@ -40,6 +53,34 @@ namespace lux::window
             glfwSetWindowShouldClose(window, false);
             glfwHideWindow(window);
         }
+    }
+
+    bool LuxWindow::focused() const noexcept
+    {
+        return _glfw_window && glfwGetWindowAttrib(_glfw_window, GLFW_FOCUSED);
+    }
+
+    bool LuxWindow::visible() const noexcept
+    {
+        return _glfw_window && glfwGetWindowAttrib(_glfw_window, GLFW_VISIBLE);
+    }
+
+    bool LuxWindow::minimized() const noexcept
+    {
+        return _glfw_window && glfwGetWindowAttrib(_glfw_window, GLFW_ICONIFIED);
+    }
+
+    void LuxWindow::waitEvents(double timeout_seconds)
+    {
+        if (timeout_seconds > 0.0)
+            glfwWaitEventsTimeout(timeout_seconds);
+        else
+            glfwPollEvents();
+    }
+
+    void LuxWindow::wakeEvents() noexcept
+    {
+        glfwPostEmptyEvent();
     }
 
     /**
@@ -59,6 +100,7 @@ namespace lux::window
     {
         if (_glfw_window)
         {
+            // On Windows, WM_NCDESTROY removes the subclass while this owner is alive.
             glfwDestroyWindow(_glfw_window);
             _glfw_window = nullptr;
         }
@@ -96,6 +138,75 @@ namespace lux::window
 
         glfwSetWindowUserPointer(_glfw_window, this);
         glfwSetWindowCloseCallback(_glfw_window, &LuxWindow::window_close_callback);
+        glfwSetWindowFocusCallback(_glfw_window, [](GLFWwindow* window, int focused) {
+            auto* self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+            if (focused)
+            {
+                self->recordInput(WindowFocusEvent{});
+                if (self->on_focus)
+                    self->on_focus({});
+            }
+            else
+            {
+                if (std::exchange(self->composing_, false))
+                    self->recordInput(WindowCompositionEvent{ECompositionStage::CANCELLED});
+                self->recordInput(WindowLostFocusEvent{});
+                if (self->on_lost_focus)
+                    self->on_lost_focus({});
+            }
+        });
+
+#if defined(_WIN32)
+        const auto capture_ime =
+            [](HWND window, UINT message, WPARAM wparam, LPARAM lparam, UINT_PTR id, DWORD_PTR context) -> LRESULT {
+            auto& owner = *reinterpret_cast<LuxWindow*>(context);
+            switch (message)
+            {
+            case WM_IME_STARTCOMPOSITION:
+                owner.composing_ = true;
+                owner.recordInput(WindowCompositionEvent{ECompositionStage::STARTED});
+                break;
+            case WM_IME_COMPOSITION:
+                if (lparam & GCS_RESULTSTR)
+                {
+                    owner.composing_ = false;
+                    owner.recordInput(WindowCompositionEvent{ECompositionStage::COMMITTED});
+                }
+                if (lparam & (GCS_COMPSTR | GCS_COMPATTR | GCS_COMPCLAUSE | GCS_CURSORPOS))
+                {
+                    owner.composing_ = true;
+                    owner.recordInput(WindowCompositionEvent{ECompositionStage::UPDATED});
+                }
+                if (!lparam && std::exchange(owner.composing_, false))
+                    owner.recordInput(WindowCompositionEvent{ECompositionStage::CANCELLED});
+                break;
+            case WM_KILLFOCUS:
+            case WM_IME_ENDCOMPOSITION:
+                if (std::exchange(owner.composing_, false))
+                    owner.recordInput(WindowCompositionEvent{ECompositionStage::CANCELLED});
+                break;
+            case WM_NCDESTROY:
+                RemoveWindowSubclass(window, reinterpret_cast<SUBCLASSPROC>(id), id);
+                break;
+            }
+            // Do not read/submit GCS_RESULTSTR. GLFW's character callback remains
+            // the sole committed-text path; Windows owns composition/candidates.
+            return DefSubclassProc(window, message, wparam, lparam);
+        };
+        const auto procedure = static_cast<SUBCLASSPROC>(capture_ime);
+        if (!SetWindowSubclass(
+                glfwGetWin32Window(_glfw_window),
+                procedure,
+                reinterpret_cast<UINT_PTR>(procedure),
+                reinterpret_cast<DWORD_PTR>(this)
+            ))
+        {
+            glfwDestroyWindow(_glfw_window);
+            _glfw_window = nullptr;
+            init_error_ = EWindowInitError::BACKEND_CREATE_FAILED;
+            return false;
+        }
+#endif
 
         // Enable CapsLock / NumLock modifier bits in key/mouse callbacks.
         glfwSetInputMode(_glfw_window, GLFW_LOCK_KEY_MODS, GLFW_TRUE);
@@ -228,25 +339,24 @@ namespace lux::window
         glfwSetKeyCallback(_glfw_window, [](GLFWwindow* window, int key, int scancode, int action, int mods) {
             auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
             WindowKeyEvent event{key, scancode, action, mods};
-            self->pending_input_events_.emplace_back(event);
+            self->recordInput(event);
             if (self->on_key)
             {
                 self->on_key(event);
             }
-        }
-        );
+        });
     }
 
     void LuxWindow::subscribeCursorPositionCallback()
     {
         glfwSetCursorPosCallback(_glfw_window, [](GLFWwindow* window, double xpos, double ypos) {
             auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+            self->recordInput(CursorMoveEvent{xpos, ypos});
             if (self->on_cursor_move)
             {
                 self->on_cursor_move(CursorMoveEvent{xpos, ypos});
             }
-        }
-        );
+        });
     }
 
     void LuxWindow::subscribeScrollCallback()
@@ -254,13 +364,12 @@ namespace lux::window
         glfwSetScrollCallback(_glfw_window, [](GLFWwindow* window, double xoffset, double yoffset) {
             auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
             const WindowScrollEvent event{xoffset, yoffset};
-            self->pending_input_events_.emplace_back(event);
+            self->recordInput(event);
             if (self->on_mouse_scroll)
             {
                 self->on_mouse_scroll(event);
             }
-        }
-        );
+        });
     }
 
     void LuxWindow::subscribeDropCallback()
@@ -277,17 +386,15 @@ namespace lux::window
             {
                 self->on_file_drop(ev);
             }
-        }
-        );
+        });
     }
 
     void LuxWindow::subscribeCharCallback()
     {
         glfwSetCharCallback(_glfw_window, [](GLFWwindow* window, unsigned int codepoint) {
             auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-            self->pending_input_events_.emplace_back(WindowTextEvent{.codepoint = codepoint});
-        }
-        );
+            self->recordInput(WindowTextEvent{.codepoint = codepoint});
+        });
     }
 
     void LuxWindow::subscribeMouseButtonCallback()
@@ -296,13 +403,12 @@ namespace lux::window
             auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
 
             WindowMouseButtonEvent event{button, action, mods};
-            self->pending_input_events_.emplace_back(event);
+            self->recordInput(event);
             if (self->on_mouse_button)
             {
                 self->on_mouse_button(event);
             }
-        }
-        );
+        });
     }
 
     void LuxWindow::subscribeWindowSizeChangeCallback()
@@ -311,12 +417,10 @@ namespace lux::window
             auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
             if (self->on_resize)
             {
-                self->on_resize(
-                    WindowResizeEvent{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)}
+                self->on_resize(WindowResizeEvent{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)}
                 );
             }
-        }
-        );
+        });
     }
 
     void LuxWindow::subscribeFramebufferSizeChangeCallback()
@@ -329,8 +433,7 @@ namespace lux::window
                     FramebufferResizeEvent{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)}
                 );
             }
-        }
-        );
+        });
     }
 
     float LuxWindow::lastFrameDelayTime() const
@@ -353,6 +456,15 @@ namespace lux::window
         return (void*)glfwGetWin32Window(_glfw_window);
     }
 #endif
+
+    void* LuxWindow::nativeHandle() const noexcept
+    {
+#ifdef __PLATFORM_WIN32__
+        return _glfw_window ? static_cast<void*>(glfwGetWin32Window(_glfw_window)) : nullptr;
+#else
+        return nullptr;
+#endif
+    }
 
     GLFWwindow* LuxWindow::handle()
     {
@@ -416,14 +528,21 @@ namespace lux::window
         _exit_behavior = behavior;
     }
 
-    void LuxWindow::newFrame()
+    void LuxWindow::newFrame() {}
+
+    void LuxWindow::recordInput(VWindowInputEvent event)
     {
+        if (input_sequence_ == UINT64_MAX)
+            std::abort();
+        const auto sequence = ++input_sequence_;
+        std::visit([sequence](auto& value) noexcept { value.sequence = sequence; }, event);
+        pending_input_events_.push_back(std::move(event));
     }
 
-    std::vector<WindowInputEvent> LuxWindow::drainInputEvents()
+    std::span<const VWindowInputEvent> LuxWindow::drainInputEvents()
     {
-        auto events = std::move(pending_input_events_);
-        pending_input_events_.clear();
-        return events;
+        drained_input_events_.clear();
+        drained_input_events_.swap(pending_input_events_);
+        return drained_input_events_;
     }
 }

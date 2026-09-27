@@ -60,8 +60,7 @@ namespace lux::simulation::script::detail
             EExternalCompletionTicketState state
         ) noexcept
         {
-            return (static_cast<std::uint64_t>(awaitable.generation) << 32U) |
-                static_cast<std::uint32_t>(state);
+            return (static_cast<std::uint64_t>(awaitable.generation) << 32U) | static_cast<std::uint32_t>(state);
         }
 
         void prepare(std::size_t queue_capacity, std::size_t awaitable_capacity)
@@ -79,10 +78,7 @@ namespace lux::simulation::script::detail
             if (!awaitable.valid() || awaitable.slot > ticket_capacity)
                 std::terminate();
             auto& ticket = tickets[awaitable.slot - 1U];
-            ticket.type.store(
-                type ? type->type_id : lux::semantic::InvalidTypeId,
-                std::memory_order_relaxed
-            );
+            ticket.type.store(type ? type->type_id : lux::semantic::InvalidTypeId, std::memory_order_relaxed);
             ticket.size.store(type ? type->size : 0U, std::memory_order_relaxed);
             ticket.state.store(
                 ticketState(awaitable, EExternalCompletionTicketState::ACTIVE),
@@ -118,11 +114,10 @@ namespace lux::simulation::script::detail
             if (closed.load(std::memory_order_acquire) || !awaitable.valid() || awaitable.slot > ticket_capacity)
                 return false;
             return tickets[awaitable.slot - 1U].state.load(std::memory_order_acquire) ==
-                ticketState(awaitable, EExternalCompletionTicketState::ACTIVE);
+                   ticketState(awaitable, EExternalCompletionTicketState::ACTIVE);
         }
 
-        [[nodiscard]] lux::cxx::expected<void, EScriptAwaitableCompletionError> push(
-            ExternalCompletionRecord record
+        [[nodiscard]] lux::cxx::expected<void, EScriptAwaitableCompletionError> push(ExternalCompletionRecord record
         ) noexcept
         {
             if (closed.load(std::memory_order_acquire))
@@ -133,23 +128,16 @@ namespace lux::simulation::script::detail
             auto& ticket = tickets[record.awaitable.slot - 1U];
             auto expected = ticketState(record.awaitable, EExternalCompletionTicketState::ACTIVE);
             const auto claimed = ticketState(record.awaitable, EExternalCompletionTicketState::CLAIMED);
-            if (!ticket.state.compare_exchange_strong(
-                    expected,
-                    claimed,
-                    std::memory_order_acq_rel,
-                    std::memory_order_acquire
-                ))
+            if (!ticket.state
+                     .compare_exchange_strong(expected, claimed, std::memory_order_acq_rel, std::memory_order_acquire))
             {
                 const auto generation = static_cast<std::uint32_t>(expected >> 32U);
-                const auto state = static_cast<EExternalCompletionTicketState>(
-                    static_cast<std::uint32_t>(expected)
-                );
-                const bool is_duplicate = generation == record.awaitable.generation &&
-                    state == EExternalCompletionTicketState::CLAIMED;
+                const auto state = static_cast<EExternalCompletionTicketState>(static_cast<std::uint32_t>(expected));
+                const bool is_duplicate =
+                    generation == record.awaitable.generation && state == EExternalCompletionTicketState::CLAIMED;
                 return lux::cxx::unexpected(
-                    is_duplicate
-                        ? EScriptAwaitableCompletionError::ALREADY_TERMINAL
-                        : EScriptAwaitableCompletionError::INVALID_ID
+                    is_duplicate ? EScriptAwaitableCompletionError::ALREADY_TERMINAL
+                                 : EScriptAwaitableCompletionError::INVALID_ID
                 );
             }
 
@@ -157,35 +145,35 @@ namespace lux::simulation::script::detail
             const auto expected_size = ticket.size.load(std::memory_order_relaxed);
             const bool expects_value = expected_type != lux::semantic::InvalidTypeId;
             const bool has_value = record.type != lux::semantic::InvalidTypeId;
-            const bool is_invalid_value = expects_value != has_value ||
+            const bool is_invalid_value =
+                expects_value != has_value ||
                 (expects_value && (expected_type != record.type || expected_size != record.size ||
-                    record.size > ScriptOwnedBytes::InlineCapacity));
+                                   record.size > ScriptOwnedBytes::InlineCapacity));
             const bool is_invalid_ready = record.state == EScriptAwaitableState::READY && is_invalid_value;
-            const bool is_invalid_failure = record.state != EScriptAwaitableState::READY &&
+            const bool is_invalid_failure =
+                record.state != EScriptAwaitableState::READY &&
                 (record.state != EScriptAwaitableState::FAILED || !record.error.valid() || has_value);
             if (is_invalid_ready || is_invalid_failure)
             {
-                ticket.state.compare_exchange_strong(expected = claimed, ticketState(
-                    record.awaitable,
-                    EExternalCompletionTicketState::ACTIVE
-                ));
+                ticket.state.compare_exchange_strong(
+                    expected = claimed,
+                    ticketState(record.awaitable, EExternalCompletionTicketState::ACTIVE)
+                );
                 return lux::cxx::unexpected(EScriptAwaitableCompletionError::INVALID_VALUE);
             }
 
             auto depth = count.load(std::memory_order_relaxed);
-            while (depth < capacity && !count.compare_exchange_weak(
-                       depth,
-                       depth + 1U,
-                       std::memory_order_acq_rel,
-                       std::memory_order_relaxed
-                   ))
-            {}
+            while (depth < capacity &&
+                   !count.compare_exchange_weak(depth, depth + 1U, std::memory_order_acq_rel, std::memory_order_relaxed)
+            )
+            {
+            }
             if (depth >= capacity)
             {
-                ticket.state.compare_exchange_strong(expected = claimed, ticketState(
-                    record.awaitable,
-                    EExternalCompletionTicketState::ACTIVE
-                ));
+                ticket.state.compare_exchange_strong(
+                    expected = claimed,
+                    ticketState(record.awaitable, EExternalCompletionTicketState::ACTIVE)
+                );
                 capacity_failures.fetch_add(1U, std::memory_order_relaxed);
                 return lux::cxx::unexpected(EScriptAwaitableCompletionError::RESUME_QUEUE_FULL);
             }
@@ -193,17 +181,16 @@ namespace lux::simulation::script::detail
             const auto position = enqueue_position.fetch_add(1U, std::memory_order_relaxed);
             auto* cell = std::addressof(cells[position % capacity]);
             while (cell->sequence.load(std::memory_order_acquire) != position)
-            {}
+            {
+            }
             cell->record = record;
             cell->sequence.store(position + 1U, std::memory_order_release);
             auto observed_high_water = high_water.load(std::memory_order_relaxed);
             const auto current_depth = depth + 1U;
-            while (current_depth > observed_high_water && !high_water.compare_exchange_weak(
-                       observed_high_water,
-                       current_depth,
-                       std::memory_order_relaxed
-                   ))
-            {}
+            while (current_depth > observed_high_water &&
+                   !high_water.compare_exchange_weak(observed_high_water, current_depth, std::memory_order_relaxed))
+            {
+            }
             return {};
         }
 

@@ -1,8 +1,8 @@
 #include <lux/engine/function/render/client/core/RenderErrorRegistry.hpp>
 #include <lux/cxx/core/Format.hpp>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
-#include <lux/engine/function/render/client/core/EngineSetSlot.hpp>       // DescriptorSlot 实参槽
-#include <lux/engine/description/LayoutContract.hpp>                      // LogicalResource / BindFrequency 实参槽
+#include <lux/engine/function/render/client/core/EngineSetSlot.hpp> // DescriptorSlot 实参槽
+#include <lux/engine/description/LayoutContract.hpp>                // LogicalResource / BindFrequency 实参槽
 
 #include <string>
 
@@ -66,21 +66,21 @@ namespace lux::render
         {
             switch (static_cast<EDescriptorSetSlot>(value))
             {
-            case EDescriptorSetSlot::Scene:
+            case EDescriptorSetSlot::SCENE:
                 return "Scene";
-            case EDescriptorSetSlot::Instance:
+            case EDescriptorSetSlot::INSTANCE:
                 return "Instance";
-            case EDescriptorSetSlot::Texture:
+            case EDescriptorSetSlot::TEXTURE:
                 return "Texture";
-            case EDescriptorSetSlot::Light:
+            case EDescriptorSetSlot::LIGHT:
                 return "Light";
-            case EDescriptorSetSlot::Material:
+            case EDescriptorSetSlot::MATERIAL:
                 return "Material";
-            case EDescriptorSetSlot::Particle:
+            case EDescriptorSetSlot::PARTICLE:
                 return "Particle";
-            case EDescriptorSetSlot::Compute:
+            case EDescriptorSetSlot::COMPUTE:
                 return "Compute";
-            case EDescriptorSetSlot::VertexPool:
+            case EDescriptorSetSlot::VERTEX_POOL:
                 return "VertexPool";
             default:
                 return nullptr;
@@ -108,20 +108,20 @@ namespace lux::render
         {
             switch (kind)
             {
-            case EErrorArg::None:
+            case EErrorArg::NONE:
                 out += "<未使用>";
                 return;
 
-            case EErrorArg::Uint:
+            case EErrorArg::UINT:
                 out += std::to_string(value);
                 return;
 
-            case EErrorArg::Hex: {
+            case EErrorArg::HEX: {
                 out += lux::format("0x{:X}", value);
                 return;
             }
 
-            case EErrorArg::VkResult: {
+            case EErrorArg::VK_RESULT: {
                 const auto signed_value = static_cast<std::int32_t>(value);
                 if (const char* named = vkResultName(signed_value))
                     out += named;
@@ -130,19 +130,19 @@ namespace lux::render
                 return;
             }
 
-            case EErrorArg::VkFormat:
+            case EErrorArg::VK_FORMAT:
                 out += "VkFormat(";
                 out += std::to_string(value);
                 out += ')';
                 return;
 
-            case EErrorArg::BuiltinShader:
+            case EErrorArg::BUILTIN_SHADER:
                 out += "BuiltinShader(";
                 out += std::to_string(value);
                 out += ')';
                 return;
 
-            case EErrorArg::LogicalResource:
+            case EErrorArg::LOGICAL_RESOURCE:
                 // 名字连同它在契约里的规范位置一起展开 —— 消费侧据此可自行算出「本该在
                 // 哪个域槽的哪个 binding」,所以期望值不必随错误过线。
                 if (const rdesc::LogicalResourceDesc* res = rdesc::logicalResourceAt(value))
@@ -161,7 +161,7 @@ namespace lux::render
                 }
                 return;
 
-            case EErrorArg::DescriptorSlot:
+            case EErrorArg::DESCRIPTOR_SLOT:
                 if (const char* named = descriptorSlotName(value))
                     out += named;
                 else
@@ -171,25 +171,25 @@ namespace lux::render
                 }
                 return;
 
-            case EErrorArg::BindFrequency:
+            case EErrorArg::BIND_FREQUENCY:
                 if (const char* named = bindFrequencyName(value))
                     out += named;
                 else
                     out += std::to_string(value);
                 return;
 
-            case EErrorArg::GraphResource:
+            case EErrorArg::GRAPH_RESOURCE:
                 out += "resource#";
                 out += std::to_string(value);
                 return;
 
-            case EErrorArg::GraphPass:
+            case EErrorArg::GRAPH_PASS:
                 out += "pass#";
                 out += std::to_string(value);
                 return;
 
-            case EErrorArg::FeatureType: {
-                // 低 32 位而已(见 EErrorArg::FeatureType),渲染层没有 id→名字 的反查表
+            case EErrorArg::FEATURE_TYPE: {
+                // 低 32 位而已(见 EErrorArg::FEATURE_TYPE),渲染层没有 id→名字 的反查表
                 // ——注册表在 Renderer 那一侧。原样以十六进制给出,消费侧自行比对。
                 out += lux::format("feature:0x{:08X}", value);
                 return;

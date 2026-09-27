@@ -1,8 +1,6 @@
 #include <lux/engine/simulation/ecs/EcsCommandBuffer.hpp>
 
 #include <algorithm>
-#include <exception>
-#include <new>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -35,10 +33,9 @@ namespace lux::simulation::ecs
             Record& operator=(const Record&) = delete;
             Record(Record&& other) noexcept
                 : kind(other.kind), entity(other.entity), deferred(other.deferred), uses_deferred(other.uses_deferred),
-                  policy(other.policy), payload(std::exchange(other.payload, nullptr)),
-                  table(other.table), remove(other.remove)
-            {
-            }
+                  policy(other.policy), payload(std::exchange(other.payload, nullptr)), table(other.table),
+                  remove(other.remove)
+            {}
             Record& operator=(Record&& other) noexcept
             {
                 if (this == std::addressof(other))
@@ -181,8 +178,7 @@ namespace lux::simulation::ecs
         EEcsCommandPolicy policy
     ) noexcept
         : owner_(&owner), producer_(producer), generation_(generation), policy_(policy)
-    {
-    }
+    {}
 
     EcsCommandWriter::~EcsCommandWriter() noexcept
     {
@@ -192,8 +188,7 @@ namespace lux::simulation::ecs
     EcsCommandWriter::EcsCommandWriter(EcsCommandWriter&& other) noexcept
         : owner_(std::exchange(other.owner_, nullptr)), producer_(other.producer_), generation_(other.generation_),
           policy_(other.policy_)
-    {
-    }
+    {}
 
     EcsCommandWriter::operator bool() const noexcept
     {
@@ -205,8 +200,12 @@ namespace lux::simulation::ecs
         return owner_ != nullptr && owner_->canRecord(producer_, generation_, bytes, alignment);
     }
 
-    bool EcsCommandBuffer::canRecord(std::uint32_t producer, std::uint32_t generation,
-        std::size_t bytes, std::size_t alignment) const noexcept
+    bool EcsCommandBuffer::canRecord(
+        std::uint32_t producer,
+        std::uint32_t generation,
+        std::size_t bytes,
+        std::size_t alignment
+    ) const noexcept
     {
         if (!writerValid(producer, generation) || impl_->failed || alignment == 0U)
             return false;
@@ -274,15 +273,14 @@ namespace lux::simulation::ecs
         owner_ = nullptr;
     }
 
-    EcsCommandBuffer::EcsCommandBuffer() : impl_(std::make_unique<Impl>())
-    {
-    }
+    EcsCommandBuffer::EcsCommandBuffer() : impl_(std::make_unique<Impl>()) {}
     EcsCommandBuffer::~EcsCommandBuffer() = default;
     EcsCommandBuffer::EcsCommandBuffer(EcsCommandBuffer&&) noexcept = default;
     EcsCommandBuffer& EcsCommandBuffer::operator=(EcsCommandBuffer&&) noexcept = default;
 
-    lux::cxx::expected<void, EcsCommandFailure>
-    EcsCommandBuffer::prepare(std::span<const EcsCommandProducerCapacity> capacities) noexcept
+    lux::cxx::expected<void, EcsCommandFailure> EcsCommandBuffer::prepare(
+        std::span<const EcsCommandProducerCapacity> capacities
+    ) noexcept
     {
         for (std::size_t index{}; index < impl_->producers.size(); ++index)
         {
@@ -291,7 +289,6 @@ namespace lux::simulation::ecs
                 return lux::cxx::unexpected(EcsCommandFailure{EEcsCommandError::ACTIVE_WRITER, index});
             }
         }
-        try
         {
             impl_->nextGeneration();
             impl_->producers.resize(capacities.size());
@@ -301,18 +298,6 @@ namespace lux::simulation::ecs
             impl_->failure = {};
             return {};
         }
-        catch (const std::bad_alloc&)
-        {
-            impl_->failed = true;
-            impl_->failure = {EEcsCommandError::ALLOCATION_FAILURE};
-            return lux::cxx::unexpected(impl_->failure);
-        }
-        catch (const std::length_error&)
-        {
-            impl_->failed = true;
-            impl_->failure = {EEcsCommandError::ALLOCATION_FAILURE};
-            return lux::cxx::unexpected(impl_->failure);
-        }
     }
 
     void EcsCommandBuffer::reset() noexcept
@@ -320,8 +305,10 @@ namespace lux::simulation::ecs
         discardPending();
     }
 
-    lux::cxx::expected<EcsCommandWriter, EcsCommandFailure>
-    EcsCommandBuffer::begin(std::size_t producer, EEcsCommandPolicy policy) noexcept
+    lux::cxx::expected<EcsCommandWriter, EcsCommandFailure> EcsCommandBuffer::begin(
+        std::size_t producer,
+        EEcsCommandPolicy policy
+    ) noexcept
     {
         if (producer >= impl_->producers.size())
         {
@@ -356,9 +343,8 @@ namespace lux::simulation::ecs
 
     bool EcsCommandBuffer::failed() const noexcept
     {
-        return impl_->failed || std::ranges::any_of(impl_->producers, [](const auto& producer) noexcept {
-            return producer.failed;
-        });
+        return impl_->failed ||
+               std::ranges::any_of(impl_->producers, [](const auto& producer) noexcept { return producer.failed; });
     }
 
     std::optional<EcsCommandFailure> EcsCommandBuffer::producerFailure(std::size_t producer) const noexcept
@@ -467,7 +453,8 @@ namespace lux::simulation::ecs
         const bool is_wrong_deferred_producer = deferred.producer != producer;
         const bool is_wrong_deferred_generation = deferred.generation != generation;
         const bool is_invalid_deferred_ordinal = deferred.ordinal >= target.create_count;
-        const bool is_invalid_deferred_entity = uses_deferred &&
+        const bool is_invalid_deferred_entity =
+            uses_deferred &&
             (is_wrong_deferred_producer || is_wrong_deferred_generation || is_invalid_deferred_ordinal);
         if (is_invalid_deferred_entity)
         {
@@ -485,20 +472,10 @@ namespace lux::simulation::ecs
             fail(producer, generation, EEcsCommandError::CAPACITY_EXCEEDED);
             return false;
         }
-        try
         {
             table.move_construct(payload, source);
         }
-        catch (const std::bad_alloc&)
-        {
-            fail(producer, generation, EEcsCommandError::ALLOCATION_FAILURE);
-            return false;
-        }
-        catch (...)
-        {
-            fail(producer, generation, EEcsCommandError::COMPONENT_CONSTRUCTION_FAILURE);
-            return false;
-        }
+
         Impl::Record record;
         record.kind = Impl::EKind::EMPLACE;
         record.policy = target.policy;
@@ -555,7 +532,7 @@ namespace lux::simulation::ecs
     bool EcsCommandBuffer::writerValid(std::uint32_t producer, std::uint32_t generation) const noexcept
     {
         return generation == impl_->generation && producer < impl_->producers.size() &&
-            impl_->producers[producer].active && !impl_->producers[producer].failed && !impl_->failed;
+               impl_->producers[producer].active && !impl_->producers[producer].failed && !impl_->failed;
     }
 
     void EcsCommandBuffer::end(std::uint32_t producer, std::uint32_t generation) noexcept
@@ -564,8 +541,10 @@ namespace lux::simulation::ecs
             impl_->producers[producer].active = false;
     }
 
-    lux::cxx::expected<void, EcsCommandFailure>
-    applyEcsCommands(Registry& registry, EcsCommandBuffer& commands) noexcept
+    lux::cxx::expected<void, EcsCommandFailure> applyEcsCommands(
+        Registry& registry,
+        EcsCommandBuffer& commands
+    ) noexcept
     {
         if (commands.impl_->applying)
             return lux::cxx::unexpected(EcsCommandFailure{EEcsCommandError::ACTIVE_WRITER});
@@ -631,7 +610,6 @@ namespace lux::simulation::ecs
             for (std::size_t command_index{}; command_index < producer.committed_records.size(); ++command_index)
             {
                 auto& record = producer.committed_records[command_index];
-                try
                 {
                     Entity target = record.entity;
                     if (record.kind == EcsCommandBuffer::Impl::EKind::CREATE)
@@ -648,7 +626,8 @@ namespace lux::simulation::ecs
                             const EcsCommandFailure failure{
                                 EEcsCommandError::INVALID_DEFERRED_ENTITY,
                                 producer_index,
-                                command_index};
+                                command_index
+                            };
                             commands.discardPending();
                             return lux::cxx::unexpected(failure);
                         }
@@ -659,7 +638,8 @@ namespace lux::simulation::ecs
                         const EcsCommandFailure failure{
                             EEcsCommandError::INVALID_ENTITY,
                             producer_index,
-                            command_index};
+                            command_index
+                        };
                         if (record.policy == EEcsCommandPolicy::CONTINUE_ON_INVALID_TARGET)
                         {
                             ++commands.impl_->rejected_at_commit;
@@ -678,7 +658,10 @@ namespace lux::simulation::ecs
                         if (record.table.applicable && !record.table.applicable(registry, target))
                         {
                             const EcsCommandFailure failure{
-                                record.table.inapplicable_error, producer_index, command_index};
+                                record.table.inapplicable_error,
+                                producer_index,
+                                command_index
+                            };
                             if (record.policy == EEcsCommandPolicy::CONTINUE_ON_INVALID_TARGET)
                             {
                                 ++commands.impl_->rejected_at_commit;
@@ -696,24 +679,6 @@ namespace lux::simulation::ecs
                     case EcsCommandBuffer::Impl::EKind::CREATE:
                         break;
                     }
-                }
-                catch (const std::bad_alloc&)
-                {
-                    const EcsCommandFailure failure{
-                        EEcsCommandError::ALLOCATION_FAILURE,
-                        producer_index,
-                        command_index};
-                    commands.discardPending();
-                    return lux::cxx::unexpected(failure);
-                }
-                catch (...)
-                {
-                    const EcsCommandFailure failure{
-                        EEcsCommandError::COMPONENT_CONSTRUCTION_FAILURE,
-                        producer_index,
-                        command_index};
-                    commands.discardPending();
-                    return lux::cxx::unexpected(failure);
                 }
             }
         }

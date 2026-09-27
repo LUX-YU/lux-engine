@@ -180,7 +180,7 @@ namespace lux::render
         for (uint32_t b = 0; b < bucket_count; ++b)
         {
             const auto desc = mat_res->variantBucket(b);
-            if (desc.family != ELightingTechnique::Graph)
+            if (desc.family != ELightingTechnique::GRAPH)
                 continue;
             const ShaderHandle h = use_gbuffer ? desc.graph_gbuffer_shader : desc.graph_forward_shader;
             if (h.isNull())
@@ -333,8 +333,10 @@ namespace lux::render
     //  Initialisation
     // =========================================================================
 
-    Expected<void>
-    GpuDrivenMeshFeatureBase::initCommon(ShaderHandle view_cull_shader_id, GpuDrivenMeshExtFlags extension_flags)
+    Expected<void> GpuDrivenMeshFeatureBase::initCommon(
+        ShaderHandle view_cull_shader_id,
+        GpuDrivenMeshExtFlags extension_flags
+    )
     {
         auto& ctx = renderContext();
         device_ = ctx.deviceContext().logicalDevice();
@@ -362,7 +364,8 @@ namespace lux::render
             const VkPushConstantRange pc{
                 VK_SHADER_STAGE_COMPUTE_BIT,
                 0,
-                static_cast<uint32_t>(sizeof(MeshCullPushConstants))};
+                static_cast<uint32_t>(sizeof(MeshCullPushConstants))
+            };
             const std::array pcs{pc};
             std::string debug_name = std::string(name()) + "CullLayout";
 
@@ -415,8 +418,10 @@ namespace lux::render
         return {};
     }
 
-    Expected<void>
-    GpuDrivenMeshFeatureBase::initCompactPipeline(ShaderHandle compact_shader_id, std::string_view debug_name)
+    Expected<void> GpuDrivenMeshFeatureBase::initCompactPipeline(
+        ShaderHandle compact_shader_id,
+        std::string_view debug_name
+    )
     {
         auto& ctx = renderContext();
         auto& shaders = ctx.globalRegistry().must<ShaderResources>();
@@ -432,8 +437,7 @@ namespace lux::render
             .set_layouts = layouts,
             .push_constants = pcs,
             .debug_name = layout_name.c_str(),
-        }
-        );
+        });
         if (!pl) // propagate layout-creation failure, don't .value()-throw
             return lux::cxx::unexpected(pl.error());
         compact_pipeline_ = ctx.pipelineManager().registerComputePipeline(compact_shader->module, pl.value(), {});
@@ -470,8 +474,7 @@ namespace lux::render
                     &mdc_count
                 );
                 vkCmdDispatch(pctx.cmd, (mdc_count + 63u) / 64u, 1u, 1u);
-            }
-            )
+            })
             .setKernel(
                 "MdcCompact",
                 makeKernelConfig(MdcCompactKernelConfig{
@@ -524,8 +527,7 @@ namespace lux::render
         const auto layout_id = ds.registerLayout({
             .bindings = bindings,
             .debug_name = std::string(name()) + "_CullLayout",
-        }
-        );
+        });
         cull_set_layout_ = ds.layout(layout_id);
     }
 
@@ -830,16 +832,16 @@ namespace lux::render
     {
         switch (phase)
         {
-        case ECoreRenderPhase::Depth:
-            return static_cast<PassMask>(eDepthPrepass);
-        case ECoreRenderPhase::GBuffer:
-            return static_cast<PassMask>(eGBuffer);
-        case ECoreRenderPhase::ForwardOpaque:
-            return static_cast<PassMask>(eBasePass);
-        case ECoreRenderPhase::ForwardTrans:
-            return static_cast<PassMask>(eTransparent);
-        case ECoreRenderPhase::Shadow:
-            return static_cast<PassMask>(eShadow);
+        case ECoreRenderPhase::DEPTH:
+            return static_cast<PassMask>(EPassBit::PASS_DEPTH_PREPASS);
+        case ECoreRenderPhase::G_BUFFER:
+            return static_cast<PassMask>(EPassBit::PASS_G_BUFFER);
+        case ECoreRenderPhase::FORWARD_OPAQUE:
+            return static_cast<PassMask>(EPassBit::PASS_BASE);
+        case ECoreRenderPhase::FORWARD_TRANS:
+            return static_cast<PassMask>(EPassBit::PASS_TRANSPARENT);
+        case ECoreRenderPhase::SHADOW:
+            return static_cast<PassMask>(EPassBit::PASS_SHADOW);
         default:
             return 0u;
         }
@@ -852,8 +854,8 @@ namespace lux::render
         // that registered skinned pipeline variants (ForwardMeshFeature) draw
         // them with the _vp pipeline; those that didn't yet fall back to the
         // static variant (bind pose) — harmless, no crash.
-        return (1u << static_cast<uint32_t>(EGeometryKind::StaticMesh)) |
-               (1u << static_cast<uint32_t>(EGeometryKind::SkinnedMesh));
+        return (1u << static_cast<uint32_t>(EGeometryKind::STATIC_MESH)) |
+               (1u << static_cast<uint32_t>(EGeometryKind::SKINNED_MESH));
     }
 
 } // namespace lux::render

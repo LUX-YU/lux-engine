@@ -2,9 +2,7 @@
 
 namespace lux::events
 {
-    DomainEvents::DomainEvents() noexcept : owner_thread_(std::this_thread::get_id())
-    {
-    }
+    DomainEvents::DomainEvents() noexcept : owner_thread_(std::this_thread::get_id()) {}
 
     DomainEvents::~DomainEvents()
     {

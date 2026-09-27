@@ -23,7 +23,8 @@ namespace lux::render
         auto& shaders = context.globalRegistry().must<ShaderResources>();
         const std::array requests{
             PipelineStageRequest{EBuiltinShader::TONEMAP_VERT, config_.vertex_shader},
-            PipelineStageRequest{EBuiltinShader::FOG_FRAG, config_.fragment_shader}};
+            PipelineStageRequest{EBuiltinShader::FOG_FRAG, config_.fragment_shader}
+        };
         auto stages = preparePipelineStages(shaders, requests);
         if (!stages)
             return lux::cxx::unexpected(stages.error());
@@ -66,7 +67,7 @@ namespace lux::render
     void FogFeature::addPasses(RGBuilder& builder)
     {
         auto hdr = builder.referenceTexture("LitColor");
-        auto depth = builder.referenceTexture(targetSlotName(TargetSlot::LINEAR_DEPTH));
+        auto depth = builder.referenceTexture(targetSlotName(ETargetSlot::LINEAR_DEPTH));
         RGTextureDescription description =
             RGTextureDescription::Relative(1.0f, 1.0f, renderScene().pipelineConfig().lit_color_format);
         description.usage = static_cast<ERGTextureUsageFlags>(ERGTextureUsageBits::COLOR_ATTACHMENT) |
@@ -76,11 +77,8 @@ namespace lux::render
             "FogInputDS",
             input_layout_,
             {
-                {0,
-                 EDescriptorType::COMBINED_IMAGE_SAMPLER,
-                 hdr,
-                 color_sampler_,
-                 EImageLayout::SHADER_READ_ONLY_OPTIMAL},
+                {0, EDescriptorType::COMBINED_IMAGE_SAMPLER, hdr, color_sampler_, EImageLayout::SHADER_READ_ONLY_OPTIMAL
+                },
                 {1,
                  EDescriptorType::COMBINED_IMAGE_SAMPLER,
                  depth,
@@ -105,9 +103,8 @@ namespace lux::render
                     &params_
                 );
                 vkCmdDraw(record.cmd, 3u, 1u, 0u, 0u);
-            }
-            )
+            })
             .setKernel("FogCompositePass")
-            .stage(ERenderStage::PostProcess);
+            .stage(ERenderStage::POST_PROCESS_STAGE);
     }
 } // namespace lux::render

@@ -39,7 +39,7 @@ namespace lux::render
     class RenderProgramSession;
     class RenderUploadSession;
     enum class ERenderUploadSubmitError : std::uint8_t;
-    template <typename T> class RenderRequest;
+    template <typename T> class TRenderRequest;
 
     // =========================================================================
     //  Material command payloads + reply (moved out of the core RenderProtocol.hpp —
@@ -63,10 +63,12 @@ namespace lux::render
         name = UploadGraphMaterial,
         method = uploadGraphMaterial,
         reply = MaterialUploadedReply,
-        manual_client = true) UploadGraphMaterialPayload
+        manual_client = true
+    ) UploadGraphMaterialPayload
     {
-        ExternalDataRef graph_desc{};        // points to const GraphMaterialData
-        ShaderHandle graph_gbuffer_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){}; // R1: per-material baked frags → own bucket/PSO
+        ExternalDataRef graph_desc{}; // points to const GraphMaterialData
+        ShaderHandle graph_gbuffer_shader LUX_TYPE_MEMBER(skip_static = true)
+            LUX_NO_MEMBER(){}; // R1: per-material baked frags → own bucket/PSO
         ShaderHandle graph_forward_shader LUX_TYPE_MEMBER(skip_static = true) LUX_NO_MEMBER(){};
         uint64_t shader_key{0};
         uint32_t alpha_mode{0}; // rdesc::EAlphaMode: 0=Opaque,1=Mask,2=Blend
@@ -81,7 +83,8 @@ namespace lux::render
         kind = blob,
         name = ModifyGraphMaterial,
         method = modifyGraphMaterial,
-        opcode = resource) ModifyGraphMaterialPayload
+        opcode = resource
+    ) ModifyGraphMaterialPayload
     {
         RMaterialHandle handle{};
         LUX_OP_BLOB() BlobRef graph_desc {}; // GraphMaterialData copied into the payload blob
@@ -102,10 +105,9 @@ namespace lux::render
         id = lux.render.material.v1,
         display = StandardMaterial,
         feature = StandardMaterialFeature,
-        feature_header = lux / engine / render / renderer / features / material /
-                         StandardMaterialFeature.hpp) MaterialCommTag
-    {
-    };
+        feature_header = lux / engine / render / renderer / features / material / StandardMaterialFeature.hpp
+    ) MaterialCommTag
+    {};
     static_assert(std::is_trivially_copyable_v<MaterialCommTag>);
 
     class MaterialProxy; // 生成于 comm/genops/MaterialOperation.ops.hpp
@@ -117,17 +119,19 @@ namespace lux::render
     //    A generic borrowed attachment must outlive server consumption; a reply
     //    is the safe completion proxy, not submitFrame() returning.
     //    连带 shader_key 稳定哈希;modify:GraphMaterialData 逐帧拷贝进 blob。
-    [[nodiscard]] LUX_RENDER_FEATURE_CLIENT_PUBLIC lux::cxx::expected<RenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError>
-    uploadGraphMaterial(MaterialUploadClient client, const GraphMaterialData& data);
-    [[nodiscard]] LUX_RENDER_FEATURE_CLIENT_PUBLIC lux::cxx::expected<RenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError>
-    uploadGraphMaterial(
-        MaterialUploadClient client,
-        const GraphMaterialData& data,
-        ShaderHandle gbuffer_shader,
-        ShaderHandle forward_shader,
-        std::uint32_t alpha_mode = 0,
-        bool double_sided = false
-    );
+    [[nodiscard]] LUX_RENDER_FEATURE_CLIENT_PUBLIC lux::cxx::
+        expected<TRenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError>
+        uploadGraphMaterial(MaterialUploadClient client, const GraphMaterialData& data);
+    [[nodiscard]] LUX_RENDER_FEATURE_CLIENT_PUBLIC lux::cxx::
+        expected<TRenderRequest<MaterialUploadedReply>, ERenderUploadSubmitError>
+        uploadGraphMaterial(
+            MaterialUploadClient client,
+            const GraphMaterialData& data,
+            ShaderHandle gbuffer_shader,
+            ShaderHandle forward_shader,
+            std::uint32_t alpha_mode = 0,
+            bool double_sided = false
+        );
     [[nodiscard]] LUX_RENDER_FEATURE_CLIENT_PUBLIC lux::cxx::expected<void, ERenderUploadSubmitError>
     modifyGraphMaterial(MaterialUploadClient client, RMaterialHandle handle, const GraphMaterialData& data);
 

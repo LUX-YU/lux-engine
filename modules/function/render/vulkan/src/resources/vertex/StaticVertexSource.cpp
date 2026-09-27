@@ -14,8 +14,7 @@ namespace lux::render
         VertexLayoutId layout_id
     ) noexcept
         : meshes_(&meshes), vbo_segment_(vbo_segment), layout_id_(layout_id), pool_id_(~0u)
-    {
-    }
+    {}
 
     StaticVertexSource::~StaticVertexSource() = default;
 

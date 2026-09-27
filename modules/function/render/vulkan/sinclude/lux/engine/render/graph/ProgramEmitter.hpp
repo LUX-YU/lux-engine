@@ -58,7 +58,7 @@ namespace lux::render
             return static_cast<VkDeviceSize>(buf_desc->size);
         }
 
-        /// Emit a kernel-specific sub-command (EType::KernelCommand).
+        /// Emit a kernel-specific sub-command (EType::KERNEL_COMMAND).
         /// The command data is packed as: [KernelTypeId kernel_id, uint8_t sub_cmd, payload...].
         /// @return Command index (for DynamicPatch construction).
         uint32_t emitKernelCommand(KernelTypeId kernel_id, uint8_t sub_cmd, const void* payload, uint16_t payload_size)
@@ -86,7 +86,7 @@ namespace lux::render
                 program.command_data.insert(program.command_data.end(), p, p + payload_size);
             }
 
-            program.commands.push_back({ExecutionProgram::Command::EType::KernelCommand, offset, total});
+            program.commands.push_back({ExecutionProgram::Command::EType::KERNEL_COMMAND, offset, total});
             return static_cast<uint32_t>(program.commands.size() - 1);
         }
     };

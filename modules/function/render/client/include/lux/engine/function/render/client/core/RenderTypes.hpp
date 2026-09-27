@@ -74,7 +74,7 @@ namespace lux::render
     /// converts to VkFormat via vk_convert::toVk().
     enum class ETextureFormatHint : uint32_t
     {
-        Auto = 0,
+        AUTO = 0,
         RGBA8,   // R8G8B8A8_UNORM
         SRGBA8,  // R8G8B8A8_SRGB
         BGRA8,   // B8G8R8A8_UNORM
@@ -88,54 +88,54 @@ namespace lux::render
     /// vk_convert::toVk().
     struct SamplerDesc
     {
-        enum class Filter : uint8_t
+        enum class EFilter : uint8_t
         {
-            Nearest,
-            Linear
+            NEAREST,
+            LINEAR
         };
-        enum class MipmapMode : uint8_t
+        enum class EMipmapMode : uint8_t
         {
-            Nearest,
-            Linear
+            NEAREST,
+            LINEAR
         };
-        enum class AddressMode : uint8_t
+        enum class EAddressMode : uint8_t
         {
-            Repeat,
-            MirroredRepeat,
-            ClampToEdge,
-            ClampToBorder
+            REPEAT,
+            MIRRORED_REPEAT,
+            CLAMP_TO_EDGE,
+            CLAMP_TO_BORDER
         };
         /// Depth-comparison predicate. Only consulted when compare_enable is set.
-        enum class CompareOp : uint8_t
+        enum class ECompareOp : uint8_t
         {
-            Never,
-            Less,
-            Equal,
-            LessOrEqual,
-            Greater,
-            NotEqual,
-            GreaterOrEqual,
-            Always
+            NEVER,
+            LESS,
+            EQUAL,
+            LESS_OR_EQUAL,
+            GREATER,
+            NOT_EQUAL,
+            GREATER_OR_EQUAL,
+            ALWAYS
         };
         /// Value sampled outside the image when an address mode is ClampToBorder.
         /// The Float/Int split follows the sampled image's format class; picking
         /// the wrong one is a validation error, not a silent mismatch.
-        enum class BorderColor : uint8_t
+        enum class EBorderColor : uint8_t
         {
-            TransparentBlackFloat,
-            TransparentBlackInt,
-            OpaqueBlackFloat,
-            OpaqueBlackInt,
-            OpaqueWhiteFloat,
-            OpaqueWhiteInt
+            TRANSPARENT_BLACK_FLOAT,
+            TRANSPARENT_BLACK_INT,
+            OPAQUE_BLACK_FLOAT,
+            OPAQUE_BLACK_INT,
+            OPAQUE_WHITE_FLOAT,
+            OPAQUE_WHITE_INT
         };
 
-        Filter mag_filter{Filter::Linear};
-        Filter min_filter{Filter::Linear};
-        MipmapMode mipmap_mode{MipmapMode::Linear};
-        AddressMode address_u{AddressMode::Repeat};
-        AddressMode address_v{AddressMode::Repeat};
-        AddressMode address_w{AddressMode::Repeat};
+        EFilter mag_filter{EFilter::LINEAR};
+        EFilter min_filter{EFilter::LINEAR};
+        EMipmapMode mipmap_mode{EMipmapMode::LINEAR};
+        EAddressMode address_u{EAddressMode::REPEAT};
+        EAddressMode address_v{EAddressMode::REPEAT};
+        EAddressMode address_w{EAddressMode::REPEAT};
         float max_anisotropy{1.0f};
         bool anisotropy_enable{false};
         bool compare_enable{false};
@@ -145,11 +145,11 @@ namespace lux::render
         /// left compareOp zero-initialised and nothing could reach it. Shadow
         /// sampling through the cache was therefore impossible, and the three
         /// resource-side call sites hand-rolled their samplers instead.
-        CompareOp compare_op{CompareOp::Never};
+        ECompareOp compare_op{ECompareOp::NEVER};
         /// Ignored unless some address mode is ClampToBorder. Was hard-wired to
         /// OpaqueBlackInt in the conversion, which made the ClampToBorder enum
         /// value unusable for anything wanting a white border.
-        BorderColor border_color{BorderColor::OpaqueBlackInt};
+        EBorderColor border_color{EBorderColor::OPAQUE_BLACK_INT};
         bool unnormalized_coordinates{false};
         float min_lod{0.0f};
         float max_lod{1000.0f};
@@ -162,15 +162,15 @@ namespace lux::render
         [[nodiscard]] static SamplerDesc linearClamp() noexcept
         {
             SamplerDesc d{};
-            d.mipmap_mode = MipmapMode::Nearest;
-            d.address_u = d.address_v = d.address_w = AddressMode::ClampToEdge;
+            d.mipmap_mode = EMipmapMode::NEAREST;
+            d.address_u = d.address_v = d.address_w = EAddressMode::CLAMP_TO_EDGE;
             d.max_lod = 0.0f;
             return d;
         }
         [[nodiscard]] static SamplerDesc nearestClamp() noexcept
         {
             SamplerDesc d = linearClamp();
-            d.mag_filter = d.min_filter = Filter::Nearest;
+            d.mag_filter = d.min_filter = EFilter::NEAREST;
             return d;
         }
         /// HZB:textureLod 采任意 mip(max_lod 默认 1000.0f 即 Vulkan 的
@@ -189,10 +189,10 @@ namespace lux::render
         [[nodiscard]] static SamplerDesc shadowCompare() noexcept
         {
             SamplerDesc d = linearClamp();
-            d.address_u = d.address_v = d.address_w = AddressMode::ClampToBorder;
-            d.border_color = BorderColor::OpaqueWhiteFloat;
+            d.address_u = d.address_v = d.address_w = EAddressMode::CLAMP_TO_BORDER;
+            d.border_color = EBorderColor::OPAQUE_WHITE_FLOAT;
             d.compare_enable = true;
-            d.compare_op = CompareOp::LessOrEqual;
+            d.compare_op = ECompareOp::LESS_OR_EQUAL;
             return d;
         }
     };
@@ -343,7 +343,9 @@ namespace lux::render
     /// (ETC2 / ASTC variants); callers should mark the texture known-bad and
     /// skip dispatch. Centralized here so gameplay / test code no longer needs
     /// to know render's internal enum.
-    [[nodiscard]] LUX_FUNCTION_PUBLIC bool
-    toPixelFormat(lux::rdesc::ETexturePixelFormat src, EPixelFormat& dst) noexcept;
+    [[nodiscard]] LUX_FUNCTION_PUBLIC bool toPixelFormat(
+        lux::rdesc::ETexturePixelFormat src,
+        EPixelFormat& dst
+    ) noexcept;
 
 } // namespace lux::render

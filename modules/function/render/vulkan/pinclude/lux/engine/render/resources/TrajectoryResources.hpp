@@ -23,7 +23,7 @@
 
 namespace lux::render
 {
-    class TrajectoryResources final : public GPUResourceBase<TrajectoryResources, EGPUResourceType::Trajectory>
+    class TrajectoryResources final : public TGPUResourceBase<TrajectoryResources, EGPUResourceType::TRAJECTORY>
     // (此前还继承 IFrameService,但**一个钩子都没重写** —— 每帧被遍历到,
     //  执行的是基类空实现。纯死重量,已摘除;零行为变化。)
     {
@@ -112,7 +112,7 @@ namespace lux::render
             }
 
             TrajectoryHandle handle{trajectory_index, generations_[trajectory_index]};
-            pending_ops_.push_back({TrajOpKind::Upload, trajectory_index, {data.begin(), data.end()}});
+            pending_ops_.push_back({ETrajOpKind::UPLOAD, trajectory_index, {data.begin(), data.end()}});
             return handle;
         }
 
@@ -121,7 +121,7 @@ namespace lux::render
         {
             if (!isHandleAlive(trajectory))
                 return false;
-            pending_ops_.push_back({TrajOpKind::Append, trajectory.index, {data.begin(), data.end()}});
+            pending_ops_.push_back({ETrajOpKind::APPEND, trajectory.index, {data.begin(), data.end()}});
             return true;
         }
 
@@ -130,7 +130,7 @@ namespace lux::render
         {
             if (!isHandleAlive(trajectory))
                 return false;
-            pending_ops_.push_back({TrajOpKind::Clear, trajectory.index, {}});
+            pending_ops_.push_back({ETrajOpKind::CLEAR, trajectory.index, {}});
             return true;
         }
 
@@ -141,7 +141,7 @@ namespace lux::render
                 return false;
 
             pending_remove_flags_[trajectory.index] = 1u;
-            pending_ops_.push_back({TrajOpKind::Remove, trajectory.index, {}});
+            pending_ops_.push_back({ETrajOpKind::REMOVE, trajectory.index, {}});
             return true;
         }
 
@@ -150,7 +150,7 @@ namespace lux::render
         {
             if (!isHandleAlive(trajectory))
                 return false;
-            pending_ops_.push_back({TrajOpKind::Replace, trajectory.index, {data.begin(), data.end()}});
+            pending_ops_.push_back({ETrajOpKind::REPLACE, trajectory.index, {data.begin(), data.end()}});
             return true;
         }
 
@@ -199,11 +199,11 @@ namespace lux::render
                 const auto count = static_cast<uint32_t>(op.data.size());
                 switch (op.kind)
                 {
-                case TrajOpKind::Clear:
+                case ETrajOpKind::CLEAR:
                     global_buf_.clearTrajectory(op.trajectory_index);
                     break;
 
-                case TrajOpKind::Replace:
+                case ETrajOpKind::REPLACE:
                     // Atomic clear + re-upload (no flicker); clears even when empty.
                     global_buf_.clearTrajectory(op.trajectory_index);
                     if (count == 0)
@@ -214,7 +214,7 @@ namespace lux::render
                     global_buf_.upload(op.trajectory_index, std::span<const GpuTrajectoryVertex>(op.data), scheduler);
                     break;
 
-                case TrajOpKind::Upload:
+                case ETrajOpKind::UPLOAD:
                     if (count == 0)
                         break;
                     if (!global_buf_.ensureSlotCapacity(op.trajectory_index, count, scheduler))
@@ -222,7 +222,7 @@ namespace lux::render
                     global_buf_.upload(op.trajectory_index, std::span<const GpuTrajectoryVertex>(op.data), scheduler);
                     break;
 
-                case TrajOpKind::Append: {
+                case ETrajOpKind::APPEND: {
                     if (count == 0)
                         break;
                     auto existing = global_buf_.getSlot(op.trajectory_index);
@@ -230,27 +230,21 @@ namespace lux::render
                     {
                         if (!global_buf_.ensureSlotCapacity(op.trajectory_index, count, scheduler))
                             break; // growth failed — skip, don't write OOB (C-2)
-                        global_buf_.upload(
-                            op.trajectory_index,
-                            std::span<const GpuTrajectoryVertex>(op.data),
-                            scheduler
-                        );
+                        global_buf_
+                            .upload(op.trajectory_index, std::span<const GpuTrajectoryVertex>(op.data), scheduler);
                     }
                     else
                     {
                         const uint32_t needed = existing->count + count;
                         if (needed > existing->capacity)
                             global_buf_.ensureSlotCapacity(op.trajectory_index, needed, scheduler);
-                        global_buf_.append(
-                            op.trajectory_index,
-                            std::span<const GpuTrajectoryVertex>(op.data),
-                            scheduler
-                        );
+                        global_buf_
+                            .append(op.trajectory_index, std::span<const GpuTrajectoryVertex>(op.data), scheduler);
                     }
                     break;
                 }
 
-                case TrajOpKind::Remove:
+                case ETrajOpKind::REMOVE:
                     global_buf_.freeSlot(op.trajectory_index);
                     (void)live_trajectories_.erase(op.trajectory_index);
                     ++generations_[op.trajectory_index];
@@ -262,17 +256,17 @@ namespace lux::render
         }
 
     private:
-        enum class TrajOpKind : uint8_t
+        enum class ETrajOpKind : uint8_t
         {
-            Upload,
-            Append,
-            Clear,
-            Replace,
-            Remove
+            UPLOAD,
+            APPEND,
+            CLEAR,
+            REPLACE,
+            REMOVE
         };
         struct TrajOp
         {
-            TrajOpKind kind;
+            ETrajOpKind kind;
             uint32_t trajectory_index;
             std::vector<GpuTrajectoryVertex> data; // empty for Clear / Remove
         };

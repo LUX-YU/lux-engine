@@ -13,7 +13,8 @@ inline void registerRenderFeatures(lux::render::RenderRuntime &runtime,
     while (runtime.featureRegistrationStatus().state == EFeatureRegistrationState::REGISTERING)
     {
         std::size_t controls = 2, programs = 1;
-        assert(runtime.poll(8, controls, programs));
+        assert(runtime.collectCompletions(8));
+        assert(runtime.submitPending(controls, programs));
         assert(std::chrono::steady_clock::now() < deadline);
         std::this_thread::yield();
     }

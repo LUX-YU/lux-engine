@@ -3,6 +3,11 @@
 #include <lux/engine/editor/scene/SceneSource.hpp>
 #include <lux/engine/editor/scene/SceneObjectRef.hpp>
 
+namespace lux::editor::sessions
+{
+    class EditGate;
+}
+
 namespace lux::editor::scene
 {
     struct SceneChangeCursor final
@@ -90,10 +95,11 @@ namespace lux::editor::scene
 
     private:
         friend class SceneSession;
-        SceneReadView(const SceneSource& source, sessions::ContentStamp stamp) noexcept
-            : source_(&source), stamp_(stamp)
+        SceneReadView(const SceneSource& source, sessions::ContentStamp stamp, sessions::EditGate& gate) noexcept
+            : source_(&source), stamp_(stamp), gate_(gate)
         {}
         const SceneSource* source_;
         sessions::ContentStamp stamp_;
+        sessions::EditGate& gate_;
     };
 }

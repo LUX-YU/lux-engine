@@ -95,7 +95,7 @@ namespace lux::editor::scene
     {
         if (auto ready = impl_->available(); !ready)
             return lux::cxx::unexpected(ready.error());
-        return SceneReadView{impl_->source, currentContent()};
+        return SceneReadView{impl_->source, currentContent(), impl_->state.gate()};
     }
     SceneEditResult<SceneEditReceipt> SceneSession::apply(SceneEditBatch batch)
     {
@@ -130,9 +130,9 @@ namespace lux::editor::scene
     }
     SceneEditResult<SceneSnapshot> SceneSession::capture(SnapshotBudget budget) const
     {
-        if (auto ready = impl_->available(); !ready)
-            return lux::cxx::unexpected(ready.error());
-        return detail::SceneSourceAccess::capture(impl_->source, currentContent(), impl_->cursor(), budget);
+        return impl_->state.gate().withRead([&]() -> SceneEditResult<SceneSnapshot> {
+            return detail::SceneSourceAccess::capture(impl_->source, currentContent(), impl_->cursor(), budget);
+        });
     }
     SceneEditResult<SceneChangeSet> SceneSession::changesSince(SceneChangeCursor cursor) const
     {

@@ -1,4 +1,5 @@
 #include "SceneSourceData.hpp"
+#include <lux/engine/editor/sessions/SessionState.hpp>
 #include <lux/engine/editor/scene/FieldValue.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
 
@@ -367,10 +368,12 @@ namespace lux::editor::scene
         const ecs::ComponentSchemaId& schema
     ) const
     {
-        if (!contains(target))
-            return detail::rejected(ESceneEditError::STALE_OBJECT, target.object);
-        detail::SceneBudget budget{(std::numeric_limits<std::size_t>::max)()};
-        return detail::SceneSourceAccess::component(*source_->data_, target.object, schema, budget);
+        return gate_.withRead([&]() -> SceneEditResult<SceneComponentData> {
+            if (!contains(target))
+                return detail::rejected(ESceneEditError::STALE_OBJECT, target.object);
+            detail::SceneBudget budget{(std::numeric_limits<std::size_t>::max)()};
+            return detail::SceneSourceAccess::component(*source_->data_, target.object, schema, budget);
+        });
     }
     const SceneConfiguration& SceneReadView::configuration() const noexcept
     {

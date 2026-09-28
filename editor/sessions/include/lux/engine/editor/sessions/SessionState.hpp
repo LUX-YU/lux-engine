@@ -13,7 +13,8 @@ namespace lux::editor::sessions
         AVAILABLE,
         EDITING,
         CLOSING,
-        REBINDING
+        REBINDING,
+        READING
     };
     class EditGate;
     class LUX_EDIT_SESSIONS_PUBLIC EditScope final
@@ -50,7 +51,32 @@ namespace lux::editor::sessions
             return std::invoke(std::forward<Fn>(function), scope);
         }
 
+        // Protect the entire synchronous codec call, including callback-owned value destruction.
+        // The scope cannot escape and does not confer editing or persistence authority.
+        template <class Fn> [[nodiscard]] auto withRead(Fn&& function) -> std::invoke_result_t<Fn>
+        {
+            using Result = std::invoke_result_t<Fn>;
+            if (auto entered = enter(EEditAdmission::READING); !entered)
+                return Result{lux::cxx::unexpected(entered.error())};
+            ReadScope scope{*this};
+            return std::invoke(std::forward<Fn>(function));
+        }
+
     private:
+        class ReadScope final
+        {
+        public:
+            explicit ReadScope(EditGate& gate) noexcept : gate_(gate) {}
+            ~ReadScope() noexcept
+            {
+                gate_.leave(gate_.id_, EEditAdmission::READING);
+            }
+            ReadScope(const ReadScope&) = delete;
+            ReadScope& operator=(const ReadScope&) = delete;
+
+        private:
+            EditGate& gate_;
+        };
         friend class EditScope;
         friend class SessionState;
         friend class SessionStore;

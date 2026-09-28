@@ -17,8 +17,8 @@ namespace lux::editor::scene::detail
     {
         const ecs::ComponentEntityResolver resolver{
             &identities,
-            [](const void* owner,
-               world::WorldObjectId id) noexcept -> lux::cxx::expected<ecs::Entity, ecs::ComponentDecodeFailure> {
+            [](const void* owner, world::WorldObjectId id) noexcept 
+            -> lux::cxx::expected<ecs::Entity, ecs::ComponentDecodeFailure> {
                 if (!id.valid())
                     return ecs::NullEntity;
                 const auto entity = static_cast<const ecs::WorldEntityMap*>(owner)->entity(id);
@@ -314,8 +314,15 @@ namespace lux::editor::scene::detail
                                     );
                                     if (value == row->components.end())
                                         return rejected(ESceneEditError::INVALID_COMPONENT);
-                                    if (!source.schemas.find(value->schema))
+                                    const auto* schema = source.schemas.find(value->schema);
+                                    if (!schema)
                                         return rejected(ESceneEditError::UNKNOWN_REFERENCE);
+                                    // Removal ends this component's staged lifetime. A later add/field starts
+                                    // from its new payload, never from the removed component's scratch value.
+                                    std::erase_if(result.fields, [&](const auto& field) {
+                                        return field.object == target.object && field.before.schema == schema->id;
+                                    });
+                                    schema->operations.erase(scratch, entity);
                                     row->components.erase(value);
                                 }
                                 else if constexpr (std::same_as<Edit, SceneReparentObject>)

@@ -340,6 +340,80 @@ namespace
         );
     }
 
+    void mixedComponents(int scenario)
+    {
+        Fixture f;
+        f.create("mixed");
+        f.create("other");
+        const auto id = object("mixed");
+        const auto schema = ecs::componentSchemaId("lux.ecs.Transform3D");
+        const auto before = take(f.session->capture());
+        const auto baseline = f.session->describe();
+        const auto history_before = take(detail::SceneSessionAccess::data(*f.session).history->view()).snapshot;
+        ecs::Transform3D replacement;
+        replacement.translation = Eigen::Vector3d{8, 9, 10};
+        replacement.scale = Eigen::Vector3d{2, 3, 4};
+        const auto encoded = take(encodeSceneValue(replacement, f.metadata, ecs::WorldEntityMap{}, 4096));
+        auto batch = f.batch("ordered component lifetime");
+        batch.edits.push_back(f.translation(object("other"), 42));
+        batch.edits.push_back(f.translation(id, 1));
+        batch.edits.push_back(SceneRemoveComponent{{f.ref(id), schema, {}}});
+        if (scenario != 2 && scenario != 4)
+            batch.edits.push_back(SceneAddComponent{f.ref(id), encoded});
+        if (scenario == 3 || scenario == 4)
+        {
+            batch.edits.push_back(SceneSetField::make<ecs::Transform3D>(
+                {f.ref(id), schema, "scale"}, Eigen::Vector3d{3, 4, 5}
+            ));
+            batch.edits.push_back(SceneSetField::make<ecs::Transform3D>(
+                {f.ref(id), schema, "scale"}, Eigen::Vector3d{5, 6, 7}
+            ));
+            replacement.scale = Eigen::Vector3d{5, 6, 7};
+        }
+        auto result = f.session->apply(std::move(batch));
+        std::printf("R02-0%d apply=%d error=%u\n", scenario, bool(result),
+                    result ? 0u : static_cast<unsigned>(result.error().code));
+        std::fflush(stdout);
+        if (scenario == 4)
+        {
+            assert(!result && result.error().code == ESceneEditError::INVALID_COMPONENT);
+            const auto after = take(f.session->capture());
+            assert(std::ranges::equal(after.objects(), before.objects()));
+            assert(after.cursor() == before.cursor());
+            const auto equal_asset = []<class T>(const std::shared_ptr<const T>& a, const std::shared_ptr<const T>& b) {
+                return take(asset::TAssetSerDeser<T>::encode(*a, asset::AssetEncodeLimits{1024 * 1024})) ==
+                       take(asset::TAssetSerDeser<T>::encode(*b, asset::AssetEncodeLimits{1024 * 1024}));
+            };
+            assert(equal_asset(after.configuration().scene, before.configuration().scene));
+            assert(equal_asset(after.configuration().world, before.configuration().world));
+            assert(equal_asset(after.configuration().simulation, before.configuration().simulation));
+            const auto history_after = take(detail::SceneSessionAccess::data(*f.session).history->view()).snapshot;
+            assert(history_after.cursor == history_before.cursor);
+            assert(history_after.entry_count == history_before.entry_count);
+            assert(f.session->describe().current == baseline.current);
+            assert(f.session->describe().observed == baseline.observed);
+            assert(f.session->describe().dirty == baseline.dirty);
+            return;
+        }
+        assert(result && result->effect == editing::EEditEffect::CHANGE);
+        const auto value = take(f.session->read()).component(f.ref(id), schema);
+        const auto expected = take(encodeSceneValue(replacement, f.metadata, ecs::WorldEntityMap{}, 4096));
+        if (scenario == 2)
+            assert(!value && value.error().code == ESceneEditError::INVALID_COMPONENT);
+        else
+        {
+            std::printf("complete replacement payload preserved=%d\n", bool(value && *value == expected));
+            std::fflush(stdout);
+            assert(value && *value == expected);
+        }
+        const auto after = take(f.session->capture());
+        assert(f.session->undo());
+        assert(f.session->describe().current == baseline.current);
+        assert(std::ranges::equal(take(f.session->capture()).objects(), before.objects()));
+        assert(f.session->redo());
+        assert(std::ranges::equal(take(f.session->capture()).objects(), after.objects()));
+    }
+
     void identity()
     {
         Fixture a, b{{}, "different-root"};
@@ -401,6 +475,7 @@ namespace
 }
 
 void pluginSnapshot();
+void codecReadRegression(int scenario);
 
 int main(int argc, char** argv)
 {
@@ -415,6 +490,10 @@ int main(int argc, char** argv)
         changes();
     else if (test == "plugin")
         pluginSnapshot();
+    else if (test.starts_with("mixed-"))
+        mixedComponents(test.back() - '0');
+    else if (test.starts_with("read-"))
+        codecReadRegression(test.back() - '0');
     else
         return 2;
 }

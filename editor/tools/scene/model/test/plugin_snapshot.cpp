@@ -2,7 +2,10 @@
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
-#include "../src/SceneSessionData.hpp"
+#include "../src/PreparedSceneReload.hpp"
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <functional>
+#include <stdexcept>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -20,6 +23,9 @@ namespace
     std::size_t deleted{};
     bool released_early{};
     std::size_t decoded_nodes{};
+    std::function<void()> encoding_hook;
+    bool encode_error{};
+    std::function<void()> capture_release_hook;
     using namespace lux;
     using namespace lux::editor;
     using namespace lux::editor::scene;
@@ -31,12 +37,22 @@ namespace
         {
             std::shared_ptr<const void> code;
             Payload value;
+            Captured(std::shared_ptr<const void> lease, Payload payload)
+                : code(std::move(lease)), value(std::move(payload))
+            {}
+            ~Captured()
+            {
+                if (auto hook = std::exchange(capture_release_hook, {}))
+                    hook();
+            }
         };
-        auto value = std::make_shared<const Captured>(Captured{std::move(code), *static_cast<const Payload*>(raw)});
+        auto value = std::make_shared<const Captured>(std::move(code), *static_cast<const Payload*>(raw));
         return {
             value,
             [](const void* raw, const ecs::WorldEntityMap&, std::size_t limit) -> ecs::ComponentEncodeResult {
-                if (limit < sizeof(int))
+                if (auto hook = std::exchange(encoding_hook, {}))
+                    hook();
+                if (encode_error || limit < sizeof(int))
                     return cxx::unexpected(
                         serialization::SerializationFailure{serialization::ESerializationError::INVALID_VALUE}
                     );
@@ -156,4 +172,154 @@ void pluginSnapshot()
     snapshot.reset();
     assert(unloaded.expired() && !released_early);
     std::puts("X02-03/Q11 deep encoded snapshot isolates shared plugin node; deleters precede code release PASS");
+}
+
+
+void codecReadRegression(int scenario)
+{
+    const auto take = []<class T>(T result) {
+        assert(result);
+        return std::move(*result);
+    };
+    std::vector values{schema(std::make_shared<int>(42))};
+    for (const auto& component : ecs::transformComponentSchemas())
+        if (component.cpp_type == cxx::typeToken<ecs::Transform3D>())
+            values.push_back(component);
+    auto metadata = take(ecs::ComponentSchemaSet::build(std::move(values)));
+    const asset::AssetId root{*uuids::uuid::from_string("11111111-2222-3333-4444-555555555555")};
+    const std::array ids{
+        world::worldDataSchemaId("test.plugin.node"), world::worldDataSchemaId("lux.ecs.Transform3D")
+    };
+    auto simulation = take(std::move(simulation::SimulationDescriptionBuilder{}).build());
+    auto description = take(std::move(lux::scene::SceneDescriptionBuilder{}).buildResolved());
+    auto package = take(lux::scene::createScenePackage(
+        root, "codec reentry", ids,
+        std::make_shared<const simulation::SimulationDescription>(std::move(simulation)), description
+    ));
+    sessions::SessionStore store{2};
+    auto reservation = take(store.reserve<SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
+    auto candidate = take(SceneSession::create(
+        reservation.id(), sessions::BoundSource{root, "codec.scene"}, take(SceneSource::create(package, metadata))
+    ));
+    auto& session = *candidate;
+    assert(store.prepare(reservation, candidate) && store.publish(reservation));
+    const world::WorldObjectId plugin{root.uuid()};
+    const world::WorldObjectId spatial{uuids::uuid_name_generator(root.uuid())("spatial")};
+    const auto plugin_schema = ecs::componentSchemaId("test.plugin.node");
+    const auto transform_schema = ecs::componentSchemaId("lux.ecs.Transform3D");
+    std::vector<std::byte> bytes(sizeof(int));
+    const int value = 7;
+    std::memcpy(bytes.data(), &value, sizeof(value));
+    SceneEditBatch create{session.describe().current, "create codec test", {}};
+    create.edits.push_back(SceneCreateObject{{plugin, {0}, {{plugin_schema, 1, bytes}}}});
+    create.edits.push_back(SceneCreateObject{{spatial, {0}, {
+        take(encodeSceneValue(ecs::Transform3D{}, metadata, ecs::WorldEntityMap{}, 4096))
+    }}});
+    assert(session.apply(std::move(create)));
+    const auto baseline = session.describe();
+    const auto frozen = take(session.capture());
+    const auto ref = [&](world::WorldObjectId id) {
+        return SceneObjectRef{baseline.id, baseline.current.state.history, id};
+    };
+    const auto edit = [&] {
+        SceneEditBatch batch{session.describe().current, "nested field", {}};
+        batch.edits.push_back(SceneSetField::make<ecs::Transform3D>(
+            {ref(spatial), transform_schema, "translation"}, Eigen::Vector3d{9, 8, 7}
+        ));
+        return session.apply(std::move(batch));
+    };
+    const auto busy = [](const auto& result) {
+        return !result && result.error().code == ESceneEditError::SESSION &&
+               result.error().session == sessions::ESessionError::BUSY;
+    };
+    const auto unchanged = [&] {
+        const auto info = session.describe();
+        assert(info.current == baseline.current && info.observed == baseline.observed && info.dirty == baseline.dirty);
+        assert(info.admission == sessions::EEditAdmission::AVAILABLE);
+        const auto current = take(session.capture());
+        assert(current.cursor() == frozen.cursor());
+        assert(std::ranges::equal(current.objects(), frozen.objects()));
+    };
+    if (scenario == 5 || scenario == 8)
+    {
+        bool rejected{};
+        encoding_hook = [&] {
+            auto nested = edit();
+            rejected = busy(nested);
+            std::printf("R02-0%d nested_apply=%d error=%u session_error=%u\n", scenario, bool(nested),
+                        nested ? 0u : static_cast<unsigned>(nested.error().code),
+                        nested ? 0u : static_cast<unsigned>(nested.error().session));
+        };
+        if (scenario == 5)
+        {
+            auto snapshot = take(session.capture());
+            std::printf("snapshot_stamp_unchanged=%d live_stamp_unchanged=%d snapshot_payload_unchanged=%d\n",
+                        snapshot.content() == baseline.current, session.describe().current == baseline.current,
+                        std::ranges::equal(snapshot.objects(), frozen.objects()));
+            std::fflush(stdout);
+            assert(rejected);
+            assert(snapshot.content() == baseline.current && snapshot.cursor() == frozen.cursor());
+            assert(std::ranges::equal(snapshot.objects(), frozen.objects()));
+        }
+        else
+        {
+            const auto component = take(take(session.read()).component(ref(plugin), plugin_schema));
+            std::fflush(stdout);
+            assert(rejected && component.bytes == bytes);
+        }
+        unchanged();
+        bool release_rejected{};
+        capture_release_hook = [&] { release_rejected = busy(edit()); };
+        assert(session.capture());
+        assert(release_rejected);
+        unchanged();
+        assert(edit());
+    }
+    else if (scenario == 6)
+    {
+        encode_error = true;
+        auto failure = session.capture();
+        auto component_failure = take(session.read()).component(ref(plugin), plugin_schema);
+        encode_error = false;
+        assert(!failure && failure.error().code == ESceneEditError::CODEC);
+        assert(!component_failure && component_failure.error().code == ESceneEditError::CODEC);
+        unchanged();
+        encoding_hook = [] { throw std::runtime_error("test codec"); };
+        bool caught{};
+        try { (void)session.capture(); }
+        catch (const std::runtime_error&) { caught = true; }
+        assert(caught);
+        unchanged();
+        encoding_hook = [] { throw std::runtime_error("test component codec"); };
+        caught = false;
+        try { (void)take(session.read()).component(ref(plugin), plugin_schema); }
+        catch (const std::runtime_error&) { caught = true; }
+        assert(caught);
+        unchanged();
+        assert(edit());
+    }
+    else if (scenario == 7)
+    {
+        auto reload = take(detail::PreparedSceneReload::prepare(session, take(SceneSource::create(package, metadata))));
+        encoding_hook = [&] {
+            auto close = store.prepareClose(baseline.current);
+            assert(!close && close.error() == sessions::ESessionError::BUSY);
+            auto& state = detail::SceneSessionAccess::data(session).state;
+            auto binding = state.prepareBindingChange(baseline.current, baseline.current);
+            assert(!binding && binding.error() == sessions::ESessionError::BUSY);
+            assert(busy(session.undo()) && busy(session.redo()));
+            assert(busy(reload.adopt(session)));
+        };
+        assert(session.capture());
+        unchanged();
+        const auto borrowed = take(session.read());
+        {
+            auto close = take(store.prepareClose(baseline.current));
+            assert(!session.capture());
+            assert(busy(borrowed.component(ref(plugin), plugin_schema)));
+        }
+        assert(reload.adopt(session));
+        assert(session.describe().current.state.history != baseline.current.state.history);
+    }
+    std::printf("R02-0%d codec read regression PASS\n", scenario);
 }

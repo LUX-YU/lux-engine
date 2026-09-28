@@ -1,0 +1,1 @@
+Assertion failed: !close && close.error() == sessions::ESessionError::BUSY, file E:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\model\test\plugin_snapshot.cpp, line 290

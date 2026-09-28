@@ -1,0 +1,3 @@
+R02-05 nested_apply=0 error=17 session_error=7
+snapshot_stamp_unchanged=1 live_stamp_unchanged=1 snapshot_payload_unchanged=1
+R02-05 codec read regression PASS

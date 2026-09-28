@@ -1,0 +1,39 @@
+{
+  "status": "PASS",
+  "implementation_sha": "5d266dfa29877d4e226ac7d04ea38d55e4f3d86d",
+  "moves": [
+    [
+      "editor/history",
+      "editor/editing/history"
+    ],
+    [
+      "editor/sessions",
+      "editor/editing/sessions"
+    ]
+  ],
+  "files": [
+    "editor/editing/history/CMakeLists.txt",
+    "editor/editing/history/include/lux/engine/editor/editing/EditHistory.hpp",
+    "editor/editing/history/include/lux/engine/editor/editing/EditOperation.hpp",
+    "editor/editing/history/include/lux/engine/editor/editing/EditTypes.hpp",
+    "editor/editing/history/src/EditHistory.cpp",
+    "editor/editing/history/src/EditTypes.cpp",
+    "editor/editing/sessions/CMakeLists.txt",
+    "editor/editing/sessions/README.md",
+    "editor/editing/sessions/include/lux/engine/editor/sessions/ContentStamp.hpp",
+    "editor/editing/sessions/include/lux/engine/editor/sessions/IEditSession.hpp",
+    "editor/editing/sessions/include/lux/engine/editor/sessions/PersistenceCheckpoint.hpp",
+    "editor/editing/sessions/include/lux/engine/editor/sessions/SessionId.hpp",
+    "editor/editing/sessions/include/lux/engine/editor/sessions/SessionPermits.hpp",
+    "editor/editing/sessions/include/lux/engine/editor/sessions/SessionState.hpp",
+    "editor/editing/sessions/include/lux/engine/editor/sessions/SessionStore.hpp",
+    "editor/editing/sessions/src/PersistenceCheckpoint.cpp",
+    "editor/editing/sessions/src/SessionState.cpp",
+    "editor/editing/sessions/src/SessionStore.cpp",
+    "editor/editing/sessions/test/scope_compile.py",
+    "editor/editing/sessions/test/sessions.cpp"
+  ],
+  "actual_closures_unchanged": true,
+  "unique_compile": true,
+  "immutable_receipts_unchanged": true
+}

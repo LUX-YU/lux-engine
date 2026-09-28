@@ -1,0 +1,28 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start 20: editor.scene_model.plugin
+1/9 Test #20: editor.scene_model.plugin ........   Passed    0.05 sec
+    Start 21: editor.scene_model.mixed-1
+2/9 Test #21: editor.scene_model.mixed-1 .......   Passed    0.02 sec
+    Start 22: editor.scene_model.mixed-2
+3/9 Test #22: editor.scene_model.mixed-2 .......   Passed    0.02 sec
+    Start 23: editor.scene_model.mixed-3
+4/9 Test #23: editor.scene_model.mixed-3 .......   Passed    0.02 sec
+    Start 24: editor.scene_model.mixed-4
+5/9 Test #24: editor.scene_model.mixed-4 .......   Passed    0.02 sec
+    Start 25: editor.scene_model.read-5
+6/9 Test #25: editor.scene_model.read-5 ........   Passed    0.02 sec
+    Start 26: editor.scene_model.read-6
+7/9 Test #26: editor.scene_model.read-6 ........   Passed    0.02 sec
+    Start 27: editor.scene_model.read-7
+8/9 Test #27: editor.scene_model.read-7 ........   Passed    0.02 sec
+    Start 28: editor.scene_model.read-8
+9/9 Test #28: editor.scene_model.read-8 ........   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 9
+
+Label Time Summary:
+P02       =   0.20 sec*proc (9 tests)
+editor    =   0.20 sec*proc (9 tests)
+native    =   0.20 sec*proc (9 tests)
+
+Total Test time (real) =   0.80 sec

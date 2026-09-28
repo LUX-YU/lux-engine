@@ -1,0 +1,2 @@
+R02-02 apply=0 error=5
+Assertion failed: result && result->effect == editing::EEditEffect::CHANGE, file E:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\model\test\scene_session.cpp, line 389

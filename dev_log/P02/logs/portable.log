@@ -1,0 +1,6 @@
+PASS X01-R3-01-relocated: exit=0
+PASS X01-R3-02-windows-provenance: exit=0
+PASS X01-R3-03-missing: exit=1
+PASS X01-R3-03-tampered: exit=1
+PASS X01-R3-03-missing-log: exit=1
+PASS restored: exit=0

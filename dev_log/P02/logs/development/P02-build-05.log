@@ -1,0 +1,41 @@
+[0/2] Re-checking globbed directories...
+[1/38] Building CXX object editor\tools\scene\model\CMakeFiles\scene_model.dir\src\edits\SceneFieldEdit.cpp.obj
+[2/38] Building CXX object editor\tools\scene\model\CMakeFiles\scene_model.dir\src\SceneSession.cpp.obj
+[3/38] Building CXX object editor\tools\scene\model\CMakeFiles\scene_model.dir\src\edits\SceneObjectEdit.cpp.obj
+[4/38] Building CXX object editor\tools\scene\model\CMakeFiles\editor_scene_model_test.dir\test\plugin_snapshot.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[5/38] Building CXX object editor\tools\scene\model\CMakeFiles\scene_model.dir\src\SceneAlgorithms.cpp.obj
+[6/38] Linking CXX static library lib\scene_model.lib
+[7/38] Building CXX object editor\tools\scene\model\CMakeFiles\editor_scene_model_test.dir\test\scene_session.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[8/38] Linking CXX executable bin\editor_scene_editing_test.exe
+[9/38] Linking CXX executable bin\editor_scene_model_test.exe
+[10/38] Linking CXX shared library bin\lux_engine_editor_ui.dll
+[11/38] Linking CXX executable bin\editor_ui_presentation.exe
+[12/38] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneContent.cpp.obj
+[13/38] Linking CXX executable bin\editor_scene_configuration.exe
+[14/38] Linking CXX shared library bin\lux_engine_editor_material.dll
+[15/38] Linking CXX shared library bin\lux_engine_editor_flowforge.dll
+[16/38] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneAssets.cpp.obj
+[17/38] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneEditor.cpp.obj
+[18/38] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ModelCreation.cpp.obj
+[19/38] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneObjectEdits.cpp.obj
+[20/38] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ScenePlayback.cpp.obj
+[21/38] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\SceneUi.cpp.obj
+[22/38] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\SceneContentElement.cpp.obj
+[23/38] Linking CXX executable bin\lux_launcher.exe
+[24/38] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\OutlinerPane.cpp.obj
+[25/38] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\ResourcePane.cpp.obj
+[26/38] Linking CXX shared library bin\consumer_gui.dll
+[27/38] Linking CXX shared library bin\lux_engine_editor_app.dll
+[28/38] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\test\SceneEditorTestAccess.cpp.obj
+[29/38] Linking CXX executable bin\editor_context_lifecycle.exe
+[30/38] Linking CXX executable bin\editor_baseline_failures.exe
+[31/38] Linking CXX shared library bin\lux_engine_editor_scene.dll
+[32/38] Linking CXX executable bin\editor_scene_fixture.exe
+[33/38] Linking CXX executable bin\lux_editor.exe
+[34/38] Linking CXX executable bin\editor_material_protocol.exe
+[35/38] Linking CXX executable bin\editor_flow_protocol.exe
+[36/38] Linking CXX executable bin\editor_review_regressions.exe
+[37/38] Linking CXX executable bin\editor_core_protocol.exe
+[38/38] Linking CXX executable bin\consumer_protocol.exe

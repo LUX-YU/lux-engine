@@ -1,3 +1,6 @@
+add_subdirectory(history)
+add_subdirectory(sessions)
+
 find_package(lux-cxx REQUIRED COMPONENTS compile_time)
 
 generate_visibility_header(

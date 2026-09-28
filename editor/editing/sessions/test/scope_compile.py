@@ -11,7 +11,7 @@ def main():
     parser.add_argument("--build", type=Path, required=True)
     args = parser.parse_args()
     entries = json.loads((args.build / "compile_commands.json").read_text())
-    entry = next(x for x in entries if x["file"].replace("\\", "/").endswith("editor/sessions/test/sessions.cpp"))
+    entry = next(x for x in entries if x["file"].replace("\\", "/").endswith("editor/editing/sessions/test/sessions.cpp"))
     output = args.build / "sessions-scope-compile"
     output.mkdir(exist_ok=True)
     prefix = '#include <lux/engine/editor/sessions/SessionState.hpp>\nusing lux::editor::sessions::EditScope;\n'

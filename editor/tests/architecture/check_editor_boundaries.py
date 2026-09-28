@@ -167,11 +167,11 @@ def inspect(repo, records, rules, stage, compile_db=None):
             if not path.endswith((".hpp", ".cpp", ".h", ".cc")):
                 continue
             # The sole intentional occurrence checks absence through a requires expression.
-            if path == "editor/sessions/test/sessions.cpp":
+            if path == "editor/editing/sessions/test/sessions.cpp":
                 source = source.replace("value.beginSave();", "")
             if retired.search(source):
                 report("HISTORY_PERSISTENCE_API", path, "P01 retired persistence declaration or call")
-            if path.startswith("editor/history/") and re.search(r'\b(saved|save_pending|clean|pending|request)\b', source):
+            if path.startswith("editor/editing/history/") and re.search(r'\b(saved|save_pending|clean|pending|request)\b', source):
                 report("HISTORY_PERSISTENCE_STATE", path, "Persistence state must not live in history")
 
     if stage >= "P01":

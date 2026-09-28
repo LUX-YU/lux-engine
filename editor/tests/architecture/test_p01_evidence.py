@@ -28,6 +28,7 @@ def main():
         git("fetch", "--depth=3", "--no-tags", source, baseline)
         git("update-ref", "refs/heads/review-fixture", baseline)
         git("symbolic-ref", "HEAD", "refs/heads/review-fixture")
+        # This is a fixed historical tree, before S01; never substitute the current editing path.
         archive = root / "snapshot.tar"
         subprocess.run(["git", "-C", str(source), "archive", baseline,
                         "--output=" + str(archive), "dev_log/P00", "dev_log/P01", "editor/history"], check=True)

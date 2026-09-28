@@ -38,7 +38,7 @@ The old Scene/Material/FlowForge products temporarily use the private
 `editor/transition/LegacyPersistenceState` compiled into `editor_editing`. Each working copy has one
 checkpoint, moved with its history; pending requests prevent bridge movement. The bridge is not
 installed and new modules cannot include it. It expires by P12. There is still only one history
-algorithm, implemented in `editor/history`.
+algorithm, implemented in `editor/editing/history`.
 
 P01-R1 separates the closing commit from presentation queries. The private
 `IEditSession::currentContent() noexcept` reads only existing scalar identities, with no allocation,

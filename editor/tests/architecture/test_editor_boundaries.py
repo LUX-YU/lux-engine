@@ -29,8 +29,8 @@ def foundation_cases(args):
         ("unknown", "edit_sessions", "unresolved_library", "FOUNDATION_UNRESOLVED_DEPENDENCY", "", False),
     ]
     locations = {
-        "editor_contracts": "editor/contracts", "edit_history": "editor/history",
-        "edit_sessions": "editor/sessions", "scene_composition": "engine/scene/composition",
+        "editor_contracts": "editor/contracts", "edit_history": "editor/editing/history",
+        "edit_sessions": "editor/editing/sessions", "scene_composition": "engine/scene/composition",
         "ui_fixture": "modules/function/ui", "editor_context": "editor/context",
         "identity": "modules/resource/identity",
     }
@@ -174,7 +174,7 @@ def main():
         private.unlink()
         print("PASS expiry and private header checks")
 
-        history = root / "editor/history/probe.hpp"
+        history = root / "editor/editing/history/probe.hpp"
         history.parent.mkdir(parents=True, exist_ok=True)
         history.write_text("struct History { void beginSave(); };\n", encoding="utf-8")
         assert any(x["rule"] == "HISTORY_PERSISTENCE_API" for x in inspect(root, [], rules, "P01"))
@@ -185,6 +185,15 @@ def main():
         history.write_text("struct History {};\n", encoding="utf-8")
         assert not inspect(root, [], rules, "P01")
         print("PASS P01 retired history API, saved state and new-to-transition checks")
+        for name in ["history", "sessions"]:
+            retired_directory = root / "editor" / name
+            retired_directory.mkdir()
+            assert any(x["rule"] == "EXPIRED_PATH" and x["path"] == f"editor/{name}"
+                       for x in inspect(root, [], rules, "P02"))
+            retired_directory.rmdir()
+        assert not inspect(root, [], rules, "P02")
+        print("PASS S01 old directories rejected; narrow history/session scopes preserved")
+
 
         # Test options must be subordinate to BUILD_TESTING and default to native-only.
         (root / "CMakeLists.txt").write_text(

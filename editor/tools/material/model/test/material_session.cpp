@@ -43,7 +43,8 @@ namespace
         Fixture(
             mat::MaterialSource input = source(),
             contracts::CodeLease code = contracts::CodeLease::builtin(),
-            MaterialSessionLimits limits = {}
+            MaterialSessionLimits limits = {},
+            bool bound = true
         )
         {
             auto reservation =
@@ -51,7 +52,7 @@ namespace
             id = reservation.id();
             auto candidate = take(MaterialSession::create(
                 id,
-                sessions::BoundSource{input.id, "test.luxmaterial"},
+                bound ? sessions::SourceBinding{sessions::BoundSource{input.id, "test.luxmaterial"}} : std::nullopt,
                 std::move(input),
                 code,
                 limits
@@ -90,13 +91,44 @@ namespace
         std::string bytes;
         sessions::SessionInfo info;
         editing::HistorySnapshot history;
-        explicit Saved(const Fixture& f) : bytes(f.encoded()), info(f.session->describe()), history(f.history()) {}
+        sessions::BindingRevision binding_revision;
+        std::optional<sessions::PersistedState> persisted;
+        explicit Saved(const Fixture& f) : bytes(f.encoded()), info(f.session->describe()), history(f.history())
+        {
+            const auto& state = lux::editor::material::detail::MaterialSessionAccess::data(*f.session).state;
+            binding_revision = state.bindingRevision();
+            persisted = state.checkpoint().persisted();
+        }
         void unchanged(const Fixture& f) const
         {
             assert(bytes == f.encoded());
             const auto now = f.session->describe();
             assert(info.current == now.current && info.observed == now.observed && info.dirty == now.dirty);
+            assert(info.id == now.id && info.binding == now.binding && info.admission == now.admission);
+            const auto& state = lux::editor::material::detail::MaterialSessionAccess::data(*f.session).state;
+            assert(binding_revision == state.bindingRevision() && persisted == state.checkpoint().persisted());
             sameHistory(history, f.history());
+        }
+        void report(const Fixture& f) const
+        {
+            const auto now = f.session->describe();
+            const auto h = f.history();
+            const bool same_history = history.history == h.history && history.current == h.current &&
+                                      history.revision == h.revision && history.event_sequence == h.event_sequence &&
+                                      history.entry_count == h.entry_count && history.cursor == h.cursor &&
+                                      history.charged_retained_bytes == h.charged_retained_bytes &&
+                                      history.closed == h.closed;
+            std::printf(
+                "source_unchanged=%d history_unchanged=%d observed_unchanged=%d dirty_unchanged=%d "
+                "binding_unchanged=%d\n",
+                bytes == f.encoded(),
+                same_history,
+                info.observed == now.observed,
+                info.dirty == now.dirty,
+                info.binding == now.binding
+            );
+            std::fflush(stdout);
+            unchanged(f);
         }
     };
     void content()
@@ -425,6 +457,243 @@ namespace
         assert(!f.session->describe().dirty);
         std::puts("read gate: callbacks, destructors, failure unwind, reentry, stale/atomic reload PASS");
     }
+    void editAfterReload(Fixture& f)
+    {
+        auto edit = f.batch();
+        edit.edits.push_back(MaterialRename{"after rejected reload"});
+        assert(f.session->apply(std::move(edit)));
+        assert(f.session->describe().admission == sessions::EEditAdmission::AVAILABLE);
+        std::puts("normal_public_edit_after_gate_release=1");
+    }
+    void reloadUnbound(bool last_lease)
+    {
+        Fixture f(source(), contracts::CodeLease::builtin(), {}, false);
+        const Saved saved(f);
+        bool released{}, released_with_nodes{}, nested_edit{}, callback_ran{};
+        sessions::EEditAdmission callback_admission{};
+        auto code = std::shared_ptr<int>(new int(1), [&](int* p) {
+            released = true;
+            released_with_nodes = alive != 0;
+            delete p;
+        });
+        auto input = source();
+        input.graph.addNode(std::make_unique<PluginConstant>(code));
+        input.graph.addNode(std::make_unique<PluginConstant>(code));
+        auto lease = contracts::CodeLease::plugin(code);
+        if (last_lease)
+            code.reset();
+        destroy_hook = [&] {
+            callback_ran = true;
+            callback_admission = f.session->describe().admission;
+            auto edit = f.batch();
+            edit.edits.push_back(MaterialRename{"destructor must not edit"});
+            const auto result = f.session->apply(std::move(edit));
+            nested_edit = bool(result);
+            if (!result)
+                assert(result.error().session == sessions::ESessionError::BUSY);
+        };
+        const auto result = lux::editor::material::detail::PreparedMaterialReload::prepare(
+            *f.session,
+            std::move(input),
+            std::move(lease)
+        );
+        std::printf(
+            "unbound last_lease=%d rejected=%d nested_edit=%d callback_admission=%u destroyed=%zu "
+            "alive=%zu released_early=%d released_with_nodes=%d released=%d\n",
+            last_lease,
+            !result,
+            nested_edit,
+            unsigned(callback_admission),
+            destroyed,
+            alive,
+            released_early,
+            released_with_nodes,
+            released
+        );
+        saved.report(f);
+        assert(!result && result.error().code == EMaterialEditError::INVALID_SOURCE);
+        assert(callback_ran && !nested_edit && callback_admission == sessions::EEditAdmission::READING);
+        assert(destroyed == 2 && alive == 0 && !released_early && !released_with_nodes);
+        assert(released == last_lease);
+        code.reset();
+        assert(released);
+        editAfterReload(f);
+    }
+    void reloadBusy(bool reading)
+    {
+        Fixture f;
+        const Saved saved(f);
+        auto& state = lux::editor::material::detail::MaterialSessionAccess::data(*f.session).state;
+        const auto admission = reading ? sessions::EEditAdmission::READING : sessions::EEditAdmission::CLOSING;
+        const auto attempt = [&] {
+            bool released{}, released_with_nodes{}, callback_ran{}, nested_edit{};
+            auto code = std::shared_ptr<int>(new int(1), [&](int* p) {
+                released = true;
+                released_with_nodes = alive != 0;
+                delete p;
+            });
+            auto input = source();
+            input.graph.addNode(std::make_unique<PluginConstant>(code));
+            input.graph.addNode(std::make_unique<PluginConstant>(code));
+            auto lease = contracts::CodeLease::plugin(code);
+            code.reset();
+            destroy_hook = [&] {
+                callback_ran = true;
+                assert(state.admission() == admission);
+                auto edit = f.batch();
+                edit.edits.push_back(MaterialRename{"busy destructor"});
+                const auto result = f.session->apply(std::move(edit));
+                nested_edit = bool(result);
+                assert(!result && result.error().session == sessions::ESessionError::BUSY);
+            };
+            const auto result = lux::editor::material::detail::PreparedMaterialReload::prepare(
+                *f.session,
+                std::move(input),
+                std::move(lease)
+            );
+            std::printf(
+                "busy outer=%u rejected=%d gate_unchanged=%d nested_edit=%d destroyed=%zu "
+                "alive=%zu released_early=%d released_with_nodes=%d released=%d\n",
+                unsigned(admission),
+                !result,
+                state.admission() == admission,
+                nested_edit,
+                destroyed,
+                alive,
+                released_early,
+                released_with_nodes,
+                released
+            );
+            std::fflush(stdout);
+            assert(!result && result.error().session == sessions::ESessionError::BUSY);
+            assert(callback_ran && !nested_edit && state.admission() == admission);
+            assert(destroyed == 2 && alive == 0 && !released_early && !released_with_nodes && released);
+        };
+        if (reading)
+        {
+            assert(take(f.session->read()).withRead([&](const auto&) -> MaterialEditResult<void> {
+                attempt();
+                return {};
+            }));
+        }
+        else
+        {
+            auto permit = take(f.store.prepareClose(saved.info.current));
+            attempt();
+        }
+        saved.report(f);
+        editAfterReload(f);
+    }
+    void reloadOutcomes()
+    {
+        Fixture f;
+        auto edit = f.batch();
+        edit.edits.push_back(MaterialRename{"unsaved author content"});
+        assert(f.session->apply(std::move(edit)) && f.session->describe().dirty);
+        const Saved saved(f);
+        const auto frozen = take(f.session->capture());
+        for (const bool throws : {false, true})
+        {
+            bool released{}, released_with_nodes{}, callback_ran{};
+            auto code = std::shared_ptr<int>(new int(1), [&](int* p) {
+                released = true;
+                released_with_nodes = alive != 0;
+                delete p;
+            });
+            auto input = source();
+            input.graph.addNode(std::make_unique<PluginConstant>(code));
+            if (!throws)
+                input.id = asset::AssetId{*uuids::uuid::from_string("87654321-1234-1234-1234-123456789abc")};
+            auto lease = contracts::CodeLease::plugin(code);
+            code.reset();
+            const auto check = [&] {
+                callback_ran = true;
+                assert(f.session->describe().admission == sessions::EEditAdmission::READING);
+                auto nested = f.batch();
+                nested.edits.push_back(MaterialRename{"failed preparation callback"});
+                const auto result = f.session->apply(std::move(nested));
+                assert(!result && result.error().session == sessions::ESessionError::BUSY);
+            };
+            destroy_hook = check;
+            if (throws)
+                clone_hook = [&] {
+                    check();
+                    throw std::runtime_error("reload input clone failure");
+                };
+            const auto result = lux::editor::material::detail::PreparedMaterialReload::prepare(
+                *f.session,
+                std::move(input),
+                std::move(lease)
+            );
+            std::printf(
+                "bound %s rejected=%d callback_ran=%d alive=%zu released_early=%d released_with_nodes=%d released=%d\n",
+                throws ? "clone-exception" : "wrong-asset",
+                !result,
+                callback_ran,
+                alive,
+                released_early,
+                released_with_nodes,
+                released
+            );
+            saved.report(f);
+            assert(
+                !result &&
+                result.error().code == (throws ? EMaterialEditError::CALLBACK : EMaterialEditError::INVALID_SOURCE)
+            );
+            assert(callback_ran && alive == 0 && !released_early && !released_with_nodes && released);
+        }
+        bool released{}, released_with_nodes{}, clone_ran{}, destroyed_input{};
+        auto code = std::shared_ptr<int>(new int(1), [&](int* p) {
+            released = true;
+            released_with_nodes = alive != 0;
+            delete p;
+        });
+        auto input = source();
+        input.name = "reloaded material";
+        input.graph.addNode(std::make_unique<PluginConstant>(code));
+        const auto expected = take(mat::encodeMaterialSource(input));
+        auto lease = contracts::CodeLease::plugin(code);
+        code.reset();
+        const auto check = [&] {
+            assert(f.session->describe().admission == sessions::EEditAdmission::READING);
+            auto nested = f.batch();
+            nested.edits.push_back(MaterialRename{"successful preparation callback"});
+            const auto result = f.session->apply(std::move(nested));
+            assert(!result && result.error().session == sessions::ESessionError::BUSY);
+        };
+        clone_hook = [&] {
+            clone_ran = true;
+            check();
+        };
+        destroy_hook = [&] {
+            destroyed_input = true;
+            check();
+        };
+        auto prepared = take(lux::editor::material::detail::PreparedMaterialReload::prepare(
+            *f.session,
+            std::move(input),
+            std::move(lease)
+        ));
+        saved.report(f);
+        assert(clone_ran && destroyed_input && alive == 1 && !released);
+        assert(prepared.adopt(*f.session));
+        const auto now = f.session->describe();
+        const auto& state = lux::editor::material::detail::MaterialSessionAccess::data(*f.session).state;
+        assert(f.encoded() == expected && now.id == saved.info.id && now.binding == saved.info.binding);
+        assert(now.current.state.history != saved.info.current.state.history && !now.dirty);
+        assert(
+            now.observed.value == saved.info.observed.value + 1 && state.bindingRevision() == saved.binding_revision
+        );
+        assert(state.checkpoint().persisted()->state == now.current.state && f.history().entry_count == 0);
+        assert(take(mat::encodeMaterialSource(frozen.source())) == saved.bytes);
+        const Saved adopted(f);
+        assert(!prepared.adopt(*f.session));
+        adopted.report(f);
+        auto permit = take(f.store.prepareClose(now.current));
+        assert(f.store.close(permit));
+        assert(alive == 0 && released && !released_early && !released_with_nodes);
+        std::puts("bound identity/exception cleanup, atomic reload, stale rejection and last lease release PASS");
+    }
 }
 int main(int argc, char** argv)
 {
@@ -443,6 +712,16 @@ int main(int argc, char** argv)
         mixed(true);
     else if (test == "reading")
         reading();
+    else if (test == "reload-unbound")
+        reloadUnbound(false);
+    else if (test == "reload-unbound-lease")
+        reloadUnbound(true);
+    else if (test == "reload-closing-lease")
+        reloadBusy(false);
+    else if (test == "reload-reading-lease")
+        reloadBusy(true);
+    else if (test == "reload-outcomes")
+        reloadOutcomes();
     else
         return 2;
 }

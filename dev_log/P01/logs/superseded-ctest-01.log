@@ -1,0 +1,96 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+      Start  1: platform.process_arguments
+ 1/33 Test  #1: platform.process_arguments ..............   Passed    0.05 sec
+      Start  2: object.tree
+ 2/33 Test  #2: object.tree .............................   Passed    0.01 sec
+      Start  3: object.queue
+ 3/33 Test  #3: object.queue ............................   Passed    0.01 sec
+      Start  4: render.runtime_resources
+ 4/33 Test  #4: render.runtime_resources ................   Passed    0.42 sec
+      Start  5: ui.root
+ 5/33 Test  #5: ui.root .................................   Passed    0.02 sec
+      Start  6: process.asset_read_overlay
+ 6/33 Test  #6: process.asset_read_overlay ..............   Passed    0.01 sec
+      Start  7: scene.driver
+ 7/33 Test  #7: scene.driver ............................   Passed    0.02 sec
+      Start  8: scene.runtime
+ 8/33 Test  #8: scene.runtime ...........................   Passed    0.07 sec
+      Start  9: scene.render_resources
+ 9/33 Test  #9: scene.render_resources ..................   Passed    0.48 sec
+      Start 10: scene.world_loading
+10/33 Test #10: scene.world_loading .....................   Passed    0.14 sec
+      Start 11: engine.headless_context
+11/33 Test #11: engine.headless_context .................   Passed    0.10 sec
+      Start 12: editor.sessions
+12/33 Test #12: editor.sessions .........................   Passed    0.03 sec
+      Start 13: editor.sessions_scope_compile
+13/33 Test #13: editor.sessions_scope_compile ...........***Failed    2.42 sec
+PASS valid: compiler exit 0
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine\editor\sessions\test\scope_compile.py", line 40, in <module>
+    main()
+  File "E:\SyncForder\CodeRepos\lux-engine\editor\sessions\test\scope_compile.py", line 35, in main
+    assert result.returncode != 0 and "C2280" in log and "EditScope::EditScope" in log, log
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: sessions.cpp
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+
+
+      Start 14: editor.project_creation
+14/33 Test #14: editor.project_creation .................   Passed    0.09 sec
+      Start 15: editor.plugin_publication
+15/33 Test #15: editor.plugin_publication ...............   Passed    0.09 sec
+      Start 16: editor.asset_save_target
+16/33 Test #16: editor.asset_save_target ................   Passed    0.12 sec
+      Start 17: plugin.configuration
+17/33 Test #17: plugin.configuration ....................   Passed    0.03 sec
+      Start 18: plugin.physics2d
+18/33 Test #18: plugin.physics2d ........................   Passed    0.08 sec
+      Start 19: editor.scene.editing
+19/33 Test #19: editor.scene.editing ....................   Passed    0.05 sec
+      Start 20: editor.inspector_codegen
+20/33 Test #20: editor.inspector_codegen ................   Passed    0.07 sec
+      Start 21: editor.scene_configuration
+21/33 Test #21: editor.scene_configuration ..............   Passed    0.06 sec
+      Start 22: editor.context_lifecycle
+22/33 Test #22: editor.context_lifecycle ................   Passed    0.68 sec
+      Start 23: editor.unified_exit-review
+23/33 Test #23: editor.unified_exit-review ..............   Passed    0.36 sec
+      Start 24: editor.unified_core_new-assets
+24/33 Test #24: editor.unified_core_new-assets ..........   Passed    1.35 sec
+      Start 25: editor.unified_core_save-preservation
+25/33 Test #25: editor.unified_core_save-preservation ...   Passed    1.15 sec
+      Start 26: editor.unified_core_factory-rollback
+26/33 Test #26: editor.unified_core_factory-rollback ....   Passed    1.01 sec
+      Start 27: editor.unified_core_fixed-run
+27/33 Test #27: editor.unified_core_fixed-run ...........   Passed    1.41 sec
+      Start 28: editor.unified_core_material-gui
+28/33 Test #28: editor.unified_core_material-gui ........   Passed    1.80 sec
+      Start 29: editor.unified_core_flow-gui
+29/33 Test #29: editor.unified_core_flow-gui ............   Passed    1.60 sec
+      Start 30: editor.component_elements
+30/33 Test #30: editor.component_elements ...............   Passed    0.77 sec
+      Start 31: editor.architecture_negative
+31/33 Test #31: editor.architecture_negative ............   Passed    3.40 sec
+      Start 32: editor.architecture_current
+32/33 Test #32: editor.architecture_current .............   Passed    1.67 sec
+      Start 33: editor.flow_source_native
+33/33 Test #33: editor.flow_source_native ...............   Passed    0.01 sec
+
+97% tests passed, 1 tests failed out of 33
+
+Label Time Summary:
+P01             =   2.45 sec*proc (2 tests)
+architecture    =   5.07 sec*proc (2 tests)
+desktop         =  10.12 sec*proc (9 tests)
+editor          =  18.24 sec*proc (22 tests)
+gpu             =  10.12 sec*proc (9 tests)
+installed       =   0.77 sec*proc (1 test)
+native          =   8.12 sec*proc (13 tests)
+toolchain       =   3.40 sec*proc (2 tests)
+
+Total Test time (real) =  19.94 sec
+
+The following tests FAILED:
+	 13 - editor.sessions_scope_compile (Failed)            P01 editor native
+Errors while running CTest

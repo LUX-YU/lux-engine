@@ -1,0 +1,85 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+      Start  1: platform.process_arguments
+ 1/35 Test  #1: platform.process_arguments ..............   Passed    0.06 sec
+      Start  2: object.tree
+ 2/35 Test  #2: object.tree .............................   Passed    0.01 sec
+      Start  3: object.queue
+ 3/35 Test  #3: object.queue ............................   Passed    0.01 sec
+      Start  4: render.runtime_resources
+ 4/35 Test  #4: render.runtime_resources ................   Passed    0.40 sec
+      Start  5: ui.root
+ 5/35 Test  #5: ui.root .................................   Passed    0.02 sec
+      Start  6: process.asset_read_overlay
+ 6/35 Test  #6: process.asset_read_overlay ..............   Passed    0.01 sec
+      Start  7: scene.driver
+ 7/35 Test  #7: scene.driver ............................   Passed    0.02 sec
+      Start  8: scene.runtime
+ 8/35 Test  #8: scene.runtime ...........................   Passed    0.08 sec
+      Start  9: scene.render_resources
+ 9/35 Test  #9: scene.render_resources ..................   Passed    0.45 sec
+      Start 10: scene.world_loading
+10/35 Test #10: scene.world_loading .....................   Passed    0.14 sec
+      Start 11: engine.headless_context
+11/35 Test #11: engine.headless_context .................   Passed    0.08 sec
+      Start 12: editor.sessions
+12/35 Test #12: editor.sessions .........................   Passed    0.01 sec
+      Start 13: editor.sessions_scope_compile
+13/35 Test #13: editor.sessions_scope_compile ...........   Passed    2.31 sec
+      Start 14: editor.project_creation
+14/35 Test #14: editor.project_creation .................   Passed    0.07 sec
+      Start 15: editor.plugin_publication
+15/35 Test #15: editor.plugin_publication ...............   Passed    0.07 sec
+      Start 16: editor.asset_save_target
+16/35 Test #16: editor.asset_save_target ................   Passed    0.09 sec
+      Start 17: plugin.configuration
+17/35 Test #17: plugin.configuration ....................   Passed    0.02 sec
+      Start 18: plugin.physics2d
+18/35 Test #18: plugin.physics2d ........................   Passed    0.05 sec
+      Start 19: editor.scene.editing
+19/35 Test #19: editor.scene.editing ....................   Passed    0.03 sec
+      Start 20: editor.inspector_codegen
+20/35 Test #20: editor.inspector_codegen ................   Passed    0.07 sec
+      Start 21: editor.scene_configuration
+21/35 Test #21: editor.scene_configuration ..............   Passed    0.04 sec
+      Start 22: editor.context_lifecycle
+22/35 Test #22: editor.context_lifecycle ................   Passed    0.64 sec
+      Start 23: editor.unified_exit-review
+23/35 Test #23: editor.unified_exit-review ..............   Passed    0.35 sec
+      Start 24: editor.unified_core_new-assets
+24/35 Test #24: editor.unified_core_new-assets ..........   Passed    1.44 sec
+      Start 25: editor.unified_core_save-preservation
+25/35 Test #25: editor.unified_core_save-preservation ...   Passed    1.06 sec
+      Start 26: editor.unified_core_save-retry
+26/35 Test #26: editor.unified_core_save-retry ..........   Passed    1.07 sec
+      Start 27: editor.unified_core_save-partial
+27/35 Test #27: editor.unified_core_save-partial ........   Passed    1.10 sec
+      Start 28: editor.unified_core_factory-rollback
+28/35 Test #28: editor.unified_core_factory-rollback ....   Passed    1.04 sec
+      Start 29: editor.unified_core_fixed-run
+29/35 Test #29: editor.unified_core_fixed-run ...........   Passed    1.41 sec
+      Start 30: editor.unified_core_material-gui
+30/35 Test #30: editor.unified_core_material-gui ........   Passed    1.86 sec
+      Start 31: editor.unified_core_flow-gui
+31/35 Test #31: editor.unified_core_flow-gui ............   Passed    1.62 sec
+      Start 32: editor.component_elements
+32/35 Test #32: editor.component_elements ...............   Passed    0.75 sec
+      Start 33: editor.architecture_negative
+33/35 Test #33: editor.architecture_negative ............   Passed    3.49 sec
+      Start 34: editor.architecture_current
+34/35 Test #34: editor.architecture_current .............   Passed    1.65 sec
+      Start 35: editor.flow_source_native
+35/35 Test #35: editor.flow_source_native ...............   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 35
+
+Label Time Summary:
+P01             =   2.32 sec*proc (2 tests)
+architecture    =   5.14 sec*proc (2 tests)
+desktop         =  12.33 sec*proc (11 tests)
+editor          =  20.25 sec*proc (24 tests)
+gpu             =  12.33 sec*proc (11 tests)
+installed       =   0.75 sec*proc (1 test)
+native          =   7.92 sec*proc (13 tests)
+toolchain       =   3.48 sec*proc (2 tests)
+
+Total Test time (real) =  21.75 sec

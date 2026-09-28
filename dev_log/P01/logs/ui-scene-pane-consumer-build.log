@@ -1,0 +1,16 @@
+---- Importing lux-cxx-core
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-container
+---- Importing lux-cxx-concurrent
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-reflection_runtime
+---- Importing imgui-core
+-- Configuring done (0.6s)
+-- Generating done (0.1s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ui-scene-pane-consumer
+[0/1] Re-running CMake...
+[1/2] Building CXX object CMakeFiles\scene_panes.dir\scene_panes.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/2] Linking CXX executable bin\scene_panes.exe

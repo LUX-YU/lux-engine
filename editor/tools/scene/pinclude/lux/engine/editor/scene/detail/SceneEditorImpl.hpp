@@ -1,4 +1,5 @@
 #pragma once
+#include "LegacyPersistenceState.hpp"
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/editor/ui/ComponentEditors.hpp>
 #include <lux/engine/editor/ui/SpatialInteraction.hpp>
@@ -202,6 +203,7 @@ namespace lux::editor::scene
         std::optional<detail::SceneContent> content;
         lux::simulation::ecs::Entity editor_camera{lux::simulation::ecs::NullEntity};
         std::unique_ptr<editing::EditHistory> history;
+        transition::LegacyPersistenceState persistence_;
         std::optional<SceneEditing> scene_editing;
         RunStatus run_status;
         std::uint64_t next_run{1};
@@ -586,6 +588,7 @@ namespace lux::editor::scene
         std::shared_ptr<const lux::scene::ScenePackage> candidate_;
 
         std::unique_ptr<editing::EditHistory> candidate_history_;
+        transition::LegacyPersistenceState candidate_persistence_;
         lux::scene::RenderAssetInput candidate_assets_;
         std::optional<SaveRequestId> change_save_;
         std::shared_ptr<lux::scene::ScenePackage> copied_source_;

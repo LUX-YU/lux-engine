@@ -77,6 +77,7 @@ namespace lux::editor::scene
         [[nodiscard]] EditorResult<void> acknowledgeModelCreation(ModelCreationId);
         [[nodiscard]] SceneEditing& editing() const noexcept;
         [[nodiscard]] editing::EditHistory& history() const noexcept;
+        [[nodiscard]] bool persistencePending() const noexcept;
         [[nodiscard]] bool fieldEditWritable(const FieldEditToken&) const noexcept;
         [[nodiscard]] editing::EditResult<void> fieldEdited(const FieldEditToken&);
         [[nodiscard]] editing::EditResult<editing::ApplyResult> finishFieldEdit(const FieldEditToken&);

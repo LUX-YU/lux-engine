@@ -150,6 +150,50 @@ int main(int argc, char** argv)
             assert(saved);
             until([&] { return std::holds_alternative<SaveSucceeded>(*tool.saveStatus(*saved)); });
             assert(tool.acknowledgeSave(*saved));
+            const auto baseline = tool.persistedState();
+            assert(baseline && !tool.hasUnsavedChanges());
+            assert(toolTest(tool).rename("Captured failure and retry"));
+            const auto dirty = tool.historyView()->history.current;
+            const auto* entry = context.project().asset(first);
+            assert(entry);
+            const auto source_path = std::filesystem::path(argv[1]).parent_path() / entry->source_path;
+            const auto lock = CreateFileW(
+                source_path.c_str(),
+                GENERIC_READ,
+                FILE_SHARE_READ,
+                nullptr,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                nullptr
+            );
+            assert(lock != INVALID_HANDLE_VALUE);
+            auto failing = tool.requestSave("P01 real publication failure");
+            assert(failing);
+            until([&] { return std::holds_alternative<SaveRetryable>(*tool.saveStatus(*failing)); });
+            assert(tool.persistedState() == baseline && tool.hasUnsavedChanges());
+            assert(tool.historyView()->history.current == dirty);
+            assert(CloseHandle(lock));
+            assert(tool.retrySave(*failing));
+            until([&] { return std::holds_alternative<SaveSucceeded>(*tool.saveStatus(*failing)); });
+            assert(tool.persistedState()->state == dirty && !tool.hasUnsavedChanges());
+            assert(tool.acknowledgeSave(*failing));
+            const auto before_reload = tool.historyView()->history.current;
+            const auto before_checkpoint = tool.persistedState();
+            std::ifstream original(source_path, std::ios::binary);
+            const std::string original_bytes{std::istreambuf_iterator<char>{original}, {}};
+            original.close();
+            {
+                std::ofstream corrupt(source_path, std::ios::binary | std::ios::trunc);
+                corrupt << "invalid candidate";
+            }
+            assert(tool.reloadAsset());
+            until([&] { return tool.assetStatus().phase == EAssetEditPhase::IDLE; });
+            assert(tool.assetStatus().failure && tool.historyView()->history.current == before_reload);
+            assert(tool.persistedState() == before_checkpoint);
+            {
+                std::ofstream restore(source_path, std::ios::binary | std::ios::trunc);
+                restore << original_bytes;
+            }
             const auto history = tool.historyId();
             auto copied = tool.requestSaveAs(copy_path);
             assert(copied);
@@ -174,6 +218,7 @@ int main(int argc, char** argv)
         lux::scene::SceneDescriptionBuilder incomplete;
         auto invalid = std::move(incomplete).buildResolved();
         assert(invalid);
+        const auto original_checkpoint = scene.persistedState();
         assert(scene.createAsset("Missing loading", {}, simulation_description, *invalid));
         assert(editor.update({}, nullptr)); // Queue adoption without drawing or applying the structure batch.
         assert(scene.assetStatus().phase == EAssetEditPhase::PREPARING && !scene.assetStatus().failure);
@@ -181,6 +226,7 @@ int main(int argc, char** argv)
         editor.applyPendingChanges();
         assert(scene.assetStatus().phase == EAssetEditPhase::CONFIGURING && scene.assetStatus().failure);
         assert(toolTest(scene).instance() == original_instance && scene.historyId() == original_history);
+        assert(scene.persistedState() == original_checkpoint);
         lux::scene::SceneDescriptionBuilder description;
         const auto loader = lux::scene::worldLoadingSystemRegistration();
         std::vector<std::byte> configuration;
@@ -207,7 +253,7 @@ int main(int argc, char** argv)
                 toolTest(scene).selectedRenderSystem()
             )
         );
-        assert(!scene.historyView()->history.clean);
+        assert(scene.hasUnsavedChanges());
         const auto first = scene.assetId();
         const auto first_history = scene.historyId();
         auto save = scene.requestSaveAs("/Project/New.luxscene");
@@ -228,7 +274,7 @@ int main(int argc, char** argv)
         assert(!scene.assetStatus().failure && scene.assetId() == first && scene.id() == pane_id);
         workspace_checks::run(editor, until);
     }
-    else if (mode == "save-preservation")
+    else if (mode == "save-preservation" || mode == "save-retry" || mode == "save-partial")
     {
         SceneSaveChecks checks;
         until([&] { return bool(context.engine().sceneRuntime().getSceneRegistry(toolTest(scene).instance())); });

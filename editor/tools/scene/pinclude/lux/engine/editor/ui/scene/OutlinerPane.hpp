@@ -1,5 +1,5 @@
-#include <lux/engine/editor/detail/SignalDelivery.hpp>
 #pragma once
+#include <lux/engine/editor/detail/SignalDelivery.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/editor/scene/detail/SceneEditorImpl.hpp>
 #include <unordered_set>

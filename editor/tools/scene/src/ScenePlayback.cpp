@@ -276,7 +276,7 @@ namespace lux::editor::scene
             return;
         if (run_status.result && safe(*run_scene))
         {
-            auto history = editing::EditHistory::create({kHistoryLimits, {}, true});
+            auto history = editing::EditHistory::create({kHistoryLimits, {}});
             if (!history)
                 failPlayback({EEditorError::SOURCE_FAILURE, "run.history", 0, {}, history.error()});
             else

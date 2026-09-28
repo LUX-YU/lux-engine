@@ -416,6 +416,12 @@
       "deadline": "P06",
       "pattern": "\\bSceneRuntime::(?:valid|invalid|tick|getSceneRegistry|getClock|destroy)\\s*\\(",
       "description": "旧 runtime 公开定义"
+    },
+    {
+      "id": "P01_BRIDGE_OUTCOME",
+      "deadline": "P12",
+      "pattern": "\\benum\\s+class\\s+ELegacyPersistence(?:Outcome|Error)\\b",
+      "description": "P01 private bridge enums expire with LegacyPersistenceState"
     }
   ],
   "transition_root": "editor/transition/",

@@ -1,6 +1,6 @@
+#pragma once
 #include <lux/engine/editor/CloseStatus.hpp>
 #include <lux/engine/scene/ScenePackage.hpp>
-#pragma once
 
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/editor/ui/AssetActions.hpp>

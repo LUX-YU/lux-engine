@@ -242,7 +242,7 @@ void sharedInspector()
     const auto entity = registry.create();
     registry.emplace<consumer::Component>(entity);
     assert((*runtime)->tick());
-    auto history = editor::editing::EditHistory::create({{128, 16777216, 16777216, 256}, {}, true});
+    auto history = editor::editing::EditHistory::create({{128, 16777216, 16777216, 256}, {}});
     assert(history);
     editor::scene::SceneEditing editing(**runtime, *instance, *schemas, **history);
     auto queue = object::ObjectMessageQueue::create(64);

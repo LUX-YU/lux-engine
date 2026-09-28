@@ -1,5 +1,5 @@
-#include "ToolTestAccess.hpp"
 #pragma once
+#include "ToolTestAccess.hpp"
 
 #include "entity_checks.hpp"
 #include "scene_structure_checks.hpp"
@@ -236,7 +236,7 @@ struct SceneSaveChecks final
             "save begin: captured=%llu current=%llu pending=%d\n",
             captured.serial,
             scene.historyView()->history.current.serial,
-            scene.historyView()->history.save_pending
+            toolTest(scene).persistencePending()
         );
     }
     bool finished(lux::editor::scene::SceneEditor& scene)
@@ -261,7 +261,7 @@ struct SceneSaveChecks final
             assert(cause && cause->code == lux::editor::EProjectPublicationError::REPLACE);
             assert(cause->published_files == (mode == "save-partial" ? 1 : 0));
             assert(failure->captured == captured && failure->attempt == 1);
-            assert(scene.historyView()->history.save_pending);
+            assert(toolTest(scene).persistencePending());
             std::printf(
                 "accurate replacement failure: files_published=%zu live_S2_unchanged=1 ticket_S1_retained=1\n",
                 cause->published_files
@@ -276,16 +276,19 @@ struct SceneSaveChecks final
         {
             assert(success->captured == captured && success->cleanup);
             const auto state = scene.historyView()->history;
-            assert(state.saved == captured && !state.clean && !state.save_pending);
+            assert(
+                scene.persistedState() && scene.persistedState()->state == captured && scene.hasUnsavedChanges() &&
+                !toolTest(scene).persistencePending()
+            );
             assert(
                 mode == "save" || mode == "save-spatial" || mode == "save-structure" || mode == "save-preservation" ||
                 mode == "save-hierarchy" || mode == "save-model" || mode == "save-import-model" || retried
             );
             std::printf(
                 "save success: saved=%llu current=%llu dirty=%d same_capture=1\n",
-                state.saved->serial,
+                scene.persistedState()->state.serial,
                 state.current.serial,
-                !state.clean
+                scene.hasUnsavedChanges()
             );
             assert(scene.acknowledgeSave(request));
             const auto stale = scene.saveStatus(request);
@@ -324,7 +327,7 @@ struct SceneSaveChecks final
         }
         const auto* value = static_cast<const Transform*>(toolTest(scene).component(object, lux::cxx::typeToken<Transform>()));
         assert(value && value->translation == Value(4, 5, 6));
-        assert(scene.historyView()->history.clean);
+        assert(!scene.hasUnsavedChanges());
         const auto before_late = scene.historyView()->history;
         const auto late = toolTest(scene).finishFieldEdit(retired_preview);
         assert(!late && late.error().code == lux::editor::editing::EEditError::STALE_TARGET);

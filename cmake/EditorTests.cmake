@@ -1,6 +1,6 @@
 include_guard(GLOBAL)
 include(CMakeDependentOption)
-set(LUX_EDITOR_MIGRATION_STAGE P00 CACHE STRING "Current V4 Editor migration gate (P00..P13)")
+set(LUX_EDITOR_MIGRATION_STAGE P01 CACHE STRING "Current V4 Editor migration gate (P00..P13)")
 
 # Test requirements, not product feature switches. Multiple requirements are conjunctive.
 foreach(group NATIVE DESKTOP GPU TOOLCHAIN INSTALLED)

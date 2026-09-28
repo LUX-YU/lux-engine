@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/sessions/PersistenceCheckpoint.hpp>
 #include <lux/engine/simulation/ecs/Entity.hpp>
 #include <lux/engine/scene/SceneInstanceId.hpp>
 #include <lux/engine/world/WorldDataSchemaId.hpp>
@@ -115,6 +116,8 @@ namespace lux::editor::scene
         [[nodiscard]] EditorResult<editing::HistorySnapshot> reviewClose() const;
         [[nodiscard]] EditorResult<SaveRequestId> requestSave(std::string origin);
         [[nodiscard]] EditorResult<SaveRequestId> requestSaveAs(std::string_view path);
+        [[nodiscard]] bool hasUnsavedChanges() const noexcept;
+        [[nodiscard]] std::optional<sessions::PersistedState> persistedState() const noexcept;
         [[nodiscard]] std::span<const SaveRequestId> saveRequests() const noexcept;
         [[nodiscard]] EditorResult<VSaveRequestStatus> saveStatus(SaveRequestId) const;
         [[nodiscard]] EditorResult<void> retrySave(SaveRequestId);

@@ -3,8 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/editor/editing/visibility.h>
-#include <optional>
+#include <lux/engine/editor/editing/history_visibility.h>
 #include <string_view>
 
 namespace lux::editor::editing
@@ -26,8 +25,6 @@ namespace lux::editor::editing
         STAGING_LIMIT,
         ID_EXHAUSTED,
         CONTRACT_VIOLATION,
-        SAVE_IN_PROGRESS,
-        STALE_SAVE,
         NO_ACTIVE_TARGET,
         STALE_TARGET,
         DUPLICATE_TARGET,
@@ -41,7 +38,7 @@ namespace lux::editor::editing
         std::array<char, 192> message{};
         bool message_truncated{};
     };
-    [[nodiscard]] LUX_EDITOR_EDITING_PUBLIC EditFailure
+    [[nodiscard]] LUX_EDIT_HISTORY_PUBLIC EditFailure
     makeEditFailure(EEditError code, std::uint64_t domain_code = 0, std::string_view message = {}) noexcept;
     template <class T> using EditResult = lux::cxx::expected<T, EditFailure>;
 
@@ -100,14 +97,7 @@ namespace lux::editor::editing
         UNDONE,
         REDONE,
         CLEARED,
-        SAVE_STARTED,
         CLOSED
-    };
-    enum class ESaveOutcome : std::uint8_t
-    {
-        SUCCEEDED,
-        FAILED,
-        CANCELLED
     };
 
     struct HistoryLimits final
@@ -121,11 +111,10 @@ namespace lux::editor::editing
     {
         HistoryId history;
         StateId current;
-        std::optional<StateId> saved;
         Revision revision;
         std::uint64_t event_sequence{};
         std::size_t entry_count{}, cursor{}, charged_retained_bytes{}, history_metadata_bytes{};
-        bool save_pending{}, clean{}, closed{};
+        bool closed{};
     };
     struct HistoryView final
     {
@@ -179,10 +168,9 @@ namespace lux::editor::editing
     {
         HistoryLimits limits;
         HistoryObserver observer;
-        bool initially_saved{};
     };
     class EditHistory;
-    class LUX_EDITOR_EDITING_PUBLIC EditPreparationBudget final
+    class LUX_EDIT_HISTORY_PUBLIC EditPreparationBudget final
     {
     public:
         EditPreparationBudget(const EditPreparationBudget&) = delete;
@@ -196,21 +184,5 @@ namespace lux::editor::editing
         friend class EditHistory;
         explicit EditPreparationBudget(std::size_t limit) noexcept;
         std::size_t limit_{}, used_{};
-    };
-    class LUX_EDITOR_EDITING_PUBLIC SaveTicket final
-    {
-    public:
-        SaveTicket() noexcept = default;
-        [[nodiscard]] bool valid() const noexcept;
-        [[nodiscard]] HistoryId history() const noexcept;
-        [[nodiscard]] StateId state() const noexcept;
-        [[nodiscard]] std::uint64_t request() const noexcept;
-
-    private:
-        friend class EditHistory;
-        SaveTicket(HistoryId history, StateId state, std::uint64_t request) noexcept;
-        HistoryId history_;
-        StateId state_;
-        std::uint64_t request_{};
     };
 } // namespace lux::editor::editing

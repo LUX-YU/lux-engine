@@ -136,7 +136,7 @@ public:
                     &EditorTestFactory::show<material::MaterialEditor>(*editor_)->get() == &doc &&
                     doc.historyId() == identity_before
                 );
-                assert(doc.content() != nullptr && doc.historyView()->history.clean);
+                assert(doc.content() != nullptr && !doc.hasUnsavedChanges());
                 const auto initial_shading = toolTest(doc).source().graph.shading_model;
                 assert(toolTest(doc).setShadingModel(lux::rdesc::ELightingTechnique::UNLIT));
                 assert(toolTest(doc).source().graph.shading_model == lux::rdesc::ELightingTechnique::UNLIT);
@@ -185,7 +185,7 @@ public:
                         assert(doc.undo());
                     }
                     assert(*source::encodeMaterialSource(toolTest(doc).source()) == *original);
-                    assert(doc.historyView()->history.clean);
+                    assert(!doc.hasUnsavedChanges());
                     auto replacement = std::unique_ptr<source::Node>(new source::ConstantNode);
                     auto replacement_id = toolTest(doc).insertNode(replacement);
                     assert(replacement_id && replacement_id->value > created->value && doc.undo());
@@ -281,8 +281,8 @@ public:
                 assert(reentered);
                 auto invalid = toolTest(doc).setConstant(lux::graph::NodeId{9999}, {});
                 assert(!invalid && invalid.error().code == editing::EEditError::PRECONDITION_FAILED);
-                assert(doc.undo() && doc.historyView()->history.clean);
-                assert(doc.redo() && !doc.historyView()->history.clean);
+                assert(doc.undo() && !doc.hasUnsavedChanges());
+                assert(doc.redo() && doc.hasUnsavedChanges());
                 assert(toolTest(doc).rename("Saved S1"));
                 saved_ = doc.historyView()->history.current;
                 save_ = *doc.requestSave("test");
@@ -293,7 +293,7 @@ public:
             }
             else if (stage_ == 3)
             {
-                assert(toolTest(doc).source().name == "Saved S1" && doc.historyView()->history.clean);
+                assert(toolTest(doc).source().name == "Saved S1" && !doc.hasUnsavedChanges());
                 assert(toolTest(doc).source().graph.nodes().size() == 2);
                 compile_ = *doc.requestCompile();
                 stage_ = 4;
@@ -327,7 +327,7 @@ public:
                 return;
             }
             assert(std::holds_alternative<SaveSucceeded>(*save));
-            assert(std::get<SaveSucceeded>(*save).captured == saved_ && !doc.historyView()->history.clean);
+            assert(std::get<SaveSucceeded>(*save).captured == saved_ && doc.hasUnsavedChanges());
             if (auto* failed = std::get_if<mat::MaterialCompileFailed>(&*compile))
             {
                 std::printf(
@@ -433,7 +433,7 @@ public:
                 exact->code == source::EMaterialCompileError::MISSING_REQUIRED_OUTPUT
             );
             const auto after = doc.historyView()->history;
-            assert(after.current == before_.current && after.revision == before_.revision && after.clean);
+            assert(after.current == before_.current && after.revision == before_.revision && !doc.hasUnsavedChanges());
             std::printf(
                 "unfinished graph compile rejection: domain=%s reason=%llu history unchanged\n",
                 failure.domain.c_str(),

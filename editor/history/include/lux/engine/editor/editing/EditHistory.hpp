@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/editor/editing/EditOperation.hpp>
-#include <lux/engine/editor/editing/visibility.h>
+#include <lux/engine/editor/editing/history_visibility.h>
 #include <memory>
 namespace lux::editor::editing
 {
@@ -9,7 +9,7 @@ namespace lux::editor::editing
     }
     // Owner-thread history. Queries borrow labels until mutation; snapshots own only scalar state.
     // Mutations reject reentry, including preparation, publication and resource reclamation.
-    class LUX_EDITOR_EDITING_PUBLIC EditHistory final
+    class LUX_EDIT_HISTORY_PUBLIC EditHistory final
     {
     public:
         using CreateResult = EditResult<std::unique_ptr<EditHistory>>;
@@ -27,10 +27,6 @@ namespace lux::editor::editing
         [[nodiscard]] EditResult<ApplyResult> execute(EditOperationPtr& operation) noexcept;
         [[nodiscard]] EditResult<ApplyResult> undo() noexcept;
         [[nodiscard]] EditResult<ApplyResult> redo() noexcept;
-        // Captures the committed state only; the business owns snapshot capture and file I/O.
-        [[nodiscard]] EditResult<SaveTicket> beginSave() noexcept;
-        // Settle the accepted ticket without observer dispatch; view() exposes the new saved state/event version.
-        [[nodiscard]] EditResult<void> finishSave(SaveTicket ticket, ESaveOutcome outcome) noexcept;
         [[nodiscard]] EditResult<void> clear() noexcept;
         // Explicit close notifies once. The observer/model/code must survive this call.
         // Destruction releases resources silently and requires owner-thread, non-busy access.

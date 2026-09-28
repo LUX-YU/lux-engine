@@ -49,6 +49,20 @@ def inspect(repo, records, rules, stage, compile_db=None):
                 if re.search(rule["pattern"], source):
                     report(rule["id"], path, rule["description"])
 
+    if stage >= "P01":
+        retired = re.compile(r'\b(beginSave|finishSave|ESaveOutcome|initially_saved|SAVE_STARTED|'
+                             r'SAVE_IN_PROGRESS|STALE_SAVE|SaveTicket)\b')
+        for path, source in sources.items():
+            if not path.endswith((".hpp", ".cpp", ".h", ".cc")):
+                continue
+            # The sole intentional occurrence checks absence through a requires expression.
+            if path == "editor/sessions/test/sessions.cpp":
+                source = source.replace("value.beginSave();", "")
+            if retired.search(source):
+                report("HISTORY_PERSISTENCE_API", path, "P01 retired persistence declaration or call")
+            if path.startswith("editor/history/") and re.search(r'\b(saved|save_pending|clean|pending|request)\b', source):
+                report("HISTORY_PERSISTENCE_STATE", path, "Persistence state must not live in history")
+
     scopes = tuple(rules["new_scopes"])
     forbidden_headers = set(rules["new_scope_forbidden_include"])
     for path, source in sources.items():
@@ -58,6 +72,8 @@ def inspect(repo, records, rules, stage, compile_db=None):
         if not path.startswith(scopes):
             continue
         for header in re.findall(r'^\s*#\s*include\s*[<"]([^>"\n]+)', source, re.M):
+            if "LegacyPersistenceState" in header or "/transition/" in header:
+                report("NEW_DEPENDS_ON_TRANSITION", path, header)
             if header in forbidden_headers:
                 report("NEW_DEPENDS_ON_OLD", path, header)
             if "/pinclude/" in header or "/sinclude/" in header:

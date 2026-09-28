@@ -74,7 +74,7 @@ namespace lux::editor::material
         asset_status_ = {EAssetEditPhase::REVIEW, change, id, {}};
         if (auto* job = std::get_if<Compilation>(&compilation_))
             compile_task_.requestStop();
-        if (!history_ || current->snapshot.clean)
+        if (!history_ || persistence_.clean())
             startAssetChange();
         return {};
     }
@@ -184,7 +184,7 @@ namespace lux::editor::material
         std::unique_ptr<editing::EditHistory> next_history;
         if (copying)
         {
-            auto created = editing::EditHistory::create({kLimits, {}, true});
+            auto created = editing::EditHistory::create({kLimits, {}});
             if (!created)
                 return lux::cxx::unexpected(historyFailure(created.error()));
             next_history = std::move(*created);
@@ -192,9 +192,11 @@ namespace lux::editor::material
         if (next_save_ == UINT64_MAX)
             return lux::cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "material.save-as"});
         lux::material::MaterialSource capture{identity, source_.name, source_.graph.clone()};
-        auto ticket = history_->beginSave();
+        auto ticket = persistence_.capture(!copying);
         if (!ticket)
-            return lux::cxx::unexpected(historyFailure(ticket.error()));
+            return lux::cxx::unexpected(EditorFailure{
+                EEditorError::BUSY, "asset.save.ticket", static_cast<std::uint64_t>(ticket.error())
+            });
         const SaveRequestId id{history_->id(), next_save_++};
         save_.emplace<MaterialSave>(
             id,
@@ -204,13 +206,14 @@ namespace lux::editor::material
             std::move(capture),
             editor_context_.project(),
             editor_context_.execution(),
-            *history_,
+            persistence_,
             completion_work_.requester()
         );
         if (copying)
         {
             saved_identity_ = identity;
             saved_history_ = std::move(next_history);
+            saved_persistence_.reset(*saved_history_, false);
             if (auto* job = std::get_if<Compilation>(&compilation_))
                 compile_task_.requestStop();
         }
@@ -241,7 +244,9 @@ namespace lux::editor::material
                     return;
                 compilation_.emplace<std::monostate>();
                 source_.id = saved_identity_;
+                saved_persistence_.reset(*saved_history_, true);
                 history_ = std::move(saved_history_);
+                persistence_ = std::move(saved_persistence_);
             }
             else
                 saved_history_.reset();
@@ -299,13 +304,14 @@ namespace lux::editor::material
             return;
         if (candidate_ && !candidate_history_)
         {
-            auto created = editing::EditHistory::create({kLimits, {}, asset_status_.change == EAssetChange::OPEN});
+            auto created = editing::EditHistory::create({kLimits, {}});
             if (!created)
             {
                 assetFailure(historyFailure(created.error()));
                 return;
             }
             candidate_history_ = std::move(*created);
+            candidate_persistence_.reset(*candidate_history_, asset_status_.change == EAssetChange::OPEN);
         }
         auto reset = resetPreview();
         if (!reset)
@@ -318,6 +324,7 @@ namespace lux::editor::material
             return;
         compilation_.emplace<std::monostate>();
         history_ = std::move(candidate_history_);
+        persistence_ = std::move(candidate_persistence_);
         source_ = candidate_ ? std::move(*candidate_) : lux::material::MaterialSource{};
         candidate_.reset();
         editor_->setTitle(source_.id.isNull() ? "Material Editor" : source_.name);

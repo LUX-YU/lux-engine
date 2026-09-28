@@ -55,10 +55,8 @@ namespace lux::editor::editing
         HistoryCreateInfo info;
         HistoryId identity;
         StateId base, current;
-        std::optional<StateId> saved;
-        std::optional<SaveTicket> pending;
         Revision revision;
-        std::uint64_t serial{1U}, event{}, request{};
+        std::uint64_t serial{1U}, event{};
         EHistoryPhase phase{EHistoryPhase::IDLE};
         Entries entries;
         Retired retired;
@@ -96,15 +94,12 @@ namespace lux::editor::editing
             return HistorySnapshot{
                 identity,
                 current,
-                saved,
                 revision,
                 event,
                 entries.size(),
                 cursor,
                 retained_bytes,
                 (entries.capacity() + retired.capacity()) * sizeof(Entry),
-                pending.has_value(),
-                saved.has_value() && *saved == current,
                 phase == EHistoryPhase::CLOSED
             };
         }
@@ -171,10 +166,6 @@ namespace lux::editor::editing
         auto& ready = *result->impl_;
         ready.identity = HistoryId{issued + 1U};
         ready.current = ready.base = StateId{ready.identity, 1U};
-        if (info.initially_saved)
-        {
-            ready.saved = ready.current;
-        }
         return result;
     }
 
@@ -188,7 +179,6 @@ namespace lux::editor::editing
             std::abort();
         }
         state.phase = EHistoryPhase::CLOSED;
-        state.pending.reset();
         state.retireAll();
         state.collect();
     }
@@ -439,67 +429,6 @@ namespace lux::editor::editing
         return ApplyResult{EEditEffect::CHANGE, state.current, state.revision, state.event};
     }
 
-    EditResult<SaveTicket> EditHistory::beginSave() noexcept
-    {
-        auto& state = *impl_;
-        if (auto checked = state.check(); !checked)
-        {
-            return lux::cxx::unexpected(checked.error());
-        }
-        if (state.pending)
-        {
-            return failure(EEditError::SAVE_IN_PROGRESS);
-        }
-        const bool is_exhausted = state.event == kMaxCounter || state.request == kMaxCounter;
-        if (is_exhausted)
-        {
-            return failure(EEditError::ID_EXHAUSTED);
-        }
-        PhaseGuard guard(state.phase);
-        const SaveTicket ticket{state.identity, state.current, ++state.request};
-        state.pending = ticket;
-        ++state.event;
-        state.phase = EHistoryPhase::PUBLISHING;
-        state.notice(EHistoryEvent::SAVE_STARTED);
-        return ticket;
-    }
-
-    EditResult<void> EditHistory::finishSave(SaveTicket ticket, ESaveOutcome outcome) noexcept
-    {
-        auto& state = *impl_;
-        if (auto checked = state.check(); !checked)
-        {
-            return checked;
-        }
-        const bool is_matching_ticket = ticket.valid() && state.pending && ticket.history() == state.identity &&
-                                        ticket.request() == state.pending->request() &&
-                                        ticket.state() == state.pending->state();
-        if (!is_matching_ticket)
-        {
-            return failure(EEditError::STALE_SAVE);
-        }
-        const bool is_invalid_outcome =
-            outcome != ESaveOutcome::SUCCEEDED && outcome != ESaveOutcome::FAILED && outcome != ESaveOutcome::CANCELLED;
-        if (is_invalid_outcome)
-        {
-            return failure(EEditError::INVALID_ARGUMENT);
-        }
-        if (state.event == kMaxCounter)
-        {
-            return failure(EEditError::ID_EXHAUSTED);
-        }
-        PhaseGuard guard(state.phase);
-        if (outcome == ESaveOutcome::SUCCEEDED)
-        {
-            state.saved = ticket.state();
-        }
-        state.pending.reset();
-        ++state.event;
-        state.phase = EHistoryPhase::PUBLISHING;
-        // Settlement is a storage fact and can run during RAII collection. It must not dispatch observers.
-        return {};
-    }
-
     EditResult<void> EditHistory::clear() noexcept
     {
         auto& state = *impl_;
@@ -533,7 +462,6 @@ namespace lux::editor::editing
             return checked.error().code == EEditError::CLOSED ? EditResult<void>{} : checked;
         }
         state.phase = EHistoryPhase::RECLAIMING;
-        state.pending.reset();
         state.retireAll();
         if (state.event != kMaxCounter)
         {

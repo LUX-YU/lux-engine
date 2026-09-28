@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/sessions/PersistenceCheckpoint.hpp>
 #include <lux/engine/process/TaskInfo.hpp>
 
 #include <lux/engine/ui/Pane.hpp>
@@ -62,6 +63,8 @@ namespace lux::editor::material
         [[nodiscard]] asset::AssetId assetId() const noexcept;
         [[nodiscard]] EditorResult<SaveRequestId> requestSaveAs(std::string_view vpath);
         [[nodiscard]] EditorResult<SaveRequestId> requestSave(std::string origin);
+        [[nodiscard]] bool hasUnsavedChanges() const noexcept;
+        [[nodiscard]] std::optional<sessions::PersistedState> persistedState() const noexcept;
         [[nodiscard]] std::span<const SaveRequestId> saveRequests() const noexcept;
         [[nodiscard]] EditorResult<VSaveRequestStatus> saveStatus(SaveRequestId) const;
         [[nodiscard]] EditorResult<void> retrySave(SaveRequestId);

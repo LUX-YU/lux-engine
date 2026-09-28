@@ -1008,10 +1008,12 @@ namespace lux::editor::material
         auto target = lux::editor::detail::captureAssetSaveTarget(editor_context_.project(), this->source_.id);
         if (!target)
             return lux::cxx::unexpected(target.error());
-        auto ticket = this->history_->beginSave();
+        auto ticket = this->persistence_.capture();
         if (!ticket)
         {
-            return lux::cxx::unexpected(historyFailure(ticket.error()));
+            return lux::cxx::unexpected(EditorFailure{
+                EEditorError::BUSY, "asset.save.ticket", static_cast<std::uint64_t>(ticket.error())
+            });
         }
         const SaveRequestId id{this->history_->id(), this->next_save_++};
         this->save_.emplace<MaterialSave>(
@@ -1022,7 +1024,7 @@ namespace lux::editor::material
             std::move(capture),
             editor_context_.project(),
             editor_context_.execution(),
-            *this->history_,
+            this->persistence_,
             completion_work_.requester()
         );
         return id;
@@ -1167,10 +1169,12 @@ namespace lux::editor::material
         auto target = lux::editor::detail::captureAssetSaveTarget(editor_context_.project(), this->source_.id);
         if (!target)
             return lux::cxx::unexpected(target.error());
-        auto ticket = this->history_->beginSave();
+        auto ticket = this->persistence_.capture();
         if (!ticket)
         {
-            return lux::cxx::unexpected(historyFailure(ticket.error()));
+            return lux::cxx::unexpected(EditorFailure{
+                EEditorError::BUSY, "asset.save.ticket", static_cast<std::uint64_t>(ticket.error())
+            });
         }
         const SaveRequestId id{this->history_->id(), this->next_save_++};
         const auto& job = std::get<Compilation>(this->compilation_);
@@ -1183,7 +1187,7 @@ namespace lux::editor::material
             image,
             editor_context_.project(),
             editor_context_.execution(),
-            *this->history_,
+            this->persistence_,
             completion_work_.requester()
         );
         return id;
@@ -1483,5 +1487,13 @@ namespace lux::editor::material
             return;
         adoptCompletions();
         applyAssetChange();
+    }
+    bool MaterialEditor::hasUnsavedChanges() const noexcept
+    {
+        return impl_->history_ && !impl_->persistence_.clean();
+    }
+    std::optional<sessions::PersistedState> MaterialEditor::persistedState() const noexcept
+    {
+        return impl_->history_ ? impl_->persistence_.persisted() : std::nullopt;
     }
 }

@@ -1,4 +1,3 @@
-#include <lux/engine/editor/editing/EditHistoryTarget.hpp>
 #include <lux/engine/editor/editing/EditOperation.hpp>
 
 #include <algorithm>
@@ -25,7 +24,6 @@ namespace lux::editor::editing
 
     PreparedEdit::~PreparedEdit() noexcept = default;
     EditOperation::~EditOperation() noexcept = default;
-    EditHistoryTarget::~EditHistoryTarget() noexcept = default;
 
     EditPreparationBudget::EditPreparationBudget(std::size_t limit) noexcept : limit_(limit) {}
     EditResult<void> EditPreparationBudget::reserve(std::size_t bytes) noexcept
@@ -50,23 +48,4 @@ namespace lux::editor::editing
         return limit_ - used_;
     }
 
-    SaveTicket::SaveTicket(HistoryId history, StateId state, std::uint64_t request) noexcept
-        : history_(history), state_(state), request_(request)
-    {}
-    bool SaveTicket::valid() const noexcept
-    {
-        return history_.valid() && state_.valid() && state_.history == history_ && request_ != 0U;
-    }
-    HistoryId SaveTicket::history() const noexcept
-    {
-        return history_;
-    }
-    StateId SaveTicket::state() const noexcept
-    {
-        return state_;
-    }
-    std::uint64_t SaveTicket::request() const noexcept
-    {
-        return request_;
-    }
 } // namespace lux::editor::editing

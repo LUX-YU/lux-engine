@@ -65,8 +65,10 @@ int main(int argc, char** argv)
     lux::asset::AssetVfs assets;
     auto project = ProjectStorage::open(*source, assets, *execution->blocking(), tasks, messages->dispatcherRef());
     assert(project);
-    auto history = editing::EditHistory::create({{32, 1024 * 1024, 1024 * 1024, 16}, {}, false});
+    auto history = editing::EditHistory::create({{32, 1024 * 1024, 1024 * 1024, 16}, {}});
     assert(history);
+    transition::LegacyPersistenceState persistence;
+    persistence.reset(**history, false);
     using Save = detail::TAssetSave<std::string, Encoder>;
     const auto await = [&](auto ready, auto poll) {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
@@ -86,7 +88,7 @@ int main(int argc, char** argv)
     assert(target && !(*project)->asset(first));
     const auto initial = uuids::to_string(first.uuid()) + "initial";
     {
-        auto ticket = (*history)->beginSave();
+        auto ticket = persistence.capture();
         assert(ticket);
         Save save(
             {(*history)->id(), 1},
@@ -96,11 +98,11 @@ int main(int argc, char** argv)
             initial,
             **project,
             *execution,
-            **history
+            persistence
         );
         await([&] { return save.terminal(); }, [] {});
         assert(std::holds_alternative<SaveSucceeded>(save.status()));
-        assert((*history)->view()->snapshot.clean);
+        assert(persistence.clean());
         assert((*project)->asset(first) && (*project)->asset(first)->cooked_path.empty());
         assert((*project)->asset(first)->source_digest == projectContentDigest(std::as_bytes(std::span(initial))));
     }
@@ -109,7 +111,7 @@ int main(int argc, char** argv)
     // No presenter or explicit polling: destruction finishes encoding, disk publication and Main adoption.
     {
         auto target = detail::captureAssetSaveTarget(**project, first);
-        auto ticket = (*history)->beginSave();
+        auto ticket = persistence.capture();
         assert(target && ticket);
         {
             Save save(
@@ -120,13 +122,13 @@ int main(int argc, char** argv)
                 initial,
                 **project,
                 *execution,
-                **history
+                persistence
             );
         }
-        assert((*history)->view()->snapshot.clean);
+        assert(persistence.clean());
         // The completed operation released its history ticket.
-        auto extra = (*history)->beginSave();
-        assert(extra && (*history)->finishSave(*extra, editing::ESaveOutcome::CANCELLED));
+        auto extra = persistence.capture();
+        assert(extra && persistence.settle(*extra, transition::ELegacyPersistenceOutcome::CANCELLED));
     }
     {
         std::optional<EditorResult<Codec::Source>> result;

@@ -110,7 +110,7 @@ endif()
 
 if(LUX_EDITOR_TEST_DESKTOP_GPU)
     find_program(EDITOR_TEST_POWERSHELL NAMES pwsh powershell REQUIRED)
-    set(core_modes new-assets save-preservation factory-rollback fixed-run)
+    set(core_modes new-assets save-preservation save-retry save-partial factory-rollback fixed-run)
     set(material_fixture "not-selected")
     set(flow_fixture "not-selected")
     if(LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)

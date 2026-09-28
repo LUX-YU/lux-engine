@@ -1,3 +1,4 @@
+#include "LegacyPersistenceState.hpp"
 #pragma once
 
 #include <lux/engine/editor/AssetSave.hpp>
@@ -163,17 +164,17 @@ namespace lux::editor::detail
         template <class SavedCapture>
         TAssetSave(
             SaveRequestId id,
-            editing::SaveTicket ticket,
+            transition::LegacySaveTicket ticket,
             editing::Revision revision,
             AssetSaveTarget target,
             SavedCapture capture,
             ProjectStorage& project,
             process::ExecutionRuntime& runtime,
-            editing::EditHistory& history,
+            transition::LegacyPersistenceState& persistence,
             process::CompletionWork::Request completed = {}
         )
             : id_(id), ticket_(ticket), revision_(revision), capture_(std::move(capture)), project_(project),
-              runtime_(runtime), history_(&history), source_(std::move(target.entry)),
+              runtime_(runtime), persistence_(&persistence), source_(std::move(target.entry)),
               before_digest_(std::move(target.before_digest)), completed_(std::move(completed)),
               adoption_(
                   runtime,
@@ -193,12 +194,12 @@ namespace lux::editor::detail
             if (!runtime_.waitUntil([this]() noexcept { return !std::holds_alternative<SavePending>(status_); }))
                 std::terminate();
             adoption_.cancel();
-            if (history_)
+            if (persistence_)
             {
-                // Failed saves remain dirty; destroying the presenter must not strand its history ticket.
-                const auto finished = history_->finishSave(ticket_, editing::ESaveOutcome::FAILED);
+                // Failed saves remain dirty; release the bridge ticket before its owner can be replaced.
+                const auto finished = persistence_->settle(ticket_, transition::ELegacyPersistenceOutcome::FAILED);
                 if (!finished)
-                    log::error("asset.save", "Failed to release save ticket ({})", unsigned(finished.error().code));
+                    log::error("asset.save", "Failed to release save ticket ({})", unsigned(finished.error()));
                 if (const auto* failure = std::get_if<SaveRetryable>(&status_))
                     log::error("asset.save", "{}: {}", failure->failure.domain, failure->failure.message);
             }
@@ -418,14 +419,14 @@ namespace lux::editor::detail
             finishing_ = true;
             const auto* write = std::get_if<ProjectWrite>(&work_);
             const auto* published = write ? std::get_if<PublicationSucceeded>(&write->status()) : nullptr;
-            const auto outcome = published ? editing::ESaveOutcome::SUCCEEDED : editing::ESaveOutcome::CANCELLED;
-            const auto finished = history_->finishSave(ticket_, outcome);
+            const auto outcome = published ? transition::ELegacyPersistenceOutcome::SUCCEEDED : transition::ELegacyPersistenceOutcome::CANCELLED;
+            const auto finished = persistence_->settle(ticket_, outcome);
             if (!finished)
             {
                 failed(EditorFailure{
                     EEditorError::INVALID_STATE,
                     "asset.save.ticket",
-                    static_cast<std::uint64_t>(finished.error().code),
+                    static_cast<std::uint64_t>(finished.error()),
                     {},
                     finished.error()
                 });
@@ -441,16 +442,16 @@ namespace lux::editor::detail
                 status_ = SaveAbandoned{};
             }
             work_.template emplace<Idle>();
-            history_ = nullptr; // Terminal requests may outlive a tool's previous HistoryId.
+            persistence_ = nullptr; // Terminal requests no longer borrow the previous working copy.
             finishing_ = false;
         }
         SaveRequestId id_;
-        editing::SaveTicket ticket_;
+        transition::LegacySaveTicket ticket_;
         editing::Revision revision_;
         VCaptureStorage capture_;
         ProjectStorage& project_;
         process::ExecutionRuntime& runtime_;
-        editing::EditHistory* history_;
+        transition::LegacyPersistenceState* persistence_;
         ProjectAssetEntry source_;
         std::string before_digest_;
         Encoded image_;

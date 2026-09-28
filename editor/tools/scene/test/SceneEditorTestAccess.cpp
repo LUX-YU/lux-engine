@@ -3,6 +3,10 @@
 
 namespace lux::editor::scene
 {
+    bool SceneEditorTestAccess::persistencePending() const noexcept
+    {
+        return tool_.impl_->persistence_.pending();
+    }
     editing::EditHistory& SceneEditorTestAccess::history() const noexcept
     {
         return tool_.impl_->inspectedHistory();

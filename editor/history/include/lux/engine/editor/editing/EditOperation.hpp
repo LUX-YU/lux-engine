@@ -1,11 +1,11 @@
 #pragma once
 #include <lux/engine/editor/editing/EditTypes.hpp>
-#include <lux/engine/editor/editing/visibility.h>
+#include <lux/engine/editor/editing/history_visibility.h>
 #include <memory>
 namespace lux::editor::editing
 {
     // Business-owned staged image. Preparation must not mutate live content, selection or memento.
-    class LUX_EDITOR_EDITING_PUBLIC PreparedEdit
+    class LUX_EDIT_HISTORY_PUBLIC PreparedEdit
     {
     public:
         virtual ~PreparedEdit() noexcept;
@@ -29,7 +29,7 @@ namespace lux::editor::editing
         virtual void publish(const CommitInfo&) noexcept = 0;
     };
     using PreparedEditPtr = std::unique_ptr<PreparedEdit>;
-    class LUX_EDITOR_EDITING_PUBLIC EditOperation
+    class LUX_EDIT_HISTORY_PUBLIC EditOperation
     {
     public:
         virtual ~EditOperation() noexcept;

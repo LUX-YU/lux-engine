@@ -1,7 +1,7 @@
+#pragma once
 #include "ToolTestAccess.hpp"
 #include "menu_checks.hpp"
 #include <lux/engine/editor/ui/SceneElement.hpp>
-#pragma once
 
 #include "entity_checks.hpp"
 #include <lux/engine/scene/RenderResources.hpp>
@@ -113,6 +113,7 @@ struct ScenePlaybackChecks final
 {
     lux::editor::scene::RunId first;
     lux::editor::editing::HistorySnapshot author;
+    std::optional<lux::editor::sessions::PersistedState> author_persisted;
     lux::editor::editing::HistoryId pause_history;
     std::uint64_t paused_step{};
     std::uint64_t first_frame{};
@@ -150,6 +151,7 @@ struct ScenePlaybackChecks final
         )
                                  ->translation;
         author = scene.historyView()->history;
+        author_persisted = scene.persistedState();
         first_frame = renderer.statistics().frames;
         captured_state = author.current;
         runtime = &renderer;
@@ -218,7 +220,7 @@ struct ScenePlaybackChecks final
         if (current.current.history == author.current.history)
         {
             assert(
-                current.current == author.current && current.saved == author.saved &&
+                current.current == author.current && scene.persistedState() == author_persisted &&
                 current.revision == author.revision && current.cursor == author.cursor
             );
         }
@@ -465,12 +467,14 @@ struct CpuRunChecks final
 {
     lux::editor::scene::RunId id;
     lux::editor::editing::HistorySnapshot author;
+    std::optional<lux::editor::sessions::PersistedState> author_persisted;
     std::uint64_t paused{};
     unsigned phase{};
 
     void begin(lux::editor::scene::SceneEditor& scene)
     {
         author = scene.historyView()->history;
+        author_persisted = scene.persistedState();
         auto started = scene.play(std::chrono::milliseconds(10));
         assert(started);
         id = *started;
@@ -515,6 +519,7 @@ struct RunFailureChecks final
 {
     lux::editor::scene::RunId failed_run;
     lux::editor::editing::HistorySnapshot author;
+    std::optional<lux::editor::sessions::PersistedState> author_persisted;
     lux::simulation::ecs::Entity object{lux::simulation::ecs::NullEntity};
     unsigned phase{10};
     std::uint64_t before_failed_step{};
@@ -527,6 +532,7 @@ struct RunFailureChecks final
         author_translation =
             static_cast<const Transform*>(toolTest(scene).component(object, lux::cxx::typeToken<Transform>()))->translation;
         author = scene.historyView()->history;
+        author_persisted = scene.persistedState();
         auto started = scene.play(std::chrono::milliseconds(10));
         assert(started);
         failed_run = *started;
@@ -574,7 +580,7 @@ struct RunFailureChecks final
             );
             const auto current = scene.historyView()->history;
             assert(
-                current.current == author.current && current.saved == author.saved &&
+                current.current == author.current && scene.persistedState() == author_persisted &&
                 current.revision == author.revision && current.cursor == author.cursor
             );
             const auto* value = static_cast<const simulation::ecs::Transform3D*>(

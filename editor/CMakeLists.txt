@@ -1,4 +1,7 @@
 include(${PROJECT_SOURCE_DIR}/cmake/EditorTests.cmake)
+add_subdirectory(contracts)
+add_subdirectory(history)
+add_subdirectory(sessions)
 add_subdirectory(editing)
 add_subdirectory(project)
 add_subdirectory(storage)

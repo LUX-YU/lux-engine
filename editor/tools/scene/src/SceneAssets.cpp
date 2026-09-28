@@ -47,7 +47,7 @@ namespace lux::editor::scene
         if (resume_after_change_)
             static_cast<void>(runtime_.invalid(*run_scene));
         asset_status_ = {EAssetEditPhase::REVIEW, change, id, {}};
-        if (!history || history->view()->snapshot.clean)
+        if (!history || persistence_.clean())
             startAssetChange();
         return {};
     }
@@ -196,7 +196,7 @@ namespace lux::editor::scene
         }
         if (viewport.valid() && !lux::scene::RenderSceneState::find(readRegistry(*created), viewport))
             return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "scene.new.viewport"});
-        auto edits = editing::EditHistory::create({kHistoryLimits, {}, asset_status_.change != EAssetChange::NEW});
+        auto edits = editing::EditHistory::create({kHistoryLimits, {}});
         if (!edits)
             return lux::cxx::unexpected(
                 EditorFailure{EEditorError::SOURCE_FAILURE, "scene.history", 0, {}, edits.error()}
@@ -205,6 +205,7 @@ namespace lux::editor::scene
         candidate_scene_ = *created;
         rollback.release();
         candidate_history_ = std::move(*edits);
+        candidate_persistence_.reset(*candidate_history_, asset_status_.change != EAssetChange::NEW);
         const auto& schemas = editor_context_.sceneRegistrations().components;
         candidate_content_.emplace(runtime_, *candidate_scene_, *candidate_, schemas);
         candidate_editing_
@@ -236,6 +237,7 @@ namespace lux::editor::scene
         source = std::move(candidate_);
         scene = std::exchange(candidate_scene_, {});
         history = std::move(candidate_history_);
+        persistence_ = std::move(candidate_persistence_);
         asset_source = std::move(candidate_assets_);
         viewport_system_ = candidate_viewport_;
         candidate_viewport_ = {};
@@ -412,7 +414,7 @@ namespace lux::editor::scene
         if (!captured)
             return lux::cxx::unexpected(captured.error());
         auto copy = copying ? std::make_shared<lux::scene::ScenePackage>() : nullptr;
-        auto ticket = history->beginSave();
+        auto ticket = persistence_.capture(!copying);
         if (!ticket)
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "scene.save-as.ticket", 0, {}, ticket.error()}
             );
@@ -425,7 +427,7 @@ namespace lux::editor::scene
             SceneSaveCapture{std::move(*captured), copying ? identity : asset::AssetId{}, copy},
             editor_context_.project(),
             editor_context_.execution(),
-            *history,
+            persistence_,
             completion_work_.requester()
         );
         if (copying)

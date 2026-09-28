@@ -73,6 +73,18 @@ def main():
         private.unlink()
         print("PASS expiry and private header checks")
 
+        history = root / "editor/history/probe.hpp"
+        history.parent.mkdir(parents=True, exist_ok=True)
+        history.write_text("struct History { void beginSave(); };\n", encoding="utf-8")
+        assert any(x["rule"] == "HISTORY_PERSISTENCE_API" for x in inspect(root, [], rules, "P01"))
+        history.write_text("struct History { bool clean; };\n", encoding="utf-8")
+        assert any(x["rule"] == "HISTORY_PERSISTENCE_STATE" for x in inspect(root, [], rules, "P01"))
+        history.write_text('#include "LegacyPersistenceState.hpp"\n', encoding="utf-8")
+        assert any(x["rule"] == "NEW_DEPENDS_ON_TRANSITION" for x in inspect(root, [], rules, "P01"))
+        history.write_text("struct History {};\n", encoding="utf-8")
+        assert not inspect(root, [], rules, "P01")
+        print("PASS P01 retired history API, saved state and new-to-transition checks")
+
         # Test options must be subordinate to BUILD_TESTING and default to native-only.
         (root / "CMakeLists.txt").write_text(
             'cmake_minimum_required(VERSION 3.22)\nproject(options LANGUAGES NONE)\n'

@@ -174,7 +174,7 @@ public:
                     doc.historyId() == identity_before
                 );
                 const auto original = toolTest(doc).capture();
-                assert(original && doc.content() != nullptr && doc.historyView()->history.clean);
+                assert(original && doc.content() != nullptr && !doc.hasUnsavedChanges());
                 measureEdits("Flow.node-layout", doc, [&](unsigned index) {
                     const std::array moved{lux::graph::GraphLayoutEntry{
                         lux::graph::NodeId{original->nodes.front().id.value},
@@ -302,7 +302,7 @@ public:
                 }
                 const auto invalid_variable =
                     toolTest(doc).addVariable("bad", "Unknown.Type", {source::EFlowLiteralKind::REAL, "1"});
-                assert(!invalid_variable && toolTest(doc).variables().empty() && doc.historyView()->history.clean);
+                assert(!invalid_variable && toolTest(doc).variables().empty() && !doc.hasUnsavedChanges());
                 const auto bool_type = std::string(lux::meta::builtin_ref_type_ptr<bool>()->name);
                 const auto real_type = std::string(lux::meta::builtin_ref_type_ptr<double>()->name);
                 const auto variable =
@@ -365,7 +365,7 @@ public:
                 auto added = std::unique_ptr<source::Node>(new source::BranchNode(0));
                 auto* pointer = added.get();
                 assert(!toolTest(doc).insertNode(added, {std::numeric_limits<float>::quiet_NaN(), 0, true}));
-                assert(added.get() == pointer && doc.historyView()->history.clean);
+                assert(added.get() == pointer && !doc.hasUnsavedChanges());
                 const auto created = toolTest(doc).insertNode(added, {100, 120, true});
                 assert(created && !added);
                 auto snapshot = toolTest(doc).capture();
@@ -429,7 +429,7 @@ public:
             }
             else
             {
-                assert(doc.title() == "Saved S1" && doc.historyView()->history.clean && toolTest(doc).nodes().size() == 2);
+                assert(doc.title() == "Saved S1" && !doc.hasUnsavedChanges() && toolTest(doc).nodes().size() == 2);
                 compile_ = *doc.requestCompile(linker);
                 stage_ = 5;
             }
@@ -460,7 +460,7 @@ public:
             const auto* cause = std::any_cast<source::FlowForgeFailure>(&failure->failure.cause);
             assert(cause && cause->code == source::EFlowForgeError::LINK_FAILED);
             assert(std::holds_alternative<SaveSucceeded>(*save));
-            assert(doc.historyView()->history.saved == saved_ && !doc.historyView()->history.clean);
+            assert(doc.persistedState() && doc.persistedState()->state == saved_ && doc.hasUnsavedChanges());
             assert(doc.acknowledgeSave(save_));
             assert(toolTest(doc).rename("Edited S3"));
             assert(doc.retryLink(compile_, linker));
@@ -553,7 +553,7 @@ public:
             if (stage_ == 7)
             {
                 assert(entry->source_digest == entry->compiled_source_digest);
-                assert(doc.historyView()->history.saved == saved_ && !doc.historyView()->history.clean);
+                assert(doc.persistedState() && doc.persistedState()->state == saved_ && doc.hasUnsavedChanges());
                 compiled_digest_ = entry->compiled_source_digest;
                 assert(doc.acknowledgeSave(save_));
                 save_ = *doc.requestSave("source-only");
@@ -565,7 +565,7 @@ public:
             else
             {
                 assert(entry->compiled_source_digest == compiled_digest_ && entry->source_digest != compiled_digest_);
-                assert(doc.historyView()->history.clean && doc.acknowledgeSave(save_));
+                assert(!doc.hasUnsavedChanges() && doc.acknowledgeSave(save_));
                 queued_notice_.disconnect();
                 assert(doc.requestCompile(linker));
                 assert(doc.clearAsset());

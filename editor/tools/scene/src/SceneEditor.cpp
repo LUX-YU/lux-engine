@@ -281,13 +281,13 @@ namespace lux::editor::scene
             lux::editor::detail::captureAssetSaveTarget(this->editor_context_.project(), this->source->scene->id());
         if (!target)
             return lux::cxx::unexpected(target.error());
-        auto ticket = this->history->beginSave();
+        auto ticket = this->persistence_.capture();
         if (!ticket)
         {
             return lux::cxx::unexpected(EditorFailure{
                 EEditorError::INVALID_STATE,
                 "scene.save.ticket",
-                static_cast<std::uint64_t>(ticket.error().code),
+                static_cast<std::uint64_t>(ticket.error()),
                 {},
                 ticket.error()
             });
@@ -302,7 +302,7 @@ namespace lux::editor::scene
             SceneSaveCapture{std::move(*captured)},
             this->editor_context_.project(),
             this->editor_context_.execution(),
-            *this->history,
+            this->persistence_,
             completion_work_.requester()
         );
         return id;
@@ -1229,7 +1229,6 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(value.error());
         }
-        value->snapshot.clean = value->snapshot.clean && !editing().active();
         using Availability = editing::EHistoryActionAvailability;
         if (this->isEditingBusy())
         {
@@ -1240,7 +1239,6 @@ namespace lux::editor::scene
             return editing::HistoryTargetView{value->snapshot, Availability::BLOCKED, Availability::BLOCKED, {}, {}};
         }
         const bool field_edit = editing().active();
-        value->snapshot.clean = value->snapshot.clean && !field_edit;
         return editing::HistoryTargetView{
             value->snapshot,
             field_edit || value->can_undo ? Availability::READY : Availability::EMPTY,
@@ -1451,7 +1449,7 @@ namespace lux::editor::scene
         if (this->scene && safe(*scene) && !editing().active())
         {
             const auto history = this->history->view();
-            if (history && history->snapshot.clean)
+            if (history && persistence_.clean())
             {
                 this->content->residency().clearDirty();
             }
@@ -1672,4 +1670,12 @@ namespace lux::editor::scene
         return viewport_system_;
     }
 
+    bool SceneEditor::hasUnsavedChanges() const noexcept
+    {
+        return impl_->history && !(impl_->persistence_.clean() && !(impl_->scene_editing && impl_->scene_editing->active()));
+    }
+    std::optional<sessions::PersistedState> SceneEditor::persistedState() const noexcept
+    {
+        return impl_->history ? impl_->persistence_.persisted() : std::nullopt;
+    }
 }

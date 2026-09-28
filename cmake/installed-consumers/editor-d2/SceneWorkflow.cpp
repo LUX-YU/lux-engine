@@ -526,8 +526,8 @@ namespace
                 assert(status && !std::holds_alternative<SaveRetryable>(*status));
                 if (std::holds_alternative<SaveSucceeded>(*status))
                 {
-                    assert(!document.historyView()->history.clean);
-                    assert(document.undo() && document.historyView()->history.clean);
+                    assert(document.hasUnsavedChanges());
+                    assert(document.undo() && !document.hasUnsavedChanges());
                     assert(document.acknowledgeSave(save_));
                     const auto target = *toolTest(document).writeTarget(object);
                     const auto original = read().map;
@@ -542,7 +542,7 @@ namespace
                 if (document.assetStatus().phase == EAssetEditPhase::IDLE)
                 {
                     assert(read().map.at("new entry") == std::vector({8, 9}));
-                    assert(document.historyView()->history.clean);
+                    assert(!document.hasUnsavedChanges());
                     evidence_.complete = true;
                     evidence_.draws = consumer::drawCount();
                     stage_ = 5;

@@ -122,7 +122,7 @@ namespace lux::editor::ui
             {
                 event.accept();
                 const auto view = tool_.historyView();
-                request->applicable = view && !view->history.clean;
+                request->applicable = view && tool_.hasUnsavedChanges();
                 if (request->start && request->applicable)
                 {
                     const bool busy =

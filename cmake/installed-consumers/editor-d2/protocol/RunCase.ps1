@@ -22,7 +22,7 @@ function Invoke-Checked([string[]]$Arguments, [string]$Marker = '^PASS', [int]$E
     }
 }
 
-if ($Case -notin @('new-assets', 'save-preservation', 'factory-rollback', 'material-gui', 'flow-gui', 'fixed-run')) {
+if ($Case -notin @('new-assets', 'save-preservation', 'save-retry', 'save-partial', 'factory-rollback', 'material-gui', 'flow-gui', 'fixed-run')) {
     throw "Unknown retained workflow: $Case"
 }
 $fixtureMode = if ($Case -eq 'save-preservation') { 'gpu-preservation' } else { 'gpu' }

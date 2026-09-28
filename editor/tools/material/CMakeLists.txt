@@ -6,7 +6,7 @@ add_component(COMPONENT_NAME editor_material NAMESPACE lux::engine::editor OUTPU
     SOURCE_FILES src/MaterialEditor.cpp src/MaterialPreview.cpp src/MaterialAssets.cpp)
 component_include_directories(editor_material
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude INSTALL_TIME include)
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/transition ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude INSTALL_TIME include)
 target_compile_definitions(editor_material PRIVATE LUX_EDITOR_MATERIAL_LIBRARY)
 target_link_libraries(editor_material PUBLIC lux::engine::editor::editor_metadata lux::engine::scene::scene_render lux::engine::editor::editor_assets lux::engine::function::material_graph
     PRIVATE lux::engine::editor::editor_context lux::engine::toolchain::toolchain_material_compiler lux::engine::scene::scene_transform

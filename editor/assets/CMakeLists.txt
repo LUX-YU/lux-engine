@@ -20,7 +20,7 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-assets VERSION ${PR
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_asset_save_test test/asset_save.cpp)
     target_link_libraries(editor_asset_save_test PRIVATE editor_assets)
-    target_include_directories(editor_asset_save_test PRIVATE sinclude
+    target_include_directories(editor_asset_save_test PRIVATE sinclude ${PROJECT_SOURCE_DIR}/editor/transition
         ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude)
     if(MSVC)
         target_compile_options(editor_asset_save_test PRIVATE /UNDEBUG /utf-8)

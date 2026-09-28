@@ -1,4 +1,5 @@
 #pragma once
+#include "LegacyPersistenceState.hpp"
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Element.hpp>
@@ -85,13 +86,16 @@ namespace lux::editor::flowforge
         void applyChanges() noexcept;
         void adoptAssetResults();
         std::unique_ptr<editing::EditHistory> history_;
+        transition::LegacyPersistenceState persistence_;
         AssetEditStatus asset_status_;
         std::optional<EditorResult<FlowSourceCodec::Source>> read_result_;
         process::Task reading_;
         std::optional<Content> candidate_;
         std::unique_ptr<editing::EditHistory> candidate_history_;
+        transition::LegacyPersistenceState candidate_persistence_;
         asset::AssetId saved_identity_;
         std::unique_ptr<editing::EditHistory> saved_history_;
+        transition::LegacyPersistenceState saved_persistence_;
         std::optional<SaveRequestId> change_save_;
         bool hide_requested_{};
 

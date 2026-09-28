@@ -78,7 +78,7 @@ int main()
     const auto entity = registry.create();
     registry.emplace<ecs::Transform3D>(entity);
     assert((*runtime)->tick());
-    auto history = editor::editing::EditHistory::create({{128, 1048576, 1048576, 256}, {}, true});
+    auto history = editor::editing::EditHistory::create({{128, 1048576, 1048576, 256}, {}});
     assert(history);
     editor::scene::SceneEditing editing(**runtime, instance, *schemas, **history);
     const auto empty_entity = registry.create();

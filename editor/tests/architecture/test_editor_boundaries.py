@@ -11,11 +11,112 @@ def run(argv):
     return subprocess.run(list(map(str, argv)), capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
+def foundation_cases(args):
+    # Every graph comes from the same real CMake exporter used by the engine configure.
+    cases = [
+        ("X01-R2-01", "edit_history", "edit_sessions", "FOUNDATION_DIRECT_DEPENDENCY", "", False),
+        ("X01-R2-02", "edit_sessions", "scene_composition", "FOUNDATION_FORBIDDEN_DEPENDENCY", "", False),
+        ("X01-R2-03", "edit_sessions", "ui_fixture", "FOUNDATION_FORBIDDEN_DEPENDENCY", "", False),
+        ("X01-R2-04", "edit_sessions", "ui_fixture", "FOUNDATION_FORBIDDEN_DEPENDENCY", "", True),
+        ("X01-R2-05", "edit_sessions", None, "FOUNDATION_FORBIDDEN_INCLUDE", "lux/engine/ui/Pane.hpp", False),
+        ("legal", "edit_sessions", "edit_history", None, "", False),
+        ("legal-external", "edit_sessions", "lux::cxx::container", None, "", False),
+        ("imported-hop", "edit_sessions", "lux::cxx::container", "FOUNDATION_FORBIDDEN_DEPENDENCY", "", False),
+        ("conditional", "edit_sessions", "ui_fixture", "FOUNDATION_FORBIDDEN_DEPENDENCY", "", False),
+        ("contracts-ui", "editor_contracts", "ui_fixture", "FOUNDATION_FORBIDDEN_DEPENDENCY", "", False),
+        ("history-ui", "edit_history", "ui_fixture", "FOUNDATION_FORBIDDEN_DEPENDENCY", "", False),
+        ("context", "edit_sessions", "editor_context", "NEW_DEPENDS_ON_OLD_TARGET", "", False),
+        ("unknown", "edit_sessions", "unresolved_library", "FOUNDATION_UNRESOLVED_DEPENDENCY", "", False),
+    ]
+    locations = {
+        "editor_contracts": "editor/contracts", "edit_history": "editor/history",
+        "edit_sessions": "editor/sessions", "scene_composition": "engine/scene/composition",
+        "ui_fixture": "modules/function/ui", "editor_context": "editor/context",
+        "identity": "modules/resource/identity",
+    }
+    observations = []
+    for name, source, destination, expected, include, transitive in cases:
+        with tempfile.TemporaryDirectory(prefix="lux-p01-r1-") as temporary:
+            root = Path(temporary)
+            assert run(["git", "init", root]).returncode == 0
+            tools = root / "editor/tests/architecture"
+            tools.mkdir(parents=True)
+            for filename in ["rules.json", "check_editor_boundaries.py"]:
+                shutil.copyfile(args.source / "editor/tests/architecture" / filename, tools / filename)
+            for target, path in locations.items():
+                directory = root / path
+                directory.mkdir(parents=True, exist_ok=True)
+                (directory / "CMakeLists.txt").write_text(
+                    f"add_library({target} INTERFACE)\nadd_library(fixture::{target} ALIAS {target})\n",
+                    encoding="utf-8")
+            top = ('cmake_minimum_required(VERSION 3.22)\nproject(foundation LANGUAGES NONE)\n'
+                   'set(LUX_EDITOR_MIGRATION_STAGE P01 CACHE STRING "")\n')
+            top += ('add_library(stduuid INTERFACE IMPORTED)\n'
+                    'add_library(lux::cxx::container INTERFACE IMPORTED)\n'
+                    'add_library(lux::cxx::compile_time INTERFACE IMPORTED)\n')
+            top += "".join(f"add_subdirectory({p})\n" for p in locations.values())
+            if name == "legal-external":
+                top += ('target_link_libraries(identity INTERFACE stduuid)\n'
+                        'target_link_libraries(edit_history INTERFACE editor_contracts lux::cxx::compile_time)\n'
+                        'target_link_libraries(edit_sessions INTERFACE identity edit_history editor_contracts)\n')
+            if name == "imported-hop":
+                top += 'set_property(TARGET lux::cxx::container PROPERTY INTERFACE_LINK_LIBRARIES fixture::ui_fixture)\n'
+            top += (f'include("{args.source.as_posix()}/cmake/EditorArchitectureChecks.cmake")\n'
+                    'lux_editor_check_architecture()\n')
+            (root / "CMakeLists.txt").write_text(top, encoding="utf-8")
+            cmake = root / locations[source] / "CMakeLists.txt"
+            original = cmake.read_text()
+            if destination:
+                edge = f"fixture::{destination}" if destination in locations else destination
+                if name == "conditional":
+                    edge = f"$<$<CONFIG:Debug>:{edge}>"
+                if transitive:
+                    text = (f"add_library(hop INTERFACE)\n"
+                            f"target_link_libraries({source} INTERFACE hop)\n"
+                            f'target_link_libraries(hop INTERFACE "$<LINK_ONLY:{edge}>")\n')
+                else:
+                    text = f'target_link_libraries({source} INTERFACE "$<LINK_ONLY:{edge}>")\n'
+                cmake.write_text(original + text, encoding="utf-8")
+            header = root / locations[source] / "probe.hpp"
+            header.write_text(f"#include <{include}>\n" if include else "", encoding="utf-8")
+            build = root / "build"
+            result = run([args.cmake, "-S", root, "-B", build])
+            text = result.stdout + result.stderr
+            rejected = result.returncode != 0 and expected in text if expected else result.returncode == 0
+            if name == "X01-R2-04":
+                rejected = rejected and "edit_sessions -> hop -> ui_fixture" in " ".join(text.split())
+            if name == "imported-hop":
+                rejected = rejected and "edit_sessions -> lux::cxx::container -> ui_fixture" in " ".join(text.split())
+            graph = json.loads((build / "editor-architecture/targets.json").read_text())
+            cmake.write_text(original, encoding="utf-8")
+            header.write_text("", encoding="utf-8")
+            if name == "imported-hop":
+                (root / "CMakeLists.txt").write_text(top.replace(
+                    "PROPERTY INTERFACE_LINK_LIBRARIES fixture::ui_fixture", 'PROPERTY INTERFACE_LINK_LIBRARIES ""'),
+                    encoding="utf-8")
+            repaired = run([args.cmake, "-S", root, "-B", build])
+            passed = rejected and repaired.returncode == 0
+            observations.append({"id": name, "expected_rule": expected, "exit_code": result.returncode,
+                                 "matched_expected_rule": rejected, "repaired_exit_code": repaired.returncode,
+                                 "passed": passed, "graph": graph,
+                                 "log": text, "repaired_log": repaired.stdout + repaired.stderr})
+            print(f"{'PASS' if passed else 'FAIL'} {name}: configure={result.returncode} "
+                  f"expected={expected} repaired={repaired.returncode}", flush=True)
+    if args.evidence:
+        args.evidence.parent.mkdir(parents=True, exist_ok=True)
+        args.evidence.write_text(json.dumps(observations, indent=2) + "\n", encoding="utf-8")
+    return 0 if all(x["passed"] for x in observations) else 1
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--cmake", required=True)
+    parser.add_argument("--foundation-only", action="store_true")
+    parser.add_argument("--evidence", type=Path)
     args = parser.parse_args()
+    if args.foundation_only:
+        return foundation_cases(args)
     with tempfile.TemporaryDirectory(prefix="lux-p00-") as directory:
         root = Path(directory)
         assert run(["git", "init", root]).returncode == 0
@@ -96,7 +197,7 @@ def main():
         result = run([args.cmake, "-S", root, "-B", root / "options"])
         assert result.returncode == 0, result.stdout + result.stderr
         print("PASS native-only option defaults")
-    return 0
+    return foundation_cases(args)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ and mutable ledger live locally; neither `.internal` nor `dev_log` is a build in
 conditional link edges conservatively (union of configurations). Explicit generator dependencies
 are separate edges. `check_editor_boundaries.py` also checks source includes, resolved compile
 include paths, retired paths and declarations. This is not C++ semantic/ownership/ABI proof.
-Imported library internals and dynamic dependencies still require review. Do not turn a successful
+Binary library internals and dynamic dependencies still require review. Do not turn a successful
 scan into a claim that all such dependencies are absent.
 
 `test_editor_boundaries.py` configures dependency-free CMake fixtures and checks the failure rule,
@@ -32,3 +32,33 @@ The complete Flow compilation/link/publication protocol remains in the toolchain
 Exit 0 means the intended behavior holds, 1 means its contract failed, and 2 means setup failed.
 Never register these with WILL_FAIL or count a setup error as a reproduced defect. They retire with
 the old framework at P12; the corresponding behavior assertions move to the new owners.
+
+## P01-R1 foundation and evidence checks
+
+The CMake exporter resolves aliases and keeps LINK_ONLY/static and conditional edges. P01 foundation
+checks use `targets[].dependencies` as the allowed direct Editor edges. The three foundations have
+explicit external targets, exact imported/source identities, and an allowed transitive closure.
+Neither PRIVATE links nor unknown destinations are omitted. A missing graph destination is an
+unresolved dependency error, not an approved external leaf.
+
+Reachable imported targets are exported recursively, including their interface links. The UUID target
+used by `identity` is imported in a sibling directory; the exporter reads its already selected
+`stduuid_DIR` package in the inspection scope to obtain its real interface. It does not search for a
+substitute package or invent an empty leaf. The current accepted external nodes are identity, stduuid,
+lux-cxx compile_time and container. New dependencies require explicit rule review.
+
+Source includes in these three modules are checked against their own/dependency public headers,
+precise external header prefixes and standard headers. Local private implementation headers remain
+permitted inside their owner. The existing old-target, private-header, transition and expiry rules
+still run. These are conservative source/build checks, not a complete C++ or CMake interpreter.
+
+`test_editor_boundaries.py` configures real minimal CMake projects, exports their graphs and runs the
+same checker. Every rejected fixture must match its intended rule; after removing the forbidden edge
+or include, the same fixture must configure successfully. Tests cover all five R1 omissions, legitimate
+foundation dependencies, old Context, unknown links, imported transitive links and conditional aliases.
+Tool/package failures cannot stand in for an architecture rejection.
+
+`test_p01_evidence.py --source <repo> --evidence <output-dir>` runs the single P01 evidence verifier in
+a relocated shallow Git fixture. Producer evidence paths are denied with a Python audit hook. It also
+changes Windows provenance paths, removes/tampers with the archived inventory, removes a command log,
+and restores the evidence. No engine rebuild, Android or Linux qualification is implied by this test.

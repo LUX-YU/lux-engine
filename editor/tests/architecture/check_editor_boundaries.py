@@ -11,6 +11,76 @@ import subprocess
 import sys
 
 
+def check_foundations(repo, targets, rules, sources, report):
+    foundations = rules["foundation_targets"]
+    definitions = {x["name"]: x for x in rules["targets"]}
+    external = rules["foundation_external_targets"]
+
+    def allowed_internal(name):
+        result = set()
+        pending = list(definitions[name]["dependencies"])
+        while pending:
+            dependency = pending.pop()
+            if dependency not in result:
+                result.add(dependency)
+                pending.extend(definitions[dependency]["dependencies"])
+        return result
+
+    for name, policy in foundations.items():
+        internal = allowed_internal(name)
+        direct = set(definitions[name]["dependencies"]) | set(policy["external_dependencies"])
+        allowed = internal | set(policy["external_closure"])
+        pending = [(name, [name])]
+        visited = set()
+        while pending:
+            current, chain = pending.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            node = targets.get(current)
+            if not node:
+                continue  # Absent foundation target is not implemented in this fixture/profile.
+            for edge in filter(None, node.get("edges", "").split(";")):
+                kind, dependency = edge.split(":", 1)
+                detail = " -> ".join(chain + [dependency]) + " (" + kind + ")"
+                dest = targets.get(dependency)
+                if not dest:
+                    report("FOUNDATION_UNRESOLVED_DEPENDENCY", name, detail)
+                    continue
+                if dependency not in allowed:
+                    report("FOUNDATION_FORBIDDEN_DEPENDENCY", name, detail)
+                elif dependency in external:
+                    requirement = external[dependency]
+                    if requirement.get("imported") and dest.get("IMPORTED") not in ["TRUE", "1"]:
+                        report("FOUNDATION_DEPENDENCY_IDENTITY", name, detail + " must be imported")
+                    if "path" in requirement:
+                        expected = (repo / requirement["path"]).resolve()
+                        if Path(dest["SOURCE_DIR"]).resolve() != expected:
+                            report("FOUNDATION_DEPENDENCY_IDENTITY", name, detail + " has wrong source directory")
+                if current == name and dependency not in direct:
+                    report("FOUNDATION_DIRECT_DEPENDENCY", name, detail)
+                pending.append((dependency, chain + [dependency]))
+
+        prefixes = []
+        headers = set(rules["foundation_standard_headers"])
+        for dependency in internal | {name}:
+            prefixes.extend(foundations[dependency]["public_prefixes"])
+            headers.update(foundations[dependency]["public_headers"])
+        for dependency in policy["external_closure"]:
+            prefixes.extend(external[dependency]["include_prefixes"])
+            headers.update(external[dependency]["include_headers"])
+        scope = definitions[name]["path"] + "/"
+        for path, source in sources.items():
+            if not path.startswith(scope):
+                continue
+            for match in re.finditer(r'^\s*#\s*include\s*([<"])([^>"\n]+)', source, re.M):
+                delimiter, header = match.groups()
+                is_local = delimiter == '"' and (repo / path).parent.joinpath(header).resolve().is_relative_to(
+                    (repo / scope).resolve())
+                if header not in headers and not header.startswith(tuple(prefixes)) and not is_local:
+                    report("FOUNDATION_FORBIDDEN_INCLUDE", path, header)
+
+
 def inspect(repo, records, rules, stage, compile_db=None):
     findings = []
 
@@ -62,6 +132,9 @@ def inspect(repo, records, rules, stage, compile_db=None):
                 report("HISTORY_PERSISTENCE_API", path, "P01 retired persistence declaration or call")
             if path.startswith("editor/history/") and re.search(r'\b(saved|save_pending|clean|pending|request)\b', source):
                 report("HISTORY_PERSISTENCE_STATE", path, "Persistence state must not live in history")
+
+    if stage >= "P01":
+        check_foundations(repo, targets, rules, sources, report)
 
     scopes = tuple(rules["new_scopes"])
     forbidden_headers = set(rules["new_scope_forbidden_include"])

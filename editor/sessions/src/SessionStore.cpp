@@ -222,9 +222,11 @@ namespace lux::editor::sessions
         const bool is_wrong_permit = !permit.gate_ || permit.owner_ != *found;
         if (is_wrong_permit)
             return lux::cxx::unexpected(ESessionError::STALE_CONTENT);
-        const auto current = describe(permit.stamp_.session);
-        if (!current || current->current != permit.stamp_)
-            return lux::cxx::unexpected(ESessionError::STALE_CONTENT);
+        {
+            CallbackScope callback{impl_->callback_depth};
+            if ((*found)->currentContent() != permit.stamp_)
+                return lux::cxx::unexpected(ESessionError::STALE_CONTENT);
+        }
         permit.release();
         impl_->reclaiming = true;
         --impl_->published;

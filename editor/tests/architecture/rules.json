@@ -953,5 +953,102 @@
       "source": "editor/app",
       "deadline": "P12"
     }
-  }
+  },
+  "foundation_targets": {
+    "editor_contracts": {
+      "external_dependencies": [],
+      "external_closure": [],
+      "public_prefixes": [
+        "lux/engine/editor/contracts/"
+      ],
+      "public_headers": []
+    },
+    "edit_history": {
+      "external_dependencies": [
+        "lux::cxx::compile_time"
+      ],
+      "external_closure": [
+        "lux::cxx::compile_time"
+      ],
+      "public_prefixes": [],
+      "public_headers": [
+        "lux/engine/editor/editing/EditHistory.hpp",
+        "lux/engine/editor/editing/EditTypes.hpp",
+        "lux/engine/editor/editing/EditOperation.hpp",
+        "lux/engine/editor/editing/history_visibility.h"
+      ]
+    },
+    "edit_sessions": {
+      "external_dependencies": [
+        "lux::cxx::container",
+        "identity"
+      ],
+      "external_closure": [
+        "lux::cxx::compile_time",
+        "lux::cxx::container",
+        "identity",
+        "stduuid"
+      ],
+      "public_prefixes": [
+        "lux/engine/editor/sessions/"
+      ],
+      "public_headers": []
+    }
+  },
+  "foundation_external_targets": {
+    "lux::cxx::compile_time": {
+      "imported": true,
+      "include_prefixes": [
+        "lux/cxx/compile_time/"
+      ],
+      "include_headers": []
+    },
+    "lux::cxx::container": {
+      "imported": true,
+      "include_prefixes": [
+        "lux/cxx/container/"
+      ],
+      "include_headers": []
+    },
+    "identity": {
+      "path": "modules/resource/identity",
+      "include_prefixes": [],
+      "include_headers": [
+        "lux/engine/resource/identity/AssetId.hpp"
+      ]
+    },
+    "stduuid": {
+      "imported": true,
+      "include_prefixes": [],
+      "include_headers": []
+    }
+  },
+  "foundation_standard_headers": [
+    "algorithm",
+    "array",
+    "atomic",
+    "bit",
+    "cassert",
+    "cstddef",
+    "cstdint",
+    "cstdio",
+    "cstdlib",
+    "cstring",
+    "exception",
+    "functional",
+    "limits",
+    "memory",
+    "new",
+    "optional",
+    "span",
+    "stdexcept",
+    "string",
+    "string_view",
+    "thread",
+    "type_traits",
+    "utility",
+    "vector",
+    "concepts",
+    "compare"
+  ]
 }

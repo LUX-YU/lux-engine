@@ -39,3 +39,9 @@ The old Scene/Material/FlowForge products temporarily use the private
 checkpoint, moved with its history; pending requests prevent bridge movement. The bridge is not
 installed and new modules cannot include it. It expires by P12. There is still only one history
 algorithm, implemented in `editor/history`.
+
+P01-R1 separates the closing commit from presentation queries. The private
+`IEditSession::currentContent() noexcept` reads only existing scalar identities, with no allocation,
+IO, notifications, gate changes or publication. `SessionStore::close` calls it under CallbackScope
+and still verifies the permit's content before consumption. Public `describe()` continues to return
+owning presentation data and may allocate or throw; it is never part of the closing commit.

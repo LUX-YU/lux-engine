@@ -1,6 +1,11 @@
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/editing/EditHistory.hpp>
 #include <cassert>
+#include <cstdio>
+#include <cstdlib>
+#include <exception>
+#include <stdexcept>
+#include <string_view>
 #include <thread>
 #include <type_traits>
 #include <vector>
@@ -111,14 +116,27 @@ namespace
     class FakeSession final : public IEditSession
     {
     public:
-        FakeSession(SessionId id, std::vector<int>* order = nullptr) : state_(id), history_(history())
+        FakeSession(SessionId id, std::vector<int>* order = nullptr, SourceBinding binding = {})
+            : state_(id, std::move(binding)), history_(history())
         {
             source_.destruction_order = order;
             if (order)
                 assert(edit(*history_, source_, 1));
         }
+        ~FakeSession() noexcept override
+        {
+            if (description_count_)
+                *description_count_ = describe_calls_;
+        }
+        void observeDescriptionCount(std::size_t& count) noexcept
+        {
+            description_count_ = &count;
+        }
         SessionInfo describe() const override
         {
+            ++describe_calls_;
+            if (reject_describe_)
+                throw std::runtime_error("injected full description failure");
             return {
                 state_.id(),
                 {"test.fake"},
@@ -129,9 +147,22 @@ namespace
                 state_.admission()
             };
         }
-        ContentStamp stamp() const
+        ContentStamp stamp() const noexcept
         {
             return {state_.id(), history_->view()->snapshot.current};
+        }
+        void rejectDescribe(bool reject) noexcept
+        {
+            reject_describe_ = reject;
+        }
+        std::size_t describeCalls() const noexcept
+        {
+            return describe_calls_;
+        }
+        void changeContent()
+        {
+            assert(edit(*history_, source_, source_.value + 1));
+            state_.contentChanged();
         }
         SessionState& state()
         {
@@ -139,6 +170,10 @@ namespace
         }
 
     private:
+        ContentStamp currentContent() const noexcept override
+        {
+            return stamp();
+        }
         SessionResult<ClosePermit> prepareClose(ContentStamp expected) noexcept override
         {
             return state_.prepareClose(stamp(), expected);
@@ -146,9 +181,16 @@ namespace
         SessionState state_;
         Model source_;
         std::unique_ptr<editing::EditHistory> history_;
+        mutable std::size_t describe_calls_{};
+        bool reject_describe_{};
+        std::size_t* description_count_{};
     };
     class OtherSession final : public IEditSession
     {
+        ContentStamp currentContent() const noexcept override
+        {
+            return {};
+        }
         SessionInfo describe() const override
         {
             return {};
@@ -169,6 +211,89 @@ namespace
     static_assert(!std::is_copy_constructible_v<EditScope> && !std::is_move_constructible_v<EditScope>);
     static_assert(!std::is_copy_constructible_v<ClosePermit> && std::is_nothrow_move_constructible_v<ClosePermit>);
 
+    void descriptionExceptionRecovery()
+    {
+        SessionStore store{2};
+        auto reserved = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin());
+        auto candidate = std::make_unique<FakeSession>(reserved->id());
+        auto* session = candidate.get();
+        assert(store.prepare(*reserved, candidate) && store.publish(*reserved));
+        session->rejectDescribe(true);
+        bool caught{};
+        try
+        {
+            (void)store.describe(reserved->id());
+        }
+        catch (const std::runtime_error&)
+        {
+            caught = true;
+        }
+        assert(caught);
+        session->rejectDescribe(false);
+        assert(store.describe(reserved->id()));
+        auto other = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin());
+        assert(other); // Unwinding the public query must release CallbackScope.
+        auto permit = store.prepareClose(session->stamp());
+        assert(permit && store.close(*permit));
+        std::puts("PASS X01-R1-04: describe exception restores callback admission");
+    }
+    bool closeContent(bool throws)
+    {
+        SessionStore store{1};
+        auto reserved = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin());
+        BoundSource binding;
+        binding.location.assign(32768, 'x');
+        auto candidate = std::make_unique<FakeSession>(reserved->id(), nullptr, std::move(binding));
+        auto* session = candidate.get();
+        assert(store.prepare(*reserved, candidate) && store.publish(*reserved));
+        const auto stamp = session->stamp();
+        {
+            auto stale = store.prepareClose(stamp);
+            assert(stale);
+            session->changeContent(); // Fault injection: violate the producer's gate to test commit validation.
+            assert(!store.close(*stale) && store.size() == 1);
+            assert(session->state().admission() == EEditAdmission::CLOSING);
+        }
+        assert(session->state().admission() == EEditAdmission::AVAILABLE);
+        session->rejectDescribe(throws);
+        auto permit = store.prepareClose(session->stamp());
+        assert(permit);
+        // Keep a scalar outside the object: close destroys the session.
+        const auto calls = session->describeCalls();
+        auto key = store.key<FakeSession>(reserved->id());
+        assert(key);
+        // The observer is only a test counter; it does not participate in identity or admission.
+        std::size_t final_calls{};
+        session->observeDescriptionCount(final_calls);
+        assert(store.close(*permit) && store.size() == 0);
+        const bool used_description = final_calls != calls;
+        std::printf(
+            "%s X01-R1-0%d: close describe calls before=%zu after=%zu long_binding=32768\n",
+            used_description ? "FAIL" : "PASS",
+            throws ? 1 : 2,
+            calls,
+            final_calls
+        );
+        assert(!store.close(*permit) && !store.access<FakeSession>().read(*key));
+        return !used_description;
+    }
+    void publishedCodeLifetime()
+    {
+        std::vector<int> order;
+        SessionStore store{1};
+        auto code = std::shared_ptr<const void>(new int{}, [&order](const void* p) {
+            order.push_back(3);
+            delete static_cast<const int*>(p);
+        });
+        auto reserved = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::plugin(code));
+        code.reset();
+        auto session = std::make_unique<FakeSession>(reserved->id(), &order);
+        assert(store.prepare(*reserved, session) && store.publish(*reserved));
+        auto permit = store.prepareClose(store.describe(reserved->id())->current);
+        assert(permit && store.close(*permit));
+        assert((order == std::vector<int>{1, 2, 3}));
+        std::puts("PASS X01-R1-05: published close destroys history, source, then code");
+    }
     void checkpointAndHistory()
     {
         Model source;
@@ -296,9 +421,23 @@ namespace
         assert((order == std::vector<int>{1, 2, 3}) && store.size() == 0);
     }
 }
-int main()
+int main(int argc, char** argv)
 {
+    std::set_terminate([] {
+        std::fputs("FAIL close crossed noexcept through complete describe; terminate\n", stderr);
+        std::fflush(stderr);
+        std::_Exit(86);
+    });
+    if (argc == 2 && std::string_view(argv[1]) == "close-throw")
+        return closeContent(true) ? 0 : 1;
+    if (argc == 2 && std::string_view(argv[1]) == "close-contract")
+        return closeContent(false) ? 0 : 1;
     checkpointAndHistory();
     slotsAndPermits();
     candidatesAndCode();
+    descriptionExceptionRecovery();
+    publishedCodeLifetime();
+    if (!closeContent(false))
+        return 1;
+    return closeContent(true) ? 0 : 1;
 }

@@ -13,10 +13,12 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--model", choices=["scene", "material"], default="scene")
     parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--cmake", required=True)
     parser.add_argument("--evidence", type=Path)
     args = parser.parse_args()
+    args.source = args.source.resolve()
     locations = {
         "scene_model": "editor/tools/scene/model", "scene_asset": "engine/scene/asset",
         "scene_composition": "engine/scene/composition", "ui_fixture": "modules/function/ui",
@@ -34,9 +36,24 @@ def main():
         ("unknown-library", "unresolved_model_library", "", False, False),
         ("legal-cpu", None, "lux/engine/scene/ScenePackage.hpp", False, False),
     ]
+    model = args.model + "_model"
+    stage = "P03" if args.model == "material" else "P02"
+    pure = "material_graph" if args.model == "material" else "scene_asset"
+    if args.model == "material":
+        locations.pop("scene_model"); locations.pop("scene_asset")
+        locations.update({model: "editor/tools/material/model", pure: "modules/function/material",
+            "compiler_fixture": "engine/toolchain/material_compiler", "storage_fixture": "editor/storage"})
+        cases = [(name, dest, "lux/engine/material/graph/MaterialSource.hpp" if name == "legal-cpu" else header,
+            transitive, imported) for name, dest, header, transitive, imported in cases]
+        cases.extend([("compiler", "compiler_fixture", "", True, False),
+            ("storage", "storage_fixture", "", True, False),
+            ("old-material-header", None, "lux/engine/editor/material/MaterialEditor.hpp", False, False),
+            ("preview-header", None, "lux/engine/editor/material/MaterialPreview.hpp", False, False),
+            ("static-private-runtime", "scene_composition", "", True, False),
+            ("static-private-imported", "ui_fixture", "", True, True)])
     evidence = []
     for name, destination, header, transitive, imported in cases:
-        with tempfile.TemporaryDirectory(prefix="lux-p02-boundary-") as directory:
+        with tempfile.TemporaryDirectory(prefix="lux-" + model + "-boundary-") as directory:
             root = Path(directory)
             assert run(["git", "init", root]).returncode == 0
             policy = root / "editor/tests/architecture"
@@ -67,8 +84,20 @@ def main():
                     edge = f'target_link_libraries(scene_model INTERFACE "$<LINK_ONLY:{target}>")\n'
             tail = (f'include("{args.source.as_posix()}/cmake/EditorArchitectureChecks.cmake")\n'
                     'lux_editor_check_architecture()\n')
+            if name.startswith("static-private"):
+                top = top.replace("LANGUAGES NONE", "LANGUAGES CXX")
+                for target_name in [model, pure]:
+                    folder = root / locations[target_name]
+                    (folder / "dummy.cpp").write_text("int " + target_name + "_fixture;\n")
+                    (folder / "CMakeLists.txt").write_text(
+                        f"add_library({target_name} STATIC dummy.cpp)\n"
+                        f"add_library(fixture::{target_name} ALIAS {target_name})\n")
+                edge = edge.replace("scene_model INTERFACE", "scene_model PRIVATE")
+                edge = edge.replace("scene_asset INTERFACE", "scene_asset PRIVATE")
+            top = top.replace("P02", stage)
+            edge = edge.replace("scene_model", model).replace("scene_asset", pure)
             (root / "CMakeLists.txt").write_text(top + edge + tail)
-            probe = root / locations["scene_model"] / "probe.hpp"
+            probe = root / locations[model] / "probe.hpp"
             probe.write_text(f"#include <{header}>\n" if header else "")
             build = root / "build"
             result = run([args.cmake, "-S", root, "-B", build])
@@ -78,12 +107,12 @@ def main():
                 rule = None
                 rejected = result.returncode == 0
             else:
-                rule = ("SCENE_MODEL_FORBIDDEN_INCLUDE" if header else
-                        "SCENE_MODEL_UNRESOLVED_DEPENDENCY" if name == "unknown-library" else
-                        "SCENE_MODEL_FORBIDDEN_DEPENDENCY")
-                chain = "scene_model -> "
+                rule = (model.upper() + "_FORBIDDEN_INCLUDE" if header else
+                        model.upper() + "_UNRESOLVED_DEPENDENCY" if name == "unknown-library" else
+                        model.upper() + "_FORBIDDEN_DEPENDENCY")
+                chain = model + " -> "
                 if transitive:
-                    chain += "scene_asset -> "
+                    chain += pure + " -> "
                 if imported:
                     chain += "lux::cxx::memory -> "
                 chain += destination or ""

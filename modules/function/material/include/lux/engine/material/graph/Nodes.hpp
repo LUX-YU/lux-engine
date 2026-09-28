@@ -44,8 +44,12 @@ namespace lux::material
         LENGTH ///< -> Float
     };
 
+    // A specialization may override clone/destruction while retaining its built-in kind and payload schema.
+    // clone() must produce an independent object, including any auxiliary owned state. Code leases live
+    // outside these objects; subclasses must not rely on an in-object lease to cover their own destructor.
+    // New serialized node kinds still require an explicit codec/compiler contract.
     /// Constant node: outputs a single constant value.
-    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC ConstantNode final : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC ConstantNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::CONSTANT;
@@ -64,7 +68,7 @@ namespace lux::material
     };
 
     /// Input node: exposes a single shading input (uv0 / world_normal / ...).
-    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC InputNode final : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC InputNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::INPUT;
@@ -80,7 +84,7 @@ namespace lux::material
 
     /// Samples a bindless texture (set 2); `texture_slot` indexes the texture
     /// slots declared by the graph.
-    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC SampleTextureNode final : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC SampleTextureNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::SAMPLE_TEXTURE;
@@ -97,7 +101,7 @@ namespace lux::material
     /// supplied at runtime by the Graph-family SSBO). `param_slot` indexes
     /// MaterialGraph::param_slots; `type` is that parameter's type (used for the
     /// output pin).
-    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC ParamNode final : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC ParamNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::PARAM;
@@ -118,7 +122,7 @@ namespace lux::material
     /// Arithmetic node. `operand_type` determines the type of both operand pins
     /// (Float by default); use setOperandType to express vector operations
     /// (Vec3*Vec3, Vec3·Vec3, etc.).
-    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MathNode final : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MathNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::MATH;
@@ -138,7 +142,7 @@ namespace lux::material
     };
 
     /// Normal-map decode (rgb -> tangent-space normal).
-    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC DecodeNormalNode final : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC DecodeNormalNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::DECODE_NORMAL;
@@ -152,7 +156,7 @@ namespace lux::material
     /// Transforms a tangent-space normal into world space: mat3(T,B,N) * n
     /// (using the interpolated world-space tangent/bitangent/normal). Pairs with
     /// DecodeNormal so normal maps participate correctly in lighting.
-    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC TbnTransformNode final : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC TbnTransformNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::TBN_TRANSFORM;
@@ -167,7 +171,7 @@ namespace lux::material
     /// a texture can feed a vec3 attribute). `components[k]` = which component of
     /// the source vector (0=x,1=y,2=z,3=w) feeds output channel k; only the first
     /// arity(out_type) entries are used. Defaults to vec4 -> vec3 via .xyz.
-    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC SwizzleNode final : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC SwizzleNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::SWIZZLE;
@@ -189,7 +193,7 @@ namespace lux::material
     /// Construct: packs arity(out_type) scalar components into a vector
     /// (vec3(x,y,z), etc.). All input pins are Float, and their count equals the
     /// output vector's component count. The dual of Swizzle.
-    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC ConstructNode final : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC ConstructNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::CONSTRUCT;
@@ -204,7 +208,7 @@ namespace lux::material
     };
 
     /// Terminal node: one input pin per EMaterialAttribute (in contract order).
-    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC OutputSurfaceNode final : public Node
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC OutputSurfaceNode : public Node
     {
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::OUTPUT_SURFACE;

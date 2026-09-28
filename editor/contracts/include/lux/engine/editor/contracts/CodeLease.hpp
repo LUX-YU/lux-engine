@@ -21,6 +21,11 @@ namespace lux::editor::contracts
         {
             return builtin_ || bool(owner_);
         }
+        [[nodiscard]] bool sameOwner(const CodeLease& other) const noexcept
+        {
+            return builtin_ == other.builtin_ && !owner_.owner_before(other.owner_) &&
+                   !other.owner_.owner_before(owner_);
+        }
 
     private:
         CodeLease(bool builtin, std::shared_ptr<const void> owner) noexcept

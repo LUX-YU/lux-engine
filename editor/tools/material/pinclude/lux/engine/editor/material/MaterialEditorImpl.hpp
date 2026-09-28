@@ -1,5 +1,6 @@
 #pragma once
 #include "LegacyPersistenceState.hpp"
+#include <lux/engine/editor/material/MaterialEdit.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Element.hpp>
@@ -42,21 +43,13 @@ namespace lux::editor::material
         ~Impl();
 
     private:
-        template <class Access> class TValueEdit;
-
-        struct GraphDelta;
-        class GraphEditOperation;
         class GraphElement;
         class Content;
-
         editing::EditResult<void> canEdit() const noexcept;
-        editing::EditResult<editing::ApplyResult> editGraph(GraphDelta before, GraphDelta after, std::string label);
-
-        template <class Access>
-        editing::EditResult<editing::ApplyResult> change(
-            Access access,
-            typename Access::Value value,
-            std::string label
+        editing::EditResult<editing::ApplyResult> edit(
+            std::vector<VMaterialEdit> edits,
+            std::string label,
+            std::vector<lux::material::NodeId>* inserted = nullptr
         );
 
         // The preview resources outlive content Elements that borrow their scene.

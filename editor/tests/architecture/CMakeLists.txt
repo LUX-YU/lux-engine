@@ -17,3 +17,8 @@ target_link_libraries(editor_flow_source_native PRIVATE lux::engine::function::f
 lux_editor_test_options(editor_flow_source_native)
 add_test(NAME editor.flow_source_native COMMAND editor_flow_source_native)
 set_tests_properties(editor.flow_source_native PROPERTIES LABELS "editor;native")
+
+add_test(NAME editor.material_model_boundaries
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_scene_model_boundaries.py"
+        --source "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}" --model material)
+set_tests_properties(editor.material_model_boundaries PROPERTIES LABELS "editor;native;P03" TIMEOUT 120)

@@ -20,7 +20,8 @@ def verify(source, output):
     git_dir = subprocess.check_output(
         ["git", "rev-parse", "--absolute-git-dir"], cwd=source, text=True).strip()
     for phase, script in [("P00", None), ("P01", "verify.py"),
-                          ("P01-R1", "check_receipt.py"), ("P02", "check_receipt.py")]:
+                          ("P01-R1", "check_receipt.py"), ("P02", "check_receipt.py"),
+                          ("P02-R1", "check_receipt.py")]:
         receipt = json.loads((source / "dev_log" / phase / "receipt.json").read_text(encoding="utf-8-sig"))
         sha = receipt["implementation_sha"]
         subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"], cwd=source, check=True)
@@ -46,7 +47,7 @@ def verify(source, output):
                 with tarfile.open(fileobj=io.BytesIO(archive)) as contents:
                     contents.extractall(root, filter="data")
                 (root / ".git").write_text("gitdir: " + git_dir + "\n")
-                for previous in ["P00", "P01", "P01-R1", "P02"]:
+                for previous in ["P00", "P01", "P01-R1", "P02", "P02-R1"]:
                     shutil.copytree(source / "dev_log" / previous, root / "dev_log" / previous)
                 result = subprocess.run([sys.executable, root / "dev_log" / phase / script],
                                         cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

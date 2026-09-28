@@ -1,0 +1,146 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+      Start  1: platform.process_arguments
+ 1/64 Test  #1: platform.process_arguments ...................   Passed    0.04 sec
+      Start  2: object.tree
+ 2/64 Test  #2: object.tree ..................................   Passed    0.03 sec
+      Start  3: object.queue
+ 3/64 Test  #3: object.queue .................................   Passed    0.01 sec
+      Start  4: render.runtime_resources
+ 4/64 Test  #4: render.runtime_resources .....................   Passed    0.59 sec
+      Start  5: ui.root
+ 5/64 Test  #5: ui.root ......................................   Passed    0.03 sec
+      Start  6: process.asset_read_overlay
+ 6/64 Test  #6: process.asset_read_overlay ...................   Passed    0.02 sec
+      Start  7: scene.driver
+ 7/64 Test  #7: scene.driver .................................   Passed    0.06 sec
+      Start  8: scene.runtime
+ 8/64 Test  #8: scene.runtime ................................   Passed    0.07 sec
+      Start  9: scene.render_resources
+ 9/64 Test  #9: scene.render_resources .......................   Passed    0.50 sec
+      Start 10: scene.world_loading
+10/64 Test #10: scene.world_loading ..........................   Passed    0.18 sec
+      Start 11: engine.headless_context
+11/64 Test #11: engine.headless_context ......................   Passed    0.13 sec
+      Start 12: editor.sessions
+12/64 Test #12: editor.sessions ..............................   Passed    0.01 sec
+      Start 13: editor.sessions_close_throw
+13/64 Test #13: editor.sessions_close_throw ..................   Passed    0.01 sec
+      Start 14: editor.sessions_close_contract
+14/64 Test #14: editor.sessions_close_contract ...............   Passed    0.01 sec
+      Start 15: editor.sessions_scope_compile
+15/64 Test #15: editor.sessions_scope_compile ................   Passed    2.30 sec
+      Start 16: editor.scene_model.content
+16/64 Test #16: editor.scene_model.content ...................   Passed    0.02 sec
+      Start 17: editor.scene_model.atomic
+17/64 Test #17: editor.scene_model.atomic ....................   Passed    0.02 sec
+      Start 18: editor.scene_model.identity
+18/64 Test #18: editor.scene_model.identity ..................   Passed    0.02 sec
+      Start 19: editor.scene_model.changes
+19/64 Test #19: editor.scene_model.changes ...................   Passed    0.02 sec
+      Start 20: editor.scene_model.plugin
+20/64 Test #20: editor.scene_model.plugin ....................   Passed    0.02 sec
+      Start 21: editor.scene_model.mixed-1
+21/64 Test #21: editor.scene_model.mixed-1 ...................   Passed    0.02 sec
+      Start 22: editor.scene_model.mixed-2
+22/64 Test #22: editor.scene_model.mixed-2 ...................   Passed    0.02 sec
+      Start 23: editor.scene_model.mixed-3
+23/64 Test #23: editor.scene_model.mixed-3 ...................   Passed    0.02 sec
+      Start 24: editor.scene_model.mixed-4
+24/64 Test #24: editor.scene_model.mixed-4 ...................   Passed    0.02 sec
+      Start 25: editor.scene_model.read-5
+25/64 Test #25: editor.scene_model.read-5 ....................   Passed    0.02 sec
+      Start 26: editor.scene_model.read-6
+26/64 Test #26: editor.scene_model.read-6 ....................   Passed    0.02 sec
+      Start 27: editor.scene_model.read-7
+27/64 Test #27: editor.scene_model.read-7 ....................   Passed    0.02 sec
+      Start 28: editor.scene_model.read-8
+28/64 Test #28: editor.scene_model.read-8 ....................   Passed    0.02 sec
+      Start 29: editor.material_model.content
+29/64 Test #29: editor.material_model.content ................   Passed    0.02 sec
+      Start 30: editor.material_model.failure
+30/64 Test #30: editor.material_model.failure ................   Passed    0.01 sec
+      Start 31: editor.material_model.layout
+31/64 Test #31: editor.material_model.layout .................   Passed    0.01 sec
+      Start 32: editor.material_model.lifetime
+32/64 Test #32: editor.material_model.lifetime ...............   Passed    0.01 sec
+      Start 33: editor.material_model.mixed-replace
+33/64 Test #33: editor.material_model.mixed-replace ..........   Passed    0.01 sec
+      Start 34: editor.material_model.mixed-recreate
+34/64 Test #34: editor.material_model.mixed-recreate .........   Passed    0.02 sec
+      Start 35: editor.material_model.reading
+35/64 Test #35: editor.material_model.reading ................   Passed    0.01 sec
+      Start 36: editor.material_model.reload-unbound
+36/64 Test #36: editor.material_model.reload-unbound .........   Passed    0.01 sec
+      Start 37: editor.material_model.reload-unbound-lease
+37/64 Test #37: editor.material_model.reload-unbound-lease ...   Passed    0.01 sec
+      Start 38: editor.material_model.reload-closing-lease
+38/64 Test #38: editor.material_model.reload-closing-lease ...   Passed    0.01 sec
+      Start 39: editor.material_model.reload-reading-lease
+39/64 Test #39: editor.material_model.reload-reading-lease ...   Passed    0.01 sec
+      Start 40: editor.material_model.reload-outcomes
+40/64 Test #40: editor.material_model.reload-outcomes ........   Passed    0.01 sec
+      Start 41: editor.project_creation
+41/64 Test #41: editor.project_creation ......................   Passed    0.07 sec
+      Start 42: editor.plugin_publication
+42/64 Test #42: editor.plugin_publication ....................   Passed    0.07 sec
+      Start 43: editor.asset_save_target
+43/64 Test #43: editor.asset_save_target .....................   Passed    0.10 sec
+      Start 44: plugin.configuration
+44/64 Test #44: plugin.configuration .........................   Passed    0.03 sec
+      Start 45: plugin.physics2d
+45/64 Test #45: plugin.physics2d .............................   Passed    0.08 sec
+      Start 46: editor.scene.editing
+46/64 Test #46: editor.scene.editing .........................   Passed    0.02 sec
+      Start 47: editor.inspector_codegen
+47/64 Test #47: editor.inspector_codegen .....................   Passed    0.08 sec
+      Start 48: editor.scene_configuration
+48/64 Test #48: editor.scene_configuration ...................   Passed    0.12 sec
+      Start 49: editor.context_lifecycle
+49/64 Test #49: editor.context_lifecycle .....................   Passed    0.68 sec
+      Start 50: editor.unified_exit-review
+50/64 Test #50: editor.unified_exit-review ...................   Passed    0.40 sec
+      Start 51: editor.unified_core_new-assets
+51/64 Test #51: editor.unified_core_new-assets ...............   Passed    1.52 sec
+      Start 52: editor.unified_core_save-preservation
+52/64 Test #52: editor.unified_core_save-preservation ........   Passed    1.04 sec
+      Start 53: editor.unified_core_save-retry
+53/64 Test #53: editor.unified_core_save-retry ...............   Passed    1.04 sec
+      Start 54: editor.unified_core_save-partial
+54/64 Test #54: editor.unified_core_save-partial .............   Passed    1.09 sec
+      Start 55: editor.unified_core_factory-rollback
+55/64 Test #55: editor.unified_core_factory-rollback .........   Passed    1.00 sec
+      Start 56: editor.unified_core_fixed-run
+56/64 Test #56: editor.unified_core_fixed-run ................   Passed    1.36 sec
+      Start 57: editor.unified_core_material-gui
+57/64 Test #57: editor.unified_core_material-gui .............   Passed    1.83 sec
+      Start 58: editor.unified_core_flow-gui
+58/64 Test #58: editor.unified_core_flow-gui .................   Passed    1.71 sec
+      Start 59: editor.component_elements
+59/64 Test #59: editor.component_elements ....................   Passed    0.74 sec
+      Start 60: editor.scene_model_boundaries
+60/64 Test #60: editor.scene_model_boundaries ................   Passed   13.11 sec
+      Start 61: editor.architecture_negative
+61/64 Test #61: editor.architecture_negative .................   Passed   16.94 sec
+      Start 62: editor.architecture_current
+62/64 Test #62: editor.architecture_current ..................   Passed    2.30 sec
+      Start 63: editor.flow_source_native
+63/64 Test #63: editor.flow_source_native ....................   Passed    0.01 sec
+      Start 64: editor.material_model_boundaries
+64/64 Test #64: editor.material_model_boundaries .............   Passed   19.26 sec
+
+100% tests passed, 0 tests failed out of 64
+
+Label Time Summary:
+P01             =   2.31 sec*proc (2 tests)
+P01-R1          =   0.02 sec*proc (2 tests)
+P02             =  13.36 sec*proc (14 tests)
+P03             =  19.41 sec*proc (13 tests)
+architecture    =  19.24 sec*proc (2 tests)
+desktop         =  12.41 sec*proc (11 tests)
+editor          =  67.35 sec*proc (53 tests)
+gpu             =  12.41 sec*proc (11 tests)
+installed       =   0.74 sec*proc (1 test)
+native          =  54.94 sec*proc (42 tests)
+toolchain       =   3.54 sec*proc (2 tests)
+
+Total Test time (real) =  69.61 sec

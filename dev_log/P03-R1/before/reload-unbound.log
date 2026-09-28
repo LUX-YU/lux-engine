@@ -1,0 +1,3 @@
+unbound last_lease=0 rejected=1 nested_edit=1 callback_admission=0 destroyed=2 alive=0 released_early=0 released_with_nodes=0 released=0
+source_unchanged=0 history_unchanged=0 observed_unchanged=0 dirty_unchanged=1 binding_unchanged=1
+Assertion failed: bytes == f.encoded(), file E:\SyncForder\CodeRepos\lux-engine\editor\tools\material\model\test\material_session.cpp, line 104

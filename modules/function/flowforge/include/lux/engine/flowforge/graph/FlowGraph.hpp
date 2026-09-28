@@ -171,6 +171,12 @@ namespace lux::flowforge
         {
             return next_var_id_;
         }
+        // A transactional candidate/replay must not recycle IDs already issued by its source.
+        void preserveVariableIdsFrom(const FlowGraph& source) noexcept
+        {
+            if (source.next_var_id_ > next_var_id_)
+                next_var_id_ = source.next_var_id_;
+        }
         // Transactional authoring commits validated storage; IDs remain monotonic across replay.
         void exchangeVariables(std::vector<GraphVariable>& variables) noexcept
         {

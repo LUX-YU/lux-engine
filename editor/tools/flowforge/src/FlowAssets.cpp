@@ -45,7 +45,7 @@ namespace lux::editor::flowforge
                 graph.error().field,
                 graph.error()
             });
-        return Content{source_->id, std::move(source_->name), std::move(*graph)};
+        return FlowAuthoringSource{source_->id, std::move(source_->name), std::move(*graph)};
     }
 
     EditorResult<void> FlowForgeEditor::Impl::changeAsset(EAssetChange change, asset::AssetId id, bool reload)
@@ -317,7 +317,7 @@ namespace lux::editor::flowforge
         compilation_.emplace<std::monostate>();
         history_ = std::move(candidate_history_);
         persistence_ = std::move(candidate_persistence_);
-        source_ = candidate_ ? std::move(*candidate_) : Content{};
+        source_ = candidate_ ? std::move(*candidate_) : FlowAuthoringSource{};
         indexContent();
         candidate_.reset();
         editor_->setTitle(source_.id.isNull() ? "FlowForge Editor" : source_.name);

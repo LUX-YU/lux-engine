@@ -1,5 +1,6 @@
 #pragma once
 #include "LegacyPersistenceState.hpp"
+#include <lux/engine/editor/flowforge/FlowEdit.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Element.hpp>
@@ -15,15 +16,9 @@
 
 namespace lux::editor::flowforge
 {
-    struct Content final
-    {
-        lux::asset::AssetId id;
-        std::string name;
-        lux::flowforge::FlowGraph graph;
-    };
     struct FlowSourceCodec final
     {
-        using Source = Content;
+        using Source = FlowAuthoringSource;
         static constexpr std::size_t max_bytes = 16U * 1024U * 1024U;
         lux::flowforge::FlowSourceEnvironment environment_;
         static asset::AssetId identity(const Source& value) noexcept
@@ -45,38 +40,18 @@ namespace lux::editor::flowforge
     private:
         using NodeIndex = std::unordered_map<lux::flowforge::NodeId, const lux::flowforge::Node*>;
         using PinIndex = std::unordered_map<lux::flowforge::PinId, const lux::flowforge::Pin*>;
-        static bool variableReferenced(const lux::flowforge::FlowGraph& graph, std::uint64_t id) noexcept;
-        class VariableEdit;
-
-        class LiteralEdit;
-        template <class Access> class TValueEdit;
-
-        struct GraphDelta;
-        struct ExportsAccess;
-        class GraphEdit;
         class GraphElement;
         class ContentElement;
 
-        editing::EditResult<editing::ApplyResult> editGraph(
-            GraphDelta before,
-            GraphDelta after,
-            std::string label,
-            std::size_t node_bytes = 0
-        );
-
         editing::EditResult<void> canEdit() const noexcept;
-
-        template <class Access>
-        editing::EditResult<editing::ApplyResult> change(
-            Access access,
-            typename Access::Value value,
-            std::string label
-        );
+        FlowEditObserver editObserver() noexcept;
+        editing::EditResult<editing::ApplyResult> applyEdit(VFlowEdit edit);
+        editing::EditResult<FlowEditIds> insertEdit(VFlowEdit edit);
 
         FlowForgeEditor* editor_{};
         // Declared before content: metadata/module leases outlive nodes, history and in-flight compilation.
         lux::flowforge::FlowSourceEnvironment environment_;
-        Content source_;
+        FlowAuthoringSource source_;
         NodeIndex read_nodes_;
         PinIndex read_pins_;
         EditorContext& editor_context_;
@@ -90,7 +65,7 @@ namespace lux::editor::flowforge
         AssetEditStatus asset_status_;
         std::optional<EditorResult<FlowSourceCodec::Source>> read_result_;
         process::Task reading_;
-        std::optional<Content> candidate_;
+        std::optional<FlowAuthoringSource> candidate_;
         std::unique_ptr<editing::EditHistory> candidate_history_;
         transition::LegacyPersistenceState candidate_persistence_;
         asset::AssetId saved_identity_;

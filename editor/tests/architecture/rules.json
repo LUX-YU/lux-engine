@@ -438,6 +438,12 @@
       "deadline": "P03",
       "pattern": "\\bMaterialEditor::Impl::(?:GraphDelta|GraphEditOperation|TValueEdit|editGraph|change)\\b",
       "description": "P03 pure material editing bodies must be removed from the old owner, not copied."
+    },
+    {
+      "id": "OLD_FLOW_EDIT_ALGORITHM",
+      "deadline": "P04",
+      "pattern": "(?:class|struct)\\s+FlowForgeEditor::Impl::(?:VariableEdit|LiteralEdit|TValueEdit|GraphDelta|GraphEdit|ExportsAccess)\\b",
+      "description": "P04 pure Flow edits must exist only in flowforge_model"
     }
   ],
   "transition_root": "editor/transition/",
@@ -555,7 +561,7 @@
         "edit_history"
       ],
       "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
-      "actual_cmake_target": null
+      "actual_cmake_target": "flowforge_model"
     },
     {
       "name": "editor_persistence",
@@ -1396,6 +1402,131 @@
       "lux/engine/editor/contracts/",
       "lux/engine/material/graph/",
       "lux/cxx/compile_time/"
+    ]
+  },
+  "flowforge_model": {
+    "direct": [
+      "edit_sessions",
+      "edit_history",
+      "flowforge"
+    ],
+    "closure": {
+      "edit_sessions": {
+        "path": "editor/editing/sessions"
+      },
+      "graph": {
+        "path": "modules/function/graph"
+      },
+      "description": {
+        "path": "modules/resource/description"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "stduuid": {
+        "imported": true
+      },
+      "lux::cxx::memory": {
+        "imported": true
+      },
+      "math": {
+        "path": "modules/core/math"
+      },
+      "script_core": {
+        "path": "modules/function/script/core"
+      },
+      "semantic": {
+        "path": "modules/core/semantic"
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "Eigen3::Eigen": {
+        "imported": true
+      },
+      "edit_history": {
+        "path": "editor/editing/history"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "flowforge": {
+        "path": "modules/function/flowforge"
+      },
+      "meta": {
+        "path": "modules/core/meta"
+      },
+      "type_info": {
+        "path": "modules/core/type_info"
+      },
+      "lux::cxx::algorithm": {
+        "imported": true
+      },
+      "lux::cxx::reflection_runtime": {
+        "imported": true
+      },
+      "lux::cxx::binary": {
+        "imported": true
+      }
+    },
+    "headers": [
+      "algorithm",
+      "array",
+      "atomic",
+      "bit",
+      "cassert",
+      "charconv",
+      "cmath",
+      "compare",
+      "concepts",
+      "cstddef",
+      "cstdint",
+      "cstdio",
+      "cstdlib",
+      "cstring",
+      "exception",
+      "functional",
+      "limits",
+      "memory",
+      "new",
+      "numbers",
+      "optional",
+      "random",
+      "ranges",
+      "span",
+      "stdexcept",
+      "string",
+      "string_view",
+      "thread",
+      "tuple",
+      "type_traits",
+      "unordered_map",
+      "unordered_set",
+      "utility",
+      "variant",
+      "vector",
+      "lux/engine/editor/editing/EditHistory.hpp",
+      "lux/engine/editor/editing/EditOperation.hpp",
+      "lux/engine/editor/editing/EditTypes.hpp",
+      "lux/engine/editor/flowforge/FlowAuthoringSource.hpp",
+      "lux/engine/editor/flowforge/FlowEdit.hpp",
+      "lux/engine/editor/flowforge/FlowSession.hpp",
+      "lux/engine/editor/flowforge/FlowSessionAccess.hpp",
+      "lux/engine/editor/flowforge/FlowSnapshot.hpp"
+    ],
+    "prefixes": [
+      "lux/engine/editor/sessions/",
+      "lux/engine/editor/contracts/",
+      "lux/cxx/compile_time/",
+      "lux/engine/flowforge/graph/",
+      "lux/engine/flowforge/script/",
+      "lux/engine/meta/"
     ]
   }
 }

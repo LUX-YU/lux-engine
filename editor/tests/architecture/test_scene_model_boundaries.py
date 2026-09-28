@@ -13,7 +13,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", choices=["scene", "material"], default="scene")
+    parser.add_argument("--model", choices=["scene", "material", "flowforge"], default="scene")
     parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--cmake", required=True)
     parser.add_argument("--evidence", type=Path)
@@ -37,7 +37,7 @@ def main():
         ("legal-cpu", None, "lux/engine/scene/ScenePackage.hpp", False, False),
     ]
     model = args.model + "_model"
-    stage = "P03" if args.model == "material" else "P02"
+    stage = {"scene": "P02", "material": "P03", "flowforge": "P04"}[args.model]
     pure = "material_graph" if args.model == "material" else "scene_asset"
     if args.model == "material":
         locations.pop("scene_model"); locations.pop("scene_asset")
@@ -49,6 +49,22 @@ def main():
             ("storage", "storage_fixture", "", True, False),
             ("old-material-header", None, "lux/engine/editor/material/MaterialEditor.hpp", False, False),
             ("preview-header", None, "lux/engine/editor/material/MaterialPreview.hpp", False, False),
+            ("static-private-runtime", "scene_composition", "", True, False),
+            ("static-private-imported", "ui_fixture", "", True, True)])
+    if args.model == "flowforge":
+        pure = "flowforge"
+        locations.pop("scene_model"); locations.pop("scene_asset")
+        locations.update({model: "editor/tools/flowforge/model", pure: "modules/function/flowforge",
+            "compiler_fixture": "engine/toolchain/flowforge", "storage_fixture": "editor/storage",
+            "script_runtime_fixture": "engine/domain/script"})
+        cases = [(name, dest, "lux/engine/flowforge/graph/FlowSource.hpp" if name == "legal-cpu" else header,
+            transitive, imported) for name, dest, header, transitive, imported in cases]
+        cases.extend([("direct-compiler", "compiler_fixture", "", False, False),
+            ("compiler", "compiler_fixture", "", True, False),
+            ("script-execution", "script_runtime_fixture", "", True, False),
+            ("storage", "storage_fixture", "", True, False),
+            ("old-flow-header", None, "lux/engine/editor/flowforge/FlowForgeEditor.hpp", False, False),
+            ("compiler-header", None, "lux/engine/flowforge/Compiler.hpp", False, False),
             ("static-private-runtime", "scene_composition", "", True, False),
             ("static-private-imported", "ui_fixture", "", True, True)])
     evidence = []

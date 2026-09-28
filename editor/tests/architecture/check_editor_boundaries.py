@@ -183,6 +183,9 @@ def inspect(repo, records, rules, stage, compile_db=None):
     if stage >= "P03":
         check_model(repo, targets, rules, sources, report, "material_model")
 
+    if stage >= "P04":
+        check_model(repo, targets, rules, sources, report, "flowforge_model")
+
     scopes = tuple(rules["new_scopes"])
     forbidden_headers = set(rules["new_scope_forbidden_include"])
     for path, source in sources.items():

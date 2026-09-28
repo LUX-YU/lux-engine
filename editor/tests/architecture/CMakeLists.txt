@@ -22,3 +22,13 @@ add_test(NAME editor.material_model_boundaries
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_scene_model_boundaries.py"
         --source "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}" --model material)
 set_tests_properties(editor.material_model_boundaries PROPERTIES LABELS "editor;native;P03" TIMEOUT 120)
+
+add_test(NAME editor.flowforge_model_boundaries
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_scene_model_boundaries.py"
+        --source "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}" --model flowforge)
+set_tests_properties(editor.flowforge_model_boundaries PROPERTIES LABELS "editor;native;P04" TIMEOUT 120)
+add_executable(editor_three_sessions_test three_sessions.cpp)
+target_link_libraries(editor_three_sessions_test PRIVATE scene_model material_model flowforge_model)
+lux_editor_test_options(editor_three_sessions_test)
+add_test(NAME editor.three_actual_sessions COMMAND editor_three_sessions_test)
+set_tests_properties(editor.three_actual_sessions PROPERTIES LABELS "editor;native;P04")

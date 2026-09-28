@@ -34,3 +34,7 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-flowforge VERSION $
 if(LUX_EDITOR_TEST_DESKTOP_GPU)
     target_sources(editor_flowforge PRIVATE test/FlowForgeEditorTestAccess.cpp)
 endif()
+
+target_link_libraries(editor_flowforge PUBLIC lux::engine::editor::flowforge_model)
+component_add_transitive_commands(editor_flowforge
+    "find_package(lux-engine-editor-flowforge-model REQUIRED COMPONENTS flowforge_model)")

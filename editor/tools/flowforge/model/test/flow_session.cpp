@@ -152,6 +152,392 @@ namespace
     {
         return {flow::EFlowLiteralKind::BOOLEAN, value ? "true" : "false"};
     }
+    void printPins(const char* label, const flow::FlowSourceNode& node)
+    {
+        std::printf("%s NodeId=%llu PinIds=", label, static_cast<unsigned long long>(node.id.value));
+        for (const auto& pin : node.inputs)
+            std::printf("%llu,", static_cast<unsigned long long>(pin.id.value));
+        for (const auto& pin : node.outputs)
+            std::printf("%llu,", static_cast<unsigned long long>(pin.id.value));
+        std::puts("");
+    }
+    flow::FlowSourceNode capturedNode(const Fixture& f, flow::NodeId id)
+    {
+        const auto snapshot = take(f.session->capture());
+        for (const auto& node : snapshot.source().nodes)
+            if (node.id == id)
+                return node;
+        std::abort();
+    }
+    bool intersectsPins(const flow::FlowSourceNode& a, const flow::FlowSourceNode& b)
+    {
+        for (const auto& old : a.inputs)
+        {
+            for (const auto& now : b.inputs)
+                if (old.id == now.id)
+                    return true;
+            for (const auto& now : b.outputs)
+                if (old.id == now.id)
+                    return true;
+        }
+        for (const auto& old : a.outputs)
+        {
+            for (const auto& now : b.inputs)
+                if (old.id == now.id)
+                    return true;
+            for (const auto& now : b.outputs)
+                if (old.id == now.id)
+                    return true;
+        }
+        return false;
+    }
+
+    // R04-01: mixed insert -> undo -> unrelated fresh insert (not Redo).
+    void idsAfterUndoBranch()
+    {
+        Fixture f;
+        const Saved before(f);
+        auto batch = f.batch();
+        batch.edits.push_back(FlowRename{"first mixed transaction"});
+        batch.edits.push_back(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+        const auto applied = take(f.session->apply(std::move(batch)));
+        assert(applied.inserted.nodes.size() == 1);
+        const auto old = capturedNode(f, applied.inserted.nodes.front());
+        const auto frozen = take(f.session->capture());
+        const auto history_id = f.session->describe().current.state.history;
+        assert(f.session->undo());
+        assert(f.encoded() == before.bytes);
+
+        const auto inserted =
+            f.apply(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+        assert(inserted.inserted.nodes.size() == 1);
+        const auto now = capturedNode(f, inserted.inserted.nodes.front());
+        printPins("issued", old);
+        printPins("fresh", now);
+        const bool repeated_node = old.id == now.id;
+        const bool repeated_pin = intersectsPins(old, now);
+
+        // Fresh ContentStamp but a node address remembered from the removed entity:
+        // if its PinId has been recycled, this would modify the new node incorrectly.
+        const Saved unchanged(f);
+        auto stale_address = f.batch();
+        stale_address.edits.push_back(FlowSetLiteral{dataInput(old), boolean(true)});
+        const auto targeted = f.session->apply(std::move(stale_address));
+        std::printf(
+            "undo_branch old=%llu new=%llu repeated_node=%d repeated_pin=%d old_pin_accepted=%d\n",
+            static_cast<unsigned long long>(old.id.value),
+            static_cast<unsigned long long>(now.id.value),
+            repeated_node,
+            repeated_pin,
+            bool(targeted)
+        );
+        std::fflush(stdout);
+        assert(!repeated_node && !repeated_pin && !targeted);
+        assert(now.id.value > old.id.value);
+        assert(f.session->describe().current.state.history == history_id);
+        unchanged.unchanged(f);
+        // Frozen output is a separate historical value, not a second writable source.
+        assert(flow::encodeFlowSource(frozen.source()));
+    }
+
+    // R04-02: highest node deleted -> re-materialize candidate from remaining nodes.
+    // Preserving counters only at final swap is TOO LATE for this path.
+    void idsWhenSeedingCandidate()
+    {
+        Fixture f;
+        const auto issued =
+            f.apply(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+        const auto old = capturedNode(f, issued.inserted.nodes.front());
+        f.apply(FlowRemoveNodes{{old.id}, {}});
+        const auto history_id = f.session->describe().current.state.history;
+        const Saved before(f);
+
+        auto batch = f.batch();
+        batch.edits.push_back(FlowRename{"candidate must inherit issued IDs"});
+        batch.edits.push_back(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+        const auto inserted = take(f.session->apply(std::move(batch)));
+        assert(inserted.inserted.nodes.size() == 1);
+        const auto now = capturedNode(f, inserted.inserted.nodes.front());
+        printPins("issued", old);
+        printPins("fresh", now);
+        const bool repeated_node = old.id == now.id;
+        const bool repeated_pin = intersectsPins(old, now);
+        std::printf(
+            "candidate_seed old=%llu new=%llu repeated_node=%d repeated_pin=%d\n",
+            static_cast<unsigned long long>(old.id.value),
+            static_cast<unsigned long long>(now.id.value),
+            repeated_node,
+            repeated_pin
+        );
+        std::fflush(stdout);
+        assert(!repeated_node && !repeated_pin && now.id.value > old.id.value);
+        assert(f.session->describe().current.state.history == history_id);
+        assert(f.history().entry_count == before.history.entry_count + 1);
+        const auto after = f.encoded();
+        assert(f.session->undo() && f.encoded() == before.bytes);
+        assert(f.session->redo() && f.encoded() == after);
+    }
+
+    std::vector<flow::PinId> capturedPins(const flow::FlowSource& value)
+    {
+        std::vector<flow::PinId> result;
+        for (const auto& node : value.nodes)
+        {
+            for (const auto& pin : node.inputs)
+                result.push_back(pin.id);
+            for (const auto& pin : node.outputs)
+                result.push_back(pin.id);
+        }
+        std::ranges::sort(result);
+        assert(std::adjacent_find(result.begin(), result.end()) == result.end());
+        return result;
+    }
+    void idsSignatureBranch()
+    {
+        for (const bool shrink : {false, true})
+        {
+            Fixture f;
+            const auto def = f.node(flow::ENodeOperation::FUNC_DEF_START);
+            f.apply(FlowInsertFunctionUse{def.id, false, {}});
+            f.apply(FlowInsertFunctionUse{def.id, true, {}});
+            const auto call = f.node(flow::ENodeOperation::GRAPH_FUNC_CALL);
+            f.apply(FlowSetLiteral{dataInput(call), boolean(true)});
+            f.apply(FlowConnect{dataOutput(def), dataInput(call)});
+            const auto initial = take(f.session->capture());
+            const auto initial_bytes = f.encoded();
+            const auto stable_pins = capturedPins(initial.source());
+            const auto base_signature = std::get<flow::FlowSourceSignature>(def.parameters);
+            auto extended = base_signature;
+            extended.arguments.push_back({"extra", "bool"});
+            extended.results.push_back({"extra_result", "bool"});
+            auto batch = f.batch();
+            batch.edits.push_back(FlowRename{"extended"});
+            batch.edits.push_back(FlowSetSignature{def.id, def.name, extended});
+            take(f.session->apply(std::move(batch)));
+            const auto first = take(f.session->capture());
+            const auto first_bytes = f.encoded();
+            const auto issued = capturedPins(first.source());
+            if (shrink)
+            {
+                batch = f.batch();
+                batch.edits.push_back(FlowRename{initial.source().name});
+                batch.edits.push_back(FlowSetSignature{def.id, def.name, base_signature});
+                take(f.session->apply(std::move(batch)));
+            }
+            else
+            {
+                assert(f.session->undo() && f.encoded() == initial_bytes);
+                assert(f.session->redo() && f.encoded() == first_bytes);
+                assert(f.session->undo());
+            }
+            assert(f.encoded() == initial_bytes);
+            extended.arguments.back().name = "other";
+            batch = f.batch();
+            batch.edits.push_back(FlowRename{"new branch"});
+            batch.edits.push_back(FlowSetSignature{def.id, def.name, extended});
+            take(f.session->apply(std::move(batch)));
+            const auto second = take(f.session->capture());
+            const auto now = capturedPins(second.source());
+            assert(second.source().nodes.size() == initial.source().nodes.size());
+            for (std::size_t i = 0; i < second.source().nodes.size(); ++i)
+                assert(second.source().nodes[i].id == initial.source().nodes[i].id);
+            for (const auto pin : stable_pins)
+                assert(std::ranges::binary_search(now, pin));
+            std::size_t fresh_count{};
+            for (const auto pin : now)
+                if (!std::ranges::binary_search(stable_pins, pin))
+                {
+                    ++fresh_count;
+                    assert(!std::ranges::binary_search(issued, pin));
+                }
+            assert(fresh_count > 0 && second.source().links == initial.source().links);
+            const auto second_bytes = f.encoded();
+            assert(f.session->undo() && f.encoded() == initial_bytes);
+            assert(f.session->redo() && f.encoded() == second_bytes);
+        }
+        std::puts("R04-03 PASS: signature Undo/shrink branch retains old pins, allocates new pins without reuse, "
+                  "stable nodes/links/literals");
+    }
+    void idsRestore()
+    {
+        Fixture f;
+        auto batch = f.batch();
+        batch.edits.push_back(FlowRename{"restore"});
+        batch.edits.push_back(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+        const auto receipt = take(f.session->apply(std::move(batch)));
+        const auto old = capturedNode(f, receipt.inserted.nodes.front());
+        const auto after = f.encoded();
+        assert(f.session->undo());
+        assert(f.session->redo() && f.encoded() == after);
+        assert(capturedNode(f, old.id) == old);
+        f.apply(FlowRemoveNodes{{old.id}, {}});
+        auto restored = std::make_unique<flow::BranchNode>(old.id.value);
+        for (std::size_t i = 0; i < restored->inPins().size(); ++i)
+            assert(flow::FlowGraph::assignDetachedPinId(*restored->inPins()[i], old.inputs[i].id));
+        for (std::size_t i = 0; i < restored->outPins().size(); ++i)
+            assert(flow::FlowGraph::assignDetachedPinId(*restored->outPins()[i], old.outputs[i].id));
+        const auto restored_id =
+            f.apply(FlowInsertNode{contracts::CodeLease::builtin(), std::move(restored), old.layout, true});
+        assert(restored_id.inserted.nodes.front() == old.id && f.encoded() == after);
+        assert(f.session->undo());
+        assert(f.session->redo() && f.encoded() == after);
+        f.apply(FlowRemoveNodes{{old.id}, {}});
+        const auto fresh =
+            f.apply(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+        const auto now = capturedNode(f, fresh.inserted.nodes.front());
+        assert(now.id.value > old.id.value && !intersectsPins(old, now));
+        // The create copy boundary also keeps issued IDs absent from the input's live records.
+        auto input = source();
+        const auto index = input.graph.addNodes(std::make_unique<flow::BranchNode>());
+        const auto node = input.graph.getNode(index).node->id();
+        const auto captured = take(flow::captureFlowSource(input.id, input.name, input.graph));
+        const auto erased = *std::ranges::find(captured.nodes, node, &flow::FlowSourceNode::id);
+        assert(input.graph.removeNode(index));
+        Fixture copied(std::move(input));
+        const auto next =
+            copied.apply(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+        const auto new_node = capturedNode(copied, next.inserted.nodes.front());
+        assert(new_node.id.value > erased.id.value && !intersectsPins(erased, new_node));
+        std::puts("R04-04 PASS: Redo/preserve_ids restore exact bytes and identities; future allocation and create "
+                  "copy retain watermarks");
+    }
+    void idsFailure()
+    {
+        Fixture f;
+        const Saved initial(f);
+        for (const bool invalid_variable : {true, false})
+        {
+            auto batch = f.batch();
+            batch.edits.push_back(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()}
+            );
+            if (invalid_variable)
+                batch.edits.push_back(FlowRemoveVariable{UINT64_MAX - 1});
+            else
+                batch.edits.push_back(FlowConnect{{UINT64_MAX}, {UINT64_MAX - 1}});
+            assert(!f.session->apply(std::move(batch)));
+            initial.unchanged(f);
+        }
+        auto batch = f.batch();
+        const flow::NodeId unpublished{UINT64_MAX / 2};
+        batch.edits.push_back(FlowInsertNode{
+            contracts::CodeLease::builtin(),
+            std::make_unique<flow::BranchNode>(unpublished.value),
+            {},
+            true
+        });
+        batch.edits.push_back(FlowRemoveNodes{{unpublished}, {}});
+        assert(take(f.session->apply(std::move(batch))).effect == editing::EEditEffect::NO_CHANGE);
+        initial.unchanged(f);
+        const auto next =
+            f.apply(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+        assert(next.inserted.nodes.front().value < unpublished.value);
+        assert(f.session->undo() && f.encoded() == initial.bytes);
+        assert(f.session->redo());
+        FlowSessionLimits limits;
+        limits.history.max_staging_bytes = 1;
+        Fixture tiny(source(), {}, true, limits);
+        const Saved unchanged(tiny);
+        batch = tiny.batch();
+        batch.edits.push_back(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+        batch.edits.push_back(FlowRename{"too large"});
+        assert(!tiny.session->apply(std::move(batch)));
+        unchanged.unchanged(tiny);
+        std::puts("R04-05 PASS: failed candidates/NO_CHANGE/budget preserve full "
+                  "source/history/observed/dirty/binding/checkpoint; unpublished IDs discarded");
+    }
+    void idsExhaustion()
+    {
+        namespace g = lux::graph;
+        const g::NodeTypeId type{1};
+        const g::PinSemanticId semantic{1};
+        const auto output = g::EPinDirection::OUTPUT;
+        const auto add_pin = [&](g::GraphTopology& graph, g::NodeId node) {
+            return graph.addPin(node, output, g::kUnlimitedFan, semantic);
+        };
+        const auto exhausted = [](const auto& value) {
+            assert(!value && value.error().code == g::EGraphTopologyError::ID_EXHAUSTED);
+        };
+        g::GraphTopology issued;
+        assert(issued.insertNode({{100}, type}));
+        assert(issued.insertPin({{1000}, {100}, output, g::kUnlimitedFan, semantic}));
+        auto removed = take(issued.detachNode({100}));
+        g::GraphTopology live;
+        const auto node = take(live.addNode(type));
+        const auto pin = take(add_pin(live, node));
+        const auto record = *live.findNode(node);
+        const auto pin_record = *live.findPin(pin);
+        live.preserveIssuedIdsFrom(issued);
+        issued.preserveIssuedIdsFrom(live);
+        live.preserveIssuedIdsFrom(live);
+        assert(*live.findNode(node) == record && *live.findPin(pin) == pin_record);
+        assert(take(live.addNode(type)).value == 101);
+        assert(take(add_pin(live, node)).value == 1001);
+        assert(issued.restoreNode(std::move(removed)));
+        assert(take(issued.addNode(type)).value == 101);
+        assert(take(add_pin(issued, {100})).value == 1001);
+        g::GraphTopology spent;
+        assert(spent.insertNode({{UINT64_MAX}, type}));
+        assert(spent.insertPin({{UINT64_MAX}, {UINT64_MAX}, output, g::kUnlimitedFan, semantic}));
+        auto max_record = take(spent.detachNode({UINT64_MAX}));
+        for (const bool reverse : {false, true})
+        {
+            g::GraphTopology a;
+            const auto low = take(a.addNode(type));
+            const auto low_pin = take(add_pin(a, low));
+            auto low_record = take(a.detachNode(low));
+            auto b = spent;
+            if (reverse)
+                b.preserveIssuedIdsFrom(a);
+            a.preserveIssuedIdsFrom(b);
+            b.preserveIssuedIdsFrom(a);
+            a.preserveIssuedIdsFrom(a);
+            assert(a.restoreNode(std::move(low_record)));
+            auto restore_pin = take(a.detachPin(low_pin));
+            assert(a.restorePin(std::move(restore_pin)));
+            assert(a.findNode(low) && a.findPin(low_pin));
+            exhausted(a.addNode(type));
+            exhausted(add_pin(a, low));
+            exhausted(b.addNode(type));
+            exhausted(add_pin(b, low));
+        }
+        assert(spent.restoreNode(std::move(max_record)));
+        assert(spent.insertNode({{2}, type}));
+        assert(spent.insertPin({{2}, {2}, output, g::kUnlimitedFan, semantic}));
+        exhausted(spent.addNode(type));
+        exhausted(add_pin(spent, {2}));
+        // Each exhaustion bit is independent of the other identity domain.
+        g::GraphTopology pin_only;
+        assert(pin_only.insertNode({{1}, type}));
+        assert(pin_only.insertPin({{UINT64_MAX}, {1}, output, g::kUnlimitedFan, semantic}));
+        g::GraphTopology pin_target;
+        pin_target.preserveIssuedIdsFrom(pin_only);
+        const auto next_node = take(pin_target.addNode(type));
+        assert(next_node.value == 2);
+        exhausted(add_pin(pin_target, next_node));
+        g::GraphTopology node_only;
+        assert(node_only.insertNode({{UINT64_MAX}, type}));
+        g::GraphTopology node_target;
+        assert(node_target.insertNode({{1}, type}));
+        node_target.preserveIssuedIdsFrom(node_only);
+        exhausted(node_target.addNode(type));
+        assert(take(add_pin(node_target, {1})).value == 1);
+        flow::FlowGraph variable_source, target;
+        assert(variable_source.addVariableWithId(UINT64_MAX - 1, "last", &meta::ref_type_of_v<bool>, {}));
+        assert(variable_source.removeVariable(UINT64_MAX - 1));
+        variable_source.topology().preserveIssuedIdsFrom(spent);
+        target.preserveIssuedIdsFrom(variable_source);
+        variable_source.preserveIssuedIdsFrom(target);
+        target.preserveIssuedIdsFrom(target);
+        assert(target.nextVariableId() == UINT64_MAX);
+        assert(target.addVariable("no more", &meta::ref_type_of_v<bool>, {}) == 0);
+        assert(target.addVariableWithId(1, "restored", &meta::ref_type_of_v<bool>, {}));
+        assert(target.nextVariableId() == UINT64_MAX && target.findVariable(1));
+        exhausted(target.topology().addNode(type));
+        exhausted(add_pin(target.topology(), {1}));
+        std::puts("R04-06 PASS: actual GraphTopology and FlowGraph merge, self/bidirectional, absorbing node/pin "
+                  "exhaustion, explicit restore, variables");
+    }
+
     void content()
     {
         Fixture f;
@@ -610,7 +996,19 @@ namespace
 int main(int argc, char** argv)
 {
     const std::string_view name = argc > 1 ? argv[1] : "content";
-    if (name == "content")
+    if (name == "ids-undo-branch")
+        idsAfterUndoBranch();
+    else if (name == "ids-candidate-seed")
+        idsWhenSeedingCandidate();
+    else if (name == "ids-signature")
+        idsSignatureBranch();
+    else if (name == "ids-restore")
+        idsRestore();
+    else if (name == "ids-failure")
+        idsFailure();
+    else if (name == "ids-exhaustion")
+        idsExhaustion();
+    else if (name == "content")
         content();
     else if (name == "failure")
         failure();

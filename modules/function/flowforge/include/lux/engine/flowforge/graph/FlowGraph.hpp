@@ -172,8 +172,9 @@ namespace lux::flowforge
             return next_var_id_;
         }
         // A transactional candidate/replay must not recycle IDs already issued by its source.
-        void preserveVariableIdsFrom(const FlowGraph& source) noexcept
+        void preserveIssuedIdsFrom(const FlowGraph& source) noexcept
         {
+            topology_.preserveIssuedIdsFrom(source.topology_);
             if (source.next_var_id_ > next_var_id_)
                 next_var_id_ = source.next_var_id_;
         }

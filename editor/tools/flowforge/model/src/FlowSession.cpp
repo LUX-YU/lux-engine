@@ -30,7 +30,7 @@ namespace lux::editor::flowforge
         auto graph = lux::flowforge::materializeFlowSource(*captured, input.environment);
         if (!graph)
             return lux::cxx::unexpected(detail::sourceFailure(graph.error()));
-        graph->preserveVariableIdsFrom(input.source.graph);
+        graph->preserveIssuedIdsFrom(input.source.graph);
         auto impl = std::make_unique<Impl>(id, std::move(binding), limits);
         impl->environment = input.environment;
         if (input.environment.code_lifetime)

@@ -43,6 +43,9 @@ namespace lux::graph
     public:
         GraphTopology() = default;
 
+        // Merge issued identities without changing records. Exhaustion is absorbing.
+        void preserveIssuedIdsFrom(const GraphTopology& source) noexcept;
+
         [[nodiscard]] lux::cxx::expected<NodeId, GraphTopologyFailure> addNode(NodeTypeId type) noexcept;
         [[nodiscard]] lux::cxx::expected<void, GraphTopologyFailure> insertNode(NodeRecord node) noexcept;
         [[nodiscard]] lux::cxx::expected<DetachedNode, GraphTopologyFailure> detachNode(NodeId node) noexcept;

@@ -333,15 +333,27 @@ namespace lux::graph
         return {};
     }
 
+    void GraphTopology::preserveIssuedIdsFrom(const GraphTopology& source) noexcept
+    {
+        const bool has_new_node_ids = next_node_id_ != 0U &&
+                                     (source.next_node_id_ == 0U || source.next_node_id_ > next_node_id_);
+        const bool has_new_pin_ids = next_pin_id_ != 0U &&
+                                    (source.next_pin_id_ == 0U || source.next_pin_id_ > next_pin_id_);
+        if (has_new_node_ids)
+            next_node_id_ = source.next_node_id_;
+        if (has_new_pin_ids)
+            next_pin_id_ = source.next_pin_id_;
+    }
+
     void GraphTopology::advanceNodeId(NodeId id) noexcept
     {
-        if (id.value >= next_node_id_)
+        if (next_node_id_ != 0U && id.value >= next_node_id_)
             next_node_id_ = id.value + 1U;
     }
 
     void GraphTopology::advancePinId(PinId id) noexcept
     {
-        if (id.value >= next_pin_id_)
+        if (next_pin_id_ != 0U && id.value >= next_pin_id_)
             next_pin_id_ = id.value + 1U;
     }
 } // namespace lux::graph

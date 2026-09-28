@@ -17,7 +17,8 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     lux_editor_test_options(editor_flowforge_model_test)
     foreach(scenario content failure mixed-signature mixed-recreate lifetime reading
         reload-unbound reload-unbound-external reload-reading reload-closing reload-identity reload-success
-        input-stale input-reading input-closing budgets)
+        input-stale input-reading input-closing budgets ids-undo-branch ids-candidate-seed
+        ids-signature ids-restore ids-failure ids-exhaustion)
         add_test(NAME editor.flowforge_model.${scenario} COMMAND editor_flowforge_model_test ${scenario})
         set_tests_properties(editor.flowforge_model.${scenario} PROPERTIES LABELS "editor;native;P04")
     endforeach()

@@ -1503,8 +1503,8 @@ namespace lux::editor::flowforge::detail
             {
                 auto& live = edit_.owner_.source_;
                 auto& next = candidate_ ? *candidate_ : *edit_.parked_;
-                live.graph.preserveVariableIdsFrom(next.graph);
-                next.graph.preserveVariableIdsFrom(live.graph);
+                live.graph.preserveIssuedIdsFrom(next.graph);
+                next.graph.preserveIssuedIdsFrom(live.graph);
                 using std::swap;
                 swap(live.name, next.name);
                 swap(live.graph, next.graph);
@@ -1614,7 +1614,7 @@ namespace lux::editor::flowforge::detail
                 ));
             auto candidate =
                 std::make_unique<FlowAuthoringSource>(FlowAuthoringSource{frozen->id, frozen->name, std::move(*graph)});
-            candidate->graph.preserveVariableIdsFrom(owner_.source_.graph);
+            candidate->graph.preserveIssuedIdsFrom(owner_.source_.graph);
             FlowEditFactory factory{{*candidate, owner_.environment_, owner_.code_, owner_.base_, {}}};
             FlowEditIds ids;
             for (auto& intent : edits_)

@@ -16,7 +16,7 @@ component_add_transitive_commands(editor_editing_scene
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-editing-scene VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_editing_scene)
 
-if(BUILD_TESTING)
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_scene_editing_test test/editing.cpp)
     target_link_libraries(editor_scene_editing_test PRIVATE editor_editing_scene)
     if(MSVC)
@@ -25,4 +25,9 @@ if(BUILD_TESTING)
         target_compile_options(editor_scene_editing_test PRIVATE -UNDEBUG)
     endif()
     add_test(NAME editor.scene.editing COMMAND editor_scene_editing_test)
+endif()
+
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    set_tests_properties(editor.scene.editing
+        PROPERTIES LABELS "editor;native")
 endif()

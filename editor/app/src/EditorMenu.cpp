@@ -5,6 +5,9 @@
 #include <array>
 #include <lux/engine/editor/ui/SaveAllRequest.hpp>
 #include <cstdio>
+#if defined(LUX_EDITOR_BASELINE_PROBES)
+#include <lux/engine/editor/detail/EditorTestAccess.hpp>
+#endif
 
 namespace lux::editor
 {
@@ -18,26 +21,27 @@ namespace lux::editor
     void Editor::Impl::initializeMenu()
     {
         EditorResult<void> status;
-        menu_removed_ = detail::takeConnection(
-            object::LuxObject::connect(
-                root,
-                &lux::ui::Root::objectRemoved,
-                [this](object::LuxObject* removed) noexcept {
-                    const auto invalidate = [removed](MenuCall& call) noexcept {
-                        if (call.pane == removed || call.element == removed)
-                        {
-                            call.cancelled = true;
-                            call.pane = nullptr;
-                            call.element = nullptr;
-                        }
-                    };
-                    invalidate(menu_target_);
-                    for (auto& request : menu_requests_)
-                        invalidate(request);
-                }
-            ),
-            status
+        auto connected = object::LuxObject::connect(
+            root,
+            &lux::ui::Root::objectRemoved,
+            [this](object::LuxObject* removed) noexcept {
+                const auto invalidate = [removed](MenuCall& call) noexcept {
+                    if (call.pane == removed || call.element == removed)
+                    {
+                        call.cancelled = true;
+                        call.pane = nullptr;
+                        call.element = nullptr;
+                    }
+                };
+                invalidate(menu_target_);
+                for (auto& request : menu_requests_)
+                    invalidate(request);
+            }
         );
+#if defined(LUX_EDITOR_BASELINE_PROBES)
+        connected = EditorTestAccess::menuConnection(std::move(connected));
+#endif
+        menu_removed_ = detail::takeConnection(std::move(connected), status);
         if (!status)
             fail(status.error());
         rebuildMenu();

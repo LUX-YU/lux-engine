@@ -31,6 +31,6 @@ component_add_transitive_commands(editor_flowforge
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-flowforge VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_flowforge)
 
-if(BUILD_TESTING)
+if(LUX_EDITOR_TEST_DESKTOP_GPU)
     target_sources(editor_flowforge PRIVATE test/FlowForgeEditorTestAccess.cpp)
 endif()

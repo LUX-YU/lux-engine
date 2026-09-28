@@ -11,5 +11,9 @@ namespace lux::editor
         LUX_EDITOR_APP_PUBLIC static ui::Presentation* ui(Editor&) noexcept;
         LUX_EDITOR_APP_PUBLIC static render::RenderRuntime& renderer(Editor&) noexcept;
         LUX_EDITOR_APP_PUBLIC static void turn(Editor&);
+        LUX_EDITOR_APP_PUBLIC static EditorResult<void> restoreWorkspace(Editor&, const detail::WorkspaceData&);
+        LUX_EDITOR_APP_PUBLIC static void queryCommand(Editor&, lux::ui::Command&);
+        LUX_EDITOR_APP_PUBLIC static void failNextMenuConnection() noexcept;
+        static object::LuxObject::ConnectResult menuConnection(object::LuxObject::ConnectResult) noexcept;
     };
 }

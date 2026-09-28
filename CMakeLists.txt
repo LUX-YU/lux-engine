@@ -110,3 +110,7 @@ install(DIRECTORY examples/render-plugin/ DESTINATION share/lux-engine/examples/
     PATTERN "*.vert" PATTERN "*.frag" PATTERN "CMakeLists.txt")
 
 lux_generate_capabilities()
+if(LUX_PROFILE_HAS_EDITOR)
+    include(EditorArchitectureChecks)
+    lux_editor_check_architecture()
+endif()

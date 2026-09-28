@@ -63,7 +63,7 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-ui VERSION ${PROJEC
 
 target_link_libraries(editor_ui PRIVATE lux::engine::platform::window lux::engine::function::input lux::engine::scene::scene_transform)
 
-if(BUILD_TESTING)
+if(LUX_EDITOR_TEST_DESKTOP_GPU)
     add_executable(editor_ui_presentation test/unified_ui.cpp)
     target_link_libraries(editor_ui_presentation PRIVATE editor_ui lux::engine::platform::window
         lux::engine::function::render_features)
@@ -72,6 +72,9 @@ if(BUILD_TESTING)
     else()
         target_compile_options(editor_ui_presentation PRIVATE -UNDEBUG)
     endif()
+endif()
+
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     add_test(NAME editor.inspector_codegen COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/inspector_codegen.py")
     add_executable(editor_scene_configuration test/scene_configuration.cpp)
@@ -83,4 +86,9 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME editor.scene_configuration COMMAND editor_scene_configuration "${CMAKE_BINARY_DIR}")
     set_tests_properties(editor.scene_configuration PROPERTIES TIMEOUT 30)
+endif()
+
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    set_tests_properties(editor.inspector_codegen editor.scene_configuration
+        PROPERTIES LABELS "editor;native")
 endif()

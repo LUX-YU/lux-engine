@@ -85,7 +85,7 @@ engine_target_add_type_runtime_info(TARGET editor_scene METAS editor_scene_trans
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-scene VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_scene)
 
-if(BUILD_TESTING)
+if(LUX_EDITOR_TEST_DESKTOP_GPU)
     add_executable(editor_scene_fixture test/fixture.cpp)
     target_link_libraries(editor_scene_fixture PRIVATE editor_scene lux::engine::function::render_features
         lux::engine::scene::scene_transform)
@@ -96,6 +96,6 @@ if(BUILD_TESTING)
     endif()
 endif()
 
-if(BUILD_TESTING)
+if(LUX_EDITOR_TEST_DESKTOP_GPU)
     target_sources(editor_scene PRIVATE test/SceneEditorTestAccess.cpp)
 endif()

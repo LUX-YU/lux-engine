@@ -2,6 +2,28 @@
 #include <lux/engine/editor/assets/AssetImporter.hpp>
 namespace lux::editor
 {
+    namespace
+    {
+        thread_local bool fail_menu_connection{};
+    }
+    EditorResult<void> EditorTestAccess::restoreWorkspace(Editor& editor, const detail::WorkspaceData& data)
+    {
+        return editor.impl_->restoreWorkspace(data);
+    }
+    void EditorTestAccess::queryCommand(Editor& editor, lux::ui::Command& command)
+    {
+        editor.impl_->applicationCommand(command);
+    }
+    void EditorTestAccess::failNextMenuConnection() noexcept
+    {
+        fail_menu_connection = true;
+    }
+    object::LuxObject::ConnectResult EditorTestAccess::menuConnection(object::LuxObject::ConnectResult result) noexcept
+    {
+        if (std::exchange(fail_menu_connection, false))
+            return lux::cxx::unexpected(object::EConnectError::CAPACITY_EXHAUSTED);
+        return result;
+    }
     ui::Presentation* EditorTestAccess::ui(Editor& editor) noexcept
     {
         return editor.impl_->presentation.get();

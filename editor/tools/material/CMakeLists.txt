@@ -35,6 +35,6 @@ component_add_transitive_commands(editor_material
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-material VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_material)
 
-if(BUILD_TESTING)
+if(LUX_EDITOR_TEST_DESKTOP_GPU)
     target_sources(editor_material PRIVATE test/MaterialEditorTestAccess.cpp)
 endif()

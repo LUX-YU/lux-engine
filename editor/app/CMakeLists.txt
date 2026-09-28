@@ -26,8 +26,15 @@ target_link_libraries(lux_editor PRIVATE lux::engine::platform::platform_process
     lux::engine::editor::editor_settings lux::engine::editor::editor_launcher lux::cxx::arguments)
 install(TARGETS lux_editor RUNTIME DESTINATION bin)
 
-if(BUILD_TESTING)
+if(LUX_EDITOR_TEST_DESKTOP_GPU)
     target_sources(editor_app PRIVATE src/EditorTestAccess.cpp)
+    target_compile_definitions(editor_app PRIVATE LUX_EDITOR_BASELINE_PROBES)
+    add_executable(editor_baseline_failures test/baseline_failures.cpp)
+    target_include_directories(editor_baseline_failures PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+        ${PROJECT_SOURCE_DIR}/editor/context/sinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude
+        ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude)
+    target_link_libraries(editor_baseline_failures PRIVATE editor_app)
+    lux_editor_test_options(editor_baseline_failures)
     add_executable(editor_context_lifecycle test/context_lifecycle.cpp)
     target_link_libraries(editor_context_lifecycle PRIVATE editor_app editor_launcher)
     if(MSVC)
@@ -40,8 +47,8 @@ if(BUILD_TESTING)
     set_tests_properties(editor.context_lifecycle PROPERTIES RUN_SERIAL TRUE TIMEOUT 60)
 endif()
 
-if(BUILD_TESTING)
-    find_program(EDITOR_TEST_LINKER NAMES lld-link HINTS "D:/Development/Mircosoft/VisualStudio/VC/Tools/Llvm/x64/bin" REQUIRED)
+if(LUX_EDITOR_TEST_DESKTOP_GPU AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
+    find_program(EDITOR_TEST_LINKER NAMES lld-link REQUIRED)
     foreach(kind material flow)
         if(kind STREQUAL "material")
             set(package material)
@@ -62,7 +69,7 @@ if(BUILD_TESTING)
     endforeach()
 endif()
 
-if(BUILD_TESTING)
+if(LUX_EDITOR_TEST_DESKTOP_GPU)
     add_executable(editor_review_regressions ${PROJECT_SOURCE_DIR}/cmake/installed-consumers/editor-d2/protocol/review_regressions.cpp)
     target_include_directories(editor_review_regressions PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
         ${PROJECT_SOURCE_DIR}/editor/context/sinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude)
@@ -78,7 +85,7 @@ if(BUILD_TESTING)
     endforeach()
 endif()
 
-if(BUILD_TESTING)
+if(LUX_EDITOR_TEST_DESKTOP_GPU)
     add_executable(editor_core_protocol ../tools/scene/test/core_protocol.cpp)
     target_include_directories(editor_core_protocol PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude
@@ -91,7 +98,9 @@ if(BUILD_TESTING)
         lux::engine::editor::scene_render_meta lux::engine::scene::scene_transform
         lux::engine::function::script_native lux::engine::flowforge::flowforge_compiler
         lux::engine::toolchain::toolchain_material_compiler)
-    target_compile_definitions(editor_core_protocol PRIVATE "D2_FLOW_LINKER=\"${EDITOR_TEST_LINKER}\"")
+    if(LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
+        target_compile_definitions(editor_core_protocol PRIVATE "D2_FLOW_LINKER=\"${EDITOR_TEST_LINKER}\"")
+    endif()
     if(MSVC)
         target_compile_options(editor_core_protocol PRIVATE /UNDEBUG /utf-8)
     else()
@@ -99,21 +108,29 @@ if(BUILD_TESTING)
     endif()
 endif()
 
-if(BUILD_TESTING)
+if(LUX_EDITOR_TEST_DESKTOP_GPU)
     find_program(EDITOR_TEST_POWERSHELL NAMES pwsh powershell REQUIRED)
-    foreach(mode new-assets save-preservation factory-rollback material-gui flow-gui fixed-run)
+    set(core_modes new-assets save-preservation factory-rollback fixed-run)
+    set(material_fixture "not-selected")
+    set(flow_fixture "not-selected")
+    if(LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
+        list(APPEND core_modes material-gui flow-gui)
+        set(material_fixture "$<TARGET_FILE:editor_material_protocol>")
+        set(flow_fixture "$<TARGET_FILE:editor_flow_protocol>")
+    endif()
+    foreach(mode IN LISTS core_modes)
         add_test(NAME editor.unified_core_${mode}
             COMMAND "${EDITOR_TEST_POWERSHELL}" -NoProfile -File
                 "${PROJECT_SOURCE_DIR}/cmake/installed-consumers/editor-d2/protocol/RunCase.ps1"
                 -Case "${mode}" -Executable "$<TARGET_FILE:editor_core_protocol>"
-                -Fixture "$<TARGET_FILE:editor_scene_fixture>" -MaterialFixture "$<TARGET_FILE:editor_material_protocol>"
-                -FlowFixture "$<TARGET_FILE:editor_flow_protocol>" -Root "${CMAKE_BINARY_DIR}/tests/core"
+                -Fixture "$<TARGET_FILE:editor_scene_fixture>" -MaterialFixture "${material_fixture}"
+                -FlowFixture "${flow_fixture}" -Root "${CMAKE_BINARY_DIR}/tests/core"
                 -Seed "${PROJECT_SOURCE_DIR}/cmake/installed-consumers/editor-d2/protocol/Seed.luxpak")
         set_tests_properties(editor.unified_core_${mode} PROPERTIES RUN_SERIAL TRUE TIMEOUT 100)
     endforeach()
 endif()
 
-if(BUILD_TESTING)
+if(LUX_EDITOR_TEST_INSTALLED_UI)
     # Use the exact installed component sources and generation rules during development.
     set(D2_CONSUMER_SOURCE_DIR "${PROJECT_SOURCE_DIR}/cmake/installed-consumers/editor-d2")
     include("${D2_CONSUMER_SOURCE_DIR}/Targets.cmake")
@@ -121,24 +138,14 @@ if(BUILD_TESTING)
     set_tests_properties(editor.component_elements PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
 endif()
 
-if(BUILD_TESTING)
-    foreach(target editor_core_protocol consumer_protocol editor_material_protocol editor_flow_protocol editor_review_regressions)
+foreach(target editor_core_protocol consumer_protocol editor_material_protocol editor_flow_protocol editor_review_regressions)
+    if(TARGET ${target})
         target_compile_definitions(${target} PRIVATE "LUX_TEST_PLUGIN_ROOT=\"${CMAKE_BINARY_DIR}\"")
         add_dependencies(${target} builtin_runtime_plugin lux_plugin_capabilities)
-    endforeach()
-endif()
-
-if(BUILD_TESTING)
-    foreach(target editor_core_protocol consumer_protocol editor_material_protocol editor_flow_protocol editor_review_regressions)
         target_link_libraries(${target} PRIVATE editor_project_tools editor_settings editor_launcher)
-    endforeach()
-endif()
-
-if(BUILD_TESTING)
-    foreach(target editor_core_protocol consumer_protocol editor_material_protocol editor_flow_protocol editor_review_regressions)
         target_include_directories(${target} PRIVATE ${PROJECT_SOURCE_DIR}/editor/tools/test)
-    endforeach()
-endif()
+    endif()
+endforeach()
 
 find_package(tomlplusplus CONFIG REQUIRED)
 target_include_directories(editor_app PRIVATE $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
@@ -146,3 +153,15 @@ target_compile_definitions(editor_app PRIVATE TOML_HEADER_ONLY=1 TOML_EXCEPTIONS
 
 target_include_directories(lux_editor PRIVATE ${PROJECT_SOURCE_DIR}/editor/editing/sinclude $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
 target_compile_definitions(lux_editor PRIVATE TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0 "LUX_EDITOR_VERSION=\"${PROJECT_VERSION}\"")
+
+get_property(editor_app_tests DIRECTORY PROPERTY TESTS)
+foreach(test IN LISTS editor_app_tests)
+    set(labels "editor;desktop;gpu")
+    if(test MATCHES "(material-gui|flow-gui)$")
+        list(APPEND labels toolchain)
+    endif()
+    if(test STREQUAL "editor.component_elements")
+        list(APPEND labels installed)
+    endif()
+    set_tests_properties(${test} PROPERTIES LABELS "${labels}")
+endforeach()

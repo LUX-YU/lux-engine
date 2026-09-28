@@ -17,7 +17,7 @@ component_add_transitive_commands(editor_assets
 lux_classify_target(TARGET editor_assets LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-assets VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_assets)
-if(BUILD_TESTING)
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_asset_save_test test/asset_save.cpp)
     target_link_libraries(editor_asset_save_test PRIVATE editor_assets)
     target_include_directories(editor_asset_save_test PRIVATE sinclude
@@ -29,4 +29,9 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME editor.asset_save_target COMMAND editor_asset_save_test "${CMAKE_CURRENT_BINARY_DIR}/asset-save")
     set_tests_properties(editor.asset_save_target PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+endif()
+
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    set_tests_properties(editor.asset_save_target
+        PROPERTIES LABELS "editor;native")
 endif()

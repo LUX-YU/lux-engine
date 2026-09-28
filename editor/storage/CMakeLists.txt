@@ -39,7 +39,7 @@ engine_target_add_type_runtime_info(TARGET editor_storage METAS editor_storage_m
 lux_classify_target(TARGET editor_storage LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-storage VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_storage)
-if(BUILD_TESTING)
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_project_creation_test test/project_creation.cpp)
     target_link_libraries(editor_project_creation_test PRIVATE editor_storage lux::engine::scene::scene_asset)
     if(MSVC)
@@ -58,4 +58,9 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME editor.plugin_publication COMMAND editor_plugin_publication_test "${CMAKE_CURRENT_BINARY_DIR}/plugin-publication")
     set_tests_properties(editor.plugin_publication PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+endif()
+
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    set_tests_properties(editor.project_creation editor.plugin_publication
+        PROPERTIES LABELS "editor;native")
 endif()

@@ -330,6 +330,7 @@ int main(int argc, char** argv)
                 [&](lux::process::TaskId) noexcept { ++compile_notices; }
             );
             assert(connection);
+#if defined(D2_FLOW_LINKER)
             const auto compile = flow.requestCompile(D2_FLOW_LINKER);
             assert(compile);
             assert(context.execution().waitUntil([&]() noexcept {
@@ -344,6 +345,10 @@ int main(int argc, char** argv)
             assert(compile_notices == 0);
             editor.applyPendingChanges();
             assert(compile_notices == 1);
+#else
+            std::fputs("flow-gui requires the toolchain test group\n", stderr);
+            return 2;
+#endif
         }
         else
         {

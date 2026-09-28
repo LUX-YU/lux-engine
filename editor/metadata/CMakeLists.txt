@@ -30,7 +30,7 @@ component_add_transitive_commands(editor_metadata
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-metadata VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_metadata)
 
-if(BUILD_TESTING)
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(plugin_configuration_test test/configuration.cpp)
     target_link_libraries(plugin_configuration_test PRIVATE editor_metadata lux::engine::function::ui imgui::core)
 
@@ -56,4 +56,9 @@ if(BUILD_TESTING)
 
         add_dependencies(plugin_library_test physics2d_simulation builtin_runtime_plugin lux_plugin_capabilities)
     endif()
+endif()
+
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    set_tests_properties(plugin.configuration plugin.physics2d
+        PROPERTIES LABELS "editor;native")
 endif()

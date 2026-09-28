@@ -1,0 +1,21 @@
+Traceback (most recent call last):
+  File "C:\Users\ChenHui\AppData\Local\Temp\lux-p01-evidence-h4b5dugy\run.py", line 9, in <module>
+    runpy.run_path(str(Path(__file__).parent / 'dev_log/P01/verify.py'), run_name='__main__')
+  File "<frozen runpy>", line 287, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\ChenHui\AppData\Local\Temp\lux-p01-evidence-h4b5dugy\dev_log\P01\verify.py", line 92, in <module>
+    assert digest(Path(proof["raw_inventory"]["path"])) == proof["raw_inventory"]["sha256"]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ChenHui\AppData\Local\Temp\lux-p01-evidence-h4b5dugy\dev_log\P01\verify.py", line 18, in digest
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+                          ^^^^^^^^^^^^^^^^^
+  File "C:\Users\ChenHui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\pathlib.py", line 1019, in read_bytes
+    with self.open(mode='rb') as f:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ChenHui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ChenHui\AppData\Local\Temp\lux-p01-evidence-h4b5dugy\run.py", line 7, in reject_producer
+    raise PermissionError('PRODUCER_PATH_READ_FORBIDDEN: ' + str(args[0]))
+PermissionError: PRODUCER_PATH_READ_FORBIDDEN: E:\SyncForder\CodeRepos\build\p01-evidence\ast\inventory.json

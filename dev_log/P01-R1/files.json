@@ -1,0 +1,92 @@
+[
+  {
+    "status": "M",
+    "path": "cmake/EditorArchitectureChecks.cmake",
+    "git_blob": "a0c83a8959886848d11ea7eb1b79584a14acc442",
+    "sha256": "632e47e96b6775d0421838748f28f22b1e0f880aaeba9b2d54720ea70110000a"
+  },
+  {
+    "status": "A",
+    "path": "dev_log/P01-R1/.gitattributes",
+    "git_blob": "507683afbf82e47744da8640435507e9a3961f36",
+    "sha256": "12eb62937e601d6e988a217e1903b9c280d088a31a94236b30b8ecd06991a3f6"
+  },
+  {
+    "status": "A",
+    "path": "dev_log/P01-R1/evidence-index.json",
+    "git_blob": "b730329a0c329eb26ac38c62994b6979e8fbebfb",
+    "sha256": "50713623869a73a3055c04aeb0a0dfed4567cf7d830cf33bcce8ff88bfa38615"
+  },
+  {
+    "status": "A",
+    "path": "dev_log/P01-R1/evidence/P01-inventory.json",
+    "git_blob": "1817c34bb7e26d4ed4c13bbf3446cf64cd6347c8",
+    "sha256": "f1dbe86df5b8da67898713cc5486bf0b46583668c8d5bf31076d62e568d6bb84"
+  },
+  {
+    "status": "M",
+    "path": "dev_log/P01/verify.py",
+    "git_blob": "17dd21695b1f3aaa6ba5188f1d362129aab0fc9a",
+    "sha256": "38f7a7012c13481d5f35a7735189974e0e62be49162acb1370a4d7906882a58e"
+  },
+  {
+    "status": "M",
+    "path": "editor/sessions/CMakeLists.txt",
+    "git_blob": "888fe3ce8208e3530deec58f4a50abf62cc62c32",
+    "sha256": "9b29461d3b42ab4ee597973095df311f5b3b22fa046ae7fc00679927dad1efe7"
+  },
+  {
+    "status": "M",
+    "path": "editor/sessions/README.md",
+    "git_blob": "f4c34210fd68b9ee024e9235d1c31bebdb7c3141",
+    "sha256": "4d80f8bbc0d822e718336c2e6eb87d6285f84673ce19c5476eaf1a38dbdfa939"
+  },
+  {
+    "status": "M",
+    "path": "editor/sessions/include/lux/engine/editor/sessions/IEditSession.hpp",
+    "git_blob": "a7da56f8abe11aae5559e78d380d6a69da86c0aa",
+    "sha256": "3a7f7748412ced2c1234586df6f27b37282e9e6fea6852cdcc654f55f538d124"
+  },
+  {
+    "status": "M",
+    "path": "editor/sessions/src/SessionStore.cpp",
+    "git_blob": "fbcd93953bda92c6958820fc2c01bd96e3dba550",
+    "sha256": "83f51eeaaf255323ae4d0cc16012bfc6d9039179f6a8a60c12fb6fcb8d412d08"
+  },
+  {
+    "status": "M",
+    "path": "editor/sessions/test/sessions.cpp",
+    "git_blob": "9387f79029ebdfd903111580931a05b7ec8151a0",
+    "sha256": "93cfa802112df7c0b6cba484426dd2681e8d79ed52810fa6d7499e7add3a23e4"
+  },
+  {
+    "status": "M",
+    "path": "editor/tests/architecture/README.md",
+    "git_blob": "829c595176a19f649d747291e5d062b7b1becadf",
+    "sha256": "1cdc2b0fe703fe06834b4f4610e13f7d7b59a97227b1421d13846dd6545917c4"
+  },
+  {
+    "status": "M",
+    "path": "editor/tests/architecture/check_editor_boundaries.py",
+    "git_blob": "644ab6b1b598a8a279b460d69d90405a1bed2f4c",
+    "sha256": "726a92afa5aa743183c1b92f5c3d873cf9a958785838f8469e20132841a8c2e9"
+  },
+  {
+    "status": "M",
+    "path": "editor/tests/architecture/rules.json",
+    "git_blob": "3cfadb96ed9219055a9b1458c6f2d0634c9f342f",
+    "sha256": "1e8b9d7e4854c2a14ed76ac2b4564a2cf77e28d0c4790e3993f300f408b1f1fd"
+  },
+  {
+    "status": "M",
+    "path": "editor/tests/architecture/test_editor_boundaries.py",
+    "git_blob": "178c06a1bb00ff172ffefc3b1dbbdc5b864bb62f",
+    "sha256": "ff1521f22a397f482e608b56ce2a18d7920410ac6df2e8d1c004c7005e2f5bcc"
+  },
+  {
+    "status": "A",
+    "path": "editor/tests/architecture/test_p01_evidence.py",
+    "git_blob": "c7febec20570e1cfc5d96535edb194819622f587",
+    "sha256": "e73a8c1b500adc9a11552804e754e1732626e4bc9cbf462ba49530d5801e82ae"
+  }
+]

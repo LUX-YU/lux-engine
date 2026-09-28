@@ -1,0 +1,3 @@
+warning: in the working copy of 'editor/sessions/include/lux/engine/editor/sessions/IEditSession.hpp', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/sessions/src/SessionStore.cpp', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/tests/architecture/README.md', LF will be replaced by CRLF the next time Git touches it

@@ -1,0 +1,10 @@
+[
+  {
+    "mode": "close-throw",
+    "exit_code": 86
+  },
+  {
+    "mode": "close-contract",
+    "exit_code": 1
+  }
+]

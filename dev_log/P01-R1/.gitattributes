@@ -1,3 +1,4 @@
-*.json -text
-evidence/* -text -diff
-logs/* -text -diff
+* -text
+evidence/** -diff
+logs/** -diff
+spec/** -diff

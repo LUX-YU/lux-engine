@@ -1,0 +1,8 @@
+FAIL X01-R2-01: configure=0 expected=FOUNDATION_DIRECT_DEPENDENCY repaired=0
+FAIL X01-R2-02: configure=0 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+FAIL X01-R2-03: configure=0 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+FAIL X01-R2-04: configure=0 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+FAIL X01-R2-05: configure=0 expected=FOUNDATION_FORBIDDEN_INCLUDE repaired=0
+PASS legal: configure=0 expected=None repaired=0
+PASS context: configure=1 expected=NEW_DEPENDS_ON_OLD_TARGET repaired=0
+FAIL unknown: configure=0 expected=FOUNDATION_UNRESOLVED_DEPENDENCY repaired=0

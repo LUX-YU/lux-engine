@@ -1,0 +1,26 @@
+[
+  {
+    "case": "ids-undo-branch",
+    "exit_code": 0
+  },
+  {
+    "case": "ids-candidate-seed",
+    "exit_code": 0
+  },
+  {
+    "case": "ids-signature",
+    "exit_code": 0
+  },
+  {
+    "case": "ids-restore",
+    "exit_code": 0
+  },
+  {
+    "case": "ids-failure",
+    "exit_code": 0
+  },
+  {
+    "case": "ids-exhaustion",
+    "exit_code": 0
+  }
+]

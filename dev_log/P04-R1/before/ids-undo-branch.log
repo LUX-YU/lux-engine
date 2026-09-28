@@ -1,0 +1,4 @@
+issued NodeId=4 PinIds=8,9,10,11,
+fresh NodeId=4 PinIds=8,9,10,11,
+undo_branch old=4 new=4 repeated_node=1 repeated_pin=1 old_pin_accepted=1
+Assertion failed: !repeated_node && !repeated_pin && !targeted, file E:\SyncForder\CodeRepos\lux-engine\editor\tools\flowforge\model\test\flow_session.cpp, line 221

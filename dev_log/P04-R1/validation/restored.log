@@ -1,0 +1,1 @@
+PASS P04 R1 gate: real before/after NodeId/all PinId evidence; R04-01..06; original 82 tests and assertions preserved, full exact-SHA build/install/eight consumers, explicit P04. C01/C03/C04 remain FAIL; stop at P04.

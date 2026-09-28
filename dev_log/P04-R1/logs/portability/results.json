@@ -1,0 +1,44 @@
+[
+  {
+    "id": "X01-R3-01-relocated",
+    "exit_code": 0,
+    "matched": true,
+    "marker": "",
+    "log": "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P04-R1-run\\af8310f362ca299a8e3b22597ce9cb5d735906a2\\portability\\X01-R3-01-relocated.log"
+  },
+  {
+    "id": "X01-R3-02-windows-provenance",
+    "exit_code": 0,
+    "matched": true,
+    "marker": "",
+    "log": "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P04-R1-run\\af8310f362ca299a8e3b22597ce9cb5d735906a2\\portability\\X01-R3-02-windows-provenance.log"
+  },
+  {
+    "id": "X01-R3-03-missing",
+    "exit_code": 1,
+    "matched": true,
+    "marker": "EVIDENCE_INCOMPLETE",
+    "log": "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P04-R1-run\\af8310f362ca299a8e3b22597ce9cb5d735906a2\\portability\\X01-R3-03-missing.log"
+  },
+  {
+    "id": "X01-R3-03-tampered",
+    "exit_code": 1,
+    "matched": true,
+    "marker": "EVIDENCE_HASH_MISMATCH",
+    "log": "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P04-R1-run\\af8310f362ca299a8e3b22597ce9cb5d735906a2\\portability\\X01-R3-03-tampered.log"
+  },
+  {
+    "id": "X01-R3-03-missing-log",
+    "exit_code": 1,
+    "matched": true,
+    "marker": "EVIDENCE_INCOMPLETE",
+    "log": "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P04-R1-run\\af8310f362ca299a8e3b22597ce9cb5d735906a2\\portability\\X01-R3-03-missing-log.log"
+  },
+  {
+    "id": "restored",
+    "exit_code": 0,
+    "matched": true,
+    "marker": "",
+    "log": "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P04-R1-run\\af8310f362ca299a8e3b22597ce9cb5d735906a2\\portability\\restored.log"
+  }
+]

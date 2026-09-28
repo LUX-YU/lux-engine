@@ -1,0 +1,146 @@
+diff --git a/editor/tools/flowforge/model/CMakeLists.txt b/editor/tools/flowforge/model/CMakeLists.txt
+index 50cb9c661..0bd8adf34 100644
+--- a/editor/tools/flowforge/model/CMakeLists.txt
++++ b/editor/tools/flowforge/model/CMakeLists.txt
+@@ -17,7 +17,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+     lux_editor_test_options(editor_flowforge_model_test)
+     foreach(scenario content failure mixed-signature mixed-recreate lifetime reading
+         reload-unbound reload-unbound-external reload-reading reload-closing reload-identity reload-success
+-        input-stale input-reading input-closing budgets)
++        input-stale input-reading input-closing budgets ids-undo-branch ids-candidate-seed)
+         add_test(NAME editor.flowforge_model.${scenario} COMMAND editor_flowforge_model_test ${scenario})
+         set_tests_properties(editor.flowforge_model.${scenario} PROPERTIES LABELS "editor;native;P04")
+     endforeach()
+diff --git a/editor/tools/flowforge/model/test/flow_session.cpp b/editor/tools/flowforge/model/test/flow_session.cpp
+index 822f73fee..e4abb8b70 100644
+--- a/editor/tools/flowforge/model/test/flow_session.cpp
++++ b/editor/tools/flowforge/model/test/flow_session.cpp
+@@ -152,6 +152,115 @@ namespace
+     {
+         return {flow::EFlowLiteralKind::BOOLEAN, value ? "true" : "false"};
+     }
++void printPins(const char* label, const flow::FlowSourceNode& node)
++{
++    std::printf("%s NodeId=%llu PinIds=", label, static_cast<unsigned long long>(node.id.value));
++    for (const auto& pin : node.inputs) std::printf("%llu,", static_cast<unsigned long long>(pin.id.value));
++    for (const auto& pin : node.outputs) std::printf("%llu,", static_cast<unsigned long long>(pin.id.value));
++    std::puts("");
++}
++flow::FlowSourceNode capturedNode(const Fixture& f, flow::NodeId id)
++{
++    const auto snapshot = take(f.session->capture());
++    for (const auto& node : snapshot.source().nodes)
++        if (node.id == id)
++            return node;
++    std::abort();
++}
++bool intersectsPins(const flow::FlowSourceNode& a, const flow::FlowSourceNode& b)
++{
++    for (const auto& old : a.inputs)
++    {
++        for (const auto& now : b.inputs) if (old.id == now.id) return true;
++        for (const auto& now : b.outputs) if (old.id == now.id) return true;
++    }
++    for (const auto& old : a.outputs)
++    {
++        for (const auto& now : b.inputs) if (old.id == now.id) return true;
++        for (const auto& now : b.outputs) if (old.id == now.id) return true;
++    }
++    return false;
++}
++
++// R04-01: mixed insert -> undo -> unrelated fresh insert (not Redo).
++void idsAfterUndoBranch()
++{
++    Fixture f;
++    const Saved before(f);
++    auto batch = f.batch();
++    batch.edits.push_back(FlowRename{"first mixed transaction"});
++    batch.edits.push_back(FlowInsertNode{
++        contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
++    const auto applied = take(f.session->apply(std::move(batch)));
++    assert(applied.inserted.nodes.size() == 1);
++    const auto old = capturedNode(f, applied.inserted.nodes.front());
++    const auto frozen = take(f.session->capture());
++    const auto history_id = f.session->describe().current.state.history;
++    assert(f.session->undo());
++    assert(f.encoded() == before.bytes);
++
++    const auto inserted = f.apply(FlowInsertNode{
++        contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
++    assert(inserted.inserted.nodes.size() == 1);
++    const auto now = capturedNode(f, inserted.inserted.nodes.front());
++    printPins("issued", old);
++    printPins("fresh", now);
++    const bool repeated_node = old.id == now.id;
++    const bool repeated_pin = intersectsPins(old, now);
++
++    // Fresh ContentStamp but a node address remembered from the removed entity:
++    // if its PinId has been recycled, this would modify the new node incorrectly.
++    const Saved unchanged(f);
++    auto stale_address = f.batch();
++    stale_address.edits.push_back(FlowSetLiteral{dataInput(old), boolean(true)});
++    const auto targeted = f.session->apply(std::move(stale_address));
++    std::printf("undo_branch old=%llu new=%llu repeated_node=%d repeated_pin=%d old_pin_accepted=%d\n",
++        static_cast<unsigned long long>(old.id.value),
++        static_cast<unsigned long long>(now.id.value), repeated_node, repeated_pin, bool(targeted));
++    std::fflush(stdout);
++    assert(!repeated_node && !repeated_pin && !targeted);
++    assert(now.id.value > old.id.value);
++    assert(f.session->describe().current.state.history == history_id);
++    unchanged.unchanged(f);
++    // Frozen output is a separate historical value, not a second writable source.
++    assert(flow::encodeFlowSource(frozen.source()));
++}
++
++// R04-02: highest node deleted -> re-materialize candidate from remaining nodes.
++// Preserving counters only at final swap is TOO LATE for this path.
++void idsWhenSeedingCandidate()
++{
++    Fixture f;
++    const auto issued = f.apply(FlowInsertNode{
++        contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
++    const auto old = capturedNode(f, issued.inserted.nodes.front());
++    f.apply(FlowRemoveNodes{{old.id}, {}});
++    const auto history_id = f.session->describe().current.state.history;
++    const Saved before(f);
++
++    auto batch = f.batch();
++    batch.edits.push_back(FlowRename{"candidate must inherit issued IDs"});
++    batch.edits.push_back(FlowInsertNode{
++        contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
++    const auto inserted = take(f.session->apply(std::move(batch)));
++    assert(inserted.inserted.nodes.size() == 1);
++    const auto now = capturedNode(f, inserted.inserted.nodes.front());
++    printPins("issued", old);
++    printPins("fresh", now);
++    const bool repeated_node = old.id == now.id;
++    const bool repeated_pin = intersectsPins(old, now);
++    std::printf("candidate_seed old=%llu new=%llu repeated_node=%d repeated_pin=%d\n",
++        static_cast<unsigned long long>(old.id.value),
++        static_cast<unsigned long long>(now.id.value), repeated_node, repeated_pin);
++    std::fflush(stdout);
++    assert(!repeated_node && !repeated_pin && now.id.value > old.id.value);
++    assert(f.session->describe().current.state.history == history_id);
++    assert(f.history().entry_count == before.history.entry_count + 1);
++    const auto after = f.encoded();
++    assert(f.session->undo() && f.encoded() == before.bytes);
++    assert(f.session->redo() && f.encoded() == after);
++}
++
+     void content()
+     {
+         Fixture f;
+@@ -610,7 +719,11 @@ namespace
+ int main(int argc, char** argv)
+ {
+     const std::string_view name = argc > 1 ? argv[1] : "content";
+-    if (name == "content")
++    if (name == "ids-undo-branch")
++        idsAfterUndoBranch();
++    else if (name == "ids-candidate-seed")
++        idsWhenSeedingCandidate();
++    else if (name == "content")
+         content();
+     else if (name == "failure")
+         failure();

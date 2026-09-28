@@ -1,0 +1,558 @@
+[
+  {
+    "archive_path": "dev_log/P03/.gitattributes",
+    "sha256": "08b34d89765087ad3e85c2dbfc65048ba85113a442581f2e207b4b6fe2cb9448"
+  },
+  {
+    "archive_path": "dev_log/P03/architecture.json",
+    "sha256": "0135f64e7ce6d2f4773e8e09d524dc921ade16b5d0eb820b9350165a6cc5a35f"
+  },
+  {
+    "archive_path": "dev_log/P03/check_receipt.py",
+    "sha256": "ed6405ee7978658fcb27bf3a5cdba1d86f9bb4b7bc7596140a402819884f8710"
+  },
+  {
+    "archive_path": "dev_log/P03/evidence/boundaries.json",
+    "sha256": "416bb7c06072f7e45e0aa068b74892acf45ac0a1ba1b9886aed70c7e4e66c876"
+  },
+  {
+    "archive_path": "dev_log/P03/evidence/clean-clone-targets.json",
+    "sha256": "dcb75cdebde283ccfd666d8af1da796ad254dce9d855ba4f530d6bdd75545d47"
+  },
+  {
+    "archive_path": "dev_log/P03/evidence/material-boundaries.json",
+    "sha256": "b14e50ab039302a45a03de44f64e14e66ce93f4f61257b4bdec70b02fa600227"
+  },
+  {
+    "archive_path": "dev_log/P03/evidence/model-boundaries.json",
+    "sha256": "03c0952b24c6062917bbab6de323470239b48fd16d89d5f7f287a8943c94389d"
+  },
+  {
+    "archive_path": "dev_log/P03/evidence/sdk-headers/Android-headers-only/Nodes.hpp",
+    "sha256": "32a57f494547c3e1675aef08c4ada5ff5b0874c394c316c1e7b1e2dfa70aa7f8"
+  },
+  {
+    "archive_path": "dev_log/P03/evidence/sdk-headers/Debug/Nodes.hpp",
+    "sha256": "32a57f494547c3e1675aef08c4ada5ff5b0874c394c316c1e7b1e2dfa70aa7f8"
+  },
+  {
+    "archive_path": "dev_log/P03/evidence/sdk-headers/RelWithDebInfo/MaterialEdit.hpp",
+    "sha256": "fcbe6b63fc461f63c191a8acedd4c85061c502cb16a5ac52b301a1f337b0d3e7"
+  },
+  {
+    "archive_path": "dev_log/P03/evidence/sdk-headers/RelWithDebInfo/MaterialSession.hpp",
+    "sha256": "3033d7c1024bf5ad063334e3c14326b409270de2c95df963bb23ffe50658c21d"
+  },
+  {
+    "archive_path": "dev_log/P03/evidence/sdk-headers/RelWithDebInfo/MaterialSessionAccess.hpp",
+    "sha256": "50bbe23fa6c5fb7c108bed2a297a1f75702b4222c3cb6296e42c51b331db5585"
+  },
+  {
+    "archive_path": "dev_log/P03/evidence/sdk-headers/RelWithDebInfo/MaterialSnapshot.hpp",
+    "sha256": "93f586978458942e0d2dbec02cb0b9ecf977e96746053957adfa863a0d7cdbbe"
+  },
+  {
+    "archive_path": "dev_log/P03/evidence/sdk-headers/RelWithDebInfo/Nodes.hpp",
+    "sha256": "32a57f494547c3e1675aef08c4ada5ff5b0874c394c316c1e7b1e2dfa70aa7f8"
+  },
+  {
+    "archive_path": "dev_log/P03/evidence/sdk-headers.json",
+    "sha256": "e2555fd94ff5e7e73aad9393705bacf28c22adec21c94a44af644cfbadd1edbf"
+  },
+  {
+    "archive_path": "dev_log/P03/evidence/targets.json",
+    "sha256": "c556e672fced3e8a0d343d4e5206a162966966f0d0d773091059a5284865c41e"
+  },
+  {
+    "archive_path": "dev_log/P03/files.json",
+    "sha256": "2f23d44c387fbfe5d94b1e4dd11642461b33f442af30afd6046a0107b3cf7f2e"
+  },
+  {
+    "archive_path": "dev_log/P03/implementation-notes.md",
+    "sha256": "4ffd3b19a1c3479ddd759840f41add26f37df21b1a286893ce3a1e31dfbbad0e"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/architecture.log",
+    "sha256": "8e7975d18aa71d3e7ce1f9b9329b916990798dd8c1d2cee7dc3a28d049092a40"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/boundaries.log",
+    "sha256": "64ed90364c183dee6063ebfa23b3cf02bc6a96dfa0cecc87f940e205a32ade0d"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/build.log",
+    "sha256": "3069473c6ee8847f38f70d328fe509998ec4e8131a8f228320aab6414873537e"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/C01.log",
+    "sha256": "0dbfe595f0e021e51634fce2ac4ea94333d7b45abfe32ae13d4c70503ce2fa37"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/C03.log",
+    "sha256": "81b8ef88867808a3afa6c3d8a498aaa0bbe254c88b1722b5afadced874960159"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/C04.log",
+    "sha256": "e86c1b07b3a1db340e031ce7be7c470acc68e192ef35f894aaab33e9bb6f2e66"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/clone-architecture.log",
+    "sha256": "8e7975d18aa71d3e7ce1f9b9329b916990798dd8c1d2cee7dc3a28d049092a40"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/clone-checkout.log",
+    "sha256": "74864ea6b82d04b6be931c0ec16b998686406dd399ddc20f3b768d904d3f16a6"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/clone-configure.log",
+    "sha256": "4215d448005d4e79be3914cc6e5544881b7c2e96e9ca29a2ccf4b4ff3da02ab5"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/clone-tracked.log",
+    "sha256": "e78878c74bd3456319ddf5738604e807c569de40635eb298ad83f4efbad7c016"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/clone.log",
+    "sha256": "b44d523a11885a2c72ed979269c44f201ba26a26cf76dedaceecdf7f560a86e8"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/close-contract.log",
+    "sha256": "c18f0d1bfc4d2e2698c7b7ff607721107cd2a8843e7932a867cb3efac519da5a"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/close-throw.log",
+    "sha256": "4b5f1392e9027cc8bf5e299d48c3ac58d294945890d5900bd93636dbf2761288"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/configure.log",
+    "sha256": "f0a8a16576e395ad3cdd4cf8fcf0ffdf3d398f074dfae542ece3628e04210156"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ctest.log",
+    "sha256": "f14545944765f66b6cb36635795b4c76c3b79bf2b3521b720f3e58e81d607ff9"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-boundaries-2.json",
+    "sha256": "cce37f3073a4936b9aec74d971ab4f63a04413a783dc2572106aed5796b81685"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-boundaries-2.log",
+    "sha256": "0650fec3dbe01a9cbf29cd74935660e657cc7b59b08a39e79c46bfb7b5093b53"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-boundaries.json",
+    "sha256": "593f5c6a5a98c191c1a1f6bfabf39035162d2ebdbc1539215b4511d4742f5c68"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-boundaries.log",
+    "sha256": "2a876babc21d60966c6e86f40b4f8587674c29820ac284bc918d2c6670e3d316"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-build-2.log",
+    "sha256": "9bb1ecbe10e74d2039497c544be65708074bfc38dd6a512b896395e6e9aaf5d4"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-build-3.log",
+    "sha256": "cca8601a1610cacb1aee3b0f8ba009e6e63d7dc2c3d5f750428dcfda78d34e62"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-build-4.log",
+    "sha256": "498ed2123e2464fa8242405f22951694fa15ded86a9999eb8b2e917f4e919215"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-build-5.log",
+    "sha256": "3805b21ccb2f61c6f145efed01eed3e87a8e7fb31526032ddeb6eeb895a920ae"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-build.log",
+    "sha256": "3a97e0e04908506d4d7503b4af92ec1fd165d773296d9c31c56cc55cde55a2f0"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-configure.log",
+    "sha256": "85361ae050f50e5424955c694faca0a302953ec317247de0c10c1894178b34f2"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-ctest-2.log",
+    "sha256": "f09773eca4e96e5e35bd3959f2248f51aa01bc902c7b1d1e9ed6a017c6756198"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-ctest.log",
+    "sha256": "080287fb97253442b427160256cf46a221ab80d50491a7a31b79c7f4d8924ac0"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-model-2.log",
+    "sha256": "8dae914755a39c1498e6dfc3819c826b86e77a5ea4d4cac09989dfab8ed63e82"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-model-3.log",
+    "sha256": "f079369377c7dc08d4fb0b7ab64e0808b007a3b36b78459362ae9db22ae0629f"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/development/P03-dev-model.log",
+    "sha256": "36f86170b0ef0f809a4dbd73bf067f95c761076ec514ac3143a2a7830123b3b5"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/editor-sessions-p01-consumer-build.log",
+    "sha256": "d368dc1a0e0d1ab670dbdebcff27279141a784daf4e3f8b3f4482cfb48edad26"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/editor-sessions-p01-consumer-configure.log",
+    "sha256": "d3652c03977ce5dc5fac8615725f58780381de2f2555e5af5640e105eef93210"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/editor-sessions-p01-consumer-ctest.log",
+    "sha256": "f2a4fae7b7d7f2016cf22bd693a09db929a98f35f1c8367e270da9457b49dad5"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/editor-sessions-p01-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/historical/P00.log",
+    "sha256": "8cd7c9d8eb2e79e104b1192bbf3d78bc1f715f45691ddef0e695b64f60cf5e25"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/historical/P01-R1.log",
+    "sha256": "09b911064f335fade54838d62a0b62dc5c67d5a657c42dd462ca97c1708fcd89"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/historical/P01.log",
+    "sha256": "6276be70602b174b4686bde663b1ec1d714170fcbcb0c13a5d0753491f21a971"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/historical/P02-R1.log",
+    "sha256": "8ed784744eaf03204a0b66187118bcf7860578b3ebadd13a5e46951ef537462e"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/historical/P02.log",
+    "sha256": "c36dc4ca22e402a8b0ed862b80de3398c90c42dd60472bd0f3e2051683a9d25f"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/historical/results.json",
+    "sha256": "ac1c4fc21ec56cc85ca5126c0f6b540941324ae0f01d4fbe4adb0c6f6b92342e"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/historical-verifiers.log",
+    "sha256": "e72219832d3863b81e962a4c0a0733222691f05cccd4a0cf251881341e2a554f"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/install.log",
+    "sha256": "32a02e02e9d26e807936dfa68b983ac41689e31aab3fa6f6d0f32b67c382734f"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/material-boundaries.log",
+    "sha256": "3a18037852fc55ed4057ee7045760c09675b32f78e6e03e12bca816b4daa0e54"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/material-content.log",
+    "sha256": "316add362d88afe83acab15eb5cf9854d9f129636c1232bf91b5aa6a17dfccfa"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/material-failure.log",
+    "sha256": "d1ea3897c7373cef78af024a3e2c7d70c505c5ab9e61c6abf039b195929d398d"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/material-imports.log",
+    "sha256": "b8e257faf946b067361e73a09a86b0ab80f2ccc941244a1b175e776efb2c0e99"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/material-layout.log",
+    "sha256": "f5749a84dbd827af261f63befa6c53ad910a40419445b180c03c8f8990c236d4"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/material-lifetime.log",
+    "sha256": "8f5bffd784bfef4bc26e86422e2b82c5a144909c82ec540089d364a21390e39d"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/material-mixed-recreate.log",
+    "sha256": "6f7db4089659d5a8d9b1684d09a3fb9f6669ee0f0e4aafa3c75adc7f4c10c485"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/material-mixed-replace.log",
+    "sha256": "d8e15df280795642843b483665e06f2937c8d47f21a2b29aa0a9ebf6952d3cd8"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/material-model-p03-consumer-build.log",
+    "sha256": "44dcd0f4b7b97b742eadf9b0aa1ee50b55f078b72eb3f189a4e3935177f51f6f"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/material-model-p03-consumer-configure.log",
+    "sha256": "0bb42d69a771ad79cac30b4696c0f5e01d87ab236ef815b19a884e9ca60b7f7f"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/material-model-p03-consumer-ctest.log",
+    "sha256": "8d60685d9684581908bb28effac0b928f49eb90ade23569852b89e1f747fd2fb"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/material-model-p03-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/material-reading.log",
+    "sha256": "afbdb29e24aea972e6d019e46df8f18b3be2261a2ad0c5f0530572ba9c8ad8b9"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-atomic.log",
+    "sha256": "e429e08c2b9dbee111e41e742d8b742cd627be1501346130ec8e9df1dfb2e75f"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-boundaries.log",
+    "sha256": "27a721dba5a67ddff578b7c4b8e18f36eebb326955ca81b7fbdb4f06dcbf6fdb"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-changes.log",
+    "sha256": "429b895b64e40669f63e18a30d3be0fd05b439914137127cc9b7e9b52c1d54b1"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-content.log",
+    "sha256": "46668f7c89e9bd24a7de6c0c2a11fc3858db235423dc526674fed7e5ce31a3c2"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-identity.log",
+    "sha256": "e866c0824ae12229976a178e938790a544bf531824ef505aa8ef480a117363ea"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-imports.log",
+    "sha256": "6ec45cba5bc2958f308e92f9cf7a693baa37c0fe79a1dd7d779fe0b99d5c91c4"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-mixed-1.log",
+    "sha256": "485c9f7be2b8b7457329cad5e69a0f5e543f373fcc84b1697eab77a06c9e2c4f"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-mixed-2.log",
+    "sha256": "e965126827db41611390f0e83e91b3eed73f807ccbc1040f9d4267204d47158a"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-mixed-3.log",
+    "sha256": "1fd1c261c6550803b8e41fc3511316786067df5ef027272e6d13c7de48548e22"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-mixed-4.log",
+    "sha256": "ce454d0fc62340c48c6265669c1a10550cdc5c70c5191d67d634b724a7fb31ef"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-plugin.log",
+    "sha256": "1cbb6b756d2e62be82ba2e26c8a466bf4db19b9273d3fade271c85b0f7e307ff"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-read-5.log",
+    "sha256": "0de885c4bf8ad3504f5cb4a9bdec04173e36b0734adcbeafe0b10c51d8c59eb0"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-read-6.log",
+    "sha256": "7658ea9bc28b9eab62007d901bb4925b1703690015dac3cd3592d929c1cc1853"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-read-7.log",
+    "sha256": "e9c629594a72a34fe7d66475dc2028c9ef9c776ba9c0ccd1d9c78949230620c7"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/model-read-8.log",
+    "sha256": "e6a6f6f32eea56fce07b206d56f3b646ccd156ccaf1abc1adf7d997704f1e534"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/package-audit.log",
+    "sha256": "26b48c8ace54ae6c259d43bc1da73774c002e683a7cdd6424a92b2d7493ade45"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/portability/restored.log",
+    "sha256": "6276be70602b174b4686bde663b1ec1d714170fcbcb0c13a5d0753491f21a971"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/portability/results.json",
+    "sha256": "0e4b45b649855b55ca10a8c5080668352517a55c35c4ffda376556bc2455dc07"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/portability/X01-R3-01-relocated.log",
+    "sha256": "6276be70602b174b4686bde663b1ec1d714170fcbcb0c13a5d0753491f21a971"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/portability/X01-R3-02-windows-provenance.log",
+    "sha256": "6276be70602b174b4686bde663b1ec1d714170fcbcb0c13a5d0753491f21a971"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/portability/X01-R3-03-missing-log.log",
+    "sha256": "b0115210fd294b775ed7504cbb882e6c342c019cb6d6c9ab79194692a74725c8"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/portability/X01-R3-03-missing.log",
+    "sha256": "61712f528b590181bdd596887b4ad8bc21ee143954cfb07e43989142f7daca54"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/portability/X01-R3-03-tampered.log",
+    "sha256": "334518d681055ccb580a97921f384f4f00b73bedabd5624aabf67bd641a04c18"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/portable.log",
+    "sha256": "b892e6d4a4bcd06bbd5e00c396462e03b970524d683143d459b30149e9a0fb3d"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/scene-model-p02-consumer-build.log",
+    "sha256": "e23a1e7536176d3d3c660ef54e3ca634bc5c7f6f26f9a89f005d8abec4573180"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/scene-model-p02-consumer-configure.log",
+    "sha256": "9db6e46636e6476113dc7bcf43180e231dbfd2d5f1f3e840a338b538a4f3895d"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/scene-model-p02-consumer-ctest.log",
+    "sha256": "a74a8a02209228c25466843a33f612bae3f84b2e01a9295ff007a8cd05fdbdef"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/scene-model-p02-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/sessions-detail.log",
+    "sha256": "64c1c6954f1d69e79e6f61165f37abed03a0b908d944b043c7cbd3a849fe2aff"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/sessions-imports.log",
+    "sha256": "65b3c2d58485ad716a3fd2e01ee54f89ee3aa6fd5e104b0a512cee7c29ecfa9d"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/test-names.log",
+    "sha256": "77b7a5629d11f155574654d6a8536bb9a82312e348ffbfe721a333a1f181542f"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/tracked-snapshot.log",
+    "sha256": "e78878c74bd3456319ddf5738604e807c569de40635eb298ad83f4efbad7c016"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-resources-editor-d2-build.log",
+    "sha256": "f6ddbfe599f2012cd2820caf6981bf74e58c1ad595b5b2b68f27cc7f36490cc5"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-resources-editor-d2-configure.log",
+    "sha256": "a3f3398e9a7e6ccf10c6cdf743a2a093fdb1c9aa98bf58eaad54cf201a2d2665"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-resources-editor-d2-ctest.log",
+    "sha256": "2fa8b22c951a86a160f375393f9a84292e062d809c8c4c5edbda6d524d0ff5b5"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-resources-editor-d2-no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-resources-external-feature-build.log",
+    "sha256": "0dd0e21cd2c1ab5053e81b49ddf0cce40561328df4fd929240d4c37344b2d8f7"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-resources-external-feature-configure.log",
+    "sha256": "27a3007fb59ff1470fffa21ae4f46e8db2e7645b0dd70a6a41a752be297b7ac6"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-resources-external-feature-ctest.log",
+    "sha256": "8987f4b9b27176c46d24e0d3a9ba9e7928dc1d60a63ca93f6d7d24786dc279ce"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-resources-external-feature-no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-scene-pane-consumer-build.log",
+    "sha256": "19b288e47fb7d1bf33a9f6045eaad5ee9f5f19d8824e3a05368ab68b0b1ab50c"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-scene-pane-consumer-configure.log",
+    "sha256": "e9181602eb494d4ec20ca36173fd228460575ed34b8a4789164dc08eb54453a1"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-scene-pane-consumer-ctest.log",
+    "sha256": "422a5449b92db530d760f305a1c8efe0e26d7fdf20114cbe1d73e7ccbfb22e63"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-scene-pane-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-views-gpu-consumer-build.log",
+    "sha256": "95e95626631f83d20362ae43d7c8aeab5c6524f6195a73860cace13bb52709f9"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-views-gpu-consumer-configure.log",
+    "sha256": "50f836dc6aa5ce83374ace8f0f84bab69cca51adb0491f91961998cc5a425978"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-views-gpu-consumer-ctest.log",
+    "sha256": "6795b82365bd19b916ebb7a960d71188ce29a71bb9d3b2f8cca0646e60a38142"
+  },
+  {
+    "archive_path": "dev_log/P03/logs/ui-views-gpu-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P03/migration-ledger.json",
+    "sha256": "a7eeb8539477b4cba136d0f76c4c0a412354da5ff0a21a48d1476bedda3f6b40"
+  },
+  {
+    "archive_path": "dev_log/P03/README.md",
+    "sha256": "de048f6971abe091dbf9e048264bcf707c014c44cc39b87d7b9a0e10431a5310"
+  },
+  {
+    "archive_path": "dev_log/P03/receipt.json",
+    "sha256": "4e7881fe83a7ae09da9ada0a6e3e58e42671c354d5b41fe9939015b76f92c555"
+  },
+  {
+    "archive_path": "dev_log/P03/scripts/check_historical_evidence.py",
+    "sha256": "16528885ac4d42f5f9518df085867f31a5bc80929197ddf2d32ca0ca642e2a89"
+  },
+  {
+    "archive_path": "dev_log/P03/scripts/portable.py",
+    "sha256": "a1c788193297c1f4faf7bac387b1d65747ccb60d0f73f6411ed6f7d476afdf10"
+  },
+  {
+    "archive_path": "dev_log/P03/scripts/validate.py",
+    "sha256": "ac8a5f35316b8ef3a7854229deb50a6f0c5037bb9d77ca6771001aa485b437cc"
+  },
+  {
+    "archive_path": "dev_log/P03/spec/P03-start.md",
+    "sha256": "a4ffd60a6f9e7a4acd9888e6fb78ccde2e86ec6400feab1b2d8c8c2385ef09c8"
+  },
+  {
+    "archive_path": "dev_log/P03/spec/P03_material_authoring.md",
+    "sha256": "35eae39507c3143f57a7af3a56743393dd7c65d64b6d9d11e2d18ee31665f8b4"
+  },
+  {
+    "archive_path": "dev_log/P03/spec/start-package.zip",
+    "sha256": "1e318b24a611c18680f78440e8b2ef81b50e460542394d8bd52d6916da313d52"
+  },
+  {
+    "archive_path": "dev_log/P03/spec-input.json",
+    "sha256": "4099a7428304c7cd02e3d0169f47db5ba8691d8a35840a60e7ac2c1e8eb1fc3e"
+  },
+  {
+    "archive_path": "dev_log/P03/test-coverage.json",
+    "sha256": "c440c6d0d5d5a50ddbde6e87e45b1d3735f2d99410176922603eb9fd4912d4a2"
+  },
+  {
+    "archive_path": "dev_log/P03/validation/altered-required-log.log",
+    "sha256": "14689682760a3d52d93f150635f016e0efb225797d7c3b48f8b8ea53c701f083"
+  },
+  {
+    "archive_path": "dev_log/P03/validation/missing-predecessor.log",
+    "sha256": "86bc446b703e0733992c20b446d996a5e1eae2944c05f1c239bf213483290e0c"
+  },
+  {
+    "archive_path": "dev_log/P03/validation/missing-required-log.log",
+    "sha256": "aef8bca1111bcac02ede323906007cdc566239ea46c79d9ce15a7d444e0b7248"
+  },
+  {
+    "archive_path": "dev_log/P03/validation/relocated.log",
+    "sha256": "20c9378daa3a331c43d4e8406db88a114640b43faf904147e0dd72d98158405d"
+  },
+  {
+    "archive_path": "dev_log/P03/validation/restored.log",
+    "sha256": "20c9378daa3a331c43d4e8406db88a114640b43faf904147e0dd72d98158405d"
+  },
+  {
+    "archive_path": "dev_log/P03/validation/results.json",
+    "sha256": "c1f9f22691a5a83904cfe2fa5f7ae5884078609b1fe618df4520f1f950bacb23"
+  }
+]

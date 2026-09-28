@@ -1,0 +1,51 @@
+[
+  {
+    "prefix": "Debug",
+    "archive_path": "dev_log/P03/evidence/sdk-headers/Debug/Nodes.hpp",
+    "source_path": "modules/function/material/include/lux/engine/material/graph/Nodes.hpp",
+    "sha256": "32a57f494547c3e1675aef08c4ada5ff5b0874c394c316c1e7b1e2dfa70aa7f8",
+    "matches_source": true
+  },
+  {
+    "prefix": "RelWithDebInfo",
+    "archive_path": "dev_log/P03/evidence/sdk-headers/RelWithDebInfo/Nodes.hpp",
+    "source_path": "modules/function/material/include/lux/engine/material/graph/Nodes.hpp",
+    "sha256": "32a57f494547c3e1675aef08c4ada5ff5b0874c394c316c1e7b1e2dfa70aa7f8",
+    "matches_source": true
+  },
+  {
+    "prefix": "Android-headers-only",
+    "archive_path": "dev_log/P03/evidence/sdk-headers/Android-headers-only/Nodes.hpp",
+    "source_path": "modules/function/material/include/lux/engine/material/graph/Nodes.hpp",
+    "sha256": "32a57f494547c3e1675aef08c4ada5ff5b0874c394c316c1e7b1e2dfa70aa7f8",
+    "matches_source": true
+  },
+  {
+    "prefix": "RelWithDebInfo",
+    "archive_path": "dev_log/P03/evidence/sdk-headers/RelWithDebInfo/MaterialEdit.hpp",
+    "source_path": "editor/tools/material/model/include/lux/engine/editor/material/MaterialEdit.hpp",
+    "sha256": "fcbe6b63fc461f63c191a8acedd4c85061c502cb16a5ac52b301a1f337b0d3e7",
+    "matches_source": true
+  },
+  {
+    "prefix": "RelWithDebInfo",
+    "archive_path": "dev_log/P03/evidence/sdk-headers/RelWithDebInfo/MaterialSession.hpp",
+    "source_path": "editor/tools/material/model/include/lux/engine/editor/material/MaterialSession.hpp",
+    "sha256": "3033d7c1024bf5ad063334e3c14326b409270de2c95df963bb23ffe50658c21d",
+    "matches_source": true
+  },
+  {
+    "prefix": "RelWithDebInfo",
+    "archive_path": "dev_log/P03/evidence/sdk-headers/RelWithDebInfo/MaterialSessionAccess.hpp",
+    "source_path": "editor/tools/material/model/include/lux/engine/editor/material/MaterialSessionAccess.hpp",
+    "sha256": "50bbe23fa6c5fb7c108bed2a297a1f75702b4222c3cb6296e42c51b331db5585",
+    "matches_source": true
+  },
+  {
+    "prefix": "RelWithDebInfo",
+    "archive_path": "dev_log/P03/evidence/sdk-headers/RelWithDebInfo/MaterialSnapshot.hpp",
+    "source_path": "editor/tools/material/model/include/lux/engine/editor/material/MaterialSnapshot.hpp",
+    "sha256": "93f586978458942e0d2dbec02cb0b9ecf977e96746053957adfa863a0d7cdbbe",
+    "matches_source": true
+  }
+]

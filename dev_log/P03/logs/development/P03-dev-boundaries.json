@@ -1,0 +1,132 @@
+[
+  {
+    "id": "direct-runtime",
+    "expected_rule": "MATERIAL_MODEL_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "passed": false,
+    "graph": null,
+    "log": "-- Building for: Visual Studio 17 2022\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:12 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:13 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n",
+    "repaired_exit_code": 1,
+    "repaired_log": "-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n"
+  },
+  {
+    "id": "intermediate-ui",
+    "expected_rule": "MATERIAL_MODEL_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "passed": false,
+    "graph": null,
+    "log": "-- Building for: Visual Studio 17 2022\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:13 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:14 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n",
+    "repaired_exit_code": 1,
+    "repaired_log": "-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n"
+  },
+  {
+    "id": "intermediate-context",
+    "expected_rule": "MATERIAL_MODEL_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "passed": false,
+    "graph": null,
+    "log": "-- Building for: Visual Studio 17 2022\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:13 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:14 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n",
+    "repaired_exit_code": 1,
+    "repaired_log": "-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n"
+  },
+  {
+    "id": "imported-ui",
+    "expected_rule": "MATERIAL_MODEL_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "passed": false,
+    "graph": null,
+    "log": "-- Building for: Visual Studio 17 2022\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:15 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:16 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n",
+    "repaired_exit_code": 1,
+    "repaired_log": "-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n"
+  },
+  {
+    "id": "old-editor-header",
+    "expected_rule": "MATERIAL_MODEL_FORBIDDEN_INCLUDE",
+    "exit_code": 1,
+    "passed": false,
+    "graph": null,
+    "log": "-- Building for: Visual Studio 17 2022\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n",
+    "repaired_exit_code": 1,
+    "repaired_log": "-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n"
+  },
+  {
+    "id": "old-context-header",
+    "expected_rule": "MATERIAL_MODEL_FORBIDDEN_INCLUDE",
+    "exit_code": 1,
+    "passed": false,
+    "graph": null,
+    "log": "-- Building for: Visual Studio 17 2022\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n",
+    "repaired_exit_code": 1,
+    "repaired_log": "-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n"
+  },
+  {
+    "id": "old-bridge-header",
+    "expected_rule": "MATERIAL_MODEL_FORBIDDEN_INCLUDE",
+    "exit_code": 1,
+    "passed": false,
+    "graph": null,
+    "log": "-- Building for: Visual Studio 17 2022\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n",
+    "repaired_exit_code": 1,
+    "repaired_log": "-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n"
+  },
+  {
+    "id": "runtime-header",
+    "expected_rule": "MATERIAL_MODEL_FORBIDDEN_INCLUDE",
+    "exit_code": 1,
+    "passed": false,
+    "graph": null,
+    "log": "-- Building for: Visual Studio 17 2022\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n",
+    "repaired_exit_code": 1,
+    "repaired_log": "-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n"
+  },
+  {
+    "id": "unknown-library",
+    "expected_rule": "MATERIAL_MODEL_UNRESOLVED_DEPENDENCY",
+    "exit_code": 1,
+    "passed": false,
+    "graph": null,
+    "log": "-- Building for: Visual Studio 17 2022\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:12 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:13 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n",
+    "repaired_exit_code": 1,
+    "repaired_log": "-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n"
+  },
+  {
+    "id": "legal-cpu",
+    "expected_rule": null,
+    "exit_code": 1,
+    "passed": false,
+    "graph": null,
+    "log": "-- Building for: Visual Studio 17 2022\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n",
+    "repaired_exit_code": 1,
+    "repaired_log": "-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n"
+  },
+  {
+    "id": "compiler",
+    "expected_rule": "MATERIAL_MODEL_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "passed": false,
+    "graph": null,
+    "log": "-- Building for: Visual Studio 17 2022\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:13 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:14 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n",
+    "repaired_exit_code": 1,
+    "repaired_log": "-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n"
+  },
+  {
+    "id": "storage",
+    "expected_rule": "MATERIAL_MODEL_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "passed": false,
+    "graph": null,
+    "log": "-- Building for: Visual Studio 17 2022\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:13 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:14 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n",
+    "repaired_exit_code": 1,
+    "repaired_log": "-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n"
+  },
+  {
+    "id": "old-material-header",
+    "expected_rule": "MATERIAL_MODEL_FORBIDDEN_INCLUDE",
+    "exit_code": 1,
+    "passed": false,
+    "graph": null,
+    "log": "-- Building for: Visual Studio 17 2022\n-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n",
+    "repaired_exit_code": 1,
+    "repaired_log": "-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26200.\n-- Configuring incomplete, errors occurred!\nCMake Error at CMakeLists.txt:11 (include):\n  include could not find requested file:\n\n    ./cmake/EditorArchitectureChecks.cmake\n\n\nCMake Error at CMakeLists.txt:12 (lux_editor_check_architecture):\n  Unknown CMake command \"lux_editor_check_architecture\".\n\n\n"
+  }
+]

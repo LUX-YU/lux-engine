@@ -1,0 +1,127 @@
+[
+  {
+    "status": "A",
+    "path": "cmake/installed-consumers/flowforge-model/CMakeLists.txt",
+    "git_content_sha256": "7e63cf977df53c81d4cff03090128d401f489d44d4294911fc1e3a585208139f"
+  },
+  {
+    "status": "A",
+    "path": "cmake/installed-consumers/flowforge-model/main.cpp",
+    "git_content_sha256": "fb4e34bcce4e4cff2d7a3814aa532ae2d7006a5a69ec2c4aeb99e776390c7783"
+  },
+  {
+    "status": "M",
+    "path": "editor/CMakeLists.txt",
+    "git_content_sha256": "70b9701acfb26d1bc8ab71d2ebc2a3e36d4fb62180cc48c0db34d1bd644dca7e"
+  },
+  {
+    "status": "M",
+    "path": "editor/tests/architecture/CMakeLists.txt",
+    "git_content_sha256": "81aa15719a34511b0ccaa9ca4e03fe875e7656d88fd240712ec1e949f694c9ff"
+  },
+  {
+    "status": "M",
+    "path": "editor/tests/architecture/check_editor_boundaries.py",
+    "git_content_sha256": "d38eebdb42b84fc563d1485491404a0b49de63c1f9ea251a3f5a0071b9d10a84"
+  },
+  {
+    "status": "M",
+    "path": "editor/tests/architecture/rules.json",
+    "git_content_sha256": "efdce8d2e9b9c92aa807432cf317976c3a70ce98c2fa1005df533f9b4e75bdde"
+  },
+  {
+    "status": "M",
+    "path": "editor/tests/architecture/test_scene_model_boundaries.py",
+    "git_content_sha256": "2c71cd18afdf99a02b017f7bd9a1ca36ea03c3fc95b11302b917b45ecc331dc6"
+  },
+  {
+    "status": "A",
+    "path": "editor/tests/architecture/three_sessions.cpp",
+    "git_content_sha256": "a730e6aa12b6f9e30b3826f50be065992627bc3d2cd0e4b2b85a3a4193df2486"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/flowforge/CMakeLists.txt",
+    "git_content_sha256": "56d652e6e2c8495332fd3876464c02fb66e355eb3d1a1c352cb06fc96b8abacf"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/model/CMakeLists.txt",
+    "git_content_sha256": "8b0ce18c3732b6b3719907704f4a5735675e4bcc8d0fc8cc2a0981d5cd95373b"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowAuthoringSource.hpp",
+    "git_content_sha256": "c0d0ab7833199c8869773510aeb70911c99bd4d99c14d82aaa46dad8701c732b"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowEdit.hpp",
+    "git_content_sha256": "7dcfc9ce90b04f2a603b24d72a37a8a5a618136fb3552d82404db8ba55c300c6"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowSession.hpp",
+    "git_content_sha256": "986256ea1249ea049d21b0d2280a55a72afed22b5a93773fe96837c8362c8487"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowSessionAccess.hpp",
+    "git_content_sha256": "d64217a05a0aad29a485e5f9e4a0d23a887d4adf1dee0939c4f3c27ae05afffe"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowSnapshot.hpp",
+    "git_content_sha256": "1e83db91046c69e46e21f55765cb089d36722a4823067327d6558f43d6ff314a"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/model/src/FlowSession.cpp",
+    "git_content_sha256": "942aa3ee55f0b3324211cbe60c594db512111893d111f205e6fa567cb4489591"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/model/src/FlowSessionData.hpp",
+    "git_content_sha256": "36ee0118d689619e75189df0d617916a05a94295d4ca43112d73347259bb5538"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/model/src/PreparedFlowReload.hpp",
+    "git_content_sha256": "4316a33b3ff57c000989bac3d21a77913ca5a04e9a5c233c35714b019102d93b"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/model/src/edits/FlowEditPreparation.hpp",
+    "git_content_sha256": "b92ee3fee37aa188157f126032b7d0beffce4c56d5a1575f33116c81e64c8ce5"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/model/src/edits/FlowGraphEdit.cpp",
+    "git_content_sha256": "a8a02ee263e95c7caf3faddf0a74ab7e4908f70c0ed0e1a3b87948c8c59658c1"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/model/test/flow_session.cpp",
+    "git_content_sha256": "50cca0b4ac846ff432f784d9e46d1a55fd07b2e0e15d7c0f94cfdd9cf36231de"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/flowforge/pinclude/lux/engine/editor/flowforge/FlowForgeEditorImpl.hpp",
+    "git_content_sha256": "459ec44fb76424c754658e2f9f02c16769a4957f5197dfabd9566233df5e162d"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/flowforge/src/FlowAssets.cpp",
+    "git_content_sha256": "37faefdb1e507c482cfc630f3a1ff9d6753ee4055662dfd1301928aa5982fcd8"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/flowforge/src/FlowForgeEditor.cpp",
+    "git_content_sha256": "4e16b84d6ca0f187739fc33c3e0449ecf569f469d6dd62c81e5b7ce6f941b2f4"
+  },
+  {
+    "status": "M",
+    "path": "modules/function/flowforge/include/lux/engine/flowforge/graph/FlowGraph.hpp",
+    "git_content_sha256": "2bae6f7adc5f3f63e86e5d6c9f0b0a7df52a2f1573af04198efa50f1aaafe969"
+  }
+]

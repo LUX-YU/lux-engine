@@ -1,0 +1,34 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+      Start 41: editor.flowforge_model.content
+ 1/12 Test #41: editor.flowforge_model.content ...........   Passed    0.04 sec
+      Start 42: editor.flowforge_model.failure
+ 2/12 Test #42: editor.flowforge_model.failure ...........   Passed    0.01 sec
+      Start 43: editor.flowforge_model.mixed-signature
+ 3/12 Test #43: editor.flowforge_model.mixed-signature ...   Passed    0.01 sec
+      Start 44: editor.flowforge_model.mixed-recreate
+ 4/12 Test #44: editor.flowforge_model.mixed-recreate ....   Passed    0.01 sec
+      Start 45: editor.flowforge_model.lifetime
+ 5/12 Test #45: editor.flowforge_model.lifetime ..........   Passed    0.01 sec
+      Start 46: editor.flowforge_model.reading
+ 6/12 Test #46: editor.flowforge_model.reading ...........   Passed    0.01 sec
+      Start 47: editor.flowforge_model.reload-unbound
+ 7/12 Test #47: editor.flowforge_model.reload-unbound ....   Passed    0.01 sec
+      Start 48: editor.flowforge_model.reload-reading
+ 8/12 Test #48: editor.flowforge_model.reload-reading ....   Passed    0.02 sec
+      Start 49: editor.flowforge_model.reload-closing
+ 9/12 Test #49: editor.flowforge_model.reload-closing ....   Passed    0.01 sec
+      Start 50: editor.flowforge_model.reload-identity
+10/12 Test #50: editor.flowforge_model.reload-identity ...   Passed    0.01 sec
+      Start 51: editor.flowforge_model.reload-success
+11/12 Test #51: editor.flowforge_model.reload-success ....   Passed    0.01 sec
+      Start 77: editor.three_actual_sessions
+12/12 Test #77: editor.three_actual_sessions .............   Passed    0.04 sec
+
+100% tests passed, 0 tests failed out of 12
+
+Label Time Summary:
+P04       =   0.21 sec*proc (12 tests)
+editor    =   0.21 sec*proc (12 tests)
+native    =   0.21 sec*proc (12 tests)
+
+Total Test time (real) =   0.26 sec

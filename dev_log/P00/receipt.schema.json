@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Editor phase receipt",
+  "type": "object",
+  "required": [
+    "schema",
+    "phase",
+    "status",
+    "input_sha",
+    "implementation_sha",
+    "predecessor_receipts",
+    "commands",
+    "test_results",
+    "new_owners",
+    "deleted_ledger_ids",
+    "retained_until",
+    "known_failures",
+    "limitations",
+    "may_proceed"
+  ],
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "phase": {
+      "type": "string",
+      "pattern": "^P(0[0-9]|1[0-3])$"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "PARTIAL",
+        "BLOCKED"
+      ]
+    },
+    "input_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "implementation_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "predecessor_receipts": {
+      "type": "array"
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "argv",
+          "cwd",
+          "exit_code",
+          "log",
+          "sha256"
+        ],
+        "properties": {
+          "argv": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "log": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "test_results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "BLOCKED",
+              "NOT_RUN",
+              "NOT_APPLICABLE_FROZEN_AT_P00"
+            ]
+          },
+          "evidence": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "new_owners": {
+      "type": "array"
+    },
+    "deleted_ledger_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "retained_until": {
+      "type": "array"
+    },
+    "known_failures": {
+      "type": "array"
+    },
+    "limitations": {
+      "type": "array"
+    },
+    "may_proceed": {
+      "type": "boolean"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "may_proceed": {
+            "const": true
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "may_proceed": {
+            "const": false
+          }
+        }
+      }
+    }
+  ],
+  "description": "结构校验不证明Git SHA存在或日志真伪；PASS还必须通过阶段语义门槛及P00冻结的必测清单。模板REQUIRED值需填真实值后才可满足模式。"
+}

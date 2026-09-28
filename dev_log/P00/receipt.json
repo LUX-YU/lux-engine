@@ -1,0 +1,495 @@
+{
+  "schema": 1,
+  "phase": "P00",
+  "status": "PASS",
+  "input_sha": "2bb33ff1a1f11025cf404e074c0e9b259239d8a4",
+  "implementation_sha": "c61c11941694ac3499d520e0b4c9e9bfe82bbf46",
+  "baseline_commit": "2bb33ff1a1f11025cf404e074c0e9b259239d8a4",
+  "predecessor_receipts": [],
+  "inventory_complete": true,
+  "inventory_scope": "Seven focus owners explicit declarations including nested structures; source/index/consumer coverage is documented separately",
+  "commands": [
+    {
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-build.log",
+      "sha256": "2fc60349c656d65c319c57b701e91ea7f89975d682479588bf369c3704c35a62"
+    },
+    {
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-no-work.log",
+      "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+    },
+    {
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-ctest.log",
+      "sha256": "02a320c6daeeffac21a993d13b038da14d85430a9b3beccf1ca885d3cb25f0cc"
+    },
+    {
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\lux-engine",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-p00-native"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-native-configure.log",
+      "sha256": "d33281b4171bca30923e5f4bddd9658a4ea83fa756ef7fe9e0b431a0895c5e11"
+    },
+    {
+      "argv": [
+        "python",
+        "editor/tests/architecture/inventory_editor.py",
+        "--repo",
+        "E:\\SyncForder\\CodeRepos\\lux-engine",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine",
+        "--clang-cl",
+        "D:/Development/Mircosoft/VisualStudio/VC/Tools/Llvm/x64/bin/clang-cl.exe",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-inventory"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-inventory\\inventory.json",
+      "sha256": "d14881efabf314270a65127a29f749d1012388960e695760dc3a82321f75f45b"
+    },
+    {
+      "argv": [
+        "python",
+        "editor/tests/architecture/verify_p00.py",
+        "--records",
+        "E:\\SyncForder\\CodeRepos\\lux-engine\\dev_log\\P00",
+        "--ast",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-inventory\\inventory.json",
+        "--current-tests",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-tests.json",
+        "--probes",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-probes.json",
+        "--native-build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-p00-native"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-evidence-check.log",
+      "sha256": "9d5dcd7c559798e675808799b7c83ac8ca307df335c8e53ee3969de2adb7aa2d"
+    },
+    {
+      "argv": [
+        "python",
+        "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\spec-v4\\scripts\\audit_migration.py",
+        "--repo",
+        "E:\\SyncForder\\CodeRepos\\lux-engine",
+        "--stage",
+        "P00",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-package-audit.json"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-package-audit.json",
+      "sha256": "5a51d1ac49e4bbb4faab54291d5265cc3418ef78eafcd0e63b6e9b250d00e6ce"
+    },
+    {
+      "argv": [
+        "cmake",
+        "--install",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\install.log",
+      "sha256": "1b9e2c521e63ec8cd169e8893af0842e2fc5fe4f264f945c64b061ecc0f4b111"
+    },
+    {
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ui-resources-editor-d2",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\ui-resources-editor-d2-final-build.log",
+      "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+    },
+    {
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ui-resources-editor-d2",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\ui-resources-editor-d2-final-build.log.repeat",
+      "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+    },
+    {
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ui-resources-editor-d2",
+        "--timeout",
+        "120",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\ui-resources-editor-d2-final-ctest.log",
+      "sha256": "c8960ddaf2ec35c25ec60dff5a693eeb93e7cac5f49b4f7335353dbaebaf3a75"
+    },
+    {
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ui-resources-external-feature",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\ui-resources-external-feature-final-build.log",
+      "sha256": "79985b32fb0b34124335588db00584fadadc2219262483f2b5c333ad252545c2"
+    },
+    {
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ui-resources-external-feature",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\ui-resources-external-feature-final-build.log.repeat",
+      "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+    },
+    {
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ui-resources-external-feature",
+        "--timeout",
+        "120",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\ui-resources-external-feature-final-ctest.log",
+      "sha256": "51ab5ae8a6584e6ee28190b6976a266ecf374826c0a5fef41b264aee16ed6089"
+    },
+    {
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ui-scene-pane-consumer",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\ui-scene-pane-consumer-final-build.log",
+      "sha256": "cac1745808bd5e3d97532255b8bbd93ac3f63d642f0dd2caed3e4fe6ee196610"
+    },
+    {
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ui-scene-pane-consumer",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\ui-scene-pane-consumer-final-build.log.repeat",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+    },
+    {
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ui-scene-pane-consumer",
+        "--timeout",
+        "120",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\ui-scene-pane-consumer-final-ctest.log",
+      "sha256": "f559ce3c4319f3395baccb3052252458b44b56a783927a4fd7612a4db3616058"
+    },
+    {
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ui-views-gpu-consumer",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\ui-views-gpu-consumer-final-build.log",
+      "sha256": "363705b1b0e66091301c709ccb836921816e114fef5c473dd7a1c2ed254627ff"
+    },
+    {
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ui-views-gpu-consumer",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\ui-views-gpu-consumer-final-build.log.repeat",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+    },
+    {
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ui-views-gpu-consumer",
+        "--timeout",
+        "120",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "exit_code": 0,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\ui-views-gpu-consumer-final-ctest.log",
+      "sha256": "6b4f6a8d53cf55174c49ac8d8ce1767e7eb6db66391a7cd7f5c1a926c30d3788"
+    },
+    {
+      "argv": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\bin\\editor_baseline_failures.exe",
+        "C01",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\probes"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\bin",
+      "exit_code": 1,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-C01.log",
+      "sha256": "0dbfe595f0e021e51634fce2ac4ea94333d7b45abfe32ae13d4c70503ce2fa37"
+    },
+    {
+      "argv": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\bin\\editor_baseline_failures.exe",
+        "C03",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\probes"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\bin",
+      "exit_code": 1,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-C03.log",
+      "sha256": "81b8ef88867808a3afa6c3d8a498aaa0bbe254c88b1722b5afadced874960159"
+    },
+    {
+      "argv": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\bin\\editor_baseline_failures.exe",
+        "C04",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\probes"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\bin",
+      "exit_code": 1,
+      "log": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine\\p00-evidence\\final-C04.log",
+      "sha256": "0cd2a4dbf2ccd3934076184f1b6b4c7069933768691fd7d050788998b19cd4fa"
+    }
+  ],
+  "test_results": [
+    {
+      "id": "BASELINE_CTEST",
+      "status": "PASS",
+      "evidence": "28/28 at input commit; baseline-ctest.log"
+    },
+    {
+      "id": "FINAL_CTEST",
+      "status": "PASS",
+      "evidence": "31/31 at implementation commit, original 28 names retained; final-ctest.log"
+    },
+    {
+      "id": "X00-01/Q45",
+      "status": "PASS",
+      "evidence": "editor.architecture_negative/current; actual CMake transitive/alias/LINK_ONLY negative and repaired fixtures"
+    },
+    {
+      "id": "X00-02/Q49",
+      "status": "PASS",
+      "evidence": "Separate native-only configure with test-tool query interception; exact cache/targets checked by verify_p00"
+    },
+    {
+      "id": "X00-03",
+      "status": "PASS",
+      "evidence": "747 AST records matched exactly; 511 seeds reconciled; 61 paths verified"
+    },
+    {
+      "id": "X00-04",
+      "status": "PASS",
+      "evidence": "28 baseline tests retained; defects return 1 and remain outside passing CTest count"
+    },
+    {
+      "id": "Q31/C01",
+      "status": "FAIL",
+      "evidence": "rejected=1 visible_before=0 visible_after=1 count_before=1 count_after=1 same_dock=1\nFAIL C01 intended contract"
+    },
+    {
+      "id": "Q38/C03",
+      "status": "FAIL",
+      "evidence": "replacement=1 released=1 released_during_query=1\nFAIL C03 intended contract"
+    },
+    {
+      "id": "Q42/C04",
+      "status": "FAIL",
+      "evidence": "create_succeeded=1 outcome_succeeded=0\nFAIL C04 intended contract"
+    },
+    {
+      "id": "INSTALLED",
+      "status": "PASS",
+      "evidence": "Four groups, five tests, repeat builds no work"
+    },
+    {
+      "id": "S09/P13_FULL_QUALIFICATION",
+      "status": "NOT_RUN",
+      "evidence": "Explicitly outside P00; no inherited blanket pass"
+    }
+  ],
+  "new_owners": [],
+  "deleted_ledger_ids": [],
+  "removed_configuration": [
+    "Unconditional Editor lld-link/PowerShell test discovery",
+    "Machine-specific D:/... lld-link hint"
+  ],
+  "retained_until": [
+    {
+      "item": "All legacy business files/symbols",
+      "deadline": "Per migration-ledger.json, no P00 early deletions"
+    },
+    {
+      "item": "C01",
+      "deadline": "P09 validation and P12 adoption"
+    },
+    {
+      "item": "C03",
+      "deadline": "P11"
+    },
+    {
+      "item": "C04 and P00 private probe seam",
+      "deadline": "P12"
+    }
+  ],
+  "known_failures": [
+    {
+      "id": "C01",
+      "classification": "KNOWN_BASELINE_FAILURE",
+      "exit_code": 1,
+      "evidence": "rejected=1 visible_before=0 visible_after=1 count_before=1 count_after=1 same_dock=1\nFAIL C01 intended contract\n"
+    },
+    {
+      "id": "C03",
+      "classification": "KNOWN_BASELINE_FAILURE",
+      "exit_code": 1,
+      "evidence": "replacement=1 released=1 released_during_query=1\nFAIL C03 intended contract\n"
+    },
+    {
+      "id": "C04",
+      "classification": "KNOWN_BASELINE_FAILURE",
+      "exit_code": 1,
+      "evidence": "create_succeeded=1 outcome_succeeded=0\nFAIL C04 intended contract\n"
+    }
+  ],
+  "limitations": [
+    "P00 only; P01 has not started. The three reproduced legacy defects remain failures with P09/P11/P12 deadlines.",
+    "AST resolution covers seven focus translation units, not all C++ references across the repository. Lexical candidates are explicitly distinct.",
+    "Native-only configure is an Editor test selection; the full Editor product still needs its build-time graphics SDKs.",
+    "No clean-clone/foundation qualification, Android build, manual IME, complete desktop or performance qualification was performed.",
+    "Original specification and mutable work notes remain in ignored .internal. dev_log is development-branch evidence only."
+  ],
+  "may_proceed": true,
+  "unexpected_changes": []
+}

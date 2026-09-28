@@ -1,0 +1,436 @@
+[
+  {
+    "target": "task",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/modules/core/task/pinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "task",
+    "property": "INTERFACE_INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/modules/core/task/pinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "asset",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/modules/resource/asset/sinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "asset",
+    "property": "INTERFACE_INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/modules/resource/asset/sinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "render_vulkan",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/modules/function/render/vulkan/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "render_vulkan",
+    "property": "INTERFACE_INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/modules/function/render/vulkan/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "script_lua",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/modules/function/script/lua/sinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "script_lua",
+    "property": "INTERFACE_INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/modules/function/script/lua/sinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "ui",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/modules/function/ui/sinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "ui",
+    "property": "INTERFACE_INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/modules/function/ui/sinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "world_storage",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/engine/domain/world/storage/sinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "world_storage",
+    "property": "INTERFACE_INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/engine/domain/world/storage/sinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "core",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/engine/domain/simulation/ecs/core/sinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "core",
+    "property": "INTERFACE_INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/engine/domain/simulation/ecs/core/sinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "simulation_scripting_core",
+    "property": "INTERFACE_INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/engine/domain/simulation/scripting/core/sinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "hierarchy",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/engine/domain/simulation/ecs/hierarchy/sinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "hierarchy",
+    "property": "INTERFACE_INCLUDE_DIRECTORIES",
+    "include": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/lux-engine/engine/domain/simulation/ecs/hierarchy/sinclude>",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "scene_transform",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/engine/domain/simulation/ecs/hierarchy/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "_flowforge_dialect",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/engine/toolchain/flowforge/pinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_storage",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_assets",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/storage/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_assets",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_asset_save_test",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/storage/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_asset_save_test",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_context",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/assets/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_context",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/storage/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_context",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_ui",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/assets/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_ui",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/storage/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_ui",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_material",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/assets/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_material",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/storage/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_material",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_material",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/ui/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_flowforge",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/assets/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_flowforge",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/storage/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_flowforge",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_flowforge",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/ui/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_scene",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/assets/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_scene",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/storage/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_scene",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_scene",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/ui/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_project_tools",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_settings",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_launcher",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_app",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/assets/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_app",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/storage/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_app",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_app",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/context/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "lux_editor",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_baseline_failures",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/context/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_baseline_failures",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/assets/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_baseline_failures",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/storage/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_baseline_failures",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_review_regressions",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/context/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_review_regressions",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/assets/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_review_regressions",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/storage/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_review_regressions",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_core_protocol",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/assets/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_core_protocol",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/storage/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_core_protocol",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/editing/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  },
+  {
+    "target": "editor_core_protocol",
+    "property": "INCLUDE_DIRECTORIES",
+    "include": "E:/SyncForder/CodeRepos/lux-engine/editor/context/sinclude",
+    "delete_by": "P12",
+    "scope": "existing old target only; never an allowance for new targets"
+  }
+]

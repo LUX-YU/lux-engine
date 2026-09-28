@@ -26,8 +26,8 @@ component_include_directories(
 )
 target_include_directories(
     world_storage
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/sinclude>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
 )
 
 target_compile_definitions(world_storage PRIVATE LUX_ENGINE_WORLD_STORAGE_LIBRARY)

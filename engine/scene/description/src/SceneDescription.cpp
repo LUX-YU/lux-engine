@@ -1,9 +1,37 @@
 #include <lux/engine/scene/SceneDescription.hpp>
 
 #include <algorithm>
+#include <limits>
 
 namespace lux::scene
 {
+    std::size_t SceneDescription::retainedBytes() const noexcept
+    {
+        std::size_t result{sizeof(*this)};
+        const auto add = [&](std::size_t count, std::size_t size = 1) {
+            const auto remaining = (std::numeric_limits<std::size_t>::max)() - result;
+            result = count > remaining / size ? (std::numeric_limits<std::size_t>::max)() : result + count * size;
+        };
+        add(systems_.capacity(), sizeof(SystemRecord));
+        add(configuration_payload_.capacity());
+        add(requirement_bindings_.capacity(), sizeof(RequirementBindingRecord));
+        add(dependencies_.capacity(), sizeof(DependencyRecord));
+        add(system_ordinals_.bucket_count(), sizeof(void*));
+        add(system_ordinals_.size(), sizeof(decltype(system_ordinals_)::value_type) + 2 * sizeof(void*));
+        for (const auto& system : systems_)
+        {
+            add(system.instance_name.capacity());
+            add(system.type.name.capacity());
+            add(system.configuration_schema_name.capacity());
+        }
+        for (const auto& binding : requirement_bindings_)
+        {
+            add(binding.requirement.capacity());
+            add(binding.provider.capacity());
+        }
+        return result;
+    }
+
     SceneRequirementBindingView::SceneRequirementBindingView(
         const SceneDescription& description,
         std::size_t binding_index

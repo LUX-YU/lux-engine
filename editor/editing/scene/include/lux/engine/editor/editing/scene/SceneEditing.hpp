@@ -98,7 +98,7 @@ namespace lux::editor::scene
         void fieldChanged(const SceneWriteTarget&, lux::cxx::TypeToken, bool in_progress) noexcept;
         [[nodiscard]] editing::EditResult<editing::ApplyResult> executeField(editing::EditOperationPtr&);
         [[nodiscard]] editing::EditResult<FieldEditToken>
-        adoptFieldEdit(std::string origin, std::unique_ptr<detail::SceneFieldEdit>&);
+        adoptFieldEdit(std::string origin, std::unique_ptr<detail::RegistryFieldEdit>&);
 
         [[nodiscard]] editing::EditResult<void> checkAdmission() const noexcept;
         [[nodiscard]] lux::simulation::ecs::Registry& registry() const noexcept;

@@ -1050,5 +1050,229 @@
     "vector",
     "concepts",
     "compare"
-  ]
+  ],
+  "scene_model": {
+    "direct": [
+      "edit_sessions",
+      "scene_asset",
+      "scene_world_materialization",
+      "scene_camera",
+      "transform",
+      "visual",
+      "type_info"
+    ],
+    "closure": {
+      "type_info": {
+        "path": "modules/core/type_info"
+      },
+      "visual": {
+        "path": "engine/domain/simulation/ecs/visual"
+      },
+      "visual_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/visual"
+      },
+      "serialization": {
+        "path": "modules/core/serialization"
+      },
+      "stduuid": {
+        "imported": true
+      },
+      "Eigen3::Eigen": {
+        "imported": true
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::binary": {
+        "imported": true
+      },
+      "description": {
+        "path": "modules/resource/description"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "script_core": {
+        "path": "modules/function/script/core"
+      },
+      "semantic": {
+        "path": "modules/core/semantic"
+      },
+      "math": {
+        "path": "modules/core/math"
+      },
+      "lux::cxx::memory": {
+        "imported": true
+      },
+      "snapshot": {
+        "path": "engine/domain/simulation/ecs/snapshot"
+      },
+      "EnTT::EnTT": {
+        "imported": true
+      },
+      "schema": {
+        "path": "engine/domain/simulation/ecs/schema"
+      },
+      "world_identity": {
+        "path": "engine/domain/world/identity"
+      },
+      "core": {
+        "path": "engine/domain/simulation/ecs/core"
+      },
+      "transform": {
+        "path": "engine/domain/simulation/ecs/transform"
+      },
+      "transform_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/transform"
+      },
+      "hierarchy": {
+        "path": "engine/domain/simulation/ecs/hierarchy"
+      },
+      "hierarchy_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/hierarchy"
+      },
+      "scene_camera": {
+        "path": "engine/scene/components/camera"
+      },
+      "scene_camera_component_codegen_generate": {
+        "path": "engine/scene/components/camera"
+      },
+      "scene_world_materialization": {
+        "path": "engine/scene/integration/world_materialization"
+      },
+      "world_storage": {
+        "path": "engine/domain/world/storage"
+      },
+      "lux::cxx::algorithm": {
+        "imported": true
+      },
+      "world_description": {
+        "path": "engine/domain/world/description"
+      },
+      "world_partition": {
+        "path": "engine/domain/world/partition"
+      },
+      "partition_identity": {
+        "path": "engine/domain/partition/identity"
+      },
+      "scene_asset": {
+        "path": "engine/scene/asset"
+      },
+      "process_world_loading": {
+        "path": "engine/process/world_loading"
+      },
+      "process_execution": {
+        "path": "engine/process/execution"
+      },
+      "STDEXEC::stdexec": {
+        "imported": true
+      },
+      "Threads::Threads": {
+        "imported": true
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "async_port": {
+        "path": "modules/core/async_port"
+      },
+      "simulation_asset": {
+        "path": "engine/domain/simulation/asset"
+      },
+      "asset": {
+        "path": "modules/resource/asset"
+      },
+      "simulation_description": {
+        "path": "engine/domain/simulation/description"
+      },
+      "domain_system_description": {
+        "path": "engine/domain/system/description"
+      },
+      "domain_system_identity": {
+        "path": "engine/domain/system/identity"
+      },
+      "world_asset": {
+        "path": "engine/domain/world/asset"
+      },
+      "scene_description": {
+        "path": "engine/scene/description"
+      },
+      "edit_sessions": {
+        "path": "editor/sessions"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "edit_history": {
+        "path": "editor/history"
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      }
+    },
+    "headers": [
+      "algorithm",
+      "array",
+      "atomic",
+      "bit",
+      "cassert",
+      "charconv",
+      "cmath",
+      "compare",
+      "concepts",
+      "cstddef",
+      "cstdint",
+      "cstdio",
+      "cstdlib",
+      "cstring",
+      "exception",
+      "functional",
+      "limits",
+      "lux/engine/editor/editing/EditHistory.hpp",
+      "lux/engine/editor/editing/EditOperation.hpp",
+      "lux/engine/editor/editing/EditTypes.hpp",
+      "lux/engine/editor/scene/FieldValue.hpp",
+      "lux/engine/editor/scene/SceneAlgorithms.hpp",
+      "lux/engine/editor/scene/SceneEdit.hpp",
+      "lux/engine/editor/scene/SceneObjectRef.hpp",
+      "lux/engine/editor/scene/SceneSession.hpp",
+      "lux/engine/editor/scene/SceneSessionAccess.hpp",
+      "lux/engine/editor/scene/SceneSnapshot.hpp",
+      "lux/engine/editor/scene/SceneSource.hpp",
+      "lux/engine/scene/Camera.hpp",
+      "lux/engine/scene/CameraSchema.hpp",
+      "lux/engine/scene/ScenePackage.hpp",
+      "lux/engine/scene/WorldMaterializer.hpp",
+      "lux/engine/simulation/SimulationDescriptionBuilder.hpp",
+      "memory",
+      "new",
+      "numbers",
+      "optional",
+      "random",
+      "ranges",
+      "span",
+      "stdexcept",
+      "string",
+      "string_view",
+      "thread",
+      "tuple",
+      "type_traits",
+      "unordered_map",
+      "unordered_set",
+      "utility",
+      "variant",
+      "vector",
+      "lux/engine/editor/scene/SceneEditError.hpp"
+    ],
+    "prefixes": [
+      "lux/engine/editor/sessions/",
+      "lux/engine/editor/contracts/",
+      "lux/engine/simulation/ecs/",
+      "lux/engine/world/",
+      "lux/engine/meta/",
+      "lux/engine/resource/asset/",
+      "lux/cxx/compile_time/",
+      "Eigen/"
+    ]
+  }
 }

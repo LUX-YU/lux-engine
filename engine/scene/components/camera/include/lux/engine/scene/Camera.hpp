@@ -1,7 +1,6 @@
 #pragma once
 
 #include <lux/engine/meta/MetaAnnotations.hpp>
-#include <lux/engine/scene/render/visibility.h>
 #include <lux/engine/simulation/ecs/ComponentAnnotations.hpp>
 
 #include <lux/cxx/compile_time/expected.hpp>
@@ -52,14 +51,14 @@ namespace lux::scene
 
     // Right-handed camera: local -Z is forward, +Y is up. Vulkan depth is
     // [0, 1], and NDC Y follows image coordinates (top to bottom).
-    [[nodiscard]] LUX_ENGINE_SCENE_RENDER_PUBLIC lux::cxx::expected<Eigen::Matrix4d, ECameraError> cameraProjection(
+    [[nodiscard]] lux::cxx::expected<Eigen::Matrix4d, ECameraError> cameraProjection(
         const Camera& camera,
         double aspect_ratio
     ) noexcept;
 
     // Subtract the origin before narrowing for rendering. Picking keeps the
     // returned double matrix and adds the same origin to its resulting ray.
-    [[nodiscard]] LUX_ENGINE_SCENE_RENDER_PUBLIC lux::cxx::expected<Eigen::Matrix4d, ECameraError> cameraView(
+    [[nodiscard]] lux::cxx::expected<Eigen::Matrix4d, ECameraError> cameraView(
         const Eigen::Affine3d& world,
         const Eigen::Vector3d& origin
     ) noexcept;

@@ -7,6 +7,7 @@ add_subdirectory(integration/script_description)
 add_subdirectory(integration/script)
 add_subdirectory(builtin_systems/transform)
 add_subdirectory(builtin_systems/mesh_query)
+add_subdirectory(components/camera)
 add_subdirectory(builtin_systems/render)
 
 add_subdirectory(builtin_systems/world_loading)

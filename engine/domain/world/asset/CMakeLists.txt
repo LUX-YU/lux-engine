@@ -50,3 +50,6 @@ lux_engine_install_components(
     NAMESPACE    lux::engine::world
     COMPONENTS   world_asset
 )
+
+# Codec implementation access; never propagate this internal header directory.
+target_include_directories(world_asset PRIVATE "${PROJECT_SOURCE_DIR}/modules/resource/asset/sinclude")

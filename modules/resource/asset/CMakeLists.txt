@@ -51,8 +51,8 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
-    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
     PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
 )
 

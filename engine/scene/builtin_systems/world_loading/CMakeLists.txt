@@ -23,8 +23,10 @@ target_include_directories(scene_world_loading PRIVATE ${CMAKE_CURRENT_SOURCE_DI
 
 target_compile_definitions(scene_world_loading PRIVATE LUX_ENGINE_SCENE_WORLD_LOADING_LIBRARY)
 target_link_libraries(scene_world_loading PUBLIC
+    lux::engine::scene::scene_composition
     lux::engine::scene::scene_world_materialization lux::engine::process::process_world_loading)
 component_add_transitive_commands(scene_world_loading
+    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-engine-scene-world-materialization REQUIRED COMPONENTS scene_world_materialization)"
     "find_package(lux-engine-process-world-loading REQUIRED COMPONENTS process_world_loading)")
 lux_engine_install_components(PROJECT_NAME lux-engine-scene-world-loading VERSION ${PROJECT_VERSION}

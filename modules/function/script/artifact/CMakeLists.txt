@@ -37,3 +37,6 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset description)"
 )
+
+# Codec implementation access; never propagate this internal header directory.
+target_include_directories(script_artifact PRIVATE "${PROJECT_SOURCE_DIR}/modules/resource/asset/sinclude")

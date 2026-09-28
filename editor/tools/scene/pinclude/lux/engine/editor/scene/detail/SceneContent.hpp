@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/scene/SceneAlgorithms.hpp>
 #include <lux/engine/simulation/ecs/Entity.hpp>
 #include <lux/engine/scene/SceneInstanceId.hpp>
 #include <lux/engine/editor/scene/detail/SceneOpening.hpp>
@@ -17,7 +18,7 @@ namespace lux::editor::scene::detail
 
     struct ObjectContent final
     {
-        lux::world::WorldObjectId object, parent;
+        lux::world::WorldObjectId object;
         lux::partition::PartitionOrdinal partition;
         std::vector<ObjectComponent> components;
     };
@@ -79,22 +80,9 @@ namespace lux::editor::scene::detail
             const lux::simulation::ecs::WorldEntityMap& mapping
         ) const
         {
-            const auto* schema = metadata.find(lux::cxx::typeToken<Component>());
-            if (!schema || !schema->decode_value || !schema->capture_value)
-            {
-                return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::UNSUPPORTED_OPERATION));
-            }
-            auto capture = schema->capture_value(&value, schema->code_lifetime);
-            auto encoded = capture.encode(mapping, kSceneHistoryLimits.max_staging_bytes);
-            if (!encoded)
-            {
-                return lux::cxx::unexpected(editing::makeEditFailure(
-                    editing::EEditError::PRECONDITION_FAILED,
-                    static_cast<std::uint64_t>(ESceneStructureError::CODEC_FAILURE),
-                    schema->id.name
-                ));
-            }
-            return ObjectComponent{schema, std::move(*encoded)};
+            auto encoded = encodeSceneValue(value, metadata, mapping, kSceneHistoryLimits.max_staging_bytes);
+            if (!encoded) return lux::cxx::unexpected(encoded.error());
+            return ObjectComponent{metadata.find(encoded->schema), std::move(encoded->bytes)};
         }
     };
 } // namespace lux::editor::scene::detail

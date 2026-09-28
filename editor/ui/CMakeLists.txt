@@ -54,7 +54,7 @@ engine_target_add_imgui_inspector_codegen(NAME desktop_visual TARGET editor_ui
     CUSTOM_HEADERS FirstPartyInspectorControls.hpp)
 engine_target_add_imgui_inspector_codegen(NAME desktop_camera TARGET editor_ui
     SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/CodegenInput.cpp
-    HEADER ${PROJECT_SOURCE_DIR}/engine/scene/builtin_systems/render/include/lux/engine/scene/Camera.hpp
+    HEADER ${PROJECT_SOURCE_DIR}/engine/scene/components/camera/include/lux/engine/scene/Camera.hpp
     LOGICAL_PATH lux/engine/scene/Camera.hpp
     COMPONENTS lux::scene::Camera)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-ui VERSION ${PROJECT_VERSION}

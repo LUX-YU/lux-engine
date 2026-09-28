@@ -1,7 +1,6 @@
 #include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
 #include <algorithm>
 #include <lux/engine/editor/scene/detail/SceneContent.hpp>
-#include <lux/engine/simulation/ecs/Parent.hpp>
 
 namespace lux::editor::scene::detail
 {
@@ -23,9 +22,7 @@ namespace lux::editor::scene::detail
         lux::partition::PartitionOrdinal partition;
         if (!registry.valid(entity) || !mapping.object(entity).valid() || !residency.partitionOf(entity, partition))
             return structureFailure(ESceneStructureError::INVALID_OBJECT, "The object has no persistent partition");
-        const auto* parent = registry.try_get<ecs::Parent>(entity);
-        ObjectContent
-            result{mapping.object(entity), mapping.object(parent ? parent->entity : ecs::NullEntity), partition, {}};
+        ObjectContent result{mapping.object(entity), partition, {}};
         std::size_t retained{};
         for (const auto& schema : metadata.all())
         {

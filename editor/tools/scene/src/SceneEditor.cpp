@@ -593,25 +593,12 @@ namespace lux::editor::scene
         {
             id = {generate()};
         } while (!id.valid() || this->content->identities().entity(id) != lux::simulation::ecs::NullEntity);
-        detail::ObjectContent content{id, {}, partition, {}};
-        const auto append = [&](const auto& value) -> editing::EditResult<void> {
-            auto encoded = this->content->encodeComponent(value, this->content->identities());
-            if (!encoded)
-            {
-                return lux::cxx::unexpected(encoded.error());
-            }
-            content.components.push_back(std::move(*encoded));
-            return {};
-        };
-        auto encoded = append(registry(*scene).get<lux::simulation::ecs::Transform3D>(entity));
-        if (encoded)
-        {
-            encoded = append(camera);
-        }
-        if (!encoded)
-        {
-            return lux::cxx::unexpected(encoded.error());
-        }
+        auto captured = makeSceneCameraObject(id, partition, camera,
+            registry(*scene).get<lux::simulation::ecs::Transform3D>(entity), this->content->metadata);
+        if (!captured) return lux::cxx::unexpected(captured.error());
+        detail::ObjectContent content{id, partition, {}};
+        for (auto& component : captured->components)
+            content.components.push_back({this->content->metadata.find(component.schema), std::move(component.bytes)});
         std::vector<detail::ObjectContent> objects;
         objects.push_back(std::move(content));
         auto operation = this->makeObjectEdit(*editor, base, std::move(objects), true, "Create camera");
@@ -768,7 +755,7 @@ namespace lux::editor::scene
             id = lux::world::WorldObjectId{generate()};
         } while (!id.valid() || this->content->identities().entity(id) != ecs::NullEntity);
 
-        detail::ObjectContent content{id, {}, partition, {}};
+        detail::ObjectContent content{id, partition, {}};
         ecs::WorldEntityMap identities;
         const auto append = [&](const auto& value) -> editing::EditResult<void> {
             auto encoded = this->content->encodeComponent(value, identities);

@@ -4,10 +4,12 @@ lux_classify_target(TARGET editor_editing_scene LAYER EDITOR PRODUCT EDITOR ROLE
 component_include_directories(editor_editing_scene
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(editor_editing_scene PUBLIC
+    lux::engine::editor::scene_model
     lux::engine::editor::editor_storage lux::engine::scene::scene_composition
     lux::engine::scene::scene_world_loading lux::engine::scene::scene_render
     lux::engine::simulation::ecs::hierarchy)
 component_add_transitive_commands(editor_editing_scene
+    "find_package(lux-engine-editor-scene-model REQUIRED COMPONENTS scene_model)"
     "find_package(lux-engine-editor-storage REQUIRED COMPONENTS editor_storage)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-engine-scene-world-loading REQUIRED COMPONENTS scene_world_loading)"

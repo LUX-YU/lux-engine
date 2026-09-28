@@ -44,3 +44,6 @@ lux_engine_install_components(
     NAMESPACE    lux::engine::process
     COMPONENTS   process_world_loading
 )
+
+# Storage transport is the only external consumer of this internal codec.
+target_include_directories(process_world_loading PRIVATE "${PROJECT_SOURCE_DIR}/engine/domain/world/storage/sinclude")

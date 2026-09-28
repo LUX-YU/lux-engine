@@ -88,6 +88,7 @@ namespace lux::scene
         SceneDescription(const SceneDescription&) = delete;
         SceneDescription& operator=(const SceneDescription&) = delete;
 
+        [[nodiscard]] std::size_t retainedBytes() const noexcept;
         [[nodiscard]] asset::AssetId world() const noexcept;
         [[nodiscard]] asset::AssetId simulation() const noexcept;
         [[nodiscard]] std::size_t systemCount() const noexcept;

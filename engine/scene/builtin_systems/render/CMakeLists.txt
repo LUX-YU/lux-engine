@@ -13,7 +13,6 @@ add_component(
     OUTPUT_NAME    lux_engine_scene_render
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Builtin3DRenderStages.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/Camera.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CameraExtraction.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderSchema.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderAssets.cpp
@@ -26,14 +25,6 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderSystem.cpp
 )
 include(${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/schema/cmake/engine_ecs_codegen.cmake)
-engine_target_add_ecs_component_codegen(
-    NAME scene_camera_component_codegen
-    TARGET scene_render
-    SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/SceneRenderSchema.cpp
-    HEADER ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/scene/Camera.hpp
-    LOGICAL_PATH lux/engine/scene/Camera.hpp
-    SYMBOL sceneCamera
-)
 engine_target_add_static_type_info(
     NAME scene_render_configuration_codegen
     TARGET scene_render
@@ -53,6 +44,7 @@ target_link_libraries(
     PUBLIC
         lux::engine::function::render_feature_client
         lux::engine::function::render_runtime
+        lux::engine::scene::scene_camera
         lux::engine::scene::scene_composition
         lux::engine::simulation::ecs::core
         lux::engine::simulation::ecs::transform
@@ -66,6 +58,7 @@ target_link_libraries(
 component_add_transitive_commands(
     scene_render
     "find_package(EnTT CONFIG REQUIRED)"
+    "find_package(lux-engine-scene-camera REQUIRED COMPONENTS scene_camera)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_feature_client render_runtime)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS core transform visual)"

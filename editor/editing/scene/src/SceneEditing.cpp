@@ -31,7 +31,7 @@ namespace lux::editor::scene
             bool& flag;
         };
     }
-    detail::SceneFieldEdit::~SceneFieldEdit() = default;
+    detail::RegistryFieldEdit::~RegistryFieldEdit() = default;
     SceneEditing::SceneEditing(
         lux::scene::SceneRuntime& runtime,
         lux::scene::SceneInstanceId scene,
@@ -386,7 +386,7 @@ namespace lux::editor::scene
 
     editing::EditResult<FieldEditToken> SceneEditing::adoptFieldEdit(
         std::string origin,
-        std::unique_ptr<detail::SceneFieldEdit>& operation
+        std::unique_ptr<detail::RegistryFieldEdit>& operation
     )
     {
         const auto admitted = checkAdmission();
@@ -416,7 +416,7 @@ namespace lux::editor::scene
     {
         const auto* edit = std::get_if<FieldGesture>(&field_edit_);
         return edit && edit->token == token && !busy_ && !closed_ && writeRestriction().empty() &&
-               static_cast<const detail::SceneFieldEdit&>(*edit->operation).writable();
+               static_cast<const detail::RegistryFieldEdit&>(*edit->operation).writable();
     }
 
     editing::EditResult<void> SceneEditing::fieldEdited(const FieldEditToken& token)
@@ -431,7 +431,7 @@ namespace lux::editor::scene
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::STALE_TARGET));
         }
         EditingGuard guard(busy_);
-        return static_cast<detail::SceneFieldEdit&>(*edit->operation).changed();
+        return static_cast<detail::RegistryFieldEdit&>(*edit->operation).changed();
     }
 
     editing::EditResult<void> SceneEditing::finishFieldEdits()
@@ -461,7 +461,7 @@ namespace lux::editor::scene
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::STALE_TARGET));
         }
         EditingGuard guard(busy_);
-        auto captured = static_cast<detail::SceneFieldEdit&>(*field_edit->operation).captureAfter();
+        auto captured = static_cast<detail::RegistryFieldEdit&>(*field_edit->operation).captureAfter();
         if (!captured)
         {
             return lux::cxx::unexpected(captured.error());

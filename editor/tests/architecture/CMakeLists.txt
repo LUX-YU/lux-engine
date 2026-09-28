@@ -1,4 +1,8 @@
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME editor.scene_model_boundaries
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_scene_model_boundaries.py"
+        --source "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}")
+set_tests_properties(editor.scene_model_boundaries PROPERTIES LABELS "editor;native;P02" TIMEOUT 120)
 add_test(NAME editor.architecture_negative
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_editor_boundaries.py"
         --source "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}")

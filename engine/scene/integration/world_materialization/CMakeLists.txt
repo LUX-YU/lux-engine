@@ -30,7 +30,6 @@ endif()
 target_link_libraries(
     scene_world_materialization
     PUBLIC
-        lux::engine::scene::scene_composition
         lux::engine::world::storage
         lux::engine::simulation::ecs::schema
         lux::cxx::memory
@@ -38,7 +37,6 @@ target_link_libraries(
 component_add_transitive_commands(
     scene_world_materialization
     "find_package(lux-cxx REQUIRED COMPONENTS memory)"
-    "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-engine-world-storage REQUIRED COMPONENTS world_storage)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS schema)"
 )

@@ -592,19 +592,13 @@ namespace lux::editor::scene
             {
                 return structureFailure(ESceneStructureError::INVALID_OBJECT, "The object's parent changed");
             }
-            std::size_t visited{};
-            while (parent.valid())
+            if (createsParentCycle(object_, parent, owner_.content->identities().size(), [&](auto id) {
+                const auto* ancestor = owner_.registry(*owner_.scene).try_get<ecs::Parent>(
+                    owner_.content->identities().entity(id));
+                return ancestor ? owner_.content->identities().object(ancestor->entity) : lux::world::WorldObjectId{};
+            }))
             {
-                if (parent == object_ || ++visited > owner_.content->identities().size())
-                {
-                    return structureFailure(
-                        ESceneStructureError::HIERARCHY_CYCLE,
-                        "The proposed parent creates a cycle"
-                    );
-                }
-                const auto* ancestor =
-                    owner_.registry(*owner_.scene).try_get<ecs::Parent>(owner_.content->identities().entity(parent));
-                parent = ancestor ? owner_.content->identities().object(ancestor->entity) : lux::world::WorldObjectId{};
+                return structureFailure(ESceneStructureError::HIERARCHY_CYCLE, "The proposed parent creates a cycle");
             }
             if (auto prepared = owner_.scene_editing->prepareComponentChanges(1); !prepared)
                 return lux::cxx::unexpected(prepared.error());

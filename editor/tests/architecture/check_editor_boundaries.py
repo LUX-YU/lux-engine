@@ -81,6 +81,47 @@ def check_foundations(repo, targets, rules, sources, report):
                     report("FOUNDATION_FORBIDDEN_INCLUDE", path, header)
 
 
+def check_scene_model(repo, targets, rules, sources, report):
+    policy = rules["scene_model"]
+    pending = [("scene_model", ["scene_model"])]
+    seen = set()
+    while pending:
+        current, chain = pending.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        node = targets.get(current)
+        if not node:
+            continue
+        for edge in filter(None, node.get("edges", "").split(";")):
+            kind, dependency = edge.split(":", 1)
+            path = chain + [dependency]
+            detail = " -> ".join(path) + " (" + kind + ")"
+            dest = targets.get(dependency)
+            allowed = policy["closure"].get(dependency)
+            if not dest:
+                report("SCENE_MODEL_UNRESOLVED_DEPENDENCY", "scene_model", detail)
+                continue
+            if allowed is None:
+                report("SCENE_MODEL_FORBIDDEN_DEPENDENCY", "scene_model", detail)
+            elif allowed.get("imported") and dest.get("IMPORTED") not in ["TRUE", "1"]:
+                report("SCENE_MODEL_DEPENDENCY_IDENTITY", "scene_model", detail + " must be imported")
+            elif "path" in allowed and Path(dest["SOURCE_DIR"]).resolve() != (repo / allowed["path"]).resolve():
+                report("SCENE_MODEL_DEPENDENCY_IDENTITY", "scene_model", detail + " has wrong source directory")
+            if current == "scene_model" and dependency not in policy["direct"]:
+                report("SCENE_MODEL_DIRECT_DEPENDENCY", "scene_model", detail)
+            pending.append((dependency, path))
+    scope = "editor/tools/scene/model/"
+    for path, source in sources.items():
+        if not path.startswith(scope):
+            continue
+        for delimiter, header in re.findall(r'^\s*#\s*include\s*([<"])([^>"\n]+)', source, re.M):
+            local = delimiter == '"' and (repo / path).parent.joinpath(header).resolve().is_relative_to(
+                (repo / scope).resolve())
+            if not local and header not in policy["headers"] and not header.startswith(tuple(policy["prefixes"])):
+                report("SCENE_MODEL_FORBIDDEN_INCLUDE", path, header)
+
+
 def inspect(repo, records, rules, stage, compile_db=None):
     findings = []
 
@@ -135,6 +176,8 @@ def inspect(repo, records, rules, stage, compile_db=None):
 
     if stage >= "P01":
         check_foundations(repo, targets, rules, sources, report)
+    if stage >= "P02":
+        check_scene_model(repo, targets, rules, sources, report)
 
     scopes = tuple(rules["new_scopes"])
     forbidden_headers = set(rules["new_scope_forbidden_include"])

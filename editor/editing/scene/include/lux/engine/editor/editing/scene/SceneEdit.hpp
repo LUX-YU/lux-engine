@@ -1,6 +1,7 @@
 #pragma once
 
 #include <compare>
+#include <lux/engine/editor/scene/SceneEditError.hpp>
 #include <functional>
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/editor/editing/EditOperation.hpp>
@@ -16,29 +17,6 @@ namespace lux::editor::scene
         NONE,
         SPACE_2D,
         SPACE_3D
-    };
-
-    enum class ESceneStructureError : std::uint8_t
-    {
-        INVALID_OBJECT,
-        INVALID_PARTITION,
-        MISSING_PROVIDER,
-        REFERENCE_IN_USE,
-        CODEC_FAILURE,
-        HIERARCHY_UNSUPPORTED,
-        HIERARCHY_CYCLE,
-        CAPACITY
-    };
-
-    enum class EModelCreationError : std::uint8_t
-    {
-        UNSUPPORTED_SCENE,
-        INVALID_PARTITION,
-        INVALID_TRANSFORM,
-        UNSUPPORTED_DEFORMATION,
-        NON_TRS_TRANSFORM,
-        MISSING_DEPENDENCY,
-        IDENTITY_CONFLICT
     };
 
     struct SceneWriteTarget final
@@ -74,10 +52,10 @@ namespace lux::editor::scene
     {
         // The active edit owns its before value. The Registry owns the changing value;
         // the after value is captured once when the edit is finished.
-        class SceneFieldEdit : public editing::EditOperation
+        class RegistryFieldEdit : public editing::EditOperation
         {
         public:
-            ~SceneFieldEdit() override;
+            ~RegistryFieldEdit() override;
             [[nodiscard]] virtual bool writable() const noexcept = 0;
             [[nodiscard]] virtual editing::EditResult<void> changed() noexcept = 0;
             [[nodiscard]] virtual editing::EditResult<void> captureAfter() = 0;

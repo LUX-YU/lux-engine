@@ -12,8 +12,9 @@ before the adapter. Pending records pin its code, never its Session. A revoked r
 baseline adoption, but its physical publication result remains queryable.
 
 Owner-thread service calls have a private RAII dispatch scope spanning role callbacks and their
-cleanup. Read-only status and registration-token destruction remain available in that scope;
-mutating service calls return BUSY, and recursive adoption defers to the outer traversal or next
+cleanup. Read-only status, registration-token destruction and completion of an admitted encoding remain
+available in that scope. New requests, encoding dispatch, cancellation and acknowledgement return BUSY;
+recursive adoption defers to the outer traversal or next
 safe point. This is a service execution guard, not a second Session admission state. Describe and
 capture recheck the original registration on return; revocation rejects that request and releases
 its reserved capacity. A newly registered role cannot substitute for the revoked role. An already
@@ -25,6 +26,16 @@ An ordinary save captures committed content on the owner and immediately release
 `SaveExecution` binds this work to existing ExecutionRuntime CPU/Blocking schedulers. Completion
 collection settles encoding and disk facts; the host separately calls `adoptCompletions()` at a safe
 point. A read in progress defers adoption. Do not hold ReadViews, Pane or Session pointers in jobs.
+
+An ENCODING operation accepts its one owning completion on the owner even when collection first occurs
+inside describe, capture or accept. The leaf only releases that operation's charged snapshot bytes and
+supplies its existing coordinator ticket with encoded bytes or a typed failure/cancellation. It never
+calls a source, adopts a baseline, destroys a rebind candidate or erases an operation. The job/code lease
+was already moved into EncodeWork. Nested completion restores the previous dispatch protection, so the
+outer callback still cannot recursively adopt or acknowledge. No second result queue or encoder retry
+is needed. SaveExecution checks delivery instead of discarding its return; its once-only owner delivery
+cannot legitimately be rejected. A wrong owner, stale ID or duplicate/non-ENCODING completion is a caller
+contract violation, not temporary capacity pressure. Direct callers still receive structured errors.
 
 Save As uses the same service/ticket path. Each domain supplies a private PreparedRebind, containing
 an existing BindingChangePermit and preallocated binding/target values. It stays on the owner. After

@@ -5,6 +5,15 @@ namespace lux::editor::io
     using namespace persistence;
     namespace
     {
+        void receiveEncoding(SaveService& service, SaveId id, PersistenceResult<EncodedArtifact> result) noexcept
+        {
+            // TaskScope delivers every admitted job once on the owner; ENCODING cannot be acknowledged.
+            // Role dispatch is supported by completeEncoding, so no valid result needs buffering/retry.
+            // Rejection here means an invalid adapter/service lifetime or duplicate delivery, not BUSY
+            // backpressure. Keep that contract failure visible in release builds too.
+            if (!service.completeEncoding(id, std::move(result)))
+                std::terminate();
+        }
         // Foreign store code may fail after changing disk. An exception cannot prove NotPublished.
         VPublicationOutcome publish(IArtifactStore& store, const PublicationQuery& work, std::stop_token stop) noexcept
         try
@@ -57,11 +66,12 @@ namespace lux::editor::io
                 },
                 [this, id](process::TTaskResult<EncodedArtifact, PersistenceFailure>&& result) noexcept {
                     if (result)
-                        (void)service_.completeEncoding(id, std::move(*result));
+                        receiveEncoding(service_, id, std::move(*result));
                     else if (auto* error = result.error().domainFailure())
-                        (void)service_.completeEncoding(id, lux::cxx::unexpected(std::move(*error)));
+                        receiveEncoding(service_, id, lux::cxx::unexpected(std::move(*error)));
                     else
-                        (void)service_.completeEncoding(
+                        receiveEncoding(
+                            service_,
                             id,
                             lux::cxx::unexpected(PersistenceFailure{
                                 result.error().isCancelled() ? EPersistenceError::CANCELLED
@@ -71,8 +81,7 @@ namespace lux::editor::io
                 }
             );
             if (!submitted)
-                (void
-                )service_.completeEncoding(id, lux::cxx::unexpected(PersistenceFailure{EPersistenceError::EXECUTION}));
+                receiveEncoding(service_, id, lux::cxx::unexpected(PersistenceFailure{EPersistenceError::EXECUTION}));
         }
         auto blocking = tasks_.execution().blocking();
         if (!blocking)

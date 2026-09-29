@@ -1,6 +1,7 @@
 #include <lux/engine/editor/persistence/SaveService.hpp>
 #include <algorithm>
 #include <thread>
+#include <utility>
 
 namespace lux::editor::persistence
 {
@@ -73,13 +74,11 @@ namespace lux::editor::persistence
         struct DispatchScope final
         {
             bool& active;
-            explicit DispatchScope(bool& value) noexcept : active(value)
-            {
-                active = true;
-            }
+            const bool previous;
+            explicit DispatchScope(bool& value) noexcept : active(value), previous(std::exchange(value, true)) {}
             ~DispatchScope()
             {
-                active = false;
+                active = previous;
             }
             DispatchScope(const DispatchScope&) = delete;
             DispatchScope& operator=(const DispatchScope&) = delete;
@@ -269,8 +268,9 @@ namespace lux::editor::persistence
     {
         if (!impl_->onOwner())
             return failed(EPersistenceError::WRONG_THREAD);
-        if (impl_->dispatching)
-            return failed(EPersistenceError::BUSY);
+        // Already admitted work must settle even inside a role callback. This leaf updates only
+        // its existing operation/ticket; it neither dispatches roles nor erases service records.
+        // A nested completion must preserve the outer callback's admission/deletion protection.
         const Impl::DispatchScope dispatch(impl_->dispatching);
         auto found = impl_->find(id);
         if (found == impl_->operations.end())
@@ -278,7 +278,9 @@ namespace lux::editor::persistence
         auto& op = **found;
         if (op.stage != ESaveStage::ENCODING)
             return failed(EPersistenceError::BUSY);
-        impl_->releaseSnapshot(op);
+        // takeEncoding transferred the job and its lease to the worker. Only the allowance remains;
+        // no plugin job, rebind candidate or registration is destroyed by completion absorption.
+        impl_->snapshot_bytes -= std::exchange(op.frozen.retained_bytes, 0);
         PersistenceResult<void> supplied;
         if (result && !op.cancel_requested)
             supplied = impl_->coordinator.provideEncoded(op.ticket, std::move(*result));

@@ -7,8 +7,8 @@ namespace lux::editor::persistence
 {
     // Owner-thread role dispatch; workers receive EncodeWork/PublicationQuery owning values only.
     // Drain the execution adapter before destruction. Registrations are destroyed before their source.
-    // During role callbacks/cleanup, status and token revocation remain available. Mutating service
-    // calls return BUSY; recursive adoptCompletions defers to the outer call/next owner safe point.
+    // During role callbacks/cleanup, status, token revocation and admitted encoding completion remain
+    // available. New business/confirmation calls return BUSY; recursive adoption defers to the owner.
     class SaveService final
     {
     public:
@@ -25,6 +25,10 @@ namespace lux::editor::persistence
         [[nodiscard]] PersistenceResult<ECancelResult> requestCancel(SaveId id);
         [[nodiscard]] PersistenceResult<void> acknowledge(SaveId id);
         [[nodiscard]] PersistenceResult<std::optional<EncodeWork>> takeEncoding();
+        // Consumes exactly one result for an ENCODING operation on the owner, including during role
+        // dispatch. Absorption settles bytes/errors/cancellation only, never calls a role or adopts.
+        // Wrong thread, unknown ID or a duplicate/non-ENCODING result is a caller contract error;
+        // BUSY denotes the latter, never temporary backpressure for a valid outstanding completion.
         [[nodiscard]] PersistenceResult<void> completeEncoding(SaveId id, PersistenceResult<EncodedArtifact> result);
         // Accept already settled disk facts on the owner, separately from worker completion collection.
         void adoptCompletions();

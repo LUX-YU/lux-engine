@@ -291,6 +291,327 @@ namespace
             return source.accept(std::move(receipt));
         }
     };
+    // R2 uses the actual installed scheduler, material role and codecs, not a service shim.
+    struct EncodingProbe final
+    {
+        std::atomic_uint calls{}, destroyed{};
+        std::atomic_bool entered{};
+        bool wait_for_stop{};
+        std::optional<em::MaterialSnapshot> mismatched_identity;
+    };
+    class ProbedEncoding final : public IEncodeJob
+    {
+    public:
+        ProbedEncoding(OwnedEncodeJob job, EncodingProbe& probe) : job_(std::move(job)), probe_(probe) {}
+        ~ProbedEncoding() override
+        {
+            ++probe_.destroyed;
+        }
+        PersistenceResult<EncodedArtifact> encode(std::stop_token stop) override
+        {
+            ++probe_.calls;
+            probe_.entered = true;
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+            while (probe_.wait_for_stop && !stop.stop_requested())
+            {
+                assert(std::chrono::steady_clock::now() < deadline);
+                std::this_thread::yield();
+            }
+            if (probe_.mismatched_identity)
+                return em::MaterialCodec::encode(*probe_.mismatched_identity, identity("wrong-codec-id"), stop);
+            return job_.encode(stop);
+        }
+
+    private:
+        OwnedEncodeJob job_;
+        EncodingProbe& probe_;
+    };
+    template <class Predicate> void waitFor(Predicate&& predicate)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+        while (!predicate())
+        {
+            assert(std::chrono::steady_clock::now() < deadline);
+            std::this_thread::yield();
+        }
+    }
+    process::TaskId waitForEncoded(process::ExecutionRuntime& runtime)
+    {
+        process::TaskId id;
+        waitFor([&] {
+            std::optional<process::TaskInfo> latest;
+            for (const auto& info : runtime.taskInfos())
+                if (info.name == "Encode author source" && (!latest || info.submitted > latest->submitted))
+                    latest = info;
+            if (latest && latest->finished)
+            {
+                id = latest->id;
+                return true;
+            }
+            return false;
+        });
+        return id;
+    }
+    void publishReady(SaveService& service, WriteCoordinator& writes, IArtifactStore& disk)
+    {
+        while (auto work = take(writes.takeReady()))
+            assert(writes.complete(work->ticket, disk.publish(*work)));
+        service.adoptCompletions();
+    }
+    void r2AcceptCase(Fixture& f, std::string_view mode)
+    {
+        f.registrations.clear();
+        HookSource source(*f.material_source);
+        auto registration = take(f.saves.registerSource(source));
+        auto runtime = take(process::ExecutionRuntime::create(
+            {.cpu_concurrency = 2,
+             .cpu_queue_capacity = 16,
+             .timer = {16},
+             .blocking = process::BlockingSchedulerConfig{2, 16}}
+        ));
+        EncodingProbe probe;
+        io::SaveExecution execution(runtime, f.saves, f.writes, f.disk);
+        f.edit(1);
+        const auto first = take(f.saves.requestSave({f.material_id}));
+        f.encodeAll();
+        while (auto work = take(f.writes.takeReady()))
+            assert(f.writes.complete(work->ticket, f.disk.publish(*work)));
+        f.edit(2);
+        const auto frozen_content = f.material_session->describe().current;
+        if (mode == "error")
+            probe.mismatched_identity = take(f.material_session->capture());
+        probe.wait_for_stop = mode == "cancel" || mode == "drain";
+        source.frozen_hook = [&](FrozenSave& frozen) {
+            frozen.encoding = {
+                contracts::CodeLease::builtin(),
+                std::make_unique<ProbedEncoding>(std::move(frozen.encoding), probe)
+            };
+        };
+        const auto second = take(f.saves.requestSave({f.material_id}));
+        source.frozen_hook = {};
+        assert(execution.submitReady());
+        waitFor([&] { return probe.entered.load(); });
+        if (mode == "cancel")
+        {
+            assert(take(f.saves.requestCancel(second)) == ECancelResult::REQUESTED);
+            const auto tasks = runtime.taskInfos();
+            assert(tasks.size() == 1 && runtime.requestStop(tasks.front().id));
+        }
+        if (mode == "drain")
+            execution.tasks().requestStop();
+        const auto task = waitForEncoded(runtime);
+        assert(take(f.saves.status(second)).stage == ESaveStage::ENCODING);
+        f.edit(3);
+        const auto third = take(f.saves.requestSave({f.material_id}));
+        f.encodeAll(); // W3 READY while W2's result still belongs to TaskScope.
+        assert(!take(f.writes.takeReady()));
+        std::size_t collected{};
+        source.accept_hook = [&] {
+            collected = take(runtime.collectCompletions());
+            assert(collected == 1 && probe.destroyed == 1);
+            assert(source.accepts == 1); // Absorption cannot dispatch another role.
+            f.saves.adoptCompletions();
+            auto acknowledged = f.saves.acknowledge(first);
+            auto requested = f.saves.requestSave({f.material_id});
+            auto cancel = f.saves.requestCancel(second);
+            assert(!acknowledged && acknowledged.error().code == EPersistenceError::BUSY);
+            assert(!requested && requested.error().code == EPersistenceError::BUSY);
+            assert(!cancel && cancel.error().code == EPersistenceError::BUSY);
+            assert(source.accepts == 1);
+        };
+        f.saves.adoptCompletions();
+        const auto after = take(f.saves.status(second));
+        assert(task);
+        std::cout << "R2 real runtime collected=" << collected << " encoding_calls=" << probe.calls
+                  << " stuck_encoding=" << (after.stage == ESaveStage::ENCODING) << '\n';
+        if (after.stage == ESaveStage::ENCODING)
+        {
+            assert(f.saves.requestCancel(second));
+            const auto cancelled = take(f.saves.status(second));
+            const auto pending = take(f.writes.status(after.ticket));
+            const auto follower = take(f.writes.status(take(f.saves.status(third)).ticket));
+            const auto disk = take(em::MaterialCodec::decode(read(f.root / "material.luxmaterial")));
+            std::cout << "FAIL before fix: cancel_requested=1 still_encoding="
+                      << (cancelled.stage == ESaveStage::ENCODING)
+                      << " reserved=" << (pending.stage == EWriteStage::RESERVED)
+                      << " follower_ready=" << (follower.stage == EWriteStage::READY)
+                      << " follower_blocked=" << !take(f.writes.takeReady()) << " final_disk=" << disk.source.name
+                      << " root=" << f.root << std::endl;
+            std::_Exit(20); // Preserve the defect, not the later destructor terminate.
+        }
+        const bool has_error = mode == "error" || mode == "cancel" || mode == "drain";
+        if (has_error)
+        {
+            const auto outcome = take(f.writes.status(after.ticket)).outcome;
+            assert(outcome && std::holds_alternative<NotPublished>(*outcome));
+            const auto expected = mode == "error" ? EPersistenceError::INVALID_ARGUMENT : EPersistenceError::CANCELLED;
+            assert(std::get<NotPublished>(*outcome).failure.code == expected);
+        }
+        else
+        {
+            auto publication = take(f.writes.takeReady());
+            assert(publication && publication->ticket == after.ticket);
+            assert(f.writes.complete(publication->ticket, f.disk.publish(*publication)));
+            const auto disk = take(em::MaterialCodec::decode(read(f.root / "material.luxmaterial")));
+            assert(disk.source.name == "material2"); // Frozen W2, not live W3.
+            f.saves.adoptCompletions();
+            assert(f.material_session->undo());
+            assert(f.material_session->describe().current == frozen_content);
+            assert(!f.material_session->describe().dirty && f.material_session->redo());
+        }
+        publishReady(f.saves, f.writes, f.disk);
+        assert(take(em::MaterialCodec::decode(read(f.root / "material.luxmaterial"))).source.name == "material3");
+        assert(!f.material_session->describe().dirty && probe.calls == 1 && probe.destroyed == 1);
+        auto duplicate =
+            f.saves.completeEncoding(second, lux::cxx::unexpected(PersistenceFailure{EPersistenceError::ENCODE}));
+        assert(!duplicate && duplicate.error().code == EPersistenceError::BUSY);
+        for (const auto id : {first, second, third})
+        {
+            assert(take(f.saves.status(id)).stage == ESaveStage::TERMINAL);
+            assert(f.saves.acknowledge(id));
+        }
+        auto stale =
+            f.saves.completeEncoding(second, lux::cxx::unexpected(PersistenceFailure{EPersistenceError::ENCODE}));
+        assert(!stale && stale.error().code == EPersistenceError::UNKNOWN_ID);
+        assert(execution.tasks().join());
+        std::cout << "R05-R2-01/02/04 real Material/SaveExecution first collect in accept " << mode
+                  << ": exact bytes, baseline, FIFO follower, guarded acknowledgement, once-only cleanup PASS\n";
+    }
+
+    void r2AdmissionCase(Fixture& f, bool capture, std::string_view action)
+    {
+        HookSource source(*f.material_source);
+        const auto info = take(source.describe());
+        const auto bytes = take(source.captureForSave(info, {f.material_id}, SIZE_MAX)).retained_bytes;
+        SaveService service(f.writes, {.max_active_saves = 3, .snapshot_bytes = 2 * bytes, .terminal_records = 3});
+        std::optional<SaveSourceRegistration> registration{take(service.registerSource(source))};
+        auto runtime = take(process::ExecutionRuntime::create(
+            {.cpu_concurrency = 2,
+             .cpu_queue_capacity = 16,
+             .timer = {16},
+             .blocking = process::BlockingSchedulerConfig{2, 16}}
+        ));
+        EncodingProbe probe;
+        io::SaveExecution execution(runtime, service, f.writes, f.disk);
+        for (unsigned iteration{}; iteration != 12; ++iteration)
+        {
+            SaveRequest request{
+                f.material_id,
+                ESaveMode::EXPORT_COPY,
+                take(f.disk.resolve((f.root / ("copy-" + std::to_string(iteration))).string())),
+                identity("copy")
+            };
+            source.frozen_hook = [&](FrozenSave& frozen) {
+                frozen.encoding = {
+                    contracts::CodeLease::builtin(),
+                    std::make_unique<ProbedEncoding>(std::move(frozen.encoding), probe)
+                };
+            };
+            const auto first = take(service.requestSave(request));
+            source.frozen_hook = {};
+            assert(execution.submitReady());
+            assert(waitForEncoded(runtime));
+            auto hook = [&] {
+                assert(take(runtime.collectCompletions()) == 1);
+                assert(take(service.status(first)).stage == ESaveStage::READY);
+                assert(source.accepts == 0);
+                auto blocked = service.takeEncoding();
+                assert(!blocked && blocked.error().code == EPersistenceError::BUSY);
+                if (action == "throw")
+                    throw std::runtime_error("controlled role callback failure after first collection");
+                if (action == "revoke")
+                    registration.reset();
+            };
+            if (capture)
+                source.capture_hook = hook;
+            else
+                source.describe_hook = hook;
+            const auto second = service.requestSave(request);
+            if (action != "success")
+            {
+                const auto expected =
+                    action == "revoke" || !capture ? EPersistenceError::STALE_SOURCE : EPersistenceError::ENCODE;
+                assert(!second && second.error().code == expected);
+            }
+            else
+                assert(second);
+            publishReady(service, f.writes, f.disk);
+            assert(take(service.status(first)).stage == ESaveStage::TERMINAL);
+            assert(service.acknowledge(first));
+            if (second)
+            {
+                auto work = take(service.takeEncoding());
+                assert(work && work->id == *second && service.completeEncoding(work->id, work->encoding.encode({})));
+                publishReady(service, f.writes, f.disk);
+                assert(service.acknowledge(*second));
+            }
+            if (!registration)
+                registration.emplace(take(service.registerSource(source)));
+            // Exactly two snapshots fit again. This detects leaked allowance, underflow and double release.
+            request.destination = take(f.disk.resolve((f.root / ("capacity-" + std::to_string(iteration))).string()));
+            const auto a = take(service.requestSave(request));
+            const auto b = take(service.requestSave(request));
+            auto full = service.requestSave(request);
+            assert(!full && full.error().code == EPersistenceError::CAPACITY);
+            while (auto work = take(service.takeEncoding()))
+                assert(service.completeEncoding(work->id, work->encoding.encode({})));
+            publishReady(service, f.writes, f.disk);
+            assert(std::holds_alternative<CommitReceipt>(take(service.status(a)).outcome->publication));
+            assert(std::holds_alternative<CommitReceipt>(take(service.status(b)).outcome->publication));
+            assert(service.acknowledge(a) && service.acknowledge(b));
+            assert(!take(service.takeEncoding()) && !take(f.writes.takeReady()));
+            assert(probe.calls == iteration + 1 && probe.destroyed == iteration + 1);
+        }
+        execution.tasks().requestStop();
+        assert(execution.tasks().join());
+        std::cout << "R05-R2-03/05 " << (capture ? "capture" : "describe") << ' ' << action
+                  << " 12 bounded cycles: completed input, capture rollback, exact capacity, jobs retired PASS\n";
+    }
+
+    void r2ExecutionFailure(Fixture& f)
+    {
+        // The existing runtime rejects task admission while its sole task slot is occupied.
+        // SaveExecution must settle the already admitted save even though no encoder starts.
+        auto runtime = take(process::ExecutionRuntime::create(
+            {.cpu_concurrency = 1,
+             .cpu_queue_capacity = 2,
+             .task_capacity = 1,
+             .timer = {2},
+             .blocking = process::BlockingSchedulerConfig{1, 2}}
+        ));
+        std::atomic_bool entered{}, released{};
+        auto occupying = take(runtime.submit(
+            {},
+            [&, cpu = runtime.cpu()](process::TaskReporter) noexcept {
+                return stdexec::then(
+                    stdexec::schedule(cpu),
+                    [&]() -> lux::cxx::expected<void, process::EExecutionError> {
+                        entered = true;
+                        waitFor([&] { return released.load(); });
+                        return {};
+                    }
+                );
+            },
+            [](process::TTaskResult<void, process::EExecutionError>&&) noexcept {}
+        ));
+        waitFor([&] { return entered.load(); });
+        io::SaveExecution execution(runtime, f.saves, f.writes, f.disk);
+        const auto first = take(f.saves.requestSave({f.material_id}));
+        assert(execution.submitReady());
+        const auto state = take(f.saves.status(first));
+        assert(state.stage == ESaveStage::READY);
+        const auto outcome = take(f.writes.status(state.ticket)).outcome;
+        assert(outcome && std::get<NotPublished>(*outcome).failure.code == EPersistenceError::EXECUTION);
+        f.saves.adoptCompletions();
+        assert(f.saves.acknowledge(first) && f.writes.size() == 0);
+        released = true;
+        waitFor([&] { return runtime.taskInfo(occupying.id())->finished.has_value(); });
+        assert(runtime.collectCompletions() && runtime.dispatchTaskEvents());
+        assert(execution.tasks().join());
+        std::cout
+            << "R05-R2-02/05 actual Runtime task-capacity rejection settles EXECUTION without encoder retry PASS\n";
+    }
+
     void assertSameSession(const sessions::SessionInfo& before, const sessions::SessionInfo& after)
     {
         assert(before.current == after.current && before.observed == after.observed);
@@ -1122,6 +1443,22 @@ int main(int argc, char** argv)
                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     Fixture f(root);
     const std::string_view scenario = argc == 3 ? argv[2] : "models";
+    if (scenario.starts_with("r2-accept-"))
+    {
+        r2AcceptCase(f, scenario.substr(10));
+        return 0;
+    }
+    if (scenario == "r2-admission")
+    {
+        for (const bool capture : {false, true})
+            for (const std::string_view action : {"success", "throw", "revoke"})
+            {
+                Fixture admission(root / (std::string(capture ? "capture-" : "describe-") + std::string(action)));
+                r2AdmissionCase(admission, capture, action);
+            }
+        r2ExecutionFailure(f);
+        return 0;
+    }
     if (scenario == "r1-revoke")
     {
         revokeCase(f);

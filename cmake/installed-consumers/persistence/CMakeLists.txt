@@ -4,6 +4,9 @@ set(CMAKE_CXX_STANDARD 20)
 foreach(domain scene material flowforge)
     find_package(lux-engine-editor-${domain}-persistence REQUIRED COMPONENTS ${domain}_persistence)
 endforeach()
+foreach(scenario r2-accept-success r2-accept-error r2-accept-cancel r2-accept-drain r2-admission)
+    add_test(NAME persistence_consumer.${scenario} COMMAND persistence_consumer "${CMAKE_CURRENT_BINARY_DIR}/files" ${scenario})
+endforeach()
 find_package(lux-engine-editor-project-io REQUIRED COMPONENTS project_io)
 # The qualification script copies the public-API behavioral consumer here before configuring.
 # This project has no source/build-tree include or link search path.

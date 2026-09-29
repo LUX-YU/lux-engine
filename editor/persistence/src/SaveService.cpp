@@ -233,9 +233,11 @@ namespace lux::editor::persistence
             frozen && (frozen->source.content != info->content || frozen->source.binding != info->binding ||
                        frozen->source.target != info->target || !frozen->encoding.job ||
                        !frozen->encoding.code.valid() || frozen->retained_bytes > allowance);
-        if (is_revoked || !frozen || invalid_capture)
+        const bool is_stale_capture = is_revoked || invalid_capture;
+        const bool is_rejected_capture = !frozen || is_stale_capture;
+        if (is_rejected_capture)
         {
-            auto error = is_revoked || frozen ? PersistenceFailure{EPersistenceError::STALE_SOURCE} : frozen.error();
+            auto error = is_stale_capture ? PersistenceFailure{EPersistenceError::STALE_SOURCE} : frozen.error();
             (void)impl_->coordinator.cancelBeforePublish(*ticket, error);
             (void)impl_->coordinator.acknowledge(*ticket);
             impl_->snapshot_bytes -= allowance;

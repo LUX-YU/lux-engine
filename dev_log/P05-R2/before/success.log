@@ -1,0 +1,2 @@
+R2 real runtime collected=1 encoding_calls=1 stuck_encoding=1
+FAIL before fix: cancel_requested=1 still_encoding=1 reserved=1 follower_ready=1 follower_blocked=1 final_disk=material1 root="E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P05-R2-before\\files\\391075615672600"

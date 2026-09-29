@@ -1,0 +1,37 @@
+[
+  {
+    "status": "M",
+    "path": "cmake/installed-consumers/persistence/CMakeLists.txt",
+    "git_content_sha256": "dcd937304a6a25be3c607d53cf9d7f50546613032c25bc227716b71b1bd89351"
+  },
+  {
+    "status": "M",
+    "path": "editor/adapters/project_io/src/SaveExecution.cpp",
+    "git_content_sha256": "f2d6036d45d33d7dd083a135a58a38ada0f476031f9d9d5308c8c00867453402"
+  },
+  {
+    "status": "M",
+    "path": "editor/persistence/README.md",
+    "git_content_sha256": "1c400febcf08643a8db1e68e70a19c70fe162259e449fe28453d59b51c7dc1cb"
+  },
+  {
+    "status": "M",
+    "path": "editor/persistence/include/lux/engine/editor/persistence/SaveService.hpp",
+    "git_content_sha256": "07357d99585e3b744b56245e8f66d83f52ccb7b60959828acccfe57065864d10"
+  },
+  {
+    "status": "M",
+    "path": "editor/persistence/src/SaveService.cpp",
+    "git_content_sha256": "b53e53f6ec8e9de77f3d7c4c96557a5e00624fe64b5a3be9ecc938c185610a69"
+  },
+  {
+    "status": "M",
+    "path": "editor/tests/persistence/CMakeLists.txt",
+    "git_content_sha256": "0a9aa316b6e3de6f200a4ed1d32499f8a9bfc4f659309d4f6d57d7c143b2ecdc"
+  },
+  {
+    "status": "M",
+    "path": "editor/tests/persistence/models.cpp",
+    "git_content_sha256": "bd6ef5f597d180c8b8fdeecaaa9e7ed786dec1aee9585d3a9ffdb0a3cb20532a"
+  }
+]

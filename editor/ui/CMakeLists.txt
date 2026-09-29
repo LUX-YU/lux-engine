@@ -11,11 +11,13 @@ component_include_directories(editor_ui
 lux_classify_target(TARGET editor_ui LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 target_compile_definitions(editor_ui PRIVATE LUX_EDITOR_UI_LIBRARY)
 target_link_libraries(editor_ui PUBLIC lux::engine::editor::editor_metadata lux::engine::editor::editor_editing_scene lux::engine::scene::scene_mesh_query
+    lux::engine::editor::scene_projection
     PRIVATE lux::engine::editor::editor_context
     PUBLIC
     lux::engine::editor::editor_storage lux::engine::project::project_plugins
     lux::engine::function::ui lux::engine::function::ui_rendering lux::engine::scene::scene_render imgui::core)
 component_add_transitive_commands(editor_ui
+    "find_package(lux-engine-editor-scene-projection REQUIRED COMPONENTS scene_projection)"
     "find_package(lux-engine-editor-context REQUIRED COMPONENTS editor_context)"
     "find_package(lux-engine-editor-metadata REQUIRED COMPONENTS editor_metadata)"
     "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)"
@@ -93,5 +95,3 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
         PROPERTIES LABELS "editor;native")
 endif()
 
-target_link_libraries(editor_ui PUBLIC lux::engine::editor::scene_projection)
-component_add_transitive_commands(editor_ui "find_package(lux-engine-editor-scene-projection REQUIRED COMPONENTS scene_projection)")

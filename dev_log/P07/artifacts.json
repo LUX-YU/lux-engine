@@ -1369,7 +1369,7 @@
   },
   {
     "archive_path": "dev_log/P07/FILES.md",
-    "sha256": "49c5947f650a5e72f2fa479bc58ce94f37f41253fcb1de2e8ce5fb638207b697"
+    "sha256": "bd5e5c4d2ffb8628b8f473ae85574b20a0886b830f618b7854fa36b25ef0e7ec"
   },
   {
     "archive_path": "dev_log/P07/logs/architecture.log",
@@ -2205,7 +2205,7 @@
   },
   {
     "archive_path": "dev_log/P07/README.md",
-    "sha256": "4470a213b63f96b5e4463943fa14a67169c3bb45303e131d60c6b7dcb052bf09"
+    "sha256": "0522cb15f35c6839b2a2b9b676b2d8f002e005a1ecf991e3923e07a947da8203"
   },
   {
     "archive_path": "dev_log/P07/receipt.json",

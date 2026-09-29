@@ -18,6 +18,8 @@ StartRunId addresses preparation; it is not a RunId. There is no implicit ApplyR
 - World loading waits for cancelled reads; RenderSystem begins resource retirement and waits for its
   scene receipt. Runtime teardown may drain at the final owner boundary while ExecutionRuntime and
   RenderResources remain alive. A lease may be released in a callback; destroying Runtime there is invalid.
+  A standalone host that pumps RenderRuntime manually must keep that pump running until retirement
+  completes before destroying SceneRuntime; EngineContext's rendering adapter supplies that integration.
 
 ## Control and completion
 

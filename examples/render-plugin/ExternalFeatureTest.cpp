@@ -345,7 +345,14 @@ int main(int argc, char** argv)
         unsigned(red_pixels.second),
         stable_operation
     );
-    assert(scenes->retireInstance(scene_id));
+    const auto retirement = made_scene->retire();
+    assert(retirement.id() == scene_id && !retirement.complete());
+    // This standalone host pumps RenderRuntime explicitly (it has no EngineContext rendering adapter).
+    // Keep that owner pump alive until SceneRuntime has observed the actual render retirement.
+    until([&] {
+        assert(scenes->driveFrame());
+        return retirement.complete();
+    });
     scenes.reset();
     resources->release(*old_scene);
     until([&] { return resources->empty(); });

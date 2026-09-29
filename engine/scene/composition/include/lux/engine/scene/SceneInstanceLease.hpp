@@ -11,7 +11,8 @@ namespace lux::scene
         struct InstanceLifetime;
     }
 
-    // Completion survives removal of the runtime slot. Requesting retirement is not completion.
+    // Completion and the unique bounded step-result ledger survive removal of the runtime slot.
+    // Requesting retirement is not completion. Result access still requires the owner Runtime.
     class LUX_ENGINE_SCENE_PUBLIC InstanceRetirement final
     {
     public:

@@ -19,6 +19,15 @@ namespace lux::scene
     {
         struct InstanceLifetime final
         {
+            struct Step final
+            {
+                SceneStepTicket ticket;
+                SceneStepStatus status;
+            };
+            // Only code pins and bounded results survive the heavyweight instance.
+            std::shared_ptr<const void> code_lifetime;
+            std::array<Step, 32> steps;
+            std::uint64_t next_step{1};
             SceneInstanceId id;
             process::CompletionWork::Request wake;
             std::atomic_bool requested{}, completed{};
@@ -107,20 +116,13 @@ namespace lux::scene
             SceneDriver driver;
             SceneInstance scene;
             std::optional<EClockError> clock_error;
-            struct Step final
-            {
-                SceneStepTicket ticket;
-                SceneStepStatus status;
-            };
             std::shared_ptr<detail::InstanceLifetime> lifetime;
-            std::array<Step, 32> steps;
-            std::uint64_t next_step{1};
             bool enabled{true}, retiring{}, maintenance_complete{};
 
-            Step* pendingStep() noexcept
+            detail::InstanceLifetime::Step* pendingStep() noexcept
             {
-                Step* first{};
-                for (auto& step : steps)
+                detail::InstanceLifetime::Step* first{};
+                for (auto& step : lifetime->steps)
                 {
                     const bool pending = step.ticket.serial && (step.status.state == ESceneStepState::QUEUED ||
                                                                 step.status.state == ESceneStepState::EXECUTING);
@@ -304,9 +306,21 @@ namespace lux::scene
             if (!reserved)
                 return fail(reserved.error());
             failures_.reserve(records_.size());
+            failure_code_owners_.reserve(records_.size());
             auto lifetime = std::make_shared<detail::InstanceLifetime>();
             lifetime->id = id;
             lifetime->wake = wake_.requester();
+            auto code = std::make_shared<std::vector<std::shared_ptr<const void>>>((*prepared)->code_owners);
+            for (const auto& component : input.components_->all())
+                if (component.code_lifetime)
+                    code->push_back(component.code_lifetime);
+            for (std::size_t i{}; i < input.simulation_->systemCount(); ++i)
+            {
+                const auto* registration = input.simulation_systems_->find(input.simulation_->systemAt(i).type());
+                if (registration && registration->code_lifetime)
+                    code->push_back(registration->code_lifetime);
+            }
+            lifetime->code_lifetime = std::move(code);
             *records_.find(key) = std::make_unique<Record>(input.clock_, executor_, std::move(*prepared), lifetime);
             execution_.wake();
             return SceneInstanceLease(std::move(lifetime));
@@ -373,26 +387,45 @@ namespace lux::scene
                 return rejected(record.scene.progress().result.error(), id);
             if (record.clock_error)
                 return rejected(*record.clock_error, id);
-            auto empty = std::ranges::find_if(record.steps, [](const auto& step) { return !step.ticket.serial; });
-            if (empty == record.steps.end())
+            auto empty =
+                std::ranges::find_if(record.lifetime->steps, [](const auto& step) { return !step.ticket.serial; });
+            if (empty == record.lifetime->steps.end())
                 return rejected(ESceneRuntimeError::CAPACITY, id);
             auto target = record.scene.progress().simulation_completed;
-            for (const auto& step : record.steps)
+            for (const auto& step : record.lifetime->steps)
                 target = std::max(target, step.ticket.simulation_completed);
-            if (target == UINT64_MAX || record.next_step == UINT64_MAX)
+            if (target == UINT64_MAX || record.lifetime->next_step == UINT64_MAX)
                 return rejected(ESceneRuntimeError::IDENTITY_EXHAUSTED, id);
-            empty->ticket = {id, record.next_step++, target + 1};
+            empty->ticket = {id, record.lifetime->next_step++, target + 1};
             empty->status = {};
             execution_.wake();
             return empty->ticket;
         }
 
-        [[nodiscard]] SceneRuntimeResult<Record::Step*> findStep(SceneStepTicket ticket) const noexcept
+        [[nodiscard]] SceneRuntimeResult<detail::InstanceLifetime::Step*> findStep(
+            SceneStepTicket ticket,
+            const std::shared_ptr<detail::InstanceLifetime>& retained
+        ) const noexcept
         {
-            const auto found = find(ticket.scene);
-            if (!found)
-                return lux::cxx::unexpected(found.error());
-            for (auto& step : (**found).steps)
+            const auto allowed = access();
+            if (!allowed)
+                return lux::cxx::unexpected(allowed.error());
+            if (ticket.scene.domain != domain_)
+                return rejected(ESceneRuntimeError::WRONG_DOMAIN, ticket.scene);
+            auto* lifetime = retained.get();
+            if (lifetime)
+            {
+                if (lifetime->id != ticket.scene)
+                    return rejected(ESceneRuntimeError::INVALID_ID, ticket.scene);
+            }
+            else
+            {
+                const auto found = find(ticket.scene);
+                if (!found)
+                    return lux::cxx::unexpected(found.error());
+                lifetime = (*found)->lifetime.get();
+            }
+            for (auto& step : lifetime->steps)
                 if (ticket.serial && step.ticket == ticket)
                     return &step;
             return rejected(ESceneRuntimeError::INVALID_ID, ticket.scene);
@@ -447,7 +480,7 @@ namespace lux::scene
                 record.retiring = true;
                 record.enabled = false;
                 record.scene.requestStop();
-                for (auto& step : record.steps)
+                for (auto& step : record.lifetime->steps)
                 {
                     const bool pending = step.ticket.serial && (step.status.state == ESceneStepState::QUEUED ||
                                                                 step.status.state == ESceneStepState::EXECUTING);
@@ -473,6 +506,7 @@ namespace lux::scene
                 records_.erase({id.slot, id.generation});
                 const auto lifetime = record->lifetime;
                 record.reset();
+                lifetime->code_lifetime.reset(); // Only failure values still needing code retain their narrow pin.
                 lifetime->completed.store(true, std::memory_order_release);
                 execution_.wake();
             }
@@ -486,6 +520,7 @@ namespace lux::scene
             BusyScope ticking(busy_);
             const auto now = SteadyClock::now();
             failures_.clear();
+            failure_code_owners_.clear();
             for (auto& record : records_)
             {
                 beginRetirement(*record);
@@ -530,7 +565,7 @@ namespace lux::scene
             for (auto& record : records_)
             {
                 static_cast<void>(record->driver.publish(record->scene));
-                for (auto& step : record->steps)
+                for (auto& step : record->lifetime->steps)
                 {
                     const bool pending = step.ticket.serial && (step.status.state == ESceneStepState::QUEUED ||
                                                                 step.status.state == ESceneStepState::EXECUTING);
@@ -538,7 +573,11 @@ namespace lux::scene
                         continue;
                     const auto& progress = record->scene.progress();
                     if (!progress.result)
-                        step.status = {ESceneStepState::FAILED, rejected(progress.result.error(), record->scene.id())};
+                        step.status = {
+                            ESceneStepState::FAILED,
+                            rejected(progress.result.error(), record->scene.id()),
+                            record->lifetime->code_lifetime
+                        };
                     else if (record->clock_error)
                         step.status = {ESceneStepState::FAILED, rejected(*record->clock_error, record->scene.id())};
                     else if (step.status.state == ESceneStepState::EXECUTING &&
@@ -546,7 +585,10 @@ namespace lux::scene
                         step.status.state = ESceneStepState::COMPLETED;
                 }
                 if (!record->scene.progress().result)
+                {
+                    failure_code_owners_.push_back(record->lifetime->code_lifetime);
                     failures_.push_back({record->scene.id(), record->scene.progress().result.error()});
+                }
                 else if (record->clock_error)
                     failures_.push_back({record->scene.id(), *record->clock_error});
                 const bool may_tick = !record->lifetime->requested.load(std::memory_order_acquire) &&
@@ -602,6 +644,8 @@ namespace lux::scene
         std::uint64_t domain_;
         std::thread::id owner_{std::this_thread::get_id()};
         Records records_;
+        // The existing borrowed drive-failure span ends at the next frame, after payload cleanup.
+        std::vector<std::shared_ptr<const void>> failure_code_owners_;
         std::vector<SceneRuntimeFailure> failures_;
         bool busy_{}, closing_{};
         process::CompletionWork wake_;
@@ -711,21 +755,29 @@ namespace lux::scene
     {
         return impl_->requestStep(id);
     }
-    SceneRuntimeResult<SceneStepStatus> SceneRuntime::stepStatus(SceneStepTicket ticket) const noexcept
+    SceneRuntimeResult<SceneStepStatus> SceneRuntime::stepStatus(
+        SceneStepTicket ticket,
+        const InstanceRetirement& retirement
+    ) const noexcept
     {
-        const auto found = impl_->findStep(ticket);
+        const auto found = impl_->findStep(ticket, retirement.lifetime_);
         if (!found)
             return lux::cxx::unexpected(found.error());
+        BusyScope reading(impl_->busy_);
         return (*found)->status;
     }
-    SceneRuntimeResult<void> SceneRuntime::acknowledgeStep(SceneStepTicket ticket) noexcept
+    SceneRuntimeResult<void> SceneRuntime::acknowledgeStep(
+        SceneStepTicket ticket,
+        const InstanceRetirement& retirement
+    ) noexcept
     {
-        const auto found = impl_->findStep(ticket);
+        const auto found = impl_->findStep(ticket, retirement.lifetime_);
         if (!found)
             return lux::cxx::unexpected(found.error());
         const auto state = (*found)->status.state;
         if (state == ESceneStepState::QUEUED || state == ESceneStepState::EXECUTING)
             return rejected(ESceneRuntimeError::BUSY, ticket.scene);
+        BusyScope acknowledging(impl_->busy_);
         **found = {};
         return {};
     }

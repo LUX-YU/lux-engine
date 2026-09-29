@@ -325,7 +325,7 @@ namespace lux::editor::scene
             return lux::cxx::unexpected(found.error());
         if ((*found)->info.instance != ticket.step.scene)
             return rejected(ERunError::INVALID_ID);
-        auto status = impl_->runtime.stepStatus(ticket.step);
+        auto status = impl_->runtime.stepStatus(ticket.step, (*found)->retirement);
         if (!status)
             return rejected(status.error());
         return *status;
@@ -335,10 +335,11 @@ namespace lux::editor::scene
         auto status = stepStatus(ticket);
         if (!status)
             return lux::cxx::unexpected(status.error());
-        auto acknowledged = impl_->runtime.acknowledgeStep(ticket.step);
+        auto run = impl_->find(ticket.run);
+        DispatchScope dispatch(impl_->dispatching);
+        auto acknowledged = impl_->runtime.acknowledgeStep(ticket.step, (*run)->retirement);
         if (!acknowledged)
             return rejected(acknowledged.error());
-        auto run = impl_->find(ticket.run);
         std::erase((*run)->steps, ticket.step);
         return {};
     }
@@ -359,6 +360,13 @@ namespace lux::editor::scene
         if (state != ERunState::STOPPED && state != ERunState::FAILED)
             return rejected(ERunError::BUSY);
         DispatchScope dispatch(impl_->dispatching);
+        // Final Run acknowledgement also clears results held by external StopTicket copies.
+        for (const auto ticket : (*run)->steps)
+        {
+            const auto acknowledged = impl_->runtime.acknowledgeStep(ticket, (*run)->retirement);
+            if (!acknowledged)
+                return rejected(acknowledged.error());
+        }
         impl_->runs.erase({id.slot, id.generation});
         return {};
     }

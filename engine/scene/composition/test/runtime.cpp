@@ -32,6 +32,14 @@ namespace
             assert(!alive);
         }
     };
+    struct OwnedFailure final
+    {
+        std::weak_ptr<const void> code;
+        ~OwnedFailure()
+        {
+            assert(!code.expired());
+        }
+    };
     struct Probe final
     {
         inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
@@ -42,6 +50,7 @@ namespace
         };
         inline static bool reject{};
         inline static unsigned destroyed{};
+        inline static std::weak_ptr<const void> error_code;
         State& state;
         explicit Probe(ecs::Registry& registry) : state(registry.ctx().emplace<State>()) {}
         ~Probe()
@@ -98,6 +107,12 @@ namespace
                     description.instanceId(),
                     [](Probe& probe) noexcept -> SceneStageResult {
                         ++probe.state.published;
+                        if (probe.state.failed && !Probe::error_code.expired())
+                            return cxx::unexpected(SceneExecutionFailure{
+                                ESceneExecutionError::SYSTEM_FAILURE,
+                                {},
+                                OwnedFailure{Probe::error_code}
+                            });
                         if (probe.state.failed)
                             return cxx::unexpected(SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, 731}
                             );
@@ -272,6 +287,9 @@ int main()
     auto callback_owned = builder.build();
     assert(callback_owned);
     const auto callback_id = callback_owned->id();
+    assert((*runtime)->pauseSimulation(callback_id));
+    const auto callback_step = (*runtime)->requestStep(callback_id);
+    assert(callback_step);
     const auto destroyed_before = Probe::destroyed;
     InstanceRetirement retirement;
     bool in_flight{true};
@@ -290,9 +308,55 @@ int main()
     in_flight = false;
     assert((*runtime)->driveFrame() && retirement.complete());
     assert(Probe::destroyed == destroyed_before + 1 && !(*runtime)->borrowClock(callback_id));
+    auto late = (*runtime)->stepStatus(*callback_step, retirement);
+    assert(late && late->state == ESceneStepState::CANCELLED && !late->result);
+    assert(std::get<ESceneRuntimeError>(late->result.error().cause) == ESceneRuntimeError::STOPPED);
+    assert(!(*other)->stepStatus(*callback_step, retirement));
+    bool wrong_result_thread{};
+    std::jthread result_reader([&] {
+        const auto result = (*runtime)->stepStatus(*callback_step, retirement);
+        wrong_result_thread =
+            !result && std::get<ESceneRuntimeError>(result.error().cause) == ESceneRuntimeError::WRONG_THREAD;
+    });
+    result_reader.join();
+    assert(wrong_result_thread);
+    assert((*runtime)->acknowledgeStep(*callback_step, retirement));
+    assert(!(*runtime)->stepStatus(*callback_step, retirement));
     *callback_owned = SceneInstanceLease{};
     assert((*runtime)->driveFrame() && Probe::destroyed == destroyed_before + 1);
     std::cout << "PASS X06-04 callback lease release is deferred, in-flight drain, outer guard and one destruction\n";
+    // Only the failure value's code pin survives acknowledgement and heavy instance destruction.
+    auto code = std::make_shared<int>(42);
+    const std::weak_ptr<const void> weak_code = code;
+    auto pinned_registrations = registrations;
+    pinned_registrations[0].code_lifetime = code;
+    auto pinned_builder = builder;
+    pinned_builder.setRegistrations(components, simulation_systems, pinned_registrations);
+    auto pinned = pinned_builder.build();
+    assert(pinned);
+    const auto pinned_id = pinned->id();
+    pinned_registrations[0].code_lifetime.reset();
+    Probe::error_code = code;
+    code.reset();
+    assert((*runtime)->pauseSimulation(pinned_id));
+    (*runtime)->borrowInstance(pinned_id)->get().ctx().get<State>().failed = true;
+    const auto failed_step = (*runtime)->requestStep(pinned_id);
+    assert(failed_step && (*runtime)->driveFrame());
+    auto pin_receipt = pinned->retire();
+    assert((*runtime)->driveFrame() && pin_receipt.complete());
+    assert(!(*runtime)->borrowClock(pinned_id));
+    auto kept = (*runtime)->stepStatus(*failed_step, pin_receipt);
+    assert(kept && kept->state == ESceneStepState::FAILED);
+    const auto& cause = std::get<SceneExecutionFailure>(std::get<SceneDriveFailure>(kept->result.error().cause).cause);
+    assert(!std::any_cast<const OwnedFailure&>(cause.cause).code.expired());
+    assert((*runtime)->acknowledgeStep(*failed_step, pin_receipt));
+    assert(!weak_code.expired());
+    assert((*runtime)->driveFrame()); // End the prior borrowed DriveResult span, keeping only the copied result.
+    *kept = SceneStepStatus{};
+    assert(weak_code.expired()); // Receipt still exists, but no confirmed result retains code.
+    Probe::error_code.reset();
+    std::cout
+        << "PASS R06-R1 result receipt identity/thread checks and copied failure code lifetime after reclamation\n";
     runtime->reset(); // Outstanding timer must be cancelled and joined before receiver storage is reclaimed.
     other->reset();
     assert(execution->collectCompletions());

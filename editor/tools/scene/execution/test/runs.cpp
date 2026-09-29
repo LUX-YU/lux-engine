@@ -21,8 +21,10 @@ namespace
     using namespace lux::editor::scene;
     using namespace std::chrono_literals;
     namespace ecs = simulation::ecs;
-    template <class T> auto take(T value)
+    template <class T> auto take(T value, std::source_location where = std::source_location::current())
     {
+        if (!value)
+            std::fprintf(stderr, "Unexpected failure at %s:%u\n", where.file_name(), where.line());
         assert(value);
         return std::move(*value);
     }
@@ -45,8 +47,15 @@ namespace
         };
         inline static std::function<void()> installing;
         inline static bool reject_install{};
+        inline static std::function<void()> maintaining;
+        inline static bool* in_flight{};
+        inline static unsigned destroyed{};
         Facts& facts;
         explicit Probe(ecs::Registry& registry) : facts(registry.ctx().emplace<Facts>()) {}
+        ~Probe()
+        {
+            ++destroyed;
+        }
     };
     lux::scene::SceneSystemRegistration probeRegistration()
     {
@@ -71,6 +80,10 @@ namespace
                     description.instanceId(),
                     [](Probe& probe) noexcept -> lux::scene::SceneStageResult {
                         ++probe.facts.maintenance;
+                        if (Probe::maintaining)
+                            Probe::maintaining();
+                        if (Probe::in_flight && *Probe::in_flight)
+                            return lux::scene::ESceneProgress::PENDING;
                         return probe.facts.pending ? lux::scene::ESceneProgress::PENDING
                                                    : lux::scene::ESceneProgress::COMPLETE;
                     }
@@ -114,7 +127,7 @@ namespace
         sessions::SessionId author_id;
         world::WorldObjectId object{uuid("object")};
 
-        Fixture()
+        explicit Fixture(std::size_t capacity = 4) : runs(*runtime, execution, capacity)
         {
             std::vector<ecs::ComponentSchema> types;
             for (auto group : {ecs::transformComponentSchemas(), ecs::hierarchyComponentSchemas()})
@@ -381,6 +394,199 @@ namespace
         f.stop(replacement);
         std::puts("PASS X06-03 failed actual step never succeeds; cancelled preparation never publishes RunId");
     }
+    bool lateResults(std::string_view mode)
+    {
+        Fixture f;
+        const auto id = f.start();
+        assert(f.runs.pause(id));
+        f.until([&] { return take(f.runs.info(id)).state == ERunState::PAUSED; });
+        const auto before = f.author->describe();
+        const auto source = take(f.author->capture());
+        const auto initial = take(f.runs.info(id));
+        std::vector<StepTicket> tickets;
+        if (mode == "r1-mixed")
+        {
+            tickets.push_back(take(f.runs.step(id)));
+            // Observe frame progress, never the ticket, before retirement.
+            f.until([&] {
+                return take(f.runs.info(id)).progress.publication_completed >=
+                       tickets.front().step.simulation_completed;
+            });
+        }
+        if (mode == "r1-failed")
+        {
+            take(f.runtime->borrowInstance(initial.instance)).get().ctx().get<Probe::Facts>().fail = true;
+            tickets.push_back(take(f.runs.step(id)));
+            f.until([&] { return take(f.runs.info(id)).state == ERunState::FAILED; });
+        }
+        else
+        {
+            tickets.push_back(take(f.runs.step(id)));
+            tickets.push_back(take(f.runs.step(id)));
+        }
+        auto stop = take(f.runs.stop(id));
+        f.until([&] { return stop.complete(); });
+        assert(f.runs.update());
+        const auto info = take(f.runs.info(id));
+        if (mode == "r1-queued")
+            assert(info.progress.time.step_index == initial.progress.time.step_index);
+        if (mode == "r1-mixed")
+            assert(info.progress.time.step_index == initial.progress.time.step_index + 1);
+        assert(info.state == (mode == "r1-failed" ? ERunState::FAILED : ERunState::STOPPED));
+        assert(!f.runtime->borrowClock(initial.instance));
+        const auto after = f.author->describe();
+        assert(after.current == before.current && after.observed == before.observed && after.dirty == before.dirty);
+        assert(after.binding == before.binding);
+        const auto next = take(f.author->capture());
+        assert(next.objects().size() == source.objects().size());
+        assert(next.objects()[0].components[0].bytes == source.objects()[0].components[0].bytes);
+        bool passed = true;
+        for (std::size_t i{}; i < tickets.size(); ++i)
+        {
+            auto status = f.runs.stepStatus(tickets[i]);
+            std::printf(
+                "%s stop_complete=%d run_state=%u instance_absent=1 ticket=%zu readable=%d\n",
+                mode.data(),
+                stop.complete(),
+                unsigned(info.state),
+                i,
+                bool(status)
+            );
+            if (!status)
+            {
+                const auto* runtime = std::get_if<lux::scene::SceneRuntimeFailure>(&status.error().cause);
+                assert(
+                    runtime && std::get<lux::scene::ESceneRuntimeError>(runtime->cause) ==
+                                   lux::scene::ESceneRuntimeError::INVALID_ID
+                );
+                std::puts("FAIL late step result: INVALID_ID while Run remains unacknowledged");
+                passed = false;
+                continue;
+            }
+            using State = lux::scene::ESceneStepState;
+            const auto expected = mode == "r1-failed"            ? State::FAILED
+                                  : mode == "r1-mixed" && i == 0 ? State::COMPLETED
+                                                                 : State::CANCELLED;
+            assert(status->state == expected);
+            if (expected == State::COMPLETED)
+                assert(status->result);
+            else if (expected == State::FAILED)
+            {
+                assert(!status->result);
+                const auto& failure = std::get<lux::scene::SceneDriveFailure>(status->result.error().cause);
+                assert(failure.phase == lux::scene::ESceneDrivePhase::PUBLICATION);
+                assert(std::any_cast<int>(std::get<lux::scene::SceneExecutionFailure>(failure.cause).cause) == 731);
+            }
+            else
+            {
+                assert(
+                    !status->result && std::get<lux::scene::ESceneRuntimeError>(status->result.error().cause) ==
+                                           lux::scene::ESceneRuntimeError::STOPPED
+                );
+            }
+            std::printf("PASS original terminal state=%u and cause retained\n", unsigned(status->state));
+            assert(f.runs.acknowledgeStep(tickets[i]));
+            assert(!f.runs.stepStatus(tickets[i]) && !f.runs.acknowledgeStep(tickets[i]));
+        }
+        assert(f.runs.acknowledgeStop(id));
+        for (auto ticket : tickets)
+            assert(!f.runs.stepStatus(ticket));
+        return passed;
+    }
+    void callbackResults()
+    {
+        Fixture f;
+        const auto id = f.start();
+        assert(f.runs.pause(id));
+        f.until([&] { return take(f.runs.info(id)).state == ERunState::PAUSED; });
+        const auto instance = take(f.runs.info(id)).instance;
+        const auto ticket = take(f.runs.step(id));
+        const auto destroyed = Probe::destroyed;
+        bool in_flight = true, called = false;
+        StopTicket stop;
+        Probe::in_flight = &in_flight;
+        Probe::maintaining = [&] {
+            if (called)
+                return;
+            called = true;
+            stop = take(f.runs.stop(id));
+            assert(!stop.complete() && Probe::destroyed == destroyed);
+            const auto nested = f.runtime->driveFrame();
+            assert(
+                !nested &&
+                std::get<lux::scene::ESceneRuntimeError>(nested.error().cause) == lux::scene::ESceneRuntimeError::BUSY
+            );
+        };
+        f.frame();
+        Probe::maintaining = {};
+        assert(called && !stop.complete() && Probe::destroyed == destroyed);
+        f.frame();
+        assert(!stop.complete() && Probe::destroyed == destroyed);
+        in_flight = false;
+        f.until([&] { return stop.complete(); });
+        Probe::in_flight = nullptr;
+        assert(Probe::destroyed == destroyed + 1 && !f.runtime->borrowClock(instance));
+        const auto status = take(f.runs.stepStatus(ticket));
+        assert(status.state == lux::scene::ESceneStepState::CANCELLED && !status.result);
+        assert(
+            std::get<lux::scene::ESceneRuntimeError>(status.result.error().cause) ==
+            lux::scene::ESceneRuntimeError::STOPPED
+        );
+        assert(f.runs.acknowledgeStop(id));
+        assert(!f.runs.stepStatus(ticket));
+        assert(!f.runtime->stepStatus(ticket.step, stop.retirement));
+        f.frame();
+        assert(Probe::destroyed == destroyed + 1);
+        std::puts("PASS R06-R1-04 callback stop, real pending endpoint, outer BUSY, one destruction, late CANCELLED");
+    }
+    void resultCapacity()
+    {
+        Fixture f{1};
+        const auto destroyed = Probe::destroyed;
+        RunId previous;
+        lux::scene::SceneInstanceId previous_instance;
+        for (unsigned cycle{}; cycle < 64; ++cycle)
+        {
+            const auto id = f.start();
+            assert(f.runs.pause(id));
+            f.until([&] { return take(f.runs.info(id)).state == ERunState::PAUSED; });
+            const auto instance = take(f.runs.info(id)).instance;
+            if (previous.valid())
+            {
+                assert(id.slot == previous.slot && id.generation != previous.generation);
+                assert(instance.slot == previous_instance.slot && instance.generation != previous_instance.generation);
+                assert(!f.runs.info(previous));
+            }
+            std::vector<StepTicket> tickets;
+            for (unsigned i{}; i < 32; ++i)
+                tickets.push_back(take(f.runs.step(id)));
+            assert(!f.runs.step(id));
+            assert(!f.runs.acknowledgeStep(tickets.front()));
+            const auto stop = take(f.runs.stop(id));
+            assert(!f.runs.acknowledgeStop(id));
+            f.until([&] { return stop.complete(); });
+            assert(Probe::destroyed == destroyed + cycle + 1);
+            const auto full = f.controller.prepare(*f.author, f.environment());
+            assert(!full && std::get<ERunError>(full.error().cause) == ERunError::CAPACITY);
+            for (auto ticket : tickets)
+                assert(take(f.runs.stepStatus(ticket)).state == lux::scene::ESceneStepState::CANCELLED);
+            assert(f.runs.acknowledgeStep(tickets.front()));
+            assert(!f.runs.acknowledgeStep(tickets.front()));
+            assert(!f.runtime->stepStatus(tickets.front().step, stop.retirement));
+            assert(take(f.runs.stop(id)).complete());
+            assert(f.runs.acknowledgeStop(id));
+            assert(!f.runs.acknowledgeStop(id));
+            for (auto ticket : tickets)
+            {
+                assert(!f.runs.stepStatus(ticket));
+                assert(!f.runtime->stepStatus(ticket.step, stop.retirement));
+            }
+            previous = id;
+            previous_instance = instance;
+        }
+        assert(Probe::destroyed == destroyed + 64);
+        std::puts("PASS R06-R1-05 64 generations, 32 slots, single/aggregate acknowledgement, no heavy retention");
+    }
     void completion()
     {
         Fixture f;
@@ -437,6 +643,12 @@ int main(int argc, char** argv)
         failure();
     else if (mode == "completion")
         completion();
+    else if (mode == "r1-callback")
+        callbackResults();
+    else if (mode == "r1-capacity")
+        resultCapacity();
+    else if (mode == "r1-queued" || mode == "r1-mixed" || mode == "r1-failed")
+        return lateResults(mode) ? 0 : 1;
     else
         return 2;
 }

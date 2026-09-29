@@ -59,3 +59,25 @@ P07 author projection, P10 complete new UI/GPU product validation and P12 applic
 remain subsequent work. C01/C03/C04 remain unchanged. P06 qualification reproduced the archived
 Physics2D generated-header ordering failure and corrected only the description target's generator
 prerequisites. Both failures remain archived; this is not a whole-repository cold-build qualification.
+
+## P06 R1: results after instance retirement
+
+Instance resources, step results and Run identity have separate lifetimes. SceneRuntime remains the
+sole producer of FIFO results. Its preallocated InstanceLifetime owns the single 32-slot ledger;
+Record no longer contains a second steps array or sequence counter. Instance retirement completes
+at the original safe point without keeping Registry, Simulation, tasks or GPU scenes alive for queries.
+
+RunStore reads that same ledger through the matching InstanceRetirement after the live slot disappears.
+COMPLETED, FAILED (including its original phase/payload) and CANCELLED (STOPPED reason) remain available
+until acknowledgeStep. acknowledgeStop explicitly acknowledges all remaining terminal results, then
+releases the Run slot. Keeping a StopTicket copy does not prevent that cleanup. A stopped unconfirmed
+Run still counts against the existing store capacity. Confirmed tickets and old Run generations are invalid.
+
+Runtime stepStatus/acknowledgeStep accept an optional matching retirement receipt; without one they
+retain live-slot-only semantics. Both paths enforce the same owner thread, runtime domain, instance
+and ticket identity, and dispatch exclusion. Completion polling alone remains cross-thread safe.
+
+Only failure values retain the required registration code pins, ordered after payload destruction.
+Copied SceneStepStatus values own their pins too; replacing a value cannot unload its old code before
+its payload destructor returns. Retirement drops the ledger's creation-time pins; it retains no graph
+or rendering ownership. No parallel scheduler, history, global ticket registry or result mirror was added.

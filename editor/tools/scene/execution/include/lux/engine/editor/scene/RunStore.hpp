@@ -34,9 +34,11 @@ namespace lux::editor::scene
         [[nodiscard]] RunResult<void> pause(RunId) noexcept;
         [[nodiscard]] RunResult<void> resume(RunId);
         [[nodiscard]] RunResult<StepTicket> step(RunId);
+        // Results survive instance reclamation until individual acknowledgement or acknowledgeStop.
         [[nodiscard]] RunResult<lux::scene::SceneStepStatus> stepStatus(StepTicket) const noexcept;
         [[nodiscard]] RunResult<void> acknowledgeStep(StepTicket) noexcept;
         [[nodiscard]] RunResult<StopTicket> stop(RunId);
+        // Final acknowledgement clears every remaining terminal step, then releases the Run slot.
         [[nodiscard]] RunResult<void> acknowledgeStop(RunId);
         // Receives actual drive/retirement facts, then maintains pause debug state. No tick here.
         [[nodiscard]] RunResult<void> update();

@@ -120,6 +120,29 @@ namespace lux::scene
 
     struct SceneStepStatus final
     {
+    private:
+        // Declared before the value: plugin payloads are destroyed while their code is still pinned.
+        std::shared_ptr<const void> code_lifetime_;
+
+    public:
+        SceneStepStatus() noexcept = default;
+        SceneStepStatus(
+            ESceneStepState value,
+            SceneRuntimeResult<void> outcome,
+            std::shared_ptr<const void> code = {}
+        ) noexcept
+            : code_lifetime_(std::move(code)), state(value), result(std::move(outcome))
+        {}
+        SceneStepStatus(const SceneStepStatus&) = default;
+        SceneStepStatus(SceneStepStatus&&) noexcept = default;
+        SceneStepStatus& operator=(SceneStepStatus value) noexcept
+        {
+            using std::swap;
+            swap(code_lifetime_, value.code_lifetime_);
+            swap(state, value.state);
+            swap(result, value.result);
+            return *this;
+        }
         ESceneStepState state{ESceneStepState::QUEUED};
         SceneRuntimeResult<void> result;
     };
@@ -187,8 +210,14 @@ namespace lux::scene
         [[nodiscard]] SceneRuntimeResult<void> resumeSimulation(SceneInstanceId) noexcept;
         // At most 32 unacknowledged tickets per instance. Only paused instances admit steps.
         [[nodiscard]] SceneRuntimeResult<SceneStepTicket> requestStep(SceneInstanceId) noexcept;
-        [[nodiscard]] SceneRuntimeResult<SceneStepStatus> stepStatus(SceneStepTicket) const noexcept;
-        [[nodiscard]] SceneRuntimeResult<void> acknowledgeStep(SceneStepTicket) noexcept;
+        // Without a receipt these queries address an active slot only. The matching retirement
+        // receipt retains the same 32 results after reclamation; owner/thread/identity checks still apply.
+        [[nodiscard]] SceneRuntimeResult<SceneStepStatus> stepStatus(SceneStepTicket, const InstanceRetirement& = {})
+            const noexcept;
+        [[nodiscard]] SceneRuntimeResult<void> acknowledgeStep(
+            SceneStepTicket,
+            const InstanceRetirement& = {}
+        ) noexcept;
         // May be called inside a system callback; no callback or erasure happens here.
         [[nodiscard]] SceneRuntimeResult<InstanceRetirement> retireInstance(SceneInstanceId) noexcept;
         [[nodiscard]] DriveResult driveFrame() noexcept;

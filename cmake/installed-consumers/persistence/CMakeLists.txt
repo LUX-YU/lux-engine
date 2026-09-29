@@ -1,0 +1,21 @@
+cmake_minimum_required(VERSION 3.22)
+project(persistence_consumer LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 20)
+foreach(domain scene material flowforge)
+    find_package(lux-engine-editor-${domain}-persistence REQUIRED COMPONENTS ${domain}_persistence)
+endforeach()
+find_package(lux-engine-editor-project-io REQUIRED COMPONENTS project_io)
+# The qualification script copies the public-API behavioral consumer here before configuring.
+# This project has no source/build-tree include or link search path.
+add_executable(persistence_consumer main.cpp)
+target_link_libraries(persistence_consumer PRIVATE lux::engine::editor::scene_persistence
+    lux::engine::editor::material_persistence lux::engine::editor::flowforge_persistence lux::engine::editor::project_io)
+if(MSVC)
+    target_compile_options(persistence_consumer PRIVATE /UNDEBUG /Zc:__cplusplus /permissive- /utf-8)
+else()
+    target_compile_options(persistence_consumer PRIVATE -UNDEBUG)
+endif()
+enable_testing()
+foreach(scenario models save-as unknown order close close-key capacity execution decoded receipts identities conflict)
+    add_test(NAME persistence_consumer.${scenario} COMMAND persistence_consumer "${CMAKE_CURRENT_BINARY_DIR}/files" ${scenario})
+endforeach()

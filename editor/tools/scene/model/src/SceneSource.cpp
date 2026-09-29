@@ -231,6 +231,9 @@ namespace lux::editor::scene
 
         SceneEditResult<void> SceneSourceAccess::copyOpaque(const Data& from, Data& to, SceneBudget& budget)
         {
+            if (!budget.take(from.partition_ids.size() * sizeof(world::WorldPartitionId)))
+                return rejected(ESceneEditError::BUDGET);
+            to.partition_ids = from.partition_ids;
             if (!budget.take(from.package.mount_hint.size()))
                 return rejected(ESceneEditError::BUDGET);
             to.package.mount_hint = from.package.mount_hint;
@@ -273,6 +276,7 @@ namespace lux::editor::scene
             result.cursor_ = cursor;
             result.configuration_ = std::move(*configuration);
             result.objects_ = std::move(*content);
+            result.partition_ids_ = std::move(opaque.partition_ids);
             result.volumes_ = std::move(opaque.volumes);
             result.package_ = std::move(opaque.package);
             result.retained_bytes_ = budget.used();
@@ -335,6 +339,9 @@ namespace lux::editor::scene
         if (!result)
             return result;
         Data original;
+        original.partition_ids.resize(package.world->data().partitionCount());
+        for (const auto& partition : package.partitions)
+            original.partition_ids[partition->partition().value] = partition->id();
         original.volumes = package.volumes;
         original.package = package.package;
         if (auto copied = detail::SceneSourceAccess::copyOpaque(original, *result->data_, budget); !copied)

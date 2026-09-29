@@ -4,6 +4,37 @@
 
 namespace lux::scene
 {
+    lux::cxx::expected<ScenePackage, ScenePackageFailure> copyScenePackage(
+        const ScenePackage& source,
+        asset::AssetId id,
+        std::stop_token stop
+    )
+    {
+        const bool unknown_roots = !source.scene->auxiliaryPayloads().empty() ||
+                                   !source.world->auxiliaryPayloads().empty() ||
+                                   !source.simulation->auxiliaryPayloads().empty();
+        const bool unsupported_structure = !source.world->data().partitionIndexes().empty() ||
+                                           source.package.entries.size() != source.volumes.size() + 3;
+        if (unknown_roots || unsupported_structure)
+            return lux::cxx::unexpected(ScenePackageFailure{
+                EScenePackageError::INVALID_ARGUMENT,
+                id,
+                0,
+                std::string("Package extensions or indexes contain identity references that cannot be rewritten safely"
+                ),
+                "scene.save-as.extensions"
+            });
+        return assembleScenePackage(
+            id,
+            source.world->data().name(),
+            source.world->data().schemas(),
+            source.world->data().partitioner(),
+            source.partitions,
+            source.simulation->sharedData(),
+            source.scene->data(),
+            stop
+        );
+    }
     namespace
     {
         constexpr std::size_t kSourceLimit = 256U * 1024U * 1024U;

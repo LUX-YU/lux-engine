@@ -1,3 +1,14 @@
+add_component(COMPONENT_NAME editor_file_publication NAMESPACE lux::engine::editor STATIC
+    SOURCE_FILES src/FilePublication.cpp)
+component_include_directories(editor_file_publication
+    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+target_link_libraries(editor_file_publication PUBLIC lux::cxx::compile_time PRIVATE lux::cxx::algorithm)
+component_add_transitive_commands(editor_file_publication
+    "find_package(lux-cxx REQUIRED COMPONENTS compile_time algorithm)")
+lux_classify_target(TARGET editor_file_publication LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+lux_engine_install_components(PROJECT_NAME lux-engine-editor-file-publication VERSION ${PROJECT_VERSION}
+    NAMESPACE lux::engine::editor COMPONENTS editor_file_publication)
+
 generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_STORAGE_LIBRARY
     PUBLIC_MACRO_NAME LUX_EDITOR_STORAGE_PUBLIC DISABLE_DLL_MACRO_NAME LUX_EDITOR_STORAGE_DLL_DISABLE
     GENERATE_FILE_PATH lux/engine/editor/storage/visibility.h)
@@ -22,7 +33,9 @@ endif()
 target_link_libraries(editor_storage PUBLIC lux::engine::editor::editor_project lux::engine::editor::editor_editing
     lux::engine::core::object lux::engine::core::log lux::engine::core::meta
     lux::engine::process::process_execution lux::engine::process::asset_loading lux::engine::resource::asset)
-target_link_libraries(editor_storage PRIVATE lux::engine::scene::scene_asset)
+target_link_libraries(editor_storage PRIVATE lux::engine::scene::scene_asset lux::engine::editor::editor_file_publication)
+component_add_transitive_commands(editor_storage
+    "find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)")
 component_add_transitive_commands(editor_storage "find_package(lux-engine-scene-asset REQUIRED COMPONENTS scene_asset)")
 component_add_transitive_commands(editor_storage
     "find_package(lux-engine-editor-project REQUIRED COMPONENTS editor_project)"

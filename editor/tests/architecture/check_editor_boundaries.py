@@ -186,6 +186,10 @@ def inspect(repo, records, rules, stage, compile_db=None):
     if stage >= "P04":
         check_model(repo, targets, rules, sources, report, "flowforge_model")
 
+    if stage >= "P05":
+        for target in ["editor_persistence", "project_io", "scene_persistence", "material_persistence", "flowforge_persistence"]:
+            check_model(repo, targets, rules, sources, report, target)
+
     scopes = tuple(rules["new_scopes"])
     forbidden_headers = set(rules["new_scope_forbidden_include"])
     for path, source in sources.items():

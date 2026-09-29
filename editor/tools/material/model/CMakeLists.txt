@@ -1,5 +1,5 @@
 add_component(COMPONENT_NAME material_model NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/MaterialSession.cpp src/edits/MaterialGraphEdit.cpp src/edits/MaterialValueEdit.cpp)
+    SOURCE_FILES src/MaterialSession.cpp src/MaterialPersistenceAccess.cpp src/edits/MaterialGraphEdit.cpp src/edits/MaterialValueEdit.cpp)
 component_include_directories(material_model
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(material_model PUBLIC lux::engine::editor::edit_sessions lux::engine::editor::edit_history

@@ -165,7 +165,8 @@ namespace lux::editor::material
         return gate_.withRead([&]() -> MaterialEditResult<MaterialSnapshot> {
             try
             {
-                if (detail::sourceBytes(source_) > budget.max_bytes)
+                const auto lease_bytes = code_.size() * sizeof(contracts::CodeLease);
+                if (lease_bytes > budget.max_bytes || detail::sourceBytes(source_) > budget.max_bytes - lease_bytes)
                     return detail::rejected(EMaterialEditError::BUDGET);
                 MaterialSnapshot result;
                 result.code_ = code_;
@@ -174,8 +175,10 @@ namespace lux::editor::material
                     return detail::rejected(EMaterialEditError::CALLBACK);
                 result.content_ = content_;
                 result.observed_ = observed_;
-                if (detail::sourceBytes(result.source_) > budget.max_bytes)
+                const auto content_bytes = detail::sourceBytes(result.source_);
+                if (content_bytes > budget.max_bytes - lease_bytes)
                     return detail::rejected(EMaterialEditError::BUDGET);
+                result.retained_bytes_ = content_bytes + lease_bytes;
                 return result;
             }
             catch (const std::bad_alloc&)

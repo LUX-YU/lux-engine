@@ -65,15 +65,17 @@ namespace lux::scene
     [[nodiscard]] LUX_ENGINE_SCENE_ASSET_PUBLIC lux::cxx::expected<std::vector<std::byte>, ScenePackageFailure>
     encodeScenePackage(const ScenePackage&, std::size_t max_bytes, std::stop_token = {});
 
+    // Clone the package envelope; author object and partition identities remain stable.
+    // Unknown root references and indexed layouts are rejected before any IO.
+    [[nodiscard]] LUX_ENGINE_SCENE_ASSET_PUBLIC lux::cxx::expected<ScenePackage, ScenePackageFailure> copyScenePackage(
+        const ScenePackage&,
+        asset::AssetId,
+        std::stop_token = {}
+    );
+
     // Pure single-partition construction; systems and their explicit bindings are preserved.
     [[nodiscard]] LUX_ENGINE_SCENE_ASSET_PUBLIC lux::cxx::expected<ScenePackage, ScenePackageFailure>
-    createScenePackage(
-        asset::AssetId,
-        std::string_view,
-        std::span<const world::WorldDataSchemaId>,
-        std::shared_ptr<const simulation::SimulationDescription>,
-        const SceneDescription&
-    ) noexcept;
+    createScenePackage(asset::AssetId, std::string_view, std::span<const world::WorldDataSchemaId>, std::shared_ptr<const simulation::SimulationDescription>, const SceneDescription&) noexcept;
 
     // Reassemble explicitly supplied content. Callers must reject extensions with unknown identity references.
     [[nodiscard]] LUX_ENGINE_SCENE_ASSET_PUBLIC lux::cxx::expected<ScenePackage, ScenePackageFailure>

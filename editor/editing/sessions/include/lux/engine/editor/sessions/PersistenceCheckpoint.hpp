@@ -15,6 +15,13 @@ namespace lux::editor::sessions
         friend bool operator==(const BoundSource&, const BoundSource&) noexcept = default;
     };
     using SourceBinding = std::optional<BoundSource>;
+    // Owning synchronous role result; no second mutable persistence state.
+    struct SessionPersistenceView final
+    {
+        ContentStamp content;
+        BindingRevision revision;
+        SourceBinding source;
+    };
     struct PersistedState final
     {
         editing::StateId state;

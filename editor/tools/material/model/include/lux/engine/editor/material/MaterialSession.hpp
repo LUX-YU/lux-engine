@@ -14,6 +14,7 @@ namespace lux::editor::material
     {
         editing::HistoryLimits history{1024, 64 * 1024 * 1024, 16 * 1024 * 1024, 256};
     };
+    class MaterialPersistenceAccess;
     class MaterialSession final : public sessions::IEditSession
     {
     public:
@@ -35,6 +36,7 @@ namespace lux::editor::material
         [[nodiscard]] MaterialEditResult<MaterialSnapshot> capture(MaterialSnapshotBudget budget = {}) const;
 
     private:
+        friend class MaterialPersistenceAccess;
         friend struct detail::MaterialSessionAccess;
         friend class detail::PreparedMaterialReload;
         struct Impl;

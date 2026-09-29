@@ -1,5 +1,5 @@
 add_component(COMPONENT_NAME scene_model NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/SceneSource.cpp src/SceneSession.cpp src/SceneAlgorithms.cpp
+    SOURCE_FILES src/SceneSource.cpp src/SceneSession.cpp src/ScenePersistenceAccess.cpp src/SceneAlgorithms.cpp
         src/edits/SceneObjectEdit.cpp src/edits/SceneFieldEdit.cpp src/edits/SceneConfigurationEdit.cpp)
 component_include_directories(scene_model
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)

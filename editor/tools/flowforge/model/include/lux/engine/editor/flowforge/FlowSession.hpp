@@ -13,6 +13,7 @@ namespace lux::editor::flowforge
     {
         editing::HistoryLimits history{1024, 64 * 1024 * 1024, 16 * 1024 * 1024, 256};
     };
+    class FlowPersistenceAccess;
     class FlowSession final : public sessions::IEditSession
     {
     public:
@@ -36,6 +37,7 @@ namespace lux::editor::flowforge
         [[nodiscard]] FlowEditResult<FlowSnapshot> capture(FlowSnapshotBudget budget = {}) const;
 
     private:
+        friend class FlowPersistenceAccess;
         friend struct detail::FlowSessionAccess;
         friend class detail::PreparedFlowReload;
         struct Impl;

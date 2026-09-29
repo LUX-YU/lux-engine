@@ -335,97 +335,97 @@
       "id": "OLDDEF_EditorContext",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?EditorContext\\b|\\busing\\s+EditorContext\\s*=",
-      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d EditorContext"
+      "description": "旧公开 owner/协议或别名 EditorContext"
     },
     {
       "id": "OLDDEF_PaneManager",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?PaneManager\\b|\\busing\\s+PaneManager\\s*=",
-      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d PaneManager"
+      "description": "旧公开 owner/协议或别名 PaneManager"
     },
     {
       "id": "OLDDEF_SceneEditor",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?SceneEditor\\b|\\busing\\s+SceneEditor\\s*=",
-      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d SceneEditor"
+      "description": "旧公开 owner/协议或别名 SceneEditor"
     },
     {
       "id": "OLDDEF_MaterialEditor",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?MaterialEditor\\b|\\busing\\s+MaterialEditor\\s*=",
-      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d MaterialEditor"
+      "description": "旧公开 owner/协议或别名 MaterialEditor"
     },
     {
       "id": "OLDDEF_FlowForgeEditor",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?FlowForgeEditor\\b|\\busing\\s+FlowForgeEditor\\s*=",
-      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d FlowForgeEditor"
+      "description": "旧公开 owner/协议或别名 FlowForgeEditor"
     },
     {
       "id": "OLDDEF_WorkspaceRequest",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?WorkspaceRequest\\b|\\busing\\s+WorkspaceRequest\\s*=",
-      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d WorkspaceRequest"
+      "description": "旧公开 owner/协议或别名 WorkspaceRequest"
     },
     {
       "id": "OLDDEF_EWorkspaceAction",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?EWorkspaceAction\\b|\\busing\\s+EWorkspaceAction\\s*=",
-      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d EWorkspaceAction"
+      "description": "旧公开 owner/协议或别名 EWorkspaceAction"
     },
     {
       "id": "OLDDEF_PaneRegistration",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?PaneRegistration\\b|\\busing\\s+PaneRegistration\\s*=",
-      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d PaneRegistration"
+      "description": "旧公开 owner/协议或别名 PaneRegistration"
     },
     {
       "id": "OLDDEF_CommandRegistration",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?CommandRegistration\\b|\\busing\\s+CommandRegistration\\s*=",
-      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d CommandRegistration"
+      "description": "旧公开 owner/协议或别名 CommandRegistration"
     },
     {
       "id": "OLDDEF_CloseRequest",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?CloseRequest\\b|\\busing\\s+CloseRequest\\s*=",
-      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d CloseRequest"
+      "description": "旧公开 owner/协议或别名 CloseRequest"
     },
     {
       "id": "OLDDEF_AssetEditStatus",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?AssetEditStatus\\b|\\busing\\s+AssetEditStatus\\s*=",
-      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d AssetEditStatus"
+      "description": "旧公开 owner/协议或别名 AssetEditStatus"
     },
     {
       "id": "OLDDEF_LegacyPersistenceState",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?LegacyPersistenceState\\b|\\busing\\s+LegacyPersistenceState\\s*=",
-      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d LegacyPersistenceState"
+      "description": "旧公开 owner/协议或别名 LegacyPersistenceState"
     },
     {
       "id": "OLDDEF_LegacySaveTicket",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?LegacySaveTicket\\b|\\busing\\s+LegacySaveTicket\\s*=",
-      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d LegacySaveTicket"
+      "description": "旧公开 owner/协议或别名 LegacySaveTicket"
     },
     {
       "id": "OLDDEF_LegacyPersistenceOutcome",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?LegacyPersistenceOutcome\\b|\\busing\\s+LegacyPersistenceOutcome\\s*=",
-      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d LegacyPersistenceOutcome"
+      "description": "旧公开 owner/协议或别名 LegacyPersistenceOutcome"
     },
     {
       "id": "HISTORY_SAVE_API",
       "deadline": "P01",
       "pattern": "\\bEditHistory::(?:beginSave|finishSave)\\s*\\(",
-      "description": "\u5df2\u5220\u9664\u7684\u5386\u53f2\u4fdd\u5b58 API \u5b9a\u4e49"
+      "description": "已删除的历史保存 API 定义"
     },
     {
       "id": "OLD_RUNTIME_API",
       "deadline": "P06",
       "pattern": "\\bSceneRuntime::(?:valid|invalid|tick|getSceneRegistry|getClock|destroy)\\s*\\(",
-      "description": "\u65e7 runtime \u516c\u5f00\u5b9a\u4e49"
+      "description": "旧 runtime 公开定义"
     },
     {
       "id": "P01_BRIDGE_OUTCOME",
@@ -499,14 +499,14 @@
     "editor/transition/LegacyPersistenceState.hpp",
     "editor/transition/LegacyPersistenceState.cpp"
   ],
-  "note": "\u6587\u672c\u68c0\u67e5\uff0c\u4e0d\u626b\u63cf\u6ce8\u91ca\u8bed\u4e49\u3001\u4e0d\u7b49\u540c AST\uff1b\u5b9e\u9645P00\u8d26\u672c\u9700\u6269\u5145\u3002\u65b0scope\u9ed8\u8ba4\u4e0d\u542b\u7f16\u8f91\u5668\u65e7tools/src\uff1b\u65e7\u534f\u8bae\u5b57\u7b26\u4e32\u6570\u636e\u4e0d\u7981\u6b62\u3002",
+  "note": "文本检查，不扫描注释语义、不等同 AST；实际P00账本需扩充。新scope默认不含编辑器旧tools/src；旧协议字符串数据不禁止。",
   "targets": [
     {
       "name": "editor_contracts",
       "path": "editor/contracts",
       "first_phase": "P01",
       "dependencies": [],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -516,7 +516,7 @@
       "dependencies": [
         "editor_contracts"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -527,7 +527,7 @@
         "editor_contracts",
         "edit_history"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -538,7 +538,7 @@
         "edit_sessions",
         "edit_history"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -549,7 +549,7 @@
         "edit_sessions",
         "edit_history"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": "material_model"
     },
     {
@@ -560,7 +560,7 @@
         "edit_sessions",
         "edit_history"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": "flowforge_model"
     },
     {
@@ -571,8 +571,8 @@
         "editor_contracts",
         "edit_sessions"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
-      "actual_cmake_target": null
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "actual_cmake_target": "editor_persistence"
     },
     {
       "name": "project_io",
@@ -581,8 +581,8 @@
       "dependencies": [
         "editor_persistence"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
-      "actual_cmake_target": null
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "actual_cmake_target": "project_io"
     },
     {
       "name": "scene_persistence",
@@ -592,8 +592,8 @@
         "scene_model",
         "editor_persistence"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
-      "actual_cmake_target": null
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "actual_cmake_target": "scene_persistence"
     },
     {
       "name": "material_persistence",
@@ -603,8 +603,8 @@
         "material_model",
         "editor_persistence"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
-      "actual_cmake_target": null
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "actual_cmake_target": "material_persistence"
     },
     {
       "name": "flowforge_persistence",
@@ -614,8 +614,8 @@
         "flowforge_model",
         "editor_persistence"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
-      "actual_cmake_target": null
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "actual_cmake_target": "flowforge_persistence"
     },
     {
       "name": "scene_execution_api",
@@ -624,7 +624,7 @@
       "dependencies": [
         "edit_sessions"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -635,7 +635,7 @@
         "scene_execution_api",
         "scene_model"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -646,7 +646,7 @@
         "scene_model",
         "scene_execution_api"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -657,7 +657,7 @@
         "material_model",
         "editor_persistence"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -668,7 +668,7 @@
         "flowforge_model",
         "editor_persistence"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -679,7 +679,7 @@
         "scene_model",
         "scene_execution_api"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -689,7 +689,7 @@
       "dependencies": [
         "material_model"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -699,7 +699,7 @@
       "dependencies": [
         "flowforge_model"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -709,7 +709,7 @@
       "dependencies": [
         "editor_contracts"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -719,7 +719,7 @@
       "dependencies": [
         "view_api"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -729,7 +729,7 @@
       "dependencies": [
         "view_api"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -740,7 +740,7 @@
         "view_api",
         "edit_sessions"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -752,7 +752,7 @@
         "recovery_model",
         "editor_persistence"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -763,7 +763,7 @@
         "view_api",
         "layout_model"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -778,7 +778,7 @@
         "scene_projection",
         "scene_execution_api"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -792,7 +792,7 @@
         "material_interaction",
         "material_preview"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -806,7 +806,7 @@
         "flowforge_interaction",
         "flowforge_compilation"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -817,7 +817,7 @@
         "view_api",
         "editor_widgets"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -829,7 +829,7 @@
         "editor_widgets",
         "project_io"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -841,7 +841,7 @@
         "edit_sessions",
         "view_api"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -854,7 +854,7 @@
         "view_api",
         "editor_commands"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -864,7 +864,7 @@
       "dependencies": [
         "extension_api"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -881,7 +881,7 @@
         "editor_commands",
         "extension_api"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -898,7 +898,7 @@
         "editor_workflows",
         "extension_api"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -914,7 +914,7 @@
         "editor_workflows",
         "extension_api"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -930,7 +930,7 @@
         "editor_workflows",
         "extension_api"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -948,7 +948,7 @@
         "tasks_ui",
         "project_ui"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     },
     {
@@ -958,7 +958,7 @@
       "dependencies": [
         "editor_bootstrap"
       ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
+      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
     }
   ],
@@ -1284,7 +1284,8 @@
       "utility",
       "variant",
       "vector",
-      "lux/engine/editor/scene/SceneEditError.hpp"
+      "lux/engine/editor/scene/SceneEditError.hpp",
+      "lux/engine/editor/scene/ScenePersistenceAccess.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/sessions/",
@@ -1395,7 +1396,8 @@
       "lux/engine/editor/material/MaterialEdit.hpp",
       "lux/engine/editor/material/MaterialSession.hpp",
       "lux/engine/editor/material/MaterialSessionAccess.hpp",
-      "lux/engine/editor/material/MaterialSnapshot.hpp"
+      "lux/engine/editor/material/MaterialSnapshot.hpp",
+      "lux/engine/editor/material/MaterialPersistenceAccess.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/sessions/",
@@ -1518,12 +1520,694 @@
       "lux/engine/editor/flowforge/FlowEdit.hpp",
       "lux/engine/editor/flowforge/FlowSession.hpp",
       "lux/engine/editor/flowforge/FlowSessionAccess.hpp",
-      "lux/engine/editor/flowforge/FlowSnapshot.hpp"
+      "lux/engine/editor/flowforge/FlowSnapshot.hpp",
+      "lux/engine/editor/flowforge/FlowPersistenceAccess.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/sessions/",
       "lux/engine/editor/contracts/",
       "lux/cxx/compile_time/",
+      "lux/engine/flowforge/graph/",
+      "lux/engine/flowforge/script/",
+      "lux/engine/meta/"
+    ]
+  },
+  "editor_persistence": {
+    "direct": [
+      "edit_sessions"
+    ],
+    "closure": {
+      "edit_history": {
+        "path": "editor/editing/history"
+      },
+      "edit_sessions": {
+        "path": "editor/editing/sessions"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "stduuid": {
+        "imported": true
+      }
+    },
+    "headers": [
+      "Windows.h",
+      "algorithm",
+      "array",
+      "atomic",
+      "bit",
+      "cassert",
+      "charconv",
+      "chrono",
+      "cmath",
+      "compare",
+      "concepts",
+      "cstddef",
+      "cstdint",
+      "cstdio",
+      "cstdlib",
+      "cstring",
+      "exception",
+      "filesystem",
+      "fstream",
+      "functional",
+      "iostream",
+      "limits",
+      "map",
+      "memory",
+      "new",
+      "numbers",
+      "optional",
+      "random",
+      "ranges",
+      "span",
+      "stdexcept",
+      "stop_token",
+      "string",
+      "string_view",
+      "thread",
+      "tuple",
+      "type_traits",
+      "unordered_map",
+      "unordered_set",
+      "utility",
+      "variant",
+      "vector",
+      "lux/cxx/compile_time/expected.hpp"
+    ],
+    "prefixes": [
+      "lux/engine/editor/contracts/",
+      "lux/engine/editor/persistence/",
+      "lux/engine/editor/sessions/"
+    ]
+  },
+  "project_io": {
+    "direct": [
+      "editor_file_publication",
+      "editor_persistence",
+      "process_execution"
+    ],
+    "closure": {
+      "STDEXEC::stdexec": {
+        "imported": true
+      },
+      "Threads::Threads": {
+        "imported": true
+      },
+      "async_port": {
+        "path": "modules/core/async_port"
+      },
+      "edit_history": {
+        "path": "editor/editing/history"
+      },
+      "edit_sessions": {
+        "path": "editor/editing/sessions"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "editor_file_publication": {
+        "path": "editor/storage"
+      },
+      "editor_persistence": {
+        "path": "editor/persistence"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "lux::cxx::algorithm": {
+        "imported": true
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "process_execution": {
+        "path": "engine/process/execution"
+      },
+      "stduuid": {
+        "imported": true
+      }
+    },
+    "headers": [
+      "Windows.h",
+      "algorithm",
+      "array",
+      "atomic",
+      "bit",
+      "cassert",
+      "charconv",
+      "chrono",
+      "cmath",
+      "compare",
+      "concepts",
+      "cstddef",
+      "cstdint",
+      "cstdio",
+      "cstdlib",
+      "cstring",
+      "exception",
+      "filesystem",
+      "fstream",
+      "functional",
+      "iostream",
+      "limits",
+      "lux/engine/editor/storage/FilePublication.hpp",
+      "map",
+      "memory",
+      "new",
+      "numbers",
+      "optional",
+      "random",
+      "ranges",
+      "span",
+      "stdexcept",
+      "stop_token",
+      "string",
+      "string_view",
+      "thread",
+      "tuple",
+      "type_traits",
+      "unordered_map",
+      "unordered_set",
+      "utility",
+      "variant",
+      "vector"
+    ],
+    "prefixes": [
+      "lux/engine/editor/contracts/",
+      "lux/engine/editor/io/",
+      "lux/engine/editor/persistence/",
+      "lux/engine/editor/sessions/",
+      "lux/engine/process/"
+    ]
+  },
+  "scene_persistence": {
+    "direct": [
+      "editor_persistence",
+      "scene_model"
+    ],
+    "closure": {
+      "Eigen3::Eigen": {
+        "imported": true
+      },
+      "EnTT::EnTT": {
+        "imported": true
+      },
+      "STDEXEC::stdexec": {
+        "imported": true
+      },
+      "Threads::Threads": {
+        "imported": true
+      },
+      "asset": {
+        "path": "modules/resource/asset"
+      },
+      "async_port": {
+        "path": "modules/core/async_port"
+      },
+      "core": {
+        "path": "engine/domain/simulation/ecs/core"
+      },
+      "description": {
+        "path": "modules/resource/description"
+      },
+      "domain_system_description": {
+        "path": "engine/domain/system/description"
+      },
+      "domain_system_identity": {
+        "path": "engine/domain/system/identity"
+      },
+      "edit_history": {
+        "path": "editor/editing/history"
+      },
+      "edit_sessions": {
+        "path": "editor/editing/sessions"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "editor_persistence": {
+        "path": "editor/persistence"
+      },
+      "hierarchy": {
+        "path": "engine/domain/simulation/ecs/hierarchy"
+      },
+      "hierarchy_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/hierarchy"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "lux::cxx::algorithm": {
+        "imported": true
+      },
+      "lux::cxx::binary": {
+        "imported": true
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::memory": {
+        "imported": true
+      },
+      "math": {
+        "path": "modules/core/math"
+      },
+      "partition_identity": {
+        "path": "engine/domain/partition/identity"
+      },
+      "process_execution": {
+        "path": "engine/process/execution"
+      },
+      "process_world_loading": {
+        "path": "engine/process/world_loading"
+      },
+      "scene_asset": {
+        "path": "engine/scene/asset"
+      },
+      "scene_camera": {
+        "path": "engine/scene/components/camera"
+      },
+      "scene_camera_component_codegen_generate": {
+        "path": "engine/scene/components/camera"
+      },
+      "scene_description": {
+        "path": "engine/scene/description"
+      },
+      "scene_model": {
+        "path": "editor/tools/scene/model"
+      },
+      "scene_world_materialization": {
+        "path": "engine/scene/integration/world_materialization"
+      },
+      "schema": {
+        "path": "engine/domain/simulation/ecs/schema"
+      },
+      "script_core": {
+        "path": "modules/function/script/core"
+      },
+      "semantic": {
+        "path": "modules/core/semantic"
+      },
+      "serialization": {
+        "path": "modules/core/serialization"
+      },
+      "simulation_asset": {
+        "path": "engine/domain/simulation/asset"
+      },
+      "simulation_description": {
+        "path": "engine/domain/simulation/description"
+      },
+      "snapshot": {
+        "path": "engine/domain/simulation/ecs/snapshot"
+      },
+      "stduuid": {
+        "imported": true
+      },
+      "transform": {
+        "path": "engine/domain/simulation/ecs/transform"
+      },
+      "transform_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/transform"
+      },
+      "type_info": {
+        "path": "modules/core/type_info"
+      },
+      "visual": {
+        "path": "engine/domain/simulation/ecs/visual"
+      },
+      "visual_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/visual"
+      },
+      "world_asset": {
+        "path": "engine/domain/world/asset"
+      },
+      "world_description": {
+        "path": "engine/domain/world/description"
+      },
+      "world_identity": {
+        "path": "engine/domain/world/identity"
+      },
+      "world_partition": {
+        "path": "engine/domain/world/partition"
+      },
+      "world_storage": {
+        "path": "engine/domain/world/storage"
+      }
+    },
+    "headers": [
+      "Windows.h",
+      "algorithm",
+      "array",
+      "atomic",
+      "bit",
+      "cassert",
+      "charconv",
+      "chrono",
+      "cmath",
+      "compare",
+      "concepts",
+      "cstddef",
+      "cstdint",
+      "cstdio",
+      "cstdlib",
+      "cstring",
+      "exception",
+      "filesystem",
+      "fstream",
+      "functional",
+      "iostream",
+      "limits",
+      "lux/engine/editor/editing/EditHistory.hpp",
+      "lux/engine/editor/editing/EditOperation.hpp",
+      "lux/engine/editor/editing/EditTypes.hpp",
+      "lux/engine/editor/scene/FieldValue.hpp",
+      "lux/engine/editor/scene/SceneAlgorithms.hpp",
+      "lux/engine/editor/scene/SceneCodec.hpp",
+      "lux/engine/editor/scene/SceneEdit.hpp",
+      "lux/engine/editor/scene/SceneEditError.hpp",
+      "lux/engine/editor/scene/SceneObjectRef.hpp",
+      "lux/engine/editor/scene/ScenePersistenceAccess.hpp",
+      "lux/engine/editor/scene/SceneSaveSource.hpp",
+      "lux/engine/editor/scene/SceneSession.hpp",
+      "lux/engine/editor/scene/SceneSessionAccess.hpp",
+      "lux/engine/editor/scene/SceneSnapshot.hpp",
+      "lux/engine/editor/scene/SceneSource.hpp",
+      "lux/engine/scene/Camera.hpp",
+      "lux/engine/scene/CameraSchema.hpp",
+      "lux/engine/scene/ScenePackage.hpp",
+      "lux/engine/scene/WorldMaterializer.hpp",
+      "lux/engine/simulation/SimulationDescriptionBuilder.hpp",
+      "map",
+      "memory",
+      "new",
+      "numbers",
+      "optional",
+      "random",
+      "ranges",
+      "span",
+      "stdexcept",
+      "stop_token",
+      "string",
+      "string_view",
+      "thread",
+      "tuple",
+      "type_traits",
+      "unordered_map",
+      "unordered_set",
+      "utility",
+      "variant",
+      "vector"
+    ],
+    "prefixes": [
+      "Eigen/",
+      "lux/cxx/compile_time/",
+      "lux/engine/editor/contracts/",
+      "lux/engine/editor/persistence/",
+      "lux/engine/editor/sessions/",
+      "lux/engine/meta/",
+      "lux/engine/resource/asset/",
+      "lux/engine/simulation/ecs/",
+      "lux/engine/world/"
+    ]
+  },
+  "material_persistence": {
+    "direct": [
+      "editor_persistence",
+      "material_model"
+    ],
+    "closure": {
+      "Eigen3::Eigen": {
+        "imported": true
+      },
+      "description": {
+        "path": "modules/resource/description"
+      },
+      "edit_history": {
+        "path": "editor/editing/history"
+      },
+      "edit_sessions": {
+        "path": "editor/editing/sessions"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "editor_persistence": {
+        "path": "editor/persistence"
+      },
+      "graph": {
+        "path": "modules/function/graph"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::memory": {
+        "imported": true
+      },
+      "material_graph": {
+        "path": "modules/function/material"
+      },
+      "material_model": {
+        "path": "editor/tools/material/model"
+      },
+      "math": {
+        "path": "modules/core/math"
+      },
+      "script_core": {
+        "path": "modules/function/script/core"
+      },
+      "semantic": {
+        "path": "modules/core/semantic"
+      },
+      "stduuid": {
+        "imported": true
+      }
+    },
+    "headers": [
+      "Windows.h",
+      "algorithm",
+      "array",
+      "atomic",
+      "bit",
+      "cassert",
+      "charconv",
+      "chrono",
+      "cmath",
+      "compare",
+      "concepts",
+      "cstddef",
+      "cstdint",
+      "cstdio",
+      "cstdlib",
+      "cstring",
+      "exception",
+      "filesystem",
+      "fstream",
+      "functional",
+      "iostream",
+      "limits",
+      "lux/engine/editor/editing/EditHistory.hpp",
+      "lux/engine/editor/editing/EditOperation.hpp",
+      "lux/engine/editor/editing/EditTypes.hpp",
+      "lux/engine/editor/material/MaterialCodec.hpp",
+      "lux/engine/editor/material/MaterialEdit.hpp",
+      "lux/engine/editor/material/MaterialPersistenceAccess.hpp",
+      "lux/engine/editor/material/MaterialSaveSource.hpp",
+      "lux/engine/editor/material/MaterialSession.hpp",
+      "lux/engine/editor/material/MaterialSessionAccess.hpp",
+      "lux/engine/editor/material/MaterialSnapshot.hpp",
+      "map",
+      "memory",
+      "new",
+      "numbers",
+      "optional",
+      "random",
+      "ranges",
+      "span",
+      "stdexcept",
+      "stop_token",
+      "string",
+      "string_view",
+      "thread",
+      "tuple",
+      "type_traits",
+      "unordered_map",
+      "unordered_set",
+      "utility",
+      "variant",
+      "vector"
+    ],
+    "prefixes": [
+      "lux/cxx/compile_time/",
+      "lux/engine/editor/contracts/",
+      "lux/engine/editor/persistence/",
+      "lux/engine/editor/sessions/",
+      "lux/engine/material/graph/"
+    ]
+  },
+  "flowforge_persistence": {
+    "direct": [
+      "editor_persistence",
+      "flowforge_model"
+    ],
+    "closure": {
+      "Eigen3::Eigen": {
+        "imported": true
+      },
+      "description": {
+        "path": "modules/resource/description"
+      },
+      "edit_history": {
+        "path": "editor/editing/history"
+      },
+      "edit_sessions": {
+        "path": "editor/editing/sessions"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "editor_persistence": {
+        "path": "editor/persistence"
+      },
+      "flowforge": {
+        "path": "modules/function/flowforge"
+      },
+      "flowforge_model": {
+        "path": "editor/tools/flowforge/model"
+      },
+      "graph": {
+        "path": "modules/function/graph"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "lux::cxx::algorithm": {
+        "imported": true
+      },
+      "lux::cxx::binary": {
+        "imported": true
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::memory": {
+        "imported": true
+      },
+      "lux::cxx::reflection_runtime": {
+        "imported": true
+      },
+      "math": {
+        "path": "modules/core/math"
+      },
+      "meta": {
+        "path": "modules/core/meta"
+      },
+      "script_core": {
+        "path": "modules/function/script/core"
+      },
+      "semantic": {
+        "path": "modules/core/semantic"
+      },
+      "stduuid": {
+        "imported": true
+      },
+      "type_info": {
+        "path": "modules/core/type_info"
+      }
+    },
+    "headers": [
+      "Windows.h",
+      "algorithm",
+      "array",
+      "atomic",
+      "bit",
+      "cassert",
+      "charconv",
+      "chrono",
+      "cmath",
+      "compare",
+      "concepts",
+      "cstddef",
+      "cstdint",
+      "cstdio",
+      "cstdlib",
+      "cstring",
+      "exception",
+      "filesystem",
+      "fstream",
+      "functional",
+      "iostream",
+      "limits",
+      "lux/engine/editor/editing/EditHistory.hpp",
+      "lux/engine/editor/editing/EditOperation.hpp",
+      "lux/engine/editor/editing/EditTypes.hpp",
+      "lux/engine/editor/flowforge/FlowAuthoringSource.hpp",
+      "lux/engine/editor/flowforge/FlowCodec.hpp",
+      "lux/engine/editor/flowforge/FlowEdit.hpp",
+      "lux/engine/editor/flowforge/FlowPersistenceAccess.hpp",
+      "lux/engine/editor/flowforge/FlowSaveSource.hpp",
+      "lux/engine/editor/flowforge/FlowSession.hpp",
+      "lux/engine/editor/flowforge/FlowSessionAccess.hpp",
+      "lux/engine/editor/flowforge/FlowSnapshot.hpp",
+      "map",
+      "memory",
+      "new",
+      "numbers",
+      "optional",
+      "random",
+      "ranges",
+      "span",
+      "stdexcept",
+      "stop_token",
+      "string",
+      "string_view",
+      "thread",
+      "tuple",
+      "type_traits",
+      "unordered_map",
+      "unordered_set",
+      "utility",
+      "variant",
+      "vector"
+    ],
+    "prefixes": [
+      "lux/cxx/compile_time/",
+      "lux/engine/editor/contracts/",
+      "lux/engine/editor/persistence/",
+      "lux/engine/editor/sessions/",
       "lux/engine/flowforge/graph/",
       "lux/engine/flowforge/script/",
       "lux/engine/meta/"

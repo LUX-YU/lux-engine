@@ -18,6 +18,7 @@ namespace lux::editor::scene
         struct SceneSessionAccess;
     }
 
+    class ScenePersistenceAccess;
     class SceneSession final : public sessions::IEditSession
     {
     public:
@@ -39,6 +40,7 @@ namespace lux::editor::scene
         [[nodiscard]] SceneEditResult<SceneChangeSet> changesSince(SceneChangeCursor cursor) const;
 
     private:
+        friend class ScenePersistenceAccess;
         friend struct detail::SceneSessionAccess;
         friend class detail::PreparedSceneReload;
         struct Impl;

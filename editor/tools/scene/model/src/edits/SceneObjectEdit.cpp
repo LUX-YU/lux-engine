@@ -17,8 +17,8 @@ namespace lux::editor::scene::detail
     {
         const ecs::ComponentEntityResolver resolver{
             &identities,
-            [](const void* owner, world::WorldObjectId id) noexcept 
-            -> lux::cxx::expected<ecs::Entity, ecs::ComponentDecodeFailure> {
+            [](const void* owner,
+               world::WorldObjectId id) noexcept -> lux::cxx::expected<ecs::Entity, ecs::ComponentDecodeFailure> {
                 if (!id.valid())
                     return ecs::NullEntity;
                 const auto entity = static_cast<const ecs::WorldEntityMap*>(owner)->entity(id);
@@ -526,8 +526,11 @@ namespace lux::editor::scene::detail
             if (!candidate)
                 return lux::cxx::unexpected(editFailure(candidate.error()));
             auto& data = SceneSourceAccess::data(*candidate);
+            if (!preparation.take(source.partition_ids.size() * sizeof(world::WorldPartitionId)))
+                return lux::cxx::unexpected(editFailure(SceneEditError{ESceneEditError::BUDGET}));
             // Already-frozen immutable bytes can share ownership with a candidate.
             data.volumes = source.volumes;
+            data.partition_ids = source.partition_ids;
             data.package = source.package;
             auto charged = budget.reserve(preparation.used() + sizeof(SceneObjectPlan) + edit_.input.change.bytes());
             if (!charged)

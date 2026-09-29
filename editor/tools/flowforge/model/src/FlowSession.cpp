@@ -148,6 +148,7 @@ namespace lux::editor::flowforge
         result.source_ = std::move(*source);
         result.content_ = content_;
         result.observed_ = observed_;
+        result.retained_bytes_ = detail::sourceBytes(source_);
         return result;
     }
     FlowEditResult<FlowSnapshot> FlowReadView::capture(FlowSnapshotBudget budget) const

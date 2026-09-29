@@ -12,6 +12,7 @@ namespace lux::editor::scene
         simulation::ecs::ComponentSchemaSet schemas;
         SceneConfiguration configuration;
         std::vector<lux::cxx::SharedBytes<>> volumes;
+        std::vector<world::WorldPartitionId> partition_ids;
         lux::asset::PakDecodedImage package;
         simulation::ecs::Registry registry;
         simulation::ecs::WorldEntityMap identities;

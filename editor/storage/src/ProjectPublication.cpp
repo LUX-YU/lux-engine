@@ -1,4 +1,5 @@
 #include <lux/engine/editor/PublicationProbe.hpp>
+#include <lux/engine/editor/storage/FilePublication.hpp>
 #include <lux/engine/editor/storage/ProjectPublication.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 
@@ -76,115 +77,36 @@ namespace lux::editor
 #endif
         }
 
-        std::string hexDigest(const lux::cxx::algorithm::Sha256Digest& value)
-        {
-            constexpr char hex[] = "0123456789abcdef";
-            std::string result;
-            result.reserve(value.size() * 2);
-            for (const auto item : value)
-            {
-                const auto byte = static_cast<unsigned char>(item);
-                result.push_back(hex[byte >> 4]);
-                result.push_back(hex[byte & 15]);
-            }
-            return result;
-        }
-
         std::string digest(std::span<const std::byte> bytes)
         {
-            lux::cxx::algorithm::Sha256 hash;
-            hash.update(bytes);
-            return hexDigest(hash.digest());
+            return storage::publicationDigest(bytes);
         }
-
         EditorResult<std::vector<std::byte>> read(const std::filesystem::path& path)
         {
-            std::error_code error;
-            const auto size = std::filesystem::file_size(path, error);
-            if (error || size > file_limit)
-            {
-                return failed(EProjectPublicationError::READ, path, error.value());
-            }
-            std::vector<std::byte> bytes(static_cast<std::size_t>(size));
-            std::ifstream file(path, std::ios::binary);
-            if (!file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())))
-            {
-                return failed(EProjectPublicationError::READ, path);
-            }
-            LUX_EDITOR_IO("publication-read", path, bytes.size());
-            return bytes;
+            auto result = storage::readPublicationFile(path, file_limit);
+            if (!result)
+                return failed(EProjectPublicationError::READ, path, result.error().native_code);
+            LUX_EDITOR_IO("publication-read", path, result->size());
+            return std::move(*result);
         }
-
         EditorResult<void> write(const std::filesystem::path& path, std::span<const std::byte> bytes)
         {
-#if defined(_WIN32)
-            const auto file =
-                CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-            if (file == INVALID_HANDLE_VALUE)
+            auto result = storage::writePublicationFile(path, bytes);
+            if (!result)
             {
-                return failed(EProjectPublicationError::WRITE, path, GetLastError());
+                const auto code = result.error().code == storage::EFilePublicationError::FLUSH
+                                      ? EProjectPublicationError::FLUSH
+                                      : EProjectPublicationError::WRITE;
+                return failed(code, path, result.error().native_code);
             }
-            DWORD count{};
-            const bool written = bytes.size() <= MAXDWORD &&
-                                 WriteFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &count, nullptr) &&
-                                 count == bytes.size();
-            const auto write_error = GetLastError();
-            const bool flushed = written && FlushFileBuffers(file);
-            const auto flush_error = GetLastError();
-            CloseHandle(file);
-            if (!written)
-            {
-                return failed(EProjectPublicationError::WRITE, path, write_error);
-            }
-            if (!flushed)
-            {
-                return failed(EProjectPublicationError::FLUSH, path, flush_error);
-            }
-#else
-            const auto file = ::open(path.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0600);
-            if (file < 0)
-            {
-                return failed(EProjectPublicationError::WRITE, path, errno);
-            }
-            std::size_t offset{};
-            while (offset < bytes.size())
-            {
-                const auto count = ::write(file, bytes.data() + offset, bytes.size() - offset);
-                if (count <= 0)
-                {
-                    const auto error = errno;
-                    ::close(file);
-                    return failed(EProjectPublicationError::WRITE, path, error);
-                }
-                offset += static_cast<std::size_t>(count);
-            }
-            const auto flushed = ::fsync(file);
-            const auto error = errno;
-            ::close(file);
-            if (flushed != 0)
-            {
-                return failed(EProjectPublicationError::FLUSH, path, error);
-            }
-#endif
             LUX_EDITOR_IO("publication-write", path, bytes.size());
             return {};
         }
-
         EditorResult<void> replace(const std::filesystem::path& staged, const std::filesystem::path& target)
         {
-#if defined(_WIN32)
-            if (!MoveFileExW(staged.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-            {
-                return failed(EProjectPublicationError::REPLACE, target, GetLastError());
-            }
-#else
-            std::error_code error;
-            std::filesystem::rename(staged, target, error);
-            if (error)
-            {
-                return failed(EProjectPublicationError::REPLACE, target, error.value());
-            }
-#endif
+            auto result = storage::replacePublicationFile(staged, target);
+            if (!result)
+                return failed(EProjectPublicationError::REPLACE, target, result.error().native_code);
             return {};
         }
 
@@ -397,46 +319,16 @@ namespace lux::editor
 
     EditorResult<std::string> projectFileDigest(const std::filesystem::path& path)
     {
+        auto result = storage::publicationFileDigest(path);
+        if (!result)
+            return failed(EProjectPublicationError::READ, path, result.error().native_code);
         std::error_code error;
-        const bool exists = std::filesystem::exists(path, error);
-        if (error)
-        {
-            return failed(EProjectPublicationError::READ, path, error.value());
-        }
-        if (!exists)
-        {
-            return std::string{"missing"};
-        }
         const auto size = std::filesystem::file_size(path, error);
-        if (error || size > file_limit)
+        if (!error)
         {
-            return failed(EProjectPublicationError::READ, path, error.value());
+            LUX_EDITOR_IO("hash-read", path, size);
         }
-        std::ifstream file(path, std::ios::binary);
-        if (!file)
-        {
-            return failed(EProjectPublicationError::READ, path);
-        }
-        std::array<std::byte, 64U * 1024U> buffer;
-        lux::cxx::algorithm::Sha256 hash;
-        std::uint64_t total{};
-        while (file)
-        {
-            file.read(reinterpret_cast<char*>(buffer.data()), buffer.size());
-            const auto count = static_cast<std::size_t>(file.gcount());
-            total += count;
-            if (total > file_limit)
-            {
-                return failed(EProjectPublicationError::READ, path);
-            }
-            hash.update(std::span<const std::byte>(buffer).first(count));
-        }
-        if (file.bad() || total != size)
-        {
-            return failed(EProjectPublicationError::READ, path);
-        }
-        LUX_EDITOR_IO("hash-read", path, total);
-        return hexDigest(hash.digest());
+        return std::move(*result);
     }
 
     std::string projectContentDigest(std::span<const std::byte> bytes)

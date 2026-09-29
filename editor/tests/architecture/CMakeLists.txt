@@ -32,3 +32,8 @@ target_link_libraries(editor_three_sessions_test PRIVATE scene_model material_mo
 lux_editor_test_options(editor_three_sessions_test)
 add_test(NAME editor.three_actual_sessions COMMAND editor_three_sessions_test)
 set_tests_properties(editor.three_actual_sessions PROPERTIES LABELS "editor;native;P04")
+add_test(NAME editor.persistence_boundaries
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_persistence_boundaries.py"
+        --source "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}"
+        --evidence "${CMAKE_CURRENT_BINARY_DIR}/persistence-boundaries.json")
+set_tests_properties(editor.persistence_boundaries PROPERTIES LABELS "editor;native;P05" TIMEOUT 180)

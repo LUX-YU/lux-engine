@@ -12,6 +12,10 @@ namespace lux::editor::flowforge
     class FlowSnapshot final
     {
     public:
+        [[nodiscard]] std::size_t retainedBytes() const noexcept
+        {
+            return retained_bytes_;
+        }
         [[nodiscard]] const lux::flowforge::FlowSource& source() const noexcept
         {
             return source_;
@@ -31,6 +35,7 @@ namespace lux::editor::flowforge
         lux::flowforge::FlowSource source_;
         sessions::ContentStamp content_;
         sessions::ObservationVersion observed_;
+        std::size_t retained_bytes_{};
     };
     class FlowReadView final
     {

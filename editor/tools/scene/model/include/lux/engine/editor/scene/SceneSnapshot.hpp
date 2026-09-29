@@ -53,6 +53,10 @@ namespace lux::editor::scene
         {
             return objects_;
         }
+        [[nodiscard]] std::span<const world::WorldPartitionId> partitionIds() const noexcept
+        {
+            return partition_ids_;
+        }
         [[nodiscard]] std::span<const lux::cxx::SharedBytes<>> volumes() const noexcept
         {
             return volumes_;
@@ -74,6 +78,7 @@ namespace lux::editor::scene
         SceneChangeCursor cursor_;
         SceneConfiguration configuration_;
         std::vector<SceneObjectData> objects_;
+        std::vector<world::WorldPartitionId> partition_ids_;
         std::vector<lux::cxx::SharedBytes<>> volumes_;
         lux::asset::PakDecodedImage package_;
         std::size_t retained_bytes_{};

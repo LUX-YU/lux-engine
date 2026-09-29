@@ -24,10 +24,15 @@ namespace lux::editor::material
             swap(source_, previous.source_);
             swap(content_, previous.content_);
             swap(observed_, previous.observed_);
+            swap(retained_bytes_, previous.retained_bytes_);
             return *this;
         }
         MaterialSnapshot(const MaterialSnapshot&) = delete;
         MaterialSnapshot& operator=(const MaterialSnapshot&) = delete;
+        [[nodiscard]] std::size_t retainedBytes() const noexcept
+        {
+            return retained_bytes_;
+        }
         [[nodiscard]] const lux::material::MaterialSource& source() const noexcept
         {
             return source_;
@@ -44,11 +49,13 @@ namespace lux::editor::material
     private:
         friend class MaterialSession;
         friend class MaterialReadView;
+        friend class MaterialPersistenceAccess;
         // Kept outside the graph, so the last node destructor returns before code is released.
         std::vector<contracts::CodeLease> code_;
         lux::material::MaterialSource source_;
         sessions::ContentStamp content_;
         sessions::ObservationVersion observed_;
+        std::size_t retained_bytes_{};
     };
 
     // Synchronous borrow invalidated by edit/reload/close. Owning clone/codec calls enter the same

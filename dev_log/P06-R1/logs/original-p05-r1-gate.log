@@ -1,0 +1,1 @@
+PASS P05 R1 gate: X05-01..09; three real models, IO/adoption/rebind and stale completion; original 104 tests/assertions; R05-01..08; clean-clone exact-SHA all/build/install/9 consumers/negative closure; C01/C03/C04 remain FAIL; stop at P05.

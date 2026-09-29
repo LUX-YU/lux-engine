@@ -1,0 +1,34 @@
+{
+  "reviewed_head": "cc3f455095f52e9a2740bf0a31a55e6672240916",
+  "implementation_sha": "26cca1c47adabdbf52346e149b44f7264479bf40",
+  "review_kind": "source_and_archived_evidence_review",
+  "decision": "P06 targeted correction requested; do not start P07",
+  "finding": "B01: unacknowledged step outcomes become unqueryable after runtime record reclamation, before Run acknowledgement",
+  "finding_evidence": "static control flow; no new runtime reproduction performed in review environment",
+  "test_fragment_compiled": false,
+  "test_fragment_run": false,
+  "independent_engine_build": false,
+  "independent_ctest_run": false,
+  "full_archive_hash_revalidation": false,
+  "reported_editor_ctest": {
+    "passed": 121,
+    "total": 121,
+    "reviewer_read_summary": true
+  },
+  "reported_player_ctest": {
+    "passed": 11,
+    "total": 11,
+    "basis": "P06 README; not independently rerun"
+  },
+  "docs_contract_clarification": "acknowledgeStop may explicitly acknowledge the whole completed Run including remaining terminal step results",
+  "generated_files": [
+    {
+      "path": "REVIEW_AND_INSTRUCTIONS.md",
+      "sha256": "65fe8beeafef8401b234d0af111ebece1d161cef31838c10492d43cfc6b81095"
+    },
+    {
+      "path": "tests/step_results_after_retirement.inc",
+      "sha256": "d6943ed4d374ed323ab559a3d2f87ba7e35323573c920ca23ea5e5b8115624b5"
+    }
+  ]
+}

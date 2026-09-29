@@ -1,0 +1,9 @@
+[0/2] Re-checking globbed directories...
+[1/52] Building CXX object engine\scene\composition\CMakeFiles\scene_composition.dir\src\SceneRuntime.cpp.obj
+[2/52] Linking CXX shared library bin\lux_engine_scene_composition.dll
+[3/6] Building CXX object engine\scene\composition\CMakeFiles\scene_runtime_test.dir\test\runtime.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/6] Linking CXX executable bin\scene_runtime_test.exe
+[5/6] Building CXX object editor\tools\scene\execution\CMakeFiles\editor_scene_execution_test.dir\test\runs.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[6/6] Linking CXX executable bin\editor_scene_execution_test.exe

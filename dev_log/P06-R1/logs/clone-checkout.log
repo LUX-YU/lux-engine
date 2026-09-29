@@ -1,0 +1,2 @@
+Previous HEAD position was 0df87d89c Preserve bounded step results through scene instance retirement
+HEAD is now at 2c8b189c6 Protect retained error copies from recursive Run acknowledgement

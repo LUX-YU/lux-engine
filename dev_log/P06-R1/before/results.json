@@ -1,0 +1,14 @@
+[
+  {
+    "case": "r1-queued",
+    "exit_code": 1
+  },
+  {
+    "case": "r1-mixed",
+    "exit_code": 1
+  },
+  {
+    "case": "r1-failed",
+    "exit_code": 1
+  }
+]

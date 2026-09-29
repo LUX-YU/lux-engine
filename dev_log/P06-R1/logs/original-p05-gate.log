@@ -1,0 +1,1 @@
+PASS P05 gate: X05-01..09; three real models, IO/adoption/rebind and stale completion; original 88 tests/assertions; exact-SHA build/install/consumers/negative closure; C01/C03/C04 remain FAIL; stop at P05.

@@ -19,9 +19,9 @@ namespace lux::render
     void handleGrid3DSetParams(GeneralRenderServer::Dispatcher::Ctx& ctx, const Grid3DSetParamsPayload& p)
     {
         auto* sc = lookupScene(ctx.user_state, p.scene_id);
-        if (sc)
+        if (sc && sc->getView(p.view))
             if (auto* f = sc->getFeatureAs<Grid3DPassFeature>(p.feature))
-                f->setGrid3DParams({p.planeY, p.cellSize, p.linePx, p.fadeDist, p.holeRatio, p.onTop});
+                f->setGrid3DParams(p.view, {p.planeY, p.cellSize, p.linePx, p.fadeDist, p.holeRatio, p.onTop});
     }
 
 } // namespace lux::render

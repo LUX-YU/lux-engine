@@ -8,7 +8,7 @@
 #include <lux/engine/flowforge/graph/FlowSource.hpp>
 #include <lux/engine/editor/ui/CloseReview.hpp>
 #include <lux/engine/editor/flowforge/FlowForgeEditor.hpp>
-#include <lux/engine/editor/flowforge/FlowCompilation.hpp>
+#include "FlowCompilationAccess.hpp"
 #include <lux/engine/editor/detail/AssetSave.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/detail/AssetSource.hpp>
@@ -75,20 +75,11 @@ namespace lux::editor::flowforge
         bool hide_requested_{};
 
         std::variant<std::monostate, FlowSave> save_;
-        struct Compilation final
-        {
-            process::TaskId id;
-            editing::HistoryId history;
-            editing::StateId state;
-            editing::Revision revision;
-            VFlowCompileStatus status{FlowCompilePending{}};
-            std::optional<FlowCompiled> output;
-            std::optional<FlowLinkInput> retry;
-        };
-        std::variant<std::monostate, Compilation> compilation_;
-        std::optional<FlowCompilationResult> compile_result_;
-        process::Task compile_task_;
-        void acceptCompilation(process::TTaskResult<FlowCompiled, FlowCompilationFailure>&&) noexcept;
+        FlowCompilationService compilations_;
+        FlowCompileId compilation_;
+        std::string compile_name_;
+        process::TaskId notified_compile_;
+        const FlowCompileOperation* currentCompilation() const noexcept;
         std::uint64_t next_save_{1};
         bool busy_{}, finishing_interaction_{};
 

@@ -92,3 +92,6 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     set_tests_properties(editor.inspector_codegen editor.scene_configuration
         PROPERTIES LABELS "editor;native")
 endif()
+
+target_link_libraries(editor_ui PUBLIC lux::engine::editor::scene_projection)
+component_add_transitive_commands(editor_ui "find_package(lux-engine-editor-scene-projection REQUIRED COMPONENTS scene_projection)")

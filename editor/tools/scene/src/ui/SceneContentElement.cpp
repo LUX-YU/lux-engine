@@ -332,6 +332,17 @@ namespace lux::editor::ui
                 }
             }
         }
+        if (viewport_ && editor_.scene)
+        {
+            const auto& selected = editor_.inspectedSelection();
+            auto submitted = viewport_->presentation().updateOverlay(
+                editor_.editor_context_.renderRuntime(),
+                {selected.object, selected.revision, editor_.structure_revision.value, editor_.work_plane_height}
+            );
+            if (!submitted)
+                editor_.failure =
+                    EditorFailure{EEditorError::SOURCE_FAILURE, "scene.overlay", 0, {}, submitted.error()};
+        }
     }
 
     void SceneContentElement::drawPlacement()

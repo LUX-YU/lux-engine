@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/ResourceStatus.hpp>
 #include <lux/engine/editor/metadata/AssetEditorRegistration.hpp>
 #include <lux/engine/scene/RenderAssets.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -522,7 +523,6 @@ namespace lux::editor::scene
         if (value != this->work_plane_height)
         {
             this->work_plane_height = value;
-            this->work_plane_pending = true;
         }
         return {};
     }
@@ -1134,8 +1134,7 @@ namespace lux::editor::scene
         }
         if (!safe(inspectedScene()))
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "scene.resource.retry"});
-        auto& assets = *lux::scene::RenderAssets::find(registry(inspectedScene()), render->system);
-        const auto result = assets.retry(key);
+        const auto result = scene::retryResource(runtime_, {instance(), render->system, key});
         if (!result)
         {
             return lux::cxx::unexpected(
@@ -1541,8 +1540,10 @@ namespace lux::editor::scene
             snapshot->revision = this->resource_snapshot ? this->resource_snapshot->revision + 1 : 1;
             if (assets)
             {
-                const auto rows = assets->statuses();
-                snapshot->rows.assign(rows.begin(), rows.end());
+                auto captured = captureResourceStatus(runtime_, instance(), render->system);
+                if (!captured)
+                    return;
+                snapshot->rows = std::move(captured->rows);
             }
             this->resource_instance = instance();
             this->observed_resources = revision;
@@ -1552,9 +1553,6 @@ namespace lux::editor::scene
                 "resourcesChanged"
             );
         }
-        if (scene && runSettled())
-            updateWorkPlane();
-        updateHighlight();
     }
 } // namespace lux::editor::scene
 
@@ -1652,7 +1650,6 @@ namespace lux::editor::scene
         if (asset_status_.phase != EAssetEditPhase::IDLE)
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "scene.viewport.system"});
         viewport_system_ = id;
-        highlighted_instance = {};
         return {};
     }
 

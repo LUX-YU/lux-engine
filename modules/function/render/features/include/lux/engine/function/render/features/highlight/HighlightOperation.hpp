@@ -49,6 +49,7 @@ namespace lux::render
     {
         RenderSceneId scene_id{};
         FeatureHandle feature{};
+        ViewHandle view{};
         LUX_OP_BLOB() BlobRef targets {};
     };
     static_assert(std::is_trivially_copyable_v<HighlightReplaceTargetsPayload>);

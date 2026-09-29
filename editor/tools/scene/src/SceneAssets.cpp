@@ -179,12 +179,10 @@ namespace lux::editor::scene
             runtime_,
             *candidate_,
             editor_context_.sceneRegistrations(),
-            editor_context_.project().tasks(),
+            editor_context_.execution(),
             editor_context_.renderRuntime(),
             editor_context_.renderResources(),
-            candidate_assets_,
-
-            true
+            candidate_assets_
         );
         if (!created)
             return lux::cxx::unexpected(created.error());
@@ -265,9 +263,6 @@ namespace lux::editor::scene
         observed_history = {};
         changed_assets.clear();
         failure.emplace<std::monostate>();
-        highlight_program.clear_keep_capacity();
-        work_plane_program.clear_keep_capacity();
-        highlight_pending = work_plane_pending = false;
         if (scene)
         {
             content.emplace(std::move(*candidate_content_));

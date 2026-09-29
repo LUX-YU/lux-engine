@@ -227,11 +227,31 @@ namespace lux::render
     // =========================================================================
     //  Render graph passes
     // =========================================================================
-    void HighlightFeature::replaceTargets(std::vector<ERenderEntityId> targets)
+    void HighlightFeature::replaceTargets(ViewHandle view, std::vector<ERenderEntityId> targets)
     {
         std::ranges::sort(targets);
         targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
-        targets_ = std::move(targets);
+        auto found = std::ranges::find(targets_, view, &ViewTargets::view);
+        if (found != targets_.end())
+        {
+            if (targets.empty())
+                targets_.erase(found);
+            else
+                found->targets = std::move(targets);
+        }
+        else if (!targets.empty())
+            targets_.push_back({view, std::move(targets)});
+    }
+
+    void HighlightFeature::deallocateViewState(std::uint32_t view)
+    {
+        std::erase_if(targets_, [view](const auto& entry) { return entry.view.index == view; });
+    }
+
+    std::span<const ERenderEntityId> HighlightFeature::targets(ViewHandle view) const noexcept
+    {
+        const auto found = std::ranges::find(targets_, view, &ViewTargets::view);
+        return found == targets_.end() ? std::span<const ERenderEntityId>{} : found->targets;
     }
 
     void HighlightFeature::addPasses(RGBuilder& builder)
@@ -263,7 +283,7 @@ namespace lux::render
             .write(target_rg, ERGBufferRole::STORAGE)
             .setKernelFn([this, target_rg, capacity, words](const PassRecordContext& rec) {
                 target_mask_.assign((std::max)(words, 1u), 0u);
-                for (const auto source : targets_)
+                for (const auto source : targets(rec.view ? rec.view->handle : ViewHandle{}))
                 {
                     const auto object = instance_res_->findSource(source);
                     if (instance_res_->isAlive(object))

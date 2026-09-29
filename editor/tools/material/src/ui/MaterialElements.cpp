@@ -1,6 +1,5 @@
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/editor/material/MaterialEditorImpl.hpp>
-#include <lux/engine/editor/material/MaterialPreview.hpp>
 #include <lux/engine/editor/detail/SignalDelivery.hpp>
 #include <lux/engine/editor/ui/AssetActions.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -1016,7 +1015,8 @@ namespace lux::editor::material
             lux::system::SystemInstanceId render_system
         )
             : lux::ui::Element(*editor_.editor_, lux::ui::ElementId{"content"}), editor_(editor_),
-              layout_(*this, lux::ui::ElementId{"layout"}), asset_actions_(layout_, *editor_.editor_, editor_.project(), status),
+              layout_(*this, lux::ui::ElementId{"layout"}),
+              asset_actions_(layout_, *editor_.editor_, editor_.project(), status),
               work_(layout_, lux::ui::ElementId{"work"}, lux::ui::ELayoutType::HORIZONTAL),
               graph_(work_, editor_, status), side_(work_, lux::ui::ElementId{"compilation"}),
               actions_(side_, lux::ui::ElementId{"actions"}, lux::ui::ELayoutType::HORIZONTAL),
@@ -1221,7 +1221,7 @@ namespace lux::editor::material
     MaterialEditor::Impl::~Impl()
     {
         reading_ = {};
-        compile_task_ = {};
+        compilation_.reset();
         completion_work_.cancel();
     }
 }

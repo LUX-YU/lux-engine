@@ -4,7 +4,6 @@
 #include <lux/engine/editor/detail/SignalDelivery.hpp>
 #include <lux/engine/editor/ui/HistoryCommands.hpp>
 #include <algorithm>
-#include <lux/engine/editor/material/MaterialPreview.hpp>
 #include <cmath>
 #include <lux/engine/editor/detail/AssetSave.hpp>
 #include <lux/engine/editor/material/MaterialCompilation.hpp>
@@ -428,53 +427,32 @@ namespace lux::editor::material
 
     EditorResult<lux::process::TaskId> MaterialEditor::Impl::requestCompile()
     {
-        if (!history_ || saved_history_ || asset_status_.phase != EAssetEditPhase::IDLE)
+        const bool is_unavailable = !history_ || saved_history_ || asset_status_.phase != EAssetEditPhase::IDLE;
+        const bool has_pending_compile =
+            compilation_ && (!compilation_->ready() || notified_compile_ != compilation_->id());
+        if (is_unavailable || busy_ || has_pending_compile)
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "material.compile"});
-        if (this->busy_ || compile_task_ || compile_result_)
-        {
-            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "material.compile"});
-        }
-        auto view = this->history_->view();
+        const auto view = history_->view();
         if (!view)
-        {
             return lux::cxx::unexpected(historyFailure(view.error()));
-        }
         auto assets = capturePreviewAssets();
         if (!assets)
             return lux::cxx::unexpected(assets.error());
-        lux::material::MaterialSource capture{source_.id, source_.name, source_.graph.clone()};
-        auto& execution = editor_context_.execution();
-        auto admitted = execution.submit(
-            {"Compile material", "compiler"},
-            [source = std::move(capture),
-             path = std::string(editor_context_.project().assetName(source_.id)),
-             cpu = execution.cpu()](process::TaskReporter reporter) mutable noexcept {
-                return compileMaterialAsset(std::move(source), std::move(path), cpu, reporter);
-            },
-            [this](process::TTaskResult<MaterialCompiled, EditorFailure>&& result) noexcept {
-                compile_result_.emplace(detail::taskResult(std::move(result)));
-                compile_task_ = {};
-                completion_work_.request();
-            }
+        createPreview();
+        const MaterialCompileKey key{{{}, view->snapshot.current}, {}, 1, preview_->target()};
+        auto admitted = transition::MaterialCompilationAccess::start(
+            editor_context_.execution(),
+            {source_.id, source_.name, source_.graph.clone()},
+            key,
+            {view->snapshot.revision.value}
         );
         if (!admitted)
-            return lux::cxx::unexpected(EditorFailure{
-                EEditorError::EXECUTION_FAILURE,
-                "material.compile",
-                static_cast<std::uint64_t>(admitted.error()),
-                {},
-                admitted.error()
-            });
-        const auto id = admitted->id();
-        compilation_.emplace<Compilation>(
-            id,
-            history_->id(),
-            view->snapshot.current,
-            view->snapshot.revision,
-            std::move(*assets)
-        );
-        compile_task_ = std::move(*admitted);
-        return id;
+            return lux::cxx::unexpected(transition::MaterialCompilationAccess::failure(admitted.error()));
+        compilation_ = std::move(*admitted);
+        compile_assets_ = std::move(*assets);
+        compile_name_ = editor_context_.project().assetName(source_.id);
+        preview_->setDesired(key);
+        return compilation_->task();
     }
     EditorResult<SaveRequestId> MaterialEditor::Impl::requestPublish(lux::process::TaskId compile, std::string origin)
     {
@@ -510,12 +488,15 @@ namespace lux::editor::material
             );
         }
         const SaveRequestId id{this->history_->id(), this->next_save_++};
-        const auto& job = std::get<Compilation>(this->compilation_);
-        const auto& image = job.output->publication;
+        const auto output = compilation_->result();
+        const detail::TCompiledCapture<lux::material::MaterialSource> image{
+            (*output)->source,
+            {(*output)->artifact->id(), asset::MaterialAsset::primary_magic, compile_name_, {}, (*output)->bytes}
+        };
         this->save_.emplace<MaterialSave>(
             id,
             *ticket,
-            job.revision,
+            editing::Revision{compilation_->observed().value},
             std::move(*target),
             image,
             editor_context_.project(),
@@ -528,18 +509,29 @@ namespace lux::editor::material
 
     EditorResult<VMaterialCompileStatus> MaterialEditor::Impl::compileStatus(lux::process::TaskId id) const
     {
-        const auto* job = std::get_if<Compilation>(&this->compilation_);
-        if (!job || job->id != id)
-        {
+        if (!compilation_ || compilation_->task() != id)
             return lux::cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "material.compile"});
-        }
-        if (const auto* success = std::get_if<MaterialCompileSucceeded>(&job->status))
-        {
-            auto value = *success;
-            value.current = this->history_->view()->snapshot.current == value.captured;
-            return VMaterialCompileStatus{value};
-        }
-        return job->status;
+        if (!compilation_->ready() || notified_compile_ != compilation_->id())
+            return VMaterialCompileStatus{MaterialCompilePending{}};
+        const auto key = compilation_->key();
+        const editing::Revision revision{compilation_->observed().value};
+        auto result = compilation_->result();
+        if (!result)
+            return VMaterialCompileStatus{MaterialCompileFailed{
+                key.content.state,
+                revision,
+                transition::MaterialCompilationAccess::failure(result.error())
+            }};
+        const auto current =
+            history_ ? history_->view()
+                     : editing::EditResult<editing::HistoryView>{
+                           lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::NO_ACTIVE_TARGET))
+                       };
+        return VMaterialCompileStatus{MaterialCompileSucceeded{
+            key.content.state,
+            revision,
+            current && current->snapshot.current == key.content.state
+        }};
     }
     EditorResult<std::reference_wrapper<const lux::rdesc::MaterialDescription>> MaterialEditor::Impl::compiled(
         lux::process::TaskId id
@@ -547,21 +539,15 @@ namespace lux::editor::material
     {
         auto status = compileStatus(id);
         if (!status)
-        {
             return lux::cxx::unexpected(status.error());
-        }
-        if (const auto* failed = std::get_if<MaterialCompileFailed>(&*status))
-        {
-            return lux::cxx::unexpected(failed->failure);
-        }
-        const auto* success = std::get_if<MaterialCompileSucceeded>(&*status);
+        if (auto* failure = std::get_if<MaterialCompileFailed>(&*status))
+            return lux::cxx::unexpected(failure->failure);
+        auto* success = std::get_if<MaterialCompileSucceeded>(&*status);
         if (!success || !success->current)
-        {
             return lux::cxx::unexpected(
                 EditorFailure{success ? EEditorError::STALE_REQUEST : EEditorError::BUSY, "material.compile"}
             );
-        }
-        return std::cref(std::get<Compilation>(this->compilation_).output->artifact->data());
+        return std::cref((*compilation_->result())->artifact->data());
     }
 
     editing::HistoryId MaterialEditor::Impl::historyId() const noexcept
@@ -653,37 +639,15 @@ namespace lux::editor::material
         if (busy_)
             return;
         completion_deferred_ = false;
-        const bool preview_busy =
-            preview_ && preview_->scene && !preview_->runtime.borrowInstance(preview_->scene->id());
-        if (preview_busy && std::holds_alternative<Compilation>(compilation_))
-            completion_deferred_ = true;
-        if (auto* job = std::get_if<Compilation>(&this->compilation_); job && compile_result_ && !preview_busy)
+        if (compilation_ && compilation_->ready() && notified_compile_ != compilation_->id())
         {
-            auto result = std::move(*compile_result_);
-            compile_result_.reset();
-            if (result)
-            {
-                if (history_ && asset_status_.phase == EAssetEditPhase::IDLE && job->history == this->history_->id() &&
-                    this->history_->view()->snapshot.current == job->state)
-                    updatePreview(result->publication.artifact.source_bytes, job->state, job->preview_assets);
-                job->output.emplace(std::move(*result));
-                job->status = MaterialCompileSucceeded{
-                    job->state,
-                    job->revision,
-                    this->history_->view()->snapshot.current == job->state
-                };
-            }
-            else
-            {
-                job->status = MaterialCompileFailed{job->state, job->revision, std::move(result.error())};
-            }
-            // Callbacks may request close; physical removal is an Editor safe-point operation.
-            const auto completed_id = job->id;
-            BusyGuard guard(this->busy_);
-            lux::editor::detail::reportSignalDelivery(
-                editor_->emit(editor_->compileFinished, completed_id),
-                "compileFinished"
-            );
+            maintainPreview();
+            if (preview_)
+                static_cast<void>(preview_->receive(*compilation_, compile_assets_));
+            notified_compile_ = compilation_->id();
+            const auto completed_id = compilation_->task();
+            BusyGuard guard(busy_);
+            detail::reportSignalDelivery(editor_->emit(editor_->compileFinished, completed_id), "compileFinished");
         }
         adoptAssetResults();
         ui::reportCloseDecision(*editor_, close_request_, close_prepared_, close_decision_);
@@ -692,6 +656,8 @@ namespace lux::editor::material
     void MaterialEditor::Impl::update() noexcept
     {
         maintainPreview();
+        if (compilation_ && compilation_->ready() && notified_compile_ != compilation_->id())
+            completion_deferred_ = true;
         if (this->busy_)
         {
             return;

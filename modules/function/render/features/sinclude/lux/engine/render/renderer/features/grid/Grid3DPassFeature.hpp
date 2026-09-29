@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <lux/engine/function/visibility.h>
 
-#include <optional>
+#include <vector>
 #include <string>
 
 namespace lux::render
@@ -38,26 +38,20 @@ namespace lux::render
 
         void addPasses(RGBuilder& builder) override;
 
-        // --- Per-frame feature phases ---------------------------------------
-        void onFrameBegin(const FeatureFrameContext& ctx) override;
-
-    public:
-        /// 参数更新入口(comm handler 调)。写进 pending_，由 onFrameBegin 在
-        /// 帧边界提交。
-        ///
-        /// (此前另有一个 onSyncSetGrid3DParams(SetGrid3DParamsCmd) 走同一个
-        ///  pending_ —— 那是 sync-command 机制的残留,自始至终零调用,连同
-        ///  Grid3DSyncCommands.hpp 一起退休。兄弟 Grid2D 根本没有这套东西。)
-        void setGrid3DParams(const Grid3DParams& params)
-        {
-            pending_grid_params_ = params;
-        }
+        void setGrid3DParams(ViewHandle view, const Grid3DParams& params);
+        void deallocateViewState(std::uint32_t view) override;
+        [[nodiscard]] const Grid3DParams& params(ViewHandle view) const noexcept;
 
     private:
         Config cfg_{};
         GraphicsPipelineHandle grid_handle_{kInvalidPipelineHandle};
         Grid3DParams grid_params_{};
-        std::optional<Grid3DParams> pending_grid_params_;
+        struct ViewParams final
+        {
+            ViewHandle view;
+            Grid3DParams params;
+        };
+        std::vector<ViewParams> view_params_;
     };
 
 } // namespace lux::render

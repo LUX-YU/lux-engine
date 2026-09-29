@@ -8,7 +8,6 @@
 #include <lux/engine/editor/detail/AssetSave.hpp>
 #include <lux/engine/editor/metadata/EditorReflection.hpp>
 #include <lux/engine/meta/Meta.hpp>
-#include <lux/engine/editor/flowforge/FlowCompilation.hpp>
 #include <lux/engine/editor/flowforge/FlowForgeEditor.hpp>
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
@@ -572,57 +571,38 @@ namespace lux::editor::flowforge
 
     EditorResult<lux::process::TaskId> FlowForgeEditor::Impl::requestCompile(std::filesystem::path linker)
     {
-        if (!history_ || saved_history_ || asset_status_.phase != EAssetEditPhase::IDLE)
+        const auto* current = currentCompilation();
+        const bool is_unavailable = !history_ || saved_history_ || asset_status_.phase != EAssetEditPhase::IDLE;
+        const bool has_pending_compile =
+            current && (!current->ready() || notified_compile_ != current->attempts().back().task);
+        if (is_unavailable || busy_ || has_pending_compile)
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "flowforge.compile"});
-        if (!editor_context_.execution().blocking() || this->busy_ || compile_task_ || compile_result_)
-        {
-            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "flowforge.compile"});
-        }
-        auto view = this->history_->view();
+        auto view = history_->view();
         if (!view)
-        {
             return lux::cxx::unexpected(historyFailure(view.error()));
-        }
-        auto capture = this->capture();
-        if (!capture)
-        {
-            return lux::cxx::unexpected(capture.error());
-        }
-        auto& execution = editor_context_.execution();
-        auto admitted = execution.submit(
-            {"Compile Flow", "compiler", {}, environment_.code_lifetime},
-            [source_ = std::move(*capture),
-             environment_ = environment_,
-             path = std::string(editor_context_.project().assetName(source_.id)),
-             linker = std::move(linker),
-             cpu = execution.cpu(),
-             blocking = *execution.blocking()](process::TaskReporter reporter) mutable noexcept {
-                return compileFlowAsset(
-                    std::move(source_),
-                    environment_,
-                    std::move(path),
-                    std::move(linker),
-                    cpu,
-                    blocking,
-                    reporter
-                );
-            },
-            [this](process::TTaskResult<FlowCompiled, FlowCompilationFailure>&& result) noexcept {
-                acceptCompilation(std::move(result));
-            }
+        auto source = capture();
+        if (!source)
+            return lux::cxx::unexpected(source.error());
+        auto admitted = transition::FlowCompilationAccess::start(
+            compilations_,
+            std::move(*source),
+            {{}, view->snapshot.current},
+            {view->snapshot.revision.value},
+            environment_,
+            std::move(linker)
         );
         if (!admitted)
-            return lux::cxx::unexpected(EditorFailure{
-                EEditorError::EXECUTION_FAILURE,
-                "flowforge.compile",
-                static_cast<std::uint64_t>(admitted.error()),
-                {},
-                admitted.error()
-            });
-        const auto id = admitted->id();
-        compilation_.emplace<Compilation>(id, history_->id(), view->snapshot.current, view->snapshot.revision);
-        compile_task_ = std::move(*admitted);
-        return id;
+            return lux::cxx::unexpected(transition::FlowCompilationAccess::failure(admitted.error()));
+        if (current)
+            static_cast<void>(compilations_.acknowledge(compilation_));
+        compilation_ = *admitted;
+        compile_name_ = editor_context_.project().assetName(source_.id);
+        return currentCompilation()->task();
+    }
+    const FlowCompileOperation* FlowForgeEditor::Impl::currentCompilation() const noexcept
+    {
+        auto result = compilations_.operation(compilation_);
+        return result ? &result->get() : nullptr;
     }
     EditorResult<SaveRequestId> FlowForgeEditor::Impl::requestPublish(lux::process::TaskId compile, std::string origin)
     {
@@ -658,12 +638,19 @@ namespace lux::editor::flowforge
             );
         }
         const SaveRequestId id{this->history_->id(), this->next_save_++};
-        const auto& job = std::get<Compilation>(this->compilation_);
-        const auto& image = job.output->publication;
+        const auto output = currentCompilation()->result();
+        const detail::TCompiledCapture<lux::flowforge::FlowSource> image{
+            (*output)->source,
+            {(*output)->artifact->id(),
+             lux::script::ScriptArtifactAsset::primary_magic,
+             compile_name_,
+             {},
+             (*output)->bytes}
+        };
         this->save_.emplace<FlowSave>(
             id,
             *ticket,
-            job.revision,
+            editing::Revision{currentCompilation()->observed().value},
             std::move(*target),
             image,
             editor_context_.project(),
@@ -676,84 +663,60 @@ namespace lux::editor::flowforge
 
     EditorResult<VFlowCompileStatus> FlowForgeEditor::Impl::compileStatus(lux::process::TaskId id) const
     {
-        const auto* job = std::get_if<Compilation>(&this->compilation_);
-        if (!job || job->id != id)
-        {
+        const auto* job = currentCompilation();
+        if (!job || job->task() != id)
             return lux::cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "flowforge.compile"});
-        }
-        if (const auto* success = std::get_if<FlowCompileSucceeded>(&job->status))
-        {
-            auto value = *success;
-            value.current = this->history_->view()->snapshot.current == value.captured;
-            return VFlowCompileStatus{value};
-        }
-        return job->status;
+        if (!job->ready() || notified_compile_ != job->attempts().back().task)
+            return VFlowCompileStatus{FlowCompilePending{
+                job->attempts().size() > 1 ? EFlowCompileStage::LINKING : EFlowCompileStage::COMPILING
+            }};
+        const auto stamp = job->key().content;
+        const editing::Revision revision{job->observed().value};
+        auto result = job->result();
+        if (!result)
+            return VFlowCompileStatus{FlowCompileFailed{
+                stamp.state,
+                revision,
+                transition::FlowCompilationAccess::failure(result.error()),
+                job->retryable()
+            }};
+        const auto view =
+            history_ ? history_->view()
+                     : editing::EditResult<editing::HistoryView>{
+                           lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::NO_ACTIVE_TARGET))
+                       };
+        return VFlowCompileStatus{
+            FlowCompileSucceeded{stamp.state, revision, view && view->snapshot.current == stamp.state}
+        };
     }
     EditorResult<std::reference_wrapper<const lux::script::ScriptArtifact>> FlowForgeEditor::Impl::compiled(
-        lux::process::TaskId id
+        process::TaskId id
     ) const
     {
         auto status = compileStatus(id);
         if (!status)
-        {
             return lux::cxx::unexpected(status.error());
-        }
-        if (const auto* failed = std::get_if<FlowCompileFailed>(&*status))
-        {
-            return lux::cxx::unexpected(failed->failure);
-        }
+        if (auto* failure = std::get_if<FlowCompileFailed>(&*status))
+            return lux::cxx::unexpected(failure->failure);
         const auto* success = std::get_if<FlowCompileSucceeded>(&*status);
         if (!success || !success->current)
-        {
             return lux::cxx::unexpected(
                 EditorFailure{success ? EEditorError::STALE_REQUEST : EEditorError::BUSY, "flowforge.compile"}
             );
-        }
-        return std::cref(std::get<Compilation>(this->compilation_).output->artifact->data());
+        return std::cref((*currentCompilation()->result())->artifact->data());
     }
-
-    EditorResult<void> FlowForgeEditor::Impl::retryLink(lux::process::TaskId id, std::filesystem::path linker)
+    EditorResult<void> FlowForgeEditor::Impl::retryLink(process::TaskId id, std::filesystem::path linker)
     {
-        auto* job = std::get_if<Compilation>(&this->compilation_);
-        if (!job || job->id != id)
-        {
+        const auto* job = currentCompilation();
+        if (!job || job->task() != id)
             return lux::cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "flowforge.link.retry"});
-        }
-        const auto* failure = std::get_if<FlowCompileFailed>(&job->status);
-        if (!failure || !failure->retryable || this->busy_)
-        {
+        if (busy_)
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "flowforge.link.retry"});
-        }
-        auto& execution = editor_context_.execution();
-        auto admitted = execution.submit(
-            {"Retry Flow link", "compiler", job->id, environment_.code_lifetime},
-            [&, linker = std::move(linker)](process::TaskReporter reporter) mutable noexcept {
-                return linkFlowAsset(
-                    std::move(*job->retry),
-                    std::move(linker),
-                    execution.cpu(),
-                    *execution.blocking(),
-                    reporter
-                );
-            },
-            [this](process::TTaskResult<FlowCompiled, FlowCompilationFailure>&& result) noexcept {
-                acceptCompilation(std::move(result));
-            }
-        );
-        if (!admitted)
-            return lux::cxx::unexpected(EditorFailure{
-                EEditorError::EXECUTION_FAILURE,
-                "flowforge.link.retry",
-                static_cast<std::uint64_t>(admitted.error()),
-                {},
-                admitted.error()
-            });
-        job->retry.reset();
-        job->status = FlowCompilePending{EFlowCompileStage::LINKING};
-        compile_task_ = std::move(*admitted);
+        auto result = compilations_.retryLink(compilation_, {std::move(linker)});
+        if (!result)
+            return lux::cxx::unexpected(transition::FlowCompilationAccess::failure(result.error()));
         return {};
     }
-
     editing::HistoryId FlowForgeEditor::Impl::historyId() const noexcept
     {
         return history_ ? history_->id() : editing::HistoryId{};
@@ -838,63 +801,27 @@ namespace lux::editor::flowforge
         return finishContentEditing();
     }
 
-    void FlowForgeEditor::Impl::acceptCompilation(process::TTaskResult<FlowCompiled, FlowCompilationFailure>&& result
-    ) noexcept
-    {
-        if (result)
-            compile_result_.emplace(std::move(*result));
-        else if (auto* domain_failure = result.error().domainFailure())
-            compile_result_.emplace(lux::cxx::unexpected(std::move(*domain_failure)));
-        else
-        {
-            EditorFailure failure{EEditorError::CANCELLED, "flowforge.compile"};
-            if (const auto* error = result.error().executionFailure())
-                failure = {
-                    EEditorError::EXECUTION_FAILURE,
-                    "flowforge.compile",
-                    static_cast<std::uint64_t>(*error),
-                    {},
-                    *error
-                };
-            compile_result_.emplace(lux::cxx::unexpected(FlowCompilationFailure{std::move(failure)}));
-        }
-        compile_task_ = {};
-        completion_work_.request();
-    }
-
     void FlowForgeEditor::Impl::adoptCompletions() noexcept
     {
         if (busy_)
             return;
         completion_pending_ = false;
-        if (auto* job = std::get_if<Compilation>(&this->compilation_); job && compile_result_)
+        const auto* job = currentCompilation();
+        if (job && job->ready() && job->attempts().back().task != notified_compile_)
         {
-            auto result = std::move(*compile_result_);
-            compile_result_.reset();
-            if (result)
-            {
-                job->output.emplace(std::move(*result));
-                job->status = FlowCompileSucceeded{job->state, job->revision, true};
-            }
-            else
-            {
-                auto error = std::move(result.error());
-                job->retry = std::move(error.retry);
-                job->status =
-                    FlowCompileFailed{job->state, job->revision, std::move(error.failure), job->retry.has_value()};
-            }
-            const auto completed_id = job->id;
-            BusyGuard guard(this->busy_);
-            lux::editor::detail::reportSignalDelivery(
-                editor_->emit(editor_->compileFinished, completed_id),
-                "compileFinished"
-            );
+            notified_compile_ = job->attempts().back().task;
+            const auto completed_id = job->task();
+            BusyGuard guard(busy_);
+            detail::reportSignalDelivery(editor_->emit(editor_->compileFinished, completed_id), "compileFinished");
         }
         adoptAssetResults();
         ui::reportCloseDecision(*editor_, close_request_, close_prepared_, close_decision_);
     }
     void FlowForgeEditor::Impl::update() noexcept
     {
+        const auto* job = currentCompilation();
+        if (job && job->ready() && job->attempts().back().task != notified_compile_)
+            completion_pending_ = true;
         if (this->busy_)
         {
             return;

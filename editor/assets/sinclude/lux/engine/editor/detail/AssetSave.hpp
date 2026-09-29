@@ -65,46 +65,6 @@ namespace lux::editor::detail
         asset::PakWriteEntry artifact;
     };
 
-    template <class Asset, class Capture> struct TCompiledAsset final
-    {
-        std::shared_ptr<const Asset> artifact;
-        TCompiledCapture<Capture> publication;
-    };
-
-    // Compile encodes the GPU input once. Source/pak encoding happens only when publishing this capture.
-    template <class Asset, class Capture>
-    EditorResult<TCompiledAsset<Asset, Capture>> encodeCompiledAsset(
-        std::shared_ptr<const Asset> artifact,
-        Capture source,
-        std::string path
-    )
-    {
-        constexpr std::size_t byte_limit = 256U * 1024U * 1024U;
-        auto encoded = asset::TAssetSerDeser<Asset>::encode(*artifact, asset::AssetEncodeLimits{byte_limit});
-        if (!encoded)
-        {
-            return lux::cxx::unexpected(EditorFailure{
-                EEditorError::SOURCE_FAILURE,
-                "asset.artifact.encode",
-                static_cast<std::uint64_t>(encoded.error().code),
-                {},
-                encoded.error()
-            });
-        }
-        auto bytes = std::make_shared<const std::vector<std::byte>>(std::move(*encoded));
-        asset::PakWriteEntry entry{
-            artifact->id(),
-            Asset::primary_magic,
-            std::move(path),
-            {},
-            lux::cxx::SharedBytes<>::fromOwner(bytes, std::span(*bytes))
-        };
-        return TCompiledAsset<Asset, Capture>{
-            std::move(artifact),
-            {std::make_shared<const Capture>(std::move(source)), std::move(entry)}
-        };
-    }
-
     // An admitted save owns one capture and one history ticket through all retries.
     template <class Capture, class Encoder> class TAssetSave final
     {
@@ -419,7 +379,8 @@ namespace lux::editor::detail
             finishing_ = true;
             const auto* write = std::get_if<ProjectWrite>(&work_);
             const auto* published = write ? std::get_if<PublicationSucceeded>(&write->status()) : nullptr;
-            const auto outcome = published ? transition::ELegacyPersistenceOutcome::SUCCEEDED : transition::ELegacyPersistenceOutcome::CANCELLED;
+            const auto outcome = published ? transition::ELegacyPersistenceOutcome::SUCCEEDED
+                                           : transition::ELegacyPersistenceOutcome::CANCELLED;
             const auto finished = persistence_->settle(ticket_, outcome);
             if (!finished)
             {

@@ -60,11 +60,9 @@ namespace lux::render
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;
         void addPasses(RGBuilder& builder) override;
-        void replaceTargets(std::vector<ERenderEntityId> targets);
-        [[nodiscard]] std::span<const ERenderEntityId> targets() const noexcept
-        {
-            return targets_;
-        }
+        void replaceTargets(ViewHandle view, std::vector<ERenderEntityId> targets);
+        void deallocateViewState(std::uint32_t view) override;
+        [[nodiscard]] std::span<const ERenderEntityId> targets(ViewHandle view) const noexcept;
 
     private:
         Expected<void> init();
@@ -72,7 +70,12 @@ namespace lux::render
         void releaseAll() noexcept;
 
         Config cfg_;
-        std::vector<ERenderEntityId> targets_;
+        struct ViewTargets final
+        {
+            ViewHandle view;
+            std::vector<ERenderEntityId> targets;
+        };
+        std::vector<ViewTargets> targets_;
         std::vector<std::uint32_t> target_mask_;
 
         VkDescriptorSetLayout visible_set_layout_{VK_NULL_HANDLE};     // set 5 (cull → draw)

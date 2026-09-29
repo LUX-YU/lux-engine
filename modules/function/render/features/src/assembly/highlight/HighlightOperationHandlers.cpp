@@ -16,7 +16,7 @@ namespace lux::render
     )
     {
         auto* scene = lookupScene(ctx.user_state, payload.scene_id);
-        if (!scene)
+        if (!scene || !scene->getView(payload.view))
         {
             return;
         }
@@ -41,7 +41,7 @@ namespace lux::render
         {
             std::memcpy(targets.data(), bytes.data(), bytes.size());
         }
-        feature->replaceTargets(std::move(targets));
+        feature->replaceTargets(payload.view, std::move(targets));
     }
 
     Expected<FeatureHandle> HighlightCreateFn(void* scene_ptr, const void* param, size_t param_size)

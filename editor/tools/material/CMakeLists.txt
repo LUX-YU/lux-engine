@@ -10,7 +10,7 @@ component_include_directories(editor_material
 target_compile_definitions(editor_material PRIVATE LUX_EDITOR_MATERIAL_LIBRARY)
 target_link_libraries(editor_material PUBLIC lux::engine::editor::editor_metadata lux::engine::scene::scene_render lux::engine::editor::editor_assets lux::engine::function::material_graph
         lux::engine::editor::material_model
-    PRIVATE lux::engine::editor::editor_context lux::engine::toolchain::toolchain_material_compiler lux::engine::scene::scene_transform
+    PRIVATE lux::engine::editor::material_preview lux::engine::editor::editor_context lux::engine::toolchain::toolchain_material_compiler lux::engine::scene::scene_transform
     lux::engine::world::world_storage lux::engine::process::asset_loading)
 component_add_transitive_commands(editor_material
     "find_package(lux-engine-editor-metadata REQUIRED COMPONENTS editor_metadata)"

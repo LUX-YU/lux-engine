@@ -16,13 +16,10 @@ namespace lux::editor::scene
             lux::scene::SceneRuntime&,
             const lux::scene::ScenePackage&,
             const SceneRegistrations&,
-            process::TaskScope&,
+            process::ExecutionRuntime&,
             lux::render::RenderRuntime&,
             lux::scene::RenderResources&,
-            lux::scene::RenderAssetInput,
-
-            bool open_all_partitions,
-            lux::scene::FixedStepClock clock = {}
+            lux::scene::RenderAssetInput
         );
     } // namespace detail
 

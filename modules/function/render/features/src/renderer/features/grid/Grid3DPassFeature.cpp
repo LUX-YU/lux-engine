@@ -1,4 +1,6 @@
 #include <array>
+#include <algorithm>
+#include <lux/engine/render/scene/View.hpp>
 #include <lux/engine/render/renderer/features/grid/Grid3DPassFeature.hpp>
 
 #include <lux/engine/render/graph/RGBuilder.hpp>
@@ -51,7 +53,7 @@ namespace lux::render
                         ctx.pc_stage_flags,
                         8,
                         sizeof(Grid3DParams),
-                        &grid_params_
+                        &params(ctx.view ? ctx.view->handle : ViewHandle{})
                     );
                     vkCmdDraw(ctx.cmd, 3, 1, 0, 0);
                 })
@@ -64,13 +66,21 @@ namespace lux::render
                 .stage(ERenderStage::OVERLAY_STAGE);
     }
 
-    void Grid3DPassFeature::onFrameBegin(const FeatureFrameContext& /*ctx*/)
+    void Grid3DPassFeature::setGrid3DParams(ViewHandle view, const Grid3DParams& params)
     {
-        if (pending_grid_params_)
-        {
-            grid_params_ = *pending_grid_params_;
-            pending_grid_params_.reset();
-        }
+        auto found = std::ranges::find(view_params_, view, &ViewParams::view);
+        if (found == view_params_.end())
+            view_params_.push_back({view, params});
+        else
+            found->params = params;
     }
-
+    void Grid3DPassFeature::deallocateViewState(std::uint32_t view)
+    {
+        std::erase_if(view_params_, [view](const auto& entry) { return entry.view.index == view; });
+    }
+    const Grid3DParams& Grid3DPassFeature::params(ViewHandle view) const noexcept
+    {
+        const auto found = std::ranges::find(view_params_, view, &ViewParams::view);
+        return found == view_params_.end() ? grid_params_ : found->params;
+    }
 } // namespace lux::render

@@ -13,7 +13,8 @@
 #include <lux/engine/material/graph/MaterialSource.hpp>
 #include <lux/engine/editor/ui/CloseReview.hpp>
 #include <lux/engine/editor/material/MaterialEditor.hpp>
-#include <lux/engine/editor/material/MaterialCompilation.hpp>
+#include <lux/engine/editor/material/MaterialPreviewStore.hpp>
+#include "MaterialCompilationAccess.hpp"
 #include <lux/engine/editor/detail/AssetSave.hpp>
 #include <lux/engine/editor/detail/AssetSource.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
@@ -54,9 +55,7 @@ namespace lux::editor::material
 
         // The preview resources outlive content Elements that borrow their scene.
         inline static constexpr lux::system::SystemInstanceId preview_render_system_{2};
-        struct Preview;
-        std::unique_ptr<Preview> preview_;
-        std::string preview_failure_;
+        std::unique_ptr<MaterialPreviewStore> preview_;
         MaterialEditor* editor_{};
         lux::material::MaterialSource source_;
         EditorContext& editor_context_;
@@ -79,19 +78,10 @@ namespace lux::editor::material
         std::optional<SaveRequestId> change_save_;
         bool hide_requested_{};
         std::variant<std::monostate, MaterialSave> save_;
-        struct Compilation final
-        {
-            process::TaskId id;
-            editing::HistoryId history;
-            editing::StateId state;
-            editing::Revision revision;
-            lux::scene::RenderAssetInput preview_assets;
-            VMaterialCompileStatus status{MaterialCompilePending{}};
-            std::optional<MaterialCompiled> output;
-        };
-        std::variant<std::monostate, Compilation> compilation_;
-        std::optional<EditorResult<MaterialCompiled>> compile_result_;
-        process::Task compile_task_;
+        std::unique_ptr<MaterialCompileOperation> compilation_;
+        lux::scene::RenderAssetInput compile_assets_;
+        std::string compile_name_;
+        MaterialCompileId notified_compile_;
         std::uint64_t next_save_{1};
         bool busy_{}, finishing_interaction_{};
 
@@ -159,9 +149,8 @@ namespace lux::editor::material
         void event(object::EventView& event) noexcept;
         EditorResult<void> finishEditing();
         void update() noexcept;
-        EditorResult<void> createPreview();
+        void createPreview();
         EditorResult<lux::scene::RenderAssetInput> capturePreviewAssets();
-        void updatePreview(lux::cxx::SharedBytes<> bytes, editing::StateId state, lux::scene::RenderAssetInput base);
         void maintainPreview() noexcept;
         lux::simulation::ecs::Entity previewCamera() const noexcept;
         lux::scene::SceneInstanceId previewInstance() const noexcept;

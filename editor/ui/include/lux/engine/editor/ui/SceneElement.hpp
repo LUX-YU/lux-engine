@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/editor/ui/visibility.h>
-#include <lux/engine/scene/RenderResources.hpp>
+#include <lux/engine/editor/scene/ViewportPresentation.hpp>
 #include <lux/engine/system/SystemInstanceId.hpp>
 #include <lux/engine/ui/ImageElement.hpp>
 #include <stop_token>
@@ -40,14 +40,18 @@ namespace lux::editor::ui
             lux::scene::ViewConfig config
         ) noexcept;
         ~SceneElement() noexcept override;
+        [[nodiscard]] scene::ViewportPresentation& presentation() noexcept
+        {
+            return *presentation_;
+        }
 
         [[nodiscard]] lux::scene::RenderResourceId view() const noexcept
         {
-            return view_;
+            return presentation_->view();
         }
         [[nodiscard]] lux::simulation::ecs::Entity camera() const noexcept
         {
-            return camera_;
+            return presentation_->camera();
         }
         [[nodiscard]] render::RenderResult<void> setCamera(lux::simulation::ecs::Entity) noexcept;
         [[nodiscard]] const lux::ui::ImageElement& image() const noexcept
@@ -56,11 +60,11 @@ namespace lux::editor::ui
         }
         [[nodiscard]] const render::RenderResult<void>& result() const noexcept
         {
-            return result_;
+            return presentation_->result();
         }
         [[nodiscard]] lux::scene::ViewObservation observation() const noexcept
         {
-            return receipt_.status();
+            return presentation_->observation();
         }
         // Call after capture of any current draw data, never from a draw callback.
         // COMPLETE denotes the actual view receipt, not merely cancellation.
@@ -92,18 +96,9 @@ namespace lux::editor::ui
         void arrangeContent() noexcept override;
         void draw() noexcept override;
         void update() noexcept override;
-        void collectReceipt() noexcept;
-        void clearImage() noexcept;
 
-        lux::scene::SceneRuntime& runtime_;
-        lux::scene::SceneInstanceId scene_;
-        lux::scene::RenderResources& resources_;
-        lux::simulation::ecs::Entity camera_, request_{lux::simulation::ecs::NullEntity};
-        std::stop_source stop_;
-        lux::scene::RenderResourceId view_, image_resource_;
-        lux::scene::RenderViewReceipt receipt_;
+        std::unique_ptr<scene::ViewportPresentation> presentation_;
         lux::ui::ImageElement image_;
         render::PixelExtent requested_extent_;
-        render::RenderResult<void> result_;
     };
 } // namespace lux::editor::ui

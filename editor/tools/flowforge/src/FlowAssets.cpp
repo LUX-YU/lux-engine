@@ -79,8 +79,8 @@ namespace lux::editor::flowforge
         if (history_ && !current)
             return lux::cxx::unexpected(historyFailure(current.error()));
         asset_status_ = {EAssetEditPhase::REVIEW, change, id, {}};
-        if (auto* job = std::get_if<Compilation>(&compilation_))
-            compile_task_.requestStop();
+        if (currentCompilation())
+            static_cast<void>(compilations_.cancel(compilation_));
         if (!history_ || persistence_.clean())
             startAssetChange();
         return {};
@@ -204,9 +204,9 @@ namespace lux::editor::flowforge
         captured->id = identity;
         auto ticket = persistence_.capture(!copying);
         if (!ticket)
-            return lux::cxx::unexpected(EditorFailure{
-                EEditorError::BUSY, "asset.save.ticket", static_cast<std::uint64_t>(ticket.error())
-            });
+            return lux::cxx::unexpected(
+                EditorFailure{EEditorError::BUSY, "asset.save.ticket", static_cast<std::uint64_t>(ticket.error())}
+            );
         const SaveRequestId id{history_->id(), next_save_++};
         save_.emplace<FlowSave>(
             id,
@@ -224,8 +224,8 @@ namespace lux::editor::flowforge
             saved_identity_ = identity;
             saved_history_ = std::move(next_history);
             saved_persistence_.reset(*saved_history_, false);
-            if (auto* job = std::get_if<Compilation>(&compilation_))
-                compile_task_.requestStop();
+            if (currentCompilation())
+                static_cast<void>(compilations_.cancel(compilation_));
         }
         return id;
     }
@@ -237,11 +237,12 @@ namespace lux::editor::flowforge
         {
             if (std::holds_alternative<SaveSucceeded>(pending_save->status()))
             {
-                if (const auto* job = std::get_if<Compilation>(&compilation_); job && static_cast<bool>(compile_task_))
+                if (const auto* job = currentCompilation(); job && !job->ready())
                     return;
                 if (!history_->close())
                     return;
-                compilation_.emplace<std::monostate>();
+                static_cast<void>(compilations_.acknowledge(compilation_));
+                compilation_ = {};
                 source_.id = saved_identity_;
                 saved_persistence_.reset(*saved_history_, true);
                 history_ = std::move(saved_history_);
@@ -299,7 +300,7 @@ namespace lux::editor::flowforge
     {
         if (asset_status_.phase != EAssetEditPhase::PREPARING)
             return;
-        if (const auto* job = std::get_if<Compilation>(&compilation_); job && static_cast<bool>(compile_task_))
+        if (const auto* job = currentCompilation(); job && !job->ready())
             return;
         if (candidate_ && !candidate_history_)
         {
@@ -314,7 +315,8 @@ namespace lux::editor::flowforge
         }
         if (history_ && !history_->close())
             return;
-        compilation_.emplace<std::monostate>();
+        static_cast<void>(compilations_.acknowledge(compilation_));
+        compilation_ = {};
         history_ = std::move(candidate_history_);
         persistence_ = std::move(candidate_persistence_);
         source_ = candidate_ ? std::move(*candidate_) : FlowAuthoringSource{};

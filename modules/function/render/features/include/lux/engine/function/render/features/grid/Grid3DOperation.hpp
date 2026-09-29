@@ -50,6 +50,7 @@ namespace lux::render
     {
         RenderSceneId scene_id{};
         FeatureHandle feature{};
+        ViewHandle view{};
         float planeY{0.f};
         float cellSize{1.f};
         float linePx{1.1f};

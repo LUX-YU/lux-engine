@@ -9,7 +9,7 @@ component_include_directories(editor_flowforge
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/transition ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude INSTALL_TIME include)
 target_compile_definitions(editor_flowforge PRIVATE LUX_EDITOR_FLOWFORGE_LIBRARY)
 target_link_libraries(editor_flowforge PUBLIC lux::engine::editor::editor_assets lux::engine::function::flowforge
-    PRIVATE lux::engine::editor::editor_context lux::engine::flowforge::flowforge_compiler)
+    PRIVATE lux::engine::editor::flowforge_compilation lux::engine::editor::editor_context lux::engine::flowforge::flowforge_compiler)
 component_add_transitive_commands(editor_flowforge
     "find_package(lux-engine-editor-assets REQUIRED COMPONENTS editor_assets)"
     "find_package(lux-engine-function REQUIRED COMPONENTS flowforge)")

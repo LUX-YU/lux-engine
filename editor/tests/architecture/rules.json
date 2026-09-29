@@ -328,6 +328,21 @@
       "path": "editor/sessions",
       "deadline": "P02",
       "id": "S01_SESSIONS_MOVE"
+    },
+    {
+      "path": "editor/tools/material/pinclude/lux/engine/editor/material/MaterialCompilation.hpp",
+      "deadline": "P07",
+      "id": "P07_OLD_0"
+    },
+    {
+      "path": "editor/tools/material/pinclude/lux/engine/editor/material/MaterialPreview.hpp",
+      "deadline": "P07",
+      "id": "P07_OLD_1"
+    },
+    {
+      "path": "editor/tools/flowforge/pinclude/lux/engine/editor/flowforge/FlowCompilation.hpp",
+      "deadline": "P07",
+      "id": "P07_OLD_2"
     }
   ],
   "forbidden_definitions": [
@@ -444,6 +459,12 @@
       "deadline": "P04",
       "pattern": "(?:class|struct)\\s+FlowForgeEditor::Impl::(?:VariableEdit|LiteralEdit|TValueEdit|GraphDelta|GraphEdit|ExportsAccess)\\b",
       "description": "P04 pure Flow edits must exist only in flowforge_model"
+    },
+    {
+      "id": "P07_OLD_HIGHLIGHT",
+      "deadline": "P07",
+      "pattern": "\\b(?:highlighted_selection|highlighted_structure|highlighted_feature|highlighted_instance|highlight_pending|compile_task_|compile_result_)\\b",
+      "description": "Removed old derived-work fields; no aliases or duplicate owners"
     }
   ],
   "transition_root": "editor/transition/",
@@ -498,7 +519,9 @@
   "transition_allowlist": [
     "editor/transition/LegacyPersistenceState.hpp",
     "editor/transition/LegacyPersistenceState.cpp",
-    "editor/transition/SceneRunCaptureAccess.hpp"
+    "editor/transition/SceneRunCaptureAccess.hpp",
+    "editor/transition/MaterialCompilationAccess.hpp",
+    "editor/transition/FlowCompilationAccess.hpp"
   ],
   "note": "文本检查，不扫描注释语义、不等同 AST；实际P00账本需扩充。新scope默认不含编辑器旧tools/src；旧协议字符串数据不禁止。",
   "targets": [
@@ -644,33 +667,33 @@
       "path": "editor/tools/scene/projection",
       "first_phase": "P07",
       "dependencies": [
-        "scene_model",
-        "scene_execution_api"
+        "scene_model"
       ],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
-      "actual_cmake_target": null
+      "actual_cmake_target": "scene_projection"
     },
     {
       "name": "material_preview",
       "path": "editor/tools/material/preview",
       "first_phase": "P07",
       "dependencies": [
+        "editor_persistence",
         "material_model",
-        "editor_persistence"
+        "scene_projection"
       ],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
-      "actual_cmake_target": null
+      "actual_cmake_target": "material_preview"
     },
     {
       "name": "flowforge_compilation",
       "path": "editor/tools/flowforge/compilation",
       "first_phase": "P07",
       "dependencies": [
-        "flowforge_model",
-        "editor_persistence"
+        "editor_persistence",
+        "flowforge_model"
       ],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
-      "actual_cmake_target": null
+      "actual_cmake_target": "flowforge_compilation"
     },
     {
       "name": "scene_interaction",
@@ -2827,6 +2850,1365 @@
       "lux/engine/simulation/",
       "lux/engine/world/",
       "lux/engine/function/render/client/core/"
+    ]
+  },
+  "scene_projection": {
+    "direct": [
+      "scene_model",
+      "scene_composition",
+      "scene_render",
+      "scene_world_loading",
+      "process_world_loading"
+    ],
+    "closure": {
+      "Eigen3::Eigen": {
+        "imported": true
+      },
+      "EnTT::EnTT": {
+        "imported": true
+      },
+      "GPUOpen::VulkanMemoryAllocator": {
+        "imported": true
+      },
+      "STDEXEC::stdexec": {
+        "imported": true
+      },
+      "Threads::Threads": {
+        "imported": true
+      },
+      "Vulkan::Headers": {
+        "imported": true
+      },
+      "Vulkan::Vulkan": {
+        "imported": true
+      },
+      "asset": {
+        "path": "modules/resource/asset"
+      },
+      "async_port": {
+        "path": "modules/core/async_port"
+      },
+      "core": {
+        "path": "engine/domain/simulation/ecs/core"
+      },
+      "description": {
+        "path": "modules/resource/description"
+      },
+      "domain_system_description": {
+        "path": "engine/domain/system/description"
+      },
+      "domain_system_identity": {
+        "path": "engine/domain/system/identity"
+      },
+      "ecs_task": {
+        "path": "engine/domain/simulation/ecs/task"
+      },
+      "edit_history": {
+        "path": "editor/editing/history"
+      },
+      "edit_sessions": {
+        "path": "editor/editing/sessions"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "gapi": {
+        "path": "modules/platform/gapi"
+      },
+      "glfw": {
+        "imported": true
+      },
+      "hierarchy": {
+        "path": "engine/domain/simulation/ecs/hierarchy"
+      },
+      "hierarchy_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/hierarchy"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "lux::cxx::algorithm": {
+        "imported": true
+      },
+      "lux::cxx::binary": {
+        "imported": true
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "lux::cxx::concurrent": {
+        "imported": true
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::memory": {
+        "imported": true
+      },
+      "math": {
+        "path": "modules/core/math"
+      },
+      "nfd::nfd": {
+        "imported": true
+      },
+      "partition_identity": {
+        "path": "engine/domain/partition/identity"
+      },
+      "process_asset_loading": {
+        "path": "engine/process/asset_loading"
+      },
+      "process_execution": {
+        "path": "engine/process/execution"
+      },
+      "process_world_loading": {
+        "path": "engine/process/world_loading"
+      },
+      "render_client": {
+        "path": "modules/function/render/client"
+      },
+      "render_comm_ops_Canvas2DOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_DeferredGBufferOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_DeferredLightingOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_DepthPrepassOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_FogOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_ForwardMeshOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_Grid2DOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_Grid3DOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_HighlightOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_HzbOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_LightOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_LineListOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_LinearDepthOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_MaterialOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_MeshShadowOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_MeshStackOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_PointCloudOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_RenderClusterOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_ShadowMapOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SkinningOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SkyboxOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SpatialCullOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SsaoOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_StreamingFeedbackOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TerrainOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TonemapOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TrajectoryOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TriOverlayOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_ViewCameraOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_WaterOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_feature_client": {
+        "path": "modules/function/render"
+      },
+      "render_graph": {
+        "path": "modules/function/render/graph"
+      },
+      "render_runtime": {
+        "path": "modules/function/render/runtime"
+      },
+      "render_vulkan": {
+        "path": "modules/function/render/vulkan"
+      },
+      "scene_asset": {
+        "path": "engine/scene/asset"
+      },
+      "scene_camera": {
+        "path": "engine/scene/components/camera"
+      },
+      "scene_camera_component_codegen_generate": {
+        "path": "engine/scene/components/camera"
+      },
+      "scene_composition": {
+        "path": "engine/scene/composition"
+      },
+      "scene_description": {
+        "path": "engine/scene/description"
+      },
+      "scene_mesh_query": {
+        "path": "engine/scene/builtin_systems/mesh_query"
+      },
+      "scene_model": {
+        "path": "editor/tools/scene/model"
+      },
+      "scene_observer_component_codegen_generate": {
+        "path": "engine/scene/builtin_systems/world_loading"
+      },
+      "scene_render": {
+        "path": "engine/scene/builtin_systems/render"
+      },
+      "scene_render_configuration_codegen_generate": {
+        "path": "engine/scene/builtin_systems/render"
+      },
+      "scene_system": {
+        "path": "engine/scene/system"
+      },
+      "scene_world_loading": {
+        "path": "engine/scene/builtin_systems/world_loading"
+      },
+      "scene_world_materialization": {
+        "path": "engine/scene/integration/world_materialization"
+      },
+      "schema": {
+        "path": "engine/domain/simulation/ecs/schema"
+      },
+      "script_artifact": {
+        "path": "modules/function/script/artifact"
+      },
+      "script_core": {
+        "path": "modules/function/script/core"
+      },
+      "semantic": {
+        "path": "modules/core/semantic"
+      },
+      "serialization": {
+        "path": "modules/core/serialization"
+      },
+      "simulation_asset": {
+        "path": "engine/domain/simulation/asset"
+      },
+      "simulation_composition": {
+        "path": "engine/domain/simulation/composition"
+      },
+      "simulation_description": {
+        "path": "engine/domain/simulation/description"
+      },
+      "simulation_scripting_core": {
+        "path": "engine/domain/simulation/scripting/core"
+      },
+      "snapshot": {
+        "path": "engine/domain/simulation/ecs/snapshot"
+      },
+      "stduuid": {
+        "imported": true
+      },
+      "system": {
+        "path": "engine/domain/simulation/system"
+      },
+      "task": {
+        "path": "modules/core/task"
+      },
+      "transform": {
+        "path": "engine/domain/simulation/ecs/transform"
+      },
+      "transform_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/transform"
+      },
+      "type_info": {
+        "path": "modules/core/type_info"
+      },
+      "visual": {
+        "path": "engine/domain/simulation/ecs/visual"
+      },
+      "visual_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/visual"
+      },
+      "window": {
+        "path": "modules/platform/window"
+      },
+      "world_asset": {
+        "path": "engine/domain/world/asset"
+      },
+      "world_description": {
+        "path": "engine/domain/world/description"
+      },
+      "world_identity": {
+        "path": "engine/domain/world/identity"
+      },
+      "world_loading_configuration_codegen_generate": {
+        "path": "engine/scene/builtin_systems/world_loading"
+      },
+      "world_partition": {
+        "path": "engine/domain/world/partition"
+      },
+      "world_storage": {
+        "path": "engine/domain/world/storage"
+      }
+    },
+    "native_libraries": [
+      "comctl32",
+      "kernel32"
+    ],
+    "headers": [
+      "algorithm",
+      "array",
+      "atomic",
+      "cassert",
+      "chrono",
+      "cstdint",
+      "cstddef",
+      "cstdio",
+      "cstdlib",
+      "filesystem",
+      "fstream",
+      "functional",
+      "iostream",
+      "limits",
+      "memory",
+      "numbers",
+      "optional",
+      "source_location",
+      "span",
+      "stop_token",
+      "string",
+      "string_view",
+      "thread",
+      "type_traits",
+      "utility",
+      "variant",
+      "vector",
+      "any"
+    ],
+    "prefixes": [
+      "lux/cxx/",
+      "Eigen/",
+      "lux/engine/editor/contracts/",
+      "lux/engine/editor/sessions/",
+      "lux/engine/editor/editing/",
+      "lux/engine/editor/scene/",
+      "lux/engine/scene/",
+      "lux/engine/process/",
+      "lux/engine/simulation/",
+      "lux/engine/world/",
+      "lux/engine/function/render/",
+      "lux/engine/render/",
+      "lux/engine/resource/",
+      "lux/engine/system/"
+    ]
+  },
+  "material_preview": {
+    "direct": [
+      "editor_persistence",
+      "material_model",
+      "toolchain_material_compiler",
+      "process_execution",
+      "asset",
+      "scene_projection",
+      "scene_transform",
+      "world_storage",
+      "process_asset_loading"
+    ],
+    "closure": {
+      "Eigen3::Eigen": {
+        "imported": true
+      },
+      "EnTT::EnTT": {
+        "imported": true
+      },
+      "GPUOpen::VulkanMemoryAllocator": {
+        "imported": true
+      },
+      "STDEXEC::stdexec": {
+        "imported": true
+      },
+      "Threads::Threads": {
+        "imported": true
+      },
+      "Vulkan::Headers": {
+        "imported": true
+      },
+      "Vulkan::Vulkan": {
+        "imported": true
+      },
+      "Vulkan::shaderc_combined": {
+        "imported": true
+      },
+      "asset": {
+        "path": "modules/resource/asset"
+      },
+      "async_port": {
+        "path": "modules/core/async_port"
+      },
+      "core": {
+        "path": "engine/domain/simulation/ecs/core"
+      },
+      "description": {
+        "path": "modules/resource/description"
+      },
+      "domain_system_description": {
+        "path": "engine/domain/system/description"
+      },
+      "domain_system_identity": {
+        "path": "engine/domain/system/identity"
+      },
+      "ecs_task": {
+        "path": "engine/domain/simulation/ecs/task"
+      },
+      "edit_history": {
+        "path": "editor/editing/history"
+      },
+      "edit_sessions": {
+        "path": "editor/editing/sessions"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "editor_persistence": {
+        "path": "editor/persistence"
+      },
+      "gapi": {
+        "path": "modules/platform/gapi"
+      },
+      "glfw": {
+        "imported": true
+      },
+      "graph": {
+        "path": "modules/function/graph"
+      },
+      "hierarchy": {
+        "path": "engine/domain/simulation/ecs/hierarchy"
+      },
+      "hierarchy_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/hierarchy"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "lux::cxx::algorithm": {
+        "imported": true
+      },
+      "lux::cxx::binary": {
+        "imported": true
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "lux::cxx::concurrent": {
+        "imported": true
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::memory": {
+        "imported": true
+      },
+      "material_graph": {
+        "path": "modules/function/material"
+      },
+      "material_model": {
+        "path": "editor/tools/material/model"
+      },
+      "math": {
+        "path": "modules/core/math"
+      },
+      "nfd::nfd": {
+        "imported": true
+      },
+      "partition_identity": {
+        "path": "engine/domain/partition/identity"
+      },
+      "process_asset_loading": {
+        "path": "engine/process/asset_loading"
+      },
+      "process_execution": {
+        "path": "engine/process/execution"
+      },
+      "process_world_loading": {
+        "path": "engine/process/world_loading"
+      },
+      "render_client": {
+        "path": "modules/function/render/client"
+      },
+      "render_comm_ops_Canvas2DOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_DeferredGBufferOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_DeferredLightingOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_DepthPrepassOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_FogOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_ForwardMeshOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_Grid2DOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_Grid3DOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_HighlightOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_HzbOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_LightOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_LineListOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_LinearDepthOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_MaterialOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_MeshShadowOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_MeshStackOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_PointCloudOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_RenderClusterOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_ShadowMapOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SkinningOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SkyboxOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SpatialCullOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SsaoOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_StreamingFeedbackOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TerrainOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TonemapOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TrajectoryOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TriOverlayOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_ViewCameraOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_WaterOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_feature_client": {
+        "path": "modules/function/render"
+      },
+      "render_graph": {
+        "path": "modules/function/render/graph"
+      },
+      "render_runtime": {
+        "path": "modules/function/render/runtime"
+      },
+      "render_vulkan": {
+        "path": "modules/function/render/vulkan"
+      },
+      "scene_asset": {
+        "path": "engine/scene/asset"
+      },
+      "scene_camera": {
+        "path": "engine/scene/components/camera"
+      },
+      "scene_camera_component_codegen_generate": {
+        "path": "engine/scene/components/camera"
+      },
+      "scene_composition": {
+        "path": "engine/scene/composition"
+      },
+      "scene_description": {
+        "path": "engine/scene/description"
+      },
+      "scene_mesh_query": {
+        "path": "engine/scene/builtin_systems/mesh_query"
+      },
+      "scene_model": {
+        "path": "editor/tools/scene/model"
+      },
+      "scene_observer_component_codegen_generate": {
+        "path": "engine/scene/builtin_systems/world_loading"
+      },
+      "scene_projection": {
+        "path": "editor/tools/scene/projection"
+      },
+      "scene_render": {
+        "path": "engine/scene/builtin_systems/render"
+      },
+      "scene_render_configuration_codegen_generate": {
+        "path": "engine/scene/builtin_systems/render"
+      },
+      "scene_system": {
+        "path": "engine/scene/system"
+      },
+      "scene_transform": {
+        "path": "engine/scene/builtin_systems/transform"
+      },
+      "scene_transform_configuration_codegen_generate": {
+        "path": "engine/scene/builtin_systems/transform"
+      },
+      "scene_world_loading": {
+        "path": "engine/scene/builtin_systems/world_loading"
+      },
+      "scene_world_materialization": {
+        "path": "engine/scene/integration/world_materialization"
+      },
+      "schema": {
+        "path": "engine/domain/simulation/ecs/schema"
+      },
+      "script_artifact": {
+        "path": "modules/function/script/artifact"
+      },
+      "script_core": {
+        "path": "modules/function/script/core"
+      },
+      "semantic": {
+        "path": "modules/core/semantic"
+      },
+      "serialization": {
+        "path": "modules/core/serialization"
+      },
+      "simulation_asset": {
+        "path": "engine/domain/simulation/asset"
+      },
+      "simulation_composition": {
+        "path": "engine/domain/simulation/composition"
+      },
+      "simulation_description": {
+        "path": "engine/domain/simulation/description"
+      },
+      "simulation_scripting_core": {
+        "path": "engine/domain/simulation/scripting/core"
+      },
+      "snapshot": {
+        "path": "engine/domain/simulation/ecs/snapshot"
+      },
+      "spirv-cross-core": {
+        "imported": true
+      },
+      "stduuid": {
+        "imported": true
+      },
+      "system": {
+        "path": "engine/domain/simulation/system"
+      },
+      "task": {
+        "path": "modules/core/task"
+      },
+      "toolchain_material_compiler": {
+        "path": "engine/toolchain/material"
+      },
+      "toolchain_material_shader_includes": {
+        "path": "engine/toolchain/material"
+      },
+      "transform": {
+        "path": "engine/domain/simulation/ecs/transform"
+      },
+      "transform_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/transform"
+      },
+      "type_info": {
+        "path": "modules/core/type_info"
+      },
+      "visual": {
+        "path": "engine/domain/simulation/ecs/visual"
+      },
+      "visual_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/visual"
+      },
+      "window": {
+        "path": "modules/platform/window"
+      },
+      "world_asset": {
+        "path": "engine/domain/world/asset"
+      },
+      "world_description": {
+        "path": "engine/domain/world/description"
+      },
+      "world_identity": {
+        "path": "engine/domain/world/identity"
+      },
+      "world_loading_configuration_codegen_generate": {
+        "path": "engine/scene/builtin_systems/world_loading"
+      },
+      "world_partition": {
+        "path": "engine/domain/world/partition"
+      },
+      "world_storage": {
+        "path": "engine/domain/world/storage"
+      }
+    },
+    "native_libraries": [
+      "comctl32",
+      "kernel32"
+    ],
+    "headers": [
+      "algorithm",
+      "array",
+      "atomic",
+      "cassert",
+      "chrono",
+      "cstdint",
+      "cstddef",
+      "cstdio",
+      "cstdlib",
+      "filesystem",
+      "fstream",
+      "functional",
+      "iostream",
+      "limits",
+      "memory",
+      "numbers",
+      "optional",
+      "source_location",
+      "span",
+      "stop_token",
+      "string",
+      "string_view",
+      "thread",
+      "type_traits",
+      "utility",
+      "variant",
+      "vector",
+      "any"
+    ],
+    "prefixes": [
+      "lux/cxx/",
+      "Eigen/",
+      "lux/engine/editor/contracts/",
+      "lux/engine/editor/sessions/",
+      "lux/engine/editor/editing/",
+      "lux/engine/editor/scene/",
+      "lux/engine/scene/",
+      "lux/engine/process/",
+      "lux/engine/simulation/",
+      "lux/engine/world/",
+      "lux/engine/function/render/",
+      "lux/engine/render/",
+      "lux/engine/resource/",
+      "lux/engine/system/",
+      "lux/engine/editor/material/",
+      "lux/engine/material/",
+      "lux/engine/editor/persistence/",
+      "lux/engine/editor/flowforge/",
+      "lux/engine/flowforge/",
+      "lux/engine/editor/io/"
+    ]
+  },
+  "flowforge_compilation": {
+    "direct": [
+      "editor_persistence",
+      "flowforge_model",
+      "flowforge_compiler",
+      "process_execution"
+    ],
+    "closure": {
+      "Eigen3::Eigen": {
+        "imported": true
+      },
+      "FlowForgeDialectIncGen": {
+        "path": "engine/toolchain/flowforge/src/mlir"
+      },
+      "LLVMAggressiveInstCombine": {
+        "imported": true
+      },
+      "LLVMAnalysis": {
+        "imported": true
+      },
+      "LLVMAsmParser": {
+        "imported": true
+      },
+      "LLVMAsmPrinter": {
+        "imported": true
+      },
+      "LLVMBinaryFormat": {
+        "imported": true
+      },
+      "LLVMBitReader": {
+        "imported": true
+      },
+      "LLVMBitWriter": {
+        "imported": true
+      },
+      "LLVMBitstreamReader": {
+        "imported": true
+      },
+      "LLVMCFGuard": {
+        "imported": true
+      },
+      "LLVMCodeGen": {
+        "imported": true
+      },
+      "LLVMCodeGenTypes": {
+        "imported": true
+      },
+      "LLVMCore": {
+        "imported": true
+      },
+      "LLVMCoroutines": {
+        "imported": true
+      },
+      "LLVMDebugInfoBTF": {
+        "imported": true
+      },
+      "LLVMDebugInfoCodeView": {
+        "imported": true
+      },
+      "LLVMDebugInfoDWARF": {
+        "imported": true
+      },
+      "LLVMDebugInfoMSF": {
+        "imported": true
+      },
+      "LLVMDebugInfoPDB": {
+        "imported": true
+      },
+      "LLVMDemangle": {
+        "imported": true
+      },
+      "LLVMExecutionEngine": {
+        "imported": true
+      },
+      "LLVMFrontendOffloading": {
+        "imported": true
+      },
+      "LLVMFrontendOpenMP": {
+        "imported": true
+      },
+      "LLVMGlobalISel": {
+        "imported": true
+      },
+      "LLVMHipStdPar": {
+        "imported": true
+      },
+      "LLVMIRPrinter": {
+        "imported": true
+      },
+      "LLVMIRReader": {
+        "imported": true
+      },
+      "LLVMInstCombine": {
+        "imported": true
+      },
+      "LLVMInstrumentation": {
+        "imported": true
+      },
+      "LLVMJITLink": {
+        "imported": true
+      },
+      "LLVMLinker": {
+        "imported": true
+      },
+      "LLVMMC": {
+        "imported": true
+      },
+      "LLVMMCDisassembler": {
+        "imported": true
+      },
+      "LLVMMCParser": {
+        "imported": true
+      },
+      "LLVMObjCARCOpts": {
+        "imported": true
+      },
+      "LLVMObject": {
+        "imported": true
+      },
+      "LLVMOption": {
+        "imported": true
+      },
+      "LLVMOrcJIT": {
+        "imported": true
+      },
+      "LLVMOrcShared": {
+        "imported": true
+      },
+      "LLVMOrcTargetProcess": {
+        "imported": true
+      },
+      "LLVMPasses": {
+        "imported": true
+      },
+      "LLVMProfileData": {
+        "imported": true
+      },
+      "LLVMRemarks": {
+        "imported": true
+      },
+      "LLVMRuntimeDyld": {
+        "imported": true
+      },
+      "LLVMScalarOpts": {
+        "imported": true
+      },
+      "LLVMSelectionDAG": {
+        "imported": true
+      },
+      "LLVMSupport": {
+        "imported": true
+      },
+      "LLVMSymbolize": {
+        "imported": true
+      },
+      "LLVMTarget": {
+        "imported": true
+      },
+      "LLVMTargetParser": {
+        "imported": true
+      },
+      "LLVMTextAPI": {
+        "imported": true
+      },
+      "LLVMTransformUtils": {
+        "imported": true
+      },
+      "LLVMVectorize": {
+        "imported": true
+      },
+      "LLVMWindowsDriver": {
+        "imported": true
+      },
+      "LLVMX86CodeGen": {
+        "imported": true
+      },
+      "LLVMX86Desc": {
+        "imported": true
+      },
+      "LLVMX86Info": {
+        "imported": true
+      },
+      "LLVMipo": {
+        "imported": true
+      },
+      "MLIRAffineDialect": {
+        "imported": true
+      },
+      "MLIRAnalysis": {
+        "imported": true
+      },
+      "MLIRArithAttrToLLVMConversion": {
+        "imported": true
+      },
+      "MLIRArithDialect": {
+        "imported": true
+      },
+      "MLIRArithToLLVM": {
+        "imported": true
+      },
+      "MLIRArithUtils": {
+        "imported": true
+      },
+      "MLIRAsmParser": {
+        "imported": true
+      },
+      "MLIRBuiltinToLLVMIRTranslation": {
+        "imported": true
+      },
+      "MLIRBytecodeReader": {
+        "imported": true
+      },
+      "MLIRCallInterfaces": {
+        "imported": true
+      },
+      "MLIRCastInterfaces": {
+        "imported": true
+      },
+      "MLIRComplexDialect": {
+        "imported": true
+      },
+      "MLIRControlFlowDialect": {
+        "imported": true
+      },
+      "MLIRControlFlowInterfaces": {
+        "imported": true
+      },
+      "MLIRControlFlowToLLVM": {
+        "imported": true
+      },
+      "MLIRCopyOpInterface": {
+        "imported": true
+      },
+      "MLIRDLTIDialect": {
+        "imported": true
+      },
+      "MLIRDataLayoutInterfaces": {
+        "imported": true
+      },
+      "MLIRDestinationStyleOpInterface": {
+        "imported": true
+      },
+      "MLIRDialect": {
+        "imported": true
+      },
+      "MLIRDialectUtils": {
+        "imported": true
+      },
+      "MLIRExecutionEngine": {
+        "imported": true
+      },
+      "MLIRExecutionEngineUtils": {
+        "imported": true
+      },
+      "MLIRFuncDialect": {
+        "imported": true
+      },
+      "MLIRFuncToLLVM": {
+        "imported": true
+      },
+      "MLIRFunctionInterfaces": {
+        "imported": true
+      },
+      "MLIRIR": {
+        "imported": true
+      },
+      "MLIRInferIntRangeCommon": {
+        "imported": true
+      },
+      "MLIRInferIntRangeInterface": {
+        "imported": true
+      },
+      "MLIRInferTypeOpInterface": {
+        "imported": true
+      },
+      "MLIRLLVMCommonConversion": {
+        "imported": true
+      },
+      "MLIRLLVMDialect": {
+        "imported": true
+      },
+      "MLIRLLVMIRTransforms": {
+        "imported": true
+      },
+      "MLIRLLVMToLLVMIRTranslation": {
+        "imported": true
+      },
+      "MLIRLoopLikeInterface": {
+        "imported": true
+      },
+      "MLIRMemRefDialect": {
+        "imported": true
+      },
+      "MLIRMemorySlotInterfaces": {
+        "imported": true
+      },
+      "MLIRNVVMDialect": {
+        "imported": true
+      },
+      "MLIROpenACCMPCommon": {
+        "imported": true
+      },
+      "MLIROpenMPDialect": {
+        "imported": true
+      },
+      "MLIROpenMPToLLVMIRTranslation": {
+        "imported": true
+      },
+      "MLIRPDLDialect": {
+        "imported": true
+      },
+      "MLIRPDLInterpDialect": {
+        "imported": true
+      },
+      "MLIRPDLToPDLInterp": {
+        "imported": true
+      },
+      "MLIRParallelCombiningOpInterface": {
+        "imported": true
+      },
+      "MLIRParser": {
+        "imported": true
+      },
+      "MLIRPass": {
+        "imported": true
+      },
+      "MLIRPresburger": {
+        "imported": true
+      },
+      "MLIRReconcileUnrealizedCasts": {
+        "imported": true
+      },
+      "MLIRRewrite": {
+        "imported": true
+      },
+      "MLIRRewritePDL": {
+        "imported": true
+      },
+      "MLIRRuntimeVerifiableOpInterface": {
+        "imported": true
+      },
+      "MLIRSCFDialect": {
+        "imported": true
+      },
+      "MLIRSCFToControlFlow": {
+        "imported": true
+      },
+      "MLIRShapedOpInterfaces": {
+        "imported": true
+      },
+      "MLIRSideEffectInterfaces": {
+        "imported": true
+      },
+      "MLIRSubsetOpInterface": {
+        "imported": true
+      },
+      "MLIRSupport": {
+        "imported": true
+      },
+      "MLIRTargetLLVMIRExport": {
+        "imported": true
+      },
+      "MLIRTensorDialect": {
+        "imported": true
+      },
+      "MLIRTransformUtils": {
+        "imported": true
+      },
+      "MLIRTransforms": {
+        "imported": true
+      },
+      "MLIRTranslateLib": {
+        "imported": true
+      },
+      "MLIRUBDialect": {
+        "imported": true
+      },
+      "MLIRValueBoundsOpInterface": {
+        "imported": true
+      },
+      "MLIRViewLikeInterface": {
+        "imported": true
+      },
+      "STDEXEC::stdexec": {
+        "imported": true
+      },
+      "Threads::Threads": {
+        "imported": true
+      },
+      "ZLIB::ZLIB": {
+        "imported": true
+      },
+      "_flowforge_dialect": {
+        "path": "engine/toolchain/flowforge/src/mlir"
+      },
+      "asset": {
+        "path": "modules/resource/asset"
+      },
+      "async_port": {
+        "path": "modules/core/async_port"
+      },
+      "description": {
+        "path": "modules/resource/description"
+      },
+      "edit_history": {
+        "path": "editor/editing/history"
+      },
+      "edit_sessions": {
+        "path": "editor/editing/sessions"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "editor_persistence": {
+        "path": "editor/persistence"
+      },
+      "flowforge": {
+        "path": "modules/function/flowforge"
+      },
+      "flowforge_compiler": {
+        "path": "engine/toolchain/flowforge"
+      },
+      "flowforge_model": {
+        "path": "editor/tools/flowforge/model"
+      },
+      "graph": {
+        "path": "modules/function/graph"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "lux::cxx::algorithm": {
+        "imported": true
+      },
+      "lux::cxx::binary": {
+        "imported": true
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::memory": {
+        "imported": true
+      },
+      "lux::cxx::reflection_runtime": {
+        "imported": true
+      },
+      "math": {
+        "path": "modules/core/math"
+      },
+      "meta": {
+        "path": "modules/core/meta"
+      },
+      "process_execution": {
+        "path": "engine/process/execution"
+      },
+      "script_artifact": {
+        "path": "modules/function/script/artifact"
+      },
+      "script_core": {
+        "path": "modules/function/script/core"
+      },
+      "semantic": {
+        "path": "modules/core/semantic"
+      },
+      "serialization": {
+        "path": "modules/core/serialization"
+      },
+      "stduuid": {
+        "imported": true
+      },
+      "type_info": {
+        "path": "modules/core/type_info"
+      },
+      "zstd::libzstd_shared": {
+        "imported": true
+      }
+    },
+    "native_libraries": [
+      "psapi",
+      "shell32",
+      "ole32",
+      "uuid",
+      "advapi32",
+      "ws2_32",
+      "delayimp",
+      "diaguids.lib"
+    ],
+    "headers": [
+      "algorithm",
+      "array",
+      "atomic",
+      "cassert",
+      "chrono",
+      "cstdint",
+      "cstddef",
+      "cstdio",
+      "cstdlib",
+      "filesystem",
+      "fstream",
+      "functional",
+      "iostream",
+      "limits",
+      "memory",
+      "numbers",
+      "optional",
+      "source_location",
+      "span",
+      "stop_token",
+      "string",
+      "string_view",
+      "thread",
+      "type_traits",
+      "utility",
+      "variant",
+      "vector",
+      "any"
+    ],
+    "prefixes": [
+      "lux/cxx/",
+      "Eigen/",
+      "lux/engine/editor/contracts/",
+      "lux/engine/editor/sessions/",
+      "lux/engine/editor/editing/",
+      "lux/engine/editor/scene/",
+      "lux/engine/scene/",
+      "lux/engine/process/",
+      "lux/engine/simulation/",
+      "lux/engine/world/",
+      "lux/engine/function/render/",
+      "lux/engine/render/",
+      "lux/engine/resource/",
+      "lux/engine/system/",
+      "lux/engine/editor/material/",
+      "lux/engine/material/",
+      "lux/engine/editor/persistence/",
+      "lux/engine/editor/flowforge/",
+      "lux/engine/flowforge/",
+      "lux/engine/function/script/"
     ]
   }
 }

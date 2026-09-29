@@ -199,6 +199,10 @@ def inspect(repo, records, rules, stage, compile_db=None):
         if re.search(r'\b(valid|invalid|getSceneRegistry|getClock|destroy|tick)\s*\(|\bTickResult\b', sources.get(header, "")):
             report("OLD_RUNTIME_API", header, "P06 expired declaration or compatibility alias")
 
+    if stage >= "P07":
+        for target in ["scene_projection", "material_preview", "flowforge_compilation"]:
+            check_model(repo, targets, rules, sources, report, target)
+
     scopes = tuple(rules["new_scopes"])
     forbidden_headers = set(rules["new_scope_forbidden_include"])
     for path, source in sources.items():

@@ -1268,7 +1268,8 @@ namespace lux::editor::flowforge
     public:
         explicit ContentElement(Impl& editor_, EditorResult<void>& status)
             : lux::ui::Element(*editor_.editor_, lux::ui::ElementId{"content"}), editor_(editor_),
-              layout_(*this, lux::ui::ElementId{"layout"}), asset_actions_(layout_, *editor_.editor_, editor_.project(), status),
+              layout_(*this, lux::ui::ElementId{"layout"}),
+              asset_actions_(layout_, *editor_.editor_, editor_.project(), status),
               work_(layout_, lux::ui::ElementId{"work"}, lux::ui::ELayoutType::HORIZONTAL),
               graph_(work_, editor_, status), side_(work_, lux::ui::ElementId{"compilation"}),
               actions_(side_, lux::ui::ElementId{"actions"}, lux::ui::ELayoutType::HORIZONTAL),
@@ -1481,14 +1482,18 @@ namespace lux::editor::flowforge
 namespace lux::editor::flowforge
 {
     FlowForgeEditor::Impl::Impl(EditorContext& context)
-        : editor_context_(context), completion_work_(context.execution(), this, [](void* owner) noexcept {
-              static_cast<Impl*>(owner)->completion_pending_ = true;
-          })
+        : editor_context_(context),
+          completion_work_(
+              context.execution(),
+              this,
+              [](void* owner) noexcept { static_cast<Impl*>(owner)->completion_pending_ = true; }
+          ),
+          compilations_(context.execution(), 2)
     {}
     FlowForgeEditor::Impl::~Impl()
     {
         reading_ = {};
-        compile_task_ = {};
+        static_cast<void>(compilations_.cancel(compilation_));
         completion_work_.cancel();
     }
 

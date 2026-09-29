@@ -1,0 +1,878 @@
+[
+  {
+    "archive_path": "dev_log/P05-R1/.gitattributes",
+    "sha256": "ec0f5de6bd354f989e2b34e1074b2836203278bcca96362cffda5fc964df8543"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/architecture.json",
+    "sha256": "f029236d24b5e9b7e76d70ac5942256756b1313581b99060857870f98c27a827"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/files/378148569595400/material.luxmaterial",
+    "sha256": "2da18ecfe9474b6932e6a6c886f23950aba5fd6718c718ac0271df3f565d3db0"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/files/378151167583600/flow.luxflow",
+    "sha256": "72117dec030328e5ec1cc0128d515d4a23e4fac78198ff7f19485e285a0bbaa3"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/files/378151167583600/material.luxmaterial",
+    "sha256": "1d5c0c793b10b695a84b187a1f657b52a51e4e93b47401f5258c443b4c4f0d9d"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/files/378151167583600/scene.pak",
+    "sha256": "785e216858a1c97eef97c0d1399ed5f1906bc6242a5c54779d2005ea0e204703"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/files/378151247048400/flow.luxflow",
+    "sha256": "03e01b0cf7a4da35ca457d884eebd97ed990d075592efda1e80f41e168b96014"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/files/378151247048400/material.luxmaterial",
+    "sha256": "48d7f8b59d3466d2489a93213d7fac08bc82936f88e9008dc22144986955905f"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/files/378151247048400/scene.pak",
+    "sha256": "2a648e76c68fde5fabe51f07735fbecb98080e978ebc811532e12f208323ef09"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/files/378172915391700/material.luxmaterial",
+    "sha256": "2da18ecfe9474b6932e6a6c886f23950aba5fd6718c718ac0271df3f565d3db0"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/identity.json",
+    "sha256": "b8d25f134e8afb7da4994840633e0c4c1085aafd18ddedf57d8a576d9add85f2"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/r1-chain-control.log",
+    "sha256": "c59a75c431c01b1c3619f7d8048005d9d23aa3275b3ebc7bb700e5074587eaf7"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/r1-chain.log",
+    "sha256": "3552f3e6bbf9f293559aef5f35112b19111a78796de96efd7521005aff667ab6"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/r1-recursive-stack.log",
+    "sha256": "6b1c99225463b51ffa934b084068f9935cf4ec44b04482bbdead7b971db8c37b"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/r1-recursive.log",
+    "sha256": "2ed25ae8f04b9e63e80cee249834edcecc036aa3cbe7a393102236b992f24fe0"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/r1-revoke-stack.log",
+    "sha256": "e4017c6ab16311301b8681bbc40cfb49a2dca29ba1ce2b246ba93831443f5f71"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/r1-revoke.log",
+    "sha256": "7f00201f0e054275b95d4627c3edcca376d72fce07a0508bcf297f7545e6466b"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/results.json",
+    "sha256": "c8cef6f139eed3233a5ea5730665d463d1545a0bd5fc2e08eee7fe84b66867e3"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/sdk-link-inputs.log",
+    "sha256": "23e86c4086eff871d1f1e11bf5a73fa37ac906fc08a91acbe9ec1c6442f178c1"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/sdk.json",
+    "sha256": "936aaadfa6ae6ab4b80f5d9367d95d75adcf4a86737d1e7df394d85d9d1de5b8"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/before/tests.patch",
+    "sha256": "9859df843a2825d8d01ccf476b89f3ce2739c1b759afb97773af3ea6f0e49b4b"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/check_receipt.py",
+    "sha256": "4d1627b645b2bf0c1ad7f64bc81ed0f35c960e486c0bd3713a4c9268eee4cd39"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/evidence/boundaries.json",
+    "sha256": "82d17d7f7fce349b0ab531d90b84a5cc11b989e8920dedec556704d067e307dc"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/evidence/excluded-user-changes.patch",
+    "sha256": "197a4f03ea3ba0ecba892cfd2c6520e72bd6bc773aca14149b2ecc1b75ea1d64"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/evidence/flow-boundaries.json",
+    "sha256": "99b422e021f066f0fa457c7b92242bf148eca06cfa2484723dbbde26edee4b65"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/evidence/material-boundaries.json",
+    "sha256": "e2e821c038b5b29e8f9e2a2c803bcb2ad9e411c89b2439c78ead101d7204be01"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/evidence/model-boundaries.json",
+    "sha256": "1ce243182d721927f05e2effe9a661421ca1b86296936e8b12f2ebd84ecfc097"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/evidence/persistence-boundaries.json",
+    "sha256": "68b1a5c5822d79b12706d011da08e2d39136f71acd9ce96748261722000d871d"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/evidence/targets.json",
+    "sha256": "144c430ef1b5d962351ec83640935328e1a42ebb55fa3057ea055b3e599a3ed7"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/files.json",
+    "sha256": "5b619b03f94e5c468fdeeaa8af78b3b70cb981f49c09329870635f27e11c333b"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/architecture.log",
+    "sha256": "8e7975d18aa71d3e7ce1f9b9329b916990798dd8c1d2cee7dc3a28d049092a40"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/boundaries.log",
+    "sha256": "64ed90364c183dee6063ebfa23b3cf02bc6a96dfa0cecc87f940e205a32ade0d"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/build.log",
+    "sha256": "633d49593246e3887d39013a28050510b69f825a4d1ab95002a2e75cc5a3c437"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/C01.log",
+    "sha256": "0dbfe595f0e021e51634fce2ac4ea94333d7b45abfe32ae13d4c70503ce2fa37"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/C03.log",
+    "sha256": "81b8ef88867808a3afa6c3d8a498aaa0bbe254c88b1722b5afadced874960159"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/C04.log",
+    "sha256": "e86c1b07b3a1db340e031ce7be7c470acc68e192ef35f894aaab33e9bb6f2e66"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/clean-final.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/clone-before-status.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/clone-checkout.log",
+    "sha256": "e58a38e807227a99158f8d3355daa524b6207779167288790f9474121887707e"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/clone-fetch.log",
+    "sha256": "591847b80db066f002ece0d1fd837c6e19718fdb7f51ba641b48fef98428169f"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/clone-origin.log",
+    "sha256": "29500a6145d74352769d8877d92b68ec63bcbdcd62976e32a496bce144543fdd"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/close-contract.log",
+    "sha256": "c18f0d1bfc4d2e2698c7b7ff607721107cd2a8843e7932a867cb3efac519da5a"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/close-throw.log",
+    "sha256": "4b5f1392e9027cc8bf5e299d48c3ac58d294945890d5900bd93636dbf2761288"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/configure.log",
+    "sha256": "67c96b2e0fae19ebe9525d9d018a9b6b8667e43a9e33f1a3096a79b8901da62d"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ctest.log",
+    "sha256": "35bef6514be5f36e2f0a9c6eb1d7c2f4c24ef8ccca676f1d5b6fe3d8cc3c80be"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/development/f2b5a00c60e93dc81d7c72b127ad08b219ccfa23/build.log",
+    "sha256": "486e8ee2b65d49961f8bfd0b0b8932e33041111226df5752eb2d20aa01383bde"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/development/f2b5a00c60e93dc81d7c72b127ad08b219ccfa23/clone-checkout.log",
+    "sha256": "d01b31517d557153f153b07cf9e52166af97ce226516a96c5472b0e74aafc374"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/development/f2b5a00c60e93dc81d7c72b127ad08b219ccfa23/clone.log",
+    "sha256": "c1fdbe470ca5cf93fd64b49c32f71d304f27ca41bbdafd33af8ad1da24871386"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/development/f2b5a00c60e93dc81d7c72b127ad08b219ccfa23/commands.json",
+    "sha256": "9fc799e4552d5e65e0c5e977496b2d7b0d024d659f39849725c0477d1502a57f"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/development/f2b5a00c60e93dc81d7c72b127ad08b219ccfa23/configure.log",
+    "sha256": "97b73762d1d0774f9756ba7a7b142f54bfc5c8ebe12f53b68f2eae21d12db305"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/development/f2b5a00c60e93dc81d7c72b127ad08b219ccfa23/tracked-snapshot.log",
+    "sha256": "9d4ff4b4b9175c6c2705db275ce3e41c22df870b5f34a2c704067fce54e3f5bc"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/development/install-failed-0.log",
+    "sha256": "2befd5854fc4b716f5bf0e94b18bb9e85aa540d2e8e693640715f994c0c7ab16"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/development/P05-R1-before-build.log",
+    "sha256": "4aa0db63a3eb05992389bf23124b7aa9dbb06435e8c8acb59614915843b46240"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/development/P05-R1-build.log",
+    "sha256": "8eaf8be21af07083ce6b8ae8456662e02a7145ec449d43546c5a6e42d2dd8195"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/development/P05-R1-cases-vs.log",
+    "sha256": "04c47a1f90a1badf84d8761c1dd3cc06a011df276a2895c3129e1341016d1ab6"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/development/P05-R1-cases.log",
+    "sha256": "e8392aa074d58c78cabcd6ac4a03baddaf3ac26d1d9f6542a81c04017be54cfe"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/development/P05-R1-configure.log",
+    "sha256": "d7e867c607e65efcf70c4990353c2292e6c3e144d3cef7e21dadf32235915f07"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/development/P05-R1-validator-progress.log",
+    "sha256": "00939300351f207762a794f56b489a2ae1b09e5dedc640b41022041d8a3b08fc"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/development/scene-model-p02-consumer-configure-failed-0.log",
+    "sha256": "db60ffd8a15bc456f6cb92f02ca7f4d6429cf9bf553705cc66a97fdb9ddb0027"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/editor-sessions-p01-consumer-build.log",
+    "sha256": "d368dc1a0e0d1ab670dbdebcff27279141a784daf4e3f8b3f4482cfb48edad26"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/editor-sessions-p01-consumer-configure.log",
+    "sha256": "549495fb7be10371c50a171521159646778b0607b6362eadf1b184de4fecd33b"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/editor-sessions-p01-consumer-ctest.log",
+    "sha256": "7a78a926dc75a4092daef3fd346c24d22f0659709b6dacc3991cb1ee9186ed63"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/editor-sessions-p01-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-boundaries.log",
+    "sha256": "8a571c6dc01446ede8442db860379b23818f84492f8c530ed68090e2c3154cfc"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-budgets.log",
+    "sha256": "1a384b49eb4b151ebcc91dc7d883cb9fbedfefb59c0cf5b8559a0b0515a583c8"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-content.log",
+    "sha256": "65a3f16d9880eda1e82659f178ddea668df86d600f39d1dd8a9c50ff71791cb2"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-failure.log",
+    "sha256": "43f02dc5cfc35d80ef117032ab5ba4da4208015e9adb00604d0d37769e61ada9"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-ids-candidate-seed.log",
+    "sha256": "cd7f9fbfcc98e12bbdfff005f82c16ba0a40470dc1896c1ea533b54ac7f45151"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-ids-exhaustion.log",
+    "sha256": "b51336c795e5e683f51f6aabd844bba6de223a41a93e8f2895945052d22ec4e9"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-ids-failure.log",
+    "sha256": "cd64c83200c47877eb6a997cec1cbd62aa6207932755c1606e84ec509447d3c2"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-ids-restore.log",
+    "sha256": "d976117a4c32e516073407f2f25bb6abbc8024211fe5248e4279d01120d19a1d"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-ids-signature.log",
+    "sha256": "f4968cbfbb418916d2d636a4ed9b4e6abbaeb5ada506d13fc0df474061f4dd6d"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-ids-undo-branch.log",
+    "sha256": "400742ffe757d41124361dad3ed6ff2ab8fa8dfcdf776a720f83298aa78848a8"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-imports.log",
+    "sha256": "df1f543113adc7d57562749421d935eef06523ad63ba343856b796ea8ffc3658"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-input-closing.log",
+    "sha256": "05f83d403f3f3bebac26e0837653adef5d72b7f73ea6433ac4c786fd66c8d052"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-input-reading.log",
+    "sha256": "05f83d403f3f3bebac26e0837653adef5d72b7f73ea6433ac4c786fd66c8d052"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-input-stale.log",
+    "sha256": "05f83d403f3f3bebac26e0837653adef5d72b7f73ea6433ac4c786fd66c8d052"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-installed-detail.log",
+    "sha256": "168e38ca23abc63050a8ab0e5de33c39a46a161bd5cea2546002a21677052577"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-lifetime.log",
+    "sha256": "df9697beff27b7a507e3c6745b15e177a59aae1f59c0060905d5f7c555af7445"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-mixed-recreate.log",
+    "sha256": "ac191f47d1a5df21354ba0d4dacaad147679ae34d7d6784787bce421ec5761ad"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-mixed-signature.log",
+    "sha256": "bf4b9c9220bd17fd0f7a741833145cfb42801958e440a0f90a74604c8bfb5a9a"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-reading.log",
+    "sha256": "690826dbc4ed9a1e4f437856f78be1abaea2c3134cf837cfef23503310bf8461"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-reload-closing.log",
+    "sha256": "0366a2f51cfa73735dbd5bdfdf6d8a9c89f0cfe4c5368b3d3fd63199ea552fd0"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-reload-identity.log",
+    "sha256": "0366a2f51cfa73735dbd5bdfdf6d8a9c89f0cfe4c5368b3d3fd63199ea552fd0"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-reload-reading.log",
+    "sha256": "0366a2f51cfa73735dbd5bdfdf6d8a9c89f0cfe4c5368b3d3fd63199ea552fd0"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-reload-success.log",
+    "sha256": "ec9dce787748adbc873b05f17c4bc0cdc571f14a23562d245f14a8c19920d26d"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-reload-unbound-external.log",
+    "sha256": "0366a2f51cfa73735dbd5bdfdf6d8a9c89f0cfe4c5368b3d3fd63199ea552fd0"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flow-reload-unbound.log",
+    "sha256": "0366a2f51cfa73735dbd5bdfdf6d8a9c89f0cfe4c5368b3d3fd63199ea552fd0"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flowforge-model-p04-consumer-build.log",
+    "sha256": "6d72ff4cfeb271ae57b4d577eadf76013750be83a6a0687268d89d5ac4932af6"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flowforge-model-p04-consumer-configure.log",
+    "sha256": "6caacf0ab4e4a76572c912e08a771a50ad7be4b0699e73e1e7f4ffc89270c1eb"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flowforge-model-p04-consumer-ctest.log",
+    "sha256": "f6d0183392aa79a9cd87090700eead1072e56f1f4db1c27cdc8f17c3679a8b20"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/flowforge-model-p04-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/historical/P00.log",
+    "sha256": "8cd7c9d8eb2e79e104b1192bbf3d78bc1f715f45691ddef0e695b64f60cf5e25"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/historical/P01-R1.log",
+    "sha256": "09b911064f335fade54838d62a0b62dc5c67d5a657c42dd462ca97c1708fcd89"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/historical/P01.log",
+    "sha256": "6276be70602b174b4686bde663b1ec1d714170fcbcb0c13a5d0753491f21a971"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/historical/P02-R1.log",
+    "sha256": "8ed784744eaf03204a0b66187118bcf7860578b3ebadd13a5e46951ef537462e"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/historical/P02.log",
+    "sha256": "c36dc4ca22e402a8b0ed862b80de3398c90c42dd60472bd0f3e2051683a9d25f"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/historical/results.json",
+    "sha256": "ac1c4fc21ec56cc85ca5126c0f6b540941324ae0f01d4fbe4adb0c6f6b92342e"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/historical-verifiers.log",
+    "sha256": "e72219832d3863b81e962a4c0a0733222691f05cccd4a0cf251881341e2a554f"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/install.log",
+    "sha256": "45334e26069aae8813d759cda59018ce5ee7d482f0454804d72a8423ca60c3c0"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-boundaries.log",
+    "sha256": "3a18037852fc55ed4057ee7045760c09675b32f78e6e03e12bca816b4daa0e54"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-content.log",
+    "sha256": "316add362d88afe83acab15eb5cf9854d9f129636c1232bf91b5aa6a17dfccfa"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-failure.log",
+    "sha256": "d1ea3897c7373cef78af024a3e2c7d70c505c5ab9e61c6abf039b195929d398d"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-imports.log",
+    "sha256": "b8e257faf946b067361e73a09a86b0ab80f2ccc941244a1b175e776efb2c0e99"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-layout.log",
+    "sha256": "f5749a84dbd827af261f63befa6c53ad910a40419445b180c03c8f8990c236d4"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-lifetime.log",
+    "sha256": "8f5bffd784bfef4bc26e86422e2b82c5a144909c82ec540089d364a21390e39d"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-mixed-recreate.log",
+    "sha256": "6f7db4089659d5a8d9b1684d09a3fb9f6669ee0f0e4aafa3c75adc7f4c10c485"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-mixed-replace.log",
+    "sha256": "d8e15df280795642843b483665e06f2937c8d47f21a2b29aa0a9ebf6952d3cd8"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-model-p03-consumer-build.log",
+    "sha256": "44dcd0f4b7b97b742eadf9b0aa1ee50b55f078b72eb3f189a4e3935177f51f6f"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-model-p03-consumer-configure.log",
+    "sha256": "ad9a911f1d7a7a955d69f8aec1e9106de5a80dc0cfa882b9d401f8126839d290"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-model-p03-consumer-ctest.log",
+    "sha256": "8d60685d9684581908bb28effac0b928f49eb90ade23569852b89e1f747fd2fb"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-model-p03-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-reading.log",
+    "sha256": "afbdb29e24aea972e6d019e46df8f18b3be2261a2ad0c5f0530572ba9c8ad8b9"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-reload-closing-lease.log",
+    "sha256": "d85c55e9f6879efb6492c1f032210537532e9c443a444ca6cceb1c815db39a1e"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-reload-outcomes.log",
+    "sha256": "b24d4a5c62e33473bad0d0c9281eb4c34b33e42d1e2d65ea2ae2bcfa2272effe"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-reload-reading-lease.log",
+    "sha256": "332dd9e1e66beded02cc32b88b8a33e3a1e3e651eb5f945173d54f9c445f1b4c"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-reload-unbound-lease.log",
+    "sha256": "8260a0368fd084ed50a84ad2a718ebc36fa8fa6a0ee5ca5070d704ebfa4a282c"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/material-reload-unbound.log",
+    "sha256": "b8eb222b25960c246d12568199496bc517cfc0a44adbec4ac851f11930296def"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-atomic.log",
+    "sha256": "e429e08c2b9dbee111e41e742d8b742cd627be1501346130ec8e9df1dfb2e75f"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-boundaries.log",
+    "sha256": "27a721dba5a67ddff578b7c4b8e18f36eebb326955ca81b7fbdb4f06dcbf6fdb"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-changes.log",
+    "sha256": "429b895b64e40669f63e18a30d3be0fd05b439914137127cc9b7e9b52c1d54b1"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-content.log",
+    "sha256": "46668f7c89e9bd24a7de6c0c2a11fc3858db235423dc526674fed7e5ce31a3c2"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-identity.log",
+    "sha256": "e866c0824ae12229976a178e938790a544bf531824ef505aa8ef480a117363ea"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-imports.log",
+    "sha256": "6ec45cba5bc2958f308e92f9cf7a693baa37c0fe79a1dd7d779fe0b99d5c91c4"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-mixed-1.log",
+    "sha256": "485c9f7be2b8b7457329cad5e69a0f5e543f373fcc84b1697eab77a06c9e2c4f"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-mixed-2.log",
+    "sha256": "e965126827db41611390f0e83e91b3eed73f807ccbc1040f9d4267204d47158a"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-mixed-3.log",
+    "sha256": "1fd1c261c6550803b8e41fc3511316786067df5ef027272e6d13c7de48548e22"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-mixed-4.log",
+    "sha256": "ce454d0fc62340c48c6265669c1a10550cdc5c70c5191d67d634b724a7fb31ef"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-plugin.log",
+    "sha256": "1cbb6b756d2e62be82ba2e26c8a466bf4db19b9273d3fade271c85b0f7e307ff"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-read-5.log",
+    "sha256": "0de885c4bf8ad3504f5cb4a9bdec04173e36b0734adcbeafe0b10c51d8c59eb0"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-read-6.log",
+    "sha256": "7658ea9bc28b9eab62007d901bb4925b1703690015dac3cd3592d929c1cc1853"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-read-7.log",
+    "sha256": "e9c629594a72a34fe7d66475dc2028c9ef9c776ba9c0ccd1d9c78949230620c7"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/model-read-8.log",
+    "sha256": "e6a6f6f32eea56fce07b206d56f3b646ccd156ccaf1abc1adf7d997704f1e534"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/original-p03-gate.log",
+    "sha256": "20c9378daa3a331c43d4e8406db88a114640b43faf904147e0dd72d98158405d"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/original-p03-r1-gate.log",
+    "sha256": "3cb5f9b5fc3964779898b32a66aaae90b0449d53fffc61542ee802e466995f2f"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/original-p04-gate.log",
+    "sha256": "e0b713a91f1a19065e046183e5aef7aa2f79b43da48a9e62ea9817b86e06df84"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/original-p04-r1-gate.log",
+    "sha256": "98e84c04b0f9fc0a78fafdb612588e5f3ec2e3a970e5107ce54a8524d22ead61"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/original-p05-gate.log",
+    "sha256": "6912a3fe618b8f03edcc0883f392f8d0a2abd64bdfb14af4f84d1b404ef7ef27"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/package-audit.log",
+    "sha256": "d67c4621729f692d4cf571ceb6bca6418d2d95dba99167cb971cb53ca740ea05"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-boundaries.log",
+    "sha256": "2c3e303e104d534ef8ceb2f30300dc053adc30ac38312e20feb0ca1f9408027f"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-capacity.log",
+    "sha256": "09b5e2ce98a156abf7a03bb48849bfae91132c69039fd6810c891fd9949f0c69"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-close-key.log",
+    "sha256": "2144433f4994160d031901f8851ca4b22c54c1d2dc0ee0f23e6ff353efd3e983"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-close.log",
+    "sha256": "2144433f4994160d031901f8851ca4b22c54c1d2dc0ee0f23e6ff353efd3e983"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-conflict.log",
+    "sha256": "80fe50c3fcaf02a331d8d1b683e424aadb4841524f3f1cf9cd96102dc44eb77c"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-coordinator.log",
+    "sha256": "23265a650013bbd0dd44092fc36105a27cedaa2e6025202ccd6ae046bbf208fa"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-decoded.log",
+    "sha256": "051fc1f497424c59a4b969a2f3d5a2b067bcca353f8c15aa52dffb9a3b153ee5"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-execution.log",
+    "sha256": "d0d38e22d95b4b21266bf31218cd6b39cea2e491542b85812ff6e762a8b599d7"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-files.log",
+    "sha256": "6735125f0ff0729e739425f167bcc08d38ddc1fdd8c2044d3a9f74b59cbd8256"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-identities.log",
+    "sha256": "78603d929e951208095f4360261173e68e288e142772007710ecc52d4fc2b4e5"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-imports.log",
+    "sha256": "ccd9760f12506162fed2884d7ae00e5a9f2f1b75bad19dd746eab315024d1be7"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-measure.log",
+    "sha256": "392b595bdc6ebd5ca5626736f1b3f7e26fda21d369a46d6c016a9133375969b5"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-models.log",
+    "sha256": "9cda5460167cb2bdf60cae129d33f3d566d58a2a4450ec211cc25aa78a10cfec"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-order.log",
+    "sha256": "e37cf9bbffabb29c1ba3059e7da9d858caea3a74496d1180dca769835cc45cb6"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-p05-consumer-build.log",
+    "sha256": "4aa0db63a3eb05992389bf23124b7aa9dbb06435e8c8acb59614915843b46240"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-p05-consumer-configure.log",
+    "sha256": "2741bd6f898a7a554e3cacb8ca639a73a7e9a7fb4d9a39933d5ac2ac54355143"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-p05-consumer-ctest.log",
+    "sha256": "4b162c750912f344a500c11cf5b6003fa97aaddf27298fba2cb924c73aca3c4c"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-p05-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-r1-callbacks.log",
+    "sha256": "e857c5981568ab7120cd5a52e9c646f6c37bb8f5f3ce20aa84abe09546c2b489"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-r1-chain-control.log",
+    "sha256": "c59a75c431c01b1c3619f7d8048005d9d23aa3275b3ebc7bb700e5074587eaf7"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-r1-chain.log",
+    "sha256": "d622b144a05db2b148c823245d21ba32e9600cf6a564a2b7511411e28fdab31e"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-r1-conflicts.log",
+    "sha256": "7bf96965a00cf92bc4eb72738e3c612d4a44f385392de447f9b04fc7f62ab2c8"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-r1-reading.log",
+    "sha256": "9861f81fec446a1ef52eba13d2334feb7dc1d8bb7291e7456c963ef7b8f951cf"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-r1-recursive.log",
+    "sha256": "7e62cbf9435696a9547c710038243b40c056292ce98b23e941595ee5e0e0fe42"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-r1-revoke.log",
+    "sha256": "f64531575fc9193700b816a915362fc3a9b14d404e58e3637a1f43ab3b1d6089"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-receipts.log",
+    "sha256": "9a94c8dfda90619ac99ca68deeaeb8eb942039cfb408786624ce7e4f1f78d807"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-save-as.log",
+    "sha256": "d6d9634c1bfad3031b58c52c2d9b8e4ec153fdff3dc5febfc097a2b0e0a7ab36"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/persistence-unknown.log",
+    "sha256": "104e8e7c7d14f6bd1849af7380dc42b4a120ef4198f7b551b5e5527a815c21ef"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/portability/restored.log",
+    "sha256": "6276be70602b174b4686bde663b1ec1d714170fcbcb0c13a5d0753491f21a971"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/portability/results.json",
+    "sha256": "9752ab159dafb318d971e21f5f71a11dac237035b4b542eb9010c0abc32d2362"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/portability/X01-R3-01-relocated.log",
+    "sha256": "6276be70602b174b4686bde663b1ec1d714170fcbcb0c13a5d0753491f21a971"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/portability/X01-R3-02-windows-provenance.log",
+    "sha256": "6276be70602b174b4686bde663b1ec1d714170fcbcb0c13a5d0753491f21a971"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/portability/X01-R3-03-missing-log.log",
+    "sha256": "1dccc13c3707ea175fc8da06b3b251dcad236fd3589a6a750451d1d244c82954"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/portability/X01-R3-03-missing.log",
+    "sha256": "b34504aeaa313c9ba2a17b6ce9a140b9c69ef73217e216c90aaa4d7aa1b3848d"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/portability/X01-R3-03-tampered.log",
+    "sha256": "33959f43e9100483878055d29b7d6e3b53e3336232f3f197521d9a3e2dc7adf3"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/portable.log",
+    "sha256": "b892e6d4a4bcd06bbd5e00c396462e03b970524d683143d459b30149e9a0fb3d"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/scene-model-p02-consumer-build.log",
+    "sha256": "e23a1e7536176d3d3c660ef54e3ca634bc5c7f6f26f9a89f005d8abec4573180"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/scene-model-p02-consumer-configure.log",
+    "sha256": "2ded888eb25e98a5770c9700bb3075c9c3998436db947b20b89e771cec85def3"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/scene-model-p02-consumer-ctest.log",
+    "sha256": "2d72bb5e57abf2b5e07276c593cc28f4adebafeb8d4adb52f323856c2042f987"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/scene-model-p02-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/sessions-detail.log",
+    "sha256": "64c1c6954f1d69e79e6f61165f37abed03a0b908d944b043c7cbd3a849fe2aff"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/sessions-imports.log",
+    "sha256": "65b3c2d58485ad716a3fd2e01ee54f89ee3aa6fd5e104b0a512cee7c29ecfa9d"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/test-names.log",
+    "sha256": "6aa4864d460f14bf2670b22d50e43bea3be300ebc3bd0e7f09b4ac59757c0ea2"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/three-sessions.log",
+    "sha256": "6d3e133121e6ce2f39c96c23c359542885a0d3e4352b189338ea844461e8a5cf"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/tracked-snapshot.log",
+    "sha256": "cad279a45eac1ba49fcd3b9779d490dbb951af5ffea9c8b985abe675720168e3"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-resources-editor-d2-build.log",
+    "sha256": "9701eeb4ed5c239f28bb9330db6a9c4fdb3d72d4a6dc0cc4921e1f887b683f35"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-resources-editor-d2-configure.log",
+    "sha256": "6611f952bc3b164ec96b7d27a9f8d66209570394f4f62b47789e33d917ec39b6"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-resources-editor-d2-ctest.log",
+    "sha256": "f42b865f7ac398f9ca4f47accd256770c14d9e43a17576ed262bf0013985d5ff"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-resources-editor-d2-no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-resources-external-feature-build.log",
+    "sha256": "7ee847eef7fd1d1fb98e1b0c1bdc4a655626701b46773505f82fd6a13a07cf33"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-resources-external-feature-configure.log",
+    "sha256": "a2b107eb4e2b2fe9e3c16c3394d897499c67a6091f7f9259c906618dc18e88b1"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-resources-external-feature-ctest.log",
+    "sha256": "bf7d3a6f47e2dc370461c3f46d69f0b8b8e699375a68d124740b27ad26c150ee"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-resources-external-feature-no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-scene-pane-consumer-build.log",
+    "sha256": "19b288e47fb7d1bf33a9f6045eaad5ee9f5f19d8824e3a05368ab68b0b1ab50c"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-scene-pane-consumer-configure.log",
+    "sha256": "e9181602eb494d4ec20ca36173fd228460575ed34b8a4789164dc08eb54453a1"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-scene-pane-consumer-ctest.log",
+    "sha256": "488d7e600553c2630312abdf5ad9fccfa54dc58519eb4a48c6152f65dcc24d22"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-scene-pane-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-views-gpu-consumer-build.log",
+    "sha256": "95e95626631f83d20362ae43d7c8aeab5c6524f6195a73860cace13bb52709f9"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-views-gpu-consumer-configure.log",
+    "sha256": "50f836dc6aa5ce83374ace8f0f84bab69cca51adb0491f91961998cc5a425978"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-views-gpu-consumer-ctest.log",
+    "sha256": "b93a69bd201a9a9618ab526b37f61e15c98677a7e4a050fbd4c45c8ea4b22918"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/logs/ui-views-gpu-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/migration-ledger.json",
+    "sha256": "8b296ede02c945db4910db1e24bf9837e9ee48f9cdf796801f965753f1e9ad31"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/README.md",
+    "sha256": "8348b9abd087e3b87e0b72013ced311abdd828947880da94f5c3a42051fb2610"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/receipt.json",
+    "sha256": "43f6dba0f9b1207f1a6ddef1a214621dbb6d88c03a5b38d3c2d44b9ae1aff293"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/scripts/before.py",
+    "sha256": "a97e9c7352f49ff5a825a51d939f8e1434745f62ff6de9903aa350e73a5183f6"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/scripts/debug-before.py",
+    "sha256": "96b035febbc7fc0ed047892f5adf2384d9fbdeb1bbaa0ec98bd48aab9602856e"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/scripts/portable.py",
+    "sha256": "721773b31f8a6ec673d4617e84462224cc868e8c6c35439ca34f0c3dd8d9f69c"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/scripts/validate.py",
+    "sha256": "5bed9653167ddec70a8b5f8e38533757deb337159e470785bdf8920d54c0c508"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/spec/review-package.zip",
+    "sha256": "945d5b304d73d73820483fa9fe2e82045247c9ebf3bd309483aaf9547e3e1538"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/spec/REVIEW_AND_INSTRUCTIONS.md",
+    "sha256": "6afbabcc27aaee36d6e3198f738249703ac213925bd8a5ce2ea70aa64c004ea7"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/spec-input.json",
+    "sha256": "7f669555bfcb63c40f32f2408c6044814abab3ecc8a3a3719fd3c962f38839a9"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/test-coverage.json",
+    "sha256": "ed622f248db6ce33d0ab209612e9ae9a6e548c011f6a41518f03030be3623e03"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/validation/altered-required-log.log",
+    "sha256": "d0d0f5600a8cf99ea958949f01ce9362b65e6d80924d906abaca547648b952bf"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/validation/missing-predecessor.log",
+    "sha256": "dc42e4d73f1f2486bf8afefca5e756c30d3721d5b1c7217ea25ac8f0a34f0873"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/validation/missing-required-log.log",
+    "sha256": "d4a3384bedbae87e575687de1541dfaef46ed61cb177efea72abae4691c6e397"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/validation/relocated.log",
+    "sha256": "8974aea33b194f9de669154707311ff81a31d976cdd4d988f0477979f38279bb"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/validation/restored.log",
+    "sha256": "8974aea33b194f9de669154707311ff81a31d976cdd4d988f0477979f38279bb"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/validation/results.json",
+    "sha256": "75ae8d51c37cdab4204492bd1cb1285d3daf162daf8da5eda82e4aa834493eeb"
+  },
+  {
+    "archive_path": "dev_log/P05-R1/work-notes.md",
+    "sha256": "63234bf38444cbb27f5e39cd408715c89915e90d586ae64a1b71c4b6b0ba0f01"
+  }
+]

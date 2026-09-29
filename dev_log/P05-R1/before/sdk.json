@@ -1,0 +1,22 @@
+[
+  {
+    "file": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\editor_persistence.lib",
+    "sha256": "4a2605f876bb4d9d5dd1d87ebe688c3d88118d2b30c74f728919a47a82492736"
+  },
+  {
+    "file": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\flowforge_persistence.lib",
+    "sha256": "b35ee4352fb2ccc6f6ca02cdc088b283c6234b31674b2174fe711cf0ac5ad686"
+  },
+  {
+    "file": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\material_persistence.lib",
+    "sha256": "a465a6bdabdad7b3aef3b00c9c2f9ae733ddcef0a1c7b75de06e20af3b4a9c5a"
+  },
+  {
+    "file": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\scene_persistence.lib",
+    "sha256": "3d964c822d4c15d221d6a8262d7377d2cdb78d78941d3f0291429c4ff999d4a3"
+  },
+  {
+    "file": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\project_io.lib",
+    "sha256": "e052c27deec5caeb403cf93f3f17f7a6200c6f6d891a051afd061576e8f5802d"
+  }
+]

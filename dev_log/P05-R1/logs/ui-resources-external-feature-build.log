@@ -1,0 +1,17 @@
+[0/2] Re-checking globbed directories...
+[1/14] Generating ExternalShaders.hpp
+[2/14] Generating plugin/sample_external_plugin/identity.cpp, share/lux-engine/plugins/sample.render.triangle.json
+[3/14] Building CXX object CMakeFiles\sample_external_editor.dir\plugin\sample_external_plugin\identity.cpp.obj
+[4/14] Building CXX object CMakeFiles\sample_external_editor.dir\ExternalEditor.cpp.obj
+[5/14] Building CXX object CMakeFiles\sample_editor_test.dir\ExternalEditorTest.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[6/14] Building CXX object CMakeFiles\sample_external_plugin.dir\plugin\sample_external_plugin\identity.cpp.obj
+[7/14] Generating share/lux-engine/plugins/catalog.json
+[8/14] Linking CXX shared library bin\sample_external_editor.dll
+[9/14] Building CXX object CMakeFiles\sample_external_plugin.dir\ExternalFeatureSample.cpp.obj
+[10/14] Linking CXX shared library bin\sample_external_plugin.dll
+[11/14] Generating sdk-runtime.stamp
+[12/14] Linking CXX executable bin\sample_editor_test.exe
+[13/14] Building CXX object CMakeFiles\sample_external_test.dir\ExternalFeatureTest.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[14/14] Linking CXX executable bin\sample_external_test.exe

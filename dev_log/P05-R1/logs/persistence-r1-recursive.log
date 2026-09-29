@@ -1,0 +1,2 @@
+R05-02 accepts=1 nested_ack=0 record_alive=1
+R05-02 real accept executes once, deferred recursion, execution pin and later ack PASS

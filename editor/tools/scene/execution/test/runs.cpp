@@ -47,6 +47,18 @@ namespace
         };
         inline static std::function<void()> installing;
         inline static bool reject_install{};
+        inline static bool custom_failure{};
+        inline static std::function<void()> copying_failure;
+        struct Failure final
+        {
+            int reason{731};
+            Failure() = default;
+            Failure(const Failure& other) : reason(other.reason)
+            {
+                if (copying_failure)
+                    copying_failure();
+            }
+        };
         inline static std::function<void()> maintaining;
         inline static bool* in_flight{};
         inline static unsigned destroyed{};
@@ -94,6 +106,12 @@ namespace
                     description.instanceId(),
                     [](Probe& probe) noexcept -> lux::scene::SceneStageResult {
                         ++probe.facts.publication;
+                        if (probe.facts.fail && Probe::custom_failure)
+                            return cxx::unexpected(lux::scene::SceneExecutionFailure{
+                                lux::scene::ESceneExecutionError::SYSTEM_FAILURE,
+                                {},
+                                Probe::Failure{}
+                            });
                         if (probe.facts.fail)
                             return cxx::unexpected(lux::scene::SceneExecutionFailure{
                                 lux::scene::ESceneExecutionError::SYSTEM_FAILURE,
@@ -491,6 +509,37 @@ namespace
         assert(f.runs.acknowledgeStop(id));
         for (auto ticket : tickets)
             assert(!f.runs.stepStatus(ticket));
+        if (passed && mode == "r1-failed")
+        {
+            const auto another = f.start();
+            assert(f.runs.pause(another));
+            f.until([&] { return take(f.runs.info(another)).state == ERunState::PAUSED; });
+            const auto instance = take(f.runs.info(another)).instance;
+            Probe::custom_failure = true;
+            take(f.runtime->borrowInstance(instance)).get().ctx().get<Probe::Facts>().fail = true;
+            const auto ticket = take(f.runs.step(another));
+            f.until([&] { return take(f.runs.info(another)).state == ERunState::FAILED; });
+            assert(!f.runtime->borrowClock(instance));
+            unsigned copies{};
+            Probe::copying_failure = [&] {
+                ++copies;
+                const auto removing = f.runs.acknowledgeStop(another);
+                assert(!removing && std::get<ERunError>(removing.error().cause) == ERunError::BUSY);
+                const auto recursive = f.runs.acknowledgeStep(ticket);
+                assert(!recursive && std::get<ERunError>(recursive.error().cause) == ERunError::BUSY);
+            };
+            const auto value = take(f.runs.stepStatus(ticket));
+            Probe::copying_failure = {};
+            assert(copies > 0 && value.state == lux::scene::ESceneStepState::FAILED);
+            const auto& cause = std::get<lux::scene::SceneDriveFailure>(value.result.error().cause);
+            assert(
+                std::any_cast<Probe::Failure>(std::get<lux::scene::SceneExecutionFailure>(cause.cause).cause).reason ==
+                731
+            );
+            assert(f.runs.acknowledgeStep(ticket) && f.runs.acknowledgeStop(another));
+            Probe::custom_failure = false;
+            std::puts("PASS retained error copy cannot recursively acknowledge step or remove Run");
+        }
         return passed;
     }
     void callbackResults()

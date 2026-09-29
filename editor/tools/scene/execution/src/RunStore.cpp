@@ -325,6 +325,7 @@ namespace lux::editor::scene
             return lux::cxx::unexpected(found.error());
         if ((*found)->info.instance != ticket.step.scene)
             return rejected(ERunError::INVALID_ID);
+        DispatchScope reading(impl_->dispatching);
         auto status = impl_->runtime.stepStatus(ticket.step, (*found)->retirement);
         if (!status)
             return rejected(status.error());

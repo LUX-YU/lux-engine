@@ -1,0 +1,1 @@
+Assertion failed: store.files["a"] == "last", file E:\SyncForder\CodeRepos\lux-engine\editor\persistence\test\write_coordinator.cpp, line 92

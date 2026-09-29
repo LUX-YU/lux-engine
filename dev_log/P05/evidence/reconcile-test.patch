@@ -1,0 +1,41 @@
+diff --git a/editor/persistence/test/write_coordinator.cpp b/editor/persistence/test/write_coordinator.cpp
+index 4ca1cce99..9fa2fc3b9 100644
+--- a/editor/persistence/test/write_coordinator.cpp
++++ b/editor/persistence/test/write_coordinator.cpp
+@@ -3,6 +3,7 @@
+ #include <iostream>
+ #include <map>
+ #include <span>
++#include <stdexcept>
+ 
+ using namespace lux::editor::persistence;
+ namespace
+@@ -12,6 +13,7 @@ namespace
+         std::map<std::string, std::string> files;
+         std::vector<std::uint64_t> writes;
+         bool retired{};
++        bool fail_reconciliation{};
+         PersistenceResult<WriteTarget> resolve(std::string_view address) override
+         {
+             auto key = std::string(address);
+@@ -30,6 +32,8 @@ namespace
+         }
+         Reconciliation reconcile(const PublicationQuery& work) override
+         {
++            if (fail_reconciliation)
++                throw std::runtime_error("foreign reconciliation failure");
+             if (!retired)
+                 return {false, PublicationUnknown{{EPersistenceError::IO}, "pending"}};
+             return {true, publish(work, {})};
+@@ -83,6 +87,11 @@ int main()
+     assert(coordinator.complete(unknown, PublicationUnknown{{EPersistenceError::IO}, "pending"}));
+     assert(!coordinator.acknowledge(unknown));
+     assert(!coordinator.reconcile(unknown, store));
++    store.fail_reconciliation = true;
++    auto callback_failure = coordinator.reconcile(unknown, store);
++    assert(!callback_failure && callback_failure.error().code == EPersistenceError::IO);
++    assert(coordinator.status(unknown)->stage == EWriteStage::UNKNOWN);
++    store.fail_reconciliation = false;
+     assert(!*coordinator.takeReady());
+     const auto independent = *coordinator.reserve(*store.resolve("b"), origin);
+     assert(coordinator.provideEncoded(independent, bytes("independent")));

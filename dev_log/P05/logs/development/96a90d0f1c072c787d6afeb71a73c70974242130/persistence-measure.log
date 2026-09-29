@@ -1,0 +1,2 @@
+Q50 persistence measurement: saves=72 us=341260 executable_plain_allocations=15748 encoded_owned_bytes=327414 peak_process_working_set=11526144 peak_retained_tickets=3 tickets_after_ack=0
+Capture performed once per save; worker owns same snapshot, no live-session clone; no speedup claim PASS

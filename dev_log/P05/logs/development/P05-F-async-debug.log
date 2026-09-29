@@ -1,0 +1,91 @@
+
+Microsoft (R) Windows Debugger Version 10.0.17763.132 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+CommandLine: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/bin/editor_persistence_models_test.exe E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tests/persistence/debug-files execution
+Symbol search path is: srv*
+Executable search path is: 
+ModLoad: 00007ff7`223d0000 00007ff7`226f5000   editor_persistence_models_test.exe
+ModLoad: 00007ffa`edc80000 00007ffa`edee7000   ntdll.dll
+ModLoad: 00007ffa`ecb10000 00007ffa`ecbdb000   C:\WINDOWS\System32\KERNEL32.DLL
+ModLoad: 00007ffa`eb590000 00007ffa`eb992000   C:\WINDOWS\System32\KERNELBASE.dll
+ModLoad: 00007ffa`e6f50000 00007ffa`e6fef000   C:\WINDOWS\SYSTEM32\apphelp.dll
+ModLoad: 00007ffa`eaff0000 00007ffa`eb13c000   C:\WINDOWS\System32\ucrtbase.dll
+ModLoad: 00007ffa`a0ca0000 00007ffa`a0cd5000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_scene_description.dll
+ModLoad: 00007ffa`8b3a0000 00007ffa`8b44f000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_scene_asset.dll
+ModLoad: 00007ffa`9c970000 00007ffa`9c9b4000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_simulation_asset.dll
+ModLoad: 00007ffa`a2870000 00007ffa`a2895000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_world_asset.dll
+ModLoad: 00007ffa`a2490000 00007ffa`a24c0000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_scene_world_materialization.dll
+ModLoad: 00007ffa`3ecf0000 00007ffa`3ee7e000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_asset.dll
+ModLoad: 00007ffa`9af20000 00007ffa`9af89000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_simulation_description.dll
+ModLoad: 00007ffa`9ba20000 00007ffa`9ba51000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_world_storage.dll
+ModLoad: 00007ffa`8ca90000 00007ffa`8cae9000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_world_description.dll
+ModLoad: 00007ffa`9a520000 00007ffa`9a552000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_world_partition.dll
+ModLoad: 00007ffa`acf20000 00007ffa`acf3e000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_simulation_ecs_schema.dll
+ModLoad: 00007ffa`60fb0000 00007ffa`6109e000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_function_material_graph.dll
+ModLoad: 00007ffa`9fea0000 00007ffa`9fecc000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_function_graph.dll
+ModLoad: 00007ffa`9f910000 00007ffa`9f932000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_edit_sessions.dll
+ModLoad: 00007ffa`8b100000 00007ffa`8b14c000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_edit_history.dll
+ModLoad: 00007ffa`8b0c0000 00007ffa`8b100000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_process_execution.dll
+ModLoad: 00007ffa`c3180000 00007ffa`c321d000   C:\WINDOWS\SYSTEM32\MSVCP140.dll
+ModLoad: 00007ffa`aca50000 00007ffa`aca66000   C:\WINDOWS\SYSTEM32\MSVCP140_ATOMIC_WAIT.dll
+ModLoad: 00007ffa`c2df0000 00007ffa`c2e1c000   C:\WINDOWS\SYSTEM32\VCRUNTIME140.dll
+ModLoad: 00007ffa`c71c0000 00007ffa`c71cc000   C:\WINDOWS\SYSTEM32\VCRUNTIME140_1.dll
+ModLoad: 00007ffa`eb9a0000 00007ffa`eba5c000   C:\WINDOWS\System32\ADVAPI32.dll
+ModLoad: 00007ffa`eda50000 00007ffa`edaf9000   C:\WINDOWS\System32\msvcrt.dll
+ModLoad: 00007ffa`ebe80000 00007ffa`ebf29000   C:\WINDOWS\System32\sechost.dll
+ModLoad: 00007ffa`ec130000 00007ffa`ec248000   C:\WINDOWS\System32\RPCRT4.dll
+ModLoad: 00007ffa`a0390000 00007ffa`a03ad000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_process_world_loading.dll
+ModLoad: 00007ffa`9fa20000 00007ffa`9fa34000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_domain_system_description.dll
+ModLoad: 00007ffa`9cee0000 00007ffa`9cf07000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\description.dll
+ModLoad: 00007ffa`c8090000 00007ffa`c80a0000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_domain_system_identity.dll
+ModLoad: 00007ffa`9c890000 00007ffa`9c8b1000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_simulation_ecs_core.dll
+(ae0c.7e24): Break instruction exception - code 80000003 (first chance)
+ntdll!LdrpDoDebuggerBreak+0x35:
+00007ffa`edda2239 cc              int     3
+0:000> cdb: Reading initial command 'g;~*k;q'
+(ae0c.7e24): Security check failure or stack buffer overrun - code c0000409 (!!! second chance !!!)
+*** WARNING: Unable to verify checksum for editor_persistence_models_test.exe
+
+.  0  Id: ae0c.7e24 Suspend: 1 Teb: 0000008a`22ace000 Unfrozen
+Child-SP          RetAddr           Call Site
+0000008a`2293ed70 00007ff7`2241db1c ucrtbase!abort+0x4e
+0000008a`2293eda0 00007ff7`2244308c editor_persistence_models_test!`anonymous namespace'::take<tl::expected<lux::process::ExecutionRuntime,enum lux::process::EExecutionError> >+0x1c
+0000008a`2293ede0 00007ff7`2244d4f6 editor_persistence_models_test!`anonymous namespace'::executionCases+0xec
+0000008a`2293f130 00007ff7`2262cc70 editor_persistence_models_test!main+0x306
+(Inline Function) --------`-------- editor_persistence_models_test!invoke_main+0x22
+0000008a`2293fbb0 00007ffa`ecb3cd87 editor_persistence_models_test!__scrt_common_main_seh+0x10c
+0000008a`2293fbf0 00007ffa`edd2caec KERNEL32!BaseThreadInitThunk+0x17
+0000008a`2293fc20 00000000`00000000 ntdll!RtlUserThreadStart+0x2c
+
+   1  Id: ae0c.2278 Suspend: 1 Teb: 0000008a`22ad0000 Unfrozen
+Child-SP          RetAddr           Call Site
+0000008a`22cff788 00007ffa`edc9a65e ntdll!NtWaitForWorkViaWorkerFactory+0x14
+0000008a`22cff790 00007ffa`ecb3cd87 ntdll!TppWorkerThread+0x37e
+0000008a`22cffaf0 00007ffa`edd2caec KERNEL32!BaseThreadInitThunk+0x17
+0000008a`22cffb20 00000000`00000000 ntdll!RtlUserThreadStart+0x2c
+
+   2  Id: ae0c.d398 Suspend: 1 Teb: 0000008a`22ad2000 Unfrozen
+Child-SP          RetAddr           Call Site
+0000008a`22dffa88 00007ffa`edc9a65e ntdll!NtWaitForWorkViaWorkerFactory+0x14
+0000008a`22dffa90 00007ffa`ecb3cd87 ntdll!TppWorkerThread+0x37e
+0000008a`22dffdf0 00007ffa`edd2caec KERNEL32!BaseThreadInitThunk+0x17
+0000008a`22dffe20 00000000`00000000 ntdll!RtlUserThreadStart+0x2c
+
+   3  Id: ae0c.9614 Suspend: 1 Teb: 0000008a`22ad4000 Unfrozen
+Child-SP          RetAddr           Call Site
+0000008a`22eff9a8 00007ffa`edc9a65e ntdll!NtWaitForWorkViaWorkerFactory+0x14
+0000008a`22eff9b0 00007ffa`ecb3cd87 ntdll!TppWorkerThread+0x37e
+0000008a`22effd10 00007ffa`edd2caec KERNEL32!BaseThreadInitThunk+0x17
+0000008a`22effd40 00000000`00000000 ntdll!RtlUserThreadStart+0x2c
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

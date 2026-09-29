@@ -1,0 +1,7 @@
+{
+  "source_sha": "96a90d0f1c072c787d6afeb71a73c70974242130",
+  "test_patch_sha256": "8550f8814ca1b008d2b4f038654ee22fe5e68463775f6a31f55c17630069ed8f",
+  "before": "dev_log/P05/logs/development/P05-F-reconcile-before.log",
+  "after": "dev_log/P05/logs/development/P05-F-reconcile-after.log",
+  "note": "Test-only fault injection on the original implementation; formatting normalized in the final patch."
+}

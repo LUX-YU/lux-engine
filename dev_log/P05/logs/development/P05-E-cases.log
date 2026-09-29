@@ -1,0 +1,20 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start 16: editor.persistence.write_coordinator
+1/5 Test #16: editor.persistence.write_coordinator ...   Passed    0.04 sec
+    Start 66: editor.persistence.real_files
+2/5 Test #66: editor.persistence.real_files ..........   Passed    0.05 sec
+    Start 91: editor.persistence.models
+3/5 Test #91: editor.persistence.models ..............   Passed    0.06 sec
+    Start 92: editor.persistence.save-as
+4/5 Test #92: editor.persistence.save-as .............   Passed    0.09 sec
+    Start 93: editor.persistence.unknown
+5/5 Test #93: editor.persistence.unknown .............   Passed    0.04 sec
+
+100% tests passed, 0 tests failed out of 5
+
+Label Time Summary:
+P05       =   0.29 sec*proc (5 tests)
+editor    =   0.29 sec*proc (5 tests)
+native    =   0.29 sec*proc (5 tests)
+
+Total Test time (real) =   0.55 sec

@@ -1,0 +1,357 @@
+[
+  {
+    "status": "A",
+    "path": "cmake/installed-consumers/persistence/CMakeLists.txt",
+    "git_content_sha256": "fc3caf8f4eaf34a198464e99369bfc3810228b7541f0a78e59cd648a25f49df8"
+  },
+  {
+    "status": "M",
+    "path": "editor/CMakeLists.txt",
+    "git_content_sha256": "6bc16c7de5b67a6549b40502fba9790a6f96152514775dc058c32026ae0d2688"
+  },
+  {
+    "status": "A",
+    "path": "editor/adapters/project_io/CMakeLists.txt",
+    "git_content_sha256": "b4e35b37fbd658394ae1a504f0dfea5e38e1b55355c8b2a1d9532c1e99097bf1"
+  },
+  {
+    "status": "A",
+    "path": "editor/adapters/project_io/README.md",
+    "git_content_sha256": "3714938f4df1506f357b2b0e77e3de1cc1bb325c4e8872760b47731ff442a15d"
+  },
+  {
+    "status": "A",
+    "path": "editor/adapters/project_io/include/lux/engine/editor/io/ProjectArtifactStore.hpp",
+    "git_content_sha256": "03708b00f2305a3712e82e3f315c113a1255b122c406b0b0cd55c277aa262f5c"
+  },
+  {
+    "status": "A",
+    "path": "editor/adapters/project_io/include/lux/engine/editor/io/SaveExecution.hpp",
+    "git_content_sha256": "7facd16e1d69c3953cf5ddf7656a00557fd02082a9984ac664a945e4a91a7fc4"
+  },
+  {
+    "status": "A",
+    "path": "editor/adapters/project_io/src/ProjectArtifactStore.cpp",
+    "git_content_sha256": "78b3f4c2f6426de0b82a879405de7a5cc59e14152c56a0c7f538952df57b45ae"
+  },
+  {
+    "status": "A",
+    "path": "editor/adapters/project_io/src/SaveExecution.cpp",
+    "git_content_sha256": "dc8761218902ea3c84018222006f38ae585292532112aeeec744364282ae5772"
+  },
+  {
+    "status": "A",
+    "path": "editor/adapters/project_io/test/publication.cpp",
+    "git_content_sha256": "23fb70341051e7a0e456c56b8b4ecf07e23a3d46cda880951125a24ef67c4277"
+  },
+  {
+    "status": "M",
+    "path": "editor/editing/sessions/include/lux/engine/editor/sessions/PersistenceCheckpoint.hpp",
+    "git_content_sha256": "750fc8d3100a30084f6a08e028d2a0f6306b8ac2a56ba42163065d35c89ad8cf"
+  },
+  {
+    "status": "A",
+    "path": "editor/persistence/CMakeLists.txt",
+    "git_content_sha256": "6d8f71493db08c6742089c3bee34ca9caa21f5be798f30ac02a8e36d7d87f3bc"
+  },
+  {
+    "status": "A",
+    "path": "editor/persistence/README.md",
+    "git_content_sha256": "6c4f41db2ce4d3d759975363e69967c2e1f9953e632f39d0f1de1a0ce22f38ac"
+  },
+  {
+    "status": "A",
+    "path": "editor/persistence/include/lux/engine/editor/persistence/ArtifactStore.hpp",
+    "git_content_sha256": "760d9293854ef19ddd145aa894902d17b5980bdb8ad886bc2b0a5a21835ba54a"
+  },
+  {
+    "status": "A",
+    "path": "editor/persistence/include/lux/engine/editor/persistence/EncodeJob.hpp",
+    "git_content_sha256": "4fe76b5e157f939d35d0722ca10d7c31480fdbd28a8ea35d3b5d1bcf33a6cf31"
+  },
+  {
+    "status": "A",
+    "path": "editor/persistence/include/lux/engine/editor/persistence/SaveService.hpp",
+    "git_content_sha256": "5b0920412c68a1fd6e90143d5c5162f42597cd846b5cc28f3192d40d60c35c7c"
+  },
+  {
+    "status": "A",
+    "path": "editor/persistence/include/lux/engine/editor/persistence/SaveSource.hpp",
+    "git_content_sha256": "fcce291f9f8e3f6c852c369f9fe18154954034d6c2bfb241823903b6fb89f46b"
+  },
+  {
+    "status": "A",
+    "path": "editor/persistence/include/lux/engine/editor/persistence/SaveTypes.hpp",
+    "git_content_sha256": "732d041655d488e59f671b7ad0b51cb03592f616bc7f3cb1588488db92327c07"
+  },
+  {
+    "status": "A",
+    "path": "editor/persistence/include/lux/engine/editor/persistence/WriteCoordinator.hpp",
+    "git_content_sha256": "ae4f20e05a54da78d176752dc413b7949e43a4e2008c15a8958c596fd0d6a1ae"
+  },
+  {
+    "status": "A",
+    "path": "editor/persistence/include/lux/engine/editor/persistence/WriteLane.hpp",
+    "git_content_sha256": "79bd4a5a2979c474e33c3835551e51ff30e5410d3e9f186c0f7738ebe5cf7143"
+  },
+  {
+    "status": "A",
+    "path": "editor/persistence/src/EncodeJob.cpp",
+    "git_content_sha256": "34c2f220cdfe5387d31e0d44bfc7153505c5016814eac13737e97cd95e96b795"
+  },
+  {
+    "status": "A",
+    "path": "editor/persistence/src/SaveService.cpp",
+    "git_content_sha256": "1723f275b124327e1e3eec08fe56bada6aed10190d058c5ab17d62be1942af29"
+  },
+  {
+    "status": "A",
+    "path": "editor/persistence/src/WriteCoordinator.cpp",
+    "git_content_sha256": "3519556384f2d390f1784210c73269ad21fc65e3f6de4a133372c73f65c7d3cc"
+  },
+  {
+    "status": "A",
+    "path": "editor/persistence/test/write_coordinator.cpp",
+    "git_content_sha256": "79daea2c09b3e9baab1d235bf8f4a5e09469785224cd1ec2969a6c47077deebc"
+  },
+  {
+    "status": "M",
+    "path": "editor/storage/CMakeLists.txt",
+    "git_content_sha256": "2b1c13996e03a18cba452b60c919772fa894e71db7129a52c4156c059797fe35"
+  },
+  {
+    "status": "A",
+    "path": "editor/storage/include/lux/engine/editor/storage/FilePublication.hpp",
+    "git_content_sha256": "9a06e089f9739998c6be4bb33cfff5e93ea9b038a285ad520645e85b44a57202"
+  },
+  {
+    "status": "A",
+    "path": "editor/storage/src/FilePublication.cpp",
+    "git_content_sha256": "79acc7da9a502defcabf713964966042c6016b3c11a531757800f16d11624d9e"
+  },
+  {
+    "status": "M",
+    "path": "editor/storage/src/ProjectPublication.cpp",
+    "git_content_sha256": "f8fab6a839dd83dfea905146579ac91bc93a28d40b9f389d55d9c0e1f28384f1"
+  },
+  {
+    "status": "M",
+    "path": "editor/tests/architecture/CMakeLists.txt",
+    "git_content_sha256": "cc9899ae0c0aaadab89e1ecde261083c79b6dba284a1dd8fd4028f615e694ec6"
+  },
+  {
+    "status": "M",
+    "path": "editor/tests/architecture/check_editor_boundaries.py",
+    "git_content_sha256": "ab9a9da9f18b47ceb05663ed426b8071cf0886dc467402625f4a8aed1ef6bf7d"
+  },
+  {
+    "status": "M",
+    "path": "editor/tests/architecture/rules.json",
+    "git_content_sha256": "14bfbaa9dc2d72349287319285b6ebe929bda3211aae583d5204448cb725b3b5"
+  },
+  {
+    "status": "A",
+    "path": "editor/tests/architecture/test_persistence_boundaries.py",
+    "git_content_sha256": "af6588365cb1d5c842d0ae0111ddb732033602d84650c2fabe287921f843938a"
+  },
+  {
+    "status": "A",
+    "path": "editor/tests/persistence/CMakeLists.txt",
+    "git_content_sha256": "7dd1529fd890ae5acdcd7681f448e9b39c62b94eb848ec48f8109f18c5b0ef5d"
+  },
+  {
+    "status": "A",
+    "path": "editor/tests/persistence/models.cpp",
+    "git_content_sha256": "b1f7fdf1015576fc7550ca53c144b7299bb5dc749abef9574f4589a7a1509a59"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/flowforge/model/CMakeLists.txt",
+    "git_content_sha256": "cce62ea22d3ef33225bb4f6bd3633159cd988f180513fb1a484d2cf8f8188e42"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowPersistenceAccess.hpp",
+    "git_content_sha256": "6057977fb1ebf99df7e3ea411e42291aa642544e4f9446139d7d8a6f408d670b"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowSession.hpp",
+    "git_content_sha256": "5a918857e26b712ce62996731f4e4da6f900ffe75e8b0ddeae6685f52438b9de"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowSnapshot.hpp",
+    "git_content_sha256": "8c06b2dc26e2e95fda34d9ede3296130b573f1222a3c193d4b66d3016855e8e4"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/model/src/FlowPersistenceAccess.cpp",
+    "git_content_sha256": "f93ed58a961175655e9ae8adc19bca51b8f3c624978b0fac337b1c3409854b36"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/flowforge/model/src/FlowSession.cpp",
+    "git_content_sha256": "a1b0ca387a7dfa880cf572a0d60b00e0509aabdd4ac80119b499b99a01d70d55"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/persistence/CMakeLists.txt",
+    "git_content_sha256": "af1ddc833a5240412239ada50f5237c2c8e66e16da8578cd8687ebe5d51599bd"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/persistence/include/lux/engine/editor/flowforge/FlowCodec.hpp",
+    "git_content_sha256": "5596568ac0a7f43f43aa918b66addaeed86594ee7b32b874090f3243816c50ef"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/persistence/include/lux/engine/editor/flowforge/FlowSaveSource.hpp",
+    "git_content_sha256": "4677a52f9af38510a8c228b4b4c62ff0a6c37e919c5e391dcfeb327149f2647c"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/persistence/src/FlowCodec.cpp",
+    "git_content_sha256": "3f628c1566714eca3dde740f3b4e4cbbcc7f4efff53a27000ddbd26faf9d90d3"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/flowforge/persistence/src/FlowSaveSource.cpp",
+    "git_content_sha256": "08356e4a57c2027ba188adbd9057802ec3b5b29dde73699b127db1b21cf31dcc"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/material/model/CMakeLists.txt",
+    "git_content_sha256": "4ca02d56122976b17e0e16ec73340add823c6e922d6c6e6fce2a4fd3af467cc5"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/material/model/include/lux/engine/editor/material/MaterialPersistenceAccess.hpp",
+    "git_content_sha256": "f238febbb212672f7dda78da20d8496839b4bb97d0902ca3f3d5c89d42c5ec09"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/material/model/include/lux/engine/editor/material/MaterialSession.hpp",
+    "git_content_sha256": "e9c5547fd49e9e1a3c40989b893f460f0daa9ed8bcd47cd6ca566f7475e165e0"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/material/model/include/lux/engine/editor/material/MaterialSnapshot.hpp",
+    "git_content_sha256": "b2f4c8539f6b92d1f45474b3557d524cba1213a508eff28af226b8725e4c53c9"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/material/model/src/MaterialPersistenceAccess.cpp",
+    "git_content_sha256": "e466d5bb29b990f0e19a079ed4e21bd5a777b447c520bcba4456d73f3a1f2336"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/material/model/src/MaterialSession.cpp",
+    "git_content_sha256": "00043817c10ab967c46a1de34bbc7a117f42a16761aaac3e7f8dee4d860f4431"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/material/persistence/CMakeLists.txt",
+    "git_content_sha256": "0e729bc95113bd9844a2b7b9c15f9c96f3de32f6844547cc282fb0f6abf25e12"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/material/persistence/include/lux/engine/editor/material/MaterialCodec.hpp",
+    "git_content_sha256": "aa620ae3783ad3001a437fad4e62a7d1b0e5737a4eea21da802877e265b9054f"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/material/persistence/include/lux/engine/editor/material/MaterialSaveSource.hpp",
+    "git_content_sha256": "ec71de1f3dd1993f92b0f728c58735596dd6dd3bf9e7874277654a32edd3d253"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/material/persistence/src/MaterialCodec.cpp",
+    "git_content_sha256": "b0953fae2d36b4516c07f22e433d8ee7b64d3d33c3e7a1bf7297abc1e7d03418"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/material/persistence/src/MaterialSaveSource.cpp",
+    "git_content_sha256": "9959a849bec67d1441bf2691f2dc5420296489379c9bfc59dac812a8d63c98d6"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/scene/model/CMakeLists.txt",
+    "git_content_sha256": "a7903d0572d72b933ff335b7cb8ccf7ec7ade9de0b4f1c45860226e4edff9eef"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/scene/model/include/lux/engine/editor/scene/ScenePersistenceAccess.hpp",
+    "git_content_sha256": "07af6ea18a1d583c909fa5f33d68d582fdf6773f93d3ecff7df2dd49f428fec9"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/scene/model/include/lux/engine/editor/scene/SceneSession.hpp",
+    "git_content_sha256": "a4c67d9d1f454152d672a8f1ed9b8be31fda0bde7187b1bc972ae0d77653d4ae"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/scene/model/include/lux/engine/editor/scene/SceneSnapshot.hpp",
+    "git_content_sha256": "6c11f008076304cd8460adc0051ec0ed4593f0c0d2c0fb8ea273eb8bf7f9b9ce"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/scene/model/src/ScenePersistenceAccess.cpp",
+    "git_content_sha256": "300ba595aa7f0e3a01249826a12e3a72d387ba03368b14f9c54ee2b7a9e53cbc"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/scene/model/src/SceneSource.cpp",
+    "git_content_sha256": "75919ccd4e93d19b11565b3671c4ed6ce5e9284c96fcaddeb6fc0322146e6d15"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/scene/model/src/SceneSourceData.hpp",
+    "git_content_sha256": "1105e30490d2e46fbad3960cbc71db2286023eaf52ce4ff260cf218a094a6b71"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/scene/model/src/edits/SceneObjectEdit.cpp",
+    "git_content_sha256": "c5be601bede03245997c50128071a89726444a2ac195538a18b7aa5c8fd80307"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/scene/persistence/CMakeLists.txt",
+    "git_content_sha256": "6d8f4d15ffa0e1cd33fd8a625e1f2eee8c7070a62bad0be08616bb760a0b845a"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/scene/persistence/include/lux/engine/editor/scene/SceneCodec.hpp",
+    "git_content_sha256": "a4f5c0827f3f35c1dcf504081b6ef5951d14e0ce8b8db4e1b932ffecdf2b7ebe"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/scene/persistence/include/lux/engine/editor/scene/SceneSaveSource.hpp",
+    "git_content_sha256": "bf70de47f0c25bdbaa7f5789f9321746cb42d65217d23bf585a5f8538607070a"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/scene/persistence/src/SceneCodec.cpp",
+    "git_content_sha256": "a44a1fdc43164a674691a70ed27a0425e127f0170e0f701043e8410fd182e1e2"
+  },
+  {
+    "status": "A",
+    "path": "editor/tools/scene/persistence/src/SceneSaveSource.cpp",
+    "git_content_sha256": "45e377b98e6d7a7fdd07a26c52f65307b2273e84d29d5a1b101540ad3e27c123"
+  },
+  {
+    "status": "M",
+    "path": "editor/tools/scene/src/SceneSource.cpp",
+    "git_content_sha256": "cb1f1c8a125a99f94fb0b889e4919ab36cb9f36e0b90a27364850b7e916df07f"
+  },
+  {
+    "status": "M",
+    "path": "engine/scene/asset/include/lux/engine/scene/ScenePackage.hpp",
+    "git_content_sha256": "f70fd2fe3c4b681304155e2e5c8a5cf92e2b9ea92c7967d27a38f3f5156a5f84"
+  },
+  {
+    "status": "M",
+    "path": "engine/scene/asset/src/SceneConstruction.cpp",
+    "git_content_sha256": "bc79c175d2618dc9677eb1c1ab6a117a54584378ecbab82b78628dfd4cacb6a3"
+  }
+]

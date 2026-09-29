@@ -1,0 +1,29 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/persistence-p05-consumer
+      Start  1: persistence_consumer.models
+ 1/12 Test  #1: persistence_consumer.models .......   Passed    0.06 sec
+      Start  2: persistence_consumer.save-as
+ 2/12 Test  #2: persistence_consumer.save-as ......   Passed    0.07 sec
+      Start  3: persistence_consumer.unknown
+ 3/12 Test  #3: persistence_consumer.unknown ......   Passed    0.04 sec
+      Start  4: persistence_consumer.order
+ 4/12 Test  #4: persistence_consumer.order ........   Passed    0.07 sec
+      Start  5: persistence_consumer.close
+ 5/12 Test  #5: persistence_consumer.close ........   Passed    0.04 sec
+      Start  6: persistence_consumer.close-key
+ 6/12 Test  #6: persistence_consumer.close-key ....   Passed    0.04 sec
+      Start  7: persistence_consumer.capacity
+ 7/12 Test  #7: persistence_consumer.capacity .....   Passed    0.02 sec
+      Start  8: persistence_consumer.execution
+ 8/12 Test  #8: persistence_consumer.execution ....   Passed    0.03 sec
+      Start  9: persistence_consumer.decoded
+ 9/12 Test  #9: persistence_consumer.decoded ......   Passed    0.04 sec
+      Start 10: persistence_consumer.receipts
+10/12 Test #10: persistence_consumer.receipts .....   Passed    0.06 sec
+      Start 11: persistence_consumer.identities
+11/12 Test #11: persistence_consumer.identities ...   Passed    0.03 sec
+      Start 12: persistence_consumer.conflict
+12/12 Test #12: persistence_consumer.conflict .....   Passed    0.03 sec
+
+100% tests passed, 0 tests failed out of 12
+
+Total Test time (real) =   0.54 sec

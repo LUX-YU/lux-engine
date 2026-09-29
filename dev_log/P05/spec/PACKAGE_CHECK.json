@@ -1,0 +1,12 @@
+{
+  "kind": "document-package-check-not-engine-test",
+  "review_head": "aad13c594afe33af69fcfba1b44790b4e9ad148d",
+  "implementation_sha": "af8310f362ca299a8e3b22597ce9cb5d735906a2",
+  "reference_files_byte_verified": 36,
+  "relative_link_issues": [],
+  "engine_build_run": false,
+  "ctest_run": false,
+  "sdk_consumers_run": false,
+  "decision": "P04 R1 reviewed; P05 only authorized",
+  "generated_date": "2026-09-29"
+}

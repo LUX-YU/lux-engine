@@ -1,0 +1,25 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start 16: editor.persistence.write_coordinator
+1/3 Test #16: editor.persistence.write_coordinator ...   Passed    0.03 sec
+    Start 66: editor.persistence.real_files
+2/3 Test #66: editor.persistence.real_files ..........   Passed    0.06 sec
+    Start 91: editor.persistence.models
+3/3 Test #91: editor.persistence.models ..............Exit code 0xc0000409
+***Exception:   2.79 sec
+encode failure 
+Assertion failed: encoded, file E:\SyncForder\CodeRepos\lux-engine\editor\tests\persistence\models.cpp, line 126
+
+
+67% tests passed, 1 tests failed out of 3
+
+Label Time Summary:
+P05       =   2.89 sec*proc (3 tests)
+editor    =   2.89 sec*proc (3 tests)
+native    =   2.89 sec*proc (3 tests)
+
+Total Test time (real) =   3.26 sec
+
+The following tests FAILED:
+	 91 - editor.persistence.models (Exit code 0xc0000409
+) P05 editor native
+Errors while running CTest

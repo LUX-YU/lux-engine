@@ -94,4 +94,3 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     set_tests_properties(editor.inspector_codegen editor.scene_configuration
         PROPERTIES LABELS "editor;native")
 endif()
-

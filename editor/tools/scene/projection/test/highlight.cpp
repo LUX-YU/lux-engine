@@ -45,6 +45,15 @@ int main()
     gpu.finish(9);
     gpu = {};
     assert(observer.complete());
+    // Returning to the already displayed selection cancels a different backpressured candidate.
+    key.selection = 20;
+    assert(*renderer.prepare(key, capture, encode));
+    assert(*renderer.submit(blocked) == EOverlaySubmit::BACKPRESSURED);
+    auto abandoned = observer;
+    key.selection = 12;
+    const auto before_revert = captured;
+    assert(!*renderer.prepare(key, capture, encode));
+    assert(captured == before_revert && !renderer.prepared && abandoned.cpuReleased());
     key.selection = 13;
     assert(*renderer.prepare(key, capture, encode));
     auto replaced = observer;

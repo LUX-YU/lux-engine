@@ -121,7 +121,14 @@ namespace lux::editor::scene
         template <class Capture, class Encode>
         render::RenderResult<bool> prepare(Key key, Capture&& capture, Encode&& encode)
         {
+            if (desired != key)
+                rejected.reset();
             desired = key;
+            if (prepared && prepared != desired)
+            {
+                program.clear_keep_capacity();
+                prepared.reset();
+            }
             if (accepted == desired)
                 return false;
             if (rejected == desired)

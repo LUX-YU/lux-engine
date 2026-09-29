@@ -20,9 +20,14 @@ def main():
     repo = args.source.resolve()
     rules = json.loads((repo / "editor/tests/architecture/rules.json").read_text())
     locations = {x["name"]: x["path"] for x in rules["targets"]}
-    locations.update(editor_context="editor/context", ui_fixture="modules/function/ui", process_execution="engine/process/execution")
+    locations.update(editor_storage="editor/storage", editor_context="editor/context", ui_fixture="modules/function/ui", process_execution="engine/process/execution")
     locations.update(scene_composition="engine/scene/composition", render_runtime="modules/function/render/runtime")
     cases = [
+        ("author-projection", "scene_model", None, "scene_projection", ""),
+        ("author-material-preview", "material_model", None, "material_preview", ""),
+        ("author-flow-compilation", "flowforge_model", None, "flowforge_compilation", ""),
+        ("material-direct-storage", "material_preview", None, "editor_storage", ""),
+        ("flow-direct-storage", "flowforge_compilation", None, "editor_storage", ""),
         ("projection-ui", "scene_projection", None, "ui_fixture", ""),
         ("projection-transitive-context", "scene_projection", "scene_model", "editor_context", ""),
         ("projection-bridge", "scene_projection", None, None, "SceneRunCaptureAccess.hpp"),

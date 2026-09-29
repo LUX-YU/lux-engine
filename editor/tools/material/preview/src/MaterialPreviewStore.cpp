@@ -393,7 +393,11 @@ namespace lux::editor::material
             // The existing Runtime allocates instance identities across all callers; no per-DLL
             // preview counter is used as a shared RenderResources cache namespace.
             const auto instance = p.scene->id();
-            lux::scene::RenderAssetInput candidate{{instance.domain, instance.value}, ++p.generation, std::move(*port)};
+            lux::scene::RenderAssetInput candidate{
+                {instance.domain, (std::uint64_t{instance.slot} << 32) | instance.generation},
+                ++p.generation,
+                std::move(*port)
+            };
             if (!assets.replaceInput(candidate))
                 return;
             registry.emplace_or_replace<ecs::Mesh3D>(

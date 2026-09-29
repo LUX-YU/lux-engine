@@ -11,6 +11,20 @@ namespace lux::editor::persistence
         {
             return lux::cxx::unexpected(PersistenceFailure{code});
         }
+        // Foreign reconciliation may fail without establishing any new disk fact.
+        PersistenceResult<Reconciliation> reconcileStore(IArtifactStore& store, const PublicationQuery& work) noexcept
+        try
+        {
+            return store.reconcile(work);
+        }
+        catch (const std::bad_alloc&)
+        {
+            std::terminate();
+        }
+        catch (...)
+        {
+            return failed(EPersistenceError::IO);
+        }
     }
     struct WriteCoordinator::Impl final
     {
@@ -187,14 +201,16 @@ namespace lux::editor::persistence
         if (found->stage != EWriteStage::UNKNOWN)
             return failed(EPersistenceError::BUSY);
         const auto work = found->work;
-        auto result = store.reconcile(work);
-        if (!result.writer_retired)
+        auto result = reconcileStore(store, work);
+        if (!result)
+            return lux::cxx::unexpected(result.error());
+        if (!result->writer_retired)
             return failed(EPersistenceError::WRITER_ACTIVE);
         // Reacquire by ID: a backend is not allowed to invalidate a borrowed vector reference by reentry.
         found = impl_->find(ticket);
         if (found == impl_->records.end() || found->stage != EWriteStage::UNKNOWN)
             return failed(EPersistenceError::BUSY);
-        impl_->settle(*found, std::move(result.outcome));
+        impl_->settle(*found, std::move(result->outcome));
         return {};
     }
     PersistenceResult<WriteStatus> WriteCoordinator::status(WriteTicket ticket) const

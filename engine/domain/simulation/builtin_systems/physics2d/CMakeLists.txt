@@ -99,7 +99,8 @@ target_include_directories(physics2d_description PRIVATE ${CMAKE_CURRENT_SOURCE_
 target_link_libraries(physics2d_description PRIVATE nlohmann_json::nlohmann_json
     lux::engine::simulation::system lux::engine::simulation::ecs::transform
     lux::engine::function::script_core lux::engine::core::serialization)
-add_dependencies(physics2d_description physics2d_component_codegen physics2d_configuration_codegen)
+# Codegen labels are metadata-only targets; compilation requires the output-producing targets.
+add_dependencies(physics2d_description physics2d_component_codegen_generate physics2d_configuration_codegen_generate)
 set(_physics_declaration "${CMAKE_CURRENT_BINARY_DIR}/physics2d.declaration.json")
 add_custom_command(OUTPUT "${_physics_declaration}"
     COMMAND "$<TARGET_FILE:physics2d_description>" "${CMAKE_CURRENT_SOURCE_DIR}/physics2d.plugin.json" "${_physics_declaration}"
